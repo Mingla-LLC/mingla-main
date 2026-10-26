@@ -17,7 +17,10 @@ const TABS = new Set(["offers", "promoters", "links", "results"]);
 // #3872 — the workspace renders its own title bar and scrolls as one page, so
 // nothing stays pinned over the content on a phone.
 export default function ReferralsRoute(): React.ReactElement {
-  const params = useLocalSearchParams<{ id: string | string[]; tab?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    id: string | string[];
+    tab?: string | string[];
+  }>();
   const brandId = Array.isArray(params.id) ? params.id[0] : params.id;
   const rawTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
   const { rank } = useCurrentBrandRole(brandId ?? null);
@@ -34,7 +37,11 @@ export default function ReferralsRoute(): React.ReactElement {
         rank={rank}
         currency={currency}
         fallback={`/brand/${brandId}`}
-        initialTab={rawTab && TABS.has(rawTab) ? (rawTab as "offers" | "promoters" | "links" | "results") : "offers"}
+        initialTab={
+          rawTab && TABS.has(rawTab)
+            ? (rawTab as "offers" | "promoters" | "links" | "results")
+            : "offers"
+        }
       />
     </Suspense>
   );

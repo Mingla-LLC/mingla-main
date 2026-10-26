@@ -15,7 +15,8 @@ import { localReviewsService } from "../localReviewsService";
 // Local journeys. The assertions intentionally protect user-visible outcomes,
 // not component implementation details.
 const root = process.cwd();
-const read = (relative: string): string => fs.readFileSync(path.join(root, relative), "utf8");
+const read = (relative: string): string =>
+  fs.readFileSync(path.join(root, relative), "utf8");
 
 const roster = read("app/brand/[id]/creators/roster.tsx");
 const creatorService = read("src/services/creatorGigsService.ts");

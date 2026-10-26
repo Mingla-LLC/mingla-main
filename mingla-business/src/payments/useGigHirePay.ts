@@ -10,12 +10,15 @@ import type { GigHirePayOutcome } from "./gigHirePay";
 
 export type { GigHirePayOutcome };
 
-export function useGigHirePay(): (start: GigHireStart) => Promise<GigHirePayOutcome> {
+export function useGigHirePay(): (
+  start: GigHireStart,
+) => Promise<GigHirePayOutcome> {
   return async (start: GigHireStart): Promise<GigHirePayOutcome> => {
     if (start.kind !== "requires_checkout_redirect") {
       return {
         outcome: "failed",
-        message: "Card payment for creators opens in the Mingla Business app. Open this gig on your phone to pay.",
+        message:
+          "Card payment for creators opens in the Mingla Business app. Open this gig on your phone to pay.",
       };
     }
     if (typeof window !== "undefined" && typeof window.open === "function") {
@@ -26,7 +29,10 @@ export function useGigHirePay(): (start: GigHireStart) => Promise<GigHirePayOutc
       await Linking.openURL(start.url);
       return { outcome: "redirected" };
     } catch {
-      return { outcome: "failed", message: "We couldn't open the payment page. Try again." };
+      return {
+        outcome: "failed",
+        message: "We couldn't open the payment page. Try again.",
+      };
     }
   };
 }

@@ -146,8 +146,8 @@ const EXPECTED: Record<string, Bucket> = {
   brand: "gated-default",
   event: "gated-default",
   experience: "gated-default",
-  // [TEST-MOD-APPROVED #3872] Creator workspaces require a signed-in account.
-  creator: "gated-default",
+  // #3872 decision 1: the creator side lives in Explorer only; the Host app
+  // has no top-level `creator` route any more.
   // [TEST-MOD-APPROVED ORCH-1403] — private listing Insights is an authenticated
   // route and is intentionally absent from every public/connect/invite exemption.
   insights: "gated-default",

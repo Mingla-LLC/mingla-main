@@ -17,7 +17,13 @@ import {
 import * as Clipboard from "expo-clipboard";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  accent,
+  glass,
+  radius,
+  spacing,
+  text as textTokens,
+} from "../../constants/designSystem";
 import {
   fetchReferralListingOptions,
   fetchReferralMembers,
@@ -33,7 +39,12 @@ import {
   type ReferralOfferDraft,
   type ReferralTrackingLink,
 } from "../../services/referralService";
-import { programErrorMessage, programMoney, programMoneyShort, shortDate } from "../../utils/creatorProgramFormat";
+import {
+  programErrorMessage,
+  programMoney,
+  programMoneyShort,
+  shortDate,
+} from "../../utils/creatorProgramFormat";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
@@ -59,7 +70,13 @@ import {
   programStyles,
 } from "../programs/ProgramKit";
 import { ReferralOfferSheet } from "./ReferralOfferSheet";
-import { memberStatusWords, offerPill, offerSummary, rankLeaderboard, slugIsValid } from "./referralWords";
+import {
+  memberStatusWords,
+  offerPill,
+  offerSummary,
+  rankLeaderboard,
+  slugIsValid,
+} from "./referralWords";
 
 const ROOT = "brand-referrals";
 const QRCode = React.lazy(() => import("react-native-qrcode-svg"));
@@ -81,14 +98,24 @@ export interface ReferralHomeViewProps {
 
 type InviteRow = { name: string; email: string };
 
-export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({ brandId, rank, currency, initialTab = "offers", fallback }) => {
+export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
+  brandId,
+  rank,
+  currency,
+  initialTab = "offers",
+  fallback,
+}) => {
   const client = useQueryClient();
   const [tab, setTab] = React.useState<ReferralTab>(initialTab);
-  const [editing, setEditing] = React.useState<ReferralOffer | null | undefined>(undefined);
+  const [editing, setEditing] = React.useState<
+    ReferralOffer | null | undefined
+  >(undefined);
   const [acting, setActing] = React.useState<ReferralOffer | null>(null);
   const [inviting, setInviting] = React.useState(false);
   const [inviteOffer, setInviteOffer] = React.useState("");
-  const [inviteRows, setInviteRows] = React.useState<InviteRow[]>([{ name: "", email: "" }]);
+  const [inviteRows, setInviteRows] = React.useState<InviteRow[]>([
+    { name: "", email: "" },
+  ]);
   const [creatingLink, setCreatingLink] = React.useState(false);
   const [linkLabel, setLinkLabel] = React.useState("");
   const [linkSlug, setLinkSlug] = React.useState("");
@@ -104,46 +131,93 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({ brandId, ran
     return value.toISOString();
   }, []);
 
-  const offers = useQuery({ queryKey: [ROOT, "offers", brandId], queryFn: () => fetchReferralOffers(brandId) });
-  const members = useQuery({ queryKey: [ROOT, "members", brandId], queryFn: () => fetchReferralMembers(brandId) });
-  const links = useQuery({ queryKey: [ROOT, "links", brandId], queryFn: () => fetchTrackingLinks(brandId) });
-  const listings = useQuery({ queryKey: [ROOT, "listings", brandId], queryFn: () => fetchReferralListingOptions(brandId) });
-  const report = useQuery({ queryKey: [ROOT, "report", brandId, reportFrom], queryFn: () => fetchReferralReport(brandId, reportFrom, new Date().toISOString()) });
+  const offers = useQuery({
+    queryKey: [ROOT, "offers", brandId],
+    queryFn: () => fetchReferralOffers(brandId),
+  });
+  const members = useQuery({
+    queryKey: [ROOT, "members", brandId],
+    queryFn: () => fetchReferralMembers(brandId),
+  });
+  const links = useQuery({
+    queryKey: [ROOT, "links", brandId],
+    queryFn: () => fetchTrackingLinks(brandId),
+  });
+  const listings = useQuery({
+    queryKey: [ROOT, "listings", brandId],
+    queryFn: () => fetchReferralListingOptions(brandId),
+  });
+  const report = useQuery({
+    queryKey: [ROOT, "report", brandId, reportFrom],
+    queryFn: () =>
+      fetchReferralReport(brandId, reportFrom, new Date().toISOString()),
+  });
   const refresh = async (): Promise<void> => {
     await client.invalidateQueries({ queryKey: [ROOT] });
   };
 
-  const fail = (fallbackText: string) => (failure: unknown) => setError(programErrorMessage(failure, fallbackText));
+  const fail = (fallbackText: string) => (failure: unknown) =>
+    setError(programErrorMessage(failure, fallbackText));
   const offerWrite = useMutation({
-    mutationFn: (draft: ReferralOfferDraft) => writeReferralOffer(draft.id ? "update" : "create", draft),
+    mutationFn: (draft: ReferralOfferDraft) =>
+      writeReferralOffer(draft.id ? "update" : "create", draft),
     onSuccess: refresh,
   });
   const offerAction = useMutation({
-    mutationFn: ({ row, action }: { row: ReferralOffer; action: "pause" | "resume" | "end" | "delete_draft" }) =>
+    mutationFn: ({
+      row,
+      action,
+    }: {
+      row: ReferralOffer;
+      action: "pause" | "resume" | "end" | "delete_draft";
+    }) =>
       writeReferralOffer(action, { id: row.id, brandId, version: row.version }),
-    onSuccess: async () => { setActing(null); await refresh(); },
+    onSuccess: async () => {
+      setActing(null);
+      await refresh();
+    },
     onError: fail("We couldn't update this offer. Try again."),
   });
   const invite = useMutation({
     mutationFn: async () => {
       const people = inviteRows
-        .map((row) => ({ name: row.name.trim(), email: row.email.trim().toLowerCase() }))
+        .map((row) => ({
+          name: row.name.trim(),
+          email: row.email.trim().toLowerCase(),
+        }))
         .filter((row) => row.email.length > 0);
       if (!inviteOffer) throw new Error("choose_offer");
       if (people.length === 0) throw new Error("no_emails");
-      return inviteReferralMembers(inviteOffer, people.map((row) => ({ email: row.email, displayName: row.name || undefined })));
+      return inviteReferralMembers(
+        inviteOffer,
+        people.map((row) => ({
+          email: row.email,
+          displayName: row.name || undefined,
+        })),
+      );
     },
     onSuccess: async (data) => {
       setInviting(false);
       setInviteRows([{ name: "", email: "" }]);
       await refresh();
       const failed = data.delivery.filter((row) => !row.sent).length;
-      setNotice(failed ? `Invites saved. ${failed} email${failed === 1 ? "" : "s"} couldn't be sent yet; you can resend from Promoters.` : "Invites sent. Promoters accept from their email.");
+      setNotice(
+        failed
+          ? `Invites saved. ${failed} email${failed === 1 ? "" : "s"} couldn't be sent yet; you can resend from Promoters.`
+          : "Invites sent. Promoters accept from their email.",
+      );
     },
-    onError: fail("We couldn't send these invites. Check the email addresses and try again."),
+    onError: fail(
+      "We couldn't send these invites. Check the email addresses and try again.",
+    ),
   });
   const linkWrite = useMutation({
-    mutationFn: () => writeTrackingLink("create", { brandId, label: linkLabel.trim(), slug: linkSlug.trim().toLowerCase() }),
+    mutationFn: () =>
+      writeTrackingLink("create", {
+        brandId,
+        label: linkLabel.trim(),
+        slug: linkSlug.trim().toLowerCase(),
+      }),
     onSuccess: async () => {
       setCreatingLink(false);
       setLinkLabel("");
@@ -153,12 +227,19 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({ brandId, ran
     onError: fail("We couldn't create this link. Try a different link name."),
   });
 
-  const activeInvitable = (offers.data ?? []).filter((row) => row.status === "active" && (row.audience === "invited" || row.audience === "both"));
+  const activeInvitable = (offers.data ?? []).filter(
+    (row) =>
+      row.status === "active" &&
+      (row.audience === "invited" || row.audience === "both"),
+  );
   React.useEffect(() => {
-    if (!inviteOffer && activeInvitable[0]) setInviteOffer(activeInvitable[0].id);
+    if (!inviteOffer && activeInvitable[0])
+      setInviteOffer(activeInvitable[0].id);
   }, [activeInvitable, inviteOffer]);
 
-  const memberRows = (members.data ?? []).filter((row) => row.status !== "removed");
+  const memberRows = (members.data ?? []).filter(
+    (row) => row.status !== "removed",
+  );
   const leaderboard = rankLeaderboard(members.data ?? []);
   const reportValue = report.data ?? {};
   const soldMinor = Number(reportValue.revenueMinor ?? 0);
@@ -166,9 +247,18 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({ brandId, ran
 
   const resend = (row: ReferralMember) => {
     if (!row.email) return;
-    void inviteReferralMembers(row.offerId, [{ email: row.email, displayName: row.displayName, code: row.code ?? undefined }])
+    void inviteReferralMembers(row.offerId, [
+      {
+        email: row.email,
+        displayName: row.displayName,
+        code: row.code ?? undefined,
+      },
+    ])
       .then(refresh)
-      .then(() => { setMember(null); setNotice(`Invite resent to ${row.displayName}.`); })
+      .then(() => {
+        setMember(null);
+        setNotice(`Invite resent to ${row.displayName}.`);
+      })
       .catch(fail("We couldn't resend this invite. Try again."));
   };
 
@@ -177,7 +267,16 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({ brandId, ran
       title="Referrals"
       fallback={fallback}
       right={
-        <Pressable onPress={() => { setError(null); setEditing(null); }} accessibilityRole="button" accessibilityLabel="Create offer" hitSlop={8} style={styles.plus}>
+        <Pressable
+          onPress={() => {
+            setError(null);
+            setEditing(null);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Create offer"
+          hitSlop={8}
+          style={styles.plus}
+        >
           <Icon name="plus" size={22} color={textTokens.primary} />
         </Pressable>
       }
@@ -193,59 +292,207 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({ brandId, ran
             offer={editing}
             listings={listings.data ?? []}
             onClose={() => setEditing(undefined)}
-            onSave={(draft) => offerWrite.mutateAsync(draft).then(() => undefined)}
+            onSave={(draft) =>
+              offerWrite.mutateAsync(draft).then(() => undefined)
+            }
           />
-          <Sheet visible={acting !== null} onClose={() => setActing(null)} snapPoint="half">
+          <Sheet
+            visible={acting !== null}
+            onClose={() => setActing(null)}
+            snapPoint="half"
+          >
             {acting ? (
               <SheetBody title={acting.name}>
                 <Muted>{offerSummary(acting, currency)}</Muted>
-                <SummaryLine label="People earning" value={String(acting.memberCount)} />
+                <SummaryLine
+                  label="People earning"
+                  value={String(acting.memberCount)}
+                />
                 <SummaryLine label="Sales" value={String(acting.salesCount)} />
-                <SummaryLine label="Rewards" value={programMoney(acting.shareMinor, acting.currency || currency)} />
-                <Button fullWidth variant="secondary" label="Edit offer" onPress={() => { const row = acting; setActing(null); setEditing(row); }} />
-                {acting.status === "active" ? <Button fullWidth variant="secondary" label="Pause" loading={offerAction.isPending} onPress={() => offerAction.mutate({ row: acting, action: "pause" })} /> : null}
-                {acting.status === "paused" ? <Button fullWidth variant="secondary" label="Resume" loading={offerAction.isPending} onPress={() => offerAction.mutate({ row: acting, action: "resume" })} /> : null}
-                {acting.status === "draft" ? <Button fullWidth variant="destructiveOutline" label="Delete draft" onPress={() => offerAction.mutate({ row: acting, action: "delete_draft" })} /> : acting.status !== "ended" ? <Button fullWidth variant="destructiveOutline" label="End offer" onPress={() => offerAction.mutate({ row: acting, action: "end" })} /> : null}
+                <SummaryLine
+                  label="Rewards"
+                  value={programMoney(
+                    acting.shareMinor,
+                    acting.currency || currency,
+                  )}
+                />
+                <Button
+                  fullWidth
+                  variant="secondary"
+                  label="Edit offer"
+                  onPress={() => {
+                    const row = acting;
+                    setActing(null);
+                    setEditing(row);
+                  }}
+                />
+                {acting.status === "active" ? (
+                  <Button
+                    fullWidth
+                    variant="secondary"
+                    label="Pause"
+                    loading={offerAction.isPending}
+                    onPress={() =>
+                      offerAction.mutate({ row: acting, action: "pause" })
+                    }
+                  />
+                ) : null}
+                {acting.status === "paused" ? (
+                  <Button
+                    fullWidth
+                    variant="secondary"
+                    label="Resume"
+                    loading={offerAction.isPending}
+                    onPress={() =>
+                      offerAction.mutate({ row: acting, action: "resume" })
+                    }
+                  />
+                ) : null}
+                {acting.status === "draft" ? (
+                  <Button
+                    fullWidth
+                    variant="destructiveOutline"
+                    label="Delete draft"
+                    onPress={() =>
+                      offerAction.mutate({
+                        row: acting,
+                        action: "delete_draft",
+                      })
+                    }
+                  />
+                ) : acting.status !== "ended" ? (
+                  <Button
+                    fullWidth
+                    variant="destructiveOutline"
+                    label="End offer"
+                    onPress={() =>
+                      offerAction.mutate({ row: acting, action: "end" })
+                    }
+                  />
+                ) : null}
                 <FieldError message={error} />
               </SheetBody>
             ) : null}
           </Sheet>
-          <Sheet visible={inviting} onClose={() => setInviting(false)} snapPoint="full">
+          <Sheet
+            visible={inviting}
+            onClose={() => setInviting(false)}
+            snapPoint="full"
+          >
             <SheetBody title="Invite promoters">
               {activeInvitable.length === 0 ? (
                 <>
-                  <Muted>Start an offer for invited promoters first. It sets what they earn.</Muted>
-                  <Button fullWidth label="Create offer" onPress={() => { setInviting(false); setEditing(null); }} />
+                  <Muted>
+                    Start an offer for invited promoters first. It sets what
+                    they earn.
+                  </Muted>
+                  <Button
+                    fullWidth
+                    label="Create offer"
+                    onPress={() => {
+                      setInviting(false);
+                      setEditing(null);
+                    }}
+                  />
                 </>
               ) : (
                 <>
-                  <Muted>Each person gets a private link by email. Invites expire after 14 days and can be resent.</Muted>
+                  <Muted>
+                    Each person gets a private link by email. Invites expire
+                    after 14 days and can be resent.
+                  </Muted>
                   <Text style={styles.label}>What they earn</Text>
                   <View style={styles.chips}>
-                    {activeInvitable.map((offer) => <Chip key={offer.id} label={`${offer.name} · ${offerSummary(offer, currency, true)}`} selected={inviteOffer === offer.id} onPress={() => setInviteOffer(offer.id)} />)}
+                    {activeInvitable.map((offer) => (
+                      <Chip
+                        key={offer.id}
+                        label={`${offer.name} · ${offerSummary(offer, currency, true)}`}
+                        selected={inviteOffer === offer.id}
+                        onPress={() => setInviteOffer(offer.id)}
+                      />
+                    ))}
                   </View>
                   {inviteRows.map((row, index) => (
                     <View key={index} style={styles.inviteRow}>
-                      <Input value={row.name} onChangeText={(value) => setInviteRows((rows) => rows.map((item, i) => (i === index ? { ...item, name: value } : item)))} placeholder="Name" accessibilityLabel={`Promoter ${index + 1} name`} style={programStyles.grow} />
-                      <Input value={row.email} onChangeText={(value) => setInviteRows((rows) => rows.map((item, i) => (i === index ? { ...item, email: value } : item)))} variant="email" placeholder="Email" accessibilityLabel={`Promoter ${index + 1} email`} style={programStyles.grow} />
+                      <Input
+                        value={row.name}
+                        onChangeText={(value) =>
+                          setInviteRows((rows) =>
+                            rows.map((item, i) =>
+                              i === index ? { ...item, name: value } : item,
+                            ),
+                          )
+                        }
+                        placeholder="Name"
+                        accessibilityLabel={`Promoter ${index + 1} name`}
+                        style={programStyles.grow}
+                      />
+                      <Input
+                        value={row.email}
+                        onChangeText={(value) =>
+                          setInviteRows((rows) =>
+                            rows.map((item, i) =>
+                              i === index ? { ...item, email: value } : item,
+                            ),
+                          )
+                        }
+                        variant="email"
+                        placeholder="Email"
+                        accessibilityLabel={`Promoter ${index + 1} email`}
+                        style={programStyles.grow}
+                      />
                     </View>
                   ))}
-                  <Button variant="ghost" size="sm" label="Add another person" onPress={() => setInviteRows((rows) => [...rows, { name: "", email: "" }])} />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    label="Add another person"
+                    onPress={() =>
+                      setInviteRows((rows) => [
+                        ...rows,
+                        { name: "", email: "" },
+                      ])
+                    }
+                  />
                   <FieldError message={error} />
-                  <Button fullWidth label="Send invites" loading={invite.isPending} disabled={invite.isPending || !inviteRows.some((row) => row.email.trim().includes("@"))} onPress={() => { setError(null); invite.mutate(); }} />
+                  <Button
+                    fullWidth
+                    label="Send invites"
+                    loading={invite.isPending}
+                    disabled={
+                      invite.isPending ||
+                      !inviteRows.some((row) => row.email.trim().includes("@"))
+                    }
+                    onPress={() => {
+                      setError(null);
+                      invite.mutate();
+                    }}
+                  />
                 </>
               )}
             </SheetBody>
           </Sheet>
-          <Sheet visible={creatingLink} onClose={() => setCreatingLink(false)} snapPoint="half">
+          <Sheet
+            visible={creatingLink}
+            onClose={() => setCreatingLink(false)}
+            snapPoint="half"
+          >
             <SheetBody title="New tracking link">
               <Muted>Measure a channel without paying anyone a reward.</Muted>
-              <Input value={linkLabel} onChangeText={setLinkLabel} placeholder="Name, e.g. Instagram bio" accessibilityLabel="Link name" maxLength={60} />
+              <Input
+                value={linkLabel}
+                onChangeText={setLinkLabel}
+                placeholder="Name, e.g. Instagram bio"
+                accessibilityLabel="Link name"
+                maxLength={60}
+              />
               <View style={styles.slugRow}>
                 <Text style={styles.slugPrefix}>usemingla.com/r/</Text>
                 <TextInput
                   value={linkSlug}
-                  onChangeText={(value) => setLinkSlug(value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
+                  onChangeText={(value) =>
+                    setLinkSlug(value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))
+                  }
                   style={styles.slugInput}
                   placeholder="summer-launch"
                   placeholderTextColor={textTokens.tertiary}
@@ -257,25 +504,73 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({ brandId, ran
                   accessibilityLabel="Link ending"
                 />
               </View>
-              {linkSlug.length > 0 && !slugIsValid(linkSlug) ? <FieldError message="Use 6 to 48 lowercase letters, numbers, - or _." /> : null}
+              {linkSlug.length > 0 && !slugIsValid(linkSlug) ? (
+                <FieldError message="Use 6 to 48 lowercase letters, numbers, - or _." />
+              ) : null}
               <FieldError message={error} />
-              <Button fullWidth label="Create link" loading={linkWrite.isPending} disabled={linkWrite.isPending || !linkLabel.trim() || !slugIsValid(linkSlug)} onPress={() => { setError(null); linkWrite.mutate(); }} />
+              <Button
+                fullWidth
+                label="Create link"
+                loading={linkWrite.isPending}
+                disabled={
+                  linkWrite.isPending ||
+                  !linkLabel.trim() ||
+                  !slugIsValid(linkSlug)
+                }
+                onPress={() => {
+                  setError(null);
+                  linkWrite.mutate();
+                }}
+              />
             </SheetBody>
           </Sheet>
-          <Sheet visible={member !== null} onClose={() => setMember(null)} snapPoint="full">
+          <Sheet
+            visible={member !== null}
+            onClose={() => setMember(null)}
+            snapPoint="full"
+          >
             {member ? (
               <SheetBody title={member.displayName}>
-                <Muted>{[member.email, memberStatusWords(member.status)].filter(Boolean).join(" · ")}</Muted>
-                <Text style={styles.link} selectable>{`usemingla.com/r/${member.linkSlug}`}</Text>
-                {member.code ? <Muted>{`Checkout code: ${member.code}`}</Muted> : null}
+                <Muted>
+                  {[member.email, memberStatusWords(member.status)]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </Muted>
+                <Text
+                  style={styles.link}
+                  selectable
+                >{`usemingla.com/r/${member.linkSlug}`}</Text>
+                {member.code ? (
+                  <Muted>{`Checkout code: ${member.code}`}</Muted>
+                ) : null}
                 <SummaryLine label="Sales" value={String(member.salesCount)} />
-                <SummaryLine label="Sold" value={programMoney(member.revenueMinor, member.currency || currency)} />
-                <SummaryLine label="Earned" value={programMoney(member.owedMinor, member.currency || currency)} />
-                <SummaryLine label="Paid" value={programMoney(member.paidMinor, member.currency || currency)} />
+                <SummaryLine
+                  label="Sold"
+                  value={programMoney(
+                    member.revenueMinor,
+                    member.currency || currency,
+                  )}
+                />
+                <SummaryLine
+                  label="Earned"
+                  value={programMoney(
+                    member.owedMinor,
+                    member.currency || currency,
+                  )}
+                />
+                <SummaryLine
+                  label="Paid"
+                  value={programMoney(
+                    member.paidMinor,
+                    member.currency || currency,
+                  )}
+                />
                 <SectionLabel>Activity</SectionLabel>
                 <ListGroup>
                   <TimelineRow label="Invited" date={member.invitedAt} />
-                  {member.joinedAt ? <TimelineRow label="Accepted" date={member.joinedAt} /> : null}
+                  {member.joinedAt ? (
+                    <TimelineRow label="Accepted" date={member.joinedAt} />
+                  ) : null}
                   {member.activity.map((activity) => (
                     <TimelineRow
                       key={`${activity.orderKind}-${activity.orderId}`}
@@ -284,8 +579,22 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({ brandId, ran
                     />
                   ))}
                 </ListGroup>
-                {member.status === "invited" && member.email ? <Button fullWidth variant="secondary" label="Resend invite" onPress={() => resend(member)} /> : null}
-                {member.status !== "removed" ? <Button fullWidth variant="destructiveOutline" label="Remove promoter" onPress={() => setRemoving(member)} /> : null}
+                {member.status === "invited" && member.email ? (
+                  <Button
+                    fullWidth
+                    variant="secondary"
+                    label="Resend invite"
+                    onPress={() => resend(member)}
+                  />
+                ) : null}
+                {member.status !== "removed" ? (
+                  <Button
+                    fullWidth
+                    variant="destructiveOutline"
+                    label="Remove promoter"
+                    onPress={() => setRemoving(member)}
+                  />
+                ) : null}
                 <FieldError message={error} />
               </SheetBody>
             ) : null}
@@ -299,7 +608,10 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({ brandId, ran
               if (!row) return;
               void removeReferralMember(row.id)
                 .then(refresh)
-                .then(() => { setMember(null); setNotice(`${row.displayName} was removed.`); })
+                .then(() => {
+                  setMember(null);
+                  setNotice(`${row.displayName} was removed.`);
+                })
                 .catch(fail("We couldn't remove this promoter. Try again."));
             }}
             title="Remove this promoter?"
@@ -311,29 +623,87 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({ brandId, ran
       }
     >
       <TileGrid>
-        <StatTile icon="cash" value={programMoneyShort(soldMinor, currency)} label="Sold via referrals" />
-        <StatTile icon="users" value={String(memberRows.filter((row) => row.status === "active").length)} label="People earning" />
-        <StatTile icon="refund" value={programMoneyShort(Number(reportValue.paidMinor ?? 0), currency)} label="Paid out" hint="after Mingla's 5%" />
-        <StatTile icon="ticket" value={String(Number(reportValue.orders ?? 0))} label="Tickets" hint="last 30 days" />
+        <StatTile
+          icon="cash"
+          value={programMoneyShort(soldMinor, currency)}
+          label="Sold via referrals"
+        />
+        <StatTile
+          icon="users"
+          value={String(
+            memberRows.filter((row) => row.status === "active").length,
+          )}
+          label="People earning"
+        />
+        <StatTile
+          icon="refund"
+          value={programMoneyShort(
+            Number(reportValue.paidMinor ?? 0),
+            currency,
+          )}
+          label="Paid out"
+          hint="after Mingla's 5%"
+        />
+        <StatTile
+          icon="ticket"
+          value={String(Number(reportValue.orders ?? 0))}
+          label="Tickets"
+          hint="last 30 days"
+        />
       </TileGrid>
-      <Segmented options={TABS} value={tab} onChange={(next) => { setError(null); setTab(next); }} />
-      {notice ? <Text style={styles.notice} accessibilityLiveRegion="polite">{notice}</Text> : null}
-      {acting === null && !inviting && !creatingLink && member === null ? <FieldError message={error} /> : null}
+      <Segmented
+        options={TABS}
+        value={tab}
+        onChange={(next) => {
+          setError(null);
+          setTab(next);
+        }}
+      />
+      {notice ? (
+        <Text style={styles.notice} accessibilityLiveRegion="polite">
+          {notice}
+        </Text>
+      ) : null}
+      {acting === null && !inviting && !creatingLink && member === null ? (
+        <FieldError message={error} />
+      ) : null}
 
       {tab === "offers" ? (
-        offers.isLoading ? <ProgramLoading /> : offers.isError ? (
-          <Card><Text style={programStyles.body}>Offers couldn't load.</Text><Button variant="secondary" label="Try again" onPress={() => void refresh()} /></Card>
+        offers.isLoading ? (
+          <ProgramLoading />
+        ) : offers.isError ? (
+          <Card>
+            <Text style={programStyles.body}>Offers couldn't load.</Text>
+            <Button
+              variant="secondary"
+              label="Try again"
+              onPress={() => void refresh()}
+            />
+          </Card>
         ) : (offers.data ?? []).length === 0 ? (
           <Card>
             <Text style={programStyles.title}>No offers yet</Text>
-            <Muted>Let buyers or invited promoters earn for the sales they bring you.</Muted>
+            <Muted>
+              Let buyers or invited promoters earn for the sales they bring you.
+            </Muted>
             <Button label="Create offer" onPress={() => setEditing(null)} />
           </Card>
         ) : (
           <ListGroup>
             {(offers.data ?? []).map((row) => {
               const pill = offerPill(row);
-              return <ListRow key={row.id} title={row.name} subtitle={offerSummary(row, currency)} right={<StatusTag label={pill.label} tone={pill.tone} />} onPress={() => { setError(null); setActing(row); }} />;
+              return (
+                <ListRow
+                  key={row.id}
+                  title={row.name}
+                  subtitle={offerSummary(row, currency)}
+                  right={<StatusTag label={pill.label} tone={pill.tone} />}
+                  onPress={() => {
+                    setError(null);
+                    setActing(row);
+                  }}
+                />
+              );
             })}
           </ListGroup>
         )
@@ -341,20 +711,46 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({ brandId, ran
 
       {tab === "promoters" ? (
         <>
-          <Button fullWidth label="Invite promoters" leadingIcon="plus" onPress={() => { setError(null); setInviting(true); }} />
+          <Button
+            fullWidth
+            label="Invite promoters"
+            leadingIcon="plus"
+            onPress={() => {
+              setError(null);
+              setInviting(true);
+            }}
+          />
           {leaderboard.length > 0 ? (
             <Card>
               <View style={styles.rowBetween}>
                 <Text style={programStyles.title}>Leaderboard</Text>
-                <Button size="sm" variant="ghost" label={showBoard ? "Top 3" : "See all"} onPress={() => setShowBoard((value) => !value)} />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  label={showBoard ? "Top 3" : "See all"}
+                  onPress={() => setShowBoard((value) => !value)}
+                />
               </View>
-              {(showBoard ? leaderboard : leaderboard.slice(0, 3)).map((row, index) => (
-                <ListRow key={row.id} leading={<Text style={styles.rank}>{index + 1}</Text>} title={row.displayName} right={`${row.salesCount} sale${row.salesCount === 1 ? "" : "s"}`} chevron={false} />
-              ))}
+              {(showBoard ? leaderboard : leaderboard.slice(0, 3)).map(
+                (row, index) => (
+                  <ListRow
+                    key={row.id}
+                    leading={<Text style={styles.rank}>{index + 1}</Text>}
+                    title={row.displayName}
+                    right={`${row.salesCount} sale${row.salesCount === 1 ? "" : "s"}`}
+                    chevron={false}
+                  />
+                ),
+              )}
             </Card>
           ) : null}
-          {members.isLoading ? <ProgramLoading /> : memberRows.length === 0 ? (
-            <Card><Text style={programStyles.title}>No promoters yet</Text><Muted>People you invite, and what they earn, show here.</Muted></Card>
+          {members.isLoading ? (
+            <ProgramLoading />
+          ) : memberRows.length === 0 ? (
+            <Card>
+              <Text style={programStyles.title}>No promoters yet</Text>
+              <Muted>People you invite, and what they earn, show here.</Muted>
+            </Card>
           ) : (
             <ListGroup>
               {memberRows.map((row) => (
@@ -363,8 +759,16 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({ brandId, ran
                   leading={<Initials name={row.displayName} />}
                   title={row.displayName}
                   subtitle={`${row.salesCount} sale${row.salesCount === 1 ? "" : "s"} · ${programMoney(row.revenueMinor, row.currency || currency)} sold`}
-                  right={<StatusTag label={memberStatusWords(row.status)} tone={row.status === "active" ? "done" : "waiting"} />}
-                  onPress={() => { setError(null); setMember(row); }}
+                  right={
+                    <StatusTag
+                      label={memberStatusWords(row.status)}
+                      tone={row.status === "active" ? "done" : "waiting"}
+                    />
+                  }
+                  onPress={() => {
+                    setError(null);
+                    setMember(row);
+                  }}
                   accessibilityLabel={`View details for ${row.displayName}`}
                 />
               ))}
@@ -375,11 +779,44 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({ brandId, ran
 
       {tab === "links" ? (
         <>
-          <Button fullWidth label="New tracking link" leadingIcon="plus" onPress={() => { setError(null); setCreatingLink(true); }} />
-          {links.isLoading ? <ProgramLoading /> : linkRows.length === 0 ? (
-            <Card><Text style={programStyles.title}>No tracking links</Text><Muted>Make one per channel (Instagram bio, flyers, WhatsApp) to see which brings sales.</Muted></Card>
+          <Button
+            fullWidth
+            label="New tracking link"
+            leadingIcon="plus"
+            onPress={() => {
+              setError(null);
+              setCreatingLink(true);
+            }}
+          />
+          {links.isLoading ? (
+            <ProgramLoading />
+          ) : linkRows.length === 0 ? (
+            <Card>
+              <Text style={programStyles.title}>No tracking links</Text>
+              <Muted>
+                Make one per channel (Instagram bio, flyers, WhatsApp) to see
+                which brings sales.
+              </Muted>
+            </Card>
           ) : (
-            linkRows.map((row) => <TrackingLinkRow key={row.id} row={row} currency={currency} qrOpen={qrSlug === row.slug} onQr={() => setQrSlug((current) => (current === row.slug ? null : row.slug))} onArchive={() => void writeTrackingLink("archive", { id: row.id }).then(refresh).catch(fail("We couldn't archive this link. Try again."))} />)
+            linkRows.map((row) => (
+              <TrackingLinkRow
+                key={row.id}
+                row={row}
+                currency={currency}
+                qrOpen={qrSlug === row.slug}
+                onQr={() =>
+                  setQrSlug((current) =>
+                    current === row.slug ? null : row.slug,
+                  )
+                }
+                onArchive={() =>
+                  void writeTrackingLink("archive", { id: row.id })
+                    .then(refresh)
+                    .catch(fail("We couldn't archive this link. Try again."))
+                }
+              />
+            ))
           )}
         </>
       ) : null}
@@ -388,20 +825,50 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({ brandId, ran
         <>
           <Card>
             <Text style={programStyles.title}>Last 30 days</Text>
-            <SummaryLine label="Orders" value={String(Number(reportValue.orders ?? 0))} />
-            <SummaryLine label="Sold" value={programMoney(soldMinor, currency)} />
-            <SummaryLine label="Rewards" value={programMoney(Number(reportValue.shareMinor ?? 0), currency)} />
-            <SummaryLine label="Paid" value={programMoney(Number(reportValue.paidMinor ?? 0), currency)} />
-            <SummaryLine label="Reversed after refunds" value={programMoney(Number(reportValue.reversedMinor ?? 0), currency)} />
+            <SummaryLine
+              label="Orders"
+              value={String(Number(reportValue.orders ?? 0))}
+            />
+            <SummaryLine
+              label="Sold"
+              value={programMoney(soldMinor, currency)}
+            />
+            <SummaryLine
+              label="Rewards"
+              value={programMoney(
+                Number(reportValue.shareMinor ?? 0),
+                currency,
+              )}
+            />
+            <SummaryLine
+              label="Paid"
+              value={programMoney(Number(reportValue.paidMinor ?? 0), currency)}
+            />
+            <SummaryLine
+              label="Reversed after refunds"
+              value={programMoney(
+                Number(reportValue.reversedMinor ?? 0),
+                currency,
+              )}
+            />
           </Card>
-          <Muted>Mingla's 5% referral service fee comes off each reward. Buyers never pay extra, and tracking-only links never pay anyone.</Muted>
+          <Muted>
+            Mingla's 5% referral service fee comes off each reward. Buyers never
+            pay extra, and tracking-only links never pay anyone.
+          </Muted>
         </>
       ) : null}
     </ProgramScreen>
   );
 };
 
-const TrackingLinkRow: React.FC<{ row: ReferralTrackingLink; currency: string; qrOpen: boolean; onQr: () => void; onArchive: () => void }> = ({ row, currency, qrOpen, onQr, onArchive }) => {
+const TrackingLinkRow: React.FC<{
+  row: ReferralTrackingLink;
+  currency: string;
+  qrOpen: boolean;
+  onQr: () => void;
+  onArchive: () => void;
+}> = ({ row, currency, qrOpen, onQr, onArchive }) => {
   const url = `https://usemingla.com/r/${row.slug}`;
   const [copied, setCopied] = React.useState(false);
   return (
@@ -411,10 +878,28 @@ const TrackingLinkRow: React.FC<{ row: ReferralTrackingLink; currency: string; q
         subtitle={`${row.touchCount.toLocaleString()} clicks · ${row.orderCount} ticket${row.orderCount === 1 ? "" : "s"} · ${programMoney(row.revenueMinor, currency)}`}
         chevron={false}
       />
-      <Text style={styles.link} selectable>{`usemingla.com/r/${row.slug}`}</Text>
+      <Text
+        style={styles.link}
+        selectable
+      >{`usemingla.com/r/${row.slug}`}</Text>
       <View style={programStyles.footerRow}>
-        <Button size="sm" variant="secondary" style={programStyles.grow} label={copied ? "Copied" : "Copy"} onPress={() => { void Clipboard.setStringAsync(url); setCopied(true); }} />
-        <Button size="sm" variant="secondary" style={programStyles.grow} label={qrOpen ? "Hide QR" : "Show QR"} onPress={onQr} />
+        <Button
+          size="sm"
+          variant="secondary"
+          style={programStyles.grow}
+          label={copied ? "Copied" : "Copy"}
+          onPress={() => {
+            void Clipboard.setStringAsync(url);
+            setCopied(true);
+          }}
+        />
+        <Button
+          size="sm"
+          variant="secondary"
+          style={programStyles.grow}
+          label={qrOpen ? "Hide QR" : "Show QR"}
+          onPress={onQr}
+        />
         <Button size="sm" variant="ghost" label="Archive" onPress={onArchive} />
       </View>
       {qrOpen ? (
@@ -429,22 +914,57 @@ const TrackingLinkRow: React.FC<{ row: ReferralTrackingLink; currency: string; q
   );
 };
 
-const TimelineRow: React.FC<{ label: string; date: string }> = ({ label, date }) => (
-  <ListRow title={label} subtitle={shortDate(date)} chevron={false} />
-);
+const TimelineRow: React.FC<{ label: string; date: string }> = ({
+  label,
+  date,
+}) => <ListRow title={label} subtitle={shortDate(date)} chevron={false} />;
 
 const styles = StyleSheet.create({
-  plus: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  plus: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   notice: { color: textTokens.primary, fontWeight: "600" },
   label: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   inviteRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
-  rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  rank: { width: 28, color: accent.warm, fontWeight: "800", fontSize: 16, textAlign: "center" },
+  rowBetween: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  rank: {
+    width: 28,
+    color: accent.warm,
+    fontWeight: "800",
+    fontSize: 16,
+    textAlign: "center",
+  },
   link: { color: accent.warm, fontWeight: "600" },
-  slugRow: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: glass.border.control, borderRadius: radius.md, paddingHorizontal: spacing.sm, minHeight: 48 },
+  slugRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: glass.border.control,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+    minHeight: 48,
+  },
   slugPrefix: { color: textTokens.tertiary, fontSize: 15 },
-  slugInput: { flex: 1, color: textTokens.primary, fontSize: 15, paddingVertical: spacing.sm },
-  qr: { alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: "#FFFFFF" },
+  slugInput: {
+    flex: 1,
+    color: textTokens.primary,
+    fontSize: 15,
+    paddingVertical: spacing.sm,
+  },
+  qr: {
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: "#FFFFFF",
+  },
   qrCaption: { color: "#333333", fontSize: 12 },
 });

@@ -39,22 +39,39 @@ export async function fetchPromoterEarnings(): Promise<PromoterEarnings | null> 
   const { data, error } = await supabase.rpc("creator_earnings_summary");
   if (error || !data || typeof data !== "object") return null;
   const row = data as Record<string, unknown>;
-  const rows = Array.isArray(row.rows) ? (row.rows as Array<Record<string, unknown>>) : [];
+  const rows = Array.isArray(row.rows)
+    ? (row.rows as Array<Record<string, unknown>>)
+    : [];
   const referral = rows.filter((item) => item.kind === "referral");
   if (referral.length === 0) {
-    return { currency: typeof row.currency === "string" ? row.currency : null, onTheWayMinor: 0, readyMinor: 0, paidMinor: 0 };
+    return {
+      currency: typeof row.currency === "string" ? row.currency : null,
+      onTheWayMinor: 0,
+      readyMinor: 0,
+      paidMinor: 0,
+    };
   }
   const sum = (state: EarningsState) =>
-    referral.filter((item) => item.state === state).reduce((total, item) => total + Number(item.amount_minor ?? 0), 0);
+    referral
+      .filter((item) => item.state === state)
+      .reduce((total, item) => total + Number(item.amount_minor ?? 0), 0);
   return {
-    currency: typeof referral[0].currency === "string" ? referral[0].currency : typeof row.currency === "string" ? row.currency : null,
+    currency:
+      typeof referral[0].currency === "string"
+        ? referral[0].currency
+        : typeof row.currency === "string"
+          ? row.currency
+          : null,
     onTheWayMinor: sum("on_the_way"),
     readyMinor: sum("ready"),
     paidMinor: sum("paid"),
   };
 }
 
-export type PayoutAccountStatus = { state: "connected" | "pending" | "none"; country: string | null };
+export type PayoutAccountStatus = {
+  state: "connected" | "pending" | "none";
+  country: string | null;
+};
 
 /** The caller's own payout account (owner-readable row). Provider names never leave here. */
 export async function fetchMyPayoutAccount(): Promise<PayoutAccountStatus> {
@@ -67,8 +84,14 @@ export async function fetchMyPayoutAccount(): Promise<PayoutAccountStatus> {
     .eq("user_id", userId)
     .maybeSingle();
   if (error || !data) return { state: "none", country: null };
-  if (data.stripe_status === "active") return { state: "connected", country: data.stripe_country ?? null };
-  if (data.paystack_status === "verified") return { state: "connected", country: data.paystack_country ?? null };
-  if (data.stripe_status === "onboarding" || data.stripe_status === "restricted") return { state: "pending", country: data.stripe_country ?? null };
+  if (data.stripe_status === "active")
+    return { state: "connected", country: data.stripe_country ?? null };
+  if (data.paystack_status === "verified")
+    return { state: "connected", country: data.paystack_country ?? null };
+  if (
+    data.stripe_status === "onboarding" ||
+    data.stripe_status === "restricted"
+  )
+    return { state: "pending", country: data.stripe_country ?? null };
   return { state: "none", country: null };
 }

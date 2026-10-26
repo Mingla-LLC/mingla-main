@@ -14,7 +14,10 @@ import { Icon } from "../../../../../src/components/ui/Icon";
 import { Input } from "../../../../../src/components/ui/Input";
 import { Sheet } from "../../../../../src/components/ui/Sheet";
 import { FullScreenVideoViewer } from "../../../../../src/components/ui/FullScreenVideoViewer";
-import { HireSheet, type HireSheetMode } from "../../../../../src/components/gigs/HireSheet";
+import {
+  HireSheet,
+  type HireSheetMode,
+} from "../../../../../src/components/gigs/HireSheet";
 import {
   Card,
   Checkbox,
@@ -68,11 +71,30 @@ import {
   timelineWords,
   toIsoDay,
 } from "../../../../../src/utils/creatorProgramFormat";
-import { accent, radius, spacing, text as textTokens } from "../../../../../src/constants/designSystem";
+import {
+  accent,
+  radius,
+  spacing,
+  text as textTokens,
+} from "../../../../../src/constants/designSystem";
 
-type SheetKind = null | "script_change" | "fix" | "suggest_time" | "dispute" | "change_dates" | "terms";
+type SheetKind =
+  | null
+  | "script_change"
+  | "fix"
+  | "suggest_time"
+  | "dispute"
+  | "change_dates"
+  | "terms";
 
-const STEP_CAPTION: Record<number, string> = { 1: "Offer", 2: "Shoot", 3: "Script", 4: "Video", 5: "Posts", 6: "Paid" };
+const STEP_CAPTION: Record<number, string> = {
+  1: "Offer",
+  2: "Shoot",
+  3: "Script",
+  4: "Video",
+  5: "Posts",
+  6: "Paid",
+};
 
 export default function HostGigContract(): React.ReactElement {
   const router = useRouter();
@@ -92,7 +114,9 @@ export default function HostGigContract(): React.ReactElement {
   const [checklist, setChecklist] = useState([false, false, false]);
   const [suggestDay, setSuggestDay] = useState("");
   const [suggestHour, setSuggestHour] = useState<number | null>(null);
-  const [disputeReason, setDisputeReason] = useState<string>("technical_fixes_exhausted");
+  const [disputeReason, setDisputeReason] = useState<string>(
+    "technical_fixes_exhausted",
+  );
   const [refundPercent, setRefundPercent] = useState("50");
   const [newPostBy, setNewPostBy] = useState("");
   const [stars, setStars] = useState(0);
@@ -105,7 +129,9 @@ export default function HostGigContract(): React.ReactElement {
     try {
       const [next, home] = await Promise.all([
         creatorGigsService.workspace(contractId),
-        brandId ? creatorGigsService.hostHome(brandId).catch(() => null) : Promise.resolve(null),
+        brandId
+          ? creatorGigsService.hostHome(brandId).catch(() => null)
+          : Promise.resolve(null),
       ]);
       if (!next) throw new Error("contract_not_found");
       setWorkspace(next);
@@ -116,12 +142,21 @@ export default function HostGigContract(): React.ReactElement {
         setGigIdForRetry(summary.gig_id || null);
       }
     } catch (refreshError) {
-      setLoadError(programErrorMessage(refreshError, "We couldn't load this gig. Pull to try again."));
+      setLoadError(
+        programErrorMessage(
+          refreshError,
+          "We couldn't load this gig. Pull to try again.",
+        ),
+      );
     }
   }, [brandId, contractId]);
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
   const contractState = workspace?.contract.state ?? "";
-  useEffect(() => { setChecklist([false, false, false]); }, [contractState]);
+  useEffect(() => {
+    setChecklist([false, false, false]);
+  }, [contractState]);
 
   const run = async (action: () => Promise<unknown>, done: string) => {
     setBusy(true);
@@ -129,15 +164,23 @@ export default function HostGigContract(): React.ReactElement {
     setNotice(null);
     try {
       const result = await action();
-      if (result && typeof result === "object" && (result as { ok?: unknown }).ok === false) {
-        throw new Error(String((result as { error?: unknown }).error ?? "update_failed"));
+      if (
+        result &&
+        typeof result === "object" &&
+        (result as { ok?: unknown }).ok === false
+      ) {
+        throw new Error(
+          String((result as { error?: unknown }).error ?? "update_failed"),
+        );
       }
       setSheet(null);
       setNote("");
       await refresh();
       setNotice(done);
     } catch (runError) {
-      setError(programErrorMessage(runError, "That didn't go through. Try again."));
+      setError(
+        programErrorMessage(runError, "That didn't go through. Try again."),
+      );
     } finally {
       setBusy(false);
     }
@@ -149,25 +192,43 @@ export default function HostGigContract(): React.ReactElement {
   const deadline = workspace?.contract.state_deadline_at ?? null;
   const script = workspace ? latestScript(workspace) : null;
   const checks = scriptChecks(script);
-  const delivery = workspace?.deliveries.length ? [...workspace.deliveries].sort((a, b) => b.round - a.round)[0] : null;
+  const delivery = workspace?.deliveries.length
+    ? [...workspace.deliveries].sort((a, b) => b.round - a.round)[0]
+    : null;
   const left = fixesLeft(workspace?.contract.fix_rounds_used);
   const terms = workspace?.terms ?? [];
   const currentTerms = terms.length ? terms[terms.length - 1] : null;
   const counter = workspace ? openCounter(workspace) : null;
   const owedTopup = workspace ? pendingTopup(workspace) : null;
-  const openOffer = workspace?.dispute?.offers.find((offer) => offer.status === "open") ?? null;
-  const hostRated = (workspace?.ratings ?? []).some((rating) => rating.rated_by === "host");
+  const openOffer =
+    workspace?.dispute?.offers.find((offer) => offer.status === "open") ?? null;
+  const hostRated = (workspace?.ratings ?? []).some(
+    (rating) => rating.rated_by === "host",
+  );
   const plan = workspace?.shoot_plan ?? null;
   const gig = workspace?.gig;
   const caption = useMemo(() => {
-    const autoWords = state === "script_sent" ? "approves itself" : state === "delivered" ? "approves itself" : state === "offered" ? "creator answers" : null;
-    return [`Step ${step} of 6 · ${STEP_CAPTION[step]}`, autoWords && deadline ? `${autoWords} ${dueIn(deadline)}` : null].filter(Boolean).join(" · ");
+    const autoWords =
+      state === "script_sent"
+        ? "approves itself"
+        : state === "delivered"
+          ? "approves itself"
+          : state === "offered"
+            ? "creator answers"
+            : null;
+    return [
+      `Step ${step} of 6 · ${STEP_CAPTION[step]}`,
+      autoWords && deadline ? `${autoWords} ${dueIn(deadline)}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   }, [state, step, deadline]);
   const deliveryUrl = delivery
     ? typeof delivery.playback_url === "string"
       ? delivery.playback_url
-      : delivery.playback && typeof (delivery.playback as { url?: unknown }).url === "string"
-        ? ((delivery.playback as { url: string }).url)
+      : delivery.playback &&
+          typeof (delivery.playback as { url?: unknown }).url === "string"
+        ? (delivery.playback as { url: string }).url
         : null
     : null;
 
@@ -177,28 +238,61 @@ export default function HostGigContract(): React.ReactElement {
     setError(null);
     setNotice(null);
     try {
-      const result = await creatorGigsService.counterRespond(counter.id, accept);
+      const result = await creatorGigsService.counterRespond(
+        counter.id,
+        accept,
+      );
       if (!result.ok) throw new Error(result.error ?? "update_failed");
-      if (accept && result.requires_topup && typeof result.terms_version === "number") {
-        setTopup({ kind: "topup", contractId, termsVersion: result.terms_version, topupMinor: result.topup_minor ?? 0 });
+      if (
+        accept &&
+        result.requires_topup &&
+        typeof result.terms_version === "number"
+      ) {
+        setTopup({
+          kind: "topup",
+          contractId,
+          termsVersion: result.terms_version,
+          topupMinor: result.topup_minor ?? 0,
+        });
       } else if (accept && result.refund_minor && currentTerms) {
-        setNotice(`New fee agreed. We'll refund ${programMoney(result.refund_minor, currentTerms.currency)} to you.`);
+        setNotice(
+          `New fee agreed. We'll refund ${programMoney(result.refund_minor, currentTerms.currency)} to you.`,
+        );
       } else {
         setNotice(accept ? "New fee agreed." : "You kept the original fee.");
       }
       await refresh();
     } catch (counterError) {
-      setError(programErrorMessage(counterError, "We couldn't answer the counter-offer. Try again."));
+      setError(
+        programErrorMessage(
+          counterError,
+          "We couldn't answer the counter-offer. Try again.",
+        ),
+      );
     } finally {
       setBusy(false);
     }
   };
 
   const refundBps = Math.round(Number(refundPercent) * 100);
-  const validRefund = Number.isFinite(refundBps) && refundBps >= 0 && refundBps <= 10000;
-  const canChangeTerms = ["offered", "accepted", "shoot_planned", "script_drafting", "script_sent"].includes(state);
-  const canDispute = ["fix_requested", "posting", "posts_failed"].includes(state);
-  const openChange = workspace?.proposals.find((proposal) => proposal.status === "open" && typeof proposal.changes?.fee_minor !== "number") ?? null;
+  const validRefund =
+    Number.isFinite(refundBps) && refundBps >= 0 && refundBps <= 10000;
+  const canChangeTerms = [
+    "offered",
+    "accepted",
+    "shoot_planned",
+    "script_drafting",
+    "script_sent",
+  ].includes(state);
+  const canDispute = ["fix_requested", "posting", "posts_failed"].includes(
+    state,
+  );
+  const openChange =
+    workspace?.proposals.find(
+      (proposal) =>
+        proposal.status === "open" &&
+        typeof proposal.changes?.fee_minor !== "number",
+    ) ?? null;
 
   return (
     <ProgramScreen
@@ -215,64 +309,253 @@ export default function HostGigContract(): React.ReactElement {
               mode={topup}
               creatorName={creatorName}
               currency={currentTerms?.currency ?? "USD"}
-              onPaid={() => { setTopup(null); setNotice("Paid. The new fee is held by Mingla."); void refresh(); }}
+              onPaid={() => {
+                setTopup(null);
+                setNotice("Paid. The new fee is held by Mingla.");
+                void refresh();
+              }}
             />
           ) : null}
-          <FullScreenVideoViewer uri={videoUri} title={`${creatorName}'s video`} onClose={() => setVideoUri(null)} />
-          <Sheet visible={sheet !== null} onClose={() => setSheet(null)} snapPoint="full">
+          <FullScreenVideoViewer
+            uri={videoUri}
+            title={`${creatorName}'s video`}
+            onClose={() => setVideoUri(null)}
+          />
+          <Sheet
+            visible={sheet !== null}
+            onClose={() => setSheet(null)}
+            snapPoint="full"
+          >
             {sheet === "script_change" ? (
               <SheetBody title="Ask for a change">
                 <Muted>{`Say exactly what to change. You can ask ${left === 1 ? "once more" : "twice"}; then the script is final.`}</Muted>
-                <Input value={note} onChangeText={setNote} multiline placeholder="e.g. Mention the rooftop opens at 6 PM" accessibilityLabel="What to change in the script" />
+                <Input
+                  value={note}
+                  onChangeText={setNote}
+                  multiline
+                  placeholder="e.g. Mention the rooftop opens at 6 PM"
+                  accessibilityLabel="What to change in the script"
+                />
                 <FieldError message={error} />
-                <Button fullWidth label="Send change request" loading={busy} disabled={note.trim().length < 5} onPress={() => void run(() => creatorGigsService.transition(contractId, state, "request_script_changes", { note: note.trim() }), "Change requested. The creator will send a new version.")} />
+                <Button
+                  fullWidth
+                  label="Send change request"
+                  loading={busy}
+                  disabled={note.trim().length < 5}
+                  onPress={() =>
+                    void run(
+                      () =>
+                        creatorGigsService.transition(
+                          contractId,
+                          state,
+                          "request_script_changes",
+                          { note: note.trim() },
+                        ),
+                      "Change requested. The creator will send a new version.",
+                    )
+                  }
+                />
               </SheetBody>
             ) : null}
             {sheet === "fix" ? (
               <SheetBody title="Request a fix">
-                <Muted>Fixes are for technical problems only. Taste alone isn't a reason for a fix.</Muted>
+                <Muted>
+                  Fixes are for technical problems only. Taste alone isn't a
+                  reason for a fix.
+                </Muted>
                 {FIX_CATEGORIES.map(([key, label]) => (
-                  <Checkbox key={key} label={label} checked={fixPicks.includes(key)} onToggle={() => setFixPicks((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]))} />
+                  <Checkbox
+                    key={key}
+                    label={label}
+                    checked={fixPicks.includes(key)}
+                    onToggle={() =>
+                      setFixPicks((current) =>
+                        current.includes(key)
+                          ? current.filter((item) => item !== key)
+                          : [...current, key],
+                      )
+                    }
+                  />
                 ))}
-                <Input value={note} onChangeText={setNote} multiline placeholder="What exactly needs fixing" accessibilityLabel="What needs fixing" />
+                <Input
+                  value={note}
+                  onChangeText={setNote}
+                  multiline
+                  placeholder="What exactly needs fixing"
+                  accessibilityLabel="What needs fixing"
+                />
                 <FieldError message={error} />
-                <Button fullWidth label={`Request fix (${left} left)`} loading={busy} disabled={fixPicks.length === 0 || !delivery} onPress={() => { if (delivery) void run(() => creatorGigsService.decideDelivery(delivery.id, "fix_requested", fixPicks, note.trim()), "Fix requested. The creator has the details."); }} />
+                <Button
+                  fullWidth
+                  label={`Request fix (${left} left)`}
+                  loading={busy}
+                  disabled={fixPicks.length === 0 || !delivery}
+                  onPress={() => {
+                    if (delivery)
+                      void run(
+                        () =>
+                          creatorGigsService.decideDelivery(
+                            delivery.id,
+                            "fix_requested",
+                            fixPicks,
+                            note.trim(),
+                          ),
+                        "Fix requested. The creator has the details.",
+                      );
+                  }}
+                />
               </SheetBody>
             ) : null}
             {sheet === "suggest_time" ? (
               <SheetBody title="Suggest another time">
-                <DateField label="Day" value={suggestDay} onChangeValue={setSuggestDay} accessibilityLabel="Shoot day" min={String(gig?.shoot_window_start ?? toIsoDay(new Date()))} max={typeof gig?.shoot_window_end === "string" ? gig.shoot_window_end : undefined} placeholder="Choose a day" />
+                <DateField
+                  label="Day"
+                  value={suggestDay}
+                  onChangeValue={setSuggestDay}
+                  accessibilityLabel="Shoot day"
+                  min={String(gig?.shoot_window_start ?? toIsoDay(new Date()))}
+                  max={
+                    typeof gig?.shoot_window_end === "string"
+                      ? gig.shoot_window_end
+                      : undefined
+                  }
+                  placeholder="Choose a day"
+                />
                 <View style={styles.chips}>
-                  {SHOOT_TIMES.map(([hour, label]) => <Chip key={hour} label={label} selected={suggestHour === hour} onPress={() => setSuggestHour(hour)} />)}
+                  {SHOOT_TIMES.map(([hour, label]) => (
+                    <Chip
+                      key={hour}
+                      label={label}
+                      selected={suggestHour === hour}
+                      onPress={() => setSuggestHour(hour)}
+                    />
+                  ))}
                 </View>
-                <Input value={note} onChangeText={setNote} multiline placeholder="Arrival note (optional)" accessibilityLabel="Arrival note" />
+                <Input
+                  value={note}
+                  onChangeText={setNote}
+                  multiline
+                  placeholder="Arrival note (optional)"
+                  accessibilityLabel="Arrival note"
+                />
                 <FieldError message={error} />
-                <Button fullWidth label="Send suggestion" loading={busy} disabled={!suggestDay || suggestHour === null} onPress={() => { if (suggestHour !== null) void run(() => creatorGigsService.planShoot(contractId, shootInstant(suggestDay, suggestHour), note.trim(), false), "Suggestion sent."); }} />
+                <Button
+                  fullWidth
+                  label="Send suggestion"
+                  loading={busy}
+                  disabled={!suggestDay || suggestHour === null}
+                  onPress={() => {
+                    if (suggestHour !== null)
+                      void run(
+                        () =>
+                          creatorGigsService.planShoot(
+                            contractId,
+                            shootInstant(suggestDay, suggestHour),
+                            note.trim(),
+                            false,
+                          ),
+                        "Suggestion sent.",
+                      );
+                  }}
+                />
               </SheetBody>
             ) : null}
             {sheet === "dispute" ? (
               <SheetBody title="Open a dispute">
-                <Muted>Mingla holds the money while you and the creator settle. If you can't agree, Mingla decides.</Muted>
-                {DISPUTE_REASONS.map(([key, label]) => <Chip key={key} label={label} selected={disputeReason === key} onPress={() => setDisputeReason(key)} />)}
-                <Input value={note} onChangeText={setNote} multiline placeholder="What happened (at least 10 characters)" accessibilityLabel="What happened" />
+                <Muted>
+                  Mingla holds the money while you and the creator settle. If
+                  you can't agree, Mingla decides.
+                </Muted>
+                {DISPUTE_REASONS.map(([key, label]) => (
+                  <Chip
+                    key={key}
+                    label={label}
+                    selected={disputeReason === key}
+                    onPress={() => setDisputeReason(key)}
+                  />
+                ))}
+                <Input
+                  value={note}
+                  onChangeText={setNote}
+                  multiline
+                  placeholder="What happened (at least 10 characters)"
+                  accessibilityLabel="What happened"
+                />
                 <FieldError message={error} />
-                <Button fullWidth variant="destructive" label="Open dispute" loading={busy} disabled={note.trim().length < 10} onPress={() => void run(() => creatorGigsService.openDispute(contractId, disputeReason, note.trim()), "Dispute opened. Make a settlement offer to resolve it quickly.")} />
+                <Button
+                  fullWidth
+                  variant="destructive"
+                  label="Open dispute"
+                  loading={busy}
+                  disabled={note.trim().length < 10}
+                  onPress={() =>
+                    void run(
+                      () =>
+                        creatorGigsService.openDispute(
+                          contractId,
+                          disputeReason,
+                          note.trim(),
+                        ),
+                      "Dispute opened. Make a settlement offer to resolve it quickly.",
+                    )
+                  }
+                />
               </SheetBody>
             ) : null}
             {sheet === "change_dates" ? (
               <SheetBody title="Change the post-by date">
                 <Muted>{`Currently ${shortDate(String(gig?.post_by ?? ""))}. The fee can't change here.`}</Muted>
-                <DateField label="New post-by date" value={newPostBy} onChangeValue={setNewPostBy} accessibilityLabel="New post-by date" min={toIsoDay(new Date())} placeholder="Choose a date" />
-                <Input value={note} onChangeText={setNote} multiline placeholder="Why it needs to change" accessibilityLabel="Why the date needs to change" />
+                <DateField
+                  label="New post-by date"
+                  value={newPostBy}
+                  onChangeValue={setNewPostBy}
+                  accessibilityLabel="New post-by date"
+                  min={toIsoDay(new Date())}
+                  placeholder="Choose a date"
+                />
+                <Input
+                  value={note}
+                  onChangeText={setNote}
+                  multiline
+                  placeholder="Why it needs to change"
+                  accessibilityLabel="Why the date needs to change"
+                />
                 <FieldError message={error} />
-                <Button fullWidth label="Ask the creator" loading={busy} disabled={!newPostBy} onPress={() => void run(() => creatorGigsService.proposeChange(contractId, { post_by: newPostBy }, "dates", note.trim()), "Request sent. The creator has 48 hours to answer.")} />
+                <Button
+                  fullWidth
+                  label="Ask the creator"
+                  loading={busy}
+                  disabled={!newPostBy}
+                  onPress={() =>
+                    void run(
+                      () =>
+                        creatorGigsService.proposeChange(
+                          contractId,
+                          { post_by: newPostBy },
+                          "dates",
+                          note.trim(),
+                        ),
+                      "Request sent. The creator has 48 hours to answer.",
+                    )
+                  }
+                />
               </SheetBody>
             ) : null}
             {sheet === "terms" ? (
               <SheetBody title="Terms history">
                 <ListGroup>
                   {terms.map((term) => (
-                    <ListRow key={term.version} title={`Version ${term.version}`} subtitle={typeof term.created_at === "string" ? shortDate(term.created_at) : null} right={programMoney(term.fee_minor, term.currency)} chevron={false} />
+                    <ListRow
+                      key={term.version}
+                      title={`Version ${term.version}`}
+                      subtitle={
+                        typeof term.created_at === "string"
+                          ? shortDate(term.created_at)
+                          : null
+                      }
+                      right={programMoney(term.fee_minor, term.currency)}
+                      chevron={false}
+                    />
                   ))}
                 </ListGroup>
               </SheetBody>
@@ -282,12 +565,31 @@ export default function HostGigContract(): React.ReactElement {
       }
     >
       {!workspace && !loadError ? <ProgramLoading /> : null}
-      {loadError ? <Card><Text style={programStyles.body}>{loadError}</Text><Button variant="secondary" label="Try again" onPress={() => void refresh()} /></Card> : null}
+      {loadError ? (
+        <Card>
+          <Text style={programStyles.body}>{loadError}</Text>
+          <Button
+            variant="secondary"
+            label="Try again"
+            onPress={() => void refresh()}
+          />
+        </Card>
+      ) : null}
       {workspace ? (
         <>
-          <StepBar steps={HOST_CONTRACT_STEPS} current={step} caption={caption} />
-          <View style={styles.statusRow}><StatusTag label={status.label} tone={status.tone} /></View>
-          {notice ? <Text style={styles.notice} accessibilityLiveRegion="polite">{notice}</Text> : null}
+          <StepBar
+            steps={HOST_CONTRACT_STEPS}
+            current={step}
+            caption={caption}
+          />
+          <View style={styles.statusRow}>
+            <StatusTag label={status.label} tone={status.tone} />
+          </View>
+          {notice ? (
+            <Text style={styles.notice} accessibilityLiveRegion="polite">
+              {notice}
+            </Text>
+          ) : null}
           {sheet === null ? <FieldError message={error} /> : null}
 
           {paymentPending ? (
@@ -328,77 +630,237 @@ export default function HostGigContract(): React.ReactElement {
           {/* Counter-offer from the creator */}
           {counter && currentTerms ? (
             <Card>
-              <Text style={programStyles.title}>{`${creatorName} asked for ${programMoney(counter.fee_minor, currentTerms.currency)}`}</Text>
+              <Text
+                style={programStyles.title}
+              >{`${creatorName} asked for ${programMoney(counter.fee_minor, currentTerms.currency)}`}</Text>
               <Muted>{`Your offer was ${programMoney(currentTerms.fee_minor, currentTerms.currency)}.${counter.fee_minor > currentTerms.fee_minor ? " If you accept, you pay the difference plus the booking fee on it." : " If you accept, we refund the difference."}`}</Muted>
-              {counter.note ? <Text style={styles.quote}>{`"${counter.note}"`}</Text> : null}
+              {counter.note ? (
+                <Text style={styles.quote}>{`"${counter.note}"`}</Text>
+              ) : null}
               <View style={programStyles.footerRow}>
-                <Button variant="secondary" label="Keep my offer" loading={busy} style={programStyles.grow} onPress={() => void respondCounter(false)} />
-                <Button label={`Accept ${programMoney(counter.fee_minor, currentTerms.currency)}`} loading={busy} style={programStyles.grow} onPress={() => void respondCounter(true)} />
+                <Button
+                  variant="secondary"
+                  label="Keep my offer"
+                  loading={busy}
+                  style={programStyles.grow}
+                  onPress={() => void respondCounter(false)}
+                />
+                <Button
+                  label={`Accept ${programMoney(counter.fee_minor, currentTerms.currency)}`}
+                  loading={busy}
+                  style={programStyles.grow}
+                  onPress={() => void respondCounter(true)}
+                />
               </View>
             </Card>
           ) : null}
 
           {state === "offered" && !counter && !paymentPending ? (
             <Card>
-              <Text style={programStyles.title}>{`Waiting for ${creatorName}`}</Text>
+              <Text
+                style={programStyles.title}
+              >{`Waiting for ${creatorName}`}</Text>
               <Muted>{`They have until ${deadline ? shortDateTime(deadline) : "48 hours after your offer"} to answer. If they decline or don't answer, you get a full refund automatically.`}</Muted>
-              <Button variant="secondary" label="Cancel offer and refund" loading={busy} onPress={() => void run(() => creatorGigsService.refund(contractId, "host_before_accept"), "Offer cancelled. Your refund has started.")} />
+              <Button
+                variant="secondary"
+                label="Cancel offer and refund"
+                loading={busy}
+                onPress={() =>
+                  void run(
+                    () =>
+                      creatorGigsService.refund(
+                        contractId,
+                        "host_before_accept",
+                      ),
+                    "Offer cancelled. Your refund has started.",
+                  )
+                }
+              />
             </Card>
           ) : null}
 
-          {(state === "accepted" || state === "shoot_planned") ? (
+          {state === "accepted" || state === "shoot_planned" ? (
             <Card>
-              <Text style={programStyles.title}>{plan ? (plan.confirmed_at ? "Shoot time agreed" : plan.proposed_by === "creator" ? `${creatorName} wants to film` : "Waiting for the creator to confirm") : `Waiting for ${creatorName} to suggest a time`}</Text>
+              <Text style={programStyles.title}>
+                {plan
+                  ? plan.confirmed_at
+                    ? "Shoot time agreed"
+                    : plan.proposed_by === "creator"
+                      ? `${creatorName} wants to film`
+                      : "Waiting for the creator to confirm"
+                  : `Waiting for ${creatorName} to suggest a time`}
+              </Text>
               {plan ? (
                 <>
-                  <SummaryLine label="When" value={shortDateTime(plan.shoot_at)} />
-                  {plan.arrival_note ? <SummaryLine label="Note" value={plan.arrival_note} /> : null}
+                  <SummaryLine
+                    label="When"
+                    value={shortDateTime(plan.shoot_at)}
+                  />
+                  {plan.arrival_note ? (
+                    <SummaryLine label="Note" value={plan.arrival_note} />
+                  ) : null}
                 </>
-              ) : <Muted>{`Shoot dates: ${shortDate(String(gig?.shoot_window_start ?? ""))} to ${shortDate(String(gig?.shoot_window_end ?? ""))}.`}</Muted>}
+              ) : (
+                <Muted>{`Shoot dates: ${shortDate(String(gig?.shoot_window_start ?? ""))} to ${shortDate(String(gig?.shoot_window_end ?? ""))}.`}</Muted>
+              )}
               {plan && !plan.confirmed_at && plan.proposed_by === "creator" ? (
                 <>
-                  <Checkbox label="Guests on camera must agree; we'll put up a sign" checked={checklist[0]} onToggle={() => setChecklist((c) => [!c[0], c[1], c[2]])} />
-                  <Checkbox label="Only music we have rights to (or the creator adds licensed audio)" checked={checklist[1]} onToggle={() => setChecklist((c) => [c[0], !c[1], c[2]])} />
+                  <Checkbox
+                    label="Guests on camera must agree; we'll put up a sign"
+                    checked={checklist[0]}
+                    onToggle={() => setChecklist((c) => [!c[0], c[1], c[2]])}
+                  />
+                  <Checkbox
+                    label="Only music we have rights to (or the creator adds licensed audio)"
+                    checked={checklist[1]}
+                    onToggle={() => setChecklist((c) => [c[0], !c[1], c[2]])}
+                  />
                   <View style={programStyles.footerRow}>
-                    <Button variant="secondary" label="Suggest another time" style={programStyles.grow} onPress={() => { setNote(""); setSheet("suggest_time"); }} />
-                    <Button label="Approve" loading={busy} style={programStyles.grow} disabled={!checklist[0] || !checklist[1]} onPress={() => void run(() => creatorGigsService.planShoot(contractId, plan.shoot_at, plan.arrival_note ?? "", true), "Shoot time approved.")} />
+                    <Button
+                      variant="secondary"
+                      label="Suggest another time"
+                      style={programStyles.grow}
+                      onPress={() => {
+                        setNote("");
+                        setSheet("suggest_time");
+                      }}
+                    />
+                    <Button
+                      label="Approve"
+                      loading={busy}
+                      style={programStyles.grow}
+                      disabled={!checklist[0] || !checklist[1]}
+                      onPress={() =>
+                        void run(
+                          () =>
+                            creatorGigsService.planShoot(
+                              contractId,
+                              plan.shoot_at,
+                              plan.arrival_note ?? "",
+                              true,
+                            ),
+                          "Shoot time approved.",
+                        )
+                      }
+                    />
                   </View>
                 </>
               ) : !plan ? (
-                <Button variant="secondary" label="Suggest a time" onPress={() => { setNote(""); setSheet("suggest_time"); }} />
+                <Button
+                  variant="secondary"
+                  label="Suggest a time"
+                  onPress={() => {
+                    setNote("");
+                    setSheet("suggest_time");
+                  }}
+                />
               ) : plan.confirmed_at && state === "shoot_planned" ? (
-                <Button variant="secondary" label="Ask for the script now" loading={busy} onPress={() => void run(() => creatorGigsService.transition(contractId, state, "start_script"), "The creator can start the script.")} />
+                <Button
+                  variant="secondary"
+                  label="Ask for the script now"
+                  loading={busy}
+                  onPress={() =>
+                    void run(
+                      () =>
+                        creatorGigsService.transition(
+                          contractId,
+                          state,
+                          "start_script",
+                        ),
+                      "The creator can start the script.",
+                    )
+                  }
+                />
               ) : null}
             </Card>
           ) : null}
 
           {state === "script_drafting" ? (
             <Card>
-              <Text style={programStyles.title}>{`${creatorName} is writing the script`}</Text>
-              <Muted>You'll review it before filming. It approves itself 48 hours after it arrives.</Muted>
+              <Text
+                style={programStyles.title}
+              >{`${creatorName} is writing the script`}</Text>
+              <Muted>
+                You'll review it before filming. It approves itself 48 hours
+                after it arrives.
+              </Muted>
             </Card>
           ) : null}
 
           {script && ["script_sent", "script_locked"].includes(state) ? (
             <Card>
-              <Text style={programStyles.title}>{`Script v${script.version}${script.locked_at ? " · approved" : ""}`}</Text>
+              <Text
+                style={programStyles.title}
+              >{`Script v${script.version}${script.locked_at ? " · approved" : ""}`}</Text>
               {(script.body?.sections ?? []).map((section, index) => (
                 <View key={index} style={styles.section}>
-                  <Text style={styles.sectionLabel}>{sectionLabel(section, index)}</Text>
-                  {sectionLines(section).map((line) => <Text key={line.text} style={programStyles.body}>{line.label ? `${line.label}: ${line.text}` : line.text}</Text>)}
+                  <Text style={styles.sectionLabel}>
+                    {sectionLabel(section, index)}
+                  </Text>
+                  {sectionLines(section).map((line) => (
+                    <Text key={line.text} style={programStyles.body}>
+                      {line.label ? `${line.label}: ${line.text}` : line.text}
+                    </Text>
+                  ))}
                 </View>
               ))}
               <View style={styles.checkRow}>
-                <Icon name={checks.disclosure ? "check" : "flag"} size={14} color={checks.disclosure ? accent.warm : textTokens.tertiary} />
-                <Text style={programStyles.small}>{[checks.disclosure ? "Disclosure included" : "No #ad disclosure found", checks.seconds ? `${checks.seconds}s · ${formatName(gig?.format_key)}` : null].filter(Boolean).join(" · ")}</Text>
+                <Icon
+                  name={checks.disclosure ? "check" : "flag"}
+                  size={14}
+                  color={checks.disclosure ? accent.warm : textTokens.tertiary}
+                />
+                <Text style={programStyles.small}>
+                  {[
+                    checks.disclosure
+                      ? "Disclosure included"
+                      : "No #ad disclosure found",
+                    checks.seconds
+                      ? `${checks.seconds}s · ${formatName(gig?.format_key)}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </Text>
               </View>
               {state === "script_sent" ? (
                 <View style={programStyles.footerRow}>
-                  <Button variant="secondary" label="Ask for a change" style={programStyles.grow} disabled={left === 0} onPress={() => { setNote(""); setSheet("script_change"); }} />
-                  <Button label="Approve script" loading={busy} style={programStyles.grow} onPress={() => void run(() => creatorGigsService.transition(contractId, state, "lock_script"), "Script approved. The creator can film.")} />
+                  <Button
+                    variant="secondary"
+                    label="Ask for a change"
+                    style={programStyles.grow}
+                    disabled={left === 0}
+                    onPress={() => {
+                      setNote("");
+                      setSheet("script_change");
+                    }}
+                  />
+                  <Button
+                    label="Approve script"
+                    loading={busy}
+                    style={programStyles.grow}
+                    onPress={() =>
+                      void run(
+                        () =>
+                          creatorGigsService.transition(
+                            contractId,
+                            state,
+                            "lock_script",
+                          ),
+                        "Script approved. The creator can film.",
+                      )
+                    }
+                  />
                 </View>
-              ) : <Muted>{`${creatorName} is filming from this script.`}</Muted>}
-              {state === "script_sent" && left === 0 ? <Muted>You've used both change requests. Approve the script or let it approve itself.</Muted> : null}
+              ) : (
+                <Muted>{`${creatorName} is filming from this script.`}</Muted>
+              )}
+              {state === "script_sent" && left === 0 ? (
+                <Muted>
+                  You've used both change requests. Approve the script or let it
+                  approve itself.
+                </Muted>
+              ) : null}
             </Card>
           ) : null}
 
@@ -406,24 +868,71 @@ export default function HostGigContract(): React.ReactElement {
             <Card>
               <View style={styles.rowBetween}>
                 <Text style={programStyles.title}>Review the video</Text>
-                <StatusTag label={`${left} fix${left === 1 ? "" : "es"} left`} tone="waiting" />
+                <StatusTag
+                  label={`${left} fix${left === 1 ? "" : "es"} left`}
+                  tone="waiting"
+                />
               </View>
               <Pressable
-                onPress={() => { if (deliveryUrl) setVideoUri(deliveryUrl); }}
+                onPress={() => {
+                  if (deliveryUrl) setVideoUri(deliveryUrl);
+                }}
                 accessibilityRole="button"
-                accessibilityLabel={deliveryUrl ? `Play ${creatorName}'s video` : "Video preview"}
+                accessibilityLabel={
+                  deliveryUrl ? `Play ${creatorName}'s video` : "Video preview"
+                }
                 style={styles.player}
               >
                 <Icon name="play" size={32} color={textTokens.primary} />
-                <Text style={styles.playerCaption}>{deliveryUrl ? `Version ${delivery.round + 1} · tap to play` : `Version ${delivery.round + 1} · the preview is still processing`}</Text>
+                <Text style={styles.playerCaption}>
+                  {deliveryUrl
+                    ? `Version ${delivery.round + 1} · tap to play`
+                    : `Version ${delivery.round + 1} · the preview is still processing`}
+                </Text>
               </Pressable>
-              <Checkbox label="Matches the approved script" checked={checklist[0]} onToggle={() => setChecklist((c) => [!c[0], c[1], c[2]])} />
-              <Checkbox label="Shows #ad and @usemingla" checked={checklist[1]} onToggle={() => setChecklist((c) => [c[0], !c[1], c[2]])} />
-              <Checkbox label="Vertical, the agreed length" checked={checklist[2]} onToggle={() => setChecklist((c) => [c[0], c[1], !c[2]])} />
+              <Checkbox
+                label="Matches the approved script"
+                checked={checklist[0]}
+                onToggle={() => setChecklist((c) => [!c[0], c[1], c[2]])}
+              />
+              <Checkbox
+                label="Shows #ad and @usemingla"
+                checked={checklist[1]}
+                onToggle={() => setChecklist((c) => [c[0], !c[1], c[2]])}
+              />
+              <Checkbox
+                label="Vertical, the agreed length"
+                checked={checklist[2]}
+                onToggle={() => setChecklist((c) => [c[0], c[1], !c[2]])}
+              />
               <Muted>{`Fix requests are for technical problems only (sound, picture, captions). It approves itself ${deadline ? dueIn(deadline) : "after 3 days"}.`}</Muted>
               <View style={programStyles.footerRow}>
-                <Button variant="secondary" label="Request a fix" style={programStyles.grow} disabled={left === 0} onPress={() => { setNote(""); setFixPicks([]); setSheet("fix"); }} />
-                <Button label="Approve video" loading={busy} style={programStyles.grow} onPress={() => void run(() => creatorGigsService.decideDelivery(delivery.id, "approved"), "Video approved. The creator can post it.")} />
+                <Button
+                  variant="secondary"
+                  label="Request a fix"
+                  style={programStyles.grow}
+                  disabled={left === 0}
+                  onPress={() => {
+                    setNote("");
+                    setFixPicks([]);
+                    setSheet("fix");
+                  }}
+                />
+                <Button
+                  label="Approve video"
+                  loading={busy}
+                  style={programStyles.grow}
+                  onPress={() =>
+                    void run(
+                      () =>
+                        creatorGigsService.decideDelivery(
+                          delivery.id,
+                          "approved",
+                        ),
+                      "Video approved. The creator can post it.",
+                    )
+                  }
+                />
               </View>
             </Card>
           ) : null}
@@ -431,7 +940,16 @@ export default function HostGigContract(): React.ReactElement {
           {state === "fix_requested" && delivery ? (
             <Card>
               <Text style={programStyles.title}>Waiting for the fix</Text>
-              <Muted>{[(delivery.fix_categories ?? []).map(fixCategoryWords).join(", "), delivery.fix_note].filter(Boolean).join(" · ") || "The creator has your fix request."}</Muted>
+              <Muted>
+                {[
+                  (delivery.fix_categories ?? [])
+                    .map(fixCategoryWords)
+                    .join(", "),
+                  delivery.fix_note,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "The creator has your fix request."}
+              </Muted>
             </Card>
           ) : null}
 
@@ -445,33 +963,120 @@ export default function HostGigContract(): React.ReactElement {
           {state === "posts_submitted" ? (
             <Card>
               <Text style={programStyles.title}>Checking posts</Text>
-              <Muted>Mingla checks each post automatically. Confirm only if you can see them live; silence counts as a pass after 48 hours.</Muted>
-              <Button label="Confirm posts are live" loading={busy} onPress={() => void run(() => creatorGigsService.transition(contractId, state, "host_confirm"), "Posts confirmed.")} />
+              <Muted>
+                Mingla checks each post automatically. Confirm only if you can
+                see them live; silence counts as a pass after 48 hours.
+              </Muted>
+              <Button
+                label="Confirm posts are live"
+                loading={busy}
+                onPress={() =>
+                  void run(
+                    () =>
+                      creatorGigsService.transition(
+                        contractId,
+                        state,
+                        "host_confirm",
+                      ),
+                    "Posts confirmed.",
+                  )
+                }
+              />
             </Card>
           ) : null}
 
-          {state === "posts_verified" ? <Card><Text style={programStyles.title}>Posts verified</Text><Muted>Mingla pays the creator within 48 hours.</Muted></Card> : null}
-          {(state === "released" || state === "day30") ? <Card><Text style={programStyles.title}>Paid to the creator</Text><Muted>The posts stay up for 30 days. You can rate the creator when the gig is done.</Muted></Card> : null}
+          {state === "posts_verified" ? (
+            <Card>
+              <Text style={programStyles.title}>Posts verified</Text>
+              <Muted>Mingla pays the creator within 48 hours.</Muted>
+            </Card>
+          ) : null}
+          {state === "released" || state === "day30" ? (
+            <Card>
+              <Text style={programStyles.title}>Paid to the creator</Text>
+              <Muted>
+                The posts stay up for 30 days. You can rate the creator when the
+                gig is done.
+              </Muted>
+            </Card>
+          ) : null}
 
           {state === "completed" && !hostRated ? (
             <Card>
-              <Text style={programStyles.title}>{`How was working with ${creatorName}?`}</Text>
+              <Text
+                style={programStyles.title}
+              >{`How was working with ${creatorName}?`}</Text>
               <View style={styles.stars}>
                 {[1, 2, 3, 4, 5].map((value) => (
-                  <Pressable key={value} onPress={() => setStars(value)} accessibilityRole="button" accessibilityLabel={`${value} star${value === 1 ? "" : "s"}`} accessibilityState={{ selected: stars >= value }} hitSlop={6}>
-                    <Icon name="star" size={30} color={stars >= value ? accent.warm : textTokens.quaternary} />
+                  <Pressable
+                    key={value}
+                    onPress={() => setStars(value)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${value} star${value === 1 ? "" : "s"}`}
+                    accessibilityState={{ selected: stars >= value }}
+                    hitSlop={6}
+                  >
+                    <Icon
+                      name="star"
+                      size={30}
+                      color={
+                        stars >= value ? accent.warm : textTokens.quaternary
+                      }
+                    />
                   </Pressable>
                 ))}
               </View>
               <View style={styles.chips}>
-                {RATING_TAGS.map((tag) => <Chip key={tag} label={tag} selected={tags.includes(tag)} onPress={() => setTags((current) => (current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]))} />)}
+                {RATING_TAGS.map((tag) => (
+                  <Chip
+                    key={tag}
+                    label={tag}
+                    selected={tags.includes(tag)}
+                    onPress={() =>
+                      setTags((current) =>
+                        current.includes(tag)
+                          ? current.filter((item) => item !== tag)
+                          : [...current, tag],
+                      )
+                    }
+                  />
+                ))}
               </View>
-              <Input value={note} onChangeText={setNote} multiline placeholder="Anything else (optional)" accessibilityLabel="Rating note" />
-              <Muted>Ratings show to the creator after you've both rated.</Muted>
-              <Button label="Send rating" loading={busy} disabled={stars === 0} onPress={() => void run(() => creatorGigsService.rate(contractId, stars, tags, note.trim()), "Thanks. Your rating is in.")} />
+              <Input
+                value={note}
+                onChangeText={setNote}
+                multiline
+                placeholder="Anything else (optional)"
+                accessibilityLabel="Rating note"
+              />
+              <Muted>
+                Ratings show to the creator after you've both rated.
+              </Muted>
+              <Button
+                label="Send rating"
+                loading={busy}
+                disabled={stars === 0}
+                onPress={() =>
+                  void run(
+                    () =>
+                      creatorGigsService.rate(
+                        contractId,
+                        stars,
+                        tags,
+                        note.trim(),
+                      ),
+                    "Thanks. Your rating is in.",
+                  )
+                }
+              />
             </Card>
           ) : null}
-          {state === "completed" && hostRated ? <Card><Text style={programStyles.title}>Done</Text><Muted>You've rated this gig.</Muted></Card> : null}
+          {state === "completed" && hostRated ? (
+            <Card>
+              <Text style={programStyles.title}>Done</Text>
+              <Muted>You've rated this gig.</Muted>
+            </Card>
+          ) : null}
 
           {state === "disputed" && workspace.dispute ? (
             <Card>
@@ -479,58 +1084,274 @@ export default function HostGigContract(): React.ReactElement {
               <Muted>{workspace.dispute.statement}</Muted>
               {openOffer ? (
                 <View style={styles.offer}>
-                  <Text style={programStyles.title}>{`${(openOffer.refund_bps / 100).toFixed(0)}% refund to you`}</Text>
-                  <Muted>{openOffer.offered_by === "host" ? "Your offer is waiting for the creator." : "The creator made this offer and keeps the remainder of the contract fee."}</Muted>
-                  {openOffer.note ? <Text style={styles.quote}>{openOffer.note}</Text> : null}
+                  <Text
+                    style={programStyles.title}
+                  >{`${(openOffer.refund_bps / 100).toFixed(0)}% refund to you`}</Text>
+                  <Muted>
+                    {openOffer.offered_by === "host"
+                      ? "Your offer is waiting for the creator."
+                      : "The creator made this offer and keeps the remainder of the contract fee."}
+                  </Muted>
+                  {openOffer.note ? (
+                    <Text style={styles.quote}>{openOffer.note}</Text>
+                  ) : null}
                   {openOffer.offered_by === "creator" ? (
                     <View style={programStyles.footerRow}>
-                      <Button variant="secondary" label="Decline" loading={busy} style={programStyles.grow} onPress={() => void run(() => creatorGigsService.respondToDisputeOffer(openOffer.id, false), "Offer declined. You can make a counteroffer.")} />
-                      <Button label="Accept settlement" loading={busy} style={programStyles.grow} onPress={() => void run(() => creatorGigsService.respondToDisputeOffer(openOffer.id, true), "Settlement accepted. Payment processing has started.")} />
+                      <Button
+                        variant="secondary"
+                        label="Decline"
+                        loading={busy}
+                        style={programStyles.grow}
+                        onPress={() =>
+                          void run(
+                            () =>
+                              creatorGigsService.respondToDisputeOffer(
+                                openOffer.id,
+                                false,
+                              ),
+                            "Offer declined. You can make a counteroffer.",
+                          )
+                        }
+                      />
+                      <Button
+                        label="Accept settlement"
+                        loading={busy}
+                        style={programStyles.grow}
+                        onPress={() =>
+                          void run(
+                            () =>
+                              creatorGigsService.respondToDisputeOffer(
+                                openOffer.id,
+                                true,
+                              ),
+                            "Settlement accepted. Payment processing has started.",
+                          )
+                        }
+                      />
                     </View>
                   ) : null}
                 </View>
-              ) : <Muted>No open offer. Propose how much of the fee should come back to you.</Muted>}
-              <Input value={refundPercent} onChangeText={(value) => setRefundPercent(value.replace(/[^0-9]/g, ""))} variant="number" placeholder="Refund to you, 0–100%" accessibilityLabel="Refund to you, percent" />
-              <Input value={note} onChangeText={setNote} multiline placeholder="Note (optional)" accessibilityLabel="Settlement note" />
-              <Button variant="secondary" label={openOffer?.offered_by === "creator" ? "Make counteroffer" : "Propose settlement"} loading={busy} disabled={!validRefund} onPress={() => void run(() => creatorGigsService.offerDispute(workspace.dispute!.id, refundBps, note.trim()), "Offer sent. The creator can accept or decline.")} />
+              ) : (
+                <Muted>
+                  No open offer. Propose how much of the fee should come back to
+                  you.
+                </Muted>
+              )}
+              <Input
+                value={refundPercent}
+                onChangeText={(value) =>
+                  setRefundPercent(value.replace(/[^0-9]/g, ""))
+                }
+                variant="number"
+                placeholder="Refund to you, 0–100%"
+                accessibilityLabel="Refund to you, percent"
+              />
+              <Input
+                value={note}
+                onChangeText={setNote}
+                multiline
+                placeholder="Note (optional)"
+                accessibilityLabel="Settlement note"
+              />
+              <Button
+                variant="secondary"
+                label={
+                  openOffer?.offered_by === "creator"
+                    ? "Make counteroffer"
+                    : "Propose settlement"
+                }
+                loading={busy}
+                disabled={!validRefund}
+                onPress={() =>
+                  void run(
+                    () =>
+                      creatorGigsService.offerDispute(
+                        workspace.dispute!.id,
+                        refundBps,
+                        note.trim(),
+                      ),
+                    "Offer sent. The creator can accept or decline.",
+                  )
+                }
+              />
             </Card>
           ) : null}
 
-          {["declined", "expired", "cancelled", "resolved_refund", "resolved_partial", "resolved_release"].includes(state) ? (
-            <Card><Text style={programStyles.title}>{status.label}</Text><Muted>{state === "declined" || state === "expired" || state === "cancelled" ? "Your payment is refunded automatically." : "This gig is settled."}</Muted></Card>
+          {[
+            "declined",
+            "expired",
+            "cancelled",
+            "resolved_refund",
+            "resolved_partial",
+            "resolved_release",
+          ].includes(state) ? (
+            <Card>
+              <Text style={programStyles.title}>{status.label}</Text>
+              <Muted>
+                {state === "declined" ||
+                state === "expired" ||
+                state === "cancelled"
+                  ? "Your payment is refunded automatically."
+                  : "This gig is settled."}
+              </Muted>
+            </Card>
           ) : null}
 
           <SectionLabel>Deal</SectionLabel>
           <ListGroup>
-            {currentTerms ? <ListRow title="Fee" right={`${programMoney(currentTerms.fee_minor, currentTerms.currency)} held by Mingla`} chevron={false} /> : null}
-            {currentTerms ? <ListRow title="Terms" right={`Version ${currentTerms.version}`} onPress={() => setSheet("terms")} /> : null}
-            {gig ? <ListRow title="Post by" right={shortDate(String(gig.post_by))} chevron={false} /> : null}
-            {gig?.brief_private ? <ListRow title="Private brief" subtitle={String(gig.brief_private)} chevron={false} /> : null}
+            {currentTerms ? (
+              <ListRow
+                title="Fee"
+                right={`${programMoney(currentTerms.fee_minor, currentTerms.currency)} held by Mingla`}
+                chevron={false}
+              />
+            ) : null}
+            {currentTerms ? (
+              <ListRow
+                title="Terms"
+                right={`Version ${currentTerms.version}`}
+                onPress={() => setSheet("terms")}
+              />
+            ) : null}
+            {gig ? (
+              <ListRow
+                title="Post by"
+                right={shortDate(String(gig.post_by))}
+                chevron={false}
+              />
+            ) : null}
+            {gig?.brief_private ? (
+              <ListRow
+                title="Private brief"
+                subtitle={String(gig.brief_private)}
+                chevron={false}
+              />
+            ) : null}
           </ListGroup>
           {openChange ? (
             <Card>
-              <Text style={programStyles.title}>{openChange.proposed_by === "creator" ? `${creatorName} asked to change the terms` : "Your change request"}</Text>
-              <Muted>{Object.entries(openChange.changes).map(([key, value]) => (key === "post_by" ? `Post by ${shortDate(String(value))}` : key === "shoot_date" ? `Shoot on ${shortDate(String(value))}` : key === "usage_days" ? `Reuse for ${String(value)} days` : "Other terms")).join(" · ")}</Muted>
-              {openChange.note ? <Text style={styles.quote}>{openChange.note}</Text> : null}
+              <Text style={programStyles.title}>
+                {openChange.proposed_by === "creator"
+                  ? `${creatorName} asked to change the terms`
+                  : "Your change request"}
+              </Text>
+              <Muted>
+                {Object.entries(openChange.changes)
+                  .map(([key, value]) =>
+                    key === "post_by"
+                      ? `Post by ${shortDate(String(value))}`
+                      : key === "shoot_date"
+                        ? `Shoot on ${shortDate(String(value))}`
+                        : key === "usage_days"
+                          ? `Reuse for ${String(value)} days`
+                          : "Other terms",
+                  )
+                  .join(" · ")}
+              </Muted>
+              {openChange.note ? (
+                <Text style={styles.quote}>{openChange.note}</Text>
+              ) : null}
               {openChange.proposed_by === "creator" ? (
                 <View style={programStyles.footerRow}>
-                  <Button variant="secondary" label="Keep current terms" loading={busy} style={programStyles.grow} onPress={() => void run(() => creatorGigsService.respondToChange(openChange.id, false), "The current terms stay.")} />
-                  <Button label="Accept change" loading={busy} style={programStyles.grow} onPress={() => void run(() => creatorGigsService.respondToChange(openChange.id, true), "Change accepted. New terms are in effect.")} />
+                  <Button
+                    variant="secondary"
+                    label="Keep current terms"
+                    loading={busy}
+                    style={programStyles.grow}
+                    onPress={() =>
+                      void run(
+                        () =>
+                          creatorGigsService.respondToChange(
+                            openChange.id,
+                            false,
+                          ),
+                        "The current terms stay.",
+                      )
+                    }
+                  />
+                  <Button
+                    label="Accept change"
+                    loading={busy}
+                    style={programStyles.grow}
+                    onPress={() =>
+                      void run(
+                        () =>
+                          creatorGigsService.respondToChange(
+                            openChange.id,
+                            true,
+                          ),
+                        "Change accepted. New terms are in effect.",
+                      )
+                    }
+                  />
                 </View>
-              ) : <Muted>{`Waiting for the creator until ${shortDateTime(openChange.expires_at)}.`}</Muted>}
+              ) : (
+                <Muted>{`Waiting for the creator until ${shortDateTime(openChange.expires_at)}.`}</Muted>
+              )}
             </Card>
           ) : null}
           <View style={programStyles.actions}>
-            {canChangeTerms && !openChange ? <Button size="sm" variant="ghost" label="Change the post-by date" onPress={() => { setNote(""); setNewPostBy(""); setSheet("change_dates"); }} /> : null}
-            {["accepted", "shoot_planned", "script_drafting", "script_sent"].includes(state) ? <Button size="sm" variant="ghost" label="Cancel gig and refund" loading={busy} onPress={() => void run(() => creatorGigsService.refund(contractId, "host_after_accept_before_lock"), "Gig cancelled. Your eligible refund has started. Provider fees follow the payment provider’s refund rules.")} /> : null}
-            {canDispute ? <Button size="sm" variant="ghost" label="Open a dispute" onPress={() => { setNote(""); setSheet("dispute"); }} /> : null}
+            {canChangeTerms && !openChange ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                label="Change the post-by date"
+                onPress={() => {
+                  setNote("");
+                  setNewPostBy("");
+                  setSheet("change_dates");
+                }}
+              />
+            ) : null}
+            {[
+              "accepted",
+              "shoot_planned",
+              "script_drafting",
+              "script_sent",
+            ].includes(state) ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                label="Cancel gig and refund"
+                loading={busy}
+                onPress={() =>
+                  void run(
+                    () =>
+                      creatorGigsService.refund(
+                        contractId,
+                        "host_after_accept_before_lock",
+                      ),
+                    "Gig cancelled. Your eligible refund has started. Provider fees follow the payment provider’s refund rules.",
+                  )
+                }
+              />
+            ) : null}
+            {canDispute ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                label="Open a dispute"
+                onPress={() => {
+                  setNote("");
+                  setSheet("dispute");
+                }}
+              />
+            ) : null}
           </View>
 
           {workspace.posts.length > 0 ? (
             <>
               <SectionLabel>Posts</SectionLabel>
               <ListGroup>
-                {workspace.posts.map((post) => <ListRow key={post.id} title={platformLabel(post.platform)} subtitle={post.url} right={postCheckWords(post.check_status)} chevron={false} />)}
+                {workspace.posts.map((post) => (
+                  <ListRow
+                    key={post.id}
+                    title={platformLabel(post.platform)}
+                    subtitle={post.url}
+                    right={postCheckWords(post.check_status)}
+                    chevron={false}
+                  />
+                ))}
               </ListGroup>
             </>
           ) : null}
@@ -538,10 +1359,22 @@ export default function HostGigContract(): React.ReactElement {
           <SectionLabel>Timeline</SectionLabel>
           <ListGroup>
             {[...workspace.events].reverse().map((event) => (
-              <ListRow key={event.id} title={timelineWords(event.kind)} subtitle={`${actorWords(event.actor)} · ${shortDateTime(event.at)}`} chevron={false} />
+              <ListRow
+                key={event.id}
+                title={timelineWords(event.kind)}
+                subtitle={`${actorWords(event.actor)} · ${shortDateTime(event.at)}`}
+                chevron={false}
+              />
             ))}
           </ListGroup>
-          <Button variant="ghost" size="sm" label="Back to creators" onPress={() => router.replace(`/brand/${brandId}/creators` as never)} />
+          <Button
+            variant="ghost"
+            size="sm"
+            label="Back to creators"
+            onPress={() =>
+              router.replace(`/brand/${brandId}/creators` as never)
+            }
+          />
         </>
       ) : null}
     </ProgramScreen>
@@ -553,12 +1386,40 @@ const styles = StyleSheet.create({
   notice: { color: accent.warm, fontWeight: "700", fontSize: 14 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   section: { gap: 2, paddingVertical: spacing.xs },
-  sectionLabel: { color: textTokens.tertiary, fontSize: 12, fontWeight: "700", letterSpacing: 0.4 },
+  sectionLabel: {
+    color: textTokens.tertiary,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
   checkRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  player: { aspectRatio: 9 / 13, maxHeight: 420, borderRadius: radius.lg, backgroundColor: "#5b3a22", alignItems: "center", justifyContent: "center", gap: spacing.sm },
+  rowBetween: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  player: {
+    aspectRatio: 9 / 13,
+    maxHeight: 420,
+    borderRadius: radius.lg,
+    backgroundColor: "#5b3a22",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+  },
   playerCaption: { color: textTokens.primary, fontSize: 13, fontWeight: "600" },
   stars: { flexDirection: "row", gap: spacing.sm },
-  offer: { gap: spacing.xs, padding: spacing.md, borderWidth: 1, borderColor: accent.border, borderRadius: radius.md },
-  quote: { color: textTokens.secondary, fontStyle: "italic", fontSize: 14, lineHeight: 20 },
+  offer: {
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: accent.border,
+    borderRadius: radius.md,
+  },
+  quote: {
+    color: textTokens.secondary,
+    fontStyle: "italic",
+    fontSize: 14,
+    lineHeight: 20,
+  },
 });

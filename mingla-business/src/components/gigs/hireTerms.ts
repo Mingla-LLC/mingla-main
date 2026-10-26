@@ -1,5 +1,8 @@
 // #3872 — the hire terms the host ticks before paying (approved P-hire).
-export function hireTerms(name: string, usageDays: number | null | undefined): string[] {
+export function hireTerms(
+  name: string,
+  usageDays: number | null | undefined,
+): string[] {
   return [
     "Script approved by you before filming; then locked",
     "After approval, fixes are for sound and picture only (2 rounds)",

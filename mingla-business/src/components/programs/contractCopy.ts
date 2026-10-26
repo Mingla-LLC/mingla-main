@@ -1,5 +1,9 @@
 // #3872 — host contract words and pure helpers (testable without RN).
-import type { GigScript, GigScriptSection, GigWorkspace } from "../../services/creatorGigsService";
+import type {
+  GigScript,
+  GigScriptSection,
+  GigWorkspace,
+} from "../../services/creatorGigsService";
 
 export const FIX_CATEGORIES: ReadonlyArray<readonly [string, string]> = [
   ["audio", "Sound"],
@@ -15,7 +19,13 @@ export const DISPUTE_REASONS: ReadonlyArray<readonly [string, string]> = [
   ["other", "Something else"],
 ];
 
-export const RATING_TAGS = ["On time", "Great video", "Easy to work with", "Drove sales", "Followed the brief"] as const;
+export const RATING_TAGS = [
+  "On time",
+  "Great video",
+  "Easy to work with",
+  "Drove sales",
+  "Followed the brief",
+] as const;
 
 export const SHOOT_TIMES: ReadonlyArray<readonly [number, string]> = [
   [10, "10 AM"],
@@ -27,30 +37,42 @@ export const SHOOT_TIMES: ReadonlyArray<readonly [number, string]> = [
 ];
 
 export function fixCategoryWords(key: string): string {
-  return FIX_CATEGORIES.find(([value]) => value === key)?.[1] ?? "Something else";
+  return (
+    FIX_CATEGORIES.find(([value]) => value === key)?.[1] ?? "Something else"
+  );
 }
 
 /** The latest script version (what the host reviews). */
-export function latestScript(workspace: Pick<GigWorkspace, "scripts">): GigScript | null {
+export function latestScript(
+  workspace: Pick<GigWorkspace, "scripts">,
+): GigScript | null {
   const scripts = Array.isArray(workspace.scripts) ? workspace.scripts : [];
-  return scripts.length === 0 ? null : [...scripts].sort((a, b) => b.version - a.version)[0];
+  return scripts.length === 0
+    ? null
+    : [...scripts].sort((a, b) => b.version - a.version)[0];
 }
 
 /** "0–3s · Hook" style label for a script section. */
 export function sectionLabel(section: GigScriptSection, index: number): string {
-  const name = typeof section.label === "string" && section.label.trim()
-    ? section.label.trim()
-    : typeof section.title === "string" && section.title.trim()
-      ? section.title.trim()
-      : `Part ${index + 1}`;
-  if (typeof section.start_s === "number" && typeof section.end_s === "number") {
+  const name =
+    typeof section.label === "string" && section.label.trim()
+      ? section.label.trim()
+      : typeof section.title === "string" && section.title.trim()
+        ? section.title.trim()
+        : `Part ${index + 1}`;
+  if (
+    typeof section.start_s === "number" &&
+    typeof section.end_s === "number"
+  ) {
     return `${section.start_s}–${section.end_s}s · ${name}`;
   }
   return name;
 }
 
 /** The words of a section, without repeating identical fields. */
-export function sectionLines(section: GigScriptSection): Array<{ label: string; text: string }> {
+export function sectionLines(
+  section: GigScriptSection,
+): Array<{ label: string; text: string }> {
   const lines: Array<{ label: string; text: string }> = [];
   const seen = new Set<string>();
   const push = (label: string, value: unknown) => {
@@ -67,18 +89,27 @@ export function sectionLines(section: GigScriptSection): Array<{ label: string; 
   return lines;
 }
 
-export function scriptChecks(script: GigScript | null): { disclosure: boolean; seconds: number | null } {
+export function scriptChecks(script: GigScript | null): {
+  disclosure: boolean;
+  seconds: number | null;
+} {
   if (!script) return { disclosure: false, seconds: null };
   const text = JSON.stringify(script.body ?? {}).toLowerCase();
   return {
     disclosure: text.includes("#ad") || text.includes("paid partnership"),
-    seconds: typeof script.body?.estimated_seconds === "number" ? script.body.estimated_seconds : null,
+    seconds:
+      typeof script.body?.estimated_seconds === "number"
+        ? script.body.estimated_seconds
+        : null,
   };
 }
 
 /** Fix rounds left (2 per contract). */
 export function fixesLeft(fixRoundsUsed: number | null | undefined): number {
-  return Math.max(0, 2 - (typeof fixRoundsUsed === "number" ? fixRoundsUsed : 0));
+  return Math.max(
+    0,
+    2 - (typeof fixRoundsUsed === "number" ? fixRoundsUsed : 0),
+  );
 }
 
 /** Local date + hour → ISO instant for gig_shoot_plan_save. */

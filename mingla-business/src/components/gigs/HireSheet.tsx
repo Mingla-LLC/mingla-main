@@ -25,7 +25,14 @@ import {
   programMoney,
   wholeCurrencyToMinor,
 } from "../../utils/creatorProgramFormat";
-import { Card, Checkbox, FieldError, Muted, SheetBody, SummaryLine } from "../programs/ProgramKit";
+import {
+  Card,
+  Checkbox,
+  FieldError,
+  Muted,
+  SheetBody,
+  SummaryLine,
+} from "../programs/ProgramKit";
 import { spacing } from "../../constants/designSystem";
 import { randomUuid } from "../../utils/randomId";
 import { hireTerms } from "./hireTerms";
@@ -33,8 +40,18 @@ import { hireTerms } from "./hireTerms";
 export { hireTerms };
 
 export type HireSheetMode =
-  | { kind: "hire"; interestId: string; quoteMinor: number; allowCounter?: boolean }
-  | { kind: "topup"; contractId: string; termsVersion: number; topupMinor: number };
+  | {
+      kind: "hire";
+      interestId: string;
+      quoteMinor: number;
+      allowCounter?: boolean;
+    }
+  | {
+      kind: "topup";
+      contractId: string;
+      termsVersion: number;
+      topupMinor: number;
+    };
 
 type Props = {
   visible: boolean;
@@ -60,12 +77,25 @@ export function HireSheet(props: Props): React.ReactElement {
   );
 }
 
-function HireSheetBody({ visible, mode, creatorName, currency, salesShareBps, usageDays, onPaid }: Props): React.ReactElement {
+function HireSheetBody({
+  visible,
+  mode,
+  creatorName,
+  currency,
+  salesShareBps,
+  usageDays,
+  onPaid,
+}: Props): React.ReactElement {
   const pay = useGigHirePay();
   const [countering, setCountering] = useState(false);
   const [feeText, setFeeText] = useState("");
-  const terms = useMemo(() => hireTerms(creatorName, usageDays), [creatorName, usageDays]);
-  const [checked, setChecked] = useState<boolean[]>(() => terms.map(() => false));
+  const terms = useMemo(
+    () => hireTerms(creatorName, usageDays),
+    [creatorName, usageDays],
+  );
+  const [checked, setChecked] = useState<boolean[]>(() =>
+    terms.map(() => false),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -76,24 +106,40 @@ function HireSheetBody({ visible, mode, creatorName, currency, salesShareBps, us
   useEffect(() => {
     if (!visible) return;
     setCountering(false);
-    setFeeText(mode.kind === "hire" ? minorToWholeText(mode.quoteMinor, currency) : "");
+    setFeeText(
+      mode.kind === "hire" ? minorToWholeText(mode.quoteMinor, currency) : "",
+    );
     setChecked(terms.map(() => false));
     setError(null);
     setPending(null);
     setAttemptKey(randomUuid());
   }, [visible, mode, currency, terms]);
 
-  const feeMinor = mode.kind === "topup"
-    ? mode.topupMinor
-    : countering ? wholeCurrencyToMinor(feeText, currency) : mode.quoteMinor;
-  const booking = mode.kind === "hire" && feeMinor ? bookingFeeMinor(feeMinor) : 0;
+  const feeMinor =
+    mode.kind === "topup"
+      ? mode.topupMinor
+      : countering
+        ? wholeCurrencyToMinor(feeText, currency)
+        : mode.quoteMinor;
+  const booking =
+    mode.kind === "hire" && feeMinor ? bookingFeeMinor(feeMinor) : 0;
   const total = (feeMinor ?? 0) + booking;
   const allChecked = mode.kind === "topup" || checked.every(Boolean);
 
   const confirm = async (start: GigHireStart) => {
-    const result = await confirmGigHire({ contractId: start.contract_id, termsVersion: start.terms_version, rail: start.rail, providerRef: start.provider_ref });
+    const result = await confirmGigHire({
+      contractId: start.contract_id,
+      termsVersion: start.terms_version,
+      rail: start.rail,
+      providerRef: start.provider_ref,
+    });
     if (!result.ok) {
-      setError(programErrorMessage(result.error, "We couldn't confirm the payment yet. If you paid, wait a minute and check again."));
+      setError(
+        programErrorMessage(
+          result.error,
+          "We couldn't confirm the payment yet. If you paid, wait a minute and check again.",
+        ),
+      );
       return;
     }
     onPaid(start.contract_id);
@@ -107,16 +153,29 @@ function HireSheetBody({ visible, mode, creatorName, currency, salesShareBps, us
     setBusy(true);
     setError(null);
     try {
-      const start = mode.kind === "topup"
-        ? await startGigTopup({ contractId: mode.contractId, termsVersion: mode.termsVersion })
-        : await startGigHire({
-            interestId: mode.interestId,
-            feeMinor,
-            terms: { fee_minor: feeMinor, sales_share_bps: salesShareBps ?? null, usage_days: usageDays ?? null },
-            idempotencyKey: `gig-${mode.interestId}-${feeMinor}-${attemptKey.slice(0, 8)}`,
-          });
+      const start =
+        mode.kind === "topup"
+          ? await startGigTopup({
+              contractId: mode.contractId,
+              termsVersion: mode.termsVersion,
+            })
+          : await startGigHire({
+              interestId: mode.interestId,
+              feeMinor,
+              terms: {
+                fee_minor: feeMinor,
+                sales_share_bps: salesShareBps ?? null,
+                usage_days: usageDays ?? null,
+              },
+              idempotencyKey: `gig-${mode.interestId}-${feeMinor}-${attemptKey.slice(0, 8)}`,
+            });
       if (!start.ok) {
-        setError(programErrorMessage(start.error, "We couldn't start the payment. Try again in a few minutes."));
+        setError(
+          programErrorMessage(
+            start.error,
+            "We couldn't start the payment. Try again in a few minutes.",
+          ),
+        );
         return;
       }
       const outcome = await pay(start);
@@ -124,66 +183,131 @@ function HireSheetBody({ visible, mode, creatorName, currency, salesShareBps, us
       else if (outcome.outcome === "redirected") setPending({ start });
       else if (outcome.outcome === "failed") setError(outcome.message);
     } catch (runError) {
-      setError(programErrorMessage(runError, "We couldn't start the payment. Try again in a few minutes."));
+      setError(
+        programErrorMessage(
+          runError,
+          "We couldn't start the payment. Try again in a few minutes.",
+        ),
+      );
     } finally {
       setBusy(false);
     }
   };
 
-  const title = mode.kind === "topup" ? `Pay the difference to ${creatorName}` : countering ? `Offer ${creatorName} a fee` : `Hire ${creatorName}`;
+  const title =
+    mode.kind === "topup"
+      ? `Pay the difference to ${creatorName}`
+      : countering
+        ? `Offer ${creatorName} a fee`
+        : `Hire ${creatorName}`;
   return (
     <SheetBody title={title}>
       {mode.kind === "hire" && mode.allowCounter && !pending ? (
         countering ? (
           <>
-            <Input value={feeText} onChangeText={(value) => setFeeText(value.replace(/[^0-9]/g, ""))} variant="number" placeholder={`Your fee offer in ${currency}`} accessibilityLabel={`Your fee offer in ${currency}`} />
+            <Input
+              value={feeText}
+              onChangeText={(value) => setFeeText(value.replace(/[^0-9]/g, ""))}
+              variant="number"
+              placeholder={`Your fee offer in ${currency}`}
+              accessibilityLabel={`Your fee offer in ${currency}`}
+            />
             <Muted>{`${creatorName} asked for ${programMoney(mode.quoteMinor, currency)}. They see your offer and have 48 hours to accept.`}</Muted>
           </>
         ) : (
-          <Button variant="ghost" size="sm" label="Offer a different fee" onPress={() => setCountering(true)} />
+          <Button
+            variant="ghost"
+            size="sm"
+            label="Offer a different fee"
+            onPress={() => setCountering(true)}
+          />
         )
       ) : null}
       <Card>
         {mode.kind === "topup" ? (
-          <SummaryLine label="New fee difference" value={programMoney(feeMinor, currency)} />
+          <SummaryLine
+            label="New fee difference"
+            value={programMoney(feeMinor, currency)}
+          />
         ) : (
           <>
-            <SummaryLine label="Creator fee" value={feeMinor ? programMoney(feeMinor, currency) : "—"} />
-            <SummaryLine label="Mingla booking fee (15%)" value={programMoney(booking, currency)} />
+            <SummaryLine
+              label="Creator fee"
+              value={feeMinor ? programMoney(feeMinor, currency) : "—"}
+            />
+            <SummaryLine
+              label="Mingla booking fee (15%)"
+              value={programMoney(booking, currency)}
+            />
           </>
         )}
-        <SummaryLine label="Pay now" value={feeMinor ? programMoney(total, currency) : "—"} strong />
+        <SummaryLine
+          label="Pay now"
+          value={feeMinor ? programMoney(total, currency) : "—"}
+          strong
+        />
         <Muted>{`Held by Mingla until the post is live. Refunded if ${creatorName} declines or misses a deadline.`}</Muted>
       </Card>
       {mode.kind === "hire" && salesShareBps ? (
         <Card>
-          <SummaryLine label="Plus a share of sales from their link" value={`${Math.round(salesShareBps / 100)}%`} />
-          <Muted>Paid automatically from each sale, after discounts, excluding fees and tax.</Muted>
+          <SummaryLine
+            label="Plus a share of sales from their link"
+            value={`${Math.round(salesShareBps / 100)}%`}
+          />
+          <Muted>
+            Paid automatically from each sale, after discounts, excluding fees
+            and tax.
+          </Muted>
         </Card>
       ) : null}
       {mode.kind === "hire" ? (
         <View style={styles.terms}>
           {terms.map((term, index) => (
-            <Checkbox key={term} label={term} checked={checked[index]} onToggle={() => setChecked((current) => current.map((value, i) => (i === index ? !value : value)))} />
+            <Checkbox
+              key={term}
+              label={term}
+              checked={checked[index]}
+              onToggle={() =>
+                setChecked((current) =>
+                  current.map((value, i) => (i === index ? !value : value)),
+                )
+              }
+            />
           ))}
         </View>
       ) : null}
       <FieldError message={error} />
       {pending ? (
         <>
-          <Muted>Finish paying on the payment page, then come back and check.</Muted>
-          <Button fullWidth label="I've paid · check payment" loading={busy} onPress={() => { setBusy(true); void confirm(pending.start).finally(() => setBusy(false)); }} />
+          <Muted>
+            Finish paying on the payment page, then come back and check.
+          </Muted>
+          <Button
+            fullWidth
+            label="I've paid · check payment"
+            loading={busy}
+            onPress={() => {
+              setBusy(true);
+              void confirm(pending.start).finally(() => setBusy(false));
+            }}
+          />
         </>
       ) : (
         <Button
           fullWidth
-          label={feeMinor ? `Agree and pay ${programMoney(total, currency)}` : "Agree and pay"}
+          label={
+            feeMinor
+              ? `Agree and pay ${programMoney(total, currency)}`
+              : "Agree and pay"
+          }
           loading={busy}
           disabled={busy || !allChecked || !feeMinor}
           onPress={() => void run()}
         />
       )}
-      {mode.kind === "hire" && !allChecked ? <Muted>Tick each term to continue.</Muted> : null}
+      {mode.kind === "hire" && !allChecked ? (
+        <Muted>Tick each term to continue.</Muted>
+      ) : null}
     </SheetBody>
   );
 }

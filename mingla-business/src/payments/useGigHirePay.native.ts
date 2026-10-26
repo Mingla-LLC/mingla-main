@@ -17,7 +17,9 @@ const BUSINESS_URL_SCHEME = "com.sethogieva.minglabusiness";
  * carries the publishable key, merchant identifier and URL scheme. Card only:
  * no wallet sheet for creator fees.
  */
-export function useGigHirePay(): (start: GigHireStart) => Promise<GigHirePayOutcome> {
+export function useGigHirePay(): (
+  start: GigHireStart,
+) => Promise<GigHirePayOutcome> {
   const { initPaymentSheet, presentPaymentSheet } = useStripePaymentSheet();
 
   return async (start: GigHireStart): Promise<GigHirePayOutcome> => {
@@ -27,7 +29,10 @@ export function useGigHirePay(): (start: GigHireStart) => Promise<GigHirePayOutc
         await Linking.openURL(start.url);
         return { outcome: "redirected" };
       } catch {
-        return { outcome: "failed", message: "We couldn't open the payment page. Try again." };
+        return {
+          outcome: "failed",
+          message: "We couldn't open the payment page. Try again.",
+        };
       }
     }
     const initResult = await initPaymentSheet({
@@ -36,12 +41,19 @@ export function useGigHirePay(): (start: GigHireStart) => Promise<GigHirePayOutc
       returnURL: `${BUSINESS_URL_SCHEME}://stripe-redirect`,
     });
     if (initResult.error) {
-      return { outcome: "failed", message: "We couldn't open the card form. Try again." };
+      return {
+        outcome: "failed",
+        message: "We couldn't open the card form. Try again.",
+      };
     }
     const presentResult = await presentPaymentSheet();
     if (presentResult.error) {
-      if (presentResult.error.code === "Canceled") return { outcome: "canceled" };
-      return { outcome: "failed", message: "The card payment didn't go through. Try another card." };
+      if (presentResult.error.code === "Canceled")
+        return { outcome: "canceled" };
+      return {
+        outcome: "failed",
+        message: "The card payment didn't go through. Try another card.",
+      };
     }
     return { outcome: "succeeded" };
   };

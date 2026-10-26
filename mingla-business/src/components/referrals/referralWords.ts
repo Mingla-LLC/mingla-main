@@ -1,8 +1,14 @@
 // #3872 — referral workspace words (no raw status keys or codes on screen).
-import type { ReferralMember, ReferralOffer } from "../../services/referralService";
+import type {
+  ReferralMember,
+  ReferralOffer,
+} from "../../services/referralService";
 import { programMoney, shortDate } from "../../utils/creatorProgramFormat";
 
-export function offerPill(offer: Pick<ReferralOffer, "status">): { label: string; tone: "live" | "paused" | "ended" | "waiting" } {
+export function offerPill(offer: Pick<ReferralOffer, "status">): {
+  label: string;
+  tone: "live" | "paused" | "ended" | "waiting";
+} {
   switch (offer.status) {
     case "active":
       return { label: "Live", tone: "live" };
@@ -17,27 +23,57 @@ export function offerPill(offer: Pick<ReferralOffer, "status">): { label: string
 
 /** "10% cash · 3 promoters", "10% back as a voucher · all listings", "Ended Sep 30". */
 export function offerSummary(
-  offer: Pick<ReferralOffer, "status" | "rewardKind" | "shareBps" | "perkText" | "audience" | "scopeKind" | "listings" | "memberCount" | "endsAt" | "voucherTemplate" | "currency">,
+  offer: Pick<
+    ReferralOffer,
+    | "status"
+    | "rewardKind"
+    | "shareBps"
+    | "perkText"
+    | "audience"
+    | "scopeKind"
+    | "listings"
+    | "memberCount"
+    | "endsAt"
+    | "voucherTemplate"
+    | "currency"
+  >,
   currency: string,
   rewardOnly = false,
 ): string {
   const percent = offer.shareBps ? `${offer.shareBps / 100}%` : null;
-  const voucherMinor = typeof offer.voucherTemplate?.amount_minor === "number" ? offer.voucherTemplate.amount_minor : null;
-  const reward = offer.rewardKind === "cash"
-    ? `${percent ?? "A share"} cash`
-    : offer.rewardKind === "voucher"
-      ? voucherMinor !== null ? `${programMoney(voucherMinor, offer.currency || currency)} voucher` : `${percent ?? "A"}${percent ? " back as a" : ""} voucher`
-      : offer.perkText ?? "A perk";
+  const voucherMinor =
+    typeof offer.voucherTemplate?.amount_minor === "number"
+      ? offer.voucherTemplate.amount_minor
+      : null;
+  const reward =
+    offer.rewardKind === "cash"
+      ? `${percent ?? "A share"} cash`
+      : offer.rewardKind === "voucher"
+        ? voucherMinor !== null
+          ? `${programMoney(voucherMinor, offer.currency || currency)} voucher`
+          : `${percent ?? "A"}${percent ? " back as a" : ""} voucher`
+        : (offer.perkText ?? "A perk");
   if (rewardOnly) return reward;
-  if (offer.status === "ended") return offer.endsAt ? `Ended ${shortDate(offer.endsAt)}` : "Ended";
-  const who = offer.audience === "buyers"
-    ? (offer.scopeKind === "brand" ? "all listings" : `${offer.listings.length} listing${offer.listings.length === 1 ? "" : "s"}`)
-    : `${offer.memberCount} promoter${offer.memberCount === 1 ? "" : "s"}`;
-  const audience = offer.audience === "buyers" ? "Every buyer earns" : offer.audience === "both" ? "Buyers and promoters" : "Promoter team";
+  if (offer.status === "ended")
+    return offer.endsAt ? `Ended ${shortDate(offer.endsAt)}` : "Ended";
+  const who =
+    offer.audience === "buyers"
+      ? offer.scopeKind === "brand"
+        ? "all listings"
+        : `${offer.listings.length} listing${offer.listings.length === 1 ? "" : "s"}`
+      : `${offer.memberCount} promoter${offer.memberCount === 1 ? "" : "s"}`;
+  const audience =
+    offer.audience === "buyers"
+      ? "Every buyer earns"
+      : offer.audience === "both"
+        ? "Buyers and promoters"
+        : "Promoter team";
   return `${audience} · ${reward} · ${who}`;
 }
 
-export function memberStatusWords(status: ReferralMember["status"] | string): string {
+export function memberStatusWords(
+  status: ReferralMember["status"] | string,
+): string {
   switch (status) {
     case "active":
       return "Earning";
@@ -52,10 +88,17 @@ export function memberStatusWords(status: ReferralMember["status"] | string): st
   }
 }
 
-export function rankLeaderboard(rows: readonly ReferralMember[]): ReferralMember[] {
+export function rankLeaderboard(
+  rows: readonly ReferralMember[],
+): ReferralMember[] {
   return [...rows]
     .filter((row) => row.status !== "removed")
-    .sort((a, b) => b.salesCount - a.salesCount || b.revenueMinor - a.revenueMinor || a.displayName.localeCompare(b.displayName));
+    .sort(
+      (a, b) =>
+        b.salesCount - a.salesCount ||
+        b.revenueMinor - a.revenueMinor ||
+        a.displayName.localeCompare(b.displayName),
+    );
 }
 
 /** The tracking-link ending the server accepts. */

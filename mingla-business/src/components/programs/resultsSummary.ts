@@ -34,7 +34,14 @@ export function summarizeResults(rows: readonly GigResult[]): {
     tickets += row.tickets;
     clicks += row.clicks;
     orders += row.orders;
-    const current = byCreator.get(row.creator_id) ?? { id: row.creator_id, name: row.creator_display_name, soldMinor: 0, tickets: 0, clicks: 0, lastGigId: row.gig_id };
+    const current = byCreator.get(row.creator_id) ?? {
+      id: row.creator_id,
+      name: row.creator_display_name,
+      soldMinor: 0,
+      tickets: 0,
+      clicks: 0,
+      lastGigId: row.gig_id,
+    };
     current.soldMinor += row.sold_minor;
     current.tickets += row.tickets;
     current.clicks += row.clicks;

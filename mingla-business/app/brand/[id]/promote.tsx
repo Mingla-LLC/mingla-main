@@ -140,8 +140,10 @@ export default function PromoteHub(): React.ReactElement {
   const interested = gigs.reduce((sum, gig) => sum + gig.interest_count, 0);
   const hired =
     gigs.reduce((sum, gig) => sum + gig.hired_count, 0) ||
-    contracts.filter((contract) => !contract.payment_pending && !HIRED_STATES_EXCLUDED.has(contract.state))
-      .length;
+    contracts.filter(
+      (contract) =>
+        !contract.payment_pending && !HIRED_STATES_EXCLUDED.has(contract.state),
+    ).length;
   const newInterest = openGigs.filter(
     (gig) => gig.interest_count > 0 && gig.hired_count < gig.slots,
   );
