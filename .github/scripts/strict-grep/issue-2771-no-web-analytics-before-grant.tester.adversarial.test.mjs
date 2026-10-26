@@ -5,39 +5,49 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { evaluateSources, FILES } from './issue-2771-no-web-analytics-before-grant.mjs'
 
+// [TEST-MOD-APPROVED #2331] The gate now enforces
+// I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF. These independent mutations attack
+// the turn-off boundaries and the default-on rule directly.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const sources = Object.fromEntries(
   Object.entries(FILES).map(([key, rel]) => [key, fs.readFileSync(path.join(root, rel), 'utf8')]),
 )
 
-test('independent mutations cannot restore advanced-consent or unguarded attribution', () => {
-  // [TEST-MOD-APPROVED #3697] browser conversion POST retired; attribution
-  // and arrival pixels gate on Reject (denied), not grant. Attack the live
-  // opt-out boundaries directly while the separate PostHog/GA grant gates stay.
+test('independent mutations cannot leak a vendor past a turn-off or restore a grant gate', () => {
   const attacks = [
     {
       business: sources.business.replace(
-        'if (!adTrackingAllowed() || !adPixelsBootstrapped) return;',
+        'if (!isAdsOn() || !adPixelsBootstrapped) return;',
         'if (!adPixelsBootstrapped) return;',
       ),
     },
     {
       business: sources.business.replace(
-        'export function captureAdClickIds(dest?: CaptureAdClickDest): void {\n  if (!hasWindow() || readStoredConsent() === "denied") return;',
+        'export function captureAdClickIds(dest?: CaptureAdClickDest): void {\n  if (!hasWindow() || !isAdsOn()) return;',
         'export function captureAdClickIds(dest?: CaptureAdClickDest): void {\n  if (!hasWindow()) return;',
       ),
     },
     {
       business: sources.business.replace(
-        'export async function postAttributionTouch(\n  input: PostTouchInput,\n): Promise<string | null> {\n  // toward #3697: first-party touch allowed before a banner choice; the region\n  // mode decides whether server sharing is granted now or remains pending.\n  if (readStoredConsent() === "denied") return null;',
-        'export async function postAttributionTouch(\n  input: PostTouchInput,\n): Promise<string | null> {',
+        '  // #2331: first-party touch runs while ads are on; a turn-off blocks it.\n  if (!isAdsOn()) return null;',
+        '',
       ),
     },
-    { marketingProvider: sources.marketingProvider.replace("): void {\n  if (readMarketingConsent() !== 'granted') return\n  try {", "): void {\n  try {") },
+    {
+      business: sources.business.replace(
+        'export function captureWeb(\n  name: string,\n  props?: Record<string, unknown>,\n): void {\n  if (!isAnalyticsOn() || posthogClient === null) return;',
+        'export function captureWeb(\n  name: string,\n  props?: Record<string, unknown>,\n): void {\n  if (posthogClient === null) return;',
+      ),
+    },
+    { business: sources.business.replace('posthogClient.opt_out_capturing();', '') },
+    { business: sources.business.replace('if (!adsOn) stopAdPixels();', '') },
+    { business: sources.business.replace('if (!isAnalyticsOn()) return Promise.resolve();', 'if (readStoredConsent() !== "granted") return Promise.resolve();') },
+    { marketingProvider: sources.marketingProvider.replace("): void {\n  if (!isMarketingAnalyticsOn()) return\n  try {", "): void {\n  try {") },
+    { marketingProvider: sources.marketingProvider.replace("return choice === null ? true : choice.analytics", "return choice === null ? false : choice.analytics") },
     { marketingLayout: sources.marketingLayout.replace('<PostHogProvider>', '<PostHogProvider>{null}</PostHogProvider>\n        ').replace('</PostHogProvider>', '') },
-    { business: sources.business.replace('        cross_subdomain_cookie: false,\n', '') },
+    { business: sources.business.replace('      cross_subdomain_cookie: false,\n', '') },
     { marketingProvider: sources.marketingProvider.replace('      cross_subdomain_cookie: false,\n', '') },
-    { business: sources.business.replace('        cross_subdomain_cookie: false,\n', '        // cross_subdomain_cookie: false,\n') },
+    { business: sources.business.replace('      cross_subdomain_cookie: false,\n', '      // cross_subdomain_cookie: false,\n') },
     { marketingProvider: sources.marketingProvider.replace('      cross_subdomain_cookie: false,\n', '      // cross_subdomain_cookie: false,\n') },
   ]
   for (const attack of attacks) {
@@ -49,11 +59,11 @@ test('independent mutations cannot restore advanced-consent or unguarded attribu
   }
 })
 
-test('comments cannot satisfy the executable grant checks', () => {
+test('comments cannot satisfy the executable on-unless-turned-off checks', () => {
   const changed = sources.business.replace(
-    'if (readStoredConsent() === "granted") await ensureGrantedAnalyticsBoot();',
-    '// if (readStoredConsent() === "granted") await ensureGrantedAnalyticsBoot();',
+    '  if (isAnalyticsOn()) await ensureAnalyticsBoot();',
+    '  // if (isAnalyticsOn()) await ensureAnalyticsBoot();',
   )
-  assert.notEqual(changed, sources.business, 'grant-check mutation must match current source')
+  assert.notEqual(changed, sources.business, 'boot mutation must match current source')
   assert.match(evaluateSources({ ...sources, business: changed }).join('\n'), /Business init/)
 })

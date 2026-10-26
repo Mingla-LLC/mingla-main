@@ -112,7 +112,7 @@ if (layout === null) {
     errors.push(`${LAYOUT}: initWebAnalytics() must run behind a Platform.OS === "web" guard.`);
   }
   if (!/<ConsentBanner\s*\/?\s*>/.test(s)) {
-    errors.push(`${LAYOUT}: must mount <ConsentBanner /> (the consent gate UI).`);
+    errors.push(`${LAYOUT}: must mount <ConsentBanner /> (the #2331 privacy bar).`);
   }
 }
 
@@ -120,11 +120,11 @@ if (errors.length > 0) {
   console.error("FAIL: ORCH-1187-LEG2 buyer-web analytics wiring violated");
   for (const e of errors) console.error(`  - ${e}`);
   console.error(
-    "\nBuyer-web analytics (PostHog + GA4, consent-gated, masked replay) must stay wired (META-ORCH-1187 §4.B/§4.E).",
+    "\nBuyer-web analytics (PostHog + GA4, on unless turned off, masked replay) must stay wired (META-ORCH-1187 §4.B/§4.E).",
   );
   process.exit(1);
 }
 
 console.log(
-  "OK: ORCH-1187-LEG2 — buyer-web PostHog init (US host, consent-gated, masked) + native stub clean + layout wiring intact",
+  "OK: ORCH-1187-LEG2 — buyer-web PostHog init (US host, on unless turned off, masked) + native stub clean + layout wiring intact",
 );

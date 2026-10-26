@@ -111,10 +111,11 @@ test("ARRIVAL MODE — fireAdReservation is available before the banner choice",
   expect(getFbq()).toBeDefined();
 });
 
-test("grantConsent → fireAdReservation fires Meta 'CompleteRegistration' with the shared eventID (not 'Purchase')", async () => {
+// [TEST-MOD-APPROVED #2331] OK saves both on; one privacy save replaces grant.
+test("OK → fireAdReservation fires Meta 'CompleteRegistration' with the shared eventID (not 'Purchase')", async () => {
   const { wa, getFbq } = loadHarness(META_EXTRA);
   await wa.initWebAnalytics();
-  await wa.grantConsent();
+  await wa.savePrivacyChoice({ analytics: true, ads: true });
   wa.fireAdReservation("resv-xyz", {
     value: 0,
     currency: "GBP",
@@ -142,7 +143,7 @@ test("grantConsent → fireAdReservation fires Meta 'CompleteRegistration' with 
 test("free RSVP with zero value — 'CompleteRegistration' still fires (£0 sign-up), no throw", async () => {
   const { wa, getFbq } = loadHarness(META_EXTRA);
   await wa.initWebAnalytics();
-  await wa.grantConsent();
+  await wa.savePrivacyChoice({ analytics: true, ads: true });
   expect(() => wa.fireAdReservation("resv-free", {
     value: 0,
     currency: "GBP",
@@ -159,7 +160,7 @@ test("NO-OP when the pixel id is absent (silent, never throws)", async () => {
     EXPO_PUBLIC_SUPABASE_ANON_KEY: "anon",
   });
   await wa.initWebAnalytics();
-  await wa.grantConsent();
+  await wa.savePrivacyChoice({ analytics: true, ads: true });
   expect(() => wa.fireAdReservation("resv-1")).not.toThrow();
   expect(getFbq()).toBeUndefined();
 });

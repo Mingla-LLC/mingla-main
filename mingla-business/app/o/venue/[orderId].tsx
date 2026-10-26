@@ -45,6 +45,7 @@ import {
 import type { VenueOrderLiveStatus } from "@mingla/brand-rendering/venueOrdering";
 import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import { venuePublicPath } from "../../../src/constants/publicUrls";
+import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
 
 /**
  * The status card, and the transport it needs, behind a LAZY boundary — and
@@ -303,6 +304,8 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
             {BUYER_CLAIM_COPY.venueOrder.back}
           </Text>
         </Pressable>
+        {/* #2331 — end of content: reopens the privacy bar. */}
+        <PrivacyChoicesLink />
       </ScrollView>
     </View>
   );

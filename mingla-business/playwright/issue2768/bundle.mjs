@@ -61,10 +61,6 @@ config.resolver.extraNodeModules = {
     business,
     "src/analytics/ConsentBanner.web.tsx",
   ),
-  "issue2768-real-use-web-consent-state": path.resolve(
-    business,
-    "src/analytics/useWebConsentState.web.ts",
-  ),
 };
 
 const previousResolveRequest = config.resolver.resolveRequest;
@@ -120,9 +116,10 @@ const bundle = readFileSync(outputBundle, "utf8");
 for (const marker of [
   "orch-1255-public-venue",
   "issue-2729-reserve-cta",
-  "Cookie consent",
-  "Opt out of ad tracking",
-  "mingla_consent_v1",
+  // #2331 — the real privacy bar and its inset writer.
+  "Privacy choices",
+  "privacy-bar-ok",
+  "mingla_privacy_v2",
 ]) {
   if (!bundle.includes(marker)) {
     throw new Error(

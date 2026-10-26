@@ -85,7 +85,6 @@ import {
   captureWeb,
 } from "../../../../src/analytics/webAnalytics";
 import { captureBuyerWebPublicPageViewed } from "../../../../src/analytics/publicParityWebAdapter";
-import { useWebConsentState } from "../../../../src/analytics/useWebConsentState";
 import {
   usePublicBrandBySlug,
   usePublicVenueBySlug,
@@ -186,7 +185,6 @@ const toVenueViewModel = (venue: PublicVenue): PublicVenueViewModel => ({
 export default function PublicVenueRoute(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const webConsentState = useWebConsentState();
   const [shareModalVisible, setShareModalVisible] = React.useState(false);
   const params = useLocalSearchParams<{
     brandSlug: string | string[];
@@ -621,7 +619,6 @@ export default function PublicVenueRoute(): React.ReactElement {
   return (
     <PublicVenueScreen
       venue={venueViewModel}
-      webConsentState={webConsentState}
       discoveryPrice={discoveryPriceQuery.data ?? null}
       menu={menuGroups}
       menuLifecycle={{

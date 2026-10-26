@@ -99,6 +99,7 @@ import {
   tripIntakeState,
   type TripIntakeState,
 } from "./tripCheckoutStepOrder";
+import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
 
 const formatQuoteMoney = (minor: number, currency: string): string => {
   try {
@@ -921,6 +922,8 @@ function CheckoutTripPaymentScreenContent({
         {paymentError !== null ? (
           <Text style={styles.errorText}>{paymentError}</Text>
         ) : null}
+        {/* #2331 — end of content: reopens the privacy bar. */}
+        <PrivacyChoicesLink />
       </ScrollView>
 
       {/* Sticky bottom bar */}

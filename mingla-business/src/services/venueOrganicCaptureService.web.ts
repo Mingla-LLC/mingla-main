@@ -1,6 +1,7 @@
 import {
+  isAnalyticsOn,
   readReferrerHost,
-  readStoredConsent,
+  subscribePrivacy,
 } from "../analytics/webAnalytics";
 import { supabase } from "./supabase";
 import type {
@@ -74,7 +75,7 @@ async function send(
   scope: VenueOrganicCaptureScope,
   eventType: VenueOrganicCaptureEvent,
 ): Promise<boolean> {
-  if (readStoredConsent() !== "granted") return false;
+  if (!isAnalyticsOn()) return false;
   const current = readJourney(scope);
   try {
     const { data, error } = await supabase.functions.invoke<{
@@ -132,7 +133,7 @@ export async function captureVenueOrganicEvent(
   scope: VenueOrganicCaptureScope,
   eventType: VenueOrganicCaptureEvent,
 ): Promise<void> {
-  if (readStoredConsent() !== "granted") return;
+  if (!isAnalyticsOn()) return;
   if (!await ensureJourney(scope)) return;
   await send(scope, eventType);
 }
@@ -143,41 +144,29 @@ export function getVenueOrganicJourneyToken(
   return readJourney(scope)?.token ?? null;
 }
 
+/**
+ * #2331: analytics is on unless the visitor turned it off, so the journey
+ * starts now. If it is off, it starts the moment the visitor turns it back on.
+ */
 export function settleVenueOrganicJourneyOnConsent(
   scope: VenueOrganicCaptureScope,
 ): () => void {
   let cancelled = false;
-  let listening = false;
-  const stopListening = (): void => {
-    if (!listening) return;
-    window.removeEventListener("click", afterConsentInteraction);
-    window.removeEventListener("storage", afterConsentInteraction);
-    listening = false;
-  };
+  let unsubscribe: (() => void) | null = null;
   const attempt = (): void => {
-    if (cancelled) return;
-    const consent = readStoredConsent();
-    if (consent === "granted") {
-      stopListening();
-      void ensureJourney(scope);
-      return;
-    }
-    if (consent === "denied") {
-      stopListening();
-      return;
-    }
-    if (!listening) {
-      window.addEventListener("click", afterConsentInteraction);
-      window.addEventListener("storage", afterConsentInteraction);
-      listening = true;
-    }
+    if (cancelled || !isAnalyticsOn()) return;
+    unsubscribe?.();
+    unsubscribe = null;
+    void ensureJourney(scope);
   };
-  function afterConsentInteraction(): void {
-    queueMicrotask(attempt);
+  if (isAnalyticsOn()) {
+    attempt();
+  } else {
+    unsubscribe = subscribePrivacy(attempt);
   }
-  attempt();
   return () => {
     cancelled = true;
-    stopListening();
+    unsubscribe?.();
+    unsubscribe = null;
   };
 }

@@ -72,6 +72,7 @@ import {
   gaEvent,
   postAttributionConversion,
 } from "../../../src/analytics/webAnalytics";
+import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
 
 export default function CheckoutTripConfirmScreen(): React.ReactElement | null {
   const [isClient, setIsClient] = useState<boolean>(false);
@@ -610,6 +611,8 @@ function CheckoutTripConfirmScreenInner({
             The buyer-cancel CTA mounts here after Tr4 SPEC amendment ships
             (post v2 CLOSE per F-16). Phase 2b leaves this surface bare for
             the integration. */}
+        {/* #2331 — end of content: reopens the privacy bar. */}
+        <PrivacyChoicesLink />
       </ScrollView>
     </View>
   );

@@ -70,7 +70,7 @@ async function captureTouchGesture(
       "[data-testid='issue-2729-reserve-cta']",
     );
     const consent = document.querySelector<HTMLElement>(
-      "[aria-label='Cookie consent']",
+      "[data-testid='privacy-bar']",
     );
     const hit = document.elementFromPoint(start.x, start.y) as HTMLElement | null;
     if (cta === null || hit === null) {
@@ -248,38 +248,34 @@ async function assertNoAnalyticsInitialization(page: Page): Promise<void> {
 }
 
 async function assertFreshConsentOwnership(page: Page): Promise<void> {
-  const consent = page.getByLabel("Cookie consent");
-  const reject = page.getByRole("button", {
-    name: "Opt out of ad tracking",
-  });
-  await expect(consent).toHaveCount(1);
-  await expect(reject).toHaveCount(1);
-  await expect(reject).toBeVisible();
-  await expect(page.getByTestId("issue-2729-reserve-cta")).toHaveCount(0);
+  // [TEST-MOD-APPROVED #2331] The slim privacy bar no longer owns the bottom
+  // edge exclusively: it shows WITH the reserve CTA, which sits above it and
+  // owns its own centre point (I-PRIVACY-BAR-NEVER-OCCLUDES).
+  const bar = page.getByLabel("Privacy choices");
+  await expect(bar).toHaveCount(1);
+  await expect(page.getByTestId("privacy-bar-ok")).toBeVisible();
+  const cta = page.getByTestId("issue-2729-reserve-cta");
+  await expect(cta).toHaveCount(1);
   expect(
-    await reject.evaluate((control) => {
-      const owner = document.querySelector<HTMLElement>(
-        "[aria-label='Cookie consent']",
-      );
-      const cta = document.querySelector<HTMLElement>(
-        "[data-testid='issue-2729-reserve-cta']",
-      );
+    await cta.evaluate((control) => {
+      const owner = document.querySelector<HTMLElement>("[data-testid='privacy-bar']");
       const rect = control.getBoundingClientRect();
       const hit = document.elementFromPoint(
         rect.left + rect.width / 2,
         rect.top + rect.height / 2,
       );
+      const barRect = owner?.getBoundingClientRect();
       return {
-        consentOwns:
-          owner !== null && hit !== null && (owner === hit || owner.contains(hit)),
-        ctaExists: cta !== null,
+        ctaOwns: hit !== null && (control === hit || control.contains(hit)),
+        ctaAboveBar: barRect !== undefined && rect.bottom <= barRect.top + 0.5,
+        barFullWidth: barRect !== undefined && Math.abs(barRect.width - window.innerWidth) < 1,
       };
     }),
-  ).toEqual({ consentOwns: true, ctaExists: false });
+  ).toEqual({ ctaOwns: true, ctaAboveBar: true, barFullWidth: true });
 }
 
 for (const topology of ["business-preview", "buyer-host"] as const) {
-  test(`${topology} proves exclusive consent, rejects visibly, then proves CTA pan and tap`, async ({
+  test(`${topology} proves the bar and CTA coexist, turns everything off, then proves CTA pan and tap`, async ({
     page,
   }) => {
     const runtimeErrors: string[] = [];
@@ -296,16 +292,15 @@ for (const topology of ["business-preview", "buyer-host"] as const) {
     expect(await page.evaluate(() => window.__issue2768Topology)).toBe(topology);
     await assertNoAnalyticsInitialization(page);
 
-    await page
-      .getByRole("button", { name: "Opt out of ad tracking" })
-      .click();
-    await expect(page.getByLabel("Cookie consent")).toHaveCount(0);
+    await page.getByTestId("privacy-bar-options").click();
+      await page.getByTestId("privacy-bar-off-all").click();
+    await expect(page.getByLabel("Privacy choices")).toHaveCount(0);
     await expect(page.getByTestId("issue-2729-reserve-cta")).toHaveCount(1);
     expect(
       await page.evaluate(() =>
-        JSON.parse(localStorage.getItem("mingla_consent_v1") ?? "null"),
+        JSON.parse(localStorage.getItem("mingla_privacy_v2") ?? "null"),
       ),
-    ).toMatchObject({ choice: "denied" });
+    ).toMatchObject({ analytics: false, ads: false });
     await assertNoAnalyticsInitialization(page);
     expect(
       await page.evaluate(

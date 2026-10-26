@@ -1,52 +1,101 @@
+// [TEST-MOD-APPROVED #2331] The #2771 "nothing before an explicit grant" rule
+// is replaced by I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF: analytics and ads are
+// each on from the first page unless this visitor turned it off, and nothing
+// loads after a turn-off.
+
 interface FakeScript {
   src: string;
   async: boolean;
   attrs: Record<string, string>;
   setAttribute(name: string, value: string): void;
+  remove(): void;
 }
 
-function harness(search = ""): {
+function harness(
+  search = "",
+  seed: Record<string, string> = {},
+): {
   analytics: typeof import("../webAnalytics.web");
   scripts: FakeScript[];
   local: Map<string, string>;
-  session: Map<string, string>;
   fetches: string[];
-  posthog: { init: jest.Mock; opt_in_capturing: jest.Mock; capture: jest.Mock };
+  cookies: string[];
+  posthog: {
+    init: jest.Mock;
+    opt_in_capturing: jest.Mock;
+    opt_out_capturing: jest.Mock;
+    capture: jest.Mock;
+    set_config: jest.Mock;
+    stopSessionRecording: jest.Mock;
+  };
   win: Record<string, unknown>;
 } {
   const scripts: FakeScript[] = [];
-  const local = new Map<string, string>();
+  const local = new Map<string, string>(Object.entries(seed));
   const session = new Map<string, string>();
   const fetches: string[] = [];
+  const cookies: string[] = [];
+  let cookieJar = "_ga=GA1.1.1; _ga_TEST=GS1; ph_phc_public_posthog=%7B%7D; _fbp=fb.1";
   const posthog = {
-    init: jest.fn(() => {
-      expect(JSON.parse(local.get("mingla_consent_v1") ?? "{}").choice).toBe("granted");
-    }),
+    init: jest.fn(),
     opt_in_capturing: jest.fn(),
     opt_out_capturing: jest.fn(),
     capture: jest.fn(),
     identify: jest.fn(),
     getFeatureFlag: jest.fn(),
+    set_config: jest.fn(),
+    stopSessionRecording: jest.fn(),
   };
-  const win: Record<string, unknown> = {
-    document: {
-      referrer: "",
-      createElement: (): FakeScript => ({
+  const document = {
+    referrer: "",
+    createElement: (): FakeScript => {
+      const script: FakeScript = {
         src: "", async: false, attrs: {},
         setAttribute(name: string, value: string): void { this.attrs[name] = value; },
-      }),
-      querySelector: (): null => null,
-      head: { appendChild: (script: FakeScript): void => { scripts.push(script); } },
+        remove(): void {
+          const index = scripts.indexOf(script);
+          if (index >= 0) scripts.splice(index, 1);
+        },
+      };
+      return script;
     },
-    location: { search, href: `https://business.usemingla.com/e/b/e${search}` },
+    querySelector: (): null => null,
+    querySelectorAll: (selector: string): FakeScript[] =>
+      scripts.filter((script) =>
+        selector.includes("data-mingla-ga4")
+          ? "data-mingla-ga4" in script.attrs
+          : "data-mingla-pixel" in script.attrs || script.src.includes("facebook"),
+      ),
+    head: { appendChild: (script: FakeScript): void => { scripts.push(script); } },
+    getElementsByTagName: (): FakeScript[] => scripts,
+    get cookie(): string { return cookieJar; },
+    set cookie(value: string) {
+      cookies.push(value);
+      const name = value.split("=", 1)[0];
+      if (value.includes("expires=Thu, 01 Jan 1970")) {
+        cookieJar = cookieJar
+          .split("; ")
+          .filter((part) => !part.startsWith(`${name}=`))
+          .join("; ");
+      }
+    },
+  };
+  const win: Record<string, unknown> = {
+    document,
+    navigator: {},
+    location: { search, pathname: "/e/b/e", href: `https://business.usemingla.com/e/b/e${search}`, origin: "https://business.usemingla.com" },
     localStorage: {
       getItem: (key: string): string | null => local.get(key) ?? null,
       setItem: (key: string, value: string): void => { local.set(key, value); },
+      removeItem: (key: string): void => { local.delete(key); },
+      key: (index: number): string | null => [...local.keys()][index] ?? null,
+      get length(): number { return local.size; },
     },
     sessionStorage: {
       getItem: (key: string): string | null => session.get(key) ?? null,
       setItem: (key: string, value: string): void => { session.set(key, value); },
     },
+    addEventListener: (): void => undefined,
   };
   jest.resetModules();
   jest.doMock("expo-constants", () => ({
@@ -70,8 +119,11 @@ function harness(search = ""): {
   };
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const analytics = require("../webAnalytics.web") as typeof import("../webAnalytics.web");
-  return { analytics, scripts, local, session, fetches, posthog, win };
+  return { analytics, scripts, local, fetches, cookies, posthog, win };
 }
+
+const vendorScripts = (scripts: FakeScript[], host: string): FakeScript[] =>
+  scripts.filter((script) => script.src.includes(host));
 
 afterEach(() => {
   delete (globalThis as unknown as { window?: unknown }).window;
@@ -79,53 +131,97 @@ afterEach(() => {
   jest.resetModules();
 });
 
-// [TEST-MOD-APPROVED #3697] first-party attribution capture and advertising
-// pixels run on arrival; product analytics stays dark and opt-out stops pixels.
-test("#3697 arrival mode boots ad pixels while analytics stays dark; opt-out stops pixels", async () => {
-  const pending = harness("?fbclid=PRE&utm_source=meta");
-  await pending.analytics.initWebAnalytics();
-  pending.analytics.captureWeb("pregrant");
-  pending.analytics.gaEvent("pregrant");
-  pending.analytics.captureAdClickIds();
-  pending.analytics.postAttributionConversion({ eventId: "order-pre" });
+test("#2331 first visit: analytics and ads both start before any tap, and never ask the region", async () => {
+  const visit = harness("?fbclid=PRE&utm_source=meta");
+  await visit.analytics.initWebAnalytics();
+  visit.analytics.captureWeb("first_page");
+  visit.analytics.captureAdClickIds();
 
-  expect(pending.posthog.init).not.toHaveBeenCalled();
-  expect(pending.scripts.filter((script) => script.src.includes("facebook"))).toHaveLength(1);
-  // toward #3697: first-party touch is allowed; conversion POST is a no-op.
-  expect(
-    pending.fetches.filter((url) => url.includes("attribution-capture")),
-  ).toHaveLength(1);
-  expect(pending.win.dataLayer).toBeUndefined();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(pending.local.get("mingla_ad_click_v1")).toContain("server-click");
-
-  pending.analytics.denyConsent();
-  await pending.analytics.initWebAnalytics();
-  expect(pending.local.get("mingla_consent_v1")).toContain('"denied"');
-  expect(pending.posthog.init).not.toHaveBeenCalled();
-  expect(pending.analytics.adPixelsReady()).toBe(false);
+  expect(visit.posthog.init).toHaveBeenCalledTimes(1);
+  expect(visit.posthog.opt_in_capturing).toHaveBeenCalledTimes(1);
+  expect(visit.posthog.capture).toHaveBeenCalledWith("first_page", undefined);
+  expect(vendorScripts(visit.scripts, "googletagmanager")).toHaveLength(1);
+  expect(vendorScripts(visit.scripts, "facebook")).toHaveLength(1);
+  expect(visit.fetches.some((url) => url.includes("ad-pixel-config"))).toBe(false);
+  expect(visit.fetches.filter((url) => url.includes("attribution-capture"))).toHaveLength(1);
+  expect(visit.analytics.readPrivacyChoice()).toBeNull();
+  expect(visit.analytics.getPrivacySnapshot()).toEqual({
+    saved: false,
+    analytics: true,
+    ads: true,
+    gpc: false,
+  });
 });
 
-test("#2771 Accept persists first and concurrent calls share one complete boot", async () => {
-  const accepted = harness("?fbclid=YES&utm_source=meta");
+test("#2331 analytics off stops PostHog + GA now, clears their cookies, keeps pixels, and stays off", async () => {
+  const visit = harness();
+  await visit.analytics.initWebAnalytics();
+  await visit.analytics.savePrivacyChoice({ analytics: false, ads: true });
+
+  expect(visit.posthog.opt_out_capturing).toHaveBeenCalledTimes(1);
+  expect(visit.posthog.stopSessionRecording).toHaveBeenCalledTimes(1);
+  expect(vendorScripts(visit.scripts, "googletagmanager")).toHaveLength(0);
+  for (const name of ["_ga", "_ga_TEST", "ph_phc_public_posthog"]) {
+    expect(visit.cookies.some((cookie) => cookie.startsWith(`${name}=;`))).toBe(true);
+  }
+  expect(visit.cookies.some((cookie) => cookie.startsWith("_fbp=;"))).toBe(false);
+  expect(visit.analytics.adPixelsReady()).toBe(true);
+
+  visit.posthog.capture.mockClear();
+  visit.analytics.captureWeb("after_off");
+  visit.analytics.gaEvent("after_off");
+  expect(visit.posthog.capture).not.toHaveBeenCalled();
+  expect(JSON.parse(visit.local.get("mingla_privacy_v2") ?? "null")).toMatchObject({
+    analytics: false,
+    ads: true,
+  });
+
+  // A reload reads the saved choice: analytics never starts again.
+  const reload = harness("", Object.fromEntries(visit.local));
+  await reload.analytics.initWebAnalytics();
+  expect(reload.posthog.init).not.toHaveBeenCalled();
+  expect(vendorScripts(reload.scripts, "googletagmanager")).toHaveLength(0);
+  expect(vendorScripts(reload.scripts, "facebook")).toHaveLength(1);
+  expect(reload.analytics.getPrivacySnapshot()).toMatchObject({ saved: true, analytics: false, ads: true });
+});
+
+test("#2331 turning analytics back on resumes the same page without a reload", async () => {
+  const visit = harness();
+  await visit.analytics.initWebAnalytics();
+  await visit.analytics.savePrivacyChoice({ analytics: false, ads: false });
+  await visit.analytics.savePrivacyChoice({ analytics: true, ads: true });
+
+  expect(visit.posthog.init).toHaveBeenCalledTimes(1);
+  expect(visit.posthog.opt_in_capturing).toHaveBeenCalledTimes(2);
+  expect(vendorScripts(visit.scripts, "googletagmanager")).toHaveLength(1);
+  expect(vendorScripts(visit.scripts, "facebook")).toHaveLength(1);
+  visit.analytics.captureWeb("back_on");
+  expect(visit.posthog.capture).toHaveBeenCalledWith("back_on", undefined);
+});
+
+test.each([
+  ["denied", false],
+  ["granted", true],
+] as const)("#2331 a v1 %s visitor carries over (both %s) and sees no bar", async (choice, on) => {
+  const visit = harness("", { mingla_consent_v1: JSON.stringify({ choice, ts: 1 }) });
+  await visit.analytics.initWebAnalytics();
+  expect(visit.posthog.init).toHaveBeenCalledTimes(on ? 1 : 0);
+  expect(vendorScripts(visit.scripts, "facebook")).toHaveLength(on ? 1 : 0);
+  expect(vendorScripts(visit.scripts, "googletagmanager")).toHaveLength(on ? 1 : 0);
+  expect(visit.analytics.getPrivacySnapshot()).toEqual({ saved: true, analytics: on, ads: on, gpc: false });
+  expect(JSON.parse(visit.local.get("mingla_privacy_v2") ?? "null")).toMatchObject({ analytics: on, ads: on });
+  expect(visit.local.has("mingla_consent_v1")).toBe(false);
+});
+
+test("#2331 concurrent init calls share one complete boot", async () => {
+  const visit = harness();
   await Promise.all([
-    accepted.analytics.grantConsent(),
-    accepted.analytics.grantConsent(),
-    accepted.analytics.initWebAnalytics(),
+    visit.analytics.initWebAnalytics(),
+    visit.analytics.initWebAnalytics(),
+    visit.analytics.initWebAnalytics(),
   ]);
-
-  expect(accepted.posthog.init).toHaveBeenCalledTimes(1);
-  expect(accepted.posthog.opt_in_capturing).toHaveBeenCalledTimes(1);
-  expect(accepted.posthog.capture).toHaveBeenCalledTimes(2);
-  expect(accepted.posthog.capture).toHaveBeenCalledWith("$pageview");
-  expect(accepted.posthog.capture).toHaveBeenCalledWith("consent_granted", undefined);
-  expect(accepted.scripts.filter((script) => script.src.includes("googletagmanager"))).toHaveLength(1);
-  expect(accepted.scripts.filter((script) => script.src.includes("facebook"))).toHaveLength(1);
-
-  // Pre-consent touch already landed above path is covered in Wave 0 suite;
-  // after Accept, capture with an existing click only stamps consent.
-  accepted.analytics.captureAdClickIds();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  const attrFetches = accepted.fetches.filter((url) => url.includes("attribution-capture"));
-  expect(attrFetches.length).toBeGreaterThanOrEqual(1);
+  expect(visit.posthog.init).toHaveBeenCalledTimes(1);
+  expect(visit.posthog.capture).toHaveBeenCalledWith("$pageview");
+  expect(vendorScripts(visit.scripts, "googletagmanager")).toHaveLength(1);
+  expect(vendorScripts(visit.scripts, "facebook")).toHaveLength(1);
 });

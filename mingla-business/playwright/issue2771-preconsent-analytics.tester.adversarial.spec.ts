@@ -1,27 +1,38 @@
+// #2331 rewrite of the #2771 independent browser boundary (file kept,
+// rewritten in place). Different angles from the happy path, on the real
+// Business/Buyer export and the real Marketing build:
+//   - malformed or unreadable storage falls back to the on-default, no crash;
+//   - Global Privacy Control turns ads off (no pixel), analytics unaffected;
+//   - a turn-off is isolated to its exact origin alias;
+//   - turning analytics back on, even with concurrent saves, gives one boot
+//     and at most one pageview;
+//   - /links shows the bar for every unsaved state and stays dark for a
+//     saved turn-off;
+//   - the real public-venue reservation action stays usable with the bar shown.
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test'
 import { execFileSync, spawn } from 'node:child_process'
 
 const BUSINESS = 'http://127.0.0.1:43172'
 const BUSINESS_ALIAS = 'http://localhost:43172'
 const MARKETING = 'http://127.0.0.1:43171'
-const CONSENT_KEY = 'mingla_consent_v1'
+const PRIVACY_KEY = 'mingla_privacy_v2'
+const LEGACY_KEY = 'mingla_consent_v1'
 const SIGNALS = '?gclid=test-gclid&fbclid=test-fbclid&utm_source=test-source&utm_campaign=test-campaign'
 
 const ANALYTICS_REQUEST = /posthog|us\.i\.posthog\.com|us-assets\.i\.posthog\.com|googletagmanager\.com|google-analytics\.com|doubleclick/i
+const PIXEL_REQUEST = /connect\.facebook\.net|analytics\.tiktok\.com|sc-static\.net|redditstatic\.com/i
 const AD_REQUEST = /connect\.facebook\.net|analytics\.tiktok\.com|sc-static\.net|redditstatic\.com|attribution-capture/i
 const ANALYTICS_STORAGE = /^(ph_|_ga|_gcl)/i
-const AD_STORAGE = /^(_fbp|_fbc|_ttp|_scid|rdt_|mingla_ad_click_v1)/i
 
-type ConsentSeed = 'fresh' | 'malformed' | 'denied' | 'granted' | 'unreadable'
+type PrivacySeed = 'fresh' | 'malformed' | 'unreadable' | 'analytics-off' | 'all-off'
 
 interface RequestOracle {
   urls: string[]
   bodies: string[]
-  consentAtRequest: Array<string | null>
 }
 
 async function installOracle(page: Page): Promise<RequestOracle> {
-  const oracle: RequestOracle = { urls: [], bodies: [], consentAtRequest: [] }
+  const oracle: RequestOracle = { urls: [], bodies: [] }
   await page.route('**/*', async (route) => {
     const request = route.request()
     if (/\/functions\/v1\/stripe-mode(?:[/?#]|$)/.test(request.url())) {
@@ -29,14 +40,8 @@ async function installOracle(page: Page): Promise<RequestOracle> {
       return
     }
     if (ANALYTICS_REQUEST.test(request.url()) || AD_REQUEST.test(request.url())) {
-      // Reserve one shared index before awaiting page state. Arrival ad and
-      // grant-gated analytics requests can overlap, so separate push calls can
-      // otherwise pair a URL with another request's consent snapshot.
       const index = oracle.urls.push(request.url()) - 1
       oracle.bodies[index] = request.postData() ?? ''
-      oracle.consentAtRequest[index] = await page.evaluate((key) => {
-        try { return localStorage.getItem(key) } catch { return null }
-      }, CONSENT_KEY)
       await route.abort()
       return
     }
@@ -47,91 +52,65 @@ async function installOracle(page: Page): Promise<RequestOracle> {
 
 async function newSeededPage(
   browser: Browser,
-  seed: ConsentSeed,
-  shape: 'business' | 'marketing',
-): Promise<{ context: BrowserContext; page: Page; oracle: RequestOracle }> {
+  seed: PrivacySeed,
+  options: { gpc?: boolean } = {},
+): Promise<{ context: BrowserContext; page: Page; oracle: RequestOracle; errors: string[] }> {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } })
+  if (options.gpc === true) {
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, get: () => true })
+    })
+  }
   if (seed === 'unreadable') {
-    await context.addInitScript((key) => {
+    await context.addInitScript(([privacy, legacy]) => {
       const original = Storage.prototype.getItem
       Storage.prototype.getItem = function guardedGetItem(candidate: string): string | null {
-        if (candidate === key) throw new Error('consent store unavailable')
+        if (candidate === privacy || candidate === legacy) throw new Error('privacy store unavailable')
         return original.call(this, candidate)
       }
-    }, CONSENT_KEY)
+    }, [PRIVACY_KEY, LEGACY_KEY])
   } else if (seed !== 'fresh') {
-    await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [
-      CONSENT_KEY,
+    await context.addInitScript(([key, value]) => {
+      if (window.sessionStorage.getItem('issue2771-seeded') !== null) return
+      window.sessionStorage.setItem('issue2771-seeded', '1')
+      localStorage.setItem(key, value)
+    }, [
+      PRIVACY_KEY,
       seed === 'malformed'
         ? '{not-valid-json'
-        : JSON.stringify(shape === 'business'
-          ? { choice: seed, ts: 1 }
-          : { value: seed, ts: 1 }),
+        : JSON.stringify({ analytics: false, ads: seed !== 'all-off', ts: 1 }),
     ])
   }
   const page = await context.newPage()
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(String(error)))
   const oracle = await installOracle(page)
-  return { context, page, oracle }
+  return { context, page, oracle, errors }
 }
 
-function requestIndexes(oracle: RequestOracle, pattern: RegExp): number[] {
-  return oracle.urls.flatMap((url, index) => pattern.test(url) ? [index] : [])
+function requestIndexes(oracle: RequestOracle, pattern: RegExp, since = 0): number[] {
+  return oracle.urls.flatMap((url, index) => index >= since && pattern.test(url) ? [index] : [])
 }
 
-async function forbiddenStorage(
-  context: BrowserContext,
-  page: Page,
-  pattern: RegExp,
-): Promise<string[]> {
+async function forbiddenStorage(context: BrowserContext, page: Page, pattern: RegExp): Promise<string[]> {
   const cookies = (await context.cookies(page.url())).map(({ name }) => name)
-  const storage = await page.evaluate(() => [
-    ...Object.keys(localStorage),
-    ...Object.keys(sessionStorage),
-  ])
+  const storage = await page.evaluate(() => [...Object.keys(localStorage), ...Object.keys(sessionStorage)])
   return [...cookies, ...storage].filter((key) => pattern.test(key))
 }
 
 async function forbiddenScripts(page: Page, pattern: RegExp): Promise<string[]> {
   return page.locator('script[src]').evaluateAll((nodes, source) => {
-    const pattern = new RegExp(source, 'i')
-    return nodes
-      .map((node) => (node as HTMLScriptElement).src)
-      .filter((url) => pattern.test(url))
+    const matcher = new RegExp(source, 'i')
+    return nodes.map((node) => (node as HTMLScriptElement).src).filter((url) => matcher.test(url))
   }, pattern.source)
 }
 
-async function assertAnalyticsDark(
-  context: BrowserContext,
-  page: Page,
-  oracle: RequestOracle,
-): Promise<void> {
-  // Give both React roots enough time to hydrate and run their mount effects;
-  // a pre-consent loader regression otherwise hides behind a too-early oracle.
+async function assertAnalyticsDark(context: BrowserContext, page: Page, oracle: RequestOracle, since = 0): Promise<void> {
+  // Give both React roots time to hydrate and run their mount effects.
   await page.waitForTimeout(1_500)
-  expect(requestIndexes(oracle, ANALYTICS_REQUEST), 'PostHog/GA network must remain dark').toEqual([])
-  expect(await forbiddenScripts(page, ANALYTICS_REQUEST), 'analytics scripts must remain absent').toEqual([])
-  expect(await forbiddenStorage(context, page, ANALYTICS_STORAGE), 'analytics storage must remain absent').toEqual([])
-  expect(await page.evaluate(() => ({
-    dataLayer: 'dataLayer' in window,
-    gtag: 'gtag' in window,
-  }))).toEqual({ dataLayer: false, gtag: false })
-}
-
-async function assertFullyDark(
-  context: BrowserContext,
-  page: Page,
-  oracle: RequestOracle,
-): Promise<void> {
-  await assertAnalyticsDark(context, page, oracle)
-  expect(requestIndexes(oracle, AD_REQUEST), 'ad network and attribution must remain dark').toEqual([])
-  expect(await forbiddenScripts(page, AD_REQUEST), 'ad scripts must remain absent').toEqual([])
-  expect(await forbiddenStorage(context, page, AD_STORAGE), 'ad storage must remain absent').toEqual([])
-  expect(await page.evaluate(() => ({
-    fbq: 'fbq' in window,
-    ttq: 'ttq' in window,
-    snaptr: 'snaptr' in window,
-    rdt: 'rdt' in window,
-  }))).toEqual({ fbq: false, ttq: false, snaptr: false, rdt: false })
+  expect(requestIndexes(oracle, ANALYTICS_REQUEST, since), 'PostHog/GA network must stay dark after a turn-off').toEqual([])
+  expect(await forbiddenScripts(page, ANALYTICS_REQUEST), 'analytics scripts must stay absent').toEqual([])
+  expect(await forbiddenStorage(context, page, ANALYTICS_STORAGE), 'analytics storage must stay absent').toEqual([])
 }
 
 async function dataLayerCommands(page: Page): Promise<unknown[][]> {
@@ -159,36 +138,103 @@ function pageviewOccurrences(bodies: string[]): number {
   }, 0)
 }
 
-test.describe('#2771 independent browser privacy boundary', () => {
-  test('Malformed or unreadable consent preserves each surface policy', async ({ browser }) => {
-    for (const [name, url, shape] of [
-      ['Business', BUSINESS, 'business'],
-      ['Marketing', MARKETING, 'marketing'],
-    ] as const) {
+const SURFACES = [
+  { name: 'Business', url: BUSINESS, arrivalPixels: true, waitsForNetworkIdle: false },
+  { name: 'Marketing', url: MARKETING, arrivalPixels: false, waitsForNetworkIdle: true },
+] as const
+
+test.describe('#2771 → #2331 independent browser privacy boundary', () => {
+  test('malformed or unreadable storage falls back to the on-default without crashing', async ({ browser }) => {
+    for (const surface of SURFACES) {
       for (const seed of ['malformed', 'unreadable'] as const) {
-        const { context, page, oracle } = await newSeededPage(browser, seed, shape)
-        await page.goto(`${url}/${SIGNALS}`, { waitUntil: 'domcontentloaded' })
-        if (name === 'Business') {
-          await assertAnalyticsDark(context, page, oracle)
-          await expect.poll(() => requestIndexes(oracle, AD_REQUEST).length).toBeGreaterThan(0)
-        } else {
-          await assertFullyDark(context, page, oracle)
-        }
+        const { context, page, oracle, errors } = await newSeededPage(browser, seed)
+        await page.goto(`${surface.url}/${SIGNALS}`, { waitUntil: 'domcontentloaded' })
+        if (surface.waitsForNetworkIdle) await page.waitForLoadState('networkidle')
+        await expect(page.getByTestId('privacy-bar'), `${surface.name} ${seed}`).toBeVisible()
+        await expect.poll(() => requestIndexes(oracle, ANALYTICS_REQUEST).length, `${surface.name} ${seed}`).toBeGreaterThan(0)
+        if (surface.arrivalPixels) await expect.poll(() => requestIndexes(oracle, PIXEL_REQUEST).length).toBeGreaterThan(0)
+        await page.getByTestId('privacy-bar-options').click()
+        await expect(page.getByTestId('privacy-switch-analytics')).toBeChecked()
+        await expect(page.getByTestId('privacy-switch-ads')).toBeChecked()
+        expect(errors.filter((message) => /privacy store unavailable|JSON/i.test(message)), `${surface.name} ${seed}`).toEqual([])
         await context.close()
-        test.info().annotations.push({ type: 'coverage', description: `${name} ${seed}` })
+        test.info().annotations.push({ type: 'coverage', description: `${surface.name} ${seed}` })
       }
     }
   })
 
-  test('Marketing /links suppresses its banner for every state and boots only a prior grant, once', async ({ browser }) => {
-    for (const seed of ['fresh', 'denied', 'malformed', 'unreadable', 'granted'] as const) {
-      const { context, page, oracle } = await newSeededPage(browser, seed, 'marketing')
+  test('Global Privacy Control turns ads off: no pixel, Ads switch off, analytics unaffected', async ({ browser }) => {
+    for (const surface of SURFACES) {
+      const { context, page, oracle } = await newSeededPage(browser, 'fresh', { gpc: true })
+      await page.goto(`${surface.url}/${SIGNALS}`, { waitUntil: 'domcontentloaded' })
+      if (surface.waitsForNetworkIdle) await page.waitForLoadState('networkidle')
+      await expect.poll(() => requestIndexes(oracle, ANALYTICS_REQUEST).length, surface.name).toBeGreaterThan(0)
+      await page.waitForTimeout(1_500)
+      expect(requestIndexes(oracle, PIXEL_REQUEST), `${surface.name} pixels under GPC`).toEqual([])
+      expect(await forbiddenScripts(page, PIXEL_REQUEST)).toEqual([])
+      await page.getByTestId('privacy-bar-options').click()
+      await expect(page.getByTestId('privacy-switch-ads')).not.toBeChecked()
+      await expect(page.getByTestId('privacy-switch-analytics')).toBeChecked()
+      await context.close()
+    }
+  })
+
+  test('a Business turn-off is isolated to its exact origin alias', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } })
+    const off = await context.newPage()
+    await installOracle(off)
+    await off.goto(BUSINESS, { waitUntil: 'domcontentloaded' })
+    await off.getByTestId('privacy-bar-options').click()
+    await off.getByTestId('privacy-bar-off-all').click()
+    await expect.poll(() => off.evaluate((key) => localStorage.getItem(key), PRIVACY_KEY)).toContain('"analytics":false')
+
+    const isolated = await context.newPage()
+    const isolatedOracle = await installOracle(isolated)
+    await isolated.goto(`${BUSINESS_ALIAS}/${SIGNALS}`, { waitUntil: 'domcontentloaded' })
+    await expect(isolated.getByTestId('privacy-bar')).toBeVisible()
+    expect(await isolated.evaluate((key) => localStorage.getItem(key), PRIVACY_KEY)).toBeNull()
+    await expect.poll(() => requestIndexes(isolatedOracle, ANALYTICS_REQUEST).length).toBeGreaterThan(0)
+    await expect.poll(() => requestIndexes(isolatedOracle, PIXEL_REQUEST).length).toBeGreaterThan(0)
+    await context.close()
+  })
+
+  for (const surface of SURFACES) {
+    test(`${surface.name}: turning analytics back on with concurrent saves gives one boot and at most one pageview`, async ({ browser }) => {
+      const { context, page, oracle } = await newSeededPage(browser, 'analytics-off')
+      await page.goto(surface.url, { waitUntil: 'domcontentloaded' })
+      if (surface.waitsForNetworkIdle) await page.waitForLoadState('networkidle')
+      await assertAnalyticsDark(context, page, oracle)
+      await page.evaluate(() => window.dispatchEvent(new Event('mingla:privacy-choices')))
+      await expect(page.getByTestId('privacy-panel')).toBeVisible()
+      await expect(page.getByTestId('privacy-switch-analytics')).not.toBeChecked()
+      await page.getByTestId('privacy-switch-analytics').check()
+      await page.getByTestId('privacy-bar-save').evaluate((button) => {
+        ;(button as HTMLButtonElement).click()
+        ;(button as HTMLButtonElement).click()
+      })
+      await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), PRIVACY_KEY)).toContain('"analytics":true')
+      await expect.poll(() => requestIndexes(oracle, ANALYTICS_REQUEST).length).toBeGreaterThan(0)
+      await page.waitForTimeout(1_500)
+      const commands = await dataLayerCommands(page)
+      expect(commandCount(commands, 'config', 'G-ISSUE2771')).toBeLessThanOrEqual(1)
+      expect(pageviewOccurrences(oracle.bodies)).toBeLessThanOrEqual(1)
+      expect((await forbiddenScripts(page, ANALYTICS_REQUEST)).filter((url) => /googletagmanager/.test(url)).length).toBeLessThanOrEqual(1)
+      await context.close()
+    })
+  }
+
+  test('Marketing /links shows the bar for every unsaved state and stays dark for a saved turn-off', async ({ browser }) => {
+    for (const seed of ['fresh', 'malformed', 'unreadable', 'all-off'] as const) {
+      const { context, page, oracle } = await newSeededPage(browser, seed)
       await page.goto(`${MARKETING}/links${SIGNALS}`, { waitUntil: 'domcontentloaded' })
-      await expect(page.getByRole('dialog', { name: 'Cookie consent' })).toHaveCount(0)
-      if (seed !== 'granted') {
-        await assertFullyDark(context, page, oracle)
+      await page.waitForLoadState('networkidle')
+      if (seed === 'all-off') {
+        await expect(page.getByTestId('privacy-bar'), seed).toHaveCount(0)
+        await assertAnalyticsDark(context, page, oracle)
+        expect(requestIndexes(oracle, AD_REQUEST)).toEqual([])
       } else {
-        await expect.poll(() => oracle.urls.length).toBeGreaterThan(0)
+        await expect(page.getByTestId('privacy-bar'), seed).toBeVisible()
+        await expect.poll(() => requestIndexes(oracle, ANALYTICS_REQUEST).length, seed).toBeGreaterThan(0)
         const commands = await dataLayerCommands(page)
         expect(commandCount(commands, 'config', 'G-ISSUE2771')).toBeLessThanOrEqual(1)
         expect(pageviewOccurrences(oracle.bodies)).toBeLessThanOrEqual(1)
@@ -197,101 +243,30 @@ test.describe('#2771 independent browser privacy boundary', () => {
     }
   })
 
-  test('Business grant is isolated to its exact origin alias', async ({ browser }) => {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 } })
-    const granted = await context.newPage()
-    const grantedOracle = await installOracle(granted)
-    await granted.goto(BUSINESS, { waitUntil: 'domcontentloaded' })
-    const grantedAccept = granted.getByTestId('issue-2769-consent-accept')
-    await expect(grantedAccept).toBeVisible()
-    await grantedAccept.evaluate((button) => (button as HTMLButtonElement).click())
-    await expect.poll(() => grantedOracle.urls.length).toBeGreaterThan(0)
-
-    const isolated = await context.newPage()
-    const isolatedOracle = await installOracle(isolated)
-    await isolated.goto(`${BUSINESS_ALIAS}/${SIGNALS}`, { waitUntil: 'domcontentloaded' })
-    await expect(isolated.getByRole('button', { name: 'OK', exact: true })).toBeVisible()
-    expect(await isolated.evaluate((key) => localStorage.getItem(key), CONSENT_KEY)).toBeNull()
-    await assertAnalyticsDark(context, isolated, isolatedOracle)
-    await expect.poll(() => requestIndexes(isolatedOracle, AD_REQUEST).length).toBeGreaterThan(0)
-    await context.close()
-  })
-
-  for (const surface of [
-    { name: 'Business', url: BUSINESS, accept: 'OK' },
-    { name: 'Marketing', url: MARKETING, accept: 'Accept all' },
-  ]) {
-    test(`${surface.name} concurrent grants produce one boot, one pageview, and one consent event`, async ({ browser }) => {
-      const context = await browser.newContext()
-      const page = await context.newPage()
-      const oracle = await installOracle(page)
-      await page.goto(surface.url, { waitUntil: 'domcontentloaded' })
-      if (surface.name === 'Marketing') await page.waitForLoadState('networkidle')
-      const accept = surface.name === 'Business'
-        ? page.getByTestId('issue-2769-consent-accept')
-        : page.getByRole('button', { name: surface.accept, exact: true })
-      await expect(accept).toBeVisible()
-      if (surface.name === 'Marketing') {
-        await accept.dispatchEvent('click')
-        await page.evaluate(() => {
-          window.dispatchEvent(new Event('mingla:marketing-consent'))
-          window.dispatchEvent(new Event('mingla:marketing-consent'))
-        })
-      } else {
-        await accept.evaluate((button) => {
-          ;(button as HTMLButtonElement).click()
-          ;(button as HTMLButtonElement).click()
-        })
-      }
-      await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), CONSENT_KEY)).toMatch(/granted/)
-      await expect.poll(async () =>
-        commandCount(await dataLayerCommands(page), 'event', 'consent_granted'),
-      ).toBe(1)
-      const analyticsIndexes = requestIndexes(oracle, ANALYTICS_REQUEST)
-      expect(analyticsIndexes.length).toBeGreaterThan(0)
-      await expect.poll(() => analyticsIndexes.every((index) =>
-        oracle.consentAtRequest[index] !== undefined,
-      )).toBe(true)
-      expect(analyticsIndexes.flatMap((index) =>
-        oracle.consentAtRequest[index]?.includes('granted')
-          ? []
-          : [{ url: oracle.urls[index], consent: oracle.consentAtRequest[index] }],
-      ), 'analytics requests must observe the persisted grant').toEqual([])
-      const commands = await dataLayerCommands(page)
-      expect(commandCount(commands, 'config', 'G-ISSUE2771')).toBeLessThanOrEqual(1)
-      expect(commandCount(commands, 'event', 'consent_granted')).toBe(1)
-      expect(pageviewOccurrences(oracle.bodies)).toBeLessThanOrEqual(1)
-      expect((await forbiddenScripts(page, ANALYTICS_REQUEST)).filter((url) => /googletagmanager/.test(url))).toHaveLength(1)
-      await context.close()
-    })
-  }
-
-  test('Reject keeps the production public-venue reservation action usable while analytics stays dark', async ({ browser }) => {
+  test('the production public-venue reservation action stays usable with the bar shown, and Turn off all silences it', async ({ browser }) => {
     // The fixture compiles the real PublicVenueScreen, real ConsentBanner and
-    // real reservation-action composition. It avoids depending on mutable live
-    // venue data while preserving the production component boundary.
+    // real reservation-action composition.
     execFileSync(process.execPath, ['playwright/issue2769/bundle.mjs'], { cwd: process.cwd() })
-    const server = spawn(process.execPath, ['playwright/issue2769/server.mjs'], {
-      cwd: process.cwd(),
-      stdio: 'ignore',
-    })
+    const server = spawn(process.execPath, ['playwright/issue2769/server.mjs'], { cwd: process.cwd(), stdio: 'ignore' })
     try {
       await expect.poll(async () => {
         try { return (await fetch('http://127.0.0.1:42769')).ok } catch { return false }
       }).toBe(true)
-      const { context, page, oracle } = await newSeededPage(browser, 'fresh', 'business')
+      const { context, page, oracle } = await newSeededPage(browser, 'fresh')
       await page.goto(`http://127.0.0.1:42769/${SIGNALS}`, { waitUntil: 'domcontentloaded' })
-      await page.getByRole('button', { name: 'Opt out of ad tracking', exact: true }).click()
-      await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), CONSENT_KEY)).toContain('denied')
-      const trackingCountAfterOptOut = oracle.urls.length
+      await expect(page.getByTestId('privacy-bar')).toBeVisible()
       const reserve = page.getByRole('button', { name: 'Reserve a table', exact: true })
       await expect(reserve).toBeVisible()
       await reserve.click()
       await expect(page.getByTestId('issue-2769-sheet')).toBeVisible()
-      await assertAnalyticsDark(context, page, oracle)
-      expect(oracle.urls).toHaveLength(trackingCountAfterOptOut)
-      expect(await forbiddenScripts(page, AD_REQUEST)).toEqual([])
-      expect(await forbiddenStorage(context, page, AD_STORAGE)).toEqual([])
+      await page.getByTestId('privacy-bar-options').click()
+      await page.getByTestId('privacy-bar-off-all').click()
+      await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), PRIVACY_KEY)).toContain('"ads":false')
+      const marker = oracle.urls.length
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await expect(page.getByRole('button', { name: 'Reserve a table', exact: true })).toBeVisible()
+      await assertAnalyticsDark(context, page, oracle, marker)
+      expect(requestIndexes(oracle, AD_REQUEST, marker)).toEqual([])
       await context.close()
     } finally {
       server.kill('SIGTERM')

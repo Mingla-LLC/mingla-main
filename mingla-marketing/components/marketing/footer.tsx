@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { BUSINESS_PATH, type Surface } from '@/lib/subdomain'
+import { PrivacyChoicesLink } from '@/components/marketing/privacy-choices-link'
 
 interface FooterProps {
   surface: Surface
@@ -106,6 +107,8 @@ export function Footer({ surface }: FooterProps) {
           >
             {crossLink.label}
           </Link>
+          {/* #2331 — reopens the privacy bar, expanded. */}
+          <PrivacyChoicesLink className="inline-flex min-h-11 items-center rounded-sm text-left text-sm text-text-secondary underline underline-offset-2 transition-colors hover:text-text-primary focus-ring" />
           <span className="text-xs text-text-muted">
             © {new Date().getFullYear()} Mingla. All rights reserved.
           </span>
