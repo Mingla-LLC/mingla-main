@@ -1,14 +1,15 @@
-// ORCH-1274 [Admin Money console — READ-ONLY] — Payments (per-brand Stripe
-// Connect status) console.
+// ORCH-1274 [Admin Money console] — Payments: can each brand take money and
+// get paid?
 //
-// Cross-brand list of every brand with a payment provider → a per-brand Connect
-// detail: derived status, charges/payouts, requirements-driven next steps,
-// external bank accounts, and the Paystack-vs-Stripe provider. READ-ONLY: no
-// Stripe API call (schema/webhook-synced data only). The "Refresh from Stripe" /
-// "Generate onboarding link" actions are rendered DISABLED with a WAVE-2 tag —
-// they ride the ORCH-1271 admin-write-primitive in a later wave (SPEC §9).
+// #4130 Wave 2a: Stripe and Paystack are read the same way. The list reads
+// admin_list_brand_payment_readiness (Stripe Connect, Stripe bank, Paystack
+// bank recipient, paid out to date, held now) and every verdict comes from
+// lib/paymentReadiness.js, the one place admin decides readiness (the Brands
+// page reuses it). Paystack brands with no setup are listed. The Stripe-only
+// actions (Refresh from Stripe, onboarding link) show only on Stripe brands.
+// No Stripe or Paystack API call is made to draw this page.
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { CreditCard } from "lucide-react";
 import { EntityListView } from "../components/entity/EntityListView";
 import { EntityDetailView } from "../components/entity/EntityDetailView";
@@ -16,7 +17,11 @@ import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { AlertCard } from "../components/ui/Card";
-import { listBrandStripeStatus, getBrandStripeStatus } from "../services/adminMoneyService";
+import { getBrandStripeStatus, fetchPaymentReadinessRows, listBrandPaymentReadiness } from "../services/adminMoneyService";
+import { READINESS, summarizeReadiness } from "../lib/paymentReadiness";
+import { formatMoneyMinor } from "../lib/moneyFormat";
+import { LoadError } from "../components/ui/LoadError";
+import { Skeleton } from "../components/ui/Skeleton";
 import { connectAction } from "../services/adminMoneyActService";
 import { formatDateTime } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -66,7 +71,19 @@ function boolMark(v) {
   return v ? <span className="text-[#22c55e] font-semibold">✓</span> : <span className="text-[var(--color-text-muted)]">✗</span>;
 }
 
-// ── List columns / filters / csv ──────────────────────────────────────────────
+// ── List columns / filters / csv (#4130 Wave 2a) ─────────────────────────────
+
+const READINESS_VARIANT = { ready: "success", needs_action: "warning", no_setup: "default" };
+
+function moneyMap(map) {
+  const entries = Object.entries(map ?? {}).filter(([, cents]) => Number(cents) !== 0);
+  if (entries.length === 0) return null;
+  return entries.map(([cur, cents]) => formatMoneyMinor(Number(cents), cur)).join(" · ");
+}
+
+function zeroIn(row) {
+  return formatMoneyMinor(0, row.default_currency || (row.readiness?.provider === "paystack" ? "NGN" : "USD"));
+}
 
 const COLUMNS = [
   {
@@ -79,38 +96,53 @@ const COLUMNS = [
       </div>
     ),
   },
-  { key: "provider", label: "Provider", render: (val) => providerBadge(val) },
-  { key: "derived_status", label: "Status", render: (val) => statusBadge(val) },
-  { key: "charges_enabled", label: "Charges", render: (val) => boolMark(val) },
-  { key: "payouts_enabled", label: "Payouts", render: (val) => boolMark(val) },
-  { key: "country", label: "Country", render: (val) => val || <span className="text-[var(--color-text-muted)]">—</span> },
-  { key: "default_currency", label: "Currency", render: (val) => val || <span className="text-[var(--color-text-muted)]">—</span> },
+  { key: "provider", label: "Provider", render: (_v, row) => row.readiness.providerLabel, sortValue: (row) => row.readiness.provider },
   {
-    key: "disabled_reason",
-    label: "Blocked by",
-    render: (val) =>
-      val ? <span className="text-xs text-[#b91c1c]">{val}</span> : <span className="text-[var(--color-text-muted)]">—</span>,
+    key: "readiness_state",
+    label: "Ready to get paid",
+    render: (_v, row) => <Badge variant={READINESS_VARIANT[row.readiness.state] || "default"} dot>{row.readiness.stateLabel}</Badge>,
+    sortValue: (row) => row.readiness.state,
+  },
+  { key: "bank", label: "Bank on file", render: (_v, row) => row.readiness.bankLabel, sortValue: (row) => row.readiness.bankLabel },
+  {
+    key: "paid_out_by_currency",
+    label: "Paid out to date",
+    render: (val, row) => <span className="tabular-nums">{moneyMap(val) || zeroIn(row)}</span>,
+    sortValue: (row) => Object.values(row.paid_out_by_currency ?? {}).reduce((a, b) => a + Number(b), 0),
+  },
+  {
+    key: "held_by_currency",
+    label: "Held now",
+    render: (val) => (moneyMap(val) ? <span className="font-semibold tabular-nums">{moneyMap(val)}</span> : <span className="text-[var(--color-text-muted)]">–</span>),
+    sortValue: (row) => Object.values(row.held_by_currency ?? {}).reduce((a, b) => a + Number(b), 0),
+  },
+  {
+    key: "blocking",
+    label: "What's blocking",
+    render: (_v, row) =>
+      row.readiness.blocking
+        ? <span className={`text-xs ${row.readiness.blockingOnMingla ? "font-medium text-[var(--color-error-700)]" : "text-[var(--color-text-secondary)]"}`}>{row.readiness.blocking}</span>
+        : <span className="text-[var(--color-text-muted)]">–</span>,
+    sortValue: (row) => row.readiness.blocking,
   },
 ];
 
 const FILTERS = [
   {
-    key: "status",
-    label: "Status",
-    options: [
-      { value: "active", label: "Active" },
-      { value: "onboarding", label: "Onboarding" },
-      { value: "restricted", label: "Restricted" },
-      { value: "not_connected", label: "Not connected" },
-    ],
-  },
-  {
     key: "provider",
     label: "Provider",
     options: [
-      { value: "stripe", label: "Stripe" },
-      { value: "paystack", label: "Paystack" },
-      { value: "none", label: "None" },
+      { value: "paystack", label: "Paystack · NGN" },
+      { value: "stripe", label: "Stripe · USD" },
+    ],
+  },
+  {
+    key: "readiness",
+    label: "Readiness",
+    options: [
+      { value: READINESS.READY, label: "Ready" },
+      { value: READINESS.NEEDS_ACTION, label: "Needs host action" },
+      { value: READINESS.NO_SETUP, label: "No payment setup" },
     ],
   },
 ];
@@ -119,17 +151,83 @@ const CSV = {
   columns: [
     { key: "brand_name", label: "Brand" },
     { key: "brand_slug", label: "Slug" },
-    { key: "provider", label: "Provider" },
-    { key: "derived_status", label: "Status" },
-    { key: "charges_enabled", label: "Charges enabled" },
-    { key: "payouts_enabled", label: "Payouts enabled" },
-    { key: "country", label: "Country" },
-    { key: "default_currency", label: "Currency" },
-    { key: "disabled_reason", label: "Blocked by" },
+    { key: "csv_provider", label: "Provider" },
+    { key: "csv_state", label: "Ready to get paid" },
+    { key: "csv_bank", label: "Bank on file" },
+    { key: "csv_paid", label: "Paid out to date" },
+    { key: "csv_held", label: "Held now" },
+    { key: "csv_blocking", label: "What's blocking" },
     { key: "stripe_connect_id", label: "Stripe account id" },
+    { key: "paystack_subaccount_code", label: "Paystack subaccount code" },
+    { key: "paystack_recipient_code", label: "Paystack recipient code" },
   ],
-  filename: "brand-payment-status",
+  filename: "brand-payments",
 };
+
+// CSV cells are flat text: add them to each row on the way out.
+async function fetchPaymentsPage(query) {
+  const result = await listBrandPaymentReadiness(query);
+  return {
+    ...result,
+    rows: result.rows.map((row) => ({
+      ...row,
+      csv_provider: row.readiness.providerLabel,
+      csv_state: row.readiness.stateLabel,
+      csv_bank: row.readiness.bankLabel,
+      csv_paid: moneyMap(row.paid_out_by_currency) || "0",
+      csv_held: moneyMap(row.held_by_currency) || "0",
+      csv_blocking: row.readiness.blocking || "",
+    })),
+  };
+}
+
+function PaymentsKpis() {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setRows(await fetchPaymentReadinessRows(null));
+    } catch (err) {
+      setRows(null);
+      setError(err?.message || null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+  const k = useMemo(() => (rows ? summarizeReadiness(rows) : null), [rows]);
+
+  if (error) return <LoadError title="Couldn't load the payment totals" message={error} onRetry={load} retrying={loading} />;
+  if (!k) {
+    return (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-busy="true">
+        {[0, 1, 2, 3].map((i) => <Skeleton key={i} height={92} />)}
+      </div>
+    );
+  }
+  const tile = (label, value, note, tone) => (
+    <div className="flex min-h-[92px] flex-col justify-center rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-4">
+      <span className="text-[13px] text-[var(--color-text-secondary)]">{label}</span>
+      <span className={`text-[26px] font-bold leading-tight tabular-nums ${tone || "text-[var(--color-text-primary)]"}`}>{value}</span>
+      {note ? <span className="mt-1 text-xs text-[var(--color-text-tertiary)]">{note}</span> : null}
+    </div>
+  );
+  const heldNoBank = moneyMap(k.heldWithoutBankByCurrency);
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Payment readiness">
+      {tile("Ready to get paid", k.ready, `${k.readyByProvider.paystack} Paystack · ${k.readyByProvider.stripe} Stripe`, "text-[var(--color-success-700)]")}
+      {tile("Need host action", k.needsAction, "Stripe details or bank missing", k.needsAction > 0 ? "text-[var(--color-warning-700)]" : undefined)}
+      {tile("Selling with no bank yet", k.sellingWithoutBank, heldNoBank ? `${heldNoBank} held for them` : "Nothing held", k.sellingWithoutBank > 0 ? "text-[var(--color-error-700)]" : undefined)}
+      {tile("No payment setup", k.noSetup, "Brands that chose a provider and set nothing up")}
+    </div>
+  );
+}
 
 // ── Hash helpers ──────────────────────────────────────────────────────────────
 
@@ -199,13 +297,43 @@ function field(label, value, render) {
   return { label, value, render };
 }
 
-function buildSections(detail) {
+function buildSections(detail, readinessRow) {
   const brand = detail.brand || {};
   const account = detail.account || null;
   const externals = Array.isArray(detail.external_accounts) ? detail.external_accounts : [];
-  const provider = detail.provider || "none";
+  const r = readinessRow?.readiness || null;
+  const provider = r?.provider || detail.provider || "none";
+
+  // #4130: a Paystack brand is judged on its Paystack bank, not Stripe.
+  const readiness = {
+    label: "Can this brand get paid?",
+    fields: r
+      ? [
+          field("Provider", r.providerLabel),
+          field("Ready to get paid", null, () => <Badge variant={READINESS_VARIANT[r.state] || "default"} dot>{r.stateLabel}</Badge>),
+          field("Bank on file", r.bankLabel),
+          field("Paid out to date", null, () => moneyMap(readinessRow.paid_out_by_currency) || zeroIn(readinessRow)),
+          field("Held now", null, () => moneyMap(readinessRow.held_by_currency) || "–"),
+          field("What's blocking", r.blocking || "Nothing"),
+        ]
+      : [field("", "This brand has no payment setup yet.", (v) => <span className="text-[var(--color-text-muted)]">{v}</span>)],
+  };
+  if (provider === "paystack") {
+    return [
+      readiness,
+      {
+        label: "Paystack",
+        fields: [
+          field("Subaccount code", brand.paystack_subaccount_code, (v) => <span className="font-mono text-xs break-all">{v}</span>),
+          field("Recipient code", readinessRow?.paystack_recipient_code, (v) => <span className="font-mono text-xs break-all">{v}</span>),
+          field("Bank account", readinessRow?.paystack_bank_mask || "No bank on file"),
+        ],
+      },
+    ];
+  }
 
   const sections = [
+    readiness,
     {
       label: "Status",
       fields: [
@@ -248,15 +376,6 @@ function buildSections(detail) {
     },
   ];
 
-  if (provider === "paystack") {
-    sections.push({
-      label: "Paystack",
-      fields: [
-        field("Subaccount code", brand.paystack_subaccount_code, (v) => <span className="font-mono text-xs break-all">{v}</span>),
-      ],
-    });
-  }
-
   return sections;
 }
 
@@ -270,6 +389,7 @@ export function BusinessPaymentsPage() {
   const [actionMode, setActionMode] = useState(null); // null | 'refresh' | 'onboarding_link'
   const [onboardingUrl, setOnboardingUrl] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [readinessRow, setReadinessRow] = useState(null);
 
   useEffect(() => {
     const sync = () => setSelectedBrandId(brandIdFromHash());
@@ -301,7 +421,16 @@ export function BusinessPaymentsPage() {
     setLoading(true);
     setError(null);
     setDetail(null);
+    setReadinessRow(null);
     try {
+      // #4130: the same readiness facts the list shows, for this brand.
+      try {
+        const rows = await fetchPaymentReadinessRows(null);
+        setReadinessRow(rows.find((r) => r.brand_id === brandId) || null);
+      } catch (readinessErr) {
+        setError(readinessErr?.message || "Failed to load payment readiness.");
+        return;
+      }
       const { data, error: err } = await getBrandStripeStatus(brandId);
       if (err) {
         const msg = err.message || "";
@@ -336,9 +465,9 @@ export function BusinessPaymentsPage() {
   if (selectedBrandId) {
     const brand = detail?.brand || {};
     const badges = [];
-    if (detail) {
-      badges.push({ label: detail.status || "unknown", variant: STATUS_VARIANT[detail.status] || "default" });
-      badges.push({ label: detail.provider || "none", variant: PROVIDER_VARIANT[detail.provider] || "default" });
+    if (detail && readinessRow?.readiness) {
+      badges.push({ label: readinessRow.readiness.stateLabel, variant: READINESS_VARIANT[readinessRow.readiness.state] || "default" });
+      badges.push({ label: readinessRow.readiness.providerLabel, variant: PROVIDER_VARIANT[readinessRow.readiness.provider] || "default" });
     }
 
     return (
@@ -354,9 +483,9 @@ export function BusinessPaymentsPage() {
             backLabel: "Payments",
             onBack: backToList,
           }}
-          sections={detail ? buildSections(detail) : []}
+          sections={detail ? buildSections(detail, readinessRow) : []}
         />
-        {detail && (
+        {detail && readinessRow?.readiness?.stripeActionsAllowed && (
           <div className="mt-4 flex flex-col gap-3 border-t border-[var(--gray-200)] pt-4">
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button variant="secondary" size="md" onClick={() => setActionMode("refresh")}>
@@ -419,18 +548,20 @@ export function BusinessPaymentsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Payments"
-        description="Every brand's payout readiness — Stripe Connect or Paystack status, what's blocking KYC, and the bank accounts on file. Read-only."
+        description="Can each brand take money and get paid? Stripe and Paystack, read the same way."
       />
 
+      <PaymentsKpis />
+
       <EntityListView
-        title="Payment providers"
+        title="Brands"
         columns={COLUMNS}
-        fetchPage={listBrandStripeStatus}
-        searchPlaceholder="Search brand, slug, or acct id"
+        fetchPage={fetchPaymentsPage}
+        searchPlaceholder="Brand, slug, Stripe or Paystack code"
         filters={FILTERS}
         onRowClick={(row) => openBrand(row.brand_id)}
         csv={CSV}
-        emptyMessage="No brands with a payment provider yet."
+        emptyMessage="No brands match. Brands appear here once they choose Paystack or start Stripe setup."
         emptyIcon={CreditCard}
         rowKey={(row) => row.brand_id}
       />

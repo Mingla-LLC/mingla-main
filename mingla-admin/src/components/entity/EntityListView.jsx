@@ -16,6 +16,7 @@
 //     filtered rows (up to CLIENT_SORT_ROW_CAP, stated when hit) and sorts
 //     them here, instead of a header click that silently does nothing
 //   - #4130: a failed load is the shared LoadError card with Retry
+//   - #4130 Wave 2a: `initialFilters` opens the list already filtered
 //   - row click → onRowClick(row): DataTable (ui kit, not forked here) has no
 //     onRowClick, so we wrap each cell's render in a clickable element that fills
 //     the cell — deterministic, no DOM querying / index mapping.
@@ -45,12 +46,15 @@ export function EntityListView({
   emptyIcon,
   rowKey = (row) => row.id,
   serverSort = false,
+  // #4130 Wave 2a: a list opened from a link starts on that filter
+  // (e.g. Orders "Host not paid" from Mingla money). Read once, on mount.
+  initialFilters,
 }) {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState(null);
-  const [selectedFilters, setSelectedFilters] = useState({});
+  const [selectedFilters, setSelectedFilters] = useState(() => ({ ...(initialFilters || {}) }));
   const [page, setPage] = useState(0);
 
   const [rows, setRows] = useState([]);

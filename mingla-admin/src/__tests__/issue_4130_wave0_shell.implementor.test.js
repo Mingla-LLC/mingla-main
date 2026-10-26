@@ -110,11 +110,13 @@ describe("#4130 W0-1: the menu is the approved sidebar", () => {
   });
   it("new pages with nothing to hold yet say they are coming, and show no numbers", () => {
     const hubs = stripComments(read("pages/shellHubs.jsx"));
-    assert.ok(/"mingla-money": MinglaMoneyPlaceholder/.test(APP));
+    // #4130: Wave 2a built Mingla money, so it is no longer a placeholder.
+    assert.ok(/"mingla-money": MinglaMoneyPage/.test(APP));
     assert.ok(/"feature-flags": FeatureFlagsPlaceholder/.test(APP));
     assert.equal((hubs.match(/Coming in this release/g) || []).length, 1, "one shared placeholder");
     const words = [...hubs.matchAll(/(?:title|description|coming)="([^"]*)"/g)].map((m) => m[1]);
-    assert.ok(words.length >= 6);
+    // #4130: one placeholder left (Feature flags) after Wave 2a.
+    assert.ok(words.length >= 3);
     for (const w of words) assert.equal(/\d/.test(w), false, `no figures on a placeholder: ${w}`);
   });
 });

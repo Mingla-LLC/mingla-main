@@ -24,7 +24,6 @@ import {
   PlatformHealthHub,
   SettingsHub,
   TeamAndRolesHub,
-  MinglaMoneyPlaceholder,
   FeatureFlagsPlaceholder,
 } from "./pages/shellHubs";
 import { INVITE_ROUTE, parseInviteHash } from "./lib/inviteLink";
@@ -45,6 +44,8 @@ import { OfferingsConsolePage } from "./pages/OfferingsConsolePage";
 import { BusinessPaymentsPage } from "./pages/BusinessPaymentsPage";
 import { BusinessOrdersPage } from "./pages/BusinessOrdersPage";
 import { BusinessMoneyLedgerPage } from "./pages/BusinessMoneyLedgerPage";
+// #4130 Wave 2a — Mingla money: revenue, profit and host money per currency.
+import { MinglaMoneyPage } from "./pages/MinglaMoneyPage";
 // ISSUE-862 WP1 — Full Rooms Ad Engine (Meta channel + 4 fail-close stubs;
 // hash route #/ad-engine). Minimal functional surface; #864 owns the builder.
 import { AdEnginePage } from "./pages/AdEnginePage";
@@ -93,7 +94,7 @@ const PAGES = {
   // ORCH-1273: Business offerings console (READ-ONLY).
   "business-offerings": OfferingsConsolePage,
   // ── Money ── ORCH-1274 Business Money console; #4130 Mingla money (Wave 2a).
-  "mingla-money": MinglaMoneyPlaceholder,
+  "mingla-money": MinglaMoneyPage,
   "business-payments": BusinessPaymentsPage,
   "business-orders": BusinessOrdersPage,
   "business-money-ledger": BusinessMoneyLedgerPage,

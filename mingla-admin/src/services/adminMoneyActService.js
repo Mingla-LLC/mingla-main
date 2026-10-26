@@ -108,3 +108,19 @@ export async function revokeOverrideAudited({ override_id, user_id, reason }) {
     p_reason: reason,
   });
 }
+
+// ── #4130 Wave 2a — mark "Mingla owes back" settled (DB-only audited RPC) ─────
+
+/**
+ * Records that Mingla paid hosts back the transfer fees it held, for every
+ * open credit in `currency`. The server records who and when (from the
+ * session, never a client field), the reference and the reason, and writes
+ * the audit row.
+ */
+export async function settleOwesBack({ currency, reference, reason }) {
+  return callAdminWriteRpc("admin_settle_owes_back", {
+    p_currency: currency,
+    p_reference: reference,
+    p_reason: reason,
+  });
+}

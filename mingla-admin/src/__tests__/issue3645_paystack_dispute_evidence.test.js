@@ -118,10 +118,16 @@ describe("#3645 WS5 — service + UI wiring", () => {
     assert.match(ACT, /p_expected_dossier_sha256:\s*expected_dossier_sha256/);
     assert.match(ACT, /callAdminWriteRpc\("admin_record_paystack_dispute_evidence_action"/);
   });
-  it("Money ledger has a Paystack disputes tab distinct from Stripe disputes", () => {
-    assert.match(LEDGER, /id: "paystack_disputes", label: "Paystack disputes"/);
+  // #4130: Stripe and Paystack disputes now share one Disputes tab (merged by
+  // listAllDisputes, which reads admin_list_paystack_disputes); a Paystack row
+  // still opens the Paystack evidence detail, and old ?tab=paystack_disputes
+  // addresses land on the merged tab.
+  it("Money ledger lists Paystack disputes beside Stripe ones and opens the Paystack detail", () => {
     assert.match(LEDGER, /id: "disputes", label: "Disputes"/);
-    assert.match(LEDGER, /fetchPage=\{listPaystackDisputes\}/);
+    assert.match(LEDGER, /paystack_disputes: "disputes"/);
+    assert.match(LEDGER, /fetchPage=\{listAllDisputes\}/);
+    assert.match(READ, /listPaystackDisputes\(\{ search, filters: \{\}, page: 0, pageSize: DISPUTES_CAP \}\)/);
+    assert.match(LEDGER, /row\.provider === "paystack" \? openPaystackDispute\(row\.id\)/);
     assert.match(LEDGER, /paystackDisputeId=/);
     assert.match(LEDGER, /<PaystackDisputeDetail/);
   });

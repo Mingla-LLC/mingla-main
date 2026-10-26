@@ -8,7 +8,7 @@
 //     is coming, plainly, and shows no numbers.
 //
 // [TRANSITIONAL] every export here is replaced by its wave's real page
-// (Wave 2a Mingla money, Wave 3 People and Brands, Wave 4a Hosts and creators
+// (Wave 3 People and Brands, Wave 4a Hosts and creators
 // and Inbound leads, Wave 4b Place pool, Platform health, Feature flags,
 // Settings, Team and roles) — exit when the last of those waves lands.
 import { Construction } from "lucide-react";
@@ -107,16 +107,6 @@ function ComingSoon({ title, description, coming }) {
         </div>
       </SectionCard>
     </div>
-  );
-}
-
-export function MinglaMoneyPlaceholder() {
-  return (
-    <ComingSoon
-      title="Mingla money"
-      description="What Mingla made, what it kept, and what hosts are owed, in naira and dollars."
-      coming="This page will show revenue and profit in every currency and in US dollars, money held for hosts, and anything that needs a look. Until then, Orders and Money ledger have the details."
-    />
   );
 }
 

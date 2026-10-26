@@ -417,6 +417,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     "PlaceIntelligenceTrialPage.jsx", "PlacePoolManagementPage.jsx", "PricingPage.jsx", "QueueHealthPage.jsx", "RefundOperationsPage.jsx",
     "RoleHomePage.jsx", "SettingsPage.jsx", "SignalLibraryPage.jsx", "StripeModePage.jsx", "SubscriptionManagementPage.jsx",
     "SupportDeskPage.jsx", "TeamDashboardPage.jsx", "ToolLeadsPage.jsx", "UserManagementPage.jsx", "VenuesConsolePage.jsx",
+    // #4130: Wave 2a's Mingla money page draws the one header.
+    "MinglaMoneyPage.jsx",
   ];
   // The five pages that moved later (My agent, Hosts and Creators, Beta Leads,
   // Home, Team dashboard) are now in the list above; none is left to follow.
@@ -449,7 +451,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     assert.deepEqual([...MIGRATED, ...FOLLOW_UP].sort(), all);
     // [TEST-MOD-APPROVED #2879] Queue health page (+1 over #3720 Wave 6's 41).
     // [TEST-MOD-APPROVED #3980] Work board and Agent log pages (+2).
-    assert.equal(MIGRATED.length, 44);
+    // #4130: Mingla money page (+1, Wave 2a).
+    assert.equal(MIGRATED.length, 45);
     assert.equal(FOLLOW_UP.length, 0);
   });
 
@@ -587,7 +590,8 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
   it("every state of every migrated page draws the page header", () => {
     // [TEST-MOD-APPROVED #2879] Queue health page (+1 over #3720 Wave 6's 41).
     // [TEST-MOD-APPROVED #3980] Work board and Agent log pages (+2).
-    assert.equal(MIGRATED.length, 44);
+    // #4130: Mingla money page (+1, Wave 2a).
+    assert.equal(MIGRATED.length, 45);
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);
       assert.equal(
