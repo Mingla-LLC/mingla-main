@@ -52,7 +52,14 @@ describe("#2331 privacy bar / reserve composition", () => {
     const banner = read("mingla-business/src/analytics/ConsentBanner.web.tsx");
     expect(banner).toContain("const privacy = usePrivacyState();");
     expect(banner).toContain("--mingla-privacy-inset");
-    expect(banner).toContain("#root{box-sizing:border-box;padding-bottom:var(${PRIVACY_INSET_PROPERTY},0px)}");
+    // The app root ends at the bar's top edge and, while the bar shows, scrolls
+    // a screen that no longer fits; the floor never applies to the bar or toast.
+    expect(banner).toContain("#root{box-sizing:border-box;height:calc(100% - var(${PRIVACY_INSET_PROPERTY},0px))}");
+    expect(banner).toContain('html[data-mingla-privacy-bar="shown"] #root{overflow-y:auto;overscroll-behavior:contain}');
+    expect(banner).toContain(
+      'html[data-mingla-privacy-bar="shown"] #root>:not(.mpb):not(.mpb-toast){flex-shrink:0;min-height:calc(100vh - 53px - env(safe-area-inset-bottom,0px));min-height:calc(100dvh - 53px - env(safe-area-inset-bottom,0px))}',
+    );
+    expect(banner).not.toContain("padding-bottom:var(${PRIVACY_INSET_PROPERTY},0px)");
     expect(banner).toContain("new ResizeObserver(measure)");
     expect(banner).not.toContain("choiceLinkHost");
     expect(banner).not.toContain("Ad privacy choices");
