@@ -258,78 +258,17 @@ function capitalise(value: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Budget: real range when Admin configured one for the currency, else a level
+// Pay: the most the host pays each creator, in the gig's currency
 // ---------------------------------------------------------------------------
 
-export type BudgetBandKey = "b1" | "b2" | "b3" | "b4";
-export const BUDGET_BANDS: readonly BudgetBandKey[] = ["b1", "b2", "b3", "b4"];
-
-export type BudgetBandRange = {
-  currency: string;
-  band: BudgetBandKey;
-  min_minor: number;
-  max_minor: number;
-};
-
-export type BudgetDisplay =
-  | { kind: "range"; label: string }
-  | { kind: "level"; level: 1 | 2 | 3 | 4; label: string };
-
-/** From a gig's budget fields (budget_min_minor/max_minor/currency, band fallback). */
-export function budgetDisplay(input: {
-  budget_min_minor?: number | null;
-  budget_max_minor?: number | null;
-  budget_currency?: string | null;
-  budget_band?: string | null;
-}): BudgetDisplay {
-  const {
-    budget_min_minor: min,
-    budget_max_minor: max,
-    budget_currency: currency,
-  } = input;
-  if (
-    typeof currency === "string" &&
-    currency.length === 3 &&
-    typeof min === "number" &&
-    typeof max === "number"
-  ) {
-    return {
-      kind: "range",
-      label: `${programMoney(min, currency)}–${programMoney(max, currency)}`,
-    };
-  }
-  const level = bandLevel(input.budget_band);
-  return { kind: "level", level, label: `Budget level ${level} of 4` };
-}
-
-export function bandLevel(band: string | null | undefined): 1 | 2 | 3 | 4 {
-  const index = BUDGET_BANDS.indexOf((band ?? "") as BudgetBandKey);
-  return (index >= 0 ? index + 1 : 1) as 1 | 2 | 3 | 4;
-}
-
-/** Ranges configured for one currency, ordered b1..b4 (empty when none). */
-export function bandsForCurrency(
-  ranges: readonly BudgetBandRange[],
-  currency: string,
-): BudgetBandRange[] {
-  const code = normalizeCurrency(currency);
-  return BUDGET_BANDS.map((band) =>
-    ranges.find(
-      (row) => row.band === band && normalizeCurrency(row.currency) === code,
-    ),
-  ).filter((row): row is BudgetBandRange => Boolean(row));
-}
-
-/** The smallest configured band whose max covers the pay-up-to amount. */
-export function bandForAmount(
-  ranges: readonly BudgetBandRange[],
-  amountMinor: number,
-): BudgetBandKey {
-  const sorted = [...ranges].sort(
-    (a, b) => BUDGET_BANDS.indexOf(a.band) - BUDGET_BANDS.indexOf(b.band),
-  );
-  for (const row of sorted) if (amountMinor <= row.max_minor) return row.band;
-  return sorted.length > 0 ? sorted[sorted.length - 1].band : "b2";
+/** "up to $300" from a gig's pay_up_to_minor, or null when none was stored. */
+export function payUpToLabel(
+  payMinor: number | null | undefined,
+  currency: string | null | undefined,
+): string | null {
+  if (typeof payMinor !== "number" || !Number.isFinite(payMinor) || payMinor <= 0)
+    return null;
+  return `up to ${programMoneyShort(payMinor, currency || "USD")}`;
 }
 
 // ---------------------------------------------------------------------------

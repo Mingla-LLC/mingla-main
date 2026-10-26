@@ -1,6 +1,5 @@
 import { supabase } from "./supabase";
 import { postHogService } from "./postHogService";
-import type { BudgetBandRange } from "../utils/creatorProgramFormat";
 
 // #3872 — Host side of creator gigs. The creator side lives in Explorer.
 
@@ -41,7 +40,8 @@ export type HostGig = Record<string, unknown> & {
   shoot_window_end: string;
   post_by: string;
   usage_days: number;
-  budget_band: string;
+  /** The most each creator can be paid, in minor units (null on old gigs). */
+  pay_up_to_minor: number | null;
   currency: string;
   sales_share_bps: number | null;
   slots: number;
@@ -622,22 +622,6 @@ export const creatorGigsService = {
         tickets: num(row.tickets),
         sold_minor: num(row.sold_minor),
         clicks: num(row.clicks),
-      }));
-  },
-  async budgetBands(): Promise<BudgetBandRange[]> {
-    const { data, error } = await supabase
-      .from("gig_budget_bands")
-      .select("currency,band,min_minor,max_minor");
-    if (error) return [];
-    return (data ?? [])
-      .filter(
-        (row) => typeof row.band === "string" && /^b[1-4]$/.test(row.band),
-      )
-      .map((row) => ({
-        currency: String(row.currency),
-        band: row.band as BudgetBandRange["band"],
-        min_minor: Number(row.min_minor),
-        max_minor: Number(row.max_minor),
       }));
   },
   async refund(

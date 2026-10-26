@@ -1,11 +1,8 @@
 import {
   addDays,
   audienceLabel,
-  bandForAmount,
-  bandsForCurrency,
   bookingFeeMinor,
   briefLintMessage,
-  budgetDisplay,
   dateRangeLabel,
   dueIn,
   followerBandLabel,
@@ -14,13 +11,13 @@ import {
   hostContractStep,
   lintPublicBrief,
   minorToWholeText,
+  payUpToLabel,
   programErrorMessage,
   programMoney,
   programMoneyShort,
   shortDate,
   timelineWords,
   wholeCurrencyToMinor,
-  type BudgetBandRange,
 } from "../creatorProgramFormat";
 
 // #3872 walkthrough: hosts never see raw values (minor units, band keys, ISO
@@ -100,45 +97,18 @@ describe("creator program audience and formats", () => {
   });
 });
 
-describe("creator program budget", () => {
-  const ranges: BudgetBandRange[] = [
-    { currency: "USD", band: "b1", min_minor: 5000, max_minor: 15000 },
-    { currency: "USD", band: "b2", min_minor: 15000, max_minor: 32000 },
-    { currency: "NGN", band: "b1", min_minor: 1, max_minor: 2 },
-  ];
-
-  it("shows a real range when Admin configured one", () => {
-    expect(
-      budgetDisplay({
-        budget_min_minor: 18000,
-        budget_max_minor: 32000,
-        budget_currency: "USD",
-        budget_band: "b2",
-      }),
-    ).toEqual({ kind: "range", label: "$180–$320" });
+describe("creator program pay", () => {
+  it("says the gig's stored pay in its own currency, never a level", () => {
+    expect(payUpToLabel(30000, "USD")).toBe("up to $300");
+    expect(payUpToLabel(5000000, "NGN")).toContain("50,000");
+    expect(payUpToLabel(5000000, "NGN")).toMatch(/^up to /);
+    expect(payUpToLabel(30000, "USD")).not.toMatch(/level/i);
   });
 
-  it("falls back to a 4-step level, never the band code", () => {
-    const display = budgetDisplay({
-      budget_min_minor: null,
-      budget_max_minor: null,
-      budget_currency: null,
-      budget_band: "b2",
-    });
-    expect(display).toEqual({
-      kind: "level",
-      level: 2,
-      label: "Budget level 2 of 4",
-    });
-    expect(display.label).not.toContain("b2");
-  });
-
-  it("picks the band that covers a pay-up-to amount", () => {
-    const usd = bandsForCurrency(ranges, "usd");
-    expect(usd.map((row) => row.band)).toEqual(["b1", "b2"]);
-    expect(bandForAmount(usd, 30000)).toBe("b2");
-    expect(bandForAmount(usd, 10000)).toBe("b1");
-    expect(bandForAmount(usd, 99999)).toBe("b2");
+  it("says nothing for a gig saved before pay existed", () => {
+    expect(payUpToLabel(null, "USD")).toBeNull();
+    expect(payUpToLabel(undefined, "USD")).toBeNull();
+    expect(payUpToLabel(0, "USD")).toBeNull();
   });
 });
 
