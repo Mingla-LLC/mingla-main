@@ -2,7 +2,7 @@
  * #3720 Slice F console, split by #4130 Wave 6 into two pages that share this
  * frame: Support (the inbox first, Email, People and roles) and Community
  * (announcements, roadmap, ideas, moderation, brand groups, feature guide,
- * product inbox). pages/SupportPage.jsx and pages/CommunityPage.jsx render it.
+ * product inbox). SupportPage and CommunityPage below are the two pages.
  *
  * Each tab keeps its id and its row in communitySupportCapabilityContract.js,
  * and is shown only to the area that row names (communitySupportAccess.js):
@@ -255,4 +255,12 @@ export function SupportCommunityConsole({ pageId }) {
   );
 }
 
-export default SupportCommunityConsole;
+// #4130 Wave 6 — Support: the inbox first, then Email and People and roles.
+export function SupportPage() {
+  return <SupportCommunityConsole pageId="support" />;
+}
+
+// #4130 Wave 6 — Community: what hosts are told, what shipped, what they ask for.
+export function CommunityPage() {
+  return <SupportCommunityConsole pageId="community" />;
+}

@@ -13,6 +13,7 @@ import {
   communitySupportTabsForAccess,
 } from "../lib/communitySupportAccess.js";
 import { COMMUNITY_SUPPORT_TAB_CONTRACT } from "../lib/communitySupportCapabilityContract.js";
+import { COMMUNITY_PAGE_TABS, SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
 
 // #3988 — every Community & Support tab is shown by exactly the area whose
 // server predicate also guards that tab's RPCs (I-3988-TAB-AREA-EQUALS-RPC-GUARD,
@@ -60,11 +61,13 @@ async function reachedBy(panel: string): Promise<Reached> {
   return reached;
 }
 
-Deno.test("every rendered tab has exactly one contract row, and no row is orphaned", async () => {
-  const page = await read("pages/CommunitySupportPage.jsx");
-  const block = page.match(/const COMMUNITY_SUPPORT_TABS = \[([\s\S]*?)\];/)?.[1] ?? "";
-  const tabIds = [...block.matchAll(/id: "([a-z-]+)"/g)].map((m) => m[1]);
+// #4130 Wave 6: the tabs are split over the Support and Community pages
+// (lib/supportCommunityTabs.js, which both pages render); Overview was
+// retired, so its row went with it.
+Deno.test("every rendered tab has exactly one contract row, and no row is orphaned", () => {
+  const tabIds = [...SUPPORT_PAGE_TABS, ...COMMUNITY_PAGE_TABS].map((tab) => tab.id);
   assert(tabIds.length >= 12, "tab list parsed");
+  assertEquals(new Set(tabIds).size, tabIds.length, "no tab is on both pages");
   assertEquals([...tabIds].sort(), Object.keys(COMMUNITY_SUPPORT_TAB_CONTRACT).sort());
 });
 

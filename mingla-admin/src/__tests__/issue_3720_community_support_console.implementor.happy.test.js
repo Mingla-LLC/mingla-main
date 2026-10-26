@@ -17,6 +17,7 @@ const read = (rel) => readFileSync(join(ROOT, rel), "utf8");
 const CONSTANTS = read("lib/constants.js");
 const APP = read("App.jsx");
 const PAGE = read("pages/CommunitySupportPage.jsx");
+const TABS = read("lib/supportCommunityTabs.js");
 // #4130: retired addresses (the old #/support and #/email among them) live here.
 const ROUTES = read("lib/adminRoutes.js");
 const SERVICE = read("services/communityService.js");
@@ -25,46 +26,40 @@ const EMAIL = read("pages/EmailPage.jsx");
 
 describe("#3720 F — nav is one Community & Support item", () => {
   it("primary group has community-support; Growth no longer has email", () => {
-    // #4130: the menu's Support group holds two entries, Support and
-    // Community, that open this one console's tabs until Wave 6 splits it;
-    // there is still no page of their own and no Email entry.
+    // #4130 Wave 6: the menu's Support group holds two pages, Support and
+    // Community, split from this console; there is still no Email entry.
     assert.match(CONSTANTS, /id:\s*"support",\s*label:\s*"Support"/);
     assert.match(CONSTANTS, /id:\s*"community",\s*label:\s*"Community"/);
-    assert.match(ROUTES, /support: Object\.freeze\(\{ page: "community-support", tab: "support" \}\)/);
-    assert.match(ROUTES, /community: Object\.freeze\(\{ page: "community-support" \}\)/);
+    assert.match(ROUTES, /"community-support": consoleRedirectHash/);
     assert.equal(/\bid:\s*"email"\b/.test(CONSTANTS), false);
   });
 });
 
 describe("#3720 F — App routes and legacy aliases", () => {
-  it("PAGES maps community-support only (not support/email page keys)", () => {
-    assert.match(APP, /"community-support":\s*CommunitySupportPage/);
+  // #4130 Wave 6: was "PAGES maps community-support only".
+  it("PAGES maps the Support and Community pages (not the desk or email page keys)", () => {
+    assert.match(APP, /support: SupportPage,\s*community: CommunityPage,/);
     assert.equal(/\bsupport:\s*SupportDeskPage/.test(APP), false);
     assert.equal(/\bemail:\s*EmailPage/.test(APP), false);
   });
 
-  it("legacy #/support and #/email rewrite to community-support tabs", () => {
+  // #4130 Wave 6: #/email opens Support's Email tab; #/support is a page.
+  it("legacy #/email rewrites to the Support page's Email tab", () => {
     assert.match(APP, /canonicalizeLegacyCommunityHashes/);
     // #4130: the rewrite reads the one redirect map (lib/adminRoutes.js).
     assert.match(APP, /const next = redirectHash\(window\.location\.hash\);/);
-    assert.match(ROUTES, /support: Object\.freeze\(\{ page: "community-support", tab: "support" \}\)/);
-    assert.match(ROUTES, /email: Object\.freeze\(\{ page: "community-support", tab: "email" \}\)/);
+    assert.match(ROUTES, /email: Object\.freeze\(\{ page: "support", tab: "email" \}\)/);
   });
 });
 
 describe("#3720 F — console tabs and embeds", () => {
-  it("exposes the seven Phase 1 tabs", () => {
-    for (const id of [
-      "overview",
-      "announcements",
-      "roadmap",
-      "support",
-      "email",
-      "team",
-      "availability",
-    ]) {
-      assert.match(PAGE, new RegExp(`id:\\s*"${id}"`));
+  // #4130 Wave 6: the tab lists live in lib/supportCommunityTabs.js; Overview
+  // was retired and Availability is the Support header switch, not a tab.
+  it("keeps the Phase 1 tabs across the two pages", () => {
+    for (const id of ["announcements", "roadmap", "support", "email", "team"]) {
+      assert.match(TABS, new RegExp(`id:\\s*"${id}"`));
     }
+    assert.match(PAGE, /Available for support/);
   });
 
   it("Support and Email pages accept embedded chrome", () => {

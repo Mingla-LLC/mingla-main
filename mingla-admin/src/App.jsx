@@ -32,8 +32,7 @@ import { OverviewPage } from "./pages/OverviewPage";
 import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
 import { PricingPage } from "./pages/PricingPage";
 // #4130 Wave 6 — the #3720 Community & Support console, split into two pages.
-import { SupportPage } from "./pages/SupportPage";
-import { CommunityPage } from "./pages/CommunityPage";
+import { CommunityPage, SupportPage } from "./pages/CommunitySupportPage";
 // ORCH-1273 — Business offerings console (READ-ONLY): Offerings
 // (#/business-offerings). Detail views deep-link via ?offeringId=. Venues now
 // open inside Brands (#4130).

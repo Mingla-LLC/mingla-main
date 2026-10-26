@@ -254,10 +254,11 @@ describe("#4111 reported enquiries — rendered states and service", () => {
 describe("#4111 reported enquiries — only moderators see the tab", () => {
   it("the page lists the tab and renders the panel only for the Community area", () => {
     const page = read("pages/CommunitySupportPage.jsx");
-    assert.match(page, /\{ id: "enquiry-reports", label: "Reported enquiries" \}/);
     assert.match(page, /activeTab === "enquiry-reports" && capabilities\.canCommunity && <ReportedEnquiriesPanel \/>/);
-    const nav = read("components/community/CommunitySupportNavigation.jsx");
-    assert.match(nav, /\{ id: "enquiry-reports", label: "Reported enquiries" \}/);
+    // #4130 Wave 6: the Community page's tab list lives in
+    // lib/supportCommunityTabs.js, with Reported enquiries right after Moderation.
+    const tabs = read("lib/supportCommunityTabs.js");
+    assert.match(tabs, /\{ id: "moderation", label: "Moderation" \}\),\n(?:\s*\/\/.*\n)*\s*Object\.freeze\(\{ id: "enquiry-reports", label: "Reported enquiries" \}\)/);
   });
 
   it("the access filter shows it to Community moderators and Admins, never to Support-only", () => {

@@ -433,7 +433,7 @@ describe("#3802 C-9: source contracts — auth, menu, palette, routes", () => {
     // Object.hasOwn(PAGES, page) — not the older inline requestedPageId() form.
     assert.ok(APP_JSX.includes("if (route.denied && nav.named && lastToldRef.current !== nav.seq) {"));
     assert.ok(APP_JSX.includes("function addressNamesPage()"));
-    // #4130: every retired id (the old #/support and #/email among them) counts as named.
+    // #4130: every retired id (the old #/email and #/community-support among them) counts as named.
     assert.ok(APP_JSX.includes("if (isRetiredPageId(page)) return true;"));
     assert.ok(APP_JSX.includes("return Object.hasOwn(PAGES, page);"));
     assert.ok(APP_JSX.includes("<AppShell activeTab={route.pageId}"));
@@ -444,7 +444,8 @@ describe("#3802 C-9: source contracts — auth, menu, palette, routes", () => {
 
   it("title and breadcrumb follow the person's own home", () => {
     // #4130: titled by the menu entry, with the header's pages named too.
-    assert.ok(APP_SHELL.includes("pageTitle(menuId, access, [...NAV_ITEMS, ...HEADER_PAGE_ITEMS])"));
+    // Wave 6: every page is its own menu entry, so the page id titles it.
+    assert.ok(APP_SHELL.includes("pageTitle(activeTab, access, [...NAV_ITEMS, ...HEADER_PAGE_ITEMS])"));
     // [TEST-MOD-APPROVED ISSUE-3802] was: the header got a `homeId` and drew a
     // root crumb that went to it. The approved shell's breadcrumb is words only
     // ("Group › Page"), so there is no root crumb to send anyone anywhere. What

@@ -70,7 +70,9 @@ describe("ORCH-1008 adversarial — App.jsx PAGES map purity", () => {
       "subscriptions",
       "placepool",
       "brands",
-      "community-support",
+      // #4130 Wave 6: the Community & Support console is two pages.
+      "support",
+      "community",
       "admin",
       "settings",
     ];
