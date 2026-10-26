@@ -18,9 +18,13 @@
 --     to the 20271222004111 body lets a text link tapped on someone else's
 --     phone follow the account that owns the email (raises
 --     sms_link_followed_unproven_account).
+--   * 20271223034111 (participant move guard): dropping its policy lets a
+--     stranger re-point their own participant row at an enquiry and read it
+--     (raises participant_row_moved_into_enquiry).
 --   * Dropping the scanner or removed_at filters from
 --     issue_4111_is_enquiry_team_member raises demoted_scanner_reads / removed_member_reads.
 -- MINGLA-INVARIANT: I-4111-ENQUIRY-READ-RECEIPT-READER-ONLY | issue #4111 | Only a reader of an enquiry can write read receipts on its messages.
+-- MINGLA-INVARIANT: I-4111-ENQUIRY-PARTICIPANT-NO-MOVE-IN | issue #4111 | Nobody re-points a participant row into an enquiry they cannot read.
 -- MINGLA-INVARIANT: I-4111-SUBSCRIBE-SMS-LINK-NO-ACCOUNT | issue #4111 | A subscribe text link never follows or records consent for a Mingla account.
 \set ON_ERROR_STOP on
 BEGIN;
@@ -136,6 +140,7 @@ DECLARE
   v_w1 uuid; v_w2 uuid; v_spam uuid; v_spam_conv uuid;
   v_brand_msg uuid;
   v_e2_msg uuid;
+  v_conv_own uuid;
   v_count bigint;
   v_text text;
   v_err text;
@@ -336,6 +341,36 @@ BEGIN
     + (SELECT count(*) FROM public.conversation_participants WHERE conversation_id = v_c2);
   RESET ROLE;
   IF v_count <> 0 THEN RAISE EXCEPTION 'guest_reads_other_guest:%', v_count; END IF;
+
+  -- Hijack: re-pointing one's own participant row (from a chat one does belong
+  -- to) at an enquiry's conversation is refused, for a stranger and for a
+  -- member who saw the conversation id before being made scanner-only.
+  FOR v_user IN SELECT unnest(ARRAY[v_stranger, v_demoted, v_removed]) LOOP
+    INSERT INTO public.conversations(type, linked_entity_type, created_by)
+    VALUES ('direct', 'direct', v_user) RETURNING id INTO v_conv_own;
+    INSERT INTO public.conversation_participants(conversation_id, user_id) VALUES (v_conv_own, v_user);
+    SET LOCAL ROLE authenticated;
+    PERFORM set_config('request.jwt.claim.sub', v_user::text, true);
+    v_err := NULL;
+    BEGIN
+      UPDATE public.conversation_participants SET conversation_id = v_c1
+      WHERE conversation_id = v_conv_own AND user_id = v_user;
+    EXCEPTION WHEN OTHERS THEN v_err := SQLSTATE;
+    END;
+    SELECT count(*) INTO v_count FROM public.messages WHERE conversation_id = v_c1;
+    RESET ROLE;
+    IF v_err IS DISTINCT FROM '42501' OR v_count <> 0 THEN
+      RAISE EXCEPTION 'participant_row_moved_into_enquiry:%:%:%', v_user, v_err, v_count;
+    END IF;
+  END LOOP;
+  -- The guest can still update their own row in place.
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claim.sub', v_guesta::text, true);
+  UPDATE public.conversation_participants SET last_read_at = now(), notifications_muted = true
+  WHERE conversation_id = v_c1 AND user_id = v_guesta;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RESET ROLE;
+  IF v_count <> 1 THEN RAISE EXCEPTION 'guest_cannot_update_own_participation:%', v_count; END IF;
 
   -- Staff: only while a report is open. Guest B reports E2; staff and admin
   -- read E2 (not E1); dismissal closes it again on every path.

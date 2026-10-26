@@ -30,8 +30,10 @@ AS $function$
       AND public.issue_4111_enquiry_can_read(m.conversation_id, p_user_id)
   );
 $function$;
-REVOKE ALL ON FUNCTION public.issue_4111_read_receipt_allowed(uuid, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.issue_4111_read_receipt_allowed(uuid, uuid) TO authenticated, service_role;
+-- Granted to every client role so the policy never fails with a privilege
+-- error (anon writes are still refused by the permissive policy).
+REVOKE ALL ON FUNCTION public.issue_4111_read_receipt_allowed(uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.issue_4111_read_receipt_allowed(uuid, uuid) TO anon, authenticated, service_role;
 
 DROP POLICY IF EXISTS message_reads_brand_enquiry_reader_insert ON public.message_reads;
 CREATE POLICY message_reads_brand_enquiry_reader_insert ON public.message_reads
