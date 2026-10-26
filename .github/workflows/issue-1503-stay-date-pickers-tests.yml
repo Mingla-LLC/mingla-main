@@ -134,28 +134,6 @@ jobs:
           TZ: Pacific/Niue
         run: npx jest --config jest.issue1503.cfg.cjs --runInBand
 
-      # SC-1-iOS / SC-1-Android / SC-9 — the OTHER half of the Platform gate.
-      - name: "Native parity + blackout same-day proof"
-        run: >-
-          npx jest --runInBand
-          src/components/ui/__tests__/dateField.issue1503.test.tsx
-
-      # SC-10 — the six existing #1027 consumers must stay byte-identical in
-      # behaviour. Their guard suite runs UNMODIFIED.
-      - name: "SC-10 — the six existing WebDateTimeInput consumers still pass"
-        run: >-
-          npx jest --runInBand
-          src/components/ui/__tests__/webDateTimeInput.adversarial.1027.test.tsx
-          src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx
-          src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts
-
-      # The blackout sheet's existing contracts (scroll bounding, venue suite
-      # polish) must not regress behind the control swap.
-      - name: "Venue suite contracts (blackout sheet host)"
-        run: >-
-          npx jest --runInBand
-          src/components/venue/__tests__/venueSuitePolish.orch1190.test.ts
-
       - name: Package isolation gate (brand-rendering imports no app src)
         working-directory: .
         run: node .github/scripts/strict-grep/orch-0964-brand-rendering-self-contained.mjs

@@ -531,15 +531,3 @@ jobs:
       - run: deno check supabase/functions/private-event-access/index.ts supabase/functions/private-event-read/index.ts supabase/functions/private-event-media/index.ts
       - run: deno test --allow-env --allow-read --allow-net supabase/functions/private-event-access/__tests__/issue_1931_private_event_access_edge.test.ts
 
-  clients:
-    if: ${{ github.event.pull_request.draft != true }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: "22" }
-      - run: npm ci
-        working-directory: mingla-business
-      - run: npx jest --runInBand src/services/__tests__/issue_1931_private_event_access.test.ts
-        working-directory: mingla-business

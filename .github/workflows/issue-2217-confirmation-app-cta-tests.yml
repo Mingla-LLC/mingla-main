@@ -111,14 +111,6 @@ jobs:
           if [ "$found" -ne 1 ]; then
             echo "jest pattern resolved to $found files, expected 1"; exit 1
           fi
-      # 18 tests. Fails on a true line deletion of the detectClientPlatform
-      # resolution, on the second store badge returning, on the guest-list card
-      # returning to any of the three routes, or on fallbackUrl being dropped
-      # from the deep-link opener.
-      - name: "#2217 confirmation app CTA suite"
-        run: npx jest issue_2217_confirmation_app_cta --runInBand
-      - name: "#1342 sibling guest-funnel suite stays green"
-        run: npx jest orch_1342_guest_funnel_link --runInBand
 
   issue-2217-postgres-contract:
     if: ${{ github.event.pull_request.draft != true }}

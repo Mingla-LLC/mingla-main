@@ -161,15 +161,6 @@ jobs:
       - name: Install buyer-web dependencies
         working-directory: mingla-business
         run: npm ci
-      - name: Prove the signed-out attendance handoff stays public
-        working-directory: mingla-business
-        run: >-
-          npx jest
-          src/utils/__tests__/issue_0871_attendance_claim_public_route.implementor.happy.test.ts
-          src/utils/__tests__/issue_0871_attendance_claim_auth_boundary.tester.adversarial.test.ts
-          src/utils/__tests__/issue_3524_claim_page_no_auto_navigation.implementor.happy.test.ts
-          src/services/__tests__/issue_3524_confirmation_desktop_arm.implementor.happy.test.ts
-          --runInBand
 
   issue-871-pg17:
     if: ${{ github.event.pull_request.draft != true }}

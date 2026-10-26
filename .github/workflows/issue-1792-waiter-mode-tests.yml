@@ -67,29 +67,3 @@ jobs:
           supabase/functions/_shared/__tests__/issue_1792_waiter_mode.test.ts
           supabase/functions/_shared/__tests__/issue_1848_order_gate_codes.test.ts
 
-  waiter-mode-client:
-    if: ${{ github.event.pull_request.draft != true }}
-    name: "Client: the pad's rules, and the ticket the kitchen cannot tell apart"
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: mingla-business
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: mingla-business/package-lock.json
-      - run: npm ci
-      - name: Prove the pad's rules and the queue's indifference to provenance
-        run: >
-          npx jest
-          src/components/venue/__tests__/venueOrderPad.issue1792.test.ts
-          src/hooks/__tests__/useVenueOrderPad.issue1792.test.ts
-          src/components/venue/__tests__/venueOrders.issue1791.test.ts
-          src/hooks/__tests__/useVenueOrders.issue1791.test.ts
-          src/components/venue/__tests__/venueModules.test.ts
-          src/components/venue/__tests__/venueSuiteLeakAndExit.tester.adversarial.test.ts
-          --runInBand

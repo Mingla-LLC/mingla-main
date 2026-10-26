@@ -78,24 +78,3 @@ jobs:
       - name: Plain run against the working tree
         run: node .github/scripts/strict-grep/orch-1186c-menu-display-only.mjs
 
-  business-client:
-    if: ${{ github.event.pull_request.draft != true }}
-    name: "Spots + menu depth client logic"
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: mingla-business
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: mingla-business/package-lock.json
-      - run: npm ci
-      - name: Prove the Spots grouping, the print payloads, and the one-tap 86 write
-        run: >
-          npx jest
-          src/components/venue/__tests__/qrSpots.issue1789.test.ts
-          --runInBand

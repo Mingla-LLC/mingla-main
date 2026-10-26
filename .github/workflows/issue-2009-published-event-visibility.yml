@@ -163,26 +163,6 @@ jobs:
           PGPASSWORD: ${{ github.sha }}
         run: bash scripts/ci/security_definer_anon_gate.sh
 
-  business-jest:
-    if: ${{ github.event.pull_request.draft != true }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      # npm ci ONLY. A bare `npm install` fails ERESOLVE here on a floating
-      # lottie-react-native caret (COMMS-0134).
-      - run: npm ci
-        working-directory: mingla-business
-      - name: "#2009 focused Business suite"
-        working-directory: mingla-business
-        run: |
-          npx jest --ci \
-            src/services/__tests__/businessEventVisibility.issue2009.test.ts \
-            src/services/__tests__/businessEventVisibilityExitCopy.issue2009.rework.test.ts
-
   # AMENDMENT 3A — the two edge-function behaviours. Both EXECUTE: the Ari
   # suite drives the real update_event executor, the discovery suite drives the
   # real cache-key builder and the real L1 store. Neither asserts on source

@@ -77,23 +77,3 @@ jobs:
             sleep 10
           done
 
-  source-tracking-business-jest:
-    if: ${{ github.event.pull_request.draft != true }}
-    name: "ISSUE-855 PR-2: client referrer capture + first-touch-wins (jest)"
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: mingla-business
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: mingla-business/package-lock.json
-      - run: npm ci
-      - name: Run PR-2 client referrer suite (isolated invocation)
-        run: >
-          npx jest
-          src/analytics/__tests__/webAnalytics.referrer.issue855pr2.test.ts
-          --runInBand

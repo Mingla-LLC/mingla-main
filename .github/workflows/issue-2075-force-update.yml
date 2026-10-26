@@ -76,22 +76,6 @@ jobs:
       - run: npm ci
       - run: npx jest --runInBand src/services/__tests__/issue_2075_app_version_policy.test.ts src/services/__tests__/issue_2075_app_version_foreground.test.ts
 
-  host-policy:
-    if: ${{ github.event.pull_request.draft != true }}
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: mingla-business
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: mingla-business/package-lock.json
-      - run: npm ci
-      - run: npx jest --runInBand src/services/__tests__/issue_2075_app_version_policy.test.ts src/services/__tests__/issue_2075_app_version_foreground.test.ts
-
   edge-policy:
     if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest

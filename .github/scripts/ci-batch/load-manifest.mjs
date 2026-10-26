@@ -19,7 +19,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // render proof and the message-sheet rework proof (issue_4111_*.render.test.tsx).
 // #4111: re-sealed after the #2272 workflow escaped `+` in its +native-intent.tsx
 // path filter (GitHub reads `+` as a pattern operator), updating its pathScope and sourceSha256.
-export const BOOTSTRAP_SHA256 = "55d3af06815d31d21820479d7332ab691b70c8458de2b964869b838248c9ae90";
+// #3643: re-sealed after 39 per-issue providers dropped the Host jest steps that
+// only re-ran files the required full suite already runs (new sourceSha256 and,
+// where a whole job went, jobKeys/runtimeVersions/setupActions). Six sourceSha256
+// patches for those rows are folded into the bootstrap and deleted.
+export const BOOTSTRAP_SHA256 = "cdf17f3e51610bb277d911511d1f123f2bfc1ce0e07ce875f20b398edddfad39";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

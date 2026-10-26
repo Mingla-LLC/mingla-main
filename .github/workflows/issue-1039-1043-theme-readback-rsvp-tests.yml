@@ -62,25 +62,3 @@ jobs:
           supabase/migrations/__tests__/issue_1039_management_view_theme_columns.test.ts
           supabase/migrations/__tests__/issue_1039_mgmt_view_exact_columns.test.ts
 
-  issue-1043-business-jest:
-    if: ${{ github.event.pull_request.draft != true }}
-    name: "Issue #1043/#1039: RSVP theme write + publish forward (fails-on-revert jest)"
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    defaults:
-      run:
-        working-directory: mingla-business
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: mingla-business/package-lock.json
-      - run: npm ci
-      - name: "Issue #1043/#1039: RSVP theme write + publish forward + clear-persists jest suites"
-        run: >
-          npx jest
-          issue1043RsvpThemeWrite
-          issue1043RsvpThemeClearPersists
-          --runInBand

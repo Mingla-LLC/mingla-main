@@ -241,36 +241,6 @@ jobs:
           app-mobile/src/services/__tests__/issue_2160_calendar_per_day_entries.test.ts
           app-mobile/src/services/__tests__/orch_1188_calendar_url_and_date.test.ts
 
-  issue-2160-client:
-    if: ${{ github.event.pull_request.draft != true }}
-    name: "#2160 Client — multi-select, and single-date stays byte-identical"
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    defaults:
-      run:
-        working-directory: mingla-business
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: mingla-business/package-lock.json
-      - run: npm ci
-      # The #2135 suite is the single-date byte-identity guard and it must stay
-      # green THROUGH this change: `router.push` string equality on a single-date
-      # event, and `checkoutPublicPathWithSeed` byte-identical with no occurrence.
-      - name: "#2135 single-date byte-identity survives multi-select"
-        run: npx jest issue_2135 --runInBand
-      - name: "#2150 + #2136 client guards stay green"
-        run: npx jest issue_2150 issue_2136 --runInBand
-      # 28 tests. The wizard control + its verbatim SPEC copy + the lock, the
-      # per-day roster filter, the CSV Day column (appended LAST so nothing that
-      # parses by position moves), and the guest-facing price qualifier on BOTH
-      # phone and desktop.
-      - name: "#2160 organiser surfaces — wizard, roster, CSV, price qualifier"
-        run: npx jest issue_2160 --runInBand
-
   issue-2160-strict-grep:
     if: ${{ github.event.pull_request.draft != true }}
     name: "#2160 Gates — day ladder, capacity aggregation, no direct occurrence read"

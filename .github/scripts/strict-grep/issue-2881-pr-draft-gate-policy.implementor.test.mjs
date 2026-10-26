@@ -350,6 +350,286 @@ const PHASE3_TRANSITION_RECEIPTS = Object.freeze([
     afterSha256: "a69c4667462ef550c4e1b185546823bdbd1349c9d6ba7c22b9f72995cb69655f",
     proofOwner: ".github/scripts/strict-grep/issue-2909-main-health-wiring.mjs",
   }),
+  // #3643 (2026-10-26, Seth-approved PR 1 of the redundant-checks cleanup): these
+  // per-issue workflows drop only the jest steps (and jobs left with only setup)
+  // that re-ran Host files the required "mingla-business jest (full suite)" check
+  // already runs on every PR with the stock config. That required lane is the
+  // proof owner. T-12's generic regex sweep flags literals that merely matched
+  // the deleted steps; the gates that genuinely pin a step (#1985, #2714, #2851)
+  // keep their workflows unchanged in this PR.
+  Object.freeze({
+    workflow: ["issue-1014-free-publish-currency-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "89affda86ea2374a88530ef6021fad00820522eec64d329da82c44e58b2f4598",
+    afterSha256: "2d0cafca803e5faded316b49daa10d4c9464060468d291a5e63ebbbd29614d33",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1039-1043-theme-readback-rsvp-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "3ec0df9b4e5af9e09c66a9574cbf96a3d4c7eb187fed7c215d36d2582d45758e",
+    afterSha256: "bd7378a59babefe9e8d88db65cbe323c212a64d782ad44024570467855158e5c",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1044-auth-failure-capture-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "9458e823fe84fe2da691a5107c7f7e2d15213f95b6a585d63ec7ff115f3bb603",
+    afterSha256: "afa3f591465ac2eb191783e2b69429185ffa69df0bdd5d02e7b28c4a451e4850",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1459-venue-manager-photo-upload-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "bf51bf03d1a57f5ced076a7008da6c5b5a77372e095593da30b4922158e62c7d",
+    afterSha256: "bfcb51958addde1907da13c83b7167fa3d1df008848c8363e70df6116f9369a6",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1463-permitted-staff-venue-submit-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "d009bfe492c2ab1b9e05428ea91d80a944250721ff19a58159cf905fcba78c76",
+    afterSha256: "de3db09005424a5848ba1e142e5b4a2e3163da704a2d9c8343ea30853f5cbc31",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1469-stay-authoring-permissions", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "20ceb1a5d1973b42b03603648e2e20d0693ddaf9e765dc87d1218561c235ddb2",
+    afterSha256: "d7c7c5740be8de1e77e14ddf1dc2c712ae64c32c0350b12a20fb1fb5ddc3c0ab",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1484-stay-desktop-shell-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "9817eb07ff72fb77e0fb99049a26198ac01933305cd2e22321965ad0f1bad735",
+    afterSha256: "bbbdefb152966a016590af6b2b81deacea4b71412a6aea081fb0656972b49298",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1501-add-rooms-form-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "cfdb09abc85019d78140d462ef855eb4f224814eb57e1c739c2458159bba9a4b",
+    afterSha256: "0be55e3cd997acc1cbb8327a3595bb676043905dec4746a9c73f056f538d9595",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1503-stay-date-pickers-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "1cf9996aeb1ddcabc83886cc9eec1701b48513743e5ac8f4fcc64f211b384374",
+    afterSha256: "7af7d4cbf9d357de2a870249520bf9d3822db61e8e548ff6427096a1eaf1e826",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1532-stay-manager-ux-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "b79fe16a307a92c7017ebe3abdd1e7f64d9a349d13ff03598e842f3e05b51e99",
+    afterSha256: "578bf5d3328f8c9755f1a0e9fc913c29ccae1fce43644d1fc49808e566116243",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1719-unified-sharing", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "1b64bb49a4a009a3f9c3d63298946ec473ed2a6cf355dac35867f6d786400a06",
+    afterSha256: "68bc5b674f34f27eb62ed3a6967da3b86db4d95c4d35eca9c53d74f5e1a8d8a5",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1775-csv-contact-import-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "fef158667f2909ee12095a10f2b435b951d3076de471857252d69f130cec238f",
+    afterSha256: "6b14c84612bf99c6b48b56928227920c5970a81c325c408323266d59e2c1e42c",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1789-spots-print-menu-depth-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "74372ad9c74cefa90833266d3c8402e21cd7dd1bc44b1db4415d6aa9e2e82be3",
+    afterSha256: "11997ab74714beb86ef77c5c3ff223a7c270765f74b730f8d5ed0de489161e08",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1791-orders-queue-alerting-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "9107f97e9549a5d2719f368e1002ef0ad089c62315d10d4c1376280cb1ea03ff",
+    afterSha256: "cedf79079a7fb3f297f66d662118d512c13cba34abbff3b4648ae0602e0890ca",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1792-waiter-mode-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "2e121214ba9f9b8a0fabefe9a5303039464516e8006c0c5d6a019679aa632dfa",
+    afterSha256: "f99d0cdeb45520cd964c7c7f63ee1379cea808169254a43cf1e09adce0981f5a",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1793-guest-ordering-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "9b2e8d2f2c86d5c1c242a287e6ce7c776ad3221472d4a2398aa5f2a96cffa61a",
+    afterSha256: "76344f49210be901c7e86e4b06141739e8728b3c20956e6777911f10e704cd10",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1929-hidden-direct-checkout-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "4c0bca5aaf18836293f2b01713348e13b01bd2458de9d3ba9d6316736b20a249",
+    afterSha256: "a8ce1baa10f13cf9f1e20f1d456d6b5071102d9f7cf0056b7b6d01f2c1355be5",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-1931-private-event-access", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "1b6dffa5a9f074b91305db20f8343e6eef48b853f27647518d938d7494de766c",
+    afterSha256: "1752650bfdb4969594caa76943484dffd61bc0dc01c8f004bada0dcdf993a0e5",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2009-published-event-visibility", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "bed31d354aaa7b1b38d7f4a06abd57a606c7c125e2b55cc33d318ab6780ae641",
+    afterSha256: "200dc453a0e498b357417654fc9b2fe2b0d368f8a4febebbe0803c70cf960a8b",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2063-ari-brand-management", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "4474efa75f5518c2dbd61552227ffd0163c37a65a7a673e97da4036f2d9d42a1",
+    afterSha256: "c915b6ea1dcb4ac2cda5e0251fc70e898571398b887906bc9866fbf48bdce482",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2075-force-update", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "957efc89df99fdc6116c8a0a830ffc29217eec8f5b9acc0da691346282099534",
+    afterSha256: "792be1c7fbbcbb82d4008b3b2585d388e465a636db08e3b5f4f73e2c070af963",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2101-named-buyer-checkout-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "02eeb918be43c1151fa6dfdb0d08c01b7532229bc47f2ea3b6eb253607b38305",
+    afterSha256: "0c21e9c57736be9e6b0369030f007295b616bd181016280ee51c2f34ddb74f26",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2107-mandatory-js-update", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "ddceb563842f833344dbfd407ccb35f6f2d6afb9247800eb2a4fba5d2644b5ec",
+    afterSha256: "9d4906b67eae85e62f8a352e9cf5abebacea6a512d7a5a1f4b1e29305f3b7a8d",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2136-free-checkout-contract-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "1e93228d10165103d26e0da6b14db31ac56b8cc09cd957e4f9f575965a89698c",
+    afterSha256: "e37c4c107aa7ad70b70be3e9c1f44dc7bc7a751cae84346e753a85abe31ea77c",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2150-free-resubmit-idempotent-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "b9497285c41830003a06e375bbc1a1ba81c9bd7ccd2c9f5184dee0bdaa064df9",
+    afterSha256: "a2fd5310ee7a5d6afa84fc34771c671a43355ab65bc60bcff1a8147e00bc7b0a",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2160-multiday-multiselect-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "11c4e053a76c8146a8d3b8c1851dca9d5aa9f6c4355437180610a109d2058050",
+    afterSha256: "35c8dcfbb699af52cc6883e3cbf57e4faa0bc937cec08eaf180083985fb3be8d",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2198-paystack-return-verify-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "216a69d8ba7ddf22f33ae95fcb021f03338da9714f6a0f15734ccc70b0b06f8e",
+    afterSha256: "957af53824af18994dd9043dec1f16e9103a3f1c57a8c01ada1474ac09e46d5b",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2217-confirmation-app-cta-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "79a54dfa7b7ab6849466fb5cd30dd9fb903401fb21e64135bbf60d729e63cb12",
+    afterSha256: "95f90626e8e44286d2d5ae8429aee6a8ec1028e36ccc5116c13bb9734ed4100b",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2262-composer-responsive-layout", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "2a78462d7a8b56bc6d5f734b9e80aadec2af592655ec470a2bece67e77033a70",
+    afterSha256: "77496e8cd7a276b5a2eabe7d0947ca4ea1e452a881f5ac34124cac1a1d8ec136",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2267-marketing-tenancy", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "79edcee04093c95da4a1cf00d989232dde5e65d8062d27c9c5e603c80ce7882e",
+    afterSha256: "f637c7986868a0413b5d81517a3c06dc75a889b4d11062256423d6c8d36ebc99",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2306-lazy-native-imports", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "6226e7c857bfaf5c9d638a2e703c26c49723a22c501d587fc465779a03c7be31",
+    afterSha256: "f933157f13a6c4028cb67db2880b5a80ee46f619c16a180304c024c0de3e95cd",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2323-free-order-claim-and-cta-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "8fc46243564d9f7c88257308ef594b25999d012a864dc0162f381170f341843c",
+    afterSha256: "13c1d4250c9de9ffd8824fb6a090ee093ea1234f3e0e8cbaa63a84269b0810cf",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2337-free-409-honest-copy-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "3b4d20c12594e0f1af613f08cf92921646c561e7fa1031328a1719cd43885d9e",
+    afterSha256: "a8b99a065cc1e13f576f8f60f1c6d71993b126238dd6b2f4c1334967a0132295",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2395-manual-contact-groups-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "efbe52c3ebb5a81cd267dc5eb24d95218a99759ce4c4cdecfa090358c5e63de9",
+    afterSha256: "0a9755577d84c3324ba01b67f516f0c12e60d71c49f402bfc2b6f19dffb9e861",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-2418-bank-list-native-identity", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "08793649ecd1046bc2e48e94dd40f7ec5ad20163a4788320108460b4698b40a1",
+    afterSha256: "704c5013d6cd1b3f427c32b1ebf2211b6c0ad64c769bb83d179eeb8072f04445",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-855-pr2-source-tracking-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "40b4bbccfd3c732c81fc9ca9db575bb31afd104ff51c4040a7c1cbfed4a0c7d8",
+    afterSha256: "ffe8ca4485e8ab048d5a346e4a819a29ddc0ebb8799d7c568782e2e9b8ccd5ff",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-871-attendance-entitlement-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "a44118abfa87d7388d37acd3cc4c7a60282e8975eb8ae38f319fbfc86939e600",
+    afterSha256: "f872b220df4b5ed38869d782e82aba88f90a06758f9efae9b4c628af18c8cbe1",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["issue-922-business-web-actionable", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "d86a09de4df2d6067247066e82f1573ea1cd3c9a8a8fce4b0c290c7b371c1f1e",
+    afterSha256: "a2b57e94ca5614d50c6a149fd2304a2e74b1bb6239fe303419877688784d2b9a",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  Object.freeze({
+    workflow: ["meta-orch-1337-social-proof-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "6de10da3db7d1d76ad03cf6122a39e9b49ce464b8e985fb8af0aaefc673e4b86",
+    afterSha256: "b30aa8d0903397f3857674cdf2b622d6be8d77654e1b2259a119e32108af8d7a",
+    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
 ]);
 
 const validateTransitionReceipts = (receipts) => {
@@ -400,7 +680,7 @@ const authorizedTransitionNames = (transitions, receipts = PHASE3_TRANSITION_REC
 };
 
 const PHASE3_TRANSITION_RECEIPT_INDEX = validateTransitionReceipts(PHASE3_TRANSITION_RECEIPTS);
-assert.equal(PHASE3_TRANSITION_RECEIPT_INDEX.size, 3, "Phase 3 transition receipt cardinality");
+assert.equal(PHASE3_TRANSITION_RECEIPT_INDEX.size, 42, "Phase 3 transition receipt cardinality");
 
 test("T-11 every pin-protected workflow still satisfies the pin that protects it", () => {
   const pinned = ALWAYS_ON.filter((entry) => entry.kind === "pin-protected");

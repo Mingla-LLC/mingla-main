@@ -74,30 +74,3 @@ jobs:
           deno test --allow-read
           supabase/migrations/__tests__/issue_1014_free_publish_currency.test.ts
 
-  issue-1014-business-jest:
-    if: ${{ github.event.pull_request.draft != true }}
-    name: "Issue #1014: guard copy + wizard mapping (fails-on-revert jest suites)"
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    defaults:
-      run:
-        working-directory: mingla-business
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: mingla-business/package-lock.json
-      - run: npm ci
-      # Runs the #1014 client suites: the extended paidPublishGuards suite
-      # (event_currency_required → locked "Finish your payment setup" copy +
-      # payments-onboard route; pre-existing entries pinned untouched) plus
-      # every issue_1014_* suite (trip mapper case, RSVP money-guard routing —
-      # and any tester adversarial suite added under the same pattern).
-      - name: "Issue #1014: guard copy + wizard mapping jest suites"
-        run: >
-          npx jest
-          issue_1014
-          paidPublishGuards
-          --runInBand
