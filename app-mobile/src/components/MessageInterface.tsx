@@ -124,7 +124,7 @@ import { useComposerLayout } from "../hooks/useComposerLayout";
 import { useChatBackHandler } from "../hooks/useChatBackHandler";
 import { useScrollToLatest } from "../hooks/useScrollToLatest";
 import { requestGalleryPermission } from "../utils/mediaLibraryPermission";
-import { preferSmallerOriginalVideo } from "../services/chatVideoOriginalService";
+import { discardPickerTempFiles } from "../services/chatPickerTempFiles";
 import { DirectMessage, messagingService, CardPayload, MentionEntry, CardTagEntry, isContentShareCardPayload, type LegacyCardPayload } from "../services/messagingService";
 import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
 import { prepareContentShare } from "../services/contentShareAdapter";
@@ -294,11 +294,12 @@ const EMPTY_EMOJIS: string[] = [];
  * Issue #4114 Wave 7: the picker's video export, iPhone only. 1280×720 H.264
  * from the library (videoExportPreset) and the camera (videoQuality).
  *
- * QA run 2: Seth approved 720p (the medium preset, about 480p, is too
- * low). The 720p re-encode can come out larger than a compact HEVC original
- * (9.7 MB became 13.3 MB), so a library pick then reads the original and sends
- * whichever is smaller (preferSmallerOriginalVideo / chooseChatVideoSource).
- * The camera records straight at 720p, so it has no larger original.
+ * QA run 2: Seth approved 720p (the medium preset, about 480p, is too low).
+ * QA run 3: the 720p H.264 export is ALWAYS what is sent, even when it is
+ * larger than a compact 1080p HEVC original: H.264 plays on every phone,
+ * HEVC does not play on many older Android phones. An export over 25 MB or
+ * 60 s is refused with the usual message (validateChatMedia). The picker's
+ * temp copies are deleted once done with (discardPickerTempFiles).
  */
 export const CHAT_VIDEO_EXPORT: Pick<ImagePicker.ImagePickerOptions, "videoExportPreset" | "videoQuality"> =
   Platform.OS === "ios"
@@ -632,6 +633,13 @@ export default function MessageInterface({
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   // Issue #4114 Wave 4: the attach sheet's picked items and its View once switch.
   const [pendingMedia, setPendingMedia] = useState<PickedChatMedia[]>([]);
+  // Issue #4114 QA run 3: leaving the chat with items still in the tray
+  // (never sent) deletes their picker temp copies.
+  const pendingMediaRef = useRef<PickedChatMedia[]>([]);
+  pendingMediaRef.current = pendingMedia;
+  useEffect(() => () => {
+    void discardPickerTempFiles(pendingMediaRef.current.map((item) => item.uri));
+  }, []);
   const [attachViewOnce, setAttachViewOnce] = useState(false);
   const [isPickingMedia, setIsPickingMedia] = useState(false);
   // Issue #4114 Wave 4: media viewers (photo lightbox, video player, the one
@@ -1233,15 +1241,22 @@ export default function MessageInterface({
   const addPickedMedia = (picked: PickedChatMedia[]) => {
     const accepted: PickedChatMedia[] = [];
     const refusals = new Set<ChatMediaRefusal>();
+    const discarded: PickedChatMedia[] = [];
     for (const item of picked) {
       const refusal = validateChatMedia(item);
-      if (refusal) refusals.add(refusal);
-      else accepted.push(item);
+      if (refusal) {
+        refusals.add(refusal);
+        discarded.push(item);
+      } else accepted.push(item);
     }
     const room = MAX_CHAT_MEDIA_ITEMS - pendingMedia.length;
     if (accepted.length > room) {
       showNotification(t('chat:mediaLimitReached', { count: MAX_CHAT_MEDIA_ITEMS }), '', 'info');
+      discarded.push(...accepted.slice(Math.max(0, room)));
     }
+    // Issue #4114 QA run 3: a refused or over-limit pick never reaches the
+    // tray, so its picker temp copy goes now.
+    void discardPickerTempFiles(discarded.map((item) => item.uri));
     if (accepted.length > 0) {
       setPendingMedia((prev) => [...prev, ...accepted].slice(0, MAX_CHAT_MEDIA_ITEMS));
       if (accepted.some((item) => item.kind === "file")) setAttachViewOnce(false);
@@ -1283,11 +1298,8 @@ export default function MessageInterface({
         ...CHAT_VIDEO_EXPORT,
       });
       if (result.canceled || !result.assets?.length) return;
-      // QA run 2: a 720p export larger than its original sends the original.
-      const picked = await Promise.all(
-        result.assets.map((asset) => preferSmallerOriginalVideo(assetToPicked(asset), asset.assetId)),
-      );
-      addPickedMedia(picked);
+      // QA run 3: the 720p export is what is sent (see CHAT_VIDEO_EXPORT).
+      addPickedMedia(result.assets.map(assetToPicked));
     } catch (error) {
       console.error("Error picking photos or videos:", error);
       Alert.alert(t('social:error'), t('chat:errorSelectFile'));
@@ -3151,7 +3163,11 @@ export default function MessageInterface({
             onCamera={() => void handlePickCamera()}
             onLibrary={() => void handlePickLibrary()}
             onFile={() => void handlePickFile()}
-            onRemoveItem={(index) => setPendingMedia((prev) => prev.filter((_, i) => i !== index))}
+            onRemoveItem={(index) => {
+              // QA run 3: an item taken out of the tray drops its temp copy.
+              void discardPickerTempFiles([pendingMedia[index]?.uri]);
+              setPendingMedia((prev) => prev.filter((_, i) => i !== index));
+            }}
             onSend={handleSendPickedMedia}
           />
         )}

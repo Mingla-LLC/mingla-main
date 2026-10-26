@@ -139,14 +139,14 @@ Deno.test("#4114 W7: the allowance is checked first and its refusal is shown", (
   assert(page.includes('code === "daily_limit"') && page.includes('t("chat:mediaDailyLimit")'), "the toast");
 });
 
-// QA run 2 (Seth approved 720p): the export is 1280x720 H.264 again; a
-// library export larger than its original sends the original instead
-// (chooseChatVideoSource, unit-tested in issue_4114_qa_video_source).
+// QA run 2 (Seth approved 720p): the export is 1280x720 H.264 again.
+// QA run 3: the export is always what is sent (H.264 plays everywhere); the
+// send-the-original path is gone (issue_4114_qa_video_source).
 Deno.test("#4114 W7: iPhone exports chat videos at 720p from the library and the camera", () => {
   assert(thread.includes("videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720"), "library preset");
   assert(thread.includes("videoQuality: ImagePicker.UIImagePickerControllerQualityType.IFrame1280x720"), "camera quality");
   assert(!/MediumQuality|LowQuality|UIImagePickerControllerQualityType\.Medium\b/.test(thread), "never the ~480p preset");
-  assert(/preferSmallerOriginalVideo\(assetToPicked\(asset\), asset\.assetId\)/.test(thread), "library picks keep a smaller original");
+  assert(!/preferSmallerOriginalVideo/.test(thread), "library picks send the 720p export, never the original");
   assert(/Platform\.OS === "ios"\s*\?/.test(thread.slice(thread.indexOf("export const CHAT_VIDEO_EXPORT"))), "iPhone only");
   const library = thread.slice(thread.indexOf("launchImageLibraryAsync({"), thread.indexOf("launchImageLibraryAsync({") + 800);
   const camera = thread.slice(thread.indexOf("launchCameraAsync({"), thread.indexOf("launchCameraAsync({") + 400);

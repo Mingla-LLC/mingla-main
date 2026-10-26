@@ -64,6 +64,7 @@ import {
   uploadChatMedia,
 } from "../services/chatMediaUploadService";
 import type { PickedChatMedia } from "../utils/chatMedia";
+import { discardPickerTempFiles } from "../services/chatPickerTempFiles";
 import { invalidateContentShareRecipients } from "../services/contentShareDeliveryService";
 import type { CollabDeadEndBannerPayload } from "../services/collabDeadEndBannerService";
 import { blockService, BlockReason } from "../services/blockService";
@@ -3210,6 +3211,8 @@ function ConnectionsPageRefactored({
           if (uploadError instanceof ChatMediaUploadError && uploadError.code === "cancelled") {
             // Cancelled by the sender: hide the bubble (it never reached the server).
             writeConversationMessages(conversationId, [{ ...pending, failed: true, unsent: true }]);
+            // Issue #4114 QA run 3: the cancelled pick's temp copy goes too.
+            void discardPickerTempFiles([pending.localMedia.uri]);
             return;
           }
           console.error("[ConnectionsPage] Media upload failed:", uploadError);
@@ -3280,6 +3283,9 @@ function ConnectionsPageRefactored({
       // Confirmation: the server row replaces the optimistic bubble by client id
       // (and shows the server's time). If the echo already did it, this is a no-op.
       writeConversationMessages(conversationId, [transformMessage(sentMessage, user.id)]);
+      // Issue #4114 QA run 3: once the server row replaces the bubble, nothing
+      // reads the picker's temp copy (a failed send keeps it for its preview).
+      if (current.localMedia) void discardPickerTempFiles([current.localMedia.uri]);
 
       // Update conversation with real message
       setConversations((prev) =>
