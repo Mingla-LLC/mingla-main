@@ -111,7 +111,8 @@ export function BrandEnquiryThreadScreen({ enquiryId }: { enquiryId: string }): 
         () => { void refetchThread(); },
       )
       .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    // An unsubscribe that rejects during socket teardown must not go unhandled.
+    return () => { void Promise.resolve(supabase.removeChannel(channel)).catch(() => undefined); };
   }, [conversationId, enquiryId, refetchThread]);
 
   const settle = useCallback(async (): Promise<void> => {

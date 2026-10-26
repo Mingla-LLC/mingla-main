@@ -49,8 +49,12 @@ export function useBrandEnquiries(
     staleTime: 15_000,
   });
 
+  // Live updates only after the first read succeeds (the useBrandGroups rule):
+  // a failed read has nothing to keep fresh, and TopBar + Home mount this on
+  // every screen.
+  const loaded = query.isSuccess;
   useEffect(() => {
-    if (!enabled || !userId) return;
+    if (!enabled || !userId || !loaded) return;
     const channel = supabase
       .channel(`brand-enquiries:${userId}:${filter}:${nonce.current}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "brand_enquiries" }, () => {
@@ -58,9 +62,12 @@ export function useBrandEnquiries(
       })
       .subscribe();
     return () => {
-      void supabase.removeChannel(channel);
+      // removeChannel is async and can reject while the socket tears down
+      // (e.g. a runtime with no WebSocket). Unhandled, that rejection ends
+      // the process, so it is caught here: a failed unsubscribe is harmless.
+      void Promise.resolve(supabase.removeChannel(channel)).catch(() => undefined);
     };
-  }, [enabled, filter, queryClient, userId]);
+  }, [enabled, filter, loaded, queryClient, userId]);
 
   return query;
 }
