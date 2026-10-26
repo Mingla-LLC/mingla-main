@@ -3,7 +3,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  budgetGridFromRows,
   checksProgress,
   contractStateWord,
   creatorColumnFor,
@@ -14,12 +13,12 @@ import {
   gigEventWord,
   minorToWhole,
   moneyStateWord,
+  payUpToWord,
   payeeKindWord,
   payeeStatusWord,
   programErrorMessage,
   railWord,
   refundPercentToBps,
-  validateBudgetBand,
   wholeToMinor,
 } from "../creatorPrograms.js";
 
@@ -74,16 +73,12 @@ test("money is typed whole and stored in minor units", () => {
   assert.equal(refundPercentToBps("100"), null);
 });
 
-test("budget ranges: both empty means level only; half a range or a reversed one is refused", () => {
-  assert.deepEqual(validateBudgetBand({ min: "", max: "" }, "USD"), { ok: true, min_minor: null, max_minor: null });
-  assert.deepEqual(validateBudgetBand({ min: "300", max: "800" }, "USD"), { ok: true, min_minor: 30000, max_minor: 80000 });
-  assert.equal(validateBudgetBand({ min: "300", max: "" }, "USD").field, "max");
-  assert.equal(validateBudgetBand({ min: "900", max: "800" }, "USD").field, "max");
-  assert.equal(validateBudgetBand({ min: "abc", max: "800" }, "USD").field, "min");
-  const grid = budgetGridFromRows([{ currency: "NGN", band: "b2", min_minor: 5000000, max_minor: 12000000 }]);
-  assert.deepEqual(Object.keys(grid).sort(), ["NGN", "USD"]);
-  assert.deepEqual(grid.NGN.b2, { min: "50000", max: "120000" });
-  assert.deepEqual(grid.USD.b1, { min: "", max: "" });
+test("a gig shows the pay the host set, in the gig's currency", () => {
+  assert.equal(payUpToWord(30000, "USD"), "Up to $300");
+  assert.match(payUpToWord(5000000, "NGN"), /^Up to .*50,000/);
+  assert.equal(payUpToWord(null, "USD"), "—");
+  assert.equal(payUpToWord(0, "USD"), "—");
+  assert.equal(payUpToWord(undefined, "USD"), "—");
 });
 
 test("payees: kind and rail in plain words, money words On the way · Ready · Paid", () => {

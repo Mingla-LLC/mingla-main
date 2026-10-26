@@ -1,20 +1,18 @@
 // Issue #3872 — Programs › Gigs. A read-only list of every hired gig and where
 // it stands, in plain words, with the shared contract timeline in a drawer.
-// Mingla watches; the host and creator run the deal. The second tab holds the
-// budget ranges hosts and creators see for each budget level.
+// Mingla watches; the host and creator run the deal. Each row also says the
+// most the host offered to pay on the gig ("Up to $300").
 
 import { useEffect, useMemo, useState } from "react";
 import { useProgramLoad } from "../hooks/useProgramLoad";
 import { RefreshCw } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
-import { Tabs } from "../components/ui/Tabs";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Drawer } from "../components/ui/Drawer";
 import { SearchInput } from "../components/ui/SearchInput";
 import { AlertCard } from "../components/ui/Card";
 import { GigTimeline } from "./crm/GigTimeline";
-import { BudgetBandsEditor } from "./programs/BudgetBandsEditor";
 import { getContractWorkspace, listGigContracts } from "../services/creatorProgramsService";
 import {
   contractStateTone,
@@ -22,14 +20,10 @@ import {
   dayWord,
   isMissingFunction,
   money,
+  payUpToWord,
   programErrorMessage,
   shortDateTime,
 } from "../lib/creatorPrograms";
-
-const TABS = [
-  { id: "gigs", label: "Gigs" },
-  { id: "budgets", label: "Budget ranges" },
-];
 
 const STATE_FILTERS = [
   { id: "all", label: "All", match: () => true },
@@ -38,11 +32,6 @@ const STATE_FILTERS = [
   { id: "done", label: "Done", match: (s) => ["released", "completed", "day30", "resolved_release", "resolved_partial", "resolved_refund"].includes(s) },
   { id: "ended", label: "Declined or expired", match: (s) => ["declined", "expired", "cancelled"].includes(s) },
 ];
-
-function tabFromHash() {
-  const query = window.location.hash.split("?")[1] ?? "";
-  return new URLSearchParams(query).get("tab") === "budgets" ? "budgets" : "gigs";
-}
 
 function GigDrawer({ gig, onClose }) {
   const [workspace, setWorkspace] = useState(null);
@@ -141,12 +130,13 @@ function GigsList() {
       </div>
       {error ? <AlertCard variant="error" title="Couldn't load gigs">{error}</AlertCard> : null}
       <div className="admin-control-scroll overflow-x-auto rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)]">
-        <table className="w-full min-w-[760px] text-sm">
+        <table className="w-full min-w-[860px] text-sm">
           <thead className="bg-[var(--gray-50)] text-left text-xs uppercase tracking-wider text-[var(--color-text-tertiary)]">
             <tr>
               <th scope="col" className="px-4 py-2.5 font-semibold">Gig</th>
               <th scope="col" className="px-4 py-2.5 font-semibold">Creator</th>
               <th scope="col" className="px-4 py-2.5 font-semibold">Where it stands</th>
+              <th scope="col" className="px-4 py-2.5 font-semibold">Gig pays</th>
               <th scope="col" className="px-4 py-2.5 font-semibold">Fee</th>
               <th scope="col" className="px-4 py-2.5 font-semibold">Next date</th>
               <th scope="col" className="px-4 py-2.5 font-semibold">Updated</th>
@@ -163,13 +153,14 @@ function GigsList() {
                 </td>
                 <td className="px-4 py-3 text-[var(--color-text-primary)]">{row.creator_display_name ?? "—"}</td>
                 <td className="px-4 py-3"><Badge variant={contractStateTone(row.state)} dot>{contractStateWord(row.state)}</Badge></td>
+                <td className="px-4 py-3 text-[var(--color-text-secondary)]">{payUpToWord(row.pay_up_to_minor, row.pay_currency ?? row.currency)}</td>
                 <td className="px-4 py-3 text-[var(--color-text-primary)]">{row.fee_minor != null ? money(row.fee_minor, row.currency) : "—"}</td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">{row.due_at ? dayWord(row.due_at) : "—"}</td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">{shortDateTime(row.updated_at) || "—"}</td>
               </tr>
             ))}
             {!shown.length && !loading ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-[var(--color-text-secondary)]">{rows.length ? "No gigs match." : "No gigs yet."}</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-[var(--color-text-secondary)]">{rows.length ? "No gigs match." : "No gigs yet."}</td></tr>
             ) : null}
           </tbody>
         </table>
@@ -180,19 +171,13 @@ function GigsList() {
 }
 
 export function ProgramGigsPage() {
-  const [tab, setTab] = useState(tabFromHash);
-  const changeTab = (next) => {
-    setTab(next);
-    window.history.replaceState(null, "", next === "budgets" ? "#/program-gigs?tab=budgets" : "#/program-gigs");
-  };
   return (
     <div className="space-y-6">
       <PageHeader
         title="Gigs"
         description="Every hired gig and where it stands. Read-only: the host and creator run the deal."
-        tabs={<Tabs tabs={TABS} activeTab={tab} onChange={changeTab} />}
       />
-      {tab === "budgets" ? <BudgetBandsEditor /> : <GigsList />}
+      <GigsList />
     </div>
   );
 }

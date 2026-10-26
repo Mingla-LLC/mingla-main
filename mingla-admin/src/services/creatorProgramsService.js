@@ -1,5 +1,5 @@
 // Issue #3872 — the one browser caller for the Programs pages (Creators, Gigs,
-// Mingla Locals, Disputes, budget ranges). Every call returns data or throws;
+// Mingla Locals, Disputes). Every call returns data or throws;
 // a write that answers {ok:false, error} is thrown as a failure so a page can
 // never show a success for it.
 
@@ -80,27 +80,6 @@ export async function decideDispute({ disputeId, outcome, refundBps, note }) {
   }
   if (data && data.ok === false) throw new ProgramWriteError(data);
   return data;
-}
-
-// ── Budget ranges ───────────────────────────────────────────────────────────
-
-export async function listBudgetBands() {
-  const { data, error } = await supabase
-    .from("gig_budget_bands")
-    .select("currency,band,min_minor,max_minor,updated_at")
-    .order("currency")
-    .order("band");
-  if (error) throw error;
-  return data ?? [];
-}
-
-export function saveBudgetBand({ currency, band, minMinor, maxMinor }) {
-  return write("admin_budget_band_save", {
-    p_currency: currency,
-    p_band: band,
-    p_min_minor: minMinor,
-    p_max_minor: maxMinor,
-  });
 }
 
 // ── Mingla Locals ───────────────────────────────────────────────────────────
