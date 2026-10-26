@@ -1313,6 +1313,12 @@ jobs:
           #     fix, and asserting it here would red this lane for 130 reasons that have
           #     nothing to do with the gate. The re-apply below is the operation the
           #     repository ACTUALLY performs, and the one that broke.
+          #
+          #     View-append migrations (#3281 PR7+) leave business_public_events_view
+          #     with more columns than #2489's CREATE OR REPLACE VIEW can shrink to.
+          #     Drop the public event views (and the #3697 destinations view that
+          #     depends on them) so #2489 can recreate the gated read model.
+          $PSQL -q -c "DROP VIEW IF EXISTS public.ad_public_site_destinations_view CASCADE; DROP VIEW IF EXISTS public.events_public_view CASCADE; DROP VIEW IF EXISTS public.business_public_events_view CASCADE;"
           $PSQL -q -f "$GATE"
           echo "A OK — #2489 re-applied alone, mid-chain, without raising"
 
