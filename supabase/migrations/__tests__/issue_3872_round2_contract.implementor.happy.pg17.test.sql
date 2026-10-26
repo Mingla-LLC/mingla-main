@@ -362,6 +362,12 @@ BEGIN
   IF (v_r->'gig'->>'video_due_at')::timestamptz IS DISTINCT FROM v_row.video_due_at OR (v_r->'gig'->>'shoot_at')::timestamptz IS DISTINCT FROM v_row.shoot_at THEN
     RAISE EXCEPTION 'workspace gig lacks the exact times: %',v_r->'gig';
   END IF;
+  -- ...and the shoot window, so the creator's shoot calendar can limit its days.
+  IF (v_r->'gig'->'shoot_window'->>'start')::date IS DISTINCT FROM (SELECT shoot_window_start FROM public.gigs WHERE id='38724000-0000-4000-8000-0000000000f1')
+     OR (v_r->'gig'->'shoot_window'->>'end')::date IS DISTINCT FROM (SELECT shoot_window_end FROM public.gigs WHERE id='38724000-0000-4000-8000-0000000000f1')
+     OR v_r->'gig'->'shoot_window'->>'start' IS NULL THEN
+    RAISE EXCEPTION 'workspace gig lacks the shoot window: %',v_r->'gig';
+  END IF;
   -- An old client sending dates only still works: due at 23:59 local.
   v_r:=public.gig_save(v_payload-'video_due_at'-'shoot_at');
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'date-only gig_save: %',v_r; END IF;
