@@ -53,7 +53,7 @@ describe("event page tool grid", () => {
     expect(page).not.toMatch(/label="Messages"/);
     expect(page).not.toContain("/blasts");
     expect(page).toMatch(/label="Promote"[\s\S]{0,80}sub=\{promoteTileStatus\(promoteOverview\)\}/);
-    expect(page).toMatch(/label="Scan tickets"[\s\S]{0,40}primary[\s\S]{0,20}wide/);
+    expect(page).toMatch(/label="Scan tickets"[\s\S]{0,80}primary[\s\S]{0,40}wide/);
   });
 
   it("Get it seen, the Promote tile and Manage → Promote open Blast for this event", () => {

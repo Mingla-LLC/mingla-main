@@ -1033,17 +1033,22 @@ export default function EventDetailScreen(): React.ReactElement {
                   />
                 );
               case "insights":
+                // #1403 — the tile itself still consumes the fail-closed role
+                // gate, not only the grid order.
                 return (
-                  <ActionTile
-                    key={key}
-                    icon="chart"
-                    label="Insights"
-                    sub="Customers Mingla drove"
-                    accessibilityLabel={`Open Insights for ${event.name}`}
-                    onPress={() =>
-                      router.push(`/insights/${event.id}?entry=detail_action` as never)
-                    }
-                  />
+                  <React.Fragment key={key}>
+                    {canShowListingInsights ? (
+                      <ActionTile
+                        icon="chart"
+                        label="Insights"
+                        sub="Customers Mingla drove"
+                        accessibilityLabel={`Open Insights for ${event.name}`}
+                        onPress={() =>
+                          router.push(`/insights/${event.id}?entry=detail_action` as never)
+                        }
+                      />
+                    ) : null}
+                  </React.Fragment>
                 );
               case "groupChat":
                 return (

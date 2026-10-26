@@ -1,5 +1,5 @@
 /**
- * MarketingSubNav — sticky 4-pill segmented control inside the Marketing tab
+ * MarketingSubNav — sticky, sideways-scrolling section row inside the Blast tab
  * (ORCH-0815-B foundation).
  *
  * Sits at the top of every `/(tabs)/marketing/*` route (except composer,

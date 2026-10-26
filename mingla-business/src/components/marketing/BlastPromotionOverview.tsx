@@ -64,7 +64,7 @@ export function BlastPromotionOverview({
   // whole brand instead of an error screen.
   const failedCode =
     query.error && typeof (query.error as { code?: unknown }).code === "string"
-      ? ((query.error as { code: string }).code)
+      ? (query.error as unknown as { code: string }).code
       : null;
   useEffect(() => {
     if (
