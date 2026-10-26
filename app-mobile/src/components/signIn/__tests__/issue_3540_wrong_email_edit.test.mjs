@@ -66,4 +66,3 @@ test("a signed follow invite cannot redirect its code to another mailbox", () =>
   const control = code.slice(controlAt - 900, controlAt + 80);
   assert.match(control, /!followInviteActive\s*\?\s*\(/);
 });
-
