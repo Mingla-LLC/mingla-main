@@ -46,7 +46,7 @@ export type PublicCreatorProfile = {
   showcase: Array<{ media_id: string; thumb: string | null; title?: string | null }>;
   completed_gigs: number;
   /** Optional: a live gig the creator is promoting right now. */
-  promoting_now?: { title: string; url?: string | null } | null;
+  promoting_now?: string[] | { title: string; url?: string | null } | null;
 };
 
 export type City = { id: string; name: string; country_code: string | null };

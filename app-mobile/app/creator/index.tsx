@@ -54,6 +54,14 @@ export default function CreatorHubScreen(): React.ReactElement {
   }, [queryClient]));
 
   const refresh = (): void => { void queryClient.invalidateQueries({ queryKey: ['creator'] }); };
+  const withdraw = (interestId: string, title: string): void => {
+    Alert.alert('Withdraw your interest?', `The host of “${title}” will no longer see you as interested.`, [
+      { text: 'Keep it', style: 'cancel' },
+      { text: 'Withdraw', style: 'destructive', onPress: () => {
+        creatorGigsService.withdrawInterest(interestId).then(refresh).catch((error: unknown) => Alert.alert('Couldn’t withdraw', programErrorText(error)));
+      } },
+    ]);
+  };
 
   const checks = setupChecks(status.data);
   const done = checks.filter((c) => c.done).length;
@@ -180,7 +188,12 @@ export default function CreatorHubScreen(): React.ReactElement {
             <Text style={s.strong} numberOfLines={1}>{item.title}</Text>
             <Text style={s.copy}>Your quote {formatMoney(item.quote_minor, item.currency)} · sent {formatShortDate(item.created_at)}</Text>
           </View>
-          <ProgramPill label={item.status === 'shortlisted' ? 'Shortlisted' : 'With host'} tone={item.status === 'shortlisted' ? 'accent' : 'neutral'} />
+          <View style={styles.interestSide}>
+            <ProgramPill label={item.status === 'shortlisted' ? 'Shortlisted' : 'With host'} tone={item.status === 'shortlisted' ? 'accent' : 'neutral'} />
+            <Pressable accessibilityRole="button" accessibilityLabel={`Withdraw interest in ${item.title}`} hitSlop={8} onPress={() => withdraw(item.id, item.title)}>
+              <Text style={styles.withdraw}>Withdraw</Text>
+            </Pressable>
+          </View>
         </Pressable>)}</ProgramCard>) : null}
     </>}
 
@@ -244,6 +257,8 @@ function GigCard({ gig, saved, saving, onSave, onPress }: { gig: PublicGig; save
 }
 
 const styles = StyleSheet.create({
+  interestSide: { alignItems: 'flex-end', gap: 6 },
+  withdraw: { color: C.muted, fontSize: 12.5, fontWeight: '600', textDecorationLine: 'underline' },
   me: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: C.accent, fontWeight: '900', fontSize: 17 },

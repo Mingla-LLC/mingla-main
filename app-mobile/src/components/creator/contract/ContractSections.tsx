@@ -15,9 +15,13 @@ import { POST_URL_RULES, TRACK_STEPS, TRACK_TITLES, actorWords, currentTrackStep
 export function BrandCard({ workspace }: { workspace: GigWorkspace }): React.ReactElement | null {
   if (!workspace.revealed) return null;
   const g = workspace.gig;
-  const name = g.brand_name?.trim() || 'Your host';
-  const place = [g.place_name, g.place_address].filter(Boolean).join(' · ');
-  const tags = (g.must_tag ?? []).filter(Boolean);
+  const reveal = workspace.reveal ?? null;
+  const name = (reveal?.brand_name ?? g.brand_name)?.trim() || 'Your host';
+  const place = [reveal?.place_name ?? g.place_name, reveal?.place_address ?? g.place_address].filter(Boolean).join(' · ');
+  // The server stores must-tag as an object ({disclosure, mingla}); older rows may be a list.
+  const rawTags: unknown = g.must_tag;
+  const tags = (Array.isArray(rawTags) ? rawTags : rawTags && typeof rawTags === 'object' ? Object.values(rawTags) : [])
+    .filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0);
   return <ProgramCard>
     <View style={styles.brandTop}>
       <View style={styles.avatar}><Text style={styles.avatarText}>{name.slice(0, 2).toUpperCase()}</Text></View>

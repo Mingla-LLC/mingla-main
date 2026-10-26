@@ -35,9 +35,11 @@ export type GigPost = { id: string; platform: string; url: string; check_status:
 export type GigWorkspace = {
   contract: { id: string; state: string; state_deadline_at: string | null; fix_rounds_used: number; current_terms_version?: number; created_at?: string };
   party: 'host' | 'creator' | 'admin'; revealed: boolean;
+  /** Who the host is and where the shoot happens; only after acceptance. */
+  reveal?: { brand_name: string | null; place_name: string | null; place_address: string | null } | null;
   gig: Record<string, unknown> & {
     title_public: string; brief_public: string; format_key: string; post_by: string;
-    brief_private?: string | null; must_tag?: string[] | null; brand_id?: string | null;
+    brief_private?: string | null; must_tag?: string[] | Record<string, string> | null; brand_id?: string | null;
     /** Shown once revealed when the server includes them. */
     brand_name?: string | null; place_name?: string | null; place_address?: string | null;
     shoot_window?: { start: string; end: string } | null; city_name?: string | null;
@@ -62,6 +64,7 @@ export const creatorGigsService = {
   home: () => programRead<CreatorHome>('gig_creator_home'),
   board: (input: { cityId?: string | null; formatKey?: string | null } = {}) => programRead<PublicGig[]>('creator_gig_board', { p_city_id: input.cityId ?? null, p_format_key: input.formatKey ?? null }),
   detail: (gigId: string) => programRead<PublicGig | null>('creator_gig_detail', { p_gig_id: gigId }),
+  withdrawInterest: (interestId: string) => programWrite<{ ok: true }>('gig_interest_withdraw', { p_interest_id: interestId }),
   saveGig: (gigId: string, saved: boolean) => programWrite<{ ok: true; saved: boolean }>('creator_gig_save', { p_gig_id: gigId, p_saved: saved }),
   savedGigs: () => programRead<PublicGig[]>('creator_saved_gigs'),
   /** `{ok:false}` (note_not_anonymous, payout_rail_mismatch, creator_not_ready, gig_full, already_interested) throws. */

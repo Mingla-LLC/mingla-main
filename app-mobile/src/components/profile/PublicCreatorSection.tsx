@@ -25,7 +25,10 @@ export function PublicCreatorSection({ userId, embedded = false }: { userId: str
   if (!creator || !creator.id) return null;
   const showcase = creator.showcase.slice(0, 2);
   const gigs = creator.completed_gigs > 0 ? `${creator.completed_gigs} gig${creator.completed_gigs === 1 ? '' : 's'} done` : null;
-  const promoting = creator.promoting_now ?? null;
+  // The server sends the public titles being promoted as a list; show the first.
+  const raw: unknown = creator.promoting_now;
+  const firstTitle = Array.isArray(raw) ? raw.find((t): t is string => typeof t === 'string' && t.trim().length > 0) : null;
+  const promoting = firstTitle ? { title: firstTitle, url: null } : (raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as { title: string; url?: string | null }) : null);
 
   return (
     <View style={[styles.card, embedded && styles.embedded]} accessibilityLabel={`Mingla Creator ${creator.display_name}`}>
