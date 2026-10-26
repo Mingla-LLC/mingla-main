@@ -20,7 +20,8 @@ import { opsErrorWords, proofFromLines, todayIso } from "../../lib/opsModel";
 const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
-function WordingCard({ card, myName, onDone }) {
+// #4130 (Wave 1): also opened inside a roadmap wording card's Work drawer.
+export function WordingCard({ card, myName, onDone }) {
   const { addToast } = useToast();
   const draft = card.roadmap || {};
   const [title, setTitle] = useState(draft.public_title || "");

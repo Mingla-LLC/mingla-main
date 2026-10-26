@@ -182,7 +182,7 @@ Deno.test("#3980 W3 R9: a note tells the people picked by email, never someone i
 });
 
 Deno.test("#3980 W3 R9: the one people field is used for every owner, watcher and mention control", () => {
-  for (const file of ["components/crm/OwnersField.jsx", "components/ops/WorkDetail.jsx", "components/ops/WorkAddForm.jsx", "components/contentCalendar/ContentDrawer.jsx", "pages/ContentCalendarPage.jsx", "pages/TeamDashboardPage.jsx"]) {
+  for (const file of ["components/crm/OwnersField.jsx", "components/ops/WorkDetail.jsx", "components/ops/WorkAddForm.jsx", "components/contentCalendar/ContentDrawer.jsx", "pages/ContentCalendarPage.jsx", "components/ops/TeamSettingsPanels.jsx"]) { // #4130: the marketing owner field moved from the Team dashboard to the settings panels
     assertMatch(code(file), /<PeopleField\b/, file);
     assertNotMatch(code(file), /<PeoplePicker\b/, file);
   }
@@ -232,9 +232,10 @@ Deno.test("#3980 W3 R7: Work's columns, its card badges, and the tabs never stac
   assertEquals(cardReasons(cards[2], now), ["No update for 11d"]);
   const page = code("pages/WorkBoardPage.jsx");
   assertMatch(page, /title="Work"/);
-  assertMatch(page, /description="What needs doing, who’s on it, and what’s slipping\. Steps appear here by themselves from every host’s events\."/);
-  // One of the three, never two at once.
-  assertMatch(page, /\{view\.tab === "attention" \? \(\s*<NeedsAttention [\s\S]*?\) : view\.tab === "activity" \? \(\s*<AgentActivity \/>\s*\) : \(/);
+  // #4130: Needs you is retired into Work, so the description says where waiting cards went.
+  assertMatch(page, /description="Every piece of team work is a card\. Cards that wait on a person sit in the first column, with their drafts and approvals inside\."/);
+  // One of the three, never two at once (#4130: the board itself has four views).
+  assertMatch(page, /\{tab\.tab === "attention" \? \(\s*<NeedsAttention [\s\S]*?\) : tab\.tab === "activity" \? \(\s*<AgentActivity \/>\s*\) : view\.view === "today" \? \(/);
   assertEquals((page.match(/<NeedsAttention /g) || []).length, 1);
   assertEquals((page.match(/<WorkColumns /g) || []).length, 1);
   const columns = code("components/ops/WorkColumns.jsx");

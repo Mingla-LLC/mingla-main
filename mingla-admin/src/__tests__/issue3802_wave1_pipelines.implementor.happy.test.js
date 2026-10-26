@@ -475,7 +475,9 @@ describe("#3802 P-8: source contracts", () => {
       "crm_records_list",
       "crm_target_set",
       "crm_team_summary",
-    ]);
+      // #4130: the Team dashboard's row of numbers (read-only, owner and admin).
+      "crm_team_pulse",
+    ].sort());
     // Bulk add is for the agent connector (a later wave); the screen never calls it.
     assert.ok(!SERVICE.includes("crm_records_bulk_create"));
   });
