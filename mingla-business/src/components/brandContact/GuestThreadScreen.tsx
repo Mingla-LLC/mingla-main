@@ -89,6 +89,9 @@ export default function GuestThreadScreen({ token }: GuestThreadScreenProps): Re
   );
 
   const [draft, setDraft] = useState("");
+  // Web: how far the pinned composer rose above floating UI (privacy button /
+  // consent card), so the last message can still scroll clear of it.
+  const [composerLift, setComposerLift] = useState(0);
   const [hp, setHp] = useState("");
   const [sending, setSending] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
@@ -291,8 +294,12 @@ export default function GuestThreadScreen({ token }: GuestThreadScreenProps): Re
             value={hp}
             onChangeText={setHp}
             accessibilityElementsHidden
+            aria-hidden
+            tabIndex={-1}
+            focusable={false}
             importantForAccessibility="no-hide-descendants"
             autoComplete="off"
+            testID="guest-thread-hp"
             style={styles.honeypot}
           />
           <Pressable
@@ -355,7 +362,7 @@ export default function GuestThreadScreen({ token }: GuestThreadScreenProps): Re
       </View>
       <ScrollView
         style={styles.flex}
-        contentContainerStyle={[styles.thread, !PINNED_BAR_IN_FLOW && { paddingBottom: COMPOSER_SPACE + 24 }]}
+        contentContainerStyle={[styles.thread, !PINNED_BAR_IN_FLOW && { paddingBottom: COMPOSER_SPACE + 24 + composerLift }]}
         keyboardShouldPersistTaps="handled"
       >
         <View style={[styles.column, styles.threadColumn]}>
@@ -401,7 +408,7 @@ export default function GuestThreadScreen({ token }: GuestThreadScreenProps): Re
           </View>
         </View>
       </ScrollView>
-      <PinnedBottomBar background={palette.page}>{composer}</PinnedBottomBar>
+      <PinnedBottomBar background={palette.page} onLiftChange={setComposerLift}>{composer}</PinnedBottomBar>
     </View>
   );
 }

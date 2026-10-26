@@ -10,6 +10,8 @@ import { View } from "react-native";
 export interface PinnedBottomBarProps {
   background: string;
   children: React.ReactNode;
+  /** Web only: the measured lift above floating UI. Native never lifts. */
+  onLiftChange?: (lift: number) => void;
 }
 
 export function PinnedBottomBar({ background, children }: PinnedBottomBarProps): React.ReactElement {

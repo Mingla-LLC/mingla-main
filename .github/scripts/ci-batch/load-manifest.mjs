@@ -13,8 +13,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4084: re-sealed after the existing deploy-functions provider gained its
 // exact supersession regression consumer.
 // #4111: re-sealed after the #679 brand-page suite gained the brand page foot
-// render proof (issue_4111_brand_page_foot.render.test.tsx).
-export const BOOTSTRAP_SHA256 = "32df277c403379139d8ee8e521d4f469ec4160fb0cc02a2a8402abcb8c87b7f7";
+// render proof and the message-sheet rework proof (issue_4111_*.render.test.tsx).
+export const BOOTSTRAP_SHA256 = "ee6d81b0af8cf388a3f5e0068c7564921ba104e1fcfe88a613ef4b5500ab4178";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

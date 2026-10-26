@@ -94,6 +94,9 @@ module.exports = {
     // foot on every tab, the signed-out box vs signed-in, no contact rows in
     // About, and the desktop Message button. Paired MANIFEST expectedFiles entry.
     "**/__tests__/issue_4111_brand_page_foot.render.test.tsx",
+    // #4111 tester rework — sheet P2-1 (no app row without offerings) and P2-2
+    // (honeypots out of Tab order, hidden from screen readers). Paired MANIFEST entry.
+    "**/__tests__/issue_4111_message_sheet_rework.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|react-native-web|@react-native-community|react-native-svg|lucide-react-native|expo|@expo)",

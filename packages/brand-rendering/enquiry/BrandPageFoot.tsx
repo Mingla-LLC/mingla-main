@@ -240,6 +240,9 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
                 value={hp}
                 onChangeText={setHp}
                 accessibilityElementsHidden
+                aria-hidden
+                tabIndex={-1}
+                focusable={false}
                 importantForAccessibility="no-hide-descendants"
                 autoComplete="off"
                 testID={`${testID}-loop-hp`}

@@ -219,6 +219,9 @@ export const BrandMessageSheet = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, prefillKey, resetFor]);
 
+  // "Already booked?" only makes sense when the brand offers something that
+  // can be booked (P2-1): a brand with nothing listed shows only "Something else".
+  const brandHasOfferings = groups.some((g) => g.key !== "something_else" && g.key !== "plans");
   const chosenReason = pick === null ? null : sendReasonFor(pick, reason);
   const selfServe = pick === null ? null : selfServeFor(pick, reason);
   const gatesCompose =
@@ -442,7 +445,7 @@ export const BrandMessageSheet = ({
         {`Message ${brandName}`}
       </Text>
       <Text style={[styles.sub, { color: palette.secondaryText }]}>What&apos;s this about?</Text>
-      {!signedIn && onOpenApp !== undefined ? (
+      {!signedIn && onOpenApp !== undefined && brandHasOfferings ? (
         <View
           style={[styles.appRow, { backgroundColor: palette.accentWash, borderColor: palette.panelBorder }]}
           testID={`${testID}-open-app-row`}
@@ -627,6 +630,9 @@ export const BrandMessageSheet = ({
             value={hp}
             onChangeText={setHp}
             accessibilityElementsHidden
+            aria-hidden
+            tabIndex={-1}
+            focusable={false}
             importantForAccessibility="no-hide-descendants"
             autoComplete="off"
             testID={`${testID}-hp`}
