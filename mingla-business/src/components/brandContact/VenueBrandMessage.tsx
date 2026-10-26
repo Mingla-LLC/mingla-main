@@ -1,16 +1,18 @@
 /**
  * #4111 D6 — "Message {Brand}" on the public venue page, with this venue
- * picked ("At the venue" topics). The venue route is anonymous and never calls
- * useAuth itself, so this lazily-loaded component owns the viewer and the
- * sheet, and hands the route an opener once the brand is known to take
- * enquiries (null until then, so no dead Message button ever renders).
+ * picked ("At the venue" topics). The venue route chain never calls useAuth
+ * (anon-buyer rule), so the venue page messages as a signed-out web guest
+ * (name + email in the sheet), like the cancel page. This lazily-loaded
+ * component owns the sheet and hands the route an opener once the brand is
+ * known to take enquiries (null until then, so no dead Message button renders).
  */
 import React, { useEffect, useMemo } from "react";
-import { resolveTheme } from "@mingla/offering-rendering";
+// DEEP specifier: the barrel is partially mocked by many venue suites, and a
+// missing resolveTheme there must never take the venue page down.
+import { resolveTheme } from "@mingla/offering-rendering/themeResolver";
 import type { PublicVenueThemeInput } from "@mingla/brand-rendering/PublicVenueScreen";
 
-import { useAuth } from "../../context/AuthContext";
-import { useBrandMessage, viewerNameFromUser } from "./useBrandMessage";
+import { useBrandMessage } from "./useBrandMessage";
 
 export interface VenueMessageOpener {
   open: () => void;
@@ -39,7 +41,6 @@ export default function VenueBrandMessage({
   countryIso,
   onOpener,
 }: VenueBrandMessageProps): React.ReactElement {
-  const { user } = useAuth();
   const resolved = useMemo(() => resolveTheme(theme, null), [theme]);
   const target = useMemo(
     () => ({ id: brandId, name: brandName, slug: brandSlug, theme: resolved, countryIso }),
@@ -51,7 +52,7 @@ export default function VenueBrandMessage({
   );
   const message = useBrandMessage({
     brand: target,
-    viewer: { userId: user?.id ?? null, name: viewerNameFromUser(user) },
+    viewer: { userId: null, name: null },
     entry: "offering",
     venue,
     resumePath: `/b/${brandSlug}/v/${venueSlug}`,

@@ -13,10 +13,15 @@
  * FAILS-ON-REVERT: removing the resolved banner, the expired view or the "/m/"
  * prefix fails these assertions.
  */
+const mockInvoke = jest.fn();
+jest.mock("../../../services/supabase", () => ({
+  supabase: { functions: { invoke: (...args: unknown[]) => mockInvoke(...args) } },
+}));
+
 import { readFileSync } from "fs";
 import path from "path";
 
-import { describe, expect, test } from "@jest/globals";
+import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 import {
   RESOLVED_BANNER,
@@ -24,7 +29,11 @@ import {
   isGuestThreadToken,
 } from "../guestThreadModel";
 import { isPublicBuyerRoute } from "../../../utils/coldLoadAuthGates";
-import { parseGuestThread } from "../../../services/publicEnquiryService";
+import {
+  fetchGuestThread,
+  parseGuestThread,
+  postGuestReply,
+} from "../../../services/publicEnquiryService";
 
 const NOW = Date.parse("2026-10-26T12:00:00Z");
 const TOKEN = "A".repeat(43);
@@ -108,5 +117,44 @@ describe("#4111 /m/{token} route contract", () => {
     const sheet = source("../packages/brand-rendering/enquiry/BrandMessageSheet.tsx");
     expect(sheet).not.toContain("--mingla-privacy-inset:");
     expect(sheet).not.toMatch(/var\(--mingla-privacy-inset/);
+  });
+});
+
+describe("#4111 /m/{token} transport — server answers become page states", () => {
+  const httpError = (status: number) => ({
+    message: "Edge Function returned a non-2xx status code",
+    context: { status, json: async () => ({}) },
+  });
+
+  beforeEach(() => {
+    mockInvoke.mockReset();
+  });
+
+  test("200 → thread, 410 → expired, 404 → invalid; the token rides the GET query", async () => {
+    mockInvoke.mockImplementationOnce(async () => ({ data: raw("resolved"), error: null }));
+    const ok = await fetchGuestThread(TOKEN);
+    expect(mockInvoke.mock.calls[0]?.[0]).toBe(`public-enquiry-thread?token=${TOKEN}`);
+    expect(mockInvoke.mock.calls[0]?.[1]).toEqual({ method: "GET" });
+    expect(guestThreadModel(ok, NOW).view).toBe("thread");
+    expect(ok.kind === "ok" && ok.thread.status).toBe("resolved");
+
+    mockInvoke.mockImplementationOnce(async () => ({ data: null, error: httpError(410) }));
+    expect(guestThreadModel(await fetchGuestThread(TOKEN)).view).toBe("expired");
+
+    mockInvoke.mockImplementationOnce(async () => ({ data: null, error: httpError(404) }));
+    expect(guestThreadModel(await fetchGuestThread(TOKEN)).view).toBe("invalid");
+  });
+
+  test("a reply posts {token, body, hp}; 429 and 410 come back as reasons", async () => {
+    mockInvoke.mockImplementationOnce(async () => ({ data: { status: "sent" }, error: null }));
+    expect(await postGuestReply(TOKEN, "Thanks!", "")).toEqual({ ok: true });
+    expect(mockInvoke.mock.calls[0]).toEqual([
+      "public-enquiry-thread",
+      { body: { token: TOKEN, body: "Thanks!", hp: "" } },
+    ]);
+    mockInvoke.mockImplementationOnce(async () => ({ data: null, error: httpError(429) }));
+    expect(await postGuestReply(TOKEN, "again", "")).toEqual({ ok: false, reason: "rate_limited" });
+    mockInvoke.mockImplementationOnce(async () => ({ data: null, error: httpError(410) }));
+    expect(await postGuestReply(TOKEN, "again", "")).toEqual({ ok: false, reason: "expired" });
   });
 });

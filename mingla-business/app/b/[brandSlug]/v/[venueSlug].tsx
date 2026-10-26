@@ -99,6 +99,10 @@ import { PublicVenueReservationSheet } from "../../../../src/components/venue/Pu
 import { GuestVenueReservation } from "../../../../src/components/venue/GuestVenueReservation";
 import { ShareModal } from "../../../../src/components/ui/ShareModal";
 import { useThemeFont } from "../../../../src/theme/useThemeFont";
+import { OptionalFeatureBoundary } from "../../../../src/components/brandContact/OptionalFeatureBoundary";
+// #4111 D6 — Message {Brand} with this venue picked. It messages as a signed-out
+// web guest (this chain never calls useAuth); the sheet itself loads lazily.
+import VenueBrandMessage from "../../../../src/components/brandContact/VenueBrandMessage";
 import {
   brandPublicPath,
   venueOgImageUrl,
@@ -156,12 +160,6 @@ const LazyOrderingSurface = React.lazy(() =>
  */
 const analyticsSurface: VenueOrganicAnalyticsSurface = "buyer_web";
 
-// #4111 D6 — Message {Brand} with this venue picked. LAZY: it owns the viewer
-// (this route never calls useAuth) and the sheet loads only on a tap.
-const VenueBrandMessage = React.lazy(
-  () => import("../../../../src/components/brandContact/VenueBrandMessage"),
-);
-
 /** #1793 — a stable empty menu, so the ordering surface's deps do not churn. */
 const EMPTY_MENU_GROUPS: PublicMenuGroup[] = [];
 
@@ -195,6 +193,12 @@ export default function PublicVenueRoute(): React.ReactElement {
   const webConsentState = useWebConsentState();
   const [shareModalVisible, setShareModalVisible] = React.useState(false);
   const [messageOpener, setMessageOpener] = React.useState<{ open: () => void } | null>(null);
+  // Mount the (lazy) message controller only after the page's first commit, so
+  // its chunk never sits on the venue page's first paint.
+  const [messageMountReady, setMessageMountReady] = React.useState(false);
+  useEffect(() => {
+    setMessageMountReady(true);
+  }, []);
   const handleMessageOpener = useCallback(
     (opener: { open: () => void } | null): void => setMessageOpener(opener),
     [],
@@ -772,7 +776,8 @@ export default function PublicVenueRoute(): React.ReactElement {
             title={pageTitle}
             description={metaDescription}
           />
-          <React.Suspense fallback={null}>
+          {messageMountReady ? (
+          <OptionalFeatureBoundary name="venue-brand-message">
             <VenueBrandMessage
               brandId={venue.brandId}
               brandName={venue.brandName}
@@ -784,7 +789,9 @@ export default function PublicVenueRoute(): React.ReactElement {
               countryIso={venue.countryCode ?? null}
               onOpener={handleMessageOpener}
             />
-          </React.Suspense>
+          
+          </OptionalFeatureBoundary>
+          ) : null}
         </>
       }
       onAnalytics={handleAnalytics}

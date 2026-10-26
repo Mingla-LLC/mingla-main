@@ -7,6 +7,7 @@
  * screen — the emailed token is the only key. The screen loads lazily (and web
  * async routes split this route), so nothing here touches the boot payload.
  */
+// orch-strict-grep-allow safearea-on-fullscreen-routes — GuestThreadScreen applies useSafeAreaInsets (paddingTop: insets.top + 12 on the header, insets.top + 48 on state views, insets.bottom on the composer); the Suspense fallback is a centered spinner.
 import React, { Suspense } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";

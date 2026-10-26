@@ -907,12 +907,13 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
 
 // #4111 — the desktop panel's Share row: Share, plus Message when the brand
 // takes enquiries (the host passes `callbacks.onMessage` only then).
-const DeskShareRow: React.FC<{
+type DeskShareRowProps = {
   palette: ThemePalette;
   brandName: string;
   onShare: () => void;
   onMessage?: () => void;
-}> = ({ palette, brandName, onShare, onMessage }) => (
+};
+const DeskShareRow = ({ palette, brandName, onShare, onMessage }: DeskShareRowProps) => (
   <View style={styles.deskShareRow}>
     <Pressable
       onPress={onShare}

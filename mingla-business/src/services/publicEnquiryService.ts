@@ -29,6 +29,8 @@ const getSupabase = async (): Promise<typeof import("./supabase").supabase> =>
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+const str = (value: unknown): string | null => (typeof value === "string" && value.length > 0 ? value : null);
+
 const SEND_FAILED = "We couldn't send that. Check your connection and try again.";
 
 /** Status + JSON body of a functions.invoke failure, when the server answered. */
@@ -95,15 +97,15 @@ export async function fetchPublicBrandIdentity(slug: string): Promise<PublicBran
     .maybeSingle();
   if (error !== null) throw error;
   if (!isRecord(data) || typeof data.id !== "string" || typeof data.name !== "string") return null;
+  // Typed brand columns (ORCH-0964), read into locals before shaping.
+  const color = str(data.theme_color);
+  const font = str(data.theme_font);
+  const animation = str(data.theme_animation);
   return {
     id: data.id,
     name: data.name,
     slug: typeof data.slug === "string" ? data.slug : slug,
-    theme: {
-      color: typeof data.theme_color === "string" ? data.theme_color : null,
-      font: typeof data.theme_font === "string" ? data.theme_font : null,
-      animation: typeof data.theme_animation === "string" ? data.theme_animation : null,
-    },
+    theme: { color, font, animation },
   };
 }
 
@@ -259,7 +261,6 @@ export type GuestThreadResult =
   | { kind: "invalid" };
 
 const STATUSES = new Set(["new", "waiting", "replied", "resolved"]);
-const str = (value: unknown): string | null => (typeof value === "string" && value.length > 0 ? value : null);
 
 export const parseGuestThread = (value: unknown): GuestThread => {
   if (!isRecord(value) || value.status !== "ok") throw new Error("guest_thread_malformed");

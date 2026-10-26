@@ -282,6 +282,6 @@ export interface PublicBrandPageProps {
    * #4111 — the page foot (`@mingla/brand-rendering/enquiry/BrandPageFoot`),
    * rendered under the active pane on every tab. null/undefined → nothing.
    */
-  foot?: import("react").ReactNode;
+  foot?: import("./PublicVenueTabs").BrandRenderingReactNode;
   callbacks: PublicBrandCallbacks;
 }

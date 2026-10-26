@@ -16,13 +16,14 @@ import {
   Image,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import Head from "expo-router/head";
+// ORCH-0892 — keyboard-aware on native (focused field clears the keyboard), plain on web.
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

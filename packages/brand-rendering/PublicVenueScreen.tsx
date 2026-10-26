@@ -1552,22 +1552,23 @@ export const PublicVenueScreen = ({
       >
         {venue.name}
       </Text>
-      <View style={styles.byBrandLine}>
-        <Pressable
-          onPress={onOpenBrand}
-          accessibilityRole="link"
-          accessibilityLabel={`View ${venue.brandName} on Mingla`}
-          style={[styles.byBrandRow, styles.byBrandShrink]}
-        >
-          <Text style={[styles.byBrandBy, { color: palette.tertiaryText }]}>
-            By{" "}
-            <Text style={[styles.byBrandName, { color: palette.accent }]}>
-              {venue.brandName}
+      {/* #4111 — with no Message (enquiries off / not loaded / desktop) the
+          "By {brand}" line renders exactly as before. */}
+      {onMessageBrand !== undefined && !isDesktop ? (
+        <View style={styles.byBrandLine}>
+          <Pressable
+            onPress={onOpenBrand}
+            accessibilityRole="link"
+            accessibilityLabel={`View ${venue.brandName} on Mingla`}
+            style={[styles.byBrandRow, styles.byBrandShrink]}
+          >
+            <Text style={[styles.byBrandBy, { color: palette.tertiaryText }]}>
+              By{" "}
+              <Text style={[styles.byBrandName, { color: palette.accent }]}>
+                {venue.brandName}
+              </Text>
             </Text>
-          </Text>
-        </Pressable>
-        {/* Desktop shows Message beside Share in the side panel instead. */}
-        {onMessageBrand !== undefined && !isDesktop ? (
+          </Pressable>
           <Pressable
             onPress={onMessageBrand}
             accessibilityRole="button"
@@ -1583,8 +1584,22 @@ export const PublicVenueScreen = ({
               Message
             </Text>
           </Pressable>
-        ) : null}
-      </View>
+        </View>
+      ) : (
+        <Pressable
+          onPress={onOpenBrand}
+          accessibilityRole="link"
+          accessibilityLabel={`View ${venue.brandName} on Mingla`}
+          style={styles.byBrandRow}
+        >
+          <Text style={[styles.byBrandBy, { color: palette.tertiaryText }]}>
+            By{" "}
+            <Text style={[styles.byBrandName, { color: palette.accent }]}>
+              {venue.brandName}
+            </Text>
+          </Text>
+        </Pressable>
+      )}
       {answerCells.length > 0 ? (
         <View style={styles.answerBar} testID="issue-1561-answer-bar">
           {answerCells.map(renderAnswerCell)}
@@ -2000,23 +2015,23 @@ export const PublicVenueScreen = ({
             </Text>
           </Text>
         </Pressable>
-        <View style={styles.deskShareRow}>
-          <Pressable
-            onPress={onShare}
-            accessibilityRole="button"
-            accessibilityLabel="Share this venue"
-            style={({ pressed }) => [
-              styles.deskShareBtn,
-              styles.deskShareCell,
-              { backgroundColor: palette.accent },
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={[styles.deskShareLabel, { color: palette.accentText }]}>
-              Share
-            </Text>
-          </Pressable>
-          {onMessageBrand !== undefined ? (
+        {onMessageBrand !== undefined ? (
+          <View style={styles.deskShareRow}>
+            <Pressable
+              onPress={onShare}
+              accessibilityRole="button"
+              accessibilityLabel="Share this venue"
+              style={({ pressed }) => [
+                styles.deskShareBtn,
+                styles.deskShareCell,
+                { backgroundColor: palette.accent },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.deskShareLabel, { color: palette.accentText }]}>
+                Share
+              </Text>
+            </Pressable>
             <Pressable
               onPress={onMessageBrand}
               accessibilityRole="button"
@@ -2034,8 +2049,23 @@ export const PublicVenueScreen = ({
                 Message
               </Text>
             </Pressable>
-          ) : null}
-        </View>
+          </View>
+        ) : (
+          <Pressable
+            onPress={onShare}
+            accessibilityRole="button"
+            accessibilityLabel="Share this venue"
+            style={({ pressed }) => [
+              styles.deskShareBtn,
+              { backgroundColor: palette.accent },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={[styles.deskShareLabel, { color: palette.accentText }]}>
+              Share
+            </Text>
+          </Pressable>
+        )}
         {showPersistentReserveCta ? reserveCta : null}
       </View>
     </View>

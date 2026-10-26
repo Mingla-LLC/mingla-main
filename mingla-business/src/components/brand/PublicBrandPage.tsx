@@ -681,9 +681,6 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           onOpenExternal: handleOpenExternal,
           onRetryVenues,
           onLoadMorePast,
-          onMessage: brandMessage.available
-            ? () => brandMessage.open()
-            : undefined,
           onReservationsTabViewed: () => {
             captureWeb("brand_reservations_tab_viewed", {
               surface: Platform.OS === "web" ? "buyer_web" : "business_preview",
@@ -691,6 +688,10 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
               venue_count: venues.length,
             });
           },
+          // #4111 — desktop side panel Message, only when enquiries are on.
+          onMessage: brandMessage.available
+            ? () => brandMessage.open()
+            : undefined,
         }}
       />
       <ShareModal

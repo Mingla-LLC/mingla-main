@@ -33,7 +33,8 @@ import type {
 } from "@mingla/brand-rendering/enquiry/BrandMessageSheet";
 
 import { captureWeb } from "../../analytics/webAnalytics";
-import { useMyBrandPlans, usePublicBrandEnquiryProfile } from "../../hooks/usePublicBrandEnquiry";
+import { usePublicBrandEnquiryProfile } from "../../hooks/usePublicBrandEnquiry";
+import type { MyBrandPlansState } from "./MyBrandPlansLoader";
 import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
 import { explorerAppUrl, openExternalUrl, threadPathFromUrl } from "./brandContactLinks";
 
@@ -41,6 +42,10 @@ const BrandMessageSheet = React.lazy<React.ComponentType<BrandMessageSheetProps>
   const module = await import("@mingla/brand-rendering/enquiry/BrandMessageSheet");
   return { default: module.BrandMessageSheet };
 });
+
+const MyBrandPlansLoader = React.lazy(() => import("./MyBrandPlansLoader"));
+
+const PLANS_LOADING: MyBrandPlansState = { plans: [], state: "loading", refetch: () => undefined };
 
 const LazyEnquiryPhoneField = React.lazy(async () => {
   const module = await import("./EnquiryPhoneField");
@@ -106,7 +111,7 @@ export function useBrandMessage({
   const [mounted, setMounted] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
   const [prefill, setPrefill] = useState<EnquiryPrefill | null>(null);
-  const plans = useMyBrandPlans(brandId, viewer.userId, signedIn && mounted);
+  const [plans, setPlans] = useState<MyBrandPlansState>(PLANS_LOADING);
 
   const available = profile.data?.available === true;
   const groups = useMemo(
@@ -116,11 +121,11 @@ export function useBrandMessage({
         : buildEnquiryTopicGroups({
             brandName: brand.name,
             signedIn,
-            plans: plans.data ?? [],
+            plans: plans.plans,
             offerings,
             venue,
           }),
-    [brand, offerings, plans.data, signedIn, venue],
+    [brand, offerings, plans.plans, signedIn, venue],
   );
 
   const open = useCallback(
@@ -178,6 +183,11 @@ export function useBrandMessage({
   const overlays =
     brand === null ? null : (
       <>
+        {mounted && signedIn ? (
+          <React.Suspense fallback={null}>
+            <MyBrandPlansLoader brandId={brand.id} onChange={setPlans} />
+          </React.Suspense>
+        ) : null}
         {mounted ? (
           <React.Suspense fallback={null}>
             <BrandMessageSheet
@@ -189,10 +199,8 @@ export function useBrandMessage({
               viewer={signedIn ? { kind: "signed_in", name: viewer.name ?? "your Mingla account" } : { kind: "signed_out_web" }}
               entry={entry}
               prefill={prefill}
-              plansState={!signedIn ? "idle" : plans.isError ? "error" : plans.isPending ? "loading" : "ready"}
-              onRetryPlans={() => {
-                void plans.refetch();
-              }}
+              plansState={!signedIn ? "idle" : plans.state}
+              onRetryPlans={plans.refetch}
               onSend={onSend}
               onViewConversation={signedIn ? undefined : onViewConversation}
               onOpenApp={signedIn ? undefined : () => openExternalUrl(explorerAppUrl())}
