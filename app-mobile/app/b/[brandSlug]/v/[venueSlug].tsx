@@ -103,10 +103,20 @@ import { reportNonFatal } from "../../../../src/diagnostics/reportNonFatal";
 import { useCanonicalShareArrival } from "../../../../src/hooks/useCanonicalShareArrival";
 // DEEP specifier (the #1560 rule above): suites mock the offering barrel.
 import { resolveTheme } from "@mingla/offering-rendering/themeResolver";
-import VenueMessageController, {
+import {
   VenueMessageBoundary,
   type VenueMessageOpener,
-} from "../../../../src/components/brandEnquiry/VenueMessageController";
+} from "../../../../src/components/brandEnquiry/venueMessageBoundary";
+
+// #4111 — the Message add-on loads on mount after first commit, via a deferred
+// require (Metro bundles it; jest harnesses without ESM import() can render it).
+// Requiring this route therefore pulls in no i18n / React Query / message
+// stack; a load failure is caught by VenueMessageBoundary and only hides Message.
+const VenueMessageController = React.lazy(async () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require("../../../../src/components/brandEnquiry/VenueMessageController") as typeof import("../../../../src/components/brandEnquiry/VenueMessageController");
+  return { default: mod.default };
+});
 
 /** This app's ONE analytics surface tag for the public venue page. */
 const ANALYTICS_SURFACE = "consumer_native";
@@ -721,11 +731,13 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     />
     {venueMessageReady && venueMessageBrand !== null && venueEnquiry !== null ? (
       <VenueMessageBoundary>
+        <React.Suspense fallback={null}>
         <VenueMessageController
           brand={venueMessageBrand}
           venue={venueEnquiry}
           onOpener={handleVenueMessageOpener}
         />
+        </React.Suspense>
       </VenueMessageBoundary>
     ) : null}
     </>
