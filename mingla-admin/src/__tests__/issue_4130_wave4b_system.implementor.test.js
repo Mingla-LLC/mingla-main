@@ -224,7 +224,7 @@ describe("#4130 W4b-5: Ads", () => {
   const ads = read("pages/AdEnginePage.jsx");
   it("plain words: no 'not observed', campaigns first, results not proven", () => {
     assert.equal(/not observed|Status observed/.test(ads), false);
-    assert.ok(/const ADS_TABS = \[\n  \{ id: "campaigns"/.test(ads));
+    assert.ok(/const ADS_TABS = \[\n {2}\{ id: "campaigns"/.test(ads));
     assert.ok(ads.includes('?? "campaigns";'));
     assert.ok(ads.includes('<Badge variant="warning">Not proven</Badge>'));
   });

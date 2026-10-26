@@ -1027,7 +1027,7 @@ export function AdminPage() {
               : "Open a row to resend or change the invite."
             : tab === "removed"
               ? "People who no longer have access. Open a row to invite them again."
-              : "Open a row to change a role, a name, or access. Names show in every picker, in agent messages and in the agent log."
+              : "Open a row to change a role, a name, or access. Names show in every picker, in agent messages and in the agent log. Without one, Mingla uses the first part of the email."
         }
         noPadding
       >
