@@ -20,7 +20,12 @@ Deno.test("PR7 migration schedules public view, discover, and admin readers", ()
   assert(text.includes("admin_get_offering"));
   assert(text.includes("cancel_refund_run_status"));
   assert(text.includes("cancel_refund_object_count"));
-  // Public view callers need EXECUTE (same pattern as issue_2489 / issue_3827).
+  // Helper is service_role-only; public view inlines schedule math.
   assert(text.includes("GRANT EXECUTE ON FUNCTION public.issue_3281_event_schedule"));
-  assert(text.includes("TO anon, authenticated, service_role"));
+  assert(text.includes("TO service_role"));
+  assert(
+    !/GRANT EXECUTE ON FUNCTION public\.issue_3281_event_schedule\(uuid\)\s+TO anon/
+      .test(text),
+  );
+  assert(text.includes("FROM PUBLIC, anon, authenticated"));
 });

@@ -21,24 +21,8 @@ DECLARE
   v_tz text;
   v_chip text;
 BEGIN
-  -- Fail closed for non-public / blocked events so anon EXECUTE cannot probe
-  -- private schedules by event id (same ordinary-read gate as the public view).
-  IF NOT EXISTS (
-    SELECT 1
-      FROM public.events e
-     WHERE e.id = p_event_id
-       AND e.deleted_at IS NULL
-       AND e.visibility = 'public'
-       AND NOT public.issue_1931_event_ordinary_read_blocked(e.id)
-  ) THEN
-    RETURN jsonb_build_object(
-      'nextStartAt', NULL,
-      'nextEndAt', NULL,
-      'upcomingCount', 0,
-      'scheduleLine', NULL
-    );
-  END IF;
-
+  -- Used by DEFINER readers (admin/discover/direct bundle). The anon public view
+  -- inlines the same math — this helper is NOT granted to anon.
   SELECT NULLIF(btrim(e.timezone), '') INTO v_tz
     FROM public.events e
    WHERE e.id = p_event_id;
@@ -77,18 +61,18 @@ BEGIN
 END;
 $fn$;
 
--- Same grant shape as issue_2489_* / issue_3827_*: the public view evaluates
--- the helper under the querying role even with security_invoker=false.
-REVOKE ALL ON FUNCTION public.issue_3281_event_schedule(uuid) FROM PUBLIC;
+-- DEFINER readers only (admin / discover / direct bundle). Not anon-callable.
+REVOKE ALL ON FUNCTION public.issue_3281_event_schedule(uuid)
+  FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_3281_event_schedule(uuid)
-  TO anon, authenticated, service_role;
+  TO service_role;
 
 COMMENT ON FUNCTION public.issue_3281_event_schedule(uuid) IS
-  'issue #3281 many-dates — next upcoming occurrence + scheduleLine for cards/bundle.';
+  'issue #3281 many-dates — next upcoming occurrence + scheduleLine for DEFINER readers.';
 
 -- Public card read model: schedule columns for Connections / seed / brand pages.
--- security_invoker=false so the view owner calls issue_3281_event_schedule
--- (EXECUTE is not granted to anon).
+-- Schedule math is inlined (not via issue_3281_event_schedule) so anon never
+-- needs EXECUTE on a SECURITY DEFINER helper.
 CREATE OR REPLACE VIEW public.business_public_events_view WITH (security_invoker = false) AS
 SELECT e.id,e.brand_id,b.slug AS brand_slug,b.name AS brand_name,b.description AS brand_description,
   b.profile_photo_url AS brand_profile_photo_url,b.display_attendee_count AS brand_display_attendee_count,
@@ -126,11 +110,30 @@ JOIN public.brands b ON b.id=e.brand_id
 LEFT JOIN public.event_dates ed ON ed.event_id=e.id AND ed.is_master=true
 LEFT JOIN LATERAL (
   SELECT
-    (j->>'nextStartAt')::timestamptz AS next_start_at,
-    (j->>'nextEndAt')::timestamptz AS next_end_at,
-    COALESCE((j->>'upcomingCount')::integer, 0) AS upcoming_count,
-    j->>'scheduleLine' AS schedule_line
-  FROM (SELECT public.issue_3281_event_schedule(e.id) AS j) s
+    n.start_at AS next_start_at,
+    n.end_at AS next_end_at,
+    COALESCE(c.upcoming_count, 0) AS upcoming_count,
+    CASE
+      WHEN COALESCE(c.upcoming_count, 0) = 0 THEN NULL
+      WHEN c.upcoming_count = 1 THEN to_char(
+        n.start_at AT TIME ZONE COALESCE(NULLIF(btrim(e.timezone), ''), 'UTC'), 'Dy DD Mon')
+      ELSE format(
+        '%s · +%s more',
+        to_char(n.start_at AT TIME ZONE COALESCE(NULLIF(btrim(e.timezone), ''), 'UTC'), 'Dy DD Mon'),
+        c.upcoming_count - 1)
+    END AS schedule_line
+  FROM (
+    SELECT count(*)::integer AS upcoming_count
+      FROM public.event_dates d
+     WHERE d.event_id = e.id AND d.end_at > now()
+  ) c
+  LEFT JOIN LATERAL (
+    SELECT d.start_at, d.end_at
+      FROM public.event_dates d
+     WHERE d.event_id = e.id AND d.end_at > now()
+     ORDER BY d.start_at, d.id
+     LIMIT 1
+  ) n ON true
 ) sched ON true
 WHERE e.deleted_at IS NULL AND b.deleted_at IS NULL AND e.visibility='public'
   AND e.status=ANY(ARRAY['scheduled','live','ended','cancelled'])
@@ -142,9 +145,8 @@ COMMENT ON VIEW public.business_public_events_view IS
   'issue_2489_address_withheld(theme) is true. city_geo is exempt by design. Do not '
   're-emit this view without the gate, and do not re-implement the predicate inline. '
   'issue #3827 — rsvp_going_count is NULL when the guest list is private (never 0). '
-  'issue #3281 PR7 — next_start_at / next_end_at / upcoming_count / schedule_line from '
-  'issue_3281_event_schedule (server clock).';
-
+  'issue #3281 PR7 — next_start_at / next_end_at / upcoming_count / schedule_line inlined '
+  'from event_dates (server clock); helper stays service_role-only.';
 -- Discover base: append schedule keys (master_* stay the windowed next occurrence).
 CREATE OR REPLACE FUNCTION public.discover_v2_event_base(
   p_cities text[], p_lower_bound timestamptz, p_upper_start timestamptz DEFAULT NULL,
