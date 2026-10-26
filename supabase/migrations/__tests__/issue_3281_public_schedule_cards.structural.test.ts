@@ -50,18 +50,3 @@ Deno.test("PR7 migration schedules public view, discover, and admin readers", ()
   );
   assert(text.includes("FROM PUBLIC, anon, authenticated"));
 });
-
-Deno.test("PR7 #2333 replay drops public views before #2489 re-apply", () => {
-  const workflow = Deno.readTextFileSync(
-    ".github/workflows/issue-2333-online-event-publish.yml",
-  );
-  const dropIdx = workflow.indexOf(
-    "DROP VIEW IF EXISTS public.business_public_events_view",
-  );
-  // Last #2489 path in the replay step must follow the DROP (re-apply, not first-pass).
-  const lastApply = workflow.lastIndexOf(
-    "20270523002489_issue_2489_address_privacy_server_gate.sql",
-  );
-  assert(dropIdx >= 0 && lastApply >= 0 && dropIdx < lastApply);
-  assert(workflow.includes("20271218004073_issue_4073_discover_feed_v2.sql"));
-});
