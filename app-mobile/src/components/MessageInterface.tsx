@@ -42,6 +42,9 @@ import {
   useSessionSavedCardsForSheet,
 } from "./chat/CollabSessionChatBanners";
 import { CollabDeckSheet } from "./connections/CollabDeckSheet";
+import { ChatHeader, type ChatHeaderStripLabels } from "./chat/ChatHeader";
+import { buildCollabHeaderStrip, matchKey, memberFirstNames } from "./chat/chatHeaderModel";
+import { useSeenSessionMatches } from "../hooks/useSeenSessionMatches";
 import {
   getCollabChatHeaderActions,
   type CollabChatHeaderActionId,
@@ -272,7 +275,7 @@ export default function MessageInterface({
   onGroupParticipantsChange,
 }: MessageInterfaceProps) {
   const router = useRouter();
-  const { t } = useTranslation(['chat', 'common', 'social', 'connections']);
+  const { t, i18n } = useTranslation(['chat', 'common', 'social', 'connections']);
   // Helper function to clean email-like names
   const cleanName = (name: string): string => {
     if (!name) return "Unknown";
@@ -291,10 +294,11 @@ export default function MessageInterface({
   const headerTitle = cleanName(friend.name);
   const headerParticipants = useMemo(() => friend.participants ?? [], [friend.participants]);
   const headerParticipantCount = friend.participantCount ?? headerParticipants.length;
-  const visibleHeaderParticipants = headerParticipants.slice(0, 3);
-  const eventAudienceKind = friend.linkedEntityType === "trip" ? "travelling" : "attending";
-  const eventAudienceTitle = friend.linkedEntityType === "trip" ? "Travellers" : "Attendees";
-  const eventAudienceSubtitle = `${headerParticipantCount} ${eventAudienceKind}`;
+  const isTripChat = friend.linkedEntityType === "trip";
+  const eventAudienceTitle = isTripChat ? t('chat:audienceTravellers') : t('chat:audienceAttendees');
+  const eventAudienceSubtitle = isTripChat
+    ? t('chat:audienceTravellingCount', { count: headerParticipantCount })
+    : t('chat:audienceAttendingCount', { count: headerParticipantCount });
   const getMessageSenderName = (msg: Message): string => {
     const brandName = friend.eventBrandName?.trim();
     const brandAccountId = friend.eventBrandAccountId?.trim();
@@ -331,6 +335,7 @@ export default function MessageInterface({
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [showCollabDeckSheet, setShowCollabDeckSheet] = useState(false);
   const [showCollabMatchesSheet, setShowCollabMatchesSheet] = useState(false);
   const [showCollabPlansSheet, setShowCollabPlansSheet] = useState(false);
@@ -402,6 +407,8 @@ export default function MessageInterface({
     isLoading: matchedSessionCardsLoading,
   } = useSessionSavedCardsForSheet(
     isCollabSessionGroupChat ? friend.sessionId : null,
+    // Issue #4114 Wave 3 (D9): a new match opens the strip with a light haptic.
+    { onMatchPromoted: HapticFeedback.light },
   );
   const collabHeaderActions = useMemo(
     () =>
@@ -421,6 +428,67 @@ export default function MessageInterface({
       scheduledCardsQuery.rows.length,
     ],
   );
+  // Issue #4114 Wave 3 (D9): the header strip — matched places and the next
+  // plan — from the two hooks above. No new queries.
+  const { seenIds: seenMatchIds, markSeen: markMatchesSeen } = useSeenSessionMatches(
+    isCollabSessionGroupChat ? friend.sessionId : null,
+  );
+  const collabHeaderStrip = useMemo(
+    () =>
+      isCollabSessionGroupChat
+        ? buildCollabHeaderStrip({
+            actionIds: collabHeaderActions.map((action) => action.id),
+            matches: matchedSessionCards,
+            matchesLoading: matchedSessionCardsLoading,
+            plans: scheduledCardsQuery.rows,
+            plansLoading: scheduledCardsQuery.isLoading,
+            seenMatchIds,
+            now: Date.now(),
+            untitled: t('chat:planUntitled'),
+          })
+        : null,
+    [
+      collabHeaderActions,
+      isCollabSessionGroupChat,
+      matchedSessionCards,
+      matchedSessionCardsLoading,
+      scheduledCardsQuery.isLoading,
+      scheduledCardsQuery.rows,
+      seenMatchIds,
+      t,
+    ],
+  );
+  const collabHeaderStripLabels = useMemo<ChatHeaderStripLabels>(
+    () => ({
+      matchesCount: (count: number) => t('chat:matchesCount', { count }),
+      matchesLoading: t('chat:matchesLoading'),
+      newMatches: t('chat:newMatches'),
+      lastPlan: t('chat:lastPlan'),
+      plansLoading: t('chat:plansLoading'),
+      moreCount: (count: number) => t('chat:moreCount', { count }),
+      openMatches: t('chat:a11yOpenMatches'),
+      openPlans: t('chat:a11yOpenPlans'),
+    }),
+    [t],
+  );
+  const headerAvatarKind: "single" | "stack" | "cover" = !isGroupChat
+    ? "single"
+    : friend.eventCoverMediaUrl
+      ? "cover"
+      : "stack";
+  const headerSubtitle: React.ReactNode = isCollabSessionGroupChat
+    ? memberFirstNames(
+        headerParticipants
+          .filter((participant) => participant.id !== currentUserId)
+          .map((participant) => getHeaderParticipantName(participant)),
+        t('chat:you'),
+        (names) => t('chat:membersAndYou', { names }),
+      )
+    : isTripEventGroupChat
+      ? eventAudienceSubtitle
+      : isGroupChat
+        ? t('chat:peopleInChat', { count: headerParticipantCount })
+        : null;
   const collabParticipantCount =
     (collabSession?.participants as any[] | undefined)?.length || headerParticipantCount;
   const inputRef = useRef<TextInput>(null);
@@ -1258,14 +1326,36 @@ export default function MessageInterface({
     ? `${friend.linkedEntityType === "trip" ? "Trip" : "Event"} broadcast · ${friend.eventBrandName?.trim() || "Organiser"} only`
     : `${friend.linkedEntityType === "trip" ? "Trip" : "Event"} channel · ${friend.eventBrandName?.trim() || "Organiser"} + attendees`;
 
+  // Issue #4114 Wave 3: every chat's ⋯ opens something. Event and trip chats
+  // open their audience; session groups their settings (BoardSettingsDropdown);
+  // a group with no session (it used to be a dead tap) its group info; a 1:1
+  // chat the one shared action menu.
   const handleHeaderMorePress = () => {
     if (isTripEventGroupChat) {
       setShowMoreOptionsMenu(false);
       setShowEventAudienceSheet(true);
       return;
     }
+    if (isGroupChat && !friend.sessionId) {
+      setShowMoreOptionsMenu(false);
+      setShowGroupInfo(true);
+      return;
+    }
 
     setShowMoreOptionsMenu(!showMoreOptionsMenu);
+  };
+
+  const handleHeaderIdentityPress = () => {
+    if (isGroupChat) {
+      handleHeaderMorePress();
+      return;
+    }
+    onViewProfile?.(friend.id);
+  };
+
+  const handleCollabStripPress = (view: "matches" | "plans") => {
+    if (view === "matches") markMatchesSeen(matchedSessionCards.map(matchKey));
+    handleOpenCollabDeckView(view);
   };
 
   const handleOpenCollabDeckView = (view: CollabChatHeaderActionId) => {
@@ -1288,262 +1378,54 @@ export default function MessageInterface({
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: safeInsets.top + 8 }]}>
-        {/* Top Row: Back button, Avatar, Name and Status */}
-        <View
-          style={[
-            styles.headerTopRow,
-            isCollabSessionGroupChat ? styles.collabHeaderTopRow : null,
-          ]}
-        >
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Icon name="arrow-back" size={24} color="rgba(255, 255, 255, 0.72)" />
-          </TouchableOpacity>
-
-          {isCollabSessionGroupChat ? (
-            <TouchableOpacity
-              style={styles.collabHeaderPill}
-              onPress={handleHeaderMorePress}
-              activeOpacity={0.76}
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${headerTitle} options`}
-            >
-              <View style={[styles.groupHeaderAvatarStack, styles.collabHeaderAvatarStack]}>
-                {visibleHeaderParticipants.length === 0 ? (
-                  <View style={[styles.groupHeaderAvatarPlaceholder, styles.collabHeaderAvatarPlaceholder]}>
-                    <Text style={styles.avatarText}>{getHeaderInitials(headerTitle)}</Text>
-                  </View>
-                ) : (
-                  visibleHeaderParticipants.map((participant, index) => {
-                    const participantName = getHeaderParticipantName(participant);
-                    return (
-                      <View
-                        key={participant.id}
-                        style={[
-                          styles.groupHeaderAvatarSegment,
-                          styles.collabHeaderAvatarSegment,
-                          index === 0 ? styles.collabHeaderLeadAvatar : null,
-                          {
-                            left: index * 14,
-                            zIndex: visibleHeaderParticipants.length - index,
-                          },
-                        ]}
-                      >
-                        {participant.avatar_url ? (
-                          <ImageWithFallback
-                            source={{ uri: participant.avatar_url }}
-                            style={styles.collabHeaderAvatarImage}
-                          />
-                        ) : (
-                          <Text style={styles.collabAvatarText}>
-                            {getHeaderInitials(participantName)}
-                          </Text>
-                        )}
-                      </View>
-                    );
-                  })
-                )}
-              </View>
-              <View style={styles.collabHeaderCopy}>
-                <Text style={[styles.userName, styles.collabUserName]} numberOfLines={1}>
-                  {headerTitle}
-                </Text>
-                <Text style={styles.groupParticipantCount} numberOfLines={1}>
-                  {headerParticipantCount} {headerParticipantCount === 1 ? "member" : "members"} · Collab session
-                </Text>
-              </View>
-              <Icon name="chevron-down" size={16} color="rgba(255, 255, 255, 0.58)" />
-            </TouchableOpacity>
-          ) : (
-            <>
-              <TouchableOpacity
-                style={styles.avatarContainer}
-                onPress={() => {
-                  if (!isGroupChat) onViewProfile?.(friend.id);
-                }}
-                disabled={isGroupChat || !onViewProfile}
-                activeOpacity={0.8}
-                accessibilityLabel={isGroupChat ? `${headerTitle} participants` : `View ${headerTitle}'s profile`}
-                accessibilityRole="button"
-              >
-                {isGroupChat && friend.eventCoverMediaUrl ? (
-                  <ImageWithFallback
-                    source={{ uri: friend.eventCoverMediaUrl }}
-                    style={[styles.avatar, styles.groupCoverAvatar]}
-                  />
-                ) : isGroupChat ? (
-                  <View style={styles.groupHeaderAvatarStack}>
-                    {visibleHeaderParticipants.length === 0 ? (
-                      <View style={styles.groupHeaderAvatarPlaceholder}>
-                        <Text style={styles.avatarText}>{getHeaderInitials(headerTitle)}</Text>
-                      </View>
-                    ) : (
-                      visibleHeaderParticipants.map((participant, index) => {
-                        const participantName = getHeaderParticipantName(participant);
-                        return (
-                          <View
-                            key={participant.id}
-                            style={[
-                              styles.groupHeaderAvatarSegment,
-                              {
-                                left: index * 12,
-                                zIndex: visibleHeaderParticipants.length - index,
-                              },
-                            ]}
-                          >
-                            {participant.avatar_url ? (
-                              <ImageWithFallback
-                                source={{ uri: participant.avatar_url }}
-                                style={styles.groupHeaderAvatarImage}
-                              />
-                            ) : (
-                              <Text style={styles.avatarText}>
-                                {getHeaderInitials(participantName)}
-                              </Text>
-                            )}
-                          </View>
-                        );
-                      })
-                    )}
-                  </View>
-                ) : friend.avatar ? (
-                  <ImageWithFallback source={{ uri: friend.avatar }} style={styles.avatar} />
-                ) : (
-                  <View style={styles.avatarPlaceholder}>
-                    <Text style={styles.avatarText}>
-                      {getHeaderInitials(headerTitle)}
-                    </Text>
-                  </View>
-                )}
-                {!isGroupChat && isOtherOnline && <View style={styles.onlineIndicator} />}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.userInfo}
-                onPress={() => {
-                  if (!isGroupChat) onViewProfile?.(friend.id);
-                }}
-                disabled={isGroupChat || !onViewProfile}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.userName} numberOfLines={1}>{headerTitle}</Text>
-                {isGroupChat ? (
-                  <Text style={styles.groupParticipantCount} numberOfLines={1}>
-                    {isTripEventGroupChat
-                      ? eventAudienceSubtitle
-                      : `${headerParticipantCount} ${headerParticipantCount === 1 ? "person" : "people"} in chat`}
-                  </Text>
-                ) : (
-                  <ChatStatusLine
-                    isOnline={isOtherOnline}
-                    isTyping={isOtherTyping}
-                    lastSeenAt={otherLastSeen}
-                  />
-                )}
-              </TouchableOpacity>
-            </>
-          )}
-
-          {/* More button — far right */}
-          {!isCollabSessionGroupChat ? (
-            <TouchableOpacity
-              onPress={handleHeaderMorePress}
-              style={styles.headerMoreBtn}
-              activeOpacity={0.7}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel={
-                isTripEventGroupChat
-                  ? `View ${eventAudienceTitle.toLowerCase()}`
-                  : "Open chat options"
+      {/* Issue #4114 Wave 3 (D9): one header for every chat. 62pt with nothing
+          in the strip, 108pt with matches or plans (chatHeaderModel). */}
+      <ChatHeader
+        topInset={safeInsets.top}
+        title={headerTitle}
+        subtitle={
+          isGroupChat ? headerSubtitle : (
+            <ChatStatusLine
+              isOnline={isOtherOnline}
+              isTyping={isOtherTyping}
+              lastSeenAt={otherLastSeen}
+            />
+          )
+        }
+        onBack={onBack}
+        backLabel={t('chat:a11yBack')}
+        avatarKind={headerAvatarKind}
+        avatarUrl={isGroupChat ? friend.eventCoverMediaUrl ?? null : friend.avatar ?? null}
+        participants={headerParticipants}
+        participantCount={headerParticipantCount}
+        isOnline={!isGroupChat && isOtherOnline}
+        collaborating={isCollabSessionGroupChat}
+        onIdentityPress={handleHeaderIdentityPress}
+        identityA11yLabel={
+          isGroupChat
+            ? t('chat:a11yOpenChatInfo', { name: headerTitle })
+            : t('chat:a11yViewProfile', { name: headerTitle })
+        }
+        primaryAction={
+          isCollabSessionGroupChat
+            ? {
+                label: t('chat:swipe'),
+                a11yLabel: t('chat:a11ySwipeTogether', { name: headerTitle }),
+                onPress: () => handleOpenCollabDeckView("swipe"),
               }
-            >
-              <Icon name="ellipsis-vertical" size={20} color="rgba(255, 255, 255, 0.72)" />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {isCollabSessionGroupChat ? (
-          <View style={styles.collabHeaderActionRow}>
-            {collabHeaderActions.map((action) => (
-              <TouchableOpacity
-                key={action.id}
-                onPress={() => handleOpenCollabDeckView(action.id)}
-                activeOpacity={0.76}
-                accessibilityRole="button"
-                accessibilityLabel={`${action.label} ${headerTitle}`}
-                style={styles.collabHeaderActionButton}
-              >
-                {/* text-only collab header actions (Matches / Swipe / Plans) — icons removed */}
-                <Text style={styles.collabHeaderActionText} numberOfLines={1}>
-                  {action.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : null}
-
-        {/* Bottom Row: Action Icons */}
-        {/* Commented out header icons temporarily */}
-        {/* <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.actionButton}>
-            <Icon name="call" size={16} color="rgba(255, 255, 255, 0.72)" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
-            <Icon name="videocam" size={16} color="rgba(255, 255, 255, 0.72)" />
-          </TouchableOpacity>
-          <View style={styles.moreOptionsContainer}>
-            <TouchableOpacity
-              onPress={() => setShowMoreOptionsMenu(!showMoreOptionsMenu)}
-              style={styles.actionButton}
-            >
-              <Icon name="ellipsis-horizontal" size={16} color="rgba(255, 255, 255, 0.72)" />
-            </TouchableOpacity>
-
-            {showMoreOptionsMenu && (
-              <View style={styles.moreOptionsMenu}>
-                <TouchableOpacity
-                  onPress={handleAddToBoard}
-                  style={styles.menuItem}
-                >
-                  <Icon name="people" size={16} color="rgba(255, 255, 255, 0.72)" />
-                  <Text style={styles.menuItemText}>Add to Board</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleShareSavedCard}
-                  style={styles.menuItem}
-                >
-                  <Icon name="bookmark" size={16} color="rgba(255, 255, 255, 0.72)" />
-                  <Text style={styles.menuItemText}>Share Saved Card</Text>
-                </TouchableOpacity>
-                <View style={styles.menuDivider} />
-                <TouchableOpacity
-                  onPress={handleRemoveFriend}
-                  style={styles.menuItemDanger}
-                >
-                  <Icon name="person-remove" size={16} color="#dc2626" />
-                  <Text style={styles.menuItemTextDanger}>Remove Friend</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleBlockUser}
-                  style={styles.menuItemDanger}
-                >
-                  <Icon name="shield" size={16} color="#dc2626" />
-                  <Text style={styles.menuItemTextDanger}>Block User</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleReportUser}
-                  style={styles.menuItemDanger}
-                >
-                  <Icon name="flag" size={16} color="#dc2626" />
-                  <Text style={styles.menuItemTextDanger}>Report User</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        </View> */}
-      </View>
+            : null
+        }
+        onMorePress={isCollabSessionGroupChat ? undefined : handleHeaderMorePress}
+        moreA11yLabel={
+          isTripEventGroupChat
+            ? t('chat:a11yViewAudience', { audience: eventAudienceTitle })
+            : t('chat:a11yChatOptions')
+        }
+        strip={collabHeaderStrip}
+        stripLabels={collabHeaderStripLabels}
+        onStripPress={handleCollabStripPress}
+        locale={i18n.language}
+      />
 
       {isTripEventGroupChat ? (
         <View style={styles.eventChannelHeaderStack}>
@@ -2624,202 +2506,6 @@ const styles = StyleSheet.create({
     color: "#dc2626",
     fontWeight: "500",
   },
-  header: {
-    paddingHorizontal: 0,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255, 255, 255, 0.12)",
-    backgroundColor: "rgba(12, 14, 18, 1)",
-  },
-  headerTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  collabHeaderTopRow: {
-    marginBottom: 10,
-    paddingRight: 6,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    /*  backgroundColor: "#f3f4f6", */
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 4,
-  },
-  avatarContainer: {
-    position: "relative",
-    marginRight: 12,
-  },
-  collabAvatarContainer: {
-    marginRight: 14,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-  },
-  groupCoverAvatar: {
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.18)",
-  },
-  avatarPlaceholder: {
-    width: 40,
-    height: 40,
-    backgroundColor: "#eb7825",
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    color: "white",
-    fontWeight: "500",
-    fontSize: 14,
-  },
-  groupHeaderAvatarStack: {
-    width: 64,
-    height: 40,
-    position: "relative",
-  },
-  collabHeaderAvatarStack: {
-    width: 64,
-    height: 34,
-  },
-  groupHeaderAvatarSegment: {
-    position: "absolute",
-    top: 0,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#eb7825",
-    borderWidth: 2,
-    borderColor: "rgba(12, 14, 18, 1)",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  collabHeaderAvatarSegment: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 2,
-    borderColor: "rgba(12, 14, 18, 1)",
-  },
-  collabHeaderLeadAvatar: {
-    borderColor: "#f97316",
-  },
-  groupHeaderAvatarPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#eb7825",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  collabHeaderAvatarPlaceholder: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 2,
-    borderColor: "#f97316",
-  },
-  groupHeaderAvatarImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-  },
-  collabHeaderAvatarImage: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-  },
-  collabSingleAvatar: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    borderColor: "#f97316",
-  },
-  onlineIndicator: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: 12,
-    height: 12,
-    backgroundColor: "#10b981",
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: "rgba(12, 14, 18, 1)",
-  },
-  userInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  collabUserName: {
-    fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: 0,
-  },
-  collabAvatarText: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-    fontSize: 11,
-  },
-  collabHeaderPill: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 50,
-    borderRadius: 25,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-    paddingLeft: 8,
-    paddingRight: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.055)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.10)",
-  },
-  collabHeaderCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  userStatus: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.6)",
-  },
-  groupParticipantCount: {
-    fontSize: 13,
-    color: "rgba(255, 255, 255, 0.62)",
-    marginTop: 2,
-  },
-  collabHeaderActionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 24,
-  },
-  collabHeaderActionButton: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: 22,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 9,
-    backgroundColor: "rgba(255, 255, 255, 0.055)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.10)",
-  },
-  collabHeaderActionText: {
-    color: "rgba(255, 255, 255, 0.78)",
-    fontSize: 15,
-    fontWeight: "700",
-  },
   eventChannelHeaderStack: {
     backgroundColor: "#f97316",
     borderBottomLeftRadius: 28,
@@ -2863,70 +2549,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#FFFFFF",
     lineHeight: 20,
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 8,
-    paddingLeft: 48, // Align with content (back button + avatar width)
-  },
-  actionButton: {
-    width: 32,
-    height: 32,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.14)", // __not_chrome__: chat-header utility button, separate design language from glass.chrome.* — see ORCH-0669 D-1
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  moreOptionsContainer: {
-    position: "relative",
-  },
-  moreOptionsMenu: {
-    position: "absolute",
-    top: 40,
-    right: 0,
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
-    paddingVertical: 8,
-    minWidth: 220,
-    zIndex: 20,
-  },
-  menuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  menuItemDanger: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  menuItemText: {
-    fontSize: 14,
-    color: "#374151",
-  },
-  menuItemTextDanger: {
-    fontSize: 14,
-    color: "#dc2626",
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: "#e5e7eb",
-    marginVertical: 8,
   },
   messagesContainer: {
     flex: 1,
@@ -3631,14 +3253,6 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
   },
   // ORCH-0435: Header more button + bottom sheet
-  headerMoreBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: "auto",
-  },
   // BaseBottomSheet bespoke dark canvas (was eventAudienceSheet). Scrim + flex-end
   // card + hand-rolled handle are now owned by the primitive.
   eventAudienceSheetBackground: {

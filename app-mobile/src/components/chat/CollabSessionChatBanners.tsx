@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
@@ -24,6 +25,7 @@ import type { ExpansionTarget } from "../../types/expansion";
 // ORCH-1054 [matches-expanded-card-parity]: canonical deck-parity mapper still
 // used inside expansionTargetFromSavedPayload for places/curated.
 import { expansionTargetFromSavedPayload } from "../../utils/expansionTargetFromSavedPayload";
+import { groupPlans } from "./chatHeaderModel";
 
 interface Props {
   sessionId: string;
@@ -69,11 +71,23 @@ function cardTitle(
   return typeof title === "string" && title.trim() ? title : "Untitled card";
 }
 
-export function useSessionSavedCardsForSheet(sessionId: string | null | undefined): {
+export function useSessionSavedCardsForSheet(
+  sessionId: string | null | undefined,
+  options?: {
+    /**
+     * Issue #4114 Wave 3 (D9): told when a match lands, so the chat header can
+     * open its strip and fire a light haptic. Rides the existing board-session
+     * callback set; no new subscription or query.
+     */
+    onMatchPromoted?: () => void;
+  },
+): {
   savedCards: SavedSessionCard[];
   isLoading: boolean;
 } {
   const queryClient = useQueryClient();
+  const onMatchPromotedRef = useRef(options?.onMatchPromoted);
+  onMatchPromotedRef.current = options?.onMatchPromoted;
 
   const query = useQuery<SavedSessionCard[]>({
     queryKey: ["savedCards", sessionId],
@@ -108,6 +122,7 @@ export function useSessionSavedCardsForSheet(sessionId: string | null | undefine
       onCardSaved: invalidateSavedCards,
       onCardLocked: invalidateSavedCards,
       onMatchPromoted: () => {
+        onMatchPromotedRef.current?.();
         if (matchPromotedRefetchTimer) return;
         matchPromotedRefetchTimer = setTimeout(() => {
           matchPromotedRefetchTimer = null;
@@ -233,13 +248,22 @@ export function ScheduleSheet({
   visible,
   onClose,
   sessionId,
+  currentUserId,
   accountPreferences,
 }: SheetProps & { accountPreferences?: Props["accountPreferences"] }) {
+  const { t } = useTranslation(["chat"]);
   const { rows, isLoading, isError, refetch } =
     useSessionScheduledCards(sessionId);
   const [modalTarget, setModalTarget] = useState<ExpansionTarget | null>(null);
 
   const hasRows = !isLoading && !isError && rows.length > 0;
+  // Issue #4114 Wave 3 (D9): a collab can set any number of plans. Upcoming
+  // soonest first, then Past, each saying who set it.
+  const planGroups = React.useMemo(() => groupPlans(rows, Date.now()), [rows]);
+  const setByLabel = (item: SessionScheduledCardRow): string =>
+    item.lockedBy && item.lockedBy === currentUserId
+      ? t("chat:planSetByYou")
+      : t("chat:planSetBy", { name: item.lockedByDisplayName || t("chat:planSetBySomeone") });
 
   return (
     <>
@@ -270,7 +294,15 @@ export function ScheduleSheet({
             <Text style={styles.emptyText}>No locked-in plans yet.</Text>
           </View>
         ) : (
-          rows.map((item: SessionScheduledCardRow) => (
+          ([
+            ["upcoming", planGroups.upcoming],
+            ["past", planGroups.past],
+          ] as const).map(([group, groupRows]) => groupRows.length === 0 ? null : (
+          <View key={group} testID={`plans-group-${group}`}>
+          <Text style={styles.planGroupHeading} accessibilityRole="header">
+            {group === "upcoming" ? t("chat:plansUpcoming") : t("chat:plansPast")}
+          </Text>
+          {groupRows.map((item: SessionScheduledCardRow) => (
             <TouchableOpacity
               key={item.savedCardId}
               style={styles.scheduleRow}
@@ -295,12 +327,14 @@ export function ScheduleSheet({
                 <Text style={styles.cardMeta} numberOfLines={1}>
                   {formatScheduledAt(item.scheduledAt)}
                 </Text>
-                <Text style={styles.cardMeta} numberOfLines={1}>
-                  Locked in by {item.lockedByDisplayName || "someone"}
+                <Text style={[styles.cardMeta, group === "past" && styles.planPastMeta]} numberOfLines={1}>
+                  {setByLabel(item)}
                 </Text>
               </View>
               <Icon name="chevron-forward" size={18} color="#9ca3af" />
             </TouchableOpacity>
+          ))}
+          </View>
           ))
         )}
       </CompactCollabBottomSheet>
@@ -448,6 +482,16 @@ const styles = StyleSheet.create({
   rowText: { flex: 1, minWidth: 0 },
   cardTitle: { color: "#111827", fontSize: 14, fontWeight: "700" },
   cardMeta: { color: "#6b7280", fontSize: 12, marginTop: 2 },
+  planGroupHeading: {
+    color: "#6b7280",
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  planPastMeta: { color: "#9ca3af" },
   compactSheetBackground: {
     backgroundColor: "#ffffff",
     borderTopLeftRadius: 24,
