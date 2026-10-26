@@ -80,6 +80,8 @@ import {
   initWebAnalytics,
 } from "../src/analytics/webAnalytics";
 import { ConsentBanner } from "../src/analytics/ConsentBanner";
+import { PrivacyChoicesLink } from "../src/analytics/PrivacyChoicesLink";
+import { setPageFooterAccessory } from "@mingla/offering-rendering/pageFooterAccessory";
 import {
   initializeAppsFlyer,
   subscribeOneLinkDeepLink,
@@ -128,6 +130,10 @@ import { hasUsableStoredWebSession } from "../src/utils/authReadiness";
 import { shouldRequestAttNow } from "../src/utils/attRequestTiming";
 import { shouldDisplayForegroundBusinessNotification } from "../src/utils/brandGroupNotificationForeground";
 import { syncBusinessMediaLanguage } from "../src/i18n";
+
+// #2331 — every public offering page ends with the "Your privacy choices"
+// link on buyer web (native registers nothing and renders as before).
+if (Platform.OS === "web") setPageFooterAccessory(PrivacyChoicesLink);
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
@@ -599,8 +605,8 @@ function RootLayoutInner(): React.ReactElement {
         });
         revenueCatService.initialize();
         initializeOneSignal();
-        // META-ORCH-1187 LEG 2 — buyer-web analytics init (PostHog + GA4),
-        // consent-gated (no cookies/capture until Accept). WEB-ONLY: the call
+        // META-ORCH-1187 LEG 2 / #2331 — buyer-web analytics init (PostHog +
+        // GA4 + pixels), each on unless the visitor turned it off. WEB-ONLY: the call
         // resolves to a no-op on native via the .web.ts split, and is further
         // guarded here so native never even invokes it. Never throws (graceful
         // no-op when keys are absent), so a missing env can't break boot.

@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
   sideAction: { minHeight: 40, alignItems: "center", justifyContent: "center", borderRadius: 999, backgroundColor: "rgba(235, 120, 37, 0.14)" },
   sideActionText: { color: "#eb7825", fontSize: 13, fontWeight: "800" },
   toastWrap: { position: "absolute", top: 80, left: 0, right: 0, zIndex: 100, elevation: 12 },
-  appRail: { position: "fixed" as unknown as "absolute", top: 0, left: 0, bottom: 0, width: DESKTOP_RAIL_WIDTH, alignItems: "center", paddingVertical: spacing.lg, gap: spacing.sm, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: "rgba(255,255,255,0.10)", zIndex: 50 },
+  appRail: { position: "fixed" as unknown as "absolute", top: 0, left: 0, bottom: "var(--mingla-privacy-inset, 0px)" as unknown as number, width: DESKTOP_RAIL_WIDTH, alignItems: "center", paddingVertical: spacing.lg, gap: spacing.sm, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: "rgba(255,255,255,0.10)", zIndex: 50 },
   brandLogo: { width: 40, height: 40, marginBottom: spacing.md },
   appRailItem: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center", gap: 2 },
   appRailLabel: { color: "#a1a1aa", fontSize: 9, lineHeight: 11 },

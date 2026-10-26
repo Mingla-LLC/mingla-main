@@ -58,63 +58,30 @@ describe("META-ORCH-1187 P2 FIX 1 — trip/experience checkout fire web_checkout
   });
 });
 
-describe("META-ORCH-1187 P2 FIX 2 — consent banners fire consent_granted (not consent_denied) in PostHog", () => {
-  // Buyer-web grant lives in the analytics module (grantConsent fires after opt-in).
+// [TEST-MOD-APPROVED #2331] Consent-rate measurement retired with the grant:
+// analytics is on unless the visitor turns it off, so a choice is never an
+// analytics event, and no capture survives a turn-off.
+describe("META-ORCH-1187 P2 FIX 2 / #2331 — a privacy choice is never itself a PostHog event", () => {
   const buyerAnalytics = readBiz("src/analytics/webAnalytics.web.ts");
   const marketingBanner = readRepo(
     "mingla-marketing/components/marketing/consent-banner.tsx",
   );
-  const marketingProvider = readRepo(
-    "mingla-marketing/components/marketing/posthog-provider.tsx",
-  );
 
-  it("buyer-web awaits the one-flight grant boot before consent_granted, and boot opts in before exposing PostHog", () => {
-    const grantStart = buyerAnalytics.indexOf("export async function grantConsent");
-    const grantEnd = buyerAnalytics.indexOf("export function denyConsent", grantStart);
-    const grantBody = buyerAnalytics.slice(grantStart, grantEnd);
-    const awaitIdx = grantBody.indexOf("await ensureGrantedAnalyticsBoot()");
-    const captureIdx = grantBody.indexOf('captureWeb("consent_granted"');
-    expect(awaitIdx).toBeGreaterThan(-1);
-    expect(captureIdx).toBeGreaterThan(-1);
-    expect(captureIdx).toBeGreaterThan(awaitIdx);
-
-    const bootStart = buyerAnalytics.indexOf("async function bootGrantedAnalytics");
-    const bootEnd = buyerAnalytics.indexOf("function ensureGrantedAnalyticsBoot", bootStart);
+  it("buyer-web boot opts in before exposing PostHog, and only while analytics is on", () => {
+    const bootStart = buyerAnalytics.indexOf("async function bootAnalytics");
+    const bootEnd = buyerAnalytics.indexOf("function ensureAnalyticsBoot", bootStart);
     const bootBody = buyerAnalytics.slice(bootStart, bootEnd);
+    expect(bootBody.indexOf("if (!isAnalyticsOn()) return;")).toBeGreaterThan(-1);
     const optInIdx = bootBody.indexOf("posthog.opt_in_capturing()");
-    const exposeIdx = bootBody.indexOf("posthogClient = posthog");
+    const exposeIdx = bootBody.lastIndexOf("posthogClient = posthog");
     expect(optInIdx).toBeGreaterThan(-1);
     expect(exposeIdx).toBeGreaterThan(optInIdx);
   });
 
-  it("buyer-web does NOT fire a consent_denied PostHog capture", () => {
-    expect(buyerAnalytics).not.toContain('captureWeb("consent_denied"');
-  });
-
-  it("marketing persists first and captures consent_granted only from the grant boot continuation", () => {
-    const chooseStart = marketingBanner.indexOf("const choose =");
-    const chooseEnd = marketingBanner.indexOf("const visible =", chooseStart);
-    const chooseBody = marketingBanner.slice(chooseStart, chooseEnd);
-    const persistIdx = chooseBody.indexOf("persistMarketingConsent(value)");
-    const optInIdx = chooseBody.indexOf("posthogOptIn().then");
-    const captureIdx = chooseBody.indexOf("captureMarketingConsentGrantOnce()");
-    expect(persistIdx).toBeGreaterThan(-1);
-    expect(optInIdx).toBeGreaterThan(persistIdx);
-    expect(captureIdx).toBeGreaterThan(-1);
-    expect(captureIdx).toBeGreaterThan(optInIdx);
-
-    const facadeStart = marketingProvider.indexOf(
-      "export function captureMarketingConsentGrantOnce",
-    );
-    const facadeEnd = marketingProvider.indexOf("interface PostHogProviderProps", facadeStart);
-    const facadeBody = marketingProvider.slice(facadeStart, facadeEnd);
-    expect(facadeBody).toContain("readMarketingConsent() !== 'granted'");
-    expect(facadeBody).toContain("captureMarketing('consent_granted')");
-  });
-
-  it("marketing banner does NOT fire a consent_denied PostHog capture", () => {
-    expect(marketingBanner).not.toContain(
-      "captureMarketing('consent_denied')",
-    );
+  it("neither root captures consent_granted or consent_denied", () => {
+    for (const source of [buyerAnalytics, marketingBanner]) {
+      expect(source).not.toContain("consent_granted");
+      expect(source).not.toContain("consent_denied");
+    }
   });
 });

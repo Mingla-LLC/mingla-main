@@ -80,7 +80,9 @@ function extractFnBody(src: string, signatureRegex: RegExp): string {
   return "";
 }
 
-describe("META-ORCH-1187 P2 ADVERSARIAL — consent ordering is SCOPE-BOUNDED", () => {
+// [TEST-MOD-APPROVED #2331] The consent_granted ordering proof is retired with
+// the grant. What stays adversarial: a turn-off leaks nothing to any vendor.
+describe("META-ORCH-1187 P2 ADVERSARIAL / #2331 — a turn-off is scope-bounded and silent", () => {
   const buyerAnalytics = readBiz("src/analytics/webAnalytics.web.ts");
   const marketingBanner = readRepo(
     "mingla-marketing/components/marketing/consent-banner.tsx",
@@ -89,75 +91,59 @@ describe("META-ORCH-1187 P2 ADVERSARIAL — consent ordering is SCOPE-BOUNDED", 
     "mingla-marketing/components/marketing/posthog-provider.tsx",
   );
 
-  // --- ANGLE 1: ordering proven across the explicit async owner boundary ---
-  it("buyer-web: grantConsent awaits boot before capture, and boot opts in before exposing the client", () => {
-    const grantBody = extractFnBody(
-      buyerAnalytics,
-      /export\s+async\s+function\s+grantConsent\s*\(/,
-    );
-    expect(grantBody.length).toBeGreaterThan(0);
-    const awaitIdx = grantBody.indexOf("await ensureGrantedAnalyticsBoot()");
-    const captureIdx = grantBody.indexOf('captureWeb("consent_granted"');
-    expect(awaitIdx).toBeGreaterThan(-1);
-    expect(captureIdx).toBeGreaterThan(awaitIdx);
-
+  it("buyer-web: boot re-checks the choice after the dynamic import and opts in before exposing the client", () => {
     const bootBody = extractFnBody(
       buyerAnalytics,
-      /async\s+function\s+bootGrantedAnalytics\s*\(/,
+      /async\s+function\s+bootAnalytics\s*\(/,
     );
     expect(bootBody.length).toBeGreaterThan(0);
+    const importIdx = bootBody.indexOf('await import("posthog-js")');
+    const recheckIdx = bootBody.indexOf("if (!isAnalyticsOn()) return;", importIdx);
     const optInIdx = bootBody.indexOf("posthog.opt_in_capturing()");
-    const exposeIdx = bootBody.indexOf("posthogClient = posthog");
-    expect(optInIdx).toBeGreaterThan(-1);
+    const exposeIdx = bootBody.lastIndexOf("posthogClient = posthog");
+    expect(importIdx).toBeGreaterThan(-1);
+    expect(recheckIdx).toBeGreaterThan(importIdx);
+    expect(optInIdx).toBeGreaterThan(recheckIdx);
     expect(exposeIdx).toBeGreaterThan(optInIdx);
   });
 
-  it("marketing: choose persists first and captures only in the grant boot continuation", () => {
-    const body = extractFnBody(marketingBanner, /const\s+choose\s*=\s*\(/);
-    expect(body.length).toBeGreaterThan(0);
-    const persistIdx = body.indexOf("persistMarketingConsent(value)");
-    const bootIdx = body.indexOf("posthogOptIn().then");
-    const captureIdx = body.indexOf("captureMarketingConsentGrantOnce()");
-    expect(persistIdx).toBeGreaterThan(-1);
-    expect(bootIdx).toBeGreaterThan(persistIdx);
-    expect(captureIdx).toBeGreaterThan(bootIdx);
-    expect(body).toMatch(
-      /posthogOptIn\(\)\.then\(\(\) => captureMarketingConsentGrantOnce\(\)\)/,
-    );
-
-    const facadeBody = extractFnBody(
-      marketingProvider,
-      /export\s+function\s+captureMarketingConsentGrantOnce\s*\(/,
-    );
-    expect(facadeBody).toContain("readMarketingConsent() !== 'granted'");
-    expect(facadeBody).toContain("captureMarketing('consent_granted')");
+  it("marketing: every capture facade fails closed while analytics is off", () => {
     const eventFacadeBody = extractFnBody(
       marketingProvider,
       /export\s+function\s+captureMarketing\s*\(/,
     );
-    expect(eventFacadeBody).toContain("readMarketingConsent() !== 'granted'");
-    expect(eventFacadeBody).toContain("posthogClient === null");
-  });
-
-  // --- ANGLE 2: deny path leaks NOTHING to PostHog ---
-  it("buyer-web: denyConsent body contains NO PostHog capture of ANY name (no opted-out leak)", () => {
-    const body = extractFnBody(
-      buyerAnalytics,
-      /export\s+function\s+denyConsent\s*\(/,
+    expect(eventFacadeBody).toContain("if (!isMarketingAnalyticsOn()) return");
+    expect(eventFacadeBody).toContain("posthogOptedOut");
+    const searchBody = extractFnBody(
+      marketingProvider,
+      /export\s+function\s+captureSearchMeasurement\s*\(/,
     );
-    expect(body.length).toBeGreaterThan(0); // denyConsent must still exist
-    expect(body).not.toMatch(/captureWeb\s*\(/);
-    expect(body).not.toMatch(/posthogClient\??\.capture\s*\(/);
+    expect(searchBody).toContain("if (!isMarketingAnalyticsOn()) return");
   });
 
-  it("marketing: choose's deny path makes no PostHog or GA/vendor call", () => {
+  it("buyer-web: stopping analytics captures NOTHING of any name", () => {
+    const body = extractFnBody(buyerAnalytics, /function\s+stopAnalytics\s*\(/);
+    expect(body.length).toBeGreaterThan(0);
+    expect(body).not.toMatch(/captureWeb\s*\(/);
+    expect(body).not.toMatch(/\.capture\s*\(/);
+    expect(body).toContain("opt_out_capturing()");
+    const saveBody = extractFnBody(
+      buyerAnalytics,
+      /export\s+async\s+function\s+savePrivacyChoice\s*\(/,
+    );
+    expect(saveBody).not.toMatch(/captureWeb\s*\(|gaEvent\s*\(/);
+  });
+
+  it("marketing: a choice makes no PostHog capture or GA event", () => {
     const body = extractFnBody(marketingBanner, /const\s+choose\s*=\s*\(/);
     expect(body.length).toBeGreaterThan(0);
-    expect(body).toMatch(
-      /if\s*\(value === 'granted'\)\s*\{\s*void posthogOptIn\(\)\.then\(\(\) => captureMarketingConsentGrantOnce\(\)\)\s*;?\s*\}/,
+    expect(body).not.toMatch(/\bgtag\b|consent_denied|consent_granted|captureMarketing\s*\(/);
+    const stopBody = extractFnBody(
+      marketingProvider,
+      /function\s+stopMarketingAnalytics\s*\(/,
     );
-    expect(body).not.toMatch(/\belse\b/);
-    expect(body).not.toMatch(/posthogOptOut|\bgtag\b|consent_denied|captureMarketing\s*\(/);
+    expect(stopBody).toContain("opt_out_capturing()");
+    expect(stopBody).not.toMatch(/\.capture\s*\(/);
   });
 });
 

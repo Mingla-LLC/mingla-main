@@ -404,17 +404,29 @@ describe("#3187 canonical page — the same share analytics the interstitial fir
     }
   });
 
-  test("consent absent, denied or malformed sends nothing", () => {
+  // #2331 I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF: only a turn-off silences
+  // the page; no saved choice, or an unreadable one, counts as "not chosen".
+  test("a turned-off choice sends nothing; no choice or an unreadable one sends", () => {
     const html = publicSearch.renderVisibleDocument({
       facts: { kind: "brand", id: "b-1", title: "Lantern Room" }, state: "public_noindex", canonicalPath: "/b/lanternroom",
       shareAttribution: { code: CODE, version: 1 },
     });
-    for (const consent of [null, JSON.stringify({ choice: "denied" }), "not-json"]) {
-      expect(runPageScript(html, consent).posted).toEqual([]);
+    const viewed = [{ event: "share_public_page_viewed", code: CODE, version: 1, kind: "brand" }];
+    for (const off of [
+      JSON.stringify({ choice: "denied" }),
+      JSON.stringify({ value: "denied" }),
+      JSON.stringify({ analytics: false, ads: true, ts: 1 }),
+    ]) {
+      expect(runPageScript(html, off).posted).toEqual([]);
     }
-    expect(runPageScript(html, JSON.stringify({ value: "granted" })).posted.map((request) => JSON.parse(request.body))).toEqual([
-      { event: "share_public_page_viewed", code: CODE, version: 1, kind: "brand" },
-    ]);
+    for (const on of [
+      null,
+      "not-json",
+      JSON.stringify({ value: "granted" }),
+      JSON.stringify({ analytics: true, ads: false, ts: 1 }),
+    ]) {
+      expect(runPageScript(html, on).posted.map((request) => JSON.parse(request.body))).toEqual(viewed);
+    }
   });
 
   test("the request's ms reaches the page, and survives a 308 to a renamed page", async () => {

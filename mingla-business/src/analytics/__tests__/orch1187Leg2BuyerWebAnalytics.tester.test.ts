@@ -42,10 +42,16 @@ describe("ORCH-1187 LEG2 [tester] — native no-op stub is INERT at runtime", ()
     await expect(fn()).resolves.toBeUndefined();
   });
 
-  it("capture/identify/consent facades are callable no-ops (return undefined, no throw)", () => {
+  // [TEST-MOD-APPROVED #2331] the privacy save is async on both platforms.
+  it("savePrivacyChoice() resolves to undefined on native and never throws", async () => {
+    const fn = stub.savePrivacyChoice as (input: unknown) => Promise<void>;
+    await expect(fn({ analytics: false, ads: false })).resolves.toBeUndefined();
+    expect((stub.isAnalyticsOn as () => boolean)()).toBe(false);
+    expect((stub.isAdsOn as () => boolean)()).toBe(false);
+  });
+
+  it("capture/identify facades are callable no-ops (return undefined, no throw)", () => {
     for (const name of [
-      "grantConsent",
-      "denyConsent",
       "captureWeb",
       "gaEvent",
       "identifyWeb",
@@ -57,8 +63,8 @@ describe("ORCH-1187 LEG2 [tester] — native no-op stub is INERT at runtime", ()
     }
   });
 
-  it("readStoredConsent()/getFeatureFlagWeb() return the documented empty values", () => {
-    expect((stub.readStoredConsent as () => unknown)()).toBeNull();
+  it("readPrivacyChoice()/getFeatureFlagWeb() return the documented empty values", () => {
+    expect((stub.readPrivacyChoice as () => unknown)()).toBeNull();
     expect((stub.getFeatureFlagWeb as (k: string) => unknown)("any")).toBeUndefined();
   });
 

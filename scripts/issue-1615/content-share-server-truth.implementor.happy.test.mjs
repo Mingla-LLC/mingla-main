@@ -190,7 +190,10 @@ test('ST8 S6 records only approved observed analytics and keeps motion controls 
   assert.equal(JSON.stringify(sent).includes('referral'),false);assert.equal(JSON.stringify(sent).includes('ip'),false);
 });
 
-test('ST11 S6 analytics honors both existing exact consent shapes and fails closed for every other value',()=>{
+// #2331 I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF: a first visit sends, a turned-off
+// choice (v2 analytics false, or v1 denied in either shape) sends nothing, and
+// malformed storage falls back to on. The page also carries the privacy bar.
+test('ST11 S6 analytics is on unless the visitor turned it off, and the page carries the privacy bar',()=>{
   const {renderContentShareHtml}=require(path.join(ROOT,'mingla-business/server/socialPreview.js'));
   const html=renderContentShareHtml({shortCode:'Aa0Bb1Cc2Dd3Ee4F',version:2,facts:{schemaVersion:1,kind:'event',title:'Truth'},media:null,destination:{kind:'event',brandSlug:'b',eventSlug:'e'},publicDetails:{kind:'event',actionEligible:true,occurrences:[]}});
   const script=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match)=>match[1]).find((value)=>value.includes('share_public_page_viewed'));
@@ -198,12 +201,13 @@ test('ST11 S6 analytics honors both existing exact consent shapes and fails clos
   const run=(stored)=>{const beacons=[];const primary={dataset:{shareDestination:'buy_tickets'},addEventListener(_event,listener){this.listener=listener}};const install={addEventListener(_event,listener){this.listener=listener}};
     vm.runInNewContext(script,{localStorage:{getItem:()=>stored},navigator:{sendBeacon:(url,body)=>{beacons.push({url,payload:JSON.parse(body)});return true}},document:{querySelector:()=>install,querySelectorAll:()=>[primary]}});
     install.listener?.();primary.listener?.();return beacons;};
-  for(const granted of [JSON.stringify({choice:'granted',ts:1}),JSON.stringify({value:'granted',ts:1})]){
+  assert.match(html,/data-testid="privacy-bar"/);assert.match(html,/data-mingla-privacy-choices/);assert.match(html,/__minglaPrivacyBar\(\);/);
+  for(const granted of [null,'{',JSON.stringify({choice:true}),JSON.stringify({value:1}),JSON.stringify({granted:true}),JSON.stringify({choice:'granted',ts:1}),JSON.stringify({value:'granted',ts:1}),JSON.stringify({analytics:true,ads:false,ts:1})]){
     const beacons=run(granted);assert.deepEqual(beacons.map((item)=>item.payload.event),['share_public_page_viewed','share_install_cta_opened','share_destination_action']);
     assert.ok(beacons.every((item)=>item.url==='/api/content-share-analytics'&&item.payload.code==='Aa0Bb1Cc2Dd3Ee4F'&&item.payload.version===2));
     assert.equal(beacons[2].payload.action,'buy_tickets');
   }
-  for(const denied of [null,'{',JSON.stringify({choice:'denied'}),JSON.stringify({value:'denied'}),JSON.stringify({choice:true}),JSON.stringify({value:1}),JSON.stringify({granted:true})])assert.deepEqual(run(denied),[]);
+  for(const denied of [JSON.stringify({choice:'denied'}),JSON.stringify({value:'denied'}),JSON.stringify({analytics:false,ads:true,ts:1})])assert.deepEqual(run(denied),[]);
 });
 
 test('ST12 same-origin analytics delivery, endpoint schema and privacy are fail closed',async()=>{

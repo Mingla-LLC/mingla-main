@@ -40,70 +40,97 @@ describe("issue #922 dedicated invitation entry", () => {
     expect(output).toContain(".i922-host{transform:translateZ(0)}");
   });
 
-  test("pins the copied UI, storage, consent, routing, and owner contracts", () => {
+  // [TEST-MOD-APPROVED #2331] The shell now carries the same slim privacy bar
+  // as the React owner, from the one server-side source, and saves v2.
+  test("pins the copied UI, storage, privacy bar, routing, and owner contracts", () => {
+    const { dir } = fixture();
+    execFileSync(process.execPath, [builder, "--build-dir", dir], {
+      env: { ...process.env, NODE_ENV: "test" },
+    });
+    const output = readFileSync(join(dir, "accept-brand-invitation-entry.html"), "utf8");
     const inviteRoute = readFileSync(join(packageRoot, "app/accept-brand-invitation.tsx"), "utf8");
     const consent = readFileSync(join(packageRoot, "src/analytics/ConsentBanner.web.tsx"), "utf8");
-    const analytics = readFileSync(join(packageRoot, "src/analytics/webAnalytics.web.ts"), "utf8");
     const button = readFileSync(join(packageRoot, "src/components/ui/Button.tsx"), "utf8");
     const tokens = readFileSync(join(packageRoot, "src/constants/designSystem.ts"), "utf8");
     const builderSource = readFileSync(builder, "utf8");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const privacy = require("../server/publicPrivacyRuntime.js") as {
+      privacyBarCss: () => string;
+      privacyBarCollapsedCss: () => string;
+      privacyBarCollapsedMarkup: () => string;
+      privacyBarCollapsedRuntimeSource: () => string;
+    };
     for (const copy of ["You're invited", "Sign in to accept this invitation. We'll bring you right back.", "Sign in"]) {
       expect(inviteRoute).toContain(copy);
       expect(builderSource).toContain(copy.replace(/'/g, "\\'"));
     }
-    const compactConsent = consent.replace(/\s+/g, " ");
-    const proposal =
-      "We use cookies and advertising tools from Meta, Snapchat and TikTok to measure and improve our ads.";
+    // The shell carries the collapsed row only (its byte budget); the React
+    // owner carries the full choices, which Options opens expanded.
+    for (const copy of ["Mingla uses cookies for analytics and ads.", "Cookies for analytics and ads.", "OK", "Options"]) {
+      expect(consent).toContain(copy);
+      expect(output).toContain(copy);
+    }
     for (const copy of [
-      "Ad privacy",
-      "Opt out of ad tracking",
-      "Privacy policy",
+      "Helps us see which pages work and fix what doesn",
+      "Lets Meta, TikTok, Snapchat and Reddit measure our ads.",
+      "Turn off all",
+      "Your privacy choices",
       "https://usemingla.com/privacy-policy",
     ]) {
-      expect(compactConsent).toContain(copy);
-      expect(builderSource).toContain(copy);
+      expect(consent).toContain(copy);
     }
-    expect(compactConsent).toContain(proposal);
-    expect(builderSource).toContain(proposal);
-    expect(consent).toContain('label="OK"');
-    expect(builderSource).toContain(">OK<");
-    expect(analytics.indexOf("__minglaPrebootConsentChoice")).toBeLessThan(analytics.indexOf("window.localStorage.getItem(CONSENT_STORAGE_KEY)"));
-    expect(analytics).not.toContain("delete window.__minglaPrebootConsentChoice");
-    expect(analytics).toContain('JSON.stringify({ choice, ts: Date.now() })');
+    expect(output).toContain(privacy.privacyBarCollapsedCss());
+    expect(output).toContain(privacy.privacyBarCollapsedMarkup());
+    // Beside the host, never inside its translateZ(0) layer.
+    expect(output).toContain(`</main>${privacy.privacyBarCollapsedMarkup()}'`);
+    expect(output).toContain(privacy.privacyBarCollapsedRuntimeSource());
+    // Every collapsed rule is a verbatim rule of the full bar's stylesheet.
+    const full = privacy.privacyBarCss().split("\n");
+    for (const rule of privacy.privacyBarCollapsedCss().split("\n")) expect(full).toContain(rule);
+    expect(output).toContain('window.addEventListener("mingla:privacy-options",function(){protect(boot)})');
+    expect(output).toContain("window.__minglaPrivacyOpenExpanded=true");
+    expect(consent).toContain("__minglaPrivacyOpenExpanded");
+    expect(output).not.toContain("i922-consent");
+    expect(output).not.toContain("Opt out of ad tracking");
+    expect(output).not.toContain("Nothing is tracked until you accept");
+    expect(output).toContain('key==="mingla_privacy_v2"');
+    expect(output).toContain('window.addEventListener("mingla:privacy-saved",function(){protect(boot)})');
     expect(button).toContain("const SIZE_HEIGHT: Record<ButtonSize, number> = { sm: 36, md: 44, lg: 52 }");
     expect(tokens).toContain('warm: "#eb7825"');
     expect(tokens).toContain('discover: "#0c0e12"');
   });
 
-  test.each(["granted", "denied"] as const)(
-    "keeps a %s preboot choice visible to sequential production readers when storage writes fail",
-    (choice) => {
+  test.each([
+    [{ analytics: true, ads: true }],
+    [{ analytics: false, ads: false }],
+  ])(
+    "keeps the %j choice visible to sequential production readers when storage writes fail",
+    async (choice) => {
       jest.resetModules();
       jest.doMock("expo-constants", () => ({
         __esModule: true,
         default: { expoConfig: { extra: {} } },
       }));
       const setItem = jest.fn(() => {
-        throw new Error("readable storage rejected the consent write");
+        throw new Error("readable storage rejected the privacy write");
       });
-      const fakeWindow = {
-        __minglaPrebootConsentChoice: choice,
+      const fakeWindow: Record<string, unknown> = {
         localStorage: {
           getItem: jest.fn(() => null),
           setItem,
+          removeItem: jest.fn(),
         },
       };
       (globalThis as unknown as { window: unknown }).window = fakeWindow;
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const analytics = require("../src/analytics/webAnalytics.web") as typeof import("../src/analytics/webAnalytics.web");
 
-      if (choice === "granted") analytics.grantConsent();
-      else analytics.denyConsent();
+      await analytics.savePrivacyChoice(choice);
 
       expect(setItem).toHaveBeenCalledTimes(1);
-      expect(analytics.readStoredConsent()).toBe(choice);
-      expect(analytics.readStoredConsent()).toBe(choice);
-      expect(fakeWindow.__minglaPrebootConsentChoice).toBe(choice);
+      expect(analytics.readPrivacyChoice()).toMatchObject(choice);
+      expect(analytics.readPrivacyChoice()).toMatchObject(choice);
+      expect(fakeWindow.__minglaPrebootPrivacy).toMatchObject(choice);
 
       delete (globalThis as unknown as { window?: unknown }).window;
       jest.resetModules();

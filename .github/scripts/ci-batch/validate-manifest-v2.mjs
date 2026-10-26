@@ -545,7 +545,7 @@ export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "48af9d0cca47199b61b824a4fd80b87ec7e5bb12f07899994435031238834bbb",
   "app-mobile/package-lock.json": "9a7974a2de124482f7d450d46b49775126ef5206a325dcb6c7663ea3b9666065",
   "mingla-business/package.json": "6f77fc43e63360ac45b94d11195b966433d4e6769b34a0340d88f9871b4b2315",
-  "mingla-business/package-lock.json": "f14455f81e4f7a96cf494bea30748200a4e53d6a48771453767f7ce5fcc5608d",
+  "mingla-business/package-lock.json": "77de9a72fcbf260277096d888a4bfa317cbf420e3a26c78bf7826feeacff3410",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other

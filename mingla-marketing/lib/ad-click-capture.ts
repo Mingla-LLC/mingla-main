@@ -1,11 +1,15 @@
 /**
  * toward #3697 Wave 0a — first-party ad click capture on the marketing site.
- * Mirrors Host webAnalytics pre-consent rules: ad/UTM/mc_id before banner;
- * Reject stamps consent_state=rejected; vendor SDKs stay grant-gated elsewhere.
+ * #2331: ads are on unless this visitor turned them off (or GPC is on), so
+ * the touch records as granted from the first page; a turn-off stamps
+ * consent_state=rejected on the stored touch and blocks new capture.
  */
 'use client'
 
-import { readMarketingConsent } from '@/components/marketing/posthog-provider'
+import {
+  isMarketingAdsOn,
+  readMarketingPrivacy,
+} from '@/components/marketing/posthog-provider'
 import {
   MARKETING_BRAND_SLUG,
   marketingSlugFromPathname,
@@ -39,7 +43,7 @@ function storedClickId(): string | null {
 }
 
 function storeClickId(clickId: string): void {
-  if (readMarketingConsent() === 'denied') return
+  if (!isMarketingAdsOn()) return
   try {
     window.sessionStorage.setItem(AD_CLICK_KEY, JSON.stringify({ clickId }))
   } catch {
@@ -76,10 +80,9 @@ async function postCapture(body: Record<string, unknown>): Promise<string | null
 
 export function captureMarketingAdClickIds(): void {
   if (typeof window === 'undefined') return
-  const consent = readMarketingConsent()
   const existingClickId = storedClickId()
-  // toward #3697: Accept/Reject only stamp the stored first-party touch.
-  if (consent === 'denied') {
+  // toward #3697: a saved choice only stamps the stored first-party touch.
+  if (!isMarketingAdsOn()) {
     if (existingClickId) {
       void postCapture({
         kind: 'consent',
@@ -91,7 +94,7 @@ export function captureMarketingAdClickIds(): void {
     }
     return
   }
-  if (consent === 'granted' && existingClickId) {
+  if (readMarketingPrivacy()?.ads === true && existingClickId) {
     void postCapture({
       kind: 'consent',
       click_id: existingClickId,
@@ -141,7 +144,7 @@ export function captureMarketingAdClickIds(): void {
             : gclid
               ? 'google'
               : 'other'
-    const consentState = consent === 'granted' ? 'granted' : 'pending'
+    const consentState = 'granted'
     const marketingSlug = marketingSlugFromPathname(window.location.pathname)
     void postCapture({
       kind: 'touch',

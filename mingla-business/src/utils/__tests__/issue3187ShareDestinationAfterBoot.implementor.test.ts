@@ -82,6 +82,7 @@ function loadPage(options: { path: string; consent: string | null; session?: Map
     location,
     /** A tap on the SERVER CTA — only possible before the app takes over. */
     tapServerCta: () => clicks.forEach((fn) => fn()),
+    /** The visitor turns analytics back on. */
     grantConsent: () => { consent = GRANTED; },
   };
 }
@@ -179,8 +180,9 @@ describe("#3187 P2-1 de-duplication — one intent, one event", () => {
     expect(JSON.parse(first.session.get(analytics.SHARE_DESTINATION_LEDGER_KEY) ?? "[]")).toEqual([`${CODE}.4:buy_tickets`]);
   });
 
-  test("without consent nothing is sent AND nothing is marked, so the tap after granting still counts", () => {
-    const page = loadPage({ path: "/e/acme/autumn-night", consent: null });
+  // #2331 — analytics is on unless the visitor turned it off.
+  test("with analytics turned off nothing is sent AND nothing is marked, so the tap after turning it back on still counts", () => {
+    const page = loadPage({ path: "/e/acme/autumn-night", consent: JSON.stringify({ analytics: false, ads: true, ts: 1 }) });
     expect(recordShareDestination("buy_tickets")).toBe(false);
     expect(page.posted).toEqual([]);
     page.grantConsent();

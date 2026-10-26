@@ -6,7 +6,7 @@ type ProbeWindow = Window & {
   __adversarialOrder?: string[];
   __adversarialRoots?: boolean[];
   __adversarialChoices?: (string | undefined)[];
-  __minglaPrebootConsentChoice?: "granted" | "denied";
+  __minglaPrebootPrivacy?: { analytics: boolean; ads: boolean; ts: number };
   __hostileExecuted?: boolean;
 };
 
@@ -27,7 +27,7 @@ async function captureFullApp(page: Page): Promise<string[]> {
       body:
         `window.__adversarialOrder=(window.__adversarialOrder||[]).concat(${JSON.stringify(filename)});` +
         `window.__adversarialRoots=(window.__adversarialRoots||[]).concat(Boolean(document.getElementById("root")));` +
-        `window.__adversarialChoices=(window.__adversarialChoices||[]).concat(window.__minglaPrebootConsentChoice);` +
+        `window.__adversarialChoices=(window.__adversarialChoices||[]).concat(JSON.stringify(window.__minglaPrebootPrivacy?{analytics:window.__minglaPrebootPrivacy.analytics,ads:window.__minglaPrebootPrivacy.ads}:null));` +
         `if(window.__adversarialOrder.length===3){document.getElementById("root").replaceChildren(Object.assign(document.createElement("p"),{id:"adversarial-full-app",textContent:"Full Expo app mounted"}))}`,
     });
   });
@@ -66,7 +66,7 @@ test("eligible first visit exposes one accessible hit target and no external JS 
   })).toBe(true);
   await signIn.focus();
   await expect(signIn).toBeFocused();
-  await expect(page.getByLabel("Cookie consent")).toBeVisible();
+  await expect(page.getByTestId("privacy-bar")).toBeVisible();
   expect(external).toEqual([]);
 });
 
@@ -90,7 +90,7 @@ test("stored auth, consent, token, path, and storage ambiguities always mount th
   const cases: {
     label: string;
     path: string;
-    setup?: "auth" | "auth-stale" | "consent-valid" | "consent-malformed" | "getter" | "iterate";
+    setup?: "auth" | "auth-stale" | "consent-valid" | "consent-malformed" | "privacy-saved" | "getter" | "iterate";
   }[] = [
     { label: "missing token", path: "/accept-brand-invitation" },
     { label: "blank token", path: "/accept-brand-invitation?token=%20%09" },
@@ -98,6 +98,7 @@ test("stored auth, consent, token, path, and storage ambiguities always mount th
     { label: "stale auth", path: target, setup: "auth-stale" },
     { label: "valid consent", path: target, setup: "consent-valid" },
     { label: "malformed consent", path: target, setup: "consent-malformed" },
+    { label: "saved privacy choice", path: target, setup: "privacy-saved" },
     { label: "storage getter failure", path: target, setup: "getter" },
     { label: "storage iteration failure", path: target, setup: "iterate" },
   ];
@@ -117,6 +118,7 @@ test("stored auth, consent, token, path, and storage ambiguities always mount th
       if (setup === "auth-stale") window.localStorage.setItem("sb-old-project-auth-token", "expired");
       if (setup === "consent-valid") window.localStorage.setItem("mingla_consent_v1", JSON.stringify({ choice: "denied", ts: 1 }));
       if (setup === "consent-malformed") window.localStorage.setItem("mingla_consent_v1", "not-json");
+      if (setup === "privacy-saved") window.localStorage.setItem("mingla_privacy_v2", JSON.stringify({ analytics: true, ads: false, ts: 1 }));
     }, scenario.setup);
     const page = await context.newPage();
     const requests = await captureFullApp(page);
@@ -156,23 +158,29 @@ test("exact invite and trailing slash are critical; success, scanner, callback, 
   }
 });
 
-test("consent write failure preserves denied choice for every same-page reader", async ({ context, page }) => {
+// #2331 — Global Privacy Control starts ads off; OK on the shell saves that
+// live state, and a failed durable write still hands it to every reader.
+test("under GPC, OK keeps ads off for every same-page reader even when the write fails", async ({ context, page }) => {
   await clean(context);
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "globalPrivacyControl", { configurable: true, get: () => true });
+  });
   const requests = await captureFullApp(page);
   await page.goto(target);
   await page.evaluate(() => {
     Storage.prototype.setItem = function setItem(): never { throw new Error("quota"); };
   });
-  // #3697 keeps the explicit ad-tracking opt-out effective even when its
-  // durable browser write fails, so every same-page reader still sees denial.
-  await page.getByRole("button", { name: "Opt out of ad tracking" }).click();
+  await page.getByTestId("privacy-bar-ok").click();
   await expectFullApp(page, requests);
   const result = await page.evaluate(() => ({
-    stored: window.localStorage.getItem("mingla_consent_v1"),
+    stored: window.localStorage.getItem("mingla_privacy_v2"),
     choices: (window as ProbeWindow).__adversarialChoices,
-    handoff: (window as ProbeWindow).__minglaPrebootConsentChoice,
+    handoff: (window as ProbeWindow).__minglaPrebootPrivacy,
   }));
-  expect(result).toEqual({ stored: null, choices: ["denied", "denied", "denied"], handoff: "denied" });
+  const off = JSON.stringify({ analytics: true, ads: false });
+  expect(result.stored).toBeNull();
+  expect(result.choices).toEqual([off, off, off]);
+  expect(result.handoff).toMatchObject({ analytics: true, ads: false });
 });
 
 test("a late bootstrap exception falls back to the full app instead of stranding static markup", async ({ context, page }) => {
