@@ -3,7 +3,7 @@ import React from "react";
 // @ts-expect-error -- this browser-only harness uses the installed runtime.
 import { createRoot } from "react-dom/client";
 import { Text, View } from "react-native";
-import { PageFooterAccessoryContext } from "@mingla/offering-rendering";
+import { setPageFooterAccessory } from "@mingla/offering-rendering";
 import type {
   PublicVenueAnalyticsEvent,
   PublicVenueReservationSheetContext,
@@ -50,12 +50,14 @@ const venue: PublicVenueViewModel = {
 
 window.__issue2769Analytics = [];
 
+setPageFooterAccessory(PrivacyChoicesLink);
+
 function Harness(): React.ReactElement {
   const initialTab = new URLSearchParams(window.location.search).get("tab");
   // #2331 — the same app-root shape as Expo web (a flex:1 column filling
   // #root) and the same footer accessory the business root layout provides.
   return (
-    <PageFooterAccessoryContext.Provider value={PrivacyChoicesLink}>
+    <>
       <View style={{ flex: 1, alignSelf: "stretch" }}>
       <PublicVenueScreen
         venue={venue}
@@ -98,7 +100,7 @@ function Harness(): React.ReactElement {
       />
       </View>
       <ConsentBanner />
-    </PageFooterAccessoryContext.Provider>
+    </>
   );
 }
 

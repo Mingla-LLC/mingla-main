@@ -244,7 +244,7 @@ test("a readable store that rejects consent writes keeps the choice for multiple
   const state = await page.evaluate(() => ({
     stored: window.localStorage.getItem("mingla_consent_v1"),
     readers: (window as typeof window & { __issue922Choices?: string[] }).__issue922Choices,
-    pageLifetimeChoice: window.__minglaPrebootConsentChoice,
+    pageLifetimeChoice: (window as typeof window & { __minglaPrebootConsentChoice?: string }).__minglaPrebootConsentChoice,
   }));
   expect(state).toEqual({
     stored: null,

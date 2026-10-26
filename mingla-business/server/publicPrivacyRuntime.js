@@ -117,10 +117,48 @@ const privacyBarRuntimeSource = () => [
   "if(typeof ResizeObserver===\"function\")new ResizeObserver(inset).observe(bar);show(__minglaPrivacy()===null);}",
 ].join("");
 
+// ---------------------------------------------------------------------------
+// #2331 — the lean collapsed bar for the #922 invite critical shell. That
+// shell has a hard byte budget (20,000 raw / 6,000 gzip), so it carries only
+// the collapsed row: the same words, the same look, the same inset. OK saves
+// the live state exactly as the full bar does. Options hands off to the app
+// (`window.__minglaPrivacyOpenExpanded`) and boots it; the React bar then
+// opens already expanded with the switches, Save, Turn off all and the policy.
+
+const COLLAPSED_ONLY_EXCLUDED = /^(?:\.mpb-panel|@media \(min-width:600px\)|\.mpb-switch|\.mpb-actions|\.mpb-policy|\.mpb-toast|\.mpb-text b|@keyframes|@media \(prefers-reduced-motion)/;
+
+const privacyBarCollapsedCss = () =>
+  PRIVACY_BAR_CSS_LINES.filter((line) => !COLLAPSED_ONLY_EXCLUDED.test(line)).join("\n");
+
+const privacyBarCollapsedMarkup = () => [
+  '<section class="mpb ph-no-capture" role="region" aria-label="Privacy choices" data-testid="privacy-bar" data-expanded="false" data-mingla-ssr-privacy-bar hidden>',
+  '<div class="mpb-row"><p class="mpb-text"><span class="mpb-long">Mingla uses cookies for analytics and ads.</span><span class="mpb-short">Cookies for analytics and ads.</span></p>',
+  '<button type="button" class="mpb-hit" data-mpb-act="ok" data-testid="privacy-bar-ok"><span class="mpb-pill mpb-primary">OK</span></button>',
+  '<button type="button" class="mpb-hit mpb-options" data-mpb-act="toggle" data-testid="privacy-bar-options" aria-expanded="false" aria-label="Privacy options"><span class="mpb-pill mpb-ghost"><span class="mpb-options-label">Options</span><span class="mpb-chev mpb-chev-up" aria-hidden="true"></span></span></button>',
+  "</div></section>",
+].join("");
+
+/**
+ * Binds the lean bar. Requires privacyReaderSource() in the same script. OK
+ * dispatches `mingla:privacy-saved` (detail: the saved choice); Options sets
+ * the expanded hand-off and dispatches `mingla:privacy-options`.
+ */
+const privacyBarCollapsedRuntimeSource = () => [
+  "function __minglaPrivacyBar(){var bar=document.querySelector(\"[data-mingla-ssr-privacy-bar]\");if(!bar)return;",
+  "function inset(){var h=bar.isConnected&&!bar.hidden?Math.round(bar.getBoundingClientRect().height):0,d=document.documentElement;d.style.setProperty(\"--mingla-privacy-inset\",h+\"px\");if(h>0)d.setAttribute(\"data-mingla-privacy-bar\",\"shown\");else d.removeAttribute(\"data-mingla-privacy-bar\");}",
+  "bar.querySelector('[data-mpb-act=\"ok\"]').addEventListener(\"click\",function(){var c={analytics:__minglaPrivacyOn(\"analytics\"),ads:__minglaPrivacyOn(\"ads\"),ts:Date.now()};window.__minglaPrebootPrivacy=c;",
+  "try{window.localStorage.setItem(\"mingla_privacy_v2\",JSON.stringify(c));window.localStorage.removeItem(\"mingla_consent_v1\");}catch(_){}bar.hidden=true;inset();window.dispatchEvent(new CustomEvent(\"mingla:privacy-saved\",{detail:c}));});",
+  "bar.querySelector('[data-mpb-act=\"toggle\"]').addEventListener(\"click\",function(){window.__minglaPrivacyOpenExpanded=true;window.dispatchEvent(new Event(\"mingla:privacy-options\"));});",
+  "if(typeof ResizeObserver===\"function\")new ResizeObserver(inset).observe(bar);bar.hidden=__minglaPrivacy()!==null;inset();}",
+].join("");
+
 module.exports = {
   LEGACY_CONSENT_STORAGE_KEY,
   PRIVACY_POLICY_URL,
   PRIVACY_STORAGE_KEY,
+  privacyBarCollapsedCss,
+  privacyBarCollapsedMarkup,
+  privacyBarCollapsedRuntimeSource,
   privacyBarCss,
   privacyBarMarkup,
   privacyBarRuntimeSource,

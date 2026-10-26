@@ -14,7 +14,7 @@ export {
 } from "./ParallaxCoverShell";
 export type { ParallaxCoverShellProps } from "./ParallaxCoverShell";
 // #2331 — host-provided end-of-content accessory (buyer web privacy link).
-export { PageFooterAccessoryContext } from "./pageFooterAccessory";
+export { getPageFooterAccessory, setPageFooterAccessory } from "./pageFooterAccessory";
 export type {
   PageFooterAccessory,
   PageFooterAccessoryProps,

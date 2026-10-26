@@ -155,15 +155,22 @@ function validate(files) {
   if (!settlementPolicyBody.includes('surface !== "buyer_web"')) {
     failures.push("buyer settlement function lost its preview guard");
   }
+  // #2331 (I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF): the page journey starts on
+  // arrival while analytics is on and, when the visitor turned it off, the
+  // moment it is turned back on (via the privacy subscription), never while
+  // off. pendingStarts keeps it exact-once; the suite proves both paths.
   if (
     !get(PATHS.buyerCapture).includes(
       "settleVenueOrganicJourneyOnConsent",
     ) ||
     !get(PATHS.buyerCapture).includes("pendingStarts") ||
+    !get(PATHS.buyerCapture).includes("isAnalyticsOn()") ||
+    !get(PATHS.buyerCapture).includes("subscribePrivacy(") ||
     !get(PATHS.buyerCaptureTest).includes("toHaveBeenCalledTimes(1)") ||
-    !get(PATHS.buyerCaptureTest).includes("never before")
+    !get(PATHS.buyerCaptureTest).includes("starts the journey on arrival while analytics is on") ||
+    !get(PATHS.buyerCaptureTest).includes("once analytics is turned back on, never while off")
   ) {
-    failures.push("post-consent page journey is not exact-once executable");
+    failures.push("page journey is not exact-once executable under on-unless-turned-off");
   }
   if (
     !get(PATHS.edgeTest).includes("handleVenueOrganicCapture") ||
@@ -290,11 +297,11 @@ if (process.argv.includes("--self-test")) {
   );
   good.set(
     PATHS.buyerCapture,
-    'settleVenueOrganicJourneyOnConsent pendingStarts "page_view"',
+    'settleVenueOrganicJourneyOnConsent pendingStarts isAnalyticsOn() subscribePrivacy( "page_view"',
   );
   good.set(
     PATHS.buyerCaptureTest,
-    "toHaveBeenCalledTimes(1) never before",
+    "toHaveBeenCalledTimes(1) starts the journey on arrival while analytics is on once analytics is turned back on, never while off",
   );
   good.set(
     PATHS.edgeTest,
@@ -377,6 +384,22 @@ if (process.argv.includes("--self-test")) {
     )
   ) {
     throw new Error("unnamed analytics surface escaped");
+  }
+  // #2331 — a journey that never restarts after a turn-off (no privacy
+  // subscription) or loses its exact-once guard must FAIL.
+  for (const capture of [
+    'settleVenueOrganicJourneyOnConsent pendingStarts isAnalyticsOn() "page_view"',
+    'settleVenueOrganicJourneyOnConsent isAnalyticsOn() subscribePrivacy( "page_view"',
+  ]) {
+    const broken = new Map(good);
+    broken.set(PATHS.buyerCapture, capture);
+    if (
+      !validate(broken).includes(
+        "page journey is not exact-once executable under on-unless-turned-off",
+      )
+    ) {
+      throw new Error("page journey rule revert escaped");
+    }
   }
   console.log("issue-1421 venue organic insights self-test: PASS");
   process.exit(0);

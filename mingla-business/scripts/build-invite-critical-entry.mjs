@@ -8,13 +8,14 @@ import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
 import { createRequire } from "node:module";
 
-// #2331 — the static shell shows the SAME privacy bar as the React owner, from
-// the one server-side source (markup, stylesheet, runtime).
+// #2331 — the static shell shows the same collapsed privacy bar as the React
+// owner, from the one server-side source. Only the collapsed row fits the
+// shell's byte budget: Options hands off to the app, whose bar opens expanded.
 const require = createRequire(import.meta.url);
 const {
-  privacyBarCss,
-  privacyBarMarkup,
-  privacyBarRuntimeSource,
+  privacyBarCollapsedCss,
+  privacyBarCollapsedMarkup,
+  privacyBarCollapsedRuntimeSource,
   privacyReaderSource,
 } = require("../server/publicPrivacyRuntime.js");
 
@@ -160,9 +161,9 @@ function withoutLegacyConsentCss(css) {
 }
 
 /**
- * #2331 — replace the copied consent panel with the slim privacy bar. The
- * shell no longer waits for a choice to be useful: OK / Save / Turn off all
- * save `mingla_privacy_v2` and boot the app, which then shows no bar.
+ * #2331 — replace the copied consent panel with the slim privacy bar's
+ * collapsed row. OK saves `mingla_privacy_v2` and boots the app, which then
+ * shows no bar; Options boots the app with its bar already expanded.
  */
 function withPrivacyBar(payload) {
   let next = payload;
@@ -171,24 +172,24 @@ function withPrivacyBar(payload) {
   const styleEnd = next.indexOf("</style>", styleStart);
   if (styleStart === -1 || styleEnd === -1) fail("#2331 privacy-bar substitution did not apply: critical stylesheet");
   const legacyCss = next.slice(styleStart + styleOpen.length, styleEnd);
-  next = `${next.slice(0, styleStart + styleOpen.length)}${withoutLegacyConsentCss(legacyCss)}${privacyBarCss()}${next.slice(styleEnd)}`;
+  next = `${next.slice(0, styleStart + styleOpen.length)}${withoutLegacyConsentCss(legacyCss)}${privacyBarCollapsedCss()}${next.slice(styleEnd)}`;
   next = swapStrict(
     next,
     /<section class="i922-consent[\s\S]*?<\/section>/,
-    privacyBarMarkup(),
+    privacyBarCollapsedMarkup(),
     "consent markup",
   );
   next = swapStrict(next, 'var consent=root.querySelector(".i922-consent");', "", "consent lookup");
   next = swapStrict(
     next,
     /function choose\(choice\)\{[\s\S]*?choose\("denied"\)\}\)\}\);/,
-    'window.addEventListener("mingla:privacy-saved",function(){protect(boot)});__minglaPrivacyBar();',
+    'window.addEventListener("mingla:privacy-saved",function(){protect(boot)});window.addEventListener("mingla:privacy-options",function(){protect(boot)});__minglaPrivacyBar();',
     "consent decisions",
   );
   next = swapStrict(
     next,
     'var signIn=root.querySelector(".i922-signin");',
-    `${privacyReaderSource()}${privacyBarRuntimeSource()}var signIn=root.querySelector(".i922-signin");`,
+    `${privacyReaderSource()}${privacyBarCollapsedRuntimeSource()}var signIn=root.querySelector(".i922-signin");`,
     "privacy runtime",
   );
   next = swapStrict(

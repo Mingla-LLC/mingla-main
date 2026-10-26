@@ -123,6 +123,13 @@ export function ConsentBanner(): React.ReactElement | null {
       node.remove();
     }
     setMounted(true);
+    // The #922 invite shell carries only the collapsed bar: its Options boots
+    // the app with this hand-off, so the choices open already expanded.
+    const handoff = window as Window & { __minglaPrivacyOpenExpanded?: boolean };
+    if (handoff.__minglaPrivacyOpenExpanded === true) {
+      handoff.__minglaPrivacyOpenExpanded = false;
+      setExpanded(true);
+    }
     const open = (): void => {
       const active = document.activeElement;
       returnFocusRef.current = active instanceof HTMLElement ? active : null;

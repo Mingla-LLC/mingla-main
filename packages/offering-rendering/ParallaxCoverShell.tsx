@@ -60,7 +60,7 @@ import {
 } from "@mingla/card-identity/s6";
 
 import { EventCoverMedia } from "./EventCoverMedia";
-import { PageFooterAccessoryContext } from "./pageFooterAccessory";
+import { getPageFooterAccessory, type PageFooterAccessoryProps } from "./pageFooterAccessory";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
 import { CoverGalleryRow } from "./CoverGalleryRow";
 import { type ResolvedTheme } from "./designTokens";
@@ -225,7 +225,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   const Scroll = ScrollComponent ?? ScrollView;
   // #2331 — host-provided end-of-content accessory (buyer web: "Your privacy
   // choices"). Absent ⇒ nothing renders.
-  const FooterAccessory = React.useContext(PageFooterAccessoryContext);
+  const FooterAccessory = getPageFooterAccessory() as React.ComponentType<PageFooterAccessoryProps> | null;
   const footerAccessory =
     FooterAccessory !== null ? (
       <FooterAccessory color={palette.tertiaryText} />
