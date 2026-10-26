@@ -1,41 +1,40 @@
 /**
- * #3872 — one gig (approved P-find-on-event / P-applicants / M-applicants):
- * Interested · Hired · Results. Applicants show money and audience in words,
- * showcase thumbnails and one row of Pass / Counter / Hire for $X. A gig with
- * no interest shows "Your gig is live", never a phantom applicant.
+ * #3872 — one gig. Round 2 (approved M-gig): a one-line summary, a segment
+ * (Interested n · Hired n · Results), sort chips (Best match, Top rated,
+ * Lowest price) and one compact row per creator — photo, niches, audience,
+ * rating, price. A creator hired on this gig shows only under Hired. Edit and
+ * Close gig live in the ⋯ menu. Hiring starts from the creator's profile.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { Button } from "../../../../../src/components/ui/Button";
+import { Icon } from "../../../../../src/components/ui/Icon";
+import { Sheet } from "../../../../../src/components/ui/Sheet";
 import { SimpleConfirmDialog } from "../../../../../src/components/ui/SimpleConfirmDialog";
 import {
-  HireSheet,
-  type HireSheetMode,
-} from "../../../../../src/components/gigs/HireSheet";
-import {
-  Card,
   Chip,
   FieldError,
   Initials,
   ListGroup,
   ListRow,
-  Muted,
+  ProgramEmpty,
   ProgramLoading,
   ProgramScreen,
   Segmented,
+  SheetBody,
   StatusTag,
-  programStyles,
 } from "../../../../../src/components/programs/ProgramKit";
-import { ShowcaseStrip } from "../../../../../src/components/programs/ShowcaseStrip";
 import { useProgramParams } from "../../../../../src/components/programs/useProgramParams";
 import {
   briefFromGig,
   gigPayload,
 } from "../../../../../src/components/programs/gigBrief";
 import {
-  sortApplicants,
+  APPLICANT_FILTERS,
+  hiredContracts,
+  interestedApplicants,
   type ApplicantFilter as Filter,
 } from "../../../../../src/components/programs/applicantFilters";
 import {
@@ -47,15 +46,14 @@ import {
 } from "../../../../../src/services/creatorGigsService";
 import {
   audienceLabel,
-  bandsForCurrency,
-  budgetDisplay,
-  hostContractRowStatus,
+  hostContractPill,
   nicheLabel,
   programErrorMessage,
   programMoney,
+  programMoneyShort,
   shortDate,
-  type BudgetBandRange,
 } from "../../../../../src/utils/creatorProgramFormat";
+import { blastHubHref } from "../../../../../src/components/marketing/marketingSubNavTabs";
 import {
   spacing,
   text as textTokens,
@@ -71,19 +69,11 @@ export default function GigApplicants(): React.ReactElement {
   const [contracts, setContracts] = useState<HostContractSummary[]>([]);
   const [items, setItems] = useState<GigApplicant[] | null>(null);
   const [results, setResults] = useState<GigResult[] | null>(null);
-  const [bands, setBands] = useState<BudgetBandRange[]>([]);
-  const [showcases, setShowcases] = useState<
-    Record<string, Array<{ media_id: string }>>
-  >({});
   const [tab, setTab] = useState<Tab>("interested");
   const [filter, setFilter] = useState<Filter>("best");
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [hire, setHire] = useState<{
-    applicant: GigApplicant;
-    mode: HireSheetMode;
-  } | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [closeBusy, setCloseBusy] = useState(false);
 
@@ -91,15 +81,13 @@ export default function GigApplicants(): React.ReactElement {
     if (!brandId || !gigId) return;
     setError(null);
     try {
-      const [home, applicants, nextBands] = await Promise.all([
+      const [home, applicants] = await Promise.all([
         creatorGigsService.hostHome(brandId),
         creatorGigsService.applicants(gigId),
-        creatorGigsService.budgetBands(),
       ]);
       setGig(home.gigs.find((row) => row.id === gigId) ?? null);
       setContracts(home.contracts.filter((row) => row.gig_id === gigId));
       setItems(applicants);
-      setBands(nextBands);
     } catch (loadError) {
       setItems((current) => current ?? []);
       setError(
@@ -122,71 +110,14 @@ export default function GigApplicants(): React.ReactElement {
       .catch(() => setResults([]));
   }, [tab, results, brandId, gigId]);
 
-  // Showcase thumbnails come from each creator's pre-hire profile.
-  useEffect(() => {
-    if (!items) return;
-    const missing = items
-      .filter((item) => showcases[item.creator_id] === undefined)
-      .slice(0, 10);
-    if (missing.length === 0) return;
-    void Promise.all(
-      missing.map((item) =>
-        creatorGigsService
-          .prehireProfile(item.creator_id)
-          .then(
-            (profile) => [item.creator_id, profile?.showcase ?? []] as const,
-          )
-          .catch(() => [item.creator_id, []] as const),
-      ),
-    ).then((pairs) =>
-      setShowcases((current) => ({ ...current, ...Object.fromEntries(pairs) })),
-    );
-  }, [items, showcases]);
-
   const currency = gig?.currency ?? items?.[0]?.currency ?? "USD";
-  const bandRow = useMemo(
-    () =>
-      bandsForCurrency(bands, currency).find(
-        (row) => row.band === gig?.budget_band,
-      ) ?? null,
-    [bands, currency, gig?.budget_band],
+  const interested = useMemo(
+    () => interestedApplicants(items ?? [], contracts, filter),
+    [items, contracts, filter],
   );
-  const budget = budgetDisplay({
-    budget_min_minor: bandRow?.min_minor,
-    budget_max_minor: bandRow?.max_minor,
-    budget_currency: bandRow ? currency : null,
-    budget_band: gig?.budget_band,
-  });
-  const sorted = sortApplicants(
-    items ?? [],
-    filter,
-    bandRow?.max_minor ?? null,
-  );
-  const hiredIds = new Set(
-    contracts.filter((row) => !row.payment_pending).map((row) => row.creator),
-  );
-
-  const pass = async (item: GigApplicant) => {
-    setBusyId(item.interest_id);
-    setActionError(null);
-    try {
-      const result = await creatorGigsService.decideInterest(
-        item.interest_id,
-        "passed",
-      );
-      if (!result.ok) throw new Error(result.error ?? "update_failed");
-      await load();
-    } catch (passError) {
-      setActionError(
-        programErrorMessage(
-          passError,
-          `We couldn't pass on ${item.display_name}. Try again.`,
-        ),
-      );
-    } finally {
-      setBusyId(null);
-    }
-  };
+  const hired = hiredContracts(contracts);
+  const unpaid = contracts.filter((row) => row.payment_pending);
+  const hiredRows = [...hired, ...unpaid];
 
   const closeGig = async () => {
     if (!gig) return;
@@ -196,13 +127,17 @@ export default function GigApplicants(): React.ReactElement {
       const payload = {
         ...gigPayload({
           form,
-          ctx: { currency, today: "", bands: [] },
+          ctx: { currency, today: gig.shoot_window_start, bands: [] },
           payMinor: null,
           brandId,
           listingKind: gig.listing_kind,
           listingId: gig.listing_id,
           gigId: gig.id,
         }),
+        // Closing keeps the gig's own dates and level exactly as saved.
+        shoot_window_start: gig.shoot_window_start,
+        shoot_window_end: gig.shoot_window_end,
+        post_by: gig.post_by,
         budget_band: gig.budget_band,
         status: "closed",
       };
@@ -223,48 +158,76 @@ export default function GigApplicants(): React.ReactElement {
     }
   };
 
-  const hiring = gig
-    ? `Hiring ${gig.slots} · ${budget.kind === "range" ? `${budget.label} each` : budget.label}`
+  const payUpTo =
+    typeof gig?.pay_up_to_minor === "number"
+      ? `up to ${programMoneyShort(gig.pay_up_to_minor, currency)}`
+      : null;
+  const summary = gig
+    ? [
+        `Hiring ${gig.slots}`,
+        payUpTo,
+        gig.post_by ? `video by ${shortDate(gig.post_by)}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
     : "";
+  const canEdit = gig !== null && (gig.status === "open" || gig.status === "draft");
+  const canClose = gig !== null && gig.status === "open";
+
   return (
     <ProgramScreen
       title={gig ? gig.title_public : "Gig"}
-      fallback={`/brand/${brandId}/creators`}
+      fallback={blastHubHref("creators")}
       right={
-        gig && (gig.status === "open" || gig.status === "draft") ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            label="Edit"
-            onPress={() =>
-              router.push(
-                `/brand/${brandId}/creators/brief?gigId=${gig.id}` as never,
-              )
-            }
-          />
+        canEdit || canClose ? (
+          <Pressable
+            onPress={() => setMenuOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Gig options"
+            hitSlop={8}
+            style={styles.more}
+          >
+            <Icon name="moreH" size={22} color={textTokens.primary} />
+          </Pressable>
         ) : undefined
       }
       refreshing={false}
       onRefresh={() => void load()}
       overlay={
         <>
-          {hire ? (
-            <HireSheet
-              visible
-              onClose={() => setHire(null)}
-              mode={hire.mode}
-              creatorName={hire.applicant.display_name}
-              currency={hire.applicant.currency}
-              salesShareBps={gig?.sales_share_bps ?? null}
-              usageDays={gig?.usage_days ?? null}
-              onPaid={(contractId) => {
-                setHire(null);
-                router.push(
-                  `/brand/${brandId}/creators/contract/${contractId}` as never,
-                );
-              }}
-            />
-          ) : null}
+          <Sheet
+            visible={menuOpen}
+            onClose={() => setMenuOpen(false)}
+            snapPoint="half"
+          >
+            <SheetBody title="Gig options">
+              {canEdit ? (
+                <Button
+                  fullWidth
+                  variant="secondary"
+                  label="Edit gig"
+                  onPress={() => {
+                    setMenuOpen(false);
+                    if (gig)
+                      router.push(
+                        `/brand/${brandId}/creators/brief?gigId=${gig.id}` as never,
+                      );
+                  }}
+                />
+              ) : null}
+              {canClose ? (
+                <Button
+                  fullWidth
+                  variant="destructiveOutline"
+                  label="Close gig"
+                  onPress={() => {
+                    setMenuOpen(false);
+                    setClosing(true);
+                  }}
+                />
+              ) : null}
+            </SheetBody>
+          </Sheet>
           <SimpleConfirmDialog
             visible={closing}
             onClose={() => setClosing(false)}
@@ -282,11 +245,12 @@ export default function GigApplicants(): React.ReactElement {
       {error ? <FieldError message={error} /> : null}
       {items !== null ? (
         <>
+          {summary ? <Text style={styles.summary}>{summary}</Text> : null}
           <Segmented
             options={
               [
-                ["interested", `Interested · ${sorted.length}`],
-                ["hired", "Hired"],
+                ["interested", `Interested ${interested.length}`],
+                ["hired", `Hired ${hired.length}`],
                 ["results", "Results"],
               ] as const
             }
@@ -297,171 +261,94 @@ export default function GigApplicants(): React.ReactElement {
 
           {tab === "interested" ? (
             <>
-              {hiring ? <Muted>{hiring}</Muted> : null}
-              {sorted.length > 0 || filter !== "best" ? (
+              {interested.length > 0 || filter !== "best" ? (
                 <View style={styles.chips}>
-                  <Chip
-                    label="Best match"
-                    selected={filter === "best"}
-                    onPress={() => setFilter("best")}
-                  />
-                  {bandRow ? (
+                  {APPLICANT_FILTERS.map(([key, label]) => (
                     <Chip
-                      label="Within budget"
-                      selected={filter === "budget"}
-                      onPress={() => setFilter("budget")}
+                      key={key}
+                      label={label}
+                      selected={filter === key}
+                      onPress={() => setFilter(key)}
                     />
-                  ) : null}
-                  <Chip
-                    label="Top rated"
-                    selected={filter === "rated"}
-                    onPress={() => setFilter("rated")}
-                  />
+                  ))}
                 </View>
               ) : null}
-              {sorted.length === 0 ? (
-                <Card>
-                  <Text style={programStyles.title}>
-                    {filter === "best"
-                      ? "Your gig is live"
-                      : "No one matches this filter"}
-                  </Text>
-                  <Muted>
-                    {filter === "best"
-                      ? "Matching creators near you can see it now. We'll let you know as they show interest."
-                      : "Try another filter."}
-                  </Muted>
-                  {gig ? (
-                    <Text
-                      style={programStyles.small}
-                    >{`Brand hidden until you hire · Post by ${shortDate(gig.post_by)}`}</Text>
-                  ) : null}
-                </Card>
+              {interested.length === 0 ? (
+                <ProgramEmpty
+                  icon="video"
+                  title="Your gig is live"
+                  body="Creators near you can see it now. We'll tell you as they show interest."
+                />
               ) : (
-                sorted.map((item) => {
-                  const quote = programMoney(item.quote_minor, item.currency);
-                  const record =
-                    item.rating !== null
-                      ? `★ ${item.rating.toFixed(1)} · ${item.completed} gig${item.completed === 1 ? "" : "s"}`
-                      : item.completed > 0
-                        ? `${item.completed} gigs`
-                        : "New creator · verified";
-                  const profileHref = `/brand/${brandId}/creators/profile/${item.creator_id}?gigId=${gigId}&interestId=${item.interest_id}`;
-                  return (
-                    <Card key={item.interest_id}>
+                <ListGroup>
+                  {interested.map((item) => {
+                    const record =
+                      item.rating !== null
+                        ? `★ ${item.rating.toFixed(1)}`
+                        : item.completed > 0
+                          ? `${item.completed} gigs`
+                          : "New";
+                    return (
                       <ListRow
-                        leading={<Initials name={item.display_name} />}
+                        key={item.interest_id}
+                        compact
+                        leading={<Initials name={item.display_name} size={32} />}
                         title={item.display_name}
                         subtitle={[
-                          item.niches.slice(0, 2).map(nicheLabel).join(", "),
+                          item.niches.slice(0, 1).map(nicheLabel).join(""),
                           audienceLabel(item.follower_bands),
+                          record,
                         ]
                           .filter(Boolean)
                           .join(" · ")}
-                        right={
-                          <View style={styles.quote}>
-                            <Text style={styles.quoteValue}>{quote}</Text>
-                            <Text style={programStyles.small}>{record}</Text>
-                          </View>
+                        right={programMoney(item.quote_minor, item.currency)}
+                        onPress={() =>
+                          router.push(
+                            `/brand/${brandId}/creators/profile/${item.creator_id}?gigId=${gigId}&interestId=${item.interest_id}` as never,
+                          )
                         }
-                        chevron={false}
-                        onPress={() => router.push(profileHref as never)}
                         accessibilityLabel={`View ${item.display_name}'s profile`}
                       />
-                      {item.note ? (
-                        <Text style={styles.note}>{`"${item.note}"`}</Text>
-                      ) : null}
-                      <ShowcaseStrip
-                        items={showcases[item.creator_id] ?? []}
-                        creatorName={item.display_name}
-                      />
-                      {hiredIds.has(item.display_name) ||
-                      item.status === "hired" ? (
-                        <StatusTag label="Hired" tone="done" />
-                      ) : (
-                        <View style={programStyles.footerRow}>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            label="Pass"
-                            loading={busyId === item.interest_id}
-                            onPress={() => void pass(item)}
-                          />
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            label="Counter"
-                            onPress={() =>
-                              setHire({
-                                applicant: item,
-                                mode: {
-                                  kind: "hire",
-                                  interestId: item.interest_id,
-                                  quoteMinor: item.quote_minor,
-                                  allowCounter: true,
-                                },
-                              })
-                            }
-                          />
-                          <Button
-                            size="sm"
-                            style={programStyles.grow}
-                            label={`Hire for ${quote}`}
-                            onPress={() =>
-                              setHire({
-                                applicant: item,
-                                mode: {
-                                  kind: "hire",
-                                  interestId: item.interest_id,
-                                  quoteMinor: item.quote_minor,
-                                },
-                              })
-                            }
-                          />
-                        </View>
-                      )}
-                    </Card>
-                  );
-                })
+                    );
+                  })}
+                </ListGroup>
               )}
-              <Muted>
+              <Text style={styles.tiny}>
                 Handles and contact details are shared after a creator accepts
-                your paid offer.
-              </Muted>
+                your offer.
+              </Text>
             </>
           ) : null}
 
           {tab === "hired" ? (
-            contracts.length === 0 ? (
-              <Card>
-                <Text style={programStyles.title}>No one hired yet</Text>
-                <Muted>
-                  When you hire a creator, their work shows here step by step.
-                </Muted>
-              </Card>
+            hiredRows.length === 0 ? (
+              <ProgramEmpty
+                icon="user"
+                title="No one hired yet"
+                body="When you hire a creator, their work shows here step by step."
+              />
             ) : (
               <ListGroup>
-                {contracts.map((contract) => {
-                  const status = hostContractRowStatus(contract);
+                {hiredRows.map((contract) => {
+                  const pill = hostContractPill(contract);
                   return (
                     <ListRow
                       key={contract.id}
-                      leading={<Initials name={contract.creator} />}
+                      compact
+                      leading={<Initials name={contract.creator} size={32} />}
                       title={contract.creator}
                       subtitle={
                         contract.payment_pending
-                          ? "Retry payment from Interested"
-                          : null
+                          ? "Payment not completed"
+                          : contract.fee_minor !== null
+                            ? programMoney(contract.fee_minor, contract.currency ?? currency)
+                            : null
                       }
-                      right={
-                        <StatusTag label={status.label} tone={status.tone} />
-                      }
+                      right={<StatusTag label={pill.label} tone={pill.tone} />}
                       onPress={() =>
-                        contract.payment_pending
-                          ? setTab("interested")
-                          : router.push(
-                              `/brand/${brandId}/creators/contract/${contract.id}` as never,
-                            )
+                        router.push(
+                          `/brand/${brandId}/creators/contract/${contract.id}` as never,
+                        )
                       }
                     />
                   );
@@ -474,18 +361,18 @@ export default function GigApplicants(): React.ReactElement {
             results === null ? (
               <ProgramLoading />
             ) : results.length === 0 ? (
-              <Card>
-                <Text style={programStyles.title}>No results yet</Text>
-                <Muted>
-                  Sales and clicks show here once a creator's posts are live.
-                </Muted>
-              </Card>
+              <ProgramEmpty
+                icon="chart"
+                title="No results yet"
+                body="Sales and clicks show here once a creator's posts are live."
+              />
             ) : (
               <ListGroup>
                 {results.map((row) => (
                   <ListRow
                     key={row.contract_id}
-                    leading={<Initials name={row.creator_display_name} />}
+                    compact
+                    leading={<Initials name={row.creator_display_name} size={32} />}
                     title={row.creator_display_name}
                     subtitle={`${row.clicks} clicks · ${row.tickets} sold`}
                     right={programMoney(row.sold_minor, row.currency)}
@@ -495,14 +382,6 @@ export default function GigApplicants(): React.ReactElement {
               </ListGroup>
             )
           ) : null}
-
-          {gig && gig.status === "open" ? (
-            <Button
-              variant="secondary"
-              label="Close gig"
-              onPress={() => setClosing(true)}
-            />
-          ) : null}
         </>
       ) : null}
     </ProgramScreen>
@@ -511,12 +390,7 @@ export default function GigApplicants(): React.ReactElement {
 
 const styles = StyleSheet.create({
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  quote: { alignItems: "flex-end", gap: 2 },
-  quoteValue: { color: textTokens.primary, fontSize: 17, fontWeight: "800" },
-  note: {
-    color: textTokens.secondary,
-    fontStyle: "italic",
-    fontSize: 14,
-    lineHeight: 20,
-  },
+  summary: { color: textTokens.secondary, fontSize: 13 },
+  tiny: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
+  more: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
 });

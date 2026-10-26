@@ -2,6 +2,8 @@
  * #3872 — My creators (approved P-roster / M-roster): the list first, with
  * status (On Mingla / Invited / Link only); Add sits behind the + button and
  * each creator opens a sheet to invite, share their link or read notes.
+ * Round 2 (approved M-roster, H2.6): empty is one icon, one heading, one
+ * sentence and Add a creator; the filter chips appear once there are creators.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -11,19 +13,19 @@ import { Icon } from "../../../../src/components/ui/Icon";
 import { Input } from "../../../../src/components/ui/Input";
 import { Sheet } from "../../../../src/components/ui/Sheet";
 import {
-  Card,
   Chip,
   FieldError,
   Initials,
   ListGroup,
   ListRow,
   Muted,
+  ProgramEmpty,
   ProgramLoading,
   ProgramScreen,
   SheetBody,
   StatusTag,
-  programStyles,
 } from "../../../../src/components/programs/ProgramKit";
+import { blastHubHref } from "../../../../src/components/marketing/marketingSubNavTabs";
 import { useProgramParams } from "../../../../src/components/programs/useProgramParams";
 import {
   creatorRosterService,
@@ -197,7 +199,7 @@ export default function CreatorRoster(): React.ReactElement {
   return (
     <ProgramScreen
       title="My creators"
-      fallback={`/brand/${brandId}/creators`}
+      fallback={blastHubHref("creators")}
       right={
         <Pressable
           onPress={() => {
@@ -221,7 +223,18 @@ export default function CreatorRoster(): React.ReactElement {
             onClose={() => setAdding(false)}
             snapPoint="full"
           >
-            <SheetBody title="Add a creator">
+            <SheetBody
+              title="Add a creator"
+              footer={
+                <Button
+                  fullWidth
+                  label="Save"
+                  loading={busy}
+                  disabled={busy || name.trim().length < 2}
+                  onPress={() => void save()}
+                />
+              }
+            >
               <Muted>
                 Someone you already work with. This list is private to your
                 team.
@@ -263,13 +276,6 @@ export default function CreatorRoster(): React.ReactElement {
                 accessibilityLabel="Private notes"
               />
               <FieldError message={error} />
-              <Button
-                fullWidth
-                label="Save"
-                loading={busy}
-                disabled={busy || name.trim().length < 2}
-                onPress={() => void save()}
-              />
             </SheetBody>
           </Sheet>
           <Sheet
@@ -366,7 +372,25 @@ export default function CreatorRoster(): React.ReactElement {
       {rows === null ? <ProgramLoading /> : null}
       {loadError ? <FieldError message={loadError} /> : null}
       {notice ? <Text style={styles.notice}>{notice}</Text> : null}
-      {rows !== null ? (
+      {rows !== null && rows.length === 0 && !loadError ? (
+        <ProgramEmpty
+          icon="star"
+          title="Bring your own creators"
+          body="Invite people you already work with. Their sales and payouts run through Mingla."
+          action={
+            <Button
+              size="md"
+              label="Add a creator"
+              leadingIcon="plus"
+              onPress={() => {
+                setError(null);
+                setAdding(true);
+              }}
+            />
+          }
+        />
+      ) : null}
+      {rows !== null && rows.length > 0 ? (
         <>
           <View style={styles.chips}>
             <Chip
@@ -386,22 +410,7 @@ export default function CreatorRoster(): React.ReactElement {
             />
           </View>
           {visible.length === 0 ? (
-            <Card>
-              <Text style={programStyles.title}>
-                {rows.length === 0 ? "No creators yet" : "No one here yet"}
-              </Text>
-              <Muted>
-                Add someone you already work with. Invite them so their sales
-                and payouts run through Mingla.
-              </Muted>
-              {rows.length === 0 ? (
-                <Button
-                  label="Add a creator"
-                  leadingIcon="plus"
-                  onPress={() => setAdding(true)}
-                />
-              ) : null}
-            </Card>
+            <Muted>No one here yet. Try another filter.</Muted>
           ) : (
             <ListGroup>
               {visible.map((row) => {
@@ -409,7 +418,8 @@ export default function CreatorRoster(): React.ReactElement {
                 return (
                   <ListRow
                     key={row.id}
-                    leading={<Initials name={row.name} />}
+                    compact
+                    leading={<Initials name={row.name} size={32} />}
                     title={row.name}
                     subtitle={
                       status.key === "on_mingla" || row.sales_count > 0
@@ -430,10 +440,10 @@ export default function CreatorRoster(): React.ReactElement {
               })}
             </ListGroup>
           )}
-          <Muted>
+          <Text style={styles.tiny}>
             Paid gig work starts only after a creator joins Mingla and accepts
             your offer.
-          </Muted>
+          </Text>
         </>
       ) : null}
     </ProgramScreen>
@@ -456,4 +466,5 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   notice: { color: textTokens.primary, fontWeight: "600" },
+  tiny: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
 });

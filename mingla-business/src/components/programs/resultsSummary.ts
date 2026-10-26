@@ -8,6 +8,7 @@ export type CreatorResultRow = {
   soldMinor: number;
   tickets: number;
   clicks: number;
+  spentMinor: number;
   lastGigId: string;
 };
 
@@ -40,8 +41,10 @@ export function summarizeResults(rows: readonly GigResult[]): {
       soldMinor: 0,
       tickets: 0,
       clicks: 0,
+      spentMinor: 0,
       lastGigId: row.gig_id,
     };
+    current.spentMinor += row.fee_minor + bookingFeeMinor(row.fee_minor);
     current.soldMinor += row.sold_minor;
     current.tickets += row.tickets;
     current.clicks += row.clicks;
@@ -55,7 +58,9 @@ export function summarizeResults(rows: readonly GigResult[]): {
     tickets,
     clicks,
     orders,
-    returnOnSpend: spentMinor > 0 ? soldMinor / spentMinor : null,
+    // Round 2: no "0.0×" before there is a sale — null until a link sells.
+    returnOnSpend:
+      spentMinor > 0 && soldMinor > 0 ? soldMinor / spentMinor : null,
     conversion: clicks > 0 ? (orders / clicks) * 100 : null,
     creators: [...byCreator.values()].sort((a, b) => b.soldMinor - a.soldMinor),
   };

@@ -450,6 +450,51 @@ const EVENT_WORDS: Record<string, string> = {
   counter_declined: "Counter-offer declined",
 };
 
+/**
+ * #3872 round 2 — Activity lists what happened, never the buttons pressed.
+ * gig_transition records the action name ("approve", "lock_script") and
+ * other writers record the event ("approved"), so the same step showed twice
+ * ("Approve" and "Video approved"). Both now read as the event; unknown kinds
+ * are left out rather than shown as raw words.
+ */
+const ACTION_EVENT_WORDS: Record<string, string> = {
+  accept: "Creator accepted",
+  decline: "Creator declined",
+  creator_decline: "Creator declined",
+  approve: "Video approved",
+  auto_approve: "Video approved",
+  lock_script: "Script approved",
+  auto_lock: "Script approved",
+  posts_passed: "Posts verified",
+  host_confirm: "Posts verified",
+  auto_confirm: "Posts verified",
+  release: "Payment released to the creator",
+  expire: "Offer expired",
+  cancel: "Offer cancelled",
+  offer_created: "Offer sent",
+  hold_captured: "Payment received",
+  offer_payment_abandoned: "Payment not completed",
+  delivery_submitted: "Video sent for review",
+  refund_recorded: "Refund recorded",
+  topup_captured: "Difference paid",
+  counter_refund_recorded: "Difference refunded",
+  terms_change_declined: "Change declined",
+  dispute_offer_made: "Settlement offered",
+  dispute_offer_accepted: "Settlement accepted",
+  dispute_offer_declined: "Settlement declined",
+  dispute_decided: "Dispute decided by Mingla",
+  dispute_release_recorded: "Payment released to the creator",
+};
+
+export function activityWords(kind: string | null | undefined): string | null {
+  if (typeof kind !== "string") return null;
+  if (Object.prototype.hasOwnProperty.call(EVENT_WORDS, kind))
+    return EVENT_WORDS[kind];
+  if (Object.prototype.hasOwnProperty.call(ACTION_EVENT_WORDS, kind))
+    return ACTION_EVENT_WORDS[kind];
+  return null;
+}
+
 /** Timeline row words for a contract event kind (falls back to plain words). */
 export function timelineWords(kind: string | null | undefined): string {
   if (typeof kind !== "string" || kind.length === 0) return "Update";
@@ -655,17 +700,6 @@ export function needsYouCopy(
         cta: "Open",
       };
   }
-}
-
-/** Status for a contract row: unpaid offers read "Payment not completed". */
-export function hostContractRowStatus(contract: {
-  state?: string | null;
-  payment_pending?: boolean | null;
-}): { label: string; tone: HostStatusTone } {
-  if (contract.payment_pending === true) {
-    return { label: "Payment not completed", tone: "problem" };
-  }
-  return hostContractStatus(contract.state);
 }
 
 /**

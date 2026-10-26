@@ -386,7 +386,26 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
             onClose={() => setInviting(false)}
             snapPoint="full"
           >
-            <SheetBody title="Invite promoters">
+            <SheetBody
+              title="Invite promoters"
+              footer={
+                activeInvitable.length > 0 ? (
+                  <Button
+                    fullWidth
+                    label="Send invites"
+                    loading={invite.isPending}
+                    disabled={
+                      invite.isPending ||
+                      !inviteRows.some((row) => row.email.trim().includes("@"))
+                    }
+                    onPress={() => {
+                      setError(null);
+                      invite.mutate();
+                    }}
+                  />
+                ) : undefined
+              }
+            >
               {activeInvitable.length === 0 ? (
                 <>
                   <Muted>
@@ -462,19 +481,6 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
                     }
                   />
                   <FieldError message={error} />
-                  <Button
-                    fullWidth
-                    label="Send invites"
-                    loading={invite.isPending}
-                    disabled={
-                      invite.isPending ||
-                      !inviteRows.some((row) => row.email.trim().includes("@"))
-                    }
-                    onPress={() => {
-                      setError(null);
-                      invite.mutate();
-                    }}
-                  />
                 </>
               )}
             </SheetBody>

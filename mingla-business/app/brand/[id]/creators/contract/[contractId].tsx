@@ -3,6 +3,10 @@
  * M-review / G-change / D-dispute / P-rate). A step bar, the one thing that
  * needs the host now (shoot time, script, video, posts, counter-offer,
  * dispute, rating), then fee and terms, posts and the timeline in host words.
+ * Round 2 (approved M-contract): ONE status card (title, pill, step bar, next
+ * line, Rate button when done), a short deal list whose Fee reads money_state
+ * (On the way · Ready · Paid), posts, and Activity folded behind Show with
+ * events only — never the button names.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -41,6 +45,10 @@ import {
   FIX_CATEGORIES,
   RATING_TAGS,
   SHOOT_TIMES,
+  activityEvents,
+  contractFeeWords,
+  contractMoneyState,
+  contractStatusCard,
   fixCategoryWords,
   fixesLeft,
   latestScript,
@@ -62,14 +70,12 @@ import {
   actorWords,
   dueIn,
   formatName,
-  hostContractStatus,
   hostContractStep,
   platformLabel,
   programErrorMessage,
   programMoney,
   shortDate,
   shortDateTime,
-  timelineWords,
   toIsoDay,
 } from "../../../../../src/utils/creatorProgramFormat";
 import {
@@ -86,7 +92,8 @@ type SheetKind =
   | "suggest_time"
   | "dispute"
   | "change_dates"
-  | "terms";
+  | "terms"
+  | "rate";
 
 const STEP_CAPTION: Record<number, string> = {
   1: "Offer",
@@ -188,7 +195,6 @@ export default function HostGigContract(): React.ReactElement {
   };
 
   const state = workspace?.contract.state ?? "";
-  const status = hostContractStatus(state);
   const step = hostContractStep(state);
   const deadline = workspace?.contract.state_deadline_at ?? null;
   const script = workspace ? latestScript(workspace) : null;
@@ -224,6 +230,11 @@ export default function HostGigContract(): React.ReactElement {
       .filter(Boolean)
       .join(" · ");
   }, [state, step, deadline]);
+  const moneyState = contractMoneyState(
+    (workspace as { money_state?: unknown } | null)?.money_state,
+  );
+  const [showActivity, setShowActivity] = useState(false);
+  const activity = workspace ? activityEvents(workspace.events) : [];
   const deliveryUrl = delivery
     ? typeof delivery.playback_url === "string"
       ? delivery.playback_url
@@ -542,6 +553,73 @@ export default function HostGigContract(): React.ReactElement {
                 />
               </SheetBody>
             ) : null}
+            {sheet === "rate" ? (
+              <SheetBody title={`How was working with ${creatorName}?`}>
+            <View style={styles.stars}>
+              {[1, 2, 3, 4, 5].map((value) => (
+                <Pressable
+                  key={value}
+                  onPress={() => setStars(value)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${value} star${value === 1 ? "" : "s"}`}
+                  accessibilityState={{ selected: stars >= value }}
+                  hitSlop={6}
+                >
+                  <Icon
+                    name="star"
+                    size={30}
+                    color={
+                      stars >= value ? accent.warm : textTokens.quaternary
+                    }
+                  />
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.chips}>
+              {RATING_TAGS.map((tag) => (
+                <Chip
+                  key={tag}
+                  label={tag}
+                  selected={tags.includes(tag)}
+                  onPress={() =>
+                    setTags((current) =>
+                      current.includes(tag)
+                        ? current.filter((item) => item !== tag)
+                        : [...current, tag],
+                    )
+                  }
+                />
+              ))}
+            </View>
+            <Input
+              value={note}
+              onChangeText={setNote}
+              multiline
+              placeholder="Anything else (optional)"
+              accessibilityLabel="Rating note"
+            />
+            <Muted>
+              Ratings show to the creator after you've both rated.
+            </Muted>
+            <Button
+              label="Send rating"
+              loading={busy}
+              disabled={stars === 0}
+              onPress={() =>
+                void run(
+                  () =>
+                    creatorGigsService.rate(
+                      contractId,
+                      stars,
+                      tags,
+                      note.trim(),
+                    ),
+                  "Thanks. Your rating is in.",
+                )
+              }
+            />
+              </SheetBody>
+            ) : null}
             {sheet === "terms" ? (
               <SheetBody title="Terms history">
                 <ListGroup>
@@ -578,14 +656,39 @@ export default function HostGigContract(): React.ReactElement {
       ) : null}
       {workspace ? (
         <>
-          <StepBar
-            steps={HOST_CONTRACT_STEPS}
-            current={step}
-            caption={caption}
-          />
-          <View style={styles.statusRow}>
-            <StatusTag label={status.label} tone={status.tone} />
-          </View>
+          {(() => {
+            const card = contractStatusCard({
+              state,
+              moneyState,
+              creatorName,
+              hostRated,
+              stepCaption: caption,
+            });
+            return (
+              <Card>
+                <View style={styles.rowBetween}>
+                  <Text style={styles.statusTitle} numberOfLines={2}>
+                    {card.title}
+                  </Text>
+                  <StatusTag label={card.pill} tone={card.tone} />
+                </View>
+                <StepBar steps={HOST_CONTRACT_STEPS} current={step} />
+                <Muted>{card.line}</Muted>
+                {card.canRate ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leadingIcon="star"
+                    label={`Rate ${creatorName}`}
+                    onPress={() => {
+                      setNote("");
+                      setSheet("rate");
+                    }}
+                  />
+                ) : null}
+              </Card>
+            );
+          })()}
           {notice ? (
             <Text style={styles.notice} accessibilityLiveRegion="polite">
               {notice}
@@ -998,93 +1101,6 @@ export default function HostGigContract(): React.ReactElement {
               <Muted>Mingla pays the creator within 48 hours.</Muted>
             </Card>
           ) : null}
-          {state === "released" || state === "day30" ? (
-            <Card>
-              <Text style={programStyles.title}>Paid to the creator</Text>
-              <Muted>
-                The posts stay up for 30 days. You can rate the creator when the
-                gig is done.
-              </Muted>
-            </Card>
-          ) : null}
-
-          {state === "completed" && !hostRated ? (
-            <Card>
-              <Text
-                style={programStyles.title}
-              >{`How was working with ${creatorName}?`}</Text>
-              <View style={styles.stars}>
-                {[1, 2, 3, 4, 5].map((value) => (
-                  <Pressable
-                    key={value}
-                    onPress={() => setStars(value)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${value} star${value === 1 ? "" : "s"}`}
-                    accessibilityState={{ selected: stars >= value }}
-                    hitSlop={6}
-                  >
-                    <Icon
-                      name="star"
-                      size={30}
-                      color={
-                        stars >= value ? accent.warm : textTokens.quaternary
-                      }
-                    />
-                  </Pressable>
-                ))}
-              </View>
-              <View style={styles.chips}>
-                {RATING_TAGS.map((tag) => (
-                  <Chip
-                    key={tag}
-                    label={tag}
-                    selected={tags.includes(tag)}
-                    onPress={() =>
-                      setTags((current) =>
-                        current.includes(tag)
-                          ? current.filter((item) => item !== tag)
-                          : [...current, tag],
-                      )
-                    }
-                  />
-                ))}
-              </View>
-              <Input
-                value={note}
-                onChangeText={setNote}
-                multiline
-                placeholder="Anything else (optional)"
-                accessibilityLabel="Rating note"
-              />
-              <Muted>
-                Ratings show to the creator after you've both rated.
-              </Muted>
-              <Button
-                label="Send rating"
-                loading={busy}
-                disabled={stars === 0}
-                onPress={() =>
-                  void run(
-                    () =>
-                      creatorGigsService.rate(
-                        contractId,
-                        stars,
-                        tags,
-                        note.trim(),
-                      ),
-                    "Thanks. Your rating is in.",
-                  )
-                }
-              />
-            </Card>
-          ) : null}
-          {state === "completed" && hostRated ? (
-            <Card>
-              <Text style={programStyles.title}>Done</Text>
-              <Muted>You've rated this gig.</Muted>
-            </Card>
-          ) : null}
-
           {state === "disputed" && workspace.dispute ? (
             <Card>
               <Text style={programStyles.title}>In dispute</Text>
@@ -1192,16 +1208,13 @@ export default function HostGigContract(): React.ReactElement {
             "resolved_partial",
             "resolved_release",
           ].includes(state) ? (
-            <Card>
-              <Text style={programStyles.title}>{status.label}</Text>
-              <Muted>
-                {state === "declined" ||
-                state === "expired" ||
-                state === "cancelled"
-                  ? "Your payment is refunded automatically."
-                  : "This gig is settled."}
-              </Muted>
-            </Card>
+            <Muted>
+              {state === "declined" ||
+              state === "expired" ||
+              state === "cancelled"
+                ? "Your payment is refunded automatically."
+                : "This gig is settled."}
+            </Muted>
           ) : null}
 
           <SectionLabel>Deal</SectionLabel>
@@ -1209,7 +1222,11 @@ export default function HostGigContract(): React.ReactElement {
             {currentTerms ? (
               <ListRow
                 title="Fee"
-                right={`${programMoney(currentTerms.fee_minor, currentTerms.currency)} held by Mingla`}
+                right={contractFeeWords(
+                  currentTerms.fee_minor,
+                  currentTerms.currency,
+                  moneyState,
+                )}
                 chevron={false}
               />
             ) : null}
@@ -1363,25 +1380,34 @@ export default function HostGigContract(): React.ReactElement {
             </>
           ) : null}
 
-          <SectionLabel>Timeline</SectionLabel>
-          <ListGroup>
-            {[...workspace.events].reverse().map((event) => (
-              <ListRow
-                key={event.id}
-                title={timelineWords(event.kind)}
-                subtitle={`${actorWords(event.actor)} · ${shortDateTime(event.at)}`}
-                chevron={false}
-              />
-            ))}
-          </ListGroup>
-          <Button
-            variant="ghost"
-            size="sm"
-            label="Back to creators"
-            onPress={() =>
-              router.replace(`/brand/${brandId}/creators` as never)
-            }
-          />
+          {activity.length > 0 ? (
+            <Pressable
+              onPress={() => setShowActivity((value) => !value)}
+              accessibilityRole="button"
+              accessibilityLabel={showActivity ? "Hide activity" : "Show activity"}
+              style={styles.activityToggle}
+            >
+              <Text style={styles.activityLabel}>
+                {`Activity · ${activity.length} update${activity.length === 1 ? "" : "s"}`}
+              </Text>
+              <Text style={styles.activityAction}>
+                {showActivity ? "Hide" : "Show"}
+              </Text>
+            </Pressable>
+          ) : null}
+          {showActivity ? (
+            <ListGroup>
+              {activity.map((event) => (
+                <ListRow
+                  key={event.id}
+                  compact
+                  title={event.words}
+                  subtitle={`${actorWords(event.actor)} · ${shortDateTime(event.at)}`}
+                  chevron={false}
+                />
+              ))}
+            </ListGroup>
+          ) : null}
         </>
       ) : null}
     </ProgramScreen>
@@ -1389,7 +1415,20 @@ export default function HostGigContract(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  statusRow: { flexDirection: "row" },
+  statusTitle: {
+    color: textTokens.primary,
+    fontSize: 16,
+    fontWeight: "800",
+    flexShrink: 1,
+  },
+  activityToggle: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    minHeight: 44,
+  },
+  activityLabel: { color: textTokens.secondary, fontSize: 13 },
+  activityAction: { color: accent.warm, fontSize: 13, fontWeight: "700" },
   notice: { color: accent.warm, fontWeight: "700", fontSize: 14 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   section: { gap: 2, paddingVertical: spacing.xs },
