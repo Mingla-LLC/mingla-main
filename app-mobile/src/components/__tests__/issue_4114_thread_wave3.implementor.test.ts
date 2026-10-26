@@ -190,3 +190,27 @@ Deno.test("W3 structure: the unused discussion code is gone and the thread is sp
     assert(new RegExp(`${hook}\\(`).test(chat), `MessageInterface uses ${hook}`);
   }
 });
+
+Deno.test("W3 every new chat string exists in all 29 locales (bin/ha/ig/yo in English)", async () => {
+  const locales = ["ar", "bin", "bn", "de", "el", "en", "es", "fr", "ha", "he", "hi", "id", "ig", "it", "ja", "ko", "ms", "nl", "pl", "pt", "ro", "ru", "sv", "th", "tr", "uk", "vi", "yo", "zh"];
+  const keys = [
+    "a11yBack", "a11ySend", "a11yAttach", "a11yChatOptions", "actionCopy", "actionReply", "actionReport", "actionUnsend",
+    "menuViewProfile", "menuMedia", "menuMute", "menuUnmute", "menuReport", "menuBlock", "menuRemoveFriend",
+    "plansUpcoming", "plansPast", "planSetBy", "planSetByYou", "lastPlan", "swipe", "today", "yesterday",
+    "newMessagesDivider", "copied", "reactionFailed", "unsendTitle", "groupInfo", "leaveGroup", "loadingMessages",
+  ];
+  const pluralStems = ["matchesCount", "moreCount", "peopleInChat"];
+  const english = JSON.parse(await read("i18n/locales/en/chat.json"));
+  for (const locale of locales) {
+    const chat = JSON.parse(await read(`i18n/locales/${locale}/chat.json`));
+    for (const key of keys) {
+      assert(typeof chat[key] === "string" && chat[key].trim().length > 0, `${locale}/chat.json missing ${key}`);
+    }
+    for (const stem of pluralStems) {
+      assert(typeof chat[`${stem}_other`] === "string", `${locale}/chat.json missing ${stem}_other`);
+    }
+    if (!["en", "bin", "ha", "ig", "yo"].includes(locale)) {
+      assert(chat.menuMedia !== english.menuMedia, `${locale} is translated, not an English fallback`);
+    }
+  }
+});
