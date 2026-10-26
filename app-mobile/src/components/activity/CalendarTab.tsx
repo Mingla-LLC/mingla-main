@@ -115,6 +115,13 @@ import {
   useMyReservations,
 } from "../../hooks/useMyReservations";
 import { supabase } from "../../services/supabase";
+import { CalendarPlanMessageButton } from "../brandEnquiry/CalendarPlanMessageButton";
+import {
+  reservationMessageTarget,
+  rsvpMessageTarget,
+  stayMessageTarget,
+  ticketOrderMessageTarget,
+} from "../brandEnquiry/calendarPlanMessage";
 
 // ORCH-0842: discriminated-union row for unified Active/Archive rendering.
 // META-ORCH-1148 2.2b adds the "reservation" kind.
@@ -462,6 +469,40 @@ const CalendarTab = ({
     },
     [queryClient, user?.id],
   );
+
+  // #4111 Wave D (D6) — every plan item (ticket order, RSVP, reservation,
+  // stay) carries "Message {Brand}", opening the sheet with that plan picked.
+  // A reservation's "Cancel it yourself" runs THIS tab's cancel flow (with its
+  // refund truth), not a second one.
+  const cancelReservationById = useCallback(
+    (reservationId: string): void => {
+      const reservation = myReservations.find((r) => r.id === reservationId);
+      if (reservation !== undefined) handleCancelReservation(reservation);
+    },
+    [handleCancelReservation, myReservations],
+  );
+  const withPlanMessage = (
+    row: Exclude<UnifiedRow, { kind: "calendar" }>,
+    node: React.ReactElement,
+  ): React.ReactElement => {
+    const target =
+      row.kind === "reservation"
+        ? reservationMessageTarget(row.reservation)
+        : row.kind === "stay"
+          ? stayMessageTarget(row.group)
+          : row.kind === "rsvp"
+            ? rsvpMessageTarget(row.rsvp)
+            : ticketOrderMessageTarget(row.row);
+    return (
+      <View key={row.key}>
+        {node}
+        <CalendarPlanMessageButton
+          target={target}
+          onCancelReservation={row.kind === "reservation" ? cancelReservationById : undefined}
+        />
+      </View>
+    );
+  };
 
   // ORCH-1030: a calendar/review notification deep link selects its target
   // entry by auto-expanding the matching inline card (v1 = select, no scroll).
@@ -2972,39 +3013,43 @@ const CalendarTab = ({
                   );
                 }
                 if (row.kind === "reservation") {
-                  return (
+                  return withPlanMessage(
+                    row,
                     <ReservationCalendarRow
                       key={row.key}
                       reservation={row.reservation}
                       animation={animation}
                       onPress={handleReservationPress}
-                    />
+                    />,
                   );
                 }
                 if (row.kind === "stay") {
-                  return (
+                  return withPlanMessage(
+                    row,
                     <StayCalendarRow
                       key={row.key}
                       group={row.group}
                       animation={animation}
-                    />
+                    />,
                   );
                 }
                 if (row.kind === "rsvp") {
-                  return (
+                  return withPlanMessage(
+                    row,
                     <RsvpCalendarRow
                       key={row.key}
                       row={row.rsvp}
                       animation={animation}
-                    />
+                    />,
                   );
                 }
-                return (
+                return withPlanMessage(
+                  row,
                   <BusinessEventCalendarRow
                     key={row.key}
                     entry={row.row}
                     animation={animation}
-                  />
+                  />,
                 );
               })}
           </View>
@@ -3061,39 +3106,43 @@ const CalendarTab = ({
                   );
                 }
                 if (row.kind === "reservation") {
-                  return (
+                  return withPlanMessage(
+                    row,
                     <ReservationCalendarRow
                       key={row.key}
                       reservation={row.reservation}
                       animation={animation}
                       onPress={handleReservationPress}
-                    />
+                    />,
                   );
                 }
                 if (row.kind === "stay") {
-                  return (
+                  return withPlanMessage(
+                    row,
                     <StayCalendarRow
                       key={row.key}
                       group={row.group}
                       animation={animation}
-                    />
+                    />,
                   );
                 }
                 if (row.kind === "rsvp") {
-                  return (
+                  return withPlanMessage(
+                    row,
                     <RsvpCalendarRow
                       key={row.key}
                       row={row.rsvp}
                       animation={animation}
-                    />
+                    />,
                   );
                 }
-                return (
+                return withPlanMessage(
+                  row,
                   <BusinessEventCalendarRow
                     key={row.key}
                     entry={row.row}
                     animation={animation}
-                  />
+                  />,
                 );
               })}
           </View>

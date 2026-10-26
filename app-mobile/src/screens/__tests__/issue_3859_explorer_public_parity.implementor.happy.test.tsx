@@ -138,6 +138,16 @@ jest.mock("../../services/contentShareAdapter", () => ({
 jest.mock("../../components/ui/Toast", () => ({
   toastManager: { show: jest.fn() },
 }));
+// #4111 Wave D — the brand page's new "Message {Brand}" collaborator, stubbed
+// like every other collaborator of this screen (brand not taking messages).
+jest.mock("../../components/brandEnquiry/useExplorerBrandMessage", () => ({
+  useExplorerBrandMessage: () => ({
+    available: false,
+    replyMinutes: null,
+    open: () => undefined,
+    overlays: null,
+  }),
+}));
 jest.mock("../../components/ui/ToastContainer", () => ({
   ToastContainer: () => null,
 }));

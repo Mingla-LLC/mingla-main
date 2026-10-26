@@ -174,7 +174,7 @@ import { type ChipInResult } from "@mingla/offering-rendering";
 import { toastManager } from "../../components/ui/Toast";
 import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
 import { useFollowerCountLabels } from "../../hooks/useFollowerCountLabels";
-import { PresentedByFollowButton } from "../../components/brand/PresentedByFollowButton";
+import { PresentedByFollowAndMessage } from "../../components/brandEnquiry/PresentedByFollowAndMessage";
 import { useAppStore } from "../../store/appStore";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion capture (PostHog
 // runs alongside the existing analytics; no Mixpanel call exists at this site).
@@ -1611,12 +1611,24 @@ export default function ConsumerEventDetailScreen({
   // business. The STANDARD ticketed branch (EventOfferingBody) is untouched.
 
   // #3682 A — shared Presented-by Follow slot for ticketed + RSVP bodies.
+  // #4111 Wave D (D6) — Follow + Message; Message opens the sheet with this
+  // event (or RSVP) picked.
   const presentedByFollow =
     seed !== null ? (
-      <PresentedByFollowButton
+      <PresentedByFollowAndMessage
         brandId={seed.brandId}
         brandName={seed.brandName}
+        brandSlug={seed.brandSlug ?? null}
         palette={palette}
+        theme={theme}
+        offering={{
+          id: seed.eventId,
+          title: seed.title,
+          kind: isRsvp ? "rsvp" : "event",
+          startsAt: seed.masterDateUtc ?? null,
+          endsAt: seed.masterEndAtUtc ?? null,
+          when: "upcoming",
+        }}
       />
     ) : undefined;
 

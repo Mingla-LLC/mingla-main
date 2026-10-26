@@ -104,3 +104,16 @@ export const personCardKeys = {
   pairedProfileSections: (pairedUserId: string, mode: string = 'default', sectionsKey: string) =>
     [...personCardKeys.pairedProfile(pairedUserId, mode), sectionsKey] as const,
 };
+
+// #4111 Wave D — brand enquiries ("Message {Brand}"). One prefix so the claim
+// after email sign-in, a send, a reply and realtime can refresh every surface.
+export const brandEnquiryKeys = {
+  all: ['brandEnquiries'] as const,
+  profile: (brandId: string) => [...brandEnquiryKeys.all, 'profile', brandId] as const,
+  plans: (userId: string, brandId: string) =>
+    [...brandEnquiryKeys.all, 'plans', userId, brandId] as const,
+  list: (userId: string) => [...brandEnquiryKeys.all, 'list', userId] as const,
+  thread: (userId: string, enquiryId: string) =>
+    [...brandEnquiryKeys.all, 'thread', userId, enquiryId] as const,
+  brandIdentity: (ref: string) => [...brandEnquiryKeys.all, 'brandIdentity', ref] as const,
+};

@@ -101,6 +101,9 @@ import type { ConsumerPublicVenue } from "../../../../src/services/publicVenueSe
 import { colors } from "../../../../src/constants/designSystem";
 import { reportNonFatal } from "../../../../src/diagnostics/reportNonFatal";
 import { useCanonicalShareArrival } from "../../../../src/hooks/useCanonicalShareArrival";
+// DEEP specifier (the #1560 rule above): suites mock the offering barrel.
+import { resolveTheme } from "@mingla/offering-rendering/themeResolver";
+import { useExplorerBrandMessage } from "../../../../src/components/brandEnquiry/useExplorerBrandMessage";
 
 /** This app's ONE analytics surface tag for the public venue page. */
 const ANALYTICS_SURFACE = "consumer_native";
@@ -424,6 +427,44 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     venue === null
       ? null
       : `${BUYER_WEB_ORIGIN}/b/${venue.brandSlug}/v/${venue.slug}`;
+  // #4111 Wave D (D6) — "Message {Brand}" on the venue page opens the sheet
+  // with this venue picked ("At the venue" topics). Signed-out guests get the
+  // sign-in step; Explorer never sends anonymously. Absent until the brand is
+  // known to take messages, so no dead Message button renders.
+  const venueMessageBrand = useMemo(
+    () =>
+      venue === null
+        ? null
+        : {
+            id: venue.brandId,
+            name: venue.brandName,
+            slug: venue.brandSlug,
+            theme: resolveTheme(venue.theme, null),
+          },
+    [venue],
+  );
+  const venueEnquiry = useMemo(
+    () =>
+      venue === null
+        ? null
+        : {
+            id: venue.id,
+            name: venue.name,
+            orderingEnabled: false,
+            reservationsOnline: venue.reservability.state === "available",
+          },
+    [venue],
+  );
+  const venueMessage = useExplorerBrandMessage({
+    brand: venueMessageBrand,
+    entry: "offering",
+    venue: venueEnquiry,
+  });
+  const handleMessageBrand = useCallback((): void => {
+    if (venue === null) return;
+    venueMessage.open({ contextKind: "venue", contextId: venue.id });
+  }, [venue, venueMessage]);
+
   const handleShare = useCallback((): void => {
     if (shareUrl === null) return;
     if (venue !== null) void shareContent("venue", { brandSlug:venue.brandSlug, venueSlug:venue.slug });
@@ -562,6 +603,7 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
   }
 
   return (
+    <>
     <PublicVenueScreen
       venue={venueViewModel}
       discoveryPrice={venue.discoveryPrice}
@@ -668,9 +710,12 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       onShare={handleShare}
       onClose={handleClose}
       onOpenBrand={handleOpenBrand}
+      onMessageBrand={venueMessage.available ? handleMessageBrand : undefined}
       onOpenMaps={handleOpenMaps}
       onCopyAddress={handleCopyAddress}
     />
+    {venueMessage.overlays}
+    </>
   );
 }
 
