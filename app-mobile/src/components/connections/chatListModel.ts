@@ -50,6 +50,9 @@ export interface ChatListConversationLike {
   unread_count?: number;
   pinned_at?: string | null;
   marked_unread_at?: string | null;
+  /** Issue #4114 Wave 5: a 1:1 chat's live collab (list_connection_conversation_access). */
+  live_session_id?: string | null;
+  live_session_status?: string | null;
   __pendingInvite?: unknown;
   __pendingCollabChat?: unknown;
 }
@@ -71,8 +74,8 @@ export const CHAT_FILTERS: readonly ChatFilter[] = ["all", "unread", "groups", "
 /**
  * Every kind of chat gets its own shape (design D12):
  *  - direct: a circle;
- *  - direct_collab: a circle with the orange deck badge (a 1:1 chat holding a
- *    live collab session; Wave 5 links these, today none exist);
+ *  - direct_collab: a circle with the orange deck badge (a 1:1 chat whose
+ *    collab the friend has joined: live_session_status past pending);
  *  - group: two stacked circles plus the deck badge (every group is a collab);
  *  - event: a rounded-square cover (event and trip chats).
  */
@@ -85,7 +88,13 @@ export function chatKind(conversation: ChatListConversationLike): ChatKind {
     }
     return "group";
   }
-  return conversation.session_id ? "direct_collab" : "direct";
+  // Issue #4114 Wave 5: a direct chat never carries session_id (the 1:1 rule);
+  // its collab comes from collaboration_sessions.conversation_id via the access RPC.
+  const status = conversation.live_session_status;
+  if (conversation.live_session_id && (status === "active" || status === "voting" || status === "locked")) {
+    return "direct_collab";
+  }
+  return "direct";
 }
 
 export function isPendingInviteRow(conversation: ChatListConversationLike): boolean {

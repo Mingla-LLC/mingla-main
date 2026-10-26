@@ -9,16 +9,15 @@
  * Report before Block. "Search in chat" is not in the list yet: the thread only
  * holds the loaded pages, so a search would silently miss older messages.
  *
- * The 1:1 collab ("Start a collab") is Wave 5. Its slot is reserved behind
- * DM_COLLAB_MENU_ENABLED so the order does not move when it ships.
+ * Issue #4114 Wave 5: "Start a collab with {name}" is first when the chat can
+ * start one (a friend, nobody blocked, no live collab); "End the collab"
+ * takes its place while one is live.
  * MINGLA-INVARIANT: I-4114-ONE-FRIEND-MENU | issue #4114 | The 1:1 chat menu and FriendActionsSheet render the same ordered list from buildFriendMenu; Report and Block are always last.
  */
 
-// [TRANSITIONAL] Wave 5 (1:1 collab) flips this on and wires the action.
-export const DM_COLLAB_MENU_ENABLED = false;
-
 export type FriendMenuItemId =
   | "startCollab"
+  | "endCollab"
   | "viewProfile"
   | "media"
   | "shareCard"
@@ -53,11 +52,15 @@ export interface FriendMenuContext {
   /** The chat has a conversation (media and card sharing need one). */
   hasConversation: boolean;
   isMuted: boolean;
-  dmCollabEnabled?: boolean;
+  /** Wave 5: a friend, nobody blocked, and no live collab in this 1:1 chat. */
+  canStartCollab?: boolean;
+  /** Wave 5: this 1:1 chat holds a live collab you are part of. */
+  canEndCollab?: boolean;
 }
 
 export const FRIEND_MENU_ORDER: readonly FriendMenuItemId[] = [
   "startCollab",
+  "endCollab",
   "viewProfile",
   "media",
   "shareCard",
@@ -74,6 +77,7 @@ export const FRIEND_MENU_ORDER: readonly FriendMenuItemId[] = [
 
 const ITEMS: Record<FriendMenuItemId, Omit<FriendMenuItem, "id">> = {
   startCollab: { labelKey: "chat:menuStartCollab", icon: "albums-outline", tone: "default" },
+  endCollab: { labelKey: "chat:menuEndCollab", icon: "close-circle-outline", tone: "default" },
   viewProfile: { labelKey: "chat:menuViewProfile", icon: "person-outline", tone: "default" },
   media: { labelKey: "chat:menuMedia", icon: "images-outline", tone: "default" },
   shareCard: { labelKey: "chat:menuShareCard", icon: "bookmark-outline", tone: "default" },
@@ -91,7 +95,9 @@ const ITEMS: Record<FriendMenuItemId, Omit<FriendMenuItem, "id">> = {
 function included(id: FriendMenuItemId, ctx: FriendMenuContext): boolean {
   switch (id) {
     case "startCollab":
-      return ctx.surface === "chat" && ctx.isFriend && (ctx.dmCollabEnabled ?? DM_COLLAB_MENU_ENABLED);
+      return ctx.surface === "chat" && ctx.isFriend && ctx.canStartCollab === true && ctx.canEndCollab !== true;
+    case "endCollab":
+      return ctx.surface === "chat" && ctx.canEndCollab === true;
     case "viewProfile":
       return ctx.canViewProfile;
     case "media":

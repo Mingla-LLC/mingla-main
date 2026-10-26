@@ -2,14 +2,16 @@
 //
 // Issue #4114 Wave 3 — the 1:1 chat's ⋯ menu and FriendActionsSheet render ONE
 // ordered list. Report and Block are always last (Report first), mute flips to
-// Unmute, the paired row shows only for a paired friend, and the reserved
-// "Start a collab" slot stays hidden until Wave 5.
+// Unmute, the paired row shows only for a paired friend, and "Start a collab"
+// is first only when the chat can start one (Wave 5 replaced the reserved
+// DM_COLLAB_MENU_ENABLED flag with canStartCollab; the full Wave 5 rules are in
+// components/chat/__tests__/issue_4114_dm_collab_model...).
 //
 // FAILS-ON-REVERT: reorder FRIEND_MENU_ORDER, drop the mute→unmute swap, show
-// the paired row for an unpaired friend, or turn DM_COLLAB_MENU_ENABLED on
-// without Wave 5 and these cases fail.
+// the paired row for an unpaired friend, or offer "Start a collab" without
+// canStartCollab and these cases fail.
 
-import { buildFriendMenu, DM_COLLAB_MENU_ENABLED } from "../chatMenuModel.ts";
+import { buildFriendMenu } from "../chatMenuModel.ts";
 
 function assertEquals(actual: unknown, expected: unknown, message: string): void {
   const a = JSON.stringify(actual);
@@ -61,9 +63,9 @@ Deno.test("one menu: the friends sheet shares the list and keeps its pairing row
   );
 });
 
-Deno.test("one menu: the collab slot is reserved but hidden until Wave 5", () => {
-  assertEquals(DM_COLLAB_MENU_ENABLED, false, "flag stays off in Wave 3");
-  assertEquals(buildFriendMenu({ ...chat, dmCollabEnabled: true })[0].id, "startCollab", "slot is first when enabled");
+Deno.test("one menu: the collab slot is first, and only when the chat can start one", () => {
+  assertEquals(buildFriendMenu(chat).some((item) => item.id === "startCollab"), false, "hidden without canStartCollab");
+  assertEquals(buildFriendMenu({ ...chat, canStartCollab: true })[0].id, "startCollab", "slot is first when it can start");
 });
 
 Deno.test("one menu: a blocked or unfriended person keeps only the safe rows", () => {

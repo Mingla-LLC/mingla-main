@@ -42,6 +42,16 @@ import { CollabDeckSheet } from "./connections/CollabDeckSheet";
 import { ChatHeader, type ChatHeaderStripLabels } from "./chat/ChatHeader";
 import { buildCollabHeaderStrip, matchKey, memberFirstNames } from "./chat/chatHeaderModel";
 import { useSeenSessionMatches } from "../hooks/useSeenSessionMatches";
+import { useDmCollabSession } from "../hooks/useDmCollabSession";
+import { DmCollabCard } from "./chat/DmCollabCard";
+import {
+  dmCollabCardView,
+  dmCollabHeaderMode,
+  isDmCollabEventPayload,
+  latestDmCollabEventKey,
+} from "./chat/dmCollabModel";
+import { DmCollabStartFailure, endDmCollab, startDmCollab } from "../services/dmCollabService";
+import { acceptCollaborationInvite, declineCollaborationInvite } from "../services/collaborationInviteService";
 import { ChatActionList } from "./chat/ChatActionList";
 import { GroupInfoSheet } from "./chat/GroupInfoSheet";
 import { ChatMediaSheet } from "./chat/ChatMediaSheet";
@@ -359,6 +369,15 @@ interface MessageInterfaceProps {
   onGroupSessionExited?: (sessionId: string) => void;
   onGroupSessionDeleted?: (sessionId: string) => void;
   onGroupParticipantsChange?: () => void;
+  /**
+   * Issue #4114 Wave 5 (D4): the free plan's open-session limit is reached
+   * (useSessionCreationGate), so Collab opens the paywall instead of starting.
+   */
+  sessionLimitReached?: boolean;
+  /** Wave 5: open CustomPaywallScreen with feature `session_creation`. */
+  onSessionLimitPaywall?: () => void;
+  /** Wave 5: a 1:1 collab started, was joined or ended (refresh the list and gate). */
+  onDmCollabChanged?: () => void;
 }
 
 export default function MessageInterface({
@@ -409,6 +428,9 @@ export default function MessageInterface({
   onGroupSessionExited,
   onGroupSessionDeleted,
   onGroupParticipantsChange,
+  sessionLimitReached = false,
+  onSessionLimitPaywall,
+  onDmCollabChanged,
 }: MessageInterfaceProps) {
   const router = useRouter();
   const { t, i18n } = useTranslation(['chat', 'common', 'social', 'connections']);
@@ -427,6 +449,29 @@ export default function MessageInterface({
     isGroupChat && (friend.linkedEntityType === "trip" || friend.linkedEntityType === "event");
   const isCollabSessionGroupChat =
     isGroupChat && friend.linkedEntityType === "session" && !!friend.sessionId;
+  // Issue #4114 Wave 5: a 1:1 chat can hold a live collab
+  // (collaboration_sessions.conversation_id). Once the friend has joined it
+  // gets the group collab header; the deck, matches and plans are driven by
+  // the SESSION id (collabSessionId), never by the chat.
+  const isDirectChat = !isGroupChat;
+  const dmCollab = useDmCollabSession(isDirectChat ? conversationId : null);
+  const dmCollabSession = dmCollab.session;
+  const dmCollabMode = dmCollabHeaderMode({
+    isDirect: isDirectChat && Boolean(conversationId),
+    isFriend: !isUnfriended && !isBlocked && !isDeletedAccount,
+    session: dmCollabSession,
+    loading: dmCollab.isLoading,
+  });
+  const isDmCollabActive = dmCollabMode === "active";
+  const isCollabChat = isCollabSessionGroupChat || isDmCollabActive;
+  const collabSessionId: string | null = isCollabSessionGroupChat
+    ? friend.sessionId ?? null
+    : isDmCollabActive
+      ? dmCollabSession?.id ?? null
+      : null;
+  // The starter sets their vibes while the invite is still out, so the prefs
+  // sheet follows the live session even before it is active.
+  const prefsSessionId: string | null = collabSessionId ?? (isDirectChat ? dmCollabSession?.id ?? null : null);
   const headerTitle = cleanName(friend.name);
   const headerParticipants = useMemo(() => friend.participants ?? [], [friend.participants]);
   const headerParticipantCount = friend.participantCount ?? headerParticipants.length;
@@ -511,11 +556,9 @@ export default function MessageInterface({
     sessionId: friend.sessionId ?? null,
     currentUserId,
   });
-  const scheduledCardsQuery = useSessionScheduledCards(
-    isCollabSessionGroupChat ? friend.sessionId : null,
-  );
+  const scheduledCardsQuery = useSessionScheduledCards(collabSessionId);
   const { session: collabSession, isAdmin: isCollabSessionAdmin } = useBoardSession(
-    isCollabSessionGroupChat ? friend.sessionId ?? undefined : undefined,
+    collabSessionId ?? undefined,
   );
   const groupSettingsParticipants = useMemo(() => {
     const collabParticipants = (collabSession?.participants as any[] | undefined) ?? [];
@@ -551,13 +594,13 @@ export default function MessageInterface({
     savedCards: matchedSessionCards,
     isLoading: matchedSessionCardsLoading,
   } = useSessionSavedCardsForSheet(
-    isCollabSessionGroupChat ? friend.sessionId : null,
+    collabSessionId,
     // Issue #4114 Wave 3 (D9): a new match opens the strip with a light haptic.
     { onMatchPromoted: HapticFeedback.light },
   );
   const collabHeaderActions = useMemo(
     () =>
-      isCollabSessionGroupChat
+      isCollabChat
         ? getCollabChatHeaderActions({
             matchesCount: matchedSessionCards.length,
             scheduledCount: scheduledCardsQuery.rows.length,
@@ -566,7 +609,7 @@ export default function MessageInterface({
           })
         : [],
     [
-      isCollabSessionGroupChat,
+      isCollabChat,
       matchedSessionCards.length,
       matchedSessionCardsLoading,
       scheduledCardsQuery.isLoading,
@@ -575,12 +618,10 @@ export default function MessageInterface({
   );
   // Issue #4114 Wave 3 (D9): the header strip — matched places and the next
   // plan — from the two hooks above. No new queries.
-  const { seenIds: seenMatchIds, markSeen: markMatchesSeen } = useSeenSessionMatches(
-    isCollabSessionGroupChat ? friend.sessionId : null,
-  );
+  const { seenIds: seenMatchIds, markSeen: markMatchesSeen } = useSeenSessionMatches(collabSessionId);
   const collabHeaderStrip = useMemo(
     () =>
-      isCollabSessionGroupChat
+      isCollabChat
         ? buildCollabHeaderStrip({
             actionIds: collabHeaderActions.map((action) => action.id),
             matches: matchedSessionCards,
@@ -594,7 +635,7 @@ export default function MessageInterface({
         : null,
     [
       collabHeaderActions,
-      isCollabSessionGroupChat,
+      isCollabChat,
       matchedSessionCards,
       matchedSessionCardsLoading,
       scheduledCardsQuery.isLoading,
@@ -691,7 +732,7 @@ export default function MessageInterface({
   // renderItem that passes it) does not change on every keystroke.
   const { setDraftText } = chatController;
   const handleSystemTokenPress = useCallback((token: CollabSystemToken) => {
-    if (!isCollabSessionGroupChat || !friend.sessionId) return;
+    if (!isCollabChat || !collabSessionId) return;
 
     if (token.type === 'open-prefs-self') {
       setCollabPrefsLink({
@@ -724,10 +765,10 @@ export default function MessageInterface({
   }, [
     setDraftText,
     currentUserId,
-    friend.sessionId,
+    collabSessionId,
     headerParticipants,
     inputRef,
-    isCollabSessionGroupChat,
+    isCollabChat,
     participantsQuery.data,
   ]);
 
@@ -1495,9 +1536,124 @@ export default function MessageInterface({
         canViewProfile: Boolean(onViewProfile) && !isDeletedAccount,
         hasConversation: Boolean(conversationId),
         isMuted,
+        canStartCollab: dmCollabMode === "start",
+        canEndCollab: isDirectChat && Boolean(dmCollabSession),
       }).filter((item) => item.id !== "mute" || Boolean(onToggleMute)),
-    [conversationId, isBlocked, isDeletedAccount, isMuted, isPairedFriend, isUnfriended, onOpenPairedProfile, onToggleMute, onViewProfile],
+    [conversationId, dmCollabMode, dmCollabSession, isBlocked, isDeletedAccount, isDirectChat, isMuted, isPairedFriend, isUnfriended, onOpenPairedProfile, onToggleMute, onViewProfile],
   );
+
+  // ── Issue #4114 Wave 5: the collab inside a 1:1 chat ──────────────────
+  const [dmCollabBusy, setDmCollabBusy] = useState<null | "start" | "join" | "decline" | "end">(null);
+  const { invalidate: invalidateDmCollab, refetch: refetchDmCollab } = dmCollab;
+  const dmCollabFriendName = cleanName(friend.name).split(" ")[0] || cleanName(friend.name);
+
+  // Both phones follow the collab through the chat's own feed: a started /
+  // joined / ended row lands, and the chat re-reads its live session.
+  const latestDmCollabKey = useMemo(
+    () => (isDirectChat ? latestDmCollabEventKey(messages) : null),
+    [isDirectChat, messages],
+  );
+  // `undefined` = nothing observed yet (the mount read is already fresh).
+  const seenDmCollabKeyRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (seenDmCollabKeyRef.current === latestDmCollabKey) return;
+    const isFirstObservation = seenDmCollabKeyRef.current === undefined;
+    seenDmCollabKeyRef.current = latestDmCollabKey;
+    if (isFirstObservation || !latestDmCollabKey) return;
+    refetchDmCollab();
+    onDmCollabChanged?.();
+  }, [latestDmCollabKey, onDmCollabChanged, refetchDmCollab]);
+
+  const handleStartDmCollab = useCallback(async (): Promise<void> => {
+    if (!conversationId || !currentUserId || dmCollabBusy) return;
+    // Decision D4: the same gate and paywall as a new group.
+    if (sessionLimitReached) {
+      onSessionLimitPaywall?.();
+      return;
+    }
+    HapticFeedback.medium();
+    setDmCollabBusy("start");
+    try {
+      await startDmCollab({ conversationId, inviterId: currentUserId });
+      await invalidateDmCollab();
+      onDmCollabChanged?.();
+    } catch (error: unknown) {
+      if (error instanceof DmCollabStartFailure && error.reason === "limit") {
+        onSessionLimitPaywall?.();
+      } else if (error instanceof DmCollabStartFailure && error.reason === "already_live") {
+        await invalidateDmCollab();
+      } else {
+        console.error("[MessageInterface] start_dm_collab failed:", error);
+        showNotification(t("chat:dmCollabStartFailed"), t("chat:dmCollabTryAgain"), "error");
+      }
+    } finally {
+      setDmCollabBusy(null);
+    }
+  }, [conversationId, currentUserId, dmCollabBusy, invalidateDmCollab, onDmCollabChanged, onSessionLimitPaywall, sessionLimitReached, showNotification, t]);
+
+  const handleJoinDmCollab = useCallback(async (sessionId: string): Promise<void> => {
+    if (!currentUserId || dmCollabBusy) return;
+    HapticFeedback.medium();
+    setDmCollabBusy("join");
+    try {
+      const result = await acceptCollaborationInvite({ userId: currentUserId, sessionId });
+      if (!result.success) throw new Error(result.error ?? "accept_failed");
+      await invalidateDmCollab();
+      onDmCollabChanged?.();
+    } catch (error: unknown) {
+      console.error("[MessageInterface] join 1:1 collab failed:", error);
+      showNotification(t("chat:dmCollabJoinFailed"), t("chat:dmCollabTryAgain"), "error");
+    } finally {
+      setDmCollabBusy(null);
+    }
+  }, [currentUserId, dmCollabBusy, invalidateDmCollab, onDmCollabChanged, showNotification, t]);
+
+  const handleDeclineDmCollab = useCallback(async (sessionId: string): Promise<void> => {
+    if (!currentUserId || dmCollabBusy) return;
+    setDmCollabBusy("decline");
+    try {
+      // The server ends a 1:1 collab when its invite is declined.
+      const result = await declineCollaborationInvite({ userId: currentUserId, sessionId });
+      if (!result.success) throw new Error(result.error ?? "decline_failed");
+      await invalidateDmCollab();
+      onDmCollabChanged?.();
+    } catch (error: unknown) {
+      console.error("[MessageInterface] decline 1:1 collab failed:", error);
+      showNotification(t("chat:dmCollabDeclineFailed"), t("chat:dmCollabTryAgain"), "error");
+    } finally {
+      setDmCollabBusy(null);
+    }
+  }, [currentUserId, dmCollabBusy, invalidateDmCollab, onDmCollabChanged, showNotification, t]);
+
+  const handleEndDmCollab = useCallback((): void => {
+    const sessionId = dmCollabSession?.id;
+    if (!sessionId) return;
+    Alert.alert(
+      t("chat:dmCollabEndConfirmTitle"),
+      t("chat:dmCollabEndConfirmBody", { name: dmCollabFriendName }),
+      [
+        { text: t("common:cancel"), style: "cancel" },
+        {
+          text: t("chat:menuEndCollab"),
+          style: "destructive",
+          onPress: () => {
+            setDmCollabBusy("end");
+            endDmCollab(sessionId)
+              .then(async () => {
+                setShowCollabDeckSheet(false);
+                await invalidateDmCollab();
+                onDmCollabChanged?.();
+              })
+              .catch((error: unknown) => {
+                console.error("[MessageInterface] end_dm_collab failed:", error);
+                showNotification(t("chat:dmCollabEndFailed"), t("chat:dmCollabTryAgain"), "error");
+              })
+              .finally(() => setDmCollabBusy(null));
+          },
+        },
+      ],
+    );
+  }, [dmCollabFriendName, dmCollabSession?.id, invalidateDmCollab, onDmCollabChanged, showNotification, t]);
 
   // Present-after-dismiss: iOS shows one RN Modal at a time, so a row that
   // opens another sheet or an alert waits for the menu to finish leaving.
@@ -1539,10 +1695,17 @@ export default function MessageInterface({
         afterMenuCloses(handleBlockUser);
         return;
       case "startCollab":
+        afterMenuCloses(() => {
+          void handleStartDmCollab();
+        });
+        return;
+      case "endCollab":
+        afterMenuCloses(handleEndDmCollab);
+        return;
       case "sendPair":
       case "pairPending":
       case "unpair":
-        // Not offered in the chat surface (Wave 5 / friends sheet only).
+        // Not offered in the chat surface (friends sheet only).
         setShowMoreOptionsMenu(false);
         return;
       default: {
@@ -1999,6 +2162,31 @@ export default function MessageInterface({
     ) : null;
 
     if (item.message.isSystem) {
+      // Issue #4114 Wave 5: the collab rows of a 1:1 chat (started / joined / ended).
+      const dmCollabPayload = item.message.cardPayload as unknown;
+      if (isDmCollabEventPayload(dmCollabPayload)) {
+        const view = dmCollabCardView({ payload: dmCollabPayload, session: dmCollabSession, currentUserId });
+        return (
+          <>
+            <DmCollabCard
+              payload={dmCollabPayload}
+              view={view}
+              friendName={dmCollabFriendName}
+              currentUserId={currentUserId}
+              busy={dmCollabBusy === "join" || dmCollabBusy === "decline" ? dmCollabBusy : null}
+              onSetVibes={() => setCollabPrefsLink({ visible: true })}
+              onJoin={() => {
+                void handleJoinDmCollab(dmCollabPayload.session_id);
+              }}
+              onDecline={() => {
+                void handleDeclineDmCollab(dmCollabPayload.session_id);
+              }}
+            />
+            {newDivider}
+            {daySeparator}
+          </>
+        );
+      }
       return (
         <>
           <MessageBubble
@@ -2066,11 +2254,17 @@ export default function MessageInterface({
       </>
     );
   }, [
+    currentUserId,
+    dmCollabBusy,
+    dmCollabFriendName,
+    dmCollabSession,
     handleBubbleLongPress,
     handleBubblePress,
     handleCardBubbleTap,
     handleCardTagTap,
+    handleDeclineDmCollab,
     handleDoubleTapHeart,
+    handleJoinDmCollab,
     handleScrollToMessage,
     handleSystemTokenPress,
     onCancelUpload,
@@ -2138,7 +2332,20 @@ export default function MessageInterface({
         topInset={safeInsets.top}
         title={headerTitle}
         subtitle={
-          isGroupChat ? headerSubtitle : (
+          isGroupChat ? headerSubtitle : isDmCollabActive ? (
+            // Issue #4114 Wave 5 (D12): "Collaborating · Active now".
+            <View style={styles.dmCollabSubtitle} testID="chat-header-collaborating">
+              <Text style={styles.dmCollabSubtitleText} numberOfLines={1}>
+                {t('chat:collaborating')}
+                {' · '}
+              </Text>
+              <ChatStatusLine
+                isOnline={isOtherOnline}
+                isTyping={isOtherTyping}
+                lastSeenAt={otherLastSeen}
+              />
+            </View>
+          ) : (
             <ChatStatusLine
               isOnline={isOtherOnline}
               isTyping={isOtherTyping}
@@ -2153,7 +2360,7 @@ export default function MessageInterface({
         participants={headerParticipants}
         participantCount={headerParticipantCount}
         isOnline={!isGroupChat && isOtherOnline}
-        collaborating={isCollabSessionGroupChat}
+        collaborating={isCollabChat}
         onIdentityPress={handleHeaderIdentityPress}
         identityA11yLabel={
           isGroupChat
@@ -2161,13 +2368,22 @@ export default function MessageInterface({
             : t('chat:a11yViewProfile', { name: headerTitle })
         }
         primaryAction={
-          isCollabSessionGroupChat
+          isCollabChat
             ? {
                 label: t('chat:swipe'),
                 a11yLabel: t('chat:a11ySwipeTogether', { name: headerTitle }),
                 onPress: () => handleOpenCollabDeckView("swipe"),
               }
-            : null
+            : dmCollabMode === "start"
+              ? {
+                  // Issue #4114 Wave 5: start a collab with this friend.
+                  label: t('chat:collabButton'),
+                  a11yLabel: t('chat:menuStartCollab', { name: dmCollabFriendName }),
+                  onPress: () => {
+                    void handleStartDmCollab();
+                  },
+                }
+              : null
         }
         onMorePress={isCollabSessionGroupChat ? undefined : handleHeaderMorePress}
         moreA11yLabel={
@@ -2767,11 +2983,11 @@ export default function MessageInterface({
           (Animated.View, not native Modal portal). The notifications panel below
           (around line 1632) remains as the canonical single mount point. */}
 
-      {isCollabSessionGroupChat && showCollabDeckSheet && friend.sessionId ? (
+      {isCollabChat && showCollabDeckSheet && collabSessionId ? (
         <CollabDeckSheet
           visible={showCollabDeckSheet}
           onClose={() => setShowCollabDeckSheet(false)}
-          sessionId={friend.sessionId}
+          sessionId={collabSessionId}
           sessionName={headerTitle}
           userPreferences={userPreferences}
           accountPreferences={accountPreferences}
@@ -2784,24 +3000,24 @@ export default function MessageInterface({
         />
       ) : null}
 
-      {isCollabSessionGroupChat && friend.sessionId ? (
+      {prefsSessionId ? (
         <PreferencesSheet
           visible={collabPrefsLink.visible}
           onClose={() => setCollabPrefsLink({ visible: false })}
           accountPreferences={accountPreferences}
-          sessionId={friend.sessionId}
+          sessionId={prefsSessionId}
           sessionName={headerTitle}
           viewParticipantId={collabPrefsLink.viewParticipantId}
           initialFocusSection={collabPrefsLink.initialFocusSection}
         />
       ) : null}
 
-      {isCollabSessionGroupChat && friend.sessionId ? (
+      {isCollabChat && collabSessionId ? (
         <>
           <SavedToSessionCardsSheet
             visible={showCollabMatchesSheet}
             onClose={() => setShowCollabMatchesSheet(false)}
-            sessionId={friend.sessionId}
+            sessionId={collabSessionId}
             currentUserId={currentUserId}
             savedCards={matchedSessionCards}
             savedCardsLoading={matchedSessionCardsLoading}
@@ -2812,7 +3028,7 @@ export default function MessageInterface({
           <ScheduleSheet
             visible={showCollabPlansSheet}
             onClose={() => setShowCollabPlansSheet(false)}
-            sessionId={friend.sessionId}
+            sessionId={collabSessionId}
             currentUserId={currentUserId}
             accountPreferences={accountPreferences}
           />
@@ -2909,6 +3125,18 @@ export default function MessageInterface({
 }
 
 const styles = StyleSheet.create({
+  // Issue #4114 Wave 5 (D12): "Collaborating · Active now" under a 1:1 collab's name.
+  dmCollabSubtitle: {
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+  },
+  dmCollabSubtitleText: {
+    fontSize: 12.5,
+    lineHeight: 16,
+    fontWeight: "600",
+    color: chatTokens.accent,
+  },
   // ── Issue #4114 Wave 3: dark banners, thread chrome and the growing composer ──
   offlineBanner: {
     flexDirection: "row",

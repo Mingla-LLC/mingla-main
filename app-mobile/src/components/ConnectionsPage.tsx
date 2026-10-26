@@ -154,6 +154,8 @@ import IncomingPairRequestCard from "./IncomingPairRequestCard";
 import { usePairingPills, useIncomingPairRequests, useIncomingHiddenPairRequests, useSendPairRequest, useCancelPairRequest, useCancelPairInvite, useAcceptPairRequest, useDeclinePairRequest, useUnpair } from "../hooks/usePairings";
 import { usePendingPhoneInvites, phoneInviteKeys } from "../hooks/usePhoneInvite";
 import { cancelPendingInvite } from "../services/phoneLookupService";
+import { dmCollabNeedsPaywall } from "./chat/dmCollabModel";
+import { fetchSessionConversationId } from "../services/dmCollabService";
 import { useEffectiveTier } from "../hooks/useSubscription";
 import { getTierLimits } from "../constants/tierLimits";
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
@@ -1372,6 +1374,9 @@ function ConnectionsPageRefactored({
           archived_at: (conv as any).archived_at ?? null,
           pinned_at: (conv as any).pinned_at ?? null,
           marked_unread_at: (conv as any).marked_unread_at ?? null,
+          // Issue #4114 Wave 5: the 1:1 chat's live collab (from the access RPC).
+          live_session_id: (conv as any).live_session_id ?? null,
+          live_session_status: (conv as any).live_session_status ?? null,
         };
       });
 
@@ -2274,6 +2279,17 @@ function ConnectionsPageRefactored({
               event_id: conversation.event_id ?? deepLinkParams.eventId,
               linked_entity_type: conversation.linked_entity_type,
             } as Conversation;
+          }
+        }
+
+        // Issue #4114 Wave 5: a collab started from a 1:1 chat talks in that
+        // chat, so its invite / match / lock links open the 1:1 chat.
+        if (!rawConversation && deepLinkParams.sessionId) {
+          const dmConversationId = await fetchSessionConversationId(deepLinkParams.sessionId);
+          if (dmConversationId) {
+            // A friends' 1:1 chat is in the loaded list; if it is not, the link
+            // lands on the list like any other unresolved chat (ORCH-1080 SC-5).
+            rawConversation = conversations.find((conv) => conv.id === dmConversationId) ?? null;
           }
         }
 
@@ -3978,6 +3994,16 @@ function ConnectionsPageRefactored({
           onGroupSessionExited={handleGroupSessionRemoved}
           onGroupSessionDeleted={handleGroupSessionRemoved}
           onGroupParticipantsChange={() => {
+            if (user?.id) fetchConversations(user.id);
+          }}
+          // Issue #4114 Wave 5 (D4): a 1:1 collab uses the same gate and paywall as a new group.
+          sessionLimitReached={dmCollabNeedsPaywall({ canCreateSession, isUnlimited })}
+          onSessionLimitPaywall={() => {
+            setPaywallFeature('session_creation');
+            setShowPaywall(true);
+          }}
+          onDmCollabChanged={() => {
+            void queryClient.invalidateQueries({ queryKey: ['session-creation-gate'] });
             if (user?.id) fetchConversations(user.id);
           }}
         />

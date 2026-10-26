@@ -214,7 +214,10 @@ export function runCollabDeckSheetGhostSessionRegressionTest() {
 
   assert.match(
     messageInterface,
-    /isCollabSessionGroupChat\s*&&\s*showCollabDeckSheet\s*&&\s*friend\.sessionId\s*\?\s*\(\s*<CollabDeckSheet/s,
+    // Issue #4114 Wave 5: the gate now covers group collabs and 1:1 collabs
+    // (isCollabChat) and the deck takes the session id (collabSessionId); the
+    // unmount-when-closed rule this pins is unchanged.
+    /isCollabChat\s*&&\s*showCollabDeckSheet\s*&&\s*collabSessionId\s*\?\s*\(\s*<CollabDeckSheet/s,
     "MessageInterface must unmount CollabDeckSheet when the deck sheet is closed",
   );
   assert.doesNotMatch(

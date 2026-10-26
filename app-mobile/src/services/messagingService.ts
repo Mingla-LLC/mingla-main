@@ -854,6 +854,8 @@ export class MessagingService {
         archived_at: string | null;
         pinned_at?: string | null;
         marked_unread_at?: string | null;
+        live_session_id?: string | null;
+        live_session_status?: string | null;
       };
       const accessRows = (accessResult.data ?? []) as AccessRow[];
       const accessByConversation = new Map(
@@ -862,7 +864,14 @@ export class MessagingService {
       const listStateByConversation = new Map(
         accessRows.map((row) => [
           row.conversation_id,
-          { pinned_at: row.pinned_at ?? null, marked_unread_at: row.marked_unread_at ?? null },
+          {
+            pinned_at: row.pinned_at ?? null,
+            marked_unread_at: row.marked_unread_at ?? null,
+            // Issue #4114 Wave 5: the chat's live collab, from the same RPC
+            // (no extra list query).
+            live_session_id: row.live_session_id ?? null,
+            live_session_status: row.live_session_status ?? null,
+          },
         ]),
       );
 
@@ -937,7 +946,15 @@ export class MessagingService {
           archived_at: accessByConversation.get(conv.id) ?? null,
           pinned_at: listStateByConversation.get(conv.id)?.pinned_at ?? null,
           marked_unread_at: listStateByConversation.get(conv.id)?.marked_unread_at ?? null,
-        } as Conversation & { archived_at: string | null; pinned_at: string | null; marked_unread_at: string | null });
+          live_session_id: listStateByConversation.get(conv.id)?.live_session_id ?? null,
+          live_session_status: listStateByConversation.get(conv.id)?.live_session_status ?? null,
+        } as Conversation & {
+          archived_at: string | null;
+          pinned_at: string | null;
+          marked_unread_at: string | null;
+          live_session_id: string | null;
+          live_session_status: string | null;
+        });
       }
 
       return { conversations, error: null };
@@ -1335,22 +1352,48 @@ export class MessagingService {
         .maybeSingle();
 
       if (error) throw error;
-      if (!conv) {
+      let resolved = conv;
+      if (!resolved) {
+        // Issue #4114 Wave 5: a collab started from a 1:1 chat has no group
+        // chat; it talks in that 1:1 chat (collaboration_sessions.conversation_id),
+        // mirroring the server's resolve_session_conversation.
+        const { data: link, error: linkError } = await supabase
+          .from('collaboration_sessions')
+          .select('conversation_id')
+          .eq('id', sessionId)
+          .maybeSingle();
+        if (linkError) throw linkError;
+        const dmConversationId = (link as { conversation_id: string | null } | null)?.conversation_id ?? null;
+        if (dmConversationId) {
+          const { data: dm, error: dmError } = await supabase
+            .from('conversations')
+            .select(`
+              id, type, name, session_id, linked_entity_type, created_by, created_at, updated_at, last_message_at,
+              participants:conversation_participants(id, conversation_id, user_id, joined_at, last_read_at)
+            `)
+            .eq('id', dmConversationId)
+            .maybeSingle();
+          if (dmError) throw dmError;
+          resolved = dm;
+        }
+      }
+      if (!resolved) {
         return { conversation: null, error: 'Group conversation not found for this session' };
       }
+      const conv2 = resolved;
 
       return {
         conversation: {
-          id: conv.id,
-          type: conv.type as 'direct' | 'group',
-          name: conv.name ?? null,
-          session_id: conv.session_id ?? null,
-          linked_entity_type: conv.linked_entity_type as 'direct' | 'session' | 'trip' | 'event' | undefined,
-          created_by: conv.created_by,
-          created_at: conv.created_at,
-          updated_at: conv.updated_at,
-          last_message_at: conv.last_message_at ?? undefined,
-          participants: (conv.participants as any[]) || [],
+          id: conv2.id,
+          type: conv2.type as 'direct' | 'group',
+          name: conv2.name ?? null,
+          session_id: conv2.session_id ?? null,
+          linked_entity_type: conv2.linked_entity_type as 'direct' | 'session' | 'trip' | 'event' | undefined,
+          created_by: conv2.created_by,
+          created_at: conv2.created_at,
+          updated_at: conv2.updated_at,
+          last_message_at: conv2.last_message_at ?? undefined,
+          participants: (conv2.participants as any[]) || [],
         },
         error: null,
       };
