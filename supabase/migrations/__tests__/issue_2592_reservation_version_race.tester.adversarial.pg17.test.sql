@@ -118,7 +118,8 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
 
   v_res := public.biz_reservation_create(
-    v_venue, now() + interval '2 hours', 2, 'phone', 'Issue 2592 Race Guest'
+    v_venue, now() + interval '2 hours', 2, 'phone', 'Issue 2592 Race Guest',
+    '+15552592002'
   );
 
   -- -----------------------------------------------------------------------------------
