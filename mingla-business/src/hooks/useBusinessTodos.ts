@@ -53,7 +53,7 @@ import { formatCurrency } from "../utils/currency";
 import { useCurrentBrandRole } from "./useCurrentBrandRole";
 import { canViewBrandPayments } from "../utils/brandPaymentsPermission";
 import { useBrandEnquiries } from "./useBrandEnquiries";
-import { brandEnquiryTodos } from "../utils/brandEnquiryDisplay";
+import { brandEnquiryTodos } from "../utils/brandEnquiryWaiting";
 
 export function useBusinessTodos(): BusinessTodo[] {
   const { user, isAuthReady } = useAuth();

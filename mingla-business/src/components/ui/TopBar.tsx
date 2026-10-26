@@ -45,7 +45,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useBusinessNotificationsInbox } from "../../hooks/useBusinessNotifications";
 import { useBrandGroups } from "../../hooks/useBrandGroups";
 import { useBrandEnquiries } from "../../hooks/useBrandEnquiries";
-import { messagesBadgeCount } from "../../utils/brandEnquiryDisplay";
+import { messagesBadgeCount } from "../../utils/brandEnquiryWaiting";
 
 import { GlassChrome } from "./GlassChrome";
 import { Icon } from "./Icon";

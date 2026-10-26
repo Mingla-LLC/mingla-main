@@ -12,10 +12,13 @@ import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-q
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
-import {
-  listBrandEnquiries,
-  type BrandEnquiryList,
-  type BrandEnquiryListFilter,
+// #4111 — brandEnquiryList.ts, not brandEnquiriesService.ts: TopBar and Home
+// use this hook on every visit, so it must not pull the full service into the
+// boot chunk.
+import { listBrandEnquiries } from "../services/brandEnquiryList";
+import type {
+  BrandEnquiryList,
+  BrandEnquiryListFilter,
 } from "../services/brandEnquiriesService";
 
 export const brandEnquiryKeys = {
