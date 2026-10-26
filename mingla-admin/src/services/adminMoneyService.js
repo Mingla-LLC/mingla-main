@@ -171,15 +171,28 @@ export async function listRevenueLog({ search, page = 0, pageSize = 25 }) {
 
 /** #3872 R2 — referral-payee share, payout, debt and risk-hold ledger. */
 export async function listPayeeLedger({ search, filters = {}, page = 0, pageSize = 25 }) {
-  const { data, error } = await supabase.rpc("admin_list_payee_ledger", {
+  // #3872: every payee kind (referral, gig_fee, local_month). The kind filter
+  // is sent as p_kind_filter only when one is chosen; a server without that
+  // parameter is answered by filtering the returned page here instead.
+  const base = {
     p_search: search || null,
     p_status_filter: filters.status || null,
     p_rail_filter: filters.rail || null,
     p_limit: pageSize,
     p_offset: page * pageSize,
-  });
-  if (error) throw new Error(error.message || "Failed to load payee ledger.");
-  return { rows: data?.rows ?? [], total: data?.total ?? 0 };
+  };
+  const kind = filters.kind || null;
+  let { data, error } = await supabase.rpc("admin_list_payee_ledger", kind ? { ...base, p_kind_filter: kind } : base);
+  let filterHere = false;
+  if (error && kind && (error.code === "PGRST202" || error.code === "42883")) {
+    ({ data, error } = await supabase.rpc("admin_list_payee_ledger", base));
+    filterHere = true;
+  }
+  if (error) throw new Error("Couldn't load the payee ledger. Try again.");
+  const rows = data?.rows ?? [];
+  if (!filterHere) return { rows, total: data?.total ?? 0 };
+  const kept = rows.filter((row) => (row.payee_kind ?? "referral") === kind);
+  return { rows: kept, total: kept.length };
 }
 
 // ── Organiser payout debts + per-brand payout console (#3645 PR9) ─────────────
