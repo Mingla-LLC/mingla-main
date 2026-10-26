@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/chat/__tests__/issue_4114_w3_header_back.tester_adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4114-w3-header-back-tester-adversarial",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

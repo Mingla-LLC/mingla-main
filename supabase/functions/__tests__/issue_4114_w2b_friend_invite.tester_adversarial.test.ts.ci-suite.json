@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/__tests__/issue_4114_w2b_friend_invite.tester_adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4114-w2b-friend-invite-tester-adversarial",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}
