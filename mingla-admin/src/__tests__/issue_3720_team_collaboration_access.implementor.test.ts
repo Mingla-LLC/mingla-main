@@ -82,9 +82,12 @@ Deno.test("#3720 mention UI uses one RPC and email is explicitly opt-in", async 
 });
 
 Deno.test("#3720 Data room browser code receives only brokered manifest and document bytes", async () => {
-  const [service, page, edge] = await Promise.all([
+  // #4130: the documents list moved into the Data room's Documents tab
+  // (components/dataRoom/DataRoomDocuments.jsx); the page renders it.
+  const [service, pageShell, documentsTab, edge] = await Promise.all([
     read("services/teamCollaborationService.js"),
     read("pages/DataRoomPage.jsx"),
+    read("components/dataRoom/DataRoomDocuments.jsx"),
     Deno.readTextFile(
       new URL(
         "../../../supabase/functions/admin-data-room/index.ts",
@@ -93,6 +96,8 @@ Deno.test("#3720 Data room browser code receives only brokered manifest and docu
     ),
   ]);
   assertMatch(service, /invokeWithRefresh\("admin-data-room"/);
+  assertMatch(pageShell, /<DataRoomDocuments \/>/);
+  const page = `${pageShell}\n${documentsTab}`;
   assertMatch(page, /Every room and document open is recorded/);
   assertNotMatch(
     `${service}\n${page}`,

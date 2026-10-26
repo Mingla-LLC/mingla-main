@@ -286,6 +286,14 @@ on:
       - "mingla-admin/src/lib/communitySupportCapabilityContract.js"
       - "mingla-admin/src/lib/opsModel.js"
       - "mingla-admin/src/components/ops/WordingQueue.jsx"
+      # #4130 Wave 5 (Data room analytics): the suite and the files it reads.
+      - "mingla-admin/src/__tests__/issue_4130_wave5_dataroom.implementor.test.js"
+      - "mingla-admin/src/lib/dataRoomAnalytics.js"
+      - "mingla-admin/src/components/dataRoom/**"
+      - "mingla-admin/src/pages/DataRoomPage.jsx"
+      - "mingla-admin/src/services/dataRoomAnalyticsService.js"
+      - "mingla-admin/src/hooks/useDataRoomSection.js"
+      - "supabase/migrations/20280116004130_issue_4130_data_room_analytics.sql"
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
@@ -602,6 +610,14 @@ on:
       - "mingla-admin/src/lib/communitySupportCapabilityContract.js"
       - "mingla-admin/src/lib/opsModel.js"
       - "mingla-admin/src/components/ops/WordingQueue.jsx"
+      # #4130 Wave 5 (Data room analytics): the suite and the files it reads.
+      - "mingla-admin/src/__tests__/issue_4130_wave5_dataroom.implementor.test.js"
+      - "mingla-admin/src/lib/dataRoomAnalytics.js"
+      - "mingla-admin/src/components/dataRoom/**"
+      - "mingla-admin/src/pages/DataRoomPage.jsx"
+      - "mingla-admin/src/services/dataRoomAnalyticsService.js"
+      - "mingla-admin/src/hooks/useDataRoomSection.js"
+      - "supabase/migrations/20280116004130_issue_4130_data_room_analytics.sql"
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
@@ -844,6 +860,9 @@ jobs:
       - name: "Issue #4130 — Support and Community are two pages: old console links land on the right tab, every tab keeps its access, inbox counts match the inbox, failed announcement pushes retry through the existing path"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_4130_wave6_support_community.implementor.test.js
+      - name: "Issue #4130 — Data room analytics: Working / Not working from the funnels with stated thresholds, too-new cohorts never 0, Page usage shows no numbers, documents kept, gated reads only"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue_4130_wave5_dataroom.implementor.test.js
       - name: "#3720 Slice B — email segments + single log writer (admin node:test)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_3720_email_segments.implementor.happy.test.js
