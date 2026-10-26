@@ -73,7 +73,7 @@ export function BrandEnquiryThreadScreen({ enquiryId }: { enquiryId: string }): 
   const { height: windowHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const userId = user?.id ?? null;
   const [composer, setComposer] = useState("");
   const [busy, setBusy] = useState<Busy>(null);
@@ -88,7 +88,7 @@ export function BrandEnquiryThreadScreen({ enquiryId }: { enquiryId: string }): 
 
   const thread = useQuery({
     queryKey: userId ? brandEnquiryKeys.thread(userId, enquiryId) : (["brandEnquiries", "thread-disabled", enquiryId] as const),
-    enabled: userId !== null,
+    enabled: isAuthReady === true && userId !== null,
     queryFn: () => getBrandEnquiryThread(enquiryId),
     staleTime: 5_000,
   });

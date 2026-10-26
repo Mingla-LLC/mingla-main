@@ -32,10 +32,11 @@ export function useBrandEnquiries(
   filter: BrandEnquiryListFilter = "open",
   options: { enabled?: boolean } = {},
 ): UseQueryResult<BrandEnquiryList> {
-  const { user } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const userId = user?.id ?? null;
   const queryClient = useQueryClient();
-  const enabled = userId !== null && options.enabled !== false;
+  // A pre-auth read is RLS-empty and would cache "no enquiries" (ORCH-1004).
+  const enabled = isAuthReady === true && userId !== null && options.enabled !== false;
   const nonce = useRef(`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
 
   const query = useQuery({

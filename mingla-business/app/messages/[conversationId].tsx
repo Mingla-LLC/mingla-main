@@ -16,7 +16,7 @@ import {
   type TextInputSelectionChangeEventData,
   type ViewStyle,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -25,7 +25,6 @@ import { BrandGroupFilePreviewModal } from "../../src/components/messages/BrandG
 import { BrandGroupFileUploadSheet } from "../../src/components/messages/BrandGroupFileUploadSheet";
 import { BrandGroupMediaBubble } from "../../src/components/messages/BrandGroupMediaBubble";
 import { BrandEnquiryCard } from "../../src/components/messages/BrandEnquiryCard";
-import { BrandEnquiryThreadScreen } from "../../src/components/messages/BrandEnquiryThreadScreen";
 import { Button } from "../../src/components/ui/Button";
 import { Icon } from "../../src/components/ui/Icon";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
@@ -95,18 +94,18 @@ function first(value: string | string[] | undefined): string | null {
 /**
  * #4111 — /messages/{conversationId} is also where a customer-enquiry push and
  * the nudge email land. When the conversation is an enquiry the caller can
- * read, render the enquiry thread; otherwise it is a Brand group.
+ * read, send them to the enquiry thread; otherwise it is a Brand group.
  */
 export default function BrandGroupThreadRoute(): React.ReactElement {
   const params = useLocalSearchParams<{ conversationId?: string | string[] }>();
   const conversationId = first(params.conversationId);
-  const { user } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const userId = user?.id ?? null;
   const lookup = useQuery({
     queryKey: userId && conversationId
       ? brandEnquiryKeys.byConversation(userId, conversationId)
       : (["brandEnquiries", "byConversation-disabled"] as const),
-    enabled: Boolean(userId && conversationId),
+    enabled: isAuthReady === true && Boolean(userId && conversationId),
     queryFn: () => {
       if (!conversationId) throw new Error("conversation_required");
       return findBrandEnquiryIdForConversation(conversationId);
@@ -114,7 +113,9 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
     staleTime: Infinity,
   });
   const enquiryId = typeof lookup.data === "string" ? lookup.data : null;
-  if (enquiryId) return <BrandEnquiryThreadScreen enquiryId={enquiryId} />;
+  // Redirect, never import the enquiry screen here: Brand groups must not load
+  // the enquiry thread's dialogs and animations just to render a group.
+  if (enquiryId) return <Redirect href={brandEnquiryThreadRoute(enquiryId) as never} />;
   if (lookup.isPending === true && lookup.fetchStatus === "fetching") {
     return (
       <SafeScreen edges={["top"]} style={styles.screen}>
