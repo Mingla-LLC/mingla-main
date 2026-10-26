@@ -1347,6 +1347,50 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'referrals-and-earnings',
+    episode: 24,
+    title: 'Run referrals and track your earnings',
+    blurb:
+      'Create a host-funded referral offer, share a personal earning link, and understand every reward status.',
+    duration: '0:00',
+    durationIso: 'PT0S',
+    chapter: 'selling',
+    intents: ['Sell tickets', 'Run a venue', 'Get paid', 'Market to customers'],
+    surfaces: ['Web', 'iOS', 'Android'],
+    bambooEntryId: null,
+    uploadedAt: '2026-10-24',
+    hasCaptions: false,
+    steps: [
+      {
+        title: 'Hosts create the offer and set the budget',
+        body:
+          'In Mingla Host, open a brand and choose Referrals. Pick who may promote it, which listings qualify, the reward type and the schedule. Tracking-only links measure sales without creating a reward.',
+        links: [{ label: 'Mingla Host', href: 'https://host.usemingla.com' }],
+      },
+      {
+        title: 'Explorers share a personal earning link',
+        body:
+          'On an eligible event, after a purchase or from Earnings & rewards, choose Share & earn. The public page says who shared it only when that person chose to share their identity, and it reveals only a first name and avatar.',
+      },
+      {
+        title: 'Read reward status in plain English',
+        body:
+          'On the way means the purchase is still inside its event or refund window. Ready means Mingla can include it in an automatic payout. Paid means the provider completed it. A refund can reverse all or part of a reward. This history is not a stored balance and there is no withdrawal button.',
+      },
+      {
+        title: 'Know who pays each fee',
+        body:
+          'The host funds the referral reward. Mingla deducts its 5% referral service fee from that reward, so it does not increase the buyer total. The person receiving cash absorbs any transfer fee charged by Stripe or Paystack. Voucher and perk rewards have no cash transfer fee.',
+      },
+      {
+        title: 'Claim guest rewards with the same email',
+        body:
+          'If a reward was earned before sign-in, open the private claim link and sign in with the exact email that received it. Claim links expire and are single-use; Mingla never exposes the token in the wallet or public share page.',
+      },
+    ],
+  },
+
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>

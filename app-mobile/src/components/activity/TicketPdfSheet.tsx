@@ -49,6 +49,7 @@ import { resolveExplorerCalendarOrderPath } from "../../services/publicParityNat
 import { TicketService } from "../../services/ticketService";
 // ORCH-0877 — centralized consumer-side date formatter.
 import { formatEventDateLine } from "../../utils/eventDateDisplay";
+import { EarnBySharingCard } from "../wallet/EarnBySharingCard";
 
 interface TicketPdfSheetProps {
   visible: boolean;
@@ -411,6 +412,12 @@ export const TicketPdfSheet: React.FC<TicketPdfSheetProps> = ({
               </View>
             </View>
           ) : null}
+          <EarnBySharingCard
+            listingKind="event"
+            listingId={entry.eventId}
+            title={entry.eventTitle}
+            compact
+          />
         </View>
     </BaseBottomSheet>
   );

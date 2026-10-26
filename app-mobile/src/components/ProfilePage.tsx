@@ -55,6 +55,7 @@ import BetaFeedbackButton from "./BetaFeedbackButton";
 import InAppBrowserModal from "./InAppBrowserModal";
 import { LEGAL_URLS } from "../constants/urls";
 import { useTranslation } from 'react-i18next';
+import { useRouter } from "expo-router";
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -89,6 +90,7 @@ function ProfilePage({
   onNotificationsToggle,
   userIdentity,
 }: ProfilePageProps) {
+  const router = useRouter();
   // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
   const renderCountRef = React.useRef(0);
   if (__DEV__) {
@@ -585,6 +587,13 @@ function ProfilePage({
           {/* 5. Account card */}
           <GlassCard variant="base">
             <Text style={styles.cardTitle}>{t('profile:page.account_section')}</Text>
+            <SettingsRow
+              icon="gift"
+              label="Earnings & rewards"
+              description="Referral rewards, vouchers, perks and payout account"
+              showChevron
+              onPress={() => router.push("/earnings" as never)}
+            />
             <SettingsRow
               icon="credit-card"
               label={t('profile:page.billing_label')}

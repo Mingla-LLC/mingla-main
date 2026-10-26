@@ -1,0 +1,4 @@
+{
+  "runtime": "deno2",
+  "timeoutSeconds": 30
+}
