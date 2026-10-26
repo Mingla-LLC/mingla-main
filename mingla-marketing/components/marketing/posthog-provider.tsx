@@ -537,6 +537,10 @@ export function PostHogProvider({ children }: PostHogProviderProps): ReactNode {
 
   useEffect(() => {
     if (!enabled || !pathname) return
+    // #2983: a city hub emits only its own allowlisted city events. With
+    // analytics on from the first visit (#2331), this generic page_view would
+    // otherwise reach GA before the referrer-stripping config is applied.
+    if (isCityHubPathname(pathname)) return
     const audience = pathname === '/host' || pathname.startsWith('/host/') ? 'host' : pathname === '/going-out' || pathname.startsWith('/cities/') ? 'explorer' : 'neutral'
     const pageFamily = pathname.startsWith('/cities/') ? 'city_hub' : pathname.startsWith('/tools') ? 'tools' : pathname === '/going-out' ? 'explorer_pillar' : pathname === '/host' ? 'host_pillar' : 'brand_core'
     const referrerOrigin = typeof document === 'undefined' ? null : cleanReferrerOrigin(document.referrer)
