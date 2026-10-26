@@ -19,56 +19,20 @@ export {
   normalizeBrandEnquiryList,
 } from "./brandEnquiryList";
 
-export type BrandEnquiryStatus = "new" | "waiting" | "replied" | "resolved";
-export type BrandEnquirySource = "web" | "explorer" | "site";
-export type BrandEnquiryContextKind =
-  | "order"
-  | "rsvp"
-  | "reservation"
-  | "stay"
-  | "venue_order"
-  | "offering"
-  | "venue"
-  | "none";
-
-export interface BrandEnquirySummary {
-  id: string;
-  conversation_id: string;
-  brand_id: string;
-  brand_name: string;
-  brand_slug: string;
-  brand_photo_url: string | null;
-  status: BrandEnquiryStatus;
-  source: BrandEnquirySource;
-  channel_label: string;
-  guest_name: string;
-  topic_label: string;
-  reason: string;
-  context_kind: BrandEnquiryContextKind;
-  context_id: string | null;
-  spam_flag: boolean;
-  email_confirmed: boolean;
-  created_at: string;
-  last_guest_at: string;
-  last_brand_at: string | null;
-  last_message_preview: string | null;
-}
-
-export interface BrandEnquiryCounts {
-  new: number;
-  waiting: number;
-  replied: number;
-  resolved: number;
-  /** new + waiting, excluding possible spam. */
-  needs_reply: number;
-}
-
-export interface BrandEnquiryList {
-  items: BrandEnquirySummary[];
-  counts: BrandEnquiryCounts;
-}
-
-export type BrandEnquiryListFilter = "open" | "resolved";
+import type {
+  BrandEnquiryContextKind,
+  BrandEnquirySource,
+  BrandEnquiryStatus,
+} from "./brandEnquiryList";
+export type {
+  BrandEnquiryContextKind,
+  BrandEnquiryCounts,
+  BrandEnquiryList,
+  BrandEnquiryListFilter,
+  BrandEnquirySource,
+  BrandEnquiryStatus,
+  BrandEnquirySummary,
+} from "./brandEnquiryList";
 
 export interface BrandEnquiryContext {
   kind: BrandEnquiryContextKind;

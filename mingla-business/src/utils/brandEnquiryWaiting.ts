@@ -9,7 +9,7 @@
 import type {
   BrandEnquiryCounts,
   BrandEnquirySummary,
-} from "../services/brandEnquiriesService";
+} from "../services/brandEnquiryList";
 
 /** Enquiries that wait on the team: new or waiting, never possible spam. */
 export function brandEnquiryNeedsReply(item: Pick<BrandEnquirySummary, "status" | "spam_flag">): boolean {
