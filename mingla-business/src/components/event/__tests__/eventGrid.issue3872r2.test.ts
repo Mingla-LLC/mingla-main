@@ -48,6 +48,15 @@ describe("event page tool grid", () => {
     expect(tiles[0]).toBe("scan");
   });
 
+  it("gives Reconciliation its own icon, not Insights' chart", () => {
+    const tile = fs.readFileSync(
+      path.join(root, "src/components/event/ReconciliationCtaTile.tsx"),
+      "utf8",
+    );
+    expect(tile).toMatch(/icon="receipt" label="Reconciliation"/);
+    expect(page).toMatch(/icon="chart"[\s\S]{0,40}label="Insights"|label="Insights"[\s\S]{0,40}icon="chart"/);
+  });
+
   it("renders no Blasts or Messages tile and a Promote tile with live status", () => {
     expect(page).not.toMatch(/label="Blasts"/);
     expect(page).not.toMatch(/label="Messages"/);
