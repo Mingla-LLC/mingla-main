@@ -276,3 +276,97 @@ Deno.test("ADV-B4: PairRequestModal SWALLOWS the suppress-for-child close so the
     "the header close (X) MUST keep handleClose so a genuine dismiss fully closes",
   );
 });
+
+// =============================================================================
+// PART C — Issue #4114 Wave 2b: the one Add a friend sheet (ADDED; nothing above
+// is changed). The Add a friend flow left the friends sheet for its own sheet,
+// connections/AddFriendSheet.tsx (body: AddFriendView). The same round-trip
+// must hold: the picker drops BOTH sheets, the typed number survives, a genuine
+// reopen resets, and the drop for the picker never tears the flow down.
+// =============================================================================
+
+const ADD_SHEET = code(readSrc("../connections/AddFriendSheet.tsx"));
+
+class AddFriendSheetFlowModel {
+  showFriendsModal = false;
+  showAddFriendSheet = false;
+  addFriendPickerOpen = false;
+  addFriendPhone = "";
+  addFriendCountry = { ...DEFAULT_COUNTRY };
+  #prev = { friends: false, add: false };
+
+  get friendsSheetVisible(): boolean {
+    const anyFriendsChildOpen = this.addFriendPickerOpen || this.showAddFriendSheet;
+    return this.showFriendsModal && !anyFriendsChildOpen;
+  }
+  get addSheetVisible(): boolean {
+    return this.showAddFriendSheet && !this.addFriendPickerOpen;
+  }
+  // Mirrors the ConnectionsPage reset effect keyed on [showFriendsModal, showAddFriendSheet].
+  #effect() {
+    const changed = this.#prev.friends !== this.showFriendsModal || this.#prev.add !== this.showAddFriendSheet;
+    if (changed && (this.showFriendsModal || this.showAddFriendSheet)) {
+      this.addFriendPhone = "";
+      this.addFriendCountry = { ...DEFAULT_COUNTRY };
+      this.addFriendPickerOpen = false;
+    }
+    this.#prev = { friends: this.showFriendsModal, add: this.showAddFriendSheet };
+  }
+  openFriends() { this.showFriendsModal = true; this.#effect(); }
+  openAdd() { this.showAddFriendSheet = true; this.#effect(); }
+  // handleAddFriendSheetClose: swallowed while the picker is open.
+  sheetOnClose() { if (this.addFriendPickerOpen) return; this.showAddFriendSheet = false; this.#effect(); }
+  dismissAdd() { this.showAddFriendSheet = false; this.#effect(); }
+  type(v: string) { this.addFriendPhone = v; this.#effect(); }
+  openPicker() { this.addFriendPickerOpen = true; this.#effect(); }
+  pick(c: { code: string; dialCode: string }) { this.addFriendCountry = { ...c }; this.addFriendPickerOpen = false; this.#effect(); }
+}
+
+Deno.test("ADV-C1 (#4114): Add a friend opened over the friends sheet — the picker drops both sheets and keeps the number", () => {
+  const m = new AddFriendSheetFlowModel();
+  m.openFriends();
+  m.openAdd();
+  assertEquals(m.friendsSheetVisible, false, "the friends sheet drops while Add a friend is up");
+  assertEquals(m.addSheetVisible, true);
+  m.type("8035550142");
+  m.openPicker();
+  m.sheetOnClose(); // BaseBottomSheet fires onClose as the sheet drops for the picker
+  assertEquals(m.addSheetVisible, false, "the Add a friend sheet drops while the picker is up");
+  assertEquals(m.friendsSheetVisible, false, "no sheet co-presents with the picker");
+  assertEquals(m.showAddFriendSheet, true, "the drop for the picker must not tear the flow down");
+  m.pick({ code: "NG", dialCode: "+234" });
+  assertEquals(m.addSheetVisible, true, "the sheet comes back when the picker closes");
+  assertEquals(m.addFriendPhone, "8035550142", "the typed number survives the round-trip");
+  assertEquals(m.addFriendCountry.dialCode, "+234", "the picked country applies");
+});
+
+Deno.test("ADV-C2 (#4114): closing and reopening Add a friend resets the number and country", () => {
+  const m = new AddFriendSheetFlowModel();
+  m.openAdd();
+  m.type("8035550142");
+  m.openPicker();
+  m.pick({ code: "NG", dialCode: "+234" });
+  m.dismissAdd();
+  m.openAdd();
+  assertEquals(m.addFriendPhone, "", "reopen clears the number");
+  assertEquals(m.addFriendCountry.dialCode, "+1", "reopen resets the country");
+});
+
+Deno.test("ADV-C3 (#4114): the reset effect also keys on showAddFriendSheet, never on the picker flag", () => {
+  const idx = CONNECTIONS.indexOf('setAddFriendPhone("")');
+  const after = CONNECTIONS.slice(idx, idx + 400);
+  const deps = after.match(/\}\s*,\s*\[([^\]]*)\]\s*\)/)?.[1] ?? "";
+  assert(/\bshowAddFriendSheet\b/.test(deps), `reset effect MUST depend on showAddFriendSheet (deps: [${deps.trim()}])`);
+  assert(!/\baddFriendPickerOpen\b/.test(deps), "reset effect MUST NOT key on addFriendPickerOpen — it would wipe the number mid-round-trip");
+  assert(!/\banyFriendsChildOpen\b/.test(deps), "reset effect MUST NOT key on anyFriendsChildOpen");
+});
+
+Deno.test("ADV-C4 (#4114): the Add a friend sheet's hide-for-picker close is swallowed; Cancel/Done still close", () => {
+  const close = CONNECTIONS.match(/const\s+handleAddFriendSheetClose\s*=\s*useCallback\(\s*\(\)\s*=>\s*\{([\s\S]{0,160}?)\}/);
+  assert(close, "ConnectionsPage MUST define handleAddFriendSheetClose");
+  assert(/if\s*\(\s*addFriendPickerOpen\s*\)\s*return/.test(close![1]), "handleAddFriendSheetClose MUST early-return while the picker is open");
+  assert(/<AddFriendSheet\b[\s\S]{0,200}onSheetClose=\{handleAddFriendSheetClose\}/.test(CONNECTIONS), "<AddFriendSheet> MUST wire onSheetClose={handleAddFriendSheetClose}");
+  assert(/<BaseBottomSheet\b[\s\S]{0,80}visible=\{visible\}[\s\S]{0,40}onClose=\{onSheetClose\}/.test(ADD_SHEET), "AddFriendSheet's BaseBottomSheet MUST use the parent-gated visible and onClose={onSheetClose}");
+  assert(/onPress=\{onDismiss\}/.test(ADD_SHEET), "the header Cancel MUST be the genuine dismiss (onDismiss)");
+  assert(!/<CountryPickerModal\b/.test(ADD_SHEET), "AddFriendSheet MUST NOT render the picker");
+});
