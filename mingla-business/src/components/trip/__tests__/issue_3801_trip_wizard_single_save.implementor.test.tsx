@@ -119,6 +119,16 @@ const mutationOf = (name: string) => ({ mutateAsync: record(name), isPending: fa
 const reloadTrip = jest.fn<(eventId: string) => Promise<unknown>>();
 let queueTimeoutMs: number | undefined;
 let revisionReads = 0;
+/**
+ * The stored trip row, as `readTripCoverRevision` reads it. `null` means the
+ * row has not been read in this test (the read throws so a stray call shows).
+ */
+let storedCoverRow: {
+  updatedAt: string;
+  coverMediaUrl: string | null;
+  coverMediaType: string | null;
+} | null = null;
+let coverRevisionReads = 0;
 
 // ---------------------------------------------------------------------------
 // module boundary
@@ -215,6 +225,11 @@ const BOUNDARY: Record<string, () => unknown> = {
   tripsService: () => ({
     setTripPricingSwitches: (_id: string, input: unknown) =>
       record("switches")(input ?? {}),
+    readTripCoverRevision: async () => {
+      coverRevisionReads += 1;
+      if (storedCoverRow === null) throw new Error("unexpected cover revision read");
+      return { ...storedCoverRow };
+    },
     readTripRevision: async () => {
       revisionReads += 1;
       return `rev-read-${revisionReads}`;
@@ -426,6 +441,8 @@ beforeEach(() => {
   wire.inFlight = 0;
   wire.maxInFlight = 0;
   revisionReads = 0;
+  storedCoverRow = null;
+  coverRevisionReads = 0;
   queueTimeoutMs = undefined;
   for (const key of Object.keys(behaviours)) delete behaviours[key];
   onExit.mockReset();
@@ -688,5 +705,102 @@ describe("(e) a save that never answers does not leave 'Saving…' forever", () 
     await settle(150);
     expect(callsNamed("basics")).toHaveLength(1);
     expect(screenText(tree)).not.toContain("Saving…");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rework (tester P1-1): the server applies a cover video while the wizard is
+// open. `cover_video_apply_once` UPDATEs events SET cover_media_* and
+// updated_at = now() (draft_auto webhook, apply endpoint or reaper, a median
+// of 18-42 s after upload). The cover picker then hands Step 1 the video.
+// ---------------------------------------------------------------------------
+
+describe("(f) a cover video the server applied is not a conflict; a real edit still is", () => {
+  const VIDEO_URL = "https://video.example.test/processed.mp4";
+  const APPLIED_REVISION = "2027-03-01T10:00:41.000001+00:00";
+
+  /** The server's compare-and-swap, as in biz_apply_trip_draft_graph. */
+  const serverCas = (state: { revision: string }): Behaviour => async (call) => {
+    if (call.revisionAtCall !== state.revision) {
+      throw postgrestError("trip_revision_conflict", "PT409");
+    }
+    state.revision = `rev-after-${call.name}-${calls.length}`;
+    (call.input.revision as Cursor).current = state.revision;
+    return {};
+  };
+  const emitVideoCover = async (tree: Renderer, url: string): Promise<void> => {
+    const step1 = tree.root.findAll((n) => n.type === "TripCreatorStep1Basics")[0];
+    await act(async () => {
+      (step1.props.onChange as (p: unknown) => void)({
+        coverMediaUrl: url,
+        coverMediaPosterUrl: "https://video.example.test/poster.jpg",
+        coverMediaType: "video",
+        coverGallery: [],
+      });
+    });
+  };
+
+  test("the video apply moved the revision: Continue sends the applied revision and moves on", async () => {
+    const server = { revision: LOADED_REVISION };
+    behaviours.basics = serverCas(server);
+    const tree = await mountWizard(1);
+
+    // The server applies the processed video, then the picker emits it.
+    server.revision = APPLIED_REVISION;
+    storedCoverRow = {
+      updatedAt: APPLIED_REVISION,
+      coverMediaUrl: VIDEO_URL,
+      coverMediaType: "video",
+    };
+    await emitVideoCover(tree, VIDEO_URL);
+
+    await tap(tree, "Continue");
+    await settle(80);
+
+    const basics = callsNamed("basics");
+    expect(basics).toHaveLength(1);
+    expect(basics[0].revisionAtCall).toBe(APPLIED_REVISION);
+    expect(coverRevisionReads).toBe(1);
+    expect(toast(tree).message).not.toBe(CONFLICT_COPY);
+    expect(onStep(tree, "TripCreatorStep2Itinerary")).toBe(true);
+    expect(wire.maxInFlight).toBe(1);
+  });
+
+  test("an edit made somewhere else (the row does not hold this video) is still refused, once", async () => {
+    const server = { revision: LOADED_REVISION };
+    behaviours.basics = serverCas(server);
+    const tree = await mountWizard(1);
+
+    // Someone else edited the trip and the stored cover is not this video.
+    server.revision = APPLIED_REVISION;
+    storedCoverRow = {
+      updatedAt: APPLIED_REVISION,
+      coverMediaUrl: "https://images.example.test/someone-elses-photo.jpg",
+      coverMediaType: "image",
+    };
+    await emitVideoCover(tree, VIDEO_URL);
+
+    await tap(tree, "Continue");
+    await settle(80);
+
+    const basics = callsNamed("basics");
+    expect(basics).toHaveLength(1);
+    expect(basics[0].revisionAtCall).toBe(LOADED_REVISION);
+    expect(toast(tree)).toEqual({ visible: true, message: CONFLICT_COPY });
+    expect(onStep(tree, "TripCreatorStep1Basics")).toBe(true);
+
+    // Never retried on its own, and Continue again sends nothing.
+    await settle(150);
+    await tap(tree, "Continue");
+    await settle(80);
+    expect(callsNamed("basics")).toHaveLength(1);
+  });
+
+  test("no video emit, no extra read: a Step 1 save without a video reads nothing first", async () => {
+    const tree = await mountWizard(1);
+    await tap(tree, "Continue");
+    await settle(80);
+    expect(coverRevisionReads).toBe(0);
+    expect(callsNamed("basics")[0].revisionAtCall).toBe(LOADED_REVISION);
   });
 });

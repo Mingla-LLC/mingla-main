@@ -89,7 +89,9 @@ describe("ORCH-0876 — /trip/[id]/edit status-based dispatch", () => {
   test("loading + error + not-found states still render bare-View shells (don't route through editor)", () => {
     // Pre-flight defensive states must NOT delegate to either editor when the
     // trip query hasn't resolved yet — that would crash on `trip.status`.
-    expect(SRC).toContain('if (tripQuery.isLoading)');
+    // Issue #3801 — loading also covers "no read has finished since the route
+    // opened", so an editor is never seeded from a stale cached revision.
+    expect(SRC).toContain('if (tripQuery.isLoading || !tripQuery.isFetchedAfterMount)');
     expect(SRC).toContain('if (tripQuery.isError)');
     expect(SRC).toContain('if (trip === null || trip === undefined)');
   });

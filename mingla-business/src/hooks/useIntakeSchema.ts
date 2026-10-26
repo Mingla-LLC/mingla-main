@@ -23,6 +23,7 @@ import {
   type IntakeSchemaServiceError,
 } from "../services/intakeSchemaService";
 import type { TripRevisionCursor } from "../services/tripsService";
+import { tripKeys } from "./tripKeys";
 
 // ---------------------------------------------------------------------------
 // Query keys
@@ -86,7 +87,9 @@ interface UpsertIntakeSchemaInput {
  * Cache invalidation:
  *   - intakeSchemaKeys.byEvent(eventId) — planner schema-builder map view
  *   - intakeSchemaKeys.byTier(eventId, ticketTypeId) — single-tier view
- *   - ["trip", eventId] tree — trip detail page reads schema-affected state
+ *   - tripKeys.detail(eventId) — the trip detail (and its revision). Issue
+ *     #3801: a draft save moves `events.updated_at`, and the trip editor seeds
+ *     its revision from this entry, so it must never be left behind.
  *   - ["businessEvents"] tree — Travelers tab indirect (event row refetch)
  */
 export function useUpsertTripIntakeSchema(): UseMutationResult<
@@ -112,7 +115,7 @@ export function useUpsertTripIntakeSchema(): UseMutationResult<
       qc.invalidateQueries({
         queryKey: intakeSchemaKeys.byTier(vars.eventId, vars.ticketTypeId),
       });
-      qc.invalidateQueries({ queryKey: ["trip", vars.eventId] });
+      qc.invalidateQueries({ queryKey: tripKeys.detail(vars.eventId) });
       qc.invalidateQueries({ queryKey: ["businessEvents"] });
     },
   });

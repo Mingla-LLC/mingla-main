@@ -71,26 +71,14 @@ import {
 } from "../services/tripsService";
 import { getTripIntakeSchemasByEvent } from "../services/intakeSchemaService";
 import { intakeSchemaKeys } from "./useIntakeSchema";
+import { tripKeys } from "./tripKeys";
 
 // ---------------------- Query key factory ----------------------
 
-export const tripKeys = {
-  all: ["trips"] as const,
-  lists: (): readonly ["trips", "list"] =>
-    [...tripKeys.all, "list"] as const,
-  listByBrand: (brandId: string) =>
-    [...tripKeys.lists(), brandId] as const,
-  details: (): readonly ["trips", "detail"] =>
-    [...tripKeys.all, "detail"] as const,
-  detail: (eventId: string) =>
-    [...tripKeys.details(), eventId] as const,
-  soldCountsByTier: (eventId: string) =>
-    [...tripKeys.detail(eventId), "soldCountsByTier"] as const,
-  public: (): readonly ["trips", "public"] =>
-    [...tripKeys.all, "public"] as const,
-  publicBySlug: (brandSlug: string, tripSlug: string) =>
-    [...tripKeys.public(), brandSlug, tripSlug] as const,
-};
+// Issue #3801 — the factory lives in the keyless `tripKeys` module so hooks
+// that `useTrips` itself imports (useIntakeSchema) can invalidate the trip
+// detail without a require-cycle. Re-exported here for every existing caller.
+export { tripKeys };
 
 const DISABLED_KEY = ["trips", "__disabled__"] as const;
 const TRIP_LIST_STALE_MS = 5 * 60 * 1000;
@@ -120,8 +108,19 @@ export const useTripsByBrand = (
 
 // ---------------------- useTrip ----------------------
 
+export interface UseTripOptions {
+  /**
+   * Issue #3801 — `"always"` reads the trip from the server on every mount,
+   * even when a cached copy is still fresh. The trip editor uses it (with
+   * `isFetchedAfterMount`) so an editing session is never seeded from a
+   * cached revision the server has moved past.
+   */
+  refetchOnMount?: "always";
+}
+
 export const useTrip = (
   eventId: string | null,
+  options?: UseTripOptions,
 ): UseQueryResult<Trip | null, Error> => {
   // ORCH-1004 — authed trip detail (dashboard/edit). getTrip reads RLS
   // auth.uid()-scoped `events` + sidecars. The public buyer path uses
@@ -136,6 +135,9 @@ export const useTrip = (
     },
     enabled,
     staleTime: TRIP_DETAIL_STALE_MS,
+    ...(options?.refetchOnMount !== undefined
+      ? { refetchOnMount: options.refetchOnMount }
+      : {}),
   });
 };
 

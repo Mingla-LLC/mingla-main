@@ -111,8 +111,15 @@ export default function TripEditRoute(): React.ReactElement {
     user,
   ]);
 
+  // Issue #3801 — the editor sends the trip's revision with every save, and
+  // seeds it from the trip it is mounted with. A cached copy can be behind the
+  // server (a cover video applied, or a save whose cache update was missed),
+  // and its first save would then be refused as "changed somewhere else". So
+  // this route always reads the trip again on mount, and mounts an editor only
+  // from a read that finished after it opened.
   const tripQuery = useTrip(
     typeof eventId === "string" && !isClientOnlyId ? eventId : null,
+    { refetchOnMount: "always" },
   );
   useSuccessfulBusinessRecentOpen({
     brandId: tripQuery.data?.brandId ?? currentBrand?.id ?? null,
@@ -165,7 +172,7 @@ export default function TripEditRoute(): React.ReactElement {
     );
   }
 
-  if (tripQuery.isLoading) {
+  if (tripQuery.isLoading || !tripQuery.isFetchedAfterMount) {
     return (
       <ScrollView
           style={styles.host}

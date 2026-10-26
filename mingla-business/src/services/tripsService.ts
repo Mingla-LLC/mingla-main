@@ -148,6 +148,37 @@ export async function readTripRevision(eventId: string): Promise<string> {
   return data.updated_at as string;
 }
 
+/** Issue #3801 — the trip's revision with the cover it holds at that revision. */
+export interface TripCoverRevision {
+  updatedAt: string;
+  coverMediaUrl: string | null;
+  coverMediaType: string | null;
+}
+
+/**
+ * Issue #3801 — read the revision together with the stored cover, so the
+ * wizard can tell the server's own cover-video apply (which moves the
+ * revision) from an edit made somewhere else.
+ */
+export async function readTripCoverRevision(eventId: string): Promise<TripCoverRevision> {
+  const { data, error } = await supabase
+    .from("events")
+    .select("updated_at, cover_media_url, cover_media_type")
+    .eq("id", eventId)
+    .eq("event_type", "trip")
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw error;
+  if (data === null) {
+    throw new Error("readTripCoverRevision: trip not found for id=" + eventId);
+  }
+  return {
+    updatedAt: data.updated_at as string,
+    coverMediaUrl: (data.cover_media_url as string | null) ?? null,
+    coverMediaType: (data.cover_media_type as string | null) ?? null,
+  };
+}
+
 async function resolveRevision(
   eventId: string,
   options?: TripCommandOptions,

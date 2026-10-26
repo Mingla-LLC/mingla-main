@@ -87,6 +87,7 @@ import type {
   TripRevisionCursor,
 } from "../../services/tripsService";
 import {
+  readTripCoverRevision,
   readTripRevision,
   setTripPricingSwitches,
 } from "../../services/tripsService";
@@ -1323,6 +1324,38 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     markTripChanged(trip.id);
   }, [revision, trip.id, markTripChanged]);
 
+  // Issue #3801 — a video cover finishing processing is applied by the SERVER
+  // (`cover_video_apply_once`: webhook, apply endpoint or reaper), which moves
+  // the revision while the host is still in the wizard. The cover picker
+  // hands Step 1 the video only once the server reports it applied. The
+  // video's URL is remembered here and, inside the save queue and before the
+  // next save, the stored row is read: only when it holds exactly that video
+  // does the session take its revision. Anything else (the row holds another
+  // cover, or the revision did not move forward) is left alone, so a real edit
+  // made somewhere else is still refused with the reload message.
+  const pendingAppliedVideoUrlRef = useRef<string | null>(null);
+  const adoptAppliedVideoRevision = useCallback(async (): Promise<void> => {
+    const videoUrl = pendingAppliedVideoUrlRef.current;
+    if (videoUrl === null) return;
+    const stored = await readTripCoverRevision(trip.id);
+    pendingAppliedVideoUrlRef.current = null;
+    if (stored.coverMediaType !== "video" || stored.coverMediaUrl !== videoUrl) return;
+    if (!isRevisionAtLeast(stored.updatedAt, revision.current)) return;
+    revision.current = stored.updatedAt;
+    markTripChanged(trip.id);
+  }, [revision, trip.id, markTripChanged]);
+  const handleStep1Change = useCallback((patch: Partial<Step1Draft>): void => {
+    if (
+      patch.coverMediaType === "video" &&
+      typeof patch.coverMediaUrl === "string" &&
+      patch.coverMediaUrl.length > 0 &&
+      patch.coverMediaUrl !== step1Draft.coverMediaUrl
+    ) {
+      pendingAppliedVideoUrlRef.current = patch.coverMediaUrl;
+    }
+    setStep1Draft((s) => ({ ...s, ...patch }));
+  }, [step1Draft.coverMediaUrl]);
+
   const autosaveStep1 = useCallback(async (): Promise<void> => {
     await updateBasicsMutation.mutateAsync({
       eventId: trip.id,
@@ -1532,6 +1565,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     try {
       await saveQueue.run(async () => {
         try {
+          await adoptAppliedVideoRevision();
           if (step === 1) await autosaveStep1();
           else if (step === 2) await autosaveStep2();
           else if (step === 3) await autosaveStep3();
@@ -1561,6 +1595,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     revision,
     trip.id,
     step,
+    adoptAppliedVideoRevision,
     autosaveStep1,
     autosaveStep2,
     autosaveStep3,
@@ -1998,52 +2033,55 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     }
     setPublishError(null);
     try {
-      const published = await saveQueue.run(() => publishMutation.mutateAsync({
-        eventId: trip.id,
-        brandId: trip.brandId,
-        revision,
-        invites: invitePlan && invitePlan.selectedCount > 0
-          ? {
-              selectionRevision: invitePlan.selectionRevision,
-              selectionConfirmed: true,
-            }
-          : undefined,
-        draftPayload: {
-          title: step1Draft.title.trim(),
-          cover_media_url: step1Draft.coverMediaUrl,
-          cover_media_poster_url:
-            step1Draft.coverMediaPosterUrl ??
-            (step1Draft.coverMediaType === "image" ? step1Draft.coverMediaUrl : null),
-          cover_media_type: step1Draft.coverMediaType,
-          cover_media_gallery: step1Draft.coverGallery ?? [],
-          theme: {
-            business_trip: {
-              startAt: step1Draft.startAt,
-              endAt: step1Draft.endAt,
-              destinationPlaceId: step1Draft.destinationPlaceId,
-              destinationLocationText: step1Draft.destinationLocationText,
-              destinationLat: step1Draft.destinationLat,
-              destinationLng: step1Draft.destinationLng,
-              destinationCity: step1Draft.destinationCity,
-              destinationCountryCode: step1Draft.destinationCountryCode,
-              departurePlaceId: step1Draft.departurePlaceId,
-              departureLocationText: step1Draft.departureLocationText,
-              departureLat: step1Draft.departureLat,
-              departureLng: step1Draft.departureLng,
-              departureCity: step1Draft.departureCity,
-              departureCountryCode: step1Draft.departureCountryCode,
-              // Issue #1363 — precision rides theme.business_trip.* (JSON; no
-              // column). The publish RPC preserves unknown business_trip keys, so
-              // this persists with no RPC change.
-              destinationCoordinatePrecision:
-                step1Draft.destinationCoordinatePrecision ?? null,
-              departureCoordinatePrecision:
-                step1Draft.departureCoordinatePrecision ?? null,
+      const published = await saveQueue.run(async () => {
+        await adoptAppliedVideoRevision();
+        return publishMutation.mutateAsync({
+          eventId: trip.id,
+          brandId: trip.brandId,
+          revision,
+          invites: invitePlan && invitePlan.selectedCount > 0
+            ? {
+                selectionRevision: invitePlan.selectionRevision,
+                selectionConfirmed: true,
+              }
+            : undefined,
+          draftPayload: {
+            title: step1Draft.title.trim(),
+            cover_media_url: step1Draft.coverMediaUrl,
+            cover_media_poster_url:
+              step1Draft.coverMediaPosterUrl ??
+              (step1Draft.coverMediaType === "image" ? step1Draft.coverMediaUrl : null),
+            cover_media_type: step1Draft.coverMediaType,
+            cover_media_gallery: step1Draft.coverGallery ?? [],
+            theme: {
+              business_trip: {
+                startAt: step1Draft.startAt,
+                endAt: step1Draft.endAt,
+                destinationPlaceId: step1Draft.destinationPlaceId,
+                destinationLocationText: step1Draft.destinationLocationText,
+                destinationLat: step1Draft.destinationLat,
+                destinationLng: step1Draft.destinationLng,
+                destinationCity: step1Draft.destinationCity,
+                destinationCountryCode: step1Draft.destinationCountryCode,
+                departurePlaceId: step1Draft.departurePlaceId,
+                departureLocationText: step1Draft.departureLocationText,
+                departureLat: step1Draft.departureLat,
+                departureLng: step1Draft.departureLng,
+                departureCity: step1Draft.departureCity,
+                departureCountryCode: step1Draft.departureCountryCode,
+                // Issue #1363 — precision rides theme.business_trip.* (JSON; no
+                // column). The publish RPC preserves unknown business_trip keys, so
+                // this persists with no RPC change.
+                destinationCoordinatePrecision:
+                  step1Draft.destinationCoordinatePrecision ?? null,
+                departureCoordinatePrecision:
+                  step1Draft.departureCoordinatePrecision ?? null,
+              },
             },
+            timezone: trip.timezone,
           },
-          timezone: trip.timezone,
-        },
-      }), TRIP_PUBLISH_TIMEOUT_MS);
+        });
+      }, TRIP_PUBLISH_TIMEOUT_MS);
       // ORCH-1339 — re-assert the guest-privacy toggles on publish success
       // (leaf write; belt-and-suspenders with the Step-5 autosave). NON-BLOCKING:
       // display prefs never block publish (SPEC §4.7).
@@ -2098,7 +2136,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     }
   }, [publishMutation, router, step1Draft, step5Draft, trip.id, trip.brandId, trip.timezone, onPublished, showToast, invitePlan, bankSetupRoute,
     acceptTermsAfterServerRefusal, saveQueue, revision, surfaceRevisionConflict,
-    waitForSaveInFlight]);
+    waitForSaveInFlight, adoptAppliedVideoRevision]);
 
   // Suppress autosave-error toast surfacing via setPublishError; show via
   // the persistent banner in Step 5. Show toast for discard errors only.
@@ -2426,7 +2464,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
           {step === 1 ? (
             <TripCreatorStep1Basics
               draft={step1Draft}
-              onChange={(patch) => setStep1Draft((s) => ({ ...s, ...patch }))}
+              onChange={handleStep1Change}
               disabled={submitting}
               brandId={trip.brandId}
               tripEventId={trip.id}
