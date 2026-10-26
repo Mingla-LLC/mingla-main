@@ -69,9 +69,8 @@ jobs:
           files=(
             supabase/functions/_shared/__tests__/issue1184_video_prepare.test.ts
             supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts
+            supabase/functions/_shared/__tests__/issue1184_video_prepare_adversarial.tester.test.ts
           )
-          tester=supabase/functions/_shared/__tests__/issue1184_video_prepare_adversarial.tester.test.ts
-          if [[ -f "$tester" ]]; then files+=("$tester"); fi
           deno test --allow-env --allow-read "${files[@]}"
 
   admin:
@@ -89,7 +88,6 @@ jobs:
           files=(
             src/__tests__/issue995_creative_video_not_creatable.test.js
             src/__tests__/issue1184_video_phase_a.test.js
+            src/__tests__/issue1184_video_phase_a.adversarial.tester.test.js
           )
-          tester=src/__tests__/issue1184_video_phase_a.adversarial.tester.test.js
-          if [[ -f "$tester" ]]; then files+=("$tester"); fi
           node --test "${files[@]}"

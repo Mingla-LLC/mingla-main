@@ -12325,7 +12325,7 @@
       "providerWorkflow": ".github/workflows/issue-1184-video-phase-a-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "3ded89d1a060bf520c92e9ae6006c992fa700409be3b146058bad0b933838d82",
+        "sourceSha256": "2da8bbd0f5150b3a127b0ecc089912f1f93f62d337cc6122f28097136e3e6ba8",
         "triggers": [
           "pull_request",
           "push"
@@ -19935,7 +19935,7 @@
       "providerWorkflow": ".github/workflows/issue-871-attendance-entitlement-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "f872b220df4b5ed38869d782e82aba88f90a06758f9efae9b4c628af18c8cbe1",
+        "sourceSha256": "e6e736b042a9fa868be0fbce5c1a85d2becbdb3f952530c517eb95102c1d0629",
         "triggers": [
           "pull_request"
         ],

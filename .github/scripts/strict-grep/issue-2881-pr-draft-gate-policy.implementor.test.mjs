@@ -615,7 +615,7 @@ const PHASE3_TRANSITION_RECEIPTS = Object.freeze([
     workflow: ["issue-871-attendance-entitlement-tests", "yml"].join("."),
     issue: "#3643",
     beforeSha256: "a44118abfa87d7388d37acd3cc4c7a60282e8975eb8ae38f319fbfc86939e600",
-    afterSha256: "f872b220df4b5ed38869d782e82aba88f90a06758f9efae9b4c628af18c8cbe1",
+    afterSha256: "e6e736b042a9fa868be0fbce5c1a85d2becbdb3f952530c517eb95102c1d0629",
     proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
   }),
   Object.freeze({
@@ -631,6 +631,17 @@ const PHASE3_TRANSITION_RECEIPTS = Object.freeze([
     beforeSha256: "6de10da3db7d1d76ad03cf6122a39e9b49ce464b8e985fb8af0aaefc673e4b86",
     afterSha256: "b30aa8d0903397f3857674cdf2b622d6be8d77654e1b2259a119e32108af8d7a",
     proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
+  }),
+  // #3643 step 4: "run it only if it exists" tester loops become unconditional
+  // runs of the files that exist (a deleted file now fails), and loop entries
+  // for tester files that were never written are dropped. The #871 workflow's
+  // receipt above covers the same change there.
+  Object.freeze({
+    workflow: ["issue-1184-video-phase-a-tests", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "3ded89d1a060bf520c92e9ae6006c992fa700409be3b146058bad0b933838d82",
+    afterSha256: "2da8bbd0f5150b3a127b0ecc089912f1f93f62d337cc6122f28097136e3e6ba8",
+    proofOwner: ".github/scripts/strict-grep/issue-2881-pr-draft-gate-policy.implementor.test.mjs",
   }),
 ]);
 
@@ -682,7 +693,7 @@ const authorizedTransitionNames = (transitions, receipts = PHASE3_TRANSITION_REC
 };
 
 const PHASE3_TRANSITION_RECEIPT_INDEX = validateTransitionReceipts(PHASE3_TRANSITION_RECEIPTS);
-assert.equal(PHASE3_TRANSITION_RECEIPT_INDEX.size, 42, "Phase 3 transition receipt cardinality");
+assert.equal(PHASE3_TRANSITION_RECEIPT_INDEX.size, 43, "Phase 3 transition receipt cardinality");
 
 test("T-11 every pin-protected workflow still satisfies the pin that protects it", () => {
   const pinned = ALWAYS_ON.filter((entry) => entry.kind === "pin-protected");
