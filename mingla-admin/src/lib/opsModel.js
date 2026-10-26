@@ -930,7 +930,8 @@ export function parseWorkTab(search) {
 
 /** The Work board's four columns. "Done this week" holds cards closed since Monday. */
 export const WORK_COLUMNS = [
-  { key: "person", label: "Needs you" },
+  // #4130: Needs you was retired into Work; its first column says what it holds.
+  { key: "person", label: "Waiting on a person" },
   { key: "todo", label: "To do" },
   { key: "doing", label: "In progress" },
   { key: "done", label: "Done this week" },
@@ -938,7 +939,7 @@ export const WORK_COLUMNS = [
 
 /** #3980 W3 rework 2: a card's status in words, for Group by Person or Event. */
 export function workStatusLabel(status) {
-  return { person: "Needs you", todo: "To do", doing: "In progress", done: "Done" }[status] || "";
+  return { person: "Waiting on a person", todo: "To do", doing: "In progress", done: "Done" }[status] || "";
 }
 
 export function columnCards(cards, key, today = todayIso()) {

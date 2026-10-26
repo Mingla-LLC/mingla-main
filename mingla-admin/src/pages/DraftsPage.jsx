@@ -36,10 +36,20 @@ function paramsFrom(search) {
   };
 }
 
-export function DraftsPage() {
-  const [search, setSearch] = useHashQuery("drafts");
+// #4130 (Wave 1): Needs you (#/drafts) was retired into Work. This page now
+// lives inside the Work drawers: `embedded` = { search } starts it on
+// "draft=<id>", "record=<id>" or "" (every draft of mine), keeps its address
+// in local state, and shows only the message drafts (spend, publish and
+// roadmap wording open from their Work cards). Nothing it could do is lost:
+// edit, copy, mark sent, discard, restore and undo all stay here.
+export function DraftsPage({ embedded = null }) {
+  const [hashSearch, setHashSearch] = useHashQuery("drafts");
+  const [localSearch, setLocalSearch] = useState(() => (embedded ? String(embedded.search || "") : ""));
+  const search = embedded ? localSearch : hashSearch;
+  const setSearch = embedded ? setLocalSearch : setHashSearch;
   const query = useMemo(() => paramsFrom(search), [search]);
-  const review = useMemo(() => parseReviewSearch(search), [search]);
+  const parsedReview = useMemo(() => parseReviewSearch(search), [search]);
+  const review = embedded ? { ...parsedReview, tab: "messages" } : parsedReview;
   const selectTab = (tab) => setSearch(tab === "spend" ? "tab=spend" : tab === "told" ? "tab=told" : "tab=messages");
   const { access } = useAuth();
   // What hosts are told is decided by the owner and admins only.
@@ -125,12 +135,12 @@ export function DraftsPage() {
   const startPicked = useRef(false);
   const tabNamed = new URLSearchParams(search).has("tab") || query.hasDraft || !!query.record || query.state !== "waiting";
   useEffect(() => {
-    if (startPicked.current || !reviewCount.loaded) return;
+    if (embedded || startPicked.current || !reviewCount.loaded) return;
     startPicked.current = true;
     if (tabNamed) return;
     const start = needsYouStartTab(reviewCount, canTell);
     if (start !== "messages") setSearch(`tab=${start}`, { replace: true });
-  }, [reviewCount, canTell, tabNamed, setSearch]);
+  }, [embedded, reviewCount, canTell, tabNamed, setSearch]);
   const caughtUp = needsYouCaughtUp(reviewCount);
   const meta = `${totalWaiting} waiting`;
   const headerMeta = <span role="status" aria-live="polite"><Badge variant={totalWaiting > 0 ? "warning" : "success"}>{meta}</Badge></span>;
@@ -147,20 +157,21 @@ export function DraftsPage() {
   // below them never says "Nothing waiting." The copy follows the cards the
   // list actually shows (one load, shared with the list), never the menu
   // count, which can be slow, failing or out of date.
-  const draftNeededListed = review.tab !== "spend" && query.state === "waiting" && !filtered;
+  const draftNeededListed = !embedded && review.tab !== "spend" && query.state === "waiting" && !filtered;
   const draftNeeded = useDraftNeededReview({ enabled: draftNeededListed });
   const draftNeededShown = draftNeededListed && draftNeededCards(draftNeeded).length > 0;
   const emptyTitle = filtered ? `No ${query.state} drafts for this card.` : draftNeededShown ? "No drafts written yet." : query.state === "waiting" ? "Nothing waiting." : query.state === "sent" ? "No sent drafts yet." : "No discarded drafts.";
   const emptyCopy = filtered ? "Clear the filter to see the full queue." : draftNeededShown ? "Ask your agent to write a draft for the cards above." : query.state === "waiting" ? "Ask your agent to write a draft." : query.state === "sent" ? "Drafts you mark sent will appear here." : "Drafts you discard appear here for review.";
 
   return (
-    <div className="flex min-w-0 flex-col gap-6">
+    <div className={`flex min-w-0 flex-col ${embedded ? "gap-4" : "gap-6"}`}>
       {/* #3980 W3 rework 2: the roadmap words only for the owner and admins, who have that tab; everyone else reads the design's shorter line. */}
-      <div ref={headingRef} tabIndex={-1}>{canTell
+      {!embedded && <div ref={headingRef} tabIndex={-1}>{canTell
         ? <PageHeader title="Needs you" description="Only what needs a person: messages to send, money to spend, events to publish, and roadmap news to approve before hosts see it." meta={headerMeta} />
-        : <PageHeader title="Needs you" description="Only what needs a person: messages to send, money to spend, events to publish." meta={headerMeta} />}</div>
+        : <PageHeader title="Needs you" description="Only what needs a person: messages to send, money to spend, events to publish." meta={headerMeta} />}</div>}
+      {embedded && <span ref={headingRef} tabIndex={-1} className="sr-only">Message drafts</span>}
       {/* The tabs wrap inside their bar on a phone, never clipped. */}
-      <Segmented label="What to review" options={reviewTabs} value={review.tab} onChange={selectTab} variant="highContrast" fullWidth wrap className="sm:!w-fit" />
+      {!embedded && <Segmented label="What to review" options={reviewTabs} value={review.tab} onChange={selectTab} variant="highContrast" fullWidth wrap className="sm:!w-fit" />}
       {review.tab === "told" && canTell ? (
         <WordingQueue onChanged={() => { counts.refetch({ quiet: true }); announceReviewChange(); }} />
       ) : review.tab === "spend" ? (
@@ -176,14 +187,14 @@ export function DraftsPage() {
       {queue.loading || (!online && queue.error && queue.drafts.length === 0) ? <DraftQueueSkeleton still={!online || reduced} /> : queue.error ? (
         <AlertCard variant="error" title="Couldn’t load your drafts" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => queue.refetch()}>Try again</Button>}>{draftErrorWords(queue.error)}</AlertCard>
       ) : notFound ? (
-        <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">That draft isn’t here.</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">It may have been removed, or this link is not available to you.</p><a href="#/drafts" className="mt-4 inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-[var(--color-brand-700)]">Back to drafts</a></SectionCard>
+        <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">That draft isn’t here.</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">It may have been removed, or this link is not available to you.</p>{embedded ? <Button type="button" variant="secondary" className="mt-4 min-h-11" onClick={() => setSearch("")}>Show all my drafts</Button> : <a href="#/drafts" className="mt-4 inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-[var(--color-brand-700)]">Back to drafts</a>}</SectionCard>
       ) : queue.drafts.length === 0 && caughtUp && query.state === "waiting" && !filtered && !draftNeededShown ? (
         <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">You’re all caught up.</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">Nothing needs a person right now: no messages to send, no money to spend, nothing to publish.</p></SectionCard>
       ) : queue.drafts.length === 0 ? (
         <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">{emptyTitle}</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">{emptyCopy}</p>{query.state === "waiting" && !filtered ? <a href="#/agent" className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-[var(--color-brand-800)] px-4 text-sm font-semibold text-white hover:bg-[var(--color-brand-900)]">Open My agent</a> : <Button type="button" variant="secondary" className="mt-4 min-h-11" onClick={() => filtered ? (() => { const p = new URLSearchParams(search); p.delete("record"); setSearch(p.toString()); })() : selectState("waiting")}>{filtered ? "Clear filter" : "Show waiting"}</Button>}</SectionCard>
       ) : (
         <>
-          <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
+          <div className={`grid min-w-0 grid-cols-1 gap-4 ${embedded ? "" : "xl:grid-cols-2"}`}>
             <AnimatePresence initial={false}>
               {queue.drafts.map((draft) => <DraftCard key={draft.id} draft={draft} online={online} busy={queue.mutationIds.has(draft.id)} busyAction={queue.mutationActions.get(draft.id)} offlineHelpId="drafts-offline" deepLinked={query.draft === draft.id} onDirty={(value) => setDirty(draft.id, value)}
                 onUpdate={(changes) => mutate(draft, () => service.updateDraft(draft.id, changes), "saving")}

@@ -217,6 +217,12 @@ export function standupRows(people, cards, closedByPerson) {
   });
 }
 
+/** The people a standup covers: the person picked, or the whole team (not invites). */
+export function standupPeople(people, owner) {
+  const team = (Array.isArray(people) ? people : []).filter((p) => !p.invited);
+  return owner ? team.filter((p) => p.email === owner) : team;
+}
+
 /** The standup as plain text for a chat: one line per person. */
 export function standupText(rows, now = new Date()) {
   const d = at(now);
