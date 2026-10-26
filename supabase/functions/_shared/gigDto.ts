@@ -10,7 +10,8 @@ export const PUBLIC_GIG_KEYS = [
   "shoot_window",
   "post_by",
   "usage_days",
-  "budget_band",
+  "pay_up_to_minor",
+  "currency",
   "sales_share_bps",
   "slots_left",
 ] as const;

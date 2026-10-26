@@ -44,13 +44,13 @@ INSERT INTO public.creator_packages(id,creator_account_id,format_key,platforms,p
 INSERT INTO public.payee_accounts(user_id,stripe_account_id,stripe_status) VALUES
   ('38724000-0000-4000-8000-0000000000a3','acct_r2c1','active'),
   ('38724000-0000-4000-8000-0000000000a4','acct_r2c2','active');
-INSERT INTO public.gigs(id,brand_id,listing_kind,listing_id,title_public,brief_public,format_key,deliverables,city_id,category,shoot_window_start,shoot_window_end,post_by,budget_band,currency,slots,status,created_by) VALUES
+INSERT INTO public.gigs(id,brand_id,listing_kind,listing_id,title_public,brief_public,format_key,deliverables,city_id,category,shoot_window_start,shoot_window_end,post_by,pay_up_to_minor,currency,slots,status,created_by) VALUES
   ('38724000-0000-4000-8000-0000000000f1','38724000-0000-4000-8000-0000000000b1','event','38724000-0000-4000-8000-0000000000e1',
    'A rooftop date night','Show a relaxed evening on a rooftop with music, drinks and the view across the city.','date_idea','["1 reel"]'::jsonb,
-   '38724000-0000-4000-8000-0000000000c1','nightlife',current_date+1,current_date+20,current_date+30,'b2','USD',2,'open','38724000-0000-4000-8000-0000000000a1'),
+   '38724000-0000-4000-8000-0000000000c1','nightlife',current_date+1,current_date+20,current_date+30,30000,'USD',2,'open','38724000-0000-4000-8000-0000000000a1'),
   ('38724000-0000-4000-8000-0000000000f2','38724000-0000-4000-8000-0000000000b1','event','38724000-0000-4000-8000-0000000000e2',
    'A jazz night out','Show a relaxed evening of live jazz with friends, drinks and a great view of the band.','date_idea','["1 reel"]'::jsonb,
-   '38724000-0000-4000-8000-0000000000c1','nightlife',current_date+1,current_date+20,current_date+30,'b2','USD',1,'open','38724000-0000-4000-8000-0000000000a1');
+   '38724000-0000-4000-8000-0000000000c1','nightlife',current_date+1,current_date+20,current_date+30,30000,'USD',1,'open','38724000-0000-4000-8000-0000000000a1');
 INSERT INTO public.gig_interest(id,gig_id,creator_account_id,package_id,quoted_minor,status) VALUES
   ('38724000-0000-4000-8000-000000000101','38724000-0000-4000-8000-0000000000f1','38724000-0000-4000-8000-0000000000a3','38724000-0000-4000-8000-0000000000d3',30000,'sent'),
   ('38724000-0000-4000-8000-000000000102','38724000-0000-4000-8000-0000000000f1','38724000-0000-4000-8000-0000000000a4','38724000-0000-4000-8000-0000000000d4',30000,'sent'),
@@ -304,11 +304,36 @@ BEGIN
     'format_key','date_idea','deliverables','[{"platform":"instagram","kind":"reel","count":1}]'::jsonb,'city_id','38724000-0000-4000-8000-0000000000c1',
     'category','experience','shoot_window_start',v_day,'shoot_window_end',v_day,'post_by',v_day+2,
     'video_due_at',to_char(v_day+2,'YYYY-MM-DD')||'T18:30','shoot_at',to_char(v_day,'YYYY-MM-DD')||'T21:00',
-    'budget_band','b2','currency','USD','slots',1,'status','open');
+    'pay_up_to_minor',30000,'currency','USD','slots',1,'status','open');
   v_r:=public.gig_save(v_payload);
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'gig_save with exact times: %',v_r; END IF;
   v_gig:=(v_r->>'id')::uuid;
   SELECT * INTO v_row FROM public.gigs WHERE id=v_gig;
+  -- Pay: the host's "up to" amount is stored and read back exactly.
+  IF v_row.pay_up_to_minor IS DISTINCT FROM 30000 THEN RAISE EXCEPTION 'pay not stored: %',v_row.pay_up_to_minor; END IF;
+  SELECT g INTO v_r FROM jsonb_array_elements(public.gig_host_home(v_brand)->'gigs') g WHERE g->>'id'=v_gig::text;
+  IF (v_r->>'pay_up_to_minor')::bigint IS DISTINCT FROM 30000 OR v_r->>'currency' IS DISTINCT FROM 'USD' OR v_r ? 'budget_band' THEN
+    RAISE EXCEPTION 'host home pay shape: %',v_r;
+  END IF;
+  v_r:=public.gig_save(v_payload||jsonb_build_object('id',v_gig,'pay_up_to_minor',45000));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (SELECT pay_up_to_minor FROM public.gigs WHERE id=v_gig) IS DISTINCT FROM 45000 THEN
+    RAISE EXCEPTION 'pay edit not stored: %',v_r;
+  END IF;
+  v_r:=public.gig_save(v_payload-'pay_up_to_minor');
+  IF v_r IS DISTINCT FROM '{"ok":false,"error":"pay_required","field":"pay_up_to_minor"}'::jsonb THEN RAISE EXCEPTION 'missing pay: %',v_r; END IF;
+  v_r:=public.gig_save(v_payload||jsonb_build_object('pay_up_to_minor',0));
+  IF v_r->>'error' IS DISTINCT FROM 'pay_required' THEN RAISE EXCEPTION 'zero pay: %',v_r; END IF;
+  v_r:=public.gig_save(v_payload||jsonb_build_object('pay_up_to_minor',-500));
+  IF v_r->>'error' IS DISTINCT FROM 'pay_required' THEN RAISE EXCEPTION 'negative pay: %',v_r; END IF;
+  v_r:=public.gig_save(v_payload||jsonb_build_object('pay_up_to_minor','lots'));
+  IF v_r->>'error' IS DISTINCT FROM 'pay_required' THEN RAISE EXCEPTION 'text pay: %',v_r; END IF;
+  v_r:=public.gig_save(v_payload||jsonb_build_object('id',v_gig,'pay_up_to_minor',NULL));
+  IF v_r->>'field' IS DISTINCT FROM 'pay_up_to_minor' OR (SELECT pay_up_to_minor FROM public.gigs WHERE id=v_gig) IS DISTINCT FROM 45000 THEN
+    RAISE EXCEPTION 'an edit may not clear the pay: %',v_r;
+  END IF;
+  -- A level sent by an old client is not a pay.
+  v_r:=public.gig_save((v_payload-'pay_up_to_minor')||jsonb_build_object('budget_band','b2'));
+  IF v_r->>'error' IS DISTINCT FROM 'pay_required' THEN RAISE EXCEPTION 'band without pay: %',v_r; END IF;
   IF v_row.video_due_at IS DISTINCT FROM ((v_day+2)+time '18:30') AT TIME ZONE 'America/New_York'
      OR v_row.shoot_at IS DISTINCT FROM (v_day+time '21:00') AT TIME ZONE 'America/New_York'
      OR v_row.post_by<>v_day+2 THEN
@@ -325,6 +350,10 @@ BEGIN
   -- Creator reads.
   PERFORM pg_temp.act('38724000-0000-4000-8000-0000000000a4');
   v_r:=public.creator_gig_detail(v_gig);
+  IF (v_r->>'pay_up_to_minor')::bigint IS DISTINCT FROM 30000 OR v_r->>'currency' IS DISTINCT FROM 'USD'
+     OR v_r ? 'budget_band' OR v_r ? 'budget_min_minor' OR v_r ? 'budget_max_minor' OR v_r ? 'budget_currency' THEN
+    RAISE EXCEPTION 'creator gig detail pay shape: %',v_r;
+  END IF;
   IF (v_r->>'video_due_at')::timestamptz IS DISTINCT FROM v_row.video_due_at OR (v_r->>'shoot_at')::timestamptz IS DISTINCT FROM v_row.shoot_at THEN
     RAISE EXCEPTION 'creator gig detail lacks the exact times: %',v_r;
   END IF;
@@ -343,6 +372,25 @@ BEGIN
      OR (SELECT shoot_at FROM public.gigs WHERE id=(v_r->>'id')::uuid) IS NOT NULL THEN
     RAISE EXCEPTION 'date-only save did not derive the due time';
   END IF;
+END;
+$test$;
+
+-- Budget levels are retired: no level column, ranges table or admin editor RPC.
+DO $test$
+BEGIN
+  IF EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='gigs' AND column_name='budget_band') THEN
+    RAISE EXCEPTION 'gigs.budget_band still exists';
+  END IF;
+  IF to_regclass('public.gig_budget_bands') IS NOT NULL THEN RAISE EXCEPTION 'gig_budget_bands still exists'; END IF;
+  IF to_regprocedure('public.admin_budget_band_save(text,text,bigint,bigint)') IS NOT NULL THEN RAISE EXCEPTION 'admin_budget_band_save still exists'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='gigs' AND column_name='pay_up_to_minor' AND data_type='bigint') THEN
+    RAISE EXCEPTION 'gigs.pay_up_to_minor missing';
+  END IF;
+  BEGIN
+    UPDATE public.gigs SET pay_up_to_minor=0 WHERE id='38724000-0000-4000-8000-0000000000f1';
+    RAISE EXCEPTION 'zero pay stored';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
 END;
 $test$;
 

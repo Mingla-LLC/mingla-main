@@ -26,13 +26,13 @@ INSERT INTO public.seeding_cities(id,google_place_id,name,country,center_lat,cen
 VALUES('38723200-0000-4000-8000-0000000000c1','w1rf-city','Durham','US',36,-78.9,35.9,-79,36.1,-78.8);
 INSERT INTO public.creator_accounts(id,email,display_name) VALUES('38723200-0000-4000-8000-0000000000a4','w1rf-creator@mingla.test','Cy Reels');
 INSERT INTO public.creator_profiles(creator_account_id,mode_enabled,display_name,verification) VALUES('38723200-0000-4000-8000-0000000000a4',true,'Cy Reels','verified');
-INSERT INTO public.gigs(id,brand_id,listing_kind,listing_id,title_public,brief_public,format_key,deliverables,city_id,category,shoot_window_start,shoot_window_end,post_by,budget_band,currency,status,created_by)
+INSERT INTO public.gigs(id,brand_id,listing_kind,listing_id,title_public,brief_public,format_key,deliverables,city_id,category,shoot_window_start,shoot_window_end,post_by,pay_up_to_minor,currency,status,created_by)
 VALUES('38723200-0000-4000-8000-0000000000f1','38723200-0000-4000-8000-0000000000b1','event','38723200-0000-4000-8000-0000000000e1',
   'Rooftop night reel','A short reel that shows the rooftop at night with music and the city skyline behind.','date_idea','["1 reel"]'::jsonb,
-  '38723200-0000-4000-8000-0000000000c1','nightlife',current_date,current_date+5,current_date+9,'b1','USD','open','38723200-0000-4000-8000-0000000000a1'),
+  '38723200-0000-4000-8000-0000000000c1','nightlife',current_date,current_date+5,current_date+9,30000,'USD','open','38723200-0000-4000-8000-0000000000a1'),
   ('38723200-0000-4000-8000-0000000000f2','38723200-0000-4000-8000-0000000000b1','event','38723200-0000-4000-8000-0000000000e1',
   'Rooftop brunch reel','A short reel that shows the rooftop brunch with music and the city skyline behind.','date_idea','["1 reel"]'::jsonb,
-  '38723200-0000-4000-8000-0000000000c1','food',current_date,current_date+5,current_date+9,'b1','USD','open','38723200-0000-4000-8000-0000000000a1');
+  '38723200-0000-4000-8000-0000000000c1','food',current_date,current_date+5,current_date+9,30000,'USD','open','38723200-0000-4000-8000-0000000000a1');
 INSERT INTO public.gig_contracts(id,gig_id,brand_id,creator_account_id,state) VALUES
   ('38723200-0000-4000-8000-000000000201','38723200-0000-4000-8000-0000000000f1','38723200-0000-4000-8000-0000000000b1','38723200-0000-4000-8000-0000000000a4','released'),
   ('38723200-0000-4000-8000-000000000202','38723200-0000-4000-8000-0000000000f2','38723200-0000-4000-8000-0000000000b1','38723200-0000-4000-8000-0000000000a4','script_locked');
