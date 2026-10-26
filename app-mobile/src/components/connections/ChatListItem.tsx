@@ -42,6 +42,7 @@ import {
   CHAT_ROW_HEIGHT,
   CHAT_ROW_SIDE_PADDING,
   CHAT_SEPARATOR_INSET,
+  chatAvatarSpec,
   chatKind,
   formatChatListTime,
   formatUpcomingEventTag,
@@ -207,11 +208,22 @@ function ChatListItemImpl({
       ? t('connections:tag_enquiry')
       : null;
 
-  const avatarPeople = (isBrandChannel ? [] : isGroup ? others : otherParticipant ? [otherParticipant] : []).slice(0, 2).map((p) => ({
-    id: p.id,
-    name: getDisplayName(p),
-    avatarUrl: p.avatar_url ?? null,
-  }));
+  // Issue #4114: the friend's photo, the other members' photos, the event
+  // cover or the brand logo, by kind (chatAvatarSpec), with initials last.
+  const avatar = chatAvatarSpec({
+    kind: isBrandChannel ? 'brand_channel' : kind,
+    currentUserId,
+    label: displayName,
+    participants: conversation.participants.map((p) => ({
+      id: p.id,
+      name: getDisplayName(p),
+      avatarUrl: p.avatar_url ?? null,
+    })),
+    brandLogoUrl: brandChannel?.logoUrl ?? null,
+    eventCoverUrl: conversation.eventCoverMediaUrl ?? null,
+    eventCoverMediaType: conversation.eventPublicCard?.coverMediaType ?? null,
+    eventBrandLogoUrl: conversation.eventBrandLogoUrl ?? null,
+  });
 
   const close = useCallback(() => swipeRef.current?.close(), []);
 
@@ -323,10 +335,11 @@ function ChatListItemImpl({
       >
         {showSeparator ? <View style={styles.separator} /> : null}
         <ChatAvatar
-          people={avatarPeople}
-          shape={isEvent ? 'square' : isGroup ? 'group' : 'circle'}
-          label={displayName}
-          coverUrl={isBrandChannel ? brandChannel.logoUrl : isEvent ? conversation.eventCoverMediaUrl : null}
+          people={avatar.people}
+          shape={avatar.shape}
+          label={avatar.label}
+          coverUrls={avatar.coverUrls}
+          extraCount={avatar.extraCount}
           deckBadge={kind === 'group' || kind === 'direct_collab'}
         />
         <View style={styles.body}>

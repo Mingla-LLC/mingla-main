@@ -365,3 +365,115 @@ export function chatListLayouts(items: readonly ChatListItemModel<unknown, unkno
     return layout;
   });
 }
+
+// ── Avatars ─────────────────────────────────────────────────────────────────
+/**
+ * Issue #4114 — what each chat row's avatar shows.
+ *
+ *  - direct / direct_collab: the friend's profile photo, initials if none.
+ *  - group: the other members' photos (never you): one circle for one other,
+ *    two overlapping for two, a triangle for three, two plus "+N" for more.
+ *  - event (team members' per-event rows): the event cover (never a video),
+ *    then the brand logo, then initials, in a rounded square.
+ *  - brand_channel: the brand logo, then the brand's initials.
+ *  - enquiry (#4111): the brand logo when the row carries one, else the person.
+ *
+ * Only stored URLs are used (no image transformations: the spend cap is armed).
+ */
+export interface AvatarPersonInput {
+  id: string;
+  name: string;
+  avatarUrl?: string | null;
+}
+
+export interface ChatAvatarSpec {
+  shape: "circle" | "group" | "square";
+  /** People in the circle or cluster, at most 3, never the current user. */
+  people: AvatarPersonInput[];
+  /** Images for the rounded square, tried in order before the initials. */
+  coverUrls: string[];
+  /** Members beyond the two shown, drawn as a "+N" bubble (group only). */
+  extraCount: number;
+  label: string;
+}
+
+export interface ChatAvatarInput {
+  kind: ChatKind;
+  currentUserId: string;
+  /** Display label: the friend's, group's, event's or brand's name. */
+  label: string;
+  participants: readonly AvatarPersonInput[];
+  /** brand_channel: the brand's logo. */
+  brandLogoUrl?: string | null;
+  /** event: its cover and its brand's logo. */
+  eventCoverUrl?: string | null;
+  eventCoverMediaType?: string | null;
+  eventBrandLogoUrl?: string | null;
+}
+
+/** Most members shown as photos before the rest collapse into "+N". */
+const GROUP_PHOTOS_BEFORE_OVERFLOW = 2;
+const GROUP_MAX_FACES = 3;
+
+function present(url: string | null | undefined): url is string {
+  return typeof url === "string" && url.trim().length > 0;
+}
+
+function uniqueUrls(urls: readonly (string | null | undefined)[]): string[] {
+  const out: string[] = [];
+  for (const url of urls) {
+    if (present(url) && !out.includes(url)) out.push(url);
+  }
+  return out;
+}
+
+function square(label: string, urls: readonly (string | null | undefined)[]): ChatAvatarSpec {
+  return { shape: "square", people: [], coverUrls: uniqueUrls(urls), extraCount: 0, label };
+}
+
+function circle(label: string, person: AvatarPersonInput | undefined): ChatAvatarSpec {
+  return {
+    shape: "circle",
+    people: [person ?? { id: "person", name: label }],
+    coverUrls: [],
+    extraCount: 0,
+    label,
+  };
+}
+
+export function chatAvatarSpec(input: ChatAvatarInput): ChatAvatarSpec {
+  const others = input.participants.filter((person) => person.id !== input.currentUserId);
+  switch (input.kind) {
+    case "brand_channel":
+      return square(input.label, [input.brandLogoUrl]);
+    case "event":
+      return square(input.label, [
+        input.eventCoverMediaType === "video" ? null : input.eventCoverUrl,
+        input.eventBrandLogoUrl,
+      ]);
+    case "enquiry":
+      return present(input.eventBrandLogoUrl ?? input.brandLogoUrl)
+        ? square(input.label, [input.eventBrandLogoUrl, input.brandLogoUrl])
+        : circle(input.label, others[0]);
+    case "group": {
+      if (others.length <= 1) return circle(input.label, others[0]);
+      if (others.length <= GROUP_MAX_FACES) {
+        return { shape: "group", people: others.slice(0, GROUP_MAX_FACES), coverUrls: [], extraCount: 0, label: input.label };
+      }
+      return {
+        shape: "group",
+        people: others.slice(0, GROUP_PHOTOS_BEFORE_OVERFLOW),
+        coverUrls: [],
+        extraCount: others.length - GROUP_PHOTOS_BEFORE_OVERFLOW,
+        label: input.label,
+      };
+    }
+    case "direct":
+    case "direct_collab":
+      return circle(input.label, others[0]);
+    default: {
+      const exhaustive: never = input.kind;
+      return exhaustive;
+    }
+  }
+}
