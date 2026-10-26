@@ -18,12 +18,13 @@ import { isRetiredPageId, redirectHash } from "./lib/adminRoutes";
 import {
   OutreachHub,
   InboundHub,
-  PlacePoolHub,
-  PlatformHealthHub,
-  SettingsHub,
-  TeamAndRolesHub,
-  FeatureFlagsPlaceholder,
 } from "./pages/shellHubs";
+// #4130 (Wave 4b): the System and Explorer app pages, built as designed.
+import { PlacePoolPage } from "./pages/PlacePoolPage";
+import { PlatformHealthPage } from "./pages/PlatformHealthPage";
+import { FeatureFlagsPage } from "./pages/FeatureFlagsPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { AdminPage } from "./pages/AdminPage";
 import { INVITE_ROUTE, parseInviteHash } from "./lib/inviteLink";
 // Issue #3802 — the home page of the two non-admin team roles (#/home).
 import { RoleHomePage } from "./pages/RoleHomePage";
@@ -104,8 +105,9 @@ const PAGES = {
   "refund-operations": RefundOperationsPage,
   subscriptions: SubscriptionManagementPage,
   pricing: PricingPage,
-  // ── Explorer app ── #4130: Launch Cities, Signal Library, Deck tuner as tabs.
-  placepool: PlacePoolHub,
+  // ── Explorer app ── #4130: Launch Cities, Signal Library and Deck tuner
+  // folded into Place pool (Cities, Pipeline, a place's score override).
+  placepool: PlacePoolPage,
   // ── Growth ── ISSUE-862 WP1: Full Rooms Ad Engine (hash route #/ad-engine).
   "ad-engine": AdEnginePage,
   // ISSUE-864 WP4: Campaign Builder wizard + campaign surface (launch lives
@@ -113,13 +115,14 @@ const PAGES = {
   "campaign-builder": CampaignBuilderPage,
   campaigns: CampaignsPage,
   // ── Company ── #4130: Careers is a tab of Team and roles.
-  admin: TeamAndRolesHub,
+  admin: AdminPage,
   "data-room": DataRoomPage,
   // ── System ── #4130: Stripe mode, API health, Queue health in one page;
-  // Intelligence Trial history is a tab of Settings; Feature flags (Wave 4b).
-  "platform-health": PlatformHealthHub,
-  "feature-flags": FeatureFlagsPlaceholder,
-  settings: SettingsHub,
+  // Intelligence Trial history is a section of Settings; Feature flags have
+  // their own page (Wave 4b).
+  "platform-health": PlatformHealthPage,
+  "feature-flags": FeatureFlagsPage,
+  settings: SettingsPage,
   // Issue #3980: #/agent-log stays a page that opens Work > Agent activity.
   "agent-log": AgentLogPage,
   // Issue #3802 (Wave 4): opened by the `crm` area. #4130: from the header's

@@ -52,3 +52,23 @@ export function systemErrorWords(error) {
   if (/not_found/.test(msg)) return "That flag no longer exists. Refresh the list.";
   return msg || "Something went wrong. Try again.";
 }
+
+/** Re-counts the admin place view now (it also refreshes every 10 minutes). */
+export function refreshPlacePoolStats() {
+  return call("admin_refresh_place_pool_mv");
+}
+
+/** The Intelligence Trial's last 200 runs, read-only (the trial is retired). */
+export async function fetchTrialRunHistory() {
+  const { data, error } = await supabase
+    .from("place_intelligence_trial_runs")
+    .select("*, place:place_pool!place_pool_id(id, name, primary_type)")
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) {
+    const err = new Error(error.message || "Couldn't load the trial history.");
+    err.code = error.code;
+    throw err;
+  }
+  return data || [];
+}
