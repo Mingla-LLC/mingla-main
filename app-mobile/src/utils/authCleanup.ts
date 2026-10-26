@@ -11,6 +11,7 @@ import {
   resetAppsFlyerDeviceCache,
 } from "../services/appsFlyerService";
 import { clearNativeAdAttribution } from "../services/nativeAdAttributionService";
+import { SEEN_MATCHES_KEY_PREFIX } from "../hooks/useSeenSessionMatches";
 
 type CleanupOptions = {
   reason: string;
@@ -21,7 +22,7 @@ type CleanupOptions = {
 
 const REACT_QUERY_PERSIST_KEY = "REACT_QUERY_OFFLINE_CACHE";
 
-function isPrivateAsyncStorageKey(key: string): boolean {
+export function isPrivateAsyncStorageKey(key: string): boolean {
   if (key === REACT_QUERY_PERSIST_KEY) return true;
   if (key.startsWith("mingla_")) return true;
   if (key.startsWith("mingla:")) return true;
@@ -33,6 +34,8 @@ function isPrivateAsyncStorageKey(key: string): boolean {
   if (key === "pending_actions") return true;
   if (key === "realtime_offline_queue") return true;
   if (key === "recommendation_cache") return true;
+  // Issue #4114 Wave 3: which collab matches this account has opened.
+  if (key.startsWith(SEEN_MATCHES_KEY_PREFIX)) return true;
   return false;
 }
 

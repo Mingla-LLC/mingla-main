@@ -9,7 +9,9 @@
 import { useCallback, useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const KEY_PREFIX = "chat:seen-matches:";
+/** Per-account (cleared on logout by utils/authCleanup). */
+export const SEEN_MATCHES_KEY_PREFIX = "chat:seen-matches:";
+const KEY_PREFIX = SEEN_MATCHES_KEY_PREFIX;
 
 export function useSeenSessionMatches(sessionId: string | null | undefined): {
   seenIds: ReadonlySet<string>;

@@ -18,6 +18,7 @@ import {
   groupChatMediaKind,
   type GroupChatMediaMessage,
 } from "../../utils/groupChatMedia";
+import { registerSignOutCleanup } from "../../utils/signOutCleanups";
 import { Icon } from "../ui/Icon";
 
 // Lives here (only the event chat panel imports it) so the signing code stays
@@ -27,6 +28,8 @@ const signedUrls = new GroupChatSignedUrlCache(async (path, seconds) => {
   if (error || !data?.signedUrl) throw error ?? new Error("sign_failed");
   return data.signedUrl;
 });
+// Signed links belong to the signed-in host: sign-out drops them (Constitution #6).
+registerSignOutCleanup(() => signedUrls.clear());
 const media = createGroupChatMediaResolver(signedUrls);
 const resolveGroupChatMediaUrl = media.resolve;
 const peekGroupChatMediaUrl = media.peek;

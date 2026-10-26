@@ -13,10 +13,10 @@
 //   * a stored path is never mistaken for a URL and vice versa;
 //   * the signed-URL cache never caches a failed sign and shares one call.
 //
-// KNOWN DEFECT (tester finding T-W4-2, ignored until fixed): SignedUrlCache.clear()
-// (run on logout) does not stop a sign that is already in flight from writing
-// its URL into the cleared cache, so the previous account's link survives
-// logout. [TRANSITIONAL] exit: un-ignore when clear() invalidates in-flight work.
+// Tester finding T-W4-2 (fixed in the #4114 rework): SignedUrlCache.clear()
+// (run on logout) must stop a sign that is already in flight from writing its
+// URL into the cleared cache, so the previous account's link never survives
+// logout.
 //
 // FAILS-ON-REVERT: drop the `+ 0.5` slack or use `>=` for the length check,
 // let a file fall back to its extension when the picker reported a MIME, or
@@ -137,8 +137,7 @@ Deno.test("#4114 W4 adversarial: the signed-URL cache never caches a failure and
 });
 
 Deno.test({
-  name: "#4114 W4 adversarial [KNOWN DEFECT T-W4-2]: clear() on logout drops a sign that is still in flight",
-  ignore: true,
+  name: "#4114 W4 adversarial [T-W4-2]: clear() on logout drops a sign that is still in flight",
   fn: async () => {
     let release: (value: string) => void = () => {};
     const cache = new SignedUrlCache(() => new Promise<string>((resolve) => { release = resolve; }), () => 0, 3600);

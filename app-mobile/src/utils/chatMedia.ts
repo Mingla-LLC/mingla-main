@@ -203,6 +203,9 @@ interface CacheEntry {
 export class SignedUrlCache {
   private readonly entries = new Map<string, CacheEntry>();
   private readonly inflight = new Map<string, Promise<string>>();
+  // Bumped by clear(): a sign started before the clear (the previous account's)
+  // can never write its link back into the cache.
+  private generation = 0;
 
   constructor(
     private readonly sign: (path: string, seconds: number) => Promise<string>,
@@ -222,13 +225,15 @@ export class SignedUrlCache {
     const running = this.inflight.get(path);
     if (running) return running;
     const started = this.now();
-    const request = this.sign(path, this.seconds)
+    const generation = this.generation;
+    const request: Promise<string> = this.sign(path, this.seconds)
       .then((url) => {
+        if (generation !== this.generation) throw new Error('signed_url_cache_cleared');
         this.entries.set(path, { url, expiresAt: started + this.seconds * 1000 });
         return url;
       })
       .finally(() => {
-        this.inflight.delete(path);
+        if (this.inflight.get(path) === request) this.inflight.delete(path);
       });
     this.inflight.set(path, request);
     return request;
@@ -239,6 +244,7 @@ export class SignedUrlCache {
   }
 
   clear(): void {
+    this.generation += 1;
     this.entries.clear();
     this.inflight.clear();
   }
