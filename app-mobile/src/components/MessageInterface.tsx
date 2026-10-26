@@ -45,6 +45,10 @@ import { CollabDeckSheet } from "./connections/CollabDeckSheet";
 import { ChatHeader, type ChatHeaderStripLabels } from "./chat/ChatHeader";
 import { buildCollabHeaderStrip, matchKey, memberFirstNames } from "./chat/chatHeaderModel";
 import { useSeenSessionMatches } from "../hooks/useSeenSessionMatches";
+import { ChatActionList } from "./chat/ChatActionList";
+import { GroupInfoSheet } from "./chat/GroupInfoSheet";
+import { ChatMediaSheet } from "./chat/ChatMediaSheet";
+import { buildFriendMenu, type FriendMenuItemId } from "../utils/chatMenuModel";
 import {
   getCollabChatHeaderActions,
   type CollabChatHeaderActionId,
@@ -84,6 +88,7 @@ import { useRouter } from 'expo-router';
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { colors as dsColors, spacing as dsSpacing, glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
 import { colors } from "../constants/colors";
+import { chatTokens } from "../constants/chatTokens";
 import { useAppLayout } from "../hooks/useAppLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
@@ -104,6 +109,10 @@ const CHAT_MORE_OPTIONS_SNAP = ["45%"] as const;
 // META-ORCH-0991 Wave C: event-audience picker — was a dark flex-end RN <Modal>
 // (list maxHeight min(SCREEN_HEIGHT*0.52, 430) + header) → fixed ['70%'] snap.
 const EVENT_AUDIENCE_SNAP = ["70%"] as const;
+
+/** Issue #4114 Wave 3: wait for the menu sheet to leave before presenting the next one. */
+const MENU_PRESENT_AFTER_DISMISS_MS = 320;
+const MUTE_BUSY_IDS: ReadonlySet<FriendMenuItemId> = new Set<FriendMenuItemId>(["mute"]);
 
 const BROADCAST_COMPOSER_NOTICE_HEIGHT = 56;
 const BROADCAST_COMPOSER_NOTICE_BOTTOM_GAP = 14;
@@ -195,9 +204,19 @@ interface MessageInterfaceProps {
    */
   onOpenAddToBoardModal: (friend: Friend) => void;
   onShareSavedCard?: (friend: any, suppressNotification?: boolean) => void;
-  onRemoveFriend?: (friend: any, suppressNotification?: boolean) => void;
-  onBlockUser?: (friend: any, suppressNotification?: boolean) => void;
-  onReportUser?: (friend: any, suppressNotification?: boolean) => void;
+  /**
+   * Issue #4114 Wave 3: each runs its own confirm and calls `onSettled` with the
+   * REAL outcome (false on Cancel or failure). The chat's "removed / blocked /
+   * reported" toast fires only on `true`, never before the confirm.
+   */
+  onRemoveFriend?: (friend: any, onSettled?: (removed: boolean) => void) => void;
+  onBlockUser?: (friend: any, onSettled?: (blocked: boolean) => void) => void;
+  onReportUser?: (friend: any, onSettled?: (reported: boolean) => void) => void;
+  /** Issue #4114 Wave 3: 1:1 mute (per person). Resolves true once saved. */
+  isMuted?: boolean;
+  onToggleMute?: () => Promise<boolean>;
+  /** Issue #4114 Wave 3: the member left a group that has no session. */
+  onGroupConversationLeft?: () => void;
   accountPreferences?: any;
   userPreferences?: any;
   savedCards?: any[];
@@ -269,6 +288,9 @@ export default function MessageInterface({
   onViewProfile,
   isPairedFriend = false,
   onOpenPairedProfile,
+  isMuted = false,
+  onToggleMute,
+  onGroupConversationLeft,
   onSessionNameUpdated,
   onGroupSessionExited,
   onGroupSessionDeleted,
@@ -336,6 +358,9 @@ export default function MessageInterface({
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [showMediaSheet, setShowMediaSheet] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [isMuteBusy, setIsMuteBusy] = useState(false);
   const [showCollabDeckSheet, setShowCollabDeckSheet] = useState(false);
   const [showCollabMatchesSheet, setShowCollabMatchesSheet] = useState(false);
   const [showCollabPlansSheet, setShowCollabPlansSheet] = useState(false);
@@ -497,6 +522,50 @@ export default function MessageInterface({
     cardTagSource: chatCardTagSource.data,
   });
   const newMessage = chatController.text;
+
+  // Issue #4114 Wave 3: one stable card-open handler for bubbles and the
+  // "Photos, videos and cards" sheet.
+  const handleCardBubbleTap = useCallback(async (payload: CardPayload, messageId: string): Promise<void> => {
+    if (isContentShareCardPayload(payload)) {
+      const descriptor = validateNativeContentCardDescriptorV1(payload.nativeCard);
+      if (descriptor) {
+        const openSnapshot = (card: LegacyCardPayload) => {
+          setExpandedCardFromChat(cardPayloadToExpandedCardData(card));
+          setShowExpandedCardFromChat(true);
+        };
+        const resolveAndOpen = async (): Promise<void> => {
+          setResolvingNativeCardId(messageId);
+          setNativeCard(descriptor);
+          try {
+            const cached = await nativeContentCardSnapshotService.cached(messageId, descriptor.snapshotFingerprint);
+            if (cached) { openSnapshot(cached); return; }
+            if (isOffline) {
+              Alert.alert('Connect to open the full card', 'Reconnect, then try again.');
+              return;
+            }
+            const resolved = await nativeContentCardSnapshotService.resolve([messageId], { [messageId]: descriptor.snapshotFingerprint });
+            const snapshot = resolved.get(messageId);
+            if (!snapshot) throw new Error('native_snapshot_unavailable');
+            openSnapshot(snapshot);
+          } catch {
+            Alert.alert("Couldn't open the full card", 'Connect and try again, or open the shared web link.', [
+              { text: 'Open shared link', onPress: () => router.push(`/s/${payload.shareCode}` as never) },
+              { text: 'Retry', onPress: () => { void resolveAndOpen(); } },
+            ]);
+          } finally { setResolvingNativeCardId(null); setNativeCard(null); }
+        };
+        await resolveAndOpen();
+        return;
+      }
+      router.push(`/s/${payload.shareCode}` as never);
+      return;
+    }
+    // ORCH-0685: typed conversion replaces unsafe `any` cast (Constitution #12 fix).
+    setExpandedCardFromChat(cardPayloadToExpandedCardData(payload));
+    setShowExpandedCardFromChat(true);
+    // ORCH-0685 cycle-3: sharedCardIsSaved now derived via useEffect against
+    // savedCardsQuery.data — no manual reset needed.
+  }, [isOffline, router]);
 
   const handleSystemTokenPress = useCallback((token: CollabSystemToken) => {
     if (!isCollabSessionGroupChat || !friend.sessionId) return;
@@ -900,6 +969,11 @@ export default function MessageInterface({
     }
   };
 
+  const closeImagePreview = () => {
+    setShowImagePreview(false);
+    setLightboxUrl(null);
+  };
+
   const handleRemoveFile = () => {
     setSelectedFile(null);
     setPreviewUrl("");
@@ -1202,28 +1276,123 @@ export default function MessageInterface({
     }
   };
 
+  // Issue #4114 Wave 3: no toast before the confirm. Each owner runs its own
+  // confirm (Alert / BlockUserModal / ReportUserModal) and settles with the real
+  // outcome; Cancel and failures show nothing here (failures toast at the owner).
   const handleRemoveFriend = () => {
-    onRemoveFriend?.(friend, true);
     setShowMoreOptionsMenu(false);
-    showNotification(
-      t('chat:friendRemoved'),
-      t('chat:friendRemovedMessage', { name: friend.name })
-    );
+    onRemoveFriend?.(friend, (removed) => {
+      if (!removed) return;
+      showNotification(
+        t('chat:friendRemoved'),
+        t('chat:friendRemovedMessage', { name: friend.name })
+      );
+    });
   };
 
   const handleBlockUser = () => {
-    onBlockUser?.(friend, true);
     setShowMoreOptionsMenu(false);
-    showNotification(t('chat:userBlocked'), t('chat:userBlockedMessage', { name: friend.name }));
+    onBlockUser?.(friend, (blocked) => {
+      if (!blocked) return;
+      showNotification(t('chat:userBlocked'), t('chat:userBlockedMessage', { name: friend.name }));
+    });
   };
 
   const handleReportUser = () => {
-    onReportUser?.(friend, true);
     setShowMoreOptionsMenu(false);
-    showNotification(
-      t('chat:userReported'),
-      t('chat:userReportedMessage', { name: friend.name })
-    );
+    onReportUser?.(friend, (reported) => {
+      if (!reported) return;
+      showNotification(
+        t('chat:userReported'),
+        t('chat:userReportedMessage', { name: friend.name })
+      );
+    });
+  };
+
+  const handleToggleMute = async () => {
+    if (!onToggleMute || isMuteBusy) return;
+    const willMute = !isMuted;
+    setIsMuteBusy(true);
+    try {
+      const saved = await onToggleMute();
+      if (saved) {
+        showNotification(
+          willMute ? t('chat:mutedTitle') : t('chat:unmutedTitle'),
+          willMute ? t('chat:mutedBody', { name: cleanName(friend.name) }) : t('chat:unmutedBody', { name: cleanName(friend.name) }),
+        );
+      }
+    } finally {
+      setIsMuteBusy(false);
+    }
+  };
+
+  // Issue #4114 Wave 3: the one friend action list (shared with FriendActionsSheet).
+  const friendMenuItems = useMemo(
+    () =>
+      buildFriendMenu({
+        surface: "chat",
+        isFriend: !isUnfriended && !isBlocked && !isDeletedAccount,
+        pairState: isPairedFriend ? "paired" : "none",
+        canOpenPairedView: Boolean(isPairedFriend && onOpenPairedProfile),
+        canUnpair: false,
+        canViewProfile: Boolean(onViewProfile) && !isDeletedAccount,
+        hasConversation: Boolean(conversationId),
+        isMuted,
+      }).filter((item) => item.id !== "mute" || Boolean(onToggleMute)),
+    [conversationId, isBlocked, isDeletedAccount, isMuted, isPairedFriend, isUnfriended, onOpenPairedProfile, onToggleMute, onViewProfile],
+  );
+
+  // Present-after-dismiss: iOS shows one RN Modal at a time, so a row that
+  // opens another sheet or an alert waits for the menu to finish leaving.
+  const afterMenuCloses = (run: () => void) => {
+    setShowMoreOptionsMenu(false);
+    setTimeout(run, MENU_PRESENT_AFTER_DISMISS_MS);
+  };
+
+  const handleFriendMenuSelect = (id: FriendMenuItemId) => {
+    switch (id) {
+      case "viewProfile":
+        setShowMoreOptionsMenu(false);
+        onViewProfile?.(friend.id);
+        return;
+      case "media":
+        afterMenuCloses(() => setShowMediaSheet(true));
+        return;
+      case "shareCard":
+        handleShareSavedCard();
+        return;
+      case "addToSession":
+        afterMenuCloses(handleAddToBoard);
+        return;
+      case "mute":
+        setShowMoreOptionsMenu(false);
+        void handleToggleMute();
+        return;
+      case "pairedView":
+        setShowMoreOptionsMenu(false);
+        onOpenPairedProfile?.(friend.id);
+        return;
+      case "removeFriend":
+        afterMenuCloses(handleRemoveFriend);
+        return;
+      case "report":
+        afterMenuCloses(handleReportUser);
+        return;
+      case "block":
+        afterMenuCloses(handleBlockUser);
+        return;
+      case "startCollab":
+      case "sendPair":
+      case "pairPending":
+      case "unpair":
+        // Not offered in the chat surface (Wave 5 / friends sheet only).
+        setShowMoreOptionsMenu(false);
+        return;
+      default: {
+        const never: never = id;
+        return never;
+      }
+    }
   };
 
   const handleExitGroupSession = useCallback(() => {
@@ -1600,47 +1769,7 @@ export default function MessageInterface({
                     isSystem: item.message.isSystem,
                     systemPayload: item.message.systemPayload,
                   }}
-                  onCardBubbleTap={async (payload, messageId) => {
-                    if (isContentShareCardPayload(payload)) {
-                      const descriptor = validateNativeContentCardDescriptorV1(payload.nativeCard);
-                      if (descriptor) {
-                        const openSnapshot = (card: LegacyCardPayload) => {
-                          setExpandedCardFromChat(cardPayloadToExpandedCardData(card));
-                          setShowExpandedCardFromChat(true);
-                        };
-                        const resolveAndOpen = async (): Promise<void> => {
-                          setResolvingNativeCardId(messageId);
-                          setNativeCard(descriptor);
-                          try {
-                            const cached = await nativeContentCardSnapshotService.cached(messageId, descriptor.snapshotFingerprint);
-                            if (cached) { openSnapshot(cached); return; }
-                            if (isOffline) {
-                              Alert.alert('Connect to open the full card', 'Reconnect, then try again.');
-                              return;
-                            }
-                            const resolved = await nativeContentCardSnapshotService.resolve([messageId], { [messageId]: descriptor.snapshotFingerprint });
-                            const snapshot = resolved.get(messageId);
-                            if (!snapshot) throw new Error('native_snapshot_unavailable');
-                            openSnapshot(snapshot);
-                          } catch {
-                            Alert.alert("Couldn't open the full card", 'Connect and try again, or open the shared web link.', [
-                              { text: 'Open shared link', onPress: () => router.push(`/s/${payload.shareCode}` as never) },
-                              { text: 'Retry', onPress: () => { void resolveAndOpen(); } },
-                            ]);
-                          } finally { setResolvingNativeCardId(null); setNativeCard(null); }
-                        };
-                        await resolveAndOpen();
-                        return;
-                      }
-                      router.push(`/s/${payload.shareCode}` as never);
-                      return;
-                    }
-                    // ORCH-0685: typed conversion replaces unsafe `any` cast (Constitution #12 fix).
-                    setExpandedCardFromChat(cardPayloadToExpandedCardData(payload));
-                    setShowExpandedCardFromChat(true);
-                    // ORCH-0685 cycle-3: sharedCardIsSaved now derived via useEffect against
-                    // savedCardsQuery.data — no manual reset needed.
-                  }}
+                  onCardBubbleTap={handleCardBubbleTap}
                   onMentionTap={onViewProfile}
                   onCardTagTap={(cardTag) => {
                     setExpandedCardFromChat(cardPayloadToExpandedCardData(cardTag.cardPayload));
@@ -1794,26 +1923,30 @@ export default function MessageInterface({
       )}
 
       {/* Full Screen Image Preview Modal */}
+      {/* Issue #4114 Wave 3: also the lightbox for a photo opened from
+          "Photos, videos and cards" (Wave 4 brings the full media viewer). */}
       <Modal
-        visible={showImagePreview}
+        visible={showImagePreview || !!lightboxUrl}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setShowImagePreview(false)}
+        onRequestClose={closeImagePreview}
       >
         <View style={styles.imagePreviewModal}>
           <TouchableOpacity
             style={styles.imagePreviewCloseButton}
-            onPress={() => setShowImagePreview(false)}
+            onPress={closeImagePreview}
+            accessibilityRole="button"
+            accessibilityLabel={t('chat:a11yClosePreview')}
           >
             <Icon name="close" size={28} color="white" />
           </TouchableOpacity>
-          {previewUrl && (
+          {(lightboxUrl || previewUrl) ? (
             <ImageWithFallback
-              source={{ uri: previewUrl }}
+              source={{ uri: lightboxUrl || previewUrl }}
               style={styles.imagePreviewFullscreen}
               resizeMode="contain"
             />
-          )}
+          ) : null}
         </View>
       </Modal>
 
@@ -2371,92 +2504,61 @@ export default function MessageInterface({
         onParticipantsChange={onGroupParticipantsChange}
       />
 
-      {/* More options bottom sheet — ORCH-0435.
-          META-ORCH-0991 Wave B Batch 5: was an RN <Modal> flex-end card → light
-          BaseBottomSheet, fixed ['45%'] snap (action-menu list, not a tall sheet),
-          wrapInRNModal (mounted in chat over the chat input). Header (contact name) +
-          action-item body. Destructive items (Remove / Block / Report) route to their
-          OWN confirms downstream, so this menu itself is a non-destructive picker. */}
+      {/* More options bottom sheet — ORCH-0435. META-ORCH-0991 Wave B Batch 5:
+          BaseBottomSheet, fixed ['45%'] snap, wrapInRNModal. Issue #4114 Wave 3:
+          dark, and the SAME ordered list as FriendActionsSheet
+          (utils/chatMenuModel). Destructive rows route to their own confirms
+          downstream, and their toasts wait for the real outcome. */}
       <BaseBottomSheet
         visible={!isGroupChat && showMoreOptionsMenu}
         onClose={() => setShowMoreOptionsMenu(false)}
         snapPoints={CHAT_MORE_OPTIONS_SNAP as unknown as string[]}
         wrapInRNModal
+        theme="dark"
         scrollMode="scroll"
         accessibilityLabel={cleanName(friend.name)}
         header={<Text style={styles.chatSheetTitle}>{cleanName(friend.name)}</Text>}
       >
         <View style={styles.chatSheetBody}>
-          <TouchableOpacity
-            style={styles.chatSheetItem}
-            onPress={() => { setShowMoreOptionsMenu(false); onViewProfile?.(friend.id); }}
-            activeOpacity={0.7}
-          >
-            <Icon name="person-outline" size={20} color="#111827" style={styles.chatSheetIcon} />
-            <Text style={styles.chatSheetText}>View Profile</Text>
-          </TouchableOpacity>
-
-          {isPairedFriend && onOpenPairedProfile ? (
-            <TouchableOpacity
-              style={styles.chatSheetItem}
-              onPress={() => { setShowMoreOptionsMenu(false); onOpenPairedProfile(friend.id); }}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={t('connections:chat_menu_paired_view')}
-            >
-              <Icon name="gift-outline" size={20} color="#111827" style={styles.chatSheetIcon} />
-              <Text style={styles.chatSheetText}>{t('connections:chat_menu_paired_view')}</Text>
-            </TouchableOpacity>
-          ) : null}
-
-          <TouchableOpacity
-            style={styles.chatSheetItem}
-            onPress={() => { setShowMoreOptionsMenu(false); handleAddToBoard(); }}
-            activeOpacity={0.7}
-          >
-            <Icon name="people-outline" size={20} color="#111827" style={styles.chatSheetIcon} />
-            <Text style={styles.chatSheetText}>Add to Session</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.chatSheetItem}
-            onPress={() => { setShowMoreOptionsMenu(false); handleShareSavedCard(); }}
-            activeOpacity={0.7}
-          >
-            <Icon name="bookmark-outline" size={20} color="#111827" style={styles.chatSheetIcon} />
-            <Text style={styles.chatSheetText}>Share Saved Card</Text>
-          </TouchableOpacity>
-
-          <View style={styles.chatSheetDivider} />
-
-          <TouchableOpacity
-            style={styles.chatSheetItem}
-            onPress={() => { setShowMoreOptionsMenu(false); handleRemoveFriend(); }}
-            activeOpacity={0.7}
-          >
-            <Icon name="person-remove" size={20} color="#ef4444" style={styles.chatSheetIcon} />
-            <Text style={styles.chatSheetTextDanger}>Remove Friend</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.chatSheetItem}
-            onPress={() => { setShowMoreOptionsMenu(false); handleBlockUser(); }}
-            activeOpacity={0.7}
-          >
-            <Icon name="shield" size={20} color="#ef4444" style={styles.chatSheetIcon} />
-            <Text style={styles.chatSheetTextDanger}>Block User</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.chatSheetItem}
-            onPress={() => { setShowMoreOptionsMenu(false); handleReportUser(); }}
-            activeOpacity={0.7}
-          >
-            <Icon name="flag" size={20} color="#ef4444" style={styles.chatSheetIcon} />
-            <Text style={styles.chatSheetTextDanger}>Report User</Text>
-          </TouchableOpacity>
+          <ChatActionList
+            items={friendMenuItems}
+            name={cleanName(friend.name)}
+            busyIds={isMuteBusy ? MUTE_BUSY_IDS : undefined}
+            labels={{ pairedView: t('connections:chat_menu_paired_view') }}
+            onSelect={handleFriendMenuSelect}
+          />
         </View>
       </BaseBottomSheet>
+
+      <GroupInfoSheet
+        visible={Boolean(isGroupChat && !friend.sessionId && !isTripEventGroupChat && showGroupInfo)}
+        onClose={() => setShowGroupInfo(false)}
+        conversationId={conversationId}
+        currentUserId={currentUserId}
+        name={headerTitle}
+        members={headerParticipants}
+        initiallyMuted={friend.notificationsMuted ?? false}
+        onOpenProfile={onViewProfile}
+        onOpenMedia={() => setShowMediaSheet(true)}
+        onLeft={() => onGroupConversationLeft?.()}
+        onError={(message) => showNotification(message, "", "error")}
+      />
+
+      <ChatMediaSheet
+        visible={showMediaSheet}
+        onClose={() => setShowMediaSheet(false)}
+        conversationId={conversationId}
+        onOpenImage={(url) => {
+          setShowMediaSheet(false);
+          setLightboxUrl(url);
+        }}
+        onOpenVideo={(url) => {
+          void handleOpenVideo(url);
+        }}
+        onOpenCard={(payload, messageId) => {
+          void handleCardBubbleTap(payload, messageId);
+        }}
+      />
 
       {/* Local Notifications */}
       {notifications.length > 0 && (
@@ -3374,34 +3476,9 @@ const styles = StyleSheet.create({
   chatSheetTitle: {
     fontSize: 17,
     fontWeight: "700",
-    color: "#111827",
+    color: chatTokens.textPrimary,
     textAlign: "center",
     paddingTop: 4,
     marginBottom: 16,
-  },
-  chatSheetItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 14,
-  },
-  chatSheetIcon: {
-    width: 28,
-    textAlign: "center",
-    marginRight: 14,
-  },
-  chatSheetText: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#111827",
-  },
-  chatSheetTextDanger: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#ef4444",
-  },
-  chatSheetDivider: {
-    height: 1,
-    backgroundColor: "#f3f4f6",
-    marginVertical: 4,
   },
 });

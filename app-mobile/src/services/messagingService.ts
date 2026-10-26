@@ -199,6 +199,17 @@ export interface DirectMessage {
   sender_name?: string;
   is_read?: boolean;
   isSystem?: boolean;
+  /**
+   * Issue #4114 Wave 3: every reaction on this message, read in ONE batched
+   * query per page (never per message). Absent on realtime rows.
+   */
+  reactions?: MessageReactionRow[];
+}
+
+/** Issue #4114 Wave 3: one row of `direct_message_reactions`. */
+export interface MessageReactionRow {
+  user_id: string;
+  emoji: string;
 }
 
 export interface MentionEntry {
@@ -956,11 +967,110 @@ export class MessagingService {
       const enrichedMessages = await Promise.all(
         (data || []).map(msg => this.enrichMessage(msg, userId))
       );
+      // Issue #4114 Wave 3: one reactions read for the whole page.
+      const reactionsByMessage = await this.getReactionsForMessages(enrichedMessages.map((msg) => msg.id));
+      const withReactions = enrichedMessages.map((msg) => ({
+        ...msg,
+        reactions: reactionsByMessage.get(msg.id) ?? [],
+      }));
 
-      return { messages: enrichedMessages.reverse(), error: null, hasMore: (data?.length ?? 0) >= limit };
+      return { messages: withReactions.reverse(), error: null, hasMore: (data?.length ?? 0) >= limit };
     } catch (error: any) {
       console.error('Error getting messages:', error);
       return { messages: [], error: error.message, hasMore: false };
+    }
+  }
+
+  /**
+   * Issue #4114 Wave 3: every reaction on a page of messages in one query
+   * (`.in('message_id', ids)`). A read failure returns an empty map and logs;
+   * the messages still render, just without their pills, until the next read.
+   */
+  async getReactionsForMessages(messageIds: string[]): Promise<Map<string, MessageReactionRow[]>> {
+    const byMessage = new Map<string, MessageReactionRow[]>();
+    const ids = messageIds.filter((id) => !!id && !id.startsWith('temp-'));
+    if (ids.length === 0) return byMessage;
+    const { data, error } = await supabase
+      .from('direct_message_reactions')
+      .select('message_id, user_id, emoji, created_at')
+      .in('message_id', ids)
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.warn('[messagingService] reactions read failed; pills hidden until the next read', error);
+      return byMessage;
+    }
+    for (const row of (data ?? []) as Array<{ message_id: string; user_id: string; emoji: string }>) {
+      const list = byMessage.get(row.message_id) ?? [];
+      list.push({ user_id: row.user_id, emoji: row.emoji });
+      byMessage.set(row.message_id, list);
+    }
+    return byMessage;
+  }
+
+  /**
+   * Issue #4114 Wave 3: unsend one of your own messages. A soft delete
+   * (`deleted_at`), which every read already filters; the realtime UPDATE tells
+   * the other side to drop it. RLS only lets the sender update their own row.
+   * Editing is not offered: the table has no edited marker, so an edit would
+   * change the text with no sign it was changed.
+   */
+  async unsendMessage(messageId: string, senderId: string): Promise<{ error: string | null }> {
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', messageId)
+        .eq('sender_id', senderId);
+      if (error) throw error;
+      return { error: null };
+    } catch (error: any) {
+      console.error('Error unsending message:', error);
+      return { error: error?.message ?? 'unsend_failed' };
+    }
+  }
+
+  /**
+   * Issue #4114 Wave 3: photos, videos and cards shared in one chat, newest
+   * first, for the chat's "Photos, videos and cards" sheet.
+   */
+  async getConversationMedia(
+    conversationId: string,
+    limit: number = 60,
+  ): Promise<{ items: DirectMessage[]; error: string | null }> {
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('id, conversation_id, sender_id, content, message_type, file_url, file_name, card_payload, created_at')
+        .eq('conversation_id', conversationId)
+        .in('message_type', ['image', 'video', 'card'])
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return { items: (data ?? []) as DirectMessage[], error: null };
+    } catch (error: any) {
+      console.error('Error loading chat media:', error);
+      return { items: [], error: error?.message ?? 'media_failed' };
+    }
+  }
+
+  /**
+   * Issue #4114 Wave 3: mute or unmute one group chat for this member
+   * (`conversation_participants.notifications_muted`, which notify-message
+   * honours). RLS limits the update to the member's own row.
+   */
+  async setConversationMuted(conversationId: string, userId: string, muted: boolean): Promise<{ error: string | null }> {
+    try {
+      const { error } = await supabase
+        .from('conversation_participants')
+        .update({ notifications_muted: muted })
+        .eq('conversation_id', conversationId)
+        .eq('user_id', userId);
+      if (error) throw error;
+      return { error: null };
+    } catch (error: any) {
+      console.error('Error updating chat mute:', error);
+      return { error: error?.message ?? 'mute_failed' };
     }
   }
 

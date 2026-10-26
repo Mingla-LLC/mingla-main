@@ -1451,19 +1451,27 @@ function ConnectionsPageRefactored({
     }
   }, [patchConversation, showToast, t]);
 
-  // ── Issue #4114: mute from the list (direct chats; mute is per person) ──
+  // ── Issue #4114: mute (direct chats; mute is per person) ──
+  // One owner for the list row and the 1:1 chat's menu. Resolves whether the
+  // change reached the server; a failure rolls back and toasts.
+  const toggleMuteForUser = useCallback(async (otherUserId: string): Promise<boolean> => {
+    const wasMuted = mutedUserIds.includes(otherUserId);
+    HapticFeedback.light();
+    setMutedUserIds((current) => wasMuted ? current.filter((id) => id !== otherUserId) : [...current, otherUserId]);
+    const result = wasMuted ? await muteService.unmuteUser(otherUserId) : await muteService.muteUser(otherUserId);
+    if (!result.success) {
+      setMutedUserIds((current) => wasMuted ? [...current, otherUserId] : current.filter((id) => id !== otherUserId));
+      showToast({ message: t('connections:mute_error'), type: 'error' });
+      return false;
+    }
+    return true;
+  }, [mutedUserIds, showToast, t]);
+
   const handleToggleMuteChat = useCallback(async (conversation: ChatListItemConversation) => {
     const other = conversation.participants.find((participant) => participant.id !== user?.id);
     if (!other?.id) return;
-    const wasMuted = mutedUserIds.includes(other.id);
-    HapticFeedback.light();
-    setMutedUserIds((current) => wasMuted ? current.filter((id) => id !== other.id) : [...current, other.id]);
-    const result = wasMuted ? await muteService.unmuteUser(other.id) : await muteService.muteUser(other.id);
-    if (!result.success) {
-      setMutedUserIds((current) => wasMuted ? [...current, other.id] : current.filter((id) => id !== other.id));
-      showToast({ message: t('connections:mute_error'), type: 'error' });
-    }
-  }, [mutedUserIds, showToast, t, user?.id]);
+    await toggleMuteForUser(other.id);
+  }, [toggleMuteForUser, user?.id]);
 
   const handleOpenChatActions = useCallback((conversation: ChatListItemConversation) => {
     HapticFeedback.medium();
@@ -3157,12 +3165,14 @@ function ConnectionsPageRefactored({
     onShareSavedCard?.(friend);
   };
 
-  const handleRemoveFriend = (friend: Friend) => {
+  // Issue #4114 Wave 3: `onSettled` reports the real outcome (after the confirm
+  // and the server call), so a caller's "removed" toast never fires on Cancel.
+  const handleRemoveFriend = (friend: Friend, onSettled?: (removed: boolean) => void) => {
     Alert.alert(
       t('connections:remove_friend_title'),
       t('connections:remove_friend_body_alt', { name: friend.name }),
       [
-        { text: t('common:cancel'), style: "cancel" },
+        { text: t('common:cancel'), style: "cancel", onPress: () => onSettled?.(false) },
         {
           text: t('common:remove'),
           style: "destructive",
@@ -3178,13 +3188,16 @@ function ConnectionsPageRefactored({
               .then(() => {
                 // Invalidate nearby-people so the map updates relationship state (ORCH-0360)
                 queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
+                onSettled?.(true);
               })
               .catch((e) => {
                 showMutationError(e, 'removing friend', showToast);
+                onSettled?.(false);
               });
           },
         },
-      ]
+      ],
+      { cancelable: true, onDismiss: () => onSettled?.(false) },
     );
   };
 
@@ -3215,7 +3228,16 @@ function ConnectionsPageRefactored({
     }
   };
 
-  const handleBlockUser = (friend: Friend) => {
+  // Issue #4114 Wave 3: settled once the block modal resolves (true only after
+  // the block reached the server).
+  const blockSettledRef = useRef<((blocked: boolean) => void) | null>(null);
+  const settleBlock = (blocked: boolean) => {
+    const settle = blockSettledRef.current;
+    blockSettledRef.current = null;
+    settle?.(blocked);
+  };
+  const handleBlockUser = (friend: Friend, onSettled?: (blocked: boolean) => void) => {
+    blockSettledRef.current = onSettled ?? null;
     setSelectedUserToBlock(friend);
     // Defer modal show until pending animations/interactions complete.
     // ConnectionsPage is ~2100 lines — immediate setState triggers a heavy
@@ -3242,12 +3264,23 @@ function ConnectionsPageRefactored({
     // Sequential: cleanup before block. blockFriend invalidates friendsKeys.all.
     cleanupSharedSessions(userToBlock.id)
       .then(() => blockFriend(userToBlock.id, reason))
+      .then(() => settleBlock(true))
       .catch((e) => {
         showMutationError(e, 'blocking user', showToast);
+        settleBlock(false);
       });
   };
 
-  const handleReportUser = (friend: Friend) => {
+  // Issue #4114 Wave 3: a caller that passes `onSettled` shows its own
+  // confirmation after a successful report, so the generic alert is skipped.
+  const reportSettledRef = useRef<((reported: boolean) => void) | null>(null);
+  const settleReport = (reported: boolean) => {
+    const settle = reportSettledRef.current;
+    reportSettledRef.current = null;
+    settle?.(reported);
+  };
+  const handleReportUser = (friend: Friend, onSettled?: (reported: boolean) => void) => {
+    reportSettledRef.current = onSettled ?? null;
     setSelectedUserToReport(friend);
     setShowReportModal(true);
   };
@@ -3258,20 +3291,25 @@ function ConnectionsPageRefactored({
       setShowReportModal(false);
       setSelectedUserToReport(null);
       if (result.success) {
-        Alert.alert(
-          t('connections:report_submitted_title'),
-          t('connections:report_submitted_body'),
-          [{ text: t('common:ok') }]
-        );
+        if (!reportSettledRef.current) {
+          Alert.alert(
+            t('connections:report_submitted_title'),
+            t('connections:report_submitted_body'),
+            [{ text: t('common:ok') }]
+          );
+        }
         onReportUser?.(selectedUserToReport, true);
+        settleReport(true);
       } else {
         Alert.alert(t('connections:report_failed_title'), result.error || t('connections:report_failed_body'), [{ text: t('common:ok') }]);
+        settleReport(false);
       }
     } catch (e) {
       console.error("Error submitting report:", e);
       setShowReportModal(false);
       setSelectedUserToReport(null);
       Alert.alert(t('common:error'), t('connections:unexpected_error'), [{ text: t('common:ok') }]);
+      settleReport(false);
     }
   };
 
@@ -3790,6 +3828,12 @@ function ConnectionsPageRefactored({
           onViewProfile={onNavigateToFriendProfile}
           isPairedFriend={Boolean(activeChat?.id && pairedUserIds.has(activeChat.id))}
           onOpenPairedProfile={(friendUserId) => onNavigateToFriendProfile?.(friendUserId, { focus: "paired" })}
+          isMuted={Boolean(activeChat?.id && mutedUserIds.includes(activeChat.id))}
+          onToggleMute={activeChat?.conversationType === "group" || !activeChat?.id ? undefined : () => toggleMuteForUser(activeChat.id)}
+          onGroupConversationLeft={() => {
+            handleBackFromMessage();
+            if (user?.id) fetchConversations(user.id);
+          }}
           onSessionNameUpdated={handleGroupSessionNameUpdated}
           onGroupSessionExited={handleGroupSessionRemoved}
           onGroupSessionDeleted={handleGroupSessionRemoved}
@@ -4103,6 +4147,7 @@ function ConnectionsPageRefactored({
         onClose={() => {
           setShowReportModal(false);
           setSelectedUserToReport(null);
+          settleReport(false);
         }}
         user={
           selectedUserToReport
@@ -4117,6 +4162,7 @@ function ConnectionsPageRefactored({
           if (!blockLoading) {
             setShowBlockModal(false);
             setSelectedUserToBlock(null);
+            settleBlock(false);
           }
         }}
         onConfirm={handleBlockConfirm}
@@ -4297,6 +4343,14 @@ function ConnectionsPageRefactored({
             isPaired={pairedUserIds.has(fid)}
             isPending={pendingPairUserIds.has(fid)}
             isFriend={true}
+            onViewProfile={() => {
+              setShowFriendsModal(false);
+              onNavigateToFriendProfile?.(fid);
+            }}
+            onOpenPairedView={() => {
+              setShowFriendsModal(false);
+              onNavigateToFriendProfile?.(fid, { focus: "paired" });
+            }}
           />
         );
       })()}
