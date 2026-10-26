@@ -1,190 +1,157 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { fetchEarningsSummary } from "../../services/referralEarningsService";
+
+import { fetchEarningsSummary, type EarningsSummary } from "../../services/referralEarningsService";
+import { creatorGigsService, type CreatorEarningsSummary, type EarningsRow } from "../../services/creatorGigsService";
+import { payoutService } from "../../services/payoutService";
+import { programErrorText } from "../../services/programResult";
 import { shareCanonicalFallback } from "../../services/contentShareAdapter";
 import { mixpanelService } from "../../services/mixpanelService";
-import { PayoutAccountSheet } from "./PayoutAccountSheet";
+import { formatMoney, formatShortDate, moneyStateWord, type MoneyState } from "../../utils/programFormat";
+import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramLoadError, ProgramLoading, ProgramNotice, ProgramPill, ProgramRow, ProgramScreen, programStyles as s } from "../programs/ProgramUi";
+import { Segmented } from "../programs/ProgramPickers";
+import { Icon, type IconName } from "../ui/Icon";
 
-const money = (minor: number, currency: string) => {
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(minor / 100);
-  } catch { return `${currency} ${(minor / 100).toFixed(2)}`; }
+type Filter = "all" | "gig" | "referral" | "local";
+
+/** Referral share statuses → the three money words (reversed/expired rows are shown separately). */
+const SHARE_STATE: Record<string, MoneyState | null> = {
+  pending: "on_the_way", held_until_event: "on_the_way", accumulating: "on_the_way",
+  releasable: "ready", failed: "ready", paid: "paid", reversed: null, unclaimed_expired: null,
 };
-const humanStatus = (status: string) => ({
-  pending: "On the way",
-  held_until_event: "Held until the experience",
-  releasable: "Ready for automatic payout",
-  accumulating: "Building toward provider minimum",
-  paid: "Paid",
-  reversed: "Reversed after refund",
-  failed: "Payout needs attention",
-  unclaimed_expired: "Claim window ended",
-}[status] ?? status.replaceAll("_", " "));
 
+const KIND_WORDS: Record<EarningsRow["kind"], { label: string; icon: IconName }> = {
+  gig: { label: "Gig fee", icon: "videocam" },
+  referral: { label: "Referral", icon: "gift-outline" },
+  local: { label: "Local", icon: "map-pin" },
+};
+
+/** Referral shares as rows, for when the combined summary isn't available. */
+function referralRows(summary: EarningsSummary | undefined): EarningsRow[] {
+  return (summary?.shares ?? []).flatMap((share) => {
+    const state = SHARE_STATE[share.status];
+    return state ? [{ kind: "referral" as const, title: share.listingName, amount_minor: share.amountMinor, currency: share.currency, state, at: share.earnedAt }] : [];
+  });
+}
+
+/**
+ * #3872 — one Earnings screen for gig fees, referral rewards and Local pay.
+ * Three words only: On the way · Ready · Paid. "Paid" appears only when the
+ * server says the bank confirmed it. No provider names anywhere.
+ */
 export const EarningsWalletScreen: React.FC = () => {
   const router = useRouter();
-  const [payoutOpen, setPayoutOpen] = useState(false);
+  const [filter, setFilter] = useState<Filter>("all");
   const reportedUsedVoucher = useRef(false);
-  const query = useQuery({
-    queryKey: ["earnings-wallet"],
-    queryFn: fetchEarningsSummary,
-  });
+  const referrals = useQuery({ queryKey: ["earnings-wallet"], queryFn: fetchEarningsSummary });
+  const combined = useQuery<CreatorEarningsSummary>({ queryKey: ["earnings-wallet", "combined"], queryFn: () => creatorGigsService.earningsSummary(), retry: 0 });
+  const payout = useQuery({ queryKey: ["creator", "payout"], queryFn: () => payoutService.status(), retry: 0 });
+
+  useEffect(() => { mixpanelService.track("wallet_viewed", { surface: "explorer" }); }, []);
   useEffect(() => {
-    mixpanelService.track("wallet_viewed", { surface: "explorer" });
-  }, []);
-  useEffect(() => {
-    if (!reportedUsedVoucher.current && query.data?.vouchers.some((voucher) => voucher.status === "used")) {
+    if (!reportedUsedVoucher.current && referrals.data?.vouchers.some((voucher) => voucher.status === "used")) {
       reportedUsedVoucher.current = true;
       mixpanelService.track("voucher_redeemed", { surface: "explorer_wallet" });
     }
-  }, [query.data?.vouchers]);
-  const currencyRows = useMemo(
-    () => Object.entries(query.data?.totals ?? {}),
-    [query.data?.totals],
-  );
-  return (
-    <View style={styles.page}>
-      <View style={styles.topbar}>
-        <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>‹ Back</Text></Pressable>
-        <Text style={styles.topTitle}>Earnings & rewards</Text>
-        <View style={styles.spacer} />
-      </View>
-      {query.isLoading ? (
-        <View style={styles.center}><ActivityIndicator color="#f97316" /></View>
-      ) : query.isError || !query.data ? (
-        <View style={styles.center}>
-          <Text style={styles.emptyTitle}>Your earnings could not load</Text>
-          <Pressable onPress={() => void query.refetch()} style={styles.primary}><Text style={styles.primaryText}>Try again</Text></Pressable>
-        </View>
-      ) : (
-        <ScrollView
-          refreshControl={<RefreshControl refreshing={query.isFetching} onRefresh={() => void query.refetch()} tintColor="#f97316" />}
-          contentContainerStyle={styles.content}
-        >
-          <View style={styles.hero}>
-            <Text style={styles.eyebrow}>YOUR REFERRAL REWARDS</Text>
-            <Text style={styles.heroTitle}>Every reward, in plain English.</Text>
-            <Text style={styles.body}>Rewards move from “on the way” to automatic payout after the experience and refund window. This is a record of what Mingla owes you—not a cash balance or withdrawal account.</Text>
-          </View>
+  }, [referrals.data?.vouchers]);
 
-          {currencyRows.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>No rewards yet</Text>
-              <Text style={styles.body}>Share an eligible event or venue. When a friend books through your personal link, the reward appears here.</Text>
-            </View>
-          ) : currencyRows.map(([currency, total]) => (
-            <View key={currency} style={styles.summaryCard}>
-              <Text style={styles.currency}>{currency}</Text>
-              <View style={styles.metricGrid}>
-                <Metric label="On the way" value={money(total.onWayMinor, currency)} />
-                <Metric label="Ready" value={money(total.readyMinor, currency)} />
-                <Metric label="Paid" value={money(total.paidMinor, currency)} />
-                <Metric label="Reversed" value={money(total.reversedMinor, currency)} />
-              </View>
-            </View>
-          ))}
+  const rows = useMemo<EarningsRow[]>(() => {
+    const all = combined.data?.rows ?? referralRows(referrals.data);
+    return all.slice().sort((a, b) => b.at.localeCompare(a.at));
+  }, [combined.data, referrals.data]);
+  const currency = combined.data?.currency ?? rows[0]?.currency ?? Object.keys(referrals.data?.totals ?? {})[0] ?? "USD";
+  const shown = filter === "all" ? rows : rows.filter((r) => r.kind === filter);
+  const tile = (state: MoneyState): number => {
+    if (filter === "all" && combined.data) {
+      return state === "on_the_way" ? combined.data.on_the_way_minor : state === "ready" ? combined.data.ready_minor : combined.data.paid_minor;
+    }
+    return shown.filter((r) => r.state === state && r.currency === currency).reduce((sum, r) => sum + r.amount_minor, 0);
+  };
+  const reversed = (referrals.data?.shares ?? []).filter((x) => x.status === "reversed");
 
-          <Section title="Your earning links" subtitle="Share again without hunting for the original experience.">
-            {query.data.links.length === 0 ? <Text style={styles.body}>Eligible personal links will appear here.</Text> : query.data.links.map((link) => (
-              <View key={link.memberId} style={styles.rowCard}>
-                <View style={styles.rowGrow}>
-                  <Text style={styles.rowTitle}>{link.brandName}</Text>
-                  <Text style={styles.meta}>{link.offerName}</Text>
-                </View>
-                <Pressable onPress={() => {
-                  void shareCanonicalFallback({
-                    title: link.brandName,
-                    message: `${link.brandName}\n${link.url}`,
-                    url: link.url,
-                  });
-                  mixpanelService.track("referral_link_shared", { listing_kind: "wallet", surface: "explorer_wallet" });
-                }} style={styles.secondary}><Text style={styles.secondaryText}>Share</Text></Pressable>
-              </View>
-            ))}
-          </Section>
+  const refresh = (): void => { void referrals.refetch(); void combined.refetch(); void payout.refetch(); };
 
-          <Section title="Reward activity" subtitle="Amounts shown are after Mingla’s 5% referral service fee. Your payout provider may deduct its own transfer fee.">
-            {query.data.shares.length === 0 ? <Text style={styles.body}>No attributed purchases yet.</Text> : query.data.shares.map((share) => (
-              <View key={share.id} style={styles.rowCard}>
-                <View style={styles.rowGrow}>
-                  <Text style={styles.rowTitle}>{share.listingName}</Text>
-                  <Text style={styles.meta}>{humanStatus(share.status)} · {new Date(share.earnedAt).toLocaleDateString()}</Text>
-                </View>
-                <Text style={styles.amount}>{money(share.amountMinor, share.currency)}</Text>
-              </View>
-            ))}
-          </Section>
+  if (referrals.isLoading && combined.isLoading) return <ProgramScreen title="Earnings"><ProgramLoading /></ProgramScreen>;
+  if (referrals.isError && combined.isError) return <ProgramScreen title="Earnings"><ProgramLoadError text={programErrorText(combined.error)} onRetry={refresh} /></ProgramScreen>;
 
-          <Section title="Vouchers" subtitle="Host-funded rewards you can use on a future order.">
-            {query.data.vouchers.length === 0 ? <Text style={styles.body}>No vouchers yet.</Text> : query.data.vouchers.map((voucher) => (
-              <View key={voucher.id} style={styles.rowCard}>
-                <View style={styles.rowGrow}><Text style={styles.rowTitle}>{voucher.brandName}</Text><Text style={styles.meta}>{voucher.status} · expires {new Date(voucher.expiresAt).toLocaleDateString()}</Text></View>
-              </View>
-            ))}
-          </Section>
+  const showReferralExtras = filter === "all" || filter === "referral";
+  const data = referrals.data;
 
-          <Section title="Perks" subtitle="Progress toward experience rewards from hosts.">
-            {query.data.perks.length === 0 ? <Text style={styles.body}>No perk offers joined yet.</Text> : query.data.perks.map((perk) => (
-              <View key={perk.offerId} style={styles.rowCard}>
-                <View style={styles.rowGrow}><Text style={styles.rowTitle}>{perk.perkText}</Text><Text style={styles.meta}>{perk.brandName} · {perk.qualifiedSales}/{perk.threshold} eligible bookings{perk.unlocked ? " · Unlocked" : ""}</Text></View>
-              </View>
-            ))}
-          </Section>
+  return <ProgramScreen title="Earnings" refreshing={referrals.isFetching || combined.isFetching} onRefresh={refresh}>
+    <Segmented<Filter> value={filter} onChange={setFilter} options={[
+      { value: "all", label: "All" }, { value: "gig", label: "Gigs" }, { value: "referral", label: "Referrals" }, { value: "local", label: "Local" },
+    ]} />
 
-          <View style={styles.payoutCard}>
-            <Text style={styles.rowTitle}>Payout account</Text>
-            <Text style={styles.body}>Stripe: {query.data.payoutAccount.stripe.status} · Paystack: {query.data.payoutAccount.paystack.status}</Text>
-            <Pressable onPress={() => setPayoutOpen(true)} style={styles.primary}><Text style={styles.primaryText}>Set up or update</Text></Pressable>
-          </View>
-        </ScrollView>
-      )}
-      <PayoutAccountSheet visible={payoutOpen} onClose={() => setPayoutOpen(false)} onSaved={() => void query.refetch()} />
+    <View style={styles.tiles}>
+      <Tile value={formatMoney(tile("on_the_way"), currency)} label="On the way" hint="Held until the work or event is done" />
+      <Tile value={formatMoney(tile("ready"), currency)} label="Ready" hint="Released, heading to your bank" />
+      <Tile value={formatMoney(tile("paid"), currency)} label="Paid" hint="Your bank confirmed it" />
     </View>
-  );
+
+    {shown.length === 0 ? <ProgramEmpty title="Nothing here yet"
+      text={filter === "gig" ? "Gig fees show here once a host hires you." : filter === "local" ? "Local pay shows here once a month’s review is approved." : "Share an event: when a friend books through your link, the reward shows here."} />
+      : <ProgramCard>{shown.map((r, i) => <View key={`${r.kind}-${r.at}-${i}`} style={[styles.row, i < shown.length - 1 && styles.rowBorder]}>
+        <View style={styles.icon}><Icon name={KIND_WORDS[r.kind].icon} size={16} color={C.accent} /></View>
+        <View style={s.flex}>
+          <Text style={s.strong} numberOfLines={1}>{r.title}</Text>
+          <Text style={s.small}>{KIND_WORDS[r.kind].label} · {formatShortDate(r.at)}</Text>
+        </View>
+        <View style={styles.right}>
+          <Text style={s.strong}>{formatMoney(r.amount_minor, r.currency)}</Text>
+          <ProgramPill label={moneyStateWord(r.state)} tone={r.state === "paid" ? "success" : r.state === "ready" ? "accent" : "neutral"} />
+        </View>
+      </View>)}</ProgramCard>}
+    {showReferralExtras && rows.some((r) => r.kind === "referral") ? <Text style={s.small}>Referral amounts are after Mingla’s 5% referral service fee.</Text> : null}
+    {showReferralExtras && reversed.length ? <Text style={s.small}>{reversed.length} referral reward{reversed.length === 1 ? " was" : "s were"} removed after a refund.</Text> : null}
+
+    {showReferralExtras && data ? <>
+      {data.links.length ? <>
+        <Text style={s.label}>Your earning links</Text>
+        <ProgramCard>{data.links.map((link, i) => <View key={link.memberId} style={[styles.row, i < data.links.length - 1 && styles.rowBorder]}>
+          <View style={s.flex}><Text style={s.strong}>{link.brandName}</Text><Text style={s.small}>{link.offerName}</Text></View>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Share ${link.brandName}`} style={styles.share} onPress={() => {
+            void shareCanonicalFallback({ title: link.brandName, message: `${link.brandName}\n${link.url}`, url: link.url });
+            mixpanelService.track("referral_link_shared", { listing_kind: "wallet", surface: "explorer_wallet" });
+          }}><Icon name="share-outline" size={14} color={C.accent} /><Text style={s.accentText}>Share</Text></Pressable>
+        </View>)}</ProgramCard>
+      </> : null}
+      {data.vouchers.length ? <>
+        <Text style={s.label}>Vouchers</Text>
+        <ProgramCard>{data.vouchers.map((v, i) => <ProgramRow key={v.id} title={v.brandName} subtitle={`${v.status === "used" ? "Used" : v.status === "expired" ? "Expired" : "Ready to use"} · until ${formatShortDate(v.expiresAt)}`} chevron={false} isLast={i === data.vouchers.length - 1} />)}</ProgramCard>
+      </> : null}
+      {data.perks.length ? <>
+        <Text style={s.label}>Perks</Text>
+        <ProgramCard>{data.perks.map((p, i) => <ProgramRow key={p.offerId} title={p.perkText} subtitle={`${p.brandName} · ${p.qualifiedSales} of ${p.threshold} bookings${p.unlocked ? " · Unlocked" : ""}`} chevron={false} isLast={i === data.perks.length - 1} />)}</ProgramCard>
+      </> : null}
+    </> : null}
+
+    <ProgramCard>
+      <ProgramRow icon="cash-outline" title="Payout account" subtitle={payout.data?.summary ?? (payout.isError ? "Couldn’t check right now" : "Checking…")}
+        value={payout.data?.connected ? "Connected" : null} onPress={() => router.push("/payout" as never)} isLast />
+    </ProgramCard>
+    {payout.data && !payout.data.connected ? <ProgramButton label="Connect bank" onPress={() => router.push("/payout" as never)} /> : null}
+    {combined.isError && !referrals.isError ? <ProgramNotice text="Gig and Local pay couldn’t load. Pull down to try again." /> : null}
+    <Text style={s.small}>This is a record of what Mingla owes you, not a balance to withdraw. Mingla never shows money as paid until your bank confirms it.</Text>
+  </ProgramScreen>;
 };
 
-const Metric: React.FC<{ label: string; value: string }> = ({ label, value }) => <View style={styles.metric}><Text style={styles.metricValue}>{value}</Text><Text style={styles.meta}>{label}</Text></View>;
-const Section: React.FC<{ title: string; subtitle: string; children: React.ReactNode }> = ({ title, subtitle, children }) => <View style={styles.section}><Text style={styles.sectionTitle}>{title}</Text><Text style={styles.meta}>{subtitle}</Text><View style={styles.list}>{children}</View></View>;
+const Tile: React.FC<{ value: string; label: string; hint: string }> = ({ value, label, hint }) => (
+  <View style={styles.tile} accessibilityLabel={`${label}: ${value}. ${hint}`}>
+    <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+    <Text style={s.strong}>{label}</Text>
+    <Text style={s.small}>{hint}</Text>
+  </View>
+);
+
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: "#09090b" },
-  topbar: { paddingTop: 58, paddingHorizontal: 18, paddingBottom: 14, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" },
-  back: { color: "#fb923c", fontWeight: "700", fontSize: 16 },
-  topTitle: { color: "#fff", fontWeight: "800", fontSize: 17, textAlign: "center", flex: 1 },
-  spacer: { width: 48 },
-  content: { padding: 18, paddingBottom: 54, gap: 16 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14, padding: 24 },
-  hero: { paddingVertical: 10, gap: 7 },
-  eyebrow: { color: "#fb923c", fontSize: 11, fontWeight: "800", letterSpacing: 1.1 },
-  heroTitle: { color: "#fff", fontSize: 30, lineHeight: 35, fontWeight: "900" },
-  body: { color: "rgba(255,255,255,0.67)", lineHeight: 20 },
-  summaryCard: { padding: 17, borderRadius: 20, backgroundColor: "rgba(249,115,22,0.11)", borderWidth: 1, borderColor: "rgba(249,115,22,0.32)", gap: 12 },
-  currency: { color: "#fb923c", fontWeight: "900" },
-  metricGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
-  metric: { minWidth: "46%", flex: 1, padding: 12, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.055)" },
-  metricValue: { color: "#fff", fontSize: 18, fontWeight: "900" },
-  meta: { color: "rgba(255,255,255,0.52)", fontSize: 12, lineHeight: 17 },
-  section: { padding: 17, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.045)", gap: 5 },
-  sectionTitle: { color: "#fff", fontSize: 19, fontWeight: "900" },
-  list: { marginTop: 8, gap: 8 },
-  rowCard: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.07)" },
-  rowGrow: { flex: 1 },
-  rowTitle: { color: "#fff", fontWeight: "800", fontSize: 15 },
-  amount: { color: "#fb923c", fontWeight: "900" },
-  emptyCard: { padding: 20, borderRadius: 20, borderWidth: 1, borderStyle: "dashed", borderColor: "rgba(255,255,255,0.18)", gap: 7 },
-  emptyTitle: { color: "#fff", fontSize: 18, fontWeight: "800" },
-  payoutCard: { padding: 18, borderRadius: 20, borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", gap: 10 },
-  primary: { alignSelf: "flex-start", paddingHorizontal: 17, paddingVertical: 11, borderRadius: 999, backgroundColor: "#f97316" },
-  primaryText: { color: "#fff", fontWeight: "800" },
-  secondary: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: "rgba(249,115,22,0.45)" },
-  secondaryText: { color: "#fb923c", fontWeight: "800" },
+  tiles: { flexDirection: "row", gap: 8 },
+  tile: { flex: 1, padding: 12, borderRadius: 14, backgroundColor: C.field, borderWidth: 1, borderColor: C.border, gap: 2 },
+  tileValue: { color: C.text, fontSize: 19, fontWeight: "900" },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
+  rowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
+  icon: { width: 32, height: 32, borderRadius: 10, backgroundColor: C.accentSoft, alignItems: "center", justifyContent: "center" },
+  right: { alignItems: "flex-end", gap: 4 },
+  share: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: C.accentSoft },
 });

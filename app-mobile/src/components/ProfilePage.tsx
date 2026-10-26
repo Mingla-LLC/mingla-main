@@ -609,6 +609,7 @@ function ProfilePage({
               userId={user?.id ?? null}
               onOpenCreator={() => router.push('/creator' as never)}
               onOpenLocal={() => router.push('/local' as never)}
+              onOpenEarnings={() => router.push('/earnings' as never)}
             />
           </GlassCard>
 
@@ -617,8 +618,8 @@ function ProfilePage({
             <Text style={styles.cardTitle}>{t('profile:page.account_section')}</Text>
             <SettingsRow
               icon="gift-outline"
-              label="Earnings & rewards"
-              description="Referral rewards, vouchers, perks and payout account"
+              label="Earnings"
+              description="Gig fees, referral rewards, Local pay and your payout account"
               showChevron
               onPress={() => router.push("/earnings" as never)}
             />
