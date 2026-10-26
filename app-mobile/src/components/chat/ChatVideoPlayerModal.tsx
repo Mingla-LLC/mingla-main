@@ -11,6 +11,10 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Modal, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useVideoPlayer, VideoView } from "expo-video";
+import {
+  isVideoPlayerReleasedForReload,
+  registerVideoPlayerForReload,
+} from "@mingla/offering-rendering/videoPlayerReloadRelease";
 import { useTranslation } from "react-i18next";
 import { Icon } from "../ui/Icon";
 import { chatTokens } from "../../constants/chatTokens";
@@ -32,10 +36,15 @@ function Player({ url, onClose, viewOnce }: { url: string; onClose: () => void; 
   });
   const [status, setStatus] = useState<string>(player.status);
 
+  // #2107: an in-app restart releases this player before reloadAsync. A
+  // released player is never touched again.
+  useEffect(() => registerVideoPlayerForReload(player), [player]);
+
   useEffect(() => {
     const subscription = player.addListener("statusChange", ({ status: next }) => setStatus(next));
     return () => {
       subscription.remove();
+      if (isVideoPlayerReleasedForReload(player)) return;
       try {
         player.pause();
       } catch (error) {
