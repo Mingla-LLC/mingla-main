@@ -20,7 +20,6 @@
 //
 // The handler only depends on the narrow interface below (no supabase-js types),
 // so the Deno test drives it with fakes.
-// MINGLA-INVARIANT: I-4114-VIEW-ONCE-SERVER-ENFORCED | issue #4114 | A view-once item is handed out to a recipient only within VIEW_ONCE_REOPEN_GRACE_SECONDS of their first recorded open, never to its sender, and only as a short-lived signed URL recorded in message_media_views before it is returned.
 
 import { corsHeaders } from "../_shared/cors.ts";
 

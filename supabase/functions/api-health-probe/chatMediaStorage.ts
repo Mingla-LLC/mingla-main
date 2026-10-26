@@ -11,7 +11,6 @@
 //
 // Pure: the probe passes in the database calls and the sender, so the Deno test
 // drives it with fakes.
-// MINGLA-INVARIANT: I-4114-CHAT-MEDIA-STORAGE-WARNING | issue #4114 | Each chat media storage threshold (5, 10, 20 GB) sends one ops alert, recorded only after a recipient accepted it.
 
 export const CHAT_MEDIA_STORAGE_THRESHOLDS_GB: readonly number[] = [5, 10, 20];
 const GIB = 1024 * 1024 * 1024;

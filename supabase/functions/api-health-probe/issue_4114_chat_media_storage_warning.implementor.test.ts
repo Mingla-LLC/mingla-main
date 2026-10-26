@@ -13,6 +13,7 @@
 // FAILS-ON-REVERT: delete the markAlerted call and the "next day" assertions
 // fail (the same threshold alerts again); delete the `succeeded <= 0` guard and
 // the retry test fails.
+// MINGLA-INVARIANT: I-4114-CHAT-MEDIA-STORAGE-WARNING | issue #4114 | Each chat media storage threshold (5, 10, 20 GB) sends one ops alert, recorded only after a recipient accepted it.
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { chatMediaStorageAlertCopy, type ChatMediaStorageDeps, runChatMediaStorageCheck } from "./chatMediaStorage.ts";

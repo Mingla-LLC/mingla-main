@@ -8,7 +8,6 @@
 //
 // Groups: unchanged — one key per recipient per 5-minute bucket, so a burst of
 // group messages collapses into one push.
-// MINGLA-INVARIANT: I-4114-DM-PUSH-ONE-PER-MESSAGE | issue #4114 | A direct-message push for a named message id uses a key derived only from the conversation, the message id and the recipient, so retries of one message produce one push.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
