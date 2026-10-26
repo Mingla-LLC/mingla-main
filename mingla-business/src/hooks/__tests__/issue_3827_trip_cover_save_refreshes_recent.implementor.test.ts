@@ -83,7 +83,9 @@ const recentInvalidated = (): boolean => {
   );
 };
 
+// The mocked react-query makes the hook a plain function call here.
 const runSave = (saved: Trip): void => {
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   useUpdateTripBasics();
   if (capturedMutation === null) throw new Error("mutation not captured");
   capturedMutation.onSuccess(saved, { eventId: TRIP_ID, brandId: BRAND });
