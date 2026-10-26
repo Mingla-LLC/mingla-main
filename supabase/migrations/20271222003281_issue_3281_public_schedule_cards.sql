@@ -477,4 +477,85 @@ BEGIN
 END;
 $$;
 
+-- Keep pg_public_rsvp_by_slug.publicEventRow column-identical to the view
+-- (issue #3827 T-18). Unlisted RSVPs are not in the view, so the row stays an
+-- explicit SELECT; append the same schedule lateral the view uses. #3872's
+-- enrich wrapper is preserved — we rewrite prosrc in place.
+DO $patch_rsvp_schedule$
+DECLARE
+  v_body text;
+  v_old text;
+  v_new text;
+  v_hits integer;
+BEGIN
+  SELECT regexp_replace(p.prosrc, E'\\s*$', '')
+    INTO v_body
+    FROM pg_proc p
+   WHERE p.oid = 'public.pg_public_rsvp_by_slug(text,text)'::regprocedure;
+
+  IF v_body IS NULL THEN
+    RAISE EXCEPTION 'issue_3281_rsvp_publicEventRow_missing';
+  END IF;
+
+  v_old :=
+    'e.cover_media_gallery'
+    || E'\n          FROM public.events e'
+    || E'\n          JOIN public.brands b ON b.id = e.brand_id'
+    || E'\n          LEFT JOIN public.event_dates ed ON ed.event_id = e.id AND ed.is_master = true'
+    || E'\n          WHERE e.id = ev.id';
+
+  v_new :=
+    'e.cover_media_gallery,'
+    || E'\n            sched.next_start_at,'
+    || E'\n            sched.next_end_at,'
+    || E'\n            sched.upcoming_count,'
+    || E'\n            sched.schedule_line'
+    || E'\n          FROM public.events e'
+    || E'\n          JOIN public.brands b ON b.id = e.brand_id'
+    || E'\n          LEFT JOIN public.event_dates ed ON ed.event_id = e.id AND ed.is_master = true'
+    || E'\n          LEFT JOIN LATERAL ('
+    || E'\n            SELECT'
+    || E'\n              n.start_at AS next_start_at,'
+    || E'\n              n.end_at AS next_end_at,'
+    || E'\n              COALESCE(c.upcoming_count, 0) AS upcoming_count,'
+    || E'\n              CASE'
+    || E'\n                WHEN COALESCE(c.upcoming_count, 0) = 0 THEN NULL'
+    || E'\n                WHEN c.upcoming_count = 1 THEN to_char('
+    || E'\n                  n.start_at AT TIME ZONE COALESCE(NULLIF(btrim(e.timezone), ''''), ''UTC''), ''Dy DD Mon'')'
+    || E'\n                ELSE format('
+    || E'\n                  ''%s · +%s more'','
+    || E'\n                  to_char(n.start_at AT TIME ZONE COALESCE(NULLIF(btrim(e.timezone), ''''), ''UTC''), ''Dy DD Mon''),'
+    || E'\n                  c.upcoming_count - 1)'
+    || E'\n              END AS schedule_line'
+    || E'\n            FROM ('
+    || E'\n              SELECT count(*)::integer AS upcoming_count'
+    || E'\n                FROM public.event_dates d'
+    || E'\n               WHERE d.event_id = e.id AND d.end_at > now()'
+    || E'\n            ) c'
+    || E'\n            LEFT JOIN LATERAL ('
+    || E'\n              SELECT d.start_at, d.end_at'
+    || E'\n                FROM public.event_dates d'
+    || E'\n               WHERE d.event_id = e.id AND d.end_at > now()'
+    || E'\n               ORDER BY d.start_at, d.id'
+    || E'\n               LIMIT 1'
+    || E'\n            ) n ON true'
+    || E'\n          ) sched ON true'
+    || E'\n          WHERE e.id = ev.id';
+
+  v_hits := (length(v_body) - length(replace(v_body, v_old, ''))) / length(v_old);
+  IF v_hits <> 1 THEN
+    RAISE EXCEPTION
+      'issue_3281_rsvp_publicEventRow_schedule_drift: expected 1 publicEventRow tail, got %',
+      v_hits;
+  END IF;
+  v_body := replace(v_body, v_old, v_new);
+
+  EXECUTE format(
+    'CREATE OR REPLACE FUNCTION public.pg_public_rsvp_by_slug(p_brand_slug text, p_event_slug text) '
+    'RETURNS json LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS %L',
+    v_body
+  );
+END;
+$patch_rsvp_schedule$;
+
 COMMIT;

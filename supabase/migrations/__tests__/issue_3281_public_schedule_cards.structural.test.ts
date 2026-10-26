@@ -21,7 +21,12 @@ Deno.test("PR7 migration schedules public view, discover, and admin readers", ()
   assert(text.includes("COALESCE(next_start_at_sort, master_start_at)"));
   assert(text.includes("page AS"));
   // Full schedule helper must not run on the filtered catalog CTE.
-  assert(!/filtered AS \([\s\S]*issue_3281_event_schedule/.test(text));
+  // Match only the filtered body (non-greedy up to ", page AS") — a file-wide
+  // `filtered AS ([\\s\\S]*issue_3281_event_schedule` false-positives once the
+  // helper appears later in `page AS`.
+  const filteredBody = text.match(/filtered AS \(([\s\S]*?)\)\s*,\s*page AS/);
+  assert(filteredBody !== null);
+  assert(!filteredBody[1].includes("issue_3281_event_schedule"));
   assert(/page AS \([\s\S]*issue_3281_event_schedule/.test(text));
 
   assert(text.includes("admin_get_offering"));
