@@ -33,13 +33,6 @@ export type GigApplicant = {
   status: string;
 };
 
-export type CreatorRosterRow = {
-  id: string; name: string; platform: string | null; handle: string | null; email: string | null;
-  notes: string | null; status: string; linked_creator_account_id: string | null;
-  referral_member_id: string | null; link_slug: string | null; offer_name: string | null;
-  sales_count: number; revenue_minor: number; currency: string | null; updated_at: string;
-};
-
 export type GigDisputeOffer = {
   id: string;
   offered_by: "host" | "creator";
@@ -114,19 +107,9 @@ export const creatorGigsService = {
     return data;
   },
   rate: (contractId: string, stars: number, tags: string[], note?: string) => rpc("gig_rating_submit", { p_contract_id: contractId, p_stars: stars, p_tags: tags, p_note: note ?? null }),
-  saveRoster: (brandId: string, payload: Record<string, unknown>) => rpc("brand_creator_roster_save", { p_brand_id: brandId, p_payload: payload }),
-  listRoster: (brandId: string) => rpc<CreatorRosterRow[]>("brand_creator_roster_list", { p_brand_id: brandId }),
-  linkRosterInvite: (rosterId: string, memberId: string) => rpc("brand_creator_roster_link_invite", { p_roster_id: rosterId, p_member_id: memberId }),
   async refund(contractId: string, branch: "host_before_accept" | "host_after_accept_before_lock" | "creator_after_accept" | "creator_decline" | "declined_or_expired" | "resolved_partial" | "resolved_refund", refundBps?: number) {
     const { data, error } = await supabase.functions.invoke("gig-refund", { body: { contract_id: contractId, branch, refund_bps: refundBps } });
     if (error) throw error;
-    return data;
-  },
-  async hire(input: { interestId: string; feeMinor: number; returnUrl?: string; terms?: Record<string, unknown>; idempotencyKey: string }) {
-    const { data, error } = await supabase.functions.invoke("gig-hire", { body: { action: "start", interest_id: input.interestId, fee_minor: input.feeMinor, return_url: input.returnUrl ?? null, terms: input.terms ?? {}, idempotency_key: input.idempotencyKey } });
-    if (error) throw error;
-    const result = data as { rail?: unknown } | null;
-    postHogService.capture("gig_hired", { rail: typeof result?.rail === "string" ? result.rail : "unknown" });
     return data;
   },
 };

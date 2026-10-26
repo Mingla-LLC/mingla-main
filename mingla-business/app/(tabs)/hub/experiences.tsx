@@ -17,7 +17,7 @@
  * DraftSelectBar / OfferingManageSheet / useExperiencesByBrand stack.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -30,7 +30,6 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ExperienceListCard } from "../../../src/components/experience/ExperienceListCard";
-import { UniversalCreatorSheet } from "../../../src/components/ui/UniversalCreatorSheet";
 import {
   OfferingManageSheet,
   buildOfferingManageActions,
@@ -62,6 +61,11 @@ import {
   routeForEventRow,
   type EventStatusForRouting,
 } from "../../../src/utils/routeForEventRow";
+
+const LazyUniversalCreatorSheet = React.lazy(async () => {
+  const mod = await import("../../../src/components/ui/UniversalCreatorSheet");
+  return { default: mod.UniversalCreatorSheet };
+});
 
 // META-ORCH-1059 Sub-B — map the raw events.status string to the routing union.
 function normalizeExperienceStatus(status: string): EventStatusForRouting {
@@ -522,11 +526,13 @@ export default function HubExperiencesRoute(): React.ReactElement {
           while open; resets to the experience step on each open. The in-step
           back affordance is omitted in this mode (no root to return to). */}
       {creatorOpen ? (
-        <UniversalCreatorSheet
-          visible
-          initialStep="experience"
-          onClose={() => setCreatorOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <LazyUniversalCreatorSheet
+            visible
+            initialStep="experience"
+            onClose={() => setCreatorOpen(false)}
+          />
+        </Suspense>
       ) : null}
     </View>
   );

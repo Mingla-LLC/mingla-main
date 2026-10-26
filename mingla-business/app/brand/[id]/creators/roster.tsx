@@ -13,16 +13,12 @@ import { Button } from "../../../../src/components/ui/Button";
 import { GlassCard } from "../../../../src/components/ui/GlassCard";
 import { Input } from "../../../../src/components/ui/Input";
 import {
-  creatorGigsService,
+  creatorRosterService,
   type CreatorRosterRow,
-} from "../../../../src/services/creatorGigsService";
+} from "../../../../src/services/creatorRosterService";
 import { postHogService } from "../../../../src/services/postHogService";
-import { shareBusinessCanonicalFallback } from "../../../../src/services/contentShareAdapter";
-import {
-  fetchReferralOffers,
-  inviteReferralMembers,
-  type ReferralOffer,
-} from "../../../../src/services/referralService";
+import { shareBusinessCanonicalFallback } from "../../../../src/services/canonicalShareTransport";
+import type { ReferralOffer } from "../../../../src/services/referralService";
 import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
 import {
   accent,
@@ -58,8 +54,11 @@ export default function CreatorRoster(): React.ReactElement {
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
+    const { fetchReferralOffers } = await import(
+      "../../../../src/services/referralService"
+    );
     const [nextRows, nextOffers] = await Promise.all([
-      creatorGigsService.listRoster(id),
+      creatorRosterService.list(id),
       fetchReferralOffers(id),
     ]);
     const invitable = nextOffers.filter(
@@ -93,7 +92,7 @@ export default function CreatorRoster(): React.ReactElement {
   const save = async (): Promise<void> => {
     setBusyKey("save");
     try {
-      await creatorGigsService.saveRoster(id, {
+      await creatorRosterService.save(id, {
         name,
         platform: "instagram",
         handle,
@@ -125,6 +124,9 @@ export default function CreatorRoster(): React.ReactElement {
     if (!row.email || !selectedOffer) return;
     setBusyKey(row.id);
     try {
+      const { inviteReferralMembers } = await import(
+        "../../../../src/services/referralService"
+      );
       const result = await inviteReferralMembers(selectedOffer.id, [
         { email: row.email, displayName: row.name },
       ]);
@@ -132,7 +134,7 @@ export default function CreatorRoster(): React.ReactElement {
       if (!member || typeof member.id !== "string") {
         throw new Error("The invitation was created but did not return its tracking record.");
       }
-      await creatorGigsService.linkRosterInvite(row.id, member.id);
+      await creatorRosterService.linkInvite(row.id, member.id);
       postHogService.capture("roster_invite_sent");
       await load();
       const delivered = result.delivery[0]?.sent === true;

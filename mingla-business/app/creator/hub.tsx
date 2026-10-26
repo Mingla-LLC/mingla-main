@@ -6,7 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ScrollView } from "../../src/wrappers/SmartScrollView";
 import { Button } from "../../src/components/ui/Button";
 import { GlassCard } from "../../src/components/ui/GlassCard";
-import { CREATOR_FORMATS } from "../../src/services/creatorProgramService";
+import { CREATOR_FORMATS } from "../../src/services/creatorProgramContract";
 import { creatorGigsService, type PublicGig } from "../../src/services/creatorGigsService";
 import { accent, canvas, glass, radius, spacing, text as textTokens } from "../../src/constants/designSystem";
 

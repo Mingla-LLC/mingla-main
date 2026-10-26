@@ -7,11 +7,13 @@ import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Input } from "../../../src/components/ui/Input";
 import {
+  creatorProgramService,
+} from "../../../src/services/creatorProgramService";
+import {
   CREATOR_FORMATS,
   CREATOR_NICHES,
-  creatorProgramService,
   type CreatorSetupStatus,
-} from "../../../src/services/creatorProgramService";
+} from "../../../src/services/creatorProgramContract";
 import { accent, canvas, glass, radius, semantic, spacing, text as textTokens } from "../../../src/constants/designSystem";
 
 type Step = "profile" | "handles" | "packages" | "showcase" | "payout" | "agreement";

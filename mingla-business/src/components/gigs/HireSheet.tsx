@@ -3,7 +3,7 @@ import { Alert, StyleSheet, Text, View } from "react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Input } from "../ui/Input";
-import { creatorGigsService } from "../../services/creatorGigsService";
+import { startGigHire } from "../../services/gigHireService";
 import { accent, spacing, text as textTokens } from "../../constants/designSystem";
 
 const money = (minor: number, currency: string) => new Intl.NumberFormat(undefined, { style: "currency", currency }).format(minor / 100);
@@ -14,7 +14,7 @@ export function HireSheet({ interestId, quoteMinor, currency, counter = false, o
   const validFee = Number.isInteger(feeMinor) && feeMinor > 0;
   const booking = useMemo(() => validFee ? Math.floor((feeMinor * 1500 + 5000) / 10000) : 0, [feeMinor, validFee]);
   const isCounter = feeMinor !== quoteMinor;
-  const start = async () => { if (!validFee) return; setBusy(true); try { const result = await creatorGigsService.hire({ interestId, feeMinor, terms: { fee_minor: feeMinor }, idempotencyKey: `gig-${interestId}-${feeMinor}` }); onStarted(result); } catch (e) { Alert.alert("Couldn’t start payment", e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
+  const start = async () => { if (!validFee) return; setBusy(true); try { const result = await startGigHire({ interestId, feeMinor, terms: { fee_minor: feeMinor }, idempotencyKey: `gig-${interestId}-${feeMinor}` }); onStarted(result); } catch (e) { Alert.alert("Couldn’t start payment", e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
   return <GlassCard style={styles.card}>
     <Text style={styles.title}>{counter ? "Send a structured counter" : "Fund the creator offer"}</Text>
     <Text style={styles.note}>Creator quoted {money(quoteMinor, currency)}. {counter ? "Set the fee you are offering; the Creator will see this exact version and has 48 hours to accept." : "This uses the Creator’s quoted fee."}</Text>

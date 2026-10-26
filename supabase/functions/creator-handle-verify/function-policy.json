@@ -6,7 +6,11 @@
   "gateway_reason": "Authenticated creators may verify only their own saved handle; blocked provider reads are routed to human review and never silently passed.",
   "env": {
     "migration_fallback_top_level": [],
-    "optional_top_level": ["SENTRY_DSN", "SENTRY_ENVIRONMENT"],
+    "optional_top_level": [
+      "SENTRY_DSN",
+      "SENTRY_ENVIRONMENT",
+      "app.qr_token_pepper"
+    ],
     "required_bundle_fields": {},
     "required_top_level": []
   }

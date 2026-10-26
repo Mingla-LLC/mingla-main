@@ -20,6 +20,7 @@ const read = (relative: string): string => fs.readFileSync(path.join(root, relat
 const hub = read("app/creator/hub.tsx");
 const roster = read("app/brand/[id]/creators/roster.tsx");
 const creatorService = read("src/services/creatorGigsService.ts");
+const creatorRosterService = read("src/services/creatorRosterService.ts");
 const localManager = read("src/components/venue/LocalReviewsManager.tsx");
 const localService = read("src/services/localReviewsService.ts");
 
@@ -34,8 +35,8 @@ describe("issue #3872 — completed Creator and Local Host journeys", () => {
   });
 
   test("Hosts can maintain their creator roster and link tracked invitations", () => {
-    expect(creatorService).toContain("brand_creator_roster_list");
-    expect(creatorService).toContain("brand_creator_roster_link_invite");
+    expect(creatorRosterService).toContain("brand_creator_roster_list");
+    expect(creatorRosterService).toContain("brand_creator_roster_link_invite");
     expect(roster).toContain("roster_creator_added");
     expect(roster).toContain("roster_invite_sent");
   });

@@ -3,7 +3,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Input } from "../ui/Input";
-import { CREATOR_FORMATS } from "../../services/creatorProgramService";
+import { CREATOR_FORMATS } from "../../services/creatorProgramContract";
 import { creatorGigsService } from "../../services/creatorGigsService";
 import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
 

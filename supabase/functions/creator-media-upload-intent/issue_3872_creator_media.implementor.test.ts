@@ -325,6 +325,7 @@ Deno.test("#3872 creator cleanup uses the isolated library through the one Bunny
       trafficCapBytes: 100,
     },
     fetchImpl,
+    async () => {},
   );
   assertEquals(result, { ok: true });
   assertEquals(calls, [{

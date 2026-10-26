@@ -4,6 +4,7 @@
 -- MINGLA-INVARIANT: I-3872-LOCAL-SEATS | issue #3872 | Active Locals never exceed the locked city-program seat count; issue_3872_local_seat_guard and the pg17 contract test enforce it.
 -- MINGLA-INVARIANT: I-3872-LOCAL-NOT-PAID-BY-PLACE | issue #3872 | A Local cannot pick a place tied to their own history or paid relationship, and every approved month is funded by Mingla through the shared payee ledger with no brand owner.
 -- MINGLA-INVARIANT: I-3872-LOCAL-PUBLIC-DTO | issue #3872 | Public Local reads expose only the named profile and review allow-lists; applications, payout amounts, evidence and moderation notes remain private.
+-- MINGLA-INVARIANT: I-3872-LOCAL-PENDING-VENUE-FENCE | issue #3872 | A Local month is a reviewed place dependency and remains disallowed while a pending venue identity is corrected; the #2099 schema pin is advanced only over that fail-closed lane.
 
 BEGIN;
 SET LOCAL lock_timeout='10s';
@@ -656,6 +657,71 @@ BEGIN
 END;
 $fn$;
 
+-- local_months.place_id is a new, deliberate FK lane into place_pool. Keep it
+-- disallowed by #2099's inventory, but advance the two correction RPCs over the
+-- reviewed schema shape so an empty lane does not strand every correction.
+DO $issue_3872_pending_venue_repin$
+DECLARE
+  v_expected_live constant text := '474371dd0c8edfdd734c8ef5fe78b167bf5422e95b37493111c9a6cdc40213f2';
+  v_old_pin constant text := '(''52f4624c994529d2e63b8f70b79a3fcf'' || ''e28f3ff90dafe300bc45439e37cd2921'')';
+  v_new_pin constant text := '(''474371dd0c8edfdd734c8ef5fe78b167'' || ''bf5422e95b37493111c9a6cdc40213f2'')';
+  v_function_prefix constant text := 'CREATE OR REPLACE FUNCTION ';
+  v_oid regprocedure;
+  v_definition text;
+  v_old_count integer;
+  v_new_count integer;
+  v_live text;
+BEGIN
+  v_live := public.issue_2099_pending_venue_dependency_inventory(
+    '00000000-0000-0000-0000-000000000001'::uuid,
+    '00000000-0000-0000-0000-000000000002'::uuid
+  ) ->> 'schema_fingerprint';
+  IF v_live IS DISTINCT FROM v_expected_live THEN
+    RAISE EXCEPTION 'issue_3872_pending_venue_schema_unreviewed:%', v_live;
+  END IF;
+
+  FOREACH v_oid IN ARRAY ARRAY[
+    'public.preview_pending_venue_identity_correction(uuid)'::regprocedure,
+    'public.correct_pending_venue_identity(uuid,uuid,uuid,timestamptz,text,text,text,text,text,text,text,uuid,text,text,text,uuid)'::regprocedure
+  ] LOOP
+    SELECT pg_get_functiondef(v_oid) INTO v_definition;
+    v_old_count := (length(v_definition)-length(replace(v_definition,v_old_pin,'')))/length(v_old_pin);
+    v_new_count := (length(v_definition)-length(replace(v_definition,v_new_pin,'')))/length(v_new_pin);
+    IF v_old_count=1 AND v_new_count=0 THEN
+      -- pg_get_functiondef is the sole statement source and is sealed to a
+      -- CREATE OR REPLACE FUNCTION prefix before the catalog text is reused.
+      -- Keeping that prefix literal also lets the public-table RLS gate prove
+      -- that this dynamic statement cannot create an unprotected table.
+      IF left(v_definition,length(v_function_prefix))<>v_function_prefix THEN
+        RAISE EXCEPTION 'issue_3872_pending_venue_rpc_definition_unreviewed:%',v_oid;
+      END IF;
+      EXECUTE pg_catalog.format(
+        'CREATE OR REPLACE FUNCTION %s',
+        substr(replace(v_definition,v_old_pin,v_new_pin),length(v_function_prefix)+1)
+      );
+    ELSIF NOT (v_old_count=0 AND v_new_count=1) THEN
+      RAISE EXCEPTION 'issue_3872_pending_venue_rpc_unreviewed:%:old=%:new=%',v_oid,v_old_count,v_new_count;
+    END IF;
+  END LOOP;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_roles owner ON owner.oid=p.proowner
+    WHERE p.oid IN (
+      'public.preview_pending_venue_identity_correction(uuid)'::regprocedure,
+      'public.correct_pending_venue_identity(uuid,uuid,uuid,timestamptz,text,text,text,text,text,text,text,uuid,text,text,text,uuid)'::regprocedure
+    ) AND (
+      owner.rolname<>'postgres' OR NOT p.prosecdef
+      OR p.proconfig IS DISTINCT FROM ARRAY['search_path=public, pg_temp']::text[]
+      OR has_function_privilege('anon',p.oid,'EXECUTE')
+      OR has_function_privilege('service_role',p.oid,'EXECUTE')
+      OR NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+    )
+  ) THEN
+    RAISE EXCEPTION 'issue_3872_pending_venue_rpc_security_drift';
+  END IF;
+END;
+$issue_3872_pending_venue_repin$;
+
 ALTER TABLE public.local_city_programs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.local_city_programs FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.local_applications ENABLE ROW LEVEL SECURITY;
@@ -685,7 +751,7 @@ CREATE POLICY local_months_service_all ON public.local_months FOR ALL TO service
 CREATE POLICY local_reviews_service_all ON public.local_reviews FOR ALL TO service_role USING(true) WITH CHECK(true);
 CREATE POLICY local_events_service_all ON public.local_events FOR ALL TO service_role USING(true) WITH CHECK(true);
 
-REVOKE ALL ON FUNCTION public.issue_3872_local_seat_guard(),public.local_city_program_save(uuid,integer,boolean,bigint),public.local_landing(),public.local_application_save(uuid,jsonb,jsonb,text),public.local_application_decide(uuid,text,text),public.local_place_candidates(text),public.local_pick_place(uuid,boolean),public.local_mark_visited(uuid,date,uuid),public.local_review_submit(uuid,integer,text,text,date,text,uuid[],text,boolean),public.local_social_check_record(uuid,text,jsonb),public.local_review_decide(uuid,text,text[]),public.local_month_void(uuid,text),public.local_place_reply(uuid,uuid,text),public.brand_place_local_reviews(uuid,uuid),public.public_local_profile(uuid),public.public_place_local_reviews(uuid),public.local_home(),public.local_timer_tick(timestamptz),public.local_payout_prepare(uuid),public.local_payout_record(uuid,text,text,bigint,uuid),public.admin_local_queue() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.issue_3872_local_seat_guard(),public.local_city_program_save(uuid,integer,boolean,bigint),public.local_landing(),public.local_application_save(uuid,jsonb,jsonb,text),public.local_application_decide(uuid,text,text),public.local_place_candidates(text),public.local_pick_place(uuid,boolean),public.local_mark_visited(uuid,date,uuid),public.local_review_submit(uuid,integer,text,text,date,text,uuid[],text,boolean),public.local_social_check_record(uuid,text,jsonb),public.local_review_decide(uuid,text,text[]),public.local_month_void(uuid,text),public.local_place_reply(uuid,uuid,text),public.brand_place_local_reviews(uuid,uuid),public.public_local_profile(uuid),public.public_place_local_reviews(uuid),public.local_home(),public.local_timer_tick(timestamptz),public.local_payout_prepare(uuid),public.local_payout_record(uuid,text,text,bigint,uuid),public.admin_local_queue() FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.local_city_program_save(uuid,integer,boolean,bigint),public.local_landing(),public.local_application_save(uuid,jsonb,jsonb,text),public.local_application_decide(uuid,text,text),public.local_place_candidates(text),public.local_pick_place(uuid,boolean),public.local_mark_visited(uuid,date,uuid),public.local_review_submit(uuid,integer,text,text,date,text,uuid[],text,boolean),public.local_review_decide(uuid,text,text[]),public.local_month_void(uuid,text),public.local_place_reply(uuid,uuid,text),public.brand_place_local_reviews(uuid,uuid),public.local_home(),public.admin_local_queue() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.public_local_profile(uuid),public.public_place_local_reviews(uuid) TO anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.local_social_check_record(uuid,text,jsonb),public.local_timer_tick(timestamptz),public.local_payout_prepare(uuid),public.local_payout_record(uuid,text,text,bigint,uuid) TO service_role;

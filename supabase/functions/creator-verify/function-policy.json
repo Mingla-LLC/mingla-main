@@ -6,7 +6,11 @@
   "gateway_reason": "Authenticated creators can recompute only their own server-authoritative onboarding state; clients cannot assign verification.",
   "env": {
     "migration_fallback_top_level": [],
-    "optional_top_level": ["SENTRY_DSN", "SENTRY_ENVIRONMENT"],
+    "optional_top_level": [
+      "SENTRY_DSN",
+      "SENTRY_ENVIRONMENT",
+      "app.qr_token_pepper"
+    ],
     "required_bundle_fields": {},
     "required_top_level": []
   }

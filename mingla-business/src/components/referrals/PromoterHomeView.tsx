@@ -19,8 +19,8 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { formatCurrency } from "../../utils/currency";
-import { fetchPromotingOffers } from "../../services/referralService";
-import { shareBusinessCanonicalFallback } from "../../services/contentShareAdapter";
+import { fetchPromotingOffers } from "../../services/promoterReferralService";
+import { shareBusinessCanonicalFallback } from "../../services/canonicalShareTransport";
 import { Button } from "../ui/Button";
 
 export const PromoterHomeView: React.FC = () => {

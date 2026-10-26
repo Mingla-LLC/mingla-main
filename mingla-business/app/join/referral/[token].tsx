@@ -12,7 +12,7 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
-import { acceptReferralInvite } from "../../../src/services/referralService";
+import { acceptReferralInvite } from "../../../src/services/referralInviteService";
 
 export default function ReferralInviteRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();

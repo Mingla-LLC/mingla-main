@@ -8,10 +8,12 @@
     "migration_fallback_top_level": [],
     "optional_top_level": [
       "CRON_SECRET",
+      "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
       "PAYSTACK_SECRET_KEY_LIVE",
       "PAYSTACK_SECRET_KEY_TEST",
       "SENTRY_DSN",
       "SENTRY_ENVIRONMENT",
+      "STRIPE_PUBLISHABLE_KEY",
       "STRIPE_RAK_TICKET_REFUND_LIVE",
       "STRIPE_RAK_TICKET_REFUND_TEST"
     ],

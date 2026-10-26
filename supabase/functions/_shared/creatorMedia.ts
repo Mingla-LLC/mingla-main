@@ -4,6 +4,7 @@
 
 import {
   BUNNY_TIMEOUTS_MS,
+  type BunnyCallOptions,
   bunnyDeleteVideo,
   fetchWithTimeout,
   mapBunnyStatusFromApiVideo,
@@ -365,6 +366,7 @@ export async function deleteCreatorVideo(
   videoId: string,
   config = creatorMediaConfig(),
   fetchImpl: typeof fetch = fetch,
+  observeApiCall?: BunnyCallOptions["observeApiCall"],
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   if (config.libraryId.length === 0 || config.apiKey.length === 0) {
     return { ok: false, reason: "provider_not_configured" };
@@ -374,5 +376,6 @@ export async function deleteCreatorVideo(
     apiKey: config.apiKey,
     timeoutMs: BUNNY_TIMEOUTS_MS.delete,
     fetchImpl,
+    observeApiCall,
   });
 }

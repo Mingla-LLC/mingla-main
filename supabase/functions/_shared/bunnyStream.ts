@@ -117,6 +117,7 @@ export type BunnyCallOptions = {
   fetchImpl?: typeof fetch;
   libraryId?: string;
   apiKey?: string;
+  observeApiCall?: typeof recordApiCall;
 };
 
 export async function fetchWithTimeout(
@@ -458,7 +459,7 @@ export async function bunnyDeleteVideo(
   } catch (error) {
     return { ok: false, reason: networkReason("bunny_delete_network", error) };
   }
-  void recordApiCall(
+  void (options.observeApiCall ?? recordApiCall)(
     "bunny",
     response.ok,
     Date.now() - startedAt,

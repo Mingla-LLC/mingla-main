@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 BEGIN;
 DO $test$
-DECLARE v_def text;
+DECLARE v_def text; v_live text;
 BEGIN
   IF (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND c.relname IN ('local_city_programs','local_applications','locals','local_months','local_reviews','local_events'))<>6 THEN RAISE EXCEPTION 'R4 Local tables missing'; END IF;
   IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='issue_3872_local_seat_limit' AND NOT tgisinternal) THEN RAISE EXCEPTION 'seat trigger missing'; END IF;
@@ -19,6 +19,15 @@ BEGIN
   SELECT pg_get_functiondef('public.admin_local_queue()'::regprocedure) INTO v_def;
   IF position('''cities''' in v_def)=0 THEN RAISE EXCEPTION 'Admin city-program creation data missing'; END IF;
   IF NOT has_function_privilege('authenticated','public.local_landing()','execute') OR NOT has_function_privilege('authenticated','public.local_place_candidates(text)','execute') THEN RAISE EXCEPTION 'Local Explorer entry RPCs missing'; END IF;
+  v_live := public.issue_2099_pending_venue_dependency_inventory(
+    '00000000-0000-0000-0000-000000000001'::uuid,
+    '00000000-0000-0000-0000-000000000002'::uuid
+  ) ->> 'schema_fingerprint';
+  IF v_live<>'474371dd0c8edfdd734c8ef5fe78b167bf5422e95b37493111c9a6cdc40213f2' THEN RAISE EXCEPTION 'Local pending-venue dependency seal mismatch: %',v_live; END IF;
+  SELECT pg_get_functiondef('public.preview_pending_venue_identity_correction(uuid)'::regprocedure) INTO v_def;
+  IF position('474371dd0c8edfdd734c8ef5fe78b167' in v_def)=0 OR position('52f4624c994529d2e63b8f70b79a3fcf' in v_def)>0 THEN RAISE EXCEPTION 'Local preview pin not advanced exactly once'; END IF;
+  SELECT pg_get_functiondef('public.correct_pending_venue_identity(uuid,uuid,uuid,timestamptz,text,text,text,text,text,text,text,uuid,text,text,text,uuid)'::regprocedure) INTO v_def;
+  IF position('474371dd0c8edfdd734c8ef5fe78b167' in v_def)=0 OR position('52f4624c994529d2e63b8f70b79a3fcf' in v_def)>0 THEN RAISE EXCEPTION 'Local correction pin not advanced exactly once'; END IF;
   SELECT pg_get_functiondef('public.local_place_candidates(text)'::regprocedure) INTO v_def;
   IF position('12 months' in v_def)=0 OR position('180 days' in v_def)=0 OR position('eligible' in v_def)=0 OR position('reason' in v_def)=0 THEN RAISE EXCEPTION 'Local place picker eligibility reasons incomplete'; END IF;
   IF NOT has_function_privilege('authenticated','public.brand_place_local_reviews(uuid,uuid)','execute')

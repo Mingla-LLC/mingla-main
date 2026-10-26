@@ -99,25 +99,6 @@ export interface ReferralListingOption extends ReferralListing {
   label: string;
   typeLabel: string;
 }
-export interface PromotingOffer {
-  memberId: string;
-  offerId: string;
-  brandId: string;
-  brandName: string;
-  offerName: string;
-  rewardKind: ReferralRewardKind;
-  shareBps: number | null;
-  perkText: string | null;
-  perkThreshold: number | null;
-  currency: string;
-  linkSlug: string;
-  code: string | null;
-  status: string;
-  salesCount: number;
-  earnedMinor: number;
-  paidMinor: number;
-}
-
 const rowObject = (value: unknown): Record<string, unknown> =>
   value as Record<string, unknown>;
 const camel = (value: unknown): ReferralOffer => {
@@ -277,14 +258,6 @@ export async function inviteReferralMembers(
 export async function removeReferralMember(memberId: string): Promise<void> {
   await invoke("referral-member-remove", { memberId });
 }
-export async function acceptReferralInvite(
-  token: string,
-): Promise<{ brand_id: string; member_id: string }> {
-  const data = await invoke<{
-    membership: { brand_id: string; member_id: string };
-  }>("referral-invite-accept", { token });
-  return data.membership;
-}
 export async function fetchReferralListingOptions(
   brandId: string,
 ): Promise<ReferralListingOption[]> {
@@ -371,9 +344,4 @@ export async function fetchReferralReport(
   });
   if (error) throw error;
   return data as Record<string, unknown>;
-}
-export async function fetchPromotingOffers(): Promise<PromotingOffer[]> {
-  const { data, error } = await supabase.rpc("my_promoting_offers");
-  if (error) throw error;
-  return (Array.isArray(data) ? data : []) as PromotingOffer[];
 }

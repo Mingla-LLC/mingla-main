@@ -6,14 +6,15 @@ import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Input } from "../../../src/components/ui/Input";
-import { creatorProgramService, type CreatorSetupStatus } from "../../../src/services/creatorProgramService";
+import type { CreatorSetupStatus } from "../../../src/services/creatorProgramContract";
+import { fetchCreatorSetupStatus } from "../../../src/services/creatorSetupStatusService";
 import { creatorGigsService, type PublicGig } from "../../../src/services/creatorGigsService";
 import { accent, canvas, spacing, text as textTokens } from "../../../src/constants/designSystem";
 
 export default function CreatorGigDetail(): React.ReactElement {
   const { gigId } = useLocalSearchParams<{ gigId: string }>(); const router = useRouter();
   const [gig, setGig] = useState<PublicGig | null>(null); const [setup, setSetup] = useState<CreatorSetupStatus | null>(null); const [packageId, setPackageId] = useState(""); const [quote, setQuote] = useState(""); const [note, setNote] = useState(""); const [busy, setBusy] = useState(false);
-  useEffect(() => { void Promise.all([creatorGigsService.detail(gigId), creatorProgramService.status()]).then(([nextGig, nextSetup]) => { setGig(nextGig); setSetup(nextSetup); const first = nextSetup.packages?.find((item) => item.format_key === nextGig.format_key) ?? nextSetup.packages?.[0]; if (first?.id) { setPackageId(String(first.id)); setQuote(String(first.price_minor ?? "")); } }).catch((e) => Alert.alert("Couldn’t load gig", e instanceof Error ? e.message : String(e))); }, [gigId]);
+  useEffect(() => { void Promise.all([creatorGigsService.detail(gigId), fetchCreatorSetupStatus()]).then(([nextGig, nextSetup]) => { setGig(nextGig); setSetup(nextSetup); const first = nextSetup.packages?.find((item) => item.format_key === nextGig.format_key) ?? nextSetup.packages?.[0]; if (first?.id) { setPackageId(String(first.id)); setQuote(String(first.price_minor ?? "")); } }).catch((e) => Alert.alert("Couldn’t load gig", e instanceof Error ? e.message : String(e))); }, [gigId]);
   const send = async () => { setBusy(true); try { const result = await creatorGigsService.sendInterest(gigId, packageId, Number(quote), note); if ((result as { ok?: boolean }).ok === false) throw new Error((result as { error?: string }).error ?? "Couldn’t send interest"); Alert.alert("Interest sent", "The host sees only your pre-hire profile, package and quote."); router.back(); } catch (e) { Alert.alert("Couldn’t send interest", e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
   if (!gig) return <SafeAreaView style={styles.safe}><Text style={styles.loading}>Loading private-safe brief…</Text></SafeAreaView>;
   return <SafeAreaView style={styles.safe} edges={["top", "bottom"]}><Stack.Screen options={{ headerShown: false }} /><ScrollView contentContainerStyle={styles.content}>
