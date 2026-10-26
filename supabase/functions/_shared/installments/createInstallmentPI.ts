@@ -8,7 +8,10 @@
  */
 
 // @ts-ignore — Deno ESM import
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  createClient,
+  type SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
 import { stripeTicketCheckout } from "../stripe.ts";
 import { writeAudit } from "../audit.ts";
 import { applicationFeeWithReferralShare } from "../attribution.ts";
@@ -139,15 +142,19 @@ async function loadInstallmentContext(
   supabase: SupabaseClient,
   installmentId: string,
   brandId: string,
-): Promise<{
-  installment: InstallmentRow;
-  order: OrderRow;
-  brand: BrandRow;
-  stripeAccount: StripeAccount;
-} | { error: string }> {
+): Promise<
+  {
+    installment: InstallmentRow;
+    order: OrderRow;
+    brand: BrandRow;
+    stripeAccount: StripeAccount;
+  } | { error: string }
+> {
   const { data: installment } = await supabase
     .from("order_installments")
-    .select("id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status, retry_count, stripe_payment_intent_id")
+    .select(
+      "id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status, retry_count, stripe_payment_intent_id",
+    )
     .eq("id", installmentId)
     .maybeSingle();
   if (installment === null) return { error: "installment_not_found" };
@@ -155,7 +162,9 @@ async function loadInstallmentContext(
   const inst = installment as InstallmentRow;
   const { data: order } = await supabase
     .from("orders")
-    .select("id, event_id, stripe_customer_id_on_connected_account, saved_payment_method_id, buyer_user_id, buyer_email, at_risk, cancelled_at")
+    .select(
+      "id, event_id, stripe_customer_id_on_connected_account, saved_payment_method_id, buyer_user_id, buyer_email, at_risk, cancelled_at",
+    )
     .eq("id", inst.order_id)
     .maybeSingle();
   if (order === null) return { error: "order_not_found" };
@@ -232,7 +241,9 @@ export async function createInstallmentPI(
         reason: "claim_rpc_error",
       };
     }
-    const claimRow = (claim ?? null) as { ok?: boolean; reason?: string } | null;
+    const claimRow = (claim ?? null) as
+      | { ok?: boolean; reason?: string }
+      | null;
     if (claimRow === null || claimRow.ok !== true) {
       const reason = String(claimRow?.reason ?? "not_chargeable");
       return {
@@ -306,7 +317,8 @@ export async function createInstallmentPI(
     minglaApplicationFeeAmountCents,
     { shareMinor: referralShareMinor },
   );
-  const idempotencyKey = `installment:${installment.order_id}:${installment.ordinal}:${installment.retry_count}`;
+  const idempotencyKey =
+    `installment:${installment.order_id}:${installment.ordinal}:${installment.retry_count}`;
 
   try {
     // orch-strict-grep-allow stripe-no-idempotency-key — idempotencyKey IS passed via the request-options second arg; SPEC §3.2.1 retry-aware format diverges from generateIdempotencyKey's epoch-ms shape because cron + webhook need deterministic per-(installment,attempt) keys to prevent double-charge.
@@ -345,7 +357,9 @@ export async function createInstallmentPI(
         "claim_order_installment_for_charge",
         { p_installment_id: installment.id },
       );
-      const reclaimRow = (reclaim ?? null) as { ok?: boolean; reason?: string } | null;
+      const reclaimRow = (reclaim ?? null) as
+        | { ok?: boolean; reason?: string }
+        | null;
       if (
         reclaimError !== null ||
         reclaimRow === null ||
@@ -415,7 +429,9 @@ export async function createInstallmentPI(
           } catch (refundErr) {
             throw new Error(
               `cancelled_during_charge_refund_failed:${
-                refundErr instanceof Error ? refundErr.message : String(refundErr)
+                refundErr instanceof Error
+                  ? refundErr.message
+                  : String(refundErr)
               }`,
             );
           }

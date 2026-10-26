@@ -1,4 +1,7 @@
-import { assertEquals, assertRejects } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assertEquals,
+  assertRejects,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   paymentIntentChargeId,
   routeStripeEvent,

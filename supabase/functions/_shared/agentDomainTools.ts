@@ -8375,15 +8375,52 @@ const draftGigScript = writeTool(
     length_max: { type: "integer", minimum: 1, maximum: 90 },
     display_price: STR,
     listing_facts: { type: "array", items: STR, minItems: 1, maxItems: 20 },
-    sections: { type: "array", minItems: 1, maxItems: 12, items: { type: "object", additionalProperties: false, properties: { on_screen: STR, voiceover: STR, shot_notes: STR }, required: ["on_screen", "voiceover", "shot_notes"] } },
+    sections: {
+      type: "array",
+      minItems: 1,
+      maxItems: 12,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: { on_screen: STR, voiceover: STR, shot_notes: STR },
+        required: ["on_screen", "voiceover", "shot_notes"],
+      },
+    },
     disclosure: { type: "string", enum: ["#ad", "paid partnership"] },
     estimated_seconds: { type: "integer", minimum: 1, maximum: 90 },
   },
-  ["brand_id", "format_key", "length_min", "length_max", "display_price", "listing_facts", "sections", "disclosure", "estimated_seconds"],
+  [
+    "brand_id",
+    "format_key",
+    "length_min",
+    "length_max",
+    "display_price",
+    "listing_facts",
+    "sections",
+    "disclosure",
+    "estimated_seconds",
+  ],
   async (args, client, userId) => {
     await assertAgentReadBrand(client, args.brand_id as string, userId);
-    const checked = validateGigScript({ script: { sections: args.sections as Array<{ on_screen: string; voiceover: string; shot_notes: string }>, disclosure: args.disclosure as string, estimated_seconds: args.estimated_seconds as number }, lengthMin: args.length_min as number, lengthMax: args.length_max as number, displayPrice: args.display_price as string, listingFacts: args.listing_facts as string[] });
-    if (!checked.ok) throw new ToolError("INVALID_ARGS", `Script failed guardrails: ${checked.reasons.join(", ")}`);
+    const checked = validateGigScript({
+      script: {
+        sections: args.sections as Array<
+          { on_screen: string; voiceover: string; shot_notes: string }
+        >,
+        disclosure: args.disclosure as string,
+        estimated_seconds: args.estimated_seconds as number,
+      },
+      lengthMin: args.length_min as number,
+      lengthMax: args.length_max as number,
+      displayPrice: args.display_price as string,
+      listingFacts: args.listing_facts as string[],
+    });
+    if (!checked.ok) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        `Script failed guardrails: ${checked.reasons.join(", ")}`,
+      );
+    }
     return { format_key: args.format_key, body: checked.script };
   },
 );
