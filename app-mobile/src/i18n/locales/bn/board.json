@@ -17,6 +17,7 @@
     "groupFun": "গ্রুপ মজা", "picnicDates": "পিকনিক ডেট", "takeAStroll": "ঘুরে আসুন"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "{{phone}}-এ টেক্সট পাঠানো যায়নি। এর বদলে তাদের সাথে আমন্ত্রণ লিংক শেয়ার করুন।",
     "adminPrivileges": "অ্যাডমিন সুবিধা", "manageBoard": "বোর্ড পরিচালনা", "renameBoard": "বোর্ড পুনঃনামকরণ",
     "inviteParticipants": "অংশগ্রহণকারী আমন্ত্রণ", "turnOffNotifications": "বিজ্ঞপ্তি বন্ধ করুন", "turnOnNotifications": "বিজ্ঞপ্তি চালু করুন",
     "leaveBoard": "বোর্ড ছেড়ে দিন", "leaving": "ছেড়ে দিচ্ছে...", "deleteBoard": "বোর্ড মুছুন",

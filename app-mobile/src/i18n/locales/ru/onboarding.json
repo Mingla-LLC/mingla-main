@@ -178,7 +178,14 @@
     "alert_decline_error": "Couldn't decline the pair request. Try again.",
     "alert_generic_error": "Couldn't process the request. Try again.",
     "share_message": "Hey! Присоединиться me on Mingla и let's find amazing experiences together. https://useминgla.com",
-    "fallback_user": "Пользователь"
+    "fallback_user": "Пользователь",
+    "invite_card_title": "Ваши люди уже здесь",
+    "invite_card_body": "{{name}} пригласил(а) вас в Mingla. Примите, чтобы стать друзьями и видеть дни рождения, планы и сохранённое друг друга.",
+    "invite_card_sub": "★ Друг + пара · пригласил(а) вас по SMS",
+    "invite_card_accept": "Принять",
+    "invite_card_not_now": "Не сейчас",
+    "invite_card_done": "Вы друзья и пара с {{name}}",
+    "invite_card_friends_only": "Вы друзья с {{name}}"
   },
   "collaborations": {
     "headline": "Спланируйте вместе",

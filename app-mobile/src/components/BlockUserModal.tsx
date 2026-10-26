@@ -14,6 +14,9 @@
  * that opens it) + Android hardware-back. Only the OUTER scrim/card shell was
  * removed; every bit of the inner content, copy, reason chips, callbacks, and
  * styling is preserved exactly.
+ *
+ * Issue #4114 QA (P3): dark, on the chat tokens — it opens over the dark chat
+ * screen and the friends sheet (it used to be the only light card there).
  */
 
 import React, { useState } from "react";
@@ -28,6 +31,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from './ui/Icon';
 import { BaseBottomSheet } from './ui/BaseBottomSheet';
 import { BlockReason } from "../services/blockService";
+import { chatTokens } from "../constants/chatTokens";
 
 interface BlockUserModalProps {
   visible: boolean;
@@ -79,14 +83,14 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
       variant="center-dialog"
       visible={visible}
       onClose={handleClose}
-      theme="light"
+      theme="dark"
       accessibilityLabel={t('social:blockTitle', { name: userName })}
     >
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
                 <View style={styles.iconContainer}>
-                  <Icon name="shield" size={32} color="#ef4444" />
+                  <Icon name="shield" size={32} color={chatTokens.danger} />
                 </View>
                 <Text style={styles.title}>{t('social:blockTitle', { name: userName })}</Text>
               </View>
@@ -98,25 +102,25 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
                 </Text>
                 <View style={styles.bulletList}>
                   <View style={styles.bulletItem}>
-                    <Icon name="remove-circle" size={16} color="#6b7280" />
+                    <Icon name="remove-circle" size={16} color={chatTokens.textSoft} />
                     <Text style={styles.bulletText}>
                       {t('social:blockBulletFriendsList')}
                     </Text>
                   </View>
                   <View style={styles.bulletItem}>
-                    <Icon name="chatbubble-ellipses" size={16} color="#6b7280" />
+                    <Icon name="chatbubble-ellipses" size={16} color={chatTokens.textSoft} />
                     <Text style={styles.bulletText}>
                       {t('social:blockBulletMessage')}
                     </Text>
                   </View>
                   <View style={styles.bulletItem}>
-                    <Icon name="search" size={16} color="#6b7280" />
+                    <Icon name="search" size={16} color={chatTokens.textSoft} />
                     <Text style={styles.bulletText}>
                       {t('social:blockBulletSearch')}
                     </Text>
                   </View>
                   <View style={styles.bulletItem}>
-                    <Icon name="people" size={16} color="#6b7280" />
+                    <Icon name="people" size={16} color={chatTokens.textSoft} />
                     <Text style={styles.bulletText}>
                       {t('social:blockBulletCollaboration')}
                     </Text>
@@ -143,7 +147,7 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
                       <Icon
                         name={reason.icon}
                         size={16}
-                        color={selectedReason === reason.value ? "#eb7825" : "#6b7280"}
+                        color={selectedReason === reason.value ? chatTokens.accent : chatTokens.textSoft}
                       />
                       <Text
                         style={[
@@ -204,7 +208,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "#fef2f2",
+    backgroundColor: chatTokens.dangerSoft,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
@@ -212,18 +216,18 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#1f2937",
+    color: chatTokens.textPrimary,
     textAlign: "center",
   },
   descriptionContainer: {
-    backgroundColor: "#f9fafb",
+    backgroundColor: chatTokens.surfaceRaised,
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
   },
   description: {
     fontSize: 14,
-    color: "#374151",
+    color: chatTokens.textSecondary,
     fontWeight: "600",
     marginBottom: 12,
   },
@@ -238,7 +242,7 @@ const styles = StyleSheet.create({
   bulletText: {
     flex: 1,
     fontSize: 13,
-    color: "#6b7280",
+    color: chatTokens.textSoft,
     lineHeight: 18,
   },
   reasonContainer: {
@@ -247,7 +251,7 @@ const styles = StyleSheet.create({
   reasonLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#374151",
+    color: chatTokens.textSecondary,
     marginBottom: 10,
   },
   reasonOptions: {
@@ -261,20 +265,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: chatTokens.strip,
     gap: 6,
   },
   reasonOptionSelected: {
-    backgroundColor: "#fff7ed",
+    backgroundColor: chatTokens.accentSoft,
     borderWidth: 1,
-    borderColor: "#eb7825",
+    borderColor: chatTokens.accent,
   },
   reasonText: {
     fontSize: 13,
-    color: "#6b7280",
+    color: chatTokens.textSoft,
   },
   reasonTextSelected: {
-    color: "#eb7825",
+    color: chatTokens.accent,
     fontWeight: "600",
   },
   actions: {
@@ -285,14 +289,14 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: chatTokens.strip,
     alignItems: "center",
     justifyContent: "center",
   },
   cancelButtonText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#6b7280",
+    color: chatTokens.textSoft,
   },
   blockButton: {
     flex: 1,

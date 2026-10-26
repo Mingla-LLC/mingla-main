@@ -19,12 +19,14 @@ import { getDisplayName } from '../../utils/getDisplayName'
 
 import { PhoneInput } from './PhoneInput'
 import { usePhoneLookup, useDebouncedValue } from '../../hooks/usePhoneLookup'
-import { createPendingInvite } from '../../services/phoneLookupService'
 import { supabase } from '../../services/supabase'
+import { LinearGradient } from 'expo-linear-gradient'
+import { claimPendingFriendInvite } from '../../services/pendingFriendInvite'
+import { runCombinedAccept } from '../connections/friendsSheetModel'
 import { AddedFriend, OnboardingPairAction } from '../../types/onboarding'
 import { FriendRequest } from '../../services/friendsService'
 import { PairRequest } from '../../services/pairingService'
-import { useSendPairRequest, useAcceptPairRequest, useDeclinePairRequest, useIncomingPairRequests } from '../../hooks/usePairings'
+import { useSendPairRequest, useAcceptPairRequest, useDeclinePairRequest, useIncomingPairRequests, useIncomingHiddenPairRequests } from '../../hooks/usePairings'
 import { getDefaultCountryCode, getCountryByCode } from '../../constants/countries'
 import {
   colors,
@@ -96,6 +98,8 @@ interface OnboardingFriendsAndPairingStepProps {
   incomingRequests: FriendRequest[]
   onAcceptRequest: (requestId: string) => Promise<void>
   onDeclineRequest: (requestId: string) => Promise<void>
+  /** Issue #4114: reload incoming requests after a friend invite is claimed. */
+  onRefreshRequests?: () => Promise<void>
 }
 
 export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairingStepProps> = ({
@@ -111,8 +115,9 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
   incomingRequests,
   onAcceptRequest,
   onDeclineRequest,
+  onRefreshRequests,
 }) => {
-  const { t } = useTranslation(['onboarding', 'common'])
+  const { t } = useTranslation(['onboarding', 'common', 'connections'])
 
   // ─── Phone Input State ───
   const [phoneDigits, setPhoneDigits] = useState('')
@@ -145,6 +150,29 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
 
   // ─── Incoming Pair Requests (REAL query) ───
   const { data: incomingPairRequests, refetch: refetchPairRequests } = useIncomingPairRequests(userId)
+
+  // ─── Issue #4114: the text invite that brought them here ───
+  // claim_friend_invite runs after phone verification; claim again here
+  // (idempotent) so the inviter's request is in place, then show the inviter on
+  // top as ONE card with ONE Accept that does friend + pair.
+  const { data: hiddenPairRequests = [], refetch: refetchHiddenPairRequests } = useIncomingHiddenPairRequests(userId)
+  const [inviterId, setInviterId] = useState<string | null>(null)
+  const [inviteCardState, setInviteCardState] = useState<'open' | 'accepting' | 'paired' | 'friends' | 'dismissed'>('open')
+  useEffect(() => {
+    let cancelled = false
+    void claimPendingFriendInvite()
+      .then(async (claim) => {
+        if (cancelled || claim.status !== 'claimed') return
+        setInviterId(claim.inviterId)
+        await onRefreshRequests?.()
+        refetchHiddenPairRequests()
+      })
+      .catch((err) => console.warn('[OnboardingFriendsAndPairingStep] friend invite claim failed:', err))
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per step mount
+  }, [userId])
 
   // ─── Real-time pair request listener ───
   useEffect(() => {
@@ -203,12 +231,23 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
         const lookupUser = phoneLookupResult.user
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
 
-        await supabase
-          .from('friend_requests')
-          .upsert(
-            { sender_id: userId, receiver_id: lookupUser.id, status: 'pending' },
-            { onConflict: 'sender_id,receiver_id' }
-          )
+        // Issue #4114: the one Add a friend server path (add = pair). Already
+        // friends: nothing to send. Otherwise a friend request + a pair request
+        // hidden until it is accepted (friend-only at the free pairing limit).
+        const alreadyFriends = phoneLookupResult.friendship_status === 'friends'
+        let pairAction: OnboardingPairAction | null = null
+        if (!alreadyFriends && phoneLookupResult.friendship_status === 'none') {
+          const result = await sendPairMutation.mutateAsync({ friendUserId: lookupUser.id })
+          if (!result.friendOnly && result.requestId) {
+            pairAction = {
+              type: 'sent',
+              targetUserId: lookupUser.id,
+              targetDisplayName: getDisplayName(lookupUser, t('onboarding:friends.fallback_user')),
+              tier: result.tier,
+              requestId: result.requestId,
+            }
+          }
+        }
 
         onAddFriend({
           type: 'existing',
@@ -217,15 +256,16 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
           phoneE164: debouncedPhoneE164,
           displayName: getDisplayName(lookupUser, t('onboarding:friends.fallback_user')),
           avatarUrl: lookupUser.avatar_url,
-          friendshipStatus: phoneLookupResult.friendship_status === 'friends'
-            ? 'friends'
-            : 'pending_sent',
+          friendshipStatus: alreadyFriends ? 'friends' : 'pending_sent',
         })
+        if (pairAction) onPairAction(pairAction)
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
         setPhoneDigits('')
       } else {
-        await createPendingInvite(userId, debouncedPhoneE164)
+        // Issue #4114: ONE invite record — send-pair-request upserts the invite
+        // and texts it; the share sheet opens only if the text did not go.
+        const invite = await sendPairMutation.mutateAsync({ phoneE164: debouncedPhoneE164 })
 
         onAddFriend({
           type: 'invited',
@@ -233,11 +273,26 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
           displayName: debouncedPhoneE164,
           friendshipStatus: 'none',
         })
-
-        // SHARE-NON-CONTENT:invite
-        await Share.share({
-          message: t('onboarding:friends.share_message'),
+        setQueuedPairPhones(prev => new Set(prev).add(debouncedPhoneE164))
+        onPairAction({
+          type: 'queued',
+          targetUserId: undefined,
+          targetPhoneE164: debouncedPhoneE164,
+          targetDisplayName: debouncedPhoneE164,
+          tier: 3,
+          inviteId: invite.inviteId,
         })
+
+        if (invite.smsStatus !== 'sent') {
+          try {
+            // SHARE-NON-CONTENT:invite
+            await Share.share({
+              message: t('connections:af_share_message', { link: invite.inviteLink ?? 'https://go.usemingla.com/w36m' }),
+            })
+          } catch (shareErr) {
+            console.warn('[OnboardingFriendsAndPairingStep] share failed:', shareErr)
+          }
+        }
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
         setPhoneDigits('')
@@ -248,7 +303,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
     } finally {
       setActionLoading(false)
     }
-  }, [isPhoneValid, actionLoading, debouncedPhoneE164, userPhoneE164, phoneLookupResult, userId, addedFriends, onAddFriend])
+  }, [isPhoneValid, actionLoading, debouncedPhoneE164, userPhoneE164, phoneLookupResult, addedFriends, onAddFriend, onPairAction, sendPairMutation, t])
 
   // ─── Friend Request Handlers ───
   const handleAcceptFriendRequest = useCallback(async (requestId: string) => {
@@ -332,7 +387,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
           targetUserId: friend.userId!,
           targetDisplayName: friend.displayName,
           tier: result.tier,
-          requestId: result.requestId,
+          requestId: result.requestId ?? undefined,
         }
         onPairAction(action)
       }
@@ -409,6 +464,61 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
     }
   }, [processingPairRequestId, declinePairMutation])
 
+  // ─── Issue #4114: the inviter card ───
+  const [acceptedInviterName, setAcceptedInviterName] = useState<string | null>(null)
+  const inviteRequest = React.useMemo(() => {
+    if (inviteCardState === 'dismissed') return null
+    const hiddenByFriendRequest = new Map(
+      hiddenPairRequests
+        .filter(h => h.gatedByFriendRequestId)
+        .map(h => [h.gatedByFriendRequestId as string, h] as const),
+    )
+    const match = incomingRequests.find(r =>
+      r.status === 'pending' &&
+      (r.sender_id === inviterId || Boolean(hiddenByFriendRequest.get(r.id)?.pendingPhoneE164)),
+    )
+    if (!match) return null
+    return { request: match, pairRequestId: hiddenByFriendRequest.get(match.id)?.id ?? null }
+  }, [inviteCardState, hiddenPairRequests, incomingRequests, inviterId])
+  const listedRequests = incomingRequests.filter(r => r.id !== inviteRequest?.request.id)
+
+  const handleAcceptInvite = useCallback(async () => {
+    if (!inviteRequest || inviteCardState === 'accepting') return
+    const name = getDisplayName(inviteRequest.request.sender)
+    setInviteCardState('accepting')
+    try {
+      if (inviteRequest.pairRequestId) {
+        const result = await runCombinedAccept(
+          { friendRequestId: inviteRequest.request.id, pairRequestId: inviteRequest.pairRequestId },
+          userId,
+          {
+            acceptFriend: onAcceptRequest,
+            acceptPair: (pairRequestId) => acceptPairMutation.mutateAsync(pairRequestId),
+          },
+        )
+        if (result.paired) {
+          onPairAction({
+            type: 'accepted',
+            targetUserId: inviteRequest.request.sender_id,
+            targetDisplayName: name,
+            tier: 1,
+            requestId: inviteRequest.pairRequestId,
+          })
+        }
+        setInviteCardState(result.paired ? 'paired' : 'friends')
+      } else {
+        await onAcceptRequest(inviteRequest.request.id)
+        setInviteCardState('friends')
+      }
+      setAcceptedInviterName(name)
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      refetchPairRequests()
+    } catch {
+      setInviteCardState('open')
+      Alert.alert(t('common:something_went_wrong'), t('onboarding:friends.alert_generic_error'))
+    }
+  }, [inviteRequest, inviteCardState, userId, onAcceptRequest, acceptPairMutation, onPairAction, refetchPairRequests, t])
+
   // ─── Derived State ───
   const isButtonDisabled =
     !isPhoneValid ||
@@ -446,11 +556,75 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
         {t('onboarding:friends.body')}
       </Text>
 
+      {/* Issue #4114: the friend who texted the invite, on top, ONE Accept. */}
+      {acceptedInviterName && (inviteCardState === 'paired' || inviteCardState === 'friends') ? (
+        <View style={[styles.requestCard, styles.requestCardAccepted]}>
+          <Icon name="checkmark-circle" size={20} color={colors.success[600]} />
+          <Text style={styles.acceptedText}>
+            {inviteCardState === 'paired'
+              ? t('onboarding:friends.invite_card_done', { name: acceptedInviterName })
+              : t('onboarding:friends.invite_card_friends_only', { name: acceptedInviterName })}
+          </Text>
+        </View>
+      ) : inviteRequest ? (
+        <LinearGradient
+          colors={['rgba(235, 120, 37, 0.22)', 'rgba(235, 120, 37, 0.06)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.inviteCard}
+        >
+          <Text style={styles.inviteTitle}>{t('onboarding:friends.invite_card_title')}</Text>
+          <Text style={styles.inviteBody}>
+            {t('onboarding:friends.invite_card_body', { name: getDisplayName(inviteRequest.request.sender) })}
+          </Text>
+          <View style={styles.inviteWho}>
+            {inviteRequest.request.sender?.avatar_url ? (
+              <Image source={{ uri: inviteRequest.request.sender.avatar_url }} style={styles.inviteAvatar} />
+            ) : (
+              <View style={[styles.inviteAvatar, styles.inviteAvatarFallback]}>
+                <Text style={styles.inviteAvatarText}>{getInitials(getDisplayName(inviteRequest.request.sender))}</Text>
+              </View>
+            )}
+            <View style={styles.requestInfo}>
+              <Text style={styles.inviteName} numberOfLines={1}>{getDisplayName(inviteRequest.request.sender)}</Text>
+              <Text style={styles.inviteSub} numberOfLines={1}>{t('onboarding:friends.invite_card_sub')}</Text>
+            </View>
+          </View>
+          <View style={styles.inviteButtons}>
+            <TouchableOpacity
+              style={[styles.inviteButton, styles.inviteButtonGhost]}
+              onPress={() => setInviteCardState('dismissed')}
+              disabled={inviteCardState === 'accepting'}
+              accessibilityRole="button"
+              accessibilityLabel={t('onboarding:friends.invite_card_not_now')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.inviteButtonGhostText}>{t('onboarding:friends.invite_card_not_now')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.inviteButton, styles.inviteButtonPrimary]}
+              onPress={() => void handleAcceptInvite()}
+              disabled={inviteCardState === 'accepting'}
+              accessibilityRole="button"
+              accessibilityLabel={t('onboarding:friends.invite_card_accept')}
+              accessibilityState={{ busy: inviteCardState === 'accepting' }}
+              activeOpacity={0.7}
+            >
+              {inviteCardState === 'accepting' ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.inviteButtonPrimaryText}>{t('onboarding:friends.invite_card_accept')}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+      ) : null}
+
       {/* Section 1: Incoming Friend Requests */}
-      {incomingRequests.length > 0 && (
+      {listedRequests.length > 0 && (
         <View style={styles.section}>
-          {renderSectionLabel(t('onboarding:friends.waiting_header'), incomingRequests.length)}
-          {incomingRequests.map((request) => {
+          {renderSectionLabel(t('onboarding:friends.waiting_header'), listedRequests.length)}
+          {listedRequests.map((request) => {
             const status = processedRequests[request.id]
             const isProcessing = processingRequestId === request.id
             const senderName = getDisplayName(request.sender)
@@ -765,6 +939,83 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  // Issue #4114 — the inviter card (design v8, onboarding friends step).
+  inviteCard: {
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(235, 120, 37, 0.45)',
+    padding: 16,
+    gap: 12,
+    marginBottom: spacing.lg,
+  },
+  inviteTitle: {
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: fontWeights.bold as any,
+    color: colors.gray[900],
+  },
+  inviteBody: {
+    fontSize: 15,
+    lineHeight: 20,
+    color: colors.gray[600],
+  },
+  inviteWho: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  inviteAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  inviteAvatarFallback: {
+    backgroundColor: '#EA580C',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inviteAvatarText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: fontWeights.bold as any,
+  },
+  inviteName: {
+    fontSize: 16,
+    fontWeight: fontWeights.bold as any,
+    color: colors.gray[900],
+  },
+  inviteSub: {
+    fontSize: 13,
+    color: '#B45309',
+    marginTop: 2,
+  },
+  inviteButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  inviteButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inviteButtonGhost: {
+    backgroundColor: 'rgba(17, 24, 39, 0.06)',
+  },
+  inviteButtonGhostText: {
+    fontSize: 14,
+    fontWeight: fontWeights.bold as any,
+    color: colors.gray[800],
+  },
+  inviteButtonPrimary: {
+    backgroundColor: '#EB7825',
+  },
+  inviteButtonPrimaryText: {
+    fontSize: 14,
+    fontWeight: fontWeights.bold as any,
+    color: '#ffffff',
   },
   headline: {
     fontSize: typography.xxl.fontSize,

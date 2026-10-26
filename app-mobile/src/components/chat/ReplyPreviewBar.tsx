@@ -1,12 +1,16 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Icon } from '../ui/Icon';
+import { chatTokens } from '../../constants/chatTokens';
 
 interface ReplyPreviewBarProps {
   senderName: string;
   previewText: string;
   isOwnMessage: boolean;
   onClose: () => void;
+  /** Issue #4114 Wave 3: the dark chat screen passes `dark`; other hosts keep light. */
+  theme?: 'light' | 'dark';
+  closeLabel?: string;
 }
 
 /**
@@ -18,15 +22,18 @@ export function ReplyPreviewBar({
   previewText,
   isOwnMessage,
   onClose,
+  theme = 'light',
+  closeLabel = 'Cancel reply',
 }: ReplyPreviewBarProps): React.ReactElement {
+  const dark = theme === 'dark';
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, dark && styles.containerDark]}>
       <View style={[styles.accentBar, isOwnMessage ? styles.accentBarOwn : styles.accentBarOther]} />
       <View style={styles.content}>
-        <Text style={styles.senderName} numberOfLines={1}>
+        <Text style={[styles.senderName, dark && styles.senderNameDark]} numberOfLines={1}>
           {senderName}
         </Text>
-        <Text style={styles.previewText} numberOfLines={1}>
+        <Text style={[styles.previewText, dark && styles.previewTextDark]} numberOfLines={1}>
           {previewText}
         </Text>
       </View>
@@ -34,10 +41,10 @@ export function ReplyPreviewBar({
         onPress={onClose}
         style={styles.closeButton}
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        accessibilityLabel="Cancel reply"
+        accessibilityLabel={closeLabel}
         accessibilityRole="button"
       >
-        <Icon name="close" size={18} color="#9ca3af" />
+        <Icon name="close" size={18} color={dark ? chatTokens.textSoft : '#9ca3af'} />
       </TouchableOpacity>
     </View>
   );
@@ -52,6 +59,16 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
     backgroundColor: '#ffffff',
+  },
+  containerDark: {
+    borderTopWidth: 0,
+    backgroundColor: 'transparent',
+  },
+  senderNameDark: {
+    color: chatTokens.textPrimary,
+  },
+  previewTextDark: {
+    color: chatTokens.textSoft,
   },
   accentBar: {
     width: 3,

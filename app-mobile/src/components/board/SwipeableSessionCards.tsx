@@ -23,6 +23,7 @@ import { supabase } from "../../services/supabase";
 import { getReadableCategoryName } from "../../utils/categoryUtils";
 import * as Haptics from "expo-haptics";
 import LockedCardSchedulingSheet from "../session/LockedCardSchedulingSheet";
+import { chatTokens } from "../../constants/chatTokens";
 
 const CURATED_ICON_MAP: Record<string, string> = {
   'Adventurous':   'compass-outline',
@@ -63,6 +64,12 @@ interface SwipeableSessionCardsProps {
   // ORCH-0908: admin/creator gating for the "Lock it in" button.
   // Pulled from useBoardSession at the SessionViewModal level and forwarded down.
   isAdmin?: boolean;
+  /**
+   * Issue #4114 QA run 2: the chat's Matches sheet is dark, so the deck's
+   * chrome (background, counts, empty state, card text, pills) follows it.
+   * The session view keeps the light default.
+   */
+  tone?: "light" | "dark";
 }
 
 const getIconComponent = (iconName: string) => {
@@ -105,7 +112,9 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
   loading = false,
   accountPreferences,
   isAdmin = false,
+  tone = "light",
 }) => {
+  const dark = tone === "dark";
   // ORCH-0908 rework (2026-05-21): tapping "Lock it in" no longer fires an
   // RPC. Instead it opens LockedCardSchedulingSheet, which embeds the
   // date/time picker → summary confirm step → atomic
@@ -189,7 +198,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
   if (loading && cards.length === 0) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#eb7825" />
+        <ActivityIndicator size="large" color={dark ? chatTokens.accent : "#eb7825"} />
       </View>
     );
   }
@@ -197,9 +206,9 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
   if (cards.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Icon name="images-outline" size={64} color="#ccc" />
-        <Text style={styles.emptyText}>No saved cards yet</Text>
-        <Text style={styles.emptySubtext}>
+        <Icon name="images-outline" size={64} color={dark ? chatTokens.textMuted : "#ccc"} />
+        <Text style={[styles.emptyText, dark && styles.emptyTextDark]}>No saved cards yet</Text>
+        <Text style={[styles.emptySubtext, dark && styles.emptySubtextDark]}>
           Swipe right on cards to save them to this board
         </Text>
       </View>
@@ -207,14 +216,14 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, dark && styles.containerDark]}>
       {/* Card count header */}
       <View style={styles.cardCountHeader}>
-        <Text style={styles.cardCountText}>{sortedCards.length} card{sortedCards.length !== 1 ? "s" : ""}</Text>
+        <Text style={[styles.cardCountText, dark && styles.cardCountTextDark]}>{sortedCards.length} card{sortedCards.length !== 1 ? "s" : ""}</Text>
         {cards.length > 1 && (
           <View style={styles.scrollHint}>
-            <Icon name="arrow-forward" size={14} color="#9ca3af" />
-            <Text style={styles.scrollHintText}>Scroll to browse</Text>
+            <Icon name="arrow-forward" size={14} color={dark ? chatTokens.textMuted : "#9ca3af"} />
+            <Text style={[styles.scrollHintText, dark && styles.scrollHintTextDark]}>Scroll to browse</Text>
           </View>
         )}
       </View>
@@ -224,11 +233,11 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
         {/* Left Navigation Button */}
         {cards.length > 1 && scrollPosition > 10 && (
           <TouchableOpacity
-            style={[styles.navButton, styles.navButtonLeft]}
+            style={[styles.navButton, dark && styles.navButtonDark, styles.navButtonLeft]}
             onPress={() => scrollCards("left")}
             activeOpacity={0.7}
           >
-            <Icon name="chevron-back" size={18} color="#6b7280" />
+            <Icon name="chevron-back" size={18} color={dark ? chatTokens.textSecondary : "#6b7280"} />
           </TouchableOpacity>
         )}
 
@@ -283,6 +292,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                     style={[
                       styles.voteButton,
                       styles.thumbsDownButton,
+                      dark && styles.thumbsDownButtonDark,
                       voteCount.userVote === "no" && styles.thumbsDownButtonActive,
                       isCardLocked && styles.buttonDisabled,
                     ]}
@@ -295,6 +305,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                   <TouchableOpacity
                     style={[
                       styles.rsvpButton,
+                      dark && styles.rsvpButtonDark,
                       rsvpCount.userRSVP === "yes" && styles.rsvpButtonActive,
                       isCardLocked && styles.buttonDisabled,
                     ]}
@@ -328,7 +339,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                   )}
                 </View>
                 {likedByLabel && (
-                  <Text style={styles.likedByText}>{likedByLabel}</Text>
+                  <Text style={[styles.likedByText, dark && styles.likedByTextDark]}>{likedByLabel}</Text>
                 )}
               </View>
             );
@@ -544,16 +555,16 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                 <View style={styles.cardDetails}>
                   <View style={styles.categoryRow}>
                     <Icon name={categoryIcon} size={14} color="#eb7825" />
-                    <Text style={styles.categoryText} numberOfLines={1} ellipsizeMode="tail">{categoryLabel}</Text>
+                    <Text style={[styles.categoryText, dark && styles.categoryTextDark]} numberOfLines={1} ellipsizeMode="tail">{categoryLabel}</Text>
                   </View>
 
-                  <Text style={styles.description} numberOfLines={1} ellipsizeMode="tail">
+                  <Text style={[styles.description, dark && styles.descriptionDark]} numberOfLines={1} ellipsizeMode="tail">
                     {cardData.description || ""}
                   </Text>
 
                   {rsvpCount.total > 0 && rsvpCount.responded > 0 && (
                     <View style={styles.rsvpProgressRow}>
-                      <View style={styles.rsvpProgressBarBg}>
+                      <View style={[styles.rsvpProgressBarBg, dark && styles.rsvpProgressBarBgDark]}>
                         <View
                           style={[
                             styles.rsvpProgressBarFill,
@@ -561,7 +572,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                           ]}
                         />
                       </View>
-                      <Text style={styles.rsvpProgressText}>
+                      <Text style={[styles.rsvpProgressText, dark && styles.rsvpProgressTextDark]}>
                         {rsvpCount.responded}/{rsvpCount.total} attending
                       </Text>
                     </View>
@@ -577,11 +588,11 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
         {/* Right Navigation Button */}
         {cards.length > 1 && (
           <TouchableOpacity
-            style={[styles.navButton, styles.navButtonRight]}
+            style={[styles.navButton, dark && styles.navButtonDark, styles.navButtonRight]}
             onPress={() => scrollCards("right")}
             activeOpacity={0.7}
           >
-            <Icon name="chevron-forward" size={18} color="#6b7280" />
+            <Icon name="chevron-forward" size={18} color={dark ? chatTokens.textSecondary : "#6b7280"} />
           </TouchableOpacity>
         )}
       </View>
@@ -1004,6 +1015,20 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     fontWeight: "500",
   },
+  // Issue #4114 QA run 2: the chat's dark Matches sheet (tone="dark").
+  containerDark: { backgroundColor: chatTokens.surface },
+  emptyTextDark: { color: chatTokens.textPrimary },
+  emptySubtextDark: { color: chatTokens.textSecondary },
+  cardCountTextDark: { color: chatTokens.textPrimary },
+  scrollHintTextDark: { color: chatTokens.textMuted },
+  navButtonDark: { backgroundColor: chatTokens.surfaceRaised, borderColor: chatTokens.hairline },
+  categoryTextDark: { color: chatTokens.textSecondary },
+  descriptionDark: { color: chatTokens.textSoft },
+  thumbsDownButtonDark: { backgroundColor: chatTokens.dangerSoft },
+  rsvpButtonDark: { backgroundColor: chatTokens.accentSoft },
+  likedByTextDark: { color: chatTokens.textMuted },
+  rsvpProgressBarBgDark: { backgroundColor: chatTokens.strip },
+  rsvpProgressTextDark: { color: chatTokens.textSoft },
 });
 
 export default SwipeableSessionCards;

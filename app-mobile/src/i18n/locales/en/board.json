@@ -55,6 +55,7 @@
     "invitedUser": "Invited {{name}}",
     "inviteSent": "Invite sent",
     "invitedTextSent": "Text message sent to {{phone}}. They'll get a link to join.",
+    "inviteNotTextedBody": "We couldn't text {{phone}}. Share the invite link with them instead.",
     "muteNotifications": "Mute notifications",
     "unmuteNotifications": "Unmute notifications",
     "muteUpdateFailed": "Couldn't update mute state",

@@ -178,7 +178,14 @@
     "alert_decline_error": "无法拒绝配对请求，请重试。",
     "alert_generic_error": "无法处理请求，请重试。",
     "share_message": "嘿！加入我的 Mingla，一起发现精彩体验吧。https://usemingla.com",
-    "fallback_user": "用户"
+    "fallback_user": "用户",
+    "invite_card_title": "你的朋友已经在这里了",
+    "invite_card_body": "{{name}}邀请你加入 Mingla。接受即可成为好友，并查看彼此的生日、计划和收藏。",
+    "invite_card_sub": "★ 好友 + 配对 · 通过短信邀请了你",
+    "invite_card_accept": "接受",
+    "invite_card_not_now": "暂不",
+    "invite_card_done": "你和{{name}}已成为好友并配对",
+    "invite_card_friends_only": "你和{{name}}已成为好友"
   },
   "collaborations": {
     "headline": "一起来计划",

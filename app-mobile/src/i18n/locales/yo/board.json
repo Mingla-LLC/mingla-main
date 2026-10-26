@@ -40,6 +40,7 @@
     "takeAStroll": "Rìn Ìrìn-àjò"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "We couldn't text {{phone}}. Share the invite link with them instead.",
     "adminPrivileges": "Àṣẹ Admin",
     "manageBoard": "Ṣàkóso Bọ́ọ̀dù",
     "renameBoard": "Yí Orúkọ Bọ́ọ̀dù Padà",

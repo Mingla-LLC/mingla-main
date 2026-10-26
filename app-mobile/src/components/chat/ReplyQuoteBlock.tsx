@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { receivedBubbleTokens } from '../../constants/chatTokens';
 
 interface ReplyQuoteBlockProps {
   senderName: string;
@@ -54,7 +55,7 @@ export function ReplyQuoteBlock({
           {senderName}
         </Text>
         {isDeleted ? (
-          <Text style={[styles.previewText, styles.deletedText]}>
+          <Text style={[styles.previewText, isSent ? styles.deletedTextSent : styles.deletedText]}>
             Message deleted
           </Text>
         ) : (
@@ -89,8 +90,9 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     overflow: 'hidden',
   },
+  // Issue #4114 Wave 7: the received variant sits in the dark received bubble.
   containerReceived: {
-    backgroundColor: 'rgba(0, 0, 0, 0.04)',
+    backgroundColor: receivedBubbleTokens.quoteBg,
   },
   containerSent: {
     backgroundColor: 'rgba(0, 0, 0, 0.1)',
@@ -102,7 +104,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   accentBarReceived: {
-    backgroundColor: '#eb7825',
+    backgroundColor: receivedBubbleTokens.quoteBar,
   },
   accentBarSent: {
     backgroundColor: 'rgba(255, 255, 255, 0.6)',
@@ -118,7 +120,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   senderNameReceived: {
-    color: '#1A1A1A',
+    color: receivedBubbleTokens.quoteName,
   },
   senderNameSent: {
     color: '#FFFFFF',
@@ -128,13 +130,17 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   previewTextReceived: {
-    color: '#6B6B6B',
+    color: receivedBubbleTokens.quoteText,
   },
   previewTextSent: {
     color: 'rgba(255, 255, 255, 0.7)',
   },
+  deletedTextSent: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontStyle: 'italic',
+  },
   deletedText: {
-    color: '#9ca3af',
+    color: receivedBubbleTokens.quoteDeleted,
     fontStyle: 'italic',
   },
   thumbnail: {

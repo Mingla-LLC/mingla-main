@@ -16,6 +16,7 @@
     "adventurous": "冒険", "firstDate": "初デート", "romantic": "ロマンチック", "groupFun": "グループで楽しく", "picnicDates": "ピクニックデート", "takeAStroll": "散歩"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "{{phone}} にSMSを送信できませんでした。代わりに招待リンクを共有してください。",
     "adminPrivileges": "管理者権限", "manageBoard": "ボード管理", "renameBoard": "ボード名を変更",
     "inviteParticipants": "参加者を招待", "turnOffNotifications": "通知をオフ", "turnOnNotifications": "通知をオン",
     "leaveBoard": "ボードを退出", "leaving": "退出中...", "deleteBoard": "ボードを削除",

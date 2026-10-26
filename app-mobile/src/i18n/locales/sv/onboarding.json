@@ -178,7 +178,14 @@
     "alert_decline_error": "Couldn't decline the pair request. Try again.",
     "alert_generic_error": "Couldn't process the request. Try again.",
     "share_message": "Hey! Gå med me on Mingla och let's find amazing experiences together. https://usemingla.com",
-    "fallback_user": "Användare"
+    "fallback_user": "Användare",
+    "invite_card_title": "Dina personer är redan här",
+    "invite_card_body": "{{name}} bjöd in dig till Mingla. Godkänn för att bli vänner och se varandras födelsedagar, planer och sparat.",
+    "invite_card_sub": "★ Vän + par · bjöd in dig via sms",
+    "invite_card_accept": "Godkänn",
+    "invite_card_not_now": "Inte nu",
+    "invite_card_done": "Du är vän och parad med {{name}}",
+    "invite_card_friends_only": "Du är vän med {{name}}"
   },
   "collaborations": {
     "headline": "Planera ihop",

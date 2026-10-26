@@ -178,7 +178,14 @@
     "alert_decline_error": "I gha giẹ ẹmwẹ ihaɗa. Ke gberra.",
     "alert_generic_error": "I gha ru ẹmwẹ na. Ke gberra.",
     "share_message": "Ọbọ! Bẹghe Mingla ne awa gha mwẹ emwi ne ọ sẹ uwa. https://usemingla.com",
-    "fallback_user": "Ọghe"
+    "fallback_user": "Ọghe",
+    "invite_card_title": "Your people are already here",
+    "invite_card_body": "{{name}} invited you to Mingla. Accept to be friends and see each other's birthdays, plans and saves.",
+    "invite_card_sub": "★ Friend + pair · invited you by text",
+    "invite_card_accept": "Accept",
+    "invite_card_not_now": "Not now",
+    "invite_card_done": "You're friends and paired with {{name}}",
+    "invite_card_friends_only": "You're friends with {{name}}"
   },
   "collaborations": {
     "headline": "Rhan emwi uwa",

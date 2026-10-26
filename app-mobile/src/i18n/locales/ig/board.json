@@ -40,6 +40,7 @@
     "takeAStroll": "Jee Njem"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "We couldn't text {{phone}}. Share the invite link with them instead.",
     "adminPrivileges": "Ikike Admin",
     "manageBoard": "Jikwaa Bọọdụ",
     "renameBoard": "Gbanwee Aha Bọọdụ",

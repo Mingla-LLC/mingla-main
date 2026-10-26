@@ -178,7 +178,14 @@
     "alert_decline_error": "Couldn't decline the pair request. Try again.",
     "alert_generic_error": "Couldn't process the request. Try again.",
     "share_message": "Hey! Katıl me on Mingla ve let's find amazing experiences together. https://usedkgla.com",
-    "fallback_user": "Kullanıcı"
+    "fallback_user": "Kullanıcı",
+    "invite_card_title": "İnsanların zaten burada",
+    "invite_card_body": "{{name}} seni Mingla'ya davet etti. Arkadaş olmak ve birbirinizin doğum günlerini, planlarını ve kaydettiklerini görmek için kabul et.",
+    "invite_card_sub": "★ Arkadaş + eşleşme · seni SMS ile davet etti",
+    "invite_card_accept": "Kabul et",
+    "invite_card_not_now": "Şimdi değil",
+    "invite_card_done": "{{name}} ile arkadaş ve eşleşmişsin",
+    "invite_card_friends_only": "{{name}} ile arkadaşsın"
   },
   "collaborations": {
     "headline": "Birlikte planlayın",

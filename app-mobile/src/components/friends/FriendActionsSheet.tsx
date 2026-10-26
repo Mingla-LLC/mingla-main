@@ -3,14 +3,20 @@
 // through useFriendActions and renders the existing AddToBoardModal / BlockUserModal /
 // ReportUserModal. No new backend.
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
-import { Icon } from "../ui/Icon";
 import { s, vs } from "../../utils/responsive";
 import AddToBoardModal from "../AddToBoardModal";
 import BlockUserModal from "../BlockUserModal";
 import ReportUserModal from "../ReportUserModal";
 import { useFriendActions } from "../../hooks/useFriendActions";
+import { CustomPaywallScreen } from "../CustomPaywallScreen";
+import { useAppStore } from "../../store/appStore";
+import { ChatActionList } from "../chat/ChatActionList";
+import { buildFriendMenu, type FriendMenuItemId } from "../../utils/chatMenuModel";
+import { chatTokens } from "../../constants/chatTokens";
+
+const MUTE_BUSY: ReadonlySet<FriendMenuItemId> = new Set<FriendMenuItemId>(["mute"]);
 
 // META-ORCH-0991 Wave B Batch 3: was a flex-end action menu sized to its rows →
 // a swipe-down sheet. A fixed snap (not enableDynamicSizing) is used because a
@@ -32,6 +38,9 @@ interface FriendActionsSheetProps {
   isPending: boolean;
   /** Friendship gates the pairing row + remove (you can only pair/remove an accepted friend). */
   isFriend: boolean;
+  /** Issue #4114 Wave 3: shared-list rows that leave this sheet. */
+  onViewProfile?: () => void;
+  onOpenPairedView?: () => void;
 }
 
 const FriendActionsSheet: React.FC<FriendActionsSheetProps> = ({
@@ -45,13 +54,27 @@ const FriendActionsSheet: React.FC<FriendActionsSheetProps> = ({
   isPaired,
   isPending,
   isFriend,
+  onViewProfile,
+  onOpenPairedView,
 }) => {
+  const currentUserId = useAppStore((state) => state.user?.id);
   const a = useFriendActions({ friendUserId, friendName, friendUsername, friendAvatarUrl, pairingId, isPaired, isPending });
 
   const run = (fn: () => void) => {
     onClose();
     fn();
   };
+
+  const menuItems = buildFriendMenu({
+    surface: "friendSheet",
+    isFriend,
+    pairState: isPaired ? "paired" : isPending ? "pending" : "none",
+    canOpenPairedView: Boolean(onOpenPairedView),
+    canUnpair: Boolean(pairingId),
+    canViewProfile: Boolean(onViewProfile),
+    hasConversation: false,
+    isMuted: a.isMuted,
+  });
 
   const friendForModal = { id: friendUserId, name: friendName, username: friendUsername ?? "", isOnline: true };
   const userForReport = { id: friendUserId, name: friendName, username: friendUsername ?? "" };
@@ -61,7 +84,7 @@ const FriendActionsSheet: React.FC<FriendActionsSheetProps> = ({
       <BaseBottomSheet
         visible={visible}
         onClose={onClose}
-        theme="light"
+        theme="dark"
         snapPoints={FRIEND_ACTIONS_SNAP_POINTS}
         scrollMode="view"
         wrapInRNModal
@@ -69,68 +92,26 @@ const FriendActionsSheet: React.FC<FriendActionsSheetProps> = ({
       >
         <View style={styles.container}>
           <Text style={styles.title} numberOfLines={1}>{friendName}</Text>
-
-          {/* Pair / Unpair — friends only */}
-          {isFriend && a.pairAction === "unpair" && (
-            <TouchableOpacity style={styles.item} onPress={() => run(a.unpair)} activeOpacity={0.7}
-              accessibilityRole="button" accessibilityLabel={`Unpair from ${friendName}`}>
-              <Icon name="star" size={s(20)} color="#10b981" style={styles.icon} />
-              <Text style={styles.itemText}>Unpair</Text>
-            </TouchableOpacity>
-          )}
-          {isFriend && a.pairAction === "pending" && (
-            <View style={styles.item}>
-              <Icon name="star-outline" size={s(20)} color="#9ca3af" style={styles.icon} />
-              <Text style={[styles.itemText, { color: "#9ca3af" }]}>Pair request pending</Text>
-            </View>
-          )}
-          {isFriend && a.pairAction === "pair" && (
-            <TouchableOpacity style={styles.item} onPress={() => run(a.sendPair)} activeOpacity={0.7}
-              accessibilityRole="button" accessibilityLabel={`Send pair request to ${friendName}`}>
-              <Icon name="star-outline" size={s(20)} color="#eb7825" style={styles.icon} />
-              <Text style={styles.itemText}>Send pair request</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Add to session */}
-          <TouchableOpacity style={styles.item} onPress={() => run(a.openAddToSession)} activeOpacity={0.7}
-            accessibilityRole="button" accessibilityLabel={`Add ${friendName} to a session`}>
-            <Icon name="people-outline" size={s(20)} color="#4b5563" style={styles.icon} />
-            <Text style={styles.itemText}>Add to session</Text>
-          </TouchableOpacity>
-
-          {/* Mute / Unmute */}
-          <TouchableOpacity style={styles.item} onPress={() => run(a.toggleMute)} activeOpacity={0.7}
-            disabled={a.isMuteLoading}
-            accessibilityRole="button" accessibilityLabel={a.isMuted ? `Unmute ${friendName}` : `Mute ${friendName}`}>
-            <Icon name={a.isMuted ? "volume-high" : "volume-mute"} size={s(20)} color="#4b5563" style={styles.icon} />
-            <Text style={styles.itemText}>{a.isMuted ? "Unmute" : "Mute"}</Text>
-          </TouchableOpacity>
-
-          <View style={styles.divider} />
-
-          {/* Remove friend — friends only */}
-          {isFriend && (
-            <TouchableOpacity style={styles.item} onPress={() => run(a.removeFriend)} activeOpacity={0.7}
-              accessibilityRole="button" accessibilityLabel={`Remove ${friendName}`}>
-              <Icon name="person-remove" size={s(20)} color="#ef4444" style={styles.icon} />
-              <Text style={styles.itemTextDanger}>Remove friend</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Block */}
-          <TouchableOpacity style={styles.item} onPress={() => run(a.openBlock)} activeOpacity={0.7}
-            accessibilityRole="button" accessibilityLabel={`Block ${friendName}`}>
-            <Icon name="shield" size={s(20)} color="#ef4444" style={styles.icon} />
-            <Text style={styles.itemTextDanger}>Block user</Text>
-          </TouchableOpacity>
-
-          {/* Report */}
-          <TouchableOpacity style={styles.item} onPress={() => run(a.openReport)} activeOpacity={0.7}
-            accessibilityRole="button" accessibilityLabel={`Report ${friendName}`}>
-            <Icon name="flag" size={s(20)} color="#ef4444" style={styles.icon} />
-            <Text style={styles.itemTextDanger}>Report user</Text>
-          </TouchableOpacity>
+          {/* Issue #4114 Wave 3: the same ordered list as the 1:1 chat's ⋯ menu. */}
+          <ChatActionList
+            items={menuItems}
+            name={friendName}
+            busyIds={a.isMuteLoading ? MUTE_BUSY : undefined}
+            onSelect={(id) => {
+              switch (id) {
+                case "viewProfile": run(() => onViewProfile?.()); return;
+                case "addToSession": run(a.openAddToSession); return;
+                case "mute": run(a.toggleMute); return;
+                case "sendPair": run(a.sendPair); return;
+                case "unpair": run(a.unpair); return;
+                case "pairedView": run(() => onOpenPairedView?.()); return;
+                case "removeFriend": run(a.removeFriend); return;
+                case "report": run(a.openReport); return;
+                case "block": run(a.openBlock); return;
+                default: return;
+              }
+            }}
+          />
         </View>
       </BaseBottomSheet>
 
@@ -138,20 +119,19 @@ const FriendActionsSheet: React.FC<FriendActionsSheetProps> = ({
       <AddToBoardModal isOpen={a.addToSessionVisible} onClose={a.closeAddToSession} friend={friendForModal} boardsSessions={a.boardsSessions} />
       <BlockUserModal visible={a.blockVisible} onClose={a.closeBlock} onConfirm={a.confirmBlock} userName={friendName} />
       <ReportUserModal isOpen={a.reportVisible} onClose={a.closeReport} user={userForReport} onReport={a.submitReport} />
+      {/* Issue #4114: pairing past the free limit opens Mingla+ here too. */}
+      {currentUserId ? (
+        <CustomPaywallScreen isVisible={a.paywallVisible} onClose={a.closePaywall} userId={currentUserId} feature="pairing" />
+      ) : null}
     </>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: vs(6), paddingHorizontal: s(8), paddingBottom: vs(16),
+    paddingTop: vs(6), paddingHorizontal: s(20), paddingBottom: vs(16),
   },
-  title: { fontSize: s(16), fontWeight: "700", color: "#111827", paddingHorizontal: s(12), paddingVertical: vs(8) },
-  item: { flexDirection: "row", alignItems: "center", paddingVertical: vs(14), paddingHorizontal: s(12), minHeight: vs(48) },
-  icon: { marginRight: s(14) },
-  itemText: { fontSize: s(16), fontWeight: "500", color: "#1f2937" },
-  itemTextDanger: { fontSize: s(16), fontWeight: "500", color: "#ef4444" },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: "#e5e7eb", marginVertical: vs(6), marginHorizontal: s(12) },
+  title: { fontSize: s(16), fontWeight: "700", color: chatTokens.textPrimary, paddingVertical: vs(8) },
 });
 
 export default FriendActionsSheet;

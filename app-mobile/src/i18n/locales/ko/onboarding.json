@@ -178,7 +178,14 @@
     "alert_decline_error": "페어 요청을 거절할 수 없습니다. 다시 시도하세요.",
     "alert_generic_error": "요청을 처리할 수 없습니다. 다시 시도하세요.",
     "share_message": "안녕! Mingla에서 함께 멋진 경험을 찾아보자. https://usemingla.com",
-    "fallback_user": "사용자"
+    "fallback_user": "사용자",
+    "invite_card_title": "당신의 사람들이 이미 여기 있어요",
+    "invite_card_body": "{{name}}님이 Mingla에 초대했어요. 수락하면 친구가 되어 서로의 생일, 계획, 저장을 볼 수 있어요.",
+    "invite_card_sub": "★ 친구 + 페어 · 문자로 초대함",
+    "invite_card_accept": "수락",
+    "invite_card_not_now": "나중에",
+    "invite_card_done": "{{name}}님과 친구이자 페어가 되었어요",
+    "invite_card_friends_only": "{{name}}님과 친구가 되었어요"
   },
   "collaborations": {
     "headline": "함께 계획해요",
