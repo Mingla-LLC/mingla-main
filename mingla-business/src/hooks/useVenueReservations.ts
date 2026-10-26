@@ -19,15 +19,16 @@ import {
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
+import { postHogService } from "../services/postHogService";
 import type {
   Reservation,
   ReservationCreateInput,
+  SourceRefundSummary,
 } from "../types/venueReservation";
 import {
   cancelPaidVenueReservation,
   listSourceRefundSummaries,
 } from "../services/sourceRefundService";
-import type { SourceRefundSummary } from "../types/venueReservation";
 
 interface ReservationRow {
   id: string;
@@ -198,7 +199,11 @@ export function useCreateReservation(
       });
       if (error !== null) throw error as unknown as Error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, input) => {
+      postHogService.capture("reservation_created_by_host", {
+        has_phone: true,
+        source: input.source,
+      });
       if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
           queryKey: venueReservationsKeys.list(brandId, venueId),

@@ -271,7 +271,39 @@ export function genericBuyerLinkRequest(
     const sourceId = from("venue_order_id");
     return sourceId ? { kind: "venue_order", sourceId } : null;
   }
+  if (category === "buyer_door_receipt") {
+    const sourceId = from("order_id");
+    return sourceId ? { kind: "order", sourceId } : null;
+  }
+  if (category === "buyer_ticket_sent") {
+    const sourceId = from("ticket_id");
+    return sourceId ? { kind: "ticket", sourceId } : null;
+  }
   return null;
+}
+
+const PURCHASE_ROUTE_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * #4063 — reminder pushes open the owned pass itself, already in door mode.
+ * The outbox payload is internal and richer than the provider-safe payload, but
+ * the route still accepts only a UUID from the expected field and category.
+ */
+export function purchaseReminderDeepLink(
+  row: Record<string, unknown>,
+): string | null {
+  const payload = (row.payload as Record<string, unknown> | null) ?? {};
+  const category = String(row.category_key ?? "");
+  const route = category === "buyer_event_reminder"
+    ? { kind: "order", id: payload.order_id }
+    : category === "buyer_reservation_reminder"
+    ? { kind: "reservation", id: payload.reservation_id }
+    : null;
+  if (route === null || typeof route.id !== "string") return null;
+  const id = route.id.trim();
+  if (!PURCHASE_ROUTE_ID.test(id)) return null;
+  return `com.mingla.app.v2://purchases/${route.kind}/${id}?door=1`;
 }
 
 export async function resolveGenericBuyerMessageLink(
@@ -396,7 +428,7 @@ export async function processGeneric(
     }
     const deepLink = typeof payload.deep_link === "string"
       ? payload.deep_link
-      : null;
+      : purchaseReminderDeepLink(row);
     const res = await fetch(`${url}/functions/v1/notify-dispatch`, {
       method: "POST",
       headers: {

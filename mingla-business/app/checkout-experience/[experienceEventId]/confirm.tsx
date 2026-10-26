@@ -36,6 +36,7 @@ import { usePublicExperienceById } from "../../../src/hooks/usePublicExperience"
 import { Icon } from "../../../src/components/ui/Icon";
 import { useCart } from "../../../src/components/checkout/CartContext";
 import { BuyerCheckoutReceipt } from "../../../src/components/checkout/BuyerCheckoutReceipt";
+import { BusinessCheckoutSent } from "../../../src/components/checkout/BusinessCheckoutSent";
 import {
   clearCheckoutResumePayload,
   readCheckoutResumePayload,
@@ -516,6 +517,16 @@ function CheckoutExperienceConfirmScreenInner({
       }
     }
     return <View style={styles.host} />;
+  }
+
+  if (Platform.OS !== "web" && result.boughtForSomeoneElse === true) {
+    return (
+      <BusinessCheckoutSent
+        buyerName={buyer.name}
+        onDone={() => router.back()}
+        surface="experience"
+      />
+    );
   }
 
   return (

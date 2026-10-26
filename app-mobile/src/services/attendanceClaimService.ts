@@ -7,6 +7,144 @@ import {
 
 export { isAttendanceClaimUrl } from "../utils/attendanceClaimDeepLink";
 
+export type ClaimNoun = "ticket" | "pass" | "booking" | "receipt";
+export type ClaimPreferredProof = "email" | "phone" | "any";
+
+export type PendingClaim = {
+  code: string;
+  noun: ClaimNoun;
+  title: string;
+  orderLabel: string | null;
+  startsAt: string | null;
+  timezone: string;
+  emailMasked: string | null;
+  phoneLast4: string | null;
+  preferredProof: ClaimPreferredProof;
+  expired: boolean;
+};
+
+export type ClaimedEntry = {
+  kind:
+    | "order"
+    | "rsvp"
+    | "rsvp_guest"
+    | "reservation"
+    | "stay_group"
+    | "venue_order"
+    | "ticket";
+  id: string;
+  routeKind:
+    | "order"
+    | "rsvp"
+    | "reservation"
+    | "stay"
+    | "venue_order"
+    | "held_ticket";
+  routeId: string;
+  offeringType:
+    | "event"
+    | "trip"
+    | "experience"
+    | "rsvp"
+    | "venue"
+    | "stay"
+    | "food";
+  noun: ClaimNoun;
+  title: string;
+  orderLabel: string | null;
+  startsAt: string | null;
+  timezone: string;
+  venueLine: string | null;
+  quantity: number;
+  source: "purchase" | "comp" | "door" | "food" | "transfer" | "rsvp" | "booking";
+  sentByFirstName: string | null;
+  chatJoined: boolean | null;
+  conversationId: string | null;
+};
+
+const CLAIM_KINDS = new Set<ClaimedEntry["kind"]>([
+  "order",
+  "rsvp",
+  "rsvp_guest",
+  "reservation",
+  "stay_group",
+  "venue_order",
+  "ticket",
+]);
+const CLAIM_ROUTE_KINDS = new Set<ClaimedEntry["routeKind"]>([
+  "order",
+  "rsvp",
+  "reservation",
+  "stay",
+  "venue_order",
+  "held_ticket",
+]);
+const CLAIM_OFFERING_TYPES = new Set<ClaimedEntry["offeringType"]>([
+  "event",
+  "trip",
+  "experience",
+  "rsvp",
+  "venue",
+  "stay",
+  "food",
+]);
+const CLAIM_SOURCES = new Set<ClaimedEntry["source"]>([
+  "purchase",
+  "comp",
+  "door",
+  "food",
+  "transfer",
+  "rsvp",
+  "booking",
+]);
+
+function isClaimedEntryEnum<T extends string>(
+  values: ReadonlySet<T>,
+  value: unknown,
+): value is T {
+  return typeof value === "string" && values.has(value as T);
+}
+
+export function parseClaimedEntries(value: unknown): ClaimedEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const row = entry as Record<string, unknown>;
+    const noun = claimNoun(row.noun);
+    if (
+      noun === null || !isClaimedEntryEnum(CLAIM_KINDS, row.kind) ||
+      typeof row.id !== "string" ||
+      !isClaimedEntryEnum(CLAIM_ROUTE_KINDS, row.routeKind) ||
+      typeof row.routeId !== "string" ||
+      !isClaimedEntryEnum(CLAIM_OFFERING_TYPES, row.offeringType) ||
+      typeof row.title !== "string" || typeof row.timezone !== "string" ||
+      !isClaimedEntryEnum(CLAIM_SOURCES, row.source)
+    ) return [];
+    return [{
+      kind: row.kind,
+      id: row.id,
+      routeKind: row.routeKind,
+      routeId: row.routeId,
+      offeringType: row.offeringType,
+      noun,
+      title: row.title,
+      orderLabel: typeof row.orderLabel === "string" ? row.orderLabel : null,
+      startsAt: typeof row.startsAt === "string" ? row.startsAt : null,
+      timezone: row.timezone,
+      venueLine: typeof row.venueLine === "string" ? row.venueLine : null,
+      quantity: typeof row.quantity === "number" ? row.quantity : 1,
+      source: row.source,
+      sentByFirstName: typeof row.sentByFirstName === "string"
+        ? row.sentByFirstName
+        : null,
+      chatJoined: typeof row.chatJoined === "boolean" ? row.chatJoined : null,
+      conversationId: typeof row.conversationId === "string"
+        ? row.conversationId
+        : null,
+    }];
+  });
+}
+
 export type AttendanceClaimIntent = {
   version: 1;
   kind: "order" | "rsvp";
@@ -55,6 +193,294 @@ export class AttendanceClaimError extends Error {
 
 const KEY = "mingla_attendance_claim_v1";
 const TTL_MS = 24 * 60 * 60 * 1000;
+const CLAIM_LINK_KEY = "mingla.claimLink.pending.v1";
+const CLAIM_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const CLAIM_LINK_CODE = /^[0-9A-Za-z]{10}$/;
+
+type StoredClaimLink = { code: string; savedAt: number };
+
+function claimNoun(value: unknown): ClaimNoun | null {
+  return value === "ticket" || value === "pass" || value === "booking" ||
+      value === "receipt"
+    ? value
+    : null;
+}
+
+function preferredProof(value: unknown): ClaimPreferredProof {
+  return value === "email" || value === "phone" ? value : "any";
+}
+
+function claimLinkCodeFromPath(path: string): string | null {
+  const match = path.match(/(?:^|\/)c\/([0-9A-Za-z]{10})(?:[/?#]|$)/);
+  return match?.[1]?.toUpperCase() ?? null;
+}
+
+/** Parse a direct /c link or the equivalent AppsFlyer deferred payload. */
+export function pendingClaimCodeFromUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const direct = claimLinkCodeFromPath(
+      parsed.protocol === "com.mingla.app.v2:" && parsed.host
+        ? `/${parsed.host}${parsed.pathname}`
+        : parsed.pathname,
+    );
+    if (direct) return direct;
+    if (
+      parsed.searchParams.get("deep_link_value") === "claim" &&
+      CLAIM_LINK_CODE.test(parsed.searchParams.get("deep_link_sub1") ?? "")
+    ) {
+      return String(parsed.searchParams.get("deep_link_sub1")).toUpperCase();
+    }
+  } catch {
+    const relative = claimLinkCodeFromPath(url);
+    if (relative) return relative;
+  }
+  return null;
+}
+
+export async function savePendingClaimCode(code: string): Promise<void> {
+  const normalized = code.trim().toUpperCase();
+  if (!CLAIM_LINK_CODE.test(normalized)) return;
+  await secureSetItem(
+    CLAIM_LINK_KEY,
+    JSON.stringify({ code: normalized, savedAt: Date.now() } satisfies StoredClaimLink),
+  );
+}
+
+export async function clearPendingClaimIntent(): Promise<void> {
+  await secureDeleteItem(CLAIM_LINK_KEY);
+}
+
+export type ClaimLinkResolution =
+  | { status: "claim"; claim: PendingClaim }
+  | { status: "redirect"; url: string }
+  | { status: "unavailable" };
+
+export type PendingClaimEmailError =
+  | "invalid"
+  | "no_email"
+  | "rate_limited"
+  | "bad_code"
+  | "expired"
+  | "locked"
+  | "auth_unavailable"
+  | "send_failed"
+  | "unavailable";
+
+export type PendingClaimEmailResult =
+  | { ok: true; challengeId: string; sentTo: string }
+  | { ok: false; error: PendingClaimEmailError; message: string };
+
+export type PendingClaimEmailVerification =
+  | { ok: true }
+  | { ok: false; error: PendingClaimEmailError; message: string };
+
+export type PendingClaimPrefill = {
+  firstName: string | null;
+  lastName: string | null;
+  phoneE164: string | null;
+};
+
+const PENDING_CLAIM_EMAIL_ERRORS = new Set<PendingClaimEmailError>([
+  "invalid",
+  "no_email",
+  "rate_limited",
+  "bad_code",
+  "expired",
+  "locked",
+  "auth_unavailable",
+  "send_failed",
+  "unavailable",
+]);
+
+function pendingClaimEmailError(value: unknown): PendingClaimEmailError {
+  return typeof value === "string" &&
+      PENDING_CLAIM_EMAIL_ERRORS.has(value as PendingClaimEmailError)
+    ? value as PendingClaimEmailError
+    : "unavailable";
+}
+
+function pendingClaimEmailMessage(
+  code: PendingClaimEmailError,
+  phase: "send" | "verify",
+): string {
+  if (code === "rate_limited" || code === "locked") {
+    return "Too many tries. Wait a few minutes, or use another sign-in option.";
+  }
+  if (code === "expired") return "That code expired. Send a new code and try again.";
+  if (code === "bad_code") return "That code didn't match. Check it and try again.";
+  if (code === "no_email") return "Use another sign-in option for this purchase.";
+  return phase === "send"
+    ? "We couldn\u2019t send the code. Try again."
+    : "We couldn\u2019t verify that code. Try again.";
+}
+
+/** The masked-address sign-in rail accepts only the opaque claim code. */
+export function pendingClaimEmailSendBody(code: string): {
+  op: "email_code_send";
+  code: string;
+} {
+  return { op: "email_code_send", code: code.trim().toUpperCase() };
+}
+
+export function pendingClaimEmailVerifyBody(
+  challengeId: string,
+  otp: string,
+): { op: "email_code_verify"; challengeId: string; otp: string } {
+  return { op: "email_code_verify", challengeId, otp };
+}
+
+async function claimLinkErrorPayload(error: unknown): Promise<Record<string, unknown>> {
+  const response = (error as { context?: Response } | null)?.context;
+  if (!response || typeof response.clone !== "function") return {};
+  try {
+    const payload = await response.clone().json();
+    return typeof payload === "object" && payload !== null
+      ? payload as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function sendPendingClaimEmailCode(
+  code: string,
+): Promise<PendingClaimEmailResult> {
+  const { data, error } = await supabase.functions.invoke("claim-link", {
+    body: pendingClaimEmailSendBody(code),
+  });
+  const payload = error
+    ? await claimLinkErrorPayload(error)
+    : typeof data === "object" && data !== null
+    ? data as Record<string, unknown>
+    : {};
+  if (
+    !error && payload.ok === true && typeof payload.challengeId === "string" &&
+    typeof payload.sentTo === "string"
+  ) {
+    return {
+      ok: true,
+      challengeId: payload.challengeId,
+      sentTo: payload.sentTo,
+    };
+  }
+  const errorCode = pendingClaimEmailError(payload.error);
+  return {
+    ok: false,
+    error: errorCode,
+    message: pendingClaimEmailMessage(errorCode, "send"),
+  };
+}
+
+export async function verifyPendingClaimEmailCode(input: {
+  challengeId: string;
+  otp: string;
+}): Promise<PendingClaimEmailVerification> {
+  const { data, error } = await supabase.functions.invoke("claim-link", {
+    body: pendingClaimEmailVerifyBody(input.challengeId, input.otp),
+  });
+  const payload = error
+    ? await claimLinkErrorPayload(error)
+    : typeof data === "object" && data !== null
+    ? data as Record<string, unknown>
+    : {};
+  if (!error && payload.ok === true && typeof payload.tokenHash === "string") {
+    const auth = await supabase.auth.verifyOtp({
+      token_hash: payload.tokenHash,
+      type: "magiclink",
+    });
+    if (!auth.error) return { ok: true };
+    return {
+      ok: false,
+      error: "auth_unavailable",
+      message: pendingClaimEmailMessage("auth_unavailable", "verify"),
+    };
+  }
+  const errorCode = pendingClaimEmailError(payload.error);
+  return {
+    ok: false,
+    error: errorCode,
+    message: pendingClaimEmailMessage(errorCode, "verify"),
+  };
+}
+
+/**
+ * Reads prefill only through the authenticated, proof-gated claim endpoint.
+ * Link possession alone never reveals or supplies the purchase contact.
+ */
+export async function fetchPendingClaimPrefill(
+  code: string,
+): Promise<PendingClaimPrefill | null> {
+  const { data, error } = await supabase.functions.invoke("claim-link", {
+    body: { op: "prefill", code: code.trim().toUpperCase() },
+  });
+  if (error || typeof data !== "object" || data === null) return null;
+  const payload = data as Record<string, unknown>;
+  if (payload.ok !== true || payload.reason === "not_proven") return null;
+  return {
+    firstName: typeof payload.firstName === "string" ? payload.firstName : null,
+    lastName: typeof payload.lastName === "string" ? payload.lastName : null,
+    phoneE164: typeof payload.phoneE164 === "string" ? payload.phoneE164 : null,
+  };
+}
+
+export async function resolvePendingClaimCode(
+  code: string,
+): Promise<ClaimLinkResolution> {
+  const response = await supabase.functions.invoke("claim-link", {
+    body: { op: "resolve", code },
+  });
+  if (response.error) return { status: "unavailable" };
+  const payload = response.data as Record<string, unknown> | null;
+  if (
+    payload?.ok === true && payload.status === "redirect" &&
+    typeof payload.url === "string" && /^https:\/\//i.test(payload.url)
+  ) {
+    return { status: "redirect", url: payload.url };
+  }
+  const noun = claimNoun(payload?.noun);
+  if (
+    payload?.ok !== true || noun === null ||
+    (payload.status !== "active" && payload.status !== "expired") ||
+    typeof payload.title !== "string"
+  ) return { status: "unavailable" };
+  return {
+    status: "claim",
+    claim: {
+      code,
+      noun,
+      title: payload.title,
+      orderLabel: typeof payload.orderLabel === "string" ? payload.orderLabel : null,
+      startsAt: typeof payload.startsAt === "string" ? payload.startsAt : null,
+      timezone: typeof payload.timezone === "string" ? payload.timezone : "UTC",
+      emailMasked: typeof payload.emailMasked === "string" ? payload.emailMasked : null,
+      phoneLast4: typeof payload.phoneLast4 === "string" ? payload.phoneLast4 : null,
+      preferredProof: preferredProof(payload.preferredProof),
+      expired: payload.status === "expired",
+    },
+  };
+}
+
+export async function getPendingClaimIntent(): Promise<PendingClaim | null> {
+  const raw = await secureGetItem(CLAIM_LINK_KEY);
+  if (!raw) return null;
+  try {
+    const stored = JSON.parse(raw) as Partial<StoredClaimLink>;
+    if (
+      typeof stored.code === "string" && CLAIM_LINK_CODE.test(stored.code) &&
+      typeof stored.savedAt === "number" &&
+      Date.now() - stored.savedAt <= CLAIM_LINK_TTL_MS
+    ) {
+      const resolution = await resolvePendingClaimCode(stored.code.toUpperCase());
+      if (resolution.status === "claim") return resolution.claim;
+      if (resolution.status === "unavailable") return null;
+    }
+  } catch {
+    // Corrupt/expired pointers are removed below. No claim detail is logged.
+  }
+  await clearPendingClaimIntent();
+  return null;
+}
 
 /**
  * #3524 — the DELIBERATE-ACCOUNT-HANDOFF marker.
@@ -284,14 +710,27 @@ export const claimAttendanceByVerifiedIdentity = async (): Promise<{
   /** #3524 — observability parity with the token rail. Nothing renders this yet;
    * it exists so the silent sweep is no longer silent about the chat half. */
   claims: VerifiedIdentityClaim[];
+  claimed: ClaimedEntry[];
+  more: boolean;
+  rateLimited: boolean;
 }> => {
   const { data, error } = await supabase.functions.invoke(
     "attendance-claim-identity",
     { body: {} },
   );
-  if (error) return { count: 0, eventIds: [], claims: [] };
+  if (error) {
+    const contextStatus = (error.context as Response | undefined)?.status;
+    return {
+      count: 0,
+      eventIds: [],
+      claims: [],
+      claimed: [],
+      more: false,
+      rateLimited: contextStatus === 429 || /rate.?limit/i.test(error.message),
+    };
+  }
   const payload = data as
-    | { count?: unknown; eventIds?: unknown; claims?: unknown }
+    | { count?: unknown; eventIds?: unknown; claims?: unknown; claimed?: unknown; more?: unknown }
     | null;
   const eventIds = Array.isArray(payload?.eventIds)
     ? payload.eventIds.filter((id): id is string => typeof id === "string")
@@ -311,5 +750,13 @@ export const claimAttendanceByVerifiedIdentity = async (): Promise<{
       }];
     })
     : [];
-  return { count: eventIds.length, eventIds, claims };
+  const claimed = parseClaimedEntries(payload?.claimed);
+  return {
+    count: typeof payload?.count === "number" ? payload.count : claimed.length,
+    eventIds,
+    claims,
+    claimed,
+    more: payload?.more === true,
+    rateLimited: false,
+  };
 };

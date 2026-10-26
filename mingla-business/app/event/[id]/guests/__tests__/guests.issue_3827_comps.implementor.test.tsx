@@ -89,9 +89,10 @@ jest.mock("../../../../../src/store/guestStore", () => ({
     { getState: () => ({ removeCompEntry: mockRemoveCompEntry }) },
   ),
 }));
-jest.mock("../../../../../src/store/doorSalesStore", () => ({
-  useDoorSalesStore: (sel: (s: { entries: unknown[]; getSaleById: () => null }) => unknown) =>
-    sel({ entries: [], getSaleById: () => null }),
+jest.mock("../../../../../src/hooks/useEventDoorSales", () => ({
+  useEventDoorSales: () => ({
+    data: [], isLoading: false, isError: false, refetch: jest.fn(),
+  }),
 }));
 const mockScanEntries: unknown[] = [];
 jest.mock("../../../../../src/store/scanStore", () => ({

@@ -4,7 +4,7 @@
  * ORCH-0877 — replaces 4 ad-hoc formatters that previously lived in
  * `BusinessEventCard.tsx` (formatDateChip), `ExpandedBusinessEventSheet.tsx`
  * (formatDateLine), `BusinessEventCalendarRow.tsx` (formatLocalDate), and
- * `TicketPdfSheet.tsx` (formatLocalDate). I-14 — single source.
+ * the canonical Purchases ticket detail. I-14 — single source.
  *
  * The consumer-mobile schema (BusinessEventCard payload from
  * `discover-merged-events`) carries `masterDateUtc` + `masterEndAtUtc` +

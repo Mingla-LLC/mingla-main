@@ -45,6 +45,7 @@ import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 import { Icon } from "../../../src/components/ui/Icon";
 import { useCart } from "../../../src/components/checkout/CartContext";
 import { BuyerCheckoutReceipt } from "../../../src/components/checkout/BuyerCheckoutReceipt";
+import { BusinessCheckoutSent } from "../../../src/components/checkout/BusinessCheckoutSent";
 import {
   clearCheckoutResumePayload,
   readCheckoutResumePayload,
@@ -574,6 +575,16 @@ function CheckoutConfirmScreenInner({
           </Text>
         </View>
       </View>
+    );
+  }
+
+  if (Platform.OS !== "web" && result.boughtForSomeoneElse === true) {
+    return (
+      <BusinessCheckoutSent
+        buyerName={buyer.name}
+        onDone={() => router.back()}
+        surface="event"
+      />
     );
   }
 

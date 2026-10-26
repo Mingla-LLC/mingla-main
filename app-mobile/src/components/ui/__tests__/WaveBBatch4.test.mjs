@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+// #4063 removes the retired ticket-PDF sheet while preserving this bottom-sheet registry contract.
 /**
  * Regression suite — META-ORCH-0991 Wave B BATCH 4
  * [PairRequestModal + IncomingPairRequestCard + PairingInfoCard +
- *  CustomHolidayModal + ProposeDateTimeModal + TicketPdfSheet +
+ *  CustomHolidayModal + ProposeDateTimeModal +
  *  ActionButtons (iOS date/time picker modal ONLY) → BaseBottomSheet].
  *
- * Pairing + custom-holiday + scheduling cluster. TWO of the seven are pure
+ * Pairing + custom-holiday + scheduling cluster. TWO are pure
  * destructive/irreversible CONFIRM cards (accept/decline a pair request; cancel
  * a pairing) → NON-swipe `variant="center-dialog"` per the operator rule
- * (playbook §1). The other five are full swipe-down `BaseBottomSheet` sheets.
+ * (playbook §1). The other active surfaces are swipe-down `BaseBottomSheet` sheets.
  * Two of the sheets are keyboard-aware (PairRequest: search + phone fields;
  * CustomHoliday: name field) → BottomSheetTextInput + interactive keyboard.
  *
@@ -18,7 +19,7 @@
  * Batch-1/2/3 suites; playbook §8).
  *
  * Asserts the load-bearing Batch-4 conversion contracts:
- *   T-1  All 7 consume BaseBottomSheet and NONE imports @gorhom/bottom-sheet
+ *   T-1  All active surfaces consume BaseBottomSheet and NONE imports @gorhom/bottom-sheet
  *        directly (sole-consumer invariant — primary fails-on-revert anchor:
  *        reverting any conversion re-adds a raw RN <Modal>/hand-rolled Animated
  *        shell and drops the <BaseBottomSheet> usage).
@@ -80,7 +81,6 @@ const INCOMING = "app-mobile/src/components/IncomingPairRequestCard.tsx";
 const PAIRING_INFO = "app-mobile/src/components/PairingInfoCard.tsx";
 const CUSTOM_HOLIDAY = "app-mobile/src/components/CustomHolidayModal.tsx";
 const PROPOSE = "app-mobile/src/components/activity/ProposeDateTimeModal.tsx";
-const TICKET_PDF = "app-mobile/src/components/activity/TicketPdfSheet.tsx";
 const ACTION_BUTTONS = "app-mobile/src/components/expandedCard/ActionButtons.tsx";
 
 function run() {
@@ -89,7 +89,6 @@ function run() {
   const pairingInfo = read(PAIRING_INFO);
   const customHoliday = read(CUSTOM_HOLIDAY);
   const propose = read(PROPOSE);
-  const ticketPdf = read(TICKET_PDF);
   const actionButtons = read(ACTION_BUTTONS);
 
   const ALL = [
@@ -98,7 +97,6 @@ function run() {
     ["PairingInfoCard", pairingInfo],
     ["CustomHolidayModal", customHoliday],
     ["ProposeDateTimeModal", propose],
-    ["TicketPdfSheet", ticketPdf],
     ["ActionButtons", actionButtons],
   ];
   const CONFIRM_CARDS = [
@@ -109,11 +107,10 @@ function run() {
     ["PairRequestModal", pairRequest],
     ["CustomHolidayModal", customHoliday],
     ["ProposeDateTimeModal", propose],
-    ["TicketPdfSheet", ticketPdf],
     ["ActionButtons", actionButtons],
   ];
 
-  // ── T-1: all 7 consume BaseBottomSheet, none imports gorhom directly ───────
+  // ── T-1: all active surfaces consume BaseBottomSheet; no direct gorhom ────
   for (const [name, src] of ALL) {
     assert.match(
       src,
@@ -136,7 +133,6 @@ function run() {
     ["IncomingPairRequestCard", incoming],
     ["PairingInfoCard", pairingInfo],
     ["CustomHolidayModal", customHoliday],
-    ["TicketPdfSheet", ticketPdf],
   ];
   for (const [name, src] of FULL_SHED) {
     assert.doesNotMatch(code(src), /<Modal\b/, `T-2 ${name} must not retain a raw RN <Modal> shell`);
@@ -168,7 +164,6 @@ function run() {
   assert.match(code(pairRequest), /snapPoints=\{PAIR_REQUEST_SNAP_POINTS\}/, "T-4 PairRequest passes its snap");
   assert.match(code(customHoliday), /CUSTOM_HOLIDAY_SNAP_POINTS\s*=\s*\[\s*['"]88%['"]\s*\]/, "T-4 CustomHoliday snap ['88%'] (== prior SCREEN_HEIGHT*0.88)");
   assert.match(code(propose), /PROPOSE_DATE_TIME_SNAP_POINTS\s*=\s*\[\s*['"]85%['"]\s*\]/, "T-4 Propose snap ['85%'] (== prior SCREEN_HEIGHT*0.85)");
-  assert.match(code(ticketPdf), /TICKET_PDF_SNAP_POINTS\s*=\s*\[\s*['"]88%['"]\s*\]/, "T-4 TicketPdf snap ['88%'] (== prior maxHeight 88%)");
   assert.match(code(actionButtons), /DATE_TIME_PICKER_SNAP_POINTS\s*=\s*\[\s*['"]45%['"]\s*\]/, "T-4 ActionButtons picker snap ['45%']");
   // Fixed snaps only — no content-dynamic sizing (Batch-3 off-screen lesson).
   for (const [name, src] of SHEETS) {
@@ -235,7 +230,6 @@ function run() {
   assert.doesNotMatch(code(customHoliday), /handleContainer:\s*\{/, "T-A1 CustomHoliday cosmetic `handleContainer` removed (real gorhom handle)");
   assert.doesNotMatch(code(propose), /bottomSheet:\s*\{/, "T-A1 Propose old `bottomSheet` absolute card style removed");
   assert.doesNotMatch(code(propose), /handleContainer:\s*\{/, "T-A1 Propose cosmetic `handleContainer` removed (real gorhom handle)");
-  assert.doesNotMatch(code(ticketPdf), /dragHandle:\s*\{/, "T-A1 TicketPdf cosmetic `dragHandle` removed (real gorhom handle)");
   assert.doesNotMatch(code(actionButtons), /modalOverlay:\s*\{/, "T-A1 ActionButtons old `modalOverlay` scrim style removed");
   assert.doesNotMatch(code(actionButtons), /backdropTouch:\s*\{/, "T-A1 ActionButtons old `backdropTouch` style removed");
 }
@@ -243,7 +237,7 @@ function run() {
 try {
   run();
   console.log(
-    "PASS META-ORCH-0991 Wave B Batch-4 regression suite (PairRequest + Incoming + PairingInfo + CustomHoliday + ProposeDateTime + TicketPdf + ActionButtons-picker → BaseBottomSheet)",
+    "PASS META-ORCH-0991 Wave B Batch-4 regression suite (active converted surfaces → BaseBottomSheet)",
   );
 } catch (error) {
   console.error(error);

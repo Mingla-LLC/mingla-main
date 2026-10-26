@@ -2,16 +2,14 @@
  * BusinessEventCalendarRow — renders one business-event ticket purchase
  * inside the consumer Calendar tab.
  *
- * ORCH-0842: tap on "View ticket" opens the new TicketPdfSheet (venue +
- * QR strip + real emailed PDF + Save/Share). The previous inline QR-only
- * Modal block is deleted — TicketPdfSheet supersedes it. Pending-payment
- * guard preserved: tapping "Finalizing…" rows does nothing.
+ * #4063: "View ticket" routes to the canonical Purchases ticket screen.
+ * Pending-payment guard preserved: tapping "Finalizing…" rows does nothing.
  *
  * Per ORCH-0829-A spec §3.6. Data shape: `BusinessEventCalendarRow`
  * from `calendarService.ts`. Source is `useBusinessEventOrders` hook.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -21,10 +19,10 @@ import {
   View,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
+import { useRouter } from "expo-router";
 
 import { Icon } from "../ui/Icon";
 import type { BusinessEventCalendarRow as BusinessEventRow } from "../../services/calendarService";
-import TicketPdfSheet from "./TicketPdfSheet";
 // ORCH-0877 — centralized consumer-side date formatter.
 import { formatEventLocalRange } from "../../utils/eventDateDisplay";
 
@@ -46,15 +44,15 @@ const BusinessEventCalendarRow: React.FC<BusinessEventCalendarRowProps> = ({
   entry,
   animation,
 }) => {
-  const [sheetVisible, setSheetVisible] = useState<boolean>(false);
+  const router = useRouter();
 
   const handleOpenTickets = useCallback((): void => {
-    setSheetVisible(true);
-  }, []);
-
-  const handleCloseTickets = useCallback((): void => {
-    setSheetVisible(false);
-  }, []);
+    const firstTicketId = entry.tickets.find((ticket) => ticket.status === "valid")?.id;
+    const suffix = firstTicketId
+      ? `?ticket=${encodeURIComponent(firstTicketId)}`
+      : "";
+    router.push(`/purchases/order/${encodeURIComponent(entry.orderId)}${suffix}` as never);
+  }, [entry.orderId, entry.tickets, router]);
 
   const dateLine = formatEventLocalRange({
     masterDateUtc: entry.masterDateUtc,
@@ -133,12 +131,6 @@ const BusinessEventCalendarRow: React.FC<BusinessEventCalendarRowProps> = ({
           )}
         </View>
       </View>
-
-      <TicketPdfSheet
-        visible={sheetVisible}
-        onClose={handleCloseTickets}
-        entry={entry}
-      />
     </RowContainer>
   );
 };

@@ -38,6 +38,7 @@ export type NativeCheckoutOutcome =
       provider?: NativeCheckoutPurchaseProvider;
       title?: string;
       recovered?: boolean;
+      attachedToAccount?: boolean;
     }
   | {
       outcome: "pending";
@@ -66,6 +67,7 @@ type ConfirmationResponse = {
     tickets?: unknown[];
     totalCents?: number;
     currency?: string;
+    attachedToAccount?: boolean;
   } | null;
   error?: string;
 };
@@ -412,6 +414,9 @@ export const reconcileNativeCheckout = async (
       provider: pointer.provider,
       title: NATIVE_CHECKOUT_SUCCESS_TITLE,
       recovered,
+      ...(typeof data.order?.attachedToAccount === "boolean"
+        ? { attachedToAccount: data.order.attachedToAccount }
+        : {}),
     };
   }
 

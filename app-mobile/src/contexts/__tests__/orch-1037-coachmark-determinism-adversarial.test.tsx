@@ -170,14 +170,16 @@ function run() {
         'X-2a the reconstruction fallback must be the explicitly-logged no-measurer branch');
     }
 
-    // (b) ProfilePage must register FOUR distinct measurer thunks bound to FOUR distinct
+    // [TEST-MOD-APPROVED #4063] Purchases is now the first Profile coach target,
+    // so ProfilePage must register FIVE distinct measurer thunks bound to FIVE distinct
     //     refs — so two scroll steps can never resolve to the same node (the identical-
     //     contentY tell). Each wireScrollStep(stepId, ref) call pairs a step id with a ref.
     const wirePairs = [
-      [8, 'interestsRef'],
-      [9, 'circleRef'],
-      [10, 'accountSettingsRef'],
-      [11, 'feedbackButtonRef'],
+      [8, 'purchasesRef'],
+      [9, 'interestsRef'],
+      [10, 'circleRef'],
+      [11, 'accountSettingsRef'],
+      [12, 'feedbackButtonRef'],
     ];
     const seenRefs = new Set();
     for (const [sid, ref] of wirePairs) {
@@ -187,7 +189,7 @@ function run() {
       assert.ok(!seenRefs.has(ref), `X-2b ref ${ref} must be used by exactly one scroll step (no shared node)`);
       seenRefs.add(ref);
     }
-    assert.equal(seenRefs.size, 4, 'X-2b all four scroll steps must bind to four DISTINCT refs');
+    assert.equal(seenRefs.size, 5, 'X-2b all five scroll steps must bind to five DISTINCT refs');
     // The measurer thunk must measure the LIVE node via measureInWindow (not arithmetic).
     assert.ok(/registerTargetMeasurer\(stepId,\s*\(cb\)\s*=>/.test(squish(profileSrc).replace(/\s+/g, ' ')) ||
       /registerTargetMeasurer\(stepId/.test(profileSrc),
@@ -263,7 +265,7 @@ if (require.main === module) {
     run();
     console.log(
       'PASS X-1..X-3 ORCH-1037/1035 adversarial: context scroll loop rejects the mid-scroll transient (X-1), ' +
-      'scroll steps measured via four distinct measurer thunks → distinct rects, reconstruction is fallback-only (X-2), ' +
+      'scroll steps measured via five distinct measurer thunks → distinct rects, reconstruction is fallback-only (X-2), ' +
       'wrong-node width guard — steps 4/5/6/7 on leaf affordances not header containers, full-width rejected for every non-deck step (X-3)'
     );
   } catch (error) {

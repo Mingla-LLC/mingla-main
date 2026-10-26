@@ -11,7 +11,9 @@ import {
   retreat,
   resolveEntry,
   computeSegmentFill,
+  type OnboardingSequenceOptions,
 } from './onboardingSequenceLogic'
+import type { OnboardingMode } from './ticketFirstLogic'
 
 // ─── Step Sub-Step Sequences ───
 // The authoritative sequencing tables + decision functions live in the
@@ -23,6 +25,8 @@ interface UseOnboardingStateMachineProps {
   initialStep?: OnboardingStep
   hasGpsPermission: boolean  // determines whether 'manual_location' sub-step appears in Step 4
   hasCollabContext: boolean  // false ⇒ Step 6 (collaborations) is hidden/skipped (ORCH-1039)
+  mode?: OnboardingMode
+  sequenceOptions?: OnboardingSequenceOptions
 }
 
 interface UseOnboardingStateMachineReturn {
@@ -34,18 +38,26 @@ interface UseOnboardingStateMachineReturn {
   isLaunch: boolean
 }
 
+const DEFAULT_SEQUENCE_OPTIONS: OnboardingSequenceOptions = {
+  needsLanguage: false,
+  phonePreVerified: false,
+  skipLocation: false,
+}
+
 export function useOnboardingStateMachine({
   initialStep = 1,
   // hasGpsPermission is part of the public prop contract (reserved for the
   // Step-4 manual_location branch) but currently unused by the sequencing core.
   hasGpsPermission: _hasGpsPermission,
   hasCollabContext,
+  mode = 'full',
+  sequenceOptions = DEFAULT_SEQUENCE_OPTIONS,
 }: UseOnboardingStateMachineProps): UseOnboardingStateMachineReturn {
   // Lazy initializer resolves the entry through the skip-empty normalizer so a
   // resume at a hidden step (e.g. Step 6 with no collab context) never paints
   // the hidden step — not even for one frame (ORCH-1039 §3.6).
   const [state, setState] = useState<OnboardingNavState>(() =>
-    resolveEntry(initialStep, hasCollabContext)
+    resolveEntry(initialStep, hasCollabContext, mode, sequenceOptions)
   )
   const [isLaunch, setIsLaunch] = useState(false)
 
@@ -59,6 +71,10 @@ export function useOnboardingStateMachine({
   // without re-creating them on every flag flip.
   const hasCollabContextRef = useRef(hasCollabContext)
   hasCollabContextRef.current = hasCollabContext
+  const modeRef = useRef(mode)
+  modeRef.current = mode
+  const sequenceOptionsRef = useRef(sequenceOptions)
+  sequenceOptionsRef.current = sequenceOptions
 
   // ─── Fix A: Sync state when initialStep changes after mount ───
   // React's useState only uses the initial value on the first render.
@@ -73,7 +89,7 @@ export function useOnboardingStateMachine({
   if (appliedInitialStep.current !== initialStep) {
     logger.onboarding(`initialStep changed: ${appliedInitialStep.current} → ${initialStep}`)
     appliedInitialStep.current = initialStep
-    setState(resolveEntry(initialStep, hasCollabContext))
+    setState(resolveEntry(initialStep, hasCollabContext, mode, sequenceOptions))
   }
 
   // ─── Fix B (ORCH-1039 rework): re-resolve off a now-hidden current step ───
@@ -97,18 +113,30 @@ export function useOnboardingStateMachine({
   // has actually resolved to empty.
   useEffect(() => {
     const current = stateRef.current
-    if (buildSequence(current.step, hasCollabContext).length !== 0) return
-    const resolved = resolveEntry(current.step, hasCollabContext)
+    if (
+      buildSequence(current.step, hasCollabContext, mode, sequenceOptions).length !== 0
+    ) return
+    const resolved = resolveEntry(
+      current.step,
+      hasCollabContext,
+      mode,
+      sequenceOptions,
+    )
     if (resolved.step === current.step && resolved.subStep === current.subStep) return
     logger.onboarding(
       `resolve-empty: Step ${current.step}/${current.subStep} became hidden (hasCollabContext=${hasCollabContext}) → Step ${resolved.step}/${resolved.subStep}`
     )
     setState(resolved)
-  }, [hasCollabContext])
+  }, [hasCollabContext, mode, sequenceOptions])
 
   const goNext = useCallback(() => {
     const prev = stateRef.current
-    const result = advance(prev, hasCollabContextRef.current)
+    const result = advance(
+      prev,
+      hasCollabContextRef.current,
+      modeRef.current,
+      sequenceOptionsRef.current,
+    )
     if (result.kind === 'stay') {
       logger.onboarding(`goNext: subStep '${prev.subStep}' not in sequence — staying put.`)
       return
@@ -124,7 +152,12 @@ export function useOnboardingStateMachine({
 
   const goBack = useCallback(() => {
     const prev = stateRef.current
-    const result = retreat(prev, hasCollabContextRef.current)
+    const result = retreat(
+      prev,
+      hasCollabContextRef.current,
+      modeRef.current,
+      sequenceOptionsRef.current,
+    )
     if (result.kind === 'stay') {
       logger.onboarding(`goBack: at earliest step or corrupt state — no-op.`)
       return
@@ -141,9 +174,14 @@ export function useOnboardingStateMachine({
     // Guard: an empty/single-substep sequence (never the CURRENT step — advance/
     // retreat/resolveEntry all skip empty steps) yields a full segment (1)
     // rather than NaN. Do NOT "simplify" the skip-empty logic away upstream.
-    const segmentFill = computeSegmentFill(state, hasCollabContext)
+    const segmentFill = computeSegmentFill(
+      state,
+      hasCollabContext,
+      mode,
+      sequenceOptions,
+    )
     return { step: state.step, segmentFill }
-  }, [state, hasCollabContext])
+  }, [state, hasCollabContext, mode, sequenceOptions])
 
   return {
     state,

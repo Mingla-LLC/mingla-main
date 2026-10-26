@@ -3,7 +3,7 @@
  *
  * Cycle 13 + DEC-095 — 11 architectural decisions locked. Reads-only over:
  *   - useOrderStore.entries (Cycle 9c)
- *   - useDoorSalesStore.entries (Cycle 12)
+ *   - server door-sale orders (Cycle 12, moved to shared truth in #4063)
  *   (issue #3827: guest-list tickets are server orders with source = comp,
  *    read from orderEntries; the device-only useGuestStore is no longer an input)
  *   - useScanStore.entries (Cycle 11)
@@ -30,7 +30,7 @@
  */
 
 import { guestListTicketCount, isCompOrder } from "./compOrders";
-import type { DoorSaleRecord } from "../store/doorSalesStore";
+import type { DoorSaleRecord } from "../types/doorSales";
 import type { OrderRecord } from "../store/orderStore";
 import type { ScanRecord } from "../store/scanStore";
 import { expandDoorTickets } from "./expandDoorTickets";

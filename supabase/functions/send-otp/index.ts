@@ -1,5 +1,11 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  conflictingPhoneOwners,
+  getPhoneIdentityOwners,
+  hasCurrentVerifiedPhoneOwnership,
+  isProfileOnlyPhoneOwner,
+} from '../_shared/phoneIdentityOwnership.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -78,53 +84,81 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Check if this phone is already verified for this user — skip SMS if so
-    const { data: profile } = await serviceClient
-      .from('profiles')
-      .select('phone')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.phone === phone) {
-      return new Response(JSON.stringify({ success: true, status: 'already_verified' }), {
-        status: 200,
+    // #4063: profiles.phone is not the complete ownership authority. Account
+    // deletion can retain GoTrue and verified-phone rows for Business history,
+    // so checking only profiles would let a second account take the number and
+    // claim every paid order attached to it. Read all three authorities and
+    // fail closed if that complete view is unavailable.
+    let ownership = await getPhoneIdentityOwners(serviceClient, phone)
+    if (ownership.error) {
+      console.error('[send-otp] Phone ownership lookup failed:', ownership.error)
+      return new Response(JSON.stringify({ error: 'Could not verify phone availability. Please try again.' }), {
+        status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // Check if this phone is already claimed by a different user
-    const { data: existingProfile } = await serviceClient
-      .from('profiles')
-      .select('id')
-      .eq('phone', phone)
-      .neq('id', user.id)
-      .maybeSingle()
-
-    if (existingProfile) {
-      // Defense: check if the other profile's auth user still exists.
-      // If the user deleted their account but profile deletion failed,
-      // the phone is orphaned — free it and let the new user proceed.
-      const { data: authCheck } = await serviceClient.auth.admin.getUserById(existingProfile.id)
-      if (!authCheck?.user) {
-        console.warn(`Orphaned profile ${existingProfile.id} claims phone ${phone.slice(0, 4)}**** — clearing`)
-        const { error: clearError } = await serviceClient
-          .from('profiles')
-          .update({ phone: null })
-          .eq('id', existingProfile.id)
-        if (clearError) {
-          console.error('Failed to clear orphaned phone:', clearError.message)
-          return new Response(JSON.stringify({ error: 'Could not free phone number. Please try again.' }), {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          })
-        }
-        // Phone is now free — fall through to send OTP
-      } else {
+    const conflicts = conflictingPhoneOwners(ownership.owners, user.id)
+    for (const owner of conflicts) {
+      // Preserve the historical failed-deletion repair, but only for a row
+      // owned by profiles alone. A verified ledger or GoTrue owner must never
+      // be cleared as an onboarding side effect.
+      if (!isProfileOnlyPhoneOwner(owner)) {
         return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
           status: 409,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
       }
+      const { data: authCheck, error: authCheckError } =
+        await serviceClient.auth.admin.getUserById(owner.userId)
+      if (authCheck?.user) {
+        return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
+          status: 409,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      if (authCheckError && authCheckError.status !== 404) {
+        console.error('[send-otp] Could not validate profile-only phone owner:', authCheckError.message)
+        return new Response(JSON.stringify({ error: 'Could not verify phone availability. Please try again.' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      console.warn(`[send-otp] Clearing orphaned profile-only phone owner ${owner.userId}`)
+      const { error: clearError } = await serviceClient
+        .from('profiles')
+        .update({ phone: null })
+        .eq('id', owner.userId)
+      if (clearError) {
+        console.error('[send-otp] Failed to clear orphaned phone:', clearError.message)
+        return new Response(JSON.stringify({ error: 'Could not free phone number. Please try again.' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
+    if (conflicts.length > 0) {
+      ownership = await getPhoneIdentityOwners(serviceClient, phone)
+      if (
+        ownership.error ||
+        conflictingPhoneOwners(ownership.owners, user.id).length > 0
+      ) {
+        console.error('[send-otp] Phone ownership remained ambiguous after orphan cleanup:', ownership.error)
+        return new Response(JSON.stringify({ error: 'Could not verify phone availability. Please try again.' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
+    // A current profile or verified-phone ledger row is already sufficient;
+    // an auth.users-only remnant is not, so it receives a fresh OTP and proof.
+    if (hasCurrentVerifiedPhoneOwnership(ownership.owners, user.id)) {
+      return new Response(JSON.stringify({ success: true, status: 'already_verified' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
     const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')!

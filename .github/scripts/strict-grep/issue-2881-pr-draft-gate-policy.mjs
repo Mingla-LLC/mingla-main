@@ -68,8 +68,9 @@ const liveWorkflow = (...stem) => `${stem.join("-")}.${["y", "ml"].join("")}`;
  * Membership means: never draft-gated, runs on every pull-request event
  * regardless of draft state, and is a check that actually blocks a merge.
  *
- * #2881 seeds this with the two workflows that produce the repo's only
- * ruleset-required status checks. #2882 (test tiering) GROWS THIS SAME LIST
+ * #2881 seeded this with the two workflows that produced the repo's only
+ * ruleset-required status checks. #1865 adds a trusted-base
+ * `pull_request_target` certifier. #2882 (test tiering) GROWS THIS SAME LIST
  * when it promotes the money-and-login tier to the merge gate — it must not
  * define a parallel "tier 1" list, because two lists of "things that gate a
  * merge" is exactly how the two drift apart. Every entry cites an issue and a
@@ -81,6 +82,14 @@ const liveWorkflow = (...stem) => `${stem.join("-")}.${["y", "ml"].join("")}`;
  * branch protection (/branches/main/protection -> 404).
  */
 export const ALWAYS_ON = Object.freeze([
+  Object.freeze({
+    path: liveWorkflow("bundle", "baseline", "provenance", "guard"),
+    kind: "ruleset-required-pr-target",
+    context: "Merge Certifier",
+    ruleset: "25835866",
+    issue: "#1865",
+    reason: "exact-candidate aggregate required status with zero bypass actors; it executes on drafts and ready_for_review so a skipped or stale check can never satisfy the merge rule",
+  }),
   Object.freeze({
     path: liveWorkflow("framework", "major", "guard"),
     kind: "ruleset-required",
@@ -160,6 +169,9 @@ export const ALWAYS_ON = Object.freeze([
     reason: "the registry and three suites assert its job if: values verbatim; composing a draft conjunct changes those strings",
   }),
 ]);
+
+const isRulesetRequired = (entry) =>
+  entry.kind === "ruleset-required" || entry.kind === "ruleset-required-pr-target";
 
 /** The one programmatic PR-creation call site, which must NEVER open a draft. */
 export const BOT_PR_CREATION_SITE = "mingla-business/scripts/ci/bundle-baseline-pr-handoff.mjs";
@@ -270,7 +282,7 @@ export function auditWorkflowSources(sources, options = {}) {
   const parsed = parseSources(sources);
   const errors = [...parsed.errors];
   const alwaysOnPaths = new Set(alwaysOn.map((entry) => entry.path));
-  const requiredContexts = new Map(alwaysOn.map((entry) => [entry.context, entry.path]));
+  const requiredContexts = new Map(alwaysOn.filter(isRulesetRequired).map((entry) => [entry.context, entry.path]));
 
   const counts = { totalWorkflows: Object.keys(parsed.documents).length, prFamily: 0, gated: 0, exempt: 0, gatedJobs: 0, composed: 0 };
   const seenAlwaysOn = new Set();
@@ -323,16 +335,32 @@ export function auditWorkflowSources(sources, options = {}) {
       seenAlwaysOn.add(workflowName);
       const entry = alwaysOn.find((candidate) => candidate.path === workflowName);
       if (draftJobs.length) {
-        errors.push(entry.kind === "ruleset-required"
+        errors.push(isRulesetRequired(entry)
           ? `${workflowName}: always-on merge-gate workflow carries a draft condition on job(s) ${draftJobs.join(", ")}. ` +
             `Its required context "${entry.context}" would report \`skipped\`, which GitHub counts as satisfying a required check — a check reading green having never run.`
           : `${workflowName}: pin-protected workflow carries a draft condition on job(s) ${draftJobs.join(", ")}. ` +
             `${entry.pinnedBy} pins this file's ${entry.pin} on behalf of ${entry.issue}; #2881 must leave it byte-identical rather than edit another issue's contract.`);
       }
       if (entry.kind === "ruleset-required" && typesList !== null) {
-        errors.push(`${workflowName}: always-on merge-gate workflow must not restrict pull-request activity types (found ${JSON.stringify(typesList)})`);
+        errors.push(
+          `${workflowName}: always-on merge-gate workflow must not restrict pull-request activity types; ` +
+          `a required context must report on every relevant pull-request update.`,
+        );
       }
-      if (entry.kind === "ruleset-required") {
+      if (entry.kind === "ruleset-required-pr-target" && typesList !== null && (
+        typesList.length !== REQUIRED_TYPES.length || !REQUIRED_TYPES.every((type) => typesList.includes(type))
+      )) {
+        errors.push(
+          `${workflowName}: pull_request_target merge-gate workflow must either omit activity types or use exactly ` +
+          `${JSON.stringify(REQUIRED_TYPES)} (found ${JSON.stringify(typesList)}). The exact list invalidates a ` +
+          `draft refusal on ready_for_review without dropping the final synchronize event.`,
+        );
+      }
+      if (isRulesetRequired(entry)) {
+        const expectedEvent = entry.kind === "ruleset-required-pr-target" ? "pull_request_target" : "pull_request";
+        if (!events.includes(expectedEvent)) {
+          errors.push(`${workflowName}: ${entry.kind} entry must declare ${expectedEvent}`);
+        }
         const names = jobKeys.map((jobKey) => (typeof jobs[jobKey]?.name === "string" ? jobs[jobKey].name.trim() : null));
         if (!names.includes(entry.context)) {
           errors.push(
@@ -408,7 +436,7 @@ export function auditWorkflowSources(sources, options = {}) {
       errors.push(`${entry.path}: registered always-on merge-gate workflow is missing or is not pull-request triggered (${entry.reason})`);
     }
     const validIssue = entry.issue && /^#\d+$/.test(String(entry.issue));
-    if (entry.kind === "ruleset-required") {
+    if (isRulesetRequired(entry)) {
       if (!validIssue || !entry.reason || !entry.context || !entry.ruleset) {
         errors.push(`${entry.path}: ruleset-required ALWAYS_ON entry must cite context, ruleset, an issue (#NNNN) and a reason`);
       }
@@ -636,14 +664,20 @@ const wf = ({ types = REQUIRED_TYPES, jobs, event = "pull_request", name = "Chec
 };
 
 const PINNED = ALWAYS_ON.filter((entry) => entry.kind === "pin-protected");
+const RULESET_REQUIRED = ALWAYS_ON.filter(isRulesetRequired);
 
 const safeSources = () => {
   const sources = {
     [GATED_A]: wf({ jobs: { one: { if: DRAFT_IF }, two: { if: `${COMPOSED_PREFIX}always()${COMPOSED_SUFFIX}` } } }),
     [GATED_B]: wf({ event: "pull_request_target", jobs: { only: { if: DRAFT_IF } } }),
-    [EXEMPT_A]: wf({ types: null, jobs: { guard: { if: null, name: ALWAYS_ON[0].context } } }),
-    [EXEMPT_B]: wf({ types: null, jobs: { jest: { if: null, name: ALWAYS_ON[1].context } } }),
   };
+  for (const [index, entry] of RULESET_REQUIRED.entries()) {
+    sources[entry.path] = wf({
+      types: index === 0 ? REQUIRED_TYPES : null,
+      event: entry.kind === "ruleset-required-pr-target" ? "pull_request_target" : "pull_request",
+      jobs: { [`required_${index}`]: { if: null, name: entry.context } },
+    });
+  }
   // Pin-protected entries are always-on: no types restriction, no draft condition.
   for (const entry of PINNED) {
     sources[entry.path] = `name: Pinned\non:\n  pull_request:\n  push:\n    branches: [main]\njobs:\n  only:\n    if: \${{ github.event_name != 'schedule' }}\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n`;
@@ -688,9 +722,9 @@ export function runSelfTest() {
   const safeBase = safeSources();
   const safe = auditWorkflowSources(safeBase, { botCreationSource: OK_BOT_SOURCE, ...safePinInputs(safeBase) });
   assert.deepEqual(safe.errors, []);
-  assert.equal(safe.counts.prFamily, 4 + PINNED.length);
+  assert.equal(safe.counts.prFamily, 2 + RULESET_REQUIRED.length + PINNED.length);
   assert.equal(safe.counts.gated, 2);
-  assert.equal(safe.counts.exempt, 2 + PINNED.length);
+  assert.equal(safe.counts.exempt, RULESET_REQUIRED.length + PINNED.length);
   assert.equal(safe.counts.gatedJobs, 3);
   assert.equal(safe.counts.composed, 1);
   assertions += 5;
@@ -725,13 +759,13 @@ export function runSelfTest() {
       "declares no jobs"],
     // A4 — exempt-set integrity.
     ["A4 required workflow draft-gated",
-      (s) => { s[EXEMPT_A] = wf({ types: null, jobs: { guard: { if: DRAFT_IF, name: ALWAYS_ON[0].context } } }); },
+      (s) => { s[EXEMPT_A] = wf({ types: null, event: "pull_request_target", jobs: { guard: { if: DRAFT_IF, name: ALWAYS_ON[0].context } } }); },
       "would report `skipped`"],
-    ["A4 required workflow restricts activity types",
-      (s) => { s[EXEMPT_A] = wf({ jobs: { guard: { if: null, name: ALWAYS_ON[0].context } } }); },
-      "must not restrict pull-request activity types"],
+    ["A4 required workflow drops final-candidate activity types",
+      (s) => { s[EXEMPT_A] = wf({ types: ["opened"], event: "pull_request_target", jobs: { guard: { if: null, name: ALWAYS_ON[0].context } } }); },
+      "must either omit activity types or use exactly"],
     ["A4 required job renamed",
-      (s) => { s[EXEMPT_A] = wf({ types: null, jobs: { guard: { if: null, name: "Framework Guard v2" } } }); },
+      (s) => { s[EXEMPT_A] = wf({ types: null, event: "pull_request_target", jobs: { guard: { if: null, name: "Framework Guard v2" } } }); },
       "silently unbinds the ruleset"],
     ["A4 required context moved into a gated workflow",
       (s) => { s[GATED_A] = wf({ jobs: { one: { if: DRAFT_IF, name: ALWAYS_ON[1].context } } }); },

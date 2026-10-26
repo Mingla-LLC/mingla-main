@@ -1,6 +1,11 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { seedReviewerAccount } from '../_shared/seedReviewerAccount.ts'
+import {
+  conflictingPhoneOwners,
+  getPhoneIdentityOwners,
+  isProfileOnlyPhoneOwner,
+} from '../_shared/phoneIdentityOwnership.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -166,46 +171,97 @@ serve(async (req) => {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
       )
 
-      // Defense-in-depth: reject if phone was claimed by another user between
-      // send-otp (which also checks) and this verification
-      const { data: existingProfile } = await serviceClient
-        .from('profiles')
-        .select('id')
-        .eq('phone', phone)
-        .neq('id', user.id)
-        .maybeSingle()
+      // #4063 defense-in-depth: send-otp checked before sending the code, but
+      // ownership may have changed while the user entered it. Re-check the
+      // complete profile + verified-ledger + GoTrue authority set now.
+      let ownership = await getPhoneIdentityOwners(serviceClient, phone)
+      if (ownership.error) {
+        console.error('[verify-otp] Phone ownership lookup failed:', ownership.error)
+        return new Response(JSON.stringify({ error: 'Could not verify phone availability. Please try again.' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
 
-      if (existingProfile) {
-        // Check if the claiming user's auth account still exists —
-        // if not, the profile is orphaned from a failed account deletion
-        const { data: authCheck } = await serviceClient.auth.admin.getUserById(existingProfile.id)
-        if (!authCheck?.user) {
-          console.warn(`[verify-otp] Orphaned profile ${existingProfile.id} claims phone — clearing`)
-          const { error: clearError } = await serviceClient
-            .from('profiles')
-            .update({ phone: null })
-            .eq('id', existingProfile.id)
-          if (clearError) {
-            console.error('[verify-otp] Failed to clear orphaned phone:', clearError.message)
-            return new Response(JSON.stringify({ error: 'Could not free phone number. Please try again.' }), {
-              status: 500,
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            })
-          }
-          // Phone freed — fall through to save it for the current user
-        } else {
+      const conflicts = conflictingPhoneOwners(ownership.owners, user.id)
+      for (const owner of conflicts) {
+        if (!isProfileOnlyPhoneOwner(owner)) {
           return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
             status: 409,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           })
         }
+        const { data: authCheck, error: authCheckError } =
+          await serviceClient.auth.admin.getUserById(owner.userId)
+        if (authCheck?.user) {
+          return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
+            status: 409,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
+        if (authCheckError && authCheckError.status !== 404) {
+          console.error('[verify-otp] Could not validate profile-only phone owner:', authCheckError.message)
+          return new Response(JSON.stringify({ error: 'Could not verify phone availability. Please try again.' }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
+        console.warn(`[verify-otp] Clearing orphaned profile-only phone owner ${owner.userId}`)
+        const { error: clearError } = await serviceClient
+          .from('profiles')
+          .update({ phone: null })
+          .eq('id', owner.userId)
+        if (clearError) {
+          console.error('[verify-otp] Failed to clear orphaned phone:', clearError.message)
+          return new Response(JSON.stringify({ error: 'Could not free phone number. Please try again.' }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
       }
 
-      // Save verified phone to profiles (source of truth — must succeed)
+      if (conflicts.length > 0) {
+        ownership = await getPhoneIdentityOwners(serviceClient, phone)
+        if (
+          ownership.error ||
+          conflictingPhoneOwners(ownership.owners, user.id).length > 0
+        ) {
+          console.error('[verify-otp] Phone ownership remained ambiguous after orphan cleanup:', ownership.error)
+          return new Response(JSON.stringify({ error: 'Could not verify phone availability. Please try again.' }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
+      }
+
+      // Save the profile authority only after the complete duplicate guard has
+      // passed. Its UNIQUE constraint is the final safety net for a concurrent
+      // profile claim; the possession ledger is written only after this succeeds.
       const { error: updateError } = await serviceClient
         .from('profiles')
         .update({ phone })
         .eq('id', user.id)
+      if (updateError) {
+        if (updateError.code === '23505') {
+          return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
+            status: 409,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
+        console.error('[verify-otp] Profile update failed:', {
+          code: updateError.code,
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint,
+        })
+        return new Response(JSON.stringify({
+          error: 'Phone verified but save failed. Contact support.',
+          debug_code: updateError.code,
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
 
       // #2269: THE POSSESSION PROOF. Written before the GoTrue sync, because
       // the GoTrue sync is the thing that fails.
@@ -240,29 +296,6 @@ serve(async (req) => {
           '[verify-otp] auth.users phone sync refused (claim unaffected — #2269 ledger holds the proof):',
           err?.message ?? err,
         )
-      }
-
-      if (updateError) {
-        // Handle UNIQUE constraint violation (final safety net)
-        if (updateError.code === '23505') {
-          return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
-            status: 409,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          })
-        }
-        console.error('[verify-otp] Profile update failed:', {
-          code: updateError.code,
-          message: updateError.message,
-          details: updateError.details,
-          hint: updateError.hint,
-        })
-        return new Response(JSON.stringify({
-          error: 'Phone verified but save failed. Contact support.',
-          debug_code: updateError.code,
-        }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
       }
 
       return new Response(JSON.stringify({ success: true, status: 'approved' }), {
