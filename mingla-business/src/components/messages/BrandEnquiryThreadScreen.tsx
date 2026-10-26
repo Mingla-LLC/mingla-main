@@ -107,7 +107,7 @@ export function BrandEnquiryThreadScreen({ enquiryId }: { enquiryId: string }): 
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "brand_enquiries", filter: `id=eq.${enquiryId}` },
+        { event: "*", schema: "public", table: "brand_enquiries", filter: `conversation_id=eq.${conversationId}` },
         () => { void refetchThread(); },
       )
       .subscribe();

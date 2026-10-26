@@ -1,3 +1,4 @@
+// orch-strict-grep-allow safearea-on-fullscreen-routes — BrandEnquiryThreadScreen renders SafeScreen
 import React from "react";
 import { useLocalSearchParams } from "expo-router";
 
