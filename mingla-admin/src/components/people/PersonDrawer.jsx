@@ -108,6 +108,7 @@ export function PersonDrawer({ userId, onClose, onChanged }) {
   }, [userId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load on open, like the other admin pages
     setTab("activity");
     load();
   }, [load]);

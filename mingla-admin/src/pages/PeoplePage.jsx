@@ -166,6 +166,7 @@ export function PeoplePage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load on open, like the other admin pages
     loadCounts();
   }, [loadCounts]);
 

@@ -97,14 +97,15 @@ function useTabLoad(active, loader) {
     }
   }, [loader]);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load on open, like the other admin pages
     if (active && !state.loaded && !state.loading) run();
   }, [active, state.loaded, state.loading, run]);
   return { ...state, reload: run };
 }
 
-function daysWaiting(since) {
+function daysWaiting(since, now) {
   if (!since) return null;
-  const days = Math.floor((Date.now() - new Date(since).getTime()) / 86400000);
+  const days = Math.floor((now - new Date(since).getTime()) / 86400000);
   return Number.isFinite(days) ? days : null;
 }
 
@@ -147,6 +148,7 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
   }, [brandId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load on open, like the other admin pages
     setTab("team");
     loadDetail();
   }, [loadDetail]);
@@ -160,12 +162,24 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
     () => listOfferingsBoard("all", { page: 0, pageSize: 50, filters: { show: "all" } }, brandId),
     [brandId]
   );
-  const venueLoader = useCallback(() => listVenues({ filters: { brand_id: brandId }, page: 0, pageSize: 50 }), [brandId]);
+  const venueLoader = useCallback(async () => {
+    const res = await listVenues({ filters: { brand_id: brandId }, page: 0, pageSize: 50 });
+    const now = Date.now();
+    // The claim wait is worked out once, when the tab loads, and only for a claim still waiting.
+    return { ...res, rows: res.rows.map((v) => ({ ...v, waiting_days: v.claim_status === "pending_review" ? daysWaiting(v.created_at, now) : null })) };
+  }, [brandId]);
   const websiteLoader = useCallback(async () => {
     const sites = await listBrandSites({ search: brandId, page: 0, pageSize: 100 });
     const own = sites.rows.filter((s) => s.brand_id === brandId);
     const details = await Promise.all(own.map((s) => getBrandSiteDetail(s.site_id)));
-    return own.map((s, i) => ({ ...s, detail: details[i] }));
+    const weekAgo = Date.now() - 7 * 86400000;
+    return own.map((s, i) => {
+      const pubs = Array.isArray(details[i]?.publications) ? details[i].publications : [];
+      const failedThisWeek = pubs.filter(
+        (p) => p.status === "failed" && p.requested_at && new Date(p.requested_at).getTime() >= weekAgo
+      ).length;
+      return { ...s, failed_this_week: failedThisWeek };
+    });
   }, [brandId]);
 
   const money = useTabLoad(tab === "money" && !!brandId, moneyLoader);
@@ -361,7 +375,7 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
                 <ul className="flex flex-col gap-3">
                   {venue.data.rows.map((v) => {
                     const claim = CLAIM_STATUS[v.claim_status] || null;
-                    const waiting = v.claim_status === "pending_review" ? daysWaiting(v.created_at) : null;
+                    const waiting = v.waiting_days;
                     return (
                       <li key={v.id} className="flex flex-col gap-1 text-sm">
                         <a href={`#/brands?tab=venues&venueId=${encodeURIComponent(v.id)}`} className="font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline">
@@ -396,11 +410,6 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
               ) : (
                 <ul className="flex flex-col gap-4">
                   {website.data.map((site) => {
-                    const pubs = Array.isArray(site.detail?.publications) ? site.detail.publications : [];
-                    const weekAgo = Date.now() - 7 * 86400000;
-                    const failedThisWeek = pubs.filter(
-                      (p) => p.status === "failed" && p.requested_at && new Date(p.requested_at).getTime() >= weekAgo
-                    ).length;
                     return (
                       <li key={site.site_id} className="flex flex-col gap-2">
                         <KV
@@ -408,7 +417,7 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
                             ["Address", site.permanent_hostname],
                             ["State", SITE_STATUS[site.status] || "Unknown"],
                             ["Last published", site.last_published_at ? `${formatDate(site.last_published_at)} (${timeAgo(site.last_published_at)})` : "Never"],
-                            ["Failed publishes this week", failedThisWeek.toLocaleString()],
+                            ["Failed publishes this week", site.failed_this_week.toLocaleString()],
                           ]}
                         />
                         <a href={`#/brands?tab=websites&siteId=${encodeURIComponent(site.site_id)}`} className="text-sm font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline">

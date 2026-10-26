@@ -167,6 +167,7 @@ export function BrandsPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load on open, like the other admin pages
     loadSummary();
   }, [loadSummary]);
 
