@@ -33,20 +33,19 @@ jobs:
           PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
         run: node mingla-business/scripts/ci/bundle-baseline-pr-handoff.mjs --verify-pr
 
-  # Issue #1865. This is deliberately one bounded snapshot, not a polling
-  # runner. A first attempt may refuse while slower lanes are pending; after
-  # every applicable lane is terminal-success, rerun only this job. The
-  # expensive lanes still execute exactly once, and no waiting runner consumes
-  # a concurrency slot for their full wall-clock time.
+  # Issue #1865. The certifier reads the lanes GitHub actually ran for this
+  # pull request's head and waits for them to finish, so nobody has to rerun
+  # it by hand. It polls once a minute (about one API call per poll) and gives
+  # a verdict only when two consecutive reads agree. A push cancels this run
+  # through the concurrency group above and starts a fresh one.
   merge-certifier:
     name: Merge Certifier
     needs: provenance
     if: ${{ always() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 60
     permissions:
       actions: read
-      checks: read
       contents: read
       pull-requests: read
     steps:
@@ -65,8 +64,8 @@ jobs:
           node-version: "20"
       - name: Prove Merge Certifier state totality
         run: node --test scripts/ci/__tests__/issue-1865-merge-certifier.test.mjs
-      - name: Certify the exact final candidate
+      - name: Wait for every lane, then certify
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
-        run: node scripts/ci/merge-certifier.mjs certify --pr "$PULL_REQUEST_NUMBER"
+        run: node scripts/ci/merge-certifier.mjs certify --pr "$PULL_REQUEST_NUMBER" --deadline-minutes 55
