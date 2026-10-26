@@ -29,7 +29,7 @@ import {
 } from "../../services/eventOrdersService";
 import type { OrderRecord } from "../../store/orderStore";
 import type { TicketStub } from "../../store/draftEventStore";
-import type { DoorSaleRecord } from "../../store/doorSalesStore";
+import type { DoorSaleRecord } from "../../types/doorSales";
 import { buildEventSalesSummary, getEventTicketsSold } from "../eventSalesSummary";
 import { guestListTicketCount } from "../compOrders";
 import { computeReconciliation } from "../reconciliation";

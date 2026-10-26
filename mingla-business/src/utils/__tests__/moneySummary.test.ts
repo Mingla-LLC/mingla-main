@@ -1,6 +1,6 @@
 import { describe, expect, test } from "@jest/globals";
 
-import type { DoorSaleRecord } from "../../store/doorSalesStore";
+import type { DoorSaleRecord } from "../../types/doorSales";
 import type { OrderRecord } from "../../store/orderStore";
 import {
   effectiveDraftCurrency,

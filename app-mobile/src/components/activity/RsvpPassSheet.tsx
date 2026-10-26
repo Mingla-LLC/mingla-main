@@ -54,7 +54,7 @@ interface RsvpPassSheetProps {
 // QR to the available content width.
 const SHEET_HORIZONTAL_PADDING = 20;
 
-// Fixed tall snap (mirror TicketPdfSheet — read-only pass viewer).
+// Fixed tall snap for this read-only pass viewer.
 const RSVP_PASS_SNAP_POINTS = ["88%"];
 
 // Preserve the bespoke dark canvas the ticket pass shipped with (#15181f,

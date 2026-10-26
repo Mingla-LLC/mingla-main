@@ -50,9 +50,9 @@ import {
 import { useAuth } from "../../../src/context/AuthContext";
 import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
-import { useDoorSalesStore } from "../../../src/store/doorSalesStore";
 import { useScanStore } from "../../../src/store/scanStore";
 import { useEventReconciliation } from "../../../src/hooks/useEventOrders";
+import { useEventDoorSales } from "../../../src/hooks/useEventDoorSales";
 import { useBrandPayoutScreen } from "../../../src/hooks/useBrandPayoutScreen";
 import { canViewBrandPayments } from "../../../src/utils/brandPaymentsPermission";
 import {
@@ -105,7 +105,10 @@ export default function ReconciliationRoute(): React.ReactElement {
   // Raw entries + useMemo per selector pattern rule (T-41 grep gate)
   const allOrderEntriesRead = useEventReconciliation(typeof eventId === "string" ? eventId : null);
   const allOrderEntries = allOrderEntriesRead.data ?? [];
-  const allDoorEntries = useDoorSalesStore((s) => s.entries);
+  const doorSalesRead = useEventDoorSales(
+    typeof eventId === "string" ? eventId : null,
+  );
+  const allDoorEntries = doorSalesRead.data ?? [];
   const allScanEntries = useScanStore((s) => s.entries);
 
   const summary = useMemo<ReconciliationSummary>(() => {

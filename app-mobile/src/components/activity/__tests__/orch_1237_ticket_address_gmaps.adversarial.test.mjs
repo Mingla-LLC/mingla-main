@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+// #4063 adapts this legacy contract to the shared, platform-neutral purchase maps helper.
 /**
  * ORCH-1237 — ADVERSARIAL regression for the ticket-address Google Maps
  * deep-link helper `buildMapsUrl`. DIFFERENT ANGLE from the happy-path test:
  * boundary/fuzz coordinate inputs, legacy-scheme-can-NEVER-return, and
  * label-independence.
  *
- * Like the implementor's happy-path test, TicketPdfSheet.tsx imports
- * react-native so it cannot be `import`ed under a plain node harness. We
- * therefore use the IDENTICAL extraction mechanism: read the real .tsx source,
+ * Like the implementor's happy-path test, we use the identical extraction
+ * mechanism: read the real TypeScript source,
  * extract the PURE `buildMapsUrl` body, strip TS annotations, and evaluate it
  * via `new Function` with a stubbed `Platform` in scope. This tests the REAL
  * shipped function body (not a copy), and provides `Platform` so that a
@@ -43,7 +43,7 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..", "..");
 const SRC = fs.readFileSync(
   path.join(
     REPO_ROOT,
-    "app-mobile/src/components/activity/TicketPdfSheet.tsx",
+    "app-mobile/src/utils/mapsUrl.ts",
   ),
   "utf8",
 );
@@ -52,7 +52,7 @@ const SRC = fs.readFileSync(
 // to the first standalone `}`.
 function extractBuildMapsUrl(src) {
   const start = src.indexOf("function buildMapsUrl");
-  assert.notEqual(start, -1, "buildMapsUrl must exist in TicketPdfSheet.tsx");
+  assert.notEqual(start, -1, "buildMapsUrl must exist in utils/mapsUrl.ts");
   const tail = src.slice(start);
   const endRel = tail.indexOf("\n}");
   assert.notEqual(endRel, -1, "could not find end of buildMapsUrl");

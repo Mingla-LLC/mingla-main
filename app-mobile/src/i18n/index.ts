@@ -41,12 +41,14 @@ import en_expanded_details from './locales/en/expanded_details.json'
 import en_auth from './locales/en/auth.json'
 import en_discounts from './locales/en/discounts.json'
 import en_followers from './locales/en/followers.json'
+import en_purchases from './locales/en/purchases.json'
 
 const NAMESPACES = [
   'common', 'onboarding', 'navigation', 'cards', 'discover', 'preferences',
   'share', 'paywall', 'profile', 'settings', 'connections', 'saved',
   'feedback', 'chat', 'social', 'map', 'activity', 'board', 'notifications',
   'modals', 'billing', 'expanded_details', 'auth', 'discounts', 'followers',
+  'purchases',
 ] as const
 
 // ─── Lazy: 28 other languages via dynamic import ───
@@ -871,6 +873,7 @@ i18n.use(initReactI18next).init({
       activity: en_activity, board: en_board, notifications: en_notifications,
       modals: en_modals, billing: en_billing, expanded_details: en_expanded_details,
       auth: en_auth, discounts: en_discounts, followers: en_followers,
+      purchases: en_purchases,
     },
   },
   lng: initialLang,

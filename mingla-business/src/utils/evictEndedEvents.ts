@@ -16,7 +16,6 @@ import { useOrderStore } from "../store/orderStore";
 import { useGuestStore } from "../store/guestStore";
 import { useEventEditLogStore } from "../store/eventEditLogStore";
 import { useScanStore } from "../store/scanStore";
-import { useDoorSalesStore } from "../store/doorSalesStore";
 
 export const ENDED_EVENT_TTL_DAYS = 30;
 const ENDED_EVENT_TTL_MS = ENDED_EVENT_TTL_DAYS * 86_400_000;
@@ -54,7 +53,6 @@ const pruneStore = <T extends EventIdEntry>(
     return pruned;
   } catch (error) {
     if (__DEV__) {
-      // eslint-disable-next-line no-console
       console.error(`[evictEndedEvents] ${label} failed:`, error);
     }
     return 0;
@@ -86,7 +84,6 @@ export const evictEndedEvents = (): EvictionResult => {
   evictedEntryCount += pruneStore(useGuestStore, endedEventIds, "guestStore");
   evictedEntryCount += pruneStore(useEventEditLogStore, endedEventIds, "eventEditLogStore");
   evictedEntryCount += pruneStore(useScanStore, endedEventIds, "scanStore");
-  evictedEntryCount += pruneStore(useDoorSalesStore, endedEventIds, "doorSalesStore");
 
   return {
     evictedEventCount: endedEventIds.size,

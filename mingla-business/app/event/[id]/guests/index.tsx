@@ -44,14 +44,14 @@ import {
 } from "../../../../src/utils/ticketLinkEligibility";
 import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../../../src/utils/permissionGates";
-import {
-  useDoorSalesStore,
-  type DoorPaymentMethod,
-  type DoorSaleRecord,
-} from "../../../../src/store/doorSalesStore";
+import type {
+  DoorPaymentMethod,
+  DoorSaleRecord,
+} from "../../../../src/types/doorSales";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 import { useGuestRosterAccess } from "../../../../src/hooks/useGuestRoster";
 import { useEventGuestList } from "../../../../src/hooks/useEventOrders";
+import { useEventDoorSales } from "../../../../src/hooks/useEventDoorSales";
 // issue #2160 — the occurrences ride the event payload (same reader that served
 // the event, #2161), so the per-day roster needs no extra query.
 import { usePublicEventById } from "../../../../src/hooks/usePublicEvents";
@@ -293,8 +293,11 @@ export default function EventGuestsListRoute(): React.ReactElement {
   const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
   const canAddGuests = canPerformAction(currentRank, "ADD_COMP_GUEST");
   const canManageTicketLinks = canPerformAction(currentRank, "MANAGE_TICKET_LINKS");
-  // Cycle 12 — door sale entries merged into the J-G1 list.
-  const allDoorEntries = useDoorSalesStore((s) => s.entries);
+  // Door-sale orders share server truth across every scanner device.
+  const doorSalesRead = useEventDoorSales(
+    typeof eventId === "string" ? eventId : null,
+  );
+  const allDoorEntries = doorSalesRead.data ?? [];
 
   // issue #2160 — the event payload, for its occurrences. Same query key the
   // rest of the app already uses, so this is a cache hit in practice.

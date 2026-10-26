@@ -533,9 +533,15 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // dependencies used by the Brand group gallery/viewer, adding the app's scoped
 // Discover regression command, and completing the mandated dependency refresh
 // for both touched package trees.
+// [TEST-MOD-APPROVED #4063] Re-banked after adding the Explorer purchase-flow
+// regression command and declaring Expo's existing keep-awake runtime directly.
+// [TEST-MOD-APPROVED #4063] Re-banked after adding the focused Wave 5 ticket
+// transfer surface regression command; dependencies and lockfiles are unchanged.
+// [TEST-MOD-APPROVED #3540] Re-banked after the required Explorer dependency
+// refresh advanced three in-range transitive/runtime packages in the lockfile.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
-  "app-mobile/package.json": "208b75239751c412c1503c77db6eff3b1a78e1927fd0e9861412cb6e7fd58364",
-  "app-mobile/package-lock.json": "1815533eaba1f604b17351e9e0585504fe1c58524d60ebbd9bff0e21e189caf7",
+  "app-mobile/package.json": "48af9d0cca47199b61b824a4fd80b87ec7e5bb12f07899994435031238834bbb",
+  "app-mobile/package-lock.json": "9a7974a2de124482f7d450d46b49775126ef5206a325dcb6c7663ea3b9666065",
   "mingla-business/package.json": "6f77fc43e63360ac45b94d11195b966433d4e6769b34a0340d88f9871b4b2315",
   "mingla-business/package-lock.json": "7add1ab1e498621c71ce7c2db5678c9b748f39c745fd95a446a5f7d7d77f1889",
 });

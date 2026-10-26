@@ -319,8 +319,8 @@ const PHASE3_TRANSITION_RECEIPT_KEYS = Object.freeze([
   "afterSha256", "beforeSha256", "issue", "proofOwner", "workflow",
 ]);
 
-// [TEST-MOD-APPROVED #3643] These are immutable CAS receipts for the two
-// reviewed Phase 3 workflow transitions, not a latest-digest registry. Names
+// [TEST-MOD-APPROVED #3643] These are immutable CAS receipts for the
+// reviewed #3643 workflow transitions, not a latest-digest registry. Names
 // stay assembled so this non-workflow file does not become a provider reference.
 const PHASE3_TRANSITION_RECEIPTS = Object.freeze([
   Object.freeze({
@@ -336,6 +336,19 @@ const PHASE3_TRANSITION_RECEIPTS = Object.freeze([
     beforeSha256: "27c8df5a8fec7536f07e3dad819b3ecdd21bb1b9ea5261109394093dea0a6c8c",
     afterSha256: "9222960b40d6f2b4fed23a0e5f0dc92584f9bb668a380c6cad2015fa4bfec830",
     proofOwner: ".github/scripts/ci-discovery/__tests__/issue-3643-self-registering-ci.implementor.test.mjs",
+  }),
+  // #3643 (2026-10-26, Taofeek + Seth): the test append-only gate is retired.
+  // Its job, self-test and the ORCH-1383 MANIFEST ratchet step are deleted from
+  // the always-on lane; the main-health pregate job is kept byte-for-byte, and
+  // the #2909 wiring gate is the proof that it is still live. The bulk deletion
+  // makes T-12's generic regex sweep flag ~138 literals that merely matched the
+  // deleted prose; none pins the removed job.
+  Object.freeze({
+    workflow: ["tests-append-only", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "5ae5d2959382ed35994032afcbe96c86d9d799c8d7b3156931b633602ec6e633",
+    afterSha256: "a69c4667462ef550c4e1b185546823bdbd1349c9d6ba7c22b9f72995cb69655f",
+    proofOwner: ".github/scripts/strict-grep/issue-2909-main-health-wiring.mjs",
   }),
 ]);
 
@@ -387,7 +400,7 @@ const authorizedTransitionNames = (transitions, receipts = PHASE3_TRANSITION_REC
 };
 
 const PHASE3_TRANSITION_RECEIPT_INDEX = validateTransitionReceipts(PHASE3_TRANSITION_RECEIPTS);
-assert.equal(PHASE3_TRANSITION_RECEIPT_INDEX.size, 2, "Phase 3 transition receipt cardinality");
+assert.equal(PHASE3_TRANSITION_RECEIPT_INDEX.size, 3, "Phase 3 transition receipt cardinality");
 
 test("T-11 every pin-protected workflow still satisfies the pin that protects it", () => {
   const pinned = ALWAYS_ON.filter((entry) => entry.kind === "pin-protected");

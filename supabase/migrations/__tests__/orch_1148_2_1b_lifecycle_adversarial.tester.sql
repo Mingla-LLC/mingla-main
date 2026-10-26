@@ -128,7 +128,10 @@ DO $$
 DECLARE v_id uuid; ok boolean := false; ok2 boolean := false;
 BEGIN
   PERFORM set_config('request.jwt.claim.sub','11111111-1111-1111-1111-111111111111', true);
-  v_id := (public.biz_reservation_create('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now()+interval '3 hours', 2)).id;
+  v_id := (public.biz_reservation_create(
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now()+interval '3 hours', 2,
+    'phone', NULL, '+15555550121'
+  )).id;
   -- F1: same-state transition (confirmed->confirmed) must be REJECTED.
   BEGIN
     PERFORM public.biz_reservation_transition(v_id, 'confirmed');
@@ -153,7 +156,7 @@ DECLARE v_id uuid; ok boolean := false;
 BEGIN
   PERFORM set_config('request.jwt.claim.sub','11111111-1111-1111-1111-111111111111', true);
   v_id := (public.biz_reservation_create('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now()+interval '4 hours', 2,
-            'phone',NULL,NULL,NULL,NULL,NULL,NULL,'{}'::text[],'requested')).id;
+            'phone',NULL,'+15555550122',NULL,NULL,NULL,NULL,'{}'::text[],'requested')).id;
   BEGIN
     PERFORM public.biz_reservation_transition(v_id, 'no_show');
   EXCEPTION WHEN check_violation THEN ok := true;
@@ -167,7 +170,10 @@ DO $$
 DECLARE v_id uuid; v_policy text;
 BEGIN
   PERFORM set_config('request.jwt.claim.sub','11111111-1111-1111-1111-111111111111', true);
-  v_id := (public.biz_reservation_create('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now()+interval '5 hours', 2)).id;
+  v_id := (public.biz_reservation_create(
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now()+interval '5 hours', 2,
+    'phone', NULL, '+15555550123'
+  )).id;
   PERFORM public.biz_reservation_transition(v_id, 'no_show', NULL, 'guest never showed');
   SELECT (after->>'no_show_fee_policy') INTO v_policy
     FROM public.audit_log
@@ -192,7 +198,10 @@ DO $$
 DECLARE v_id uuid; ok boolean := false; v_injected uuid := 'bbbbbbbb-0000-0000-0000-000000000001';
 BEGIN
   PERFORM set_config('request.jwt.claim.sub','11111111-1111-1111-1111-111111111111', true);
-  v_id := (public.biz_reservation_create('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now()+interval '6 hours', 2)).id;
+  v_id := (public.biz_reservation_create(
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now()+interval '6 hours', 2,
+    'phone', NULL, '+15555550124'
+  )).id;
   BEGIN
     PERFORM public.biz_reservation_transition(v_id, 'seated', v_injected, 'inject cross-brand table');
   EXCEPTION WHEN check_violation THEN ok := true;
@@ -208,7 +217,10 @@ DO $$
 DECLARE v_id uuid; v_assigned uuid; v_same uuid := 'aaaaaaaa-0000-0000-0000-000000000001';
 BEGIN
   PERFORM set_config('request.jwt.claim.sub','11111111-1111-1111-1111-111111111111', true);
-  v_id := (public.biz_reservation_create('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now()+interval '6 hours 30 minutes', 2)).id;
+  v_id := (public.biz_reservation_create(
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now()+interval '6 hours 30 minutes', 2,
+    'phone', NULL, '+15555550125'
+  )).id;
   v_assigned := (public.biz_reservation_transition(v_id, 'seated', v_same, 'same-brand table ok')).table_id;
   IF v_assigned IS DISTINCT FROM v_same THEN
     RAISE EXCEPTION 'B2 FAIL: same-brand table not assigned (got %, want %)', v_assigned, v_same;
@@ -221,7 +233,10 @@ DO $$
 DECLARE v_id uuid; v_status text;
 BEGIN
   PERFORM set_config('request.jwt.claim.sub','11111111-1111-1111-1111-111111111111', true);
-  v_id := (public.biz_reservation_create('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now()+interval '6 hours 45 minutes', 2)).id;
+  v_id := (public.biz_reservation_create(
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now()+interval '6 hours 45 minutes', 2,
+    'phone', NULL, '+15555550126'
+  )).id;
   v_status := (public.biz_reservation_transition(v_id, 'seated', NULL, 'no table')).status;
   IF v_status <> 'seated' THEN RAISE EXCEPTION 'B3 FAIL: NULL-table transition did not seat (got %)', v_status; END IF;
   RAISE NOTICE 'B3 PASS: NULL table_id transition still allowed (unassigned)';
@@ -234,7 +249,7 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub','11111111-1111-1111-1111-111111111111', true);
   BEGIN
     PERFORM public.biz_reservation_create('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now()+interval '6 hours', 2,
-      'phone',NULL,NULL,NULL, v_injected);
+      'phone',NULL,'+15555550127',NULL, v_injected);
   EXCEPTION WHEN check_violation THEN ok := true;
   END;
   IF NOT ok THEN
@@ -254,7 +269,10 @@ DO $$
 DECLARE v_id uuid; ok boolean := false;
 BEGIN
   PERFORM set_config('request.jwt.claim.sub','11111111-1111-1111-1111-111111111111', true);
-  v_id := (public.biz_reservation_create('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now()+interval '7 hours', 2)).id;
+  v_id := (public.biz_reservation_create(
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', now()+interval '7 hours', 2,
+    'phone', NULL, '+15555550128'
+  )).id;
   PERFORM public.biz_reservation_transition(v_id, 'cancelled_by_venue', NULL, 'first cancel');
   -- a second mutation on the now-terminal row must be rejected (proves fresh re-read).
   BEGIN

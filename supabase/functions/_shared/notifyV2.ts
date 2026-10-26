@@ -134,6 +134,8 @@ const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
     buyer_contribution_receipt: ["contribution_id", "event_id"],
     buyer_event_updated: ["order_id", "event_id", "event_date_id"],
     buyer_venue_order_receipt: ["venue_order_id", "venue_id"],
+    buyer_door_receipt: ["order_id", "event_id"],
+    buyer_ticket_sent: ["ticket_id", "event_id"],
     rsvp_acknowledgement: ["rsvp_id", "event_id", "guest_id"],
     rsvp_pass: ["rsvp_id", "event_id", "guest_id"],
     rsvp_event_updated: ["rsvp_id", "event_id", "guest_id"],

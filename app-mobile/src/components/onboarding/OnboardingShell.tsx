@@ -46,6 +46,7 @@ interface OnboardingShellProps {
   // bottom CTA bar instead of leaving ~160px of empty space.
   flushContent?: boolean;
   onBackToWelcome?: () => void;
+  onClose?: () => void;
   children: React.ReactNode;
 }
 
@@ -64,6 +65,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
   scrollEnabled = true,
   flushContent = false,
   onBackToWelcome,
+  onClose,
   children,
 }) => {
   const { t } = useTranslation('common')
@@ -276,11 +278,25 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
       >
         {/* Progress bar */}
         <View style={styles.progressContainer}>
-          <SegmentedProgressBar
-            totalSegments={7}
-            currentStep={step}
-            currentSegmentFill={segmentFill}
-          />
+          <View style={styles.progressTrack}>
+            <SegmentedProgressBar
+              totalSegments={7}
+              currentStep={step}
+              currentSegmentFill={segmentFill}
+            />
+          </View>
+          {onClose ? (
+            <TouchableOpacity
+              accessibilityLabel={t('close')}
+              accessibilityRole="button"
+              activeOpacity={0.65}
+              hitSlop={8}
+              onPress={onClose}
+              style={styles.closeButton}
+            >
+              <Icon name="close" size={22} color={colors.text.secondary} />
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* Scrollable content */}
@@ -319,8 +335,22 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: 12,
+    gap: spacing.sm,
+  },
+  progressTrack: {
+    flex: 1,
+  },
+  closeButton: {
+    width: touchTargets.minimum,
+    height: touchTargets.minimum,
+    borderRadius: touchTargets.minimum / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
   },
   scrollContent: {
     paddingHorizontal: spacing.lg,

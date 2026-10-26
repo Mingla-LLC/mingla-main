@@ -48,11 +48,13 @@ export type OneLinkDestination =
   | { kind: 'referral'; referralCode: string }
   /** #3682 Wave 2.5 — web follow-by-email invite (token in deep_link_sub1). */
   | { kind: 'follow_invite'; token: string }
+  | { kind: 'claim'; code: string }
   | null;
 
 const OPAQUE_SHARE_ID_RE = /^[a-f0-9]{36}$/;
 const CONTENT_SHARE_CODE_RE = /^[0-9A-Za-z]{16}$/;
 const REFERRAL_CODE_RE = /^[0-9A-Za-z][0-9A-Za-z-]{0,63}$/;
+const CLAIM_CODE_RE = /^[0-9A-Za-z]{10}$/;
 export const isOpaqueShareId = (value: unknown): value is string =>
   typeof value === 'string' && OPAQUE_SHARE_ID_RE.test(value);
 export const isContentShareCode = (value: unknown): value is string =>
@@ -137,6 +139,10 @@ export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDes
         // #3682 Wave 2.5 — invite token only; email/brand resolve via edge.
         if (!sub1) return null;
         return { kind: 'follow_invite', token: sub1 };
+
+      case 'claim':
+        if (!CLAIM_CODE_RE.test(sub1)) return null;
+        return { kind: 'claim', code: sub1.toUpperCase() };
 
       default:
         // Unknown discriminator — log, never guess (SPEC §B.2).

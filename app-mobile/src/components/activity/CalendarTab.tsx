@@ -93,7 +93,7 @@ import type {
   ConsumerRsvpRow,
 } from "../../services/calendarService";
 // ORCH-1163 [rsvp-shared-body] — the consumer RSVP row (cover + "RSVP · Going"
-// pill + View-RSVP → RsvpPassSheet).
+// pill + View-RSVP → canonical Purchases detail).
 import RsvpCalendarRow from "./RsvpCalendarRow";
 import StayCalendarRow from "./StayCalendarRow";
 import {
@@ -2004,8 +2004,8 @@ const CalendarTab = ({
   // anywhere in the app: no JSX referenced it, no prop was bound to it. Keeping
   // it would have meant maintaining a second, wrong maps-URL owner for a
   // control that does not exist (Constitution #8 — subtract before adding).
-  // The Calendar tab's real maps entry points are TicketPdfSheet and
-  // RsvpPassSheet, both of which route through the shared builder.
+  // Calendar ticket and RSVP rows route to Purchases, whose detail owns its
+  // maps action.
 
   const handleRemoveFromCalendar = async (entry: CalendarEntry) => {
     if (removingEntryId) return; // Prevent multiple simultaneous removals

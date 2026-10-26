@@ -91,7 +91,7 @@ export type ActivityEvent =
   // differently so the feed can distinguish door (cash/manual money returned
   // at the door) from online (Stripe-mediated). Door refunds never touch
   // useScanStore (OBS-1 lock — refund is money-only, not attendance) so they
-  // need their own stream sourced directly from useDoorSalesStore.
+  // need their own stream sourced directly from the server door-order query.
   | {
       kind: "event_door_refund";
       saleId: string; // ds_xxx parent door sale

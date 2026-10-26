@@ -43,24 +43,29 @@ export function getLanguageByCode(code: string): LanguageData | undefined {
   return LANGUAGES.find((l) => l.code === code)
 }
 
+export function getDeviceLanguageCode(): string | null {
+  try {
+    const { getLocales } = require('expo-localization')
+    const languageCode = getLocales()?.[0]?.languageCode
+    return typeof languageCode === 'string' && languageCode.length > 0
+      ? languageCode
+      : null
+  } catch {
+    return null
+  }
+}
+
+export function isDeviceLanguageSupported(): boolean {
+  const deviceLanguage = getDeviceLanguageCode()
+  return deviceLanguage === null || LANGUAGES.some((language) => language.code === deviceLanguage)
+}
+
 /**
  * Detect default language from device locale.
  * Uses Expo's getLocales() if available, falls back to 'en'.
  */
 export function getDefaultLanguageCode(): string {
-  try {
-    // Expo localization — already a dependency via expo-location
-    const { getLocales } = require('expo-localization')
-    const locales = getLocales()
-    if (locales?.length > 0) {
-      const deviceLang = locales[0].languageCode
-      // Only use it if it's in our supported list
-      if (deviceLang && LANGUAGES.some((l) => l.code === deviceLang)) {
-        return deviceLang
-      }
-    }
-  } catch {
-    // Silently fall back
-  }
+  const deviceLang = getDeviceLanguageCode()
+  if (deviceLang && LANGUAGES.some((l) => l.code === deviceLang)) return deviceLang
   return 'en'
 }

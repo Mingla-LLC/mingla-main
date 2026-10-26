@@ -106,7 +106,7 @@ Rules every chat must follow until the linked issue lifts them. Remove a hold in
 - **Never commit on the anchor `main`** (`~/Desktop/mingla-main`). Work in a per-issue worktree: `~/Desktop/mingla-orchs/<issue#>-<slug>/` on branch `<issue#>-<slug>`, branched from fresh `origin/main`. Full rules: `docs/WORKTREE_STRATEGY.md`.
 - **One PR per issue; merge only when all required checks are GREEN** and the PR is mergeable. Never merge red, never disable a check.
 - The 14-rule Architecture Constitution in `README.md` binds every change; invariant declarations live beside their enforcing gates or tests, while `docs/INVARIANT_REGISTRY.md` is frozen history.
-- Fixes ship with regression tests; the tests suite is append-only (CI-gated).
+- Fixes ship with regression tests. Existing test files may be edited or deleted in ordinary PRs (the append-only gate was retired toward #3643).
 - Both apps ship the SAME version — bump together (CI parity gate).
 - Public trip/offering changes must hit ALL surfaces (consumer iOS/Android, business iOS/Android, buyer web, admin where applicable).
 - Prefer raising existing `overrides` / lockfile floors over new CI gates or tooling packages. Subtract stale pins that hold vulnerable versions before adding new machinery.

@@ -17,7 +17,6 @@ concurrency:
 
 jobs:
   provenance:
-    if: ${{ github.event.pull_request.draft != true }}
     name: Bundle baseline provenance guard
     runs-on: ubuntu-latest
     steps:
@@ -33,3 +32,41 @@ jobs:
           BUNDLE_BASELINE_APP_SLUG: ${{ vars.BUNDLE_BASELINE_APP_SLUG }}
           PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
         run: node mingla-business/scripts/ci/bundle-baseline-pr-handoff.mjs --verify-pr
+
+  # Issue #1865. This is deliberately one bounded snapshot, not a polling
+  # runner. A first attempt may refuse while slower lanes are pending; after
+  # every applicable lane is terminal-success, rerun only this job. The
+  # expensive lanes still execute exactly once, and no waiting runner consumes
+  # a concurrency slot for their full wall-clock time.
+  merge-certifier:
+    name: Merge Certifier
+    needs: provenance
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Require the trusted sibling guard
+        env:
+          PROVENANCE_RESULT: ${{ needs.provenance.result }}
+        run: test "$PROVENANCE_RESULT" = success
+      - name: Checkout the trusted intended base
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Select Node 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+      - name: Prove Merge Certifier state totality
+        run: node --test scripts/ci/__tests__/issue-1865-merge-certifier.test.mjs
+      - name: Certify the exact final candidate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/ci/merge-certifier.mjs certify --pr "$PULL_REQUEST_NUMBER"

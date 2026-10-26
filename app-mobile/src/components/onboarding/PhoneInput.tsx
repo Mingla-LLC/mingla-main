@@ -16,6 +16,7 @@ import {
   PhoneInput as PackagePhoneInput,
   type IconRenderer,
   type PhoneInputLabels,
+  type PhoneInputProps as PackagePhoneInputProps,
   type PhoneInputTheme,
 } from "@mingla/phone-input";
 
@@ -36,7 +37,9 @@ interface PhoneInputProps {
   phoneInputAccessibilityLabel?: string;
   required?: boolean;
   maxLength?: number;
+  onFocus?: () => void;
   onBlur?: () => void;
+  inputComponent?: PackagePhoneInputProps["inputComponent"];
   /** issue #3380 — format as typed, follow a pasted +code, phone autofill. */
   smartEntry?: boolean;
 }

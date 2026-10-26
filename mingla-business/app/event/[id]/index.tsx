@@ -36,7 +36,6 @@ import {
   type LiveEvent,
 } from "../../../src/store/liveEventStore";
 import { useDraftById } from "../../../src/store/draftEventStore";
-import { useDoorSalesStore } from "../../../src/store/doorSalesStore";
 import { guestListTicketCount, isCompOrder } from "../../../src/utils/compOrders";
 import { useScanStore } from "../../../src/store/scanStore";
 import { useEventEditLogStore } from "../../../src/store/eventEditLogStore";
@@ -75,6 +74,7 @@ import { EventDetailTicketTypeRow } from "../../../src/components/event/EventDet
 import { EventManageMenu } from "../../../src/components/event/EventManageMenu";
 import { ReconciliationCtaTile } from "../../../src/components/event/ReconciliationCtaTile";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { useEventDoorSales } from "../../../src/hooks/useEventDoorSales";
 import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the not-found branch below.
 import { useSwitchAccount } from "../../../src/hooks/useSwitchAccount";
@@ -477,7 +477,8 @@ export default function EventDetailScreen(): React.ReactElement {
   // (and dispatch §2.7 grep ban): NEVER subscribe to fresh-computation
   // selectors directly. Use raw entries + useMemo (mirrors soldCountByTier
   // pattern just above for orderStore).
-  const allDoorEntries = useDoorSalesStore((s) => s.entries);
+  const doorSalesRead = useEventDoorSales(event?.id ?? null);
+  const allDoorEntries = doorSalesRead.data ?? [];
   const doorSoldCount = useMemo<number>(() => {
     if (event === null) return 0;
     let count = 0;
@@ -721,7 +722,7 @@ export default function EventDetailScreen(): React.ReactElement {
 
     // ---- Cycle 12 — door refund stream (OBS-1 — money-only, no scan) ---
     // Door refunds never touch useScanStore (financial event ≠ attendance
-    // event). Walk doorSalesStore directly so the financial event surfaces
+    // event). Walk the server door-sale rows directly so the financial event surfaces
     // in the feed alongside online refunds. summary uses "(door)" suffix
     // for clarity vs Stripe-mediated online refunds.
     const eventDoorSales = allDoorEntries.filter((s) => s.eventId === event.id);

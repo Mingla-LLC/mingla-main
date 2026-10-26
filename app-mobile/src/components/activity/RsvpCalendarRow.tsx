@@ -3,9 +3,7 @@
  *
  * Renders one of the signed-in user's "Going" RSVPs inside the consumer Calendar
  * tab, alongside calendar entries + business orders + reservations. Tapping
- * "View RSVP" opens the RsvpPassSheet (venue + the per-entity QR pass + change/
- * cancel). RSVP remains ticketless and exposes its own canonical PDF pass;
- * there is no order/payment surface here.
+ * "View RSVP" opens the canonical Purchases detail for this RSVP.
  *
  * Mirrors BusinessEventCalendarRow's prop/animation shape (cover thumb + "On
  * Mingla" badge + title + subtitle + a status pill + a "View" CTA) so the row
@@ -13,13 +11,13 @@
  * byte-consistently with the ticket rows.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { Image as ExpoImage } from "expo-image";
+import { useRouter } from "expo-router";
 
 import { Icon } from "../ui/Icon";
 import type { ConsumerRsvpRow } from "../../services/calendarService";
-import RsvpPassSheet from "./RsvpPassSheet";
 // ORCH-0877 — centralized consumer-side date formatter.
 import { formatEventLocalRange } from "../../utils/eventDateDisplay";
 
@@ -34,15 +32,11 @@ interface RsvpCalendarRowProps {
 }
 
 const RsvpCalendarRow: React.FC<RsvpCalendarRowProps> = ({ row, animation }) => {
-  const [sheetVisible, setSheetVisible] = useState<boolean>(false);
+  const router = useRouter();
 
   const handleOpenPass = useCallback((): void => {
-    setSheetVisible(true);
-  }, []);
-
-  const handleClosePass = useCallback((): void => {
-    setSheetVisible(false);
-  }, []);
+    router.push(`/purchases/rsvp/${row.guestId ?? row.rsvpId}` as never);
+  }, [router, row.guestId, row.rsvpId]);
 
   const dateLine = formatEventLocalRange({
     masterDateUtc: row.masterDateUtc,
@@ -143,12 +137,6 @@ const RsvpCalendarRow: React.FC<RsvpCalendarRowProps> = ({ row, animation }) => 
           </Pressable>
         </View>
       </View>
-
-      <RsvpPassSheet
-        visible={sheetVisible}
-        onClose={handleClosePass}
-        row={row}
-      />
     </RowContainer>
   );
 };
