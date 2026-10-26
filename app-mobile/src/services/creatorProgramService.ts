@@ -3,6 +3,7 @@ import { postHogService } from './postHogService';
 import { programEdge, programRead, programWrite } from './programApi';
 import { toProgramError } from './programResult';
 import { FORMAT_INFO } from '../utils/programFormat';
+import { cityOptions, homeCityFrom, homeCitySetParams, homeCityFromSetResult, profileSaveParams, type CityOption, type HomeCity, type ProfileSaveInput } from './creatorProgramMapping';
 
 export const CREATOR_NICHES = ['food', 'nightlife', 'culture', 'outdoors', 'wellness', 'music', 'family', 'travel'] as const;
 export const CREATOR_LANGUAGES = ['English', 'Yoruba', 'Igbo', 'Hausa', 'Pidgin', 'French', 'Spanish', 'Portuguese', 'Arabic'] as const;
@@ -32,10 +33,14 @@ export type CreatorSetupStatus = {
   missing?: string[];
   handles?: CreatorHandle[];
   packages?: CreatorPackage[];
+  /** Round 2: the saved home city, live or not (`{id, name, is_live}`). */
+  home_city?: { id: string | null; name: string; is_live: boolean } | null;
 };
 
 export type CreatorOwnProfile = {
   display_name: string; bio: string | null; home_city_id: string | null; home_city_name: string | null;
+  /** Round 2: the saved home city, live or not, from `creator_profile_home_city`. */
+  home_city: HomeCity | null;
   niches: string[]; languages: string[]; date_of_birth: string | null; usage_ads_opt_in: boolean;
 };
 
@@ -77,15 +82,15 @@ export const creatorProgramService = {
     if (!id) return null;
     const { data, error } = await supabase
       .from('creator_profiles')
-      .select('display_name,bio,home_city_id,niches,languages,date_of_birth,usage_ads_opt_in,home_city:seeding_cities(name)')
+      .select('display_name,bio,home_city_id,niches,languages,date_of_birth,usage_ads_opt_in,home_city:creator_profile_home_city')
       .eq('creator_account_id', id)
       .maybeSingle();
     if (error) throw toProgramError(error);
     if (!data) return null;
-    const row = data as unknown as Omit<CreatorOwnProfile, 'home_city_name'> & { home_city: { name: string } | Array<{ name: string }> | null };
-    const city = Array.isArray(row.home_city) ? row.home_city[0] : row.home_city;
+    const row = data as unknown as Omit<CreatorOwnProfile, 'home_city_name' | 'home_city'> & { home_city: unknown };
+    const city = homeCityFrom(Array.isArray(row.home_city) ? row.home_city[0] : row.home_city);
     return {
-      display_name: row.display_name, bio: row.bio, home_city_id: row.home_city_id, home_city_name: city?.name ?? null,
+      display_name: row.display_name, bio: row.bio, home_city_id: row.home_city_id, home_city_name: city?.name ?? null, home_city: city,
       niches: row.niches ?? [], languages: row.languages ?? [], date_of_birth: row.date_of_birth, usage_ads_opt_in: Boolean(row.usage_ads_opt_in),
     };
   },
@@ -97,13 +102,22 @@ export const creatorProgramService = {
     return (data ?? []) as City[];
   },
 
-  /** Date of birth is optional here: it is collected and checked (18+) when signing the agreement. */
-  saveProfile: async (input: { displayName: string; bio: string; homeCityId?: string | null; niches: string[]; languages: string[]; dateOfBirth?: string | null; usageAdsOptIn: boolean }) => {
-    const result = await programWrite('creator_profile_save', {
-      p_display_name: input.displayName.trim(), p_bio: input.bio.trim(), p_home_city_id: input.homeCityId ?? null,
-      p_niches: input.niches, p_languages: input.languages, p_date_of_birth: input.dateOfBirth ?? null,
-      p_usage_ads_opt_in: input.usageAdsOptIn,
-    });
+  /** Home-city picker: live cities first; with a query, any city (non-live ones marked). */
+  citySearch: async (query?: string | null): Promise<CityOption[]> => {
+    const q = query?.trim() ? query.trim() : null;
+    return cityOptions(await programRead<unknown>('creator_city_search', { p_query: q }));
+  },
+
+  /** Saves the home city, live or not. `{ok:false, error:'city_required'}` throws. */
+  setHomeCity: async (option: Pick<CityOption, 'id' | 'name' | 'countryCode' | 'isLive'>): Promise<HomeCity | null> =>
+    homeCityFromSetResult(await programWrite<unknown>('creator_home_city_set', homeCitySetParams(option))),
+
+  /**
+   * Date of birth is optional here: it is collected and checked (18+) when
+   * signing the agreement. Paid-ads use is part of every gig: always sent true.
+   */
+  saveProfile: async (input: ProfileSaveInput) => {
+    const result = await programWrite('creator_profile_save', profileSaveParams(input));
     postHogService.capture('creator_mode_enabled');
     return result;
   },
