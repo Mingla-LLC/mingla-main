@@ -1,191 +1,275 @@
-import React from "react";
-import {
-  Text,
-  View,
-  TouchableOpacity,
-  FlatList,
-  ActivityIndicator,
-  StyleSheet,
-} from "react-native";
-import { useTranslation } from 'react-i18next';
-import { Icon } from "../ui/Icon";
-import { FriendRequest } from "../../hooks/useFriends";
-import { getDisplayName as getDisplayNameUtil } from "../../utils/getDisplayName";
+/**
+ * Issue #4114 Wave 2b — the friends sheet's Requests tab (dark, design v6/v7).
+ *
+ * Received: a request sent through "Add a friend" (a friend request carrying a
+ * hidden pair request) is ONE row with ONE Accept; plain friend requests;
+ * pair-only requests from existing friends in gold.
+ * Sent: friend requests, pair requests and phone invites (which used to be
+ * built and never shown). Every Cancel asks once.
+ */
+import React, { useCallback } from "react";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
+import { glass } from "../../constants/designSystem";
+import { COUNTRIES } from "../../constants/countries";
+import { ChatAvatar } from "./ChatAvatar";
+import { maskPhone, type ReceivedRow, type SentRow } from "./friendsSheetModel";
+
+const ink = glass.discover.chatList;
+const fs = glass.discover.friendsSheet;
+const DIAL_CODES = COUNTRIES.map((country) => country.dialCode);
 
 interface RequestsViewProps {
-  requests: FriendRequest[];
+  received: ReceivedRow[];
+  sent: SentRow[];
   loading: boolean;
-  onAccept: (requestId: string) => void;
-  onDecline: (requestId: string) => void;
+  /** The row key whose action is in flight (disables its buttons). */
+  busyKey: string | null;
+  onAccept: (row: ReceivedRow) => void;
+  onDecline: (row: ReceivedRow) => void;
+  /** Called only after the person confirmed. */
+  onCancelSent: (row: SentRow) => void;
 }
 
-function getInitials(name: string): string {
-  if (!name) return "?";
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .substring(0, 2);
-}
-
-function getDisplayName(request: FriendRequest): string {
-  const sender = request.sender;
-  if (!sender) return "Unknown";
-  return getDisplayNameUtil(sender);
+function useTimeAgo(): (iso: string) => string {
+  const { t } = useTranslation(["connections"]);
+  return (iso) => {
+    const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 60000));
+    if (!Number.isFinite(minutes) || minutes < 60 * 24) {
+      if (minutes < 60) return minutes < 1 ? t("connections:fs_time_today") : t("connections:fs_time_minutes", { count: minutes });
+      return t("connections:fs_time_hours", { count: Math.floor(minutes / 60) });
+    }
+    return t("connections:fs_time_days", { count: Math.floor(minutes / (60 * 24)) });
+  };
 }
 
 export function RequestsView({
-  requests,
+  received,
+  sent,
   loading,
+  busyKey,
   onAccept,
   onDecline,
-}: RequestsViewProps) {
-  const { t } = useTranslation(['social', 'common']);
-  if (loading) {
+  onCancelSent,
+}: RequestsViewProps): React.ReactElement {
+  const { t } = useTranslation(["connections", "common"]);
+  const timeAgo = useTimeAgo();
+
+  const confirmCancel = useCallback(
+    (row: SentRow) => {
+      const isInvite = row.kind === "phone_invite";
+      const label = isInvite ? maskPhone(row.phoneE164, DIAL_CODES) : row.name;
+      Alert.alert(
+        isInvite ? t("connections:fs_cancel_invite_title") : t("connections:fs_cancel_request_title"),
+        isInvite
+          ? t("connections:fs_cancel_invite_body", { phone: label })
+          : t("connections:fs_cancel_request_body", { name: label }),
+        [
+          { text: t("connections:fs_keep"), style: "cancel" },
+          { text: t("connections:fs_cancel_confirm"), style: "destructive", onPress: () => onCancelSent(row) },
+        ],
+      );
+    },
+    [onCancelSent, t],
+  );
+
+  if (loading && received.length === 0 && sent.length === 0) {
     return (
-      <View style={styles.loadingState}>
-        <ActivityIndicator size="small" color="#eb7825" />
+      <View style={styles.empty}>
+        <ActivityIndicator color={ink.accent} />
       </View>
     );
   }
-
-  if (requests.length === 0) {
+  if (received.length === 0 && sent.length === 0) {
     return (
-      <View style={styles.emptyState}>
-        <Icon name="people-outline" size={32} color="#d1d5db" />
-        <Text style={styles.emptyText}>{t('social:noPendingRequests')}</Text>
+      <View style={styles.empty}>
+        <Text style={styles.emptyText}>{t("connections:fs_empty_requests")}</Text>
       </View>
     );
   }
-
-  const renderRequest = ({ item }: { item: FriendRequest }) => {
-    const displayName = getDisplayName(item);
-
-    return (
-      <View style={styles.requestRow}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{getInitials(displayName)}</Text>
-        </View>
-        <View style={styles.userInfo}>
-          <Text style={styles.userName} numberOfLines={1}>
-            {displayName}
-          </Text>
-        </View>
-        <View style={styles.actionButtons}>
-          <TouchableOpacity
-            onPress={() => onAccept(item.id)}
-            style={styles.acceptButton}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.acceptText}>{t('social:accept')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => onDecline(item.id)}
-            style={styles.declineButton}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.declineText}>{t('social:decline')}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={requests}
-        keyExtractor={(item) => item.id}
-        renderItem={renderRequest}
-        scrollEnabled={false}
-      />
+      {received.length > 0 ? <Text style={styles.label}>{t("connections:fs_received")}</Text> : null}
+      {received.map((row) => {
+        const busy = busyKey === row.key;
+        const gold = row.kind !== "friend";
+        const sub =
+          row.kind === "friend_pair"
+            ? row.invitedByText
+              ? t("connections:fs_req_friend_pair_text")
+              : t("connections:fs_req_friend_pair", { time: timeAgo(row.createdAt) })
+            : row.kind === "pair"
+              ? t("connections:fs_req_wants_pair")
+              : t("connections:fs_req_friend", { time: timeAgo(row.createdAt) });
+        const acceptLabel = row.kind === "pair" ? t("connections:fs_pair_button") : t("connections:fs_accept");
+        const declineLabel = row.kind === "pair" ? t("connections:fs_not_now") : t("connections:fs_delete");
+        return (
+          <View key={row.key} style={styles.row}>
+            <ChatAvatar people={[{ id: row.senderId, name: row.name, avatarUrl: row.avatarUrl }]} shape="circle" label={row.name} size={44} />
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle} numberOfLines={1}>{row.name}</Text>
+              <Text style={[styles.rowSub, gold ? styles.gold : null]} numberOfLines={1}>{sub}</Text>
+            </View>
+            <Pressable
+              onPress={() => onDecline(row)}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel={`${declineLabel} ${row.name}`}
+              style={[styles.button, styles.ghost, busy ? styles.dim : null]}
+            >
+              <Text style={styles.buttonText}>{declineLabel}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => onAccept(row)}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel={`${acceptLabel} ${row.name}`}
+              accessibilityState={{ disabled: busy, busy }}
+              style={[styles.button, busy ? styles.dim : null]}
+            >
+              {busy ? <ActivityIndicator color="#ffffff" size="small" /> : <Text style={styles.buttonText}>{acceptLabel}</Text>}
+            </Pressable>
+          </View>
+        );
+      })}
+
+      {sent.length > 0 ? <Text style={styles.label}>{t("connections:fs_sent")}</Text> : null}
+      {sent.map((row) => {
+        const busy = busyKey === row.key;
+        if (row.kind === "phone_invite") {
+          const masked = maskPhone(row.phoneE164, DIAL_CODES);
+          return (
+            <View key={row.key} style={styles.row}>
+              <View style={styles.hashAvatar}>
+                <Text style={styles.hash}>#</Text>
+              </View>
+              <View style={styles.rowText}>
+                <Text style={styles.rowTitle} numberOfLines={1}>{masked}</Text>
+                <Text style={styles.rowSub} numberOfLines={1}>{t("connections:fs_sent_invite")}</Text>
+              </View>
+              <CancelButton busy={busy} label={`${t("connections:fs_cancel")} ${masked}`} onPress={() => confirmCancel(row)} />
+            </View>
+          );
+        }
+        const sub =
+          row.kind === "friend_request"
+            ? t("connections:fs_sent_friend", { time: timeAgo(row.createdAt) })
+            : row.kind === "friend_pair_request"
+              ? t("connections:fs_sent_friend_pair")
+              : t("connections:fs_sent_pair");
+        return (
+          <View key={row.key} style={styles.row}>
+            <ChatAvatar people={[{ id: row.key, name: row.name, avatarUrl: row.avatarUrl }]} shape="circle" label={row.name} size={44} />
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle} numberOfLines={1}>{row.name}</Text>
+              <Text style={[styles.rowSub, row.kind === "friend_request" ? null : styles.gold]} numberOfLines={1}>{sub}</Text>
+            </View>
+            <CancelButton busy={busy} label={`${t("connections:fs_cancel")} ${row.name}`} onPress={() => confirmCancel(row)} />
+          </View>
+        );
+      })}
     </View>
+  );
+}
+
+function CancelButton({ busy, label, onPress }: { busy: boolean; label: string; onPress: () => void }): React.ReactElement {
+  const { t } = useTranslation(["connections"]);
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={busy}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: busy, busy }}
+      style={[styles.button, styles.ghost, busy ? styles.dim : null]}
+    >
+      {busy ? <ActivityIndicator color={ink.ink} size="small" /> : <Text style={styles.buttonText}>{t("connections:fs_cancel")}</Text>}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#f9fafb",
-    borderRadius: 12,
-    marginHorizontal: 16,
+    paddingHorizontal: 14,
+    paddingBottom: 32,
   },
-  loadingState: {
-    paddingVertical: 24,
-    alignItems: "center",
-    marginHorizontal: 16,
+  label: {
+    color: ink.faint,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    paddingTop: 12,
+    paddingHorizontal: 4,
+    paddingBottom: 4,
   },
-  emptyState: {
-    paddingVertical: 24,
-    alignItems: "center",
-    marginHorizontal: 16,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.65)",
-    marginTop: 8,
-  },
-  requestRow: {
+  row: {
+    minHeight: 60,
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
+    gap: 10,
+    paddingHorizontal: 4,
   },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#6366f1",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-  avatarText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  userInfo: {
+  rowText: {
     flex: 1,
     minWidth: 0,
-    marginRight: 8,
+    marginLeft: 2,
   },
-  userName: {
-    fontSize: 15,
+  rowTitle: {
+    color: ink.ink,
+    fontSize: 15.5,
     fontWeight: "600",
-    color: "#111827",
   },
-  userUsername: {
-    fontSize: 13,
-    color: "#9ca3af",
+  rowSub: {
+    color: ink.faint,
+    fontSize: 12.5,
     marginTop: 1,
   },
-  actionButtons: {
-    flexDirection: "row",
-    gap: 8,
+  gold: {
+    color: fs.goldLabel,
   },
-  acceptButton: {
-    backgroundColor: "#10b981",
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 8,
+  button: {
+    minHeight: 32,
+    minWidth: 56,
+    paddingHorizontal: 13,
+    borderRadius: 16,
+    backgroundColor: ink.accent,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  acceptText: {
+  ghost: {
+    backgroundColor: fs.ghostButtonBg,
+  },
+  dim: {
+    opacity: 0.6,
+  },
+  buttonText: {
     color: "#ffffff",
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "700",
   },
-  declineButton: {
-    borderWidth: 1,
-    borderColor: "#ef4444",
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 8,
+  hashAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: fs.fieldBg,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  declineText: {
-    color: "#ef4444",
-    fontSize: 13,
-    fontWeight: "600",
+  hash: {
+    color: ink.dim,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  empty: {
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    alignItems: "center",
+  },
+  emptyText: {
+    color: ink.dim,
+    fontSize: 14,
+    textAlign: "center",
   },
 });

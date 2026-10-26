@@ -19,7 +19,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BaseBottomSheet, BottomSheetTextInput } from "./ui/BaseBottomSheet";
 import { Icon } from './ui/Icon';
 import * as Haptics from "expo-haptics";
-import { useQueryClient } from "@tanstack/react-query";
 import { useFriends } from "../hooks/useFriends";
 import type { Friend } from "../hooks/useFriends";
 import { usePairingPills, useSendPairRequest } from "../hooks/usePairings";
@@ -32,8 +31,6 @@ import {
 import type { CountryData } from "../types/onboarding";
 import { CountryPickerModal } from "./onboarding/CountryPickerModal";
 import { usePhoneLookup, useDebouncedValue } from "../hooks/usePhoneLookup";
-import { createPendingInvite } from "../services/phoneLookupService";
-import { phoneInviteKeys } from "../hooks/usePhoneInvite";
 import { useTranslation } from 'react-i18next';
 import { colors, spacing, radius } from "../constants/designSystem";
 import { s } from "../utils/responsive";
@@ -95,14 +92,13 @@ export default function PairRequestModal({
   onPairRequestSent,
   onPairingLimitReached,
 }: PairRequestModalProps) {
-  const { t } = useTranslation(['social', 'common']);
+  const { t } = useTranslation(['social', 'common', 'connections']);
   const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
   const { friends, loading: friendsLoading } = useFriends({ autoFetchBlockedUsers: false });
   const { data: pairingPills = [] } = usePairingPills(user?.id);
   const sendPairRequest = useSendPairRequest();
 
-  const queryClient = useQueryClient();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -167,8 +163,8 @@ export default function PairRequestModal({
         const result = await sendPairRequest.mutateAsync({
           friendUserId: friend.friend_user_id,
         });
-        const name = getFriendDisplayName(friend);
-        Alert.alert(t('social:pairRequestSent'), t('social:pairRequestSentMessage', { name }));
+        // Issue #4114: one confirmation — the parent's toast. The alert that
+        // used to fire here as well is gone.
         onPairRequestSent();
       } catch (err) {
         const msg = err instanceof Error ? err.message : t('social:failedToSendPairRequest');
@@ -201,31 +197,29 @@ export default function PairRequestModal({
 
         // Person is on Mingla — send pair request via edge function
         const result = await sendPairRequest.mutateAsync({ phoneE164: debouncedPhoneE164 });
-        if (result.tier === 2) {
-          Alert.alert(t('social:pairRequestSent'), t('social:friendAndPairRequestSent'));
-        } else {
-          Alert.alert(t('social:pairRequestSent'), t('social:pairRequestSentGeneric'));
+        if (result.pairingLimitReached) {
+          // D16: the friend request went without the pair — offer Mingla+.
+          setPhoneNumber("");
+          onPairingLimitReached?.();
+          return;
         }
         setPhoneNumber("");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         onPairRequestSent();
       } else {
-        // Not on Mingla — create pending invite + open Share sheet
-        if (user) {
-          await createPendingInvite(user.id, debouncedPhoneE164);
-          queryClient.invalidateQueries({ queryKey: phoneInviteKeys.all });
-        }
-        // Also fire the pair request so the edge function creates the Tier 3 invite
-        await sendPairRequest.mutateAsync({ phoneE164: debouncedPhoneE164 });
-
-        // Share in its own try/catch — dismissal is not an error
-        try {
-          // SHARE-NON-CONTENT:invite
-          await Share.share({
-            message: t('social:shareInviteMessage'),
-          });
-        } catch {
-          // User dismissed share sheet — not an error
+        // Not on Mingla — Issue #4114: ONE invite record. send-pair-request
+        // upserts the invite and texts it; the share sheet opens only when the
+        // text did not go, carrying the same OneLink.
+        const invite = await sendPairRequest.mutateAsync({ phoneE164: debouncedPhoneE164 });
+        if (invite.smsStatus !== "sent") {
+          try {
+            // SHARE-NON-CONTENT:invite
+            await Share.share({
+              message: t('connections:af_share_message', { link: invite.inviteLink ?? "https://go.usemingla.com/w36m" }),
+            });
+          } catch (shareErr) {
+            console.warn("[PairRequestModal] share failed:", shareErr);
+          }
         }
 
         setPhoneNumber("");
@@ -248,7 +242,6 @@ export default function PairRequestModal({
     phoneLookupResult,
     sendPairRequest,
     user,
-    queryClient,
     onPairRequestSent,
     onPairingLimitReached,
   ]);

@@ -1,733 +1,666 @@
-import { useState, useMemo, useCallback } from "react";
-import {
-  Text,
-  View,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  StyleSheet,
-  Share,
-  Platform,
-} from "react-native";
-import { useTranslation } from 'react-i18next';
+/**
+ * Issue #4114 Wave 2b — the one Add a friend flow (add = pair), the body of the
+ * dark AddFriendSheet. Opened from the New message sheet, the friends sheet's
+ * Add, and (as its own inline copy of the server path) onboarding.
+ *
+ * Phone + country → the existing 500ms lookup (7+ digits) → an inline card:
+ * found (Add), already friends (Message), pending, "That's you", or not on
+ * Mingla (Invite). Add and Invite both call send-pair-request; there is no
+ * second invite record and no alert. After sending, the sheet confirms in
+ * place with Add another / Done. "Invite texted" shows only when the server
+ * says the text went; otherwise the share sheet carries the same OneLink.
+ *
+ * ORCH-1371 [add-friend-country-picker-hidden]: the country/dial-code picker is
+ * HOISTED to ConnectionsPage and rendered as a SIBLING of this sheet; the typed
+ * number and the country live in ConnectionsPage too. iOS presents only ONE RN
+ * <Modal> at a time, so this sheet drops while the picker is up, and a sheet
+ * that drops unmounts its children — so nothing the user typed may live here.
+ * Proven pattern: AccountSettings.tsx:638-683.
+ */
+import React, { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { useTranslation } from "react-i18next";
 import { Icon } from "../ui/Icon";
-import * as Haptics from "expo-haptics";
-// ORCH-1371 [add-friend-country-picker-hidden]: the country/dial-code picker is
-// HOISTED to ConnectionsPage and rendered as a SIBLING of the friends sheet,
-// gated closed via `anyFriendsChildOpen`. iOS presents only ONE RN <Modal> at a
-// time, so a `wrapInRNModal` sheet cannot co-present a second picker modal — the
-// parent sheet drops before the picker presents, then restores (subtract before
-// adding). Proven pattern: AccountSettings.tsx:638-683.
 import { BottomSheetTextInput } from "../ui/BaseBottomSheet";
 import { CountryData } from "../../types/onboarding";
-import { PendingInvite } from "../../services/phoneLookupService";
-import { FriendRequest } from "../../hooks/useFriends";
 import { usePhoneLookup, useDebouncedValue } from "../../hooks/usePhoneLookup";
-import { usePendingPhoneInvites, phoneInviteKeys } from "../../hooks/usePhoneInvite";
+import { useSendPairRequest } from "../../hooks/usePairings";
+import { COUNTRIES } from "../../constants/countries";
+import { glass } from "../../constants/designSystem";
+import { HapticFeedback } from "../../utils/hapticFeedback";
+import { ChatAvatar } from "./ChatAvatar";
 import {
-  createPendingInvite,
-  cancelPendingInvite,
-} from "../../services/phoneLookupService";
-import { useQueryClient } from "@tanstack/react-query";
-import { useAppStore } from "../../store/appStore";
-import { s, vs } from "../../utils/responsive";
-import { getDisplayName as getDisplayNameUtil } from "../../utils/getDisplayName";
+  addFriendCard,
+  addFriendOutcome,
+  addFriendRequestBody,
+  maskPhone,
+  type AddFriendCard,
+  type AddFriendOutcome,
+} from "./friendsSheetModel";
 
-type Tab = "add" | "sent";
-
-// Unified item type for the sent list
-type SentItem =
-  | { kind: "request"; data: FriendRequest }
-  | { kind: "invite"; data: PendingInvite };
+const ink = glass.discover.chatList;
+const fs = glass.discover.friendsSheet;
+const DIAL_CODES = COUNTRIES.map((country) => country.dialCode);
 
 interface AddFriendViewProps {
   currentUserId: string;
-  onRequestSent: () => void;
-  /** Outgoing pending friend requests from useFriends() */
-  outgoingRequests: FriendRequest[];
-  outgoingRequestsLoading: boolean;
-  /** Cancel a friend_request row */
-  onCancelRequest: (requestId: string) => Promise<void>;
-  /** Send a friend request to a Mingla user (useFriends().addFriend) */
-  onAddFriend: (
-    friendUserIdOrEmail: string,
-    receiverEmail: string,
-    receiverUsername?: string
-  ) => Promise<void>;
   /** ORCH-1371: hoisted country picker state (owned by ConnectionsPage). */
   selectedCountry: CountryData;
   /** ORCH-1371: hoisted phone-field value (survives the sheet drop). */
   phoneNumber: string;
-  /** ORCH-1371: replaces the local setPhoneNumber. */
+  /** ORCH-1371: replaces the local setter. */
   onPhoneNumberChange: (text: string) => void;
-  /** ORCH-1371: opens the hoisted country picker (sibling of the friends sheet). */
+  /** ORCH-1371: opens the hoisted country picker (sibling of the sheet). */
   onOpenCountryPicker: () => void;
+  /** People I already have a pending request with (pills). */
+  pendingUserIds?: ReadonlySet<string>;
+  /** Free plan with its pairing used: show the Mingla+ card before sending. */
+  pairingAtLimit: boolean;
+  onMessageFriend: (userId: string) => void;
+  onSeePlus: () => void;
+  onDone: () => void;
+  /** A request or invite went out — refresh Requests. */
+  onSent?: () => void;
 }
+
+type Sent = { outcome: AddFriendOutcome; name: string; phoneE164: string };
 
 export function AddFriendView({
   currentUserId,
-  onRequestSent,
-  outgoingRequests,
-  outgoingRequestsLoading,
-  onCancelRequest,
-  onAddFriend,
   selectedCountry,
   phoneNumber,
   onPhoneNumberChange,
   onOpenCountryPicker,
-}: AddFriendViewProps) {
-  const { t } = useTranslation(['social', 'common']);
-  const { user } = useAppStore();
-  const queryClient = useQueryClient();
-  // Tab state removed — sent requests now in separate tab (ORCH-0435)
+  pendingUserIds,
+  pairingAtLimit,
+  onMessageFriend,
+  onSeePlus,
+  onDone,
+  onSent,
+}: AddFriendViewProps): React.ReactElement {
+  const { t } = useTranslation(["connections", "common"]);
+  const sendPairRequest = useSendPairRequest();
+  const [sent, setSent] = useState<Sent | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
 
-  // Pending phone invites (non-Mingla users)
-  const { data: pendingInvites = [], isLoading: invitesLoading } =
-    usePendingPhoneInvites();
-
-  // Merge outgoing requests + phone invites into a single sorted list
-  const sentItems = useMemo<SentItem[]>(() => {
-    const items: SentItem[] = [
-      ...outgoingRequests.map((r) => ({ kind: "request" as const, data: r })),
-      ...pendingInvites.map((i) => ({ kind: "invite" as const, data: i })),
-    ];
-    const getDate = (item: SentItem): number => {
-      if (item.kind === "request") return new Date(item.data.created_at).getTime();
-      return new Date(item.data.createdAt).getTime();
-    };
-    items.sort((a, b) => getDate(b) - getDate(a));
-    return items;
-  }, [outgoingRequests, pendingInvites]);
-
-  const sentTabLoading = outgoingRequestsLoading || invitesLoading;
-  const sentTabCount = sentItems.length;
-
-  // ORCH-1371: phoneNumber + selectedCountry + the picker flag are HOISTED to
-  // ConnectionsPage (they must survive the friends-sheet RN <Modal> drop, which
-  // unmounts this child). Only the ephemeral action status stays local.
-  const [actionStatus, setActionStatus] = useState<
-    "idle" | "sending" | "sent" | "error"
-  >("idle");
-  const [actionError, setActionError] = useState("");
-
-  // Build E.164 phone
-  const phoneRawDigits = phoneNumber.replace(/\D/g, "");
-  const phoneE164 = useMemo(() => {
-    if (!phoneRawDigits) return "";
-    return `${selectedCountry.dialCode}${phoneRawDigits}`;
-  }, [phoneRawDigits, selectedCountry]);
-
+  const digits = phoneNumber.replace(/\D/g, "");
+  const phoneE164 = digits ? `${selectedCountry.dialCode}${digits}` : "";
   const debouncedPhoneE164 = useDebouncedValue(phoneE164, 500);
-  const debouncedDigitCount = useDebouncedValue(phoneRawDigits.length, 500);
+  const debouncedDigitCount = useDebouncedValue(digits.length, 500);
+  const lookup = usePhoneLookup(debouncedPhoneE164, debouncedDigitCount >= 7);
 
-  const { data: phoneLookupResult, isLoading: phoneLookupLoading } =
-    usePhoneLookup(debouncedPhoneE164, debouncedDigitCount >= 7);
+  const card = useMemo<AddFriendCard>(
+    () =>
+      addFriendCard({
+        digitCount: digits.length,
+        debouncing: digits.length >= 7 && phoneE164 !== debouncedPhoneE164,
+        loading: lookup.isLoading,
+        failed: lookup.isError,
+        lookup: lookup.data,
+        currentUserId,
+        pendingUserIds,
+      }),
+    [digits.length, phoneE164, debouncedPhoneE164, lookup.isLoading, lookup.isError, lookup.data, currentUserId, pendingUserIds],
+  );
 
-  const isPhoneValid = useMemo(() => {
-    return phoneRawDigits.length >= 7 && phoneRawDigits.length <= 15;
-  }, [phoneRawDigits]);
-
-  const handlePhoneAction = useCallback(async () => {
-    if (!isPhoneValid || !debouncedPhoneE164) return;
-    if (!user) {
-      setActionError(t('social:notSignedIn'));
-      setActionStatus("error");
-      return;
-    }
-
-    setActionStatus("sending");
-    setActionError("");
-
-    try {
-      if (phoneLookupResult?.found && phoneLookupResult.user) {
-        // Self-lookup guard
-        if (phoneLookupResult.user.id === currentUserId) {
-          Alert.alert(t('social:thatsYou'), t('social:cantSendToSelf'));
-          setActionStatus("idle");
-          return;
-        }
-        if (phoneLookupResult.friendship_status === "none") {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          await onAddFriend(
-            phoneLookupResult.user.id,
-            "", // no email needed when we have the user ID
-            phoneLookupResult.user.username
-          );
-          setActionStatus("sent");
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          onRequestSent();
-          setTimeout(() => {
-            onPhoneNumberChange("");
-            setActionStatus("idle");
-          }, 2000);
-        } else if (phoneLookupResult.friendship_status === "friends") {
-          Alert.alert(
-            t('social:alreadyFriendsTitle'),
-            t('social:alreadyFriendsMessage')
-          );
-          setActionStatus("idle");
-        } else {
-          Alert.alert(
-            t('social:requestPendingTitle'),
-            t('social:requestPendingMessage')
-          );
-          setActionStatus("idle");
-        }
-      } else {
-        // Not on Mingla — create pending invite + share
-        if (user) {
-          await createPendingInvite(user.id, debouncedPhoneE164);
-          queryClient.invalidateQueries({ queryKey: phoneInviteKeys.all });
-        }
-        // Share in its own try/catch — dismissal is not an error
-        try {
-          // SHARE-NON-CONTENT:invite
-          await Share.share({
-            message: t('social:shareInviteMessage'),
-          });
-        } catch {
-          // User dismissed share sheet — not an error
-        }
-        setActionStatus("sent");
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setTimeout(() => {
-          onPhoneNumberChange("");
-          setActionStatus("idle");
-        }, 2000);
+  const shareInvite = useCallback(
+    async (link: string | null) => {
+      try {
+        // SHARE-NON-CONTENT:invite
+        await Share.share({
+          message: t("connections:af_share_message", { link: link ?? "https://go.usemingla.com/w36m" }),
+        });
+      } catch (error) {
+        // The share sheet being dismissed is not an error; anything else is logged.
+        console.warn("[AddFriendView] share failed:", error);
       }
-    } catch (err) {
-      console.error("[AddFriendView] Action error:", err);
-      setActionError(
-        err instanceof Error ? err.message : t('social:somethingWentWrong')
-      );
-      setActionStatus("error");
-    }
-  }, [
-    isPhoneValid,
-    debouncedPhoneE164,
-    phoneLookupResult,
-    onAddFriend,
-    user,
-    currentUserId,
-    queryClient,
-    onRequestSent,
-    onPhoneNumberChange,
-  ]);
-
-  // True when phone input has changed but debounced lookup hasn't fired yet
-  const isDebouncing = isPhoneValid && phoneE164 !== debouncedPhoneE164;
-
-  const getActionLabel = (): string => {
-    if (phoneLookupLoading || isDebouncing) return t('social:lookingUp');
-    if (!isPhoneValid) return t('social:enterPhoneNumber');
-    if (phoneLookupResult?.found) {
-      if (phoneLookupResult.friendship_status === "friends")
-        return t('social:alreadyFriends');
-      if (phoneLookupResult.friendship_status === "none") return t('social:sendRequest');
-      return t('social:requestPending');
-    }
-    return t('social:inviteToMingla');
-  };
-
-  const isActionDisabled =
-    !isPhoneValid ||
-    phoneLookupLoading ||
-    isDebouncing ||
-    actionStatus === "sending" ||
-    actionStatus === "sent" ||
-    (phoneLookupResult?.found &&
-      phoneLookupResult.friendship_status !== "none");
-
-  const handleCancelRequest = useCallback(
-    (requestId: string, displayName: string) => {
-      Alert.alert(
-        t('social:cancelRequest'),
-        t('social:cancelRequestConfirm', { name: displayName }),
-        [
-          { text: t('social:keep'), style: "cancel" },
-          {
-            text: t('social:cancelRequestButton'),
-            style: "destructive",
-            onPress: async () => {
-              try {
-                await onCancelRequest(requestId);
-                Haptics.notificationAsync(
-                  Haptics.NotificationFeedbackType.Success
-                );
-              } catch {
-                Alert.alert(
-                  t('social:error'),
-                  t('social:errorCancelRequest')
-                );
-              }
-            },
-          },
-        ]
-      );
     },
-    [onCancelRequest]
+    [t],
   );
 
-  const handleCancelInvite = useCallback(
-    (inviteId: string, phone: string) => {
-      Alert.alert(t('social:cancelInvite'), t('social:cancelInviteConfirm', { phone }), [
-        { text: t('social:keep'), style: "cancel" },
-        {
-          text: t('social:cancelInviteButton'),
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await cancelPendingInvite(inviteId);
-              queryClient.invalidateQueries({ queryKey: phoneInviteKeys.all });
-              Haptics.notificationAsync(
-                Haptics.NotificationFeedbackType.Success
-              );
-            } catch {
-              Alert.alert(
-                t('social:error'),
-                t('social:errorCancelInvite')
-              );
-            }
-          },
-        },
-      ]);
-    },
-    [queryClient]
-  );
-
-  const getDisplayName = (request: FriendRequest): string => {
-    if (!request.sender) return "Unknown";
-    return getDisplayNameUtil(request.sender);
-  };
-
-  const getInitials = (name: string): string => {
-    if (!name || name === "Unknown") return "?";
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .substring(0, 2);
-  };
-
-  const formatTimeAgo = (dateStr: string): string => {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "Just now";
-    if (mins < 60) return `${mins}m ago`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
-  };
-
-  const renderSentItem = ({ item }: { item: SentItem }) => {
-    if (item.kind === "request") {
-      const request = item.data;
-      const displayName = getDisplayName(request);
-      return (
-        <View style={styles.sentRow}>
-          <View style={styles.sentAvatar}>
-            <Text style={styles.sentAvatarText}>
-              {getInitials(displayName)}
-            </Text>
-          </View>
-          <View style={styles.sentInfo}>
-            <Text style={styles.sentName} numberOfLines={1}>
-              {displayName}
-            </Text>
-            <Text style={styles.sentTime}>
-              {formatTimeAgo(request.created_at)}
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => handleCancelRequest(request.id, displayName)}
-            style={styles.cancelButton}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.cancelText}>{t('social:cancel')}</Text>
-          </TouchableOpacity>
-        </View>
-      );
+  const handleSend = useCallback(async () => {
+    const body = addFriendRequestBody(card, debouncedPhoneE164);
+    if (!body || sendPairRequest.isPending) return;
+    setSendError(null);
+    HapticFeedback.medium();
+    try {
+      const response = await sendPairRequest.mutateAsync(body);
+      HapticFeedback.success();
+      setSent({
+        outcome: addFriendOutcome(response),
+        name: card.kind === "found" ? card.name : "",
+        phoneE164: debouncedPhoneE164,
+      });
+      onSent?.();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      setSendError(message && message !== "pairing_limit_reached" ? message : t("connections:af_send_failed"));
     }
+  }, [card, debouncedPhoneE164, sendPairRequest, onSent, t]);
 
-    // Phone invite
-    const invite = item.data;
+  const handleAddAnother = useCallback(() => {
+    setSent(null);
+    setSendError(null);
+    onPhoneNumberChange("");
+  }, [onPhoneNumberChange]);
+
+  // ── After sending: the confirmation, in place ──────────────────────────────
+  if (sent) {
+    const masked = maskPhone(sent.phoneE164, DIAL_CODES);
+    const { outcome } = sent;
     return (
-      <View style={styles.sentRow}>
-        <View style={styles.inviteAvatar}>
-          <Icon name="call-outline" size={16} color="#ffffff" />
+      <View style={styles.container}>
+        {outcome.kind === "invite_not_texted" ? (
+          <View style={[styles.statusCard, styles.failCard]} accessibilityLiveRegion="polite">
+            <View style={[styles.statusDot, { backgroundColor: fs.failDot }]}>
+              <Text style={styles.statusDotText}>!</Text>
+            </View>
+            <View style={styles.flex}>
+              <Text style={styles.statusTitle}>{t("connections:af_not_texted_title")}</Text>
+              <Text style={styles.statusBody}>{t("connections:af_not_texted_body")}</Text>
+            </View>
+            <Pressable
+              onPress={() => void shareInvite(outcome.inviteLink)}
+              accessibilityRole="button"
+              accessibilityLabel={t("connections:af_share")}
+              style={styles.shareButton}
+            >
+              <Text style={styles.shareButtonText}>{t("connections:af_share")}</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={[styles.statusCard, styles.successCard]} accessibilityLiveRegion="polite">
+            <View style={[styles.statusDot, { backgroundColor: fs.successDot }]}>
+              <Icon name="checkmark" size={18} color="#ffffff" />
+            </View>
+            <View style={styles.flex}>
+              <Text style={styles.statusTitle}>
+                {outcome.kind === "invite_texted"
+                  ? t("connections:af_texted_title", { phone: masked })
+                  : t("connections:af_sent_title", { name: sent.name })}
+              </Text>
+              <Text style={styles.statusBody}>
+                {outcome.kind === "invite_texted"
+                  ? t("connections:af_texted_body")
+                  : outcome.pairingLimitReached
+                    ? t("connections:af_sent_body_friend_only")
+                    : t("connections:af_sent_body")}
+              </Text>
+            </View>
+          </View>
+        )}
+        {outcome.pairingLimitReached && outcome.kind === "request_sent" ? (
+          <LimitCard name={sent.name} onSeePlus={onSeePlus} />
+        ) : null}
+        <View style={styles.footerRow}>
+          <Pressable
+            onPress={handleAddAnother}
+            accessibilityRole="button"
+            accessibilityLabel={t("connections:af_add_another")}
+            style={[styles.footerButton, styles.footerGhost]}
+          >
+            <Text style={styles.footerText}>{t("connections:af_add_another")}</Text>
+          </Pressable>
+          <Pressable
+            onPress={onDone}
+            accessibilityRole="button"
+            accessibilityLabel={t("connections:af_done")}
+            style={[styles.footerButton, styles.footerPrimary]}
+          >
+            <Text style={styles.footerText}>{t("connections:af_done")}</Text>
+          </Pressable>
         </View>
-        <View style={styles.sentInfo}>
-          <Text style={styles.sentName} numberOfLines={1}>
-            {invite.phoneE164}
-          </Text>
-          <Text style={styles.sentTime}>
-            {t('social:invited', { time: formatTimeAgo(invite.createdAt) })}
-          </Text>
-        </View>
-        <TouchableOpacity
-          onPress={() => handleCancelInvite(invite.id, invite.phoneE164)}
-          style={styles.cancelButton}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.cancelText}>{t('social:cancel')}</Text>
-        </TouchableOpacity>
       </View>
     );
-  };
+  }
 
+  // ── Lookup ──────────────────────────────────────────────────────────────
+  const sending = sendPairRequest.isPending;
   return (
     <View style={styles.container}>
-      {/* Add Friend — glassmorphism card (ORCH-0435) */}
-      <View style={styles.glassCard}>
-          {/* Compact single-line phone input */}
-          <View style={styles.phoneRow}>
-            <TouchableOpacity
-              style={styles.countryPicker}
-              onPress={onOpenCountryPicker}
-              activeOpacity={0.6}
-            >
-              <Text style={styles.countryPickerFlag}>
-                {selectedCountry.flag}
-              </Text>
-              <Text style={styles.countryPickerDial}>
-                {selectedCountry.dialCode}
-              </Text>
-              <Icon name="chevron-down" size={14} color="#9ca3af" />
-            </TouchableOpacity>
-
-            <View style={styles.phoneDivider} />
-
-            <BottomSheetTextInput
-              style={styles.phoneInput}
-              value={phoneNumber}
-              onChangeText={(text) => {
-                onPhoneNumberChange(text);
-                if (
-                  actionStatus !== "idle" &&
-                  actionStatus !== "sending"
-                ) {
-                  setActionStatus("idle");
-                  setActionError("");
-                }
-              }}
-              placeholder={t('social:phoneNumber')}
-              placeholderTextColor="#9ca3af"
-              keyboardType="phone-pad"
-              autoCorrect={false}
-              maxLength={15}
-            />
-
-            {phoneLookupLoading && (
-              <ActivityIndicator
-                size="small"
-                color="#eb7825"
-                style={styles.spinner}
-              />
-            )}
-          </View>
-
-          {/* Lookup result */}
-          {isPhoneValid && !phoneLookupLoading && phoneLookupResult && (
-            <View style={styles.lookupResult}>
-              {phoneLookupResult.found ? (
-                <View style={styles.lookupRow}>
-                  <Icon
-                    name="checkmark-circle"
-                    size={s(14)}
-                    color="#22c55e"
-                  />
-                  <Text style={styles.lookupTextGreen}>
-                    {t('social:isOnMingla', { name: getDisplayNameUtil(phoneLookupResult.user, "User") })}
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.lookupRow}>
-                  <Icon
-                    name="person-add-outline"
-                    size={s(14)}
-                    color="#6b7280"
-                  />
-                  <Text style={styles.lookupTextMuted}>
-                    {t('social:notOnMinglaYet')}
-                  </Text>
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* Status */}
-          {actionStatus === "sent" && (
-            <View style={styles.statusRow}>
-              <Icon
-                name="checkmark-circle"
-                size={s(16)}
-                color="#22c55e"
-              />
-              <Text style={styles.statusSuccess}>
-                {phoneLookupResult?.found ? t('social:requestSent') : t('social:inviteSent')}
-              </Text>
-            </View>
-          )}
-          {actionStatus === "error" && (
-            <View style={styles.statusRow}>
-              <Icon name="alert-circle" size={s(16)} color="#ef4444" />
-              <Text style={styles.statusError}>{actionError}</Text>
-            </View>
-          )}
-
-          {/* Action button */}
-          <TouchableOpacity
-            style={[
-              styles.actionButton,
-              isActionDisabled && styles.actionButtonDisabled,
-            ]}
-            onPress={handlePhoneAction}
-            activeOpacity={0.7}
-            disabled={!!isActionDisabled}
-          >
-            {actionStatus === "sending" ? (
-              <ActivityIndicator size="small" color="#ffffff" />
-            ) : (
-              <>
-                <Icon
-                  name={
-                    phoneLookupResult?.found
-                      ? "person-add"
-                      : "paper-plane-outline"
-                  }
-                  size={s(14)}
-                  color="#ffffff"
-                  style={styles.actionButtonIcon}
-                />
-                <Text style={styles.actionButtonText}>
-                  {getActionLabel()}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
+      <Text style={styles.hint}>{t("connections:af_hint")}</Text>
+      <View style={styles.phoneRow}>
+        <Pressable
+          style={styles.countryChip}
+          onPress={onOpenCountryPicker}
+          accessibilityRole="button"
+          accessibilityLabel={t("connections:af_country_a11y", { dial: selectedCountry.dialCode })}
+        >
+          <Text style={styles.countryText}>
+            {selectedCountry.flag} {selectedCountry.dialCode}
+          </Text>
+          <Icon name="chevron-down" size={14} color={ink.dim} />
+        </Pressable>
+        <BottomSheetTextInput
+          style={styles.phoneInput}
+          value={phoneNumber}
+          onChangeText={(text) => {
+            onPhoneNumberChange(text);
+            if (sendError) setSendError(null);
+          }}
+          placeholder={t("connections:af_phone_placeholder")}
+          placeholderTextColor={ink.faint}
+          keyboardType="phone-pad"
+          autoCorrect={false}
+          maxLength={15}
+          accessibilityLabel={t("connections:af_phone_placeholder")}
+        />
       </View>
+
+      <ResultCard
+        card={card}
+        sending={sending}
+        onAdd={() => void handleSend()}
+        onMessage={(userId) => onMessageFriend(userId)}
+      />
+      {sendError ? (
+        <Text style={styles.errorText} accessibilityRole="alert">
+          {sendError}
+        </Text>
+      ) : null}
+      {pairingAtLimit && card.kind === "found" ? <LimitCard name={card.name} onSeePlus={onSeePlus} /> : null}
+
+      <Text style={styles.label}>{t("connections:af_or")}</Text>
+      <Pressable
+        onPress={() => void shareInvite(null)}
+        accessibilityRole="button"
+        accessibilityLabel={`${t("connections:af_share_invite")}, ${t("connections:af_share_invite_sub")}`}
+        style={({ pressed }) => [styles.shareRow, pressed ? styles.pressed : null]}
+      >
+        <View style={styles.shareIcon}>
+          <Icon name="share-outline" size={19} color={ink.accent} />
+        </View>
+        <Text style={styles.shareTitle}>{t("connections:af_share_invite")}</Text>
+        <Text style={styles.shareSub}>{t("connections:af_share_invite_sub")}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function LimitCard({ name, onSeePlus }: { name: string; onSeePlus: () => void }): React.ReactElement {
+  const { t } = useTranslation(["connections"]);
+  return (
+    <LinearGradient
+      colors={[fs.goldCardFrom, fs.goldCardTo]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.limitCard}
+    >
+      <Text style={styles.limitTitle}>{t("connections:af_limit_title")}</Text>
+      <Text style={styles.limitBody}>{t("connections:af_limit_body", { name: name || t("connections:af_this_friend") })}</Text>
+      <Pressable
+        onPress={onSeePlus}
+        accessibilityRole="button"
+        accessibilityLabel={t("connections:af_limit_cta")}
+        style={styles.limitButton}
+      >
+        <Text style={styles.limitButtonText}>{t("connections:af_limit_cta")}</Text>
+      </Pressable>
+    </LinearGradient>
+  );
+}
+
+function ResultCard({
+  card,
+  sending,
+  onAdd,
+  onMessage,
+}: {
+  card: AddFriendCard;
+  sending: boolean;
+  onAdd: () => void;
+  onMessage: (userId: string) => void;
+}): React.ReactElement | null {
+  const { t } = useTranslation(["connections"]);
+  if (card.kind === "idle") return null;
+  if (card.kind === "searching") {
+    return (
+      <View style={styles.card}>
+        <ActivityIndicator color={ink.accent} />
+        <Text style={styles.cardSub}>{t("connections:af_searching")}</Text>
+      </View>
+    );
+  }
+  if (card.kind === "error") {
+    return (
+      <View style={styles.card}>
+        <Text style={[styles.cardSub, styles.flex]}>{t("connections:af_lookup_failed")}</Text>
+      </View>
+    );
+  }
+  if (card.kind === "self") {
+    return (
+      <View style={styles.card}>
+        <View style={[styles.cardAvatarBlank]}>
+          <Icon name="person-outline" size={22} color={ink.dim} />
+        </View>
+        <View style={styles.flex}>
+          <Text style={styles.cardTitle}>{t("connections:af_self_title")}</Text>
+          <Text style={styles.cardSub}>{t("connections:af_self_body")}</Text>
+        </View>
+      </View>
+    );
+  }
+  if (card.kind === "not_on_mingla") {
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardAvatarBlank}>
+          <Text style={styles.cardHash}>#</Text>
+        </View>
+        <View style={styles.flex}>
+          <Text style={styles.cardTitle}>{t("connections:af_not_on_mingla")}</Text>
+          <Text style={styles.cardSub}>{t("connections:af_will_text")}</Text>
+        </View>
+        <Pressable
+          onPress={onAdd}
+          disabled={sending}
+          accessibilityRole="button"
+          accessibilityLabel={t("connections:af_invite")}
+          accessibilityState={{ disabled: sending, busy: sending }}
+          style={[styles.cardButton, sending ? styles.dim : null]}
+        >
+          {sending ? <ActivityIndicator color="#ffffff" size="small" /> : <Text style={styles.cardButtonText}>{t("connections:af_invite")}</Text>}
+        </Pressable>
+      </View>
+    );
+  }
+  const sub = card.username
+    ? t("connections:af_on_mingla", { username: card.username })
+    : t("connections:af_on_mingla_no_username");
+  return (
+    <View style={styles.card}>
+      <ChatAvatar people={[{ id: card.userId, name: card.name, avatarUrl: card.avatarUrl }]} shape="circle" label={card.name} size={48} />
+      <View style={styles.flex}>
+        <Text style={styles.cardTitle} numberOfLines={1}>{card.name}</Text>
+        <Text style={[styles.cardSub, styles.onMingla]} numberOfLines={1}>
+          {card.kind === "friends" ? t("connections:af_already_friends") : card.kind === "pending" ? t("connections:af_request_pending") : sub}
+        </Text>
+      </View>
+      {card.kind === "found" ? (
+        <Pressable
+          onPress={onAdd}
+          disabled={sending}
+          accessibilityRole="button"
+          accessibilityLabel={`${t("connections:af_add")} ${card.name}`}
+          accessibilityState={{ disabled: sending, busy: sending }}
+          style={[styles.cardButton, sending ? styles.dim : null]}
+        >
+          {sending ? <ActivityIndicator color="#ffffff" size="small" /> : <Text style={styles.cardButtonText}>{t("connections:af_add")}</Text>}
+        </Pressable>
+      ) : card.kind === "friends" ? (
+        <Pressable
+          onPress={() => onMessage(card.userId)}
+          accessibilityRole="button"
+          accessibilityLabel={`${t("connections:af_message")} ${card.name}`}
+          style={[styles.cardButton, styles.cardButtonGhost]}
+        >
+          <Text style={styles.cardButtonText}>{t("connections:af_message")}</Text>
+        </Pressable>
+      ) : (
+        <View style={[styles.cardButton, styles.cardButtonGhost]}>
+          <Text style={[styles.cardButtonText, { color: ink.dim }]}>{t("connections:af_pending")}</Text>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: s(16),
-    paddingVertical: vs(8),
+    paddingHorizontal: 14,
+    paddingBottom: 24,
   },
-  glassCard: {
-    // META-ORCH-1002 Sub-B (A4): frosted-white panel. On Android render the iOS
-    // frosted-white *intent* as a solid opaque white panel, clip fill+border to the
-    // radius (kills the ring), and zero the elevation so no hard shadow rectangle
-    // draws under the rounded panel. iOS keeps the translucent frost + shadow.
-    backgroundColor: Platform.select({
-      ios: 'rgba(255, 255, 255, 0.70)',
-      android: '#FFFFFF',
-      default: 'rgba(255, 255, 255, 0.70)',
-    }),
-    borderWidth: 1,
-    borderTopWidth: 0.5,
-    borderColor: 'rgba(255, 255, 255, 0.45)',
-    borderRadius: 24,
-    padding: 16,
-    overflow: 'hidden',
-    shadowColor: 'rgba(0, 0, 0, 0.08)',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 24,
-    elevation: Platform.select({ ios: 6, android: 0, default: 6 }),
-  },
-  tabBar: {
-    flexDirection: "row",
-    backgroundColor: "#e5e7eb",
-    borderRadius: s(8),
-    padding: 3,
-    marginBottom: vs(12),
-  },
-  tab: {
+  flex: {
     flex: 1,
-    paddingVertical: vs(7),
-    alignItems: "center",
-    borderRadius: s(6),
+    minWidth: 0,
   },
-  tabActive: {
-    backgroundColor: "#ffffff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+  dim: {
+    opacity: 0.6,
   },
-  tabText: {
-    fontSize: s(13),
-    fontWeight: "600",
-    color: "#6b7280",
+  pressed: {
+    backgroundColor: ink.rowPressed,
   },
-  tabTextActive: {
-    color: "#111827",
+  hint: {
+    marginHorizontal: 4,
+    marginBottom: 12,
+    fontSize: 13.5,
+    lineHeight: 18,
+    color: ink.dim,
   },
   phoneRow: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: s(10),
-    height: 46,
-    overflow: "hidden",
+    gap: 8,
+    marginBottom: 12,
   },
-  countryPicker: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingLeft: s(10),
-    paddingRight: s(6),
-    height: "100%",
-  },
-  countryPickerFlag: {
-    fontSize: 16,
-    marginRight: 3,
-  },
-  countryPickerDial: {
-    fontSize: s(13),
-    fontWeight: "600",
-    color: "#374151",
-    marginRight: 3,
-  },
-  phoneDivider: {
-    width: 1,
-    height: 22,
-    backgroundColor: "#d1d5db",
-  },
-  phoneInput: {
-    flex: 1,
-    paddingHorizontal: s(10),
-    fontSize: s(15),
-    color: "#111827",
-    height: "100%",
-  },
-  spinner: {
-    marginRight: s(10),
-  },
-  lookupResult: {
-    marginTop: vs(6),
-  },
-  lookupRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  lookupTextGreen: {
-    fontSize: s(12),
-    color: "#16a34a",
-    fontWeight: "500",
-  },
-  lookupTextMuted: {
-    fontSize: s(12),
-    color: "#6b7280",
-  },
-  statusRow: {
+  countryChip: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: fs.fieldBg,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: vs(6),
+    paddingHorizontal: 12,
   },
-  statusSuccess: {
-    fontSize: s(13),
-    color: "#16a34a",
-    fontWeight: "500",
-  },
-  statusError: {
-    fontSize: s(13),
-    color: "#dc2626",
-  },
-  actionButton: {
-    flexDirection: "row",
-    backgroundColor: "#eb7825",
-    borderRadius: s(8),
-    paddingVertical: vs(10),
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: vs(10),
-  },
-  actionButtonDisabled: {
-    opacity: 0.45,
-  },
-  actionButtonIcon: {
-    marginRight: 5,
-  },
-  actionButtonText: {
-    color: "#ffffff",
-    fontSize: s(14),
-    fontWeight: "600",
-  },
-  sentLoadingState: {
-    paddingVertical: 24,
-    alignItems: "center",
-  },
-  sentEmptyState: {
-    paddingVertical: 24,
-    alignItems: "center",
-  },
-  sentEmptyText: {
-    fontSize: s(14),
-    color: "#6b7280",
-    marginTop: 8,
-  },
-  sentRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-  },
-  sentAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#f59e0b",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-  inviteAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#8b5cf6",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-  sentAvatarText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  sentInfo: {
-    flex: 1,
-    minWidth: 0,
-    marginRight: 8,
-  },
-  sentName: {
+  countryText: {
+    color: ink.ink,
     fontSize: 15,
     fontWeight: "600",
-    color: "#111827",
   },
-  sentTime: {
-    fontSize: 12,
-    color: "#9ca3af",
-    marginTop: 1,
+  phoneInput: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: fs.fieldBg,
+    borderWidth: 1.5,
+    borderColor: ink.accent,
+    paddingHorizontal: 12,
+    color: ink.ink,
+    fontSize: 16,
+    letterSpacing: 0.3,
   },
-  cancelButton: {
-    borderWidth: 1,
-    borderColor: "#d1d5db",
+  card: {
+    borderRadius: 16,
+    backgroundColor: fs.cardBg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: fs.cardBorder,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    minHeight: 72,
+  },
+  cardAvatarBlank: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: fs.fieldBg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardHash: {
+    color: ink.dim,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  cardTitle: {
+    color: ink.ink,
+    fontSize: 15.5,
+    fontWeight: "700",
+  },
+  cardSub: {
+    color: ink.faint,
+    fontSize: 12.5,
+    marginTop: 2,
+  },
+  onMingla: {
+    color: fs.onMingla,
+  },
+  cardButton: {
+    minWidth: 64,
+    minHeight: 36,
     paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 17,
+    backgroundColor: ink.accent,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  cancelText: {
-    color: "#6b7280",
+  cardButtonGhost: {
+    backgroundColor: fs.ghostButtonBg,
+  },
+  cardButtonText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  errorText: {
+    color: ink.errorLabel,
     fontSize: 13,
+    marginTop: 8,
+    marginHorizontal: 4,
+  },
+  label: {
+    color: ink.faint,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    paddingTop: 20,
+    paddingHorizontal: 4,
+    paddingBottom: 4,
+  },
+  shareRow: {
+    height: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+  },
+  shareIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: fs.shareIconBg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shareTitle: {
+    flex: 1,
+    color: ink.ink,
+    fontSize: 15.5,
     fontWeight: "600",
+  },
+  shareSub: {
+    color: ink.faint,
+    fontSize: 12,
+  },
+  statusCard: {
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 6,
+  },
+  successCard: {
+    backgroundColor: fs.successBg,
+    borderColor: fs.successBorder,
+  },
+  failCard: {
+    backgroundColor: fs.failBg,
+    borderColor: fs.failBorder,
+  },
+  statusDot: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statusDotText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  statusTitle: {
+    color: ink.ink,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  statusBody: {
+    color: ink.dim,
+    fontSize: 12.5,
+    marginTop: 2,
+    lineHeight: 17,
+  },
+  shareButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    minHeight: 36,
+    justifyContent: "center",
+  },
+  shareButtonText: {
+    color: ink.ink,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  footerRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
+  },
+  footerButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  footerGhost: {
+    backgroundColor: fs.ghostButtonBg,
+  },
+  footerPrimary: {
+    backgroundColor: ink.accent,
+  },
+  footerText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  limitCard: {
+    marginTop: 12,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: fs.goldCardBorder,
+    padding: 14,
+    gap: 8,
+  },
+  limitTitle: {
+    color: fs.goldTitle,
+    fontSize: 14.5,
+    fontWeight: "700",
+  },
+  limitBody: {
+    color: ink.dim,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  limitButton: {
+    alignSelf: "flex-start",
+    paddingVertical: 8,
+    paddingHorizontal: 13,
+    borderRadius: 12,
+    backgroundColor: fs.gold,
+    minHeight: 36,
+    justifyContent: "center",
+  },
+  limitButtonText: {
+    color: fs.goldInk,
+    fontSize: 13,
+    fontWeight: "700",
   },
 });

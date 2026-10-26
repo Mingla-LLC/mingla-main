@@ -11,6 +11,8 @@ import AddToBoardModal from "../AddToBoardModal";
 import BlockUserModal from "../BlockUserModal";
 import ReportUserModal from "../ReportUserModal";
 import { useFriendActions } from "../../hooks/useFriendActions";
+import { CustomPaywallScreen } from "../CustomPaywallScreen";
+import { useAppStore } from "../../store/appStore";
 
 // META-ORCH-0991 Wave B Batch 3: was a flex-end action menu sized to its rows →
 // a swipe-down sheet. A fixed snap (not enableDynamicSizing) is used because a
@@ -46,6 +48,7 @@ const FriendActionsSheet: React.FC<FriendActionsSheetProps> = ({
   isPending,
   isFriend,
 }) => {
+  const currentUserId = useAppStore((state) => state.user?.id);
   const a = useFriendActions({ friendUserId, friendName, friendUsername, friendAvatarUrl, pairingId, isPaired, isPending });
 
   const run = (fn: () => void) => {
@@ -138,6 +141,10 @@ const FriendActionsSheet: React.FC<FriendActionsSheetProps> = ({
       <AddToBoardModal isOpen={a.addToSessionVisible} onClose={a.closeAddToSession} friend={friendForModal} boardsSessions={a.boardsSessions} />
       <BlockUserModal visible={a.blockVisible} onClose={a.closeBlock} onConfirm={a.confirmBlock} userName={friendName} />
       <ReportUserModal isOpen={a.reportVisible} onClose={a.closeReport} user={userForReport} onReport={a.submitReport} />
+      {/* Issue #4114: pairing past the free limit opens Mingla+ here too. */}
+      {currentUserId ? (
+        <CustomPaywallScreen isVisible={a.paywallVisible} onClose={a.closePaywall} userId={currentUserId} feature="pairing" />
+      ) : null}
     </>
   );
 };

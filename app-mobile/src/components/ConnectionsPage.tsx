@@ -95,7 +95,18 @@ import {
   type ChatFilter,
   type ChatListItemModel,
 } from "./connections/chatListModel";
-import { AddFriendView } from "./connections/AddFriendView";
+// Issue #4114 Wave 2b: the one Add a friend flow (add = pair) is its own dark
+// sheet; its AddFriendView body reads the hoisted phone/country below.
+import { AddFriendSheet } from "./connections/AddFriendSheet";
+import {
+  activePairs,
+  buildReceivedRows,
+  buildSentRows,
+  pairTileState,
+  runCombinedAccept,
+  type ReceivedRow,
+  type SentRow,
+} from "./connections/friendsSheetModel";
 // ORCH-1371 [add-friend-country-picker-hidden]: the add-friend country picker is
 // hoisted here (owner of the transient phone/country/flag state) and rendered as
 // a sibling of the friends sheet — iOS presents only one RN <Modal> at a time.
@@ -132,11 +143,18 @@ import { emitAddToBoardToasts } from "../utils/addToBoardToasts";
 // Pairing — ORCH-0435 Phase A
 import PairRequestModal from "./PairRequestModal";
 import IncomingPairRequestCard from "./IncomingPairRequestCard";
-import { usePairingPills, useIncomingPairRequests, useSendPairRequest, useCancelPairRequest, useCancelPairInvite, useAcceptPairRequest, useDeclinePairRequest, useUnpair } from "../hooks/usePairings";
+import { usePairingPills, useIncomingPairRequests, useIncomingHiddenPairRequests, useSendPairRequest, useCancelPairRequest, useCancelPairInvite, useAcceptPairRequest, useDeclinePairRequest, useUnpair } from "../hooks/usePairings";
+import { usePendingPhoneInvites, phoneInviteKeys } from "../hooks/usePhoneInvite";
+import { cancelPendingInvite } from "../services/phoneLookupService";
+import { useEffectiveTier } from "../hooks/useSubscription";
+import { getTierLimits } from "../constants/tierLimits";
+import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import type { PairRequest } from "../services/pairingService";
 
 type PanelId = "add" | "friends" | "blocked" | null; // [TRANSITIONAL] kept for initialPanel prop compat
-type FriendsModalTab = "friend-list" | "sent" | "requests" | "blocked";
+// Issue #4114 Wave 2b: two segmented tabs. Sent folded into Requests; Blocked is
+// a row at the bottom of Friends that opens the blocked view inside the tab.
+type FriendsModalTab = "friend-list" | "requests";
 
 const BUSINESS_BUYER_DOMAIN = "https://business.mingla.app";
 // Was a flex-end sheet sized at screenHeight*0.88 → fixed ['88%'] snap (playbook §2).
@@ -374,7 +392,8 @@ interface ConnectionsPageProps {
   onOpenPreferences?: () => void;
   onOpenCollabPreferences?: (sessionId?: string, sessionName?: string) => void;
   onUnreadCountChange?: (count: number) => void;
-  onNavigateToFriendProfile?: (userId: string) => void;
+  /** Issue #4114: `focus: "paired"` opens the profile at birthday, holidays and saves. */
+  onNavigateToFriendProfile?: (userId: string, options?: { focus?: "paired" }) => void;
   onFriendAccepted?: () => void;
   /** When set (e.g. Discover map "Message"), open DM with this user; clear via onOpenDirectMessageHandled */
   openDirectMessageWithUserId?: string | null;
@@ -540,6 +559,11 @@ function ConnectionsPageRefactored({
   );
   const [addFriendPhone, setAddFriendPhone] = useState("");
   const [addFriendPickerOpen, setAddFriendPickerOpen] = useState(false);
+  // Issue #4114 Wave 2b: the Add a friend sheet (opened from New message and the
+  // friends sheet's Add), and the blocked view inside the Friends tab.
+  const [showAddFriendSheet, setShowAddFriendSheet] = useState(false);
+  const [showBlockedView, setShowBlockedView] = useState(false);
+  const [requestBusyKey, setRequestBusyKey] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
@@ -739,7 +763,6 @@ function ConnectionsPageRefactored({
   const [pendingCollabChat, setPendingCollabChat] = useState<PendingCollabChatDetails | null>(null);
   const [pendingCollabWorking, setPendingCollabWorking] = useState(false);
   const [showIncomingPairRequest, setShowIncomingPairRequest] = useState<PairRequest | null>(null);
-  const [pairLoadingUserId, setPairLoadingUserId] = useState<string | null>(null);
   const pendingCollabChatRef = useRef<PendingCollabChatDetails | null>(null);
   const readyPendingCollabToastSessionIdsRef = useRef(new Set<string>());
   pendingCollabChatRef.current = pendingCollabChat;
@@ -754,6 +777,7 @@ function ConnectionsPageRefactored({
   // tear down the whole friends flow — only a genuine user dismiss propagates.
   const anyFriendsChildOpen =
     addFriendPickerOpen ||
+    showAddFriendSheet ||
     actionsSheetVisible ||
     showPairRequestModal ||
     showNewMessageSheet ||
@@ -784,8 +808,11 @@ function ConnectionsPageRefactored({
   // round-trip (only `anyFriendsChildOpen` gates the sheet's `visible`), so this
   // effect does NOT fire mid-round-trip → the typed value survives the picker;
   // it fires only on a genuine reopen → matches the old empty-on-reopen behavior.
+  // Issue #4114 Wave 2b: the same reset fires on a genuine open of the Add a
+  // friend sheet. A picker round-trip changes neither flag (only the picker flag
+  // gates the sheet's `visible`), so the typed number survives the picker.
   useEffect(() => {
-    if (showFriendsModal) {
+    if (showFriendsModal || showAddFriendSheet) {
       setAddFriendPhone("");
       setAddFriendCountry(
         getCountryByCode(getDefaultCountryCode()) ?? {
@@ -797,7 +824,7 @@ function ConnectionsPageRefactored({
       );
       setAddFriendPickerOpen(false);
     }
-  }, [showFriendsModal]);
+  }, [showFriendsModal, showAddFriendSheet]);
 
   const pairedUserIds = useMemo(() => new Set(
     pairingPills.filter(p => p.pillState === 'active' && p.pairedUserId != null).map(p => p.pairedUserId!)
@@ -807,55 +834,6 @@ function ConnectionsPageRefactored({
     pairingPills.filter(p => p.pillState !== 'active' && p.pairedUserId != null).map(p => p.pairedUserId!)
   ), [pairingPills]);
 
-  const handlePairFriend = useCallback(async (friendUserId: string) => {
-    setPairLoadingUserId(friendUserId);
-    // Find friend details for optimistic pill display
-    const friend = dbFriends.find(f => {
-      const fid = f.user_id === (user?.id || '') ? f.friend_user_id : f.user_id;
-      return fid === friendUserId;
-    });
-    const friendDisplayName = friend ? getDisplayName(friend) : undefined;
-    try {
-      await sendPairMutation.mutateAsync({
-        friendUserId,
-        displayName: friendDisplayName ?? undefined,
-        avatarUrl: friend?.avatar_url ?? null,
-      });
-      showToast({ message: 'Pair request sent!', type: 'info' });
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : '';
-      // ORCH-1239: free pairing limit reached → surface the paywall instead of
-      // swallowing the error silently (feature 'pairing').
-      if (errMsg === 'pairing_limit_reached') {
-        setPaywallFeature('pairing');
-        setShowPaywall(true);
-      } else {
-        showMutationError(err, 'sending pair request', showToast);
-      }
-    } finally {
-      setPairLoadingUserId(null);
-    }
-  }, [sendPairMutation, showToast, dbFriends, user?.id]);
-
-  const handleUnpairFriend = useCallback((friendUserId: string) => {
-    // Find the pairingId for this friend
-    const pill = pairingPills.find(p => p.pairedUserId === friendUserId && p.pillState === 'active');
-    if (!pill?.pairingId) return;
-    Alert.alert(
-      'Unpair',
-      `Are you sure you want to unpair?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Unpair',
-          style: 'destructive',
-          onPress: () => {
-            unpairMutation.mutate(pill.pairingId!);
-          },
-        },
-      ]
-    );
-  }, [pairingPills, unpairMutation]);
 
   // ── Derived data ─────────────────────────────────────────
   const incomingRequests = useMemo(() => {
@@ -869,6 +847,144 @@ function ConnectionsPageRefactored({
       (r) => r.type === "outgoing" && r.status === "pending"
     );
   }, [friendRequests]);
+
+  // ── Issue #4114 Wave 2b: friends sheet data ──────────────
+  const { data: hiddenIncomingPairRequests = [] } = useIncomingHiddenPairRequests(user?.id);
+  const { data: legacyPhoneInvites = [] } = usePendingPhoneInvites();
+  const { tier: pairingTier } = useEffectiveTier(user?.id);
+  const maxPairings = getTierLimits(pairingTier).maxPairings;
+  const pairedPills = useMemo(() => activePairs(pairingPills), [pairingPills]);
+  const pairTile = useMemo(
+    () => pairTileState({ pairedCount: pairedPills.length, isUnlimited: maxPairings < 0, freeLimit: maxPairings }),
+    [pairedPills.length, maxPairings],
+  );
+  const receivedRows = useMemo(
+    () =>
+      buildReceivedRows({
+        incomingFriendRequests: incomingRequests,
+        hiddenPairRequests: hiddenIncomingPairRequests,
+        visiblePairRequests: incomingPairRequests,
+      }),
+    [incomingRequests, hiddenIncomingPairRequests, incomingPairRequests],
+  );
+  const sentRows = useMemo(
+    () =>
+      buildSentRows({
+        outgoingFriendRequests: outgoingRequests,
+        pairingPills,
+        legacyPhoneInvites,
+      }),
+    [outgoingRequests, pairingPills, legacyPhoneInvites],
+  );
+
+  const openPairingPaywall = useCallback(() => {
+    setPaywallFeature('pairing');
+    setShowPaywall(true);
+  }, []);
+
+  // Issue #4114: the friend_request_accepted analytics moved here from the dead
+  // FriendRequestsModal (it was the only place they fired).
+  const trackFriendAccepted = useCallback((requestId: string, senderName: string) => {
+    mixpanelService.trackFriendRequestAccepted({ requestId, senderName });
+    logAppsFlyerEvent('friend_request_accepted', { source: 'friends_sheet' });
+  }, []);
+
+  const handleAcceptReceived = useCallback(async (row: ReceivedRow) => {
+    if (requestBusyKey) return;
+    HapticFeedback.medium();
+    setRequestBusyKey(row.key);
+    try {
+      if (row.kind === "friend_pair") {
+        // ONE Accept: the friend accept (its trigger reveals the pair request),
+        // then the pair accept. At the limit they are still friends.
+        onFriendAccepted?.();
+        const result = await runCombinedAccept(row, user?.id ?? "", {
+          acceptFriend: acceptFriendRequest,
+          acceptPair: (pairRequestId) => acceptPairRequestMutation.mutateAsync(pairRequestId),
+        });
+        trackFriendAccepted(row.friendRequestId, row.name);
+        if (result.paired) {
+          showToast({ message: t('connections:fs_now_paired', { name: row.name }), type: 'success' });
+        } else if (result.limit === "mine") {
+          showToast({ message: t('connections:fs_now_friends', { name: row.name }), type: 'info' });
+          openPairingPaywall();
+        } else if (result.limit === "theirs") {
+          showToast({ message: t('connections:fs_friends_pair_waiting', { name: row.name }), type: 'info' });
+        } else {
+          showToast({ message: t('connections:fs_now_friends', { name: row.name }), type: 'info' });
+        }
+      } else if (row.kind === "friend") {
+        onFriendAccepted?.();
+        await acceptFriendRequest(row.friendRequestId);
+        trackFriendAccepted(row.friendRequestId, row.name);
+        showToast({ message: t('connections:fs_now_friends', { name: row.name }), type: 'success' });
+      } else {
+        try {
+          await acceptPairRequestMutation.mutateAsync(row.pairRequestId);
+          showToast({ message: t('connections:fs_paired_with', { name: row.name }), type: 'success' });
+        } catch (err) {
+          // ORCH-1239 / #4114: the paywall opens on EVERY pair-limit hit.
+          if (err instanceof Error && err.message === 'pairing_limit_reached') openPairingPaywall();
+          else throw err;
+        }
+      }
+    } catch (err) {
+      showMutationError(err, 'accepting request', showToast);
+    } finally {
+      setRequestBusyKey(null);
+    }
+  }, [requestBusyKey, user?.id, acceptFriendRequest, acceptPairRequestMutation, trackFriendAccepted, onFriendAccepted, showToast, t, openPairingPaywall]);
+
+  const handleDeclineReceived = useCallback(async (row: ReceivedRow) => {
+    if (requestBusyKey) return;
+    HapticFeedback.warning();
+    setRequestBusyKey(row.key);
+    try {
+      if (row.kind === "pair") await declinePairRequestMutation.mutateAsync(row.pairRequestId);
+      else await declineFriendRequest(row.friendRequestId);
+    } catch (err) {
+      showMutationError(err, 'declining request', showToast);
+    } finally {
+      setRequestBusyKey(null);
+    }
+  }, [requestBusyKey, declinePairRequestMutation, declineFriendRequest, showToast]);
+
+  // Called only after the person confirmed in RequestsView (every Cancel asks once).
+  const handleCancelSent = useCallback(async (row: SentRow) => {
+    setRequestBusyKey(row.key);
+    try {
+      if (row.kind === "friend_request") await cancelFriendRequest(row.friendRequestId);
+      else if (row.kind === "phone_invite") {
+        if (row.pairInviteId) await cancelPairInviteMutation.mutateAsync(row.pairInviteId);
+        if (row.legacyInviteId) {
+          await cancelPendingInvite(row.legacyInviteId);
+          await queryClient.invalidateQueries({ queryKey: phoneInviteKeys.all });
+        }
+      } else await cancelPairRequestMutation.mutateAsync(row.pairRequestId);
+      if (row.kind === "friend_pair_request") void loadFriendRequests();
+    } catch (err) {
+      showMutationError(err, 'cancelling request', showToast);
+    } finally {
+      setRequestBusyKey(null);
+    }
+  }, [cancelFriendRequest, cancelPairInviteMutation, cancelPairRequestMutation, queryClient, loadFriendRequests, showToast]);
+
+  // Issue #4114: the friends sheet's Add and New message's "Add a friend" open the
+  // one Add a friend sheet. The friends sheet stays "open" underneath (the
+  // anyFriendsChildOpen gate drops its window) and returns when this closes.
+  const openAddFriendSheet = useCallback(() => {
+    dismissKeyboard();
+    setShowAddFriendSheet(true);
+  }, [dismissKeyboard]);
+  const closeAddFriendSheet = useCallback(() => {
+    setShowAddFriendSheet(false);
+  }, []);
+  // BaseBottomSheet fires onClose on every hide, including the drop for the
+  // country picker; only a genuine swipe-down (picker closed) closes the flow.
+  const handleAddFriendSheetClose = useCallback(() => {
+    if (addFriendPickerOpen) return;
+    setShowAddFriendSheet(false);
+  }, [addFriendPickerOpen]);
 
   // Reset badge when NEW requests arrive after dismissal
   const prevRequestCountRef = useRef(0);
@@ -1517,6 +1633,7 @@ function ConnectionsPageRefactored({
     HapticFeedback.light();
     dismissKeyboard();
     setFriendsModalTab(tab ?? "friend-list");
+    setShowBlockedView(false);
     setShowFriendsModal(true);
     setBadgeDismissed(true);
   };
@@ -1527,9 +1644,10 @@ function ConnectionsPageRefactored({
   useEffect(() => {
     if (initialPanel && isTabVisible !== false) {
       setShowFriendsModal(true);
-      if (initialPanel === "friends") setFriendsModalTab("friend-list");
-      else if (initialPanel === "add") setFriendsModalTab("friend-list");
-      else if (initialPanel === "blocked") setFriendsModalTab("blocked");
+      setFriendsModalTab("friend-list");
+      setShowBlockedView(initialPanel === "blocked");
+      // Issue #4114: "add" now opens the one Add a friend sheet over the friends sheet.
+      if (initialPanel === "add") setShowAddFriendSheet(true);
       onInitialPanelHandled?.();
     }
   }, [initialPanel, onInitialPanelHandled, isTabVisible]);
@@ -1564,7 +1682,7 @@ function ConnectionsPageRefactored({
   // ORCH-0987 unify: the legacy friends-modal action handlers (mute/remove/block/report
   // FromModal) were removed — the friends-modal ⋮ now routes through the shared
   // FriendActionsSheet (single owner). Block/Report state + modals remain (used by other
-  // entry points). Pair/unpair handlers (handlePairFriend/handleUnpairFriend) live above.
+  // entry points). Issue #4114: pair / unpair live in that sheet too (the row Pair button left).
 
   // ── Transform message from DirectMessage to MessageInterface format ──
   const transformMessage = useCallback(
@@ -2062,6 +2180,19 @@ function ConnectionsPageRefactored({
     latestSelectedChatRef.current = targetId;
     setCurrentConversationId(null);
   }, [openDirectMessageWithUserId, user?.id, showMessageInterface, activeChat?.id]);
+
+  // ── Issue #4114: `mingla://connections?tab=requests` (send-pair-request and
+  // send-friend-request-email pushes, and a friend invite link opened by a
+  // signed-in user) opens the friends sheet on Requests. ─────────────────────
+  useEffect(() => {
+    if (!deepLinkParams || deepLinkParams.tab !== 'requests') return;
+    setFriendsModalTab("requests");
+    setShowBlockedView(false);
+    setShowFriendsModal(true);
+    setBadgeDismissed(true);
+    onDeepLinkHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one handoff per deep link
+  }, [deepLinkParams]);
 
   // ── Open trip/event group chat from deep links ───────────────────────────
   useEffect(() => {
@@ -3792,76 +3923,67 @@ function ConnectionsPageRefactored({
         onClose={handleFriendsModalClose}
         snapPoints={FRIENDS_MODAL_SNAP as unknown as string[]}
         wrapInRNModal
-        theme="light"
+        theme="dark"
+        backgroundStyle={styles.friendsSheetBackground}
         scrollMode="scroll"
         keyboardBehavior="interactive"
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
-        accessibilityLabel="Friends"
+        accessibilityLabel={t('connections:fs_title')}
         header={
           <View style={styles.friendsSheetHeaderBlock}>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>Friends</Text>
-              <TouchableOpacity onPress={() => { dismissKeyboard(); setShowFriendsModal(false); }} activeOpacity={0.7}>
-                <Icon name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
+            <View style={styles.friendsSheetTitleRow}>
+              <Pressable
+                onPress={() => { dismissKeyboard(); setShowFriendsModal(false); }}
+                accessibilityRole="button"
+                accessibilityLabel={t('connections:fs_done')}
+                hitSlop={8}
+                style={styles.friendsSheetSide}
+              >
+                <Text style={styles.friendsSheetDone}>{t('connections:fs_done')}</Text>
+              </Pressable>
+              <Text style={styles.friendsSheetTitle} accessibilityRole="header" numberOfLines={1}>
+                {t('connections:fs_title')}
+              </Text>
+              <Pressable
+                onPress={openAddFriendSheet}
+                accessibilityRole="button"
+                accessibilityLabel={t('connections:af_title')}
+                hitSlop={8}
+                style={[styles.friendsSheetSide, styles.friendsSheetSideRight]}
+              >
+                <Text style={styles.friendsSheetAdd}>{t('connections:fs_add')}</Text>
+              </Pressable>
             </View>
 
-            {/* 4-Tab Bar */}
-            <View style={styles.tabBar}>
-              <TouchableOpacity
-                onPress={() => setFriendsModalTab("friend-list")}
-                style={[styles.tab, friendsModalTab === "friend-list" && styles.tabActive]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.tabText, friendsModalTab === "friend-list" && styles.tabTextActive]}>
-                  Friends
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setFriendsModalTab("sent")}
-                style={[styles.tab, friendsModalTab === "sent" && styles.tabActive]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.tabText, friendsModalTab === "sent" && styles.tabTextActive]}>
-                  Sent
-                </Text>
-                {(outgoingRequests.length + pairingPills.filter(p => p.pillState !== 'active').length) > 0 && (
-                  <View style={styles.tabBadge}>
-                    <Text style={styles.tabBadgeText}>
-                      {outgoingRequests.length + pairingPills.filter(p => p.pillState !== 'active').length}
+            {/* Two segmented tabs (design v6, D14). */}
+            <View style={styles.friendsSegment} accessibilityRole="tablist">
+              {(["friend-list", "requests"] as const).map((tab) => {
+                const active = friendsModalTab === tab;
+                const count = tab === "friend-list" ? dbFriends.length : receivedRows.length;
+                const label = tab === "friend-list" ? t('connections:fs_tab_friends') : t('connections:fs_tab_requests');
+                return (
+                  <Pressable
+                    key={tab}
+                    onPress={() => { setFriendsModalTab(tab); setShowBlockedView(false); }}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={count > 0 ? `${label}, ${count}` : label}
+                    style={[styles.friendsSegmentItem, active ? styles.friendsSegmentItemActive : null]}
+                  >
+                    <Text style={[styles.friendsSegmentText, active ? styles.friendsSegmentTextActive : null]}>
+                      {tab === "friend-list" && count > 0 ? `${label} ${count}` : label}
                     </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setFriendsModalTab("requests")}
-                style={[styles.tab, friendsModalTab === "requests" && styles.tabActive]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.tabText, friendsModalTab === "requests" && styles.tabTextActive]}>
-                  Requests
-                </Text>
-                {(incomingRequests.length + incomingPairRequests.length) > 0 && (
-                  <View style={styles.tabBadge}>
-                    <Text style={styles.tabBadgeText}>
-                      {incomingRequests.length + incomingPairRequests.length}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setFriendsModalTab("blocked")}
-                style={[styles.tab, friendsModalTab === "blocked" && styles.tabActive]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.tabText, friendsModalTab === "blocked" && styles.tabTextActive]}>
-                  Blocked
-                </Text>
-              </TouchableOpacity>
+                    {tab === "requests" && count > 0 ? (
+                      <View style={styles.friendsSegmentBadge}>
+                        <Text style={styles.friendsSegmentBadgeText} allowFontScaling={false}>
+                          {count > 9 ? '9+' : String(count)}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
         }
@@ -3873,181 +3995,65 @@ function ConnectionsPageRefactored({
         }}
       >
         <View style={styles.sheetBodyInner}>
-              {/* Tab 1: Friend List = Add Friend + Friend List */}
-              {friendsModalTab === "friend-list" && (
-                <>
-                  <AddFriendView
-                    currentUserId={user?.id || ""}
-                    onRequestSent={() => loadFriendRequests()}
-                    outgoingRequests={outgoingRequests}
-                    outgoingRequestsLoading={requestsLoading}
-                    onCancelRequest={cancelFriendRequest}
-                    onAddFriend={addFriend}
-                    selectedCountry={addFriendCountry}
-                    phoneNumber={addFriendPhone}
-                    onPhoneNumberChange={setAddFriendPhone}
-                    onOpenCountryPicker={() => setAddFriendPickerOpen(true)}
-                  />
-                  <View style={styles.friendListDivider} />
-                  <FriendsManagementList
-                    friends={dbFriends}
-                    loading={friendsLoading}
-                    mutedUserIds={mutedUserIds}
-                    currentUserId={user?.id || ""}
-                    pairedUserIds={pairedUserIds}
-                    pendingPairUserIds={pendingPairUserIds}
-                    onPairFriend={handlePairFriend}
-                    onUnpairFriend={handleUnpairFriend}
-                    pairLoadingUserId={pairLoadingUserId}
-                    onAvatarPress={(friendUserId) => {
-                      setShowFriendsModal(false);
-                      onNavigateToFriendProfile?.(friendUserId);
-                    }}
-                    onFriendPress={(friendUserId) => {
-                      setShowFriendsModal(false);
-                      const friend = dbFriends.find(f => {
-                        const fid = f.user_id === (user?.id || '') ? f.friend_user_id : f.user_id;
-                        return fid === friendUserId;
-                      });
-                      if (friend) handlePickFriend(friend);
-                    }}
-                    onOpenFriendActions={(friend) => {
-                      // ORCH-0987 unify: close the friends modal, then present the shared
-                      // FriendActionsSheet after the dismiss settles. Presenting it in the
-                      // same tick the friends modal dismisses freezes iOS (present-during-
-                      // dismiss). The shared sheet owns all six actions (single owner).
-                      setShowFriendsModal(false);
-                      setTimeout(() => { setActionsFriend(friend); setActionsSheetVisible(true); }, 450);
-                    }}
-                  />
-                </>
-              )}
-
-              {/* Tab 2: Sent = Outgoing friend requests + outgoing pair requests */}
-              {friendsModalTab === "sent" && (
-                <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
-                  {outgoingRequests.length === 0 && pairingPills.filter(p => p.pillState !== 'active').length === 0 ? (
-                    <View style={styles.modalEmptyState}>
-                      <Icon name="paper-plane-outline" size={32} color="#d1d5db" />
-                      <Text style={styles.modalEmptyText}>No sent requests</Text>
-                    </View>
-                  ) : (
-                    <>
-                      {/* Outgoing friend requests */}
-                      {outgoingRequests.map((req) => {
-                        const reqName = req.sender?.display_name || req.sender?.first_name || req.sender?.username || 'Unknown';
-                        return (
-                          <View key={req.id} style={styles.sentRequestRow}>
-                            <View style={styles.sentRequestAvatar}>
-                              <Text style={styles.sentRequestAvatarText}>
-                                {reqName[0].toUpperCase()}
-                              </Text>
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.sentRequestName}>{reqName}</Text>
-                              <Text style={styles.sentRequestType}>Friend request</Text>
-                            </View>
-                            <TouchableOpacity
-                              onPress={() => cancelFriendRequest(req.id)}
-                              style={styles.sentCancelBtn}
-                              activeOpacity={0.7}
-                            >
-                              <Text style={styles.sentCancelText}>Cancel</Text>
-                            </TouchableOpacity>
-                          </View>
-                        );
-                      })}
-                      {/* Outgoing pair requests */}
-                      {pairingPills.filter(p => p.pillState !== 'active').map((pill) => (
-                        <View key={pill.id} style={styles.sentRequestRow}>
-                          <View style={styles.sentRequestAvatar}>
-                            <Text style={styles.sentRequestAvatarText}>{pill.initials}</Text>
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.sentRequestName}>{pill.displayName}</Text>
-                            <Text style={styles.sentRequestType}>
-                              Pair request · {pill.pillState === 'pending_active' ? 'Pending' : pill.pillState === 'greyed_waiting_friend' ? 'Waiting for friend' : pill.pillState === 'greyed_waiting_signup' ? 'Waiting for signup' : 'Pending'}
-                            </Text>
-                          </View>
-                          <TouchableOpacity
-                            onPress={() => {
-                              if (pill.pairRequestId) cancelPairRequestMutation.mutate(pill.pairRequestId);
-                              else if (pill.pendingInviteId) cancelPairInviteMutation.mutate(pill.pendingInviteId);
-                            }}
-                            style={styles.sentCancelBtn}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={styles.sentCancelText}>Cancel</Text>
-                          </TouchableOpacity>
-                        </View>
-                      ))}
-                    </>
-                  )}
-                </View>
-              )}
-
-              {/* Tab 3: Requests = Incoming friend + pair requests */}
-              {friendsModalTab === "requests" && (
-                <View>
-                  {/* Incoming pair requests */}
-                  {incomingPairRequests.map((req) => (
-                    <View key={req.id} style={styles.sentRequestRow}>
-                      <View style={[styles.sentRequestAvatar, { backgroundColor: '#fff7ed' }]}>
-                        <Icon name="star" size={18} color="#eb7825" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.sentRequestName}>{req.senderName}</Text>
-                        <Text style={styles.sentRequestType}>Wants to pair with you</Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <TouchableOpacity
-                          onPress={() => declinePairRequestMutation.mutate(req.id)}
-                          style={styles.sentCancelBtn}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.sentCancelText}>Decline</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => acceptPairRequestMutation.mutate(req.id, {
-                            // ORCH-1239: accept can now throw 'pairing_limit_reached'
-                            // (the migration closed the accept-path leak). Surface the
-                            // paywall instead of a raw error / crash.
-                            onError: (err) => {
-                              const msg = err instanceof Error ? err.message : '';
-                              if (msg === 'pairing_limit_reached') {
-                                setPaywallFeature('pairing');
-                                setShowPaywall(true);
-                              } else {
-                                showMutationError(err, 'accepting pair request', showToast);
-                              }
-                            },
-                          })}
-                          style={[styles.sentCancelBtn, { backgroundColor: '#eb7825', borderColor: '#eb7825' }]}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.sentCancelText, { color: '#ffffff' }]}>Accept</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))}
-                  {/* Incoming friend requests */}
-                  <RequestsView
-                    requests={incomingRequests}
-                    loading={friendsLoading || requestsLoading}
-                    onAccept={handleAcceptRequest}
-                    onDecline={handleDeclineRequest}
-                  />
-                </View>
-              )}
-
-              {/* Tab 4: Blocked */}
-              {friendsModalTab === "blocked" && (
-                <BlockedUsersView
-                  blockedUsers={blockedUsers}
-                  loading={friendsLoading}
-                  onUnblock={handleUnblock}
-                />
-              )}
+          {friendsModalTab === "friend-list" && showBlockedView ? (
+            <BlockedUsersView
+              blockedUsers={blockedUsers}
+              loading={friendsLoading}
+              onUnblock={handleUnblock}
+              onBack={() => setShowBlockedView(false)}
+            />
+          ) : null}
+          {friendsModalTab === "friend-list" && !showBlockedView ? (
+            <FriendsManagementList
+              friends={dbFriends}
+              loading={friendsLoading}
+              mutedUserIds={mutedUserIds}
+              currentUserId={user?.id || ""}
+              pairedPills={pairedPills}
+              pairTile={pairTile}
+              onPairTile={() => {
+                // The + tile pairs someone; at the free limit it opens Mingla+.
+                if (pairTile.atLimit) {
+                  openPairingPaywall();
+                  return;
+                }
+                setShowPairRequestModal(true);
+              }}
+              onOpenPaired={(friendUserId) => {
+                setShowFriendsModal(false);
+                onNavigateToFriendProfile?.(friendUserId, { focus: "paired" });
+              }}
+              onAvatarPress={(friendUserId) => {
+                setShowFriendsModal(false);
+                onNavigateToFriendProfile?.(friendUserId);
+              }}
+              onMessage={(friend) => {
+                setShowFriendsModal(false);
+                handlePickFriend(friend);
+              }}
+              onOpenFriendActions={(friend) => {
+                // ORCH-0987 unify: close the friends modal, then present the shared
+                // FriendActionsSheet after the dismiss settles. Presenting it in the
+                // same tick the friends modal dismisses freezes iOS (present-during-
+                // dismiss). The shared sheet owns every friend action (single owner).
+                setShowFriendsModal(false);
+                setTimeout(() => { setActionsFriend(friend); setActionsSheetVisible(true); }, 450);
+              }}
+              blockedCount={blockedUsers.length}
+              onOpenBlocked={() => setShowBlockedView(true)}
+            />
+          ) : null}
+          {friendsModalTab === "requests" ? (
+            <RequestsView
+              received={receivedRows}
+              sent={sentRows}
+              loading={friendsLoading || requestsLoading}
+              busyKey={requestBusyKey}
+              onAccept={(row) => void handleAcceptReceived(row)}
+              onDecline={(row) => void handleDeclineReceived(row)}
+              onCancelSent={(row) => void handleCancelSent(row)}
+            />
+          ) : null}
         </View>
       </BaseBottomSheet>
 
@@ -4060,6 +4066,36 @@ function ConnectionsPageRefactored({
         selectedCode={addFriendCountry.code}
         onSelect={handleAddFriendCountrySelect}
         onClose={() => setAddFriendPickerOpen(false)}
+      />
+
+      {/* Issue #4114 Wave 2b — the one Add a friend sheet. Same ORCH-1371
+          pattern as the friends sheet: it drops while the sibling picker above
+          is up (`visible` gated on addFriendPickerOpen) and the number, country
+          and picker flag stay here, so they survive the drop. */}
+      <AddFriendSheet
+        visible={showAddFriendSheet && !addFriendPickerOpen}
+        onSheetClose={handleAddFriendSheetClose}
+        onDismiss={closeAddFriendSheet}
+        currentUserId={user?.id || ""}
+        selectedCountry={addFriendCountry}
+        phoneNumber={addFriendPhone}
+        onPhoneNumberChange={setAddFriendPhone}
+        onOpenCountryPicker={() => setAddFriendPickerOpen(true)}
+        pendingUserIds={pendingPairUserIds}
+        pairingAtLimit={pairTile.atLimit}
+        onMessageFriend={(friendUserId) => {
+          const friend = dbFriends.find((f) => friendUserIdOf(f, user?.id ?? "") === friendUserId);
+          setShowAddFriendSheet(false);
+          setShowFriendsModal(false);
+          if (friend) void handlePickFriend(friend);
+        }}
+        onSeePlus={() => {
+          setShowAddFriendSheet(false);
+          requestAnimationFrame(() => openPairingPaywall());
+        }}
+        onSent={() => {
+          void loadFriendRequests();
+        }}
       />
 
       <ReportUserModal
@@ -4111,10 +4147,9 @@ function ConnectionsPageRefactored({
           requestAnimationFrame(() => setShowPaywall(true));
         }}
         onAddFriend={() => {
-          // [TRANSITIONAL] Wave 2b replaces PairRequestModal with the one
-          // Add a friend flow — exit: #4114 Wave 2b.
+          // Issue #4114 Wave 2b: the one Add a friend flow (add = pair).
           setShowNewMessageSheet(false);
-          requestAnimationFrame(() => setShowPairRequestModal(true));
+          requestAnimationFrame(() => openAddFriendSheet());
         }}
       />
 
@@ -4176,12 +4211,19 @@ function ConnectionsPageRefactored({
         />
       ) : null}
 
+      {/* The paired section's + tile: pair with a friend you already have.
+          Issue #4114: one confirmation (this toast) — the modal no longer also
+          alerts — and the paywall on the pairing limit. */}
       <PairRequestModal
         visible={showPairRequestModal}
         onClose={() => setShowPairRequestModal(false)}
         onPairRequestSent={() => {
           setShowPairRequestModal(false);
           showToast({ message: t('connections:pair_request_sent'), type: 'info' });
+        }}
+        onPairingLimitReached={() => {
+          setShowPairRequestModal(false);
+          requestAnimationFrame(() => openPairingPaywall());
         }}
       />
 
@@ -4196,6 +4238,10 @@ function ConnectionsPageRefactored({
           setShowIncomingPairRequest(null);
         }}
         onClose={() => setShowIncomingPairRequest(null)}
+        onPairingLimitReached={() => {
+          setShowIncomingPairRequest(null);
+          requestAnimationFrame(() => openPairingPaywall());
+        }}
       />
 
       {/* ORCH-0666: AddToBoardModal must be mounted on the default-render branch
@@ -4521,68 +4567,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   // ── Friends sheet (Wave 2b redesigns these) ──────
-  // ── Modal empty state (ORCH-0435) ──────
-  modalEmptyState: {
-    paddingVertical: 24,
-    alignItems: "center",
-    marginHorizontal: 16,
-  },
-  modalEmptyText: {
-    fontSize: 14,
-    color: "#9ca3af",
-    marginTop: 8,
-  },
-  // ── Friend list divider (ORCH-0435) ──────
-  friendListDivider: {
-    height: 1,
-    backgroundColor: "#e5e7eb",
-    marginVertical: 12,
-    marginHorizontal: 16,
-  },
-  // ── Sent request rows (ORCH-0435) ──────
-  sentRequestRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  sentRequestAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#eb7825",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  sentRequestAvatarText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  sentRequestName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  sentRequestType: {
-    fontSize: 12,
-    color: "#9ca3af",
-    marginTop: 2,
-  },
-  sentCancelBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#f9fafb",
-  },
-  sentCancelText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#6b7280",
-  },
   // ── Chat list ─────────────────────────────
   chatListContent: {
     paddingBottom: 16,
@@ -4590,72 +4574,92 @@ const styles = StyleSheet.create({
   // ── Bottom Sheet (Friends modal) ──────────────────────────
   // META-ORCH-0991 Wave C: the scrim/flex-end card/hand-rolled handle styles
   // (sheetOverlay, sheetContainer, sheetHandle) are owned by BaseBottomSheet now.
-  friendsSheetHeaderBlock: {
-    paddingTop: 4,
+  // Issue #4114 Wave 2b — the dark friends sheet (design v6: sheet #17191e,
+  // 17/700 title, Done / Add, a two-item segmented control).
+  friendsSheetBackground: {
+    backgroundColor: glass.discover.friendsSheet.sheetBg,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
   },
-  sheetHeader: {
+  friendsSheetHeaderBlock: {
+    paddingHorizontal: 14,
+    paddingBottom: 6,
+  },
+  friendsSheetTitleRow: {
+    height: 44,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
+    paddingHorizontal: 2,
+    marginBottom: 6,
   },
-  sheetTitle: {
-    fontSize: 18,
+  friendsSheetSide: {
+    width: 72,
+  },
+  friendsSheetSideRight: {
+    alignItems: "flex-end",
+  },
+  friendsSheetDone: {
+    fontSize: 15,
+    color: tokens.dim,
+  },
+  friendsSheetAdd: {
+    fontSize: 15,
     fontWeight: "600",
-    color: "#111827",
+    color: tokens.accent,
+  },
+  friendsSheetTitle: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 17,
+    fontWeight: "700",
+    color: tokens.ink,
+  },
+  friendsSegment: {
+    flexDirection: "row",
+    padding: 3,
+    borderRadius: 11,
+    backgroundColor: glass.discover.friendsSheet.segmentBg,
+  },
+  friendsSegmentItem: {
+    flex: 1,
+    minHeight: 32,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  friendsSegmentItemActive: {
+    backgroundColor: glass.discover.friendsSheet.segmentActiveBg,
+  },
+  friendsSegmentText: {
+    fontSize: 13.5,
+    fontWeight: "600",
+    color: tokens.dim,
+  },
+  friendsSegmentTextActive: {
+    color: tokens.ink,
+  },
+  friendsSegmentBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    backgroundColor: tokens.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  friendsSegmentBadgeText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "700",
   },
   sheetBodyInner: {
     flex: 1,
   },
   sheetBodyContent: {
-    paddingTop: 8,
+    paddingTop: 4,
     paddingBottom: 24,
-  },
-  // ── Tab bar (Friends modal) ────────────
-  tabBar: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-    marginBottom: 12,
-    marginHorizontal: 16,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-  },
-  tabActive: {
-    borderBottomColor: "#eb7825",
-  },
-  tabText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#9ca3af",
-  },
-  tabTextActive: {
-    color: "#eb7825",
-  },
-  tabBadge: {
-    backgroundColor: "#ef4444",
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 6,
-  },
-  tabBadgeText: {
-    color: "#ffffff",
-    fontSize: 11,
-    fontWeight: "700",
   },
 });
 

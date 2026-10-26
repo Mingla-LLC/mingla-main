@@ -42,15 +42,57 @@ export interface PairRequest {
 }
 
 export interface SendPairRequestResponse {
-  success: boolean;
+  success?: boolean;
   tier: 1 | 2 | 3;
-  requestId?: string;
+  requestId?: string | null;
   inviteId?: string;
-  message: string;
+  friendRequestId?: string | null;
+  message?: string;
   pillState:
     | "pending_active"
     | "greyed_waiting_friend"
-    | "greyed_waiting_signup";
+    | "greyed_waiting_signup"
+    | null;
+  /** Issue #4114 (D16): the friend request went without the pair (free limit). */
+  friendOnly?: boolean;
+  pairingLimitReached?: boolean;
+  /** Issue #4114: Tier 3 only — did the invite text go out? */
+  smsStatus?: "sent" | "failed";
+  /** Issue #4114: Tier 3 only — the OneLink for the share-sheet fallback. */
+  inviteLink?: string;
+}
+
+/**
+ * Issue #4114: a hidden pair request that rides on an incoming friend request
+ * (from "Add a friend"), so the Requests tab can show ONE combined row.
+ */
+export interface HiddenIncomingPairRequest {
+  id: string;
+  senderId: string;
+  gatedByFriendRequestId: string | null;
+  pendingPhoneE164: string | null;
+}
+
+/**
+ * Issue #4114: the accept-path limit error, keeping WHO is at the limit so the
+ * app opens the paywall only when it is the person tapping Accept. The message
+ * stays the bare 'pairing_limit_reached' token every caller already checks.
+ */
+export class PairingLimitError extends Error {
+  readonly limitedUserId: string | null;
+  constructor(limitedUserId: string | null) {
+    super("pairing_limit_reached");
+    this.name = "PairingLimitError";
+    this.limitedUserId = limitedUserId;
+  }
+}
+
+const LIMIT_USER_RE = /^pairing_limit_reached:\s*([0-9a-f-]{36})/i;
+
+/** The user id named in the accept-path limit error, if any (pure). */
+export function parsePairingLimitUserId(message: string | null | undefined): string | null {
+  const match = LIMIT_USER_RE.exec(message ?? "");
+  return match ? match[1].toLowerCase() : null;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -323,6 +365,27 @@ export async function fetchIncomingPairRequests(userId: string): Promise<PairReq
 }
 
 /**
+ * Issue #4114: pending pair requests to me that are still hidden behind a
+ * friend request (RLS lets the receiver read them).
+ */
+export async function fetchIncomingHiddenPairRequests(userId: string): Promise<HiddenIncomingPairRequest[]> {
+  const { data, error } = await supabase
+    .from("pair_requests")
+    .select("id, sender_id, gated_by_friend_request_id, pending_phone_e164")
+    .eq("receiver_id", userId)
+    .eq("status", "pending")
+    .eq("visibility", "hidden_until_friend");
+
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    senderId: row.sender_id,
+    gatedByFriendRequestId: row.gated_by_friend_request_id ?? null,
+    pendingPhoneE164: row.pending_phone_e164 ?? null,
+  }));
+}
+
+/**
  * Send pair request (calls edge function via trackedInvoke).
  */
 export async function sendPairRequest(params: {
@@ -365,7 +428,7 @@ export async function acceptPairRequest(
     // the bare 'pairing_limit_reached' token so callers key on the SAME string
     // the send path uses (uniform paywall handling).
     if (error.message?.startsWith("pairing_limit_reached")) {
-      throw new Error("pairing_limit_reached");
+      throw new PairingLimitError(parsePairingLimitUserId(error.message));
     }
     throw new Error(error.message);
   }
