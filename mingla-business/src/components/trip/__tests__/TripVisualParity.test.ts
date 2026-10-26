@@ -77,7 +77,11 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
       expect(SRC).toContain("autosaveStateText");
       expect(SRC).toContain('"Saving…"');
       expect(SRC).toContain('"Saved"');
-      expect(SRC).toContain('"Unsaved changes — retrying"');
+      // Issue #3801 — nothing retries on its own, so the header no longer
+      // claims it does; a failed save and a conflict each say what is true.
+      expect(SRC).not.toContain("retrying");
+      expect(SRC).toContain('"Not saved — your changes are kept here"');
+      expect(SRC).toContain('"Not saved — this trip changed somewhere else"');
     });
 
     it("SC-09: Publish ConfirmDialog with 'Publish trip?' title before mutation", () => {

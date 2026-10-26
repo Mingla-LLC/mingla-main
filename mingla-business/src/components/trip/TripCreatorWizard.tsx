@@ -1823,7 +1823,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
             surfaceRevisionConflict();
             return;
           }
-          // Otherwise silent — the header flagged the failure; exit anyway.
+          // Otherwise silent — banner already flagged the failure; exit anyway.
         }
         onExit();
       })();
@@ -1838,10 +1838,10 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     trip,
     onDiscardTrip,
     onExit,
-    autosaveCurrentStep,
     saveQueue,
     surfaceRevisionConflict,
     waitForSaveInFlight,
+    autosaveCurrentStep,
   ]);
 
   const handleCloseDiscardDialog = useCallback((): void => {
@@ -2150,8 +2150,8 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     : STEP_SUBTITLES[step];
 
   // Autosave state copy for subtitle row.
-  // Issue #3801 — honest: nothing retries on its own, so the header never says
-  // "retrying". A failed save waits for the host's next Continue, Back or
+  // Issue #3801 — honest: nothing retries on its own, so the header never
+  // claims a retry. A failed save waits for the host's next Continue, Back or
   // Close; a conflict waits for Reload.
   const autosaveStateText = useMemo<string>(() => {
     if (revisionConflict) return "Not saved — this trip changed somewhere else";
