@@ -15,9 +15,9 @@ import { localReviewsService } from "../localReviewsService";
 // Local journeys. The assertions intentionally protect user-visible outcomes,
 // not component implementation details.
 const root = process.cwd();
-const read = (relative: string): string => fs.readFileSync(path.join(root, relative), "utf8");
+const read = (relative: string): string =>
+  fs.readFileSync(path.join(root, relative), "utf8");
 
-const hub = read("app/creator/hub.tsx");
 const roster = read("app/brand/[id]/creators/roster.tsx");
 const creatorService = read("src/services/creatorGigsService.ts");
 const creatorRosterService = read("src/services/creatorRosterService.ts");
@@ -25,13 +25,11 @@ const localManager = read("src/components/venue/LocalReviewsManager.tsx");
 const localService = read("src/services/localReviewsService.ts");
 
 describe("issue #3872 — completed Creator and Local Host journeys", () => {
-  test("creators can filter and save privacy-safe gig cards", () => {
-    for (const copy of ["All formats", "Every city", "Any budget", "Next 30 days", "Saved"]) {
-      expect(hub).toContain(copy);
-    }
-    expect(hub).toContain("mingla.creator.savedGigs");
-    expect(hub).toContain("creatorGigsService.board");
-    expect(creatorService).toContain("creator_gig_board");
+  test("the creator side lives in Explorer only (decision 1)", () => {
+    expect(fs.existsSync(path.join(root, "app/creator"))).toBe(false);
+    expect(creatorService).not.toContain("creator_gig_board");
+    expect(creatorService).not.toContain("gig_interest_send");
+    expect(read("app/+native-intent.tsx")).not.toMatch(/^\s*"creator",$/m);
   });
 
   test("Hosts can maintain their creator roster and link tracked invitations", () => {

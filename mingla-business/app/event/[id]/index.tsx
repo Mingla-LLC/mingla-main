@@ -153,6 +153,28 @@ export default function EventDetailScreen(): React.ReactElement {
     currentBrandRole.role !== null &&
     !isScannerOnlyRank(currentBrandRole.rank);
 
+  // #3872 — the Promote hub entry shows only for brands in the creator-gigs
+  // or referrals rollout (same rank gate as the brand page rows). Loaded
+  // lazily so the event route does not carry the program services.
+  const [promoteEnabled, setPromoteEnabled] = useState(false);
+  const promoteBrandId = brand?.id ?? null;
+  useEffect(() => {
+    if (promoteBrandId === null || currentBrandRole.rank < 20) {
+      setPromoteEnabled(false);
+      return;
+    }
+    let active = true;
+    void Promise.all([
+      import("../../../src/services/creatorGigsService").then((mod) => mod.fetchCreatorGigsAccess(promoteBrandId)).catch(() => false),
+      import("../../../src/services/referralService").then((mod) => mod.fetchReferralAccess(promoteBrandId)).catch(() => false),
+    ]).then(([creators, referrals]) => {
+      if (active) setPromoteEnabled(creators || referrals);
+    });
+    return () => {
+      active = false;
+    };
+  }, [promoteBrandId, currentBrandRole.rank]);
+
   // ----- Defensive: draft → redirect to edit ---------------------
   useEffect(() => {
     if (id === null) return;
@@ -1157,6 +1179,10 @@ export default function EventDetailScreen(): React.ReactElement {
           }}
           onTransitionalToast={showToast}
           canEditEvent={canEditEvent}
+          onPromote={promoteEnabled ? () => {
+            setManageMenuVisible(false);
+            router.push(`/brand/${brand.id}/promote?kind=event&listingId=${event.id}` as never);
+          } : undefined}
           canUseLifecycleActions
         />
       ) : null}

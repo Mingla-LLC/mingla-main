@@ -92,6 +92,11 @@ export interface EventManageMenuProps {
    */
   canEditEvent?: boolean;
   canUseLifecycleActions?: boolean;
+  /**
+   * #3872 — opens this listing's Promote hub (creators, referrals, tracking
+   * links). Parent passes it only when the brand has the program rollout.
+   */
+  onPromote?: () => void;
 }
 
 type ActionTone = "default" | "accent" | "warn" | "danger";
@@ -122,6 +127,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
   onTransitionalToast,
   canEditEvent = true,
   canUseLifecycleActions = true,
+  onPromote,
 }) => {
   const isRsvp = isRsvpManageTarget(event);
 
@@ -184,6 +190,20 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
         onPress: () => {
           onClose();
           onOpenOrders();
+        },
+      });
+    }
+
+    // #3872 — Promote hub (creators, referrals, tracking links), non-draft.
+    if (status !== "draft" && onPromote !== undefined) {
+      list.push({
+        key: "promote",
+        icon: "rocket",
+        label: "Promote",
+        tone: "default",
+        onPress: () => {
+          onClose();
+          onPromote();
         },
       });
     }
@@ -388,6 +408,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
     onTransitionalToast,
     canEditEvent,
     canUseLifecycleActions,
+    onPromote,
   ]);
 
   // Snap calculation — content fit per DEC-084 numeric snap support.
