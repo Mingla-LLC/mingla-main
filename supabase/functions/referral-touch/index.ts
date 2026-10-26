@@ -37,6 +37,8 @@ export interface ReferralTouchDeps {
     "accepted" | "limited"
   >;
   insertTouch: (row: Record<string, unknown>) => Promise<string>;
+  /** Project anon/publishable keys: a bearer equal to one means "no user". */
+  anonKeys?: string[];
 }
 
 const UUID =
@@ -91,6 +93,33 @@ export async function referralHmacHex(
     .join("");
 }
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+    const value: unknown = JSON.parse(atob(padded));
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The public /r/ page calls this function with the project anon key as its
+ * bearer (supabase-js always sends one). That is a guest, not a user token:
+ * resolving it as a session failed with invalid_token, so no guest touch was
+ * ever recorded. Treating it as "no user" can only lower privileges.
+ */
+export function isAnonymousBearer(token: string, anonKeys: string[]): boolean {
+  if (anonKeys.some((key) => key.length > 0 && key === token)) return true;
+  if (token.startsWith("sb_publishable_")) return true;
+  return decodeJwtPayload(token)?.role === "anon";
+}
+
 function clientIp(req: Request): string | null {
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0]?.trim() || null;
@@ -132,6 +161,7 @@ function defaultDeps(): ReferralTouchDeps {
     // Reuse the governed platform HMAC secret with explicit domain prefixes
     // (device:/ip:) instead of adding a 91st production secret for R2.
     pepper: Deno.env.get("app.qr_token_pepper") ?? "",
+    anonKeys: [Deno.env.get("SUPABASE_ANON_KEY") ?? ""],
     now: () => new Date(),
     resolveUser: async (token) => {
       const { data, error } = await client.auth.getUser(token);
@@ -296,7 +326,9 @@ export async function handleReferralTouch(
 
   const authToken = bearer(req);
   let userId: string | null = null;
-  if (authToken !== null) {
+  if (
+    authToken !== null && !isAnonymousBearer(authToken, deps.anonKeys ?? [])
+  ) {
     userId = await deps.resolveUser(authToken);
     if (userId === null) return json({ error: "invalid_token" }, 401);
   }

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/referral-touch/__tests__/issue_3872_referral_touch_anon_key.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3872-w1-05-referral-touch-anon-key",
+  "profile": "deno-2-unit"
+}

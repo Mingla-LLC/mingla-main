@@ -25,6 +25,40 @@ serve(async (req: Request) => {
     "gig_notification_tick",
     { p_now: now.toISOString() },
   );
+  // Offers whose payment never completed are retired first (no money moved),
+  // so the refund worker below never sees them.
+  const { data: pendingSweep, error: pendingSweepError } = await db.rpc(
+    "gig_pending_offer_sweep",
+    { p_now: now.toISOString() },
+  );
+  const callWorker = async (name: string, payload: Record<string, unknown>) => {
+    const response = await fetch(
+      `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/${name}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${
+            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+          }`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+    return { ok: response.ok, result: await response.json().catch(() => null) };
+  };
+  // Lower accepted counter-offers owe the host the difference.
+  const counterRefunds: Array<Record<string, unknown>> = [];
+  const { data: pendingRefunds } = await db.from("gig_hold_adjustments")
+    .select("contract_id").eq("kind", "refund").eq("status", "pending")
+    .limit(100);
+  for (const row of pendingRefunds ?? []) {
+    const outcome = await callWorker("gig-refund", {
+      contract_id: row.contract_id,
+      branch: "counter_lower",
+    });
+    counterRefunds.push({ id: row.contract_id, ...outcome });
+  }
   const { data, error } = await db.from("gig_contracts").select(
     "id,state,state_deadline_at",
   ).not("state_deadline_at", "is", null).lte(
@@ -47,32 +81,20 @@ serve(async (req: Request) => {
       const functionName = decision.action === "release"
         ? "gig-release"
         : "gig-refund";
-      const response = await fetch(
-        `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/${functionName}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${
-              Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-            }`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(
-            decision.action === "release" ? { contract_id: row.id } : {
-              contract_id: row.id,
-              branch: decision.refundBranch,
-            },
-          ),
+      const { ok: workerOk, result: providerResult } = await callWorker(
+        functionName,
+        decision.action === "release" ? { contract_id: row.id } : {
+          contract_id: row.id,
+          branch: decision.refundBranch,
         },
       );
-      const providerResult = await response.json().catch(() => null);
       outcomes.push({
         id: row.id,
         state: row.state,
         action: decision.action,
         dedupe,
         worker: functionName,
-        ok: response.ok,
+        ok: workerOk,
         result: providerResult,
       });
       continue;
@@ -100,6 +122,9 @@ serve(async (req: Request) => {
     scanned: data?.length ?? 0,
     outcomes,
     notifications: notificationTick ?? null,
+    pendingOffers: pendingSweep ?? null,
+    pendingOfferError: pendingSweepError?.message ?? null,
+    counterRefunds,
     notificationError: notificationError?.message ?? null,
   });
 });

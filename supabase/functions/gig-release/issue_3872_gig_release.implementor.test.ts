@@ -15,3 +15,7 @@ Deno.test("#3872 Paystack release reuses the shared payee ledger", () => {
   assertStringIncludes(source, 'payee.paystack_status !== "verified"');
   assertStringIncludes(source, "ledger:");
 });
+Deno.test("#3872 release splits the fee across the base charge and counter top-ups", () => {
+  assertStringIncludes(source, "allocateAcrossSources");
+  assertStringIncludes(source, "gig_release:${contractId}:${part.source.id}");
+});

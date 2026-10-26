@@ -1,6 +1,6 @@
 export type TimerDecision = {
   action: string;
-  refundBranch?: "declined_or_expired";
+  refundBranch?: "declined_or_expired" | "upload_missed";
   analytics: string;
 } | null;
 export function gigTimerDecision(
@@ -23,6 +23,13 @@ export function gigTimerDecision(
       analytics: "gig_expired",
     },
     script_sent: { action: "auto_lock", analytics: "gig_auto_approved" },
+    // The upload is due two days before post_by; missing it cancels the gig
+    // with a full host refund (gig_refund_record moves the state).
+    script_locked: {
+      action: "cancel_missed_upload",
+      refundBranch: "upload_missed",
+      analytics: "gig_upload_missed",
+    },
     delivered: { action: "auto_approve", analytics: "gig_auto_approved" },
     posts_verified: { action: "release", analytics: "gig_released" },
     released: { action: "day30", analytics: "gig_day30" },
