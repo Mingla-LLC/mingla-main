@@ -25,9 +25,11 @@ const privacyReaderSource = () => [
 ].join("");
 
 // The bar's stylesheet. Byte-for-byte the same rules as the React owner
-// (src/analytics/ConsentBanner.web.tsx BAR_CSS); a regression test pins it.
+// (src/analytics/ConsentBanner.web.tsx BAR_CSS);
+// src/analytics/__tests__/privacyBarCssParity.issue2331.test.ts pins it.
 const PRIVACY_BAR_CSS_LINES = [
   "#root{box-sizing:border-box;padding-bottom:var(--mingla-privacy-inset,0px)}",
+  "html[data-mingla-privacy-bar=\"shown\"] #root{overflow-y:auto}",
   ".mpb{position:fixed;left:0;right:0;bottom:0;z-index:9000;box-sizing:border-box;margin:0;background:#171a20;color:#fff;border-top:1px solid rgba(255,255,255,.14);padding:4px max(12px,env(safe-area-inset-right,0px)) calc(4px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));max-height:60vh;max-height:60dvh;overflow-y:auto;overscroll-behavior:contain;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}",
   ".mpb *{box-sizing:border-box}",
   ".mpb[hidden],.mpb [hidden]{display:none!important}",
@@ -96,7 +98,7 @@ const privacyBarRuntimeSource = () => [
   "function __minglaPrivacyBar(){var bar=document.querySelector(\"[data-mingla-ssr-privacy-bar]\");if(!bar)return;",
   "var panel=bar.querySelector(\".mpb-panel\"),toggle=bar.querySelector('[data-mpb-act=\"toggle\"]'),ok=bar.querySelector('[data-mpb-act=\"ok\"]'),label=bar.querySelector(\"[data-mpb-label]\"),chev=bar.querySelector(\"[data-mpb-chev]\"),collapsedText=bar.querySelector(\"[data-mpb-collapsed]\"),expandedText=bar.querySelector(\"[data-mpb-expanded]\"),reopened=false;",
   "function sw(k){return bar.querySelector('[data-mpb-switch=\"'+k+'\"]');}",
-  "function inset(){document.documentElement.style.setProperty(\"--mingla-privacy-inset\",(bar.isConnected&&!bar.hidden?Math.round(bar.getBoundingClientRect().height):0)+\"px\");}",
+  "function inset(){var h=bar.isConnected&&!bar.hidden?Math.round(bar.getBoundingClientRect().height):0,d=document.documentElement;d.style.setProperty(\"--mingla-privacy-inset\",h+\"px\");if(typeof d.setAttribute===\"function\"){if(h>0)d.setAttribute(\"data-mingla-privacy-bar\",\"shown\");else d.removeAttribute(\"data-mingla-privacy-bar\");}}",
   "function expand(open){bar.setAttribute(\"data-expanded\",String(open));panel.hidden=!open;ok.hidden=open;collapsedText.hidden=open;expandedText.hidden=!open;toggle.setAttribute(\"aria-expanded\",String(open));toggle.setAttribute(\"aria-label\",open?\"Close privacy choices\":\"Privacy options\");label.textContent=open?\"Close\":\"Options\";label.className=open?\"\":\"mpb-options-label\";chev.className=open?\"mpb-chev\":\"mpb-chev mpb-chev-up\";",
   "if(open){sw(\"analytics\").checked=__minglaPrivacyOn(\"analytics\");sw(\"ads\").checked=__minglaPrivacyOn(\"ads\");}inset();}",
   "function show(on){bar.hidden=!on;if(!on)expand(false);inset();}",
