@@ -15,6 +15,10 @@ import {
   Dimensions,
   ActivityIndicator,
   useWindowDimensions,
+  BackHandler,
+  type ListRenderItemInfo,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import { Icon } from "./ui/Icon";
 import * as ImagePicker from "expo-image-picker";
@@ -58,6 +62,23 @@ import { MentionPopover } from "./board/MentionPopover";
 import { CardTagPopover } from "./board/CardTagPopover";
 import type { Participant } from "./board/ParticipantAvatars";
 import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
+import {
+  aggregateReactions,
+  dayLabelKind,
+  firstUnreadMessageId,
+  resolveChatBack,
+  shouldShowSenderName,
+  typingLabel,
+  COMPOSER_INPUT_MAX_HEIGHT,
+  COMPOSER_LINE_HEIGHT,
+  COMPOSER_MIN_HEIGHT,
+  type ChatBackLayer,
+  type GroupPosition,
+  type ReactionRow,
+  type ReactionSummary,
+} from "../utils/threadModel";
+import { TypingIndicator } from "./chat/TypingIndicator";
+import { useComposerLayout } from "../hooks/useComposerLayout";
 import { requestGalleryPermission } from "../utils/mediaLibraryPermission";
 import { DirectMessage, messagingService, CardPayload, MentionEntry, CardTagEntry, isContentShareCardPayload, type LegacyCardPayload } from "../services/messagingService";
 import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
@@ -100,8 +121,6 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const INPUT_AREA_VERTICAL_PADDING = 6;
 /** ORCH-0600: breathing gap between floating glass input capsule and the bottom nav. */
 const INPUT_CAPSULE_MARGIN_BOTTOM = 14;
-/** ORCH-0600: intrinsic height of the glass input capsule (padding + 40pt controls). */
-const INPUT_CAPSULE_HEIGHT = 56;
 /** Bottom read-only broadcast pill height; used to keep chat bubbles and sheets above it. */
 // META-ORCH-0991 Wave B Batch 5: fixed compact snap for the 1:1 chat
 // more-options action menu (was a flex-end RN <Modal>).
@@ -113,6 +132,33 @@ const EVENT_AUDIENCE_SNAP = ["70%"] as const;
 /** Issue #4114 Wave 3: wait for the menu sheet to leave before presenting the next one. */
 const MENU_PRESENT_AFTER_DISMISS_MS = 320;
 const MUTE_BUSY_IDS: ReadonlySet<FriendMenuItemId> = new Set<FriendMenuItemId>(["mute"]);
+
+interface ContextMenuState {
+  visible: boolean;
+  messageId: string;
+  content: string;
+  isMe: boolean;
+  top: number;
+  type: string;
+  isSent: boolean;
+}
+
+const CLOSED_CONTEXT_MENU: ContextMenuState = {
+  visible: false,
+  messageId: '',
+  content: '',
+  isMe: false,
+  top: 0,
+  type: 'text',
+  isSent: false,
+};
+
+/** Issue #4114 Wave 3: show the scroll-to-latest button past this offset. */
+const SCROLL_TO_LATEST_THRESHOLD = 600;
+
+/** Issue #4114 Wave 3: list padding above a no-composer notice banner. */
+const NOTICE_BANNER_LIST_GAP = 12;
+const THREAD_VISIBLE_CONTENT_POSITION = { minIndexForVisible: 0, autoscrollToTopThreshold: 80 } as const;
 
 const BROADCAST_COMPOSER_NOTICE_HEIGHT = 56;
 const BROADCAST_COMPOSER_NOTICE_BOTTOM_GAP = 14;
@@ -140,7 +186,36 @@ interface Message {
   marketingCampaignId?: string | null;
   isSystem?: boolean;
   systemPayload?: CollabDeadEndBannerPayload;  // ORCH-1058B
+  /** Issue #4114 Wave 3: direct_message_reactions rows for this message. */
+  reactions?: ReactionRow[];
+  /** Issue #4114 Wave 3: unsent — hidden from the thread. */
+  unsent?: boolean;
 }
+
+/** Issue #4114 Wave 3: one prepared row of the thread (built once per message change). */
+interface ThreadRow {
+  key: string;
+  message: Message;
+  groupPosition: GroupPosition;
+  senderName: string;
+  bubble: React.ComponentProps<typeof MessageBubble>["message"];
+  showSenderName: boolean;
+  reactions: ReactionSummary[];
+  myReactions: string[];
+  replyTo?: {
+    senderName: string;
+    content: string;
+    imageUrl?: string;
+    isDeleted?: boolean;
+    messageId?: string;
+  };
+  isRead: boolean;
+  dayLabel: string | null;
+  showNewDivider: boolean;
+}
+
+const EMPTY_EMOJIS: string[] = [];
+const threadRowKey = (row: ThreadRow): string => row.key;
 
 interface Friend {
   id: string;
@@ -217,6 +292,17 @@ interface MessageInterfaceProps {
   onToggleMute?: () => Promise<boolean>;
   /** Issue #4114 Wave 3: the member left a group that has no session. */
   onGroupConversationLeft?: () => void;
+  /** Issue #4114 Wave 3: toggle your reaction; awaited, failures roll back and toast. */
+  onToggleReaction?: (messageId: string, emoji: string) => Promise<void>;
+  /** Issue #4114 Wave 3: unsend your own message (after the confirm here). */
+  onUnsendMessage?: (messageId: string) => Promise<boolean>;
+  /** Issue #4114 Wave 3: report someone else's message; settles with the real outcome. */
+  onReportMessage?: (
+    message: { id: string; senderId: string; senderName: string; content: string },
+    onSettled?: (reported: boolean) => void,
+  ) => void;
+  /** Issue #4114 Wave 3: the first read of this chat has not landed yet. */
+  isLoadingMessages?: boolean;
   accountPreferences?: any;
   userPreferences?: any;
   savedCards?: any[];
@@ -291,6 +377,10 @@ export default function MessageInterface({
   isMuted = false,
   onToggleMute,
   onGroupConversationLeft,
+  onToggleReaction,
+  onUnsendMessage,
+  onReportMessage,
+  isLoadingMessages = false,
   onSessionNameUpdated,
   onGroupSessionExited,
   onGroupSessionDeleted,
@@ -567,6 +657,9 @@ export default function MessageInterface({
     // savedCardsQuery.data — no manual reset needed.
   }, [isOffline, router]);
 
+  // Issue #4114 Wave 3: the stable setter, so this handler (and the list's
+  // renderItem that passes it) does not change on every keystroke.
+  const { setDraftText } = chatController;
   const handleSystemTokenPress = useCallback((token: CollabSystemToken) => {
     if (!isCollabSessionGroupChat || !friend.sessionId) return;
 
@@ -596,10 +689,10 @@ export default function MessageInterface({
       participantsQuery.data?.find((participant) => participant.userId === token.userId)?.displayName ||
       headerParticipants.find((participant) => participant.id === token.userId)?.name ||
       'friend';
-    chatController.setDraftText(`@${participantName} ${token.text}`);
+    setDraftText(`@${participantName} ${token.text}`);
     setTimeout(() => inputRef.current?.focus?.(), 50);
   }, [
-    chatController,
+    setDraftText,
     currentUserId,
     friend.sessionId,
     headerParticipants,
@@ -667,13 +760,7 @@ export default function MessageInterface({
   }, [expandedCardFromChat, savedCardsQuery.data]);
 
   const [revealedTimestampId, setRevealedTimestampId] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<{
-    visible: boolean;
-    messageId: string;
-    content: string;
-    isMe: boolean;
-    top: number;
-  }>({ visible: false, messageId: '', content: '', isMe: false, top: 0 });
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(CLOSED_CONTEXT_MENU);
   const [replyingTo, setReplyingTo] = useState<{
     messageId: string;
     senderName: string;
@@ -696,6 +783,8 @@ export default function MessageInterface({
   const { keyboardHeight, isVisible: keyboardVisible, dismiss: dismissKeyboard } = useKeyboard({
     disableLayoutAnimation: true, // We use animated values instead
   });
+  // Issue #4114 Wave 3: the growing composer's measured height.
+  const { composerHeight, onComposerLayout } = useComposerLayout();
 
   // [REGRESSION GUARD] ORCH-0620 — Android keyboard handling relies on
   // `softwareKeyboardLayoutMode: "resize"` in app.json. Switching back to "pan"
@@ -746,11 +835,14 @@ export default function MessageInterface({
   // groupMessages returns chronological order (oldest first).
   // FlatList with inverted={true} renders data[0] at the BOTTOM,
   // so we reverse to put newest first → newest appears at bottom.
+  // Issue #4114 Wave 3: unsent messages are hidden (kept in the store so the
+  // merge never resurrects them from an older copy).
+  const visibleMessages = useMemo(() => messages.filter((message) => !message.unsent), [messages]);
   const groupedMessages = useMemo(() => {
-    if (!messages.length) return [];
-    const grouped = groupMessages(messages);
+    if (!visibleMessages.length) return [];
+    const grouped = groupMessages(visibleMessages);
     return [...grouped].reverse();
-  }, [messages]);
+  }, [visibleMessages]);
 
   // ── Presence-derived state for header ─────────────────────
   // presenceParticipants is Record<userId, { isOnline, lastSeenAt }>
@@ -1060,7 +1152,8 @@ export default function MessageInterface({
   };
 
   // Notification management
-  const showNotification = (
+  // Issue #4114 Wave 3: stable, so list callbacks that toast stay stable.
+  const showNotification = useCallback((
     title: string,
     message: string,
     type: "success" | "error" | "info" = "success"
@@ -1078,7 +1171,7 @@ export default function MessageInterface({
     setTimeout(() => {
       setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
     }, 3000);
-  };
+  }, []);
 
   const dismissNotification = (id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
@@ -1482,11 +1575,16 @@ export default function MessageInterface({
     !isUnfriended &&
     !isDeletedAccount &&
     !isBroadcastOnlyConsumerChannel;
+  // Issue #4114 Wave 3: the composer's MEASURED height (it grows to 5 lines,
+  // plus the reply bar), not the fixed 56pt capsule.
   const messageListBottomClearance = showComposer
-    ? finalInputBottom + INPUT_CAPSULE_HEIGHT + 8
+    ? finalInputBottom + composerHeight + 8
     : isBroadcastOnlyConsumerChannel
       ? broadcastComposerContentClearance
-      : bottomNavTotalHeight + 24;
+      : NOTICE_BANNER_LIST_GAP;
+  // Issue #4114 Wave 3: the blocked / unfriended / deleted banners sit above
+  // the floating bottom nav instead of behind it.
+  const noticeBannerBottomGap = bottomNavTotalHeight + 12 + ANDROID_NAV_OVERLAP_FIX;
   const channelLabel = friend.linkedEntityType === "trip" ? "Trip broadcast channel" : "Event broadcast channel";
   const channelDetail = isBroadcastOnlyConsumerChannel
     ? `Only ${friend.eventBrandName?.trim() || "the organiser"} can post updates here`
@@ -1539,6 +1637,409 @@ export default function MessageInterface({
     }
     setShowCollabDeckSheet(true);
   };
+
+  // ── Issue #4114 Wave 3: the thread ──────────────────────────
+  // The new-messages divider sits above the oldest message that was unread
+  // when the chat opened (captured once per chat, so it does not jump as the
+  // chat is marked read).
+  const [newDividerMessageId, setNewDividerMessageId] = useState<string | null>(null);
+  const dividerCapturedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!conversationId || dividerCapturedForRef.current === conversationId || visibleMessages.length === 0) return;
+    dividerCapturedForRef.current = conversationId;
+    setNewDividerMessageId(firstUnreadMessageId(visibleMessages));
+  }, [conversationId, visibleMessages]);
+
+  // Rows are prepared once per change to the messages (not per keystroke), so
+  // MessageBubble (memoised) gets the same props while you type.
+  const threadRows = useMemo<ThreadRow[]>(() => {
+    const now = new Date();
+    return groupedMessages.map((item, index) => {
+      const message = item.message;
+      const senderName = getMessageSenderName(message);
+      // Day separator — inverted list: rendered AFTER the message when the next
+      // item (older) is on a different day, or this is the last item. Visually
+      // this places the date header ABOVE that day's messages.
+      const currDate = new Date(message.timestamp).toDateString();
+      const nextItem = index < groupedMessages.length - 1 ? groupedMessages[index + 1] : null;
+      const showDaySeparator = !nextItem || currDate !== new Date(nextItem.message.timestamp).toDateString();
+      const kind = dayLabelKind(message.timestamp, now);
+      const dayLabel = !showDaySeparator
+        ? null
+        : kind === 'today'
+          ? t('chat:today')
+          : kind === 'yesterday'
+            ? t('chat:yesterday')
+            : new Date(message.timestamp).toLocaleDateString(i18n.language, { weekday: 'long', month: 'short', day: 'numeric' });
+      const reactions = aggregateReactions(message.reactions, currentUserId);
+      const ref = message.replyToId ? messageMap.get(message.replyToId) : undefined;
+      return {
+        key: message.clientId ?? message.id,
+        message,
+        groupPosition: item.groupPosition,
+        senderName,
+        bubble: {
+          id: message.id,
+          senderName,
+          content: message.content,
+          timestamp: message.timestamp,
+          type: message.type === 'system' ? 'text' : message.type,
+          fileUrl: message.fileUrl,
+          fileName: message.fileName,
+          fileSize: message.fileSize,
+          cardPayload: message.cardPayload,  // ORCH-0667
+          mentions: message.mentions,
+          cardTags: message.cardTags,
+          marketingCampaignId: message.marketingCampaignId,
+          isMe: message.isMe,
+          failed: message.failed,
+          isSystem: message.isSystem,
+          systemPayload: message.systemPayload,
+        },
+        showSenderName: shouldShowSenderName({
+          isGroupChat,
+          isMe: message.isMe,
+          isSystem: message.isSystem,
+          groupPosition: item.groupPosition,
+        }),
+        reactions,
+        myReactions: reactions.filter((reaction) => reaction.mine).map((reaction) => reaction.emoji),
+        replyTo: message.replyToId
+          ? ref
+            ? {
+                senderName: getMessageSenderName(ref),
+                content: ref.content,
+                imageUrl: ref.type === 'image' ? ref.fileUrl : undefined,
+                messageId: ref.id,
+              }
+            : { senderName: '', content: '', isDeleted: true, messageId: message.replyToId }
+          : undefined,
+        isRead: message.isMe && !message.id.startsWith("temp-") && (message.isRead === true),
+        dayLabel,
+        showNewDivider: message.id === newDividerMessageId,
+      };
+    });
+    // getMessageSenderName reads only the fields listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    groupedMessages,
+    messageMap,
+    currentUserId,
+    currentUserName,
+    isGroupChat,
+    isTripEventGroupChat,
+    friend.eventBrandName,
+    friend.eventBrandAccountId,
+    friend.name,
+    newDividerMessageId,
+    i18n.language,
+    t,
+  ]);
+  const threadRowsRef = useRef(threadRows);
+  threadRowsRef.current = threadRows;
+
+  const closeContextMenu = useCallback(() => setContextMenu(CLOSED_CONTEXT_MENU), []);
+
+  const startReply = useCallback((row: ThreadRow) => {
+    setReplyingTo({
+      messageId: row.message.id,
+      senderName: row.senderName,
+      content: row.message.content,
+      isMe: row.message.isMe,
+    });
+  }, []);
+
+  // Reactions: awaited, and a failure is never silent (ConnectionsPage rolls
+  // the pill back and toasts; anything thrown here toasts too).
+  const toggleReaction = useCallback(async (messageId: string, emoji: string): Promise<void> => {
+    if (!onToggleReaction) return;
+    try {
+      await onToggleReaction(messageId, emoji);
+    } catch (error) {
+      console.error('[MessageInterface] reaction failed', error);
+      showNotification(t('chat:reactionFailed'), '', 'error');
+    }
+  }, [onToggleReaction, showNotification, t]);
+
+  // Double-tap adds a heart; it never takes one away.
+  const handleDoubleTapHeart = useCallback((row: ThreadRow) => {
+    if (row.myReactions.includes('❤️')) return;
+    void toggleReaction(row.message.id, '❤️');
+  }, [toggleReaction]);
+
+  const handleBubblePress = useCallback((row: ThreadRow) => {
+    setRevealedTimestampId((prev) => (prev === row.message.id ? null : row.message.id));
+  }, []);
+
+  const handleBubbleLongPress = useCallback((row: ThreadRow, pageY: number) => {
+    setContextMenu({
+      visible: true,
+      messageId: row.message.id,
+      content: row.message.content,
+      isMe: row.message.isMe,
+      top: pageY,
+      type: row.message.type,
+      isSent: !row.message.id.startsWith('temp-') && !row.message.failed,
+    });
+  }, []);
+
+  const handleCardTagTap = useCallback((cardTag: CardTagEntry) => {
+    setExpandedCardFromChat(cardPayloadToExpandedCardData(cardTag.cardPayload));
+    setShowExpandedCardFromChat(true);
+  }, []);
+
+  // Reply quotes jump to the original when it is loaded.
+  const handleScrollToMessage = useCallback((messageId: string) => {
+    const index = threadRowsRef.current.findIndex((row) => row.message.id === messageId);
+    if (index < 0) {
+      showNotification(t('chat:replyOriginalNotLoaded'), '', 'info');
+      return;
+    }
+    flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+  }, [showNotification, t]);
+
+  const handleScrollToIndexFailed = useCallback((info: { index: number; averageItemLength: number }) => {
+    flatListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true });
+    setTimeout(() => {
+      if (info.index < threadRowsRef.current.length) {
+        flatListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.5 });
+      }
+    }, 250);
+  }, []);
+
+  // Scroll-to-latest: shown once you scroll away from the newest message;
+  // counts incoming messages that land meanwhile.
+  const [showScrollToLatest, setShowScrollToLatest] = useState(false);
+  const [unseenWhileScrolled, setUnseenWhileScrolled] = useState(0);
+  const showScrollToLatestRef = useRef(false);
+  const handleThreadScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const away = event.nativeEvent.contentOffset.y > SCROLL_TO_LATEST_THRESHOLD;
+    if (away === showScrollToLatestRef.current) return;
+    showScrollToLatestRef.current = away;
+    setShowScrollToLatest(away);
+    if (!away) setUnseenWhileScrolled(0);
+  }, []);
+  const newestMessageId = visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1].id : null;
+  const newestMessageIsMine = visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1].isMe : false;
+  const previousNewestRef = useRef<string | null>(newestMessageId);
+  useEffect(() => {
+    if (newestMessageId && newestMessageId !== previousNewestRef.current && showScrollToLatestRef.current && !newestMessageIsMine) {
+      setUnseenWhileScrolled((count) => count + 1);
+    }
+    previousNewestRef.current = newestMessageId;
+  }, [newestMessageId, newestMessageIsMine]);
+  const scrollToLatest = useCallback(() => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    setUnseenWhileScrolled(0);
+  }, []);
+
+  // Typing in a group: names of everyone typing, above the composer.
+  const groupTypingLabel = useMemo(() => {
+    if (!isGroupChat || !currentUserId) return null;
+    const names = typingUsers
+      .filter((uid) => uid !== currentUserId)
+      .map((uid) =>
+        participantsQuery.data?.find((participant) => participant.userId === uid)?.displayName ||
+        headerParticipants.find((participant) => participant.id === uid)?.name ||
+        t('chat:someone'),
+      )
+      .map((name) => cleanName(name).split(' ')[0]);
+    const label = typingLabel(names);
+    return label ? t(label.key, label.params) : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUserId, headerParticipants, isGroupChat, participantsQuery.data, t, typingUsers]);
+
+  const contextMenuMyReactions = useMemo(
+    () => threadRows.find((row) => row.message.id === contextMenu.messageId)?.myReactions ?? EMPTY_EMOJIS,
+    [contextMenu.messageId, threadRows],
+  );
+
+  const handleUnsendRequest = useCallback((messageId: string) => {
+    if (!onUnsendMessage) return;
+    setTimeout(() => {
+      Alert.alert(t('chat:unsendTitle'), t('chat:unsendBody'), [
+        { text: t('common:cancel'), style: 'cancel' },
+        {
+          text: t('chat:actionUnsend'),
+          style: 'destructive',
+          onPress: async () => {
+            const done = await onUnsendMessage(messageId);
+            if (done) showNotification(t('chat:unsentToast'), '', 'info');
+          },
+        },
+      ]);
+    }, MENU_PRESENT_AFTER_DISMISS_MS);
+  }, [onUnsendMessage, showNotification, t]);
+
+  const handleReportMessageRequest = useCallback((messageId: string) => {
+    const row = threadRowsRef.current.find((candidate) => candidate.message.id === messageId);
+    if (!row || !onReportMessage) return;
+    setTimeout(() => {
+      onReportMessage(
+        { id: row.message.id, senderId: row.message.senderId, senderName: row.senderName, content: row.message.content },
+        (reported) => {
+          if (reported) showNotification(t('chat:messageReported'), '', 'success');
+        },
+      );
+    }, MENU_PRESENT_AFTER_DISMISS_MS);
+  }, [onReportMessage, showNotification, t]);
+
+  // The list's renderItem — stable (it changes only when a timestamp is
+  // revealed or a handler's real inputs change), so typing never re-renders it.
+  const renderThreadRow = useCallback(({ item }: ListRenderItemInfo<ThreadRow>): React.ReactElement => {
+    const daySeparator = item.dayLabel ? (
+      <View style={styles.daySeparator}>
+        <View style={styles.daySeparatorLine} />
+        <Text style={styles.daySeparatorText}>{item.dayLabel}</Text>
+        <View style={styles.daySeparatorLine} />
+      </View>
+    ) : null;
+    // Inverted list: what renders after the message shows above it.
+    const newDivider = item.showNewDivider ? (
+      <View style={styles.newMessagesDivider} accessibilityRole="text" testID="chat-new-messages-divider">
+        <View style={styles.newMessagesDividerLine} />
+        <Text style={styles.newMessagesDividerText}>{t('chat:newMessagesDivider')}</Text>
+        <View style={styles.newMessagesDividerLine} />
+      </View>
+    ) : null;
+
+    if (item.message.isSystem) {
+      return (
+        <>
+          <MessageBubble
+            message={item.bubble}
+            onSystemTokenPress={handleSystemTokenPress}
+            isMe={item.message.isMe}
+            groupPosition={item.groupPosition}
+            showTimestamp={false}
+            isRead={false}
+          />
+          {newDivider}
+          {daySeparator}
+        </>
+      );
+    }
+
+    // (The two lines below keep their indentation: the ORCH-0945 gate slices
+    // the system branch above up to this exact text.)
+            return (
+            <>
+      <SwipeableMessage onReply={() => startReply(item)}>
+        <DoubleTapHeart onDoubleTap={() => handleDoubleTapHeart(item)}>
+          <TouchableOpacity
+            activeOpacity={1}
+            // Issue #4114: a failed bubble is tap-to-retry (whole bubble, so it
+            // also works for screen readers, which focus this wrapper).
+            accessibilityHint={item.message.failed && onRetryMessage ? t('chat:failedTapToRetry') : undefined}
+            onPress={() => {
+              if (item.message.failed && onRetryMessage) {
+                onRetryMessage(item.message.id);
+                return;
+              }
+              handleBubblePress(item);
+            }}
+            onLongPress={(e) => handleBubbleLongPress(item, e.nativeEvent.pageY)}
+            delayLongPress={500}
+          >
+            <MessageBubble
+              message={item.bubble}
+              onCardBubbleTap={handleCardBubbleTap}
+              onMentionTap={onViewProfile}
+              onCardTagTap={handleCardTagTap}
+              onSystemTokenPress={handleSystemTokenPress}
+              isMe={item.message.isMe}
+              groupPosition={item.groupPosition}
+              onRetry={item.message.failed && onRetryMessage ? () => onRetryMessage(item.message.id) : undefined}
+              showTimestamp={revealedTimestampId === item.message.id}
+              isRead={item.isRead}
+              replyTo={item.replyTo}
+              onScrollToMessage={handleScrollToMessage}
+              showSenderName={item.showSenderName}
+              reactions={item.reactions}
+              onReactionPress={onToggleReaction ? toggleReaction : undefined}
+            />
+          </TouchableOpacity>
+        </DoubleTapHeart>
+      </SwipeableMessage>
+      {newDivider}
+      {daySeparator}
+      </>
+    );
+  }, [
+    handleBubbleLongPress,
+    handleBubblePress,
+    handleCardBubbleTap,
+    handleCardTagTap,
+    handleDoubleTapHeart,
+    handleScrollToMessage,
+    handleSystemTokenPress,
+    onRetryMessage,
+    onToggleReaction,
+    onViewProfile,
+    revealedTimestampId,
+    startReply,
+    t,
+    toggleReaction,
+  ]);
+
+  // ── Issue #4114 Wave 3: Android back ─────────────────────────
+  // Closes the top-most open layer first (sheets, menus, previews), then the
+  // thread. Registered once and reads the latest state from a ref, so sheets
+  // that register their own handler later still get the press first.
+  const backLayersRef = useRef<Partial<Record<ChatBackLayer, boolean>>>({});
+  backLayersRef.current = {
+    contextMenu: contextMenu.visible,
+    attachmentMenu: showAttachmentMenu,
+    imagePreview: showImagePreview || !!lightboxUrl,
+    expandedCard: showExpandedCardFromChat,
+    eventDetail: showGroupEventSheet,
+    savedCardPicker: showSavedCardPicker,
+    mediaSheet: showMediaSheet,
+    groupInfo: showGroupInfo,
+    moreMenu: showMoreOptionsMenu,
+    eventAudience: showEventAudienceSheet,
+    collabDeck: showCollabDeckSheet,
+    collabMatches: showCollabMatchesSheet,
+    collabPlans: showCollabPlansSheet,
+    collabPrefs: collabPrefsLink.visible,
+  };
+  const onBackRef = useRef(onBack);
+  onBackRef.current = onBack;
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+    const closers: Record<ChatBackLayer, () => void> = {
+      contextMenu: () => setContextMenu(CLOSED_CONTEXT_MENU),
+      attachmentMenu: () => setShowAttachmentMenu(false),
+      imagePreview: () => {
+        setShowImagePreview(false);
+        setLightboxUrl(null);
+      },
+      expandedCard: () => {
+        setShowExpandedCardFromChat(false);
+        setExpandedCardFromChat(null);
+      },
+      eventDetail: () => setShowGroupEventSheet(false),
+      savedCardPicker: () => setShowSavedCardPicker(false),
+      mediaSheet: () => setShowMediaSheet(false),
+      groupInfo: () => setShowGroupInfo(false),
+      moreMenu: () => setShowMoreOptionsMenu(false),
+      eventAudience: () => setShowEventAudienceSheet(false),
+      collabDeck: () => setShowCollabDeckSheet(false),
+      collabMatches: () => setShowCollabMatchesSheet(false),
+      collabPlans: () => setShowCollabPlansSheet(false),
+      collabPrefs: () => setCollabPrefsLink({ visible: false }),
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      const target = resolveChatBack(backLayersRef.current);
+      if (target === 'leaveThread') {
+        onBackRef.current();
+      } else {
+        closers[target]();
+      }
+      return true;
+    });
+    return () => sub.remove();
+  }, []);
 
   const handleOpenAudienceProfile = (participantId: string) => {
     setShowEventAudienceSheet(false);
@@ -1628,9 +2129,32 @@ export default function MessageInterface({
         </View>
       ) : null}
 
+      {/* Offline Banner — Issue #4114 Wave 3: dark, and under the header so
+          the floating composer and bottom nav never cover it. */}
+      {isOffline && !isBlocked && (
+        <View style={styles.offlineBanner} accessibilityRole="alert">
+          <Icon name="cloud-offline-outline" size={16} color={chatTokens.warning} />
+          <Text style={styles.offlineBannerText}>
+            {t('chat:offlineShowingSaved')}
+          </Text>
+        </View>
+      )}
+
       {/* Messages */}
-      {messages.length === 0 ? (
+      {visibleMessages.length === 0 ? (
         <View style={[styles.messagesContainer, { justifyContent: "center" }]}>
+          {isLoadingMessages ? (
+            // Issue #4114 Wave 3: a loader until the first read lands, so
+            // "Start a conversation" never flashes before the messages.
+            <View
+              style={styles.emptyState}
+              accessibilityRole="progressbar"
+              accessibilityLabel={t('chat:loadingMessages')}
+              testID="chat-thread-loading"
+            >
+              <ActivityIndicator size="small" color={chatTokens.textSoft} />
+            </View>
+          ) : (
           <View style={styles.emptyState}>
             <View style={styles.emptyStateIcon}>
               <Icon
@@ -1646,163 +2170,32 @@ export default function MessageInterface({
               {isTripEventGroupChat ? channelDetail : t('chat:sendMessageTo', { name: cleanName(friend.name) })}
             </Text>
           </View>
+          )}
         </View>
       ) : (
         <FlatList
           ref={flatListRef}
-          data={groupedMessages}
-          renderItem={({ item, index }) => {
-            // Day separator — inverted list: show AFTER the message when the
-            // next item (older) is on a different day, or this is the last item.
-            // Visually this places the date header ABOVE that day's messages.
-            const currDate = new Date(item.message.timestamp).toDateString();
-            const isLastItem = index === groupedMessages.length - 1;
-            const nextMsg = !isLastItem ? groupedMessages[index + 1] : null;
-            const nextDate = nextMsg ? new Date(nextMsg.message.timestamp).toDateString() : null;
-            const showDaySeparator = isLastItem || currDate !== nextDate;
-
-            const today = new Date().toDateString();
-            const yesterday = new Date(Date.now() - 86400000).toDateString();
-            const dateLabel = currDate === today ? 'Today'
-              : currDate === yesterday ? 'Yesterday'
-              : new Date(item.message.timestamp).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
-
-            const daySeparator = showDaySeparator ? (
-              <View style={styles.daySeparator}>
-                <View style={styles.daySeparatorLine} />
-                <Text style={styles.daySeparatorText}>{dateLabel}</Text>
-                <View style={styles.daySeparatorLine} />
-              </View>
-            ) : null;
-
-            if (item.message.isSystem) {
-              return (
-                <>
-                  <MessageBubble
-                    message={{
-                      id: item.message.id,
-                      senderName: getMessageSenderName(item.message),
-                      content: item.message.content,
-                      timestamp: item.message.timestamp,
-                      type: item.message.type,
-                      fileUrl: item.message.fileUrl,
-                      fileName: item.message.fileName,
-                      fileSize: item.message.fileSize,
-                      cardPayload: item.message.cardPayload,
-                      mentions: item.message.mentions,
-                      cardTags: item.message.cardTags,
-                      marketingCampaignId: item.message.marketingCampaignId,
-                      isMe: item.message.isMe,
-                      failed: item.message.failed,
-                      isSystem: item.message.isSystem,
-                      systemPayload: item.message.systemPayload,
-                    }}
-                    onSystemTokenPress={handleSystemTokenPress}
-                    isMe={item.message.isMe}
-                    groupPosition={item.groupPosition}
-                    showTimestamp={false}
-                    isRead={false}
-                  />
-                  {daySeparator}
-                </>
-              );
-            }
-
-            return (
-            <>
-            <SwipeableMessage
-              onReply={() => {
-                setReplyingTo({
-                  messageId: item.message.id,
-                  senderName: getMessageSenderName(item.message),
-                  content: item.message.content,
-                  isMe: item.message.isMe,
-                });
-              }}
-            >
-              <DoubleTapHeart
-                onDoubleTap={() => {
-                  if (currentUserId) {
-                    messagingService.toggleDirectMessageReaction(item.message.id, currentUserId, '❤️');
-                  }
-                }}
-              >
-              <TouchableOpacity
-                activeOpacity={1}
-                // Issue #4114: a failed bubble is tap-to-retry (whole bubble, so it
-                // also works for screen readers, which focus this wrapper).
-                accessibilityHint={item.message.failed && onRetryMessage ? t('chat:failedTapToRetry') : undefined}
-                onPress={() => {
-                  if (item.message.failed && onRetryMessage) {
-                    onRetryMessage(item.message.id);
-                    return;
-                  }
-                  setRevealedTimestampId(prev => prev === item.message.id ? null : item.message.id);
-                }}
-                onLongPress={(e) => {
-                  setContextMenu({
-                    visible: true,
-                    messageId: item.message.id,
-                    content: item.message.content,
-                    isMe: item.message.isMe,
-                    top: e.nativeEvent.pageY,
-                  });
-                }}
-                delayLongPress={500}
-              >
-                <MessageBubble
-                  message={{
-                    id: item.message.id,
-                    senderName: getMessageSenderName(item.message),
-                    content: item.message.content,
-                    timestamp: item.message.timestamp,
-                    type: item.message.type,
-                    fileUrl: item.message.fileUrl,
-                    fileName: item.message.fileName,
-                    fileSize: item.message.fileSize,
-                    cardPayload: item.message.cardPayload,  // ORCH-0667
-                    mentions: item.message.mentions,
-                    cardTags: item.message.cardTags,
-                    marketingCampaignId: item.message.marketingCampaignId,
-                    isMe: item.message.isMe,
-                    failed: item.message.failed,
-                    isSystem: item.message.isSystem,
-                    systemPayload: item.message.systemPayload,
-                  }}
-                  onCardBubbleTap={handleCardBubbleTap}
-                  onMentionTap={onViewProfile}
-                  onCardTagTap={(cardTag) => {
-                    setExpandedCardFromChat(cardPayloadToExpandedCardData(cardTag.cardPayload));
-                    setShowExpandedCardFromChat(true);
-                  }}
-                  onSystemTokenPress={handleSystemTokenPress}
-                  isMe={item.message.isMe}
-                  groupPosition={item.groupPosition}
-                  onRetry={item.message.failed && onRetryMessage ? () => onRetryMessage(item.message.id) : undefined}
-                  showTimestamp={revealedTimestampId === item.message.id}
-                  isRead={item.message.isMe && !item.message.id.startsWith("temp-") && (item.message.isRead === true)}
-                  replyTo={item.message.replyToId ? (() => {
-                    const ref = messageMap.get(item.message.replyToId!);
-                    if (!ref) return { senderName: '', content: '', isDeleted: true, messageId: item.message.replyToId };
-                    return {
-                      senderName: getMessageSenderName(ref),
-                      content: ref.content,
-                      imageUrl: ref.type === 'image' ? ref.fileUrl : undefined,
-                      messageId: ref.id,
-                    };
-                  })() : undefined}
-                />
-              </TouchableOpacity>
-              </DoubleTapHeart>
-            </SwipeableMessage>
-            {daySeparator}
-            </>
-            );
-          }}
+          // Issue #4114 Wave 3: rows are prepared once per message change and
+          // renderItem is stable, so a keystroke does not re-render every row.
+          data={threadRows}
+          renderItem={renderThreadRow}
           // Issue #4114: key by client id when present so the bubble keeps its
           // identity (no remount flash) when the optimistic copy is confirmed.
-          keyExtractor={(item) => item.message.clientId ?? item.message.id}
+          keyExtractor={threadRowKey}
           inverted={true}
+          // Issue #4114 Wave 3: reading older messages stays put while new ones
+          // arrive; near the latest message the list follows the new one.
+          maintainVisibleContentPosition={THREAD_VISIBLE_CONTENT_POSITION}
+          onScroll={handleThreadScroll}
+          scrollEventThrottle={64}
+          onScrollToIndexFailed={handleScrollToIndexFailed}
+          ListHeaderComponent={
+            groupTypingLabel ? (
+              <View style={styles.groupTyping}>
+                <TypingIndicator isVisible label={groupTypingLabel} />
+              </View>
+            ) : null
+          }
           // Issue #4114: inverted list — the "end" is the visual top (oldest).
           // New pages append to the end of `data`, so the visible messages do
           // not move while older history loads.
@@ -1825,8 +2218,9 @@ export default function MessageInterface({
             {
               // ORCH-0620: inverted FlatList — paddingTop (pre-transform) becomes
               // the VISUAL BOTTOM clearance after the scaleY:-1 flip. Clears the
-              // composer capsule (which sits at `finalInputBottom` above the
-              // window's bottom edge) + INPUT_CAPSULE_HEIGHT + 8pt breathing.
+              // composer (which sits at `finalInputBottom` above the window's
+              // bottom edge) + its measured height (Issue #4114 Wave 3: it grows)
+              // + 8pt breathing.
               paddingTop: messageListBottomClearance,
             },
           ]}
@@ -1836,33 +2230,55 @@ export default function MessageInterface({
         />
       )}
 
-      {/* Message Context Menu */}
+      {/* Issue #4114 Wave 3: back to the latest message, with a count of the
+          messages that arrived while you were reading higher up. */}
+      {showScrollToLatest && visibleMessages.length > 0 ? (
+        <TouchableOpacity
+          style={[styles.scrollToLatest, { bottom: messageListBottomClearance + 4 }]}
+          onPress={scrollToLatest}
+          accessibilityRole="button"
+          accessibilityLabel={
+            unseenWhileScrolled > 0
+              ? t('chat:a11yScrollToLatestNew', { count: unseenWhileScrolled })
+              : t('chat:a11yScrollToLatest')
+          }
+          testID="chat-scroll-to-latest"
+        >
+          <Icon name="chevron-down" size={20} color={chatTokens.textPrimary} />
+          {unseenWhileScrolled > 0 ? (
+            <View style={styles.scrollToLatestBadge}>
+              <Text style={styles.scrollToLatestBadgeText}>
+                {unseenWhileScrolled > 99 ? "99+" : unseenWhileScrolled}
+              </Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+      ) : null}
+
+      {/* Message Context Menu — Issue #4114 Wave 3: reactions, unsend and
+          report are wired; Copy only on text. */}
       <MessageContextMenu
         visible={contextMenu.visible}
         position={{ top: contextMenu.top }}
         messageId={contextMenu.messageId}
         messageContent={contextMenu.content}
         isOwnMessage={contextMenu.isMe}
-        onReaction={(_msgId, _emoji) => {
-          // [TRANSITIONAL] Wave 1: no-op — DM reactions added in Wave 2
-          console.log('[Wave1] DM reaction requested:', _msgId, _emoji);
+        messageType={contextMenu.type}
+        isSent={contextMenu.isSent}
+        existingReactions={contextMenuMyReactions}
+        onReaction={(msgId, emoji) => {
+          void toggleReaction(msgId, emoji);
         }}
         onReply={(msgId) => {
-          // Find the message in the current messages list
-          const msg = messages.find((m) => m.id === msgId);
-          if (msg) {
-            setReplyingTo({
-              messageId: msg.id,
-              senderName: getMessageSenderName(msg),
-              content: msg.content,
-              isMe: msg.isMe,
-            });
-          }
+          const row = threadRows.find((candidate) => candidate.message.id === msgId);
+          if (row) startReply(row);
         }}
         onCopy={() => {
-          // Copy handled internally by MessageContextMenu
+          showNotification(t('chat:copied'), "", "info");
         }}
-        onClose={() => setContextMenu({ visible: false, messageId: '', content: '', isMe: false, top: 0 })}
+        onDelete={onUnsendMessage ? handleUnsendRequest : undefined}
+        onReport={onReportMessage ? handleReportMessageRequest : undefined}
+        onClose={closeContextMenu}
       />
 
       {/* Processing File Loader */}
@@ -1950,20 +2366,12 @@ export default function MessageInterface({
         </View>
       </Modal>
 
-      {/* Offline Banner */}
-      {isOffline && !isBlocked && (
-        <View style={styles.offlineBanner}>
-          <Icon name="cloud-offline-outline" size={16} color="#92400e" />
-          <Text style={styles.offlineBannerText}>
-            {t('chat:offlineShowingSaved')}
-          </Text>
-        </View>
-      )}
-
+      {/* Issue #4114 Wave 3: the no-composer banners are dark and sit above the
+          floating bottom nav (they used to render behind it). */}
       {/* Blocked User Banner */}
       {isBlocked && (
-        <View style={styles.blockedBanner}>
-          <Icon name="ban" size={18} color="#dc2626" />
+        <View style={[styles.blockedBanner, { marginBottom: noticeBannerBottomGap }]} accessibilityRole="text">
+          <Icon name="ban" size={18} color={chatTokens.danger} />
           <Text style={styles.blockedBannerText}>
             {t('chat:messagingNotAvailable')}
           </Text>
@@ -1972,19 +2380,20 @@ export default function MessageInterface({
 
       {/* Unfriended Banner */}
       {isUnfriended && !isBlocked && (
-        <View style={styles.blockedBanner}>
-          <Icon name="person-remove" size={18} color="#dc2626" />
+        <View style={[styles.blockedBanner, { marginBottom: noticeBannerBottomGap }]} accessibilityRole="text">
+          <Icon name="person-remove" size={18} color={chatTokens.danger} />
           <Text style={styles.blockedBannerText}>
             {t('chat:noLongerConnected')}
           </Text>
         </View>
       )}
 
-      {/* Deleted Account Banner */}
+      {/* Deleted Account Banner — a neutral notice whose icon is readable on
+          the dark surface (it was white-on-pale-red, i.e. invisible). */}
       {isDeletedAccount && !isBlocked && !isUnfriended && (
-        <View style={styles.blockedBanner}>
-          <Icon name="alert-circle" size={18} color="rgba(255, 255, 255, 0.72)" />
-          <Text style={styles.blockedBannerText}>
+        <View style={[styles.blockedBanner, styles.neutralBanner, { marginBottom: noticeBannerBottomGap }]} accessibilityRole="text">
+          <Icon name="alert-circle" size={18} color={chatTokens.textSecondary} />
+          <Text style={[styles.blockedBannerText, styles.neutralBannerText]}>
             {t('chat:accountDeleted')}
           </Text>
         </View>
@@ -2005,14 +2414,84 @@ export default function MessageInterface({
           from screen bottom — above the keyboard. OS `adjustPan` sees the
           focused input is already visible above the keyboard and does NOT pan
           the window, so the header stays at its original position. */}
+      {/* Issue #4114 Wave 3: a tap anywhere outside closes the attach menu. */}
+      {showComposer && showAttachmentMenu ? (
+        <TouchableOpacity
+          style={styles.attachmentBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowAttachmentMenu(false)}
+          accessibilityRole="button"
+          accessibilityLabel={t('chat:a11yCloseAttachMenu')}
+        />
+      ) : null}
       {showComposer && (
       <View
         style={[
           styles.inputCapsuleWrap,
           { bottom: finalInputBottom },
         ]}
+        // Issue #4114 Wave 3: the composer grows, so the thread's bottom
+        // padding follows its measured height.
+        onLayout={onComposerLayout}
       >
-        {/* Reply Preview Bar */}
+        {/* Attachment Menu — Issue #4114 Wave 3: rendered above the capsule
+            (inside it, the capsule's overflow clip hid it entirely) and dark.
+            Wave 4 replaces it with the attach sheet. */}
+        {showAttachmentMenu && (
+          <View style={styles.attachmentMenu} testID="chat-attach-menu">
+            <TouchableOpacity
+              onPress={() => handleFileSelect("image")}
+              style={styles.attachmentMenuItem}
+              accessibilityRole="button"
+              accessibilityLabel={t('chat:shareImage')}
+            >
+              <View style={styles.attachmentMenuIcon}>
+                <Icon name="image" size={16} color="#3b82f6" />
+              </View>
+              <View>
+                <Text style={styles.attachmentMenuTitle}>{t('chat:photo')}</Text>
+                <Text style={styles.attachmentMenuSubtitle}>
+                  {t('chat:shareImage')}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => handleFileSelect("video")}
+              style={styles.attachmentMenuItem}
+              accessibilityRole="button"
+              accessibilityLabel={t('chat:shareVideo')}
+            >
+              <View style={styles.attachmentMenuIcon}>
+                <Icon name="videocam" size={16} color="#8b5cf6" />
+              </View>
+              <View>
+                <Text style={styles.attachmentMenuTitle}>{t('chat:video')}</Text>
+                <Text style={styles.attachmentMenuSubtitle}>
+                  {t('chat:shareVideo')}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => handleFileSelect("file")}
+              style={styles.attachmentMenuItem}
+              accessibilityRole="button"
+              accessibilityLabel={t('chat:shareFile')}
+            >
+              <View style={styles.attachmentMenuIcon}>
+                <Icon name="document-text" size={16} color="#10b981" />
+              </View>
+              <View>
+                <Text style={styles.attachmentMenuTitle}>{t('chat:documentAttach')}</Text>
+                <Text style={styles.attachmentMenuSubtitle}>
+                  {t('chat:shareFile')}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+        {/* Reply Preview Bar — Issue #4114 Wave 3: dark */}
         {replyingTo && (
           <View style={styles.replyPreviewWrap}>
             <ReplyPreviewBar
@@ -2020,6 +2499,8 @@ export default function MessageInterface({
               previewText={replyingTo.content}
               isOwnMessage={replyingTo.isMe}
               onClose={() => setReplyingTo(null)}
+              theme="dark"
+              closeLabel={t('chat:a11yCancelReply')}
             />
           </View>
         )}
@@ -2077,58 +2558,13 @@ export default function MessageInterface({
               onPress={() => setShowAttachmentMenu(!showAttachmentMenu)}
               style={styles.attachmentButton}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              accessibilityRole="button"
+              accessibilityLabel={t('chat:a11yAttach')}
+              accessibilityState={{ expanded: showAttachmentMenu }}
             >
               <Icon name="attach" size={20} color="rgba(255, 255, 255, 0.85)" />
             </TouchableOpacity>
 
-            {showAttachmentMenu && (
-              <View style={styles.attachmentMenu}>
-                <TouchableOpacity
-                  onPress={() => handleFileSelect("image")}
-                  style={styles.attachmentMenuItem}
-                >
-                  <View style={styles.attachmentMenuIcon}>
-                    <Icon name="image" size={16} color="#3b82f6" />
-                  </View>
-                  <View>
-                    <Text style={styles.attachmentMenuTitle}>{t('chat:photo')}</Text>
-                    <Text style={styles.attachmentMenuSubtitle}>
-                      {t('chat:shareImage')}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => handleFileSelect("video")}
-                  style={styles.attachmentMenuItem}
-                >
-                  <View style={styles.attachmentMenuIcon}>
-                    <Icon name="videocam" size={16} color="#8b5cf6" />
-                  </View>
-                  <View>
-                    <Text style={styles.attachmentMenuTitle}>{t('chat:video')}</Text>
-                    <Text style={styles.attachmentMenuSubtitle}>
-                      {t('chat:shareVideo')}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => handleFileSelect("file")}
-                  style={styles.attachmentMenuItem}
-                >
-                  <View style={styles.attachmentMenuIcon}>
-                    <Icon name="document-text" size={16} color="#10b981" />
-                  </View>
-                  <View>
-                    <Text style={styles.attachmentMenuTitle}>{t('chat:documentAttach')}</Text>
-                    <Text style={styles.attachmentMenuSubtitle}>
-                      {t('chat:shareFile')}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-            )}
           </View>
 
           {/* Separator — cutout between attach and text field */}
@@ -2154,6 +2590,7 @@ export default function MessageInterface({
               onKeyPress={chatController.onKeyPress}
               onSelectionChange={chatController.onSelectionChange}
               onBlur={stopTyping}
+              accessibilityLabel={t('chat:a11yMessageInput')}
               placeholder={
                 selectedFile ? t('chat:addCaption') : t('chat:typeMessage')
               }
@@ -2184,6 +2621,9 @@ export default function MessageInterface({
               styles.sendButton,
               !newMessage.trim() && !selectedFile && styles.sendButtonDisabled,
             ]}
+            accessibilityRole="button"
+            accessibilityLabel={t('chat:a11ySend')}
+            accessibilityState={{ disabled: !newMessage.trim() && !selectedFile }}
           >
             <Icon name="paper-plane" size={20} color="white" />
           </TouchableOpacity>
@@ -2572,41 +3012,195 @@ export default function MessageInterface({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "rgba(12, 14, 18, 1)", // ORCH-0600: dark canvas for glass design
-  },
+  // ── Issue #4114 Wave 3: dark banners, thread chrome and the growing composer ──
   offlineBanner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fef3c7",
+    backgroundColor: chatTokens.warningSoft,
     paddingVertical: 8,
     paddingHorizontal: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#fde68a",
     gap: 6,
   },
   offlineBannerText: {
     fontSize: 13,
-    color: "#92400e",
+    color: chatTokens.warning,
     fontWeight: "500",
   },
   blockedBanner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fef2f2",
+    marginHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: chatTokens.dangerSoft,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#fecaca",
     gap: 8,
   },
   blockedBannerText: {
+    flexShrink: 1,
     fontSize: 14,
-    color: "#dc2626",
+    color: chatTokens.danger,
     fontWeight: "500",
+  },
+  neutralBanner: {
+    backgroundColor: chatTokens.surfaceRaised,
+  },
+  neutralBannerText: {
+    color: chatTokens.textSecondary,
+  },
+  groupTyping: {
+    paddingHorizontal: 16,
+    paddingTop: 2,
+    paddingBottom: 6,
+  },
+  scrollToLatest: {
+    position: "absolute",
+    right: 16,
+    zIndex: 58,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: chatTokens.surfaceRaised,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: chatTokens.chromeHairline,
+  },
+  scrollToLatestBadge: {
+    position: "absolute",
+    top: -6,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: chatTokens.accent,
+  },
+  scrollToLatestBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: chatTokens.textPrimary,
+  },
+  newMessagesDivider: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 10,
+  },
+  newMessagesDividerLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: chatTokens.accent,
+  },
+  newMessagesDividerText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: chatTokens.accent,
+  },
+  daySeparator: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  daySeparatorLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: chatTokens.chromeHairline,
+  },
+  daySeparatorText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: chatTokens.textMuted,
+  },
+  attachmentBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 59,
+  },
+  attachmentMenu: {
+    alignSelf: "flex-start",
+    marginBottom: 6,
+    backgroundColor: chatTokens.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: chatTokens.chromeHairline,
+    borderRadius: 16,
+    padding: 6,
+    minWidth: 220,
+  },
+  attachmentMenuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    minHeight: 48,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  attachmentMenuIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: chatTokens.strip,
+  },
+  attachmentMenuTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: chatTokens.textPrimary,
+  },
+  attachmentMenuSubtitle: {
+    fontSize: 12,
+    color: chatTokens.textSoft,
+  },
+  // The capsule grows with the text (minHeight, not a fixed height) up to
+  // COMPOSER_MAX_LINES; the controls stay pinned to its bottom edge.
+  inputCapsule: {
+    minHeight: COMPOSER_MIN_HEIGHT,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: glass.chrome.border.hairline,
+    overflow: "hidden",
+    shadowColor: glass.chrome.shadow.color,
+    shadowOffset: glass.chrome.shadow.offset,
+    shadowOpacity: glass.chrome.shadow.opacity,
+    shadowRadius: glass.chrome.shadow.radius,
+    elevation: glass.chrome.shadow.elevation,
+  },
+  inputContainer: {
+    minHeight: COMPOSER_MIN_HEIGHT,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+  },
+  messageInputContainer: {
+    flex: 1,
+    alignSelf: "stretch",
+    backgroundColor: "transparent",
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  messageInput: {
+    fontSize: 16,
+    lineHeight: COMPOSER_LINE_HEIGHT,
+    color: "#FFFFFF",
+    padding: 0,
+    margin: 0,
+    includeFontPadding: false,
+    textAlignVertical: "top",
+    maxHeight: COMPOSER_INPUT_MAX_HEIGHT,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: "rgba(12, 14, 18, 1)", // ORCH-0600: dark canvas for glass design
   },
   eventChannelHeaderStack: {
     backgroundColor: "#f97316",
@@ -2969,29 +3563,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.chrome.border.hairline,
   },
-  inputCapsule: {
-    height: INPUT_CAPSULE_HEIGHT,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: glass.chrome.border.hairline,
-    overflow: "hidden",
-    shadowColor: glass.chrome.shadow.color,
-    shadowOffset: glass.chrome.shadow.offset,
-    shadowOpacity: glass.chrome.shadow.opacity,
-    shadowRadius: glass.chrome.shadow.radius,
-    elevation: glass.chrome.shadow.elevation,
-  },
-  inputContainer: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 6,
-  },
   capsuleSeparator: {
     width: StyleSheet.hairlineWidth,
     height: 24,
     backgroundColor: glass.chrome.border.hairline,
     marginHorizontal: 4,
+    marginBottom: 10,
   },
   attachmentContainer: {
     position: "relative",
@@ -3003,65 +3580,6 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-  },
-  attachmentMenu: {
-    position: "absolute",
-    bottom: 50,
-    left: 0,
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
-    padding: 8,
-    minWidth: 200,
-    zIndex: 10,
-  },
-  attachmentMenuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 12,
-    borderRadius: 8,
-  },
-  attachmentMenuIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  attachmentMenuTitle: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#111827",
-  },
-  attachmentMenuSubtitle: {
-    fontSize: 12,
-    color: "#6b7280",
-  },
-  messageInputContainer: {
-    flex: 1,
-    backgroundColor: "transparent",
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-    minHeight: 40,
-    justifyContent: "center",
-  },
-  messageInput: {
-    flex: 1,
-    fontSize: 16,
-    lineHeight: 20,
-    color: "#FFFFFF",
-    padding: 0,
-    margin: 0,
-    includeFontPadding: false,
-    textAlignVertical: "center",
-    maxHeight: 72,
   },
   sendButton: {
     width: 40,
@@ -3336,23 +3854,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 12,
-  },
-  daySeparator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  daySeparatorLine: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: '#e5e7eb',
-  },
-  daySeparatorText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#9ca3af',
   },
   // ORCH-0435: Header more button + bottom sheet
   // BaseBottomSheet bespoke dark canvas (was eventAudienceSheet). Scrim + flex-end

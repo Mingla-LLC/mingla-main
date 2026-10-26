@@ -62,6 +62,10 @@ export interface Message {
   // ORCH-1058B: structured collab dead-end banner payload (chips + button data).
   // Typed loosely (CollabDeadEndBannerPayload) to avoid a circular import.
   systemPayload?: any;
+  /** Issue #4114 Wave 3: direct_message_reactions rows (absent on realtime rows). */
+  reactions?: Array<{ user_id: string; emoji: string }>;
+  /** Issue #4114 Wave 3: unsent (soft-deleted); hidden from the thread. */
+  unsent?: boolean;
 }
 
 export interface Conversation {

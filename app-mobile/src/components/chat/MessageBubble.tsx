@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { View, Text, StyleSheet, Dimensions, Image, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
@@ -11,6 +11,8 @@ import { CollabLocationChips } from '../collab/CollabLocationChips';
 import { isContentShareCardPayload, type CardPayload, type CardTagEntry, type LegacyCardPayload, type MentionEntry } from '../../services/messagingService';
 import type { CollabDeadEndBannerPayload } from '../../services/collabDeadEndBannerService';
 import { selectCompactPreviewFacts, shareKindLabel, statusLabel, validateNativeContentCardDescriptorV1 } from '@mingla/sharing';
+import type { ReactionSummary } from '../../utils/threadModel';
+import { chatTokens } from '../../constants/chatTokens';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -63,6 +65,14 @@ interface MessageBubbleProps {
   onSystemTokenPress?: (token: CollabSystemToken) => void;
   /** Issue #4114: present on a failed send — tapping the status resends it (same client id). */
   onRetry?: () => void;
+  /**
+   * Issue #4114 Wave 3: groups only, first bubble of a block, never your own
+   * (threadModel.shouldShowSenderName). Defaults to hidden.
+   */
+  showSenderName?: boolean;
+  /** Issue #4114 Wave 3: reaction pills under the bubble (aggregated by emoji). */
+  reactions?: readonly ReactionSummary[];
+  onReactionPress?: (messageId: string, emoji: string) => void;
 }
 
 export type CollabSystemToken =
@@ -233,7 +243,7 @@ const BORDER_RADIUS = {
   },
 } as const;
 
-export function MessageBubble({
+function MessageBubbleImpl({
   message,
   isMe,
   groupPosition,
@@ -246,6 +256,9 @@ export function MessageBubble({
   onCardTagTap,
   onSystemTokenPress,
   onRetry,
+  showSenderName = false,
+  reactions,
+  onReactionPress,
 }: MessageBubbleProps) {
   const { t } = useTranslation(['chat', 'common']);
 
@@ -307,15 +320,17 @@ export function MessageBubble({
             !isDelivered && !isFailed && styles.bubbleSending,
           ]}
         >
-          <Text
-            style={[
-              styles.senderName,
-              isMe ? styles.senderNameSent : styles.senderNameReceived,
-            ]}
-            numberOfLines={1}
-          >
-            {message.senderName?.trim() || (isMe ? 'You' : 'Unknown')}
-          </Text>
+          {showSenderName ? (
+            <Text
+              style={[
+                styles.senderName,
+                isMe ? styles.senderNameSent : styles.senderNameReceived,
+              ]}
+              numberOfLines={1}
+            >
+              {message.senderName?.trim() || t('chat:unknownSender')}
+            </Text>
+          ) : null}
 
           {/* Reply quote block (Wave 2 will wire data; renders when replyTo prop is provided) */}
           {replyTo && (
@@ -484,6 +499,28 @@ export function MessageBubble({
         </View>
       </View>
 
+      {/* Issue #4114 Wave 3: reactions, one pill per emoji with its count;
+          yours is highlighted and tapping a pill toggles your reaction. */}
+      {reactions && reactions.length > 0 ? (
+        <View style={[styles.reactionRow, isMe ? styles.reactionRowRight : styles.reactionRowLeft]}>
+          {reactions.map((reaction) => (
+            <TouchableOpacity
+              key={reaction.emoji}
+              style={[styles.reactionPill, reaction.mine && styles.reactionPillMine]}
+              onPress={onReactionPress ? () => onReactionPress(message.id, reaction.emoji) : undefined}
+              disabled={!onReactionPress}
+              accessibilityRole="button"
+              accessibilityLabel={t('chat:a11yReaction', { emoji: reaction.emoji, count: reaction.count })}
+              accessibilityState={{ selected: reaction.mine }}
+              testID={`reaction-pill-${reaction.emoji}`}
+            >
+              <Text style={styles.reactionEmoji}>{reaction.emoji}</Text>
+              {reaction.count > 1 ? <Text style={styles.reactionCount}>{reaction.count}</Text> : null}
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+
       {/* Issue #4114: every failed send says so and offers tap-to-retry,
           wherever it sits in its group. */}
       {isMe && isFailed && (
@@ -633,7 +670,53 @@ function getSystemTokenLabel(token: CollabSystemToken): string {
   return token.type === 'open-prefs-self' ? `Open your ${section}` : `Open ${section}`;
 }
 
+/**
+ * Issue #4114 Wave 3: memoised, so a keystroke in the composer (which re-renders
+ * the chat screen) does not re-render every visible bubble. MessageInterface
+ * passes stable callbacks and a stable renderItem for this to hold.
+ */
+export const MessageBubble = memo(MessageBubbleImpl);
+
 const styles = StyleSheet.create({
+  reactionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: -4,
+    marginBottom: 4,
+    paddingHorizontal: 18,
+  },
+  reactionRowRight: {
+    justifyContent: 'flex-end',
+  },
+  reactionRowLeft: {
+    justifyContent: 'flex-start',
+  },
+  reactionPill: {
+    minHeight: 24,
+    minWidth: 32,
+    paddingHorizontal: 7,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    backgroundColor: chatTokens.surfaceRaised,
+    borderWidth: 1,
+    borderColor: chatTokens.hairline,
+  },
+  reactionPillMine: {
+    backgroundColor: chatTokens.accentSoft,
+    borderColor: chatTokens.accent,
+  },
+  reactionEmoji: {
+    fontSize: 13,
+  },
+  reactionCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: chatTokens.textSecondary,
+  },
   spacingGroupEnd: {
     marginBottom: 6,
   },

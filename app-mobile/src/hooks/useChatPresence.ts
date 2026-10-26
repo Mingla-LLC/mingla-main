@@ -8,6 +8,7 @@ import {
   broadcastTyping,
   ConversationPresenceRecord,
 } from '../services/chatPresenceService';
+import { shouldRebroadcastTyping, TYPING_EXPIRY_MS as RECEIVER_TYPING_EXPIRY_MS } from '../utils/threadModel';
 
 interface ParticipantPresence {
   isOnline: boolean;
@@ -40,7 +41,7 @@ interface PresenceChangePayload {
 }
 
 const TYPING_TIMEOUT_MS = 3000;
-const TYPING_EXPIRY_MS = 4000;
+const TYPING_EXPIRY_MS = RECEIVER_TYPING_EXPIRY_MS;
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const STALE_THRESHOLD_MS = 60_000;
 
@@ -54,6 +55,9 @@ export function useChatPresence({
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingExpiryTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const isTypingRef = useRef(false);
+  // Issue #4114 Wave 3: when the last typing_start went out. The receiver drops
+  // the indicator 4s after it, so continuous typing re-broadcasts every ~2.5s.
+  const lastTypingBroadcastAtRef = useRef<number | null>(null);
 
   // --- Fetch initial presence and subscribe to changes ---
   useEffect(() => {
@@ -203,8 +207,10 @@ export function useChatPresence({
   const startTyping = useCallback(() => {
     if (!conversationId || !currentUserId) return;
 
-    if (!isTypingRef.current) {
+    const now = Date.now();
+    if (!isTypingRef.current || shouldRebroadcastTyping(lastTypingBroadcastAtRef.current, now)) {
       isTypingRef.current = true;
+      lastTypingBroadcastAtRef.current = now;
       broadcastTyping(conversationId, currentUserId, true);
     }
 
@@ -222,6 +228,7 @@ export function useChatPresence({
 
     if (isTypingRef.current) {
       isTypingRef.current = false;
+      lastTypingBroadcastAtRef.current = null;
       broadcastTyping(conversationId, currentUserId, false);
     }
 

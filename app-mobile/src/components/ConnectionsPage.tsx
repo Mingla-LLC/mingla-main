@@ -24,6 +24,7 @@ import { Icon } from "./ui/Icon";
 import { useFriends, Friend as UseFriend } from "../hooks/useFriends";
 import { useAppStore } from "../store/appStore";
 import { messagingService, DirectMessage, MentionEntry, CardTagEntry, MESSAGE_PAGE_SIZE } from "../services/messagingService";
+import { toggleReactionRows } from "../utils/threadModel";
 import {
   mergeMessages,
   isLocalMessage,
@@ -694,6 +695,13 @@ function ConnectionsPageRefactored({
   );
   // Issue #4114: which conversation's live channel is open (released on switch/back).
   const subscribedConversationIdRef = useRef<string | null>(null);
+  // Issue #4114 Wave 3: chats whose first server read has finished (either
+  // way), so an empty chat shows a loader instead of flashing "Start a
+  // conversation" before its messages arrive.
+  const [messagesSettledIds, setMessagesSettledIds] = useState<ReadonlySet<string>>(() => new Set());
+  const markMessagesSettled = useCallback((conversationId: string) => {
+    setMessagesSettledIds((prev) => (prev.has(conversationId) ? prev : new Set(prev).add(conversationId)));
+  }, []);
   // Issue #4114: older-history paging for the open chat.
   const [olderPaging, setOlderPaging] = useState<{ conversationId: string | null; hasMore: boolean; loading: boolean }>({
     conversationId: null,
@@ -1724,6 +1732,11 @@ function ConnectionsPageRefactored({
         msg.card_payload && (msg.card_payload as { kind?: string }).kind === 'collab_dead_end'
           ? (msg.card_payload as unknown as CollabDeadEndBannerPayload)
           : undefined,
+      // Issue #4114 Wave 3: reactions come with each page read (undefined on a
+      // realtime row, so the merge keeps what the store already has), and an
+      // unsent message (deleted_at, via the realtime UPDATE) is hidden.
+      reactions: msg.reactions,
+      unsent: msg.deleted_at ? true : undefined,
     }),
     []
   );
@@ -1997,6 +2010,7 @@ function ConnectionsPageRefactored({
       'getMessages'
     )
       .then(({ messages: freshMsgs, error: msgError, hasMore }) => {
+        markMessagesSettled(capturedConvId);
         if (msgError) {
           console.error("Error loading messages:", msgError);
           return;
@@ -2010,6 +2024,7 @@ function ConnectionsPageRefactored({
         }
       })
       .catch((e) => {
+        markMessagesSettled(capturedConvId);
         // Offline / timeout — the chat is already open with whatever was cached.
         console.warn("[ConnectionsPage] Background message refresh failed (offline?):", e);
       });
@@ -2110,6 +2125,7 @@ function ConnectionsPageRefactored({
         'getMessages'
       )
         .then(({ messages: freshMsgs, error: msgError, hasMore }) => {
+          markMessagesSettled(conversationId);
           if (msgError || !freshMsgs) {
             if (msgError) console.warn("[ConnectionsPage] Background message fetch failed:", msgError);
             return;
@@ -2121,6 +2137,7 @@ function ConnectionsPageRefactored({
           markConversationAsRead(conversationId, currentUserId, transformed);
         })
         .catch((e) => {
+          markMessagesSettled(conversationId);
           console.warn("[ConnectionsPage] Background message fetch failed:", e);
         });
     };
@@ -2854,6 +2871,50 @@ function ConnectionsPageRefactored({
   };
 
   // ── Issue #4114: tap a failed bubble to send it again with the same client id ──
+  // ── Issue #4114 Wave 3: reactions, unsend and report from inside a thread ──
+  // All three write through the one merge (writeConversationMessages).
+  const handleToggleReaction = async (messageId: string, emoji: string): Promise<void> => {
+    if (!user?.id || !currentConversationId) return;
+    const conversationId = currentConversationId;
+    const target = (messagesCache[conversationId] ?? EMPTY_MESSAGES).find((msg) => msg.id === messageId);
+    if (!target || isLocalMessage(target) || target.isSystem) return;
+    const before = target.reactions ?? [];
+    writeConversationMessages(conversationId, [{ ...target, reactions: toggleReactionRows(before, user.id, emoji) }]);
+    const { error } = await messagingService.toggleDirectMessageReaction(messageId, user.id, emoji);
+    if (error) {
+      writeConversationMessages(conversationId, [{ ...target, reactions: before }]);
+      showToast({ message: t('chat:reactionFailed'), type: 'error' });
+    }
+  };
+
+  const handleUnsendMessage = async (messageId: string): Promise<boolean> => {
+    if (!user?.id || !currentConversationId) return false;
+    const conversationId = currentConversationId;
+    const target = (messagesCache[conversationId] ?? EMPTY_MESSAGES).find((msg) => msg.id === messageId);
+    if (!target || !target.isMe || isLocalMessage(target)) return false;
+    const { error } = await messagingService.unsendMessage(messageId, user.id);
+    if (error) {
+      showToast({ message: t('chat:unsendFailed'), type: 'error' });
+      return false;
+    }
+    writeConversationMessages(conversationId, [{ ...target, unsent: true }]);
+    return true;
+  };
+
+  const reportMessageRef = useRef<{ id: string; content: string } | null>(null);
+  const handleReportMessage = (
+    message: { id: string; senderId: string; senderName: string; content: string },
+    onSettled?: (reported: boolean) => void,
+  ) => {
+    if (!message.senderId) return;
+    reportMessageRef.current = { id: message.id, content: message.content };
+    const sender: Friend = { id: message.senderId, name: message.senderName, username: "", isOnline: false };
+    handleReportUser(sender, (reported) => {
+      reportMessageRef.current = null;
+      onSettled?.(reported);
+    });
+  };
+
   const handleRetryMessage = (messageId: string) => {
     if (!currentConversationId || !user?.id) return;
     const failedMessage = (messagesCache[currentConversationId] ?? EMPTY_MESSAGES).find(
@@ -3287,7 +3348,12 @@ function ConnectionsPageRefactored({
 
   const handleReportSubmit = async (userId: string, reason: string, details?: string) => {
     try {
-      const result = await reportService.submitReport(userId, reason as ReportReason, details);
+      // Issue #4114 Wave 3: a report started from a message names that message.
+      const reportedMessage = reportMessageRef.current;
+      const fullDetails = reportedMessage
+        ? [details, `Reported message ${reportedMessage.id}: ${reportedMessage.content.slice(0, 200)}`].filter(Boolean).join("\n")
+        : details;
+      const result = await reportService.submitReport(userId, reason as ReportReason, fullDetails);
       setShowReportModal(false);
       setSelectedUserToReport(null);
       if (result.success) {
@@ -3828,6 +3894,15 @@ function ConnectionsPageRefactored({
           onViewProfile={onNavigateToFriendProfile}
           isPairedFriend={Boolean(activeChat?.id && pairedUserIds.has(activeChat.id))}
           onOpenPairedProfile={(friendUserId) => onNavigateToFriendProfile?.(friendUserId, { focus: "paired" })}
+          onToggleReaction={handleToggleReaction}
+          onUnsendMessage={handleUnsendMessage}
+          onReportMessage={handleReportMessage}
+          isLoadingMessages={Boolean(
+            currentConversationId &&
+            messages.length === 0 &&
+            !isOffline &&
+            !messagesSettledIds.has(currentConversationId)
+          )}
           isMuted={Boolean(activeChat?.id && mutedUserIds.includes(activeChat.id))}
           onToggleMute={activeChat?.conversationType === "group" || !activeChat?.id ? undefined : () => toggleMuteForUser(activeChat.id)}
           onGroupConversationLeft={() => {
