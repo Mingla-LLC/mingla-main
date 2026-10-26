@@ -24,13 +24,13 @@ describe("#2331 privacy bar stylesheet parity", () => {
     expect(privacyBarCss().split("\n")).toEqual(reactBarCss().split("\n"));
   });
 
-  it("the app root ends at the bar's top edge, and scrolls a screen that no longer fits while the bar is expanded", () => {
+  it("the app root ends at the bar's top edge at every bar height and scrolls a screen that no longer fits", () => {
     for (const css of [privacyBarCss(), reactBarCss()]) {
       expect(css).toContain("#root{box-sizing:border-box;height:calc(100% - var(--mingla-privacy-inset,0px))}");
       expect(css).toContain('html[data-mingla-privacy-bar="shown"] #root{overflow-y:auto;overscroll-behavior:contain}');
-      expect(css).toContain(
-        'html[data-mingla-privacy-bar="shown"] #root>:not(.mpb):not(.mpb-toast){flex-shrink:0;min-height:calc(100vh - 53px - env(safe-area-inset-bottom,0px));min-height:calc(100dvh - 53px - env(safe-area-inset-bottom,0px))}',
-      );
+      // No rule styles the root's children: bottom-pinned actions rise with
+      // the bar at every height, and the bar itself is never resized.
+      expect(css).not.toMatch(/#root>/);
     }
   });
 

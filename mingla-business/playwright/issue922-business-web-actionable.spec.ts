@@ -67,8 +67,8 @@ async function stubExpoScripts(page: Page): Promise<string[]> {
       body:
         `window.__issue922Order=(window.__issue922Order||[]).concat(${JSON.stringify(name)});` +
         `window.__issue922Roots=(window.__issue922Roots||[]).concat(!!document.getElementById("root"));` +
-        `window.__issue922Choices=(window.__issue922Choices||[]).concat(window.__minglaPrebootConsentChoice);` +
-        `window.__issue922ChoiceSeen=window.__minglaPrebootConsentChoice;` +
+        `window.__issue922Choices=(window.__issue922Choices||[]).concat(JSON.stringify(window.__minglaPrebootPrivacy?{analytics:window.__minglaPrebootPrivacy.analytics,ads:window.__minglaPrebootPrivacy.ads}:null));` +
+        `window.__issue922Expanded=window.__minglaPrivacyOpenExpanded===true;` +
         `if((window.__issue922Order||[]).length===3){document.getElementById("root").innerHTML='<p id="issue922-app-mounted">Expo app mounted</p>'}`,
     });
   });
@@ -196,61 +196,66 @@ test("static invitation and consent UI has no visible Samsung delta from the Rea
   expect(visibleDelta, `visible pixel delta=${visibleDelta}`).toBeLessThanOrEqual(0.005);
 });
 
-for (const choice of ["granted", "denied"] as const) {
-  test(`${choice} consent writes the canonical choice, hides the banner, then boots in order`, async ({ context, page }) => {
-    await cleanStorage(context);
-    const requests = await stubExpoScripts(page);
-    await page.goto(invite);
-    await expect(page.getByLabel("Cookie consent")).toBeVisible();
-    // #3697 intentionally replaces the retired opt-in analytics controls with
-    // the exact on-arrival ad-privacy notice and its persistent opt-out.
-    await expect(page.getByText("Ad privacy", { exact: true })).toBeVisible();
-    await expect(page.getByText(
-      "We use cookies and advertising tools from Meta, Snapchat and TikTok to measure and improve our ads.",
-    )).toBeVisible();
-    await expect(page.getByRole("link", { name: "Privacy policy" })).toHaveAttribute(
-      "href",
-      "https://usemingla.com/privacy-policy",
-    );
-    await page.getByRole("button", {
-      name: choice === "granted" ? "OK" : "Opt out of ad tracking",
-    }).click();
-    await expect(page.getByLabel("Cookie consent")).toHaveCount(0);
-    await expect(page.locator("#issue922-app-mounted")).toBeVisible();
-    const state = await page.evaluate(() => ({
-      stored: JSON.parse(window.localStorage.getItem("mingla_consent_v1") ?? "null"),
-      order: (window as typeof window & { __issue922Order?: string[] }).__issue922Order,
-      choice: (window as typeof window & { __issue922ChoiceSeen?: string }).__issue922ChoiceSeen,
-    }));
-    expect(state.stored.choice).toBe(choice);
-    expect(typeof state.stored.ts).toBe("number");
-    expect(state.choice).toBe(choice);
-    expect(state.order).toHaveLength(3);
-    expect(requests).toEqual(state.order);
-  });
-}
+// #2331 — the shell shows the collapsed privacy bar (on unless turned off).
+// OK saves the live state and boots the app; Options boots the app with its
+// bar handed off expanded (the switches live in the React owner).
+test("OK saves the live privacy state, hides the bar, then boots in order", async ({ context, page }) => {
+  await cleanStorage(context);
+  const requests = await stubExpoScripts(page);
+  await page.goto(invite);
+  const bar = page.getByTestId("privacy-bar");
+  await expect(bar).toBeVisible();
+  await expect(bar.getByText("Mingla uses cookies for analytics and ads.")).toBeVisible();
+  expect(Math.round((await bar.boundingBox())!.height)).toBe(53);
+  await page.getByTestId("privacy-bar-ok").click();
+  await expect(page.locator("#issue922-app-mounted")).toBeVisible();
+  const state = await page.evaluate(() => ({
+    stored: JSON.parse(window.localStorage.getItem("mingla_privacy_v2") ?? "null"),
+    legacy: window.localStorage.getItem("mingla_consent_v1"),
+    order: (window as typeof window & { __issue922Order?: string[] }).__issue922Order,
+    choices: (window as typeof window & { __issue922Choices?: string[] }).__issue922Choices,
+  }));
+  expect(state.stored).toMatchObject({ analytics: true, ads: true });
+  expect(typeof state.stored.ts).toBe("number");
+  expect(state.legacy).toBeNull();
+  expect(state.choices).toEqual(Array(3).fill(JSON.stringify({ analytics: true, ads: true })));
+  expect(state.order).toHaveLength(3);
+  expect(requests).toEqual(state.order);
+});
 
-test("a readable store that rejects consent writes keeps the choice for multiple app readers", async ({ context, page }) => {
+test("Options boots the app with the bar handed off expanded and saves nothing", async ({ context, page }) => {
+  await cleanStorage(context);
+  const requests = await stubExpoScripts(page);
+  await page.goto(invite);
+  await page.getByTestId("privacy-bar-options").click();
+  await expect(page.locator("#issue922-app-mounted")).toBeVisible();
+  const state = await page.evaluate(() => ({
+    stored: window.localStorage.getItem("mingla_privacy_v2"),
+    expanded: (window as typeof window & { __issue922Expanded?: boolean }).__issue922Expanded,
+  }));
+  expect(state).toEqual({ stored: null, expanded: true });
+  expect(requests).toHaveLength(3);
+});
+
+test("a readable store that rejects privacy writes keeps the choice for multiple app readers", async ({ context, page }) => {
   await cleanStorage(context);
   const requests = await stubExpoScripts(page);
   await page.goto(invite);
   await page.evaluate(() => {
     Storage.prototype.setItem = function setItem(): never {
-      throw new Error("quota rejected the consent write");
+      throw new Error("quota rejected the privacy write");
     };
   });
-  await page.getByRole("button", { name: "OK" }).click();
+  await page.getByTestId("privacy-bar-ok").click();
   await expect(page.locator("#issue922-app-mounted")).toBeVisible();
   const state = await page.evaluate(() => ({
-    stored: window.localStorage.getItem("mingla_consent_v1"),
+    stored: window.localStorage.getItem("mingla_privacy_v2"),
     readers: (window as typeof window & { __issue922Choices?: string[] }).__issue922Choices,
-    pageLifetimeChoice: (window as typeof window & { __minglaPrebootConsentChoice?: string }).__minglaPrebootConsentChoice,
+    pageLifetimeChoice: (window as typeof window & { __minglaPrebootPrivacy?: { analytics: boolean; ads: boolean } }).__minglaPrebootPrivacy,
   }));
-  expect(state).toEqual({
-    stored: null,
-    readers: ["granted", "granted", "granted"],
-    pageLifetimeChoice: "granted",
-  });
+  expect(state.stored).toBeNull();
+  expect(state.readers).toEqual(Array(3).fill(JSON.stringify({ analytics: true, ads: true })));
+  expect(state.pageLifetimeChoice).toMatchObject({ analytics: true, ads: true });
   expect(requests).toHaveLength(3);
 });
 
@@ -261,6 +266,7 @@ test("every ambiguous or returning-visitor case immediately boots the ordinary E
     { url: "/other?token=valid" },
     { url: "/accept-brand-invitation?token=valid", storage: ["sb-project-auth-token", "session"] },
     { url: "/accept-brand-invitation?token=valid", storage: ["mingla_consent_v1", "malformed"] },
+    { url: "/accept-brand-invitation?token=valid", storage: ["mingla_privacy_v2", JSON.stringify({ analytics: false, ads: true, ts: 1 })] },
     { url: "/accept-brand-invitation?token=valid", blockedStorage: true },
   ];
   for (const scenario of cases) {
