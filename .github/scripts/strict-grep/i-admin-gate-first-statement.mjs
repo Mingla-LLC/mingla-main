@@ -116,6 +116,14 @@ const GUARDED_DEFINER_FNS = [
   "admin_set_brand_payouts_paused",
   "admin_list_organiser_payout_debts",
   "admin_get_brand_payout_console",
+  // ISSUE-4130 Wave 2a [Mingla money, Payments, Orders, Money ledger]: the money
+  // summary, the payment-readiness facts, the orders overview and the audited
+  // owes-back settlement. Each is_admin_user() guard MUST be the first statement.
+  // Reverting 20280111004130 removes these fns → this gate FAILS.
+  "admin_mingla_money_summary",
+  "admin_list_brand_payment_readiness",
+  "admin_orders_overview",
+  "admin_settle_owes_back",
 ];
 
 function fnBody(src, name) {
@@ -301,8 +309,19 @@ if (process.argv.includes("--self-test")) {
         "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n",
     )
     .join("");
+  // ISSUE-4130 Wave 2a: guard-first GOOD fixtures for the four appended names.
+  const money4130 = [
+    "admin_mingla_money_summary", "admin_list_brand_payment_readiness",
+    "admin_orders_overview", "admin_settle_owes_back",
+  ]
+    .map(
+      (n) =>
+        `create or replace function public.${n}(p_id uuid) returns jsonb language plpgsql security definer as $$ ` +
+        "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n",
+    )
+    .join("");
   const reads = getPerson + offerings1273 + moneyFns + identity1276 + money1278 + offerings1277 +
-    toolLeads1354 + competitorIntel2725 + venueDetailsChange3386 + payoutPause3645;
+    toolLeads1354 + competitorIntel2725 + venueDetailsChange3386 + payoutPause3645 + money4130;
 
   // GOOD: all guard-first.
   let f = [];
