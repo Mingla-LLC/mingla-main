@@ -50,6 +50,7 @@ import {
   updateAdCreativeTags,
 } from "../services/adEngineService";
 import { PageHeader } from "../components/ui/PageHeader";
+import { ADS_RESULTS_CAVEAT, ADS_RESULTS_PROVEN, seenLabel } from "../lib/systemPages";
 import { Tabs } from "../components/ui/Tabs";
 import { CampaignsPage } from "./CampaignsPage";
 
@@ -60,9 +61,10 @@ const PREFLIGHT_BADGE = {
   not_connected: "default",
 };
 
+// #4130 (Wave 4b): the campaigns table comes first and opens by default.
 const ADS_TABS = [
-  { id: "overview", label: "Overview" },
   { id: "campaigns", label: "Campaigns" },
+  { id: "overview", label: "Overview" },
   { id: "audiences", label: "Audiences" },
   { id: "creative-library", label: "Creative Library" },
   { id: "connections", label: "Connections" },
@@ -78,8 +80,8 @@ function sentenceCase(value) {
 
 function tabFromHash() {
   const query = window.location.hash.split("?")[1] ?? "";
-  const requested = new URLSearchParams(query).get("tab") ?? "overview";
-  return ADS_TABS.some((tab) => tab.id === requested) ? requested : "overview";
+  const requested = new URLSearchParams(query).get("tab") ?? "campaigns";
+  return ADS_TABS.some((tab) => tab.id === requested) ? requested : "campaigns";
 }
 
 function formatMinor(currency, minor) {
@@ -103,12 +105,6 @@ function evidenceVariant(state) {
   return "warning";
 }
 
-function observedAtLabel(value) {
-  const timestamp = Date.parse(value ?? "");
-  return Number.isFinite(timestamp)
-    ? new Date(timestamp).toLocaleString()
-    : "not observed";
-}
 
 function AdsOperationsOverview({ onOpenCampaigns, onOpenConnections }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -132,9 +128,9 @@ function AdsOperationsOverview({ onOpenCampaigns, onOpenConnections }) {
 
   if (loading && !snapshot) {
     return (
-      <SectionCard title="Operations snapshot">
+      <SectionCard title="At a glance">
         <div className="flex items-center gap-2 py-4">
-          <Spinner size="sm" /> Loading governed Ads evidence…
+          <Spinner size="sm" /> Loading campaigns, spend and results…
         </div>
       </SectionCard>
     );
@@ -142,7 +138,7 @@ function AdsOperationsOverview({ onOpenCampaigns, onOpenConnections }) {
 
   if (error) {
     return (
-      <AlertCard variant="error" title="Ads operations snapshot unavailable">
+      <AlertCard variant="error" title="Couldn't load the ads summary">
         <p>{error}</p>
         <Button className="mt-3" size="sm" variant="secondary" onClick={load}>
           Retry
@@ -167,8 +163,8 @@ function AdsOperationsOverview({ onOpenCampaigns, onOpenConnections }) {
   return (
     <>
       <SectionCard
-        title="Operations snapshot"
-        subtitle="Live evidence from campaigns, queues, provider connections, spend and attributed results."
+        title="At a glance"
+        subtitle="Campaigns, review queues, connections, spend and results, as recorded."
         action={
           <Button
             size="sm"
@@ -205,13 +201,12 @@ function AdsOperationsOverview({ onOpenCampaigns, onOpenConnections }) {
       </SectionCard>
 
       <SectionCard
-        title="Action queue"
-        subtitle="Every count links to the governed campaign workspace; no provider action runs from this summary."
+        title="Needs action"
+        subtitle="Each count opens the campaigns list. Nothing is sent to an ad platform from here."
       >
         {alertCount === 0 ? (
           <p className="text-sm text-[var(--color-text-secondary)]">
-            No campaign, review, recovery or settlement action is currently
-            recorded.
+            Nothing needs action right now.
           </p>
         ) : (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -241,12 +236,12 @@ function AdsOperationsOverview({ onOpenCampaigns, onOpenConnections }) {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <SectionCard
-          title="Spend by provider currency"
-          subtitle="Currencies are separated and never cross-summed. A missing feed stays visibly empty."
+          title="Spend by currency"
+          subtitle="Each currency on its own line; currencies are never added together. A missing spend feed shows as empty."
         >
           {(snapshot?.spend_by_currency ?? []).length === 0 ? (
             <p className="text-sm text-[var(--color-text-secondary)]">
-              No provider spend has been observed yet.
+              No spend has come in from the ad platforms yet.
             </p>
           ) : (
             <div className="space-y-2">
@@ -273,15 +268,19 @@ function AdsOperationsOverview({ onOpenCampaigns, onOpenConnections }) {
         </SectionCard>
 
         <SectionCard
-          title="Attributed results"
-          subtitle="Recorded Mingla outcomes only; result value remains separated by source currency."
+          title="Results credited to ads"
+          subtitle="Mingla's own records; each currency's value stays on its own line."
+          badge={ADS_RESULTS_PROVEN ? null : <Badge variant="warning">Not proven</Badge>}
         >
           <div className="text-2xl font-semibold">
             {Number(snapshot?.results?.total ?? 0).toLocaleString()}
           </div>
           <div className="mb-3 text-xs uppercase text-[var(--color-text-tertiary)]">
-            total attributed results
+            results credited
           </div>
+          {!ADS_RESULTS_PROVEN && (
+            <p className="mb-3 text-xs text-[var(--color-warning-700)]">{ADS_RESULTS_CAVEAT}</p>
+          )}
           <div className="flex flex-wrap gap-2">
             {(snapshot?.results?.by_type ?? []).map((row) => (
               <Badge key={row.event_type} variant="info">
@@ -293,7 +292,7 @@ function AdsOperationsOverview({ onOpenCampaigns, onOpenConnections }) {
             <div className="mt-3 space-y-1 text-sm">
               {snapshot.results.value_by_currency.map((row) => (
                 <div key={row.currency} className="flex justify-between gap-3">
-                  <span>{row.currency} attributed value</span>
+                  <span>{row.currency} value credited</span>
                   <strong>{formatMinor(row.currency, row.value_cents)}</strong>
                 </div>
               ))}
@@ -303,8 +302,8 @@ function AdsOperationsOverview({ onOpenCampaigns, onOpenConnections }) {
       </div>
 
       <SectionCard
-        title="Provider and automation evidence"
-        subtitle="Verification and delivery freshness come from recorded provider observations. This does not claim the external scheduler configuration was inspected."
+        title="Connections and data freshness"
+        subtitle="When each platform was last checked, and when status and spend last came in. This does not show how the scheduled sync is set up."
         action={
           <Button size="sm" variant="secondary" onClick={onOpenConnections}>
             Manage connections
@@ -312,18 +311,18 @@ function AdsOperationsOverview({ onOpenCampaigns, onOpenConnections }) {
         }
       >
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg bg-[var(--gray-50)] p-3 text-sm">
-          <span className="font-medium">Delivery evidence</span>
+          <span className="font-medium">Delivery data</span>
           <Badge variant={evidenceVariant(delivery.evidence_state)}>
             {sentenceCase(delivery.evidence_state)}
           </Badge>
           <span className="text-[var(--color-text-secondary)]">
-            {Number(delivery.active_campaigns ?? 0)} active ·{" "}
-            {Number(delivery.missing_spend_campaigns ?? 0)} missing spend feed ·{" "}
-            {Number(delivery.stale_campaigns ?? 0)} stale
+            {Number(delivery.active_campaigns ?? 0)} running ·{" "}
+            {Number(delivery.missing_spend_campaigns ?? 0)} with no spend coming in ·{" "}
+            {Number(delivery.stale_campaigns ?? 0)} out of date
           </span>
           <span className="basis-full text-xs text-[var(--color-text-tertiary)]">
-            Status observed {observedAtLabel(delivery.latest_status_synced_at)}{" "}
-            · Spend observed {observedAtLabel(delivery.latest_spend_synced_at)}
+            Last status update: {seenLabel(delivery.latest_status_synced_at)}
+            {" · "}Last spend update: {seenLabel(delivery.latest_spend_synced_at)}
           </span>
         </div>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-5">
@@ -342,10 +341,10 @@ function AdsOperationsOverview({ onOpenCampaigns, onOpenConnections }) {
                   {sentenceCase(state)}
                 </Badge>
                 <div className="mt-2 text-xs text-[var(--color-text-secondary)]">
-                  {connection?.currency ?? "Currency unavailable"}
+                  {connection?.currency ?? "No currency yet"}
                 </div>
                 <div className="mt-1 text-[11px] text-[var(--color-text-tertiary)]">
-                  Verified {observedAtLabel(connection?.token_last_verified_at)}
+                  Last checked: {seenLabel(connection?.token_last_verified_at)}
                 </div>
               </button>
             );
@@ -1130,7 +1129,7 @@ export function AdEnginePage() {
     (tab) => adsConsoleEnabled || tab.id !== "creative-library",
   );
   const shownTab =
-    !adsConsoleEnabled && activeTab === "creative-library" ? "overview" : activeTab;
+    !adsConsoleEnabled && activeTab === "creative-library" ? "campaigns" : activeTab;
 
   useEffect(() => {
     const applyHash = () => setActiveTab(tabFromHash());
@@ -1141,7 +1140,7 @@ export function AdEnginePage() {
   const changeTab = (tab) => {
     setActiveTab(tab);
     window.location.hash =
-      tab === "overview" ? "#/ad-engine" : `#/ad-engine?tab=${tab}`;
+      tab === "campaigns" ? "#/ad-engine" : `#/ad-engine?tab=${tab}`;
   };
 
   useEffect(() => {
@@ -1180,7 +1179,7 @@ export function AdEnginePage() {
       <PageHeader
         titleId="ads-console-heading"
         title="Ads"
-        description="One governed workspace for campaigns, creative, provider connections, spend, results and settlement."
+        description="Campaigns, creative, connections, spend and results in one place."
         actions={
           <Button
             size="sm"
@@ -1229,11 +1228,11 @@ export function AdEnginePage() {
               id="governed-campaign-operations-heading"
               className="text-lg font-semibold"
             >
-              Governed campaign operations
+              How campaigns are made
             </h2>
             <p className="text-sm text-[var(--color-text-secondary)]">
-              The five-stage builder creates one immutable plan. Campaign
-              lifecycle, spend, results and settlement stay in this Ads area.
+              The five-step builder makes one fixed plan per campaign. Launching,
+              spend, results and settlement all stay on this page.
             </p>
           </section>
 
@@ -1243,8 +1242,8 @@ export function AdEnginePage() {
           />
 
           <SectionCard
-            title="Channel preflight"
-            subtitle="Verify current account, billing, identity, market, pixel, and provider readiness before opening the builder."
+            title="Check the ad platforms"
+            subtitle="Before building, check each platform's account, billing, identity, market and tracking are ready."
             action={
               <Button
                 variant="secondary"
@@ -1253,7 +1252,7 @@ export function AdEnginePage() {
                 loading={preflightRunning}
                 onClick={handlePreflight}
               >
-                Run preflight
+                Run the check
               </Button>
             }
           >
@@ -1264,7 +1263,7 @@ export function AdEnginePage() {
             )}
             {preflightRunning && (
               <div className="flex items-center gap-2 py-2">
-                <Spinner size="sm" /> Probing channels…
+                <Spinner size="sm" /> Checking each platform…
               </div>
             )}
             {preflightRows && !preflightRunning && (
@@ -1316,7 +1315,7 @@ export function AdEnginePage() {
 
           <SectionCard
             title="Campaign work"
-            subtitle="One engine, one immutable plan, and no direct provider-write shortcut."
+            subtitle="One builder and one fixed plan per campaign. Nothing is created on an ad platform any other way."
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <button
@@ -1328,8 +1327,8 @@ export function AdEnginePage() {
               >
                 <div className="font-semibold">Build a campaign</div>
                 <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-                  Destination, targeting, budget, media, review, and paused
-                  provider creation stay bound to one plan version.
+                  Where it sends people, who sees it, budget, media and review,
+                  saved as one plan. It is created paused on the platform.
                 </p>
               </button>
               <button
@@ -1341,8 +1340,8 @@ export function AdEnginePage() {
               >
                 <div className="font-semibold">Manage campaigns</div>
                 <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-                  Review, launch, pause, spend, results, stop, settlement, and
-                  audit evidence live together.
+                  Review, launch, pause, stop, spend, results and settlement
+                  in one list.
                 </p>
               </button>
             </div>

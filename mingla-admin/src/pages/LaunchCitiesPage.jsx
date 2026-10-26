@@ -33,6 +33,7 @@ import { useToast } from "../context/ToastContext";
 import { logAdminAction } from "../lib/auditLog";
 import { supabase } from "../lib/supabase";
 import { PageHeader } from "../components/ui/PageHeader";
+import { cityReadiness } from "../lib/systemPages";
 
 // ─── Local presentational helper: summary metric chip (DESIGN §4) ────────────
 function SummaryChip({ icon: Icon, label, value, accent = "muted" }) {
@@ -241,7 +242,7 @@ function BoundaryModal({ open, city, onClose, onSaved }) {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
-export function LaunchCitiesPage({ onTabChange }) {
+export function LaunchCitiesPage() {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -255,6 +256,8 @@ export function LaunchCitiesPage({ onTabChange }) {
   const [togglingIds, setTogglingIds] = useState(new Set());
   const [filter, setFilter] = useState("all"); // "all" | "live"
   const [boundaryCity, setBoundaryCity] = useState(null);
+  // #4130 (Wave 4b): going live (or hiding a live city) asks first.
+  const [confirmCity, setConfirmCity] = useState(null);
 
   const fetchCities = useCallback(async () => {
     setLoading(true);
@@ -367,6 +370,15 @@ export function LaunchCitiesPage({ onTabChange }) {
       },
     },
     {
+      key: "_readiness",
+      label: "Readiness",
+      width: "170px",
+      render: (_v, row) => {
+        const readiness = cityReadiness(row);
+        return <Badge variant={readiness.variant} dot>{readiness.label}</Badge>;
+      },
+    },
+    {
       key: "has_bbox",
       label: "Boundary",
       width: "130px",
@@ -382,7 +394,7 @@ export function LaunchCitiesPage({ onTabChange }) {
         <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-2">
           <Toggle
             checked={!!row.is_live_for_consumers}
-            onChange={() => handleToggleLive(row)}
+            onChange={() => setConfirmCity(row)}
             disabled={togglingIds.has(row.city_id)}
           />
           {togglingIds.has(row.city_id) && <Spinner size="sm" />}
@@ -405,7 +417,7 @@ export function LaunchCitiesPage({ onTabChange }) {
         />
       ),
     },
-  ], [togglingIds, handleToggleLive]);
+  ], [togglingIds]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -494,14 +506,42 @@ export function LaunchCitiesPage({ onTabChange }) {
           emptyIcon={Rocket}
           emptyMessage="No cities to launch yet."
           emptyAction={
-            <Button variant="link" onClick={() => onTabChange?.("placepool")}>
-              Add a city in Place Pool
+            <Button variant="link" onClick={() => { window.location.hash = "#/placepool?tab=pipeline"; }}>
+              Add a city in Pipeline
             </Button>
           }
           getRowId={(r) => r.city_id}
           rowClassName={(r) => r.is_live_for_consumers ? "bg-[var(--color-success-50)]/40" : ""}
         />
       </SectionCard>
+
+      <Modal
+        open={!!confirmCity}
+        onClose={() => setConfirmCity(null)}
+        title={confirmCity?.is_live_for_consumers ? `Hide ${confirmCity?.city_name} from Explorers?` : `Make ${confirmCity?.city_name} live?`}
+        size="sm"
+      >
+        <ModalBody>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            {confirmCity?.is_live_for_consumers
+              ? "People there can no longer start onboarding. People already in keep their account."
+              : `People there can start onboarding straight away. ${Number(confirmCity?.is_servable_places ?? 0).toLocaleString()} places are ready for them.`}
+          </p>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="ghost" onClick={() => setConfirmCity(null)}>Cancel</Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              const row = confirmCity;
+              setConfirmCity(null);
+              if (row) handleToggleLive(row);
+            }}
+          >
+            {confirmCity?.is_live_for_consumers ? "Hide it" : "Go live"}
+          </Button>
+        </ModalFooter>
+      </Modal>
 
       <BoundaryModal
         open={!!boundaryCity}

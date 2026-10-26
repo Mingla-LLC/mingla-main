@@ -11,6 +11,7 @@ import { Skeleton } from "../components/ui/Skeleton";
 import { PageHeader } from "../components/ui/PageHeader";
 import { timeAgo, formatDateTime } from "../lib/formatters";
 import { getQueueHealth } from "../services/queueHealthService";
+import { isMissingFunctionError } from "../lib/systemPages";
 import {
   gaugeNumber,
   observeFreshness,
@@ -48,6 +49,8 @@ export function QueueHealthPage() {
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  // #4130 (Wave 4b): the database function is not in production yet.
+  const [notSetUp, setNotSetUp] = useState(false);
   const [data, setData] = useState(null);
 
   const load = useCallback(async (showSpinner = true) => {
@@ -59,6 +62,11 @@ export function QueueHealthPage() {
       setData(res);
     } catch (err) {
       if (!mountedRef.current) return;
+      if (isMissingFunctionError(err)) {
+        setNotSetUp(true);
+        setLoadError(null);
+        return;
+      }
       setLoadError(err.message || "Could not load queue health.");
     } finally {
       if (mountedRef.current && showSpinner) setLoading(false);
@@ -70,9 +78,10 @@ export function QueueHealthPage() {
   }, [load]);
 
   useEffect(() => {
+    if (notSetUp) return undefined;
     const id = setInterval(() => load(false), 60000);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, notSetUp]);
 
   const verdict = data?.verdict ?? null;
   const live = data?.live ?? null;
@@ -115,6 +124,13 @@ export function QueueHealthPage() {
         }
       />
 
+      {notSetUp ? (
+        <AlertCard variant="warning" title="Queue health is not set up in production yet">
+          The waiting-room gauges need a database update that hasn&apos;t been applied to production.
+          Until it is, there is nothing to show here. Nothing else on this page is affected.
+        </AlertCard>
+      ) : null}
+
       {loadError ? (
         <AlertCard
           variant="error"
@@ -154,7 +170,7 @@ export function QueueHealthPage() {
             </div>
           ))}
         </div>
-      ) : !data && !loadError ? (
+      ) : notSetUp ? null : !data && !loadError ? (
         <AlertCard variant="info" title="No signal yet">
           The queue-health RPC returned nothing. Confirm admin_get_queue_health is applied.
         </AlertCard>

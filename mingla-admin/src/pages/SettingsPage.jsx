@@ -1,8 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import {
-  Settings, Flag, Sliders, Plug, Plus, Trash2, Edit3, Save, X,
-  History, Sun, Moon, Monitor, Search, FlaskConical, RotateCcw,
-} from "lucide-react";
+import { Plus, Trash2, Edit3, Sun, Moon, Monitor, RotateCcw } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { SectionCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -11,21 +8,19 @@ import { Badge } from "../components/ui/Badge";
 import { SearchInput } from "../components/ui/SearchInput";
 import { DataTable } from "../components/ui/Table";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
-import { Tabs } from "../components/ui/Tabs";
 import { Spinner } from "../components/ui/Spinner";
+import { LoadError } from "../components/ui/LoadError";
 import { useToast } from "../context/ToastContext";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 import { logAdminAction } from "../lib/auditLog";
-import { formatDate } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
-
-const SUB_TABS = [
-  { id: "appearance", label: "Appearance" },
-  { id: "flags", label: "Feature Flags" },
-  { id: "config", label: "App Config" },
-  { id: "integrations", label: "Integrations" },
-  { id: "testing", label: "Testing Tools" },
-];
+import { useOnline } from "../hooks/useCrmPipeline";
+import { useHashTab } from "../hooks/useHashTab";
+import { RESTART_WORD, SETTINGS_SECTIONS, canRestartTour, sectionFor } from "../lib/systemPages";
+import { fetchTrialRunHistory, restartTourForEveryone, systemErrorWords } from "../services/systemPagesService";
+import { TeamAutomationSettings } from "../components/ops/TeamSettingsPanels";
+import { RunHistoryGroups } from "../components/placeIntelligenceTrial/RunHistoryGroups";
 
 // ─── Appearance Tab ─────────────────────────────────────────────────────────
 
@@ -61,207 +56,6 @@ function AppearanceView() {
         </Button>
       </div>
     </SectionCard>
-  );
-}
-
-// ─── Feature Flags Tab ──────────────────────────────────────────────────────
-
-function FeatureFlagsView() {
-  const { addToast } = useToast();
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  const [flags, setFlags] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [editing, setEditing] = useState(null);
-  const [creating, setCreating] = useState(false);
-  const [newFlag, setNewFlag] = useState({ key: "", description: "", enabled: false });
-  const [confirmDelete, setConfirmDelete] = useState(null);
-  const [historyModal, setHistoryModal] = useState(null);
-  const [historyData, setHistoryData] = useState([]);
-
-  // toward #3697 Wave 3 (#3706): table columns are flag_key / is_enabled (not key / enabled).
-  const fetchFlags = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase.from("feature_flags").select("*").order("flag_key");
-    if (!mountedRef.current) return;
-    if (!error) {
-      setFlags(
-        (data || []).map((row) => ({
-          ...row,
-          key: row.flag_key,
-          enabled: !!row.is_enabled,
-        })),
-      );
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { fetchFlags(); }, [fetchFlags]);
-
-  const toSnakeCase = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-
-  const handleCreate = async () => {
-    const key = toSnakeCase(newFlag.key);
-    if (!key) { addToast("Key is required", "error"); return; }
-    const { error } = await supabase.from("feature_flags").insert({
-      flag_key: key,
-      description: newFlag.description,
-      is_enabled: newFlag.enabled,
-    });
-    if (error) { addToast(error.message, "error"); return; }
-    addToast("Flag created", "success");
-    logAdminAction("config.create", "flag", key, { key });
-    setCreating(false);
-    setNewFlag({ key: "", description: "", enabled: false });
-    fetchFlags();
-  };
-
-  const handleToggle = async (flag) => {
-    const { error } = await supabase
-      .from("feature_flags")
-      .update({ is_enabled: !flag.enabled })
-      .eq("id", flag.id);
-    if (error) { addToast(error.message, "error"); return; }
-    logAdminAction("config.update", "flag", flag.key, { key: flag.key, old_value: flag.enabled, new_value: !flag.enabled });
-    fetchFlags();
-  };
-
-  const handleDelete = async (flag) => {
-    const { error } = await supabase.from("feature_flags").delete().eq("id", flag.id);
-    if (error) { addToast(error.message, "error"); return; }
-    addToast("Flag deleted", "success");
-    logAdminAction("config.delete", "flag", flag.key, { key: flag.key });
-    setConfirmDelete(null);
-    fetchFlags();
-  };
-
-  const handleSaveEdit = async () => {
-    const { error } = await supabase
-      .from("feature_flags")
-      .update({ description: editing.description, is_enabled: editing.enabled })
-      .eq("id", editing.id);
-    if (error) { addToast(error.message, "error"); return; }
-    addToast("Flag updated", "success");
-    logAdminAction("config.update", "flag", editing.key, { key: editing.key, fields_changed: ["description", "enabled"] });
-    setEditing(null);
-    fetchFlags();
-  };
-
-  const openHistory = async (flag) => {
-    setHistoryModal(flag);
-    const { data } = await supabase.from("admin_audit_log").select("*").eq("target_type", "flag").eq("target_id", flag.key).order("created_at", { ascending: false }).limit(20);
-    if (mountedRef.current) setHistoryData(data || []);
-  };
-
-  const filtered = flags.filter((f) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return f.key?.toLowerCase().includes(q) || f.description?.toLowerCase().includes(q);
-  });
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} onClear={() => setSearch("")} placeholder="Search flags..." className="flex-1" />
-        <Button icon={Plus} onClick={() => setCreating(true)}>New Flag</Button>
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-12"><Spinner /></div>
-      ) : filtered.length === 0 ? (
-        <p className="text-sm text-[var(--color-text-tertiary)] text-center py-12">
-          {search ? "No flags match that search." : "No feature flags. Create one to control app features remotely."}
-        </p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {filtered.map((flag) => (
-            <div key={flag.id} className="flex items-center gap-3 p-3 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)]">
-              <Toggle checked={flag.enabled} onChange={() => handleToggle(flag)} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-[var(--color-text-primary)] font-mono">{flag.key}</p>
-                {flag.description && <p className="text-xs text-[var(--color-text-tertiary)] truncate">{flag.description}</p>}
-              </div>
-              <Badge variant={flag.enabled ? "success" : "default"}>{flag.enabled ? "On" : "Off"}</Badge>
-              <Button variant="ghost" size="sm" icon={History} onClick={() => openHistory(flag)} />
-              <Button variant="ghost" size="sm" icon={Edit3} onClick={() => setEditing({ ...flag })} />
-              <Button variant="ghost" size="sm" icon={Trash2} onClick={() => setConfirmDelete(flag)} />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Create Modal */}
-      <Modal open={creating} onClose={() => setCreating(false)} title="New Feature Flag">
-        <ModalBody>
-          <div className="flex flex-col gap-3">
-            <Input label="Key" value={newFlag.key} onChange={(e) => setNewFlag((f) => ({ ...f, key: e.target.value }))} placeholder="my_feature_flag" />
-            <Input label="Description" value={newFlag.description} onChange={(e) => setNewFlag((f) => ({ ...f, description: e.target.value }))} placeholder="What this flag controls" />
-            <div className="flex items-center gap-2">
-              <Toggle checked={newFlag.enabled} onChange={(v) => setNewFlag((f) => ({ ...f, enabled: v }))} />
-              <span className="text-sm">Enabled by default</span>
-            </div>
-          </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setCreating(false)}>Cancel</Button>
-          <Button onClick={handleCreate}>Create Flag</Button>
-        </ModalFooter>
-      </Modal>
-
-      {/* Edit Modal */}
-      <Modal open={!!editing} onClose={() => setEditing(null)} title={`Edit "${editing?.key}"`}>
-        <ModalBody>
-          <div className="flex flex-col gap-3">
-            <Input label="Description" value={editing?.description || ""} onChange={(e) => setEditing((f) => ({ ...f, description: e.target.value }))} />
-            <div className="flex items-center gap-2">
-              <Toggle checked={editing?.enabled || false} onChange={(v) => setEditing((f) => ({ ...f, enabled: v }))} />
-              <span className="text-sm">Enabled</span>
-            </div>
-          </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setEditing(null)}>Cancel</Button>
-          <Button onClick={handleSaveEdit}>Save</Button>
-        </ModalFooter>
-      </Modal>
-
-      {/* Delete Confirm */}
-      <Modal open={!!confirmDelete} onClose={() => setConfirmDelete(null)} title="Delete Feature Flag" destructive>
-        <ModalBody>
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            This will permanently remove the flag <strong>{confirmDelete?.key}</strong>. The app will no longer be able to check this flag.
-          </p>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setConfirmDelete(null)}>Cancel</Button>
-          <Button variant="danger" onClick={() => handleDelete(confirmDelete)}>Delete Flag</Button>
-        </ModalFooter>
-      </Modal>
-
-      {/* History Modal */}
-      <Modal open={!!historyModal} onClose={() => { setHistoryModal(null); setHistoryData([]); }} title={`History: ${historyModal?.key}`} size="lg">
-        <ModalBody>
-          {historyData.length === 0 ? (
-            <p className="text-sm text-[var(--color-text-tertiary)] text-center py-6">No history recorded.</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {historyData.map((entry) => (
-                <div key={entry.id} className="flex items-center gap-3 text-sm py-2 border-b border-[var(--gray-100)]">
-                  <span className="text-[var(--color-text-tertiary)] w-32 shrink-0">{formatDate(entry.created_at)}</span>
-                  <span className="text-[var(--color-text-primary)]">{entry.action}</span>
-                  <span className="text-[var(--color-text-tertiary)] text-xs truncate">{entry.admin_email}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </ModalBody>
-      </Modal>
-    </div>
   );
 }
 
@@ -407,129 +201,20 @@ function AppConfigView() {
   );
 }
 
-// ─── Integrations Tab ───────────────────────────────────────────────────────
+// ─── Danger zone (owner only) ───────────────────────────────────────────────
+// #4130 (Wave 4b): restarting the tour for everyone was one click that updated
+// every profile from the browser. It is now the owner's alone, needs the typed
+// word RESTART and a reason, and runs on the server, which logs it.
 
-function IntegrationsView() {
-  const { addToast } = useToast();
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  const [integrations, setIntegrations] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [newInt, setNewInt] = useState({ name: "", api_key: "", base_url: "", enabled: true });
-  const [confirmDelete, setConfirmDelete] = useState(null);
-
-  const fetchIntegrations = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase.from("integrations").select("*").order("name");
-    if (!mountedRef.current) return;
-    if (!error) setIntegrations(data || []);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { fetchIntegrations(); }, [fetchIntegrations]);
-
-  const handleCreate = async () => {
-    if (!newInt.name.trim()) { addToast("Name is required", "error"); return; }
-    const { error } = await supabase.from("integrations").insert(newInt);
-    if (error) { addToast(error.message, "error"); return; }
-    addToast("Integration added", "success");
-    logAdminAction("config.create", "integration", newInt.name, { key: newInt.name });
-    setCreating(false);
-    setNewInt({ name: "", api_key: "", base_url: "", enabled: true });
-    fetchIntegrations();
-  };
-
-  const handleToggle = async (intg) => {
-    const { error } = await supabase.from("integrations").update({ enabled: !intg.enabled }).eq("id", intg.id);
-    if (error) { addToast(error.message, "error"); return; }
-    logAdminAction("config.update", "integration", intg.name, { key: intg.name, old_value: intg.enabled, new_value: !intg.enabled });
-    fetchIntegrations();
-  };
-
-  const handleDelete = async (intg) => {
-    const { error } = await supabase.from("integrations").delete().eq("id", intg.id);
-    if (error) { addToast(error.message, "error"); return; }
-    addToast("Integration removed", "success");
-    logAdminAction("config.delete", "integration", intg.name, { key: intg.name });
-    setConfirmDelete(null);
-    fetchIntegrations();
-  };
-
-  const filtered = integrations.filter((i) => {
-    if (!search) return true;
-    return i.name?.toLowerCase().includes(search.toLowerCase());
-  });
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} onClear={() => setSearch("")} placeholder="Search integrations..." className="flex-1" />
-        <Button icon={Plus} onClick={() => setCreating(true)}>Add Integration</Button>
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-12"><Spinner /></div>
-      ) : filtered.length === 0 ? (
-        <p className="text-sm text-[var(--color-text-tertiary)] text-center py-12">
-          {search ? "No integrations match." : "No integrations configured."}
-        </p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {filtered.map((intg) => (
-            <div key={intg.id} className="flex items-center gap-3 p-3 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)]">
-              <Toggle checked={intg.enabled} onChange={() => handleToggle(intg)} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-[var(--color-text-primary)]">{intg.name}</p>
-                {intg.base_url && <p className="text-xs text-[var(--color-text-tertiary)] truncate">{intg.base_url}</p>}
-              </div>
-              <Badge variant={intg.enabled ? "success" : "default"}>{intg.enabled ? "Active" : "Off"}</Badge>
-              <Button variant="ghost" size="sm" icon={Trash2} onClick={() => setConfirmDelete(intg)} />
-            </div>
-          ))}
-        </div>
-      )}
-
-      <Modal open={creating} onClose={() => setCreating(false)} title="Add Integration">
-        <ModalBody>
-          <div className="flex flex-col gap-3">
-            <Input label="Name" value={newInt.name} onChange={(e) => setNewInt((n) => ({ ...n, name: e.target.value }))} placeholder="Service Name" />
-            <Input label="API Key" value={newInt.api_key} onChange={(e) => setNewInt((n) => ({ ...n, api_key: e.target.value }))} placeholder="sk-..." type="password" />
-            <Input label="Base URL" value={newInt.base_url} onChange={(e) => setNewInt((n) => ({ ...n, base_url: e.target.value }))} placeholder="https://api.example.com" />
-          </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setCreating(false)}>Cancel</Button>
-          <Button onClick={handleCreate}>Add</Button>
-        </ModalFooter>
-      </Modal>
-
-      <Modal open={!!confirmDelete} onClose={() => setConfirmDelete(null)} title="Remove Integration" destructive>
-        <ModalBody>
-          <p className="text-sm text-[var(--color-text-secondary)]">This will remove the <strong>{confirmDelete?.name}</strong> integration.</p>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setConfirmDelete(null)}>Cancel</Button>
-          <Button variant="danger" onClick={() => handleDelete(confirmDelete)}>Remove</Button>
-        </ModalFooter>
-      </Modal>
-    </div>
-  );
-}
-
-// ─── Testing Tools Tab ─────────────────────────────────────────────────────
-
-function TestingToolsView() {
+function DangerZone() {
   const { addToast } = useToast();
   const [userEmail, setUserEmail] = useState("");
   const [resettingSingle, setResettingSingle] = useState(false);
   const [resettingAll, setResettingAll] = useState(false);
   const [confirmResetAll, setConfirmResetAll] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [resetReason, setResetReason] = useState("");
+  const [resetError, setResetError] = useState("");
 
   const handleResetSingle = async () => {
     if (!userEmail.trim()) {
@@ -575,32 +260,31 @@ function TestingToolsView() {
   };
 
   const handleResetAll = async () => {
+    if (!canRestartTour(typed, resetReason)) return;
     setResettingAll(true);
+    setResetError("");
     try {
-      const { error, count } = await supabase
-        .from("profiles")
-        .update({ coach_mark_step: 0 })
-        .neq("coach_mark_step", 0);
-
-      if (error) {
-        addToast({ variant: "error", title: error.message || "Failed to reset" });
-      } else {
-        addToast({ variant: "success", title: "Coach mark reset for all users" });
-        logAdminAction("testing.reset_coach_mark", "profile", "all", { scope: "all" });
-      }
-    } catch (e) {
-      addToast({ variant: "error", title: "Reset failed" });
+      const result = await restartTourForEveryone(typed, resetReason.trim());
+      addToast({
+        variant: "success",
+        title: "Tour restarted for everyone",
+        description: `${Number(result?.restarted ?? 0).toLocaleString()} accounts will see it next time they open the app. Logged with your reason.`,
+      });
+      setConfirmResetAll(false);
+      setTyped("");
+      setResetReason("");
+    } catch (err) {
+      setResetError(systemErrorWords(err));
     } finally {
       setResettingAll(false);
-      setConfirmResetAll(false);
     }
   };
 
   return (
     <div className="flex flex-col gap-4">
-      <SectionCard title="Coach Mark Tour" icon={FlaskConical}>
+      <SectionCard title="Danger zone" subtitle="Owner only. These change the live app.">
         <p className="text-sm text-[var(--color-text-secondary)] mb-4">
-          Reset the guided tour so it restarts from Step 1. Use this to test the first-time user experience without deleting accounts.
+          Restart the welcome tour for one person, to test the first-time experience without deleting their account.
         </p>
 
         <div className="flex flex-col gap-3">
@@ -628,29 +312,34 @@ function TestingToolsView() {
           <div className="flex items-center gap-3 pt-2 border-t border-[var(--gray-100)]">
             <Button
               variant="danger"
-              onClick={() => setConfirmResetAll(true)}
+              onClick={() => { setTyped(""); setResetReason(""); setResetError(""); setConfirmResetAll(true); }}
               disabled={resettingAll}
               icon={RotateCcw}
             >
-              Reset ALL Users
+              Restart tour for everyone…
             </Button>
             <span className="text-xs text-[var(--color-text-tertiary)]">
-              Restarts the tour for every user in the database
+              Every user sees the welcome tour again next time they open the app.
             </span>
           </div>
         </div>
       </SectionCard>
 
-      <Modal open={confirmResetAll} onClose={() => setConfirmResetAll(false)} title="Reset Coach Marks for All Users" destructive>
+      <Modal open={confirmResetAll} onClose={() => !resettingAll && setConfirmResetAll(false)} title="Restart the welcome tour for everyone?" destructive>
         <ModalBody>
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            This will restart the guided tour for <strong>every user</strong>. They will all see the coach mark tour again on their next app open. Are you sure?
-          </p>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              Every user sees the welcome tour again next time they open the app. This can&apos;t be undone.
+            </p>
+            <Input label={`Type ${RESTART_WORD} to confirm`} value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" />
+            <Input label="Reason (saved with your name)" value={resetReason} onChange={(e) => setResetReason(e.target.value)} placeholder="e.g. the new tour shipped" />
+            {resetError && <p role="alert" className="text-sm text-[var(--color-error-700)]">{resetError}</p>}
+          </div>
         </ModalBody>
         <ModalFooter>
-          <Button variant="secondary" onClick={() => setConfirmResetAll(false)}>Cancel</Button>
-          <Button variant="danger" onClick={handleResetAll} disabled={resettingAll}>
-            {resettingAll ? "Resetting..." : "Yes, Reset All"}
+          <Button variant="secondary" disabled={resettingAll} onClick={() => setConfirmResetAll(false)}>Cancel</Button>
+          <Button variant="danger" onClick={handleResetAll} disabled={resettingAll || !canRestartTour(typed, resetReason)} loading={resettingAll}>
+            Restart for everyone
           </Button>
         </ModalFooter>
       </Modal>
@@ -658,23 +347,103 @@ function TestingToolsView() {
   );
 }
 
+// ─── Intelligence Trial history (read-only) ─────────────────────────────────
+// The trial is retired (last run in June). Its runs stay readable here; nothing
+// can be started, retried or cancelled.
+
+function TrialHistory() {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState("");
+  const [open, setOpen] = useState(false);
+  const load = useCallback(async () => {
+    setError("");
+    try {
+      setRows(await fetchTrialRunHistory());
+    } catch (err) {
+      setError(err.message);
+    }
+  }, []);
+  return (
+    <SectionCard
+      title="Intelligence Trial history"
+      subtitle="Retired research tool. Its past runs, read-only."
+      action={!open ? <Button size="sm" variant="secondary" onClick={() => { setOpen(true); void load(); }}>Show runs</Button> : null}
+    >
+      {!open ? (
+        <p className="text-sm text-[var(--color-text-tertiary)]">Hidden until you ask, so Settings opens fast.</p>
+      ) : error ? (
+        <LoadError title="Couldn't load the trial history" message={error} onRetry={load} />
+      ) : rows === null ? (
+        <div className="flex justify-center py-6"><Spinner /></div>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-[var(--color-text-tertiary)]">No runs were recorded.</p>
+      ) : (
+        <RunHistoryGroups allRows={rows} onFilterByRun={() => {}} retryFailedDisabled />
+      )}
+    </SectionCard>
+  );
+}
+
 // ─── Main Settings Page ─────────────────────────────────────────────────────
+// #4130 (Wave 4b): one page of sections instead of tabs. Feature flags have
+// their own page; the empty Integrations tab is gone. Old addresses
+// (#/place-intelligence-trial -> tab=intelligence-trial) scroll to their section.
+
+function Section({ id, title, children }) {
+  return (
+    <section id={`settings-${id}`} aria-labelledby={`settings-${id}-heading`} className="flex min-w-0 flex-col gap-3">
+      <h2 id={`settings-${id}-heading`} className="text-[15px] font-semibold text-[var(--color-text-primary)]">{title}</h2>
+      {children}
+    </section>
+  );
+}
 
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = useState("appearance");
+  const { access } = useAuth();
+  const online = useOnline();
+  const isOwner = access?.role === "owner";
+  const [requested] = useHashTab("settings");
+  const focus = sectionFor(SETTINGS_SECTIONS, requested);
+
+  useEffect(() => {
+    if (focus) document.getElementById(`settings-${focus}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [focus]);
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Settings"
-        tabs={<Tabs tabs={SUB_TABS} activeTab={activeTab} onChange={setActiveTab} />}
+        description="Appearance, app configuration, team automation and the danger zone."
       />
 
-      {activeTab === "appearance" && <AppearanceView />}
-      {activeTab === "flags" && <FeatureFlagsView />}
-      {activeTab === "config" && <AppConfigView />}
-      {activeTab === "integrations" && <IntegrationsView />}
-      {activeTab === "testing" && <TestingToolsView />}
+      {/* Automatic steps — moved from the Team dashboard (#4130 Wave 1). Each
+          panel shows only to someone who can change it; the server checks too. */}
+      <Section id="automatic-steps" title="Automatic steps">
+        <TeamAutomationSettings online={online} />
+      </Section>
+
+      <Section id="appearance" title="Appearance">
+        <AppearanceView />
+      </Section>
+
+      <Section id="app-config" title="App configuration">
+        <p className="text-sm text-[var(--color-text-secondary)]">The values the apps read when they start.</p>
+        <AppConfigView />
+      </Section>
+
+      {/* Competitor watch — moves here from Tool leads (#4130 Wave 4a); that
+          wave fills this slot. */}
+      <div id="settings-competitor-watch" data-slot="competitor-watch" />
+
+      <Section id="intelligence-trial" title="Research history">
+        <TrialHistory />
+      </Section>
+
+      {isOwner && (
+        <Section id="danger-zone" title="Danger zone">
+          <DangerZone />
+        </Section>
+      )}
     </div>
   );
 }

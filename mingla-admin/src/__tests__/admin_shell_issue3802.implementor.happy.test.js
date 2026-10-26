@@ -408,19 +408,22 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
   const PAGES_DIR = path.join(SRC, "pages");
   // Every page that starts with the one header.
   const MIGRATED = [
-    "AdEnginePage.jsx", "AdminPage.jsx", "AgentPage.jsx", "ApiHealthPage.jsx", "BetaLeadsPage.jsx", "BrandSitesPage.jsx", "BrandsConsolePage.jsx",
+    "AdEnginePage.jsx", "AdminPage.jsx", "AgentPage.jsx", "BetaLeadsPage.jsx", "BrandSitesPage.jsx", "BrandsConsolePage.jsx",
     "BusinessMoneyLedgerPage.jsx", "BusinessOrdersPage.jsx", "BusinessPaymentsPage.jsx", "CampaignBuilderPage.jsx",
-    "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "CommunitySupportPage.jsx", "ContentCalendarPage.jsx", "DataRoomPage.jsx", "DeckScoreTunerPage.jsx", "DraftsPage.jsx", "EmailPage.jsx",
+    "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "CommunitySupportPage.jsx", "ContentCalendarPage.jsx", "DataRoomPage.jsx", "DraftsPage.jsx", "EmailPage.jsx",
     // [TEST-MOD-APPROVED #3980] the Work board and Agent log draw the one header.
     "WorkBoardPage.jsx", "AgentLogPage.jsx",
     "GuidePage.jsx", "LaunchCitiesPage.jsx", "NotificationsPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
     "PlaceIntelligenceTrialPage.jsx", "PlacePoolManagementPage.jsx", "PricingPage.jsx", "QueueHealthPage.jsx", "RefundOperationsPage.jsx",
-    "RoleHomePage.jsx", "SettingsPage.jsx", "SignalLibraryPage.jsx", "StripeModePage.jsx", "SubscriptionManagementPage.jsx",
+    "RoleHomePage.jsx", "SettingsPage.jsx", "SignalLibraryPage.jsx", "SubscriptionManagementPage.jsx",
     "SupportDeskPage.jsx", "TeamDashboardPage.jsx", "ToolLeadsPage.jsx", "VenuesConsolePage.jsx",
     // #4130: Wave 2a's Mingla money page draws the one header.
     "MinglaMoneyPage.jsx",
     // #4130: People replaces the Users page (deleted); Brands is its own page.
     "PeoplePage.jsx", "BrandsPage.jsx",
+    // #4130 (Wave 4b): Place pool, Platform health and Feature flags are their
+    // own pages; API health, Stripe mode and Deck tuner are folded in (deleted).
+    "PlacePoolPage.jsx", "PlatformHealthPage.jsx", "FeatureFlagsPage.jsx",
   ];
   // The five pages that moved later (My agent, Hosts and Creators, Beta Leads,
   // Home, Team dashboard) are now in the list above; none is left to follow.
@@ -455,6 +458,7 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     // [TEST-MOD-APPROVED #3980] Work board and Agent log pages (+2).
     // #4130: Mingla money page (+1, Wave 2a).
     // #4130: Users page deleted (-1); People and Brands pages added (+2).
+    // #4130 (Wave 4b): three pages folded in (-3), three added (+3).
     assert.equal(MIGRATED.length, 46);
     assert.equal(FOLLOW_UP.length, 0);
   });
@@ -601,6 +605,7 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
     // [TEST-MOD-APPROVED #3980] Work board and Agent log pages (+2).
     // #4130: Mingla money page (+1, Wave 2a).
     // #4130: Users page deleted (-1); People and Brands pages added (+2).
+    // #4130 (Wave 4b): three pages folded in (-3), three added (+3).
     assert.equal(MIGRATED.length, 46);
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);

@@ -11,7 +11,15 @@ import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { ListItemSkeleton } from "../components/ui/Skeleton";
 import { useToast } from "../context/ToastContext";
 import { formatRelativeTime } from "../lib/formatters";
-import { INVITABLE_ROLES, ROLE_LABELS } from "../lib/access";
+import { INVITABLE_ROLES, ROLE_LABELS, canOpenOwnPage } from "../lib/access";
+import { Drawer } from "../components/ui/Drawer";
+import { Tabs } from "../components/ui/Tabs";
+import { EmbeddedPageContext } from "../components/layout/embeddedPage";
+import { useAuth } from "../context/AuthContext";
+import { useHashTab } from "../hooks/useHashTab";
+import { TEAM_TABS, tabFor, teamGroups, lastActiveLabel } from "../lib/systemPages";
+import { fetchTeamLastActive } from "../services/systemPagesService";
+import { CareersPage } from "./CareersPage";
 import { INVITE_STATE_COPY, findInviteState, inviteRowState } from "../lib/inviteLink";
 import { PageHeader } from "../components/ui/PageHeader";
 import { useOnline } from "../hooks/useCrmPipeline";
@@ -23,6 +31,12 @@ import { listProfiles, setProfile } from "../services/teamProfileService";
 import { opsErrorWords } from "../lib/opsModel";
 
 // Issue #3802 — Team and roles (owner only).
+//
+// #4130 (Wave 4b): one table with tabs (People, Invited, Removed, Careers),
+// last active on each person, and every change in a drawer: Invite opens one
+// from the header, a row opens one with that person's role, name, activity and
+// access. The team tabs are the owner's (team_manage); the Careers tab (the
+// old Careers page) is anyone's who could open Careers. Nothing widens.
 //
 // Every read and write on this page goes through the server: the roster and
 // the invitation states are read with two owner-only functions, membership is
@@ -80,6 +94,13 @@ function shortDate(value) {
 
 export function AdminPage() {
   const { addToast } = useToast();
+  const { access } = useAuth();
+  const canTeam = canOpenOwnPage(access, "admin");
+  const canCareers = canOpenOwnPage(access, "careers");
+  const [requestedTab, openTab] = useHashTab("admin");
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [managing, setManaging] = useState(null);   // email whose drawer is open
+  const [lastActive, setLastActive] = useState({}); // email -> ISO time
   const online = useOnline();
   const agentOverview = useTeamAgentOverview();
   const mountedRef = useRef(true);
@@ -98,7 +119,7 @@ export function AdminPage() {
 
   const [people, setPeople] = useState([]);
   const [inviteStates, setInviteStates] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(canTeam);
   const [error, setError] = useState(null);
 
   // Invite form
@@ -168,11 +189,22 @@ export function AdminPage() {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (canTeam) load();
+  }, [load, canTeam]);
+
+  // #4130: when each teammate was last active (owner only, like the list).
+  useEffect(() => {
+    if (!canTeam) return undefined;
+    let live = true;
+    fetchTeamLastActive()
+      .then((map) => { if (live) setLastActive(map); })
+      .catch((err) => { if (live) addToast({ variant: "warning", title: "Last active couldn't load", description: err.message }); });
+    return () => { live = false; };
+  }, [canTeam, addToast]);
 
   // Names load beside the roster; admin_team_list stays as it is.
   useEffect(() => {
+    if (!canTeam) return undefined;
     let live = true;
     listProfiles().then((rows) => {
       if (!live) return;
@@ -184,7 +216,7 @@ export function AdminPage() {
       setProfilesError("");
     }).catch((err) => { if (live) setProfilesError(opsErrorWords(err)); });
     return () => { live = false; };
-  }, []);
+  }, [canTeam]);
 
   const editProfile = (email, field, value) =>
     setProfiles((prev) => ({ ...prev, [email]: { ...(prev[email] || { name: "", login: "", savedName: "", savedLogin: "", fallback: "" }), [field]: value, state: "", error: "", warning: "" } }));
@@ -323,8 +355,12 @@ export function AdminPage() {
   };
 
   const showPerson = (email) => {
+    // #4130: the person opens in their drawer, on the tab that lists them.
+    const row = people.find((p) => p.email === email);
+    if (row) openTab(row.status === "invited" ? "invited" : row.status === "revoked" ? "removed" : "team");
+    setInviteOpen(false);
+    setManaging(email);
     setHighlight(email);
-    document.getElementById(`team-row-${email}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     clearTimeout(highlightTimerRef.current);
     highlightTimerRef.current = setTimeout(() => setHighlight(null), HIGHLIGHT_MS);
   };
@@ -532,9 +568,7 @@ export function AdminPage() {
   };
 
   // ── Groups ──────────────────────────────────────────────────────────────
-  const withAccess = people.filter((p) => p.status === "active");
-  const invited = people.filter((p) => p.status === "invited");
-  const removed = people.filter((p) => p.status === "revoked");
+  const { team: withAccess, invited, removed } = teamGroups(people);
   const needNewLink = invited.filter(
     (p) => INVITE_STATE_COPY[inviteRowState(p, inviteStates)].needsNewLink
   ).length;
@@ -720,14 +754,14 @@ export function AdminPage() {
     return (
       <div
         key={email}
-        id={`team-row-${email}`}
+        id={`team-person-${email}`}
         aria-busy={rowBusy}
         className={[
           "transition-colors duration-300",
           highlight === email ? "bg-[var(--color-brand-50)]" : "",
         ].join(" ")}
       >
-        <div className="grid min-w-0 grid-cols-1 gap-4 px-5 py-3.5 lg:grid-cols-[minmax(200px,1fr)_minmax(220px,.8fr)_auto] lg:items-start">
+        <div className="grid min-w-0 grid-cols-1 gap-4 px-5 py-3.5">
           <div className="flex min-w-0 items-start gap-4">
             <div
               className={[
@@ -835,38 +869,83 @@ export function AdminPage() {
             {addressInUseLine(row.email)}
           </p>
         )}
-        {isOwner && onlyOwner && (
-          <p className="px-5 pb-4 text-sm text-[var(--color-text-tertiary)]">
-            It&apos;s just you so far. Invite your first teammate above.
-          </p>
-        )}
       </div>
     );
   };
 
-  const renderGroup = (heading, rows) =>
-    rows.length === 0 ? null : (
-      <div key={heading}>
-        <h4 className="px-5 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
-          {heading}
-        </h4>
-        <div className="divide-y divide-[var(--gray-200)]">{rows.map(renderRow)}</div>
-      </div>
-    );
+  const tabCount = { team: withAccess.length, invited: invited.length, removed: removed.length };
+  const visibleTabs = TEAM_TABS.filter((t) => (t.hosts === "careers" ? canCareers : canTeam)).map((t) => ({
+    id: t.id,
+    label: t.id === "careers" ? t.label : `${t.label} · ${tabCount[t.id]}`,
+  }));
+  const tab = visibleTabs.length ? tabFor(visibleTabs, requestedTab) : "";
+  const listed = tab === "invited" ? invited : tab === "removed" ? removed : withAccess;
+  const managed = managing ? people.find((p) => p.email === managing) || null : null;
+
+  // One row of the table. The changes live in the person's drawer.
+  const renderTableRow = (row) => (
+    <tr
+      key={row.email}
+      id={`team-row-${row.email}`}
+      className={[
+        "cursor-pointer border-b border-[var(--gray-100)] last:border-b-0 hover:bg-[var(--color-background-secondary)]",
+        highlight === row.email ? "bg-[var(--color-brand-50)]" : "",
+      ].join(" ")}
+      onClick={() => setManaging(row.email)}
+    >
+      <td className="px-5 py-3 align-top">
+        <button type="button" className="min-w-0 text-left" onClick={(e) => { e.stopPropagation(); setManaging(row.email); }}>
+          <span className="block break-all text-sm font-medium text-[var(--color-text-primary)]">
+            {profiles[row.email]?.savedName || row.email}
+          </span>
+          {profiles[row.email]?.savedName && (
+            <span className="block break-all text-xs text-[var(--color-text-tertiary)]">{row.email}</span>
+          )}
+        </button>
+        {row.is_self && <Badge variant="info" className="ml-1">you</Badge>}
+      </td>
+      <td className="px-3 py-3 align-top">
+        <Badge variant={row.role === "owner" ? "brand" : "outline"}>{ROLE_LABELS[row.role] || row.role}</Badge>
+        {row.status === "invited" && (
+          <Badge variant={INVITE_STATE_COPY[inviteRowState(row, inviteStates)].variant} dot className="ml-1">
+            {INVITE_STATE_COPY[inviteRowState(row, inviteStates)].badge}
+          </Badge>
+        )}
+      </td>
+      <td className="px-3 py-3 align-top text-sm text-[var(--color-text-secondary)]">
+        {row.status === "active"
+          ? (agentRows.find((candidate) => candidate.email === row.email)?.agents || []).map((a) => a.label).filter(Boolean).join(", ") || "–"
+          : "–"}
+      </td>
+      <td className="px-3 py-3 align-top text-sm tabular-nums text-[var(--color-text-secondary)]">
+        {lastActiveLabel(lastActive[row.email])}
+      </td>
+    </tr>
+  );
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Team and roles"
-        actions={<Badge variant="outline">{`${withAccess.length} with access`}</Badge>}
+        description="Who has access, what they can do, and their connected agents."
+        meta={canTeam ? <Badge variant="outline">{`${withAccess.length} with access`}</Badge> : null}
+        actions={
+          canTeam ? (
+            <Button variant="primary" icon={UserPlus} onClick={() => { setManaging(null); setInviteOpen(true); }}>
+              Invite
+            </Button>
+          ) : null
+        }
+        tabs={visibleTabs.length > 1 ? <Tabs tabs={visibleTabs} activeTab={tab} onChange={openTab} /> : null}
       />
 
-      {/* Invite */}
-      <SectionCard
-        title="Invite someone"
-        subtitle="They get an email with a one-time link that expires in 7 days, and choose their own password."
-      >
-        <form onSubmit={handleInvite} className="flex flex-col gap-3 md:flex-row md:items-start">
+      {/* Invite, in a drawer */}
+      <Drawer open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite someone">
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            They get an email with a one-time link that expires in 7 days, and choose their own password.
+          </p>
+        <form onSubmit={handleInvite} className="flex flex-col gap-3">
           <div className="flex-1 min-w-0">
             <Input
               label="Email address"
@@ -897,7 +976,7 @@ export function AdminPage() {
               )}
             </div>
           </div>
-          <div className="md:w-[320px]">
+          <div>
             <label
               htmlFor="team-invite-role"
               className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5"
@@ -917,7 +996,7 @@ export function AdminPage() {
               ))}
             </select>
           </div>
-          <div className="md:pt-[26px]">
+          <div>
             <Button type="submit" variant="primary" icon={UserPlus} loading={inviting} disabled={!canSend}>
               Send invite
             </Button>
@@ -931,12 +1010,25 @@ export function AdminPage() {
             {addressInUseLine(formInUse)}
           </p>
         )}
-      </SectionCard>
+        </div>
+      </Drawer>
 
-      {/* People */}
+      {tab === "careers" ? (
+        <EmbeddedPageContext.Provider value={true}>
+          <CareersPage />
+        </EmbeddedPageContext.Provider>
+      ) : (
       <SectionCard
-        title="People"
-        subtitle="Names show in every picker, in agent messages and in the agent log. Without one, Mingla uses the first part of the email."
+        title={tab === "invited" ? "Invited" : tab === "removed" ? "Removed" : "People"}
+        subtitle={
+          tab === "invited"
+            ? needNewLink > 0
+              ? `${needNewLink} ${needNewLink === 1 ? "needs" : "need"} a new link. Open a row to send one.`
+              : "Open a row to resend or change the invite."
+            : tab === "removed"
+              ? "People who no longer have access. Open a row to invite them again."
+              : "Open a row to change a role, a name, or access. Names show in every picker, in agent messages and in the agent log. Without one, Mingla uses the first part of the email."
+        }
         noPadding
       >
         {profilesError && (
@@ -970,17 +1062,46 @@ export function AdminPage() {
                 </AlertCard>
               </div>
             ) : null}
-            {renderGroup("Has access", withAccess)}
-            {renderGroup(
-              needNewLink > 0
-                ? `Invited · ${needNewLink} ${needNewLink === 1 ? "needs" : "need"} a new link`
-                : "Invited",
-              invited
+            {listed.length === 0 ? (
+              <p className="px-5 py-8 text-center text-sm text-[var(--color-text-tertiary)]">
+                {tab === "invited" ? "No open invites." : tab === "removed" ? "Nobody has been removed." : "Nobody has access yet."}
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-left">
+                  <thead>
+                    <tr className="border-b border-[var(--gray-200)] text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                      <th scope="col" className="px-5 py-2.5">Person</th>
+                      <th scope="col" className="px-3 py-2.5">Role</th>
+                      <th scope="col" className="px-3 py-2.5">Agent</th>
+                      <th scope="col" className="px-3 py-2.5">Last active</th>
+                    </tr>
+                  </thead>
+                  <tbody>{listed.map(renderTableRow)}</tbody>
+                </table>
+              </div>
             )}
-            {renderGroup("Removed", removed)}
+            {onlyOwner && tab === "team" && (
+              <p className="px-5 pb-4 text-sm text-[var(--color-text-tertiary)]">
+                It&apos;s just you so far. Invite your first teammate with Invite.
+              </p>
+            )}
           </div>
         )}
       </SectionCard>
+      )}
+
+      {/* A person's drawer: role, name, activity and access */}
+      <Drawer open={!!managed} onClose={() => setManaging(null)} title={managed ? managed.email : ""}>
+        {managed ? (
+          <div className="-mx-5 flex flex-col gap-2">
+            {renderRow(managed)}
+            {lastActive[managed.email] && (
+              <p className="px-5 text-xs text-[var(--color-text-tertiary)]">{`Last active ${lastActiveLabel(lastActive[managed.email])}`}</p>
+            )}
+          </div>
+        ) : null}
+      </Drawer>
 
       {/* Activity Modal */}
       <Modal

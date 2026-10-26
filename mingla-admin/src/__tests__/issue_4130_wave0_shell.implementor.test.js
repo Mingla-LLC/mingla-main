@@ -77,7 +77,8 @@ const REDIRECTS = {
   creators: ["outreach", "creators"],
   "launch-cities": ["placepool", "cities"],
   signals: ["placepool", "pipeline"],
-  "deck-tuner": ["placepool", "deck-tuner"],
+  // #4130 (Wave 4b): the Deck tuner is an action on a place in Browse and map.
+  "deck-tuner": ["placepool", "browse"],
   "place-intelligence-trial": ["settings", "intelligence-trial"],
   "stripe-mode": ["platform-health", "stripe"],
   "api-health": ["platform-health", "providers"],
@@ -109,16 +110,13 @@ describe("#4130 W0-1: the menu is the approved sidebar", () => {
     const header = stripComments(read("components/layout/Header.jsx"));
     assert.ok(header.includes('openPage("guide")') && header.includes('openPage("agent")'));
   });
-  it("new pages with nothing to hold yet say they are coming, and show no numbers", () => {
+  // #4130 (Wave 4b): the last placeholder (Feature flags) is a real page now,
+  // so no page says it is coming.
+  it("no menu page is a placeholder any more", () => {
     const hubs = stripComments(read("pages/shellHubs.jsx"));
-    // #4130: Wave 2a built Mingla money, so it is no longer a placeholder.
     assert.ok(/"mingla-money": MinglaMoneyPage/.test(APP));
-    assert.ok(/"feature-flags": FeatureFlagsPlaceholder/.test(APP));
-    assert.equal((hubs.match(/Coming in this release/g) || []).length, 1, "one shared placeholder");
-    const words = [...hubs.matchAll(/(?:title|description|coming)="([^"]*)"/g)].map((m) => m[1]);
-    // #4130: one placeholder left (Feature flags) after Wave 2a.
-    assert.ok(words.length >= 3);
-    for (const w of words) assert.equal(/\d/.test(w), false, `no figures on a placeholder: ${w}`);
+    assert.ok(/"feature-flags": FeatureFlagsPage/.test(APP));
+    assert.equal(/Coming in this release|Placeholder/.test(hubs), false);
   });
 });
 

@@ -1,4 +1,6 @@
+import { useContext } from "react";
 import { ArrowLeft } from "lucide-react";
+import { EmbeddedPageContext } from "../layout/embeddedPage";
 
 // Issue #3802 (admin shell): the ONE page header. Every page starts with it,
 // so the title is the same size, weight and place on every page.
@@ -18,6 +20,18 @@ import { ArrowLeft } from "lucide-react";
 // A page puts nothing around this: no outer padding, width or centring. The
 // shell sets those once (components/layout/AppShell.jsx).
 export function PageHeader({ title, description, meta, actions, back, tabs, titleId }) {
+  // #4130 (Wave 4b): inside another page's tab, only the controls are drawn;
+  // the holding page owns the title.
+  const embedded = useContext(EmbeddedPageContext);
+  if (embedded) {
+    if (!actions && !tabs) return null;
+    return (
+      <div className="flex min-w-0 flex-col gap-3">
+        {actions && <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div>}
+        {tabs && <div className="min-w-0">{tabs}</div>}
+      </div>
+    );
+  }
   return (
     <header className="flex min-w-0 flex-col gap-3">
       {back && (

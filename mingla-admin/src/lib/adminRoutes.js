@@ -37,7 +37,8 @@ export const RETIRED_PAGE_REDIRECTS = Object.freeze({
   creators: Object.freeze({ page: "outreach", tab: "creators" }),
   "launch-cities": Object.freeze({ page: "placepool", tab: "cities" }),
   signals: Object.freeze({ page: "placepool", tab: "pipeline" }),
-  "deck-tuner": Object.freeze({ page: "placepool", tab: "deck-tuner" }),
+  // #4130 (Wave 4b): the Deck tuner is now an action on a place in Browse and map.
+  "deck-tuner": Object.freeze({ page: "placepool", tab: "browse" }),
   "place-intelligence-trial": Object.freeze({ page: "settings", tab: "intelligence-trial" }),
   "stripe-mode": Object.freeze({ page: "platform-health", tab: "stripe" }),
   "api-health": Object.freeze({ page: "platform-health", tab: "providers" }),
@@ -74,25 +75,11 @@ export const PAGE_HUB_TABS = Object.freeze({
   // BrandsPage), not hubs. Their tab values above stay valid addresses:
   // People reads explorers/hosts/..., Brands opens websites/venues/claims as
   // the tools folded inside it (lib/peopleSegments.js BRAND_TOOL_TABS).
-  placepool: Object.freeze([
-    Object.freeze({ id: "places", label: "Places", hosts: "placepool" }),
-    Object.freeze({ id: "cities", label: "Cities", hosts: "launch-cities" }),
-    Object.freeze({ id: "pipeline", label: "Pipeline", hosts: "signals" }),
-    Object.freeze({ id: "deck-tuner", label: "Deck tuner", hosts: "deck-tuner" }),
-  ]),
-  "platform-health": Object.freeze([
-    Object.freeze({ id: "providers", label: "Providers", hosts: "api-health" }),
-    Object.freeze({ id: "stripe", label: "Stripe mode", hosts: "stripe-mode" }),
-    Object.freeze({ id: "queue", label: "Queue health", hosts: "queue-health" }),
-  ]),
-  settings: Object.freeze([
-    Object.freeze({ id: "settings", label: "Settings", hosts: "settings" }),
-    Object.freeze({ id: "intelligence-trial", label: "Intelligence Trial history", hosts: "place-intelligence-trial" }),
-  ]),
-  admin: Object.freeze([
-    Object.freeze({ id: "team", label: "Team", hosts: "admin" }),
-    Object.freeze({ id: "careers", label: "Careers", hosts: "careers" }),
-  ]),
+  // #4130 (Wave 4b): Place pool, Platform health, Settings and Team and
+  // roles are real pages now (PlacePoolPage, PlatformHealthPage, SettingsPage,
+  // AdminPage), not hubs. Their tab values stay valid addresses: each page
+  // reads its own (lib/systemPages.js PLACE_POOL_TABS, TEAM_TABS,
+  // PLATFORM_HEALTH_SECTIONS, SETTINGS_SECTIONS).
 });
 
 /** The redirect for an old page id, or null. Never resolves inherited keys. */

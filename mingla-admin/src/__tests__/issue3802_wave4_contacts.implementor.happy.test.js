@@ -612,8 +612,9 @@ describe("#3802 C-7: City missing?", () => {
     for (const b of LAYER.split("<Button").slice(1)) assert.ok(/max-sm:h-11/.test(b.slice(0, b.indexOf("</Button>"))));
     // Place Pool is a real page of this app.
     // #4130: #/placepool opens the Place pool page, whose first tab is the old page.
-    assert.ok(/placepool: PlacePoolHub/.test(read("App.jsx")));
-    assert.ok(/placepool: PlacePoolManagementPage/.test(read("pages/shellHubs.jsx")));
+    // #4130 (Wave 4b): Place pool is a real page; the old page draws its tools.
+    assert.ok(/placepool: PlacePoolPage/.test(read("App.jsx")));
+    assert.ok(/<PlacePoolManagementPage key="browse" section="browse" \/>/.test(read("pages/PlacePoolPage.jsx")));
   });
   it("it is the last row of the region menu in the toolbar, the Add form and the drawer, and is never taken as a region", () => {
     const FIELDS = read("components/crm/fields.jsx");
