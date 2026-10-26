@@ -594,10 +594,13 @@ export const creatorGigsService = {
   results: async (
     brandId: string,
     gigId?: string | null,
+    since?: string | null,
   ): Promise<GigResult[]> => {
     const rows = await rpc<unknown>("gig_results", {
       p_brand_id: brandId,
       p_gig_id: gigId ?? null,
+      // Round 2: results period (7 days / 30 days); null = all time.
+      p_since: since ?? null,
     });
     if (!Array.isArray(rows)) return [];
     return rows

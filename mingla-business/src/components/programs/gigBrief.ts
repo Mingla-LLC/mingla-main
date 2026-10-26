@@ -376,6 +376,8 @@ const SERVER_FIELD: Record<string, BriefField> = {
   shoot_window_start: "shoot",
   shoot_window_end: "shoot",
   post_by: "videoDue",
+  video_due_at: "videoDue",
+  shoot_at: "shoot",
   slots: "slots",
   budget_band: "pay",
   city_id: "city",
@@ -392,6 +394,16 @@ export function briefServerErrors(result: {
       briefPublic:
         briefLintMessage(result.reasons ?? []) ||
         "Keep the public brief brand-free.",
+    };
+  }
+  // Round 2 server checks on the video-due time, shown next to Video needed by.
+  if (result.error === "video_due_required") {
+    return { videoDue: "Pick the day and time you need the video by." };
+  }
+  if (result.error === "video_due_before_shoot") {
+    return {
+      videoDue:
+        "The video can't be due before the shoot. Pick a later time or an earlier shoot.",
     };
   }
   const field = result.field ? SERVER_FIELD[result.field] : undefined;

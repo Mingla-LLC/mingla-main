@@ -77,6 +77,7 @@ import {
   shortDate,
   shortDateTime,
   toIsoDay,
+  videoDueWords,
 } from "../../../../../src/utils/creatorProgramFormat";
 import {
   accent,
@@ -1239,8 +1240,8 @@ export default function HostGigContract(): React.ReactElement {
             ) : null}
             {gig ? (
               <ListRow
-                title="Post by"
-                right={shortDate(String(gig.post_by))}
+                title="Video needed by"
+                right={videoDueWords(gig.video_due_at, gig.post_by)}
                 chevron={false}
               />
             ) : null}

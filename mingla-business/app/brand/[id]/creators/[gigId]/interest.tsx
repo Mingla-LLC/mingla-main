@@ -51,7 +51,7 @@ import {
   programErrorMessage,
   programMoney,
   programMoneyShort,
-  shortDate,
+  videoDueWords,
 } from "../../../../../src/utils/creatorProgramFormat";
 import { blastHubHref } from "../../../../../src/components/marketing/marketingSubNavTabs";
 import {
@@ -166,7 +166,9 @@ export default function GigApplicants(): React.ReactElement {
     ? [
         `Hiring ${gig.slots}`,
         payUpTo,
-        gig.post_by ? `video by ${shortDate(gig.post_by)}` : null,
+        gig.post_by || gig.video_due_at
+          ? `video by ${videoDueWords(gig.video_due_at, gig.post_by)}`
+          : null,
       ]
         .filter(Boolean)
         .join(" · ")

@@ -2,7 +2,7 @@
  * #3872 — Creator results. Round 2 (approved M-results): one strip — sold
  * (with tickets), spent in the normal colour, and return, which shows "—"
  * until a creator's link makes a sale — then one row per creator with Book
- * again on the row.
+ * again on the row. A 7 days / 30 days / All segment passes p_since.
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text } from "react-native";
@@ -17,6 +17,7 @@ import {
   ProgramEmpty,
   ProgramLoading,
   ProgramScreen,
+  Segmented,
   StatStrip,
 } from "../../../../src/components/programs/ProgramKit";
 import { useProgramParams } from "../../../../src/components/programs/useProgramParams";
@@ -30,6 +31,8 @@ import {
   programErrorMessage,
   programMoney,
   programMoneyShort,
+  resultsSince,
+  type ResultsPeriod,
 } from "../../../../src/utils/creatorProgramFormat";
 import { text as textTokens } from "../../../../src/constants/designSystem";
 
@@ -38,12 +41,19 @@ export default function CreatorResults(): React.ReactElement {
   const { brandId, params, currency } = useProgramParams("gigId");
   const [rows, setRows] = useState<GigResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [period, setPeriod] = useState<ResultsPeriod>("30d");
 
   const load = useCallback(async () => {
     if (!brandId) return;
     setError(null);
     try {
-      setRows(await creatorGigsService.results(brandId, params.gigId ?? null));
+      setRows(
+        await creatorGigsService.results(
+          brandId,
+          params.gigId ?? null,
+          resultsSince(period),
+        ),
+      );
     } catch (loadError) {
       setRows((current) => current ?? []);
       setError(
@@ -53,7 +63,7 @@ export default function CreatorResults(): React.ReactElement {
         ),
       );
     }
-  }, [brandId, params.gigId]);
+  }, [brandId, params.gigId, period]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -68,6 +78,17 @@ export default function CreatorResults(): React.ReactElement {
       refreshing={false}
       onRefresh={() => void load()}
     >
+      <Segmented
+        options={
+          [
+            ["7d", "7 days"],
+            ["30d", "30 days"],
+            ["all", "All"],
+          ] as const
+        }
+        value={period}
+        onChange={setPeriod}
+      />
       {rows === null ? <ProgramLoading /> : null}
       <FieldError message={error} />
       {rows !== null && rows.length === 0 && !error ? (

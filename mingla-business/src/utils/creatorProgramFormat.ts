@@ -746,3 +746,33 @@ export function hostContractPill(contract: {
     tone: full.tone,
   };
 }
+
+/**
+ * #3872 round 2 — "Dec 5, 6:00 PM" from the gig's video_due_at; falls back to
+ * the post-by day ("Dec 5") when no time is stored.
+ */
+export function videoDueWords(
+  videoDueAt: unknown,
+  postBy: unknown,
+): string {
+  if (typeof videoDueAt === "string" && videoDueAt.length > 0) {
+    const date = new Date(videoDueAt);
+    if (!Number.isNaN(date.getTime())) {
+      const hours = date.getHours();
+      const minutes = String(date.getMinutes()).padStart(2, "0");
+      const twelve = hours % 12 === 0 ? 12 : hours % 12;
+      return `${shortDate(toIsoDay(date))}, ${twelve}:${minutes} ${hours >= 12 ? "PM" : "AM"}`;
+    }
+  }
+  return typeof postBy === "string" && postBy.length > 0 ? shortDate(postBy) : "";
+}
+
+export type ResultsPeriod = "7d" | "30d" | "all";
+
+/** p_since for gig_results: null for All. */
+export function resultsSince(period: ResultsPeriod, now: Date = new Date()): string | null {
+  if (period === "all") return null;
+  const since = new Date(now.getTime());
+  since.setDate(since.getDate() - (period === "7d" ? 7 : 30));
+  return since.toISOString();
+}

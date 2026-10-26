@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button } from "../ui/Button";
+import { Sheet } from "../ui/Sheet";
+import { SheetBody } from "../programs/ProgramKit";
 import type { BrandLocalReview } from "../../services/localReviewsService";
 import { replyState } from "./localReplyState";
 import {
@@ -18,6 +20,14 @@ import {
 } from "../../constants/designSystem";
 
 type Props = { brandId: string; placePoolId: string };
+
+/*
+ * #3872 round 2 (H2.7, keyboard rule): the reply is written in a sheet whose
+ * body is the keyboard-aware program SheetBody, so the field stays just above
+ * the keyboard and the Publish button (its footer) hides while typing. The
+ * page itself has no keyboard-aware scroll, which is why the inline editor
+ * was covered by the keyboard.
+ */
 
 export function LocalReviewsManager({
   brandId,
@@ -102,6 +112,13 @@ export function LocalReviewsManager({
   };
 
   if (reviews.length === 0) return null;
+  const editingReview =
+    editingId === null
+      ? null
+      : (reviews.find((review) => review.local_month_id === editingId) ?? null);
+  const editingDraft = editingReview
+    ? (drafts[editingReview.local_month_id] ?? "")
+    : "";
 
   return (
     <View style={styles.wrap} testID="venue-local-reviews-manager">
@@ -120,9 +137,6 @@ export function LocalReviewsManager({
         {reviews.map((review) => {
           const state = replyState(review, Date.now());
           const id = review.local_month_id;
-          const showEditor =
-            state.kind === "none" ||
-            (state.kind === "editable" && editingId === id);
           return (
             <View key={review.local_month_id} style={styles.review}>
               <View style={styles.reviewTop}>
@@ -134,61 +148,21 @@ export function LocalReviewsManager({
               <Text style={styles.visited}>
                 Visited {shortDate(review.visited_on)}
               </Text>
-              {showEditor ? (
+              {state.kind === "none" ? (
                 <>
-                  <TextInput
-                    value={drafts[id] ?? ""}
-                    onChangeText={(value) =>
-                      setDrafts((current) => ({
-                        ...current,
-                        [id]: value.slice(0, 500),
-                      }))
-                    }
-                    placeholder="Write one public reply (500 characters max)"
-                    placeholderTextColor={textTokens.tertiary}
-                    multiline
-                    maxLength={500}
-                    accessibilityLabel="Place reply"
-                    style={styles.input}
+                  <Button
+                    label="Write a reply"
+                    size="sm"
+                    variant="secondary"
+                    onPress={() => {
+                      setErrors((current) => ({ ...current, [id]: null }));
+                      setEditingId(id);
+                    }}
                   />
-                  <View style={styles.actionRow}>
-                    <Text style={styles.counter}>
-                      {(drafts[id] ?? "").length}/500
-                    </Text>
-                    <View style={styles.buttons}>
-                      {state.kind === "editable" ? (
-                        <Button
-                          label="Cancel"
-                          size="sm"
-                          variant="ghost"
-                          onPress={() => {
-                            setEditingId(null);
-                            setDrafts((current) => ({
-                              ...current,
-                              [id]: review.reply ?? "",
-                            }));
-                          }}
-                        />
-                      ) : null}
-                      <Button
-                        label={review.reply ? "Update reply" : "Publish reply"}
-                        size="sm"
-                        loading={busyId === id}
-                        disabled={
-                          busyId !== null ||
-                          !(drafts[id] ?? "").trim() ||
-                          (drafts[id] ?? "").trim() === (review.reply ?? "")
-                        }
-                        onPress={() => void save(review)}
-                      />
-                    </View>
-                  </View>
-                  {state.kind === "none" ? (
-                    <Text style={styles.hint}>
-                      You can reply once and edit it for 24 hours after
-                      publishing.
-                    </Text>
-                  ) : null}
+                  <Text style={styles.hint}>
+                    You can reply once and edit it for 24 hours after
+                    publishing.
+                  </Text>
                 </>
               ) : (
                 <View style={styles.closedReply}>
@@ -230,6 +204,64 @@ export function LocalReviewsManager({
           );
         })}
       </View>
+      {editingReview ? (
+        <Sheet visible onClose={() => setEditingId(null)} snapPoint="full">
+          <SheetBody
+            title={editingReview.reply ? "Edit your reply" : "Reply as this place"}
+            footer={
+              <View style={styles.buttons}>
+                <Button
+                  label="Cancel"
+                  size="md"
+                  variant="ghost"
+                  onPress={() => {
+                    setEditingId(null);
+                    setDrafts((current) => ({
+                      ...current,
+                      [editingReview.local_month_id]: editingReview.reply ?? "",
+                    }));
+                  }}
+                />
+                <Button
+                  label={editingReview.reply ? "Update reply" : "Publish reply"}
+                  size="md"
+                  loading={busyId === editingReview.local_month_id}
+                  disabled={
+                    busyId !== null ||
+                    !editingDraft.trim() ||
+                    editingDraft.trim() === (editingReview.reply ?? "")
+                  }
+                  onPress={() => void save(editingReview)}
+                />
+              </View>
+            }
+          >
+            <Text style={styles.title}>{editingReview.title}</Text>
+            <TextInput
+              value={editingDraft}
+              onChangeText={(value) =>
+                setDrafts((current) => ({
+                  ...current,
+                  [editingReview.local_month_id]: value.slice(0, 500),
+                }))
+              }
+              placeholder="Write one public reply (500 characters max)"
+              placeholderTextColor={textTokens.tertiary}
+              multiline
+              maxLength={500}
+              autoFocus
+              accessibilityLabel="Place reply"
+              style={styles.input}
+            />
+            <Text style={styles.counter}>{`${editingDraft.length}/500`}</Text>
+            {errors[editingReview.local_month_id] ? (
+              <Text style={styles.error}>
+                {errors[editingReview.local_month_id]}
+              </Text>
+            ) : null}
+          </SheetBody>
+        </Sheet>
+      ) : null}
     </View>
   );
 }
