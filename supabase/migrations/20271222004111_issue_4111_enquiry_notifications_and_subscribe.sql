@@ -192,8 +192,9 @@ BEGIN
       'guest_name', v_row.guest_name, 'topic_label', v_row.topic_label,
       'deep_link', 'mingla-business://messages/' || v_row.conversation_id::text
     );
-    INSERT INTO public.notification_outbox(category_key, user_id, brand_id, payload, idempotency_key, status)
-    SELECT 'business.brand_enquiry_nudge', member.user_id, v_row.brand_id, v_payload,
+    -- country_code: explicit NULL — the nudge has no SMS channel (#1529).
+    INSERT INTO public.notification_outbox(category_key, user_id, brand_id, country_code, payload, idempotency_key, status)
+    SELECT 'business.brand_enquiry_nudge', member.user_id, v_row.brand_id, NULL, v_payload,
       'business.brand_enquiry_nudge:' || v_row.id::text || ':' || member.user_id::text, 'pending'
     FROM (
       SELECT DISTINCT m.user_id FROM public.brand_team_members m
@@ -208,8 +209,8 @@ BEGIN
       WHERE m.brand_id = v_row.brand_id AND m.accepted_at IS NOT NULL AND m.removed_at IS NULL
         AND m.role <> 'scanner' AND lower(u.email) = v_row.contact_email
     ) THEN
-      INSERT INTO public.notification_outbox(category_key, user_id, contact, brand_id, payload, idempotency_key, status)
-      VALUES ('business.brand_enquiry_nudge', NULL, v_row.contact_email, v_row.brand_id, v_payload,
+      INSERT INTO public.notification_outbox(category_key, user_id, contact, brand_id, country_code, payload, idempotency_key, status)
+      VALUES ('business.brand_enquiry_nudge', NULL, v_row.contact_email, v_row.brand_id, NULL, v_payload,
         'business.brand_enquiry_nudge:' || v_row.id::text || ':contact', 'pending')
       ON CONFLICT (idempotency_key) DO NOTHING;
     END IF;

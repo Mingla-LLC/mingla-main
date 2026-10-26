@@ -539,6 +539,19 @@ BEGIN
   END IF;
   -- Subscribe texts count against the brand's monthly SMS cap.
   IF public.issue_4111_subscribe_sms_used(v_brand) <> 1 THEN RAISE EXCEPTION 'subscribe_sms_not_counted'; END IF;
+  -- #1529: every #4111 producer wrote an explicit NULL country_code (no SMS
+  -- leg) on every row it enqueued, and each of the three producers ran.
+  IF (SELECT count(DISTINCT category_key) FROM public.notification_outbox
+      WHERE category_key IN ('business.brand_enquiry_new', 'business.brand_enquiry_message',
+        'business.brand_enquiry_nudge', 'explorer.brand_enquiry_reply')) <> 4 THEN
+    RAISE EXCEPTION 'issue_1529_enquiry_producers_did_not_all_run';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.notification_outbox
+      WHERE category_key IN ('business.brand_enquiry_new', 'business.brand_enquiry_message',
+        'business.brand_enquiry_nudge', 'explorer.brand_enquiry_reply')
+        AND country_code IS NOT NULL) THEN
+    RAISE EXCEPTION 'issue_1529_enquiry_producer_wrote_a_country_code';
+  END IF;
 END;
 $proof$;
 
