@@ -4,6 +4,7 @@ import { blockService } from './blockService';
 import { getDisplayName } from '../utils/getDisplayName';
 import type { MediaViewRow } from '../utils/chatMedia';
 import { conversationChannelKey, conversationRealtimeFilter } from '../utils/conversationSubscription';
+import type { ChatLiveChange } from '../utils/chatLiveModel';
 import type { NativeContentCardDescriptorV1, PublicShareDetails, ShareDestination, ShareEntityKind, ShareFactsV1, ShareMediaIdentity } from '@mingla/sharing';
 
 /**
@@ -263,6 +264,8 @@ export type { MediaViewRow };
 
 /** Issue #4114 Wave 3: one row of `direct_message_reactions`. */
 export interface MessageReactionRow {
+  /** Issue #4114 QA: the row id, so a live DELETE (id only) can be matched. */
+  id?: string;
   user_id: string;
   emoji: string;
 }
@@ -1073,16 +1076,16 @@ export class MessagingService {
     if (ids.length === 0) return byMessage;
     const { data, error } = await supabase
       .from('direct_message_reactions')
-      .select('message_id, user_id, emoji, created_at')
+      .select('id, message_id, user_id, emoji, created_at')
       .in('message_id', ids)
       .order('created_at', { ascending: true });
     if (error) {
       console.warn('[messagingService] reactions read failed; pills hidden until the next read', error);
       return byMessage;
     }
-    for (const row of (data ?? []) as Array<{ message_id: string; user_id: string; emoji: string }>) {
+    for (const row of (data ?? []) as Array<{ id: string; message_id: string; user_id: string; emoji: string }>) {
       const list = byMessage.get(row.message_id) ?? [];
-      list.push({ user_id: row.user_id, emoji: row.emoji });
+      list.push({ id: row.id, user_id: row.user_id, emoji: row.emoji });
       byMessage.set(row.message_id, list);
     }
     return byMessage;
@@ -1755,6 +1758,14 @@ export class MessagingService {
       onMessage?: (message: DirectMessage) => void;
       onMessageUpdated?: (message: DirectMessage) => void;
       onMessageDeleted?: (messageId: string) => void;
+      /**
+       * Issue #4114 QA: a reaction added or removed, or a view-once item
+       * opened. These tables have no conversation_id, so they are not
+       * filtered here: RLS limits inserts to chats you are in (reactions) or
+       * items you sent or opened (views); a delete carries only the row id and
+       * is matched against the chat's own reaction ids by the caller.
+       */
+      onLiveChange?: (change: ChatLiveChange) => void;
     }
   ): RealtimeChannel {
     // Issue #4114 Wave 6: one channel for one chat, or for all of a brand
@@ -1808,7 +1819,48 @@ export class MessagingService {
         (payload) => {
           callbacks.onMessageDeleted?.(payload.old.id);
         }
-      )
+      );
+
+    if (callbacks.onLiveChange) {
+      const onLiveChange = callbacks.onLiveChange;
+      channel
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'direct_message_reactions' },
+          (payload) => {
+            const row = payload.new as { id?: string; message_id?: string; user_id?: string; emoji?: string };
+            if (!row.id || !row.message_id || !row.user_id || !row.emoji) return;
+            onLiveChange({
+              kind: 'reaction_insert',
+              messageId: row.message_id,
+              row: { id: row.id, user_id: row.user_id, emoji: row.emoji },
+            });
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'DELETE', schema: 'public', table: 'direct_message_reactions' },
+          (payload) => {
+            const id = (payload.old as { id?: string } | null)?.id;
+            if (id) onLiveChange({ kind: 'reaction_delete', reactionId: id });
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'message_media_views' },
+          (payload) => {
+            const row = payload.new as { message_id?: string; user_id?: string; viewed_at?: string };
+            if (!row.message_id || !row.user_id || !row.viewed_at) return;
+            onLiveChange({
+              kind: 'media_view',
+              messageId: row.message_id,
+              row: { user_id: row.user_id, viewed_at: row.viewed_at },
+            });
+          }
+        );
+    }
+
+    channel
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           console.log(`Subscribed to conversation: ${channelKey}`);

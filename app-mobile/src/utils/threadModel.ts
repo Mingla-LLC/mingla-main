@@ -14,6 +14,8 @@
  */
 
 export interface ReactionRow {
+  /** Issue #4114 QA: set once the server row is known (live DELETEs match by id). */
+  id?: string;
   user_id: string;
   emoji: string;
 }

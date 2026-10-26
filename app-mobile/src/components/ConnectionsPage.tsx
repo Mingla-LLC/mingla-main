@@ -33,6 +33,7 @@ import {
   LOCAL_MESSAGE_ID_PREFIX,
   type MergeMessagesOptions,
 } from "../utils/mergeMessages";
+import { applyChatLiveChange, type ChatLiveChange } from "../utils/chatLiveModel";
 import {
   conversationChannelKey,
   releaseConversationSubscription,
@@ -2963,6 +2964,23 @@ function ConnectionsPageRefactored({
             );
             if (!known) return prev;
             return { ...prev, [conversationId]: mergeMessages(existing, [transformed]) };
+          });
+        },
+
+        // Issue #4114 QA: reactions and view-once opens arrive live and are
+        // merged into the subscribed chat(s) in place — no thread refetch.
+        // Rows for messages outside these chats change nothing.
+        onLiveChange: (change: ChatLiveChange) => {
+          const ids = typeof conversationIds === 'string' ? [conversationIds] : conversationIds;
+          setMessagesCache((prev) => {
+            let next = prev;
+            for (const id of ids) {
+              const existing = prev[id];
+              if (!existing) continue;
+              const patched = applyChatLiveChange(existing, change);
+              if (patched !== existing) next = { ...next, [id]: patched as Message[] };
+            }
+            return next;
           });
         },
       }

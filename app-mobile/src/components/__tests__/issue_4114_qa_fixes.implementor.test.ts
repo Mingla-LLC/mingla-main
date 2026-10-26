@@ -77,3 +77,22 @@ Deno.test("QA2b the received view-once bubble uses the dark received tokens", as
   assert(/viewOnceSubtitleReceived: \{\s*color: receivedBubbleTokens\.textSecondary,/.test(bubble), "subtitle token");
   assert(/viewOnceMutedReceived: \{\s*color: receivedBubbleTokens\.textSecondary,/.test(bubble), "muted token");
 });
+
+Deno.test("QA2c/QA4 reactions and view-once opens are subscribed on the conversation channel and merged in place", async () => {
+  const service = strip(await read("services/messagingService.ts"));
+  const sub = service.slice(service.indexOf("subscribeToConversation("), service.indexOf("unsubscribeFromConversation(conversationId: string)"));
+  assert(sub.length > 200, "subscribeToConversation found");
+  for (const [event, table] of [["INSERT", "direct_message_reactions"], ["DELETE", "direct_message_reactions"], ["INSERT", "message_media_views"]]) {
+    assert(new RegExp(`event: '${event}', schema: 'public', table: '${table}'`).test(sub), `${event} ${table} subscribed`);
+  }
+  assert(/kind: 'reaction_delete', reactionId: id/.test(sub), "delete by id");
+  assert(/\.select\('id, message_id, user_id, emoji, created_at'\)/.test(service), "page reads keep reaction ids");
+  const page = strip(await read("components/ConnectionsPage.tsx"));
+  const setup = body(page, /const setupRealtimeSubscription = \(conversationIds: string \| readonly string\[\], userId: string\) =>/);
+  assert(/onLiveChange: \(change: ChatLiveChange\) =>/.test(setup), "the page listens");
+  assert(/applyChatLiveChange\(existing, change\)/.test(setup), "merged into the store, no refetch");
+  assert(!/onLiveChange[\s\S]*?fetchMessages|onLiveChange[\s\S]*?loadMessages/.test(setup.slice(setup.indexOf("onLiveChange"))), "no thread refetch");
+  const migration = await Deno.readTextFile(new URL("../../supabase/migrations/20271230074114_issue_4114_chat_live_updates.sql", root));
+  assert(/ARRAY\['direct_message_reactions', 'message_media_views'\]/.test(migration) &&
+    /ALTER PUBLICATION supabase_realtime ADD TABLE public\.%I/.test(migration), "both tables published");
+});
