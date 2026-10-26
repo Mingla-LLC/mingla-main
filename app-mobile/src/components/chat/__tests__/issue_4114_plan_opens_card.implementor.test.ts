@@ -119,12 +119,12 @@ Deno.test("thread plan rows resolve to their saved card and open the card", asyn
 
 Deno.test("one ExpandedCardModal serves the sheet, the strip and the thread", async () => {
   const banners = stripComments(await read("../CollabSessionChatBanners.tsx"));
-  const hook = banners.slice(banners.indexOf("export function useCollabPlanCard()"), banners.indexOf("export function ScheduleSheet("));
-  assert(/setModalTarget\(expansionTargetFromSavedPayload\(\{\s*\.\.\.item\.cardData,\s*sourceScope: 'collaboration',\s*sourceRecordId: item\.savedCardId,\s*savedCardId: item\.savedCardId,/.test(hook), "the sheet's exact payload");
+  const hook = banners.slice(banners.indexOf("function planTarget("), banners.indexOf("export function ScheduleSheet("));
+  assert(/return expansionTargetFromSavedPayload\(\{\s*\.\.\.item\.cardData,\s*sourceScope: 'collaboration',\s*sourceRecordId: item\.savedCardId,\s*savedCardId: item\.savedCardId,/.test(hook), "the sheet's exact payload");
   const sheet = banners.slice(banners.indexOf("export function ScheduleSheet("), banners.indexOf("export function SavedToSessionCardsSheet("));
-  assert(/const \{ modalTarget, setModalTarget, openPlan \} = planCard;/.test(sheet), "the sheet uses the shared state");
+  assert(/const \{ modalTarget, openPlanFromSheet, onSheetDismissed, closePlan \} = planCard;/.test(sheet), "the sheet uses the shared state");
   assert(!/useState<ExpansionTarget/.test(sheet), "the sheet has no private plan state");
-  assert(/onPress=\{\(\) => openPlan\(item\)\}/.test(sheet), "sheet rows open through openPlan");
+  assert(/openPlanFromSheet\(item\);\s*onClose\(\);/.test(sheet), "sheet rows open through the shared plan state (run 3: via the sheet handoff)");
   assertEquals((sheet.match(/<ExpandedCardModal\b/g) ?? []).length, 1, "one modal in the sheet");
   assert(/if \(dismissOwnerSheet\) onClose\(\);/.test(sheet) && /shareProducerSurface="collab_locked_expanded"/.test(sheet), "#1672/#3281 dismiss and Share unchanged");
 
