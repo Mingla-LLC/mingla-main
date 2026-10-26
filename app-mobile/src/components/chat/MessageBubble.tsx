@@ -171,11 +171,15 @@ function ViewOnceBubble({
   kind,
   isGroup,
   isMe,
+  uploadProgress,
+  onCancelUpload,
 }: {
   state: ViewOnceState;
   kind: 'image' | 'video';
   isGroup: boolean;
   isMe: boolean;
+  uploadProgress?: number;
+  onCancelUpload?: () => void;
 }): React.ReactElement {
   const { t } = useTranslation(['chat']);
   const kindLabel = kind === 'video' ? t('chat:video') : t('chat:photo');
@@ -201,6 +205,7 @@ function ViewOnceBubble({
       const time = formatOpenedTime(state.openedAt);
       subtitle = time ? t('chat:viewOnceOpenedAt', { time }) : t('chat:viewOnceOpened');
     }
+    if (uploadProgress !== undefined) subtitle = `${Math.round(Math.max(0, Math.min(1, uploadProgress)) * 100)}%`;
   }
   return (
     <View style={[styles.viewOnceRow, spent && styles.viewOnceSpent]} testID="chat-view-once-bubble">
@@ -219,6 +224,16 @@ function ViewOnceBubble({
           {subtitle}
         </Text>
       </View>
+      {uploadProgress !== undefined && onCancelUpload ? (
+        <TouchableOpacity
+          onPress={onCancelUpload}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('chat:a11yCancelUpload')}
+        >
+          <Icon name="close" size={14} color="white" />
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
@@ -519,6 +534,8 @@ function MessageBubbleImpl({
               kind={message.type}
               isGroup={message.isGroupChat === true}
               isMe={isMe}
+              uploadProgress={message.uploadProgress}
+              onCancelUpload={onCancelUpload}
             />
           ) : null}
 

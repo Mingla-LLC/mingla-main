@@ -1860,8 +1860,9 @@ export default function MessageInterface({
   const handleBubblePress = useCallback((row: ThreadRow) => {
     const message = row.message;
     const local = message.id.startsWith("temp-");
-    if (!local && (message.type === "image" || message.type === "video") && message.viewOnce) {
-      if (!message.isMe) void mediaHandlersRef.current.handleOpenViewOnce(message);
+    if ((message.type === "image" || message.type === "video") && message.viewOnce) {
+      // Only a recipient opens it, once; the sender can never reopen it.
+      if (!local && !message.isMe) void mediaHandlersRef.current.handleOpenViewOnce(message);
       return;
     }
     if (message.type === "image" && (message.fileUrl || message.localMedia)) {
