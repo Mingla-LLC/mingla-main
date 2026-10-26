@@ -31,8 +31,8 @@ import { TeamDashboardPage } from "./pages/TeamDashboardPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
 import { PricingPage } from "./pages/PricingPage";
-// #3720 Slice F — unified Community & Support console (replaces Support + Email nav).
-import { CommunitySupportPage } from "./pages/CommunitySupportPage";
+// #4130 Wave 6 — the #3720 Community & Support console, split into two pages.
+import { CommunityPage, SupportPage } from "./pages/CommunitySupportPage";
 // ORCH-1273 — Business offerings console (READ-ONLY): Offerings
 // (#/business-offerings). Detail views deep-link via ?offeringId=. Venues now
 // open inside Brands (#4130).
@@ -87,9 +87,10 @@ const PAGES = {
   inbound: InboundHub,
   "content-calendar": ContentCalendarPage,
   "team-dashboard": TeamDashboardPage,
-  // ── Support ── #3720 Slice F console; the menu's Support and Community
-  // entries open its tabs until Wave 6 splits it (#/support, #/community).
-  "community-support": CommunitySupportPage,
+  // ── Support ── #4130 Wave 6: the old Community & Support console is two
+  // pages; #/community-support redirects by tab (lib/adminRoutes.js).
+  support: SupportPage,
+  community: CommunityPage,
   // ── Business ── #4130 Wave 3: People replaces Users + People; Brands holds
   // Brand Sites, Venues and Venue claims inside each brand.
   people: PeoplePage,
@@ -138,7 +139,7 @@ function requestedPageId() {
 }
 
 // Issue #4130 (Wave 0) — an address of a retired page (and #3720's old
-// Support / Email bookmarks) is rewritten to the page that now holds it,
+// Email bookmarks and the Community & Support console, Wave 6) is rewritten to the page that now holds it,
 // keeping its query, before any page is chosen (lib/adminRoutes.js).
 function canonicalizeLegacyCommunityHashes() {
   const page = requestedPageId();

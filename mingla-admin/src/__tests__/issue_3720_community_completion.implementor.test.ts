@@ -23,7 +23,8 @@ Deno.test("#3720 Community moderators receive moderation but not Admin cutover a
     status: "active",
     areas: [COMMUNITY_OPERATIONS_AREA],
   }, tabs).map((tab: { id: string }) => tab.id);
-  assertEquals(visible, ["overview", "moderation"]);
+  // #4130 Wave 6: Overview was retired, so no area grants it.
+  assertEquals(visible, ["moderation"]);
   const admin = communitySupportTabsForAccess({
     status: "active",
     areas: [AREA.ADMIN_CONSOLE],

@@ -26,7 +26,8 @@ Deno.test("#3720 availability: not on the support roster keeps the switch and sa
   // [TEST-MOD-APPROVED #3988] The copy now names where Support is turned on.
   assertEquals(
     NOT_ON_SUPPORT_ROSTER_MESSAGE,
-    "Support isn't turned on for you yet. Ask an Owner or Admin to turn it on in Community & Support → People and roles.",
+    // #4130 Wave 6: People and roles is a tab of the Support page.
+    "Support isn't turned on for you yet. Ask an Owner or Admin to turn it on in Support → People and roles.",
   );
 });
 

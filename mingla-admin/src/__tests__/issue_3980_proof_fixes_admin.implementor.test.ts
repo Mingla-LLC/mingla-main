@@ -59,7 +59,9 @@ Deno.test("#3980 P2-1: a fresh #/agent-log lands on Work > Agent activity before
   };
   assertEquals(run("#/agent-log"), "#/work-board?tab=activity");
   assertEquals(run("#/agent-log?card=1"), "#/work-board?tab=activity");
-  assertEquals(run("#/support"), "#/community-support?tab=support");
+  // #4130 Wave 6: #/support is a page again; the old console redirects by tab.
+  assertEquals(run("#/support"), "#/support");
+  assertEquals(run("#/community-support?tab=support"), "#/support");
   assertEquals(run("#/work-board?tab=board"), "#/work-board?tab=board");
   // The address is read through getTabFromHash, which canonicalizes first.
   assertMatch(fnSource(app, "getTabFromHash"), /canonicalizeLegacyCommunityHashes\(\);[\s\S]*requestedPageId\(\)/);

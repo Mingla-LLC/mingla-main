@@ -146,11 +146,11 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     // [TEST-MOD-APPROVED #3697] Campaign builder and campaign operations remain
     // valid deep links beneath the one Ads workspace, not competing sidebar destinations.
     // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work. #/agent-log stays a page that opens it.
-    // #4130: Support and Community are addresses that open the Community &
-    // Support console (community-support) until Wave 6; My agent and Guide
-    // moved to the header and keep their pages.
-    const menuPages = NAV_ITEMS.map((i) => i.id).filter((id) => id !== "support" && id !== "community");
-    assert.deepEqual([...pageIds].sort(), ["home", "campaign-builder", "campaigns", "agent-log", "community-support", "agent", "guide", ...menuPages].sort());
+    // #4130: My agent and Guide moved to the header and keep their pages.
+    // #4130 Wave 6: Support and Community are real pages; the old
+    // community-support console is a redirect, not a page.
+    const menuPages = NAV_ITEMS.map((i) => i.id);
+    assert.deepEqual([...pageIds].sort(), ["home", "campaign-builder", "campaigns", "agent-log", "agent", "guide", ...menuPages].sort());
   });
   it("the role Home group is still put first by lib/access.js, not by the menu list", () => {
     assert.equal(NAV_ITEMS.some((i) => i.id === "home"), false);
@@ -324,9 +324,9 @@ describe("#3802 S-6: the breadcrumb", () => {
   it("the header draws it from the page's own title, which follows the role home", () => {
     const code = stripComments(HEADER);
     assert.ok(code.includes("items={breadcrumbFor(activeTab, title, NAV_GROUPS)}"));
-    // #4130: titled by the menu entry (Support or Community for the console),
-    // with My agent and Guide named from the header's list.
-    assert.ok(stripComments(SHELL).includes("pageTitle(menuId, access, [...NAV_ITEMS, ...HEADER_PAGE_ITEMS])"));
+    // #4130: titled by the page's menu entry, with My agent and Guide named
+    // from the header's list. Wave 6: every page is its own menu entry.
+    assert.ok(stripComments(SHELL).includes("pageTitle(activeTab, access, [...NAV_ITEMS, ...HEADER_PAGE_ITEMS])"));
   });
 });
 
@@ -538,7 +538,9 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
   // A page whose exported component only chooses between two views: the
   // views are where its states live, so they are the ones walked.
   // Hosts and Creators: the two exported pages each draw the one board page.
-  const VIEWS = { "BrandSitesPage.jsx": ["BrandSitesList", "BrandSiteDetail"], "PipelinePage.jsx": ["PipelinePage"] };
+  // #4130 Wave 6: SupportPage and CommunityPage hand their page id to the
+  // shared frame, SupportCommunityConsole, which draws every state.
+  const VIEWS = { "BrandSitesPage.jsx": ["BrandSitesList", "BrandSiteDetail"], "PipelinePage.jsx": ["PipelinePage"], "CommunitySupportPage.jsx": ["SupportCommunityConsole"] };
 
   function pageReturns(file) {
     const names = VIEWS[file] ?? [null];

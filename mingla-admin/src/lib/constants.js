@@ -155,8 +155,7 @@ export const NAV_GROUPS = [
   {
     label: "Support",
     items: [
-      // #4130: both open the Community & Support console until Wave 6 splits it
-      // (lib/adminRoutes.js RETIRED_PAGE_REDIRECTS).
+      // #4130 Wave 6: two pages, split from the Community & Support console.
       { id: "support",                   label: "Support",            icon: "LifeBuoy" },
       { id: "community",                 label: "Community",          icon: "MessagesSquare" },
     ],

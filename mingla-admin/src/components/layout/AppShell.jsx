@@ -2,7 +2,6 @@ import { useState, useCallback } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { HEADER_PAGE_ITEMS, NAV_ITEMS } from "../../lib/constants";
-import { activeMenuId } from "../../lib/adminRoutes";
 import { useAuth } from "../../context/AuthContext";
 import { pageTitle } from "../../lib/access";
 import { DraftCountProvider, useDraftCounts } from "../../hooks/useDraftCounts";
@@ -30,18 +29,15 @@ export function AppShell({ activeTab, onTabChange, onOpenSearch, children }) {
     setMobileMenuOpen(true);
   }, []);
 
-  // #4130: the menu entry for the page on screen. The same as the page id,
-  // except the Community & Support console, which is the Support or the
-  // Community entry depending on its tab (until Wave 6 splits it). App
-  // re-renders the shell on every address change, so this follows tabs too.
-  const menuId = activeMenuId(activeTab, typeof window === "undefined" ? "" : window.location.hash);
-  const currentTitle = pageTitle(menuId, access, [...NAV_ITEMS, ...HEADER_PAGE_ITEMS]);
+  // #4130 Wave 6: every page lights its own menu entry (Support and
+  // Community are real pages now, so no page stands in for another).
+  const currentTitle = pageTitle(activeTab, access, [...NAV_ITEMS, ...HEADER_PAGE_ITEMS]);
 
   return (
     <DraftCountProvider value={draftCounts}>
     <div className="flex h-screen overflow-hidden bg-[var(--color-background-secondary)]">
       <Sidebar
-        activeTab={menuId}
+        activeTab={activeTab}
         onTabChange={onTabChange}
         collapsed={sidebarCollapsed}
         mobileOpen={mobileMenuOpen}
@@ -50,7 +46,7 @@ export function AppShell({ activeTab, onTabChange, onOpenSearch, children }) {
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header
-          activeTab={menuId}
+          activeTab={activeTab}
           title={currentTitle}
           collapsed={sidebarCollapsed}
           onToggleCollapsed={handleToggleCollapsed}

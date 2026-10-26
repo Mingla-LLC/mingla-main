@@ -9,7 +9,8 @@
 //   W0-4  access: a merged page opens for the union of the pages it replaced,
 //         never wider, and each tab only for whoever could open its old page
 //   W0-5  a hosted page reads and writes its own query inside the hub address
-//   W0-6  the Support and Community entries light up by the console's tab
+//   W0-6  every page lights its own menu entry (#4130 Wave 6: Support and
+//         Community are real pages; was: lit by the console's tab)
 //   W0-7  the Work entry counts only this person's own waiting cards
 //   W0-8  a stat card's trend is green when up, red when down, grey when level
 //   W0-9  list export and sort cover every filtered row, with a stated cap;
@@ -27,7 +28,6 @@ import { AREA, PAGE_ACCESS_UNION, canOpenOwnPage, canOpenPage, visibleNavGroups 
 import {
   PAGE_HUB_TABS,
   RETIRED_PAGE_REDIRECTS,
-  activeMenuId,
   hostedHash,
   hostedSearch,
   hubTabFromHash,
@@ -83,9 +83,10 @@ const REDIRECTS = {
   "api-health": ["platform-health", "providers"],
   "queue-health": ["platform-health", "queue"],
   careers: ["admin", "careers"],
-  support: ["community-support", "support"],
-  email: ["community-support", "email"],
-  community: ["community-support", undefined],
+  // #4130 Wave 6: Support and Community are real pages now; the old Email
+  // page is Support's Email tab. #/community-support is redirected by its
+  // tab (issue_4130_wave6_support_community.implementor.test.js).
+  email: ["support", "email"],
 };
 
 const owner = { email: "o@example.test", role: "owner", status: "active", areas: ["admin_console", "team_manage", "crm", "beta_leads"] };
@@ -141,7 +142,7 @@ describe("#4130 W0-2: retired page ids redirect to their new homes", () => {
     assert.equal(redirectHash("#/drafts?record=r1"), "#/work-board?record=r1");
   });
   it("a live page, an unknown address or a hostile one is left alone", () => {
-    for (const hash of ["#/overview", "#/people?tab=hosts", "#/brands", "", "#/", "#/__proto__", "#/constructor", "#/toString", "#/Hosts", null, undefined, 7]) {
+    for (const hash of ["#/overview", "#/support", "#/community?tab=roadmap", "#/people?tab=hosts", "#/brands", "", "#/", "#/__proto__", "#/constructor", "#/toString", "#/Hosts", null, undefined, 7]) {
       assert.equal(redirectHash(hash), null, String(hash));
     }
   });
@@ -163,13 +164,14 @@ describe("#4130 W0-3: every redirect lands somewhere real", () => {
       }
     }
   });
-  it("no retired id is still a page or a menu entry, except the two console entries that open it", () => {
+  it("no retired id is still a page or a menu entry", () => {
     for (const id of Object.keys(RETIRED_PAGE_REDIRECTS)) {
       if (id === "careers") continue; // a tab of Team and roles, whose id is "admin"
       assert.equal(PAGE_IDS.includes(id), false, `${id} is still a page`);
     }
     const menu = NAV_ITEMS.map((i) => i.id).filter((id) => Object.hasOwn(RETIRED_PAGE_REDIRECTS, id));
-    assert.deepEqual(menu, ["support", "community"]);
+    // #4130 Wave 6: was ["support", "community"], the two console entries.
+    assert.deepEqual(menu, []);
   });
   it("every page the old menu opened is still drawn by its own component, inside a hub tab", () => {
     const hubs = read("pages/shellHubs.jsx");
@@ -245,14 +247,15 @@ describe("#4130 W0-5: a hosted page keeps its own address inside the hub", () =>
   });
 });
 
-describe("#4130 W0-6: Support and Community light up by the console's tab", () => {
-  it("support and email tabs are Support; every other tab is Community; other pages are themselves", () => {
-    assert.equal(activeMenuId("community-support", "#/community-support?tab=support"), "support");
-    assert.equal(activeMenuId("community-support", "#/community-support?tab=email"), "support");
-    assert.equal(activeMenuId("community-support", "#/community-support?tab=roadmap"), "community");
-    assert.equal(activeMenuId("community-support", "#/community-support"), "community");
-    assert.equal(activeMenuId("people", "#/people?tab=support"), "people");
-    assert.ok(stripComments(read("components/layout/AppShell.jsx")).includes("activeMenuId(activeTab,"));
+// #4130 Wave 6: was "Support and Community light up by the console's tab";
+// they are real pages now, so every page lights its own entry.
+describe("#4130 W0-6: every page lights its own menu entry", () => {
+  it("the shell titles and lights the page on screen", () => {
+    const shell = stripComments(read("components/layout/AppShell.jsx"));
+    assert.ok(shell.includes("pageTitle(activeTab, access, [...NAV_ITEMS, ...HEADER_PAGE_ITEMS])"));
+    assert.equal(shell.includes("activeMenuId"), false);
+    assert.ok(NAV_ITEMS.some((i) => i.id === "support") && NAV_ITEMS.some((i) => i.id === "community"));
+    assert.ok(PAGE_IDS.includes("support") && PAGE_IDS.includes("community"));
   });
 });
 

@@ -11,16 +11,18 @@
 //   - PAGE_HUB_TABS: the pages that, until their own wave rebuilds them, show
 //     the existing pages they replace as tabs. `hosts` is the old page id the
 //     tab shows; who may see a tab is that old page's access (lib/access.js).
-//   - activeMenuId(): which menu entry is lit for the page on screen.
 
 import { hashPageId, hashSearch } from "./crmUrl.js";
+import { consoleRedirectHash } from "./supportCommunityTabs.js";
 
 /** The query value a hub uses to say which tab is open. */
 export const HUB_TAB_PARAM = "tab";
 
 // Old page id -> { page, tab }. `tab` is optional (the page's first tab).
-// community-support keeps its own id until Wave 6 splits it; the menu's
-// Support and Community entries are addresses that open its tabs.
+// #4130 Wave 6: Support and Community are real pages now. The old
+// Community & Support console (community-support) is retired too, but its
+// tab decides which page it lands on, so it is not in this map: see
+// SPLIT_PAGE_REDIRECTS below.
 export const RETIRED_PAGE_REDIRECTS = Object.freeze({
   drafts: Object.freeze({ page: "work-board" }),
   users: Object.freeze({ page: "people", tab: "explorers" }),
@@ -41,12 +43,22 @@ export const RETIRED_PAGE_REDIRECTS = Object.freeze({
   "api-health": Object.freeze({ page: "platform-health", tab: "providers" }),
   "queue-health": Object.freeze({ page: "platform-health", tab: "queue" }),
   careers: Object.freeze({ page: "admin", tab: "careers" }),
-  // #3720 Slice F legacy addresses, and the two menu entries that open the
-  // Community & Support console until Wave 6 splits it.
-  support: Object.freeze({ page: "community-support", tab: "support" }),
-  email: Object.freeze({ page: "community-support", tab: "email" }),
-  community: Object.freeze({ page: "community-support" }),
+  // #3720 Slice F legacy address: the old Email page is Support's Email tab.
+  email: Object.freeze({ page: "support", tab: "email" }),
 });
+
+// Retired page id -> the function that works out its new address from the
+// whole old one (#4130 Wave 6: the Community & Support console's tab picks
+// Support or Community; lib/supportCommunityTabs.js).
+const SPLIT_PAGE_REDIRECTS = Object.freeze({
+  "community-support": consoleRedirectHash,
+});
+
+function splitRedirectFor(pageId) {
+  return typeof pageId === "string" && Object.hasOwn(SPLIT_PAGE_REDIRECTS, pageId)
+    ? SPLIT_PAGE_REDIRECTS[pageId]
+    : null;
+}
 
 // Hub page id -> its tabs, in order. The first tab is the default.
 export const PAGE_HUB_TABS = Object.freeze({
@@ -97,6 +109,8 @@ export function redirectFor(pageId) {
  * way to the new one, since it named a tab of a page that no longer exists.
  */
 export function redirectHash(hash) {
+  const split = splitRedirectFor(hashPageId(hash));
+  if (split) return split(hash);
   const target = redirectFor(hashPageId(hash));
   if (!target) return null;
   let params;
@@ -115,7 +129,7 @@ export function redirectHash(hash) {
 
 /** Was this page id retired into another page? */
 export function isRetiredPageId(pageId) {
-  return redirectFor(pageId) !== null;
+  return redirectFor(pageId) !== null || splitRedirectFor(pageId) !== null;
 }
 
 /** The tabs of a hub page, or null when the page is not a hub. */
@@ -165,23 +179,4 @@ export function hostedSearch(hash, alias) {
 export function hostedHash(alias, search) {
   const value = typeof search === "string" ? search : "";
   return `${hubTabHash(alias.page, alias.tab)}${value ? `&${value}` : ""}`;
-}
-
-// The Community & Support console's tabs that the menu's Support entry
-// stands for; every other tab is Community.
-const SUPPORT_TABS = new Set(["support", "email"]);
-
-/**
- * The menu entry lit for the page on screen. Only the Community & Support
- * console differs from its page id: it is two menu entries until Wave 6.
- */
-export function activeMenuId(pageId, hash) {
-  if (pageId !== "community-support") return pageId;
-  let tab = "";
-  try {
-    tab = new URLSearchParams(hashSearch(hash)).get(HUB_TAB_PARAM) || "";
-  } catch {
-    tab = "";
-  }
-  return SUPPORT_TABS.has(tab) ? "support" : "community";
 }

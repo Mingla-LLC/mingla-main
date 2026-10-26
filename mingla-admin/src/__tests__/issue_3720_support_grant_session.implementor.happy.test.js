@@ -35,7 +35,8 @@ describe("#3720 support grant + session (happy)", () => {
   it("the desk links Admins to People and roles instead of granting by email", () => {
     const page = read("src/pages/SupportDeskPage.jsx");
     assert.equal(/const handleGrant|const handleRevoke|support-grant-staff/.test(page), false);
-    assert.match(page, /MANAGE_SUPPORT_PEOPLE_HREF = "#\/community-support\?tab=team"/);
+    // #4130 Wave 6: People and roles is a tab of the Support page.
+    assert.match(page, /MANAGE_SUPPORT_PEOPLE_HREF = "#\/support\?tab=team"/);
     assert.match(page, /\{canManageAgents && \(\s*<a href=\{MANAGE_SUPPORT_PEOPLE_HREF\}/);
     assert.match(page, /Manage who's on Support/);
   });

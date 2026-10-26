@@ -66,9 +66,10 @@ export const PAGE_AREA_OVERRIDES = {
 // Issue #4130 (Wave 0) — a page that replaced older pages is open to whoever
 // could open any of them (the union, never wider), and each of its tabs only
 // to whoever could open the page that tab shows. The old ids keep their area
-// above: they are how this union is worked out. The menu's Support and
-// Community entries open the Community & Support console, so they carry its
-// access. Kept in step with PAGE_HUB_TABS in lib/adminRoutes.js (tested).
+// above: they are how this union is worked out. Support and Community
+// (#4130 Wave 6) were split from the Community & Support console, so they
+// carry its access exactly; each tab inside stays gated by its own area
+// (lib/communitySupportAccess.js). Kept in step with PAGE_HUB_TABS in lib/adminRoutes.js (tested).
 export const PAGE_ACCESS_UNION = Object.freeze({
   outreach: Object.freeze(["hosts", "creators"]),
   inbound: Object.freeze(["beta-leads", "tool-leads"]),

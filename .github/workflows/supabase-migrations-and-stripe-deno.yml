@@ -276,6 +276,16 @@ on:
       - "mingla-admin/src/pages/shellHubs.jsx"
       - "mingla-admin/src/services/identityReadService.js"
       - "supabase/migrations/20280113004130_issue_4130_people_brands_offerings.sql"
+      # #4130 Wave 6 (Support and Community split): the suite and the files it
+      # reads that are not already listed here.
+      - "mingla-admin/src/__tests__/issue_4130_wave6_support_community.implementor.test.js"
+      - "mingla-admin/src/lib/supportCommunityTabs.js"
+      - "mingla-admin/src/lib/announcementDelivery.js"
+      - "mingla-admin/src/lib/supportTicketMetrics.js"
+      - "mingla-admin/src/lib/communitySupportAccess.js"
+      - "mingla-admin/src/lib/communitySupportCapabilityContract.js"
+      - "mingla-admin/src/lib/opsModel.js"
+      - "mingla-admin/src/components/ops/WordingQueue.jsx"
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
@@ -582,6 +592,16 @@ on:
       - "mingla-admin/src/pages/shellHubs.jsx"
       - "mingla-admin/src/services/identityReadService.js"
       - "supabase/migrations/20280113004130_issue_4130_people_brands_offerings.sql"
+      # #4130 Wave 6 (Support and Community split): the suite and the files it
+      # reads that are not already listed here.
+      - "mingla-admin/src/__tests__/issue_4130_wave6_support_community.implementor.test.js"
+      - "mingla-admin/src/lib/supportCommunityTabs.js"
+      - "mingla-admin/src/lib/announcementDelivery.js"
+      - "mingla-admin/src/lib/supportTicketMetrics.js"
+      - "mingla-admin/src/lib/communitySupportAccess.js"
+      - "mingla-admin/src/lib/communitySupportCapabilityContract.js"
+      - "mingla-admin/src/lib/opsModel.js"
+      - "mingla-admin/src/components/ops/WordingQueue.jsx"
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
@@ -821,6 +841,9 @@ jobs:
       - name: "Issue #4130 — Work views and Team dashboard: (needs the admin npm ci above) Board, Today, This week and This month; drafts, approvals and roadmap wording reachable from Work cards; the dashboard's numbers first"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_4130_wave1_work.implementor.test.js
+      - name: "Issue #4130 — Support and Community are two pages: old console links land on the right tab, every tab keeps its access, inbox counts match the inbox, failed announcement pushes retry through the existing path"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue_4130_wave6_support_community.implementor.test.js
       - name: "#3720 Slice B — email segments + single log writer (admin node:test)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_3720_email_segments.implementor.happy.test.js

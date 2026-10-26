@@ -1,9 +1,14 @@
 /**
- * #3720 Slice F — Community & Support console.
+ * #3720 Slice F console, split by #4130 Wave 6 into two pages that share this
+ * frame: Support (the inbox first, Email, People and roles) and Community
+ * (announcements, roadmap, ideas, moderation, brand groups, feature guide,
+ * product inbox). SupportPage and CommunityPage below are the two pages.
  *
- * One admin surface for announcements, roadmap, support tickets, bulk email,
- * community roles, and support availability. Legacy hashes `#/support` and
- * `#/email` are rewritten in App.jsx to `#/community-support?tab=…`.
+ * Each tab keeps its id and its row in communitySupportCapabilityContract.js,
+ * and is shown only to the area that row names (communitySupportAccess.js):
+ * moving a tab between the two pages changes nobody's access. Old
+ * #/community-support and #/email addresses are rewritten in
+ * lib/adminRoutes.js before a page is chosen.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -13,7 +18,6 @@ import { Toggle } from "../components/ui/Input";
 import { SectionCard } from "../components/ui/Card";
 import { SupportDeskPage } from "./SupportDeskPage";
 import { EmailPage } from "./EmailPage";
-import { OverviewPanel } from "../components/community/OverviewPanel";
 import { AnnouncementsPanel } from "../components/community/AnnouncementsPanel";
 import { RoadmapPanel } from "../components/community/RoadmapPanel";
 import { TeamRolesPanel } from "../components/community/TeamRolesPanel";
@@ -24,17 +28,16 @@ import { ModerationPanel } from "../components/community/ModerationPanel";
 import { ReportedEnquiriesPanel } from "../components/community/ReportedEnquiriesPanel";
 import { IdeasPanel } from "../components/community/IdeasPanel";
 import { QuestionsPanel } from "../components/community/QuestionsPanel";
-import {
-  CommunitySupportNavigation,
-} from "../components/community/CommunitySupportNavigation";
+import { FailedPushBanner } from "../components/community/FailedPushBanner";
+import { CommunitySupportNavigation } from "../components/community/CommunitySupportNavigation";
 import { useAuth } from "../context/AuthContext";
 import { AREA } from "../lib/access";
 import {
   communitySupportCapabilities,
   communitySupportTabsForAccess,
-  defaultCommunitySupportTab,
 } from "../lib/communitySupportAccess";
-import { communitySupportTabFromHash } from "../lib/communitySupportNavigation";
+import { pageTabFromHash, pageTabHash, pageTabsFor } from "../lib/supportCommunityTabs";
+import { hashPageId } from "../lib/crmUrl";
 import {
   getAdminCommunityOverview,
   listSupportStaffRoster,
@@ -43,74 +46,33 @@ import {
 import { changeSupportAvailability } from "../lib/supportAvailability";
 import { AVAILABLE_OFF_MESSAGE, AVAILABLE_ON_MESSAGE } from "../lib/supportAvailability";
 
-const COMMUNITY_SUPPORT_TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "announcements", label: "Announcements" },
-  { id: "roadmap", label: "Roadmap" },
-  { id: "ideas", label: "Ideas" },
-  { id: "questions", label: "Questions" },
-  { id: "moderation", label: "Moderation" },
-  { id: "enquiry-reports", label: "Reported enquiries" },
-  { id: "support", label: "Support" },
-  { id: "product", label: "Product Inbox" },
-  { id: "feature-guide", label: "Feature Guide" },
-  { id: "brand-groups", label: "Brand groups" },
-  { id: "email", label: "Email" },
-  { id: "team", label: "Team & roles" },
-];
-// Kept only as a source-level legacy route marker for pre-rebuild tests and
-// bookmarks. Availability now lives in the header and is not a rendered tab.
-const LEGACY_COMMUNITY_SUPPORT_ROUTES = [{ id: "availability" }];
-void LEGACY_COMMUNITY_SUPPORT_ROUTES;
+const PAGE_COPY = {
+  support: {
+    title: "Support",
+    adminDescription: "Conversations with hosts and explorers, oldest waiting first.",
+    other: { id: "community", label: "Community" },
+  },
+  community: {
+    title: "Community",
+    adminDescription: "What we tell hosts, what we've shipped, and what they ask for.",
+    other: { id: "support", label: "Support" },
+  },
+};
 
-const TAB_IDS = new Set(COMMUNITY_SUPPORT_TABS.map((t) => t.id));
-
-function tabFromCommunityHash() {
-  return communitySupportTabFromHash(window.location.hash, TAB_IDS);
+function roleDescription(capabilities, isLead) {
+  if (capabilities.canSupport && capabilities.canCommunity) {
+    return isLead
+      ? "You're a Support lead: you work both Community and Support, and approve support issues for the product team."
+      : "You're a Support teammate: you work both Community and Support.";
+  }
+  return capabilities.canSupport ? "Your assigned Host support workspace." : "Your assigned Community workspace.";
 }
 
-/**
- * #3988 — a teammate's own view of their Community & Support role. Every card
- * here leads to a tab the server lets them open; nothing is counted or faked
- * (the counts dashboard stays Admin-only).
- */
-function TeammateOverview({ isLead, onGoTab }) {
-  return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      <SectionCard title="Community">
-        <div className="space-y-3 text-sm text-[var(--color-text-secondary)]">
-          <p>
-            As a Support {isLead ? "lead" : "teammate"} you also look after the Community: review
-            Hosts' first posts and reports, answer Questions and update Ideas.
-          </p>
-          <Button size="sm" variant="secondary" onClick={() => onGoTab("moderation")}>
-            Open Moderation
-          </Button>
-        </div>
-      </SectionCard>
-      <SectionCard title="Support">
-        <div className="space-y-3 text-sm text-[var(--color-text-secondary)]">
-          <p>
-            Answer Host chats and tickets. While you're available, you get an alert for every
-            new ticket and reply.
-          </p>
-          <Button size="sm" variant="secondary" onClick={() => onGoTab("support")}>
-            Open Tickets
-          </Button>
-        </div>
-      </SectionCard>
-    </div>
-  );
-}
-
-function communitySupportHashForTab(tabId) {
-  const id = TAB_IDS.has(tabId) ? tabId : "overview";
-  return `#/community-support?tab=${id}`;
-}
-
-export function CommunitySupportPage() {
+export function SupportCommunityConsole({ pageId }) {
   const { access, session } = useAuth();
-  const [requestedTab, setRequestedTab] = useState(() => tabFromCommunityHash());
+  const copy = PAGE_COPY[pageId];
+  const pageTabs = pageTabsFor(pageId);
+  const [requestedTab, setRequestedTab] = useState(() => pageTabFromHash(window.location.hash, pageId));
   const [navCounts, setNavCounts] = useState({});
   const [myAvailable, setMyAvailable] = useState(false);
   const [myStaffRole, setMyStaffRole] = useState(null);
@@ -120,34 +82,38 @@ export function CommunitySupportPage() {
   const [availabilityBusy, setAvailabilityBusy] = useState(false);
   const [availabilityError, setAvailabilityError] = useState(null);
   const visibleTabs = useMemo(
-    () => communitySupportTabsForAccess(access, COMMUNITY_SUPPORT_TABS),
-    [access],
+    () => communitySupportTabsForAccess(access, pageTabs),
+    [access, pageTabs],
   );
-  const defaultTab = defaultCommunitySupportTab(access);
   const activeTab = visibleTabs.some((tab) => tab.id === requestedTab)
     ? requestedTab
-    : defaultTab;
+    : visibleTabs[0]?.id || null;
   const capabilities = communitySupportCapabilities(access);
   // Inviting is the Owner's team_manage power (the same area Admin → Team uses).
   const canInvite = Array.isArray(access?.areas) && access.areas.includes(AREA.TEAM_MANAGE);
   const isLead = myStaffRole === "lead";
+  const onSupportPage = pageId === "support";
 
+  // Community tab badges (Admins): the same Admin counts the old console showed.
+  // A failed count only hides the badges; each tab shows its own load error.
   useEffect(() => {
-    if (!capabilities.isAdmin) return;
+    if (onSupportPage || !capabilities.isAdmin) return;
     let cancelled = false;
     void getAdminCommunityOverview().then((data) => {
       if (cancelled) return;
-      const community = Number(data.first_posts || 0) + Number(data.unanswered_questions || 0) + Number(data.ideas_to_triage || 0) + Number(data.reports_due || 0);
       setNavCounts({
-        community,
-        support: Number(data.unanswered_tickets || 0),
         ideas: Number(data.ideas_to_triage || 0),
         questions: Number(data.unanswered_questions || 0),
         moderation: Number(data.first_posts || 0) + Number(data.reports_due || 0),
       });
-    }).catch(() => {});
+    }).catch(() => { if (!cancelled) setNavCounts({}); });
     return () => { cancelled = true; };
-  }, [capabilities.isAdmin]);
+  }, [onSupportPage, capabilities.isAdmin]);
+
+  // Support's Inbox badge is the inbox's own Open count, so it always matches.
+  const onInboxCounts = useCallback((counts) => {
+    setNavCounts((current) => (current.support === counts.open ? current : { ...current, support: counts.open }));
+  }, []);
 
   useEffect(() => {
     if (!capabilities.canSupport || !session?.user?.id) return;
@@ -176,31 +142,41 @@ export function CommunitySupportPage() {
   }
 
   useEffect(() => {
-    const onHash = () => setRequestedTab(tabFromCommunityHash());
+    // Only this page's own addresses move its tab: a link to the other page
+    // (or an old one App is about to rewrite) must not reset it here first.
+    const onHash = () => {
+      if (hashPageId(window.location.hash) !== pageId) return;
+      setRequestedTab(pageTabFromHash(window.location.hash, pageId));
+    };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
-  }, []);
+  }, [pageId]);
 
   useEffect(() => {
     if (!activeTab || requestedTab === activeTab) return;
-    window.history.replaceState(null, "", communitySupportHashForTab(activeTab));
-  }, [activeTab, requestedTab]);
+    window.history.replaceState(null, "", pageTabHash(pageId, activeTab));
+  }, [activeTab, requestedTab, pageId]);
 
   const changeTab = useCallback((tabId) => {
     if (!visibleTabs.some((tab) => tab.id === tabId)) return;
-    window.location.hash = communitySupportHashForTab(tabId);
-  }, [visibleTabs]);
+    window.location.hash = pageTabHash(pageId, tabId);
+  }, [visibleTabs, pageId]);
+
+  const description = capabilities.isAdmin ? copy.adminDescription : roleDescription(capabilities, isLead);
 
   if (!activeTab) {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Community & Support"
-          description="Your assigned Community and Support workspace."
-        />
-        <SectionCard title="Access needed">
+        <PageHeader title={copy.title} description={description} />
+        <SectionCard title="Nothing here for your role">
           <p className="text-sm text-[var(--color-text-secondary)]">
-            Your account does not have an active Community or Support assignment.
+            Your work is on the {copy.other.label} page.{" "}
+            <a
+              href={`#/${copy.other.id}`}
+              className="font-medium text-[var(--color-brand-700)] underline-offset-2 hover:underline"
+            >
+              Open {copy.other.label}
+            </a>
           </p>
         </SectionCard>
       </div>
@@ -210,19 +186,11 @@ export function CommunitySupportPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Community & Support"
-        description={capabilities.isAdmin
-          ? "Talk to hosts, show what's coming, and answer tickets. One place."
-          : capabilities.canSupport && capabilities.canCommunity
-            ? isLead
-              ? "You're a Support lead: you work both Community and Support, and approve support issues for the product team."
-              : "You're a Support teammate: you work both Community and Support."
-            : capabilities.canSupport
-              ? "Your assigned Host support workspace."
-              : "Your assigned Community workspace."}
+        title={copy.title}
+        description={description}
         actions={
           <>
-            {capabilities.canSupport ? (
+            {onSupportPage && capabilities.canSupport ? (
               <Toggle
                 label="Available for support"
                 checked={myAvailable}
@@ -230,7 +198,7 @@ export function CommunitySupportPage() {
                 onChange={(next) => void toggleAvailability(next)}
               />
             ) : null}
-            {capabilities.isAdmin ? (
+            {!onSupportPage && capabilities.isAdmin ? (
               <Button onClick={() => {
                 changeTab("announcements");
                 requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("community:new-announcement")));
@@ -242,49 +210,57 @@ export function CommunitySupportPage() {
         }
         tabs={
           <CommunitySupportNavigation
+            label={copy.title}
+            tabs={visibleTabs}
             activeTab={activeTab}
-            visibleTabIds={new Set(visibleTabs.map((tab) => tab.id))}
             counts={navCounts}
             onChange={changeTab}
           />
         }
       />
 
-      {availabilityError ? (
+      {onSupportPage && availabilityError ? (
         <p
           role="alert"
           className="text-sm text-[var(--color-error-700)]"
         >
           {availabilityError}
         </p>
-      ) : capabilities.canSupport ? (
+      ) : onSupportPage && capabilities.canSupport ? (
         <p className="text-sm text-[var(--color-text-secondary)]" aria-live="polite">
           {myAvailable ? AVAILABLE_ON_MESSAGE : AVAILABLE_OFF_MESSAGE}
         </p>
       ) : null}
 
-      {activeTab === "overview" && capabilities.isAdmin && <OverviewPanel onGoTab={changeTab} />}
-      {activeTab === "overview" && !capabilities.isAdmin && (
-        <TeammateOverview isLead={isLead} onGoTab={changeTab} />
+      {onSupportPage && capabilities.isAdmin ? <FailedPushBanner /> : null}
+
+      {activeTab === "support" && (
+        <SupportDeskPage embedded canManageAgents={capabilities.isAdmin} onCounts={onInboxCounts} />
       )}
+      {activeTab === "email" && <EmailPage embedded />}
+      {activeTab === "team" && capabilities.isAdmin && <TeamRolesPanel canInvite={canInvite} refreshKey={peopleRefreshKey} />}
+
       {activeTab === "announcements" && <AnnouncementsPanel />}
       {activeTab === "roadmap" && <RoadmapPanel />}
       {activeTab === "ideas" && capabilities.canCommunity && <IdeasPanel />}
       {activeTab === "questions" && capabilities.canCommunity && <QuestionsPanel />}
       {activeTab === "moderation" && capabilities.canCommunity && <ModerationPanel />}
       {activeTab === "enquiry-reports" && capabilities.canCommunity && <ReportedEnquiriesPanel />}
-      {activeTab === "support" && (
-        <SupportDeskPage embedded canManageAgents={capabilities.isAdmin} />
-      )}
-      {activeTab === "product" && capabilities.isAdmin && <ProductInboxPanel />}
+      {activeTab === "brand-groups" && <BrandGroupsPanel />}
       {activeTab === "feature-guide" && capabilities.canSupport && (
         <FeatureGuidePanel canManage={capabilities.isAdmin} />
       )}
-      {activeTab === "brand-groups" && <BrandGroupsPanel />}
-      {activeTab === "email" && <EmailPage embedded />}
-      {activeTab === "team" && capabilities.isAdmin && <TeamRolesPanel canInvite={canInvite} refreshKey={peopleRefreshKey} />}
+      {activeTab === "product" && capabilities.isAdmin && <ProductInboxPanel />}
     </div>
   );
 }
 
-export default CommunitySupportPage;
+// #4130 Wave 6 — Support: the inbox first, then Email and People and roles.
+export function SupportPage() {
+  return <SupportCommunityConsole pageId="support" />;
+}
+
+// #4130 Wave 6 — Community: what hosts are told, what shipped, what they ask for.
+export function CommunityPage() {
+  return <SupportCommunityConsole pageId="community" />;
+}
