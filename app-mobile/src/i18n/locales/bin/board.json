@@ -40,6 +40,7 @@
     "takeAStroll": "L\u1eb9 Uw\u1eb9"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "We couldn't text {{phone}}. Share the invite link with them instead.",
     "adminPrivileges": "Ik\u1eb9 Admin",
     "manageBoard": "Kh\u1ecde Ib\u1ecddi",
     "renameBoard": "Rhie Eva N\u1eb9 Ov\u1eb9r\u1eb9n N\u1eb9 Ib\u1ecddi",

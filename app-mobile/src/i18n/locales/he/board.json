@@ -40,6 +40,7 @@
     "takeAStroll": "טיול קצר"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "לא הצלחנו לשלוח SMS אל {{phone}}. שתפו איתם את קישור ההזמנה במקום.",
     "adminPrivileges": "הרשאות מנהל",
     "manageBoard": "ניהול לוח",
     "renameBoard": "שנה שם לוח",

@@ -40,6 +40,7 @@
     "takeAStroll": "Take a Stroll"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "Vi kunde inte sms:a {{phone}}. Dela inbjudningslänken med dem i stället.",
     "adminPrivileges": "Admin Privileges",
     "manageBoard": "Manage Board",
     "renameBoard": "Rename Board",

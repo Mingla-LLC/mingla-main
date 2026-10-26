@@ -16,6 +16,7 @@
     "adventurous": "ผจญภัย", "firstDate": "เดทแรก", "romantic": "โรแมนติก", "groupFun": "สนุกเป็นกลุ่ม", "picnicDates": "เดทปิกนิก", "takeAStroll": "เดินเล่น"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "เราส่ง SMS ถึง {{phone}} ไม่ได้ แชร์ลิงก์คำเชิญให้พวกเขาแทน",
     "adminPrivileges": "สิทธิ์ผู้ดูแล", "manageBoard": "จัดการบอร์ด", "renameBoard": "เปลี่ยนชื่อบอร์ด",
     "inviteParticipants": "เชิญผู้เข้าร่วม", "turnOffNotifications": "ปิดการแจ้งเตือน", "turnOnNotifications": "เปิดการแจ้งเตือน",
     "leaveBoard": "ออกจากบอร์ด", "leaving": "กำลังออก...", "deleteBoard": "ลบบอร์ด",
