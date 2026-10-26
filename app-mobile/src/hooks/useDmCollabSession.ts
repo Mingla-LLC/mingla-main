@@ -1,8 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { dmCollabKeys } from './queryKeys';
 import { fetchDmCollabSession } from '../services/dmCollabService';
-import type { DmCollabSession } from '../components/chat/dmCollabModel';
+import { supabase } from '../services/supabase';
+import { dmCollabSessionToWatch, type DmCollabSession } from '../components/chat/dmCollabModel';
 
 /**
  * Issue #4114 Wave 5: the live collab inside a 1:1 chat ("this conversation has
@@ -26,6 +27,29 @@ export function useDmCollabSession(conversationId: string | null | undefined): {
     queryFn: () => (conversationId ? fetchDmCollabSession(conversationId) : Promise.resolve(null)),
   });
   const { refetch } = query;
+
+  // Issue #4114 QA: while the collab is pending, watch its status, so the
+  // starter's header turns "Collaborating" (Swipe) the moment the friend's
+  // join activates it — the "joined" row alone can arrive while it is still
+  // pending. The channel closes once the session is no longer pending.
+  const watchedSessionId = dmCollabSessionToWatch(query.data);
+  useEffect(() => {
+    if (!watchedSessionId) return undefined;
+    const channel = supabase
+      .channel(`dm_collab_session:${watchedSessionId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'collaboration_sessions', filter: `id=eq.${watchedSessionId}` },
+        () => {
+          void queryClient.invalidateQueries({ queryKey: dmCollabKeys.session(conversationId ?? null) });
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [conversationId, queryClient, watchedSessionId]);
+
   const invalidate = useCallback(
     () => queryClient.invalidateQueries({ queryKey: dmCollabKeys.session(conversationId ?? null) }),
     [conversationId, queryClient],

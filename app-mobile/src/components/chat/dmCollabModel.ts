@@ -42,6 +42,17 @@ export function isDmCollabActive(session: DmCollabSession | null | undefined): b
 }
 
 /**
+ * Issue #4114 QA (evidence 71b/72/73b): the friend's "joined" row lands while
+ * the session is still `pending` (the app activates it in a later write), so
+ * re-reading on that row alone left the starter's header stuck until a manual
+ * refresh. While a session is pending the chat also watches that session's
+ * status and re-reads when it changes. Returns the session id to watch, or null.
+ */
+export function dmCollabSessionToWatch(session: DmCollabSession | null | undefined): string | null {
+  return session && session.status === "pending" ? session.id : null;
+}
+
+/**
  * What the right side of a 1:1 chat header shows.
  *  - `start`: the orange Collab button (a friend, nobody blocked, no live collab);
  *  - `pending`: the invite is out — nothing extra, the thread holds the cards;
