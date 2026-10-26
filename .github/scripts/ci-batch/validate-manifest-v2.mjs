@@ -537,9 +537,11 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // regression command and declaring Expo's existing keep-awake runtime directly.
 // [TEST-MOD-APPROVED #4063] Re-banked after adding the focused Wave 5 ticket
 // transfer surface regression command; dependencies and lockfiles are unchanged.
+// [TEST-MOD-APPROVED #3540] Re-banked after the required Explorer dependency
+// refresh advanced three in-range transitive/runtime packages in the lockfile.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "48af9d0cca47199b61b824a4fd80b87ec7e5bb12f07899994435031238834bbb",
-  "app-mobile/package-lock.json": "d4ca2a591a2af73d1220a4a7f6b7c7211d21a75fde9e1219608bb73ec1839571",
+  "app-mobile/package-lock.json": "9a7974a2de124482f7d450d46b49775126ef5206a325dcb6c7663ea3b9666065",
   "mingla-business/package.json": "6f77fc43e63360ac45b94d11195b966433d4e6769b34a0340d88f9871b4b2315",
   "mingla-business/package-lock.json": "7add1ab1e498621c71ce7c2db5678c9b748f39c745fd95a446a5f7d7d77f1889",
 });
