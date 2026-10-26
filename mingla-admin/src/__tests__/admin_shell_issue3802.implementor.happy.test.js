@@ -424,6 +424,10 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     // #4130 (Wave 4b): Place pool, Platform health and Feature flags are their
     // own pages; API health, Stripe mode and Deck tuner are folded in (deleted).
     "PlacePoolPage.jsx", "PlatformHealthPage.jsx", "FeatureFlagsPage.jsx",
+    // #4130 (Wave 4a): Inbound leads replaces Beta leads + Tool leads tabs.
+    // (Hosts and creators is pages/HostsAndCreatorsHub.jsx: the board inside
+    // it, PipelinePage, draws its one header with the tabs in it.)
+    "InboundLeadsPage.jsx",
   ];
   // The five pages that moved later (My agent, Hosts and Creators, Beta Leads,
   // Home, Team dashboard) are now in the list above; none is left to follow.
@@ -459,7 +463,9 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     // #4130: Mingla money page (+1, Wave 2a).
     // #4130: Users page deleted (-1); People and Brands pages added (+2).
     // #4130 (Wave 4b): three pages folded in (-3), three added (+3).
-    assert.equal(MIGRATED.length, 46);
+    // #4130 (Wave 4a): Inbound leads page added (+1).
+    // #4130 (integration): 46 after 4b + 1 from 4a = 47, the count of pages/*Page.jsx.
+    assert.equal(MIGRATED.length, 47);
     assert.equal(FOLLOW_UP.length, 0);
   });
 
@@ -606,7 +612,9 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
     // #4130: Mingla money page (+1, Wave 2a).
     // #4130: Users page deleted (-1); People and Brands pages added (+2).
     // #4130 (Wave 4b): three pages folded in (-3), three added (+3).
-    assert.equal(MIGRATED.length, 46);
+    // #4130 (Wave 4a): Inbound leads page added (+1).
+    // #4130 (integration): 46 after 4b + 1 from 4a = 47, the count of pages/*Page.jsx.
+    assert.equal(MIGRATED.length, 47);
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);
       assert.equal(

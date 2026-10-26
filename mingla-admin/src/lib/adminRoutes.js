@@ -67,10 +67,6 @@ export const PAGE_HUB_TABS = Object.freeze({
     Object.freeze({ id: "hosts", label: "Hosts", hosts: "hosts" }),
     Object.freeze({ id: "creators", label: "Creators", hosts: "creators" }),
   ]),
-  inbound: Object.freeze([
-    Object.freeze({ id: "beta", label: "Beta leads", hosts: "beta-leads" }),
-    Object.freeze({ id: "tools", label: "Web tool leads", hosts: "tool-leads" }),
-  ]),
   // #4130 Wave 3: People and Brands are real pages now (PeoplePage,
   // BrandsPage), not hubs. Their tab values above stay valid addresses:
   // People reads explorers/hosts/..., Brands opens websites/venues/claims as
@@ -147,7 +143,7 @@ export function hubTabHash(hubId, tabId) {
 /**
  * The query string a hosted page sees, with the hub's own `tab` taken out, or
  * null when the address belongs to neither the hub nor the hosted page.
- * `alias` is { page, tab, hosts } (see PageHub).
+ * `alias` is { page, tab, hosts } (see pages/HostsAndCreatorsHub.jsx).
  */
 export function hostedSearch(hash, alias) {
   const page = hashPageId(hash);

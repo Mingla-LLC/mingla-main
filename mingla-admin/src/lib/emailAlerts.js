@@ -49,7 +49,10 @@ export const EMAIL_ALERTS = Object.freeze([
 const KNOWN = new Set(EMAIL_ALERTS.map((alert) => alert.key));
 
 // Categories whose in-app alerts this page lists (mentions have their own list).
+// #4130: new tickets are listed too; they were left out, so "New support
+// tickets" alerts never showed in the app.
 export const SUPPORT_ALERT_TYPES = Object.freeze([
+  "business.support_new_ticket",
   "business.support_ticket_reply",
   "admin.support_staff_ticket",
   "admin.support_assigned",

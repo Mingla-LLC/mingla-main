@@ -145,7 +145,8 @@ Deno.test("#3980 W3 rework D9: nothing sits under the month, every list follows 
   assertMatch(panel, /: null;/);
   for (const [name, text] of [["page", page], ["panel", panel]]) assertNotMatch(text, /Back to runway/, name);
   // A day lists what Show says; the undated posts button shows only with posts.
-  assertMatch(page, /dayEntries\(route\.day, opsCal\.data, calendar\.items, route\.show\)/);
+  // #4130: the day list reads the month's events with test brands left out.
+  assertMatch(page, /dayEntries\(route\.day, monthData, calendar\.items, route\.show\)/);
   assertMatch(page, /\{show !== "events" && <Button [^>]*onClick=\{onUndated\}/);
   // List view keeps the grouped list and the posts list, each behind Show.
   assertMatch(page, /route\.show !== "posts" && \(runway\.error/);

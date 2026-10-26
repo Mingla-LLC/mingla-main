@@ -199,7 +199,12 @@ describe("W2A-4 the Mingla money page", () => {
   const page = stripComments(read("pages/MinglaMoneyPage.jsx"));
   it("replaces the placeholder", () => {
     assert.match(app, /"mingla-money": MinglaMoneyPage/);
-    assert.doesNotMatch(stripComments(read("pages/shellHubs.jsx")), /MinglaMoneyPlaceholder/);
+    // #4130 (integration): pages/shellHubs.jsx is retired; the placeholder
+    // must not survive anywhere App or a page could draw it.
+    assert.doesNotMatch(app, /MinglaMoneyPlaceholder/);
+    for (const file of fs.readdirSync(path.join(SRC, "pages")).filter((f) => /\.jsx?$/.test(f))) {
+      assert.doesNotMatch(stripComments(read(`pages/${file}`)), /MinglaMoneyPlaceholder/, file);
+    }
   });
   it("reads the summary RPC through the service, shows errors with Retry, and is honest about live vs test", () => {
     assert.match(read("services/adminMoneyService.js"), /supabase\.rpc\("admin_mingla_money_summary"/);

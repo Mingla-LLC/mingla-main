@@ -62,19 +62,6 @@ export const TABLES = [
   "email_templates",
 ];
 
-// ORCH-0640 ch08: STAT_CARDS stripped of "Cards" (card_pool archived).
-// Added "Signal Scores" + "Engagement 7d" (new place-level metrics).
-export const STAT_CARDS = [
-  { label: "Users", table: "profiles", icon: "Users" },
-  { label: "Places", table: "place_pool", icon: "Globe" },
-  { label: "Signal Scores", table: "place_scores", icon: "Activity" },
-  { label: "Engagement (7d)", table: "engagement_metrics", icon: "TrendingUp" },
-  { label: "Collab Sessions", table: "collaboration_sessions", icon: "Handshake" },
-  { label: "Boards", table: "boards", icon: "LayoutDashboard" },
-  { label: "Reviews", table: "place_reviews", icon: "Star" },
-  { label: "Feedback", table: "app_feedback", icon: "MessageSquare" },
-];
-
 export const SEED_SCRIPTS = [
   {
     label: "Seed Demo Profiles",
@@ -117,8 +104,9 @@ export const SEED_SCRIPTS = [
 //     per item, no two items share one, and a name that is not registered
 //     there fails src/__tests__/admin_shell_issue3802.implementor.happy.test.js
 //     (there is no fallback icon).
-//   - #4130: a page that replaced older ones holds them as tabs until its
-//     wave rebuilds it (lib/adminRoutes.js PAGE_HUB_TABS, pages/shellHubs.jsx).
+//   - #4130: Hosts and creators is the one page still holding older pages
+//     as tabs (lib/adminRoutes.js PAGE_HUB_TABS, pages/HostsAndCreatorsHub.jsx);
+//     every other merged page is a real page.
 //
 // History: ORCH-1008 pruned six pages and ORCH-1014 two more; ORCH-1271..1274
 // added the Business console; ISSUE-862 / #3697 the ads pages; ISSUE-3534

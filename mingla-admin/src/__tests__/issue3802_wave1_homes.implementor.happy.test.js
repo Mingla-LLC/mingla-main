@@ -235,8 +235,9 @@ describe("#3802 M-4: addresses", () => {
     assert.equal(targetSliceHash("event_organizer", "lagos"), "#/hosts?icp=event_organizer&region=lagos");
     assert.deepEqual({ icp: parseCrmHash(targetSliceHash("event_organizer", "new-york")).icp, region: parseCrmHash(targetSliceHash("event_organizer", "new-york")).region }, { icp: "event_organizer", region: "new-york" });
     assert.equal(targetSliceHash("<script>", "../x"), "#/hosts");
-    assert.equal(buildCrmHash("hosts", { view: "list", mine: true }), "#/hosts?view=list&mine=1");
-    assert.equal(buildCrmHash("creators", { view: "list" }), "#/creators?view=list");
+    // #4130: the list is the default view now, so it is left out of the address.
+    assert.equal(buildCrmHash("hosts", { view: "list", mine: true }), "#/hosts?mine=1");
+    assert.equal(buildCrmHash("creators", { view: "board" }), "#/creators?view=board");
   });
   it("the Team dashboard's person filter round-trips, and anything that is not an address is dropped", () => {
     assert.equal(buildTeamSearch({ person: "Tunde@UseMingla.com" }), "person=tunde%40usemingla.com");

@@ -243,7 +243,13 @@ describe("#4130 W3: pages and old addresses", () => {
     assert.match(app, /people: PeoplePage/);
     assert.match(app, /brands: BrandsPage/);
     assert.equal(/PeopleHub|BrandsHub/.test(app), false);
-    assert.equal(/UserManagementPage/.test(read("pages/shellHubs.jsx")), false);
+    // #4130 (integration): pages/shellHubs.jsx is retired; the old Users page
+    // (and its browser-side delete) must not be drawn from anywhere.
+    assert.equal(fs.existsSync(path.join(SRC, "pages", "UserManagementPage.jsx")), false);
+    const code = (file) => fs.readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+    for (const file of walk(SRC)) {
+      assert.equal(/UserManagementPage/.test(code(file)), false, path.relative(SRC, file));
+    }
   });
   it("old addresses land on the right tab, drawer or tool", () => {
     assert.equal(redirectHash("#/users?userId=u1"), "#/people?tab=explorers&userId=u1");

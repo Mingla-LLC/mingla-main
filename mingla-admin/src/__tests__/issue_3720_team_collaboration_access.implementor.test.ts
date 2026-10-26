@@ -73,7 +73,9 @@ Deno.test("#3720 mention UI uses one RPC and email is explicitly opt-in", async 
   ]);
   assertMatch(drawer, /Mention teammates/);
   assertMatch(service, /content_calendar_comment_add_with_mentions/);
-  assertMatch(page, /Email is off until you opt in here/);
+  // #4130: the old line contradicted itself ("every alert starts on" and
+  // "email is off until you opt in"); mention email is still opt-in.
+  assertMatch(page, /Mentions email you only after you switch them on here\./);
   assertMatch(
     migration,
     /p_category_key = 'admin[.]team_mention' AND p_channel = 'email'/,

@@ -112,11 +112,16 @@ describe("#4130 W0-1: the menu is the approved sidebar", () => {
   });
   // #4130 (Wave 4b): the last placeholder (Feature flags) is a real page now,
   // so no page says it is coming.
+  // #4130 (integration): the Wave 0 hub file (pages/shellHubs.jsx) is retired;
+  // no page file, and nothing App draws, is a "coming soon" placeholder.
   it("no menu page is a placeholder any more", () => {
-    const hubs = stripComments(read("pages/shellHubs.jsx"));
     assert.ok(/"mingla-money": MinglaMoneyPage/.test(APP));
     assert.ok(/"feature-flags": FeatureFlagsPage/.test(APP));
-    assert.equal(/Coming in this release|Placeholder/.test(hubs), false);
+    assert.equal(fs.existsSync(path.join(SRC, "pages", "shellHubs.jsx")), false, "the Wave 0 hub file is gone");
+    assert.equal(/shellHubs|Placeholder\b/.test(stripComments(APP)), false, "App draws no placeholder");
+    for (const file of fs.readdirSync(path.join(SRC, "pages")).filter((f) => /\.jsx?$/.test(f))) {
+      assert.equal(/Coming in this release/.test(stripComments(read(`pages/${file}`))), false, file);
+    }
   });
 });
 
@@ -172,9 +177,14 @@ describe("#4130 W0-3: every redirect lands somewhere real", () => {
     assert.deepEqual(menu, []);
   });
   it("every page the old menu opened is still drawn by its own component, inside a hub tab", () => {
-    const hubs = read("pages/shellHubs.jsx");
+    // #4130 (Wave 4a): Hosts and creators is built (pages/HostsAndCreatorsHub.jsx)
+    // and still draws each old board as a tab; Inbound leads is one page now.
+    // #4130 (integration): every other hub became a real page, so Hosts and
+    // creators is the only page still holding old pages as tabs.
+    assert.deepEqual(Object.keys(PAGE_HUB_TABS), ["outreach"]);
     for (const [hub, tabs] of Object.entries(PAGE_HUB_TABS)) {
       assert.ok(PAGE_IDS.includes(hub), hub);
+      const hubs = read("pages/HostsAndCreatorsHub.jsx");
       for (const t of tabs) assert.ok(new RegExp(`(?:"${t.hosts}"|\\b${t.hosts}): [A-Z]\\w+Page\\b`).test(hubs), `${hub}: ${t.hosts} has no component`);
     }
   });
@@ -209,7 +219,9 @@ describe("#4130 W0-4: access is the union of the replaced pages, never wider", (
     assert.equal(canOpenOwnPage(admin, "careers"), true);
     assert.equal(canOpenPage(admin, "admin"), true);
     assert.equal(canOpenPage(growth, "admin"), false);
-    const hub = stripComments(read("components/layout/PageHub.jsx"));
+    // #4130 (integration): the generic PageHub is retired with shellHubs; the
+    // one hub left (Hosts and creators) applies the same per-tab rule.
+    const hub = stripComments(read("pages/HostsAndCreatorsHub.jsx"));
     assert.ok(hub.includes("canOpenOwnPage(access, tab.hosts)"), "a hub shows a tab only to whoever could open its old page");
   });
   it("the two non-admin roles see Home, Work, Hosts and creators, Inbound leads and Calendar", () => {
@@ -289,7 +301,10 @@ describe("#4130 W0-8: a stat card's trend colour follows its direction", () => {
     assert.ok(card.includes("trendTone(trendUp).className"));
     assert.equal(/#ef4444"\s*\}|"text-\[#ef4444\]"/.test(card.slice(card.indexOf("export function StatCard"), card.indexOf("export function SectionCard"))), false);
     const overview = stripComments(read("pages/OverviewPage.jsx"));
-    assert.ok(overview.includes("trendUp={trendUpFromDirection(trend?.direction)}"));
+    // #4130 (Wave 4a): the rebuilt Dashboard draws its own tiles and colours
+    // each trend through the same tone, from the same direction.
+    assert.ok(overview.includes("trendTone(trendUpFromDirection(signups.direction))"));
+    assert.ok(overview.includes("trendTone(trendUpFromDirection(tickets.direction))"));
   });
 });
 

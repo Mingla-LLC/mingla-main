@@ -124,6 +124,9 @@ const GUARDED_DEFINER_FNS = [
   "admin_list_brand_payment_readiness",
   "admin_orders_overview",
   "admin_settle_owes_back",
+  // ISSUE-4130 Wave 4a [Dashboard]: the founder's morning numbers in one
+  // admin-only aggregate. Reverting 20280114004130 removes it → this gate FAILS.
+  "admin_dashboard_summary",
 ];
 
 function fnBody(src, name) {
@@ -312,7 +315,7 @@ if (process.argv.includes("--self-test")) {
   // ISSUE-4130 Wave 2a: guard-first GOOD fixtures for the four appended names.
   const money4130 = [
     "admin_mingla_money_summary", "admin_list_brand_payment_readiness",
-    "admin_orders_overview", "admin_settle_owes_back",
+    "admin_orders_overview", "admin_settle_owes_back", "admin_dashboard_summary",
   ]
     .map(
       (n) =>

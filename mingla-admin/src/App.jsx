@@ -15,10 +15,9 @@ import { NAV_ITEMS } from "./lib/constants";
 import { pageTitle, resolveRoute } from "./lib/access";
 // Issue #4130 (Wave 0) — retired page ids and where they now live.
 import { isRetiredPageId, redirectHash } from "./lib/adminRoutes";
-import {
-  OutreachHub,
-  InboundHub,
-} from "./pages/shellHubs";
+// #4130 Wave 4a: Hosts and creators and Inbound leads are built pages now.
+import { OutreachPage } from "./pages/HostsAndCreatorsHub";
+import { InboundLeadsPage } from "./pages/InboundLeadsPage";
 // #4130 (Wave 4b): the System and Explorer app pages, built as designed.
 import { PlacePoolPage } from "./pages/PlacePoolPage";
 import { PlatformHealthPage } from "./pages/PlatformHealthPage";
@@ -83,9 +82,9 @@ const PAGES = {
   // from the card.
   "work-board": WorkBoardPage,
   notifications: NotificationsPage,
-  // ── Outreach ── #4130: Hosts and Creators, Beta and Tool leads as tabs.
-  outreach: OutreachHub,
-  inbound: InboundHub,
+  // ── Outreach ── #4130: Hosts and creators (two tabs) and Inbound leads.
+  outreach: OutreachPage,
+  inbound: InboundLeadsPage,
   "content-calendar": ContentCalendarPage,
   "team-dashboard": TeamDashboardPage,
   // ── Support ── #4130 Wave 6: the old Community & Support console is two

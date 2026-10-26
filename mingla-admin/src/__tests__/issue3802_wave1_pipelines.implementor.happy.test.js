@@ -281,7 +281,9 @@ describe("#3802 P-5: addresses", () => {
   it("defaults are left out", () => {
     assert.equal(buildCrmHash("hosts", EMPTY_CRM_STATE), "#/hosts");
     assert.equal(buildCrmHash("creators", {}), "#/creators");
-    assert.equal(buildCrmHash("hosts", { view: "board", mine: false, q: "" }), "#/hosts");
+    // #4130: the list is the default view now; the board has its own address.
+    assert.equal(buildCrmHash("hosts", { view: "list", mine: false, q: "" }), "#/hosts");
+    assert.equal(buildCrmHash("hosts", { view: "board" }), "#/hosts?view=board");
   });
   it("the spec's two examples", () => {
     assert.equal(buildCrmHash("hosts", { region: "lagos", icp: "event_organizer" }), "#/hosts?icp=event_organizer&region=lagos");
@@ -563,9 +565,10 @@ describe("#3802 P-9: the route gate still never mounts a refused page", () => {
   it("the two board pages are registered once each", () => {
     // #4130: registered once each as tabs of Hosts and creators.
     assert.equal(PAGE_IDS.filter((id) => id === "outreach").length, 1);
-    const hubs = read("pages/shellHubs.jsx");
-    assert.ok(hubs.includes('import { HostsPage, CreatorsPage } from "./PipelinePage";'));
-    assert.ok(hubs.includes("const OUTREACH = { hosts: HostsPage, creators: CreatorsPage };"));
+    // #4130 (Wave 4a): the page is built (pages/HostsAndCreatorsHub.jsx), not a shell hub.
+    const hub = read("pages/HostsAndCreatorsHub.jsx");
+    assert.ok(hub.includes('import { HostsPage, CreatorsPage } from "./PipelinePage";'));
+    assert.ok(hub.includes("const COMPONENTS = { hosts: HostsPage, creators: CreatorsPage };"));
   });
 });
 

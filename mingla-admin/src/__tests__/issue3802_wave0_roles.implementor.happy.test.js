@@ -162,7 +162,7 @@ describe("#3802 C-3: Team and roles", () => {
   it("is the owner's alone", () => {
     // #4130: the Team tab (the old Team and roles page) is the owner's alone;
     // the page also holds Careers, which every admin could open before, so an
-    // admin reaches the page for that tab only (PageHub shows a tab only to
+    // admin reaches the page for that tab only (the hub shows a tab only to
     // whoever could open the old page it shows).
     assert.equal(canOpenOwnPage(owner, "admin"), true);
     assert.equal(canOpenOwnPage(admin, "admin"), false);

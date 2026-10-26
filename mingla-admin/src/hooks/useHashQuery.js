@@ -5,7 +5,7 @@
 // at the first path segment (App.jsx), so the query survives the route guard.
 //
 // Issue #4130 (Wave 0): a page can be shown as a tab of a newer page (the Hosts
-// board inside Hosts and creators, at #/outreach?tab=hosts). PageHub says so
+// board inside Hosts and creators, at #/outreach?tab=hosts). HostsAndCreatorsHub says so
 // through HostedPageContext; the page then reads and writes its query inside
 // the hub's address, without the hub's own `tab`, and needs no change itself.
 import { useCallback, useContext, useEffect, useState } from "react";

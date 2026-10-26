@@ -6,7 +6,12 @@
 // eight steps), a whole day or the posts with no date open in a right column
 // (two columns from 1180px). The grid never scrolls sideways and words never
 // break letter by letter.
-import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+//
+// Issue #4130 (Wave 4a): two tabs, Event runway (default: the runway list in
+// each event's own local time) and Content (default: the posts board, so posts
+// show without picking a filter). One search filters the events and the posts.
+// Events of staff or test brands are hidden unless asked for (calendar_runway).
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Plus, Search } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Button } from "../components/ui/Button";
@@ -40,16 +45,21 @@ import { TwoColumn } from "../components/ops/TwoColumn";
 import { revealDetail } from "../components/ops/revealDetail";
 import { EventPanel } from "../components/ops/EventPanel";
 import { StateDot, StatePill } from "../components/ops/StateDot";
-import { useOpsCalendar, useOpsRunway } from "../hooks/useOpsCalendar";
+import { useOpsCalendar } from "../hooks/useOpsCalendar";
+import { useServerRead } from "../hooks/useServerRead";
+import { Tabs } from "../components/ui/Tabs";
+import { getCalendarRunway } from "../services/dashboardService";
+import { localWhen, testAnchorIds, visibleRunwayRows } from "../lib/calendarRunway";
 import { PLAIN_STATES, STATE_LEGEND, dayLong, opsErrorWords, parseEventParam, stateName, todayIso } from "../lib/opsModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const SHOW_OPTIONS = [
-  { value: "events", label: "Events" },
-  { value: "posts", label: "Posts" },
-  { value: "both", label: "Both" },
+// #4130: the Show control became the page's two tabs (show=events is Event
+// runway, show=posts is Content).
+const CALENDAR_TABS = [
+  { id: "events", label: "Event runway" },
+  { id: "posts", label: "Content" },
 ];
 const VIEW_OPTIONS = [
   { value: "calendar", label: "Month" },
@@ -207,7 +217,7 @@ function Legend({ undated, onUndated, show }) {
     <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-[var(--gray-200)] px-3 py-2.5 text-[12.5px] text-[var(--color-text-secondary)]">
       {STATE_LEGEND.map((k) => <span key={k} className="inline-flex items-center gap-1.5 whitespace-nowrap"><StateDot k={k} />{PLAIN_STATES[k]}</span>)}
       {show !== "events" && <Button type="button" variant="secondary" size="sm" className="ml-auto min-h-11" onClick={onUndated}>{undated} {undated === 1 ? "post" : "posts"} with no date</Button>}
-      <p className="w-full text-[11.5px] text-[var(--color-text-tertiary)]">Times shown in {Intl.DateTimeFormat().resolvedOptions().timeZone || "local time"}</p>
+      <p className="w-full text-[11.5px] text-[var(--color-text-tertiary)]">Events are on their own local day and time. Post times are in your time zone ({Intl.DateTimeFormat().resolvedOptions().timeZone || "local time"}).</p>
     </div>
   );
 }
@@ -229,7 +239,7 @@ function StateList({ rows, onSelect, today }) {
                   <button type="button" data-runway-row={`${r.anchor_kind}:${r.anchor_id}`} onClick={() => onSelect({ kind: r.anchor_kind, id: r.anchor_id }, r.start_on)} className={`flex min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg px-2 py-2 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}>
                     <span className="min-w-0 flex-1">
                       <span className={`block text-[13.5px] font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{r.title}</span>
-                      <span className={`block text-[12px] text-[var(--color-text-tertiary)] ${WORDS}`}>{dayLong(r.start_on)}{r.host_name ? ` · ${r.host_name}` : ""}</span>
+                      <span className={`block text-[12px] text-[var(--color-text-tertiary)] ${WORDS}`}>{localWhen(r)}{r.host_name || r.brand_name ? ` · ${r.host_name || r.brand_name}` : ""}{r.is_public ? " · Live" : " · Not live yet"}{r.is_test ? " · Test" : ""}</span>
                     </span>
                     <StatePill state={r.state} />
                   </button>
@@ -280,13 +290,22 @@ const UndatedPanel = forwardRef(function UndatedPanel({ items, open, onClose }, 
   </div></SectionCard>;
 });
 
+/** #4130: each tab's own first view. */
+function defaultView(show) {
+  return show === "posts" ? "board" : "list";
+}
+
 export function ContentCalendarPage() {
   const [search, setSearch] = useHashQuery("content-calendar");
   const route = useMemo(() => {
     const p = new URLSearchParams(search);
+    // #4130: Content (show=posts) opens on the posts board; Event runway on
+    // the runway list. An old "both" or Posts board address opens Content.
+    const show = ["posts", "both"].includes(p.get("show")) || p.get("view") === "board" ? "posts" : "events";
     return {
-      view: ["calendar", "board", "list"].includes(p.get("view")) ? p.get("view") : "calendar",
-      show: ["events", "posts", "both"].includes(p.get("show")) ? p.get("show") : "events",
+      view: ["calendar", "board", "list"].includes(p.get("view")) ? p.get("view") : defaultView(show),
+      show,
+      test: p.get("test") === "1",
       month: /^\d{4}-(0[1-9]|1[0-2])$/.test(p.get("month") || "") ? p.get("month") : monthKey(),
       card: /^[0-9a-f-]{36}$/i.test(p.get("card") || "") ? p.get("card") : null,
       q: (p.get("q") || "").slice(0, 160),
@@ -321,11 +340,18 @@ export function ContentCalendarPage() {
   const focusBack = useRef(false);
   const days = monthDays(route.month);
   const opsCal = useOpsCalendar(localDateKey(days[0]), localDateKey(days[days.length - 1]));
-  const runway = useOpsRunway();
+  // #4130: the runway in each event's own time, test brands marked. The Month
+  // view reads the month's window so its test events can be hidden too.
+  const runwayFrom = route.view === "calendar" ? localDateKey(days[0]) : null;
+  const runwayTo = route.view === "calendar" ? localDateKey(days[days.length - 1]) : null;
+  const loadRunway = useCallback(() => getCalendarRunway(runwayFrom, runwayTo, todayIso()), [runwayFrom, runwayTo]);
+  const runwayRead = useServerRead(loadRunway);
+  const runway = { data: runwayRead.data, error: runwayRead.status === "error" ? runwayRead.error : null, refetch: runwayRead.retry };
   const attention = useOpsAttention();
   const today = todayIso();
 
-  const setParam = (name, value, replace = false) => { const p = new URLSearchParams(search); if (!value || (name === "view" && value === "calendar") || (name === "show" && value === "events")) p.delete(name); else p.set(name, value); setSearch(p.toString(), { replace }); };
+  const setParam = (name, value, replace = false) => { const p = new URLSearchParams(search); if (!value || (name === "view" && value === defaultView(route.show)) || (name === "show" && value === "events")) p.delete(name); else p.set(name, value); setSearch(p.toString(), { replace }); };
+  const switchTab = (show) => { const p = new URLSearchParams(search); p.delete("view"); p.delete("event"); p.delete("day"); p.delete("undated"); if (show === "events") p.delete("show"); else p.set("show", show); setSearch(p.toString()); };
   const open = (id) => setParam("card", id);
   const rememberOpener = () => {
     if (typeof document === "undefined") return;
@@ -487,12 +513,21 @@ export function ContentCalendarPage() {
 
   const duplicateBlocked = !!duplicate.exact || (duplicate.similar.length > 0 && !similarAccepted);
   const undated = calendar.items.filter((item) => !item.publish_at);
-  const states = runway.data?.states || {};
-  const runwayRows = Array.isArray(runway.data?.rows) ? runway.data.rows : [];
+  const allRunwayRows = Array.isArray(runway.data?.rows) ? runway.data.rows : [];
+  const runwayRows = visibleRunwayRows(allRunwayRows, { showTest: route.test, q: route.q });
+  const testHidden = Number(runway.data?.test_hidden || 0);
+  const testIds = route.test ? new Set() : testAnchorIds(allRunwayRows);
+  // The tiles count the events shown (test brands left out unless asked).
+  const states = runway.data ? runwayRows.reduce((acc, r) => { const k = r.state?.k; if (k) acc[k] = (acc[k] || 0) + 1; return acc; }, { ready: 0, short: 0, late: 0, notlive: 0 }) : {};
+  const monthData = opsCal.data ? {
+    ...opsCal.data,
+    events: (opsCal.data.events || []).filter((e) => !testIds.has(String(e.id)) && (!route.q || String(e.title || "").toLowerCase().includes(route.q.toLowerCase()))),
+    expected: (opsCal.data.expected || []).filter((x) => !testIds.has(String(x.id)) && (!route.q || String(x.title || "").toLowerCase().includes(route.q.toLowerCase()))),
+  } : opsCal.data;
   const nonext = attention.data?.counts?.nonext;
   const monthName = monthWindow(route.month).first.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
   // Every list follows Show: a day opened under Events lists only events.
-  const dayItems = route.day ? dayEntries(route.day, opsCal.data, calendar.items, route.show) : [];
+  const dayItems = route.day ? dayEntries(route.day, monthData, calendar.items, route.show) : [];
 
   const right = route.undated
     ? <UndatedPanel ref={eventHeadingRef} items={undated} open={open} onClose={() => backToCalendar("undated")} />
@@ -510,14 +545,19 @@ export function ContentCalendarPage() {
           <button type="button" onClick={() => { setParam("month", null); }} className={`min-h-11 whitespace-nowrap rounded-full bg-[var(--color-brand-800)] px-3.5 text-[12.5px] font-semibold text-white hover:bg-[var(--color-brand-900)] ${FOCUS}`}>Today is {dayLong(today)}</button>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          {route.view !== "board" && <Segmented label="Show" options={SHOW_OPTIONS} value={route.show} onChange={(v) => setParam("show", v, true)} />}
+          {route.show !== "posts" && testHidden > 0 && (
+            <label className="inline-flex min-h-11 items-center gap-2 text-[12.5px] text-[var(--color-text-secondary)]">
+              <input type="checkbox" checked={route.test} onChange={(e) => setParam("test", e.target.checked ? "1" : null, true)} />
+              Show test events ({testHidden})
+            </label>
+          )}
           <Segmented label="View" options={VIEW_OPTIONS} value={route.view} onChange={(v) => setParam("view", v)} fullWidth className="sm:!w-fit" />
         </div>
       </div>
       {route.view === "calendar" ? (
         <>
           {opsCal.error && !opsCal.data && <div className="p-3"><AlertCard variant="warning" title="Couldn’t load events on Mingla" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => opsCal.refetch()}>Try again</Button>}>{opsErrorWords(opsCal.error)} Posts still work.</AlertCard></div>}
-          <MonthGrid month={route.month} data={opsCal.data} items={calendar.items} show={route.show} today={localDateKey()} open={open} selectEvent={selectEvent} currentEvent={route.event} onDay={openDay} openDay={route.event ? null : route.day} reschedule={reschedule} coarse={coarse} />
+          <MonthGrid month={route.month} data={monthData} items={calendar.items} show={route.show} today={localDateKey()} open={open} selectEvent={selectEvent} currentEvent={route.event} onDay={openDay} openDay={route.event ? null : route.day} reschedule={reschedule} coarse={coarse} />
           <Legend undated={undated.length} onUndated={openUndated} show={route.show} />
         </>
       ) : route.view === "list" ? (
@@ -534,15 +574,15 @@ export function ContentCalendarPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <PageHeader title="Calendar" description="Every host’s events, and whether each is live early enough to promote." actions={<Button type="button" variant="brandContrast" icon={Plus} className="min-h-11" disabled={!online} onClick={() => setAddOpen(true)}>Add content</Button>} />
+      <PageHeader title="Calendar" description="Events that need promoting, and the posts we are making." actions={<Button type="button" variant="brandContrast" icon={Plus} className="min-h-11" disabled={!online} onClick={() => setAddOpen(true)}>Add content</Button>} tabs={<Tabs tabs={CALENDAR_TABS.map((t) => ({ id: t.id, label: t.id === "posts" && !calendar.loading && !calendar.error ? `${t.label} · ${calendar.items.length} ${calendar.items.length === 1 ? "post" : "posts"}` : t.label }))} activeTab={route.show} onChange={switchTab} />} />
       {!online && <AlertCard variant="warning" title="You’re offline">You can read what is already here. Adding, saving, moving, commenting, deleting and Undo need a connection.</AlertCard>}
       {calendar.stale && <AlertCard variant="warning" title="Content may be out of date" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => calendar.refetch()}>Try again</Button>} />}
-      <div className="grid min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-3">
+      {route.show !== "posts" && <div className="grid min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-3">
         <button type="button" onClick={() => setParam("view", "list")} className={`flex min-h-11 min-w-0 items-center gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3.5 py-2.5 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}><b className="min-w-[1.6rem] text-[21px] tabular-nums text-[var(--color-info-700)]">{states.notlive ?? "–"}</b><span className="text-[13px] text-[var(--color-text-secondary)]">need to go live</span></button>
         <button type="button" onClick={() => setParam("view", "list")} className={`flex min-h-11 min-w-0 items-center gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3.5 py-2.5 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}><b className="min-w-[1.6rem] text-[21px] tabular-nums text-[var(--color-success-700)]">{states.ready === undefined ? "–" : Number(states.ready || 0) + Number(states.short || 0)}</b><span className="text-[13px] text-[var(--color-text-secondary)]">can be promoted</span></button>
-        <a href="#/hosts?filter=nonext" className={`flex min-h-11 min-w-0 items-center gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3.5 py-2.5 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}><b className="min-w-[1.6rem] text-[21px] tabular-nums text-[var(--color-info-700)]">{nonext ?? "–"}</b><span className="text-[13px] text-[var(--color-text-secondary)]">hosts with no next event</span></a>
-      </div>
-      <label className="relative block min-w-0 sm:max-w-sm"><span className="sr-only">Search content</span><Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[var(--color-text-tertiary)]" aria-hidden="true" /><input className={`${CONTROL_CLASS} min-h-11 pl-9`} value={route.q} onChange={(event) => setParam("q", event.target.value, true)} placeholder="Search posts by title, copy or notes" /></label>
+        <a href="#/outreach?tab=hosts&filter=nonext" className={`flex min-h-11 min-w-0 items-center gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3.5 py-2.5 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}><b className="min-w-[1.6rem] text-[21px] tabular-nums text-[var(--color-info-700)]">{nonext ?? "–"}</b><span className="text-[13px] text-[var(--color-text-secondary)]">hosts with no next event</span></a>
+      </div>}
+      <label className="relative block min-w-0 sm:max-w-sm"><span className="sr-only">Search events and posts</span><Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[var(--color-text-tertiary)]" aria-hidden="true" /><input className={`${CONTROL_CLASS} min-h-11 pl-9`} value={route.q} onChange={(event) => setParam("q", event.target.value, true)} placeholder={route.show === "posts" ? "Search posts by title, copy or notes" : "Search events by title or host"} /></label>
       {calendar.error && <AlertCard variant="error" title="Couldn’t load the posts" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => calendar.refetch()}>Try again</Button>}>{contentErrorWords(calendar.error)} Events still show.</AlertCard>}
       {route.view === "board"
         ? (calendar.loading ? <SectionCard><p role="status" className="text-sm text-[var(--color-text-secondary)]">Loading posts…</p></SectionCard> : <>{box}<BoardView items={calendar.items} open={open} move={beginMove} coarse={coarse} /></>)
