@@ -31,7 +31,7 @@ BEGIN
   INSERT INTO public.venue_listings (
     id, brand_id, slug, name, lat, lng, venue_category
   ) VALUES (
-    v_venue, v_brand, 'issue-4063-booking-venue',
+    v_venue, v_brand, 'issue4063bookingvenue',
     'Issue 4063 Booking Venue', 40.7128, -74.0060, 'restaurant'
   );
 
