@@ -264,3 +264,24 @@ try_advisory_lock_rules_run(p_lock_key bigint)
 st_estimatedextent(text, text)
 st_estimatedextent(text, text, text)
 st_estimatedextent(text, text, text, boolean)
+
+# === #3872 Creator Program public surfaces (signed-out viewers by design) ===
+# Public creator card and ratings on profiles and the buyer web: display name,
+# niches, processed showcase ids, completed-gig count, live promotions, and
+# submitted star ratings. No handles, contact details, money or account data.
+gig_ratings_public(p_creator_account_id uuid)
+public_creator_profile(p_creator_account_id uuid)
+# Mingla Local public profile and a place's published Local reviews: the Local's
+# display name, avatar and city, and reviews Mingla has already published.
+public_local_profile(p_user_id uuid)
+public_place_local_reviews(p_place_id uuid)
+# Buyer referral landing on the buyer web before sign-in: whether a share link or
+# referral offer is active, the sharer's display name and avatar, and the friend
+# discount shown on the landing. No buyer, order or payout data.
+public_content_share_friend_discount(p_short_code text)
+public_content_share_sharer(p_short_code text)
+public_referral_landing(p_slug text, p_listing_kind text, p_listing_id uuid)
+# Attribution redirects: a referral or tracking slug resolves to its listing so a
+# signed-out click can be attributed. Returns the listing target only.
+referral_link_resolve(p_slug text)
+tracking_link_resolve(p_slug text)
