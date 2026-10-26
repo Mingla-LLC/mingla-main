@@ -21,6 +21,11 @@ export const CHAT_SECTION_LABEL_HEIGHT = 32;
 export const CHAT_ARCHIVED_ROW_HEIGHT = 56;
 export const CHAT_HEADER_BUTTON_SIZE = 34;
 export const CHAT_SEARCH_HEIGHT = 36;
+/** Gap between the glass header and the search field. */
+export const CHAT_SEARCH_TOP_GAP = 8;
+/** Filter chips row: 10pt top + 30pt chip + 6pt bottom (contract `.chips`). */
+export const CHAT_FILTER_ROW_HEIGHT = 46;
+export const CHAT_FILTER_CHIP_HEIGHT = 30;
 export const MAX_PINNED_CHATS = 3;
 
 // ── Minimal structural shapes (no imports, so Deno can run this file) ──────

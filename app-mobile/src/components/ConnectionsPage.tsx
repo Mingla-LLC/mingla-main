@@ -10,17 +10,14 @@ import {
   Alert,
   FlatList,
   TextInput,
-  TouchableWithoutFeedback,
   Keyboard,
+  BackHandler,
   Platform,
-  ScrollView,
   RefreshControl,
   InteractionManager,
-  Image,
   AccessibilityInfo,
 } from "react-native";
 import { BlurView } from "expo-blur";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Icon } from "./ui/Icon";
@@ -71,8 +68,33 @@ import type { BusinessEventCard } from "../types/mergedDiscover";
 import { BaseBottomSheet } from "./ui/BaseBottomSheet";
 
 // Sub-components
-import { ChatListItem } from "./connections/ChatListItem";
-import { FriendPickerSheet } from "./connections/FriendPickerSheet";
+import { ChatListItem, type ChatListItemConversation } from "./connections/ChatListItem";
+import { NewMessageSheet } from "./connections/NewMessageSheet";
+import { ChatRowActionsSheet, type ChatRowAction } from "./connections/ChatRowActionsSheet";
+import { ChatListSkeleton } from "./connections/ChatListSkeleton";
+import { ChatAvatar } from "./connections/ChatAvatar";
+import {
+  CHAT_ARCHIVED_ROW_HEIGHT,
+  CHAT_FILTERS,
+  CHAT_FILTER_CHIP_HEIGHT,
+  CHAT_FILTER_ROW_HEIGHT,
+  CHAT_HEADER_BUTTON_SIZE,
+  CHAT_ROW_GAP,
+  CHAT_ROW_HEIGHT,
+  CHAT_ROW_SIDE_PADDING,
+  CHAT_SEARCH_HEIGHT,
+  CHAT_SEARCH_TOP_GAP,
+  CHAT_SECTION_LABEL_HEIGHT,
+  MAX_PINNED_CHATS,
+  buildBrowseItems,
+  buildSearchItems,
+  canPinChat,
+  chatListLayouts,
+  friendUserIdOf,
+  sortChatList,
+  type ChatFilter,
+  type ChatListItemModel,
+} from "./connections/chatListModel";
 import { AddFriendView } from "./connections/AddFriendView";
 // ORCH-1371 [add-friend-country-picker-hidden]: the add-friend country picker is
 // hoisted here (owner of the transient phone/country/flag state) and rendered as
@@ -83,7 +105,6 @@ import { getDefaultCountryCode, getCountryByCode } from "../constants/countries"
 import { RequestsView } from "./connections/RequestsView";
 import { FriendsManagementList } from "./connections/FriendsManagementList";
 import { BlockedUsersView } from "./connections/BlockedUsersView";
-import { FriendsActionChooserSheet } from "./connections/FriendsActionChooserSheet";
 import {
   CreateGroupChatSheet,
   type CreateGroupChatFriend,
@@ -379,164 +400,47 @@ const normalizeSearchText = (value: string | null | undefined): string =>
     .replace(/\s+/g, " ")
     .trim();
 
-// ── ORCH-0435 + ORCH-0600: Paired friends pill (dark-glass) ────────────────
-interface PairedPillPerson {
-  pairedUserId: string;
-  displayName: string;
-  firstName: string | null;
-  avatarUrl: string | null;
-  initials: string;
-  pending?: boolean;
-  incoming?: boolean;
-  incomingRequest?: PairRequest;
-}
-
 // META-ORCH-1002 Sub-1 (S2): shared Android-opaque-fallback gate (was the per-component Android-11 version gate).
 const isAndroidPreBlur = ANDROID_GLASS_USES_OPAQUE_FALLBACK;
 
-// Compact dark-glass paired pill — horizontal inside the filter-bar-style row.
-// ORCH-0600: replaces the ORCH-0435 vertical avatar+name stack with a row pill
-// matching the Discover chip visual (rounded glass, orange active state).
-function GlassPairedPill({
-  person,
-  onPress,
+// Issue #4114 Wave 2a: the paired-pills strip left the Chats screen (D13). The
+// pairing data hooks below stay alive for the friends sheet (Wave 2b).
+type ChatListRow = ChatListItemModel<Conversation, UseFriend>;
+const tokens = glass.discover.chatList;
+
+// Issue #4114: a friend you have not chatted with yet, shown in search results.
+const FriendSearchRow = React.memo(function FriendSearchRow({
+  friend,
+  currentUserId,
+  showSeparator,
+  onStartChat,
 }: {
-  person: PairedPillPerson;
-  onPress: () => void;
-}) {
-  const [failedAvatar, setFailedAvatar] = useState(false);
-  const name = person.firstName || person.displayName?.split(' ')[0] || 'Friend';
-  const isIncoming = !!person.incoming;
-  const isPending = !!person.pending;
-  const isActive = !isPending && !isIncoming;
-
-  const bg = isIncoming
-    ? 'rgba(235, 120, 37, 0.22)'
-    : isPending
-    ? 'rgba(255, 255, 255, 0.05)'
-    : 'rgba(255, 255, 255, 0.08)';
-  const border = isIncoming
-    ? 'rgba(235, 120, 37, 0.55)'
-    : isPending
-    ? 'rgba(255, 255, 255, 0.08)'
-    : 'rgba(255, 255, 255, 0.14)';
-  const labelColor = isIncoming
-    ? '#FFFFFF'
-    : isPending
-    ? 'rgba(255, 255, 255, 0.55)'
-    : 'rgba(255, 255, 255, 0.9)';
-
+  friend: UseFriend;
+  currentUserId: string;
+  showSeparator: boolean;
+  onStartChat: (friend: UseFriend) => void;
+}): React.ReactElement {
+  const { t } = useTranslation(['connections']);
+  const name = getDisplayName(friend);
   return (
     <Pressable
-      onPress={() => {
-        HapticFeedback.light();
-        onPress();
-      }}
-      hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
+      onPress={() => onStartChat(friend)}
       accessibilityRole="button"
-      accessibilityLabel={
-        isIncoming
-          ? `Incoming pair request from ${person.displayName}`
-          : isPending
-          ? `Pair request pending for ${person.displayName}, tap to cancel`
-          : `Open ${person.displayName} profile`
-      }
-      style={({ pressed }) => [
-        glassPillStyles.pill,
-        { backgroundColor: bg, borderColor: border },
-        pressed ? { transform: [{ scale: 0.97 }] } : null,
-      ]}
+      accessibilityLabel={`${name}, ${t('connections:start_chat')}`}
+      style={({ pressed }) => [styles.friendRow, pressed ? styles.rowPressed : null]}
     >
-      <View style={[glassPillStyles.avatarWrap, isPending ? { opacity: 0.55 } : null]}>
-        {person.avatarUrl && !failedAvatar ? (
-          <Image
-            source={{ uri: person.avatarUrl }}
-            style={glassPillStyles.avatar}
-            onError={() => setFailedAvatar(true)}
-          />
-        ) : (
-          <View style={glassPillStyles.avatarFallback}>
-            <Text style={glassPillStyles.avatarInitials} allowFontScaling={false}>
-              {person.initials}
-            </Text>
-          </View>
-        )}
-        {isActive ? (
-          <View style={glassPillStyles.statusDotActive}>
-            <Icon name="star" size={8} color="#FFFFFF" />
-          </View>
-        ) : null}
+      {showSeparator ? <View style={styles.rowSeparator} /> : null}
+      <ChatAvatar
+        people={[{ id: friendUserIdOf(friend, currentUserId), name, avatarUrl: friend.avatar_url }]}
+        shape="circle"
+        label={name}
+      />
+      <Text style={styles.friendRowName} numberOfLines={1}>{name}</Text>
+      <View style={styles.friendRowAction}>
+        <Text style={styles.friendRowActionText}>{t('connections:start_chat')}</Text>
       </View>
-      <Text style={[glassPillStyles.name, { color: labelColor }]} numberOfLines={1} allowFontScaling>
-        {name}
-      </Text>
-      {isIncoming ? (
-        <View style={glassPillStyles.incomingDot} />
-      ) : null}
     </Pressable>
   );
-}
-
-const glassPillStyles = StyleSheet.create({
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    height: 36,
-    paddingLeft: 4,
-    paddingRight: 12,
-    borderRadius: 18,
-    borderWidth: 1,
-  },
-  avatarWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    position: 'relative',
-    overflow: 'visible',
-  },
-  avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-  },
-  avatarFallback: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(235, 120, 37, 0.85)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitials: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  statusDotActive: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#eb7825',
-    borderWidth: 1.5,
-    borderColor: 'rgba(12, 14, 18, 1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  incomingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#eb7825',
-  },
-  name: {
-    fontSize: 13,
-    fontWeight: '500',
-    maxWidth: 100,
-  },
 });
 
 function ConnectionsPageRefactored({
@@ -581,12 +485,12 @@ function ConnectionsPageRefactored({
   useScreenLogger('connections');
   const { t } = useTranslation(['connections', 'common', 'social', 'chat']);
   // ORCH-1037 + ORCH-1035: step 6 = the in-page people icon (NOT the bottom-nav tab,
-  // NOT the whole header row — operator-LOCKED); step 7 (NEW) = the + button that
-  // opens the FriendsActionChooser (pair a friend + start a shared group chat).
-  // Renumbered from the prior single step 5. People icon radius ~14 hugs the 22px
-  // icon + hit area; + button radius ~8 hugs the round glass button.
-  const coachPeopleIcon = useCoachMark(6, 14);
-  const coachPlusButton = useCoachMark(7, 8);
+  // NOT the whole header row — operator-LOCKED). Issue #4114: step 7 now points at
+  // the ✎ pencil that opens New message (it replaced the + chooser). The ref keeps
+  // its `coachPlusButton` name so the ORCH-1037 leaf-target gates still read it.
+  // Both are 34pt round glass buttons; radius ~17 hugs them.
+  const coachPeopleIcon = useCoachMark(6, 17);
+  const coachPlusButton = useCoachMark(7, 17);
   const user = useAppStore((state) => state.user);
   const {
     canCreateSession,
@@ -614,8 +518,13 @@ function ConnectionsPageRefactored({
   const [showFriendsModal, setShowFriendsModal] = useState(false);
   const [badgeDismissed, setBadgeDismissed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // Issue #4114 Wave 2a: list filter chip, the pencil's New message sheet, the
+  // long-press actions target, and the full archived list.
+  const [chatFilter, setChatFilter] = useState<ChatFilter>("all");
+  const [showNewMessageSheet, setShowNewMessageSheet] = useState(false);
+  const [chatActionsTarget, setChatActionsTarget] = useState<ChatListItemConversation | null>(null);
+  const [showArchivedList, setShowArchivedList] = useState(false);
   const [friendsModalTab, setFriendsModalTab] = useState<FriendsModalTab>("friend-list");
   // ORCH-1371 [add-friend-country-picker-hidden]: hoisted add-friend country
   // picker state — must survive the friends sheet's RN <Modal> drop (which
@@ -653,11 +562,8 @@ function ConnectionsPageRefactored({
     fetchBlockedUsers,
   } = useFriends();
 
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    await fetchFriends();
-    setIsRefreshing(false);
-  }, [fetchFriends]);
+  // Issue #4114: pull-to-refresh reloads chats AND friends (it used to reload
+  // friends only). Declared after fetchConversations below.
 
   // ── Mute tracking ────────────────────────────────────────
   const [mutedUserIds, setMutedUserIds] = useState<string[]>([]);
@@ -688,20 +594,30 @@ function ConnectionsPageRefactored({
     const result = await messagingService.setConversationLifecycle(conversationId, action);
     setLifecycleBusyIds((current) => { const next = new Set(current); next.delete(conversationId); return next; });
     if (result.error) {
-      const copy = action === 'archive' ? "Couldn't archive chat. Try again."
-        : action === 'unarchive' ? "Couldn't unarchive chat. Try again."
-        : "Couldn't remove chat. Try again.";
+      const copy = action === 'archive' ? t('connections:archive_failed')
+        : action === 'unarchive' ? t('connections:unarchive_failed')
+        : t('connections:remove_failed');
       AccessibilityInfo.announceForAccessibility(copy);
       Alert.alert(copy);
       return false;
     }
     invalidateContentShareRecipients();
     return true;
-  }, []);
+  }, [t]);
 
   const handleArchiveChat = useCallback(async (conversationId: string) => {
-    if (await runLifecycle(conversationId, 'archive')) setArchivedIds((current) => new Set(current).add(conversationId));
-  }, [runLifecycle]);
+    if (!await runLifecycle(conversationId, 'archive')) return;
+    setArchivedIds((current) => new Set(current).add(conversationId));
+    // Issue #4114: an archived chat gives its pin back (the 3-pin limit counts
+    // every pinned row, so a hidden pin would block a visible one).
+    const archived = conversations.find((conversation) => conversation.id === conversationId) as ChatListItemConversation | undefined;
+    if (archived?.pinned_at) {
+      setConversations((current) => current.map((conversation) =>
+        conversation.id === conversationId ? ({ ...conversation, pinned_at: null } as Conversation) : conversation));
+      const result = await messagingService.setConversationListState(conversationId, 'unpin');
+      if (result.error) console.warn('[ConnectionsPage] unpin after archive failed', result.error);
+    }
+  }, [conversations, runLifecycle]);
 
   const handleUnarchiveChat = useCallback(async (conversationId: string) => {
     if (await runLifecycle(conversationId, 'unarchive')) setArchivedIds((current) => { const next = new Set(current); next.delete(conversationId); return next; });
@@ -710,14 +626,14 @@ function ConnectionsPageRefactored({
   const handleDeleteChat = useCallback((conversationId: string) => {
     const isGroup = conversations.find((conversation) => conversation.id === conversationId)?.type === 'group';
     if (isGroup) {
-      Alert.alert('Leave group?', "You'll stop receiving messages, and this group won't appear when you share in Mingla.", [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Leave', style: 'destructive', onPress: () => void (async () => {
+      Alert.alert(t('connections:leave_group_title'), t('connections:leave_group_body'), [
+        { text: t('common:cancel'), style: 'cancel' },
+        { text: t('connections:action_leave'), style: 'destructive', onPress: () => void (async () => {
           setLifecycleBusyIds((current) => new Set(current).add(conversationId));
           const result = await messagingService.leaveGroupConversation(conversationId, user?.id ?? '');
           setLifecycleBusyIds((current) => { const next = new Set(current); next.delete(conversationId); return next; });
           if (result.error) {
-            const copy = "Couldn't leave the group. Try again.";
+            const copy = t('connections:leave_failed');
             AccessibilityInfo.announceForAccessibility(copy); Alert.alert(copy); return;
           }
           setConversations((current) => current.filter((conversation) => conversation.id !== conversationId));
@@ -726,17 +642,17 @@ function ConnectionsPageRefactored({
       ]);
       return;
     }
-    Alert.alert('Remove chat?', 'This chat will disappear from your lists on every device. If another person sends a new message, it will reappear.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('connections:remove_chat_title'), t('connections:remove_chat_body'), [
+      { text: t('common:cancel'), style: 'cancel' },
       {
-        text: 'Remove', style: 'destructive', onPress: () => void (async () => {
+        text: t('connections:action_remove'), style: 'destructive', onPress: () => void (async () => {
           if (!await runLifecycle(conversationId, 'hide')) return;
           setConversations(prev => prev.filter(c => c.id !== conversationId));
-          AccessibilityInfo.announceForAccessibility('Chat removed.');
+          AccessibilityInfo.announceForAccessibility(t('connections:chat_removed'));
         })()
       },
     ]);
-  }, [conversations, runLifecycle, user?.id]);
+  }, [conversations, runLifecycle, t, user?.id]);
 
   // ── Messaging state ──────────────────────────────────────
   const [activeChat, setActiveChat] = useState<Friend | null>(null);
@@ -814,7 +730,6 @@ function ConnectionsPageRefactored({
   const declinePairRequestMutation = useDeclinePairRequest();
   const unpairMutation = useUnpair();
   const [showPairRequestModal, setShowPairRequestModal] = useState(false);
-  const [showFriendsActionChooser, setShowFriendsActionChooser] = useState(false);
   const [showCreateGroupChatSheet, setShowCreateGroupChatSheet] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   // ORCH-1239: which gated feature opened the paywall (drives header/analytics).
@@ -838,11 +753,11 @@ function ConnectionsPageRefactored({
   // onChange(-1) when visible flips false) so suppressing for a child does NOT
   // tear down the whole friends flow — only a genuine user dismiss propagates.
   const anyFriendsChildOpen =
-    friendPickerVisible ||
     addFriendPickerOpen ||
     actionsSheetVisible ||
     showPairRequestModal ||
-    showFriendsActionChooser ||
+    showNewMessageSheet ||
+    !!chatActionsTarget ||
     showCreateGroupChatSheet ||
     showReportModal ||
     showBlockModal ||
@@ -883,40 +798,6 @@ function ConnectionsPageRefactored({
       setAddFriendPickerOpen(false);
     }
   }, [showFriendsModal]);
-
-  const activePairedPeople: PairedPillPerson[] = useMemo(() => {
-    const active = pairingPills
-      .filter(p => p.pillState === 'active' && p.pairedUserId != null)
-      .map(p => ({
-        pairedUserId: p.pairedUserId!,
-        displayName: p.displayName,
-        firstName: p.firstName,
-        avatarUrl: p.avatarUrl,
-        initials: p.initials,
-        pending: false,
-      }));
-    const pending = pairingPills
-      .filter(p => p.pillState !== 'active' && p.pairedUserId != null)
-      .map(p => ({
-        pairedUserId: p.pairedUserId!,
-        displayName: p.displayName,
-        firstName: p.firstName,
-        avatarUrl: p.avatarUrl,
-        initials: p.initials,
-        pending: true,
-      }));
-    const incoming = incomingPairRequests.map(req => ({
-      pairedUserId: req.senderId,
-      displayName: req.senderName,
-      firstName: req.senderName.split(' ')[0] ?? null,
-      avatarUrl: req.senderAvatar ?? null,
-      initials: req.senderName.split(' ').map(n => n[0] ?? '').join('').toUpperCase().slice(0, 2) || '?',
-      pending: true,
-      incoming: true,
-      incomingRequest: req,
-    }));
-    return [...active, ...incoming, ...pending];
-  }, [pairingPills, incomingPairRequests]);
 
   const pairedUserIds = useMemo(() => new Set(
     pairingPills.filter(p => p.pillState === 'active' && p.pairedUserId != null).map(p => p.pairedUserId!)
@@ -976,17 +857,6 @@ function ConnectionsPageRefactored({
     );
   }, [pairingPills, unpairMutation]);
 
-  /** Derive pair status for a given user ID (used by ChatListItem star buttons) */
-  const getPairStatus = useCallback((participantId: string): 'paired' | 'pending' | 'unpaired' | 'not-friend' => {
-    if (pairedUserIds.has(participantId)) return 'paired';
-    if (pendingPairUserIds.has(participantId)) return 'pending';
-    const isFriend = dbFriends.some(f => {
-      const friendId = f.user_id === (user?.id || '') ? f.friend_user_id : f.user_id;
-      return friendId === participantId;
-    });
-    return isFriend ? 'unpaired' : 'not-friend';
-  }, [pairedUserIds, pendingPairUserIds, dbFriends, user?.id]);
-
   // ── Derived data ─────────────────────────────────────────
   const incomingRequests = useMemo(() => {
     return friendRequests
@@ -1019,13 +889,10 @@ function ConnectionsPageRefactored({
         const bTime = b.__pendingInvite.createdAt || b.created_at;
         return new Date(bTime).getTime() - new Date(aTime).getTime();
       });
-    const regular = conversations
-      .filter((conversation) => !isPendingInviteConversation(conversation))
-      .sort((a, b) => {
-      const aTime = a.last_message?.created_at || a.created_at;
-      const bTime = b.last_message?.created_at || b.created_at;
-      return new Date(bTime).getTime() - new Date(aTime).getTime();
-    });
+    // Issue #4114: pinned chats first (in pin order), then most recent activity.
+    const regular = sortChatList(
+      conversations.filter((conversation) => !isPendingInviteConversation(conversation)),
+    );
     return [...pending, ...regular].filter(c => !archivedIds.has(c.id));
   }, [conversations, archivedIds]);
 
@@ -1241,7 +1108,9 @@ function ConnectionsPageRefactored({
             first_name: profile?.first_name,
             last_name: profile?.last_name,
             avatar_url: profile?.avatar_url,
-            is_online: false,
+            // Issue #4114: no hard-coded presence. The only presence data is
+            // per-conversation "has this chat open" (conversation_presence),
+            // which is not app-wide online state, so the list shows no dot.
           };
         });
 
@@ -1369,6 +1238,8 @@ function ConnectionsPageRefactored({
           eventPublicUrl,
           eventPublicCard,
           archived_at: (conv as any).archived_at ?? null,
+          pinned_at: (conv as any).pinned_at ?? null,
+          marked_unread_at: (conv as any).marked_unread_at ?? null,
         };
       });
 
@@ -1408,6 +1279,79 @@ function ConnectionsPageRefactored({
     } finally {
       setConversationsLoading(false);
     }
+  }, []);
+
+  // ── Issue #4114: pull-to-refresh reloads chats and friends ──
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        user?.id ? fetchConversations(user.id) : Promise.resolve(),
+        fetchFriends(),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [fetchConversations, fetchFriends, user?.id]);
+
+  const patchConversation = useCallback((conversationId: string, patch: Partial<ChatListItemConversation>) => {
+    setConversations((current) => current.map((conversation) =>
+      conversation.id === conversationId ? ({ ...conversation, ...patch } as Conversation) : conversation));
+  }, []);
+
+  // ── Issue #4114: pin up to 3 chats (client check + server trigger) ──
+  const handleTogglePin = useCallback(async (conversation: ChatListItemConversation) => {
+    const pinning = !conversation.pinned_at;
+    if (pinning && !canPinChat(conversations as ChatListItemConversation[], conversation.id)) {
+      HapticFeedback.warning();
+      showToast({ message: t('connections:pin_limit', { count: MAX_PINNED_CHATS }), type: 'info' });
+      return;
+    }
+    HapticFeedback.light();
+    const previous = conversation.pinned_at ?? null;
+    patchConversation(conversation.id, { pinned_at: pinning ? new Date().toISOString() : null });
+    const result = await messagingService.setConversationListState(conversation.id, pinning ? 'pin' : 'unpin');
+    if (result.error) {
+      patchConversation(conversation.id, { pinned_at: previous });
+      showToast({
+        message: result.pinLimitReached
+          ? t('connections:pin_limit', { count: MAX_PINNED_CHATS })
+          : t('connections:pin_failed'),
+        type: result.pinLimitReached ? 'info' : 'error',
+      });
+    }
+  }, [conversations, patchConversation, showToast, t]);
+
+  // ── Issue #4114: mark unread is a private flag, never a read-receipt change ──
+  const handleToggleUnread = useCallback(async (conversation: ChatListItemConversation) => {
+    const marking = !conversation.marked_unread_at;
+    HapticFeedback.light();
+    const previous = conversation.marked_unread_at ?? null;
+    patchConversation(conversation.id, { marked_unread_at: marking ? new Date().toISOString() : null });
+    const result = await messagingService.setConversationListState(conversation.id, marking ? 'mark_unread' : 'mark_read');
+    if (result.error) {
+      patchConversation(conversation.id, { marked_unread_at: previous });
+      showToast({ message: t('connections:unread_failed'), type: 'error' });
+    }
+  }, [patchConversation, showToast, t]);
+
+  // ── Issue #4114: mute from the list (direct chats; mute is per person) ──
+  const handleToggleMuteChat = useCallback(async (conversation: ChatListItemConversation) => {
+    const other = conversation.participants.find((participant) => participant.id !== user?.id);
+    if (!other?.id) return;
+    const wasMuted = mutedUserIds.includes(other.id);
+    HapticFeedback.light();
+    setMutedUserIds((current) => wasMuted ? current.filter((id) => id !== other.id) : [...current, other.id]);
+    const result = wasMuted ? await muteService.unmuteUser(other.id) : await muteService.muteUser(other.id);
+    if (!result.success) {
+      setMutedUserIds((current) => wasMuted ? [...current, other.id] : current.filter((id) => id !== other.id));
+      showToast({ message: t('connections:mute_error'), type: 'error' });
+    }
+  }, [mutedUserIds, showToast, t, user?.id]);
+
+  const handleOpenChatActions = useCallback((conversation: ChatListItemConversation) => {
+    HapticFeedback.medium();
+    setChatActionsTarget(conversation);
   }, []);
 
   // ── Fetch conversations on mount ─────────────────────────
@@ -1966,7 +1910,6 @@ function ConnectionsPageRefactored({
     };
 
     setActiveChat(chatFriend);
-    setFriendPickerVisible(false);
 
     // Synchronous block check from cached blocked-users list
     const isBlockedByMe = blockedUsers.some((b) => b.id === friendUserId);
@@ -2318,14 +2261,24 @@ function ConnectionsPageRefactored({
       }
 
       // 3. Zero out unread_count in local conversations state so the badge
-      //    updates immediately (don't wait for the next fetchConversations)
+      //    updates immediately (don't wait for the next fetchConversations).
+      //    Issue #4114: opening a chat also clears a private "marked unread".
+      const wasMarkedUnread = Boolean(
+        (conversationsForOpenDmRef.current.find((conv) => conv.id === conversationId) as ChatListItemConversation | undefined)
+          ?.marked_unread_at,
+      );
       setConversations((prev) =>
         prev.map((conv) =>
           conv.id === conversationId
-            ? { ...conv, unread_count: 0 }
+            ? ({ ...conv, unread_count: 0, marked_unread_at: null } as Conversation)
             : conv
         )
       );
+      if (wasMarkedUnread) {
+        void messagingService.setConversationListState(conversationId, 'mark_read').then((result) => {
+          if (result.error) console.warn('[ConnectionsPage] clearing marked-unread failed', result.error);
+        });
+      }
     },
     []
   );
@@ -3191,186 +3144,11 @@ function ConnectionsPageRefactored({
     }
   };
 
-  // ── Error state ──────────────────────────────────────────
-  // Skip when opening a DM from the map so the conversation UI shows immediately.
-  if (error && conversations.length === 0 && !(showMessageInterface && activeChat)) {
-    return (
-      <>
-        <View style={styles.container}>
-          <View style={styles.headerRow}>
-            <Text style={styles.title}>{t('connections:title')}</Text>
-            <View style={styles.headerActions}>
-              <TouchableOpacity
-                onPress={() => openFriendsModal()}
-                style={styles.headerIconBtn}
-                activeOpacity={0.7}
-              >
-                <Icon name="people-outline" size={18} color="#eb7825" />
-                {!badgeDismissed && (incomingRequests.length + incomingPairRequests.length) > 0 && (
-                  <View style={styles.headerBadge}>
-                    <Text style={styles.headerBadgeText}>
-                      {(incomingRequests.length + incomingPairRequests.length) > 9
-                        ? "9+"
-                        : incomingRequests.length + incomingPairRequests.length}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity
-              style={styles.retryButton}
-              onPress={() => {
-                setConversationsLoading(true);
-                if (user?.id) {
-                  fetchConversations(user.id);
-                }
-                fetchFriends();
-                loadFriendRequests();
-              }}
-            >
-              <Text style={styles.retryButtonText}>{t('common:try_again')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Friends Modal rendered below (shared across all render paths) */}
-
-        <ReportUserModal
-          isOpen={showReportModal}
-          onClose={() => {
-            setShowReportModal(false);
-            setSelectedUserToReport(null);
-          }}
-          user={
-            selectedUserToReport
-              ? { id: selectedUserToReport.id, name: selectedUserToReport.name, username: selectedUserToReport.username }
-              : { id: "", name: "", username: "" }
-          }
-          onReport={handleReportSubmit}
-        />
-        <BlockUserModal
-          visible={showBlockModal}
-          onClose={() => {
-            if (!blockLoading) {
-              setShowBlockModal(false);
-              setSelectedUserToBlock(null);
-            }
-          }}
-          onConfirm={handleBlockConfirm}
-          userName={selectedUserToBlock?.name || selectedUserToBlock?.username || "this user"}
-          loading={blockLoading}
-        />
-      </>
-    );
-  }
-
-  // ── When viewing a conversation ──────────────────────────
-  if (showMessageInterface && activeChat) {
-    return (
-      <>
-        <View style={styles.container}>
-          <MessageInterface
-            friend={activeChat}
-            onBack={handleBackFromMessage}
-            onSendMessage={handleSendMessage}
-            messages={messages}
-            onRetryMessage={handleRetryMessage}
-            onLoadOlderMessages={handleLoadOlderMessages}
-            hasOlderMessages={olderPaging.conversationId === currentConversationId && olderPaging.hasMore}
-            isLoadingOlderMessages={olderPaging.conversationId === currentConversationId && olderPaging.loading}
-            onOpenAddToBoardModal={(friend: Friend) => handleAddToBoard(friend)}
-            onShareSavedCard={handleShareSavedCard}
-            onRemoveFriend={handleRemoveFriend}
-            onBlockUser={handleBlockUser}
-            onReportUser={handleReportUser}
-            accountPreferences={accountPreferences}
-            onCardLike={onCardLike}
-            onAddToCalendar={onAddToCalendar}
-            onShareCard={onShareCard}
-            onPurchaseComplete={onPurchaseComplete}
-            userPreferences={userPreferences}
-            savedCards={savedCards}
-            onOpenPreferences={onOpenPreferences}
-            onOpenCollabPreferences={onOpenCollabPreferences}
-            isBlocked={activeChatIsBlocked}
-            isUnfriended={activeChatIsUnfriended}
-            isDeletedAccount={activeChatIsDeletedAccount}
-            conversationId={currentConversationId}
-            currentUserId={user?.id || null}
-            currentUserName={currentUserDisplayName}
-            broadcastSeenIds={broadcastSeenIds}
-            onBroadcastReceive={handleBroadcastReceive}
-            isOffline={isOffline}
-            onViewProfile={onNavigateToFriendProfile}
-            onSessionNameUpdated={handleGroupSessionNameUpdated}
-            onGroupSessionExited={handleGroupSessionRemoved}
-            onGroupSessionDeleted={handleGroupSessionRemoved}
-            onGroupParticipantsChange={() => {
-              if (user?.id) fetchConversations(user.id);
-            }}
-          />
-        </View>
-
-        <AddToBoardModal
-          isOpen={showAddToBoardModal}
-          onClose={() => {
-            setShowAddToBoardModal(false);
-            setSelectedFriendForBoard(null);
-          }}
-          friend={selectedFriendForBoard}
-          boardsSessions={boardsSessions}
-          onMutationSettled={() => {
-            // ORCH-0666: refresh boardsSessions so newly-pending invitees are
-            // filtered out on next open and any state mutations propagate.
-            void onRefreshSessions?.();
-          }}
-          onResult={(result) => {
-            if (selectedFriendForBoard) {
-              emitAddToBoardToasts(
-                result,
-                { id: selectedFriendForBoard.id, name: selectedFriendForBoard.name || 'Friend' },
-                (boardsSessions || []).map((s: any) => ({
-                  id: s.id || s.session_id,
-                  name: s.name || 'Session',
-                }))
-              );
-            }
-          }}
-        />
-        <ReportUserModal
-          isOpen={showReportModal}
-          onClose={() => {
-            setShowReportModal(false);
-            setSelectedUserToReport(null);
-          }}
-          user={
-            selectedUserToReport
-              ? { id: selectedUserToReport.id, name: selectedUserToReport.name, username: selectedUserToReport.username }
-              : { id: "", name: "", username: "" }
-          }
-          onReport={handleReportSubmit}
-        />
-        <BlockUserModal
-          visible={showBlockModal}
-          onClose={() => {
-            if (!blockLoading) {
-              setShowBlockModal(false);
-              setSelectedUserToBlock(null);
-            }
-          }}
-          onConfirm={handleBlockConfirm}
-          userName={selectedUserToBlock?.name || selectedUserToBlock?.username || "this user"}
-          loading={blockLoading}
-        />
-      </>
-    );
-  }
-
-  // ORCH-0600 v2: single-row glass header — title + friends icon + add button
-  // + scrollable paired pills all inline. Panel shrinks from two bands to one.
+  // ── Issue #4114 Wave 2a: the Chats list ──────────────────
+  // One render path. The list keeps cached chats visible on error (inline
+  // "Couldn't load chats · Try again" row), shows a slim offline bar, and the
+  // shared modals below mount ONCE for every view (they used to be duplicated
+  // per branch).
   const g = glass.discover;
   const HEADER_ROW_TOP = chatInsets.top + glass.chrome.row.topInset;
   const HEADER_ROW_HEIGHT = 48;
@@ -3379,356 +3157,623 @@ function ConnectionsPageRefactored({
   const useGlass = !reduceTransparency && !isAndroidPreBlur;
   const incomingCount = incomingRequests.length + incomingPairRequests.length;
   const showBadge = !badgeDismissed && incomingCount > 0;
+  const currentUserId = user?.id ?? "";
+  const searchActive = normalizeSearchText(searchQuery).length > 0;
 
-  // Pills-row handlers shared by both the + button and the scroll rows below
-  const handlePillPress = (person: PairedPillPerson): void => {
-    if (person.incoming && person.incomingRequest) {
-      setShowIncomingPairRequest(person.incomingRequest);
-      return;
+  const chattedUserIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const conversation of conversations) {
+      if (conversation.type === "group") continue;
+      for (const participant of conversation.participants) {
+        if (participant.id !== currentUserId) ids.add(participant.id);
+      }
     }
-    if (person.pending) {
-      const pill = pairingPills.find(
-        (p) => p.pairedUserId === person.pairedUserId && p.pillState !== 'active'
-      );
-      if (!pill) return;
-      Alert.alert(
-        'Cancel Pair Request',
-        `Cancel your pair request to ${person.displayName}?`,
-        [
-          { text: 'Keep', style: 'cancel' },
-          {
-            text: 'Cancel Request',
-            style: 'destructive',
-            onPress: () => {
-              if (pill.pairRequestId) cancelPairRequestMutation.mutate(pill.pairRequestId);
-              else if (pill.pendingInviteId) cancelPairInviteMutation.mutate(pill.pendingInviteId);
-            },
-          },
-        ]
-      );
-      return;
-    }
-    onNavigateToFriendProfile?.(person.pairedUserId);
+    return ids;
+  }, [conversations, currentUserId]);
+
+  const listItems = useMemo<ChatListRow[]>(
+    () =>
+      searchActive
+        ? buildSearchItems<Conversation, UseFriend>({
+            matchedChats: filteredConversations,
+            friends: dbFriends,
+            allConversations: conversations,
+            currentUserId,
+            query: searchQuery,
+          })
+        : buildBrowseItems<Conversation, UseFriend>({
+            active: sortedConversations,
+            archivedCount: archivedConversations.length,
+            filter: chatFilter,
+          }),
+    [archivedConversations.length, chatFilter, conversations, currentUserId, dbFriends, filteredConversations, searchActive, searchQuery, sortedConversations],
+  );
+  const listLayouts = useMemo(() => chatListLayouts(listItems), [listItems]);
+  const getItemLayout = useCallback(
+    (_data: ArrayLike<ChatListRow> | null | undefined, index: number) => ({
+      length: listLayouts[index]?.length ?? CHAT_ROW_HEIGHT,
+      offset: listLayouts[index]?.offset ?? CHAT_ROW_HEIGHT * index,
+      index,
+    }),
+    [listLayouts],
+  );
+  const archivedLayouts = useMemo(
+    () => archivedConversations.map((_, index) => ({ length: CHAT_ROW_HEIGHT, offset: CHAT_ROW_HEIGHT * index })),
+    [archivedConversations],
+  );
+  const getArchivedItemLayout = useCallback(
+    (_data: ArrayLike<Conversation> | null | undefined, index: number) => ({
+      length: CHAT_ROW_HEIGHT,
+      offset: archivedLayouts[index]?.offset ?? CHAT_ROW_HEIGHT * index,
+      index,
+    }),
+    [archivedLayouts],
+  );
+
+  // Stable row callbacks: the handlers read fresh state through a ref, so
+  // React.memo'd rows only re-render when their own conversation changes.
+  const rowHandlersRef = useRef({
+    select: handleSelectConversation,
+    pickFriend: handlePickFriend,
+    togglePin: handleTogglePin,
+    toggleUnread: handleToggleUnread,
+    toggleMute: handleToggleMuteChat,
+    archive: handleArchiveChat,
+    unarchive: handleUnarchiveChat,
+  });
+  rowHandlersRef.current = {
+    select: handleSelectConversation,
+    pickFriend: handlePickFriend,
+    togglePin: handleTogglePin,
+    toggleUnread: handleToggleUnread,
+    toggleMute: handleToggleMuteChat,
+    archive: handleArchiveChat,
+    unarchive: handleUnarchiveChat,
   };
+  const onRowPress = useCallback((conversation: ChatListItemConversation) => {
+    void rowHandlersRef.current.select(conversation as Conversation);
+  }, []);
+  const onRowTogglePin = useCallback((conversation: ChatListItemConversation) => {
+    void rowHandlersRef.current.togglePin(conversation);
+  }, []);
+  const onRowToggleUnread = useCallback((conversation: ChatListItemConversation) => {
+    void rowHandlersRef.current.toggleUnread(conversation);
+  }, []);
+  const onRowToggleMute = useCallback((conversation: ChatListItemConversation) => {
+    void rowHandlersRef.current.toggleMute(conversation);
+  }, []);
+  const onRowArchive = useCallback((conversationId: string) => {
+    void rowHandlersRef.current.archive(conversationId);
+  }, []);
+  const onRowUnarchive = useCallback((conversationId: string) => {
+    void rowHandlersRef.current.unarchive(conversationId);
+  }, []);
 
-  // ── Main chat list view ──────────────────────────────────
-  return (
-    <>
-      <View style={styles.container}>
-        {/* Glass header panel — status bar + title row + action/pills row */}
-        <View
-          pointerEvents="box-none"
-          style={[
-            styles.headerPanel,
-            {
-              height: HEADER_PANEL_HEIGHT,
-              borderBottomLeftRadius: HEADER_PANEL_RADIUS,
-              borderBottomRightRadius: HEADER_PANEL_RADIUS,
-            },
-          ]}
-        >
-          {useGlass ? (
-            <BlurView
-              intensity={g.stickyHeader.blurIntensity}
-              tint="dark"
-              experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-          ) : null}
-          <View
-            pointerEvents="none"
-            style={[
-              StyleSheet.absoluteFill,
-              { backgroundColor: useGlass ? g.stickyHeader.tint : g.stickyHeader.fallbackSolid },
-            ]}
-          />
-          <View
-            pointerEvents="none"
-            style={[
-              styles.headerPanelHairline,
-              {
-                borderBottomLeftRadius: HEADER_PANEL_RADIUS,
-                borderBottomRightRadius: HEADER_PANEL_RADIUS,
-              },
-            ]}
-          />
+  const handleAcceptInvite = useCallback(async (sessionId: string, inviteId: string) => {
+    setProcessingInviteIds((prev) => new Set(prev).add(inviteId));
+    try {
+      await onAcceptPendingInvite?.(sessionId, inviteId);
+      if (user?.id) await fetchConversations(user.id);
+    } finally {
+      setProcessingInviteIds((prev) => {
+        const next = new Set(prev);
+        next.delete(inviteId);
+        return next;
+      });
+    }
+  }, [fetchConversations, onAcceptPendingInvite, user?.id]);
 
-          {/* Single header row — title + friends icon (+ button / pills relocated above search per ORCH-0990) */}
-          {/* ORCH-1037: coach step 6 ref moved OFF this broad header row onto the
-              people-icon Pressable below (operator-LOCKED exact target). */}
-          <View
-            style={[styles.headerRowAbsolute, { top: HEADER_ROW_TOP, height: HEADER_ROW_HEIGHT }]}
-          >
-            <Text style={styles.titleText} numberOfLines={1} allowFontScaling accessibilityRole="header">
-              {t('connections:title')}
+  const handleDeclineInvite = useCallback(async (sessionId: string, inviteId: string) => {
+    setProcessingInviteIds((prev) => new Set(prev).add(inviteId));
+    try {
+      await onDeclinePendingInvite?.(sessionId, inviteId);
+      if (user?.id) await fetchConversations(user.id);
+    } finally {
+      setProcessingInviteIds((prev) => {
+        const next = new Set(prev);
+        next.delete(inviteId);
+        return next;
+      });
+    }
+  }, [fetchConversations, onDeclinePendingInvite, user?.id]);
+
+  const handleRetryLoad = useCallback(() => {
+    setConversationsLoading(true);
+    if (user?.id) void fetchConversations(user.id);
+    fetchFriends();
+    loadFriendRequests();
+  }, [fetchConversations, fetchFriends, loadFriendRequests, user?.id]);
+
+  const openNewMessage = useCallback(() => {
+    HapticFeedback.light();
+    Keyboard.dismiss();
+    setShowNewMessageSheet(true);
+  }, []);
+
+  // Android back closes the archived list before leaving the tab.
+  useEffect(() => {
+    if (!showArchivedList || showMessageInterface) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      setShowArchivedList(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, [showArchivedList, showMessageInterface]);
+
+  const chatActions: ChatRowAction[] = useMemo(() => {
+    const target = chatActionsTarget;
+    if (!target) return [];
+    const close = (run: () => void, delay = 0) => () => {
+      setChatActionsTarget(null);
+      // Present-after-dismiss: an Alert or another sheet opens only once the
+      // actions sheet has left (iOS presents one RN Modal at a time).
+      setTimeout(run, delay);
+    };
+    const isGroup = target.type === "group";
+    const isArchived = archivedIds.has(target.id);
+    const other = target.participants.find((participant) => participant.id !== currentUserId);
+    const isMuted = Boolean(other && mutedUserIds.includes(other.id));
+    const marked = Boolean(target.marked_unread_at);
+    const canToggleUnread = marked || (target.unread_count ?? 0) === 0;
+    const actions: ChatRowAction[] = [
+      {
+        key: "pin",
+        icon: target.pinned_at ? "pin-off-outline" : "pin-outline",
+        label: target.pinned_at ? t("connections:action_unpin") : t("connections:action_pin"),
+        onPress: close(() => void rowHandlersRef.current.togglePin(target)),
+      },
+    ];
+    if (canToggleUnread) {
+      actions.push({
+        key: "unread",
+        icon: marked ? "mail-open-outline" : "mail-outline",
+        label: marked ? t("connections:action_mark_read") : t("connections:action_mark_unread"),
+        onPress: close(() => void rowHandlersRef.current.toggleUnread(target)),
+      });
+    }
+    if (!isGroup && other) {
+      actions.push({
+        key: "mute",
+        icon: isMuted ? "notifications-outline" : "volume-mute",
+        label: isMuted ? t("connections:action_unmute") : t("connections:action_mute"),
+        onPress: close(() => void rowHandlersRef.current.toggleMute(target)),
+      });
+    }
+    actions.push({
+      key: "archive",
+      icon: "archive-outline",
+      label: isArchived ? t("connections:action_unarchive") : t("connections:action_archive"),
+      onPress: close(() =>
+        void (isArchived ? rowHandlersRef.current.unarchive(target.id) : rowHandlersRef.current.archive(target.id))),
+    });
+    actions.push({
+      key: "remove",
+      icon: isGroup ? "exit-outline" : "trash-outline",
+      label: isGroup ? t("connections:action_leave") : t("connections:action_remove"),
+      destructive: true,
+      onPress: close(() => handleDeleteChat(target.id), 450),
+    });
+    return actions;
+  }, [archivedIds, chatActionsTarget, currentUserId, handleDeleteChat, mutedUserIds, t]);
+
+  const chatActionsTitle = chatActionsTarget
+    ? chatActionsTarget.type === "group"
+      ? chatActionsTarget.name?.trim() || t("connections:group_fallback_name")
+      : getDisplayName(chatActionsTarget.participants.find((participant) => participant.id !== currentUserId))
+    : "";
+
+  const renderListItem = useCallback(
+    ({ item, index }: { item: ChatListRow; index: number }) => {
+      const previous = index > 0 ? listItems[index - 1] : null;
+      const showSeparator = Boolean(previous && previous.kind !== "section");
+      switch (item.kind) {
+        case "section":
+          return (
+            <Text style={styles.sectionLabel} accessibilityRole="header" numberOfLines={1}>
+              {t(`connections:section_${item.section}`)}
             </Text>
-
+          );
+        case "invite": {
+          const invite = (item.conversation as Conversation & { __pendingInvite: PendingSessionInvite }).__pendingInvite;
+          return (
+            <PendingSessionInviteRow
+              invite={invite}
+              isProcessing={processingInviteIds.has(invite.inviteId)}
+              onAccept={handleAcceptInvite}
+              onDecline={handleDeclineInvite}
+              showSeparator={showSeparator}
+            />
+          );
+        }
+        case "chat": {
+          const conversation = item.conversation as ChatListItemConversation;
+          const isMuted = conversation.participants?.some((p) => mutedUserIds.includes(p.id)) ?? false;
+          return (
+            <ChatListItem
+              conversation={conversation}
+              currentUserId={currentUserId}
+              onPress={onRowPress}
+              onLongPress={handleOpenChatActions}
+              isMuted={isMuted}
+              onToggleMute={onRowToggleMute}
+              onArchive={onRowArchive}
+              onTogglePin={onRowTogglePin}
+              onToggleUnread={onRowToggleUnread}
+              lifecycleBusy={lifecycleBusyIds.has(conversation.id)}
+              showSeparator={showSeparator}
+            />
+          );
+        }
+        case "friend":
+          return (
+            <FriendSearchRow
+              friend={item.friend}
+              currentUserId={currentUserId}
+              showSeparator={showSeparator}
+              onStartChat={(friend) => void rowHandlersRef.current.pickFriend(friend)}
+            />
+          );
+        case "archived":
+          return (
             <Pressable
-              ref={coachPeopleIcon.targetRef as React.Ref<View>}
-              collapsable={false}
-              onPress={() => openFriendsModal()}
-              hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-              accessibilityRole="button"
-              accessibilityLabel={showBadge ? `Friends, ${incomingCount} new` : 'Friends'}
-              style={[styles.friendsIconButton, { marginLeft: 'auto' }]}
-            >
-              <Icon name="people-outline" size={22} color="#FFFFFF" />
-              {showBadge ? (
-                <View style={styles.titleIconBadge}>
-                  <Text style={styles.titleIconBadgeText} allowFontScaling={false}>
-                    {incomingCount > 9 ? '9+' : String(incomingCount)}
-                  </Text>
-                </View>
-              ) : null}
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={[styles.content, { paddingTop: HEADER_PANEL_HEIGHT + 12 }]}>
-
-          {/* ORCH-0990: + button, divider, paired-pills row — relocated here from the
-              glass header to sit directly above the search bar. */}
-          <View style={styles.pairControlsRow}>
-            <Pressable
-              ref={coachPlusButton.targetRef as React.Ref<View>}
-              collapsable={false}
               onPress={() => {
                 HapticFeedback.light();
-                setShowFriendsActionChooser(true);
+                setShowArchivedList(true);
               }}
-              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
               accessibilityRole="button"
-              accessibilityLabel={t('social:friendsActionChooserPlusButtonA11y')}
-              style={({ pressed }) => [
-                styles.addButtonGlass,
-                pressed ? { transform: [{ scale: 0.96 }] } : null,
-              ]}
+              accessibilityLabel={t("connections:archived_row_a11y", { count: item.count })}
+              style={({ pressed }) => [styles.archivedRow, pressed ? styles.rowPressed : null]}
+              testID="chat-list-archived-row"
             >
-              <Icon name="add" size={20} color="#FFFFFF" />
+              <Icon name="archive-outline" size={18} color={tokens.dim} />
+              <Text style={styles.archivedRowLabel}>{t("connections:archived_row")}</Text>
+              <Text style={styles.archivedRowCount}>{item.count}</Text>
+              <Icon name="chevron-forward" size={16} color={tokens.faint} />
             </Pressable>
+          );
+        default: {
+          const exhaustive: never = item;
+          return exhaustive;
+        }
+      }
+    },
+    [
+      currentUserId,
+      handleAcceptInvite,
+      handleDeclineInvite,
+      handleOpenChatActions,
+      lifecycleBusyIds,
+      listItems,
+      mutedUserIds,
+      onRowArchive,
+      onRowPress,
+      onRowToggleMute,
+      onRowTogglePin,
+      onRowToggleUnread,
+      processingInviteIds,
+      t,
+    ],
+  );
 
-            <View style={styles.pillsDividerInline} />
+  const renderArchivedItem = useCallback(
+    ({ item, index }: { item: Conversation; index: number }) => {
+      const conversation = item as ChatListItemConversation;
+      const isMuted = conversation.participants?.some((p) => mutedUserIds.includes(p.id)) ?? false;
+      return (
+        <ChatListItem
+          conversation={conversation}
+          currentUserId={currentUserId}
+          onPress={onRowPress}
+          onLongPress={handleOpenChatActions}
+          isMuted={isMuted}
+          onToggleMute={onRowToggleMute}
+          onArchive={onRowUnarchive}
+          onTogglePin={onRowTogglePin}
+          onToggleUnread={onRowToggleUnread}
+          lifecycleBusy={lifecycleBusyIds.has(conversation.id)}
+          isArchived
+          showSeparator={index > 0}
+        />
+      );
+    },
+    [currentUserId, handleOpenChatActions, lifecycleBusyIds, mutedUserIds, onRowPress, onRowToggleMute, onRowTogglePin, onRowToggleUnread, onRowUnarchive],
+  );
 
-            <View style={styles.pillsScrollWrap}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.pillsScrollContent}
-              >
-                {activePairedPeople.map((person) => (
-                  <GlassPairedPill
-                    key={person.pairedUserId}
-                    person={person}
-                    onPress={() => handlePillPress(person)}
-                  />
-                ))}
-                {activePairedPeople.length === 0 ? (
-                  <View style={styles.pillsEmptyHint}>
-                    <Text style={styles.pillsEmptyHintText} allowFontScaling numberOfLines={1}>
-                      Tap + to pair
-                    </Text>
-                  </View>
-                ) : null}
-              </ScrollView>
-              <LinearGradient
-                colors={[g.filterBar.backdropTint, 'rgba(12,14,18,0)']}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={[styles.pillsFade, { left: 0, width: g.filterBar.fadeEdgeWidth }]}
-                pointerEvents="none"
-              />
-              <LinearGradient
-                colors={['rgba(12,14,18,0)', g.filterBar.backdropTint]}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={[styles.pillsFade, { right: 0, width: g.filterBar.fadeEdgeWidth }]}
-                pointerEvents="none"
-              />
-            </View>
+  const keyExtractor = useCallback((item: ChatListRow) => item.key, []);
+  const archivedKeyExtractor = useCallback((item: Conversation) => item.id, []);
+
+  const glassHeader = (title: string, actions: React.ReactNode, leading?: React.ReactNode) => (
+    <View
+      pointerEvents="box-none"
+      style={[
+        styles.headerPanel,
+        {
+          height: HEADER_PANEL_HEIGHT,
+          borderBottomLeftRadius: HEADER_PANEL_RADIUS,
+          borderBottomRightRadius: HEADER_PANEL_RADIUS,
+        },
+      ]}
+    >
+      {useGlass ? (
+        <BlurView
+          intensity={g.stickyHeader.blurIntensity}
+          tint="dark"
+          experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+      ) : null}
+      <View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          { backgroundColor: useGlass ? g.stickyHeader.tint : g.stickyHeader.fallbackSolid },
+        ]}
+      />
+      <View
+        pointerEvents="none"
+        style={[
+          styles.headerPanelHairline,
+          {
+            borderBottomLeftRadius: HEADER_PANEL_RADIUS,
+            borderBottomRightRadius: HEADER_PANEL_RADIUS,
+          },
+        ]}
+      />
+      <View style={[styles.headerRowAbsolute, { top: HEADER_ROW_TOP, height: HEADER_ROW_HEIGHT }]}>
+        {leading}
+        <Text style={styles.titleText} numberOfLines={1} allowFontScaling accessibilityRole="header">
+          {title}
+        </Text>
+        <View style={styles.headerButtons}>{actions}</View>
+      </View>
+    </View>
+  );
+
+  // ORCH-1037: coach step 6 sits on the people-icon Pressable (leaf target);
+  // issue #4114: step 7 sits on the pencil.
+  const chatsHeaderActions = (
+    <>
+      <Pressable
+        ref={coachPeopleIcon.targetRef as React.Ref<View>}
+        collapsable={false}
+        onPress={() => openFriendsModal()}
+        hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+        accessibilityRole="button"
+        accessibilityLabel={
+          showBadge
+            ? t('connections:people_button_a11y_badge', { count: incomingCount })
+            : t('connections:people_button_a11y')
+        }
+        style={({ pressed }) => [styles.headerButton, pressed ? styles.headerButtonPressed : null]}
+      >
+        <Icon name="people-outline" size={17} color={tokens.ink} />
+        {showBadge ? (
+          <View style={styles.titleIconBadge}>
+            <Text style={styles.titleIconBadgeText} allowFontScaling={false}>
+              {incomingCount > 9 ? '9+' : String(incomingCount)}
+            </Text>
           </View>
+        ) : null}
+      </Pressable>
+      <Pressable
+        ref={coachPlusButton.targetRef as React.Ref<View>}
+        collapsable={false}
+        onPress={openNewMessage}
+        hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+        accessibilityRole="button"
+        accessibilityLabel={t('connections:new_message_button_a11y')}
+        style={({ pressed }) => [styles.headerButton, pressed ? styles.headerButtonPressed : null]}
+        testID="chats-new-message-button"
+      >
+        <Icon name="create-outline" size={17} color={tokens.ink} />
+      </Pressable>
+    </>
+  );
 
-          {/* Search bar */}
+  const offlineBar = isOffline ? (
+    <View style={styles.offlineBar} accessibilityLiveRegion="polite">
+      <Icon name="cloud-offline-outline" size={14} color={tokens.dim} />
+      <Text style={styles.offlineBarText} numberOfLines={1}>{t('connections:offline_bar')}</Text>
+    </View>
+  ) : null;
+
+  const errorRow = error ? (
+    <Pressable
+      onPress={handleRetryLoad}
+      accessibilityRole="button"
+      accessibilityLabel={`${t('connections:error_inline')}, ${t('common:try_again')}`}
+      style={styles.errorRow}
+      testID="chat-list-error-row"
+    >
+      <Icon name="alert-circle-outline" size={16} color={tokens.errorLabel} />
+      <Text style={styles.errorRowText} numberOfLines={1}>
+        {t('connections:error_inline')}
+        <Text style={styles.errorRowAction}>{` · ${t('common:try_again')}`}</Text>
+      </Text>
+    </Pressable>
+  ) : null;
+
+  const showSkeleton = conversationsLoading && conversations.length === 0 && !error;
+  const listEmpty = showSkeleton ? (
+    <ChatListSkeleton />
+  ) : searchActive ? (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptyTitle}>{t('connections:no_results', { query: searchQuery })}</Text>
+    </View>
+  ) : chatFilter !== "all" ? (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptySubtitle}>{t(`connections:filter_empty_${chatFilter}`)}</Text>
+    </View>
+  ) : error ? null : (
+    <View style={styles.emptyContainer}>
+      <Icon name="chatbubbles-outline" size={56} color={tokens.faint} />
+      <Text style={styles.emptyTitle}>{t('connections:empty_title')}</Text>
+      <Text style={styles.emptySubtitle}>{t('connections:empty_subtitle')}</Text>
+      <Pressable
+        onPress={openNewMessage}
+        accessibilityRole="button"
+        style={({ pressed }) => [styles.emptyCtaButton, pressed ? styles.headerButtonPressed : null]}
+      >
+        <Text style={styles.emptyCtaText}>{t('connections:start_chat')}</Text>
+      </Pressable>
+    </View>
+  );
+
+  let screen: React.ReactNode;
+  if (showMessageInterface && activeChat) {
+    screen = (
+      <View style={styles.container}>
+        <MessageInterface
+          friend={activeChat}
+          onBack={handleBackFromMessage}
+          onSendMessage={handleSendMessage}
+          messages={messages}
+          onRetryMessage={handleRetryMessage}
+          onLoadOlderMessages={handleLoadOlderMessages}
+          hasOlderMessages={olderPaging.conversationId === currentConversationId && olderPaging.hasMore}
+          isLoadingOlderMessages={olderPaging.conversationId === currentConversationId && olderPaging.loading}
+          onOpenAddToBoardModal={(friend: Friend) => handleAddToBoard(friend)}
+          onShareSavedCard={handleShareSavedCard}
+          onRemoveFriend={handleRemoveFriend}
+          onBlockUser={handleBlockUser}
+          onReportUser={handleReportUser}
+          accountPreferences={accountPreferences}
+          onCardLike={onCardLike}
+          onAddToCalendar={onAddToCalendar}
+          onShareCard={onShareCard}
+          onPurchaseComplete={onPurchaseComplete}
+          userPreferences={userPreferences}
+          savedCards={savedCards}
+          onOpenPreferences={onOpenPreferences}
+          onOpenCollabPreferences={onOpenCollabPreferences}
+          isBlocked={activeChatIsBlocked}
+          isUnfriended={activeChatIsUnfriended}
+          isDeletedAccount={activeChatIsDeletedAccount}
+          conversationId={currentConversationId}
+          currentUserId={user?.id || null}
+          currentUserName={currentUserDisplayName}
+          broadcastSeenIds={broadcastSeenIds}
+          onBroadcastReceive={handleBroadcastReceive}
+          isOffline={isOffline}
+          onViewProfile={onNavigateToFriendProfile}
+          onSessionNameUpdated={handleGroupSessionNameUpdated}
+          onGroupSessionExited={handleGroupSessionRemoved}
+          onGroupSessionDeleted={handleGroupSessionRemoved}
+          onGroupParticipantsChange={() => {
+            if (user?.id) fetchConversations(user.id);
+          }}
+        />
+      </View>
+    );
+  } else if (showArchivedList) {
+    screen = (
+      <View style={styles.container}>
+        {glassHeader(
+          t('connections:archived_title'),
+          null,
+          <Pressable
+            onPress={() => setShowArchivedList(false)}
+            accessibilityRole="button"
+            accessibilityLabel={t('connections:back_a11y')}
+            hitSlop={8}
+            style={styles.backButton}
+            testID="chat-archived-back"
+          >
+            <Icon name="chevron-back" size={24} color={tokens.ink} />
+          </Pressable>,
+        )}
+        <View style={[styles.content, { paddingTop: HEADER_PANEL_HEIGHT + CHAT_SEARCH_TOP_GAP }]}>
+          {offlineBar}
+          <FlatList
+            data={archivedConversations}
+            keyExtractor={archivedKeyExtractor}
+            renderItem={renderArchivedItem}
+            getItemLayout={getArchivedItemLayout}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: bottomNavTotalHeight + 24 }}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptySubtitle}>{t('connections:archived_empty')}</Text>
+              </View>
+            }
+          />
+        </View>
+      </View>
+    );
+  } else {
+    screen = (
+      <View style={styles.container}>
+        {glassHeader(t('connections:title'), chatsHeaderActions)}
+        <View style={[styles.content, { paddingTop: HEADER_PANEL_HEIGHT + CHAT_SEARCH_TOP_GAP }]}>
+          {offlineBar}
           <View style={styles.searchContainer}>
-            <Icon
-              name="search"
-              size={16}
-              color="#9ca3af"
-              style={styles.searchIcon}
-            />
+            <Icon name="search" size={16} color={tokens.faint} />
             <TextInput
               placeholder={t('connections:search_placeholder')}
               value={searchQuery}
               onChangeText={setSearchQuery}
               style={styles.searchInput}
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={tokens.faint}
               autoCapitalize="none"
               autoCorrect={false}
               spellCheck={false}
               autoComplete="off"
               returnKeyType="search"
               clearButtonMode="while-editing"
+              accessibilityLabel={t('connections:search_placeholder')}
             />
           </View>
-
-          {/* Archived chats section */}
-          {archivedConversations.length > 0 && (
-            <TouchableOpacity
-              style={styles.archivedSection}
-              onPress={() => setShowArchived(!showArchived)}
-              activeOpacity={0.7}
-            >
-              <Icon name="archive-outline" size={16} color="#6b7280" />
-              <Text style={styles.archivedSectionText}>
-                Archived ({archivedConversations.length})
-              </Text>
-              <Icon name={showArchived ? "chevron-up" : "chevron-down"} size={16} color="#9ca3af" />
-            </TouchableOpacity>
-          )}
-          {showArchived && archivedConversations.map((conv) => {
-            const otherP = conv.participants?.find((p) => p.id !== user?.id);
-            const convName = otherP ? getDisplayName(otherP) : 'Chat';
-            const cleanName = convName.includes("@") ? convName.substring(0, convName.indexOf("@")).trim() : convName;
-            return (
-              <View key={conv.id} style={styles.archivedRow}>
-                <View style={styles.archivedAvatar}>
-                  <Text style={styles.archivedAvatarText}>
-                    {cleanName.split(" ").map(n => n[0]).join("").toUpperCase().substring(0, 2)}
-                  </Text>
-                </View>
-                <Text style={styles.archivedName} numberOfLines={1}>{cleanName}</Text>
-                <TouchableOpacity
-                  onPress={() => void handleUnarchiveChat(conv.id)}
-                  disabled={lifecycleBusyIds.has(conv.id)}
-                  accessibilityState={{ disabled: lifecycleBusyIds.has(conv.id), busy: lifecycleBusyIds.has(conv.id) }}
-                  style={styles.unarchiveBtn}
-                  activeOpacity={0.7}
-                >
-                  {lifecycleBusyIds.has(conv.id) ? <ActivityIndicator size="small" /> : <Text style={styles.unarchiveBtnText}>Unarchive</Text>}
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-
-          {/* Chat list */}
-          {conversationsLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#eb7825" />
-            </View>
-          ) : filteredConversations.length === 0 && !searchQuery.trim() ? (
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <View style={styles.emptyContainer}>
-              <Icon name="chatbubbles-outline" size={56} color="#d1d5db" />
-              <Text style={styles.emptyTitle}>{t('connections:empty_title')}</Text>
-              <Text style={styles.emptySubtitle}>{t('connections:empty_subtitle')}</Text>
-              <TouchableOpacity
-                onPress={() => openFriendsModal()}
-                style={styles.emptyCtaButton}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.emptyCtaText}>{t('connections:start_chat')}</Text>
-              </TouchableOpacity>
-            </View>
-            </TouchableWithoutFeedback>
-          ) : filteredConversations.length === 0 && searchQuery.trim() ? (
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyTitle}>{t('connections:no_results', { query: searchQuery })}</Text>
-            </View>
-            </TouchableWithoutFeedback>
-          ) : (
-            <FlatList
-              data={filteredConversations}
-              keyExtractor={(item) => item.id}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              renderItem={({ item, index }) => {
-                if (isPendingInviteConversation(item)) {
-                  return (
-                    <PendingSessionInviteRow
-                      invite={item.__pendingInvite}
-                      isProcessing={processingInviteIds.has(item.__pendingInvite.inviteId)}
-                      onAccept={async (sessionId, inviteId) => {
-                        setProcessingInviteIds((prev) => new Set(prev).add(inviteId));
-                        try {
-                          await onAcceptPendingInvite?.(sessionId, inviteId);
-                          if (user?.id) await fetchConversations(user.id);
-                        } finally {
-                          setProcessingInviteIds((prev) => {
-                            const next = new Set(prev);
-                            next.delete(inviteId);
-                            return next;
-                          });
-                        }
-                      }}
-                      onDecline={async (sessionId, inviteId) => {
-                        setProcessingInviteIds((prev) => new Set(prev).add(inviteId));
-                        try {
-                          await onDeclinePendingInvite?.(sessionId, inviteId);
-                          if (user?.id) await fetchConversations(user.id);
-                        } finally {
-                          setProcessingInviteIds((prev) => {
-                            const next = new Set(prev);
-                            next.delete(inviteId);
-                            return next;
-                          });
-                        }
-                      }}
-                    />
-                  );
-                }
-                const isMuted = item.participants?.some((p) =>
-                  mutedUserIds.includes(p.id)
-                );
-                const otherParticipant = item.participants?.find((p) => p.id !== user?.id);
-                const participantPairStatus = otherParticipant?.id ? getPairStatus(otherParticipant.id) : 'not-friend' as const;
-                const chatItem = (
-                  <ChatListItem
-                    conversation={item}
-                    currentUserId={user?.id || ""}
-                    onPress={handleSelectConversation}
-                    isMuted={isMuted}
-                    onAvatarPress={onNavigateToFriendProfile}
-                    pairStatus={participantPairStatus}
-                    onPairPress={handlePairFriend}
-                    onUnpairPress={handleUnpairFriend}
-                    pairLoading={otherParticipant?.id ? pairLoadingUserId === otherParticipant.id : false}
-                    onPendingPairPress={(userId) => {
-                      const pill = pairingPills.find(p => p.pairedUserId === userId && p.pillState !== 'active');
-                      if (!pill) return;
-                      Alert.alert('Cancel Pair Request', 'Cancel your pair request?', [
-                        { text: 'Keep', style: 'cancel' },
-                        { text: 'Cancel Request', style: 'destructive', onPress: () => {
-                          if (pill.pairRequestId) cancelPairRequestMutation.mutate(pill.pairRequestId);
-                          else if (pill.pendingInviteId) cancelPairInviteMutation.mutate(pill.pendingInviteId);
-                        }},
-                      ]);
+          {searchActive ? null : (
+            <View style={styles.filterRow} accessibilityRole="tablist">
+              {CHAT_FILTERS.map((filter) => {
+                const selected = chatFilter === filter;
+                return (
+                  <Pressable
+                    key={filter}
+                    onPress={() => {
+                      HapticFeedback.light();
+                      setChatFilter(filter);
                     }}
-                    onArchive={handleArchiveChat}
-                    onDelete={handleDeleteChat}
-                    lifecycleBusy={lifecycleBusyIds.has(item.id)}
-                  />
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected }}
+                    style={[styles.filterChip, selected ? styles.filterChipActive : null]}
+                    testID={`chat-filter-${filter}`}
+                  >
+                    <Text style={[styles.filterChipText, selected ? styles.filterChipTextActive : null]}>
+                      {t(`connections:filter_${filter}`)}
+                    </Text>
+                  </Pressable>
                 );
-                if (index === 0) {
-                  return (
-                    <View>
-                      {chatItem}
-                    </View>
-                  );
-                }
-                return chatItem;
-              }}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={[
-                styles.chatListContent,
-                { paddingBottom: bottomNavTotalHeight + 24 },
-              ]}
-              ItemSeparatorComponent={null}
-              refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#999" />}
-            />
+              })}
+            </View>
           )}
+          <FlatList
+            data={showSkeleton ? [] : listItems}
+            keyExtractor={keyExtractor}
+            renderItem={renderListItem}
+            getItemLayout={getItemLayout}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+            initialNumToRender={12}
+            windowSize={9}
+            ListHeaderComponent={errorRow}
+            ListEmptyComponent={listEmpty}
+            contentContainerStyle={[
+              styles.chatListContent,
+              { paddingBottom: bottomNavTotalHeight + 24 },
+            ]}
+            refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={tokens.faint} />}
+          />
         </View>
       </View>
+    );
+  }
+
+  return (
+    <>
+      {screen}
 
       {/* ORCH-0435: Consolidated 4-tab Friends Modal.
           META-ORCH-0991 Wave C: RN <Modal> + hand-rolled useKeyboard sheet-height
@@ -4017,15 +4062,6 @@ function ConnectionsPageRefactored({
         onClose={() => setAddFriendPickerOpen(false)}
       />
 
-      {/* Friend Picker Sheet */}
-      <FriendPickerSheet
-        visible={friendPickerVisible}
-        onClose={() => setFriendPickerVisible(false)}
-        onSelectFriend={handlePickFriend}
-        friends={dbFriends}
-        loadingFriends={friendsLoading}
-      />
-
       <ReportUserModal
         isOpen={showReportModal}
         onClose={() => {
@@ -4052,24 +4088,41 @@ function ConnectionsPageRefactored({
         loading={blockLoading}
       />
 
-      {/* ORCH-0435: Pairing modals */}
-      <FriendsActionChooserSheet
-        visible={showFriendsActionChooser}
-        onClose={() => setShowFriendsActionChooser(false)}
+      {/* Issue #4114 (D15): the pencil's New message sheet replaces the + chooser. */}
+      <NewMessageSheet
+        visible={showNewMessageSheet}
+        onClose={() => setShowNewMessageSheet(false)}
+        friends={dbFriends}
+        loadingFriends={friendsLoading}
+        currentUserId={currentUserId}
+        chattedUserIds={chattedUserIds}
+        onPickFriend={(friend) => {
+          setShowNewMessageSheet(false);
+          void handlePickFriend(friend);
+        }}
         createGroupChatDisabled={!canCreateSession && !isUnlimited}
-        onChooseCreateGroupChat={() => {
-          setShowFriendsActionChooser(false);
+        onNewGroup={() => {
+          setShowNewMessageSheet(false);
           requestAnimationFrame(() => setShowCreateGroupChatSheet(true));
         }}
-        onChooseAddFriend={() => {
-          setShowFriendsActionChooser(false);
-          requestAnimationFrame(() => setShowPairRequestModal(true));
-        }}
-        onCreateGroupChatPaywall={() => {
-          setShowFriendsActionChooser(false);
+        onNewGroupPaywall={() => {
+          setShowNewMessageSheet(false);
           setPaywallFeature('session_creation');
           requestAnimationFrame(() => setShowPaywall(true));
         }}
+        onAddFriend={() => {
+          // [TRANSITIONAL] Wave 2b replaces PairRequestModal with the one
+          // Add a friend flow — exit: #4114 Wave 2b.
+          setShowNewMessageSheet(false);
+          requestAnimationFrame(() => setShowPairRequestModal(true));
+        }}
+      />
+
+      <ChatRowActionsSheet
+        visible={Boolean(chatActionsTarget)}
+        title={chatActionsTitle}
+        actions={chatActions}
+        onClose={() => setChatActionsTarget(null)}
       />
 
       <CreateGroupChatSheet
@@ -4087,7 +4140,7 @@ function ConnectionsPageRefactored({
           setShowCreateGroupChatSheet(false);
           setConversations((prev) => prev.filter((conversation) => conversation.id !== conversationId));
           showToast({
-            message: "Invites sent. The chat will open once someone accepts.",
+            message: t('connections:group_invites_sent'),
             type: "info",
           });
           if (user?.id) {
@@ -4128,7 +4181,7 @@ function ConnectionsPageRefactored({
         onClose={() => setShowPairRequestModal(false)}
         onPairRequestSent={() => {
           setShowPairRequestModal(false);
-          showToast({ message: 'Pair request sent!', type: 'info' });
+          showToast({ message: t('connections:pair_request_sent'), type: 'info' });
         }}
       />
 
@@ -4249,25 +4302,17 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     textAlignVertical: 'center',
   },
-  friendsIconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
   titleIconBadge: {
     position: 'absolute',
-    top: 0,
-    right: 0,
+    top: -3,
+    right: -3,
     minWidth: 16,
     height: 16,
     paddingHorizontal: 4,
     borderRadius: 8,
-    backgroundColor: '#eb7825',
+    backgroundColor: tokens.accent,
     borderWidth: 1.5,
-    borderColor: 'rgba(12, 14, 18, 1)',
+    borderColor: tokens.avatarRing,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -4277,188 +4322,205 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 12,
   },
-  addButtonGlass: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: glass.chrome.active.tint,
-    borderWidth: 1,
-    borderColor: glass.chrome.active.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: glass.chrome.active.glowColor,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  pillsDividerInline: {
-    width: StyleSheet.hairlineWidth,
-    height: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
-    marginHorizontal: 4,
-  },
-  // ORCH-0990: row holding the + button, divider, and paired-pills scroll,
-  // relocated out of the glass header to sit just above the search bar.
-  pairControlsRow: {
+  // ── Issue #4114 Wave 2a: Chats header, search, filters, rows ──
+  headerButtons: {
+    marginLeft: 'auto',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    height: 48,
-    paddingHorizontal: 16,
   },
-  pillsScrollWrap: {
-    flex: 1,
-    height: '100%',
-    justifyContent: 'center',
-  },
-  pillsScrollContent: {
+  headerButton: {
+    width: CHAT_HEADER_BUTTON_SIZE,
+    height: CHAT_HEADER_BUTTON_SIZE,
+    borderRadius: CHAT_HEADER_BUTTON_SIZE / 2,
+    backgroundColor: tokens.headerButtonBg,
+    borderWidth: 1,
+    borderColor: tokens.headerButtonBorder,
     alignItems: 'center',
-    gap: glass.discover.filterBar.chipGap,
-    paddingRight: glass.discover.filterBar.fadeEdgeWidth,
-  },
-  pillsFade: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-  },
-  pillsEmptyHint: {
-    height: 36,
     justifyContent: 'center',
-    paddingHorizontal: 8,
   },
-  pillsEmptyHintText: {
-    color: 'rgba(255, 255, 255, 0.55)',
-    fontSize: 13,
-    fontWeight: '500',
+  headerButtonPressed: {
+    transform: [{ scale: 0.96 }],
   },
-
-  // ── Header ────────────────────────────────
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    minHeight: 62,
-    backgroundColor: "#ffffff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#6B7280",
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  headerDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: "#E5E7EB",
-    marginHorizontal: 2,
-  },
-  headerIconBtn: {
+  backButton: {
     width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#fff7ed",
-    position: "relative",
+    height: 44,
+    marginLeft: -8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerIconBtnActive: {
-    backgroundColor: "#eb7825",
-  },
-  headerBadge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    minWidth: 16,
-    height: 16,
-    backgroundColor: "#ef4444",
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-    borderWidth: 1.5,
-    borderColor: "#ffffff",
-  },
-  headerBadgeText: {
-    fontSize: 9,
-    color: "#ffffff",
-    fontWeight: "700",
-  },
-  composeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#eb7825",
-  },
-  // ── Archived section (ORCH-0435) ──────
-  archivedSection: {
+  searchContainer: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginHorizontal: 16,
-    marginBottom: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: "#f9fafb",
+    marginHorizontal: CHAT_ROW_SIDE_PADDING,
+    height: CHAT_SEARCH_HEIGHT,
     borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#e5e7eb",
+    paddingHorizontal: 12,
+    backgroundColor: tokens.searchBg,
   },
-  archivedSectionText: {
+  searchInput: {
     flex: 1,
+    fontSize: 15,
+    color: tokens.ink,
+    paddingVertical: 0,
+  },
+  filterRow: {
+    height: CHAT_FILTER_ROW_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: CHAT_ROW_SIDE_PADDING,
+    paddingTop: 4,
+  },
+  filterChip: {
+    height: CHAT_FILTER_CHIP_HEIGHT,
+    borderRadius: CHAT_FILTER_CHIP_HEIGHT / 2,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    backgroundColor: tokens.chipBg,
+  },
+  filterChipActive: {
+    backgroundColor: tokens.chipActiveBg,
+  },
+  filterChipText: {
     fontSize: 13,
-    fontWeight: "600",
-    color: "#6b7280",
+    fontWeight: '600',
+    color: tokens.dim,
+  },
+  filterChipTextActive: {
+    color: tokens.chipActiveLabel,
+  },
+  sectionLabel: {
+    height: CHAT_SECTION_LABEL_HEIGHT,
+    paddingHorizontal: CHAT_ROW_SIDE_PADDING,
+    paddingTop: 12,
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: tokens.sectionLabel,
+  },
+  rowPressed: {
+    backgroundColor: tokens.rowPressed,
+  },
+  rowSeparator: {
+    position: 'absolute',
+    top: 0,
+    left: CHAT_ROW_SIDE_PADDING + 52 + CHAT_ROW_GAP,
+    right: 0,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: tokens.separator,
+  },
+  friendRow: {
+    height: CHAT_ROW_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: CHAT_ROW_GAP,
+    paddingHorizontal: CHAT_ROW_SIDE_PADDING,
+  },
+  friendRowName: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 16,
+    fontWeight: '600',
+    color: tokens.ink,
+  },
+  friendRowAction: {
+    height: 30,
+    borderRadius: 15,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    backgroundColor: tokens.chipBg,
+  },
+  friendRowActionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: tokens.ink,
   },
   archivedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    height: CHAT_ARCHIVED_ROW_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
+    paddingHorizontal: CHAT_ROW_SIDE_PADDING + 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: tokens.separator,
   },
-  archivedAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#eb7825",
-    alignItems: "center",
-    justifyContent: "center",
-    opacity: 0.6,
+  archivedRowLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: tokens.dim,
   },
-  archivedAvatarText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#ffffff",
+  archivedRowCount: {
+    marginLeft: 'auto',
+    fontSize: 15,
+    color: tokens.faint,
   },
-  archivedName: {
+  offlineBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: CHAT_ROW_SIDE_PADDING,
+    marginBottom: 8,
+    paddingHorizontal: 10,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: tokens.offlineBarBg,
+  },
+  offlineBarText: {
+    flex: 1,
+    fontSize: 12.5,
+    color: tokens.dim,
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    height: 44,
+    paddingHorizontal: CHAT_ROW_SIDE_PADDING + 2,
+  },
+  errorRowText: {
     flex: 1,
     fontSize: 14,
-    fontWeight: "500",
-    color: "#9ca3af",
+    color: tokens.errorLabel,
   },
-  unarchiveBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    backgroundColor: "#f3f4f6",
+  errorRowAction: {
+    fontWeight: '700',
+    color: tokens.ink,
   },
-  unarchiveBtnText: {
-    fontSize: 12,
+  emptyContainer: {
+    alignItems: "center",
+    paddingHorizontal: 40,
+    paddingTop: 72,
+  },
+  emptyTitle: {
+    fontSize: 17,
     fontWeight: "600",
-    color: "#6b7280",
+    color: tokens.ink,
+    marginTop: 14,
+    textAlign: "center",
   },
+  emptySubtitle: {
+    fontSize: 14,
+    color: tokens.dim,
+    textAlign: "center",
+    marginTop: 6,
+    lineHeight: 20,
+  },
+  emptyCtaButton: {
+    marginTop: 20,
+    backgroundColor: tokens.accent,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  emptyCtaText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  // ── Friends sheet (Wave 2b redesigns these) ──────
   // ── Modal empty state (ORCH-0435) ──────
   modalEmptyState: {
     paddingVertical: 24,
@@ -4521,117 +4583,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#6b7280",
   },
-  // ── Incoming pair banner (ORCH-0435) ──────
-  incomingPairBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: "#fff7ed",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#fed7aa",
-  },
-  incomingPairBannerText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  // ── Search ────────────────────────────────
-  searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 10,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    height: 44,
-  },
-  searchIcon: {
-    marginRight: 10,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: "#1f2937",
-    paddingVertical: 0,
-  },
   // ── Chat list ─────────────────────────────
   chatListContent: {
     paddingBottom: 16,
-  },
-  chatSeparator: {
-    height: 1,
-    backgroundColor: "#f3f4f6",
-    marginLeft: 78,
-    marginRight: 16,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  // ── Empty state ───────────────────────────
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 40,
-  },
-  emptyTitle: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: "#FFFFFF",
-    marginTop: 14,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.65)",
-    textAlign: "center",
-    marginTop: 6,
-  },
-  emptyCtaButton: {
-    marginTop: 20,
-    backgroundColor: "#eb7825",
-    paddingHorizontal: 28,
-    paddingVertical: 12,
-    borderRadius: 24,
-  },
-  emptyCtaText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  // ── Error state ───────────────────────────
-  errorContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  errorText: {
-    fontSize: 16,
-    color: "#ef4444",
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: "#eb7825",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "500",
   },
   // ── Bottom Sheet (Friends modal) ──────────────────────────
   // META-ORCH-0991 Wave C: the scrim/flex-end card/hand-rolled handle styles

@@ -82,6 +82,8 @@ export interface ChatListItemProps {
   onTogglePin?: (conversation: ChatListItemConversation) => void;
   onToggleUnread?: (conversation: ChatListItemConversation) => void;
   lifecycleBusy?: boolean;
+  /** Row in the archived list: the archive action becomes Unarchive. */
+  isArchived?: boolean;
   /** Draw the hairline above this row (every row but the first in a section). */
   showSeparator?: boolean;
 }
@@ -97,6 +99,7 @@ function ChatListItemImpl({
   onTogglePin,
   onToggleUnread,
   lifecycleBusy = false,
+  isArchived = false,
   showSeparator = false,
 }: ChatListItemProps): React.ReactElement {
   const { t, i18n } = useTranslation(['connections', 'chat', 'common']);
@@ -107,6 +110,11 @@ function ChatListItemImpl({
   const isEvent = kind === 'event';
   const isPinned = Boolean(conversation.pinned_at);
   const unread = isUnreadChat(conversation);
+  // "Mark unread" is a private flag (it never touches read receipts). It is
+  // offered when nothing is unread, and "Mark read" clears the flag. A chat
+  // with real unread messages is read by opening it.
+  const markedUnread = Boolean(conversation.marked_unread_at);
+  const canToggleUnread = Boolean(onToggleUnread) && (markedUnread || (conversation.unread_count ?? 0) === 0);
   const badge = unreadBadge(conversation, isMuted);
 
   const others = conversation.participants.filter((p) => p.id !== currentUserId);
@@ -189,14 +197,16 @@ function ChatListItemImpl({
         color={tk.swipePin}
         onPress={() => runAction('pin')}
       />
-      <SwipeAction
-        icon={unread ? 'mail-open-outline' : 'mail-outline'}
-        label={unread ? t('connections:action_mark_read') : t('connections:action_mark_unread')}
-        color={tk.swipeUnread}
-        onPress={() => runAction('unread')}
-      />
+      {canToggleUnread ? (
+        <SwipeAction
+          icon={markedUnread ? 'mail-open-outline' : 'mail-outline'}
+          label={markedUnread ? t('connections:action_mark_read') : t('connections:action_mark_unread')}
+          color={tk.swipeUnread}
+          onPress={() => runAction('unread')}
+        />
+      ) : null}
     </View>
-  ), [isPinned, runAction, t, unread]);
+  ), [canToggleUnread, isPinned, markedUnread, runAction, t]);
 
   const renderRightActions = useCallback(() => (
     <View style={styles.swipeActions}>
@@ -210,13 +220,13 @@ function ChatListItemImpl({
       ) : null}
       <SwipeAction
         icon="archive-outline"
-        label={t('connections:action_archive')}
+        label={isArchived ? t('connections:action_unarchive') : t('connections:action_archive')}
         color={tk.swipeArchive}
         busy={lifecycleBusy}
         onPress={() => runAction('archive')}
       />
     </View>
-  ), [isGroup, isMuted, lifecycleBusy, onToggleMute, runAction, t]);
+  ), [isArchived, isGroup, isMuted, lifecycleBusy, onToggleMute, runAction, t]);
 
   const a11yParts = [
     displayName,
@@ -234,11 +244,13 @@ function ChatListItemImpl({
 
   const accessibilityActions = [
     { name: 'pin', label: isPinned ? t('connections:action_unpin') : t('connections:action_pin') },
-    { name: 'unread', label: unread ? t('connections:action_mark_read') : t('connections:action_mark_unread') },
+    ...(canToggleUnread
+      ? [{ name: 'unread', label: markedUnread ? t('connections:action_mark_read') : t('connections:action_mark_unread') }]
+      : []),
     ...(!isGroup && onToggleMute
       ? [{ name: 'mute', label: isMuted ? t('connections:action_unmute') : t('connections:action_mute') }]
       : []),
-    { name: 'archive', label: t('connections:action_archive') },
+    { name: 'archive', label: isArchived ? t('connections:action_unarchive') : t('connections:action_archive') },
     { name: 'longpress', label: t('connections:actions_more') },
   ];
 
