@@ -98,10 +98,10 @@ const isPinnedFirst = (conversation: Conversation): boolean =>
  * excludes it), and an enquiry is never collapsed into another row.
  */
 export function mergeEnquiryConversations<T extends Conversation>(
-  regular: ReadonlyArray<T>,
-  enquiries: ReadonlyArray<EnquiryConversation>,
+  regular: readonly T[],
+  enquiries: readonly EnquiryConversation[],
   searchQuery: string,
-): Array<T | EnquiryConversation> {
+): (T | EnquiryConversation)[] {
   const q = normalize(searchQuery);
   const matching = q.length === 0
     ? enquiries
@@ -111,7 +111,7 @@ export function mergeEnquiryConversations<T extends Conversation>(
       );
   if (matching.length === 0) return [...regular];
   const pinned = regular.filter(isPinnedFirst);
-  const rest: Array<T | EnquiryConversation> = [...regular.filter((c) => !isPinnedFirst(c)), ...matching];
+  const rest: (T | EnquiryConversation)[] = [...regular.filter((c) => !isPinnedFirst(c)), ...matching];
   rest.sort((a, b) => activityMs(b) - activityMs(a));
   return [...pinned, ...rest];
 }

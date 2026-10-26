@@ -20,6 +20,7 @@
   "row_preview_you": "You: {{text}}",
   "row_preview_empty": "Message sent",
   "row_a11y": "Enquiry with {{brand}}, {{topic}}",
+  "list_failed": "Couldn't load your messages with brands. Pull down to try again.",
   "thread_loading": "Loading conversation…",
   "thread_error_title": "This conversation couldn't load",
   "thread_retry": "Try again",

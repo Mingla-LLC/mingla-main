@@ -36,12 +36,12 @@ import { postHogService } from "../../services/postHogService";
 import { toastManager } from "../ui/Toast";
 import type { ExplorerBrandTarget, ExplorerMessageTrigger } from "./useExplorerBrandMessage";
 
-const EMPTY_OFFERINGS: ReadonlyArray<EnquiryOffering> = [];
+const EMPTY_OFFERINGS: readonly EnquiryOffering[] = [];
 
 export interface ExplorerBrandMessageHostProps {
   brand: ExplorerBrandTarget;
   entry: EnquiryEntry;
-  offerings?: ReadonlyArray<EnquiryOffering>;
+  offerings?: readonly EnquiryOffering[];
   venue: EnquiryVenue | null;
   onBookTable?: (pick: EnquiryPick) => void;
   onCancelReservation?: (reservationId: string) => void;

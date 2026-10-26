@@ -41,7 +41,7 @@ export interface ExplorerBrandTarget {
 export interface ExplorerBrandMessageInput {
   brand: ExplorerBrandTarget | null;
   entry: EnquiryEntry;
-  offerings?: ReadonlyArray<EnquiryOffering>;
+  offerings?: readonly EnquiryOffering[];
   venue?: EnquiryVenue | null;
   /** "Book now" on the table topic. Absent → no button. */
   onBookTable?: (pick: EnquiryPick) => void;

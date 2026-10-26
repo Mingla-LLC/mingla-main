@@ -27,7 +27,7 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
 
 const mockRpc = jest.fn();
 const mockUpsert = jest.fn(async () => ({ error: null }));
-const mockChannelFilters: Array<{ table: string; filter: string }> = [];
+const mockChannelFilters: { table: string; filter: string }[] = [];
 jest.mock("../../../services/supabase", () => {
   const channel = {
     on: (_event: string, config: { table: string; filter: string }) => {

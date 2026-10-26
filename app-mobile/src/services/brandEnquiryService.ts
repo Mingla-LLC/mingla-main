@@ -371,10 +371,10 @@ interface RawMessage {
   content: string | null;
   sender_kind: string | null;
   created_at: string;
-  message_reads?: Array<{ user_id: string }> | null;
+  message_reads?: { user_id: string }[] | null;
 }
 
-const latest = (...values: Array<string | null | undefined>): string => {
+const latest = (...values: (string | null | undefined)[]): string => {
   let best = "";
   let bestMs = Number.NEGATIVE_INFINITY;
   for (const value of values) {
@@ -395,9 +395,9 @@ const latest = (...values: Array<string | null | undefined>): string => {
  */
 export function buildMyEnquiryRows(
   userId: string,
-  enquiries: ReadonlyArray<RawEnquiry>,
-  brands: ReadonlyArray<RawBrand>,
-  messages: ReadonlyArray<RawMessage>,
+  enquiries: readonly RawEnquiry[],
+  brands: readonly RawBrand[],
+  messages: readonly RawMessage[],
 ): MyEnquiryRow[] {
   const brandById = new Map(brands.map((b) => [b.id, b]));
   const byConversation = new Map<string, RawMessage[]>();

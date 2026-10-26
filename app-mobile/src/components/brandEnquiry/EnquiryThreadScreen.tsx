@@ -48,7 +48,7 @@ import { EnquiryBrandAvatar, EnquiryTag, ENQUIRY_ACCENT } from "./EnquiryTag";
 const BODY_MAX = 2000;
 
 type ReportReason = "spam" | "abuse" | "other";
-const REPORT_REASONS: ReadonlyArray<ReportReason> = ["spam", "abuse", "other"];
+const REPORT_REASONS: readonly ReportReason[] = ["spam", "abuse", "other"];
 
 function shortDateTime(iso: string | null): string {
   if (iso === null) return "";

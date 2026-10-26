@@ -3,11 +3,13 @@
  * only weaves them in (see `mergeEnquiryConversations`) and renders
  * `EnquiryChatListRow`. Opening a row pushes the dedicated thread route.
  */
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useRouter } from "expo-router";
+import { useTranslation } from "react-i18next";
 
 import { useMyEnquiryRows } from "../../hooks/useBrandEnquiries";
 import { postHogService } from "../../services/postHogService";
+import { toastManager } from "../ui/Toast";
 import { toEnquiryConversation, type EnquiryConversation } from "./enquiryChatRows";
 
 export interface EnquiryChatRows {
@@ -26,6 +28,13 @@ export function useEnquiryChatRows(userId: string | null): EnquiryChatRows {
     [query.data, userId],
   );
   const { refetch } = query;
+  // A failed read is said out loud once per failure (pull to refresh retries).
+  const { t } = useTranslation("enquiry");
+  useEffect(() => {
+    if (query.isError && query.errorUpdatedAt > 0) {
+      toastManager.show(t("enquiry:list_failed"), "error");
+    }
+  }, [query.errorUpdatedAt, query.isError, t]);
   const open = useCallback(
     (conversation: EnquiryConversation): void => {
       postHogService.capture("brand_enquiry_thread_opened", {

@@ -229,7 +229,7 @@ test("signed out: Message is a sign-in step that routes to the app's sign-in and
   await flush();
 
   expect(alert).toHaveBeenCalledTimes(1);
-  const [title, body, buttons] = alert.mock.calls[0] as [string, string, Array<{ text: string; onPress?: () => void }>];
+  const [title, body, buttons] = alert.mock.calls[0] as [string, string, { text: string; onPress?: () => void }[]];
   expect(title).toBe("Sign in to message Lantern Room");
   expect(body).toContain("Lantern Room");
   expect(buttons.map((b) => b.text)).toEqual(["Not now", "Sign in"]);
