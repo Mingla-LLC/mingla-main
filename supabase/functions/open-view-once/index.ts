@@ -6,7 +6,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isAuthorizedCronCaller } from "../_shared/cronCallerAuth.ts";
-import { createOpenViewOnceHandler, type DueRow, type ViewOnceMessage } from "./handler.ts";
+import {
+  createOpenViewOnceHandler,
+  createOwnerCheckedSignUrl,
+  type DueRow,
+  type ViewOnceMessage,
+} from "./handler.ts";
 
 const BUCKET = "message-attachments";
 
@@ -51,10 +56,16 @@ serve(createOpenViewOnceHandler({
       .limit(1);
     return { data: (data ?? []).length > 0, error: errorText(error) };
   },
-  async signUrl(path, seconds) {
-    const { data, error } = await admin.storage.from(BUCKET).createSignedUrl(path, seconds);
-    return { data: data?.signedUrl ?? null, error: errorText(error) };
-  },
+  signUrl: createOwnerCheckedSignUrl({
+    async objectOwner(path) {
+      const { data, error } = await admin.rpc("issue_4114_chat_attachment_owner", { p_name: path });
+      return { data: typeof data === "string" ? data : null, error: errorText(error) };
+    },
+    async sign(path, seconds) {
+      const { data, error } = await admin.storage.from(BUCKET).createSignedUrl(path, seconds);
+      return { data: data?.signedUrl ?? null, error: errorText(error) };
+    },
+  }),
   async recordView(messageId, userId) {
     const { data, error } = await admin
       .from("message_media_views")

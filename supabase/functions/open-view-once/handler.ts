@@ -21,6 +21,31 @@ export const VIEW_ONCE_URL_SECONDS = 60;
 export const SWEEP_BATCH_LIMIT = 200;
 const REMOVE_CHUNK = 100;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const LOWER_UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+/**
+ * The only object names a chat attachment can have, exactly as the
+ * issue_4114_chat_attachment_conversation SQL function accepts them:
+ * <conversation_id>/<uuid>.<ext> or <conversation_id>/once/<uuid>.<ext>, lower-case,
+ * with no dot or empty segments, no encoding and nothing after the extension.
+ */
+export const CANONICAL_ATTACHMENT_PATH = new RegExp(
+  `^(${LOWER_UUID})/(once/)?${LOWER_UUID}\\.[a-z0-9]{1,8}$`,
+);
+/** Returned by signUrl when the object's uploader is not the expected sender. */
+export const OBJECT_NOT_OWNED = "object_not_owned";
+
+export interface AttachmentPathParts {
+  conversationId: string;
+  once: boolean;
+}
+
+/** The parts of a canonical attachment path, or null when the path is anything else. */
+export function parseAttachmentPath(path: unknown): AttachmentPathParts | null {
+  if (typeof path !== "string") return null;
+  const match = CANONICAL_ATTACHMENT_PATH.exec(path);
+  if (!match) return null;
+  return { conversationId: match[1], once: match[2] === "once/" };
+}
 
 export interface ViewOnceMessage {
   id: string;
@@ -51,7 +76,11 @@ export interface OpenViewOnceDeps {
   isCronCaller(authorization: string | null): Promise<boolean>;
   loadMessage(messageId: string): Promise<Result<ViewOnceMessage | null>>;
   isParticipant(conversationId: string, userId: string): Promise<Result<boolean>>;
-  signUrl(path: string, seconds: number): Promise<Result<string | null>>;
+  /**
+   * A short-lived signed URL for `path`, only when the storage object's uploader
+   * is `uploaderId`. Otherwise `{ data: null, error: OBJECT_NOT_OWNED }`.
+   */
+  signUrl(path: string, seconds: number, uploaderId: string): Promise<Result<string | null>>;
   /** Inserts (message_id, user_id); `inserted` is false when the row already existed. */
   recordView(messageId: string, userId: string): Promise<Result<{ inserted: boolean; viewedAt: string | null }>>;
   listDue(limit: number): Promise<Result<DueRow[]>>;
@@ -86,7 +115,8 @@ export async function sweep(deps: OpenViewOnceDeps): Promise<Response> {
     return json({ error: "sweep_list_failed" }, 500);
   }
   const rows = due.data ?? [];
-  const paths = [...new Set(rows.map((row) => row.storage_path).filter((path) => path.length > 0))];
+  // Only canonical chat attachment paths are ever handed to the deleter.
+  const paths = [...new Set(rows.map((row) => row.storage_path).filter((path) => parseAttachmentPath(path) !== null))];
   for (let index = 0; index < paths.length; index += REMOVE_CHUNK) {
     const removed = await deps.removeObjects(paths.slice(index, index + REMOVE_CHUNK));
     if (removed.error) {
@@ -127,9 +157,20 @@ export async function openOnce(
     return json({ error: "gone", message: "This photo or video has expired." }, 410);
   }
 
+  // Only the one object this message can legitimately name: a canonical once/
+  // path in the message's own conversation folder, uploaded by its sender.
+  // Every refusal reads the same as an expired item.
+  const parts = parseAttachmentPath(message.file_url);
+  if (!parts || !parts.once || parts.conversationId !== message.conversation_id || !message.sender_id) {
+    return json({ error: "gone", message: "This photo or video has expired." }, 410);
+  }
+
   // Sign first, record second, return last: the URL never leaves this function
   // unless this call is the one that recorded the view.
-  const signed = await deps.signUrl(message.file_url, VIEW_ONCE_URL_SECONDS);
+  const signed = await deps.signUrl(message.file_url, VIEW_ONCE_URL_SECONDS, message.sender_id);
+  if (signed.error === OBJECT_NOT_OWNED) {
+    return json({ error: "gone", message: "This photo or video has expired." }, 410);
+  }
   if (signed.error || !signed.data) return json({ error: "sign_failed" }, 500);
 
   const recorded = await deps.recordView(message.id, userId);
@@ -144,6 +185,24 @@ export async function openOnce(
     message_type: message.message_type,
     viewed_at: recorded.data.viewedAt,
   });
+}
+
+/**
+ * signUrl for production: looks up the object's uploader (service role) and
+ * signs only when it is the expected sender. A missing object or a failed
+ * lookup never signs.
+ */
+export function createOwnerCheckedSignUrl(io: {
+  objectOwner(path: string): Promise<Result<string | null>>;
+  sign(path: string, seconds: number): Promise<Result<string | null>>;
+}): OpenViewOnceDeps["signUrl"] {
+  return async (path, seconds, uploaderId) => {
+    if (!parseAttachmentPath(path)) return { data: null, error: OBJECT_NOT_OWNED };
+    const owner = await io.objectOwner(path);
+    if (owner.error) return { data: null, error: owner.error };
+    if (!owner.data || owner.data !== uploaderId) return { data: null, error: OBJECT_NOT_OWNED };
+    return await io.sign(path, seconds);
+  };
 }
 
 export function createOpenViewOnceHandler(deps: OpenViewOnceDeps) {

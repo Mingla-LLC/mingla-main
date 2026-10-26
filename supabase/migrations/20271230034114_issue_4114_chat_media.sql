@@ -23,12 +23,16 @@
 --   * `messages.view_once` (default false) and `messages.view_once_purged_at`.
 --     A trigger keeps message paths consistent: a view-once message must be a
 --     photo or video stored in its conversation's `once/` folder, an ordinary
---     message can never point into a `once/` folder, a stored path must sit in
---     the message's own conversation folder, and a path another sender's
---     message already points at cannot be reused.
+--     message can never point into a `once/` folder, a stored path must be
+--     exactly the shape above and sit in the message's own conversation folder, and a path another sender's
+--     message already points at cannot be reused. A client cannot choose or
+--     change a view-once message's send time (the 14-day expiry counts from it).
 --   * `message_media_views(message_id, user_id, viewed_at)`: one row per person
 --     per view-once message. Clients can read (their own rows, and every row of
 --     the messages they sent) but never write; only the edge function inserts.
+--   * `issue_4114_chat_attachment_owner(name)` (service role only) returns an
+--     attachment's uploader, so open-view-once signs an object only when its
+--     uploader is the message's sender.
 --   * Cleanup: `issue_4114_view_once_media_due` lists objects to delete (a
 --     view-once item every recipient has opened, one older than 14 days, one
 --     whose message was unsent, and attachments whose send never landed), and
@@ -109,12 +113,21 @@ CREATE INDEX IF NOT EXISTS messages_file_url_idx
   ON public.messages (file_url)
   WHERE file_url IS NOT NULL;
 
--- 3. Message paths. A view-once message must be a photo or video in its own
---    once/ folder; an ordinary message never points into a once/ folder; a
---    stored path (the private-bucket shape) must sit in the message's own
---    conversation folder and must not already belong to another sender's
---    message. SECURITY DEFINER so the reuse check sees every message, not only
---    the rows the writer can read.
+-- 3. Message paths. Every stored path (any file_url that is not a legacy
+--    public http(s) URL) must be EXACTLY the private-bucket shape
+--        <conversation_id>/<uuid>.<ext>   or   <conversation_id>/once/<uuid>.<ext>
+--    (lower-case hex, no dot or empty segments, no encoding, nothing after the
+--    extension), in the message's own conversation folder, and must not already
+--    belong to another sender's message. A view-once message must be a photo or
+--    video whose path is in its conversation's once/ folder; an ordinary
+--    message never points into a once/ folder. Legacy public-bucket URLs keep
+--    working unchanged.
+--    The send time of a view-once message is the server's: a client insert of
+--    one is stamped now(), and no client can change any message's created_at
+--    afterwards (the 14-day expiry is counted from it).
+--    SECURITY DEFINER so the reuse check sees every message, not only the rows
+--    the writer can read. The canonical-shape function is defined in section 5
+--    and only called at row time.
 CREATE OR REPLACE FUNCTION public.issue_4114_enforce_view_once_shape()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -123,35 +136,47 @@ SET search_path = public, pg_temp
 AS $function$
 DECLARE
   v_path_conversation uuid;
+  v_is_path boolean := NEW.file_url IS NOT NULL AND NOT (NEW.file_url ~* '^https?://');
+  v_client boolean := COALESCE(auth.role(), '') IN ('authenticated', 'anon');
 BEGIN
+  -- Server-owned send time (clients only; migrations and service code keep theirs).
+  IF v_client THEN
+    IF TG_OP = 'INSERT' AND NEW.view_once IS TRUE THEN
+      NEW.created_at := now();
+    ELSIF TG_OP = 'UPDATE' AND NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+      RAISE EXCEPTION 'message_created_at_is_server_owned' USING ERRCODE = '23514';
+    END IF;
+  END IF;
+
+  IF v_is_path THEN
+    v_path_conversation := public.issue_4114_chat_attachment_conversation(NEW.file_url);
+    IF v_path_conversation IS NULL THEN
+      RAISE EXCEPTION 'attachment_path_not_canonical' USING ERRCODE = '23514';
+    END IF;
+    IF v_path_conversation IS DISTINCT FROM NEW.conversation_id THEN
+      RAISE EXCEPTION 'attachment_path_outside_conversation' USING ERRCODE = '23514';
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM public.messages m
+      WHERE m.file_url = NEW.file_url
+        AND m.id IS DISTINCT FROM NEW.id
+        AND m.sender_id IS DISTINCT FROM NEW.sender_id
+    ) THEN
+      RAISE EXCEPTION 'attachment_path_in_use' USING ERRCODE = '23514';
+    END IF;
+  END IF;
+
   IF NEW.view_once IS TRUE THEN
     IF NEW.message_type IS DISTINCT FROM 'image' AND NEW.message_type IS DISTINCT FROM 'video' THEN
       RAISE EXCEPTION 'view_once_requires_photo_or_video' USING ERRCODE = '23514';
     END IF;
-    IF NEW.file_url IS NULL
-       OR left(NEW.file_url, length(NEW.conversation_id::text) + 6) <> NEW.conversation_id::text || '/once/' THEN
+    IF NOT v_is_path OR split_part(NEW.file_url, '/', 2) IS DISTINCT FROM 'once' THEN
       RAISE EXCEPTION 'view_once_requires_once_folder' USING ERRCODE = '23514';
     END IF;
-  ELSIF NEW.file_url IS NOT NULL AND split_part(NEW.file_url, '/', 2) = 'once' THEN
+  ELSIF v_is_path AND split_part(NEW.file_url, '/', 2) = 'once' THEN
     RAISE EXCEPTION 'once_folder_requires_view_once' USING ERRCODE = '23514';
   END IF;
-
-  IF NEW.file_url IS NOT NULL THEN
-    v_path_conversation := public.issue_4114_chat_attachment_conversation(NEW.file_url);
-    IF v_path_conversation IS NOT NULL THEN
-      IF v_path_conversation IS DISTINCT FROM NEW.conversation_id THEN
-        RAISE EXCEPTION 'attachment_path_outside_conversation' USING ERRCODE = '23514';
-      END IF;
-      IF EXISTS (
-        SELECT 1 FROM public.messages m
-        WHERE m.file_url = NEW.file_url
-          AND m.id IS DISTINCT FROM NEW.id
-          AND m.sender_id IS DISTINCT FROM NEW.sender_id
-      ) THEN
-        RAISE EXCEPTION 'attachment_path_in_use' USING ERRCODE = '23514';
-      END IF;
-    END IF;
-  END IF;
+  -- Legacy public-bucket URLs (old messages) pass through untouched.
   RETURN NEW;
 END;
 $function$;
@@ -159,7 +184,7 @@ REVOKE ALL ON FUNCTION public.issue_4114_enforce_view_once_shape() FROM PUBLIC, 
 
 DROP TRIGGER IF EXISTS issue_4114_view_once_shape ON public.messages;
 CREATE TRIGGER issue_4114_view_once_shape
-  BEFORE INSERT OR UPDATE OF view_once, file_url, message_type, conversation_id, sender_id ON public.messages
+  BEFORE INSERT OR UPDATE OF view_once, file_url, message_type, conversation_id, sender_id, created_at ON public.messages
   FOR EACH ROW EXECUTE FUNCTION public.issue_4114_enforce_view_once_shape();
 
 -- 4. Who opened which view-once message.
@@ -370,6 +395,31 @@ $function$;
 REVOKE ALL ON FUNCTION public.issue_4114_can_delete_chat_attachment(text, uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.issue_4114_can_delete_chat_attachment(text, uuid, uuid) TO authenticated, service_role;
 
+-- The uploader of one message-attachments object (NULL when there is no such
+-- object). Service role only: open-view-once signs a view-once object only when
+-- this matches the message's sender.
+CREATE OR REPLACE FUNCTION public.issue_4114_chat_attachment_owner(p_name text)
+RETURNS uuid
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_owner uuid;
+BEGIN
+  IF public.issue_4114_chat_attachment_conversation(p_name) IS NULL
+     OR to_regclass('storage.objects') IS NULL THEN
+    RETURN NULL;
+  END IF;
+  EXECUTE 'SELECT owner FROM storage.objects WHERE bucket_id = $1 AND name = $2 LIMIT 1'
+    INTO v_owner USING 'message-attachments', p_name;
+  RETURN v_owner;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4114_chat_attachment_owner(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4114_chat_attachment_owner(text) TO service_role;
+
 DO $policies$
 BEGIN
   IF to_regclass('storage.objects') IS NULL THEN
@@ -437,6 +487,10 @@ BEGIN
     WHERE m.view_once
       AND m.view_once_purged_at IS NULL
       AND m.file_url IS NOT NULL
+      -- Only ever hand the deleter a canonical once/ path in the message's
+      -- own conversation folder.
+      AND public.issue_4114_chat_attachment_conversation(m.file_url) = m.conversation_id
+      AND split_part(m.file_url, '/', 2) = 'once'
   ),
   classified AS (
     SELECT o.id, o.file_url,
@@ -469,6 +523,7 @@ BEGIN
     SELECT NULL::uuid, o.name, 'orphan'::text
     FROM storage.objects o
     WHERE o.bucket_id = 'message-attachments'
+      AND public.issue_4114_chat_attachment_conversation(o.name) IS NOT NULL
       AND o.created_at < p_now - interval '2 days'
       AND NOT EXISTS (SELECT 1 FROM public.messages m WHERE m.file_url = o.name)
     ORDER BY o.created_at
