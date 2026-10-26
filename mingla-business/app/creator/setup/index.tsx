@@ -15,6 +15,7 @@ import {
   type CreatorSetupStatus,
 } from "../../../src/services/creatorProgramContract";
 import { accent, canvas, glass, radius, semantic, spacing, text as textTokens } from "../../../src/constants/designSystem";
+import { ProgramBackBar } from "../../../src/components/programs/ProgramBackBar";
 
 type Step = "profile" | "handles" | "packages" | "showcase" | "payout" | "agreement";
 const STEPS: Array<{ key: Step; title: string; outcome: string }> = [
@@ -77,7 +78,7 @@ export default function CreatorSetupScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      <Stack.Screen options={{ title: "Creator setup", headerShown: false }} />
+      <Stack.Screen options={{ title: "Creator setup", headerShown: false }} /><ProgramBackBar title="Creator setup" fallback="/(tabs)/home" />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.hero}>
           <Text style={styles.eyebrow}>MINGLA CREATOR</Text>

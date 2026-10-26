@@ -7,7 +7,7 @@ import { publicCreatorMedia } from '../../services/creatorMediaService';
 import { postHogService } from '../../services/postHogService';
 import { Icon } from '../ui/Icon';
 
-export function PublicLocalSection({ userId }: { userId: string }): React.ReactElement | null {
+export function PublicLocalSection({ userId, embedded = false }: { userId: string; embedded?: boolean }): React.ReactElement | null {
   const query = useQuery({
     queryKey: ['local-program', 'public-profile', userId],
     queryFn: () => localProgramService.publicProfile(userId),
@@ -30,11 +30,11 @@ export function PublicLocalSection({ userId }: { userId: string }): React.ReactE
   };
 
   return (
-    <View style={styles.card} accessibilityLabel={`Mingla Local in ${local.city}`}>
+    <View style={[styles.card, embedded && styles.embedded]} accessibilityLabel={`Mingla Local in ${local.city}`}>
       <View style={styles.header}>
         <View style={styles.badge}>
-          <Icon name="map-pin" size={16} color="#c2410c" />
-          <Text style={styles.badgeText}>MINGLA LOCAL</Text>
+          <Icon name="map-pin" size={16} color="#eb7825" />
+          <Text style={styles.badgeText}>Mingla Local</Text>
         </View>
         <Text style={styles.since}>Since {new Date(local.local_since).getFullYear()}</Text>
       </View>
@@ -50,7 +50,7 @@ export function PublicLocalSection({ userId }: { userId: string }): React.ReactE
           </View>
           <Text style={styles.reviewTitle}>{review.title}</Text>
           <Text style={styles.body} numberOfLines={3}>{review.body}</Text>
-          {review.media_job_ids?.[0] ? <Pressable accessibilityRole="button" onPress={() => void play(review.media_job_ids[0])} style={styles.video}><Icon name="play" size={14} color="#c2410c" /><Text style={styles.videoText}>Watch review video</Text></Pressable> : null}
+          {review.media_job_ids?.[0] ? <Pressable accessibilityRole="button" onPress={() => void play(review.media_job_ids[0])} style={styles.video}><Icon name="play" size={14} color="#eb7825" /><Text style={styles.videoText}>Watch review video</Text></Pressable> : null}
           {review.reply ? <Text style={styles.reply}>Place reply: {review.reply}</Text> : null}
         </View>
       ))}
@@ -59,20 +59,21 @@ export function PublicLocalSection({ userId }: { userId: string }): React.ReactE
 }
 
 const styles = StyleSheet.create({
-  card: { marginTop: 22, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: '#fed7aa', backgroundColor: '#fffaf5' },
+  embedded: { marginTop: 12, padding: 14, borderRadius: 14 },
+  card: { marginTop: 22, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.10)', backgroundColor: 'rgba(255, 255, 255, 0.04)' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  badgeText: { color: '#c2410c', fontWeight: '900', fontSize: 11, letterSpacing: 1.2 },
-  since: { color: '#78716c', fontSize: 12, fontWeight: '600' },
-  title: { color: '#111827', fontSize: 19, lineHeight: 24, fontWeight: '800', marginTop: 10 },
-  copy: { color: '#57534e', fontSize: 13, lineHeight: 19, marginTop: 4 },
-  review: { paddingTop: 13, marginTop: 13, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#fed7aa', gap: 4 },
+  badgeText: { color: '#eb7825', fontWeight: '700', fontSize: 13 },
+  since: { color: 'rgba(255, 255, 255, 0.52)', fontSize: 12, fontWeight: '600' },
+  title: { color: '#ffffff', fontSize: 19, lineHeight: 24, fontWeight: '800', marginTop: 10 },
+  copy: { color: 'rgba(255, 255, 255, 0.72)', fontSize: 13, lineHeight: 19, marginTop: 4 },
+  review: { paddingTop: 13, marginTop: 13, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255, 255, 255, 0.10)', gap: 4 },
   reviewTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  place: { flex: 1, color: '#111827', fontWeight: '800', fontSize: 14 },
+  place: { flex: 1, color: '#ffffff', fontWeight: '800', fontSize: 14 },
   rating: { color: '#eb7825', fontSize: 12, letterSpacing: 1 },
-  reviewTitle: { color: '#292524', fontWeight: '700', fontSize: 14 },
-  body: { color: '#57534e', fontSize: 13, lineHeight: 19 },
-  reply: { color: '#7c2d12', fontSize: 12, lineHeight: 18, fontStyle: 'italic', marginTop: 3 },
+  reviewTitle: { color: 'rgba(255, 255, 255, 0.92)', fontWeight: '700', fontSize: 14 },
+  body: { color: 'rgba(255, 255, 255, 0.72)', fontSize: 13, lineHeight: 19 },
+  reply: { color: 'rgba(255, 255, 255, 0.72)', fontSize: 12, lineHeight: 18, fontStyle: 'italic', marginTop: 3 },
   video: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 5 },
-  videoText: { color: '#c2410c', fontSize: 12, fontWeight: '800' },
+  videoText: { color: '#eb7825', fontSize: 12, fontWeight: '800' },
 });

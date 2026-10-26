@@ -210,6 +210,8 @@ export interface BrandProfileViewProps {
   onDiscounts?: (brandId: string) => void;
   /** Issue #3872 R2 — opens the pilot-gated Referrals workspace. */
   onReferrals?: (brandId: string) => void;
+  /** Issue #3872 R3 — opens the pilot-gated Creators (gigs) workspace. */
+  onCreators?: (brandId: string) => void;
   /**
    * Called when user taps the "Finance reports" Operations row.
    * Receives the brand id. NEW in J-A12 — final navigation prop in
@@ -293,6 +295,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onPricingDefaults,
   onDiscounts,
   onReferrals,
+  onCreators,
   onReports,
   onAuditLog,
   onWebsite,
@@ -470,6 +473,20 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       .catch(() => { if (active) setReferralsEnabled(false); });
     return () => { active = false; };
   }, [brand,currentRank,onReferrals]);
+  const [creatorsEnabled, setCreatorsEnabled] = useState(false);
+  useEffect(() => {
+    let active = true;
+    if (brand === null || currentRank < 20 || onCreators === undefined) {
+      setCreatorsEnabled(false);
+      return () => { active = false; };
+    }
+    setCreatorsEnabled(false);
+    void import("../../services/creatorGigsService")
+      .then(({ fetchCreatorGigsAccess }) => fetchCreatorGigsAccess(brand.id))
+      .then((enabled) => { if (active) setCreatorsEnabled(enabled); })
+      .catch(() => { if (active) setCreatorsEnabled(false); });
+    return () => { active = false; };
+  }, [brand,currentRank,onCreators]);
   const canCheckWebsiteAvailability = isFeatureEnabled("sites") &&
     canPerformAction(currentRank, "WEBSITE_WORKSPACE");
   const [websiteContext, setWebsiteContext] = useState<string | null>(null);
@@ -574,6 +591,14 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           if (brand !== null) onReferrals?.(brand.id);
         },
       }] : []),
+      ...(currentRank >= 20 && creatorsEnabled && onCreators !== undefined ? [{
+        icon: "users" as const,
+        label: "Creators",
+        sub: "Hire creators to make short videos about your listings",
+        onPress: () => {
+          if (brand !== null) onCreators?.(brand.id);
+        },
+      }] : []),
       {
         icon: "users",
         label: "Team & permissions",
@@ -639,6 +664,8 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     discountsEnabled,
     onReferrals,
     referralsEnabled,
+    onCreators,
+    creatorsEnabled,
     onReports,
     onAuditLog,
     canViewAuditLog,

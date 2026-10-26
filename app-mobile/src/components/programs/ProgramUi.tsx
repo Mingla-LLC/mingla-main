@@ -1,7 +1,24 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, type TextInputProps, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { GlassIconButton } from '../ui/GlassIconButton';
 
 export const PROGRAM_COLORS = { canvas: '#171411', card: '#24201d', border: '#413a34', text: '#fffaf5', muted: '#bcb2aa', accent: '#eb7825', success: '#55c889', danger: '#ff8878' } as const;
+
+/**
+ * Every Creator and Local screen opens as a pushed route with the native header
+ * hidden, so this bar is the only way back. A screen opened from a link has no
+ * history; it falls back to the app root instead of stranding the person.
+ */
+export function ProgramHeader({ title }: { title: string }): React.ReactElement {
+  const router = useRouter();
+  const goBack = (): void => { if (router.canGoBack()) router.back(); else router.replace('/' as never); };
+  return <View style={styles.header}>
+    <GlassIconButton iconName="chevron-back" onPress={goBack} accessibilityLabel="Back" size={40} />
+    <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header">{title}</Text>
+    <View style={styles.headerSpacer} />
+  </View>;
+}
 
 export function ProgramCard({ children, style }: { children: React.ReactNode; style?: object }): React.ReactElement {
   return <View style={[styles.card, style]}>{children}</View>;
@@ -23,6 +40,9 @@ export function ProgramChip({ label, selected = false, onPress, disabled = false
 
 export const programStyles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: PROGRAM_COLORS.canvas },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: PROGRAM_COLORS.border, backgroundColor: PROGRAM_COLORS.canvas },
+  headerTitle: { flex: 1, color: PROGRAM_COLORS.text, fontSize: 17, fontWeight: '800', textAlign: 'center' },
+  headerSpacer: { width: 40 },
   content: { padding: 18, paddingBottom: 64, gap: 14 },
   eyebrow: { color: PROGRAM_COLORS.accent, fontSize: 12, fontWeight: '900', letterSpacing: 1.5, marginTop: 8 },
   heading: { color: PROGRAM_COLORS.text, fontSize: 32, lineHeight: 38, fontWeight: '900' },

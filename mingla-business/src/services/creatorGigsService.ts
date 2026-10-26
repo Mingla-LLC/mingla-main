@@ -77,6 +77,12 @@ async function rpc<T>(name: string, input: Record<string, unknown> = {}): Promis
   return data as T;
 }
 
+export async function fetchCreatorGigsAccess(brandId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("brand_creator_gigs_access", { p_brand_id: brandId });
+  if (error) throw error;
+  return data === true;
+}
+
 export const creatorGigsService = {
   board: (cityId?: string | null, formatKey?: string | null) => rpc<PublicGig[]>("creator_gig_board", { p_city_id: cityId ?? null, p_format_key: formatKey ?? null }),
   detail: (gigId: string) => rpc<PublicGig>("creator_gig_detail", { p_gig_id: gigId }),

@@ -517,4 +517,17 @@ GRANT EXECUTE ON FUNCTION public.gig_host_home(uuid),public.gig_applicants(uuid)
 REVOKE ALL ON FUNCTION public.gig_hold_mark_captured(uuid,integer,text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.gig_hold_mark_captured(uuid,integer,text) TO service_role;
 
+-- The Host app shows its Creators entry only when this brand is in the
+-- creator-gigs rollout and the caller can manage it (same rank as Referrals).
+CREATE OR REPLACE FUNCTION public.brand_creator_gigs_access(p_brand_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $fn$
+  SELECT COALESCE(public.biz_brand_effective_rank(p_brand_id, auth.uid()), 0) >= 20
+    AND public.issue_3872_creator_gigs_on(p_brand_id)
+$fn$;
+REVOKE ALL ON FUNCTION public.brand_creator_gigs_access(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.brand_creator_gigs_access(uuid) TO authenticated, service_role;
+
 COMMIT;

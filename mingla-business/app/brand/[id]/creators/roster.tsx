@@ -27,6 +27,7 @@ import {
   spacing,
   text as textTokens,
 } from "../../../../src/constants/designSystem";
+import { ProgramBackBar } from "../../../../src/components/programs/ProgramBackBar";
 
 type InvitedMember = { id?: unknown };
 
@@ -165,7 +166,7 @@ export default function CreatorRoster(): React.ReactElement {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen options={{ headerShown: false }} /><ProgramBackBar title="My creators" fallback={`/brand/${id}/creators`} />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>MY CREATORS</Text>
         <Text style={styles.heading}>Keep every creator relationship together.</Text>

@@ -201,8 +201,11 @@ BEGIN
     RAISE EXCEPTION 'creator_account_required' USING ERRCODE='P0002';
   END IF;
   SELECT verification='verified' INTO v_was_verified FROM public.creator_profiles WHERE creator_account_id=v_id;
-  INSERT INTO public.creator_profiles(creator_account_id,display_name,bio,home_city_id,niches,languages,date_of_birth,usage_ads_opt_in)
-  VALUES(v_id,btrim(p_display_name),nullif(btrim(p_bio),''),p_home_city_id,coalesce(p_niches,'{}'),coalesce(p_languages,'{}'),p_date_of_birth,coalesce(p_usage_ads_opt_in,false))
+  -- Saving a Creator profile is how a person switches Creator mode on. Hosts
+  -- still see them only once verification also passes; a later pause control
+  -- owns turning the mode back off, so an update never resets it here.
+  INSERT INTO public.creator_profiles(creator_account_id,display_name,bio,home_city_id,niches,languages,date_of_birth,usage_ads_opt_in,mode_enabled)
+  VALUES(v_id,btrim(p_display_name),nullif(btrim(p_bio),''),p_home_city_id,coalesce(p_niches,'{}'),coalesce(p_languages,'{}'),p_date_of_birth,coalesce(p_usage_ads_opt_in,false),true)
   ON CONFLICT(creator_account_id) DO UPDATE SET
     display_name=excluded.display_name,bio=excluded.bio,home_city_id=excluded.home_city_id,
     niches=excluded.niches,languages=excluded.languages,date_of_birth=excluded.date_of_birth,

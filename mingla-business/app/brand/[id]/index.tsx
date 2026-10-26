@@ -178,6 +178,9 @@ export default function BrandProfileRoute(): React.ReactElement {
     router.push(`/brand/${brandId}/discounts` as never);
   };
 
+  const handleOpenCreators = (brandId: string): void => {
+    router.push(`/brand/${brandId}/creators` as never);
+  };
   const handleOpenReferrals = (brandId: string): void => {
     router.push(`/brand/${brandId}/referrals` as never);
   };
@@ -281,6 +284,7 @@ export default function BrandProfileRoute(): React.ReactElement {
         onPricingDefaults={handleOpenPricingDefaults}
         onDiscounts={handleOpenDiscounts}
         onReferrals={handleOpenReferrals}
+        onCreators={handleOpenCreators}
         onReports={handleOpenReports}
         onAuditLog={handleOpenAuditLog}
         onWebsite={handleOpenWebsite}

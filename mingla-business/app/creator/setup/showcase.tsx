@@ -6,6 +6,7 @@ import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { chooseAndUploadCreatorShowcase } from "../../../src/services/creatorMediaService";
 import { accent, canvas, glass, radius, spacing, text as textTokens } from "../../../src/constants/designSystem";
+import { ProgramBackBar } from "../../../src/components/programs/ProgramBackBar";
 
 export default function CreatorShowcaseUploadScreen(): React.ReactElement {
   const router = useRouter();
@@ -24,7 +25,7 @@ export default function CreatorShowcaseUploadScreen(): React.ReactElement {
     } finally { setBusy(false); }
   };
   return <SafeAreaView style={styles.safe} edges={["top","bottom"]}>
-    <Stack.Screen options={{ headerShown: false }} />
+    <Stack.Screen options={{ headerShown: false }} /><ProgramBackBar title="Showcase video" fallback="/creator/setup" />
     <View style={styles.page}>
       <Text style={styles.eyebrow}>SHOWCASE</Text>
       <Text style={styles.heading}>One strong sample is enough.</Text>

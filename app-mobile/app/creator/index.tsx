@@ -4,7 +4,7 @@ import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CREATOR_FORMATS, creatorProgramService, type CreatorSetupStatus } from '../../src/services/creatorProgramService';
 import { creatorGigsService, type PublicGig } from '../../src/services/creatorGigsService';
-import { ProgramButton, ProgramCard, ProgramChip, programStyles as s } from '../../src/components/programs/ProgramUi';
+import { ProgramButton, ProgramHeader, ProgramCard, ProgramChip, programStyles as s } from '../../src/components/programs/ProgramUi';
 
 type Home = Awaited<ReturnType<typeof creatorGigsService.home>>;
 export default function CreatorHomeScreen(): React.ReactElement {
@@ -24,7 +24,7 @@ export default function CreatorHomeScreen(): React.ReactElement {
   }, [format]);
   useEffect(() => { void load(); }, [load]);
   const ready = setup?.verification === 'verified';
-  return <SafeAreaView style={s.safe}><Stack.Screen options={{ headerShown: false }} /><ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor="#eb7825" />}>
+  return <SafeAreaView style={s.safe}><Stack.Screen options={{ headerShown: false }} /><ProgramHeader title="Mingla Creator" /><ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor="#eb7825" />}>
     <Text style={s.eyebrow}>MINGLA CREATOR</Text><Text style={s.heading}>Create. Get hired. Get paid.</Text>
     <Text style={s.lede}>Build your verified profile once, browse private-safe briefs, and manage every paid collaboration from offer to release.</Text>
     <ProgramCard><View style={s.row}><View style={{ flex: 1, gap: 4 }}><Text style={s.title}>{ready ? 'You’re ready for gigs' : 'Finish your Creator setup'}</Text><Text style={s.copy}>{ready ? 'Hosts can match your formats, price and city.' : `Still needed: ${(setup?.missing ?? ['profile']).join(', ')}.`}</Text></View><Text style={ready ? s.success : s.warning}>{ready ? 'READY' : 'SETUP'}</Text></View><ProgramButton label={ready ? 'Review setup' : 'Continue setup'} onPress={() => router.push('/creator/setup' as never)} secondary={ready} /></ProgramCard>

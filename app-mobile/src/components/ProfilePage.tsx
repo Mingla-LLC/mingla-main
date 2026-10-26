@@ -58,8 +58,6 @@ import { useTranslation } from 'react-i18next';
 import { useRouter } from "expo-router";
 import { PurchasesCard } from './profile/PurchasesCard';
 import { CreatorProgramsSection } from './profile/CreatorProgramsSection';
-import { PublicCreatorSection } from './profile/PublicCreatorSection';
-import { PublicLocalSection } from './profile/PublicLocalSection';
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -606,11 +604,9 @@ function ProfilePage({
             <BrandsYouFollowSection />
           </GlassCard>
 
-          {user?.id ? <PublicCreatorSection userId={user.id} /> : null}
-          {user?.id ? <PublicLocalSection userId={user.id} /> : null}
-
           <GlassCard variant="base">
             <CreatorProgramsSection
+              userId={user?.id ?? null}
               onOpenCreator={() => router.push('/creator' as never)}
               onOpenLocal={() => router.push('/local' as never)}
             />
@@ -620,7 +616,7 @@ function ProfilePage({
           <GlassCard variant="base">
             <Text style={styles.cardTitle}>{t('profile:page.account_section')}</Text>
             <SettingsRow
-              icon="gift"
+              icon="gift-outline"
               label="Earnings & rewards"
               description="Referral rewards, vouchers, perks and payout account"
               showChevron

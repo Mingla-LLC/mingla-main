@@ -9,6 +9,7 @@ import { GlassCard } from "../../src/components/ui/GlassCard";
 import { CREATOR_FORMATS } from "../../src/services/creatorProgramContract";
 import { creatorGigsService, type PublicGig } from "../../src/services/creatorGigsService";
 import { accent, canvas, glass, radius, spacing, text as textTokens } from "../../src/constants/designSystem";
+import { ProgramBackBar } from "../../src/components/programs/ProgramBackBar";
 
 export default function CreatorHub(): React.ReactElement {
   const router = useRouter();
@@ -46,7 +47,7 @@ export default function CreatorHub(): React.ReactElement {
     await AsyncStorage.setItem("mingla.creator.savedGigs", JSON.stringify(next));
   };
   return <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-    <Stack.Screen options={{ headerShown: false }} />
+    <Stack.Screen options={{ headerShown: false }} /><ProgramBackBar title="Creator hub" fallback="/(tabs)/home" />
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={styles.eyebrow}>CREATOR HUB</Text><Text style={styles.heading}>Paid briefs near you.</Text>
       <Text style={styles.lede}>Brands stay private until you accept a funded offer. Your contact details stay private too.</Text>
