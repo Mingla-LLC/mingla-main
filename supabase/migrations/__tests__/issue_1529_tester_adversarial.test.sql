@@ -315,6 +315,11 @@ DECLARE
     'issue_3720_community_add_comment',
     'issue_4073_scan_city_watches',
     'tg_venue_orders_a4063_receipt',
+    -- [TEST-MOD-APPROVED #4063] Wave 5 adds two recipient-contact producers.
+    -- Both decide country_code at enqueue and have owning PostgreSQL behavior
+    -- suites, so the broad adversarial catalog must classify them as populating.
+    'biz_door_sale_record',
+    'pg_ticket_offer_to_friend',
     'create_support_ticket'
   ];
   -- Bucket 2: producers exempt because their rows belong to the source-refund

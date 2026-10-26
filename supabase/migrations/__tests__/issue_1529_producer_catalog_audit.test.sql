@@ -74,9 +74,14 @@ $vacuity$;
 -- the normalized country stored on the durable watch, raising 18 -> 19.
 -- [TEST-MOD-APPROVED #4063] Buyer venue-order receipts add one explicitly
 -- country-aware SMS producer, raising 19 -> 20.
--- (2) RATCHET — raised 12 -> 18 for #3988, 18 -> 19 for #4073, and 19 -> 20
---     for #4063. The floor is the number that ACTUALLY
---     exists in the catalog, so a producer DISAPPEARING is caught as well as
+-- [TEST-MOD-APPROVED #4063] Door-sale receipts and ticket send-to-friend add
+-- two explicitly country-aware producers, raising 20 -> 22. Their owning
+-- registered PostgreSQL suites exercise the SMS legs and assert the derived
+-- country; email-only delivery writes an explicit NULL.
+-- (2) RATCHET — raised 12 -> 18 for #3988, 18 -> 19 for #4073, 19 -> 20 for
+--     the buyer venue-order receipt, and 20 -> 22 for #4063 Wave 5.
+--     The floor is the number that ACTUALLY exists in the catalog, so a
+--     producer DISAPPEARING is caught as well as
 --     one appearing. At the old floor of 8 any of #3720's three new producers
 --     could have vanished unnoticed.
 -- ---------------------------------------------------------------------------
@@ -85,9 +90,9 @@ DECLARE
   v_count integer;
 BEGIN
   SELECT count(*) INTO v_count FROM issue_1529_discovered_producers;
-  IF v_count < 20 THEN
+  IF v_count < 22 THEN
     RAISE EXCEPTION
-      'issue_1529_producer_floor_breached_expected_at_least_20_got_%', v_count;
+      'issue_1529_producer_floor_breached_expected_at_least_22_got_%', v_count;
   END IF;
 END;
 $ratchet$;
@@ -120,6 +125,9 @@ $ratchet$;
 --       issue_4073_scan_city_watches        → copies the normalized country_code
 --                                             from the durable city watch
 --       tg_venue_orders_a4063_receipt       → mingla_e164_country(NEW.buyer_phone_e164)
+--       biz_door_sale_record                → mingla_e164_country(v_phone)
+--       pg_ticket_offer_to_friend           → explicit NULL on email;
+--                                             mingla_e164_country(v_phone) on SMS
 --
 --     DRAIN-DERIVED — emits source-refund-pool rows carrying contact NULL by
 --     #1221's privacy design, so the recipient (and therefore the country) can
@@ -153,7 +161,9 @@ DECLARE
     'issue_3720_admin_update_idea',
     'issue_3720_admin_question_action',
     'issue_4073_scan_city_watches',
-    'tg_venue_orders_a4063_receipt'
+    'tg_venue_orders_a4063_receipt',
+    'biz_door_sale_record',
+    'pg_ticket_offer_to_friend'
   ];
   drain_derived text[] := ARRAY[
     'admin_request_source_refund_attention_recovery'

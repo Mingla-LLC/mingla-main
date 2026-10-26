@@ -18,7 +18,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { claimJson } from "../_shared/attendanceClaim.ts";
-import { ticketCorsHeaders } from "../_shared/ticketCheckout.ts";
+import { qrTokenPepper, ticketCorsHeaders } from "../_shared/ticketCheckout.ts";
 
 type Outcome =
   | "success"
@@ -94,17 +94,37 @@ serve(async (req) => {
       });
     }
 
+    // Resolve the QR authority before either claim RPC. A missing production
+    // secret must not produce a half-sweep where ordinary attendance attaches
+    // but offered tickets cannot rotate their credential.
+    const transferPepper = qrTokenPepper();
     const { data, error } = await admin.rpc(
       "claim_attendance_by_verified_identity",
       { p_user_id: authData.user.id },
     );
     if (error) throw error;
 
+    const { data: transferData, error: transferError } = await admin.rpc(
+      "issue_4063_claim_offered_tickets",
+      {
+        p_user_id: authData.user.id,
+        p_qr_token_pepper: transferPepper,
+      },
+    );
+    if (transferError) throw transferError;
+
     const result = data as {
       claimed?: Array<Record<string, unknown>>;
       more?: boolean;
     } | null;
-    const claimed = Array.isArray(result?.claimed) ? result.claimed : [];
+    const transferResult = transferData as {
+      claimed?: Array<Record<string, unknown>>;
+      more?: boolean;
+    } | null;
+    const claimed = [
+      ...(Array.isArray(result?.claimed) ? result.claimed : []),
+      ...(Array.isArray(transferResult?.claimed) ? transferResult.claimed : []),
+    ];
     const eventIds = claimed.flatMap((entry) =>
       entry.kind === "order" && typeof entry.eventId === "string"
         ? [entry.eventId]
@@ -135,7 +155,7 @@ serve(async (req) => {
       eventIds,
       claims,
       claimed,
-      more: result?.more === true,
+      more: result?.more === true || transferResult?.more === true,
     });
   } catch {
     outcome = "internal_error";

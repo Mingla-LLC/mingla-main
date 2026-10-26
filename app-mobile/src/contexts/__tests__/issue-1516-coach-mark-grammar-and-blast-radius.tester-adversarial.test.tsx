@@ -89,7 +89,7 @@ const STEPS_PATH = path.join(ROOT, 'src/constants/coachMarkSteps.ts');
 const SKIP_STATE_PATH = path.join(ROOT, 'src/contexts/coachMarkSkipState.ts');
 const APP_INDEX_PATH = path.join(ROOT, 'app/index.tsx');
 const MIGRATION_PATH = path.join(
-  ROOT, '..', 'supabase/migrations/20270210001516_issue_1516_normalize_coach_mark_step_grammar.sql',
+  ROOT, '..', 'supabase/migrations/20271221004063_issue_4063_purchase_coach_step.sql',
 );
 
 const USER_A = 'a1516aaa-0000-4000-8000-00000000000a';
@@ -609,34 +609,31 @@ async function run() {
 
       // (b) THE TRIPWIRE. Because (a) holds, bumping the tour without shipping a
       //     matching migration silently re-opens the tour for every completed user.
+      // [TEST-MOD-APPROVED #4063] Purchases is now a first-class coach step and
+      // the same PR carries the semantic 8..12 -> 9..13 data reconciliation.
       assert.equal(
-        N, 11,
+        N, 12,
         'T-4 TRIPWIRE: COACH_STEP_COUNT changed. TOUR_COMPLETED is DERIVED ' +
         '(COACH_STEP_COUNT + 1), the ORCH-0635 runtime normalization branch was deleted by ' +
         'issue #1516, and nothing at runtime repairs a stored value any more. Every row ' +
         'holding the OLD TOUR_COMPLETED will be read back as an IN-PROGRESS step and those ' +
         'users will be dragged back into the tour. Ship a data migration in the SAME PR that ' +
-        'moves this count (see supabase/migrations/20270210001516_*.sql for the pattern), ' +
+        'moves this count (see the issue #4063 Purchases-step migration for the pattern), ' +
         'then update this pin and the column comment together.',
       );
 
       // (c) The shipped migration must agree with the live constant, or the reconciliation
       //     that (b) demands was written against a different tour than the one that ships.
       const migration = fs.readFileSync(MIGRATION_PATH, 'utf8');
-      const m = migration.match(/v_tour_completed\s+CONSTANT\s+integer\s*:=\s*(-?\d+)\s*;/);
-      assert.ok(m, 'T-4: cannot find v_tour_completed in the #1516 migration — has it been renamed?');
-      assert.equal(
-        Number(m[1]), TOUR_COMPLETED,
-        `T-4: the #1516 migration normalizes to ${m[1]} but the live runtime's TOUR_COMPLETED ` +
-        `is ${TOUR_COMPLETED} (COACH_STEP_COUNT ${N} + 1). The data reconciliation and the ` +
-        `runtime disagree about what "completed" means.`,
+      assert.match(
+        migration,
+        /WHEN\s+12\s+THEN\s+13/,
+        `T-4: the reconciliation must move the old terminal 12 to live TOUR_COMPLETED ${TOUR_COMPLETED}.`,
       );
-      assert.ok(
-        /coach_mark_step\s*>\s*v_tour_completed/.test(migration) &&
-        /coach_mark_step\s*<\s*v_tour_skipped/.test(migration),
-        'T-4: the migration no longer catches BOTH out-of-grammar directions ' +
-        '(> completed and < skipped) by VALUE. Rows like 13 are then reachable only by the ' +
-        'timestamp predicate, which does not cover them.',
+      assert.match(
+        migration,
+        /coach_mark_step\s*<\s*-1\s+OR\s+coach_mark_step\s*>\s*12/,
+        'T-4: the semantic migration must fail closed when a row is outside the reviewed old grammar.',
       );
     }
 

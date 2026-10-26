@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/notify-outbox-drain/__tests__/issue_4063_purchase_reminder_deep_link.test.ts",
+  "lane": "notification-deno",
+  "orderKey": "issue-4063-purchase-reminder-deep-link",
+  "profile": "deno-1.46-notification"
+}

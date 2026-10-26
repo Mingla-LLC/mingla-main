@@ -4,11 +4,13 @@
  * A host puts people on the guest list without checkout. Each person gets a
  * REAL free ticket with a QR code, emailed through the standard free-ticket
  * confirmation. Guest-list tickets take a place (capacity, going) but are never
- * sales.
+ * sales. Delivery can use email or mobile; an explicit name-only escape hatch
+ * leaves the ticket available to door staff without sending a link.
  *
- * Rows: Name*, Email, Phone, and named plus-ones. A plus-one with a name is
- * their own ticket and email; a blank plus-one is one extra ticket in the
- * guest's own email. Paste mode turns "Name, email, party size" lines into rows.
+ * Rows: Name*, one classified mobile-or-email contact, and named plus-ones. A
+ * plus-one with a name is their own ticket; a blank plus-one is one extra
+ * ticket held by the lead guest. Paste mode turns
+ * "Name, email or mobile, party size" lines into rows.
  *
  * Server: guest-list edge function `issue` → biz_comp_issue. One
  * clientRequestId per submission, reused on every retry, so nobody is added
@@ -49,8 +51,9 @@ import type {
 
 import { Button } from "../ui/Button";
 import { Pill } from "../ui/Pill";
-import { PhoneField, usePhoneEntry } from "../ui/PhoneField";
+import { usePhoneEntry } from "../ui/PhoneField";
 import { Sheet } from "../ui/Sheet";
+import { postHogService } from "../../services/postHogService";
 
 // issue #3827 — the guest-list client loads on first use, so it stays out of
 // the business-web boot chunk (__common ceiling, orch-1083).
@@ -100,9 +103,9 @@ interface PhoneValue {
 interface PersonDraft {
   key: string;
   name: string;
-  email: string;
+  contact: string;
+  nameOnly: boolean;
   phone: PhoneValue;
-  initialPhone: string;
   /** Set once the server answered for this person. */
   outcome: "added" | "failed" | null;
   failCopy: string | null;
@@ -124,15 +127,18 @@ const nextKey = (): string => {
 const emptyPerson = (seed?: Partial<PersonDraft>): PersonDraft => ({
   key: nextKey(),
   name: seed?.name ?? "",
-  email: seed?.email ?? "",
-  phone: { e164: null, isEmpty: (seed?.initialPhone ?? "").trim().length === 0 },
-  initialPhone: seed?.initialPhone ?? "",
+  contact: seed?.contact ?? "",
+  nameOnly: seed?.nameOnly ?? false,
+  phone: { e164: null, isEmpty: (seed?.contact ?? "").trim().length === 0 },
   outcome: null,
   failCopy: null,
 });
 
 const emptyGuest = (seed?: { name?: string; email?: string; phone?: string; plusOnes?: number; legacyId?: string }): GuestDraft => ({
-  ...emptyPerson({ name: seed?.name, email: seed?.email, initialPhone: seed?.phone }),
+  ...emptyPerson({
+    name: seed?.name,
+    contact: seed?.email?.trim() || seed?.phone?.trim() || "",
+  }),
   index: null,
   plusOnes: Array.from({ length: seed?.plusOnes ?? 0 }, () => emptyPerson()),
   legacyId: seed?.legacyId ?? null,
@@ -148,9 +154,10 @@ const newRequestId = (): string => {
   });
 };
 
-const trimmedEmail = (person: PersonDraft): string => person.email.trim().toLowerCase();
+const trimmedEmail = (person: PersonDraft): string =>
+  person.contact.includes("@") ? person.contact.trim().toLowerCase() : "";
 const isBlankPerson = (person: PersonDraft): boolean =>
-  person.name.trim() === "" && person.email.trim() === "" && person.phone.isEmpty;
+  person.name.trim() === "" && person.contact.trim() === "";
 
 // ---- Validation -----------------------------------------------------------
 
@@ -169,7 +176,7 @@ export const validatePerson = (person: PersonDraft, isPlusOne: boolean): PersonE
   const email = trimmedEmail(person);
   const out: PersonErrors = { ...NO_ERRORS };
   if (isPlusOne) {
-    if (name === "" && (email !== "" || !person.phone.isEmpty)) {
+    if (name === "" && person.contact.trim() !== "") {
       out.plusOne = "Add their name, or leave all three empty.";
     }
   } else if (name === "") {
@@ -179,8 +186,17 @@ export const validatePerson = (person: PersonDraft, isPlusOne: boolean): PersonE
   if (email !== "" && (email.length > EMAIL_MAX || !EMAIL_RE.test(email))) {
     out.email = "That email doesn't look right.";
   }
-  if (!person.phone.isEmpty && person.phone.e164 === null) {
+  if (
+    person.contact.trim() !== "" && email === "" &&
+    person.phone.e164 === null
+  ) {
     out.phone = "Use a full phone number with country code.";
+  }
+  if (
+    name !== "" && person.contact.trim() === "" && !person.nameOnly &&
+    (!isPlusOne || !isBlankPerson(person))
+  ) {
+    out.phone = "Add a mobile or email, or tick \"Name only\".";
   }
   return out;
 };
@@ -195,7 +211,7 @@ const peopleInGuest = (guest: GuestDraft): number => 1 + guest.plusOnes.length;
 // ---- Paste mode ------------------------------------------------------------
 
 export interface PasteParse {
-  guests: Array<{ name: string; email: string; partySize: number }>;
+  guests: { name: string; contact: string; partySize: number }[];
   errors: string[];
 }
 
@@ -207,15 +223,11 @@ export const parseGuestPaste = (text: string): PasteParse => {
     if (line === "") return;
     const parts = line.split(/[,\t;]/).map((p) => p.trim());
     const name = parts[0] ?? "";
-    const email = (parts[1] ?? "").toLowerCase();
+    const contact = parts[1] ?? "";
     const partyRaw = parts[2] ?? "";
     const lineNo = i + 1;
     if (name === "") {
       errors.push(`Line ${lineNo}: add a name`);
-      return;
-    }
-    if (email !== "" && !EMAIL_RE.test(email)) {
-      errors.push(`Line ${lineNo}: that email doesn't look right`);
       return;
     }
     let partySize = 1;
@@ -227,7 +239,7 @@ export const parseGuestPaste = (text: string): PasteParse => {
       }
       partySize = n;
     }
-    guests.push({ name, email, partySize });
+    guests.push({ name, contact, partySize });
   });
   return { guests, errors };
 };
@@ -302,12 +314,9 @@ const PersonFields: React.FC<PersonFieldsProps> = ({
 }) => {
   const phone = usePhoneEntry({ startCountries: [phoneStartCountryForCurrency(currency)] });
   const setPhoneText = phone.setText;
-  const seeded = useRef(false);
   useEffect(() => {
-    if (seeded.current) return;
-    seeded.current = true;
-    if (person.initialPhone.trim() !== "") setPhoneText(person.initialPhone.trim());
-  }, [person.initialPhone, setPhoneText]);
+    setPhoneText(person.contact.includes("@") ? "" : person.contact);
+  }, [person.contact, setPhoneText]);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   useEffect(() => {
@@ -324,14 +333,11 @@ const PersonFields: React.FC<PersonFieldsProps> = ({
   }
 
   const blank = isPlusOne && isBlankPerson(person);
-  const nameOnly = person.name.trim() !== "" && trimmedEmail(person) === "";
   let caption: string | null = null;
   if (isPlusOne && blank) {
-    caption = `No name: their QR code goes in ${guestName.trim() === "" ? "this guest" : guestName.trim()}'s email.`;
-  } else if (nameOnly) {
-    caption = isPlusOne
-      ? "No email: door staff can find them by name."
-      : "No email: they won't get a ticket by email. Door staff can find them by name.";
+    caption = `No name: their ticket goes to ${guestName.trim() === "" ? "this guest" : guestName.trim()}.`;
+  } else if (person.nameOnly) {
+    caption = "No contact: they won't get a ticket link. Door staff can find them by name.";
   }
 
   return (
@@ -372,39 +378,64 @@ const PersonFields: React.FC<PersonFieldsProps> = ({
         <View
           style={[
             styles.inputWrap,
-            ((showErrors || trimmedEmail(person).length > 4) && errors.email !== null) || errors.twice !== null
+            ((showErrors || trimmedEmail(person).length > 4) && errors.email !== null) ||
+                (showErrors && errors.phone !== null) || errors.twice !== null
               ? styles.inputError
               : null,
           ]}
         >
           <TextInput
-            value={person.email}
-            onChangeText={(email) => onChange({ email, failCopy: null })}
-            placeholder={isPlusOne ? "Email (optional, sends their own ticket)" : "Email (sends their ticket)"}
+            value={person.contact}
+            onChangeText={(contact) => onChange({ contact, failCopy: null })}
+            placeholder={isPlusOne ? "Mobile or email (optional, sends their own ticket)" : "Mobile or email"}
             placeholderTextColor={textTokens.quaternary}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
             maxLength={EMAIL_MAX}
             style={styles.input}
-            editable={!disabled}
-            accessibilityLabel={isPlusOne ? `${heading} email` : "Email"}
+            editable={!disabled && !person.nameOnly}
+            accessibilityLabel={
+              isPlusOne
+                ? `${heading} mobile or email, optional`
+                : "Mobile or email, required"
+            }
           />
         </View>
         {(showErrors || trimmedEmail(person).length > 4) && errors.email !== null ? (
           <Text style={styles.errorText}>{errors.email}</Text>
         ) : null}
         {errors.twice !== null ? <Text style={styles.errorText}>{errors.twice}</Text> : null}
+        {showErrors && errors.phone !== null ? (
+          <Text style={styles.errorText}>{errors.phone}</Text>
+        ) : null}
+        <Text style={styles.caption}>
+          {isPlusOne
+            ? "Add a mobile or email to send their own ticket."
+            : "They'll get a text or email with a link to their ticket."}
+        </Text>
       </View>
-      <View style={styles.fieldGroup}>
-        <PhoneField
-          entry={phone}
-          placeholder="Phone (optional)"
-          accessibilityLabel={isPlusOne ? `${heading} phone` : "Phone (optional)"}
+      {!blank ? (
+        <Pressable
+          onPress={() =>
+            onChange({
+              nameOnly: !person.nameOnly,
+              contact: "",
+              phone: { e164: null, isEmpty: true },
+              failCopy: null,
+            })}
           disabled={disabled}
-          showErrors={showErrors}
-        />
-      </View>
+          style={styles.checkboxRow}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: person.nameOnly, disabled }}
+          accessibilityLabel="Name only, check in at the door"
+        >
+          <View style={[styles.checkbox, person.nameOnly && styles.checkboxChecked]}>
+            <Text style={styles.checkboxMark}>{person.nameOnly ? "✓" : ""}</Text>
+          </View>
+          <Text style={styles.checkboxLabel}>Name only, check in at the door</Text>
+        </Pressable>
+      ) : null}
       {caption !== null ? <Text style={styles.caption}>{caption}</Text> : null}
     </View>
   );
@@ -511,7 +542,7 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
     const map = new Map<string, PersonErrors>();
     const seen = new Map<string, string>();
     for (const guest of guests) {
-      const people: Array<[PersonDraft, boolean]> = [[guest, false], ...guest.plusOnes.map((p): [PersonDraft, boolean] => [p, true])];
+      const people: [PersonDraft, boolean][] = [[guest, false], ...guest.plusOnes.map((p): [PersonDraft, boolean] => [p, true])];
       for (const [person, isPlusOne] of people) {
         const errors = person.outcome === "added" ? { ...NO_ERRORS } : validatePerson(person, isPlusOne);
         const email = trimmedEmail(person);
@@ -572,8 +603,10 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
     const parsed = parseGuestPaste(pasteText);
     setPasteErrors(parsed.errors);
     if (parsed.guests.length === 0) return;
-    const rows = parsed.guests.slice(0, MAX_GUESTS).map((g) =>
-      emptyGuest({ name: g.name, email: g.email, plusOnes: g.partySize - 1 }));
+    const rows = parsed.guests.slice(0, MAX_GUESTS).map((g) => ({
+      ...emptyGuest({ name: g.name, plusOnes: g.partySize - 1 }),
+      contact: g.contact,
+    }));
     setGuests((prev) => {
       const kept = prev.filter((g) => !isBlankPerson(g) || g.plusOnes.length > 0);
       return [...kept, ...rows].slice(0, MAX_GUESTS);
@@ -602,11 +635,13 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
       index: g.index as number,
       name: g.name.trim(),
       email: trimmedEmail(g) === "" ? null : trimmedEmail(g),
-      phoneE164: g.phone.e164,
+      phoneE164: trimmedEmail(g) === "" ? g.phone.e164 : null,
+      nameOnly: g.nameOnly,
       plusOnes: g.plusOnes.map((p) => ({
         name: p.name.trim() === "" ? null : p.name.trim(),
         email: trimmedEmail(p) === "" ? null : trimmedEmail(p),
-        phoneE164: p.phone.e164,
+        phoneE164: trimmedEmail(p) === "" ? p.phone.e164 : null,
+        nameOnly: p.name.trim() !== "" && p.nameOnly,
       })),
     }));
     submittedOnce.current = true;
@@ -667,6 +702,21 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
     const addedLegacyIds = nextGuests
       .filter((g) => g.outcome === "added" && g.legacyId !== null)
       .map((g) => g.legacyId as string);
+    const addedGuests = nextGuests.filter((g) => g.outcome === "added");
+    const hasEmail = addedGuests.some((g) => trimmedEmail(g) !== "");
+    const hasPhone = addedGuests.some(
+      (g) => trimmedEmail(g) === "" && g.phone.e164 !== null,
+    );
+    postHogService.capture("comp_guest_added", {
+      contact: hasEmail && hasPhone
+        ? "both"
+        : hasEmail
+          ? "email"
+          : hasPhone
+            ? "phone"
+            : "name_only",
+      plus_ones: addedGuests.reduce((sum, g) => sum + g.plusOnes.length, 0),
+    });
     onSuccess({ message: successToast(nextGuests, response), addedLegacyIds });
   }, [canSubmit, tier, guests, eventId, needsDate, eventDateId, note, queryClient, onSuccess]);
 
@@ -684,7 +734,7 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
       <View style={styles.body}>
         <Text style={styles.title} accessibilityRole="header">Add to guest list</Text>
         <Text style={styles.subhead}>
-          {"They get a free ticket with a QR code by email. Guest-list tickets take a place but aren't sales."}
+          {"They get a free ticket with a QR code. Send the link by text or email, or choose Name only for door check-in."}
         </Text>
 
         <ScrollView
@@ -775,7 +825,7 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
                 <TextInput
                   value={pasteText}
                   onChangeText={setPasteText}
-                  placeholder="One guest per line: Name, email, party size"
+                  placeholder="One guest per line: Name, email or mobile, party size"
                   placeholderTextColor={textTokens.quaternary}
                   multiline
                   numberOfLines={6}
@@ -897,21 +947,25 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
 
 const successToast = (guests: GuestDraft[], response: GuestListIssueResponse): string => {
   const sent = guests.filter((g) => g.outcome === "added");
-  const emailed = response.results.some((r) => r.status === "added" && r.emailQueued);
+  const notified = response.results.some(
+    (r) => r.status === "added" && (r.emailQueued || r.smsQueued),
+  );
   if (sent.length === 1) {
     const g = sent[0];
     const plusOnes = g.plusOnes.length;
     if (plusOnes > 0) {
-      return `${g.name.trim()} and ${plusOnes} plus-one${plusOnes === 1 ? "" : "s"} are on the guest list. Tickets emailed.`;
+      return notified
+        ? `${g.name.trim()} and ${plusOnes} plus-one${plusOnes === 1 ? "" : "s"} are on the guest list. Tickets sent.`
+        : `${g.name.trim()} and ${plusOnes} plus-one${plusOnes === 1 ? "" : "s"} are on the guest list. No contact: find them by name at the door.`;
     }
-    return trimmedEmail(g) === ""
-      ? `${g.name.trim()} is on the guest list. No email: find them by name at the door.`
-      : `${g.name.trim()} is on the guest list. Ticket emailed.`;
+    return notified
+      ? `${g.name.trim()} is on the guest list. Ticket sent.`
+      : `${g.name.trim()} is on the guest list. No contact: find them by name at the door.`;
   }
   const people = sent.reduce((sum, g) => sum + peopleInGuest(g), 0);
-  return emailed
-    ? `${people} guests added. Tickets emailed.`
-    : `${people} guests added. No emails: find them by name at the door.`;
+  return notified
+    ? `${people} guests added. Tickets sent.`
+    : `${people} guests added. No contact: find them by name at the door.`;
 };
 
 const styles = StyleSheet.create({
@@ -1070,6 +1124,35 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     marginTop: 4,
     marginBottom: spacing.xs,
+  },
+  checkboxRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: glass.border.profileElevated,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxChecked: {
+    borderColor: accent.warm,
+    backgroundColor: accent.warm,
+  },
+  checkboxMark: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  checkboxLabel: {
+    flex: 1,
+    color: textTokens.secondary,
+    fontSize: 13,
   },
   textButton: {
     minHeight: 44,

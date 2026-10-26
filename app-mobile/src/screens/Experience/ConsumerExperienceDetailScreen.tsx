@@ -102,6 +102,7 @@ import {
 import TicketCartSheet, {
   type TicketCartCheckoutPayload,
 } from "../../components/expandedCard/TicketCartSheet";
+import { NativeCheckoutSentSheet } from "../../components/purchases/NativeCheckoutSentSheet";
 import {
   ExperienceOccurrencePicker,
   type ExperienceOccurrence,
@@ -124,7 +125,7 @@ import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
 import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
 import { useFollowerCountLabels } from "../../hooks/useFollowerCountLabels";
 import { useEventTheme } from "../../hooks/useEventTheme";
-import { circleKeys, socialProofKeys } from "../../hooks/queryKeys";
+import { circleKeys, purchaseKeys, socialProofKeys } from "../../hooks/queryKeys";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338).
 import { fetchSocialProof } from "../../services/socialProofService";
 import { postHogService } from "../../services/postHogService";
@@ -134,6 +135,7 @@ import {
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
 import { useNativeCheckoutRecovery } from "../../payments/useNativeCheckoutRecovery";
+import { resolveNativeCheckoutLanding } from "../../payments/nativeCheckoutLanding";
 import { captureNativePurchaseCompleted } from "../../payments/nativeCheckoutRecovery";
 import { resolveExplorerCheckoutContact } from "../../payments/explorerCheckoutContact.mjs";
 import { toastManager } from "../../components/ui/Toast";
@@ -283,6 +285,7 @@ export default function ConsumerExperienceDetailScreen({
   const [checkoutTerminalOutcome, setCheckoutTerminalOutcome] =
     useState<NativeCheckoutOutcome | null>(null);
   const terminalSuccessCloseRef = useRef<(() => void) | null>(null);
+  const [sentTicket, setSentTicket] = useState<{ buyerFirstName: string | null } | null>(null);
   const [muted, setMuted] = useState<boolean>(true);
   // issue #868 [cover-gallery], M.1b — single owner of the shown hero item (shared
   // by the cover pager + the row). Before the early-returns to preserve hook order.
@@ -355,16 +358,26 @@ export default function ConsumerExperienceDetailScreen({
   const runNativeCheckout = useNativeCheckoutFlow();
   const handleRecoveredCheckout = useCallback(
     (outcome: NativeCheckoutOutcome): void => {
+      if (outcome.outcome === "succeeded") {
+        queryClient.invalidateQueries({ queryKey: purchaseKeys.all });
+      }
       terminalSuccessCloseRef.current = outcome.outcome === "succeeded"
         ? () => {
-          setCartVisible(false);
-          onBack();
+          const landing = resolveNativeCheckoutLanding(
+            outcome.orderId,
+            outcome.attachedToAccount,
+          );
+          if (landing.kind === "sent") {
+            setSentTicket({ buyerFirstName: landing.buyerFirstName });
+          } else {
+            router.push(landing.href as never);
+          }
         }
         : null;
       setCheckoutTerminalOutcome(outcome);
       setCartVisible(true);
     },
-    [onBack],
+    [queryClient, router],
   );
   useNativeCheckoutRecovery({
     accountId: user?.id ?? null,
@@ -771,7 +784,6 @@ export default function ConsumerExperienceDetailScreen({
         void Haptics.notificationAsync(
           Haptics.NotificationFeedbackType.Success,
         );
-        toastManager.show("Reserved! Check your calendar.", "success");
         // issue #2265 — `onBack()` MOVED to handleCartCheckout, so navigation
         // happens strictly AFTER the sheet is dismissed. Navigating out from
         // under a still-visible sheet is the failure mode this ordering exists
@@ -781,6 +793,7 @@ export default function ConsumerExperienceDetailScreen({
           queryKey: ["businessEventOrders", userId],
         });
         queryClient.invalidateQueries({ queryKey: circleKeys.all });
+        queryClient.invalidateQueries({ queryKey: purchaseKeys.all });
         if (payload.totalCents > 0) {
           let attempts = 0;
           const interval = setInterval(() => {
@@ -874,8 +887,16 @@ export default function ConsumerExperienceDetailScreen({
       const result = await handleBuy(payload);
       if (result.outcome === "succeeded") {
         terminalSuccessCloseRef.current = () => {
-          setCartVisible(false);
-          onBack();
+          const landing = resolveNativeCheckoutLanding(
+            result.orderId,
+            result.attachedToAccount,
+            payload.buyer.name,
+          );
+          if (landing.kind === "sent") {
+            setSentTicket({ buyerFirstName: landing.buyerFirstName });
+          } else {
+            router.push(landing.href as never);
+          }
         };
         setCheckoutTerminalOutcome(result);
       } else if (
@@ -887,7 +908,7 @@ export default function ConsumerExperienceDetailScreen({
         setCheckoutTerminalOutcome(result);
       }
     },
-    [handleBuy, onBack],
+    [handleBuy, router],
   );
   const handleCartCancel = useCallback((): void => {
     const deferredSuccessClose = terminalSuccessCloseRef.current;
@@ -1555,6 +1576,12 @@ export default function ConsumerExperienceDetailScreen({
         onCancel={handleCartCancel}
         onTerminalRetry={() => setCheckoutTerminalOutcome(null)}
         onCheckout={handleCartCheckout}
+      />
+
+      <NativeCheckoutSentSheet
+        buyerFirstName={sentTicket?.buyerFirstName ?? null}
+        onDone={() => setSentTicket(null)}
+        visible={sentTicket !== null}
       />
 
       {/* ORCH-1341 — the "Who's going" guest-list sheet. Sibling root in the

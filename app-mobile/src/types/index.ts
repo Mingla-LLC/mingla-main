@@ -21,6 +21,7 @@ export interface User {
   show_preferences?: boolean;
   has_completed_onboarding?: boolean;
   onboarding_step?: number | null; // 0 = completed, 2-10 = current step
+  setup_deferred_at?: string | null;
   active?: boolean; // Account status (default true)
   photos?: string[]; // Up to 3 additional profile photo URLs
   gender?: string | null;

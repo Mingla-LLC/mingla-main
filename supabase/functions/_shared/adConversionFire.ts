@@ -430,13 +430,17 @@ async function resolveOrderContext(
   const { data: order, error } = await supabase
     .from("orders")
     .select(
-      "id, event_id, total_cents, currency, buyer_email, buyer_phone, payment_status",
+      "id, event_id, total_cents, currency, buyer_email, buyer_phone, payment_status, source",
     )
     .eq("id", orderId)
     .maybeSingle();
   if (error || !order) return null;
 
   const row = order as Record<string, unknown>;
+  // I-4063-DOOR-MONEY-ISOLATION: CAPI represents an online conversion. A host-
+  // collected door sale is durable purchase history, but it did not pass
+  // through Mingla checkout and must never be reported to an ad network.
+  if ((row.source ?? "online_checkout") !== "online_checkout") return null;
   // Resolve brand via events.brand_id (orders has no brand_id).
   let brandId: string | null = null;
   const minglaEventId = (row.event_id as string | null) ?? null;

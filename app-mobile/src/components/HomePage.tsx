@@ -15,6 +15,7 @@ import FriendRequestsModal from "./FriendRequestsModal";
 import { useNotifications, ServerNotification } from "../hooks/useNotifications";
 import { parseDeepLink, executeDeepLink, NavigationHandlers } from "../services/deepLinkService";
 import { clearNotificationBadge } from '../services/oneSignalService';
+import { FinishSetupGate } from './home/FinishSetupGate';
 
 // Animation duration constant for consistency
 const ANIMATION_DURATION = 400;
@@ -43,6 +44,8 @@ interface HomePageProps {
   // New V2 props
   userId?: string;
   onFriendAccepted?: () => void;
+  finishSetupRequired?: boolean;
+  onFinishSetup?: () => void;
 }
 
 function HomePage({
@@ -64,6 +67,8 @@ function HomePage({
   onNotificationNavigate,
   userId,
   onFriendAccepted,
+  finishSetupRequired = false,
+  onFinishSetup,
 }: HomePageProps) {
   // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
   // Tap a different tab — only that tab should log. Hidden tabs MUST NOT log.
@@ -184,7 +189,10 @@ function HomePage({
           />
 
           <View style={styles.deckWrapper}>
-            <SwipeableCards
+            {finishSetupRequired ? (
+              <FinishSetupGate onContinue={() => onFinishSetup?.()} />
+            ) : (
+              <SwipeableCards
               userPreferences={userPreferences}
               accountPreferences={accountPreferences}
               boardsSessions={[]}
@@ -201,7 +209,8 @@ function HomePage({
               refreshKey={refreshKey}
               savedCards={savedCards}
               coachDeckRef={coachDeck.targetRef}
-            />
+              />
+            )}
           </View>
         </View>
 

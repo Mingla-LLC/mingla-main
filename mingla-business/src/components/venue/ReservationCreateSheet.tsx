@@ -141,7 +141,7 @@ export function ReservationCreateSheet({
   const slotsQuery = useAvailableSlots(brandId, venueId, date, partySize);
   const slots = slotsQuery.data ?? [];
 
-  const phoneValid = phone.isEmpty || phone.e164 !== null;
+  const phoneValid = phone.e164 !== null;
   const canSave =
     guestName.trim().length > 0 &&
     slotIso !== null &&
@@ -206,6 +206,17 @@ export function ReservationCreateSheet({
             accessibilityLabel="Guest name"
             testID="reservation-guest-name"
           />
+          <Text style={styles.groupLabel}>Guest&apos;s mobile *</Text>
+          <PhoneField
+            entry={phone}
+            required
+            placeholder="Guest's mobile"
+            accessibilityLabel="Guest's mobile number, required"
+            testID="reservation-phone"
+          />
+          <Text style={styles.helper}>
+            We&apos;ll text them a link to their booking.
+          </Text>
 
           <Text style={styles.groupLabel}>Party size</Text>
           <View style={styles.stepper}>
@@ -379,13 +390,7 @@ export function ReservationCreateSheet({
             })}
           </View>
 
-          <Text style={styles.groupLabel}>Contact &amp; details (optional)</Text>
-          <PhoneField
-            entry={phone}
-            placeholder="Guest's phone"
-            accessibilityLabel="Guest's phone number"
-            testID="reservation-phone"
-          />
+          <Text style={styles.groupLabel}>Details (optional)</Text>
           <Input
             value={occasion}
             onChangeText={setOccasion}

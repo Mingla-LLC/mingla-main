@@ -20,7 +20,7 @@
  * Per Cycle 12 SPEC §4.4.
  */
 
-import type { DoorSaleLine } from "../store/doorSalesStore";
+import type { DoorSaleLine } from "../types/doorSales";
 
 export interface ExpandedDoorTicket {
   /** dt_<saleSuffix>_<lineIdx>_<seatIdx> */

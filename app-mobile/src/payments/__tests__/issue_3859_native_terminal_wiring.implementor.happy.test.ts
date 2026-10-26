@@ -41,11 +41,14 @@ describe("#3859 Explorer terminal and recovery wiring", () => {
       "screens/Experience/ConsumerExperienceDetailScreen.tsx",
     ]) {
       const source = read(screen);
+      // [TEST-MOD-APPROVED #4063] Success now prepares the canonical Purchases
+      // landing before exposing the terminal outcome. Keep the ordering guard,
+      // with enough room for that reviewed route-selection block.
       expect(source).toMatch(
-        /terminalSuccessCloseRef\.current = outcome\.outcome === "succeeded"[\s\S]{0,240}setCheckoutTerminalOutcome\(outcome\)/,
+        /terminalSuccessCloseRef\.current = outcome\.outcome === "succeeded"[\s\S]{0,900}setCheckoutTerminalOutcome\(outcome\)/,
       );
       expect(source).toMatch(
-        /result\.outcome === "succeeded"[\s\S]{0,240}terminalSuccessCloseRef\.current = [\s\S]{0,180}setCheckoutTerminalOutcome\(result\)/,
+        /result\.outcome === "succeeded"[\s\S]{0,900}terminalSuccessCloseRef\.current = [\s\S]{0,900}setCheckoutTerminalOutcome\(result\)/,
       );
       expect(source).toContain("deferredSuccessClose?.()");
     }

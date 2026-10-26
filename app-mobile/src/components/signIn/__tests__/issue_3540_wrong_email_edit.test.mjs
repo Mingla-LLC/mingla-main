@@ -28,7 +28,7 @@ test("the code step names the exact normalized inbox that received the code", ()
   assert.match(send, /setEmailAddress\(address\);\s*setEmailStep\("code"\)/);
   assert.match(
     code,
-    /We emailed a 6-digit code to \$\{[\s\S]*?emailAddress\.trim\(\)\.toLowerCase\(\)[\s\S]*?\}\./,
+    /t\("auth:email\.codeSentTo",\s*\{[\s\S]*?email:\s*emailAddress,[\s\S]*?defaultValue:\s*`Enter the 6-digit code we sent to \$\{emailAddress\}\.`,/,
   );
 });
 

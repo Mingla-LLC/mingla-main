@@ -171,6 +171,7 @@ export interface GuestListPlusOneInput {
   name: string | null;
   email: string | null;
   phoneE164: string | null;
+  nameOnly: boolean;
 }
 
 export interface GuestListGuestInput {
@@ -178,6 +179,7 @@ export interface GuestListGuestInput {
   name: string;
   email: string | null;
   phoneE164: string | null;
+  nameOnly: boolean;
   plusOnes: GuestListPlusOneInput[];
 }
 

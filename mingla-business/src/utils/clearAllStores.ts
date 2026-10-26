@@ -24,7 +24,6 @@ import { useLiveEventStore } from "../store/liveEventStore";
 import { useOrderStore } from "../store/orderStore";
 import { useScanStore } from "../store/scanStore";
 import { useScannerInvitationsStore } from "../store/scannerInvitationsStore";
-import { useDoorSalesStore } from "../store/doorSalesStore";
 import { useBrandTeamStore } from "../store/brandTeamStore";
 import { useNotificationPrefsStore } from "../store/notificationPrefsStore";
 import { useLiveSectionCollapseStore } from "../store/liveSectionCollapseStore";
@@ -45,7 +44,6 @@ export const clearAllStores = (): void => {
   useGuestStore.getState().reset(); // NEW Cycle 10 — Constitution #6
   useScanStore.getState().reset(); // NEW Cycle 11 — Constitution #6
   useScannerInvitationsStore.getState().reset(); // NEW Cycle 11 — Constitution #6
-  useDoorSalesStore.getState().reset(); // NEW Cycle 12 — Constitution #6
   useBrandTeamStore.getState().reset(); // NEW Cycle 13a — Constitution #6
   useNotificationPrefsStore.getState().reset(); // NEW Cycle 14 — Constitution #6
   useLiveSectionCollapseStore.getState().reset(); // NEW ORCH-1143 — Constitution #6 (live-section accordion collapse)

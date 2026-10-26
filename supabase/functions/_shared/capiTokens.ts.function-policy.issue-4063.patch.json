@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "kind": "shared-module-policy-patch",
+  "ownerIssue": "#4063",
+  "target": {
+    "kind": "shared_module",
+    "module_path": "supabase/functions/_shared/capiTokens.ts"
+  },
+  "basePolicySha256": "1908b55853cb511cf810ab992c83aedb94ef74c105d28d466a10747bf2245588",
+  "operations": [
+    {
+      "op": "remove_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@33438:deps.getToken:grouped_reference:deps.getToken",
+      "expectedPresent": true
+    },
+    {
+      "op": "remove_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@37074:deps.getToken:grouped_reference:deps.getToken",
+      "expectedPresent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@33750:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@37386:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "7d1f150b0111bc698d971ade3f2a4444297d0b171b8dfcc3c88328c580157332",
+  "reason": "Issue #4063 adds the door-sale exclusion before conversion fan-out, shifting two governed token-reference locations without widening any secret access."
+}

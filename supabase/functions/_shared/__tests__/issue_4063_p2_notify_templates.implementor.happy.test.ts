@@ -25,7 +25,10 @@ Deno.test("#4063 event reminders use local time, the governed link and contract 
 
   assertStringIncludes(rendered.sms, "Jazz Night starts");
   assertStringIncludes(rendered.sms, "7:30 PM");
-  assertStringIncludes(rendered.sms, `Get your ticket using this number: ${LINK}`);
+  assertStringIncludes(
+    rendered.sms,
+    `Get your ticket using this number: ${LINK}`,
+  );
   assertEquals(rendered.sms.startsWith("Mingla: "), true);
   assertEquals(rendered.sms.includes("GMT"), false);
   assertEquals(rendered.sms.includes("UTC"), false);
@@ -74,6 +77,36 @@ Deno.test("#4063 food receipts use the dedicated SMS contract and claimed tail",
   );
 });
 
+Deno.test("#4063 door receipts use the governed order link and S15 copy", () => {
+  const rendered = renderCategoryMessage("buyer_door_receipt", {
+    event_title: "Friday Social",
+    message_link_display: LINK,
+  });
+  assertEquals(
+    rendered.sms,
+    `Mingla: Thanks for coming to Friday Social. Your receipt is in the Mingla app. Get it using this number: ${LINK}`,
+  );
+});
+
+Deno.test("#4063 sent tickets use the recipient claim link without QR data", () => {
+  const rendered = renderCategoryMessage("buyer_ticket_sent", {
+    sender: "Seth",
+    event_title: "Friday Social",
+    event_start_at: "2030-10-25T23:30:00.000Z",
+    timezone: "America/New_York",
+    ticket_id: "ticket-4063",
+    message_link_display: LINK,
+  });
+
+  assertEquals(
+    rendered.sms,
+    `Mingla: Seth sent you a ticket for Friday Social, Fri 25 Oct 2030 7:30 PM. Get it using this number: ${LINK}`,
+  );
+  assertEquals(rendered.push.title, "Seth sent you a ticket");
+  assertStringIncludes(rendered.email.subject, "Friday Social");
+  assertEquals(JSON.stringify(rendered).includes("qr"), false);
+});
+
 Deno.test("#4063 queued legacy rows keep their previous renderer byte-for-byte", () => {
   const rendered = renderCategoryMessage("buyer_reservation_confirmed", {
     brand_name: "Lantern & Vine",
@@ -115,6 +148,20 @@ Deno.test("#4063 generic drain maps only supported buyer rows to claim kinds", (
       payload: { order_id: "order-1" },
     }),
     null,
+  );
+  assertEquals(
+    genericBuyerLinkRequest({
+      category_key: "buyer_door_receipt",
+      payload: { order_id: "door-order-1" },
+    }),
+    { kind: "order", sourceId: "door-order-1" },
+  );
+  assertEquals(
+    genericBuyerLinkRequest({
+      category_key: "buyer_ticket_sent",
+      payload: { ticket_id: "ticket-4063" },
+    }),
+    { kind: "ticket", sourceId: "ticket-4063" },
   );
   assertEquals(
     genericBuyerLinkRequest({
