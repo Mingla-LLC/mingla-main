@@ -5,11 +5,12 @@
 //   * logout clears the per-account `chat:seen-matches:` keys (Constitution #6),
 //     and the signed chat-media link cache is still cleared there;
 //   * a send retry whose first attempt already landed (the 23505 path) returns
-//     the stored row WITHOUT sending the push notifications a second time.
+//     the stored row and still notifies; the DM push names the message id, so
+//     notify-message sends one push per message however often it is retried.
 //
 // FAILS-ON-REVERT: delete the SEEN_MATCHES_KEY_PREFIX line from
-// isPrivateAsyncStorageKey, or the `if (!alreadySent)` guard (or the
-// `alreadySent = true` line) in messagingService.sendMessage, and this fails.
+// isPrivateAsyncStorageKey, or drop the unconditional notify after a send (or
+// the messageId on the DM push) in messagingService, and this fails.
 
 const root = new URL("../../", import.meta.url);
 const read = (path: string) => Deno.readTextFile(new URL(path, root));
@@ -42,17 +43,17 @@ Deno.test("#4114 logout clears the seen-matches keys and the chat media links", 
   assert(/privateKeys = allKeys\.filter\(isPrivateAsyncStorageKey\)/.test(cleanup), "the private-key filter drives the removal");
 });
 
-Deno.test("#4114 a retry that finds its first send already stored does not notify again", async () => {
+Deno.test("#4114 a retry that finds its first send already stored still notifies, keyed on the message id", async () => {
   const service = stripComments(await read("services/messagingService.ts"));
   const send = methodText(service, "sendMessage");
-  const conflictAt = send.indexOf("error.code === '23505'");
-  const flagAt = send.indexOf("alreadySent = true");
-  const notifyAt = send.indexOf("this.sendPartitionedMessageNotifications(");
-  assert(conflictAt > 0, "the 23505 path exists");
-  assert(/let alreadySent = false;/.test(send), "the flag starts false for a new send");
-  assert(flagAt > conflictAt && flagAt < notifyAt, "only the 23505 path marks the row as already sent");
-  assert((send.match(/alreadySent = true/g) ?? []).length === 1, "nothing else marks a send as a duplicate");
-  assert(/if \(!alreadySent\) \{\s*this\.sendPartitionedMessageNotifications\(/.test(send),
-    "push notifications are skipped for a row that already existed");
+  assert(send.indexOf("error.code === '23505'") > 0, "the 23505 recovery path exists");
+  assert(!/alreadySent/.test(send), "no flag skips the push for a recovered row");
+  assert(/\n\s*this\.sendPartitionedMessageNotifications\(\s*conversationId,\s*senderId,\s*enrichedMessage,/.test(send),
+    "every send (new or recovered) notifies");
   assert((send.match(/sendPartitionedMessageNotifications\(/g) ?? []).length === 1, "one notification call site");
+  const dmAt = service.indexOf("private async sendMessageNotifications(");
+  assert(dmAt > 0, "the DM fan-out exists");
+  const dm = service.slice(dmAt, service.indexOf("async toggleDirectMessageReaction(", dmAt));
+  assert(/type: 'direct_message',[\s\S]*?messageId: message\.id,/.test(dm),
+    "the DM push names the message so notify-message keys it once per message");
 });

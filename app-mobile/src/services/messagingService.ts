@@ -1220,7 +1220,6 @@ export class MessagingService {
       // index refuses the second insert with 23505 and we return the row that is
       // already there instead of inserting a copy. PostgREST upsert cannot target
       // a partial index, so the conflict is caught and the row selected here.
-      let alreadySent = false;
       if (error && clientId && error.code === '23505') {
         const existing = await supabase
           .from('messages')
@@ -1236,7 +1235,6 @@ export class MessagingService {
         }
         data = existing.data;
         error = null;
-        alreadySent = true;
       }
 
       if (error) {
@@ -1255,16 +1253,16 @@ export class MessagingService {
       // Send notifications to recipients (non-blocking). Mentioned recipients get the
       // higher-priority mention notification only; everyone else receives the normal
       // message notification. This prevents duplicate push rows for one message.
-      // A retry that found its first attempt already stored (23505 above) does
-      // not notify again: that row is not a new message.
-      if (!alreadySent) {
-        this.sendPartitionedMessageNotifications(
-          conversationId,
-          senderId,
-          enrichedMessage,
-          validatedMentions,
-        ).catch(err => console.error('Error sending notifications:', err));
-      }
+      // A retry that found its first attempt already stored (23505 above) still
+      // notifies: the first attempt may have died before its push went out. Every
+      // push carries the message id and notify-message keys DM pushes on it, so
+      // a retry never sends a second push for the same message.
+      this.sendPartitionedMessageNotifications(
+        conversationId,
+        senderId,
+        enrichedMessage,
+        validatedMentions,
+      ).catch(err => console.error('Error sending notifications:', err));
 
       return { message: enrichedMessage, error: null };
     } catch (error: any) {
@@ -1951,6 +1949,7 @@ export class MessagingService {
             senderId,
             conversationId,
             recipientId,
+            messageId: message.id,
             messagePreview,
           },
         }).catch((err) =>
