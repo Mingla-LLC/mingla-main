@@ -234,6 +234,14 @@ on:
       # #4130 Wave 0 (admin menu, redirects, shared list and trend fixes): the
       # suite and the files it reads that are not already listed here.
       - "mingla-admin/src/__tests__/issue_4130_wave0_shell.implementor.test.js"
+      # #4130 Wave 1 (Work views, Team dashboard): the suite and the files it reads.
+      - "mingla-admin/src/__tests__/issue_4130_wave1_work.implementor.test.js"
+      - "mingla-admin/src/lib/workViews.js"
+      - "mingla-admin/src/lib/teamPulse.js"
+      - "mingla-admin/src/components/ops/**"
+      - "mingla-admin/src/pages/WorkBoardPage.jsx"
+      - "mingla-admin/src/pages/TeamDashboardPage.jsx"
+      - "mingla-admin/src/pages/DraftsPage.jsx"
       - "mingla-admin/src/lib/adminRoutes.js"
       - "mingla-admin/src/lib/access.js"
       - "mingla-admin/src/lib/listAll.js"
@@ -509,6 +517,14 @@ on:
       # #4130 Wave 0 (admin menu, redirects, shared list and trend fixes): the
       # suite and the files it reads that are not already listed here.
       - "mingla-admin/src/__tests__/issue_4130_wave0_shell.implementor.test.js"
+      # #4130 Wave 1 (Work views, Team dashboard): the suite and the files it reads.
+      - "mingla-admin/src/__tests__/issue_4130_wave1_work.implementor.test.js"
+      - "mingla-admin/src/lib/workViews.js"
+      - "mingla-admin/src/lib/teamPulse.js"
+      - "mingla-admin/src/components/ops/**"
+      - "mingla-admin/src/pages/WorkBoardPage.jsx"
+      - "mingla-admin/src/pages/TeamDashboardPage.jsx"
+      - "mingla-admin/src/pages/DraftsPage.jsx"
       - "mingla-admin/src/lib/adminRoutes.js"
       - "mingla-admin/src/lib/access.js"
       - "mingla-admin/src/lib/listAll.js"
@@ -750,6 +766,9 @@ jobs:
       - name: "Issue #4130 — admin menu as approved: retired pages redirect to their new homes, merged pages keep the union of their access, list export and sort cover every filtered row, stat trends coloured by direction"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_4130_wave0_shell.implementor.test.js
+      - name: "Issue #4130 — Work views and Team dashboard: (needs the admin npm ci above) Board, Today, This week and This month; drafts, approvals and roadmap wording reachable from Work cards; the dashboard's numbers first"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue_4130_wave1_work.implementor.test.js
       - name: "#3720 Slice B — email segments + single log writer (admin node:test)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_3720_email_segments.implementor.happy.test.js

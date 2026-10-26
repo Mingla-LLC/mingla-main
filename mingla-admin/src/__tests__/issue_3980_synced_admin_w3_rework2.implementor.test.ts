@@ -60,9 +60,10 @@ Deno.test("#3980 W3 rework 2 STEPS: no steps open yet is said plainly, never 'al
 });
 
 Deno.test("#3980 W3 rework 2 GROUP: grouped by Person or Event, each card shows its status", () => {
-  assertEquals(["person", "todo", "doing", "done", "x"].map(workStatusLabel), ["Needs you", "To do", "In progress", "Done", ""]);
+  // #4130: Needs you is retired; the first column and the status say "Waiting on a person".
+  assertEquals(["person", "todo", "doing", "done", "x"].map(workStatusLabel), ["Waiting on a person", "To do", "In progress", "Done", ""]);
   const cols = code("components/ops/WorkColumns.jsx");
-  assertMatch(cols, /export function WorkColumnCard\(\{ card, selected, onSelect, showStatus = false \}\)/);
+  assertMatch(cols, /export function WorkColumnCard\(\{ card, selected, onSelect, showStatus = false, draftsReady = 0 \}\)/);
   assertMatch(cols, /showStatus && workStatusLabel\(card\.status\) && <span data-card-status=\{card\.status\}/);
   const groups = cols.slice(cols.indexOf("export function WorkGroups"));
   assertMatch(groups, /<WorkColumnCard card=\{card\} selected=\{card\.id === selectedId\} onSelect=\{onSelect\} showStatus \/>/);

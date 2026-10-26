@@ -164,7 +164,7 @@ export function DraftsPage({ embedded = null }) {
   const emptyCopy = filtered ? "Clear the filter to see the full queue." : draftNeededShown ? "Ask your agent to write a draft for the cards above." : query.state === "waiting" ? "Ask your agent to write a draft." : query.state === "sent" ? "Drafts you mark sent will appear here." : "Drafts you discard appear here for review.";
 
   return (
-    <div className={`flex min-w-0 flex-col ${embedded ? "gap-4" : "gap-6"}`}>
+    <div className="flex min-w-0 flex-col gap-6">
       {/* #3980 W3 rework 2: the roadmap words only for the owner and admins, who have that tab; everyone else reads the design's shorter line. */}
       {!embedded && <div ref={headingRef} tabIndex={-1}>{canTell
         ? <PageHeader title="Needs you" description="Only what needs a person: messages to send, money to spend, events to publish, and roadmap news to approve before hosts see it." meta={headerMeta} />
@@ -194,7 +194,7 @@ export function DraftsPage({ embedded = null }) {
         <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">{emptyTitle}</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">{emptyCopy}</p>{query.state === "waiting" && !filtered ? <a href="#/agent" className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-[var(--color-brand-800)] px-4 text-sm font-semibold text-white hover:bg-[var(--color-brand-900)]">Open My agent</a> : <Button type="button" variant="secondary" className="mt-4 min-h-11" onClick={() => filtered ? (() => { const p = new URLSearchParams(search); p.delete("record"); setSearch(p.toString()); })() : selectState("waiting")}>{filtered ? "Clear filter" : "Show waiting"}</Button>}</SectionCard>
       ) : (
         <>
-          <div className={`grid min-w-0 grid-cols-1 gap-4 ${embedded ? "" : "xl:grid-cols-2"}`}>
+          <div className={embedded ? "grid min-w-0 grid-cols-1 gap-4" : "grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2"}>
             <AnimatePresence initial={false}>
               {queue.drafts.map((draft) => <DraftCard key={draft.id} draft={draft} online={online} busy={queue.mutationIds.has(draft.id)} busyAction={queue.mutationActions.get(draft.id)} offlineHelpId="drafts-offline" deepLinked={query.draft === draft.id} onDirty={(value) => setDirty(draft.id, value)}
                 onUpdate={(changes) => mutate(draft, () => service.updateDraft(draft.id, changes), "saving")}

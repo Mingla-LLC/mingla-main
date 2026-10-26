@@ -209,8 +209,7 @@ export function WorkBoardPage() {
           ) : cards.length === 0 && looseDrafts.length === 0 && who === "all" && !ownerFilter && !query.week && !view.q ? (
             <SectionCard><p className="text-[13px] text-[var(--color-text-secondary)]">No cards yet. Add one, or set a host’s next event on their card: its steps appear here by themselves.</p></SectionCard>
           ) : (
-            <WorkColumns
-              cards={cards}
+            <WorkColumns cards={cards}
               selectedId={query.card}
               onSelect={(card) => openCard(card.id)}
               drafts={looseDrafts}

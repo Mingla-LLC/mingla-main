@@ -50,7 +50,7 @@ export function AutomaticSteps({ online }) {
         onClick={() => set(id === "switch-auto-steps" ? "auto_steps" : "brand_auto_cards", !on, !on ? "Switched on." : "Switched off. Cards already made stay.")}
         className={`group inline-grid min-h-11 min-w-14 shrink-0 cursor-pointer place-items-center rounded-full disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`}>
         <span aria-hidden="true" className={`relative block h-6 w-11 rounded-full transition-colors ${on ? "bg-[var(--color-brand-800)]" : "bg-[var(--gray-300)]"}`}>
-          <span className={`absolute top-0.5 block h-5 w-5 rounded-full bg-white shadow transition-[left] ${on ? "left-[22px]" : "left-0.5"}`} />
+          <span className={`absolute top-0.5 block h-5 w-5 rounded-full bg-[var(--color-background-primary)] shadow transition-[left] ${on ? "left-[22px]" : "left-0.5"}`} />
         </span>
       </button>
     </div>

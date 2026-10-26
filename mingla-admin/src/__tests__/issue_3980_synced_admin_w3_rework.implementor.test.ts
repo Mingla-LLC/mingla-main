@@ -170,11 +170,14 @@ Deno.test("#3980 W3 rework D10: the four plain states, never the old runway word
   assertNotMatch(code("lib/agentConnect.js"), /full launch, a tight one, or are organic only/);
 });
 
+// #4130: the approved design drops "By person" (and Group by): the person
+// chips filter the one column board instead. Only the board is shown.
 Deno.test("#3980 W3 rework: Work groups by Status, Person or Event, one board at a time", () => {
   const page = code("pages/WorkBoardPage.jsx");
-  assertMatch(page, /\{ value: "status", label: "Status" \},\s*\{ value: "person", label: "Person" \},\s*\{ value: "event", label: "Event" \}/);
-  assertMatch(page, /<Select aria-label="Group by" options=\{GROUP_OPTIONS\} value=\{query\.group\}/);
-  assertMatch(page, /query\.group === "status"\s*\? <WorkColumns [^\n]*\n\s*: <WorkGroups /);
+  assertNotMatch(page, /aria-label="Group by"/);
+  assertNotMatch(page, /<WorkGroups /);
+  assertEquals((page.match(/<WorkColumns /g) || []).length, 1);
+  assertMatch(page, /<PersonChips people=\{people\.people\} owner=\{ownerFilter\}/);
   assertMatch(code("components/ops/WorkColumns.jsx"), /export function WorkGroups\(\{ cards = \[\], group, selectedId, onSelect \}\)/);
 });
 
@@ -191,7 +194,8 @@ Deno.test("#3980 W3 rework P3: contrast, 44px targets, real switches, same names
   assertEquals((code("components/ops/AgentActivity.jsx").match(/inline-flex min-h-11 items-center self-start/g) || []).length, 2);
   assertMatch(code("components/ops/LogRow.jsx"), /inline-flex min-h-11 items-center self-start/);
   assertMatch(code("components/ops/WorkDetail.jsx"), /-my-1\.5 -mr-1 inline-grid h-11 w-11 place-items-center rounded-full hover:bg-\[var\(--gray-200\)\]/);
-  const dash = code("pages/TeamDashboardPage.jsx");
+  // #4130: the automatic-steps switches moved from the Team dashboard to the settings panels.
+  const dash = code("components/ops/TeamSettingsPanels.jsx");
   assertMatch(dash, /<button id=\{id\} type="button" role="switch" aria-checked=\{!!on\}/);
   assertNotMatch(dash, /type="checkbox" role="switch"/);
   assertMatch(dash, /Engineering follow-through \(merged but not live, release records, live checks\) starts from the moment you first switch on automatic steps/);
