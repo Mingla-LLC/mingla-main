@@ -90,6 +90,21 @@ const MESSAGES: Record<string, string> = {
   state_mismatch: 'This contract changed while you were looking. Pull down to refresh.',
   shoot_outside_window: 'Pick a time inside the shoot window.',
   invalid_post_url: 'Paste the full link to your live post, starting with https://.',
+  shoot_proposal_limit: 'You’ve suggested three times already. Confirm the host’s time or message support.',
+  terms_change_window_closed: 'Terms can only change before the script is locked.',
+  terms_change_already_open: 'There’s already a change waiting for an answer.',
+  terms_change_invalid: 'That change can’t be made here. The fee can only change with a counter-offer.',
+  terms_change_reason_invalid: 'Keep the reason under 300 characters.',
+  terms_change_stale: 'The terms changed since this was proposed. Pull down to refresh.',
+  terms_change_not_found: 'That change is no longer open.',
+  technical_fixes_exhausted: 'Both technical fix rounds are used.',
+  delivery_round_limit: 'Both technical fix rounds are used.',
+  ready_delivery_media_required: 'Your video is still processing. Try again in a minute.',
+  posts_required: 'Add the link to at least one live post.',
+  unsupported_post_url: 'That link doesn’t look like a post on that platform. Copy the link from the post itself.',
+  offer_not_open: 'This offer is no longer open.',
+  refund_not_allowed: 'This can’t be cancelled at this step.',
+  invalid_refund_bps: 'Choose a refund between 0% and 100%.',
   rating_not_open: 'Ratings open when the gig is done.',
   permission_denied: 'You don’t have access to this anymore.',
   creator_only: 'Only the creator can do this.',
@@ -144,7 +159,8 @@ export function toProgramError(error: unknown, body?: unknown): ProgramActionErr
   const message = typeof error === 'object' && error !== null && typeof (error as { message?: unknown }).message === 'string'
     ? (error as { message: string }).message.trim()
     : typeof error === 'string' ? error.trim() : '';
-  if (RAISED_CODE.test(message)) return new ProgramActionError(message);
+  const raised = message.split(':')[0];
+  if (RAISED_CODE.test(raised) && (raised === message || MESSAGES[raised])) return new ProgramActionError(raised);
   if (/network request failed|failed to fetch|network error/i.test(message)) return new ProgramActionError('network');
   return new ProgramActionError('unknown_error');
 }

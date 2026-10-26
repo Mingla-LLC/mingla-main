@@ -1,19 +1,162 @@
-import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, Text } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { creatorProgramService, type CreatorSetupStatus } from '../../../src/services/creatorProgramService';
-import { creatorGigsService, type PublicGig } from '../../../src/services/creatorGigsService';
-import { ProgramButton, ProgramHeader, ProgramCard, ProgramField, programStyles as s } from '../../../src/components/programs/ProgramUi';
+import React, { useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+
+import { supabase } from '../../../src/services/supabase';
+import { creatorProgramService } from '../../../src/services/creatorProgramService';
+import { creatorGigsService } from '../../../src/services/creatorGigsService';
+import { ProgramActionError, programErrorText } from '../../../src/services/programResult';
+import {
+  budgetDisplay, currencySymbol, deliverablesLabel, formatDateRange, formatInfo, formatMoney, formatName, formatShortDate,
+  moneyInputValue, parseMoneyInput, usageLabel,
+} from '../../../src/utils/programFormat';
+import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoading, ProgramNotice, ProgramRow, ProgramScreen, ProgramSheet, programStyles as s } from '../../../src/components/programs/ProgramUi';
+import { LevelDots } from '../../../src/components/programs/ProgramPickers';
+import { VideoTile, playPublicVideo } from '../../../src/components/programs/VideoTile';
+import { Icon } from '../../../src/components/ui/Icon';
+
+type FormatRow = { key: string; name: string; one_line: string; structure: Array<{ key: string; from: number; to: number }>; example_asset_ids: string[] };
+
+const SECTION_WORDS: Record<string, string> = {
+  hook: 'Hook', arrival: 'Arrival', reaction: 'Reaction', cta: 'End card', atmosphere: 'Atmosphere', experience: 'Experience',
+  price_hook: 'Price hook', included: 'What’s included', value: 'The value', people: 'The people', craft: 'The craft', reasons: 'Three reasons', mood: 'The mood', plan: 'The plan',
+};
+const sectionWord = (key: string): string => SECTION_WORDS[key] ?? key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
 
 export default function CreatorGigScreen(): React.ReactElement {
-  const { gigId } = useLocalSearchParams<{ gigId: string }>(); const router = useRouter();
-  const [gig,setGig]=useState<PublicGig|null>(null); const [setup,setSetup]=useState<CreatorSetupStatus|null>(null); const [packageId,setPackageId]=useState(''); const [quote,setQuote]=useState(''); const [note,setNote]=useState(''); const [busy,setBusy]=useState(false);
-  useEffect(()=>{ void Promise.all([creatorGigsService.detail(gigId),creatorProgramService.status()]).then(([g,st])=>{setGig(g);setSetup(st);const p=st.packages?.find(x=>x.format_key===g.format_key)??st.packages?.[0];if(p?.id){setPackageId(String(p.id));setQuote(String(p.price_minor??''));}}).catch(e=>Alert.alert('Couldn’t load gig',e instanceof Error?e.message:String(e)));},[gigId]);
-  const send=async()=>{setBusy(true);try{await creatorGigsService.sendInterest(gigId,packageId,Number(quote),note);Alert.alert('Interest sent','The Host sees your verified pre-hire profile, package and quote—not your contact details.');router.back();}catch(e){Alert.alert('Couldn’t send interest',e instanceof Error?e.message:String(e));}finally{setBusy(false);}};
-  if(!gig)return <SafeAreaView style={s.safe}><Stack.Screen options={{headerShown:false}}/><ProgramHeader title="Gig brief" /><Text style={[s.copy,{padding:20}]}>Loading brief…</Text></SafeAreaView>;
-  return <SafeAreaView style={s.safe}><Stack.Screen options={{headerShown:false}}/><ProgramHeader title="Gig brief" /><ScrollView contentContainerStyle={s.content}><Text style={s.eyebrow}>PRIVATE-SAFE BRIEF</Text><Text style={s.heading}>{gig.title_public}</Text><Text style={s.lede}>{gig.brief_public}</Text>
-    <ProgramCard><Text style={s.title}>What’s agreed upfront</Text><Text style={s.copy}>Format: {gig.format_key.replaceAll('_',' ')}</Text><Text style={s.copy}>Deliverables: {gig.deliverables.map(x=>`${x.count} ${x.platform} ${x.kind}`).join(', ')}</Text><Text style={s.copy}>Shoot: {gig.shoot_window.start} to {gig.shoot_window.end}</Text><Text style={s.copy}>Post by: {gig.post_by}</Text><Text style={s.copy}>Usage: {gig.usage_days} days</Text><Text style={s.copy}>Budget: {gig.budget_band.toUpperCase()}</Text></ProgramCard>
-    <ProgramCard><Text style={s.title}>Send interest</Text>{setup?.verification!=='verified'?<><Text style={s.warning}>Complete setup first. Missing: {(setup?.missing??['readiness checks']).join(', ')}.</Text><ProgramButton label="Finish setup" onPress={()=>router.push('/creator/setup' as never)}/></>:<><ProgramField value={quote} onChangeText={setQuote} keyboardType="number-pad" placeholder="Your price in minor units"/><ProgramField value={note} onChangeText={setNote} multiline placeholder="Optional note—no links, handles, email or phone"/><ProgramButton busy={busy} label="Send interest" onPress={()=>void send()} disabled={!packageId||!Number.isInteger(Number(quote))||Number(quote)<=0}/><Text style={s.copy}>Your identity and contact details stay private until you accept a funded offer.</Text></>}</ProgramCard>
-  </ScrollView></SafeAreaView>;
+  const { gigId } = useLocalSearchParams<{ gigId: string }>();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const gig = useQuery({ queryKey: ['creator', 'gig', gigId], queryFn: () => creatorGigsService.detail(gigId), enabled: Boolean(gigId) });
+  const setup = useQuery({ queryKey: ['creator', 'status'], queryFn: () => creatorProgramService.status() });
+  const home = useQuery({ queryKey: ['creator', 'home'], queryFn: () => creatorGigsService.home(), enabled: Boolean(setup.data?.profile) });
+  const format = useQuery({
+    queryKey: ['creator', 'format', gig.data?.format_key],
+    enabled: Boolean(gig.data?.format_key),
+    staleTime: 60 * 60_000,
+    queryFn: async (): Promise<FormatRow | null> => {
+      const { data } = await supabase.from('gig_formats').select('key,name,one_line,structure,example_asset_ids').eq('key', gig.data!.format_key).maybeSingle();
+      return (data as FormatRow | null) ?? null;
+    },
+  });
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [price, setPrice] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<ProgramActionError | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const g = gig.data;
+  const packages = (setup.data?.packages ?? []).filter((p) => p.active);
+  const pkg = g ? packages.find((p) => p.format_key === g.format_key) ?? packages[0] : undefined;
+  const verified = setup.data?.verification === 'verified';
+  const alreadySent = sent || Boolean(home.data?.interests.some((i) => i.gig_id === gigId));
+  const saved = Boolean(g?.saved ?? home.data?.saved?.some((x) => x.id === gigId));
+
+  const toggleSave = async (): Promise<void> => {
+    if (!g) return;
+    setSaving(true);
+    try { await creatorGigsService.saveGig(g.id, !saved); await queryClient.invalidateQueries({ queryKey: ['creator'] }); }
+    catch (e) { Alert.alert('Couldn’t save the gig', programErrorText(e)); }
+    finally { setSaving(false); }
+  };
+
+  const openSheet = (): void => {
+    setPrice(pkg ? moneyInputValue(pkg.price_minor, pkg.currency) : '');
+    setError(null); setSheetOpen(true);
+  };
+
+  const send = async (): Promise<void> => {
+    if (!g || !pkg) return;
+    const minor = parseMoneyInput(price, pkg.currency);
+    if (minor === null) { setError(new ProgramActionError('invalid_price', { field: 'price' })); return; }
+    setBusy(true); setError(null);
+    try {
+      await creatorGigsService.sendInterest(g.id, pkg.id, minor, note);
+      setSent(true); setSheetOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ['creator'] });
+      Alert.alert('Interest sent', 'The host sees your profile, rate and showcase, not your contact details. You’ll hear back in Creator.');
+    } catch (e) {
+      // ok:false (note_not_anonymous, payout_rail_mismatch, creator_not_ready, gig_full, already_interested) lands here, never as success.
+      setError(e instanceof ProgramActionError ? e : new ProgramActionError('unknown_error'));
+    } finally { setBusy(false); }
+  };
+
+  if (gig.isLoading) return <ProgramScreen title="Gig"><ProgramLoading /></ProgramScreen>;
+  if (!g) return <ProgramScreen title="Gig"><ProgramEmpty title="This gig isn’t available" text={gig.isError ? programErrorText(gig.error) : 'It may have filled up or closed. Find another one in Creator.'}
+    action={<ProgramButton label="Find gigs" variant="secondary" onPress={() => router.replace('/creator' as never)} />} /></ProgramScreen>;
+
+  const info = formatInfo(g.format_key);
+  const budget = budgetDisplay(g);
+  const structure = format.data?.structure ?? [];
+  const examples = format.data?.example_asset_ids ?? [];
+  const noteError = error?.code === 'note_not_anonymous' ? error.message : null;
+  const priceError = error?.field === 'price' || error?.code === 'invalid_price' ? error.message : null;
+  const generalError = error && !noteError && !priceError ? error : null;
+
+  const footer = alreadySent
+    ? <ProgramButton label="Interest sent" icon="checkmark" disabled onPress={() => undefined} />
+    : verified
+      ? <ProgramButton label="I’m interested" disabled={g.slots_left <= 0 || !pkg} onPress={openSheet} />
+      : <ProgramButton label="Finish setup to send interest" onPress={() => router.push('/creator/setup' as never)} />;
+
+  return <ProgramScreen title={g.title_public} footer={footer}
+    right={<Pressable accessibilityRole="button" accessibilityLabel={saved ? 'Remove from saved' : 'Save gig'} accessibilityState={{ selected: saved, busy: saving }} disabled={saving} onPress={() => void toggleSave()} hitSlop={10}>
+      <Icon name={saved ? 'bookmark' : 'bookmark-outline'} size={22} color={saved ? C.accent : C.text} />
+    </Pressable>}>
+    <ProgramCard>
+      <Text style={s.label}>Brand</Text>
+      <Text style={s.copy}>Hidden until you’re hired</Text>
+      <Text style={[s.label, styles.gap]}>What</Text>
+      <Text style={s.strong}>{g.brief_public}</Text>
+    </ProgramCard>
+
+    <ProgramCard>
+      <Text style={s.title}>Format: {formatName(g.format_key)}</Text>
+      {info ? <Text style={s.copy}>{info.oneLine} {info.seconds[0]}–{info.seconds[1]} seconds.</Text> : null}
+      {examples.length ? <View style={styles.tiles}>
+        {examples.slice(0, 3).map((id, i) => <VideoTile key={id} index={i} label={i === 0 ? 'Example' : `Example ${i + 1}`} onPress={() => void playPublicVideo(id)} />)}
+      </View> : null}
+      {structure.length ? <View style={styles.beats}>
+        {structure.map((b) => <View key={b.key} style={styles.beat}><Text style={s.strong}>{sectionWord(b.key)}</Text><Text style={s.small}>{b.from}–{b.to}s</Text></View>)}
+      </View> : null}
+    </ProgramCard>
+
+    <ProgramCard>
+      <ProgramRow title="Shoot" value={formatDateRange(g.shoot_window.start, g.shoot_window.end)} chevron={false} />
+      <ProgramRow title="Post by" value={formatShortDate(g.post_by)} chevron={false} />
+      <ProgramRow title="Deliverables" value={deliverablesLabel(g.deliverables)} chevron={false} />
+      <ProgramRow title="Host may reuse" value={usageLabel(g.usage_days)} chevron={false} />
+      <ProgramRow title="Where" value={g.city_name} chevron={false} />
+      <ProgramRow title="Budget" chevron={false} right={budget.kind === 'range' ? <Text style={s.strong}>{budget.text}</Text> : <View style={styles.level}><LevelDots level={budget.level} /><Text style={s.small}>{budget.text}</Text></View>} />
+      {g.sales_share_bps ? <ProgramRow title="Plus" value={`${Math.round(g.sales_share_bps / 100)}% of sales from your link`} chevron={false} /> : null}
+      <ProgramRow title="Spots left" value={String(g.slots_left)} chevron={false} isLast />
+    </ProgramCard>
+    {!verified ? <ProgramNotice text="Browse now. Sending interest unlocks when setup is done." /> : !pkg ? <ProgramNotice tone="warning" text="Set a rate for this format first, then send interest." /> : null}
+
+    <ProgramSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} title="Your price for this gig" snapPoints={['72%']} busy={busy}
+      footer={<ProgramButton label="Send interest" busy={busy} disabled={!price.trim()} onPress={() => void send()} />}>
+      {pkg ? <>
+        <ProgramField inSheet label="Price · your saved rate for this format" prefix={currencySymbol(pkg.currency)} suffix={pkg.currency} value={price}
+          onChangeText={(v) => { setPrice(v.replace(/[^0-9.,]/g, '')); if (error?.field === 'price' || error?.code === 'invalid_price') setError(null); }}
+          keyboardType="decimal-pad" error={priceError} hint={`Your saved rate is ${formatMoney(pkg.price_minor, pkg.currency)}.`} />
+        <ProgramField inSheet label="One-line pitch (optional)" value={note} onChangeText={(v) => { setNote(v); if (noteError) setError(null); }} multiline
+          counter={{ max: 280 }} maxLength={280} placeholder="Why you’re a good fit" error={noteError} />
+        <Text style={s.small}>Notes can’t include contact details, links or handles until you’re hired.</Text>
+        {generalError ? <ProgramNotice tone="error" text={generalError.message} /> : null}
+        {generalError?.code === 'creator_not_ready' ? <ProgramButton label="Finish setup" variant="secondary" onPress={() => { setSheetOpen(false); router.push('/creator/setup' as never); }} /> : null}
+        {generalError?.code === 'payout_rail_mismatch' ? <ProgramButton label="Check payout account" variant="secondary" onPress={() => { setSheetOpen(false); router.push('/payout' as never); }} /> : null}
+      </> : null}
+    </ProgramSheet>
+  </ProgramScreen>;
 }
+
+const styles = StyleSheet.create({
+  gap: { marginTop: 6 },
+  tiles: { flexDirection: 'row', gap: 8 },
+  beats: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  beat: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: C.field, gap: 2 },
+  level: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+});

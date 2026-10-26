@@ -1,35 +1,222 @@
-import React,{useCallback,useEffect,useMemo,useState}from'react';
-import{Alert,Pressable,ScrollView,Text,View}from'react-native';
-import{Stack,useLocalSearchParams}from'expo-router';
-import{SafeAreaView}from'react-native-safe-area-context';
-import{creatorGigsService,type GigWorkspace}from'../../../src/services/creatorGigsService';
-import{chooseAndUploadCreatorMedia}from'../../../src/services/creatorMediaService';
-import {ProgramButton, ProgramHeader,ProgramCard,ProgramChip,ProgramField,programStyles as s}from'../../../src/components/programs/ProgramUi';
+import React, { useState } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-const GUIDANCE:Record<string,[string,string]>={offered:['A funded offer is waiting','Accept to reveal the Host and begin, or decline for an automatic refund.'],accepted:['Plan the shoot','Agree on a time inside the shoot window.'],shoot_planned:['Draft the script','Write the agreed format and include clear ad disclosure.'],script_drafting:['Send your script','The Host has 48 hours before it auto-locks.'],script_sent:['Waiting for script approval','The script auto-locks after 48 hours of Host silence.'],script_locked:['Upload your video','Mingla securely processes a private review copy.'],delivered:['Video under review','The Host has three days; silence means automatic approval.'],fix_requested:['A technical fix was requested','Only listed technical issues need changing, for at most two rounds.'],approved:['Ready to post','Post on the agreed platforms with the required disclosure.'],posting:['Add live post links','Mingla checks author, tags, disclosure and date.'],posts_submitted:['Checking your posts','Unknown checks go to the Host; silence counts as pass.'],posts_verified:['Posts verified','Your fee releases after the safety window.'],released:['Payment released','Your provider pays on its normal schedule.'],completed:['Gig complete','Leave a blind rating. It reveals when both sides rate or after seven days.'],disputed:['Shared dispute timeline','Both sides see the same evidence and structured settlement offers.']};
-export default function CreatorContractScreen():React.ReactElement{
-  const{contractId}=useLocalSearchParams<{contractId:string}>();const[workspace,setWorkspace]=useState<GigWorkspace|null>(null);const[busy,setBusy]=useState(false);const[progress,setProgress]=useState(0);const[shootAt,setShootAt]=useState('');const[arrival,setArrival]=useState('');const[script,setScript]=useState('');const[platform,setPlatform]=useState('instagram');const[postUrl,setPostUrl]=useState('');const[dispute,setDispute]=useState('');const[refund,setRefund]=useState('50');const[stars,setStars]=useState(5);const[changePostBy,setChangePostBy]=useState('');const[changeNote,setChangeNote]=useState('');
-  const refresh=useCallback(async()=>setWorkspace(await creatorGigsService.workspace(contractId)),[contractId]);useEffect(()=>{void refresh().catch(e=>Alert.alert('Couldn’t load contract',e instanceof Error?e.message:String(e)));},[refresh]);
-  const state=workspace?.contract.state??'';const guidance=GUIDANCE[state]??[state.replaceAll('_',' '),'Follow the shared timeline below.'];const deadline=useMemo(()=>workspace?.contract.state_deadline_at?new Date(workspace.contract.state_deadline_at).toLocaleString():null,[workspace]);
-  const act=async(action:()=>Promise<unknown>,message:string)=>{setBusy(true);try{await action();await refresh();Alert.alert('Updated',message);}catch(e){Alert.alert('Couldn’t update',e instanceof Error?e.message:String(e));}finally{setBusy(false);}};
-  const uploadDelivery=()=>act(async()=>{const media=await chooseAndUploadCreatorMedia({purpose:'delivery',contractId,onProgress:setProgress});await creatorGigsService.submitDelivery(contractId,media.jobId);},'Your private review copy is processing and has been submitted.');
-  if(!workspace)return <SafeAreaView style={s.safe}><Stack.Screen options={{headerShown:false}}/><ProgramHeader title="Contract" /><Text style={[s.copy,{padding:20}]}>Loading shared timeline…</Text></SafeAreaView>;
-  const openOffer=workspace.dispute?.offers.find(x=>x.status==='open');
-  const openChange=workspace.proposals?.find(x=>x.status==='open');
-  return <SafeAreaView style={s.safe}><Stack.Screen options={{headerShown:false}}/><ProgramHeader title="Contract" /><ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled"><Text style={s.eyebrow}>CREATOR CONTRACT</Text><Text style={s.heading}>{String(workspace.gig.title_public)}</Text>
-    <ProgramCard><Text style={s.title}>{guidance[0]}</Text><Text style={s.copy}>{guidance[1]}</Text>{deadline?<Text style={s.warning}>Deadline: {deadline}</Text>:null}<Text style={workspace.revealed?s.success:s.copy}>{workspace.revealed?'Host and listing details are revealed.':'Brand details stay private until acceptance and captured funds are proven.'}</Text></ProgramCard>
-    {state==='offered'&&<ProgramCard><Text style={s.title}>Funded offer</Text>{workspace.terms.map(t=><View key={t.version} style={s.row}><Text style={s.copy}>Version {t.version}</Text><Text style={s.warning}>{t.currency} {(t.fee_minor/100).toLocaleString(undefined,{minimumFractionDigits:2})}</Text></View>)}<ProgramButton busy={busy} label="Accept offer" onPress={()=>void act(()=>creatorGigsService.transition(contractId,'offered','accept'),'The Host is revealed and planning can begin.')}/><ProgramButton secondary busy={busy} label="Decline and refund Host" onPress={()=>void act(()=>creatorGigsService.refund(contractId,'creator_decline'),'The offer was declined and the Host refund started.')}/></ProgramCard>}
-    {['offered','accepted','shoot_planned','script_drafting','script_sent'].includes(state)&&<ProgramCard><Text style={s.title}>Terms changes</Text>{openChange?<><Text style={s.copy}>{openChange.proposed_by==='host'?'The Host proposed':'Your proposal'}: {Object.entries(openChange.changes).map(([key,value])=>`${key.replaceAll('_',' ')} → ${String(value)}`).join(' · ')}</Text>{openChange.note?<Text style={s.copy}>{openChange.note}</Text>:null}{openChange.proposed_by==='host'?<><ProgramButton busy={busy} label="Accept updated terms" onPress={()=>void act(()=>creatorGigsService.respondToChange(openChange.id,true),'A new immutable terms version is active.')}/><ProgramButton secondary busy={busy} label="Decline change" onPress={()=>void act(()=>creatorGigsService.respondToChange(openChange.id,false),'The existing terms stay active.')}/></>:<Text style={s.warning}>Waiting for the Host · expires {new Date(openChange.expires_at).toLocaleString()}</Text>}</>:<><Text style={s.copy}>Propose a date or non-money term change. The funded creator fee cannot change after payment capture.</Text><ProgramField value={changePostBy} onChangeText={setChangePostBy} placeholder="New post-by date · YYYY-MM-DD"/><ProgramField value={changeNote} onChangeText={setChangeNote} multiline placeholder="Why this change is needed"/><ProgramButton secondary busy={busy} disabled={!/^\d{4}-\d{2}-\d{2}$/.test(changePostBy)} label="Propose date change" onPress={()=>void act(()=>creatorGigsService.proposeChange(contractId,{post_by:changePostBy},'dates',changeNote),'The Host has 48 hours to respond.')}/></>}</ProgramCard>}
-    {state==='accepted'&&<ProgramCard><Text style={s.title}>Shoot plan</Text><ProgramField value={shootAt} onChangeText={setShootAt} placeholder="YYYY-MM-DDTHH:mm:ssZ"/><ProgramField value={arrival} onChangeText={setArrival} placeholder="Arrival notes"/><ProgramButton busy={busy} label="Confirm shoot time" onPress={()=>void act(()=>creatorGigsService.planShoot(contractId,shootAt,arrival,true),'The shoot is planned.')}/></ProgramCard>}
-    {['accepted','shoot_planned','script_drafting','script_sent'].includes(state)&&<ProgramCard><Text style={s.title}>Can’t continue?</Text><Text style={s.copy}>Cancel before script lock. The Host is refunded through the original method; provider fees follow that provider’s refund rules.</Text><ProgramButton secondary busy={busy} label="Cancel and refund Host" onPress={()=>void act(()=>creatorGigsService.refund(contractId,'creator_after_accept'),'The cancellation and Host refund started.')}/></ProgramCard>}
-    {state==='shoot_planned'&&<ProgramCard><Text style={s.title}>Start script</Text><ProgramButton busy={busy} label="Open script workspace" onPress={()=>void act(()=>creatorGigsService.transition(contractId,'shoot_planned','start_script'),'The script workspace is ready.')}/></ProgramCard>}
-    {state==='script_drafting'&&<ProgramCard><Text style={s.title}>Script editor</Text><ProgramField value={script} onChangeText={setScript} multiline placeholder="Write the scene plan and include #ad"/><ProgramButton busy={busy} disabled={!script.toLowerCase().includes('#ad')&&!script.toLowerCase().includes('paid partnership')} label="Send script" onPress={()=>void act(()=>creatorGigsService.saveScript(contractId,{sections:[{on_screen:script,voiceover:script,shot_notes:'Creator edit'}],disclosure:'#ad',estimated_seconds:30},true),'The Host can review it; silence auto-locks after 48 hours.')}/></ProgramCard>}
-    {(state==='script_locked'||state==='fix_requested')&&<ProgramCard><Text style={s.title}>{state==='fix_requested'?'Upload corrected video':'Upload review video'}</Text><Text style={s.copy}>Vertical video · up to 90 seconds · 150 MB. Your original is removed after processing.</Text>{busy&&progress>0?<Text style={s.warning}>Uploading {Math.round(progress*100)}%</Text>:null}<ProgramButton busy={busy} label="Choose and submit video" onPress={()=>void uploadDelivery()}/></ProgramCard>}
-    {state==='approved'&&<ProgramCard><Text style={s.title}>Ready to post</Text><ProgramButton busy={busy} label="Start posting" onPress={()=>void act(()=>creatorGigsService.transition(contractId,'approved','start_posting'),'Add your live links next.')}/></ProgramCard>}
-    {(state==='posting'||state==='posts_failed')&&<ProgramCard><Text style={s.title}>Live post</Text><View style={s.wrap}>{['instagram','tiktok','youtube','x'].map(x=><ProgramChip key={x} label={x} selected={platform===x} onPress={()=>setPlatform(x)}/>)}</View><ProgramField value={postUrl} onChangeText={setPostUrl} placeholder="https://…"/><ProgramButton busy={busy} disabled={!/^https:\/\//.test(postUrl)} label="Submit for verification" onPress={()=>void act(()=>creatorGigsService.submitPosts(contractId,[{platform,url:postUrl}]),'Mingla is checking your live post.')}/></ProgramCard>}
-    {['fix_requested','posting','posts_failed'].includes(state)&&<ProgramCard><Text style={s.title}>Need a fair resolution?</Text><ProgramField value={dispute} onChangeText={setDispute} multiline placeholder="Explain what happened (10–1,000 characters)"/><ProgramButton secondary busy={busy} disabled={dispute.trim().length<10} label="Open shared dispute timeline" onPress={()=>void act(()=>creatorGigsService.openDispute(contractId,state==='fix_requested'?'nontechnical_fix_abuse':'posts_failed',dispute),'Both sides now see the same timeline.')}/></ProgramCard>}
-    {state==='disputed'&&workspace.dispute&&<ProgramCard><Text style={s.title}>Structured settlement</Text><Text style={s.copy}>{workspace.dispute.statement}</Text>{openOffer?<><Text style={s.warning}>{(openOffer.refund_bps/100).toFixed(0)}% refund to Host</Text>{openOffer.offered_by==='host'?<><ProgramButton busy={busy} label="Accept settlement" onPress={()=>void act(()=>creatorGigsService.respondToDisputeOffer(openOffer.id,true),'Settlement accepted.')}/><ProgramButton secondary busy={busy} label="Decline offer" onPress={()=>void act(()=>creatorGigsService.respondToDisputeOffer(openOffer.id,false),'Offer declined.')}/></>:<Text style={s.copy}>Waiting for the Host.</Text>}</>:null}<ProgramField value={refund} onChangeText={setRefund} keyboardType="number-pad" placeholder="Refund to Host · 0–100%"/><ProgramButton secondary busy={busy} disabled={Number(refund)<0||Number(refund)>100} label="Propose settlement" onPress={()=>void act(()=>creatorGigsService.offerDispute(workspace.dispute!.id,Math.round(Number(refund)*100)),'The Host can accept or decline your proposal.')}/></ProgramCard>}
-    {state==='completed'&&<ProgramCard><Text style={s.title}>Blind rating</Text><View style={s.row}>{[1,2,3,4,5].map(n=><Pressable key={n} onPress={()=>setStars(n)}><Text style={{fontSize:32,color:n<=stars?'#eb7825':'#413a34'}}>★</Text></Pressable>)}</View><ProgramButton busy={busy} label="Submit rating" onPress={()=>void act(()=>creatorGigsService.rate(contractId,stars),'Your rating remains blind until reveal.')}/></ProgramCard>}
-    <ProgramCard><Text style={s.title}>Shared timeline</Text>{workspace.events.length?workspace.events.map(e=><View key={e.id} style={{paddingVertical:7,borderBottomWidth:1,borderBottomColor:'#413a34'}}><Text style={s.label}>{e.kind.replaceAll('_',' ')}</Text><Text style={s.copy}>{e.actor} · {new Date(e.at).toLocaleString()}</Text></View>):<Text style={s.copy}>No activity yet.</Text>}</ProgramCard>
-  </ScrollView></SafeAreaView>;
+import { creatorGigsService } from '../../../src/services/creatorGigsService';
+import { programErrorText } from '../../../src/services/programResult';
+import {
+  creatorStateWords, currencySymbol, formatDue, formatMoney, formatName, formatShortDate, formatTimeLeft, moneyInputValue, parseMoneyInput, toDayString,
+} from '../../../src/utils/programFormat';
+import { ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoading, ProgramNotice, ProgramScreen, ProgramSheet, programStyles as s } from '../../../src/components/programs/ProgramUi';
+import { CalendarGrid } from '../../../src/components/programs/ProgramPickers';
+import {
+  BrandCard, DeliveriesCard, DisputeCard, DisputeOpenCard, PostLinksCard, PostsStatus, ProposalCard, RatingCard, ScriptEditor, ShootSheet, TermsCard, TermsHistory, Timeline, Tracker, UploadCard,
+} from '../../../src/components/creator/contract/ContractSections';
+import { nextActionFor } from '../../../src/components/creator/contract/contractWords';
+
+type Busy = 'accept' | 'decline' | 'counter' | 'shoot' | 'script' | 'transition' | 'posts' | 'dispute' | 'rate' | 'change' | 'cancel' | 'respond' | null;
+
+export default function CreatorContractScreen(): React.ReactElement {
+  const { contractId } = useLocalSearchParams<{ contractId: string }>();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const query = useQuery({ queryKey: ['creator', 'contract', contractId], queryFn: () => creatorGigsService.workspace(contractId), enabled: Boolean(contractId) });
+  const [busy, setBusy] = useState<Busy>(null);
+  const [errors, setErrors] = useState<Partial<Record<Exclude<Busy, null>, string>>>({});
+  const [sheet, setSheet] = useState<'counter' | 'shoot' | 'change' | null>(null);
+  const [counterPrice, setCounterPrice] = useState('');
+  const [counterNote, setCounterNote] = useState('');
+  const [newPostBy, setNewPostBy] = useState<string | null>(null);
+  const [changeNote, setChangeNote] = useState('');
+
+  const refresh = async (): Promise<void> => {
+    await queryClient.invalidateQueries({ queryKey: ['creator'] });
+  };
+
+  /** Runs one action; failures (including `{ok:false}`) stay next to the control that caused them. */
+  const act = async (key: Exclude<Busy, null>, action: () => Promise<unknown>, after?: () => void): Promise<boolean> => {
+    setBusy(key); setErrors((e) => ({ ...e, [key]: undefined }));
+    try {
+      await action();
+      await refresh();
+      after?.();
+      return true;
+    } catch (e) {
+      setErrors((x) => ({ ...x, [key]: programErrorText(e) }));
+      return false;
+    } finally { setBusy(null); }
+  };
+
+  if (query.isLoading) return <ProgramScreen title="Contract"><ProgramLoading /></ProgramScreen>;
+  const w = query.data;
+  if (!w) return <ProgramScreen title="Contract"><ProgramEmpty title="This contract isn’t available" text={query.isError ? programErrorText(query.error) : 'It may have been withdrawn.'}
+    action={<ProgramButton label="Back to Creator" variant="secondary" onPress={() => router.replace('/creator' as never)} />} /></ProgramScreen>;
+
+  const state = w.contract.state;
+  const terms = w.terms.find((t) => t.version === w.contract.current_terms_version) ?? w.terms[w.terms.length - 1] ?? null;
+  const currency = terms?.currency ?? 'USD';
+  const title = w.gig.title_public;
+  const openProposal = w.proposals.find((p) => p.status === 'open');
+  const openCounter = openProposal && 'fee_minor' in openProposal.changes ? openProposal : null;
+
+  // ── Offer ──
+  if (state === 'offered') {
+    const decline = (): void => Alert.alert('Decline this offer?', 'The host is refunded automatically.', [
+      { text: 'Keep the offer', style: 'cancel' },
+      { text: 'Decline', style: 'destructive', onPress: () => void act('decline', () => creatorGigsService.refund(contractId, 'creator_decline')) },
+    ]);
+    const sendCounter = async (): Promise<void> => {
+      const minor = parseMoneyInput(counterPrice, currency);
+      if (minor === null) { setErrors((e) => ({ ...e, counter: `Enter a price above zero, like ${currencySymbol(currency)}350.` })); return; }
+      if (terms && minor === terms.fee_minor) { setErrors((e) => ({ ...e, counter: 'Counter with a different price from the offer.' })); return; }
+      await act('counter', () => creatorGigsService.counter(contractId, minor, counterNote), () => setSheet(null));
+    };
+    return <ProgramScreen title="Offer" refreshing={query.isFetching} onRefresh={() => void refresh()}
+      footer={<View style={{ gap: 8 }}>
+        <View style={styles.two}>
+          <ProgramButton label="Decline" variant="secondary" style={s.flex} busy={busy === 'decline'} disabled={busy !== null} onPress={decline} />
+          <ProgramButton label="Accept offer" style={styles.grow} busy={busy === 'accept'} disabled={busy !== null}
+            onPress={() => void act('accept', () => creatorGigsService.transition(contractId, 'offered', 'accept'))} />
+        </View>
+        {!openCounter ? <ProgramButton label="Counter with a different price" variant="ghost" disabled={busy !== null}
+          onPress={() => { setCounterPrice(terms ? moneyInputValue(terms.fee_minor, currency) : ''); setErrors((e) => ({ ...e, counter: undefined })); setSheet('counter'); }} /> : null}
+      </View>}>
+      <ProgramCard tone="highlight">
+        <Text style={s.accentText}>{formatTimeLeft(w.contract.state_deadline_at)}</Text>
+        <Text style={s.h1}>You’ve got an offer</Text>
+        <Text style={s.copy}>{title} · {formatName(w.gig.format_key)}</Text>
+        {terms ? <Text style={s.strong}>{formatMoney(terms.fee_minor, currency)} paid to you, already held by Mingla</Text> : null}
+      </ProgramCard>
+      {terms ? <TermsCard terms={terms} gig={w.gig} /> : null}
+      {openCounter ? <ProgramCard>
+        <Text style={s.label}>Your counter</Text>
+        <Text style={s.strong}>{formatMoney(Number(openCounter.changes.fee_minor), currency)} · waiting for the host</Text>
+        {openCounter.note ? <Text style={s.copy}>“{openCounter.note}”</Text> : null}
+        <Text style={s.small}>You can still accept the original offer.</Text>
+      </ProgramCard> : null}
+      <Text style={s.copy}>Accept to see the brand, the place and the private brief. Decline and the host is refunded automatically.</Text>
+      {errors.accept ? <ProgramNotice tone="error" text={errors.accept} /> : null}
+      {errors.decline ? <ProgramNotice tone="error" text={errors.decline} /> : null}
+
+      <ProgramSheet visible={sheet === 'counter'} onClose={() => setSheet(null)} title="Counter with a different price" snapPoints={['66%']} busy={busy === 'counter'}
+        footer={<ProgramButton label="Send counter" busy={busy === 'counter'} disabled={!counterPrice.trim()} onPress={() => void sendCounter()} />}>
+        {terms ? <Text style={s.copy}>The offer is {formatMoney(terms.fee_minor, currency)}. If the host accepts a higher price, they pay the difference; a lower price refunds them the difference.</Text> : null}
+        <ProgramField inSheet label="Your price" prefix={currencySymbol(currency)} suffix={currency} value={counterPrice}
+          onChangeText={(v) => { setCounterPrice(v.replace(/[^0-9.,]/g, '')); setErrors((e) => ({ ...e, counter: undefined })); }} keyboardType="decimal-pad" error={errors.counter ?? null} />
+        <ProgramField inSheet label="Note to the host (optional)" value={counterNote} onChangeText={setCounterNote} multiline counter={{ max: 300 }} maxLength={300} placeholder="Why this price" />
+      </ProgramSheet>
+    </ProgramScreen>;
+  }
+
+  // ── Closed without work ──
+  if (['declined', 'expired', 'cancelled'].includes(state)) {
+    const refund = w.events.find((e) => e.kind === 'refund_recorded');
+    const refundMinor = typeof refund?.data?.refund_minor === 'number' ? refund.data.refund_minor : typeof refund?.data?.amount_minor === 'number' ? refund.data.amount_minor : null;
+    return <ProgramScreen title={title}>
+      <ProgramCard>
+        <Text style={s.title}>{creatorStateWords(state)}</Text>
+        <Text style={s.copy}>{refundMinor !== null ? `The host was refunded ${formatMoney(refundMinor, currency)}.` : 'The host is refunded automatically.'} Nothing more to do here.</Text>
+      </ProgramCard>
+      <Timeline events={w.events} />
+    </ProgramScreen>;
+  }
+
+  // ── Contract after acceptance ──
+  const plan = w.shoot_plan;
+  const hostProposedShoot = Boolean(plan && !plan.confirmed_at && plan.proposed_by === 'host');
+  const creatorProposedShoot = Boolean(plan && !plan.confirmed_at && plan.proposed_by === 'creator');
+  const next = nextActionFor(state, { fixRoundsUsed: w.contract.fix_rounds_used, hostProposedShoot, creatorProposedShoot });
+  const due = w.contract.state_deadline_at;
+  const window = w.gig.shoot_window ?? (terms?.shoot_date ? { start: terms.shoot_date, end: terms.shoot_date } : null);
+  const acceptedEvent = w.events.find((e) => e.kind === 'accepted');
+  const canChangeTerms = ['accepted', 'shoot_planned', 'script_drafting', 'script_sent'].includes(state);
+  const canCancel = canChangeTerms;
+  const canDispute = ['fix_requested', 'posting', 'posts_failed', 'delivered'].includes(state);
+
+  const onNextCta = (): void => {
+    if (state === 'accepted') setSheet('shoot');
+    else if (state === 'shoot_planned') void act('transition', () => creatorGigsService.transition(contractId, 'shoot_planned', 'start_script'));
+    else if (state === 'approved') void act('transition', () => creatorGigsService.transition(contractId, 'approved', 'start_posting'));
+  };
+  const ctaHandled = ['accepted', 'shoot_planned', 'approved'].includes(state);
+
+  const cancel = (): void => Alert.alert('Cancel this gig?', 'The host is refunded through their original payment. You won’t be paid for this gig.', [
+    { text: 'Keep the gig', style: 'cancel' },
+    { text: 'Cancel gig', style: 'destructive', onPress: () => void act('cancel', () => creatorGigsService.refund(contractId, 'creator_after_accept')) },
+  ]);
+
+  return <ProgramScreen title={title} refreshing={query.isFetching} onRefresh={() => void refresh()}>
+    <BrandCard workspace={w} />
+
+    <ProgramCard tone="highlight">
+      <Text style={s.accentText}>Next{due ? ` · ${formatDue(due).toLowerCase()}` : ''}</Text>
+      <Text style={s.title}>{next.title}</Text>
+      <Text style={s.copy}>{state === 'accepted' && window ? next.text.replace('the shoot window', formatShootWindow(window)) : next.text}</Text>
+      {hostProposedShoot && plan?.shoot_at ? <View style={styles.two}>
+        <ProgramButton label="Pick another" variant="secondary" style={s.flex} disabled={busy !== null} onPress={() => setSheet('shoot')} />
+        <ProgramButton label={`Confirm ${formatShortDate(plan.shoot_at)}`} style={s.flex} busy={busy === 'shoot'}
+          onPress={() => void act('shoot', () => creatorGigsService.planShoot(contractId, String(plan.shoot_at), String(plan.arrival_note ?? ''), true))} />
+      </View> : next.cta && ctaHandled ? <ProgramButton label={next.cta} busy={busy === 'transition'} onPress={onNextCta} /> : null}
+      {errors.transition ? <ProgramNotice tone="error" text={errors.transition} /> : null}
+      {errors.shoot && sheet !== 'shoot' ? <ProgramNotice tone="error" text={errors.shoot} /> : null}
+    </ProgramCard>
+
+    {openProposal && !openCounter ? <ProposalCard proposal={openProposal} currency={currency} busy={busy === 'respond'}
+      onRespond={(accept) => void act('respond', () => creatorGigsService.respondToChange(openProposal.id, accept))} /> : null}
+    {errors.respond ? <ProgramNotice tone="error" text={errors.respond} /> : null}
+
+    {state === 'script_drafting' ? <ScriptEditor workspace={w} editable busy={busy === 'script'} error={errors.script ?? null}
+      onSave={(body, send) => void act('script', () => creatorGigsService.saveScript(contractId, body, send), () => { if (!send) Alert.alert('Draft saved', 'Send it to the host when it’s ready.'); })} /> : null}
+    {['script_sent', 'script_locked', 'delivered', 'fix_requested'].includes(state) && w.scripts.length ? <ScriptEditor workspace={w} editable={false} busy={false} error={null} onSave={() => undefined} /> : null}
+
+    {['script_locked', 'fix_requested'].includes(state) ? <UploadCard contractId={contractId} workspace={w}
+      onSubmit={async (jobId) => { await creatorGigsService.submitDelivery(contractId, jobId); await refresh(); }} /> : null}
+    <DeliveriesCard workspace={w} />
+
+    {['posting', 'posts_failed'].includes(state) ? <PostLinksCard workspace={w} busy={busy === 'posts'} error={errors.posts ?? null}
+      onSubmit={(posts) => void act('posts', () => creatorGigsService.submitPosts(contractId, posts))} /> : null}
+    <PostsStatus workspace={w} />
+
+    {state === 'disputed' ? <DisputeCard workspace={w} currency={currency} feeMinor={terms?.fee_minor ?? 0} busy={busy === 'dispute'} error={errors.dispute ?? null}
+      onRespond={(offerId, accept) => void act('dispute', () => creatorGigsService.respondToDisputeOffer(offerId, accept))}
+      onOffer={(bps) => void act('dispute', () => creatorGigsService.offerDispute(w.dispute!.id, bps))} /> : null}
+    {state === 'completed' ? <RatingCard workspace={w} busy={busy === 'rate'} error={errors.rate ?? null} onRate={(stars) => void act('rate', () => creatorGigsService.rate(contractId, stars))} /> : null}
+
+    <Tracker state={state} terms={terms} acceptedAt={acceptedEvent?.at ?? null} releaseHint="48 hours after your posts are checked" />
+    {terms ? <TermsCard terms={terms} gig={w.gig} /> : null}
+    <TermsHistory terms={w.terms} />
+
+    {canChangeTerms && !openProposal ? <ProgramButton label="Ask to change the post-by date" variant="secondary" onPress={() => { setNewPostBy(null); setChangeNote(''); setSheet('change'); }} /> : null}
+    {canDispute ? <DisputeOpenCard busy={busy === 'dispute'} error={errors.dispute ?? null}
+      onOpen={(statement) => void act('dispute', () => creatorGigsService.openDispute(contractId, state === 'fix_requested' ? 'nontechnical_fix_abuse' : 'posts_failed', statement))} /> : null}
+    {canCancel ? <ProgramButton label="Can’t do this gig? Cancel it" variant="ghost" busy={busy === 'cancel'} onPress={cancel} /> : null}
+    {errors.cancel ? <ProgramNotice tone="error" text={errors.cancel} /> : null}
+
+    <Timeline events={w.events} />
+
+    <ShootSheet visible={sheet === 'shoot'} onClose={() => setSheet(null)} window={window} initialAt={plan?.shoot_at ? String(plan.shoot_at) : null}
+      busy={busy === 'shoot'} error={errors.shoot ?? null}
+      onSend={(iso, note) => void act('shoot', () => creatorGigsService.planShoot(contractId, iso, note, false), () => setSheet(null))} />
+
+    <ProgramSheet visible={sheet === 'change'} onClose={() => setSheet(null)} title="Ask to change the post-by date" snapPoints={['70%']} busy={busy === 'change'}
+      footer={<ProgramButton label="Send to the host" busy={busy === 'change'} disabled={!newPostBy}
+        onPress={() => void act('change', () => creatorGigsService.proposeChange(contractId, { post_by: newPostBy }, 'dates', changeNote), () => setSheet(null))} />}>
+      <Text style={s.copy}>The host has 48 hours to answer. The fee can’t change here.</Text>
+      <Text style={s.fieldLabel}>New post-by date{newPostBy ? `: ${formatShortDate(newPostBy)}` : ''}</Text>
+      <CalendarGrid start={newPostBy ?? terms?.post_by ?? null} onPick={setNewPostBy} minDate={toDayString(new Date())} />
+      <ProgramField inSheet label="Why (optional)" value={changeNote} onChangeText={setChangeNote} multiline counter={{ max: 300 }} maxLength={300} />
+      {errors.change ? <ProgramNotice tone="error" text={errors.change} /> : null}
+    </ProgramSheet>
+  </ProgramScreen>;
 }
+
+function formatShootWindow(window: { start: string; end: string }): string {
+  return window.start === window.end ? formatShortDate(window.start) : `${formatShortDate(window.start)}–${formatShortDate(window.end)}`;
+}
+
+
+const styles = StyleSheet.create({
+  two: { flexDirection: 'row', gap: 10 },
+  grow: { flex: 1.6 },
+});
