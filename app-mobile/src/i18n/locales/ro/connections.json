@@ -187,5 +187,6 @@
   "af_limit_cta": "Vezi Mingla+",
   "af_send_failed": "Nu s-a putut trimite. Încearcă din nou.",
   "chat_menu_paired_view": "Zi de naștere, sărbători și salvate",
-  "preview_no_messages": "Încă nu există mesaje"
+  "preview_no_messages": "Încă nu există mesaje",
+  "host_chat_in_business_app": "Deschide aplicația Mingla Business pentru a gestiona chatul acestui eveniment."
 }

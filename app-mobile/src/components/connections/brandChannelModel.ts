@@ -12,8 +12,14 @@
  * channel" everywhere in code.
  *
  * Rules:
- *  - Event and trip chats with the same brand fold into one row, unless you
- *    are on that brand's team: team members keep the per-event chats.
+ *  - Explorer is the guest app. An event or trip chat of a brand you are on
+ *    the team of (accepted, not removed) is a host chat: it is run from the
+ *    Host app and never shows in Explorer (list, search, filters, unread).
+ *    Edge, for now: a team member holding a guest ticket to their own brand's
+ *    event does not see that chat in Explorer either.
+ *  - Every other event and trip chat folds into one row per brand, so Explorer
+ *    never shows a per-event row. While your teams are unknown (first launch,
+ *    nothing cached yet) nothing is hidden and everything folds.
  *  - The row's unread count is the sum of the folded chats' counts.
  *  - Where a message goes (D10): with one upcoming event (almost everyone)
  *    there is no choice. Only with two or more UPCOMING events does the
@@ -121,21 +127,55 @@ function isOfferingChat(conversation: BrandChannelSourceConversation): boolean {
 }
 
 /**
- * True when this chat folds into a brand channel for this user.
+ * True for a host chat: an event or trip chat of a brand this user is on the
+ * team of. Explorer hides it everywhere (it lives in the Host app).
  *
- * `teamBrandIds` null means the user's brand teams are not known yet (the read
- * has not succeeded): nothing folds, so a host never loses their per-event
- * rows to a failed read.
+ * `teamBrandIds` null means the user's brand teams are not known yet (no
+ * successful read and nothing cached): nothing is hidden.
+ * MINGLA-INVARIANT: I-4114-EXPLORER-HIDES-HOST-CHATS | issue #4114 | Explorer never lists, searches, filters or counts unread for an event or trip chat whose brand is in the user's team set; it never opens one either.
  */
-export function foldsIntoBrandChannel(
+export function isHostChatForUser(
   conversation: BrandChannelSourceConversation,
   teamBrandIds: ReadonlySet<string> | null,
 ): boolean {
   if (teamBrandIds === null) return false;
   if (!isOfferingChat(conversation)) return false;
   const brandId = conversation.eventBrandId;
-  if (!brandId) return false;
-  return !teamBrandIds.has(brandId);
+  return Boolean(brandId) && teamBrandIds.has(brandId as string);
+}
+
+/**
+ * True when this chat folds into a brand channel for this user: every event
+ * and trip chat with a brand that is not a host chat (Explorer never shows a
+ * per-event row).
+ */
+export function foldsIntoBrandChannel(
+  conversation: BrandChannelSourceConversation,
+  teamBrandIds: ReadonlySet<string> | null,
+): boolean {
+  if (!isOfferingChat(conversation)) return false;
+  if (!conversation.eventBrandId) return false;
+  return !isHostChatForUser(conversation, teamBrandIds);
+}
+
+/** Explorer's chats: everything but host chats (list, search, filters, archive). */
+export function explorerConversations<C extends BrandChannelSourceConversation>(
+  conversations: readonly C[],
+  teamBrandIds: ReadonlySet<string> | null,
+): C[] {
+  return conversations.filter((conversation) => !isHostChatForUser(conversation, teamBrandIds));
+}
+
+/** Explorer's unread badge: host chats never count; muted chats never count. */
+export function explorerUnreadTotal<C extends BrandChannelSourceConversation>(
+  conversations: readonly C[],
+  teamBrandIds: ReadonlySet<string> | null,
+  isMuted: (conversation: C) => boolean = () => false,
+): number {
+  return explorerConversations(conversations, teamBrandIds).reduce(
+    (sum, conversation) => sum + (isMuted(conversation) ? 0 : conversation.unread_count || 0),
+    0,
+  );
 }
 
 /**
@@ -251,6 +291,8 @@ export function foldBrandChannels<C extends BrandChannelSourceConversation>(
   const rows: Array<C | BrandChannelRow<C>> = [];
   const placed = new Set<string>();
   for (const conversation of conversations) {
+    // Host chats are run from the Host app and never listed here.
+    if (isHostChatForUser(conversation, teamBrandIds)) continue;
     if (!foldsIntoBrandChannel(conversation, teamBrandIds)) {
       rows.push(conversation);
       continue;

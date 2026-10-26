@@ -187,5 +187,6 @@
   "af_limit_cta": "Se Mingla+",
   "af_send_failed": "Det gick inte att skicka. Försök igen.",
   "chat_menu_paired_view": "Födelsedag, högtider och sparat",
-  "preview_no_messages": "Inga meddelanden än"
+  "preview_no_messages": "Inga meddelanden än",
+  "host_chat_in_business_app": "Öppna Mingla Business-appen för att hantera den här eventchatten."
 }

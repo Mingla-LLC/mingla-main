@@ -43,10 +43,13 @@ import {
   brandChannelMatchesSearch,
   brandChannelMessages,
   defaultSendTarget,
+  explorerConversations,
+  explorerUnreadTotal,
   findBrandChannelEvent,
   foldBrandChannels,
   foldsIntoBrandChannel,
   isBrandChannelId,
+  isHostChatForUser,
   isBrandChannelRow,
   pinnedBrandChannelMemberIds,
   resolveSendTarget,
@@ -157,6 +160,7 @@ import {
 } from "./connections/PendingCollabChatSheet";
 import { isPendingCollabReadyChange } from "./connections/pendingCollabChatUtils";
 import MessageInterface from "./MessageInterface";
+import { serializeTeamBrandCache, startupTeamBrandIds, teamBrandCacheKey } from "./connections/teamBrandCache";
 import { CustomPaywallScreen } from "./CustomPaywallScreen";
 import { useSessionCreationGate } from "../hooks/useSessionCreationGate";
 import type { GatedFeature } from "../hooks/useFeatureGate";
@@ -636,11 +640,18 @@ function ConnectionsPageRefactored({
 
   // ── Conversations data ───────────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  // Issue #4114 Wave 6: brands this user is on the team of. Their event chats
-  // stay per event; every other brand's event and trip chats fold into one
-  // brand channel row. null until the team read first succeeds: nothing folds
-  // while it is unknown, so a host never loses their per-event rows.
+  // Issue #4114: brands this user is on the team of. Explorer is the guest
+  // app: their event and trip chats are host chats, run in the Host app, and
+  // hidden here everywhere; every other brand's event and trip chats fold into
+  // one brand channel row. Starts from the last cached set (so the first frame
+  // is right on every launch after the first); null only while nothing is
+  // known, which hides nothing and folds everything.
   const [teamBrandIds, setTeamBrandIds] = useState<ReadonlySet<string> | null>(null);
+  // Explorer's chats: everything but host chats (list, search, filters, archive, unread).
+  const explorerChats = useMemo(
+    () => explorerConversations(conversations as ChatListItemConversation[], teamBrandIds) as Conversation[],
+    [conversations, teamBrandIds],
+  );
   const [conversationsLoading, setConversationsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -1078,7 +1089,7 @@ function ConnectionsPageRefactored({
 
   // Sort conversations by most recent message
   const sortedConversations = useMemo(() => {
-    const pending = conversations
+    const pending = explorerChats
       .filter(isPendingInviteConversation)
       .sort((a, b) => {
         const aTime = a.__pendingInvite.createdAt || a.created_at;
@@ -1087,10 +1098,10 @@ function ConnectionsPageRefactored({
       });
     // Issue #4114: pinned chats first (in pin order), then most recent activity.
     const regular = sortChatList(
-      conversations.filter((conversation) => !isPendingInviteConversation(conversation)),
+      explorerChats.filter((conversation) => !isPendingInviteConversation(conversation)),
     );
     return [...pending, ...regular].filter(c => !archivedIds.has(c.id));
-  }, [conversations, archivedIds]);
+  }, [explorerChats, archivedIds]);
 
   // Issue #4114 Wave 6: a guest's event and trip chats fold into one row per
   // brand (brand team members keep per-event rows). The fold keeps the order;
@@ -1111,14 +1122,14 @@ function ConnectionsPageRefactored({
   }, [activeBrandChannel, brandChannels]);
 
   const archivedConversations = useMemo(() => {
-    return [...conversations]
+    return [...explorerChats]
       .filter(c => archivedIds.has(c.id))
       .sort((a, b) => {
         const aTime = a.last_message?.created_at || a.created_at;
         const bTime = b.last_message?.created_at || b.created_at;
         return new Date(bTime).getTime() - new Date(aTime).getTime();
       });
-  }, [conversations, archivedIds]);
+  }, [explorerChats, archivedIds]);
 
   // Search-filtered conversations
   const filteredConversations = useMemo(() => {
@@ -1287,7 +1298,10 @@ function ConnectionsPageRefactored({
         const owned = Array.from(eventMetaMap.values())
           .filter((meta) => meta.brandId && meta.brandAccountId === userId)
           .map((meta) => meta.brandId as string);
-        setTeamBrandIds(new Set([...teamBrandRows, ...owned]));
+        const teams = new Set([...teamBrandRows, ...owned]);
+        setTeamBrandIds(teams);
+        AsyncStorage.setItem(teamBrandCacheKey(userId), serializeTeamBrandCache(teams))
+          .catch((error) => console.warn('[ConnectionsPage] team brand cache write failed', error));
       }
 
       for (const session of sessionsResult.data || []) {
@@ -1636,6 +1650,14 @@ function ConnectionsPageRefactored({
     if (!user?.id) return;
     let cancelled = false;
     void (async () => {
+      // Issue #4114: the last known team set, before the first fresh read, so
+      // host chats are hidden (and guests' chats folded) from the first frame.
+      try {
+        const cachedTeams = await AsyncStorage.getItem(teamBrandCacheKey(user.id));
+        if (!cancelled) setTeamBrandIds((current) => startupTeamBrandIds(current, cachedTeams));
+      } catch (cacheError) {
+        console.warn('[ConnectionsPage] team brand cache read failed', cacheError);
+      }
       const migrationKey = `mingla:archived_chats_server_migrated:${user.id}`;
       const legacyKey = `mingla:archived_chats:${user.id}`;
       try {
@@ -1779,12 +1801,14 @@ function ConnectionsPageRefactored({
 
   // ── Unread count reporting ───────────────────────────────
   useEffect(() => {
-    const totalUnread = conversations.reduce((sum, conv) => {
-      const isMuted = conv.participants?.some((p) => mutedUserIds.includes(p.id));
-      return sum + (isMuted ? 0 : (conv.unread_count || 0));
-    }, 0);
+    // Issue #4114: host chats (run in the Host app) never count in Explorer.
+    const totalUnread = explorerUnreadTotal(
+      conversations as ChatListItemConversation[],
+      teamBrandIds,
+      (conv) => conv.participants?.some((p) => mutedUserIds.includes(p.id)) === true,
+    );
     onUnreadCountChange?.(totalUnread);
-  }, [conversations, onUnreadCountChange, mutedUserIds]);
+  }, [conversations, onUnreadCountChange, mutedUserIds, teamBrandIds]);
 
   // ORCH-0600: handleInvitePress + link-outline button deleted (dead weight per
   // user directive). Clipboard import removed. mixpanelService.trackReferralLinkShared
@@ -2095,6 +2119,15 @@ function ConnectionsPageRefactored({
   // ── Select conversation from chat list ───────────────────
   const handleSelectConversation = async (conversation: Conversation) => {
     if (!user?.id) return;
+
+    // Issue #4114: a host chat (your own brand's event or trip chat) is run in
+    // the Host app; a push or deep link never opens it in Explorer. A row built
+    // from a link may lack the brand, so the loaded list is checked too.
+    const known = (conversations.find((candidate) => candidate.id === conversation.id) ?? conversation) as ChatListItemConversation;
+    if (isHostChatForUser(known, teamBrandIds) || isHostChatForUser(conversation as ChatListItemConversation, teamBrandIds)) {
+      showToast({ message: t('connections:host_chat_in_business_app'), type: 'info' });
+      return;
+    }
 
     // Issue #4114 Wave 6: a brand row opens its channel, and so does any of its
     // event chats (deep links, notifications), with that event as the target.
@@ -3841,7 +3874,7 @@ function ConnectionsPageRefactored({
         ? buildSearchItems<Conversation, UseFriend>({
             matchedChats: filteredConversations,
             friends: dbFriends,
-            allConversations: conversations,
+            allConversations: explorerChats,
             currentUserId,
             query: searchQuery,
           })
@@ -3850,7 +3883,7 @@ function ConnectionsPageRefactored({
             archivedCount: archivedConversations.length,
             filter: chatFilter,
           }),
-    [archivedConversations.length, chatFilter, conversations, currentUserId, dbFriends, filteredConversations, listConversations, searchActive, searchQuery],
+    [archivedConversations.length, chatFilter, explorerChats, currentUserId, dbFriends, filteredConversations, listConversations, searchActive, searchQuery],
   );
   const listLayouts = useMemo(() => chatListLayouts(listItems), [listItems]);
   const getItemLayout = useCallback(

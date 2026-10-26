@@ -187,5 +187,6 @@
   "af_limit_cta": "See Mingla+",
   "af_send_failed": "Couldn't send that. Try again.",
   "chat_menu_paired_view": "Birthday, holidays and saves",
-  "preview_no_messages": "No messages yet"
+  "preview_no_messages": "No messages yet",
+  "host_chat_in_business_app": "Open the Mingla Business app to manage this event chat."
 }

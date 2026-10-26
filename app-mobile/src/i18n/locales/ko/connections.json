@@ -187,5 +187,6 @@
   "af_limit_cta": "Mingla+ 보기",
   "af_send_failed": "보내지 못했어요. 다시 시도하세요.",
   "chat_menu_paired_view": "생일, 기념일, 저장",
-  "preview_no_messages": "아직 메시지가 없어요"
+  "preview_no_messages": "아직 메시지가 없어요",
+  "host_chat_in_business_app": "이 이벤트 채팅은 Mingla Business 앱에서 관리하세요."
 }

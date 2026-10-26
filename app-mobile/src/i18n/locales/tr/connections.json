@@ -187,5 +187,6 @@
   "af_limit_cta": "Mingla+'yı gör",
   "af_send_failed": "Gönderilemedi. Tekrar dene.",
   "chat_menu_paired_view": "Doğum günü, tatiller ve kaydedilenler",
-  "preview_no_messages": "Henüz mesaj yok"
+  "preview_no_messages": "Henüz mesaj yok",
+  "host_chat_in_business_app": "Bu etkinlik sohbetini yönetmek için Mingla Business uygulamasını aç."
 }

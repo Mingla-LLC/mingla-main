@@ -71,7 +71,8 @@ const event = (id: string, startOffset: number) => ({
   publicCard: null,
 });
 
-Deno.test("#4114 W6 adversarial: a team member never gets a folded row for their own brand", () => {
+// Seth 2026-10-26: own-brand chats are host chats, hidden from Explorer entirely.
+Deno.test("#4114 W6 adversarial: a team member never gets a row for their own brand", () => {
   const conversations = [
     eventChat("mine-1", "B-team", DAY),
     eventChat("mine-2", "B-team", 2 * DAY),
@@ -80,7 +81,7 @@ Deno.test("#4114 W6 adversarial: a team member never gets a folded row for their
   ];
   const { rows, channels } = foldBrandChannels(conversations, new Set(["B-team"]));
   const ids = rows.map((row) => row.id);
-  assertEquals(ids, ["mine-1", "mine-2", brandChannelId("B-other")], "own brand stays per event, in place; the other brand folds");
+  assertEquals(ids, [brandChannelId("B-other")], "own brand is hidden; the other brand folds");
   assert(!channels.has(brandChannelId("B-team")), "no channel object for a team brand");
   assert(!rows.some((row) => isBrandChannelRow(row) && row.__brandChannel.brandId === "B-team"), "never a folded team row");
   assertEquals(channels.get(brandChannelId("B-other"))?.events.map((e) => e.conversationId), ["other-1", "other-2"], "trips fold with events, soonest first");

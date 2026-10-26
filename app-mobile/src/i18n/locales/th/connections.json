@@ -187,5 +187,6 @@
   "af_limit_cta": "ดู Mingla+",
   "af_send_failed": "ส่งไม่สำเร็จ ลองอีกครั้ง",
   "chat_menu_paired_view": "วันเกิด วันหยุด และที่บันทึก",
-  "preview_no_messages": "ยังไม่มีข้อความ"
+  "preview_no_messages": "ยังไม่มีข้อความ",
+  "host_chat_in_business_app": "เปิดแอป Mingla Business เพื่อจัดการแชทของอีเวนต์นี้"
 }

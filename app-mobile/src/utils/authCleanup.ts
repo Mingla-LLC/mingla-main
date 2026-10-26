@@ -12,6 +12,7 @@ import {
 } from "../services/appsFlyerService";
 import { clearNativeAdAttribution } from "../services/nativeAdAttributionService";
 import { SEEN_MATCHES_KEY_PREFIX } from "../hooks/useSeenSessionMatches";
+import { TEAM_BRAND_CACHE_PREFIX } from "../components/connections/teamBrandCache";
 
 type CleanupOptions = {
   reason: string;
@@ -36,6 +37,8 @@ export function isPrivateAsyncStorageKey(key: string): boolean {
   if (key === "recommendation_cache") return true;
   // Issue #4114 Wave 3: which collab matches this account has opened.
   if (key.startsWith(SEEN_MATCHES_KEY_PREFIX)) return true;
+  // Issue #4114: the cached brand-team set (which event chats are host chats).
+  if (key.startsWith(TEAM_BRAND_CACHE_PREFIX)) return true;
   return false;
 }
 

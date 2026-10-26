@@ -99,11 +99,12 @@ Deno.test("W6 a guest's event and trip chats of one brand fold into ONE row", ()
   eq(chatKind({ ...friendChat, isEnquiry: true }), "enquiry", "#4111 enquiry rows keep their own kind (D11)");
 });
 
-Deno.test("W6 brand team members keep per-event rows", () => {
+// Seth 2026-10-26: Explorer is the guest app. A team member's own brand chats
+// are host chats, run from the Host app, and never listed in Explorer.
+Deno.test("W7 a team member's own brand chats are hidden; other brands fold", () => {
   const conversations = [eventChat("a1", "lsc"), eventChat("a2", "lsc"), eventChat("b1", "other")];
   const { rows } = foldBrandChannels(conversations, new Set(["lsc"]));
-  eq(rows.map((row) => row.id), ["a1", "a2", brandChannelId("other")], "the team's brand stays per event; other brands fold");
-  eq(chatKind(rows[0]), "event", "a team member's chat is an event row");
+  eq(rows.map((row) => row.id), [brandChannelId("other")], "the team's brand is hidden; other brands fold");
 });
 
 Deno.test("W6 the brand row's unread count is the sum of its chats", () => {

@@ -187,5 +187,6 @@
   "af_limit_cta": "Scopri Mingla+",
   "af_send_failed": "Invio non riuscito. Riprova.",
   "chat_menu_paired_view": "Compleanno, festività e salvati",
-  "preview_no_messages": "Ancora nessun messaggio"
+  "preview_no_messages": "Ancora nessun messaggio",
+  "host_chat_in_business_app": "Apri l'app Mingla Business per gestire questa chat dell'evento."
 }
