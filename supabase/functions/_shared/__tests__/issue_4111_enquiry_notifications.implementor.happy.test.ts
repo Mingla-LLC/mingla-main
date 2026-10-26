@@ -64,3 +64,14 @@ Deno.test("#4111 copy renders for every category", () => {
   assertEquals(issue4111EmailCta("business.brand_enquiry_nudge", teamPayload)?.url, `https://host.usemingla.com/messages/${CONV}`);
   assertEquals(issue4111EmailCta("business.brand_enquiry_new", teamPayload), undefined);
 });
+
+Deno.test("#4111 the subscribe confirm text renders with the link the dispatcher was handed", () => {
+  const rendered = renderCategoryMessage("web.brand_subscribe_confirm", {
+    brand_name: "Lantern Room",
+    confirm_url: "https://example.test/functions/v1/public-brand-subscribe-confirm/TOKEN",
+  });
+  assertEquals(
+    rendered.sms,
+    "Confirm texts from Lantern Room via Mingla: https://example.test/functions/v1/public-brand-subscribe-confirm/TOKEN",
+  );
+});

@@ -74,6 +74,10 @@ Deno.test("#4111 the text link is sent only when the server says the SMS cap has
   const room = harness({ status: "created", pending_id: "p3", send_sms: true });
   await room.handle(post({ email: "x@example.com", phone: "+15555550199", wants_sms: true }));
   assertEquals(room.texts.length, 1);
+  // The text goes through the dispatcher with its own idempotency key and the
+  // confirm link carrying the SMS token (never the email token).
+  assertEquals(room.texts[0].idempotencyKey, "brand_subscribe_confirm_sms:p3");
+  assert(String(room.texts[0].confirmUrl).endsWith("1".padStart(43, "T")));
   assertEquals(room.rpcCalls[0].args.p_wants_sms, true);
   assertEquals(room.rpcCalls[0].args.p_sms_token_hash, await sha256Hex("1".padStart(43, "T")));
 

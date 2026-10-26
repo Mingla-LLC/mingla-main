@@ -130,3 +130,21 @@ export function renderIssue4111Message(
     }
   }
 }
+
+// Subscribe confirmation text (public-brand-subscribe). Sent through
+// notify-dispatch so can_send / STOP suppressions and the footer apply; the
+// confirm link rides only in that request, never in a stored row.
+export const ISSUE_4111_SUBSCRIBE_SMS_CATEGORY = "web.brand_subscribe_confirm";
+
+export function renderIssue4111SubscribeSms(
+  payload: Record<string, unknown>,
+): { push: { title: string; body: string }; email: { subject: string; body: string }; sms: string } {
+  const brand = text(payload.brand_name, "this brand");
+  const url = typeof payload.confirm_url === "string" ? payload.confirm_url : "";
+  const line = `Confirm texts from ${brand} via Mingla: ${url}`.trim();
+  return {
+    push: { title: `Confirm texts from ${brand}`, body: line },
+    email: { subject: `Confirm texts from ${brand}`, body: line },
+    sms: line,
+  };
+}

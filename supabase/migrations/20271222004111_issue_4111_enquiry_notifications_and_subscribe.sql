@@ -7,6 +7,8 @@
 --   business.brand_enquiry_nudge    inapp+email  team + brands.contact_email, once,
 --                                                no brand reply 24h after the guest
 --   explorer.brand_enquiry_reply    inapp+push   Explorer guest, brand replied
+--   web.brand_subscribe_confirm     sms          subscribe double opt-in text (dispatched
+--                                                directly by public-brand-subscribe)
 -- Web guests without an account get the batched reply email from the
 -- brand-enquiry-guest-digest edge function (cron below), not from a category,
 -- because each email carries a fresh access link that must never be stored raw.
@@ -29,7 +31,10 @@ INSERT INTO public.notification_categories(
   ('business.brand_enquiry_new', 'enquiries', true, 'normal', ARRAY['inapp','push']::text[], 'reach_once', true),
   ('business.brand_enquiry_message', 'enquiries', true, 'normal', ARRAY['inapp','push']::text[], 'reach_once', true),
   ('business.brand_enquiry_nudge', 'enquiries', true, 'normal', ARRAY['inapp','email']::text[], 'reach_once', true),
-  ('explorer.brand_enquiry_reply', 'Messages', true, 'normal', ARRAY['inapp','push']::text[], 'reach_once', true)
+  ('explorer.brand_enquiry_reply', 'Messages', true, 'normal', ARRAY['inapp','push']::text[], 'reach_once', true),
+  -- The subscribe double opt-in text. Sent by public-brand-subscribe through
+  -- notify-dispatch (no stored row carries the link); STOP suppressions apply.
+  ('web.brand_subscribe_confirm', 'Subscriptions', true, 'normal', ARRAY['sms']::text[], 'reach_once', true)
 ON CONFLICT (key) DO UPDATE SET
   section = EXCLUDED.section,
   is_transactional = EXCLUDED.is_transactional,

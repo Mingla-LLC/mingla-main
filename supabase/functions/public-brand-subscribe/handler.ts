@@ -20,6 +20,8 @@
  *                           or names an unknown brand.
  *   400 { error:"invalid_input", field:"email"|"phone"|"brand"|"origin"|"json" }
  *   403 { error:"origin_not_allowed" } | 405 { error:"method_not_allowed" }
+ * The text link is sent through notify-dispatch (category
+ * web.brand_subscribe_confirm) so STOP suppressions apply.
  * The confirm link opens public-brand-subscribe-confirm/{token} (72 h). On
  * confirm: a Mingla account email follows the brand (email channel on); any
  * other email joins the brand's contact book as a marketing-consented
@@ -43,6 +45,7 @@ import {
   sha256Hex,
   subscribeConfirmEmail,
   subscribeConfirmSms,
+  subscribeConfirmUrl,
 } from "../_shared/brandEnquiry.ts";
 import type { PublicEnquiryDeps } from "../_shared/brandEnquiryRuntime.ts";
 
@@ -131,6 +134,8 @@ export function createPublicBrandSubscribeHandler(deps: PublicEnquiryDeps) {
           to: phone,
           brandName: brand.name,
           message: subscribeConfirmSms({ brandName: brand.name, token: smsToken }),
+          confirmUrl: subscribeConfirmUrl(smsToken),
+          idempotencyKey: `brand_subscribe_confirm_sms:${String(result.pending_id ?? "")}`,
         });
         if (!sms.ok) {
           deps.log("error", "[public-brand-subscribe] confirm_sms_failed", { error: sms.error ?? "unknown" });

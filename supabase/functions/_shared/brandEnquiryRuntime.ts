@@ -50,7 +50,13 @@ export interface PublicEnquiryDeps {
   resolveBrand(ref: { brandId?: string | null; brandSlug?: string | null }): Promise<BrandRef | null>;
   moderate(text: string): Promise<ModerationResult>;
   sendEmail(message: EmailMessage): Promise<{ ok: boolean; error?: string | null }>;
-  sendSms(input: { to: string; brandName: string; message: string }): Promise<{ ok: boolean; error?: string | null }>;
+  sendSms(input: {
+    to: string;
+    brandName: string;
+    message: string;
+    confirmUrl?: string;
+    idempotencyKey?: string;
+  }): Promise<{ ok: boolean; error?: string | null }>;
   makeToken(): string;
   log(level: "warn" | "error", event: string, detail?: Record<string, unknown>): void;
 }

@@ -15,7 +15,9 @@ import {
 } from "./sms/buyerSms.ts";
 import {
   isIssue4111EnquiryCategory,
+  ISSUE_4111_SUBSCRIBE_SMS_CATEGORY,
   renderIssue4111Message,
+  renderIssue4111SubscribeSms,
 } from "./issue4111EnquiryNotifications.ts";
 
 export interface RenderedMessage {
@@ -221,6 +223,9 @@ export function renderCategoryMessage(
   // #4111 — customer enquiry copy lives with its categories.
   if (isIssue4111EnquiryCategory(categoryKey)) {
     return renderIssue4111Message(categoryKey, payload);
+  }
+  if (categoryKey === ISSUE_4111_SUBSCRIBE_SMS_CATEGORY) {
+    return renderIssue4111SubscribeSms(payload);
   }
   const brand = str(payload.brand_name ?? payload.brand, "Mingla");
   const party = str(payload.party_size ?? payload.party, "");
