@@ -22,7 +22,8 @@ describe("#3872 B4 Host referral operations", () => {
     expect(editor).toContain("Invited promoter perk");
     // #3872 walkthrough redesign (approved K-hub): 2×2 stats that scroll
     // away, a segmented control, leaderboard inside Promoters, invite sheet.
-    expect(home).toContain("Sold via referrals");
+    // Round 2 (approved M-referrals): one strip, labelled Sold · Tickets · Paid out.
+    expect(home).toContain('label: "Sold"');
     expect(home).toContain("People earning");
     expect(home).toContain("Leaderboard");
     expect(home).toContain("View details for");

@@ -22,6 +22,7 @@ const serviceSource = read("src/services/creatorGigsService.ts");
 // Whitespace-normalised so formatting never breaks these copy contracts.
 const host = read("app/brand/[id]/creators/contract/[contractId].tsx").replace(/\s+/g, " ").replace(/\( /g, "(").replace(/,? \)/g, ")");
 const applicants = read("app/brand/[id]/creators/[gigId]/interest.tsx");
+const prehire = read("app/brand/[id]/creators/profile/[creatorId].tsx");
 const hireSheet = read("src/components/gigs/HireSheet.tsx");
 
 describe("issue #3872 — Creator gig contract journeys", () => {
@@ -55,7 +56,10 @@ describe("issue #3872 — Creator gig contract journeys", () => {
   });
 
   test("the Host can fund the quoted fee or offer a different fee before hiring", () => {
-    expect(applicants).toContain('label="Counter"');
+    // Round 2 (approved M-gig / M-prehire): hiring, including a different fee,
+    // starts from the creator's profile; the Interested rows only open it.
+    expect(prehire).toContain("allowCounter: true");
+    expect(applicants).not.toContain('label="Counter"');
     expect(hireSheet).toContain("Offer a different fee");
     expect(hireSheet).toContain("Agree and pay");
     expect(hireSheet).toContain("Mingla booking fee (15%)");
