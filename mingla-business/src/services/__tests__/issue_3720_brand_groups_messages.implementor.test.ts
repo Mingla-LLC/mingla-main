@@ -12,6 +12,7 @@ jest.mock("../supabase", () => ({
 }));
 
 import {
+  listBrandGroupMentionCandidates,
   listBrandGroups,
   listBrandGroupMessages,
   markBrandGroupRead,
@@ -49,6 +50,7 @@ describe("#3720 official Brand groups Host contract", () => {
       content: "Reply",
       replyToId: "m0",
       relatedMessageIds: ["m0", "m2"],
+      mentionedUserIds: ["u2"],
       actorMode: "support",
     })).resolves.toBe("m1");
     expect(rpcMock).toHaveBeenNthCalledWith(1, "issue_3720_mark_brand_group_read", { p_conversation_id: "g1" });
@@ -57,8 +59,25 @@ describe("#3720 official Brand groups Host contract", () => {
       p_conversation_id: "g1",
       p_reply_to_id: "m0",
       p_related_message_ids: ["m0", "m2"],
+      p_mentioned_user_ids: ["u2"],
       p_actor_mode: "support",
     }));
+  });
+
+  test("mention candidates use the access-checked Brand group RPC", async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: [{ user_id: "u2", display_name: "Amina Bello", username: "amina" }],
+      error: null,
+    });
+    await expect(listBrandGroupMentionCandidates("g1", "ami")).resolves.toEqual({
+      candidates: [{ user_id: "u2", display_name: "Amina Bello", username: "amina" }],
+      error: null,
+    });
+    expect(rpcMock).toHaveBeenCalledWith("issue_3988_list_brand_group_mention_candidates", {
+      p_conversation_id: "g1",
+      p_query: "ami",
+      p_limit: 4,
+    });
   });
 
   test("top bar opens Messages and the index separates own and Support groups", () => {

@@ -9,6 +9,7 @@
  * - pairingKeys: usePairings.ts
  * - notificationKeys: useNotifications.ts
  * - phoneLookupKeys: usePhoneLookup.ts
+ * - discoverKeys: discoverQueryKeys.ts (isolated from shared mutation graphs)
  */
 
 export const savedCardKeys = {
@@ -38,6 +39,23 @@ export const chatKeys = {
 export const userLevelKeys = {
   all: ['userLevel'] as const,
   level: (userId: string) => [...userLevelKeys.all, userId] as const,
+};
+
+// #4063 — Purchases is the consumer's canonical ticket/pass/booking read
+// model. Keep every list/detail/identity cache under one prefix so claims,
+// checkout completion, and realtime order updates can refresh the whole
+// surface without teaching each producer about individual screens.
+export type PurchaseKind = "order" | "rsvp" | "reservation" | "venue_order";
+
+export const purchaseKeys = {
+  all: ["purchases"] as const,
+  list: (userId: string) => [...purchaseKeys.all, "list", userId] as const,
+  detail: (userId: string, kind: PurchaseKind, id: string) =>
+    [...purchaseKeys.all, "detail", userId, kind, id] as const,
+  identifiers: (userId: string) =>
+    [...purchaseKeys.all, "identifiers", userId] as const,
+  lastClaim: (userId: string) =>
+    [...purchaseKeys.all, "lastClaim", userId] as const,
 };
 
 export const circleKeys = {

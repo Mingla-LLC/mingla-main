@@ -325,6 +325,9 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
     workflow: "deploy-functions.yml",
     referenceFiles: Object.freeze([
       "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
+      // #4084's supersession suite also consumes this retained provider to pin
+      // the guarded input, permissions and post-deploy attestation wiring.
+      "supabase/functions/_shared/__tests__/issue_4084_edge_deploy_supersession.implementor.happy.test.ts",
     ]),
   }),
   Object.freeze({
@@ -526,11 +529,21 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // updates in the touched Explorer and Host package trees, including the Host
 // OneSignal pin and Expo 54 override that keep its broad peer range on the
 // approved framework line.
+// [TEST-MOD-APPROVED #3988] Re-banked after declaring the Host localization
+// dependencies used by the Brand group gallery/viewer, adding the app's scoped
+// Discover regression command, and completing the mandated dependency refresh
+// for both touched package trees.
+// [TEST-MOD-APPROVED #4063] Re-banked after adding the Explorer purchase-flow
+// regression command and declaring Expo's existing keep-awake runtime directly.
+// [TEST-MOD-APPROVED #4063] Re-banked after adding the focused Wave 5 ticket
+// transfer surface regression command; dependencies and lockfiles are unchanged.
+// [TEST-MOD-APPROVED #3540] Re-banked after the required Explorer dependency
+// refresh advanced three in-range transitive/runtime packages in the lockfile.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
-  "app-mobile/package.json": "c965c2567fe3d0db9b44bbc0d45f3c761b434033e9acad98883ceff45d28c787",
-  "app-mobile/package-lock.json": "a98fc185f2b21c4c42a99137ea0c55bafa3838b984c5ec33e6f60e6000545ac9",
+  "app-mobile/package.json": "48af9d0cca47199b61b824a4fd80b87ec7e5bb12f07899994435031238834bbb",
+  "app-mobile/package-lock.json": "9a7974a2de124482f7d450d46b49775126ef5206a325dcb6c7663ea3b9666065",
   "mingla-business/package.json": "6f77fc43e63360ac45b94d11195b966433d4e6769b34a0340d88f9871b4b2315",
-  "mingla-business/package-lock.json": "773865d08bc4240f601e963738eaa05775cd2f632b9a119025bfd4b39b65511b",
+  "mingla-business/package-lock.json": "7add1ab1e498621c71ce7c2db5678c9b748f39c745fd95a446a5f7d7d77f1889",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other

@@ -5,7 +5,7 @@
  *
  * Mounts under the stock config with a bare react-test-renderer harness:
  *   - the REAL GuestVenueReservation (the #2734 harness shape) completing a free
- *     web booking, then opening its "Manage or cancel" link;
+ *     web booking and handing the booking off through the #4063 claim card;
  *   - the REAL `app/reserve/[brandId]/manage.tsx` against a stubbed service:
  *     it opens a booking with NO refund, cancels it, shows the cancelled state
  *     without a second Cancel, and paints every text on the dark canvas;
@@ -17,6 +17,9 @@
  * two host-sheet assertions below were updated for that, and nothing else.
  * The full host-cancel refund contract lives in
  * venueStaffCancelRefund.issue3391.test.tsx.
+ *
+ * [TEST-MOD-APPROVED #4063] The inline success contract intentionally moved
+ * manage/cancel into email + the app. The manage route coverage below remains.
  */
 
 import React from "react";
@@ -47,6 +50,8 @@ const mockCreateReservation = jest.fn((_input: unknown) =>
     partySize: 2,
     brandId: "brand-3392",
     guestCancelToken: "token-3392",
+    buyerContact: { email: "ada@example.com", phoneLast4: "0180" },
+    claim: { shortUrl: "https://usemingla.com/c/BOOKING001", code: null },
   } as Record<string, unknown>),
 );
 const mockFetchManage = jest.fn();
@@ -250,8 +255,8 @@ describe("#3392 — manage link contract", () => {
 
 // ── free booking success card ────────────────────────────────────────────────
 
-describe("#3392 — a free web booking offers Manage or cancel", () => {
-  test("completing a free booking shows the button, which opens the private manage link", async () => {
+describe("#4063 — a free web booking hands off through the claim card", () => {
+  test("completing a free booking shows the claim card and no inline manage action", async () => {
     const palette = createThemePalette(resolveTheme({ color: "#2563eb" }, { color: "#16a34a" }));
     const tree = await mount(
       <GuestVenueReservation
@@ -268,16 +273,14 @@ describe("#3392 — a free web booking offers Manage or cancel", () => {
     await invoke(byProp(tree.root, "label", "Confirm reservation"), "onPress");
     await flush();
 
-    expect(allText(tree.root)).toContain("Your table is reserved");
-    const manage = byProp(tree.root, "testID", "guest-reservation-manage");
-    await invoke(manage, "onPress");
-    expect(mockAssign).toHaveBeenCalledWith(
-      guestReservationManagePath({
-        brandId: "brand-3392",
-        reservationId: "reservation-3392",
-        token: "token-3392",
-      }),
-    );
+    expect(allText(tree.root)).toContain("Your table is reserved.");
+    expect(byProp(tree.root, "testID", "buyer-claim-card")).toBeDefined();
+    expect(
+      tree.root.findAll(
+        (node) => node.props.testID === "guest-reservation-manage",
+      ),
+    ).toHaveLength(0);
+    expect(mockAssign).not.toHaveBeenCalled();
     await TestRenderer.act(async () => tree.unmount());
   });
 });

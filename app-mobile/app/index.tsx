@@ -41,6 +41,7 @@ import { NavigationProvider } from "../src/contexts/NavigationContext";
 import { MobileFeaturesProvider } from "../src/components/MobileFeaturesProvider";
 import { CardsCacheProvider } from "../src/contexts/CardsCacheContext";
 import { RecommendationsProvider } from "../src/contexts/RecommendationsContext";
+import { SessionManagementProvider } from "../src/contexts/SessionManagementContext";
 import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { toastManager } from "../src/components/ui/Toast";
 import { ToastProvider } from "../src/components/ToastManager";
@@ -73,7 +74,7 @@ import {
 } from "../src/services/oneSignalService";
 import { initializeAppsFlyer, startAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent, subscribeOneLinkDeepLink, triggerAndroidDeferredResolution } from "../src/services/appsFlyerService";
 import { sanitizeReferralCode, type OneLinkDestination } from "../src/services/oneLinkResolver";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import type { Href } from "expo-router";
 import { ensureAttRequested, requestPostTourPermissions, whenAttResolved } from "../src/services/permissionOrchestrator";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
@@ -93,8 +94,12 @@ import {
   readAttendanceClaimIntent,
   saveAttendanceClaimIntent,
   resolveAttendanceOfferingPath,
+  resolvePendingClaimCode,
+  getPendingClaimIntent,
+  savePendingClaimCode,
+  clearPendingClaimIntent,
   type AttendanceClaimIntent,
-  claimAttendanceByVerifiedIdentity,
+  type PendingClaim,
   // #3524 — the deliberate-account-handoff marker. It is what keeps a pending
   // claim alive across the sign-out the mismatch flow performs on purpose.
   readAttendanceClaimHandoffMarker,
@@ -130,6 +135,9 @@ import { useForegroundRefresh } from "../src/hooks/useForegroundRefresh";
 import { useOtaUpdates } from "../src/hooks/useOtaUpdates";
 import { OtaUpdateBanner } from "../src/components/ui/OtaUpdateBanner";
 import RealtimeSubscriptions from "../src/components/RealtimeSubscriptions";
+import { TicketFoundBanner } from "../src/components/purchases/TicketFoundBanner";
+import { useClaimRecheck } from "../src/hooks/useClaimRecheck";
+import type { OnboardingMode } from "../src/hooks/ticketFirstLogic";
 import * as friendsService from "../src/services/friendsService";
 import { parseDeepLink, executeDeepLink, typeFallbackDestination, registerOpenDirectMessageSink, type NavigationHandlers } from "../src/services/deepLinkService";
 import {
@@ -199,7 +207,15 @@ const persistValidatedReferralCode = async (value: unknown): Promise<boolean> =>
   return true;
 };
 
+let nextCollaborationPillOwnerInstance = 0;
+
 function AppContent() {
+  const collaborationPillOwnerRef = useRef<number | null>(null);
+  if (collaborationPillOwnerRef.current === null) {
+    collaborationPillOwnerRef.current = ++nextCollaborationPillOwnerInstance;
+  }
+  const collaborationPillEpochRef = useRef(0);
+
   const state = useAppState();
   const handlers = useAppHandlers(state);
   // ORCH-0679 Wave 2.5: useAppHandlers returns a fresh object every render
@@ -213,6 +229,12 @@ function AppContent() {
   // ORCH-1016 — hide the floating nav while a full detail/checkout sheet is open.
   const bottomNavHidden = useBottomNavHidden();
   const { t } = useTranslation(['navigation', 'common']);
+  const routeParams = useLocalSearchParams<{
+    finishSetup?: string | string[];
+    tab?: string | string[];
+    conversationId?: string | string[];
+    eventId?: string | string[];
+  }>();
 
   // ORCH-0837: Stripe URL-callback handler. Used by the Linking listener
   // below to forward Stripe redirect URLs (Apple Pay return, 3DS return,
@@ -303,6 +325,31 @@ function AppContent() {
     onboardingData,
     setOnboardingData,
   } = state;
+
+  // #4063 — a purchase detail route can return to the existing Connections
+  // shell with an event conversation selected. This is the same one-shot shape
+  // used by claim and notification routing; clear URL params after consuming it
+  // so a later root render cannot reopen a stale chat.
+  useEffect(() => {
+    const first = (value: string | string[] | undefined): string | null => {
+      const candidate = Array.isArray(value) ? value[0] : value;
+      return typeof candidate === "string" && candidate.length > 0 ? candidate : null;
+    };
+    const conversationId = first(routeParams.conversationId);
+    if (!conversationId || first(routeParams.tab) !== "messages") return;
+    const params: Record<string, string> = { tab: "messages", conversationId };
+    const eventId = first(routeParams.eventId);
+    if (eventId) params.eventId = eventId;
+    setDeepLinkParams(params);
+    setCurrentPage("connections");
+    router.setParams({ tab: undefined, conversationId: undefined, eventId: undefined });
+  }, [
+    routeParams.conversationId,
+    routeParams.eventId,
+    routeParams.tab,
+    setCurrentPage,
+    setDeepLinkParams,
+  ]);
 
   const [totalUnreadMessages, setTotalUnreadMessages] = useState<number>(0);
   // ORCH-1016 — in-app trip detail overlay slot (mirrors viewingFriendProfileId).
@@ -405,6 +452,54 @@ function AppContent() {
     brandName: string;
     email: string;
   } | null>(null);
+  const [ticketClaim, setTicketClaim] = useState<PendingClaim | null>(null);
+  const [ticketClaimResolving, setTicketClaimResolving] = useState(false);
+  const pendingClaimLoadGenerationRef = useRef(0);
+  const [onboardingModeOverride, setOnboardingModeOverride] =
+    useState<OnboardingMode | null>(null);
+  const handledFinishSetupParamRef = useRef(false);
+  const beginFinishSetup = useCallback((): void => {
+    setOnboardingModeOverride("finish_setup");
+    setShowOnboardingFlow(true);
+  }, [setShowOnboardingFlow]);
+
+  useEffect(() => {
+    const value = Array.isArray(routeParams.finishSetup)
+      ? routeParams.finishSetup[0]
+      : routeParams.finishSetup;
+    if (value !== "1" || handledFinishSetupParamRef.current) return;
+    handledFinishSetupParamRef.current = true;
+    beginFinishSetup();
+    router.setParams({ finishSetup: undefined });
+  }, [beginFinishSetup, routeParams.finishSetup]);
+
+  useEffect(() => {
+    const generation = ++pendingClaimLoadGenerationRef.current;
+    if (isAuthenticated) {
+      setTicketClaim(null);
+      setTicketClaimResolving(false);
+      return;
+    }
+    setTicketClaimResolving(true);
+    const maxWait = setTimeout(() => {
+      if (pendingClaimLoadGenerationRef.current === generation) {
+        setTicketClaimResolving(false);
+      }
+    }, 2_000);
+    void getPendingClaimIntent()
+      .then((claim) => {
+        if (pendingClaimLoadGenerationRef.current === generation) {
+          setTicketClaim(claim);
+        }
+      })
+      .finally(() => {
+        clearTimeout(maxWait);
+        if (pendingClaimLoadGenerationRef.current === generation) {
+          setTicketClaimResolving(false);
+        }
+      });
+    return () => clearTimeout(maxWait);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     void readAttendanceClaimHandoffMarker().then((marker) => {
@@ -632,23 +727,52 @@ function AppContent() {
       setDeepLinkParams,
     ],
   );
-  // #2217 — reconnect a ticket bought as a guest BEFORE this app existed on the
-  // device. The #871 deep-link token cannot survive a store install, so once an
-  // account exists we ask the server whether any ARMED guest order matches an
-  // identifier THIS account has proven. Runs once per signed-in user id, is
-  // silent on failure, and gates nothing: a guest who never installs is
-  // unaffected, and a signed-in user with no matching order sees nothing.
-  const identitySweptForUserRef = useRef<string | null>(null);
-  useEffect(() => {
-    const userId = user?.id ?? null;
-    if (userId === null) {
-      identitySweptForUserRef.current = null;
-      return;
-    }
-    if (identitySweptForUserRef.current === userId) return;
-    identitySweptForUserRef.current = userId;
-    void claimAttendanceByVerifiedIdentity();
-  }, [user?.id]);
+  // #4063 — one shared claim sweep owns sign-in, foreground throttling, cache
+  // invalidation, and the actionable ticket-found banner. During onboarding the
+  // result is cached for the ticket-first decision and the banner stays hidden.
+  const {
+    recheck: recheckClaims,
+    bannerResult: ticketFoundBannerResult,
+    dismissBanner: dismissTicketFoundBanner,
+  } = useClaimRecheck({
+    userId: user?.id,
+    onboardingActive:
+      showOnboardingFlow || profile?.has_completed_onboarding === false,
+  });
+  const handleIncomingClaimCode = useCallback(
+    (code: string): void => {
+      void (async () => {
+        const generation = ++pendingClaimLoadGenerationRef.current;
+        if (!userIdRef.current) setTicketClaimResolving(true);
+        await savePendingClaimCode(code);
+        const resolution = await resolvePendingClaimCode(code);
+        if (resolution.status === "redirect") {
+          await clearPendingClaimIntent();
+          if (pendingClaimLoadGenerationRef.current === generation) {
+            setTicketClaim(null);
+            setTicketClaimResolving(false);
+          }
+          await Linking.openURL(resolution.url);
+          return;
+        }
+        if (resolution.status === "claim" && !userIdRef.current) {
+          if (pendingClaimLoadGenerationRef.current === generation) {
+            setTicketClaim(resolution.claim);
+            setTicketClaimResolving(false);
+          }
+          return;
+        }
+        if (pendingClaimLoadGenerationRef.current === generation) {
+          setTicketClaimResolving(false);
+        }
+        if (userIdRef.current) await recheckClaims("claim_link");
+      })().catch((error) => {
+        setTicketClaimResolving(false);
+        console.warn("[ClaimLink] Failed to resolve incoming claim link", error);
+      });
+    },
+    [recheckClaims],
+  );
   useEffect(() => {
     const nextUserId = user?.id ?? null;
     const previousUserId = attendanceClaimUserRef.current;
@@ -964,6 +1088,8 @@ function AppContent() {
       setViewingFriendProfileId: (id: string) => setViewingFriendProfileId(id),
       setShowPaywall: (show: boolean) => setShowPaywall(show),
       setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
+      openRouterPath: (path: string) => router.push(path as never),
+      handleClaimCode: handleIncomingClaimCode,
     };
 
     /**
@@ -1201,7 +1327,11 @@ function AppContent() {
   //   3. collaboration_invites (invited_user_id=userId) — invites received, accepted, declined
   //
   // On any event: debounce 500ms → refreshAllSessions() with generation protection.
-  // Channel: collaboration_pill_changes_${userId} — no conflict with existing channels.
+  // The owner+epoch suffix is deliberate. Supabase removes channels
+  // asynchronously and reuses an existing channel with the same topic. Auth
+  // refreshes can therefore start the replacement effect while the prior
+  // subscribed channel is still being removed. A lifecycle-scoped topic keeps
+  // that overlap crash-safe while cleanup retires the exact prior channel.
   //
   // STALE CLOSURE CONTRACT — READ BEFORE MODIFYING:
   // refreshAllSessions is intentionally NOT in the dep array. It creates a new function
@@ -1215,6 +1345,9 @@ function AppContent() {
     if (!user?.id) return;
 
     const userId = user.id;
+    const channelEpoch = ++collaborationPillEpochRef.current;
+    const channelName =
+      `collaboration_pill_changes_${userId}:${collaborationPillOwnerRef.current}:${channelEpoch}`;
 
     const triggerDebouncedRefresh = () => {
       if (realtimeRefreshDebounceRef.current) {
@@ -1229,7 +1362,7 @@ function AppContent() {
     };
 
     const channel = supabase
-      .channel(`collaboration_pill_changes_${userId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -1270,7 +1403,7 @@ function AppContent() {
         clearTimeout(realtimeRefreshDebounceRef.current);
         realtimeRefreshDebounceRef.current = null;
       }
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
   }, [user?.id]); // Re-subscribe only when userId changes (login/logout)
 
@@ -1292,6 +1425,8 @@ function AppContent() {
         setViewingFriendProfileId: (id: string) => setViewingFriendProfileId(id),
         setShowPaywall: (show: boolean) => setShowPaywall(show),
         setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
+      openRouterPath: (path: string) => router.push(path as never),
+      handleClaimCode: handleIncomingClaimCode,
       });
       pendingDeepLinkRef.current = null;
     }
@@ -1660,7 +1795,15 @@ function AppContent() {
     setViewingFriendProfileId: (id: string) => setViewingFriendProfileId(id),
     setShowPaywall: (show: boolean) => setShowPaywall(show),
     setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
-  }), [setCurrentPage, setViewingFriendProfileId, setShowPaywall, setDeepLinkParams]);
+    openRouterPath: (path: string) => router.push(path as never),
+    handleClaimCode: handleIncomingClaimCode,
+  }), [
+    handleIncomingClaimCode,
+    setCurrentPage,
+    setViewingFriendProfileId,
+    setShowPaywall,
+    setDeepLinkParams,
+  ]);
 
   // ORCH-1341 P1-2 REWORK (META-ORCH-1337) — register the open-DM sink: the
   // ONE way deeply-nested components (the guest-list sheet's Message default)
@@ -2412,6 +2555,8 @@ function AppContent() {
       setViewingFriendProfileId: (id: string) => setViewingFriendProfileId(id),
       setShowPaywall: (show: boolean) => setShowPaywall(show),
       setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
+      openRouterPath: (path: string) => router.push(path as never),
+      handleClaimCode: handleIncomingClaimCode,
     });
   };
 
@@ -2469,6 +2614,10 @@ function AppContent() {
 
         case 'internal':
           handleDeepLinkRef.current(dest.url);
+          return;
+
+        case 'claim':
+          handleIncomingClaimCode(dest.code);
           return;
 
         case 'follow_invite': {
@@ -2932,11 +3081,18 @@ function AppContent() {
         <OnboardingLoader
           userId={user.id}
           profile={profile}
-          onComplete={() => {
+          modeOverride={onboardingModeOverride}
+          onComplete={(result) => {
             logger.nav('OnboardingFlow completed — transitioning to home');
             setHasCompletedOnboarding(true);
             setShowOnboardingFlow(false);
-            setCurrentPage("home");
+            setOnboardingModeOverride(null);
+            setCurrentPage(result?.landing ? "profile" : "home");
+            if (result?.landing?.route) {
+              requestAnimationFrame(() => {
+                router.push(result.landing?.route as never);
+              });
+            }
             // ORCH-1257 (Apple 2.1): fire the deferred permission sequence HERE —
             // right after onboarding, BEFORE the coach-mark tour — so the reviewer
             // encounters the ATT prompt within seconds, not the 1–5 minutes it took
@@ -2971,6 +3127,8 @@ function AppContent() {
           onVerifyEmailCode={verifyEmailCode}
           emailPanelInitiallyOpen={attendanceClaimWantsEmailSignIn}
           followInvite={followInviteWelcome}
+          ticketClaim={ticketClaim}
+          ticketClaimResolving={ticketClaimResolving}
         />
       </ErrorBoundary>
       {attendanceClaimOverlay}
@@ -3017,6 +3175,10 @@ function AppContent() {
             <RealtimeSubscriptions userId={user.id} />
           </React.Fragment>
         )}
+        <TicketFoundBanner
+          result={ticketFoundBannerResult}
+          onDismiss={dismissTicketFoundBanner}
+        />
       <ToastProvider>
         <CardsCacheProvider>
           <RecommendationsProvider
@@ -3133,6 +3295,8 @@ function AppContent() {
                                       refreshKey={preferencesRefreshKey}
                                       onNotificationNavigate={handleNotificationNavigate}
                                       userId={user?.id}
+                                      finishSetupRequired={profile.setup_deferred_at != null}
+                                      onFinishSetup={beginFinishSetup}
                                     />
                                   );
                                 case 'discover':
@@ -3232,6 +3396,7 @@ function AppContent() {
                                       notificationsEnabled={notificationsEnabled}
                                       onNotificationsToggle={stableHandleNotificationsToggle}
                                       userIdentity={userIdentity}
+                                      onFinishSetup={beginFinishSetup}
                                     />
                                   );
                                 default:
@@ -3557,4 +3722,16 @@ const styles = StyleSheet.create({
 // ambient root-level providers (StripeNativeProvider + PersistQueryClientProvider).
 // Do NOT re-add a QueryClient provider here — the strict-grep gate
 // scripts/ci/check-rq-provider-at-root-layout.sh enforces single-ownership at root.
-export default Sentry.wrap(AppContent);
+function SessionManagedAppContent() {
+  const sessionOwnerId = useAppStore(
+    (state) => state.user?.id ?? "signed-out",
+  );
+
+  return (
+    <SessionManagementProvider key={sessionOwnerId}>
+      <AppContent />
+    </SessionManagementProvider>
+  );
+}
+
+export default Sentry.wrap(SessionManagedAppContent);

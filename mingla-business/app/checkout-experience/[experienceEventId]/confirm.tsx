@@ -5,8 +5,6 @@
  * Route: /checkout-experience/{experienceEventId}/confirm
  *
  * Reached via paid /payment success (native + web), or free /buyer reserve.
- * Native back is BLOCKED — buyer uses the explicit "Back to experience" CTA.
- *
  * Inherits the ORCH-0852 web sync-confirm + Realtime fallback verbatim. The
  * `confirmTicketCheckout` service + Realtime subscription are event_type-
  * agnostic (COMMS-0014/0016 — shared money path).
@@ -32,21 +30,18 @@ import {
   spacing,
   text as textTokens,
 } from "../../../src/constants/designSystem";
+import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import { usePublicExperienceById } from "../../../src/hooks/usePublicExperience";
-import { formatCurrency } from "../../../src/utils/currency";
-import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
-import { useAttendanceClaimArm } from "../../../src/hooks/useAttendanceClaimArm";
 
-import { Button } from "../../../src/components/ui/Button";
-import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Icon } from "../../../src/components/ui/Icon";
 import { useCart } from "../../../src/components/checkout/CartContext";
+import { BuyerCheckoutReceipt } from "../../../src/components/checkout/BuyerCheckoutReceipt";
+import { BusinessCheckoutSent } from "../../../src/components/checkout/BusinessCheckoutSent";
 import {
   clearCheckoutResumePayload,
   readCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
-import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
-import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
+import { BuyerClaimCard } from "../../../src/components/checkout/DownloadMinglaCta";
 import { LazyYoureInFollowCard as YoureInFollowCard } from "../../../src/components/checkout/LazyYoureInFollowCard";
 import {
   TicketConfirmVerdictHero,
@@ -56,6 +51,7 @@ import {
   awaitTicketConfirmation,
   confirmTicketCheckout,
 } from "../../../src/services/ticketCheckoutService";
+import { mintClaimLinkHandoff } from "../../../src/services/claimLinkService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
 import {
@@ -64,9 +60,6 @@ import {
   gaEvent,
   postAttributionConversion,
 } from "../../../src/analytics/webAnalytics";
-import { phMaskProps } from "../../../src/analytics/phMask";
-
-
 export default function CheckoutExperienceConfirmScreen(): React.ReactElement | null {
   const [isClient, setIsClient] = useState<boolean>(false);
   useEffect(() => {
@@ -106,7 +99,6 @@ function CheckoutExperienceConfirmScreenInner({
     recordResult,
     setLineQuantity,
     setBuyer,
-    bookedStartAt,
     setBookedStartAt,
   } = useCart();
 
@@ -116,25 +108,14 @@ function CheckoutExperienceConfirmScreenInner({
   // payment is unsettled, or a spent 60 s confirmation budget — all decided by
   // `awaitTicketConfirmation` alone; this screen only renders them.
   const [terminalFailure, setTerminalFailure] = useState<string | null>(null);
-  const [confirmEnding, setConfirmEnding] = useState<TicketConfirmEnding | null>(null);
+  const [confirmEnding, setConfirmEnding] =
+    useState<TicketConfirmEnding | null>(null);
   const [pendingSession, setPendingSession] = useState<{
     checkoutSessionId: string;
     buyerStatusToken: string;
   } | null>(null);
-  // ── issue #2323 ── The attendance claim is minted from the ORDER, never
-  // from the arrival path. `useAttendanceClaimArm` is the ONE owner across all
-  // three confirmation screens; the two ad-hoc call sites that used to live
-  // inside the paid `?cs=` sync-confirm effect and inside `onOrderReady` are
-  // GONE. Both hung off the paid Stripe return leg, so a FREE reservation —
-  // which reaches this screen through `router.replace('…/confirm')` with no
-  // query string at all — never armed. Measured on production 2026-08-19:
-  // free_completed orders 9, armed 0; and zero `attendance-claim-link`
-  // requests observed on the deployed screen while a free order was rendered.
-  const attendanceClaim = useAttendanceClaimArm(result, experienceEventId);
-  const retryAttendanceClaim = attendanceClaim.retry;
   const exitingViaCtaRef = useRef<boolean>(false);
 
-  // ----- Native back guard -----
   useEffect(() => {
     const sub = navigation.addListener(
       "beforeRemove" as never,
@@ -143,15 +124,11 @@ function CheckoutExperienceConfirmScreenInner({
         e.preventDefault();
       }) as never,
     );
-    return (): void => {
-      sub();
-    };
+    return (): void => sub();
   }, [navigation]);
 
-  // ----- Web browser-back guard -----
   useEffect(() => {
-    if (Platform.OS !== "web") return;
-    if (!isClient) return;
+    if (Platform.OS !== "web" || !isClient) return;
     const win = (
       globalThis as unknown as {
         window?: {
@@ -294,6 +271,11 @@ function CheckoutExperienceConfirmScreenInner({
           taxAmountCents: taxCents,
           paymentStatus: order.paymentStatus,
           notificationStatus: order.notificationStatus,
+          buyerContact: order.buyerContact,
+          receipt: order.receipt,
+          claim: order.claim,
+          attachedToAccount: order.attachedToAccount,
+          boughtForSomeoneElse: order.boughtForSomeoneElse,
           tickets: order.tickets,
         });
         // META-ORCH-1187 — purchase conversion (SC-6). value in major units.
@@ -366,6 +348,11 @@ function CheckoutExperienceConfirmScreenInner({
         taxAmountCents: taxCents,
         paymentStatus: order.paymentStatus,
         notificationStatus: order.notificationStatus,
+        buyerContact: order.buyerContact,
+        receipt: order.receipt,
+        claim: order.claim,
+        attachedToAccount: order.attachedToAccount,
+        boughtForSomeoneElse: order.boughtForSomeoneElse,
         tickets: order.tickets,
       });
       if (Platform.OS === "web" && experienceEventId !== null) {
@@ -388,7 +375,8 @@ function CheckoutExperienceConfirmScreenInner({
       result === null ||
       experienceEventId === null ||
       purchaseBrandId === null
-    ) return;
+    )
+      return;
     if (purchaseFiredFor.current === result.orderId) return;
     purchaseFiredFor.current = result.orderId;
     captureWeb("web_purchase_completed", {
@@ -447,7 +435,15 @@ function CheckoutExperienceConfirmScreenInner({
       if (confirmEnding !== null) return;
     }
     router.replace(`/checkout-experience/${experienceEventId}` as never);
-  }, [result, experienceEventId, router, realtimePending, isClient, terminalFailure, confirmEnding]);
+  }, [
+    result,
+    experienceEventId,
+    router,
+    realtimePending,
+    isClient,
+    terminalFailure,
+    confirmEnding,
+  ]);
 
   // ----- Handlers -----
   const handleBackToExperience = useCallback((): void => {
@@ -461,18 +457,14 @@ function CheckoutExperienceConfirmScreenInner({
     router.replace("/(tabs)/home" as never);
   }, [router, experience]);
 
-  // ----- Memos -----
-  const carouselTickets = useMemo(() => {
-    if (result === null) return [];
-    return result.tickets.map((ticket) => ({
-      ticketId: ticket.ticketId,
-      ticketName: ticket.ticketName,
-      qrPayload: ticket.qrPayload,
-      qrImageDataUrl: ticket.qrImageDataUrl,
-    }));
-  }, [result]);
-
-  const totalTickets = carouselTickets.length;
+  const claimCode = result?.claim?.code ?? null;
+  const claimHandoff = useMemo(
+    () =>
+      claimCode !== null && claimCode.trim().length > 0
+        ? { mint: () => mintClaimLinkHandoff(claimCode) }
+        : null,
+    [claimCode],
+  );
 
   if (result === null) {
     // A verified terminal payment outcome outranks the calm spinner.
@@ -508,7 +500,9 @@ function CheckoutExperienceConfirmScreenInner({
       if (hasCs) {
         return (
           <View style={styles.host}>
-            <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
+            <View
+              style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}
+            >
               <View style={styles.checkBadge}>
                 <Icon name="check" size={36} color={textTokens.primary} />
               </View>
@@ -524,46 +518,15 @@ function CheckoutExperienceConfirmScreenInner({
     return <View style={styles.host} />;
   }
 
-  const dateSubline =
-    experience !== null
-      ? formatExperienceDateSubline({
-          venueText: experience.venueText,
-          dateStartIsos: experience.dates.map((d) => d.startAt),
-          whenMode: experience.whenMode,
-          recurrenceRule: experience.recurrenceRule,
-        })
-      : "";
-
-  const bookedStartLabel = ((): string | null => {
-    if (bookedStartAt === null || bookedStartAt.length === 0) return null;
-    const d = new Date(bookedStartAt);
-    if (Number.isNaN(d.getTime())) return null;
-    const tz = experience?.timezone ?? "UTC";
-    try {
-      // issue #3281 — date + clock in the experience zone so a Friday booking
-      // is not shown next to a Monday "Next:" subline with only the time.
-      const date = new Intl.DateTimeFormat(undefined, {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-        timeZone: tz,
-      }).format(d);
-      const time = new Intl.DateTimeFormat(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-        timeZone: tz,
-      }).format(d);
-      return `Booked ${date} · ${time}`;
-    } catch {
-      return `Booked ${d.toLocaleString(undefined, {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })}`;
-    }
-  })();
+  if (Platform.OS !== "web" && result.boughtForSomeoneElse === true) {
+    return (
+      <BusinessCheckoutSent
+        buyerName={buyer.name}
+        onDone={() => router.back()}
+        surface="experience"
+      />
+    );
+  }
 
   return (
     <View style={styles.host}>
@@ -573,135 +536,52 @@ function CheckoutExperienceConfirmScreenInner({
           styles.scrollContent,
           {
             paddingTop: insets.top + spacing.xl,
-            paddingBottom: insets.bottom + 120,
+            paddingBottom: insets.bottom + spacing.xl,
           },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero — checkmark + heading + email line */}
         <View style={styles.hero}>
           <View style={styles.checkBadge}>
             <Icon name="check" size={36} color={textTokens.primary} />
           </View>
-          <Text style={styles.heroTitle}>You&apos;re in</Text>
-          {/* META-ORCH-1187 §4.H — mask buyer PII in session replay. */}
-          <Text style={styles.heroEmail} numberOfLines={2} {...phMaskProps()}>
-            Sent to {buyer.email} and {buyer.phone}.
-          </Text>
+          <Text style={styles.heroTitle}>{BUYER_CLAIM_COPY.youreIn}</Text>
         </View>
 
-        {/* Order summary */}
-        <GlassCard
-          variant="base"
-          radius="lg"
-          padding={spacing.md}
-          style={styles.summary}
-        >
-          <View style={styles.summaryHeader}>
-            <Text style={styles.summaryEventName} numberOfLines={2}>
-              {experience !== null && experience.title.trim().length > 0
-                ? experience.title
-                : "Your experience"}
-            </Text>
-            {dateSubline.length > 0 ? (
-              <Text style={styles.summaryEventSubline} numberOfLines={1}>
-                {dateSubline}
-              </Text>
-            ) : null}
-            {bookedStartLabel !== null ? (
-              <Text style={styles.summaryEventSubline} numberOfLines={1}>
-                {bookedStartLabel}
-              </Text>
-            ) : null}
-          </View>
-          <View style={styles.summaryDivider} />
-          {lines.map((l) => (
-            <View key={l.ticketTypeId} style={styles.summaryLine}>
-              <Text style={styles.summaryQty}>{l.quantity}×</Text>
-              <Text style={styles.summaryName} numberOfLines={1}>
-                {l.ticketName}
-              </Text>
-              <Text style={styles.summaryTotal}>
-                {l.isFree
-                  ? "Free"
-                  : formatCurrency(l.unitPrice * l.quantity, l.currency)}
-              </Text>
-            </View>
-          ))}
-          <View style={styles.summaryDivider} />
-          {typeof result.tax === "number" && result.tax > 0 ? (
-            <View style={styles.summaryTotalRow}>
-              <Text style={styles.summaryTotalLabel}>Fees &amp; tax</Text>
-              <Text style={styles.summaryTotalValue}>
-                {formatCurrency(result.tax, result.currency)}
-              </Text>
-            </View>
-          ) : null}
-          <View style={styles.summaryTotalRow}>
-            <Text style={styles.summaryTotalLabel}>Total</Text>
-            <Text style={styles.summaryTotalValue}>
-              {result.total === 0
-                ? "Free"
-                : formatCurrency(result.total, result.currency)}
-            </Text>
-          </View>
-          <Text
-            style={styles.orderId}
-            accessibilityLabel={`Order ${result.orderId}`}
-          >
-            Order {result.orderId}
-          </Text>
-        </GlassCard>
-
-        {/* QR carousel mounts after hydration. */}
-        <GlassCard
-          variant="base"
-          radius="lg"
-          padding={spacing.md}
-          style={styles.qrCard}
-        >
-          {isClient && totalTickets > 0 ? (
-            <TicketQrCarousel
-              orderId={result.orderId}
-              tickets={carouselTickets}
-            />
-          ) : null}
-        </GlassCard>
-        {/* #3682 Wave 2.4 / contract c — follow status + Undo (parity with event). */}
+        <BuyerClaimCard
+          kind="booking"
+          email={result.buyerContact?.email ?? null}
+          phoneLast4={result.buyerContact?.phoneLast4 ?? null}
+          shortUrl={result.claim?.shortUrl ?? null}
+          handoff={claimHandoff}
+          textSent={
+            result.buyerContact?.phoneLast4 !== null &&
+            result.buyerContact?.phoneLast4 !== undefined &&
+            result.notificationStatus !== "failed"
+          }
+          analyticsSurface="checkout_confirm_experience"
+          fallbackEntity={{
+            entityType: "experience",
+            brandSlug: experience?.brandSlug ?? "",
+            entitySlug: experience?.slug ?? "",
+          }}
+        />
         <YoureInFollowCard
           brandId={experience?.brandId ?? experienceBrand?.id ?? null}
           brandName={experienceBrand?.name ?? "this brand"}
           brandSlug={experience?.brandSlug ?? experienceBrand?.slug ?? null}
         />
-        {/* #2217 — the standalone guest-list card is DELETED and its
-            attendance-claim authority folded into the ONE app card below, which
-            now carries ONE device-aware button instead of the two-store pair. */}
-        <DownloadMinglaCta
-          eventName={experience !== null && experience.title.trim().length > 0 ? experience.title : "your experience"}
-          eventType="experience"
-          brandSlug={experience?.brandSlug ?? ""}
-          entitySlug={experience?.slug ?? ""}
-          claimPhase={attendanceClaim.phase}
-          claimAppUrl={attendanceClaim.phase === "ready" && attendanceClaim.link
-            ? attendanceClaim.link.appClaimUrl
-            : null}
-          onRetryClaim={retryAttendanceClaim}
+        <BuyerCheckoutReceipt
+          eventName={
+            experience !== null && experience.title.trim().length > 0
+              ? experience.title
+              : "Your experience"
+          }
+          brandName={experienceBrand?.name ?? null}
+          orderId={result.orderId}
+          receipt={result.receipt}
         />
       </ScrollView>
-
-      {/* Sticky bottom CTA */}
-      <View
-        style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}
-      >
-        <Button
-          label="Back to experience"
-          onPress={handleBackToExperience}
-          variant="primary"
-          size="lg"
-          fullWidth
-          accessibilityLabel="Back to experience page"
-        />
-      </View>
     </View>
   );
 }

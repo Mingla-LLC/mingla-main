@@ -9,8 +9,6 @@
  *   - Free order → J-C2 Buyer "Reserve free ticket" → server order/ticket
  *     creation → router.replace
  *
- * Native back is BLOCKED — buyer must use explicit "Back to event" CTA.
- *
  * Email/SMS send is queued by the checkout backend after tickets exist.
  *
  * Wallet pass buttons removed per ORCH-0852 — future ORCH-XXXX
@@ -20,14 +18,14 @@
  * Per Cycle 8 spec §4.10.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion (native; no-op on
@@ -35,32 +33,24 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { postHogService } from "../../../src/services/postHogService";
 
 import {
-  accent,
   radius as radiusTokens,
   semantic,
   spacing,
   text as textTokens,
 } from "../../../src/constants/designSystem";
+import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import { eventPublicPath } from "../../../src/constants/publicUrls";
-import { useAttendanceClaimArm } from "../../../src/hooks/useAttendanceClaimArm";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
-// issue #2338 — the event's materialised days ride the SAME payload that
-// served the event (#2160/#2161); this screen already fetched them and threw
-// them away.
-import type { PublicEventOccurrence } from "../../../src/services/publicEventOccurrencesService";
-import { formatCurrency } from "../../../src/utils/currency";
-import { resolveChosenDaysLine } from "../../../src/utils/eventDateDisplay";
 
-import { Button } from "../../../src/components/ui/Button";
-import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Icon } from "../../../src/components/ui/Icon";
 import { useCart } from "../../../src/components/checkout/CartContext";
+import { BuyerCheckoutReceipt } from "../../../src/components/checkout/BuyerCheckoutReceipt";
+import { BusinessCheckoutSent } from "../../../src/components/checkout/BusinessCheckoutSent";
 import {
   clearCheckoutResumePayload,
   readCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
-import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
-import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
+import { BuyerClaimCard } from "../../../src/components/checkout/DownloadMinglaCta";
 import { LazyYoureInFollowCard as YoureInFollowCard } from "../../../src/components/checkout/LazyYoureInFollowCard";
 import {
   TicketConfirmVerdictHero,
@@ -70,6 +60,7 @@ import {
   awaitTicketConfirmation,
   confirmTicketCheckout,
 } from "../../../src/services/ticketCheckoutService";
+import { mintClaimLinkHandoff } from "../../../src/services/claimLinkService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
 import {
@@ -78,13 +69,6 @@ import {
   gaEvent,
   postAttributionConversion,
 } from "../../../src/analytics/webAnalytics";
-import { phMaskProps } from "../../../src/analytics/phMask";
-
-
-// issue #2338 — stable empty reference (mirrors `checkout/[eventId]/index.tsx`)
-// so a confirmation with no occurrences never produces a new array identity per
-// render.
-const EMPTY_OCCURRENCES: readonly PublicEventOccurrence[] = [];
 
 export default function CheckoutConfirmScreen(): React.ReactElement | null {
   const [isClient, setIsClient] = useState<boolean>(false);
@@ -115,38 +99,8 @@ function CheckoutConfirmScreenInner({
   const event = publicEventQuery.data?.event ?? null;
   const brand = publicEventQuery.data?.brand ?? null;
   const purchaseBrandId = event?.brandId ?? brand?.id ?? null;
-  const {
-    lines,
-    buyer,
-    result,
-    recordResult,
-    setLineQuantity,
-    setBuyer,
-    // issue #2338 — the day set the guest chose. It has been in the cart since
-    // #2160 (it is what mints one ticket per day); this screen simply never
-    // read it, so the order summary asked `formatDraftDateLine` — which reads
-    // the organiser's DRAFT `multiDates`, stripped by every public reader — and
-    // truthfully answered "Date TBD" over a two-day order.
-    eventDateId,
-    eventDateIds,
-    setEventDateIds,
-  } = useCart();
-  // issue #2338 — the occurrences arrived on the event payload the whole time
-  // (#2160 / #2161: `PublicEventDetail.occurrences`, from the same SECURITY
-  // DEFINER reader that served the event). No new query, no new reader.
-  const occurrences = publicEventQuery.data?.occurrences ?? EMPTY_OCCURRENCES;
-  // issue #2338 — `eventDateIds` is the #2160 SET; `eventDateId` is the #2135
-  // single, still live in links minted between the two deploys. Same precedence
-  // the checkout request itself uses.
-  const chosenDayIds = useMemo<readonly string[]>(
-    () =>
-      eventDateIds.length > 0
-        ? eventDateIds
-        : eventDateId !== null
-          ? [eventDateId]
-          : [],
-    [eventDateIds, eventDateId],
-  );
+  const { lines, buyer, result, recordResult, setLineQuantity, setBuyer } =
+    useCart();
   // ORCH-0852: bulletproof web confirmation. On `?cs=…` arrival we call the
   // new `ticket-checkout-confirm` edge function. It synchronously
   // verifies the Stripe PaymentIntent and idempotently finalizes the order,
@@ -169,78 +123,61 @@ function CheckoutConfirmScreenInner({
   // The endings without an order: an expired checkout (nothing charged), a
   // refused sale whose payment is unsettled, or a spent 60 s budget. Decided by
   // `awaitTicketConfirmation` alone; this screen only renders it.
-  const [confirmEnding, setConfirmEnding] = useState<TicketConfirmEnding | null>(null);
+  const [confirmEnding, setConfirmEnding] =
+    useState<TicketConfirmEnding | null>(null);
   const [pendingSession, setPendingSession] = useState<{
     checkoutSessionId: string;
     buyerStatusToken: string;
   } | null>(null);
-  // ── issue #2323 ── The attendance claim is minted from the ORDER, never
-  // from the arrival path. `useAttendanceClaimArm` is the ONE owner across all
-  // three confirmation screens; the two ad-hoc call sites that used to live
-  // inside the paid `?cs=` sync-confirm effect and inside `onOrderReady` are
-  // GONE. Both hung off the paid Stripe return leg, so a FREE reservation —
-  // which reaches this screen through `router.replace('…/confirm')` with no
-  // query string at all — never armed. Measured on production 2026-08-19:
-  // free_completed orders 9, armed 0; and zero `attendance-claim-link`
-  // requests observed on the deployed screen while a free order was rendered.
-  const attendanceClaim = useAttendanceClaimArm(result, eventId);
-  const retryAttendanceClaim = attendanceClaim.retry;
-  // Ref flag — flipped to true when buyer taps "Back to event." The
-  // beforeRemove listener checks this and lets the navigation through
-  // when set, so the explicit CTA exit isn't blocked by the same guard
-  // that blocks swipe-back / hardware back / browser back.
   const exitingViaCtaRef = useRef<boolean>(false);
 
-  // ----- Native back guard -----
-  // Block native swipe-back / hardware back / browser back. Buyer must
-  // tap explicit "Back to event" — which sets exitingViaCtaRef=true,
-  // disarming this listener for that one navigation event.
+  // #4063 keeps the established confirmation guard: incidental back gestures
+  // cannot strand a paid buyer, while the explicit CTA disarms the guard.
   useEffect(() => {
     const sub = navigation.addListener(
       "beforeRemove" as never,
       ((e: { preventDefault: () => void }) => {
-        if (exitingViaCtaRef.current) {
-          // Explicit CTA exit — let the navigation through.
-          return;
-        }
+        if (exitingViaCtaRef.current) return;
         e.preventDefault();
       }) as never,
     );
-    return (): void => {
-      sub();
-    };
+    return (): void => sub();
   }, [navigation]);
 
-  // ----- Web browser-back guard -----
   useEffect(() => {
-    if (Platform.OS !== "web") return;
-    if (!isClient) return;
-    const win = (globalThis as unknown as {
-      window?: {
-        addEventListener?: (
-          type: string,
-          listener: (e: BeforeUnloadEvent) => void,
-        ) => void;
-        removeEventListener?: (
-          type: string,
-          listener: (e: BeforeUnloadEvent) => void,
-        ) => void;
-        history?: { pushState?: (state: unknown, title: string, url?: string) => void };
-      };
-    }).window;
+    if (Platform.OS !== "web" || !isClient) return;
+    const win = (
+      globalThis as unknown as {
+        window?: {
+          addEventListener?: (
+            type: string,
+            listener: (e: BeforeUnloadEvent) => void,
+          ) => void;
+          removeEventListener?: (
+            type: string,
+            listener: (e: BeforeUnloadEvent) => void,
+          ) => void;
+          history?: {
+            pushState?: (state: unknown, title: string, url?: string) => void;
+          };
+        };
+      }
+    ).window;
     if (win === undefined) return;
-    // Push a history entry so browser-back fires popstate against this
-    // screen instead of leaving. On popstate we re-push to stay put —
-    // unless the buyer just tapped "Back to event" (CTA disarms via
-    // exitingViaCtaRef), in which case we let the popstate through.
     win.history?.pushState?.(null, "", "");
     const handler = (): void => {
       if (exitingViaCtaRef.current) return;
       win.history?.pushState?.(null, "", "");
     };
-    win.addEventListener?.("popstate", handler as unknown as (e: BeforeUnloadEvent) => void);
+    win.addEventListener?.(
+      "popstate",
+      handler as unknown as (e: BeforeUnloadEvent) => void,
+    );
     return (): void => {
-      win.removeEventListener?.("popstate", handler as unknown as (e: BeforeUnloadEvent) => void);
+      win.removeEventListener?.(
+        "popstate",
+        handler as unknown as (e: BeforeUnloadEvent) => void,
+      );
     };
   }, [isClient]);
 
@@ -262,10 +199,10 @@ function CheckoutConfirmScreenInner({
     if (!isClient) return;
     if (eventId === null) return;
     if (result !== null) return;
-    const win = (globalThis as unknown as {
+    const win = globalThis as unknown as {
       sessionStorage?: Storage;
       location?: { search?: string };
-    });
+    };
     const search = win.location?.search ?? "";
     if (!/[?&]cs=/.test(search)) return;
     let payload = readCheckoutResumePayload(win.sessionStorage, eventId);
@@ -310,21 +247,6 @@ function CheckoutConfirmScreenInner({
     if (buyer.email.length === 0 && buyer.phone.length === 0) {
       setBuyer(payload.buyer);
     }
-    // issue #2338 — restore the chosen day SET too. Stripe's success_url forces
-    // a full-page reload that wipes cart context; before this, `lines` and
-    // `buyer` came back and the days did not, so a guest who paid for two days
-    // on the WEB read "Date TBD" on the summary even after this fix reached the
-    // free and native paths. Optional on the payload (#2150-era entries written
-    // before this field predate it and stay valid) — absent simply leaves the
-    // cart's own empty set in place.
-    if (
-      Array.isArray(payload.eventDateIds) &&
-      payload.eventDateIds.length > 0 &&
-      eventDateIds.length === 0
-    ) {
-      setEventDateIds(payload.eventDateIds);
-    }
-
     let cancelled = false;
     // Arms the Realtime safety net below. It runs ALONGSIDE the confirm poll
     // (never instead of it), so whichever path sees the order first wins.
@@ -373,6 +295,11 @@ function CheckoutConfirmScreenInner({
           taxAmountCents: taxCents,
           paymentStatus: order.paymentStatus,
           notificationStatus: order.notificationStatus,
+          buyerContact: order.buyerContact,
+          receipt: order.receipt,
+          claim: order.claim,
+          attachedToAccount: order.attachedToAccount,
+          boughtForSomeoneElse: order.boughtForSomeoneElse,
           tickets: order.tickets,
         });
         // META-ORCH-1187 — purchase conversion (SC-6). value in major units.
@@ -411,9 +338,9 @@ function CheckoutConfirmScreenInner({
     return (): void => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally
     // only runs when eventId / result first allow it; lines/buyer not in deps
     // because we read them once for the empty-check then restore.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally
   }, [eventId, result, isClient]);
 
   // ORCH-0852: Realtime safety net. Subscribes to ticket_checkout_sessions
@@ -422,8 +349,12 @@ function CheckoutConfirmScreenInner({
   // sync confirm OR the webhook backup), `onOrderReady` fires and we
   // populate `result` so the screen transitions to the full order view.
   useOrderRealtimeSubscription({
-    checkoutSessionId: realtimePending ? pendingSession?.checkoutSessionId ?? null : null,
-    buyerStatusToken: realtimePending ? pendingSession?.buyerStatusToken ?? null : null,
+    checkoutSessionId: realtimePending
+      ? (pendingSession?.checkoutSessionId ?? null)
+      : null,
+    buyerStatusToken: realtimePending
+      ? (pendingSession?.buyerStatusToken ?? null)
+      : null,
     onOrderReady: (order) => {
       const taxCents = Number(order.taxAmountCents ?? 0);
       recordResult({
@@ -444,10 +375,15 @@ function CheckoutConfirmScreenInner({
         taxAmountCents: taxCents,
         paymentStatus: order.paymentStatus,
         notificationStatus: order.notificationStatus,
+        buyerContact: order.buyerContact,
+        receipt: order.receipt,
+        claim: order.claim,
+        attachedToAccount: order.attachedToAccount,
+        boughtForSomeoneElse: order.boughtForSomeoneElse,
         tickets: order.tickets,
       });
       if (Platform.OS === "web" && eventId !== null) {
-        const win = (globalThis as unknown as { sessionStorage?: Storage });
+        const win = globalThis as unknown as { sessionStorage?: Storage };
         clearCheckoutResumePayload(win.sessionStorage, eventId);
       }
       if (pendingSession !== null) {
@@ -511,15 +447,16 @@ function CheckoutConfirmScreenInner({
     if (result !== null) return;
     if (Platform.OS === "web") {
       if (!isClient) return;
-      const win = (globalThis as unknown as {
+      const win = globalThis as unknown as {
         location?: { search?: string };
         sessionStorage?: Storage;
-      });
+      };
       const search = win.location?.search ?? "";
       // ORCH-0928 v2 (2026-05-23) — see parallel patch in
       // checkout-trip/[tripEventId]/confirm.tsx. Query-string recovery
       // (v1 used URL fragment which Expo Router silently reformatted).
-      const hasQueryRecovery = /[?&]csi=[^&]+/.test(search) && /[?&]bst=[^&]+/.test(search);
+      const hasQueryRecovery =
+        /[?&]csi=[^&]+/.test(search) && /[?&]bst=[^&]+/.test(search);
       if (
         /[?&]cs=/.test(search) &&
         (readCheckoutResumePayload(win.sessionStorage, eventId) !== null ||
@@ -535,13 +472,18 @@ function CheckoutConfirmScreenInner({
       if (confirmEnding !== null) return;
     }
     router.replace(`/checkout/${eventId}` as never);
-  }, [result, eventId, router, realtimePending, isClient, terminalFailure, confirmEnding]);
+  }, [
+    result,
+    eventId,
+    router,
+    realtimePending,
+    isClient,
+    terminalFailure,
+    confirmEnding,
+  ]);
 
   // ----- Handlers -----
   const handleBackToEvent = useCallback((): void => {
-    // Disarm the beforeRemove + popstate guards — this is the explicit
-    // sanctioned exit. Set ref BEFORE calling replace so the listener
-    // sees the flag during the synchronous removal event.
     exitingViaCtaRef.current = true;
     if (event !== null) {
       router.replace(
@@ -555,20 +497,14 @@ function CheckoutConfirmScreenInner({
     router.replace("/(tabs)/home" as never);
   }, [router, event]);
 
-  // ----- Memos -----
-  // Production checkout returns server-issued QR payloads. Confirmation renders
-  // only those durable tickets so scanner and organizer views share truth.
-  const carouselTickets = useMemo(() => {
-    if (result === null) return [];
-    return result.tickets.map((ticket) => ({
-      ticketId: ticket.ticketId,
-      ticketName: ticket.ticketName,
-      qrPayload: ticket.qrPayload,
-      qrImageDataUrl: ticket.qrImageDataUrl,
-    }));
-  }, [result]);
-
-  const totalTickets = carouselTickets.length;
+  const claimCode = result?.claim?.code ?? null;
+  const claimHandoff = useMemo(
+    () =>
+      claimCode !== null && claimCode.trim().length > 0
+        ? { mint: () => mintClaimLinkHandoff(claimCode) }
+        : null,
+    [claimCode],
+  );
 
   if (result === null) {
     // issue #2198 — a verified terminal outcome outranks the calm spinner.
@@ -599,14 +535,16 @@ function CheckoutConfirmScreenInner({
       );
     }
     if (Platform.OS === "web") {
-      const win = (globalThis as unknown as { location?: { search?: string } });
+      const win = globalThis as unknown as { location?: { search?: string } };
       const hasCs = isClient && /[?&]cs=/.test(win.location?.search ?? "");
       if (hasCs) {
         // ORCH-0911: render from first paint on ?cs= arrival, independent
         // of event/realtimePending state. ORCH-0852 auto-resolution remains.
         return (
           <View style={styles.host}>
-            <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
+            <View
+              style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}
+            >
               <View style={styles.checkBadge}>
                 <Icon name="check" size={36} color={textTokens.primary} />
               </View>
@@ -639,6 +577,15 @@ function CheckoutConfirmScreenInner({
     );
   }
 
+  if (Platform.OS !== "web" && result.boughtForSomeoneElse === true) {
+    return (
+      <BusinessCheckoutSent
+        buyerName={buyer.name}
+        onDone={() => router.back()}
+        surface="event"
+      />
+    );
+  }
 
   return (
     <View style={styles.host}>
@@ -648,145 +595,50 @@ function CheckoutConfirmScreenInner({
           styles.scrollContent,
           {
             paddingTop: insets.top + spacing.xl,
-            paddingBottom: insets.bottom + 120,
+            paddingBottom: insets.bottom + spacing.xl,
           },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero — checkmark + heading + email line */}
         <View style={styles.hero}>
           <View style={styles.checkBadge}>
             <Icon name="check" size={36} color={textTokens.primary} />
           </View>
-          <Text style={styles.heroTitle}>You&apos;re in</Text>
-          {/* META-ORCH-1187 §4.H — buyer email/phone is PII; data-ph-mask makes
-              PostHog session replay render it as a masked block (maskTextSelector
-              '[data-ph-mask]'). On RN web, dataSet maps to data-* attributes. */}
-          <Text style={styles.heroEmail} numberOfLines={2} {...phMaskProps()}>
-            Sent to {buyer.email} and {buyer.phone}.
-          </Text>
+          <Text style={styles.heroTitle}>{BUYER_CLAIM_COPY.youreIn}</Text>
         </View>
 
-        {/* Order summary */}
-        <GlassCard
-          variant="base"
-          radius="lg"
-          padding={spacing.md}
-          style={styles.summary}
-        >
-          <View style={styles.summaryHeader}>
-            <Text style={styles.summaryEventName} numberOfLines={2}>
-              {event.name.trim().length > 0 ? event.name : "Untitled event"}
-            </Text>
-            {/* issue #2338 — the day(s) the guest actually bought, worded the
-                way #2160 worded them on the way IN ("Sat 29 Aug + Sun 30 Aug"),
-                so the summary and the checkout header agree. Falls through to
-                the event's own date line when the chosen set did not survive to
-                this screen, and only to "Date TBD" when the event genuinely has
-                no readable date. */}
-            <Text
-              testID="issue-2338-summary-date-line"
-              style={styles.summaryEventSubline}
-              numberOfLines={1}
-            >
-              {resolveChosenDaysLine(event, occurrences, chosenDayIds)}
-            </Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          {lines.map((l) => (
-            <View key={l.ticketTypeId} style={styles.summaryLine}>
-              <Text style={styles.summaryQty}>{l.quantity}×</Text>
-              <Text style={styles.summaryName} numberOfLines={1}>
-                {l.ticketName}
-              </Text>
-              <Text style={styles.summaryTotal}>
-                {l.isFree ? "Free" : formatCurrency(l.unitPrice * l.quantity, l.currency)}
-              </Text>
-            </View>
-          ))}
-          <View style={styles.summaryDivider} />
-          {/* ORCH-0804 — Stripe Tax line. Renders ONLY when tax was
-              collected (tax > 0). Zero-tax orders show the total row alone
-              per Constitution #9 (no fabricated data — never display a
-              "Tax £0.00" row that misleads buyers about jurisdictional
-              registration state). */}
-          {typeof result.tax === "number" && result.tax > 0 ? (
-            <View style={styles.summaryTotalRow}>
-              <Text style={styles.summaryTotalLabel}>Tax</Text>
-              <Text style={styles.summaryTotalValue}>
-                {formatCurrency(result.tax, result.currency)}
-              </Text>
-            </View>
-          ) : null}
-          <View style={styles.summaryTotalRow}>
-            <Text style={styles.summaryTotalLabel}>Total</Text>
-            <Text style={styles.summaryTotalValue}>
-              {result.total === 0 ? "Free" : formatCurrency(result.total, result.currency)}
-            </Text>
-          </View>
-          <Text style={styles.orderId} accessibilityLabel={`Order ${result.orderId}`}>
-            Order {result.orderId}
-          </Text>
-        </GlassCard>
-
-        {/* QR — Cycle 11 J-S8 multi-ticket carousel. Single-ticket case
-            renders one QR with no dots/swipe affordance (visual parity). */}
-        <GlassCard
-          variant="base"
-          radius="lg"
-          padding={spacing.md}
-          style={styles.qrCard}
-        >
-          {isClient && totalTickets > 0 ? (
-            <TicketQrCarousel
-              orderId={result.orderId}
-              tickets={carouselTickets}
-            />
-          ) : null}
-        </GlassCard>
-        {/* #3682 Wave 2.4 / contract c — follow status + Undo between QR and app CTA. */}
+        <BuyerClaimCard
+          kind="ticket"
+          email={result.buyerContact?.email ?? null}
+          phoneLast4={result.buyerContact?.phoneLast4 ?? null}
+          shortUrl={result.claim?.shortUrl ?? null}
+          handoff={claimHandoff}
+          textSent={
+            result.buyerContact?.phoneLast4 !== null &&
+            result.buyerContact?.phoneLast4 !== undefined &&
+            result.notificationStatus !== "failed"
+          }
+          analyticsSurface="checkout_confirm_event"
+          fallbackEntity={{
+            entityType: "event",
+            brandSlug: event.brandSlug,
+            entitySlug: event.eventSlug,
+          }}
+        />
         <YoureInFollowCard
           brandId={brand?.id ?? null}
           brandName={brand?.displayName ?? "this brand"}
           brandSlug={brand?.slug ?? event.brandSlug ?? null}
         />
-        {/* #2217 — the standalone guest-list card is DELETED and its
-            attendance-claim authority folded into the ONE app card below, which
-            now carries ONE device-aware button instead of the two-store pair. */}
-        <DownloadMinglaCta
-          eventName={event.name.trim().length > 0 ? event.name : "your event"}
-          eventType={(event as { event_type?: string }).event_type === "trip" ? "trip" : "event"}
-          brandSlug={event.brandSlug}
-          entitySlug={event.eventSlug}
-          claimPhase={attendanceClaim.phase}
-          claimAppUrl={attendanceClaim.phase === "ready" && attendanceClaim.link
-            ? attendanceClaim.link.appClaimUrl
-            : null}
-          onRetryClaim={retryAttendanceClaim}
+        <BuyerCheckoutReceipt
+          eventName={
+            event.name.trim().length > 0 ? event.name : "Untitled event"
+          }
+          brandName={brand?.displayName ?? null}
+          orderId={result.orderId}
+          receipt={result.receipt}
         />
-
-        {/* Wallet pass buttons removed per ORCH-0852 — future ORCH-XXXX
-            [Wallet pass issuance] will reintroduce when .pkpass + Google
-            Wallet JWT infrastructure ships. */}
       </ScrollView>
-
-      {/* Sticky bottom CTA */}
-      <View
-        style={[
-          styles.bottomBar,
-          { paddingBottom: insets.bottom + spacing.md },
-        ]}
-      >
-        <Button
-          label="Back to event"
-          onPress={handleBackToEvent}
-          variant="primary"
-          size="lg"
-          fullWidth
-          accessibilityLabel="Back to event page"
-        />
-      </View>
-
     </View>
   );
 }

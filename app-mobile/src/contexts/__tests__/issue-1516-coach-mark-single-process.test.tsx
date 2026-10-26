@@ -13,8 +13,8 @@
 //
 // The bug: `CoachMarkContext.tsx` carried an ORCH-0635 "legacy tour" normalization
 // branch that fired on EVERY provider mount for any stored `coach_mark_step` in
-// 1..COACH_STEP_COUNT and rewrote it to TOUR_COMPLETED (12), rendering nothing. But
-// 1..11 is exactly the range the LIVE 11-step tour occupies while in progress, so the
+// 1..COACH_STEP_COUNT and rewrote it to the then-current TOUR_COMPLETED (12), rendering
+// nothing. But 1..11 was exactly the range that tour occupied while in progress, so the
 // post-onboarding provider remount (ATT prompt + refreshAllSessions showLoading unmounts
 // the authed subtree) destroyed real in-progress tours. Brand-new users were stamped
 // `coach_mark_step = 12` having never seen a single card.
@@ -28,7 +28,7 @@
 //        fires → the remount must RESUME at step 1 with the overlay up, and must never
 //        write TOUR_COMPLETED. This is the exact live sequence from
 //        `ashfordbysadiq` (45316d80-cc00-49c9-9d69-882338dc016c).
-//   R-3  ONLY 0 / -1 / 12 ARE SENTINELS. The three terminal values stay terminal and
+//   R-3  ONLY 0 / -1 / TOUR_COMPLETED ARE SENTINELS. The three terminal values stay terminal and
 //        inert across a remount (no overlay, no write, no reinterpretation).
 //   R-4  START-RACE HARDENING. A remount that happens BEFORE the start delay elapses
 //        must not restart the countdown — the per-user module-scope anchor carries the
@@ -45,8 +45,15 @@
 //             the row untouched, does NOT lock the bottom tab bar (Constitution #1 — the
 //             nav gate locks on isCoachLoading || isCoachPending || isCoachActive), and
 //             the next launch still delivers the tour or the resume.
+//   R-6  ANDROID BACK IS OWNED BY THE ACTIVE TOUR. At step 1, hardware Back is
+//        consumed as an inert no-op rather than exiting the app. With step 4
+//        runtime-skipped, hardware Back from step 5 navigates to step 3.
+// [TEST-MOD-APPROVED #4073] The prior iOS-only harness lines were replaced so
+// this existing suite can exercise the Discover coach flow's Android Back owner.
+// [TEST-MOD-APPROVED #4063] The live tour gained the Purchases step. Keep the
+// resume sweep and terminal guard aligned with the source-derived 12/13 grammar.
 //
-// Verification note (#1516): `coach_mark_step = 12` is unfalsifiable from the database —
+// Verification note (#1516): a terminal `coach_mark_step` is unfalsifiable from the database —
 // the genuine-completion path and the silent-cancel path both write it — and coach-mark
 // analytics go to Mixpanel only. So every assertion below is on the state machine
 // (currentStep / isCoachActive / overlayVisible) and on the observed write log, never on
@@ -68,6 +75,7 @@ function appMobileRoot() {
 const ROOT = appMobileRoot();
 const CONTEXT_PATH = path.join(ROOT, 'src/contexts/CoachMarkContext.tsx');
 const STEPS_PATH = path.join(ROOT, 'src/constants/coachMarkSteps.ts');
+const SKIP_STATE_PATH = path.join(ROOT, 'src/contexts/coachMarkSkipState.ts');
 
 const USER_ID = '45316d80-cc00-49c9-9d69-882338dc016c';
 
@@ -301,13 +309,22 @@ function makeHarness(initialStep, sharedRealSteps, fetchPlan) {
   const sb = makeSupabase(initialStep, fetchPlan);
   const navigations = [];
   const stepsModule = sharedRealSteps || loadModule(STEPS_PATH, {});
+  const skipStateModule = loadModule(SKIP_STATE_PATH, {});
+  let hardwareBackHandler = null;
 
   const ctxModule = loadModule(CONTEXT_PATH, {
     react: rt.React,
     'react-native': {
       __esModule: true,
       Dimensions: { get: () => ({ width: 390, height: 844 }) },
-      Platform: { OS: 'ios' },
+      Platform: { OS: 'android' },
+      BackHandler: {
+        addEventListener(event, handler) {
+          assert.equal(event, 'hardwareBackPress', 'BackHandler must subscribe to the Android hardware event');
+          hardwareBackHandler = handler;
+          return { remove() { if (hardwareBackHandler === handler) hardwareBackHandler = null; } };
+        },
+      },
     },
     'react-native-safe-area-context': {
       __esModule: true,
@@ -316,6 +333,7 @@ function makeHarness(initialStep, sharedRealSteps, fetchPlan) {
     '../store/appStore': { __esModule: true, useAppStore: () => ({ user: { id: USER_ID } }) },
     '../services/supabase': { __esModule: true, supabase: sb.supabase },
     '../constants/coachMarkSteps': stepsModule,
+    './coachMarkSkipState': skipStateModule,
     '../services/mixpanelService': {
       __esModule: true,
       mixpanelService: {
@@ -330,7 +348,12 @@ function makeHarness(initialStep, sharedRealSteps, fetchPlan) {
   const mount = () => rt.mount(ctxModule.CoachMarkProvider, props);
   const read = (inst) => inst.element.value;
 
-  return { rt, sb, mount, read, navigations, stepsModule, unmount: rt.unmount, flush: rt.flush };
+  const fireHardwareBack = () => {
+    assert.equal(typeof hardwareBackHandler, 'function', 'an active coach step must own Android Back');
+    return hardwareBackHandler();
+  };
+
+  return { rt, sb, mount, read, fireHardwareBack, navigations, stepsModule, unmount: rt.unmount, flush: rt.flush };
 }
 
 // Enough time for the scroll-step path (TAB_NAVIGATE_DELAY_MS + the full offset poll
@@ -342,8 +365,8 @@ async function run() {
   const STEP_COUNT = realSteps.COACH_STEP_COUNT;
   const TOUR_COMPLETED = STEP_COUNT + 1;
 
-  assert.equal(STEP_COUNT, 11, 'guard: the live tour is 11 steps (COACH_STEP_COUNT)');
-  assert.equal(TOUR_COMPLETED, 12, 'guard: TOUR_COMPLETED is 12');
+  assert.equal(STEP_COUNT, 12, 'guard: the live tour is 12 steps (COACH_STEP_COUNT)');
+  assert.equal(TOUR_COMPLETED, 13, 'guard: TOUR_COMPLETED is 13');
 
   const clock = makeClock();
   const warnings = [];
@@ -424,6 +447,33 @@ async function run() {
       assert.equal(h.read(b).currentStep, 2, 'R-2: nextStep from the resumed step must advance to 2');
       assert.deepEqual(h.sb.writes.map((w) => w.step), [1, 2], 'R-2: advancing persists step 2');
       h.unmount(b);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // R-6 — Android hardware Back stays inside the active coach context.
+    // ─────────────────────────────────────────────────────────────────────────
+    {
+      const h = makeHarness(1, realSteps);
+      const inst = h.mount();
+      await clock.advance(SETTLE_MS, inst, h.flush);
+      const writesBefore = [...h.sb.writes];
+      assert.equal(h.fireHardwareBack(), true, 'R-6: step 1 must consume Android Back');
+      await clock.settle(inst, h.flush);
+      assert.equal(h.read(inst).currentStep, 1, 'R-6: Back at step 1 is an inert no-op');
+      assert.deepEqual(h.sb.writes, writesBefore, 'R-6: Back at step 1 writes nothing');
+      h.unmount(inst);
+    }
+    {
+      const h = makeHarness(5, realSteps);
+      const inst = h.mount();
+      await clock.advance(SETTLE_MS, inst, h.flush);
+      h.read(inst).skipStep(4);
+      await clock.settle(inst, h.flush);
+      assert.equal(h.fireHardwareBack(), true, 'R-6: step 5 must consume Android Back');
+      await clock.advance(SETTLE_MS, inst, h.flush);
+      assert.equal(h.read(inst).currentStep, 3, 'R-6: Back from 5 skips the runtime-skipped step 4');
+      assert.equal(h.sb.writes.at(-1)?.step, 3, 'R-6: Back persists the resolved step 3');
+      h.unmount(inst);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -559,7 +609,7 @@ async function run() {
 
 if (require.main === module) {
   run().then(() => {
-    console.log('issue-1516 coach-mark single-process regression: PASS (R-1 x11 steps, R-2, R-3, R-4, R-5a/b/c)');
+    console.log('issue-1516 coach-mark single-process regression: PASS (R-1 x12 steps, R-2, R-3, R-4, R-5a/b/c, R-6 Android Back)');
   }).catch((e) => {
     console.error('issue-1516 coach-mark single-process regression: FAIL');
     console.error(e && e.message ? e.message : e);

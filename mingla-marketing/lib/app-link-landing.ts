@@ -25,8 +25,6 @@
 //    real ticket, and the browser genuinely cannot show it. Every sentence below
 //    is a closed union of string literals — no interpolation, no order data, no
 //    "your ticket" page that isn't one. The two factual claims are sourced:
-//      - the QR really is an attached PDF
-//        (`supabase/functions/_shared/email/copy.ts` → "QR in attached PDF")
 //      - signing in really does reconnect the order to the account
 //        (`supabase/functions/attendance-claim-identity`, #2217 — it matches the
 //        account's own provider-verified email/phone against the order).
@@ -101,27 +99,26 @@ export interface AppLinkLandingCopy {
     | 'This invite opens in the Mingla app'
   /** The one-line truth about why the browser showed nothing. */
   readonly lede:
-    | 'This link opens in the Mingla app. A browser cannot show a ticket.'
+    | 'Sign in with the email or mobile number you used. Your ticket will be waiting.'
     | 'This link opens in the Mingla app. Event chat does not exist on the web.'
     | 'This link opens in the Mingla app. Shared plans do not exist on the web.'
     | 'This link opens in the Mingla app. Invites are accepted in the app.'
   /** What to do next, and what is already in their possession. */
   readonly detail:
-    | 'Your ticket QR is already attached to your confirmation email as a PDF, so you can get in without doing anything else. Install Mingla and sign in with the email or phone from your order to keep it in the app too.'
+    | ''
     | 'Install Mingla and sign in with the email or phone from your order — your event and its chat are waiting there.'
     | 'Install Mingla and sign in to open shared plans, boards and group chats.'
     | 'Install Mingla and sign in to accept this invite.'
   /** Button label. */
-  readonly cta: 'Get the Mingla app'
+  readonly cta: 'Get the Mingla app' | 'Get my tickets'
 }
 
 const COPY: Readonly<Record<AppLinkLandingKind, AppLinkLandingCopy>> = {
   order: {
     title: 'Your ticket is in the Mingla app',
-    lede: 'This link opens in the Mingla app. A browser cannot show a ticket.',
-    detail:
-      'Your ticket QR is already attached to your confirmation email as a PDF, so you can get in without doing anything else. Install Mingla and sign in with the email or phone from your order to keep it in the app too.',
-    cta: 'Get the Mingla app',
+    lede: 'Sign in with the email or mobile number you used. Your ticket will be waiting.',
+    detail: '',
+    cta: 'Get my tickets',
   },
   chat: {
     title: 'Event chat is in the Mingla app',

@@ -73,12 +73,15 @@ const FROZEN_FILES = [
     ],
   },
   {
-    // ORCH-1138: EBES's events checkout was ported here verbatim (keeps the
-    // "Ticket secured" success copy + businessEventOrders invalidation).
+    // ORCH-1138: EBES's events checkout was ported here. #4063 intentionally
+    // replaced the old success-copy fingerprint with the canonical Purchases
+    // landing while retaining the payment flow + invalidation authority.
+    // [CONSUMER-MOD-APPROVED #4063]
     path: "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx",
     mustContain: [
       "runNativeCheckout",
-      "Ticket secured",
+      "resolveNativeCheckoutLanding",
+      "setCheckoutTerminalOutcome",
       "businessEventOrders",
     ],
     mustNotContain: [

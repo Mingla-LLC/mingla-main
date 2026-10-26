@@ -154,13 +154,3 @@ export async function uploadBrandGroupFile(
   await uploadPreparedBrandGroupFile(prepared, onProgress);
   return await finalizeBrandGroupFile(prepared.fileId);
 }
-
-export async function brandGroupFilePreviewRequest(fileId: string): Promise<{ uri: string; headers: Record<string, string> }> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  if (!token) throw new Error("Sign in again to view this file.");
-  return {
-    uri: `${supabaseUrl}/functions/v1/brand-group-files?file_id=${encodeURIComponent(fileId)}`,
-    headers: { Authorization: `Bearer ${token}`, apikey: supabaseAnonKey },
-  };
-}

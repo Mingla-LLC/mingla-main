@@ -18,7 +18,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { claimJson } from "../_shared/attendanceClaim.ts";
-import { ticketCorsHeaders } from "../_shared/ticketCheckout.ts";
+import { qrTokenPepper, ticketCorsHeaders } from "../_shared/ticketCheckout.ts";
 
 type Outcome =
   | "success"
@@ -72,12 +72,11 @@ serve(async (req) => {
   let admitted = false;
   let outcome: Outcome = "internal_error";
   try {
-    // Same admission ledger and same 10-per-10-minutes budget as the token
-    // claim. A sign-in sweep is cheap but it is still an unauthenticated-origin
-    // asset transfer and gets counted.
+    // The identity sweep has its own 30-per-10-minutes budget. Token claims
+    // keep their existing shared 10-per-10-minutes budget.
     const { data: admission, error: admissionError } = await admin.rpc(
       "begin_attendance_claim_attempt",
-      { p_user_id: authData.user.id, p_kind: "order" },
+      { p_user_id: authData.user.id, p_kind: "identity" },
     );
     if (admissionError || typeof admission !== "object" || admission === null) {
       throw admissionError ?? new Error("claim_admission_failed");
@@ -95,43 +94,69 @@ serve(async (req) => {
       });
     }
 
+    // Resolve the QR authority before either claim RPC. A missing production
+    // secret must not produce a half-sweep where ordinary attendance attaches
+    // but offered tickets cannot rotate their credential.
+    const transferPepper = qrTokenPepper();
     const { data, error } = await admin.rpc(
       "claim_attendance_by_verified_identity",
       { p_user_id: authData.user.id },
     );
     if (error) throw error;
 
-    const result = data as {
-      claimed?: Array<{
-        orderId?: string;
-        eventId?: string;
-        // #3524 — read back after add_buyer_to_event_chat, so the sweep is no
-        // longer silent about the half it can fail. `add_buyer_to_event_chat`
-        // returns silently when the event type has no chat, and an `experience`
-        // legitimately has none.
-        chatJoined?: boolean;
-        conversationId?: string | null;
-      }>;
-      count?: number;
-    } | null;
-    const claimed = Array.isArray(result?.claimed) ? result.claimed : [];
-    const eventIds = claimed.flatMap((entry) =>
-      typeof entry?.eventId === "string" ? [entry.eventId] : []
+    const { data: transferData, error: transferError } = await admin.rpc(
+      "issue_4063_claim_offered_tickets",
+      {
+        p_user_id: authData.user.id,
+        p_qr_token_pepper: transferPepper,
+      },
     );
-    // #3524 — passed through UNCHANGED. Nothing renders this yet; it is
-    // observability parity with the token rail, not a new surface.
+    if (transferError) throw transferError;
+
+    const result = data as {
+      claimed?: Array<Record<string, unknown>>;
+      more?: boolean;
+    } | null;
+    const transferResult = transferData as {
+      claimed?: Array<Record<string, unknown>>;
+      more?: boolean;
+    } | null;
+    const claimed = [
+      ...(Array.isArray(result?.claimed) ? result.claimed : []),
+      ...(Array.isArray(transferResult?.claimed) ? transferResult.claimed : []),
+    ];
+    const eventIds = claimed.flatMap((entry) =>
+      entry.kind === "order" && typeof entry.eventId === "string"
+        ? [entry.eventId]
+        : []
+    );
+    // #3524's order-only fields remain unchanged for older app clients. The
+    // broader #4063 result is carried separately in `claimed`.
     const claims = claimed.flatMap((entry) =>
-      typeof entry?.eventId === "string"
+      entry.kind === "order" && typeof entry.eventId === "string"
         ? [{
-          orderId: typeof entry.orderId === "string" ? entry.orderId : null,
+          orderId: typeof entry.orderId === "string"
+            ? entry.orderId
+            : typeof entry.id === "string"
+            ? entry.id
+            : null,
           eventId: entry.eventId,
           chatJoined: entry.chatJoined === true,
-          conversationId: entry.conversationId ?? null,
+          conversationId: typeof entry.conversationId === "string"
+            ? entry.conversationId
+            : null,
         }]
         : []
     );
-    outcome = eventIds.length > 0 ? "success" : "idempotent_success";
-    return json(200, { ok: true, count: eventIds.length, eventIds, claims });
+    outcome = claimed.length > 0 ? "success" : "idempotent_success";
+    return json(200, {
+      ok: true,
+      count: claimed.length,
+      eventIds,
+      claims,
+      claimed,
+      more: result?.more === true || transferResult?.more === true,
+    });
   } catch {
     outcome = "internal_error";
     return json(500, { ok: false, error: "claim_failed" });

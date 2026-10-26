@@ -127,6 +127,7 @@ import { hasUsableStoredWebSession } from "../src/utils/authReadiness";
 // ORCH-1246 (Apple 2.1) — gate the ATT request on foreground-active state.
 import { shouldRequestAttNow } from "../src/utils/attRequestTiming";
 import { shouldDisplayForegroundBusinessNotification } from "../src/utils/brandGroupNotificationForeground";
+import { syncBusinessMediaLanguage } from "../src/i18n";
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
@@ -279,6 +280,12 @@ function RootLayoutInner(): React.ReactElement {
       captureHostPublicSearchPageView(pathname);
     });
   }, [pathname]);
+  useEffect(() => {
+    if (loading || !user?.id) return;
+    let current = true;
+    void syncBusinessMediaLanguage(user.id, () => current);
+    return () => { current = false; };
+  }, [loading, user?.id]);
   const currentBrandId = useCurrentBrandId();
   useEffect(() => {
     const nextUserId = user?.id ?? null;

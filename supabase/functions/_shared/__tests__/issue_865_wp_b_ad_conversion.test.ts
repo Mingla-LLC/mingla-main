@@ -316,6 +316,34 @@ Deno.test("fireAdConversion: IDEMPOTENT — an already-sent row re-sends NOTHING
   assertEquals(record.length, 0); // replay → no second send
 });
 
+// [TEST-MOD-APPROVED #4063] Additive money-isolation regression.
+Deno.test("#4063 door orders never enter CAPI", async () => {
+  const { client, updates, upserts } = makeFakeSupabase({
+    orders: {
+      id: EVENT_ID,
+      event_id: "ev-1",
+      total_cents: 2000,
+      currency: "GBP",
+      source: "door_sale",
+    },
+  });
+  const record: string[] = [];
+  const res = await fireAdConversion(client, { orderId: EVENT_ID }, {
+    senders: {
+      meta: spySender("meta", record),
+      tiktok: spySender("tiktok", record),
+      snap: spySender("snap", record),
+      reddit: spySender("reddit", record),
+    },
+  });
+
+  assertEquals(res.ok, false);
+  assertEquals(res.reason, "context_unresolved");
+  assertEquals(record.length, 0);
+  assertEquals(updates.length, 0);
+  assertEquals(upserts.length, 0);
+});
+
 // ── Fire helper — FAIL-OPEN (the fails-on-revert target) ──────────────────────
 
 Deno.test("fireAdConversion: FAIL-OPEN — a throwing DB is ABSORBED, never propagates (RT-1)", async () => {

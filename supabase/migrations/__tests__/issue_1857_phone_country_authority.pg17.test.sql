@@ -76,7 +76,9 @@ BEGIN
   -- let the exception handler roll the mutation back before the next case.
   FOR v_expected IN SELECT * FROM (VALUES
     ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', '7bc2a30ab5d3e7a790f6695381b96b4d'),
-    ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', '9fe5e36dee2bd3bdc8ed26e2081716fb'),
+    -- #4063 last-writes this wrapper so approved RSVPs receive only a pass,
+    -- while pending/other outcomes retain acknowledgement delivery.
+    ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'c043d726559b59db1ea641ff4b5503de'),
     ('public.issue_1388_create_stay_group(uuid,text,jsonb,bigint,uuid)', 'eec5f6a9750eb113d3c75c027455a704'),
     ('public.biz_reservation_create(uuid,timestamp with time zone,integer,text,text,text,text,uuid,text,text,text[],text)', '49ffd0c7006d839ca41fbcf0a082d643'),
     ('public.pg_create_guest_reservation(uuid,timestamp with time zone,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)', '97adc49789e7e254744ff9b60efbe9ba'),

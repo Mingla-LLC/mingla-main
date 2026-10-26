@@ -68,8 +68,8 @@ BEGIN
 END $g1$;
 
 -- =====================================================================================
--- G-2 — AFTER A SECOND FULL-CHAIN APPLY AND A LONE #2489 RE-APPLY, ALL TEN CARRIERS
---       ARE STILL DECLARED.
+-- G-2 — AFTER A SECOND FULL-CHAIN APPLY AND A LONE #2489 RE-APPLY, EVERY DECLARED
+--       CARRIER IS STILL PRESENT.
 --
 -- This is the assertion the bug would have failed. Set equality against a literal list,
 -- in BOTH directions — never a count, which cannot see one name being swapped for
@@ -79,6 +79,7 @@ DO $g2$
 DECLARE
   v_expected text[] := ARRAY[
     'business_public_events_view',
+    'discover_v2_event_base',
     'events_public_view',
     'issue_2489_public_theme',
     'pg_direct_event_checkout_bundle',
@@ -115,7 +116,7 @@ BEGIN
       array_to_string(v_extra, ', ');
   END IF;
 
-  RAISE NOTICE 'G-2 PASS — all ten carriers survived the replay';
+  RAISE NOTICE 'G-2 PASS — every declared carrier survived the replay';
 END $g2$;
 
 -- =====================================================================================

@@ -93,9 +93,6 @@ jest.mock("../../../src/store/brandTeamStore", () => ({
 jest.mock("../../../src/store/currentBrandStore", () => ({
   useBrandList: () => [],
 }));
-jest.mock("../../../src/store/doorSalesStore", () => ({
-  useDoorSalesStore: (sel: (s: { entries: unknown[] }) => unknown) => sel({ entries: [] }),
-}));
 jest.mock("../../../src/store/guestStore", () => ({
   useGuestStore: (sel: (s: { entries: unknown[] }) => unknown) => sel({ entries: [] }),
 }));

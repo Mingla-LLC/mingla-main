@@ -117,5 +117,18 @@
     "next_step_label": "下一步",
     "finish_tour_label": "完成引导",
     "guided_tour_label": "引导步骤 {{current}} / {{total}}"
+  },
+  "coach": {
+    "step4": {
+      "title": "您附近的一切，一页",
+      "body_all": "活动、体验、旅行和住宿，全部在一页上。点击药丸进行切换。",
+      "body_subset": "{{list}}，全部在一页上。点击药丸进行切换。"
+    },
+    "step5": {
+      "title": "缩小范围",
+      "body": "按日期、氛围、音乐、目的地等进行过滤。每颗药丸的选择都会有所不同。"
+    },
+    "list_two": "{{a}} 和 {{b}}",
+    "list_three": "{{a}}、{{b}} 和 {{c}}"
   }
 }

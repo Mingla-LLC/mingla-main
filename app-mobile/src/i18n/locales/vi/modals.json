@@ -117,5 +117,18 @@
     "next_step_label": "Đến bước tiếp theo",
     "finish_tour_label": "Hoàn thành hướng dẫn",
     "guided_tour_label": "Hướng dẫn bước {{current}} / {{total}}"
+  },
+  "coach": {
+    "step4": {
+      "title": "Mọi thứ gần bạn, trên một trang",
+      "body_all": "Sự kiện, trải nghiệm, chuyến đi và kỳ nghỉ, tất cả trên một trang. Nhấn vào một viên thuốc để chuyển đổi.",
+      "body_subset": "{{list}}, tất cả trên một trang. Nhấn vào một viên thuốc để chuyển đổi."
+    },
+    "step5": {
+      "title": "Thu hẹp viên thuốc",
+      "body": "Lọc theo ngày, cảm xúc, âm nhạc, điểm đến, v.v. Các lựa chọn thay đổi theo từng viên thuốc."
+    },
+    "list_two": "{{a}} và {{b}}",
+    "list_three": "{{a}}, {{b}} và {{c}}"
   }
 }

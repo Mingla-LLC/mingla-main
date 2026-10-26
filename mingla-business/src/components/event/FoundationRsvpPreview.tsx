@@ -84,9 +84,15 @@ const measurePair = (
 ): boolean => {
   const first = a as WindowMeasurable | null;
   const second = b as WindowMeasurable | null;
-  if (first?.measureInWindow === undefined || second?.measureInWindow === undefined) return false;
+  if (
+    first?.measureInWindow === undefined ||
+    second?.measureInWindow === undefined
+  )
+    return false;
   first.measureInWindow((_ax, ay, _aw, ah) => {
-    second.measureInWindow?.((_bx, by, _bw, bh) => done({ y: ay, height: ah }, { y: by, height: bh }));
+    second.measureInWindow?.((_bx, by, _bw, bh) =>
+      done({ y: ay, height: ah }, { y: by, height: bh }),
+    );
   });
   return true;
 };
@@ -134,6 +140,8 @@ export interface FoundationRsvpPreviewProps {
   renderPhoneField?: RsvpPhoneFieldRenderer;
   defaultPhoneCountry?: string;
   onDownloadPass?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["onDownloadPass"];
+  onOpenClaim?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["onOpenClaim"];
+  renderClaimBody?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["renderClaimBody"];
   contentBottomInset?: number;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onScrollViewLayout?: (event: LayoutChangeEvent) => void;
@@ -155,7 +163,9 @@ export interface FoundationRsvpPreviewProps {
   presentedByFollowerCountLabels?: FollowerCountLabels;
 }
 
-export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (props) => {
+export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
+  props,
+) => {
   const {
     event,
     brand,
@@ -179,6 +189,8 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     renderPhoneField,
     defaultPhoneCountry,
     onDownloadPass,
+    onOpenClaim,
+    renderClaimBody,
     contentBottomInset = 96,
     onScroll: onScrollProp,
     onScrollViewLayout,
@@ -237,10 +249,17 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     const measured =
       scroll !== null &&
       measurePair(field, hostRef.current, (rect, host) => {
-        scroll.scrollTo({ y: rsvpRevealScrollOffset(rect, host, scrollYRef.current), animated: true });
+        scroll.scrollTo({
+          y: rsvpRevealScrollOffset(rect, host, scrollYRef.current),
+          animated: true,
+        });
       });
     // Desktop web has no body scroll ref: let the browser bring it into view.
-    if (!measured && Platform.OS === "web" && typeof field.scrollIntoView === "function") {
+    if (
+      !measured &&
+      Platform.OS === "web" &&
+      typeof field.scrollIntoView === "function"
+    ) {
       field.scrollIntoView({ block: "center", behavior: "smooth" });
     }
   }, []);
@@ -251,7 +270,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
   // out, loading, read failed, or no viewer id such as the host preview): the
   // shared body then reveals the field only if the server refuses.
   const accountPhoneOnFile = useOwnProfilePhoneOnFile(
-    isLoggedIn ? replyIdentity ?? null : null,
+    isLoggedIn ? (replyIdentity ?? null) : null,
     true,
   );
 
@@ -272,6 +291,9 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     renderPhoneField,
     defaultPhoneCountry,
     onDownloadPass,
+    passPresentation: "claim",
+    onOpenClaim,
+    renderClaimBody,
     onOpenBrand,
     onOpenMaps,
     onCopyAddress,
@@ -291,19 +313,31 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
   const measurePendingRef = useRef(0);
   const inlineDecisionRef = state.inlineDecisionRef;
   const measureInlineDecision = useCallback((): void => {
-    if (measurePendingRef.current !== 0 && Date.now() - measurePendingRef.current < 1000) {
+    if (
+      measurePendingRef.current !== 0 &&
+      Date.now() - measurePendingRef.current < 1000
+    ) {
       return;
     }
     measurePendingRef.current = Date.now();
-    const measured = measurePair(inlineDecisionRef.current, hostRef.current, (row, host) => {
-      measurePendingRef.current = 0;
-      // Reserve the bar's runway before it first appears: the floating card
-      // is the same decision block plus its 10px padding and 1px border, so
-      // the page's last section is never under the bar on its first showing.
-      if (row.height > 0) setFloatBarHeight((prev) => (prev > 0 ? prev : row.height + FLOATING_CARD_CHROME));
-      const position = rsvpInlineDecisionPosition(row, host);
-      setInlineDecisionPosition((prev) => (prev === position ? prev : position));
-    });
+    const measured = measurePair(
+      inlineDecisionRef.current,
+      hostRef.current,
+      (row, host) => {
+        measurePendingRef.current = 0;
+        // Reserve the bar's runway before it first appears: the floating card
+        // is the same decision block plus its 10px padding and 1px border, so
+        // the page's last section is never under the bar on its first showing.
+        if (row.height > 0)
+          setFloatBarHeight((prev) =>
+            prev > 0 ? prev : row.height + FLOATING_CARD_CHROME,
+          );
+        const position = rsvpInlineDecisionPosition(row, host);
+        setInlineDecisionPosition((prev) =>
+          prev === position ? prev : position,
+        );
+      },
+    );
     if (!measured) {
       measurePendingRef.current = 0;
       setInlineDecisionPosition("unmeasured");
@@ -346,24 +380,33 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
   // box (RsvpDecisionBox) in the STICKY right panel (PARITY with the event page's
   // EventTicketBox in deskPanel). The phone keeps the inline box in the body and
   // pins the separate floating bar below.
-  const stickyPanel = isDesktop && !acquisitionClosed ? (
-    <View
-      style={[styles.deskPanel, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}
-    >
-      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
-      <View style={styles.deskInner}>
-        <RsvpDecisionBox
-          palette={palette}
-          theme={theme}
-          config={config}
-          state={state}
+  const stickyPanel =
+    isDesktop && !acquisitionClosed ? (
+      <View
+        style={[
+          styles.deskPanel,
+          { backgroundColor: palette.card, borderColor: palette.panelBorder },
+        ]}
+      >
+        <View
+          style={[styles.deskAccent, { backgroundColor: palette.accent }]}
         />
+        <View style={styles.deskInner}>
+          <RsvpDecisionBox
+            palette={palette}
+            theme={theme}
+            config={config}
+            state={state}
+          />
+        </View>
       </View>
-    </View>
-  ) : undefined;
+    ) : undefined;
 
   return (
-    <View style={[styles.host, { backgroundColor: palette.page }]} ref={hostRef}>
+    <View
+      style={[styles.host, { backgroundColor: palette.page }]}
+      ref={hostRef}
+    >
       <ParallaxCoverShell
         palette={palette}
         theme={shellTheme}
@@ -371,9 +414,9 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
         coverMediaType={coverType}
         coverHue={event.coverHue}
         // issue #868 [cover-gallery] — ADDITIONAL image/GIF gallery items.
-      galleryImages={event.coverGallery}
-      heroAccessibilitySubject={event.name}
-      coverMediaAlt={event.coverMediaAlt}
+        galleryImages={event.coverGallery}
+        heroAccessibilitySubject={event.name}
+        coverMediaAlt={event.coverMediaAlt}
         entranceAnimationKey={`rsvp:${event.id}`}
         muted={muted}
         onToggleMute={onToggleMute}
@@ -405,6 +448,9 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
           state={state}
           renderPhoneField={renderPhoneField}
           defaultPhoneCountry={defaultPhoneCountry}
+          passPresentation="claim"
+          onOpenClaim={onOpenClaim}
+          renderClaimBody={renderClaimBody}
           // ORCH-1163-R2 — desktop relocates the inline box to the sticky panel
           // (PARITY with FoundationEventPreview's hideTicketBox).
           hideDecisionBox={isDesktop || acquisitionClosed}

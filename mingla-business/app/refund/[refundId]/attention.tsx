@@ -6,6 +6,7 @@ import type { RefundBank } from "../../../src/components/refunds/SourceRefundAtt
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
 import { supabase } from "../../../src/services/supabase";
 import { ScrollView } from "../../../src/wrappers/SmartScrollView";
+import { text as textTokens } from "../../../src/constants/designSystem";
 
 function fragmentAttentionToken(): string {
   if (typeof window === "undefined") return "";
@@ -123,11 +124,11 @@ const styles = StyleSheet.create({
   // #2211 — `host` no longer centres or pads: it is only the SafeScreen frame.
   // The centring moved to `scrollContent`, where `flexGrow: 1` reproduces it
   // exactly while there is room and yields to scrolling once there is not.
-  host: { flex: 1 },
+  host: { flex: 1, backgroundColor: "#0c0e12" },
   scroll: { flex: 1, overflow: "hidden" },
   // #2211 — `flexGrow: 1` is EXPLICIT. A ScrollView's content container
   // defaults to `flexGrow: 0`; omitting it is the silent footgun recorded in
   // feedback_rn_scrollview_flex_grow_default_one_silent_footgun.
   scrollContent: { flexGrow: 1, padding: 24, justifyContent: "center", gap: 16 },
-  title: { fontSize: 24, fontWeight: "700" },
+  title: { fontSize: 24, fontWeight: "700", color: textTokens.primary },
 });

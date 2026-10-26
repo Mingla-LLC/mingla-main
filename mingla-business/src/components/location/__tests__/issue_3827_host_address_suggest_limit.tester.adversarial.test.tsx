@@ -266,7 +266,7 @@ describe("issue #3827 tester — Explorer and the shared default are untouched",
     expect(await suggestBody({ limit: 0 })).not.toHaveProperty("limit");
   });
 
-  test("every Explorer caller keeps the limit it had: two opt into 8, none into 10", () => {
+  test("every Explorer caller keeps the limit it had: three opt into 8, none into 10", () => {
     const withLimit: Record<string, string[]> = {};
     const walk = (dir: string): void => {
       for (const entry of readdirSync(dir)) {
@@ -288,6 +288,9 @@ describe("issue #3827 tester — Explorer and the shared default are untouched",
       "app-mobile/src/components/PreferencesSheet/PreferencesSectionsAdvanced.tsx": [
         "suggestLimit={8}",
       ],
+      // [TEST-MOD-APPROVED #3988] Discover's global city picker uses the same
+      // established Explorer suggestion budget; Host remains the sole 10-result caller.
+      "app-mobile/src/components/discover/CityPickerSheet.tsx": ["suggestLimit={8}"],
       "app-mobile/src/components/location/MapboxAddressInput.tsx": [
         "suggestLimit={suggestLimit}",
       ],

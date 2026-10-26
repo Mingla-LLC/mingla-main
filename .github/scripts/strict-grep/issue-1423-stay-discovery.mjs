@@ -36,14 +36,14 @@ const required = {
     "TO anon, authenticated",
   ],
   discover: [
-    'id: "events"',
-    'id: "trips"',
-    'id: "stays"',
-    'activeTab === "stays"',
-    "<StaysContent",
-    'activeTab === "trips"',
-    "<TripsContent",
-    'activeTab === "events"',
+    "DISCOVER_KIND_ORDER.filter",
+    'events: t("pill.events", "Events")',
+    'trips: t("pill.trips", "Trips")',
+    'stays: t("pill.stays", "Stays")',
+    "visibleKinds.includes(selectedKind)",
+    "<DiscoverHeader",
+    "onKindSelect={switchKind}",
+    "useDiscoverFeed",
   ],
   filters: ["Destination", "Dates", "Guests & rooms", "Filters", "maximum={10}"],
   content: [
@@ -95,7 +95,7 @@ function check(source) {
   if (/(?:INSERT\s+INTO|UPDATE)\s+public\.feature_flags[\s\S]{0,120}is_enabled\s*=\s*true/iu.test(source.migration ?? "")) {
     failures.push("Issue #1423 enables a Stay launch flag");
   }
-  if (/tabId === ["']stays["'][\s\S]{0,100}targetRef/u.test(source.discover ?? "")) {
+  if (/(?:tabId|kind) === ["']stays["'][\s\S]{0,100}targetRef/u.test(source.discover ?? "")) {
     failures.push("Stays added an unauthorized coach-mark step");
   }
   if (/rating|reviewCount|selling fast|best deal/iu.test(source.card ?? "")) {

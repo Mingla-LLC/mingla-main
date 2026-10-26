@@ -276,6 +276,34 @@ async function resolveConnectedAccountId(
   };
 }
 
+async function resolveTripPublicSlugs(
+  supabase: ReturnType<typeof serviceClient>,
+  eventId: string,
+): Promise<{ brandSlug: string | null; tripSlug: string | null }> {
+  const { data, error } = await supabase
+    .from("events")
+    .select("slug, brands(slug)")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (error || !data) {
+    console.warn("[cancel-trip-booking] public trip slugs unavailable", error);
+    return { brandSlug: null, tripSlug: null };
+  }
+
+  type JoinedBrand = { slug?: string | null };
+  const row = data as {
+    slug?: string | null;
+    brands?: JoinedBrand | JoinedBrand[] | null;
+  };
+  const brand = Array.isArray(row.brands)
+    ? row.brands[0] ?? null
+    : row.brands ?? null;
+  return {
+    brandSlug: typeof brand?.slug === "string" ? brand.slug : null,
+    tripSlug: typeof row.slug === "string" ? row.slug : null,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // HTTP handler
 // ---------------------------------------------------------------------------
@@ -413,10 +441,16 @@ serve(async (req: Request): Promise<Response> => {
         mapped.status,
       );
     }
+    const publicSlugs = await resolveTripPublicSlugs(
+      supabase,
+      compute.event_id ?? "",
+    );
     return jsonResponse({
       mode: "preview",
       orderId: compute.order_id,
       eventId: compute.event_id,
+      brandSlug: publicSlugs.brandSlug,
+      tripSlug: publicSlugs.tripSlug,
       quotedAt: compute.cancel_at,
       tripStart: compute.trip_start,
       daysRemaining: compute.days_remaining,
@@ -929,6 +963,7 @@ serve(async (req: Request): Promise<Response> => {
       })),
       reason: reasonRaw.length > 0 ? reasonRaw : null,
       refundIssued: computedRefundTotalCents > 0,
+      refund_record_id: refundId,
     };
 
     // buyer_order_cancelled (the cancellation email)

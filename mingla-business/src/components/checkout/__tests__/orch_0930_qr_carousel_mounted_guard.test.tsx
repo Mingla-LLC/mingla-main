@@ -1,4 +1,5 @@
 /**
+ * #4063 retires buyer-web QR rendering; this guards the replacement handoff.
  * ORCH-0930 / ORCH-0932 — TicketQrCarousel server-side QR image contract.
  *
  * Bug history:
@@ -29,10 +30,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const source = readFileSync(
-  join(__dirname, "../TicketQrCarousel.tsx"),
-  "utf8",
-);
+const source = readFileSync(join(__dirname, "../TicketQrCarousel.tsx"), "utf8");
 
 function stripComments(value: string): string {
   return value
@@ -56,13 +54,13 @@ describe("ORCH-0932 — TicketQrCarousel server-side QR <Image> contract", () =>
   });
 
   it("HP-3: CarouselTicket interface declares optional qrImageDataUrl field", () => {
-    expect(activeSource).toMatch(
-      /qrImageDataUrl\s*\?\s*:\s*string/,
-    );
+    expect(activeSource).toMatch(/qrImageDataUrl\s*\?\s*:\s*string/);
   });
 
   it("HP-4: renders <Image source={{ uri: ... }}> sites guarded by `imageDataUrl !== undefined && imageDataUrl.length > 0`", () => {
-    const imageUsages = activeSource.match(/<Image\s+source=\{\{\s*uri:\s*[a-zA-Z.]+imageDataUrl/g);
+    const imageUsages = activeSource.match(
+      /<Image\s+source=\{\{\s*uri:\s*[a-zA-Z.]+imageDataUrl/g,
+    );
     expect(imageUsages).not.toBeNull();
     expect((imageUsages ?? []).length).toBe(2);
 
@@ -92,13 +90,23 @@ describe("ORCH-0932 — TicketQrCarousel server-side QR <Image> contract", () =>
   });
 });
 
-describe("ORCH-0932 — parent-level threading of qrImageDataUrl through confirm.tsx", () => {
+// [TEST-MOD-APPROVED #4063] The QR carousel remains covered above for the
+// private surfaces that still use it. Public checkout confirmations now show
+// a claim card + receipt and intentionally receive no QR material.
+describe("#4063 — public confirmation screens do not expose QR material", () => {
   const tripConfirm = readFileSync(
     join(__dirname, "../../../../app/checkout-trip/[tripEventId]/confirm.tsx"),
     "utf8",
   );
   const eventConfirm = readFileSync(
     join(__dirname, "../../../../app/checkout/[eventId]/confirm.tsx"),
+    "utf8",
+  );
+  const experienceConfirm = readFileSync(
+    join(
+      __dirname,
+      "../../../../app/checkout-experience/[experienceEventId]/confirm.tsx",
+    ),
     "utf8",
   );
 
@@ -111,64 +119,37 @@ describe("ORCH-0932 — parent-level threading of qrImageDataUrl through confirm
 
   const tripActive = stripCommentsLocal(tripConfirm);
   const eventActive = stripCommentsLocal(eventConfirm);
+  const experienceActive = stripCommentsLocal(experienceConfirm);
 
-  it("HP-7 (trip): carouselTickets mapper threads qrImageDataUrl from server response", () => {
-    expect(tripActive).toMatch(
-      /qrImageDataUrl:\s*ticket\.qrImageDataUrl/,
-    );
-  });
-
-  it("HP-8 (event): carouselTickets mapper threads qrImageDataUrl from server response", () => {
-    expect(eventActive).toMatch(
-      /qrImageDataUrl:\s*ticket\.qrImageDataUrl/,
-    );
-  });
-
-  it("HP-9 (trip — ORCH-0951 v2): isClient uses useState(false) + useEffect setIsClient(true) pattern (NOT v3's typeof-window initializer which caused React #418 hydration mismatch)", () => {
-    expect(tripActive).toMatch(
-      /const\s+\[\s*isClient\s*,\s*setIsClient\s*\]\s*=\s*useState<boolean>\(\s*false\s*\)/,
-    );
-    // META-ORCH-0952 [TEST-MOD-APPROVED META-ORCH-0952]: the rework wraps
-    // setIsClient(true) in setTimeout(..., 0) + cleanup; both that shape and
-    // the bare v2 shape are acceptable. The invariant is "isClient flips to
-    // true inside a post-mount effect with empty deps", not the exact body.
-    expect(tripActive).toMatch(/useEffect\([\s\S]*?setIsClient\(true\)[\s\S]*?\}\s*,\s*\[\s*\]\s*\)/);
-    expect(tripActive).toMatch(
-      /\{\s*isClient\s*&&\s*totalTickets\s*>\s*0\s*\?\s*\(?\s*<TicketQrCarousel/,
-    );
-    // Anti-regression: must NOT re-introduce v3's typeof-window initializer
-    // (the root cause of the React #418 hydration mismatch — SSR=false,
-    // client first render=true → mismatch → React aborts the carousel subtree
-    // → multi-ticket users see only the bare minHeight=320 strip).
-    expect(tripActive).not.toMatch(
-      /useState<boolean>\(\s*\(\)\s*=>\s*typeof\s+window/,
-    );
-  });
-
-  it("HP-10 (event — ORCH-0951 v2): mirrors the trip-side v2 pattern", () => {
-    expect(eventActive).toMatch(
-      /const\s+\[\s*isClient\s*,\s*setIsClient\s*\]\s*=\s*useState<boolean>\(\s*false\s*\)/,
-    );
-    // META-ORCH-0952 [TEST-MOD-APPROVED META-ORCH-0952]: see HP-9 rationale.
-    expect(eventActive).toMatch(/useEffect\([\s\S]*?setIsClient\(true\)[\s\S]*?\}\s*,\s*\[\s*\]\s*\)/);
-    expect(eventActive).toMatch(
-      /\{\s*isClient\s*&&\s*totalTickets\s*>\s*0\s*\?\s*\(?\s*<TicketQrCarousel/,
-    );
-    expect(eventActive).not.toMatch(
-      /useState<boolean>\(\s*\(\)\s*=>\s*typeof\s+window/,
-    );
-  });
+  it.each([
+    ["event", eventActive],
+    ["trip", tripActive],
+    ["experience", experienceActive],
+  ])(
+    "HP-7 (%s): renders claim and receipt while omitting the QR carousel",
+    (_name, active) => {
+      expect(active).toMatch(/<BuyerClaimCard/);
+      expect(active).toMatch(/<BuyerCheckoutReceipt/);
+      expect(active).not.toMatch(/<TicketQrCarousel/);
+      expect(active).not.toMatch(/qrImageDataUrl/);
+      expect(active).not.toMatch(/qrPayload/);
+    },
+  );
 });
 
-describe("ORCH-0932 — OrderResult schema exposes qrImageDataUrl to consumers", () => {
+describe("#4063 — public OrderResult schema excludes QR secrets", () => {
   const cartContext = readFileSync(
     join(__dirname, "../CartContext.tsx"),
     "utf8",
   );
 
-  it("HP-11: OrderResult.tickets includes optional qrImageDataUrl field", () => {
-    // The field is optional in the type to preserve back-compat with any
-    // cached/legacy responses; carousel handles absence with a placeholder.
-    expect(cartContext).toMatch(/qrImageDataUrl\?\s*:\s*string/);
+  it("HP-8: OrderResult tickets contain metadata only", () => {
+    expect(cartContext).not.toMatch(/qrImageDataUrl\?\s*:\s*string/);
+    expect(cartContext).not.toMatch(/qrPayload\s*:\s*string/);
+    expect(cartContext).toMatch(
+      /buyerContact\?\s*:\s*BuyerConfirmationContact/,
+    );
+    expect(cartContext).toMatch(/receipt\?\s*:\s*BuyerConfirmationReceipt/);
+    expect(cartContext).toMatch(/claim\?\s*:\s*BuyerConfirmationClaim/);
   });
 });

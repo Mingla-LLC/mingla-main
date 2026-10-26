@@ -53,9 +53,13 @@ BEGIN
     release_id, source_type, source_id, gross_cents, mingla_fee_cents,
     provider_fee_cents, net_cents, source_finalized_at
   ) VALUES
-    (v_paid, 'order', gen_random_uuid(), 10000, 450, 200, 9550, now() - interval '1 hour'),
-    (v_due, 'order', gen_random_uuid(), 20000, 900, 350, 19100, now() - interval '1 hour'),
-    (v_blocked, 'order', gen_random_uuid(), 30000, 1350, 500, 28650, now() - interval '1 hour');
+    -- Keep the fixture inside the current ISO week, including Monday 00:00-00:59 UTC.
+    (v_paid, 'order', gen_random_uuid(), 10000, 450, 200, 9550,
+      greatest(now() - interval '1 hour', date_trunc('week', now()))),
+    (v_due, 'order', gen_random_uuid(), 20000, 900, 350, 19100,
+      greatest(now() - interval '1 hour', date_trunc('week', now()))),
+    (v_blocked, 'order', gen_random_uuid(), 30000, 1350, 500, 28650,
+      greatest(now() - interval '1 hour', date_trunc('week', now())));
   INSERT INTO public.payout_transfer_legs(
     release_id, kind, chunk_index, principal_cents, estimated_fee_cents,
     stamp_duty_cents, actual_fee_cents, actual_stamp_duty_cents,

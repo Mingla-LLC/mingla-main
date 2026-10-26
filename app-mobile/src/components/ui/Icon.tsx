@@ -262,6 +262,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'diamond-outline':            Diamond,
   'document-text':              FileText,
   'download':                   Download,
+  'download-outline':           Download,
   // ORCH-0598 theatre chip — lucide Drama component (theatrical masks)
   'drama':                      Drama,
   'drama-masks':                Drama,
@@ -291,6 +292,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'flame':                      Flame,
   'flame-outline':              Flame,
   'flash':                      Zap,
+  'flash-outline':              Zap,
   'flower':                     Flower2,
   'flower-outline':             Flower2,
 
@@ -312,6 +314,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'heart-pulse':                HeartPulse,
   'hourglass':                  Hourglass,
   'hourglass-outline':          Hourglass,
+  'help-circle-outline':        CircleAlert,
 
   // ─── I ───
   'image':                      Image,

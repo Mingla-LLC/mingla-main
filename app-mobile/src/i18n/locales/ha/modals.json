@@ -117,5 +117,18 @@
     "next_step_label": "Ci gaba zuwa mataki na gaba",
     "finish_tour_label": "Gama rangadi",
     "guided_tour_label": "Matakin rangadi {{current}} cikin {{total}}"
+  },
+  "coach": {
+    "step4": {
+      "title": "Komai na kusa da ku, shafi ɗaya",
+      "body_all": "Abubuwa, gogewa, balaguro da tsayawa, duk a shafi ɗaya. Matsa kwaya don canzawa.",
+      "body_subset": "{{list}}, duk a shafi daya. Matsa kwaya don canzawa."
+    },
+    "step5": {
+      "title": "Ƙara ƙulla shi",
+      "body": "Tace da rana, vibe, kiɗa, wuri da ƙari. Zaɓuɓɓukan suna canzawa da kowane kwaya."
+    },
+    "list_two": "{{a}} da {{b}}",
+    "list_three": "{{a}}, {{b}} da {{c}}"
   }
 }

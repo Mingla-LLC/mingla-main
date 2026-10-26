@@ -38,7 +38,15 @@ function makeFakeSupabase(opts: { buyerUserId: string | null; brandName: string 
                 return {
                   maybeSingle() {
                     return Promise.resolve({
-                      data: { buyer_user_id: opts.buyerUserId },
+                      data: {
+                        buyer_user_id: opts.buyerUserId,
+                        event_date_id: "date-1161",
+                        event_dates: {
+                          start_at: "2026-06-23T00:00:00Z",
+                          timezone: "America/New_York",
+                        },
+                        events: { timezone: "UTC" },
+                      },
                       error: null,
                     });
                   },
@@ -116,6 +124,9 @@ Deno.test("purchase finalize fires a buyer push with contact:null (no double-ema
   const payload = body.payload as Record<string, unknown>;
   assertEquals(payload.brand_name, "Lantern");
   assertEquals(payload.event_title, "Jazz Night");
+  assertEquals(payload.reserved_for, "2026-06-23T00:00:00Z");
+  assertEquals(payload.timezone, "America/New_York");
+  assertEquals(payload.event_date_id, "date-1161");
 });
 
 Deno.test("no-account buyer → no push dispatch (email owner reaches them)", async () => {

@@ -43,6 +43,7 @@ const read = (relative: string): string =>
   readFileSync(join(ROOT, relative), "utf8");
 
 const CTA = read("src/components/checkout/DownloadMinglaCta.tsx");
+const LEGACY_CTA = CTA.slice(CTA.indexOf("export const DownloadMinglaCta"));
 const CONFIRM_ROUTES = [
   "app/checkout/[eventId]/confirm.tsx",
   "app/checkout-trip/[tripEventId]/confirm.tsx",
@@ -100,8 +101,10 @@ describe("#2217 — one device-aware destination", () => {
 
 describe("#2217 — the card carries ONE button", () => {
   test("exactly one Pressable, and no second store badge", () => {
-    expect(CTA.match(/<Pressable/g)?.length ?? 0).toBe(2); // primary + the error-only retry
-    const badgeRow = CTA.slice(CTA.indexOf("styles.badgeRow"));
+    // [TEST-MOD-APPROVED #4063] This module now also exports BuyerClaimCard.
+    // Scope the #2217 legacy-card invariant to DownloadMinglaCta itself.
+    expect(LEGACY_CTA.match(/<Pressable/g)?.length ?? 0).toBe(2); // primary + the error-only retry
+    const badgeRow = LEGACY_CTA.slice(LEGACY_CTA.indexOf("styles.badgeRow"));
     expect(badgeRow.slice(0, badgeRow.indexOf("</View>")).match(/<Pressable/g)?.length ?? 0).toBe(1);
   });
 
@@ -144,12 +147,12 @@ describe("#2217 — the guest-list card is deleted from every confirmation route
     expect(source).not.toContain("MINGLA_APP_ICON");
   });
 
-  test.each(CONFIRM_ROUTES)("%s renders the merged card with the claim authority", (route) => {
+  test.each(CONFIRM_ROUTES)("%s renders the canonical buyer claim card", (route) => {
     const source = read(route);
-    expect(source).toContain("<DownloadMinglaCta");
-    expect(source).toContain("claimPhase={attendanceClaim.phase}");
-    expect(source).toContain("link.appClaimUrl");
-    expect(source).toContain("onRetryClaim={retryAttendanceClaim}");
+    expect(source).toContain("<BuyerClaimCard");
+    expect(source).toContain("email={result.buyerContact?.email ?? null}");
+    expect(source).toContain("shortUrl={result.claim?.shortUrl ?? null}");
+    expect(source).toContain("handoff={claimHandoff}");
   });
 });
 

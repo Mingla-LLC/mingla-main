@@ -1,279 +1,357 @@
 #!/usr/bin/env node
 /**
- * issue #2216 [ticket QR renders as a blank white square] + issue #2197
- * [blanket @ts-ignore on the QR import] — strict-grep gate.
+ * G-QR — I-4063-NO-TICKET-QR-OFF-EXPLORER.
  *
- * WHAT HAPPENED. A guest's pass showed a blank white square on the
- * confirmation screen. `TicketQrCarousel` draws a plain white <View> whenever
- * `qrImageDataUrl` is missing, and the free-reservation producer
- * (`ticket-checkout-create`, third producer of confirm-screen tickets, added
- * by #2136 after ORCH-0932 wired the other two) never asked for an image. The
- * failure was silent end to end: no error, no log, HTTP 200.
- *
- * Three invariants, each covering one way that silence gets rebuilt:
- *
- *   I-2216-QR-IMAGE-SINGLE-OWNER — EVERY edge function that answers a buyer
- *     with tickets renders the QR through `attachQrImageDataUrls` from
- *     `_shared/ticketQrImage.ts`. Scope: ticket-checkout-create, -confirm,
- *     -status. A producer that maps tickets itself is a producer that can
- *     forget the image, which is exactly what #2216 was.
- *
- *   I-2197-QR-IMPORT-NOT-SUPPRESSED — `_shared/ticketQrImage.ts` carries NO
- *     `@ts-ignore`, and its qrcode import is typed by the local declaration
- *     file with the directive on the line IMMEDIATELY above the import. A
- *     blank line or an intervening comment silently detaches `@ts-types` (the
- *     placement trap proven on #2160), so adjacency is checked, not presence.
- *
- *   I-2216-CAROUSEL-PLACEHOLDER-GUARD-INTACT — the carousel keeps its
- *     `imageDataUrl.length > 0` guard. That guard is HONEST: it is what makes
- *     a missing image visible instead of rendering a broken <Image>. The fix
- *     for a blank pass is correct data, never a deleted guard.
- *
- * Comments are stripped before scanning (except where adjacency is the point),
- * so historical references in headers do not false-positive.
- *
- * Exit codes:
- *   0 — clean
- *   1 — violation
+ * I-2216-QR-IMAGE-SINGLE-OWNER, I-2216-CAROUSEL-PLACEHOLDER-GUARD-INTACT
+ * and I-2197-QR-IMPORT-NOT-SUPPRESSED are retired. The credential is now owned
+ * by signed-in Explorer. Public Business and email surfaces carry claim
+ * pointers only. ShareModalContent.tsx remains an explicit non-ticket QR
+ * exception because it renders the public share URL, never a pass credential.
  */
 
-import { readFileSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, "..", "..", "..");
-
-const QR_HELPER = "supabase/functions/_shared/ticketQrImage.ts";
-const QR_TYPES = "supabase/functions/_shared/qrcodeModule.d.ts";
-const CAROUSEL = "mingla-business/src/components/checkout/TicketQrCarousel.tsx";
-
-/** Every edge function that hands a buyer a ticket it expects to be scanned. */
-const TICKET_PRODUCERS = [
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+const PRODUCERS = [
   "supabase/functions/ticket-checkout-create/index.ts",
   "supabase/functions/ticket-checkout-confirm/index.ts",
   "supabase/functions/ticket-checkout-status/index.ts",
 ];
+const RSVP_FETCH = "supabase/functions/rsvp-pass-fetch/index.ts";
+const RSVP_SUBMIT = "supabase/functions/public-submit-rsvp/index.ts";
+const DISPATCH = "supabase/functions/ticket-confirmation-dispatch/index.ts";
+const ACTIVE_MESSAGE_FILES = [
+  "supabase/functions/_shared/orderConfirmationMessage.ts",
+  "supabase/functions/_shared/rsvpPassMessage.ts",
+  "supabase/functions/_shared/waitlistSpotMessage.ts",
+  "supabase/functions/_shared/email/purchaseBody.ts",
+  "supabase/functions/_shared/email/purchaseCopy.ts",
+  "supabase/functions/_shared/sms/buyerSms.ts",
+];
+const BUSINESS_ROOTS = [
+  "mingla-business/app",
+  "mingla-business/src/components/checkout",
+  "mingla-business/src/components/event",
+  "mingla-business/src/components/ticketLinks",
+  "mingla-business/src/components/venue",
+  "mingla-business/src/components/attendance",
+];
+const GATE_QR_IMPORT_ALLOWLIST = new Set([
+  "mingla-business/src/components/checkout/DownloadMinglaCta.tsx",
+  "mingla-business/src/components/event/SeeWhosGoingGate.tsx",
+  "mingla-business/src/components/attendance/ContinueOnPhoneSheet.tsx",
+]);
 
-const ALL_FILES = [QR_HELPER, QR_TYPES, CAROUSEL, ...TICKET_PRODUCERS];
+const stripComments = (source) =>
+  source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
-const QRCODE_IMPORT = /^\s*import\s+QRCode\s+from\s+["']https:\/\/esm\.sh\/qrcode@/;
-const TS_TYPES_DIRECTIVE = /^\s*\/\/\s*@ts-types\s*=\s*["']\.\/qrcodeModule\.d\.ts["']\s*$/;
-/**
- * A `@ts-ignore` DIRECTIVE — a line-comment that starts with it. Deliberately
- * NOT a bare substring search: the file's own header explains why the
- * suppression was removed, and a gate that cannot tell an explanation from a
- * directive would force the explanation out of the code.
- */
-const TS_IGNORE_DIRECTIVE = /^[ \t]*\/\/[ \t]*@ts-ignore\b/m;
+const sourceFilesUnder = (root) => {
+  const absolute = join(ROOT, root);
+  if (!existsSync(absolute)) return [];
+  const found = [];
+  const walk = (directory) => {
+    for (const entry of readdirSync(directory)) {
+      if (entry === "__tests__" || entry === "node_modules") continue;
+      const path = join(directory, entry);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (
+        /\.(?:ts|tsx)$/.test(entry) &&
+        !/\.(?:test|spec)\./.test(entry)
+      ) {
+        found.push(relative(ROOT, path));
+      }
+    }
+  };
+  walk(absolute);
+  return found;
+};
 
-const stripComments = (src) =>
-  src
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
-
-/**
- * Pure verdict. `files` maps each scoped path to its raw content, or null if
- * absent. Pushes { file, msg } into `violations`. Never touches disk.
- */
 export function check(files, violations) {
-  for (const rel of ALL_FILES) {
-    if (files[rel] == null) {
+  for (const path of [
+    ...PRODUCERS,
+    RSVP_FETCH,
+    RSVP_SUBMIT,
+    DISPATCH,
+    ...ACTIVE_MESSAGE_FILES,
+  ]) {
+    if (files[path] == null)
+      violations.push({ file: path, msg: "Scoped source is missing." });
+  }
+
+  for (const path of PRODUCERS) {
+    const source = files[path] == null ? "" : stripComments(files[path]);
+    for (const token of [
+      "qrImageDataUrl",
+      "qrPayload",
+      "attachQrImageDataUrls",
+      "qr_code",
+    ]) {
+      if (source.includes(token)) {
+        violations.push({
+          file: path,
+          msg: `Public checkout producer contains forbidden credential token ${token}. I-4063-NO-TICKET-QR-OFF-EXPLORER.`,
+        });
+      }
+    }
+  }
+
+  const fetchSource =
+    files[RSVP_FETCH] == null ? "" : stripComments(files[RSVP_FETCH]);
+  if (
+    !/return\s+reply\(403,\s*\{\s*error:\s*["']sign_in_required["']\s*\}\s*\)/.test(
+      fetchSource,
+    )
+  ) {
+    violations.push({
+      file: RSVP_FETCH,
+      msg: "Anonymous RSVP pass reads must return 403 sign_in_required.",
+    });
+  }
+
+  const submitSource =
+    files[RSVP_SUBMIT] == null ? "" : stripComments(files[RSVP_SUBMIT]);
+  if (
+    !/credentials:\s*userId\s*!==\s*null\s*&&\s*passEligible/.test(submitSource)
+  ) {
+    violations.push({
+      file: RSVP_SUBMIT,
+      msg: "RSVP credentials must be built only for a signed-in eligible owner.",
+    });
+  }
+
+  for (const path of ACTIVE_MESSAGE_FILES) {
+    const source = stripComments(files[path] ?? "");
+    if (/QR in attached PDF/i.test(source)) {
       violations.push({
-        file: rel,
-        msg: "Scoped file missing — issue #2216 expects this file present.",
+        file: path,
+        msg: "Email copy promises a ticket credential attachment.",
+      });
+    }
+    if (/(?:qr[\s\S]{0,180}<img|<img[\s\S]{0,180}qr)/i.test(source)) {
+      violations.push({ file: path, msg: "Email source builds a QR image." });
+    }
+    if (/filename\s*:\s*[^,\n]*\.pdf/i.test(source)) {
+      violations.push({
+        file: path,
+        msg: "Email source builds a PDF attachment.",
       });
     }
   }
 
-  // ── I-2216-QR-IMAGE-SINGLE-OWNER
-  for (const rel of TICKET_PRODUCERS) {
-    const raw = files[rel];
-    if (raw == null) continue;
-    const stripped = stripComments(raw);
-    if (!/\battachQrImageDataUrls\b/.test(stripped)) {
+  const dispatch =
+    files[DISPATCH] == null ? "" : stripComments(files[DISPATCH]);
+  if (
+    !/renderEmailBody\s*=\s*\([^)]*\)\s*=>\s*\{[\s\S]{0,700}?renderTransactionalEmail\(\s*\{\s*variant:\s*["']purchase_message["']/.test(
+      dispatch,
+    )
+  ) {
+    violations.push({
+      file: DISPATCH,
+      msg: "Buyer ticket confirmation email must render through purchase_message.",
+    });
+  }
+  if (
+    /renderTransactionalEmail\(\s*\{\s*variant:\s*["']ticket_confirmation_(?:free|paid)["']/.test(
+      dispatch,
+    )
+  ) {
+    violations.push({
+      file: DISPATCH,
+      msg: "Legacy ticket_confirmation variants cannot be used for active email delivery.",
+    });
+  }
+  if (
+    /const\s+attachments[^=]*=\s*\[\s*\{/.test(dispatch) ||
+    /attachments\.push\(\s*\{(?![\s\S]{0,160}icsFilename)/.test(dispatch)
+  ) {
+    violations.push({
+      file: DISPATCH,
+      msg: "Ticket confirmation attachments must start empty and only add the calendar .ics.",
+    });
+  }
+  const attachmentPushes = [
+    ...dispatch.matchAll(/attachments\.push\(\s*\{([\s\S]*?)\}\s*\)/g),
+  ];
+  for (const push of attachmentPushes) {
+    if (!/icsFilename|\.ics/.test(push[1])) {
       violations.push({
-        file: rel,
-        msg:
-          "Does not render its tickets through `attachQrImageDataUrls` (_shared/ticketQrImage.ts) — a producer that maps tickets itself is a producer that can ship a pass with no QR image (issue #2216). I-2216-QR-IMAGE-SINGLE-OWNER.",
+        file: DISPATCH,
+        msg: "Ticket confirmation contains a non-.ics attachment.",
       });
     }
   }
 
-  // ── I-2197-QR-IMPORT-NOT-SUPPRESSED
-  const helper = files[QR_HELPER];
-  if (helper != null) {
-    if (TS_IGNORE_DIRECTIVE.test(helper)) {
-      violations.push({
-        file: QR_HELPER,
-        msg:
-          "`@ts-ignore` present. It disables EVERY type error on the next line, not the one it was added for — a moved export, a version bump or a typo then reaches production as a runtime failure. Use `// @ts-types=\"./qrcodeModule.d.ts\"` instead. I-2197-QR-IMPORT-NOT-SUPPRESSED.",
-      });
-    }
-    // Adjacency is the whole point here, so scan the RAW lines.
-    const lines = helper.split("\n");
-    const importIdx = lines.findIndex((l) => QRCODE_IMPORT.test(l));
-    if (importIdx === -1) {
-      violations.push({
-        file: QR_HELPER,
-        msg:
-          "No `import QRCode from \"https://esm.sh/qrcode@…\"` found — this gate can no longer see the import it exists to protect. I-2197-QR-IMPORT-NOT-SUPPRESSED.",
-      });
-    } else if (
-      importIdx === 0 || !TS_TYPES_DIRECTIVE.test(lines[importIdx - 1])
+  const businessFiles = Object.keys(files).filter((item) =>
+    BUSINESS_ROOTS.some((root) => item.startsWith(`${root}/`)),
+  );
+  for (const path of businessFiles) {
+    const source = stripComments(files[path] ?? "");
+    if (
+      /from\s+["'][^"']*TicketQrCarousel["']|import\s*\([^)]*TicketQrCarousel/.test(
+        source,
+      )
     ) {
       violations.push({
-        file: QR_HELPER,
-        msg:
-          "`// @ts-types=\"./qrcodeModule.d.ts\"` must sit on the line IMMEDIATELY above the qrcode import. A blank line or an intervening comment silently detaches it (proven on #2160) and the upstream CommonJS `export =` types come back. I-2197-QR-IMPORT-NOT-SUPPRESSED.",
+        file: path,
+        msg: "Business public surface imports TicketQrCarousel.",
       });
     }
-  }
-
-  // ── I-2216-CAROUSEL-PLACEHOLDER-GUARD-INTACT
-  const carousel = files[CAROUSEL];
-  if (carousel != null) {
-    const stripped = stripComments(carousel);
-    if (!/imageDataUrl\.length\s*>\s*0/.test(stripped)) {
+    if (/react-native-qrcode-svg/.test(source)) {
       violations.push({
-        file: CAROUSEL,
-        msg:
-          "The `imageDataUrl.length > 0` placeholder guard is gone. That guard is honest — it makes a missing pass VISIBLE instead of rendering a broken <Image>. Fix the data, never the guard. I-2216-CAROUSEL-PLACEHOLDER-GUARD-INTACT.",
+        file: path,
+        msg: "Business public surface imports the pass QR renderer.",
       });
+    }
+    if (
+      /import\s*\{\s*GateQr\s*\}/.test(source) &&
+      !GATE_QR_IMPORT_ALLOWLIST.has(path)
+    ) {
+      violations.push({
+        file: path,
+        msg: "GateQr import is outside the reviewed non-credential allow-list.",
+      });
+    }
+    for (const match of source.matchAll(/<RsvpOfferingBody\b([\s\S]*?)>/g)) {
+      if (!/passPresentation\s*=\s*["']claim["']/.test(match[1])) {
+        violations.push({
+          file: path,
+          msg: "Business must render RsvpOfferingBody with passPresentation=claim.",
+        });
+      }
     }
   }
 }
 
-// ─────────────────────────────────────────────────────────────── self-test
 if (process.argv.includes("--self-test")) {
-  const self = [];
-  const run = (map) => {
-    const v = [];
-    check(map, v);
-    return v;
-  };
-
-  const GOOD = {
-    [QR_HELPER]: [
-      "/** header mentioning @ts-ignore historically is fine */",
-      '// @ts-types="./qrcodeModule.d.ts"',
-      'import QRCode from "https://esm.sh/qrcode@1.5.4?bundle";',
-      "export async function qrPayloadToDataUrl() {}",
-      "export async function attachQrImageDataUrls() {}",
-    ].join("\n"),
-    [QR_TYPES]: "declare const QRCode: object;\nexport default QRCode;",
-    [CAROUSEL]:
-      "const ok = p.imageDataUrl !== undefined && p.imageDataUrl.length > 0;",
+  const failures = [];
+  const base = {
     ...Object.fromEntries(
-      TICKET_PRODUCERS.map((p) => [
-        p,
-        'import { attachQrImageDataUrls } from "../_shared/ticketQrImage.ts";\nconst t = await attachQrImageDataUrls(rows);',
+      PRODUCERS.map((path) => [
+        path,
+        "const tickets = rows.map(toPublicTicketSummary);",
       ]),
     ),
+    [RSVP_FETCH]:
+      'if (!owner) return reply(403, { error: "sign_in_required" });',
+    [RSVP_SUBMIT]:
+      "return { credentials: userId !== null && passEligible ? passEntities.map(toCredential) : [] };",
+    [DISPATCH]:
+      'renderEmailBody = () => { return renderTransactionalEmail({ variant: "purchase_message" }); }; const attachments = []; if (calendarLinks) attachments.push({ filename: calendarLinks.icsFilename, content: calendarLinks.icsContent });',
+    ...Object.fromEntries(
+      ACTIVE_MESSAGE_FILES.map((path) => [
+        path,
+        "const body = renderClaimButton();",
+      ]),
+    ),
+    "mingla-business/src/components/event/FoundationRsvpPreview.tsx":
+      '<RsvpOfferingBody passPresentation="claim" />',
+    "mingla-business/src/components/checkout/DownloadMinglaCta.tsx":
+      'import { GateQr } from "../event/GateQr";',
   };
-
-  if (run(GOOD).length) {
-    self.push(`GOOD (single owner + adjacent @ts-types + guard) wrongly flagged: ${JSON.stringify(run(GOOD))}`);
+  const run = (overrides) => {
+    const violations = [];
+    check({ ...base, ...overrides }, violations);
+    return violations;
+  };
+  if (run({}).length !== 0)
+    failures.push(`compliant fixture failed: ${JSON.stringify(run({}))}`);
+  const bad = [
+    [
+      "checkout credential",
+      { [PRODUCERS[0]]: "const qrPayload = row.qr_code;" },
+    ],
+    ["anonymous RSVP pass", { [RSVP_FETCH]: "return reply(200, pass);" }],
+    [
+      "anonymous RSVP credentials",
+      { [RSVP_SUBMIT]: "return { credentials: passEntities };" },
+    ],
+    [
+      "email QR badge",
+      {
+        "supabase/functions/_shared/email/purchaseCopy.ts":
+          'const badge = "QR in attached PDF";',
+      },
+    ],
+    [
+      "legacy delivery variant",
+      {
+        [DISPATCH]:
+          'renderEmailBody = () => { return renderTransactionalEmail({ variant: "ticket_confirmation_free" }); }; const attachments = [];',
+      },
+    ],
+    [
+      "PDF attachment",
+      {
+        [DISPATCH]:
+          "const attachments = [{ filename: renderedPdf.filename, content: renderedPdf.contentBase64 }];",
+      },
+    ],
+    [
+      "Business QR import",
+      {
+        "mingla-business/app/rsvp/pass.tsx":
+          'import Qr from "react-native-qrcode-svg";',
+      },
+    ],
+    [
+      "Ticket carousel import",
+      {
+        "mingla-business/app/o/[id].tsx":
+          'import { TicketQrCarousel } from "../../TicketQrCarousel";',
+      },
+    ],
+    [
+      "GateQr outside allow-list",
+      {
+        "mingla-business/src/components/venue/Bad.tsx":
+          'import { GateQr } from "../event/GateQr";',
+      },
+    ],
+    [
+      "RSVP QR presentation",
+      {
+        "mingla-business/src/components/event/FoundationRsvpPreview.tsx":
+          "<RsvpOfferingBody />",
+      },
+    ],
+  ];
+  for (const [name, fixture] of bad) {
+    if (run(fixture).length === 0)
+      failures.push(`${name} violation was not detected`);
   }
-
-  // GOOD2 — the file EXPLAINS the removed suppression in its header. Prose in a
-  // block comment is documentation, not a directive, and must not be flagged.
-  const good2 = {
-    ...GOOD,
-    [QR_HELPER]: [
-      "/**",
-      " * issue #2197 — the blanket `@ts-ignore` that used to sit here is gone;",
-      " * see qrcodeModule.d.ts. Do not reintroduce @ts-ignore on this import.",
-      " */",
-      '// @ts-types="./qrcodeModule.d.ts"',
-      'import QRCode from "https://esm.sh/qrcode@1.5.4?bundle";',
-      "export async function attachQrImageDataUrls() {}",
-    ].join("\n"),
-  };
-  if (run(good2).length) {
-    self.push(`GOOD2 (header PROSE mentioning @ts-ignore) wrongly flagged: ${JSON.stringify(run(good2))}`);
-  }
-
-  // BAD1 (the #2216 revert) — a producer stops using the single owner.
-  const bad1 = {
-    ...GOOD,
-    "supabase/functions/ticket-checkout-create/index.ts":
-      "const t = rows.map((r) => ({ ...r, qrPayload: r.qr_code }));",
-  };
-  if (run(bad1).length === 0) {
-    self.push("BAD1 (create no longer calls attachQrImageDataUrls) not flagged");
-  }
-
-  // BAD2 (the #2197 revert) — the blanket suppression comes back.
-  const bad2 = {
-    ...GOOD,
-    [QR_HELPER]: [
-      "// @ts-ignore -- Deno ESM import.",
-      'import QRCode from "https://esm.sh/qrcode@1.5.4?bundle";',
-    ].join("\n"),
-  };
-  if (run(bad2).length === 0) self.push("BAD2 (@ts-ignore reintroduced) not flagged");
-
-  // BAD3 (the #2160 placement trap) — @ts-types detached by a blank line.
-  const bad3 = {
-    ...GOOD,
-    [QR_HELPER]: [
-      '// @ts-types="./qrcodeModule.d.ts"',
-      "",
-      'import QRCode from "https://esm.sh/qrcode@1.5.4?bundle";',
-      "export async function attachQrImageDataUrls() {}",
-    ].join("\n"),
-  };
-  if (run(bad3).length === 0) {
-    self.push("BAD3 (@ts-types detached from the import by a blank line) not flagged");
-  }
-
-  // BAD4 (the tempting shortcut) — delete the guard so pixels always "appear".
-  const bad4 = {
-    ...GOOD,
-    [CAROUSEL]: "<Image source={{ uri: p.imageDataUrl }} />",
-  };
-  if (run(bad4).length === 0) {
-    self.push("BAD4 (placeholder guard deleted) not flagged");
-  }
-
-  // BAD5 — the declaration file the directive points at is deleted.
-  const bad5 = { ...GOOD, [QR_TYPES]: null };
-  if (run(bad5).length === 0) self.push("BAD5 (qrcodeModule.d.ts missing) not flagged");
-
-  if (self.length) {
-    console.error("I-2216-TICKET-QR-SERVER-RENDERED self-test FAIL:");
-    self.forEach((m) => console.error("  - " + m));
+  if (failures.length > 0) {
+    console.error("I-4063-NO-TICKET-QR-OFF-EXPLORER self-test FAIL:");
+    failures.forEach((failure) => console.error(`  - ${failure}`));
     process.exit(1);
   }
+  const cases = bad.length + 1;
   console.log(
-    "I-2216-TICKET-QR-SERVER-RENDERED self-test PASS (7/7 cases: 2 GOOD + 5 BAD).",
+    `I-4063-NO-TICKET-QR-OFF-EXPLORER self-test PASS (${cases}/${cases} cases).`,
   );
   process.exit(0);
 }
 
-// ─────────────────────────────────────────────────────────────── main path
-const files = {};
-for (const rel of ALL_FILES) {
-  const abs = join(ROOT, rel);
-  files[rel] = existsSync(abs) ? readFileSync(abs, "utf8") : null;
-}
-
+const paths = new Set([
+  ...PRODUCERS,
+  RSVP_FETCH,
+  RSVP_SUBMIT,
+  DISPATCH,
+  ...ACTIVE_MESSAGE_FILES,
+  ...BUSINESS_ROOTS.flatMap(sourceFilesUnder),
+]);
+const files = Object.fromEntries(
+  [...paths].map((path) => {
+    const absolute = join(ROOT, path);
+    return [path, existsSync(absolute) ? readFileSync(absolute, "utf8") : null];
+  }),
+);
 const violations = [];
 check(files, violations);
-
 if (violations.length > 0) {
-  console.error("\n[issue #2216 — i-2216-ticket-qr-server-rendered] VIOLATIONS:\n");
-  for (const v of violations) {
-    console.error(`  • ${v.file}\n    ${v.msg}\n`);
-  }
-  console.error(
-    "A pass that will not display cannot get a guest through the door. Fix the data path, not the guard.",
-  );
+  console.error("I-4063-NO-TICKET-QR-OFF-EXPLORER FAIL:");
+  violations.forEach(({ file, msg }) => console.error(`  - ${file}: ${msg}`));
   process.exit(1);
 }
-
-console.log(
-  "[issue #2216 — i-2216-ticket-qr-server-rendered] PASS — every buyer-facing ticket producer renders its QR through the single owner; the import is typed, not suppressed; the carousel's placeholder guard is intact.",
-);
-process.exit(0);
+console.log("I-4063-NO-TICKET-QR-OFF-EXPLORER PASS.");

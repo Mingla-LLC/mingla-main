@@ -2694,6 +2694,12 @@ export const getPublicTripById = async (
         typeof bt.destinationLat === "number" ? bt.destinationLat : null,
       destinationLng:
         typeof bt.destinationLng === "number" ? bt.destinationLng : null,
+      destinationCity:
+        typeof bt.destinationCity === "string" ? bt.destinationCity : null,
+      destinationCountryCode:
+        typeof bt.destinationCountryCode === "string"
+          ? bt.destinationCountryCode
+          : null,
       // ORCH-1016 — departure (origin). Prefer canonical events.departure_text.
       departurePlaceId:
         typeof bt.departurePlaceId === "string" ? bt.departurePlaceId : null,
@@ -2713,6 +2719,12 @@ export const getPublicTripById = async (
         typeof bt.departureLat === "number" ? bt.departureLat : null,
       departureLng:
         typeof bt.departureLng === "number" ? bt.departureLng : null,
+      departureCity:
+        typeof bt.departureCity === "string" ? bt.departureCity : null,
+      departureCountryCode:
+        typeof bt.departureCountryCode === "string"
+          ? bt.departureCountryCode
+          : null,
       capacity: typeof bt.capacity === "number" ? bt.capacity : null,
     },
     days: days.map((d): TripDay => ({

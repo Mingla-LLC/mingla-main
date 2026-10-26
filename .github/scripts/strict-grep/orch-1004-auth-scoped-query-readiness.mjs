@@ -50,6 +50,8 @@ const hooksDir = path.join(root, "mingla-business/src/hooks");
 // ── Auth-scoped hook files (relative to mingla-business/src/hooks). Each MUST
 //    fold isAuthReady into its query `enabled`. (SPEC ORCH-1004 Part 1.)
 const AUTH_SCOPED_HOOK_FILES = [
+  // #3988 — brand-group media/list metadata RPCs are membership-gated.
+  "useBrandGroupMedia.ts",
   "useBusinessRecentReader.ts",
   "useVenueListings.ts",
   "useBrandReservationSettingsList.ts",
@@ -72,6 +74,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useAgentChat.ts",
   "useCurrentBrandRole.ts",
   "useEventOrders.ts", // the proven template — must stay gated
+  // #4063 — door-sale history is brand/event scoped and must wait for the
+  // restored host session before it calls the protected RPC.
+  "useEventDoorSales.ts",
   // toward #3697 Wave 7 — Ads credit wallet via ad-credit edge (JWT + brand payments view).
   "marketing/useAdCreditWallet.ts",
   // toward #3697 Wave 7c — Host-owned ad campaigns list (JWT + brand-scoped edge).

@@ -108,6 +108,34 @@ export type CheckoutPaymentMethod =
   | "nfc" // [TRANSITIONAL] B-cycle platform NFC — disabled in J-D3 picker
   | "manual";
 
+export interface BuyerConfirmationContact {
+  email: string | null;
+  phoneLast4: string | null;
+}
+
+export interface BuyerConfirmationReceipt {
+  lines: {
+    qty: number;
+    name: string;
+    amountCents: number;
+  }[];
+  discountLines: {
+    label: string;
+    amountCents: number;
+  }[];
+  feesAndTaxCents: number;
+  paidCents: number;
+  currency: string;
+  dateLine: string | null;
+  /** First eight hex characters of the order UUID, upper case. */
+  orderRef: string;
+}
+
+export interface BuyerConfirmationClaim {
+  shortUrl: string | null;
+  code: string | null;
+}
+
 export interface OrderResult {
   orderId: string;
   ticketIds: string[];
@@ -146,18 +174,22 @@ export interface OrderResult {
   taxAmountCents?: number;
   paymentStatus?: "paid";
   notificationStatus?: "queued" | "sent" | "partial" | "failed" | string;
-  tickets: Array<{
+  /** #4063 — status-token-gated server truth used by confirmation UI. */
+  buyerContact?: BuyerConfirmationContact;
+  /** #4063 — immutable server receipt; the client performs no checkout math. */
+  receipt?: BuyerConfirmationReceipt;
+  /** #4063 — short claim link plus the code used to mint a desktop handoff. */
+  claim?: BuyerConfirmationClaim;
+  /** True when the ticket was attached to an existing Explorer account. */
+  attachedToAccount?: boolean;
+  /** True when an authenticated purchaser entered a different buyer contact. */
+  boughtForSomeoneElse?: boolean;
+  tickets: {
     ticketId: string;
-    ticketTypeId?: string;
+    ticketTypeId: string | null;
     ticketName: string;
-    qrPayload: string;
-    /** ORCH-0932 — server-rendered PNG data URI; carousel renders this via
-     * <Image> on web (client-side react-native-qrcode-svg failed on Expo
-     * SDK 54 web export; see ORCH-0930). Optional for legacy/cached
-     * responses; carousel skips QR render when absent. */
-    qrImageDataUrl?: string;
     status: string;
-  }>;
+  }[];
 }
 
 /**

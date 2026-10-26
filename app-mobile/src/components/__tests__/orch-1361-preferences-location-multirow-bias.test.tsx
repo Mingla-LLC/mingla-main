@@ -149,12 +149,13 @@ Deno.test("P-2c: the removed host suggestion state is GONE (dead forward path de
   assert(!PREFS.includes("handleSuggestionSelect"), "handleSuggestionSelect removed");
 });
 
-// ── OQ-4: CityPickerSheet shares the same rank bias ───────────────────────────
-Deno.test("OQ-4: CityPickerSheet threads proximity into the shared field (NO country filter)", () => {
-  assertStringIncludes(CITY, "proximity={proximity}", "CityPicker threads proximity");
-  assertStringIncludes(CITY, "getLastKnownLocation", "CityPicker resolves the device anchor");
-  // FILTER-FREE contract (INV-3 / ORCH-1079).
-  assert(!CITY.includes("country={country}"), "CityPicker must not thread a country filter");
+// ── OQ-4: manually entered cities are global [TEST-MOD-APPROVED #3988] ───────
+Deno.test("OQ-4: CityPickerSheet searches places globally without device bias [TEST-MOD-APPROVED #3988]", () => {
+  assertStringIncludes(CITY, 'searchMode="places"', "CityPicker uses the place-only lane");
+  assertStringIncludes(CITY, "suggestLimit={8}", "CityPicker exposes enough global city matches");
+  assert(!CITY.includes("proximity={"), "manual city search must not bias to the device");
+  assert(!CITY.includes("getLastKnownLocation"), "manual city search must not resolve a device anchor");
+  assert(!CITY.includes("country={country}"), "CityPicker must not hard-filter a country");
 });
 
 // ── OQ-1: behavioral omit-when-absent model ───────────────────────────────────

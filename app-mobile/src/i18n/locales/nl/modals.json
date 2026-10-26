@@ -117,5 +117,18 @@
     "next_step_label": "Ga naar volgende stap",
     "finish_tour_label": "Rondleiding afronden",
     "guided_tour_label": "Rondleiding stap {{current}} van {{total}}"
+  },
+  "coach": {
+    "step4": {
+      "title": "Alles bij jou in de buurt, één pagina",
+      "body_all": "Evenementen, ervaringen, reizen en verblijven, allemaal op één pagina. Tik op een pil om te wisselen.",
+      "body_subset": "{{list}}, alles op één pagina. Tik op een pil om te wisselen."
+    },
+    "step5": {
+      "title": "Beperk het aantal",
+      "body": "Filter op dag, sfeer, muziek, bestemming en meer. De keuzes veranderen bij elke pil."
+    },
+    "list_two": "{{a}} en {{b}}",
+    "list_three": "{{a}}, {{b}} en {{c}}"
   }
 }

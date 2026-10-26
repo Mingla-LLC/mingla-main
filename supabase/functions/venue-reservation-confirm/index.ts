@@ -47,6 +47,29 @@ import {
   sha256Hex,
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
+import { mintClaimLink } from "../_shared/claimLink.ts";
+
+async function reservationClaim(
+  client: ReturnType<typeof serviceClient>,
+  reservationId: string,
+  buyerEmail: string,
+  buyerPhoneE164: string,
+): Promise<{
+  claim: { shortUrl: string | null; code: string | null };
+  buyerContact: { email: string; phoneLast4: string | null };
+}> {
+  const claim = await mintClaimLink(client, "reservation", reservationId);
+  return {
+    claim: {
+      shortUrl: claim?.url ?? null,
+      code: claim?.code ?? null,
+    },
+    buyerContact: {
+      email: buyerEmail,
+      phoneLast4: buyerPhoneE164.replace(/\\D/g, "").slice(-4) || null,
+    },
+  };
+}
 
 interface SessionRow {
   id: string;
@@ -70,6 +93,7 @@ interface SessionRow {
   buyer_status_token_hash: string | null;
   status: "pending" | "completed" | "expired" | "failed";
   reservation_id: string | null;
+  failure_reason: string | null;
   // ISSUE-865 PR1 WP-2 — first-party ad click_id threaded at reservation-create
   // (nullable; present only for ad-attributed reservations).
   attribution_click_id: string | null;
@@ -136,6 +160,12 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
         ? buyerStatusToken
         : undefined,
       receiptUrl: `/o/${session.reservation_id}`,
+      ...await reservationClaim(
+        supabase,
+        session.reservation_id,
+        session.buyer_email,
+        session.buyer_phone_e164,
+      ),
     });
   }
   if (session.status === "failed" || session.status === "expired") {
@@ -225,6 +255,12 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
               ? buyerStatusToken
               : undefined,
             receiptUrl: `/o/${reservationId}`,
+            ...await reservationClaim(
+              supabase,
+              reservationId,
+              session.buyer_email,
+              session.buyer_phone_e164,
+            ),
           });
         }
         // Replayed with no linked id yet (a webhook mid-mint) → poll again.
@@ -415,6 +451,12 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
       ? buyerStatusToken
       : undefined,
     receiptUrl: `/o/${reservationId}`,
+    ...await reservationClaim(
+      supabase,
+      reservationId,
+      session.buyer_email,
+      session.buyer_phone_e164,
+    ),
   });
 }, {
   onError: (_err, requestId) =>

@@ -108,6 +108,12 @@
 // [TEST-MOD-APPROVED #3872] M5 and the live-save correction each add one exact
 // #1931 skip; the base is now 35 and added-branch fixtures are 36, with assertion
 // logic unchanged.
+// [TEST-MOD-APPROVED #4073] Discover V2 adds one exact skip to each filtered
+// lane; the #1931 base is now 36 and added-branch fixtures are 37. Counts only.
+// [TEST-MOD-APPROVED #4063] Claim payloads add one exact #1931 skip; the base
+// is now 37 and added-branch fixtures are 38. Counts only.
+// [TEST-MOD-APPROVED #4063] Wave 5 adds two exact #1931 skips; the base is now
+// 39 and added-branch fixtures are 40. Counts only; adversarial shapes stay fixed.
 // The approval commit preserves the independent revert and parser-boundary proofs.
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -129,8 +135,10 @@ const LANE_1644 = "issue-1644-storage-guardrail-collage-fill-tests.yml";
 // Assemble the workflow name so CI's provider-discovery scanner does not read
 // this test-only source reference as a new runtime provider relationship.
 const CANONICAL_REPLAY = ["postgres", "contract", "suites"].join("-") + ".yml";
-const ISSUE_2160_MIGRATION = "20270420002160_issue_2160_multiday_multiselect.sql";
-const ISSUE_2696_MIGRATION = "20270601002696_issue_2696_event_scoped_session_lookup.sql";
+const ISSUE_2160_MIGRATION =
+  "20270420002160_issue_2160_multiday_multiselect.sql";
+const ISSUE_2696_MIGRATION =
+  "20270601002696_issue_2696_event_scoped_session_lookup.sql";
 const SKIPPED_MIGRATION = "20270522002462_issue_2462_checkout_determinism.sql";
 /** A table created ONLY by 20270413001931, which the #1931 lane skips. */
 const SKIPPED_TABLE = "private_event_access_grants";
@@ -142,10 +150,20 @@ const SKIPPED_TABLE = "private_event_access_grants";
  */
 function realTreeDigest() {
   const hash = crypto.createHash("sha256");
-  for (const [dir, pattern] of [[REAL_WORKFLOWS, /\.ya?ml$/], [REAL_MIGRATIONS, /\.sql$/]]) {
-    for (const name of fs.readdirSync(dir).filter((n) => pattern.test(n)).sort()) hash.update(`${dir}/${name}\n`);
+  for (const [dir, pattern] of [
+    [REAL_WORKFLOWS, /\.ya?ml$/],
+    [REAL_MIGRATIONS, /\.sql$/],
+  ]) {
+    for (const name of fs
+      .readdirSync(dir)
+      .filter((n) => pattern.test(n))
+      .sort())
+      hash.update(`${dir}/${name}\n`);
   }
-  for (const name of fs.readdirSync(REAL_WORKFLOWS).filter((n) => /^issue-(1644|1647|1931|2117)-/.test(n)).sort()) {
+  for (const name of fs
+    .readdirSync(REAL_WORKFLOWS)
+    .filter((n) => /^issue-(1644|1647|1931|2117)-/.test(n))
+    .sort()) {
     hash.update(fs.readFileSync(path.join(REAL_WORKFLOWS, name)));
   }
   return hash.digest("hex");
@@ -176,7 +194,11 @@ function fullCopyFixture(t, { editWorkflow, addMigration } = {}) {
   );
   const realBefore = realTreeDigest();
   t.after(() => {
-    assert.equal(realTreeDigest(), realBefore, "a fixture mutated the real repository directories");
+    assert.equal(
+      realTreeDigest(),
+      realBefore,
+      "a fixture mutated the real repository directories",
+    );
   });
 
   if (editWorkflow) {
@@ -184,19 +206,28 @@ function fullCopyFixture(t, { editWorkflow, addMigration } = {}) {
     const file = path.join(workflowsDir, name);
     const before = fs.readFileSync(file, "utf8");
     const after = edit(before);
-    assert.notEqual(after, before, `fixture mutation of ${name} was a NO-OP — the fixture would prove nothing`);
+    assert.notEqual(
+      after,
+      before,
+      `fixture mutation of ${name} was a NO-OP — the fixture would prove nothing`,
+    );
     fs.writeFileSync(file, after);
   }
   if (addMigration) {
     const [name, sql] = addMigration;
     const file = path.join(migrationsDir, name);
-    assert.equal(fs.existsSync(file), false, `${name} already exists — pick a filename that cannot collide`);
+    assert.equal(
+      fs.existsSync(file),
+      false,
+      `${name} already exists — pick a filename that cannot collide`,
+    );
     fs.writeFileSync(file, sql);
   }
   return { workflowsDir, migrationsDir };
 }
 
-const checksIn = (violations) => [...new Set(violations.map((v) => v.check))].sort();
+const checksIn = (violations) =>
+  [...new Set(violations.map((v) => v.check))].sort();
 
 test("T-4 — a CREATE VIEW over a table only a skipped migration creates reds C-1", (t) => {
   const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
@@ -211,8 +242,13 @@ test("T-4 — a CREATE VIEW over a table only a skipped migration creates reds C
   });
 
   const { violations } = analyseLanes({ workflowsDir, migrationsDir });
-  const c1 = violations.filter((v) => v.check === "C-1" && v.message.includes(FIXTURE_MIGRATION));
-  assert.ok(c1.length >= 1, "a view body is resolved at CREATE time and must flag");
+  const c1 = violations.filter(
+    (v) => v.check === "C-1" && v.message.includes(FIXTURE_MIGRATION),
+  );
+  assert.ok(
+    c1.length >= 1,
+    "a view body is resolved at CREATE time and must flag",
+  );
   assert.ok(c1.some((v) => v.message.includes(SKIPPED_TABLE)));
 });
 
@@ -285,17 +321,26 @@ test("T-7 — a skip glob matching zero files reds C-2", (t) => {
   });
 
   const { violations } = analyseLanes({ workflowsDir, migrationsDir });
-  assert.ok(violations.some((v) => v.check === "C-2" && v.message.includes("issue_9999_renamed_away")));
+  assert.ok(
+    violations.some(
+      (v) => v.check === "C-2" && v.message.includes("issue_9999_renamed_away"),
+    ),
+  );
 });
 
 test("T-8 — deleting a pinned #1931 skip branch reds C-3", (t) => {
   const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
-    editWorkflow: [LANE, (src) => src.replace(/^.*\*_issue_1931_\*\) continue ;;\n/m, "")],
+    editWorkflow: [
+      LANE,
+      (src) => src.replace(/^.*\*_issue_1931_\*\) continue ;;\n/m, ""),
+    ],
   });
 
   const { violations } = analyseLanes({ workflowsDir, migrationsDir });
   assert.ok(
-    violations.some((v) => v.check === "C-3" && v.message.includes("*_issue_1931_*")),
+    violations.some(
+      (v) => v.check === "C-3" && v.message.includes("*_issue_1931_*"),
+    ),
     "a skip entry is never removed to green a lane, and the guard must say so by name",
   );
 });
@@ -306,7 +351,10 @@ test("T-9 — an unparseable skip construct reds C-4a", (t) => {
   });
 
   const { violations } = analyseLanes({ workflowsDir, migrationsDir });
-  assert.ok(violations.some((v) => v.check === "C-4a"), "a case the parser cannot close must fail closed, not be ignored");
+  assert.ok(
+    violations.some((v) => v.check === "C-4a"),
+    "a case the parser cannot close must fail closed, not be ignored",
+  );
 });
 
 test("T-15 — a lane that continues but yields zero globs reds C-4b, never 'unfiltered'", (t) => {
@@ -316,7 +364,10 @@ test("T-15 — a lane that continues but yields zero globs reds C-4b, never 'unf
       (src) => {
         const caseStart = src.indexOf('case "$f" in');
         const esacEnd = src.indexOf("esac", caseStart);
-        assert.ok(caseStart !== -1 && esacEnd !== -1, "the #1931 lane must carry a case block to replace");
+        assert.ok(
+          caseStart !== -1 && esacEnd !== -1,
+          "the #1931 lane must carry a case block to replace",
+        );
         return `${src.slice(0, caseStart)}[ -n "\${MINGLA_SKIP:-}" ] && continue${src.slice(esacEnd + "esac".length)}`;
       },
     ],
@@ -324,7 +375,10 @@ test("T-15 — a lane that continues but yields zero globs reds C-4b, never 'unf
 
   const { violations, lanes } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.ok(lane, "the lane must still be REPORTED — silently dropping it is the failure mode this test exists for");
+  assert.ok(
+    lane,
+    "the lane must still be REPORTED — silently dropping it is the failure mode this test exists for",
+  );
   assert.equal(lane.globs.length, 0);
   assert.ok(
     violations.some((v) => v.check === "C-4b"),
@@ -377,12 +431,27 @@ test("T-13 — a lane rewritten to the basename nested-quote form is still disco
 
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.ok(lane, "the nested quote in `case \"$(basename \"$migration\")\" in` must not hide the lane");
+  assert.ok(
+    lane,
+    'the nested quote in `case "$(basename "$migration")" in` must not hide the lane',
+  );
   assert.equal(lane.subjectKind, "basename");
-  assert.equal(lane.globs.length, 35);
-  assert.equal(lane.skipped.length, 35, "subject-correct matching (R-4) must still resolve every file");
-  assert.equal(lanes.length, 4, "the inventory must not collapse when a lane changes spelling");
-  assert.deepEqual(checksIn(violations), [], "a semantics-preserving rewrite must stay green");
+  assert.equal(lane.globs.length, 39);
+  assert.equal(
+    lane.skipped.length,
+    39,
+    "subject-correct matching (R-4) must still resolve every file",
+  );
+  assert.equal(
+    lanes.length,
+    4,
+    "the inventory must not collapse when a lane changes spelling",
+  );
+  assert.deepEqual(
+    checksIn(violations),
+    [],
+    "a semantics-preserving rewrite must stay green",
+  );
 });
 
 test("T-14 — a #1647-style alternation branch yields every glob (R-3)", (t) => {
@@ -398,11 +467,21 @@ test("T-14 — a #1647-style alternation branch yields every glob (R-3)", (t) =>
   });
 
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
-  const lane = lanes.find((l) => l.workflow === "issue-1647-admin-mv-and-db-reclaim-tests.yml");
+  const lane = lanes.find(
+    (l) => l.workflow === "issue-1647-admin-mv-and-db-reclaim-tests.yml",
+  );
   assert.equal(lane.branchCount, 1, "still ONE branch");
-  assert.equal(lane.globs.length, 4, "read one-glob-per-branch and this lane silently under-skips three files");
+  assert.equal(
+    lane.globs.length,
+    4,
+    "read one-glob-per-branch and this lane silently under-skips three files",
+  );
   assert.equal(lane.skipped.length, 4);
-  assert.deepEqual(checksIn(violations), [], "the widened alternation is still internally consistent");
+  assert.deepEqual(
+    checksIn(violations),
+    [],
+    "the widened alternation is still internally consistent",
+  );
 
   // And the #1644 lane, whose file is now also skipped here, is untouched.
   const untouched = lanes.find((l) => l.workflow === LANE_1644);
@@ -419,7 +498,12 @@ test("T-12 — independent fails-on-revert, built differently from the implement
       (src) =>
         src
           .split("\n")
-          .filter((line) => !(line.includes(SKIPPED_MIGRATION) && line.includes("continue ;;")))
+          .filter(
+            (line) =>
+              !(
+                line.includes(SKIPPED_MIGRATION) && line.includes("continue ;;")
+              ),
+          )
           .join("\n"),
     ],
   });
@@ -428,21 +512,34 @@ test("T-12 — independent fails-on-revert, built differently from the implement
 
   // The lane is still fully parsed — the red is the closure failure, not a parse failure.
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.globs.length, 34);
-  assert.deepEqual(checksIn(violations), ["C-1"], "reverting the fix must red C-1 and ONLY C-1");
+  assert.equal(lane.globs.length, 38);
+  assert.deepEqual(
+    checksIn(violations),
+    ["C-1"],
+    "reverting the fix must red C-1 and ONLY C-1",
+  );
 
   // Assert the OTHER limb from the implementor's T-2: the column, which is the
   // error PostgreSQL reports first and which masked the guard error in CI.
   assert.ok(
-    violations.some((v) => v.message.includes(SKIPPED_MIGRATION) && v.message.includes(SKIPPED_COLUMN)),
+    violations.some(
+      (v) =>
+        v.message.includes(SKIPPED_MIGRATION) &&
+        v.message.includes(SKIPPED_COLUMN),
+    ),
     "C-1 must name the column added only by the skipped #2160",
   );
   assert.ok(
-    violations.some((v) => v.message.includes("issue_1931_event_ordinary_read_blocked")),
+    violations.some((v) =>
+      v.message.includes("issue_1931_event_ordinary_read_blocked"),
+    ),
     "and the #1931 guard function, which is the governing fault behind the masked column error",
   );
   assert.ok(
-    violations.every((v) => !v.message.includes("20270522002463_issue_2462_phone_backfill.sql")),
+    violations.every(
+      (v) =>
+        !v.message.includes("20270522002463_issue_2462_phone_backfill.sql"),
+    ),
     "...002463 must never be implicated — it is healthy and deliberately not skipped",
   );
 });
@@ -491,52 +588,103 @@ function branchCensus(yamlText, lane) {
   if (end === -1) end = lines.length - 1;
   const body = lines.slice(lane.line - 1, end + 1);
   const caseIdx = body.findIndex((l) => /^\s*case\s+.+\s+in\s*$/.test(l));
-  const esacIdx = body.findIndex((l, i) => i > caseIdx && /^\s*esac\s*$/.test(l));
+  const esacIdx = body.findIndex(
+    (l, i) => i > caseIdx && /^\s*esac\s*$/.test(l),
+  );
   if (caseIdx === -1 || esacIdx === -1) return null;
   const region = body.slice(caseIdx + 1, esacIdx);
   return {
     terminators: region.join("\n").split(/;;&?/).length - 1,
-    continues: region.filter((l) => /(?:^|[\s;&|(])continue(?:[\s;&|)]|$)/.test(l)).length,
+    continues: region.filter((l) =>
+      /(?:^|[\s;&|(])continue(?:[\s;&|)]|$)/.test(l),
+    ).length,
   };
 }
 
 test("T-16 — a `;;&` fall-through terminator does not hide a branch", (t) => {
   const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
-    editWorkflow: [LANE, (src) => src.replace("*_issue_2160_*) continue ;;", "*_issue_2160_*) continue ;;&")],
+    editWorkflow: [
+      LANE,
+      (src) =>
+        src.replace(
+          "*_issue_2160_*) continue ;;",
+          "*_issue_2160_*) continue ;;&",
+        ),
+    ],
   });
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.globs.length, 35, "a `;;&` terminator must not drop the branch it terminates");
-  assert.deepEqual(checksIn(violations), [], "a semantics-preserving terminator change must not flag");
+  assert.equal(
+    lane.globs.length,
+    39,
+    "a `;;&` terminator must not drop the branch it terminates",
+  );
+  assert.deepEqual(
+    checksIn(violations),
+    [],
+    "a semantics-preserving terminator change must not flag",
+  );
 });
 
 test("T-17 — the leading-paren branch form `(glob)` is still read", (t) => {
   const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
-    editWorkflow: [LANE, (src) => src.replace("              *_issue_2160_*) continue ;;", "              (*_issue_2160_*) continue ;;")],
+    editWorkflow: [
+      LANE,
+      (src) =>
+        src.replace(
+          "              *_issue_2160_*) continue ;;",
+          "              (*_issue_2160_*) continue ;;",
+        ),
+    ],
   });
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
-  assert.equal(lanes.find((l) => l.workflow === LANE).globs.length, 35);
-  assert.deepEqual(checksIn(violations), [], "`(pattern)` is the same branch, written the other legal way");
+  assert.equal(lanes.find((l) => l.workflow === LANE).globs.length, 39);
+  assert.deepEqual(
+    checksIn(violations),
+    [],
+    "`(pattern)` is the same branch, written the other legal way",
+  );
 });
 
 test("T-18 — a braced `${f}` case subject still resolves to a full path (R-4)", (t) => {
   const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
-    editWorkflow: [LANE, (src) => src.replace('case "$f" in', 'case "${f}" in')],
+    editWorkflow: [
+      LANE,
+      (src) => src.replace('case "$f" in', 'case "${f}" in'),
+    ],
   });
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.subjectKind, "path", "`${f}` is the same loop variable and must resolve, not fail closed to null");
-  assert.equal(lane.globs.length, 35);
-  assert.deepEqual(checksIn(violations), [], "brace syntax must not fire C-2 on a clean repo");
+  assert.equal(
+    lane.subjectKind,
+    "path",
+    "`${f}` is the same loop variable and must resolve, not fail closed to null",
+  );
+  assert.equal(lane.globs.length, 39);
+  assert.deepEqual(
+    checksIn(violations),
+    [],
+    "brace syntax must not fire C-2 on a clean repo",
+  );
 });
 
 test("T-19 — `esac` carrying a trailing comment fails CLOSED, never silently", (t) => {
   const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
-    editWorkflow: [LANE, (src) => src.replace("            esac\n", "            esac  # end of the skip list\n")],
+    editWorkflow: [
+      LANE,
+      (src) =>
+        src.replace(
+          "            esac\n",
+          "            esac  # end of the skip list\n",
+        ),
+    ],
   });
   const { violations } = analyseLanes({ workflowsDir, migrationsDir });
   const checks = checksIn(violations);
-  assert.ok(checks.includes("C-4a"), `an unclosable case must raise C-4a; got ${checks.join(",")}`);
+  assert.ok(
+    checks.includes("C-4a"),
+    `an unclosable case must raise C-4a; got ${checks.join(",")}`,
+  );
   assert.ok(
     checks.includes("C-4b"),
     "and C-4b must fire too — a lane the parser cannot close is NOT an unfiltered lane",
@@ -556,7 +704,11 @@ test("T-20 — a decoy `case` before the skip case cannot make the lane read as 
   });
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.globs.length, 0, "the decoy is what the parser locks onto — that much is expected");
+  assert.equal(
+    lane.globs.length,
+    0,
+    "the decoy is what the parser locks onto — that much is expected",
+  );
   assert.ok(
     checksIn(violations).includes("C-4b"),
     "but it MUST be reported, never analysed with an empty skip set as though the lane filtered nothing",
@@ -565,12 +717,23 @@ test("T-20 — a decoy `case` before the skip case cannot make the lane read as 
 
 test("T-21 — branch census: every terminator in every real lane maps to a branch the parser read", () => {
   const { lanes, violations } = analyseLanes();
-  assert.deepEqual(checksIn(violations), [], "precondition: the real tree is clean");
+  assert.deepEqual(
+    checksIn(violations),
+    [],
+    "precondition: the real tree is clean",
+  );
   assert.equal(lanes.length, 4);
   for (const lane of lanes) {
-    const yamlText = fs.readFileSync(path.join(REAL_WORKFLOWS, lane.workflow), "utf8");
+    const yamlText = fs.readFileSync(
+      path.join(REAL_WORKFLOWS, lane.workflow),
+      "utf8",
+    );
     const census = branchCensus(yamlText, lane);
-    assert.notEqual(census, null, `${lane.workflow}: the case region could not be bounded`);
+    assert.notEqual(
+      census,
+      null,
+      `${lane.workflow}: the case region could not be bounded`,
+    );
     assert.equal(
       census.terminators,
       lane.branchCount,
@@ -612,20 +775,39 @@ test("T-22 — R-5's scope boundary, both sides: the form it reads, and the form
     const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
       editWorkflow: [
         LANE,
-        (src) => src.replace("            esac", `              *${REAL_UNSKIPPED})\n                continue ;;\n            esac`),
+        (src) =>
+          src.replace(
+            "            esac",
+            `              *${REAL_UNSKIPPED})\n                continue ;;\n            esac`,
+          ),
       ],
     });
     const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
     const lane = lanes.find((l) => l.workflow === LANE);
-    assert.equal(lane.branchCount, 36, "R-5 must read the two-line branch form");
-    assert.equal(lane.globs.length, 36, "and extract its glob");
+    assert.equal(
+      lane.branchCount,
+      40,
+      "R-5 must read the two-line branch form",
+    );
+    assert.equal(lane.globs.length, 40, "and extract its glob");
     assert.ok(
       lane.skipped.includes(REAL_UNSKIPPED),
       "reading the branch is not enough — the skip must actually take effect on the file it names",
     );
-    assert.deepEqual(checksIn(violations), [], "a readable two-line branch must not flag anything");
-    const census = branchCensus(fs.readFileSync(path.join(workflowsDir, LANE), "utf8"), lane);
-    assert.equal(census.terminators, lane.branchCount, "and the census must now AGREE — that agreement is the fix");
+    assert.deepEqual(
+      checksIn(violations),
+      [],
+      "a readable two-line branch must not flag anything",
+    );
+    const census = branchCensus(
+      fs.readFileSync(path.join(workflowsDir, LANE), "utf8"),
+      lane,
+    );
+    assert.equal(
+      census.terminators,
+      lane.branchCount,
+      "and the census must now AGREE — that agreement is the fix",
+    );
     assert.equal(census.continues, lane.branchCount);
   }
 
@@ -635,12 +817,19 @@ test("T-22 — R-5's scope boundary, both sides: the form it reads, and the form
       editWorkflow: [
         LANE,
         (src) =>
-          src.replace("            esac", `              *${REAL_UNSKIPPED})\n                continue\n                ;;\n            esac`),
+          src.replace(
+            "            esac",
+            `              *${REAL_UNSKIPPED})\n                continue\n                ;;\n            esac`,
+          ),
       ],
     });
     const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
     const lane = lanes.find((l) => l.workflow === LANE);
-    assert.equal(lane.branchCount, 35, "R-5 is scoped to the two-line form; a three-line branch stays unread");
+    assert.equal(
+      lane.branchCount,
+      39,
+      "R-5 is scoped to the two-line form; a three-line branch stays unread",
+    );
     assert.equal(
       lane.skipped.includes(REAL_UNSKIPPED),
       false,
@@ -651,11 +840,15 @@ test("T-22 — R-5's scope boundary, both sides: the form it reads, and the form
       ["C-4c"],
       "and C-4(c) alone must catch it — C-4(b) cannot, because the other branches still yield globs",
     );
-    const census = branchCensus(fs.readFileSync(path.join(workflowsDir, LANE), "utf8"), lane);
-    assert.equal(census.terminators, 36);
-    assert.equal(census.continues, 36);
+    const census = branchCensus(
+      fs.readFileSync(path.join(workflowsDir, LANE), "utf8"),
+      lane,
+    );
+    assert.equal(census.terminators, 40);
+    assert.equal(census.continues, 40);
     assert.ok(
-      census.terminators > lane.branchCount && census.continues > lane.branchCount,
+      census.terminators > lane.branchCount &&
+        census.continues > lane.branchCount,
       "the census must STRICTLY EXCEED the parser here, or C-4(c) would be a check that cannot fail",
     );
   }
@@ -674,19 +867,44 @@ test("T-22 — R-5's scope boundary, both sides: the form it reads, and the form
  * a silent pass cannot be mistaken for a correct read.
  */
 const UNREADABLE_BRANCH_FORMS = [
-  ["three-line: pattern / continue / ;;", (g) => `              *${g})\n                continue\n                ;;`],
-  ["one-line ';&' fall-through terminator", (g) => `              *${g}) continue ;&`],
-  ["two-line with ';&' on the second line", (g) => `              *${g})\n                continue ;&`],
-  ["final branch omitting ';;' entirely", (g) => `              *${g}) continue`],
-  ["backslash line-continuation", (g) => `              *${g}) continue \\\n                ;;`],
-  ["'continue 1' with an explicit loop level", (g) => `              *${g}) continue 1 ;;`],
+  [
+    "three-line: pattern / continue / ;;",
+    (g) => `              *${g})\n                continue\n                ;;`,
+  ],
+  [
+    "one-line ';&' fall-through terminator",
+    (g) => `              *${g}) continue ;&`,
+  ],
+  [
+    "two-line with ';&' on the second line",
+    (g) => `              *${g})\n                continue ;&`,
+  ],
+  [
+    "final branch omitting ';;' entirely",
+    (g) => `              *${g}) continue`,
+  ],
+  [
+    "backslash line-continuation",
+    (g) => `              *${g}) continue \\\n                ;;`,
+  ],
+  [
+    "'continue 1' with an explicit loop level",
+    (g) => `              *${g}) continue 1 ;;`,
+  ],
 ];
 
 test("T-26 — every branch form the parser cannot read fails CLOSED, and the census can never be balanced", (t) => {
   const REAL_UNSKIPPED = "20270522002463_issue_2462_phone_backfill.sql";
   for (const [label, render] of UNREADABLE_BRANCH_FORMS) {
     const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
-      editWorkflow: [LANE, (src) => src.replace("            esac", `${render(REAL_UNSKIPPED)}\n            esac`)],
+      editWorkflow: [
+        LANE,
+        (src) =>
+          src.replace(
+            "            esac",
+            `${render(REAL_UNSKIPPED)}\n            esac`,
+          ),
+      ],
     });
     const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
     const lane = lanes.find((l) => l.workflow === LANE);
@@ -694,16 +912,27 @@ test("T-26 — every branch form the parser cannot read fails CLOSED, and the ce
 
     // 1. Never silent. An unread skip that raises nothing is the exact defect
     //    #2492 exists to eliminate, and it is what I measured before the fix.
-    assert.notDeepEqual(checks, [], `${label}: the lane carries a skip the parser did not read and NOTHING fired`);
-    assert.ok(checks.includes("C-4c"), `${label}: C-4(c) must be the clause that catches it, got ${checks.join(",")}`);
+    assert.notDeepEqual(
+      checks,
+      [],
+      `${label}: the lane carries a skip the parser did not read and NOTHING fired`,
+    );
+    assert.ok(
+      checks.includes("C-4c"),
+      `${label}: C-4(c) must be the clause that catches it, got ${checks.join(",")}`,
+    );
 
     // 2. The census can never be balanced against an unread branch. Every legal
     //    skip construct must spend a `continue`, and every branch the parser
     //    reads must spend a terminator, so the counts can only ever run AHEAD
     //    of the parser — never level with it while an entry is missing.
-    const census = branchCensus(fs.readFileSync(path.join(workflowsDir, LANE), "utf8"), lane);
+    const census = branchCensus(
+      fs.readFileSync(path.join(workflowsDir, LANE), "utf8"),
+      lane,
+    );
     assert.ok(
-      census.terminators > lane.branchCount || census.continues > lane.branchCount,
+      census.terminators > lane.branchCount ||
+        census.continues > lane.branchCount,
       `${label}: census ${census.terminators}/${census.continues} did not exceed branchCount ${lane.branchCount} — ` +
         "if a shape can balance the census while hiding a skip, C-4(c) is defeated",
     );
@@ -716,18 +945,32 @@ test("T-27 — a SECOND filtered apply loop in the same workflow is discovered, 
   // the first lane is clean and the guard would exit 0.
   const SECOND_LOOP =
     "          for g in $(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort); do\n" +
-    "            case \"$g\" in\n" +
+    '            case "$g" in\n' +
     "              *_issue_0006_never_existed_*) continue ;;\n" +
     "            esac\n" +
     "          done\n";
   const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
-    editWorkflow: [LANE, (src) => src.replace("          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \\", `${SECOND_LOOP}          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \\`)],
+    editWorkflow: [
+      LANE,
+      (src) =>
+        src.replace(
+          "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \\",
+          `${SECOND_LOOP}          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \\`,
+        ),
+    ],
   });
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
 
-  assert.equal(lanes.length, 5, "the second apply loop must appear in the inventory as its own lane");
+  assert.equal(
+    lanes.length,
+    5,
+    "the second apply loop must appear in the inventory as its own lane",
+  );
   assert.ok(
-    violations.some((v) => v.check === "C-2" && v.message.includes("_issue_0006_never_existed_")),
+    violations.some(
+      (v) =>
+        v.check === "C-2" && v.message.includes("_issue_0006_never_existed_"),
+    ),
     "and its dead glob must red C-2 — a lane the parser never visits is a lane that protects nothing",
   );
 });
@@ -739,9 +982,18 @@ test("T-27 — a SECOND filtered apply loop in the same workflow is discovered, 
 // scenario or assertion is removed or relaxed.
 function assertIssue2723DependencyTopology(workflowsDir, migrationsDir) {
   const filtered = fs.readFileSync(path.join(workflowsDir, LANE), "utf8");
-  const canonical = fs.readFileSync(path.join(workflowsDir, CANONICAL_REPLAY), "utf8");
-  const issue2160 = fs.readFileSync(path.join(migrationsDir, ISSUE_2160_MIGRATION), "utf8");
-  const issue2696 = fs.readFileSync(path.join(migrationsDir, ISSUE_2696_MIGRATION), "utf8");
+  const canonical = fs.readFileSync(
+    path.join(workflowsDir, CANONICAL_REPLAY),
+    "utf8",
+  );
+  const issue2160 = fs.readFileSync(
+    path.join(migrationsDir, ISSUE_2160_MIGRATION),
+    "utf8",
+  );
+  const issue2696 = fs.readFileSync(
+    path.join(migrationsDir, ISSUE_2696_MIGRATION),
+    "utf8",
+  );
 
   assert.ok(
     filtered.includes("*_issue_2160_*) continue ;;"),
@@ -767,20 +1019,37 @@ function assertIssue2723DependencyTopology(workflowsDir, migrationsDir) {
     /CREATE OR REPLACE FUNCTION public\.biz_ticket_checkout_create_session\([\s\S]*?p_event_date_ids uuid\[\] DEFAULT NULL::uuid\[\]\)/,
     "#2696 must still declare the 12-argument checkout-session signature",
   );
-  assert.ok(issue2696.includes("AND event_id=p_event_id"), "#2696's event-scoping conjunct must remain intact");
+  assert.ok(
+    issue2696.includes("AND event_id=p_event_id"),
+    "#2696's event-scoping conjunct must remain intact",
+  );
   assert.equal(
     (issue2696.match(/RAISE EXCEPTION 'issue #2696:/g) || []).length,
     5,
     "all five #2696 fail-loud probe assertions must remain intact",
   );
 
-  const replayStart = canonical.indexOf("      - name: Apply every migration to clean PostgreSQL 17");
-  assert.notEqual(replayStart, -1, "the canonical from-zero replay step must exist");
+  const replayStart = canonical.indexOf(
+    "      - name: Apply every migration to clean PostgreSQL 17",
+  );
+  assert.notEqual(
+    replayStart,
+    -1,
+    "the canonical from-zero replay step must exist",
+  );
   const replayEnd = canonical.indexOf("\n      - name:", replayStart + 1);
-  assert.notEqual(replayEnd, -1, "the canonical replay step must have a bounded end");
+  assert.notEqual(
+    replayEnd,
+    -1,
+    "the canonical replay step must have a bounded end",
+  );
   const replayStep = canonical.slice(replayStart, replayEnd);
   assert.equal(
-    (replayStep.match(/for migration_file in supabase\/migrations\/\*\.sql; do/g) || []).length,
+    (
+      replayStep.match(
+        /for migration_file in supabase\/migrations\/\*\.sql; do/g,
+      ) || []
+    ).length,
     1,
     "the canonical authority must replay the complete migration glob exactly once",
   );
@@ -788,7 +1057,12 @@ function assertIssue2723DependencyTopology(workflowsDir, migrationsDir) {
     .split("\n")
     .filter((line) => !line.trimStart().startsWith("#"))
     .join("\n");
-  for (const forbidden of ["case ", "continue", "actions/cache", "migrated-postgres"]) {
+  for (const forbidden of [
+    "case ",
+    "continue",
+    "actions/cache",
+    "migrated-postgres",
+  ]) {
     assert.equal(
       executableReplay.includes(forbidden),
       false,
@@ -803,7 +1077,11 @@ test("T-2723-A1/A2 — #2160/#2696 topology is coherent and the raw contract fai
   const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
     editWorkflow: [
       LANE,
-      (src) => src.replace(`              *${ISSUE_2696_MIGRATION}) continue ;;\n`, ""),
+      (src) =>
+        src.replace(
+          `              *${ISSUE_2696_MIGRATION}) continue ;;\n`,
+          "",
+        ),
     ],
   });
   assert.throws(

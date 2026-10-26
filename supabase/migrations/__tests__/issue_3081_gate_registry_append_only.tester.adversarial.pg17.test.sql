@@ -5,7 +5,7 @@
 -- DIFFERENT ANGLE, DELIBERATELY. The implementor's happy-path fixture
 -- (`issue_3081_gate_registry_replay.implementor.happy.test.sql`) asserts the END STATE
 -- after one specific replay: RLS is on, anon/authenticated hold no TABLE privileges,
--- the declared set equals a literal ten, and the set still equals the catalog. Its
+-- the declared set equals the maintained literal set, and the set still equals the catalog. Its
 -- negative control stages the shipped defect in ONE direction — DELETING #2986's entry
 -- — and requires the equality to catch it.
 --
@@ -19,7 +19,7 @@
 --        inside a cached plan. A revert restores `IMMUTABLE` and the fixture stays green.
 --   A-3  It proves the set survived ONE replay order. It never replays the shipped seed
 --        statements themselves against a set that has since grown — which is the exact
---        operation a future migration's eleventh carrier has to survive, and the exact
+--        operation a future migration's additional carrier has to survive, and the exact
 --        claim #3081 makes ("immune without knowing this issue exists"). The workflow
 --        step tests that, but a workflow step is not append-only and can be edited away;
 --        this pins it in a test file.
@@ -119,10 +119,10 @@ BEGIN
 END $a2$;
 
 -- =====================================================================================
--- A-3 — THE ELEVENTH CARRIER SURVIVES A REPLAY OF THE SHIPPED SEED STATEMENTS.
+-- A-3 — AN ADDITIONAL CARRIER SURVIVES A REPLAY OF THE SHIPPED SEED STATEMENTS.
 --
 -- The claim #3081 makes is that a future migration adds a carrier with one INSERT and is
--- immune, without knowing this issue exists. So: stage that eleventh carrier, then replay
+-- immune, without knowing this issue exists. So: stage an additional carrier, then replay
 -- BOTH shipped seeds verbatim — #2489's nine-row list (the one whose CREATE OR REPLACE
 -- reverted the set and reddened main) and #3081's ten-row list — and require the eleventh
 -- to still stand afterwards. Under the old design the equivalent operation discarded it.
@@ -130,8 +130,11 @@ END $a2$;
 DO $a3$
 DECLARE
   v_declared text[];
+  v_before   int;
   v_n        int;
 BEGIN
+  SELECT count(*) INTO v_before FROM public.issue_2489_gate_registry();
+
   INSERT INTO public.issue_2489_gate_carriers (object_name, object_kind)
   VALUES ('orch3081_eleventh_carrier', 'function')
   ON CONFLICT (object_name) DO NOTHING;
@@ -175,12 +178,14 @@ BEGIN
   IF NOT ('public_search_source_facts' = ANY (v_declared)) THEN
     RAISE EXCEPTION 'A-3: replaying #2489''s nine-row seed rewound #2986''s entry — the original defect';
   END IF;
-  IF v_n <> 12 THEN
-    RAISE EXCEPTION 'A-3: expected 12 declared carriers after the staged eleventh, found %', v_n;
+  IF v_n <> v_before + 1 THEN
+    RAISE EXCEPTION
+      'A-3: expected the declared set to grow by exactly one after staging the additional carrier (% -> %), found %',
+      v_before, v_before + 1, v_n;
   END IF;
 
   DELETE FROM public.issue_2489_gate_carriers WHERE object_name = 'orch3081_eleventh_carrier';
-  RAISE NOTICE 'A-3 PASS — an eleventh carrier survives a verbatim replay of both shipped seeds';
+  RAISE NOTICE 'A-3 PASS — an additional carrier survives a verbatim replay of both shipped seeds';
 END $a3$;
 
 -- =====================================================================================
@@ -222,7 +227,7 @@ END $a4$;
 -- =====================================================================================
 -- A-5 — THE EQUALITY'S VIEW ARM ACTUALLY FIRES.
 --
--- The apply-time check UNIONs pg_proc with pg_class WHERE relkind = 'v'. Two of the ten
+-- The apply-time check UNIONs pg_proc with pg_class WHERE relkind = 'v'. Two of the
 -- declared carriers are views, but every carrier STAGED by this issue's suites — the
 -- implementor's NC-1, the workflow's probe — is a function, so the view arm has never
 -- been shown to detect anything. Stage an undeclared VIEW that carries the gate and

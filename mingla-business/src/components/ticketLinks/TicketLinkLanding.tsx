@@ -41,6 +41,8 @@ import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { PhoneField, usePhoneEntry } from "../ui/PhoneField";
+import { BuyerClaimCard } from "../checkout/DownloadMinglaCta";
+import { BUYER_CLAIM_COPY } from "../../constants/buyerClaimCopy";
 
 // issue #3827 — the shared multi-select day chooser the public event page
 // uses (checkbox rows, Space + aria-checked on web, reduced motion). Lazy for
@@ -106,6 +108,12 @@ const invokePublic = async <T,>(body: Record<string, unknown>): Promise<T> => {
 const resolveTicketLink = (token: string): Promise<TicketLinkResolve> =>
   invokePublic({ op: "resolve", token });
 
+type TicketLinkSignupResult = {
+  status: "issued" | "pending";
+  alreadyPending?: boolean;
+  people: Array<{ name: string; maskedEmail: string }>;
+};
+
 const signupTicketLink = (input: {
   token: string;
   lead: { name: string; email: string; phone: string };
@@ -114,7 +122,7 @@ const signupTicketLink = (input: {
   eventDateIds?: string[];
   clientRequestId: string;
   website: string;
-}): Promise<{ status: "issued" | "pending"; alreadyPending?: boolean; people: Array<{ name: string; maskedEmail: string }> }> =>
+}): Promise<TicketLinkSignupResult> =>
   invokePublic({ op: "signup", ...input });
 
 function PersonFields({
@@ -238,7 +246,7 @@ export default function TicketLinkLanding(): React.ReactElement {
   const [selectedDateIds, setSelectedDateIds] = useState<readonly string[]>([]);
   const [showErrors, setShowErrors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [outcome, setOutcome] = useState<"issued" | "pending" | null>(null);
+  const [outcome, setOutcome] = useState<TicketLinkSignupResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -303,7 +311,7 @@ export default function TicketLinkLanding(): React.ReactElement {
         clientRequestId: randomUuid(),
         website: "",
       });
-      setOutcome(answer.status);
+      setOutcome(answer);
     } catch (cause) {
       setError(
         typeof (cause as { message?: unknown })?.message === "string"
@@ -330,17 +338,38 @@ export default function TicketLinkLanding(): React.ReactElement {
   }
 
   if (outcome !== null) {
-    const pending = outcome === "pending";
+    const pending = outcome.status === "pending";
+    if (!pending) {
+      const first = outcome.people[0] ?? null;
+      const digits = lead.phone.replace(/\D/g, "");
+      return (
+        <View style={styles.center}>
+          <BuyerClaimCard
+            kind="ticket"
+            email={first?.maskedEmail ?? null}
+            phoneLast4={digits.length >= 4 ? digits.slice(-4) : null}
+            shortUrl={null}
+            handoff={null}
+            textSent
+            analyticsSurface="guest_list_issued"
+            fallbackEntity={{
+              entityType: "event",
+              brandSlug: resolved.event.brandSlug,
+              entitySlug: resolved.event.eventSlug,
+            }}
+            waitingOverride={BUYER_CLAIM_COPY.guestList.title}
+          />
+        </View>
+      );
+    }
     return (
       <View style={styles.center}>
         <View style={styles.stateIcon}>
-          <Icon name={pending ? "clock" : "check"} size={28} color={accent.warm} />
+          <Icon name="clock" size={28} color={accent.warm} />
         </View>
-        <Text style={styles.stateTitle}>{pending ? "Request sent" : "You're on the list"}</Text>
+        <Text style={styles.stateTitle}>{BUYER_CLAIM_COPY.guestList.pending}</Text>
         <Text style={styles.stateBody}>
-          {pending
-            ? "The host will review your group. No places are held until they approve it."
-            : "Each person will receive their own Mingla pass by email."}
+          {BUYER_CLAIM_COPY.guestList.pendingBody}
         </Text>
       </View>
     );
@@ -397,7 +426,8 @@ export default function TicketLinkLanding(): React.ReactElement {
       <EventCard resolved={resolved} />
       <Text style={styles.heading}>Join the guest list</Text>
       <Text style={styles.body}>
-        Add contact details for everyone coming. Each guest receives their own pass.
+        Add contact details for everyone coming. We&apos;ll email and text each
+        person a link to their ticket.
       </Text>
       {dateChooser(false)}
       <PersonFields person={lead} label="Your details" showErrors={showErrors} onChange={setLead} />

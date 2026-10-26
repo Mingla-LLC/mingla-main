@@ -1,10 +1,17 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, ReactNode } from 'react';
-import { Dimensions, Platform } from 'react-native';
+import { BackHandler, Dimensions, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabase';
 import { COACH_STEPS, COACH_STEP_COUNT, CoachStep } from '../constants/coachMarkSteps';
 import { mixpanelService } from '../services/mixpanelService';
+import {
+  coachProgressFor,
+  nextUnskippedCoachStep,
+  previousUnskippedCoachStep,
+  readSkippedCoachSteps,
+  rememberSkippedCoachStep,
+} from './coachMarkSkipState';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -21,6 +28,11 @@ interface ScrollTargetOffset {
   contentY: number;
   width: number;
   height: number;
+}
+
+export interface CoachStepCopyOverride {
+  descriptionKey: string;
+  descriptionValues?: Record<string, string>;
 }
 
 /**
@@ -41,6 +53,10 @@ interface CoachMarkContextType {
   currentStepConfig: CoachStep | null;
   nextStep: () => void;
   prevStep: () => void;
+  skipStep: (stepId: number) => void;
+  currentStepCopyOverride: CoachStepCopyOverride | null;
+  setStepCopyOverride: (stepId: number, override: CoachStepCopyOverride | null) => void;
+  coachProgress: { current: number; total: number };
   skipTour: () => void;
   targetMeasurements: Map<number, TargetRect>;
   registerTarget: (stepId: number, rect: TargetRect) => void;
@@ -81,7 +97,7 @@ const LOADING_SENTINEL = -2;
 // leaves the row untouched so the next launch reads it cleanly.
 const TOUR_UNAVAILABLE = -3;
 const TOUR_NOT_STARTED = 0;
-// ORCH-1037/1035: tour is 11 steps. TOUR_COMPLETED is COACH_STEP_COUNT + 1 (now 12)
+// #4063: tour is 12 steps. TOUR_COMPLETED is COACH_STEP_COUNT + 1 (now 13)
 // and derives automatically — no edit needed here when the count changes.
 const TOUR_COMPLETED = COACH_STEP_COUNT + 1;
 const TOUR_SKIPPED = -1;
@@ -97,18 +113,17 @@ const STABLE_EPSILON_PX = 1;
 const STABLE_POLL_MS = 50;
 const STABLE_TIMEOUT_MS = 1200;
 
-// ORCH-1037/1035: scroll-offset steps on Profile — Interests (8) + Your Circle (9) +
-// Account Settings row (10) + Beta Feedback (11). Renumbered from [6,7] when the four
-// new steps were added. This is the ONE hard-coded step literal that does NOT
+// #4063 profile scroll steps — Purchases (8), Interests (9), Circle (10), Account
+// Settings (11), Feedback (12). This is the ONE hard-coded step literal that does NOT
 // self-adjust from COACH_STEP_COUNT — keep it in lockstep with coachMarkSteps.ts.
-const SCROLL_STEPS = new Set([8, 9, 10, 11]);
+const SCROLL_STEPS = new Set([8, 9, 10, 11, 12]);
 
 // ── #1516 [coach mark single process] ───────────────────────────────────────
 // There is exactly ONE coach-mark process. The persisted `profiles.coach_mark_step`
 // grammar is EXACTLY:
 //    -1  TOUR_SKIPPED     — terminal
 //     0  TOUR_NOT_STARTED — pre-start
-//    12  TOUR_COMPLETED   — terminal (= COACH_STEP_COUNT + 1)
+//    13  TOUR_COMPLETED   — terminal (= COACH_STEP_COUNT + 1)
 //   1..COACH_STEP_COUNT   — IN PROGRESS; RESUMED verbatim on the next mount
 // No other value is reinterpreted at runtime. Rows written by older, shorter tours
 // were normalized ONCE in the data layer (migration
@@ -154,6 +169,12 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   const [currentStep, setCurrentStep] = useState<number>(LOADING_SENTINEL);
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [scrollLockActive, setScrollLockActive] = useState(false);
+  const [skippedStepIds, setSkippedStepIds] = useState<ReadonlySet<number>>(
+    () => readSkippedCoachSteps(user?.id),
+  );
+  const [stepCopyOverrides, setStepCopyOverrides] = useState<ReadonlyMap<number, CoachStepCopyOverride>>(
+    () => new Map(),
+  );
   const startTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigateToTabRef = useRef(navigateToTab);
   navigateToTabRef.current = navigateToTab;
@@ -175,6 +196,10 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
 
   const screenWidth = Dimensions.get('window').width;
   const screenHeight = Dimensions.get('window').height;
+
+  useEffect(() => {
+    if (user?.id) setSkippedStepIds(readSkippedCoachSteps(user.id));
+  }, [user?.id]);
 
   // ── Fetch step from DB on mount ─────────────────────────────────────────
   useEffect(() => {
@@ -268,6 +293,16 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     write(1);
   }, []);
 
+  // A provider remount can finish before the async write that advanced past a
+  // runtime-skipped step. The module-scoped skip set is the session authority:
+  // immediately renumber progress and repair the durable DB pointer.
+  useEffect(() => {
+    if (!skippedStepIds.has(currentStep)) return;
+    const next = nextUnskippedCoachStep(currentStep, COACH_STEP_COUNT, skippedStepIds);
+    setCurrentStep(next);
+    persistStep(next);
+  }, [currentStep, persistStep, skippedStepIds]);
+
   // ── Start tour after delay if step is 0 ─────────────────────────────────
   useEffect(() => {
     if (currentStep !== TOUR_NOT_STARTED) return;
@@ -301,7 +336,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   // ── Show overlay when step becomes active ───────────────────────────────
   // #1516: this is ALSO the resume path. On a remount, currentStep transitions
   // LOADING_SENTINEL → the fetched in-progress step, which lands here and re-navigates
-  // to that step's tab and re-shows its overlay (scroll steps 8..11 surface the overlay
+  // to that step's tab and re-shows its overlay (scroll steps 8..12 surface the overlay
   // via scrollToKnownPosition, including its centered fallback). A resumed in-progress
   // step therefore always paints — the tour is never left invisible-but-active.
   useEffect(() => {
@@ -575,7 +610,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
       });
     }
 
-    const newStep = currentStep + 1;
+    const newStep = nextUnskippedCoachStep(currentStep, COACH_STEP_COUNT, skippedStepIds);
 
     if (newStep > COACH_STEP_COUNT) {
       setOverlayVisible(false);
@@ -586,20 +621,56 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
       navigateToTabRef.current('home');
       // ORCH-1257 (Apple 2.1): permissions no longer fire here. They fire EARLY —
       // in the onboarding onComplete callback (app/index.tsx), before the coach
-      // tour — so the ATT prompt appears within seconds, not after this 11-step
+      // tour — so the ATT prompt appears within seconds, not after this 12-step
       // tour. Firing here silently dropped the prompt when the iPad was
       // backgrounded mid-tour; the ATT gate is now single-flight + AppState-gated.
       return;
     }
 
     navigateAndTransition(newStep, 'forward');
-  }, [currentStep, persistStep, navigateAndTransition]);
+  }, [currentStep, persistStep, navigateAndTransition, skippedStepIds]);
 
   // ── Previous step ───────────────────────────────────────────────────────
   const prevStep = useCallback((): void => {
     if (currentStep <= 1) return;
-    navigateAndTransition(currentStep - 1, 'back');
+    const previous = previousUnskippedCoachStep(currentStep, skippedStepIds);
+    navigateAndTransition(previous, 'back');
+  }, [currentStep, navigateAndTransition, skippedStepIds]);
+
+  const skipStep = useCallback((stepId: number): void => {
+    const nextSkipped = rememberSkippedCoachStep(userIdRef.current, stepId);
+    setSkippedStepIds((previous) => {
+      if (previous.has(stepId)) return previous;
+      const next = new Set(previous);
+      next.add(stepId);
+      return next;
+    });
+    if (currentStep === stepId) {
+      const next = nextUnskippedCoachStep(stepId, COACH_STEP_COUNT, nextSkipped);
+      navigateAndTransition(next, 'forward');
+    }
   }, [currentStep, navigateAndTransition]);
+
+  const setStepCopyOverride = useCallback((stepId: number, override: CoachStepCopyOverride | null): void => {
+    setStepCopyOverrides((previous) => {
+      const next = new Map(previous);
+      if (override) next.set(stepId, override);
+      else next.delete(stepId);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isFinite(currentStep) || currentStep < 1 || currentStep > COACH_STEP_COUNT) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      // An active tour owns Android Back even at its first step. Returning false
+      // here delegates to React Native and can exit the app behind the overlay.
+      if (currentStep <= 1) return true;
+      prevStep();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [currentStep, prevStep]);
 
   // ── Skip tour ───────────────────────────────────────────────────────────
   const skipTour = useCallback((): void => {
@@ -629,6 +700,13 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   const currentStepConfig = isCoachActive
     ? COACH_STEPS.find((s) => s.id === currentStep) ?? null
     : null;
+  const currentStepCopyOverride = isCoachActive
+    ? stepCopyOverrides.get(currentStep) ?? null
+    : null;
+  const coachProgress = useMemo(
+    () => coachProgressFor(currentStep, COACH_STEPS.map((step) => step.id), skippedStepIds),
+    [currentStep, skippedStepIds],
+  );
 
   // ORCH-0679 Wave 2A: useMemo on value (I-PROVIDER-VALUE-MEMOIZED) — context
   // value identity is stable across renders when no underlying state/refs change.
@@ -640,6 +718,10 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     currentStepConfig,
     nextStep,
     prevStep,
+    skipStep,
+    currentStepCopyOverride,
+    setStepCopyOverride,
+    coachProgress,
     skipTour,
     targetMeasurements,
     registerTarget,
@@ -657,6 +739,10 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     currentStepConfig,
     nextStep,
     prevStep,
+    skipStep,
+    currentStepCopyOverride,
+    setStepCopyOverride,
+    coachProgress,
     skipTour,
     targetMeasurements,
     registerTarget,

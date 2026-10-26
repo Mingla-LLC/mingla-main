@@ -1,4 +1,5 @@
 // #1972 reopen — group chat, door sale, orders, waitlist, scanner admin.
+// [TEST-MOD-APPROVED #4063] Door-sale creation now shares the durable order RPC.
 //
 // Run:
 //   deno test --allow-read supabase/functions/_shared/__tests__/issue_1972_ari_event_ops.implementor.test.ts
@@ -20,6 +21,8 @@ const BRAND = "11111111-1111-4111-8111-111111111111";
 const EVENT = "22222222-2222-4222-8222-222222222222";
 const USER = "33333333-3333-4333-8333-333333333333";
 const INVITE = "44444444-4444-4444-8444-444444444444";
+const TICKET_TYPE = "55555555-5555-4555-8555-555555555555";
+const OPERATION = "66666666-6666-4666-8666-666666666666";
 
 // deno-lint-ignore no-explicit-any
 function domainTool(name: string): any {
@@ -136,33 +139,25 @@ Deno.test("#1972 implementor: manage_event_scanners revoke updates pending row",
   assertEquals(result, { invitation_id: INVITE, revoked: true });
 });
 
-Deno.test("#1972 implementor: manage_event_door_sale create inserts ledger row", async () => {
+Deno.test("#4063 implementor: manage_event_door_sale create records the durable order", async () => {
   const tool = domainTool("manage_event_door_sale");
-  const inserted: { payload?: Record<string, unknown> } = {};
+  const invoked: { fn?: string; args?: Record<string, unknown> } = {};
   const client = {
     from(table: string) {
-      if (table === "events") return eventsClient().from("events");
-      assertEquals(table, "door_sales_ledger");
-      return {
-        insert: (payload: Record<string, unknown>) => {
-          inserted.payload = payload;
-          return {
-            select: () => ({
-              single: () =>
-                Promise.resolve({
-                  data: {
-                    id: "ds1",
-                    payment_method: payload.payment_method,
-                    amount_cents: payload.amount_cents,
-                    currency: payload.currency,
-                    created_at: "2026-08-25T00:00:00Z",
-                  },
-                  error: null,
-                }),
-            }),
-          };
+      return eventsClient().from(table);
+    },
+    rpc(fn: string, args: Record<string, unknown>) {
+      invoked.fn = fn;
+      invoked.args = args;
+      return Promise.resolve({
+        data: {
+          orderId: "77777777-7777-4777-8777-777777777777",
+          ticketIds: ["88888888-8888-4888-8888-888888888888"],
+          receiptQueued: true,
+          replayed: false,
         },
-      };
+        error: null,
+      });
     },
   };
   const result = await tool.executor(
@@ -171,14 +166,25 @@ Deno.test("#1972 implementor: manage_event_door_sale create inserts ledger row",
       event_id: EVENT,
       action: "create",
       payment_method: "cash",
-      amount_cents: 2500,
-      currency: "gbp",
+      lines: [{ ticket_type_id: TICKET_TYPE, quantity: 1 }],
+      buyer_phone: "+447700900406",
     },
     client as never,
     USER,
+    { operationId: OPERATION },
   );
-  assertEquals(inserted.payload?.payment_method, "cash");
-  assertEquals(inserted.payload?.amount_cents, 2500);
-  assertEquals(inserted.payload?.currency, "GBP");
+  assertEquals(invoked.fn, "biz_door_sale_record");
+  assertEquals(invoked.args, {
+    p_event_id: EVENT,
+    p_event_date_id: null,
+    p_lines: [{ ticket_type_id: TICKET_TYPE, quantity: 1 }],
+    p_payment_method: "cash",
+    p_buyer_name: null,
+    p_buyer_phone_e164: "+447700900406",
+    p_buyer_email: null,
+    p_notes: null,
+    p_client_request_id: OPERATION,
+  });
   assertEquals(result.recorded, true);
+  assertEquals(result.sale.receiptQueued, true);
 });

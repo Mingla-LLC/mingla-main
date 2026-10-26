@@ -250,8 +250,9 @@ assert.ok(
     + "screen compiles and behaves identically",
 );
 assert.ok(
-  /emailSignInAvailable\s*\?/.test(welcome),
-  "and with them absent the email option is not rendered at all",
+  /emailSignInAvailable\s*&&\s*!claimEmailPreferred\s*\?/.test(welcome),
+  "and with them absent the ordinary email option is not rendered, while a "
+    + "purchase-preferred email challenge can temporarily take its place",
 );
 assert.ok(
   /KeyboardAvoidingView/.test(welcome),

@@ -30,12 +30,18 @@ const MAX_PLUS_ONES = 9;
 const SEARCH_PER_MINUTE = 60;
 const ADMIT_PER_MINUTE = 120;
 
-export type PlusOneInput = { name: string | null; email: string | null; phoneE164: string | null };
+export type PlusOneInput = {
+  name: string | null;
+  email: string | null;
+  phoneE164: string | null;
+  nameOnly?: boolean;
+};
 export type GuestInput = {
   index: number;
   name: string;
   email: string | null;
   phoneE164: string | null;
+  nameOnly?: boolean;
   plusOnes?: PlusOneInput[];
 };
 type IssueBody = {
@@ -47,13 +53,30 @@ type IssueBody = {
   note: string | null;
   clientRequestId: string;
 };
-type CancelBody = { operation: "cancel"; orderId: string; reason: string | null; clientRequestId: string };
-type ResendBody = { operation: "resend"; orderId: string; clientRequestId: string };
+type CancelBody = {
+  operation: "cancel";
+  orderId: string;
+  reason: string | null;
+  clientRequestId: string;
+};
+type ResendBody = {
+  operation: "resend";
+  orderId: string;
+  clientRequestId: string;
+};
 type SearchBody = { operation: "search"; eventId: string; query: string };
 type AdmitBody = { operation: "admit"; eventId: string; ticketId: string };
-export type GuestListBody = IssueBody | CancelBody | ResendBody | SearchBody | AdmitBody;
+export type GuestListBody =
+  | IssueBody
+  | CancelBody
+  | ResendBody
+  | SearchBody
+  | AdmitBody;
 
-type RpcResult = { data: unknown; error: { message: string; hint?: string | null } | null };
+type RpcResult = {
+  data: unknown;
+  error: { message: string; hint?: string | null } | null;
+};
 
 export type GuestListDeps = {
   actorId: (req: Request) => Promise<string | null>;
@@ -74,6 +97,8 @@ export type GuestListDeps = {
 export const STATUS_BY_CODE: Record<string, number> = {
   invalid_request: 400,
   invalid_guests: 400,
+  contact_required: 400,
+  name_only_with_contact: 400,
   reason_invalid_length: 400,
   query_too_short: 400,
   query_too_long: 400,
@@ -97,7 +122,11 @@ export const STATUS_BY_CODE: Record<string, number> = {
 const json = (body: Record<string, unknown>, status = 200): Response =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...ticketCorsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
+    headers: {
+      ...ticketCorsHeaders,
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    },
   });
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -106,36 +135,85 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 const onlyKeys = (value: Record<string, unknown>, allowed: string[]): boolean =>
   Object.keys(value).every((key) => allowed.includes(key));
 
-const isUuid = (value: unknown): value is string => typeof value === "string" && UUID.test(value);
+const isUuid = (value: unknown): value is string =>
+  typeof value === "string" && UUID.test(value);
 
 const optionalText = (value: unknown, max: number): boolean =>
-  value === null || value === undefined || (typeof value === "string" && value.length <= max);
+  value === null || value === undefined ||
+  (typeof value === "string" && value.length <= max);
 
 function isPlusOne(value: unknown): value is PlusOneInput {
-  if (!isObject(value) || !onlyKeys(value, ["name", "email", "phoneE164"])) return false;
+  if (
+    !isObject(value) ||
+    !onlyKeys(value, ["name", "email", "phoneE164", "nameOnly"])
+  ) return false;
   if (!optionalText(value.name, 120)) return false;
   if (!optionalText(value.email, 200)) return false;
   if (!optionalText(value.phoneE164, 16)) return false;
+  if (value.nameOnly !== undefined && typeof value.nameOnly !== "boolean") {
+    return false;
+  }
   const email = typeof value.email === "string" ? value.email.trim() : "";
-  const phone = typeof value.phoneE164 === "string" ? value.phoneE164.trim() : "";
+  const phone = typeof value.phoneE164 === "string"
+    ? value.phoneE164.trim()
+    : "";
   if (email !== "" && !EMAIL.test(email)) return false;
   if (phone !== "" && !E164.test(phone)) return false;
+  if (value.nameOnly === true) {
+    if (email !== "" || phone !== "") return false;
+    if (typeof value.name !== "string" || value.name.trim().length === 0) {
+      return false;
+    }
+  } else if (
+    email === "" && phone === "" &&
+    typeof value.name === "string" && value.name.trim().length > 0
+  ) return false;
   return true;
 }
 
 function isGuest(value: unknown): value is GuestInput {
-  if (!isObject(value) || !onlyKeys(value, ["index", "name", "email", "phoneE164", "plusOnes"])) return false;
-  if (typeof value.index !== "number" || !Number.isInteger(value.index) || value.index < 0 || value.index > 49) {
+  if (
+    !isObject(value) ||
+    !onlyKeys(value, [
+      "index",
+      "name",
+      "email",
+      "phoneE164",
+      "nameOnly",
+      "plusOnes",
+    ])
+  ) {
     return false;
   }
-  if (typeof value.name !== "string" || value.name.trim().length < 1 || value.name.trim().length > 120) return false;
-  if (!optionalText(value.email, 200) || !optionalText(value.phoneE164, 16)) return false;
+  if (
+    typeof value.index !== "number" || !Number.isInteger(value.index) ||
+    value.index < 0 || value.index > 49
+  ) {
+    return false;
+  }
+  if (
+    typeof value.name !== "string" || value.name.trim().length < 1 ||
+    value.name.trim().length > 120
+  ) return false;
+  if (!optionalText(value.email, 200) || !optionalText(value.phoneE164, 16)) {
+    return false;
+  }
+  if (value.nameOnly !== undefined && typeof value.nameOnly !== "boolean") {
+    return false;
+  }
   const email = typeof value.email === "string" ? value.email.trim() : "";
-  const phone = typeof value.phoneE164 === "string" ? value.phoneE164.trim() : "";
+  const phone = typeof value.phoneE164 === "string"
+    ? value.phoneE164.trim()
+    : "";
   if (email !== "" && !EMAIL.test(email)) return false;
   if (phone !== "" && !E164.test(phone)) return false;
+  if (value.nameOnly === true) {
+    if (email !== "" || phone !== "") return false;
+  } else if (email === "" && phone === "") return false;
   if (value.plusOnes !== undefined) {
-    if (!Array.isArray(value.plusOnes) || value.plusOnes.length > MAX_PLUS_ONES) return false;
+    if (
+      !Array.isArray(value.plusOnes) || value.plusOnes.length > MAX_PLUS_ONES
+    ) return false;
     if (!value.plusOnes.every(isPlusOne)) return false;
   }
   return true;
@@ -145,16 +223,37 @@ export function parseBody(value: unknown): GuestListBody | null {
   if (!isObject(value)) return null;
   switch (value.operation) {
     case "issue": {
-      if (!onlyKeys(value, ["operation", "eventId", "ticketTypeId", "eventDateId", "guests", "note", "clientRequestId"])) {
+      if (
+        !onlyKeys(value, [
+          "operation",
+          "eventId",
+          "ticketTypeId",
+          "eventDateId",
+          "guests",
+          "note",
+          "clientRequestId",
+        ])
+      ) {
         return null;
       }
-      if (!isUuid(value.eventId) || !isUuid(value.ticketTypeId) || !isUuid(value.clientRequestId)) return null;
-      if (!(value.eventDateId === null || value.eventDateId === undefined || isUuid(value.eventDateId))) return null;
+      if (
+        !isUuid(value.eventId) || !isUuid(value.ticketTypeId) ||
+        !isUuid(value.clientRequestId)
+      ) return null;
+      if (
+        !(value.eventDateId === null || value.eventDateId === undefined ||
+          isUuid(value.eventDateId))
+      ) return null;
       if (!optionalText(value.note, 200)) return null;
       const guests = value.guests;
-      if (!Array.isArray(guests) || guests.length < 1 || guests.length > MAX_GUESTS) return null;
+      if (
+        !Array.isArray(guests) || guests.length < 1 ||
+        guests.length > MAX_GUESTS
+      ) return null;
       if (!guests.every(isGuest)) return null;
-      if (new Set(guests.map((guest) => guest.index)).size !== guests.length) return null;
+      if (new Set(guests.map((guest) => guest.index)).size !== guests.length) {
+        return null;
+      }
       return {
         operation: "issue",
         eventId: value.eventId,
@@ -166,8 +265,13 @@ export function parseBody(value: unknown): GuestListBody | null {
       };
     }
     case "cancel":
-      if (!onlyKeys(value, ["operation", "orderId", "reason", "clientRequestId"])) return null;
-      if (!isUuid(value.orderId) || !isUuid(value.clientRequestId) || !optionalText(value.reason, 200)) return null;
+      if (
+        !onlyKeys(value, ["operation", "orderId", "reason", "clientRequestId"])
+      ) return null;
+      if (
+        !isUuid(value.orderId) || !isUuid(value.clientRequestId) ||
+        !optionalText(value.reason, 200)
+      ) return null;
       return {
         operation: "cancel",
         orderId: value.orderId,
@@ -175,17 +279,34 @@ export function parseBody(value: unknown): GuestListBody | null {
         clientRequestId: value.clientRequestId,
       };
     case "resend":
-      if (!onlyKeys(value, ["operation", "orderId", "clientRequestId"])) return null;
+      if (!onlyKeys(value, ["operation", "orderId", "clientRequestId"])) {
+        return null;
+      }
       if (!isUuid(value.orderId) || !isUuid(value.clientRequestId)) return null;
-      return { operation: "resend", orderId: value.orderId, clientRequestId: value.clientRequestId };
+      return {
+        operation: "resend",
+        orderId: value.orderId,
+        clientRequestId: value.clientRequestId,
+      };
     case "search":
       if (!onlyKeys(value, ["operation", "eventId", "query"])) return null;
-      if (!isUuid(value.eventId) || typeof value.query !== "string" || value.query.length > 200) return null;
-      return { operation: "search", eventId: value.eventId, query: value.query };
+      if (
+        !isUuid(value.eventId) || typeof value.query !== "string" ||
+        value.query.length > 200
+      ) return null;
+      return {
+        operation: "search",
+        eventId: value.eventId,
+        query: value.query,
+      };
     case "admit":
       if (!onlyKeys(value, ["operation", "eventId", "ticketId"])) return null;
       if (!isUuid(value.eventId) || !isUuid(value.ticketId)) return null;
-      return { operation: "admit", eventId: value.eventId, ticketId: value.ticketId };
+      return {
+        operation: "admit",
+        eventId: value.eventId,
+        ticketId: value.ticketId,
+      };
     default:
       return null;
   }
@@ -193,7 +314,9 @@ export function parseBody(value: unknown): GuestListBody | null {
 
 // RPC errors carry the code as the exception message. Unknown messages are
 // `internal`; the raw text never reaches the client.
-export function mapRpcError(error: { message: string; hint?: string | null }): Response {
+export function mapRpcError(
+  error: { message: string; hint?: string | null },
+): Response {
   const code = error.message.trim();
   const status = STATUS_BY_CODE[code];
   if (status === undefined) {
@@ -204,9 +327,14 @@ export function mapRpcError(error: { message: string; hint?: string | null }): R
   const body: Record<string, unknown> = { ok: false, code };
   if (code === "ticket_capacity_exceeded" && typeof error.hint === "string") {
     try {
-      const hint = JSON.parse(error.hint) as { remaining?: unknown; ticketName?: unknown };
+      const hint = JSON.parse(error.hint) as {
+        remaining?: unknown;
+        ticketName?: unknown;
+      };
       if (typeof hint.remaining === "number") body.remaining = hint.remaining;
-      if (typeof hint.ticketName === "string") body.ticketName = hint.ticketName;
+      if (typeof hint.ticketName === "string") {
+        body.ticketName = hint.ticketName;
+      }
     } catch {
       console.error("[guest-list] capacity hint was not JSON");
     }
@@ -214,11 +342,21 @@ export function mapRpcError(error: { message: string; hint?: string | null }): R
   return json(body, status);
 }
 
-async function rateLimited(deps: GuestListDeps, scope: string, limit: number): Promise<boolean> {
+async function rateLimited(
+  deps: GuestListDeps,
+  scope: string,
+  limit: number,
+): Promise<boolean> {
   // Fails OPEN: blocking a door at peak is worse than an extra search.
-  const { data, error } = await deps.rpc("pg_venue_order_rate_limit_hit", { p_scope_key: scope, p_limit: limit });
+  const { data, error } = await deps.rpc("pg_venue_order_rate_limit_hit", {
+    p_scope_key: scope,
+    p_limit: limit,
+  });
   if (error) {
-    console.error("[guest-list] rate limiter unavailable (failing open)", scope.split(":")[0]);
+    console.error(
+      "[guest-list] rate limiter unavailable (failing open)",
+      scope.split(":")[0],
+    );
     return false;
   }
   return isObject(data) && data.allowed === false;
@@ -257,10 +395,16 @@ type IssueResult = {
   code: string | null;
 };
 
-export function createHandler(deps: GuestListDeps): (req: Request) => Promise<Response> {
+export function createHandler(
+  deps: GuestListDeps,
+): (req: Request) => Promise<Response> {
   return async (req: Request): Promise<Response> => {
-    if (req.method === "OPTIONS") return new Response("ok", { headers: ticketCorsHeaders });
-    if (req.method !== "POST") return json({ ok: false, code: "method_not_allowed" }, 405);
+    if (req.method === "OPTIONS") {
+      return new Response("ok", { headers: ticketCorsHeaders });
+    }
+    if (req.method !== "POST") {
+      return json({ ok: false, code: "method_not_allowed" }, 405);
+    }
 
     const text = await req.text();
     if (new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES) {
@@ -299,6 +443,7 @@ export function createHandler(deps: GuestListDeps): (req: Request) => Promise<Re
             name: guest.name,
             email: guest.email,
             phoneE164: guest.phoneE164,
+            nameOnly: guest.nameOnly ?? false,
             plusOnes: guest.plusOnes ?? [],
           })),
           p_note: body.note,
@@ -314,7 +459,10 @@ export function createHandler(deps: GuestListDeps): (req: Request) => Promise<Re
           remaining: number | null;
         };
         for (const result of out.results) {
-          if (result.status === "added" && result.orderId && (result.emailQueued || result.smsQueued)) {
+          if (
+            result.status === "added" && result.orderId &&
+            (result.emailQueued || result.smsQueued)
+          ) {
             // Fire-and-forget, as ticket-checkout-create does: un-awaited work
             // completes on this runtime, and notification-retry-sweeper picks up
             // any pending row a dispatch never reached.
@@ -323,7 +471,9 @@ export function createHandler(deps: GuestListDeps): (req: Request) => Promise<Re
               console.error(
                 "[guest-list] confirmation dispatch failed (sweeper will retry)",
                 orderId,
-                dispatchError instanceof Error ? dispatchError.message : String(dispatchError),
+                dispatchError instanceof Error
+                  ? dispatchError.message
+                  : String(dispatchError),
               );
             });
           }
@@ -337,7 +487,10 @@ export function createHandler(deps: GuestListDeps): (req: Request) => Promise<Re
             target_id: body.eventId,
             after: { count: out.addedCount },
           }).catch((auditError) => {
-            console.error("[guest-list] audit write failed (non-fatal)", auditError instanceof Error ? auditError.message : auditError);
+            console.error(
+              "[guest-list] audit write failed (non-fatal)",
+              auditError instanceof Error ? auditError.message : auditError,
+            );
           });
         }
         return json({
@@ -358,7 +511,12 @@ export function createHandler(deps: GuestListDeps): (req: Request) => Promise<Re
           p_client_request_id: body.clientRequestId,
         });
         if (error) return mapRpcError(error);
-        const out = data as { orderId: string; status: string; idempotentReplay: boolean; emailQueued: boolean };
+        const out = data as {
+          orderId: string;
+          status: string;
+          idempotentReplay: boolean;
+          emailQueued: boolean;
+        };
         if (out.emailQueued) await deps.dispatch(body.orderId);
         if (!out.idempotentReplay) {
           await deps.audit({
@@ -369,10 +527,18 @@ export function createHandler(deps: GuestListDeps): (req: Request) => Promise<Re
             target_id: body.orderId,
             after: { status: "cancelled" },
           }).catch((auditError) => {
-            console.error("[guest-list] audit write failed (non-fatal)", auditError instanceof Error ? auditError.message : auditError);
+            console.error(
+              "[guest-list] audit write failed (non-fatal)",
+              auditError instanceof Error ? auditError.message : auditError,
+            );
           });
         }
-        return json({ ok: true, orderId: out.orderId, status: out.status, idempotentReplay: out.idempotentReplay });
+        return json({
+          ok: true,
+          orderId: out.orderId,
+          status: out.status,
+          idempotentReplay: out.idempotentReplay,
+        });
       }
 
       case "resend": {
@@ -388,7 +554,13 @@ export function createHandler(deps: GuestListDeps): (req: Request) => Promise<Re
       }
 
       case "search": {
-        if (await rateLimited(deps, `guest_list_search:${actorId}`, SEARCH_PER_MINUTE)) {
+        if (
+          await rateLimited(
+            deps,
+            `guest_list_search:${actorId}`,
+            SEARCH_PER_MINUTE,
+          )
+        ) {
           return json({ ok: false, code: "rate_limited" }, 429);
         }
         const { data, error } = await deps.rpc("biz_door_guest_search", {
@@ -400,7 +572,9 @@ export function createHandler(deps: GuestListDeps): (req: Request) => Promise<Re
         if (error) return mapRpcError(error);
         const out = data as { orders: unknown[]; truncated: boolean };
         const orderIds = Array.isArray(out.orders)
-          ? out.orders.filter(isObject).map((order) => order.orderId).filter(isUuid)
+          ? out.orders.filter(isObject).map((order) => order.orderId).filter(
+            isUuid,
+          )
           : [];
         const labelResult = await deps.rpc("biz_ticket_link_order_labels", {
           p_actor_id: actorId,
@@ -417,14 +591,27 @@ export function createHandler(deps: GuestListDeps): (req: Request) => Promise<Re
           ? out.orders.map((order) => {
             if (!isObject(order) || !isUuid(order.orderId)) return order;
             const label = labels[order.orderId];
-            return { ...order, viaLinkLabel: typeof label === "string" ? label : null };
+            return {
+              ...order,
+              viaLinkLabel: typeof label === "string" ? label : null,
+            };
           })
           : [];
-        return json({ ok: true, orders: projectDoorOrders(attributedOrders), truncated: out.truncated === true });
+        return json({
+          ok: true,
+          orders: projectDoorOrders(attributedOrders),
+          truncated: out.truncated === true,
+        });
       }
 
       case "admit": {
-        if (await rateLimited(deps, `guest_list_admit:${actorId}`, ADMIT_PER_MINUTE)) {
+        if (
+          await rateLimited(
+            deps,
+            `guest_list_admit:${actorId}`,
+            ADMIT_PER_MINUTE,
+          )
+        ) {
           return json({ ok: false, code: "rate_limited" }, 429);
         }
         const { data, error } = await deps.rpc("biz_ticket_admit_by_id", {
@@ -458,7 +645,12 @@ function defaultDeps(): GuestListDeps {
     actorId: userIdFromAuthHeader,
     rpc: async (fn, args) => {
       const { data, error } = await service().rpc(fn, args);
-      return { data, error: error ? { message: error.message, hint: error.hint ?? null } : null };
+      return {
+        data,
+        error: error
+          ? { message: error.message, hint: error.hint ?? null }
+          : null,
+      };
     },
     pepper: qrTokenPepper,
     dispatch: dispatchTicketConfirmation,

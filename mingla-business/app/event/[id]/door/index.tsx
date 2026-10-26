@@ -9,7 +9,7 @@
  * routing to /event/{id}/door/{saleId}.
  *
  * I-21: operator-side route. Uses useAuth.
- * I-29: door sales live in useDoorSalesStore ONLY — never as phantom orders.
+ * I-29: door sales are read from server orders through React Query.
  *
  * TESTING MODE banner reused from DoorSaleNewSheet pattern (Const #7).
  *
@@ -35,11 +35,10 @@ import {
   spacing,
   text as textTokens,
 } from "../../../../src/constants/designSystem";
-import {
-  useDoorSalesStore,
-  type DoorPaymentMethod,
-  type DoorSaleRecord,
-} from "../../../../src/store/doorSalesStore";
+import type {
+  DoorPaymentMethod,
+  DoorSaleRecord,
+} from "../../../../src/types/doorSales";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 import {
@@ -58,6 +57,7 @@ import { Pill } from "../../../../src/components/ui/Pill";
 import { Toast } from "../../../../src/components/ui/Toast";
 import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../../../src/utils/permissionGates";
+import { useEventDoorSales } from "../../../../src/hooks/useEventDoorSales";
 
 // ---- Helpers --------------------------------------------------------
 
@@ -161,17 +161,17 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
     "VIEW_RECONCILIATION",
   );
 
-  // Cycle 12 — raw entries + useMemo per selector pattern rule (SC-31 / T-38).
-  const allEntries = useDoorSalesStore((s) => s.entries);
+  const doorSalesQuery = useEventDoorSales(
+    typeof eventId === "string" ? eventId : null,
+  );
   const eventSales = useMemo<DoorSaleRecord[]>(() => {
     if (typeof eventId !== "string") return [];
-    return allEntries
-      .filter((s) => s.eventId === eventId)
+    return [...(doorSalesQuery.data ?? [])]
       .sort(
         (a, b) =>
           new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime(),
       );
-  }, [allEntries, eventId]);
+  }, [doorSalesQuery.data, eventId]);
 
   const doorMoneySummary = useMemo(
     () =>
@@ -218,7 +218,7 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
       map[scannerKey] = existing;
     }
     return map;
-  }, [eventSales]);
+  }, [doorMoneySummary.expectedCurrency, eventSales]);
 
   const refundedTotal = doorMoneySummary.doorRefunded;
   const netTotal = doorMoneySummary.doorRevenue;
@@ -263,11 +263,13 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
   }, [router, eventId]);
 
   const handleNewSaleSuccess = useCallback(
-    (sale: DoorSaleRecord): void => {
+    (_result: { orderId: string }, phoneLast4: string | null): void => {
       setNewSheetOpen(false);
-      const buyerName =
-        sale.buyerName.length > 0 ? sale.buyerName : "Walk-up";
-      showToast(`${buyerName} — sale recorded.`);
+      showToast(
+        phoneLast4 === null
+          ? "Sale recorded."
+          : `Sale recorded. Receipt texted to the number ending ${phoneLast4}.`,
+      );
     },
     [showToast],
   );
@@ -290,7 +292,7 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
         showToast(`${eventSales.length} door sale(s) — CSV shared.`);
       }
       // result.method === "dismissed" → silent.
-    } catch (_err) {
+    } catch {
       showToast("Couldn't export. Tap to try again.");
     }
   }, [event, eventSales, showToast]);
@@ -538,7 +540,24 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
         </View>
 
         {/* Sales list */}
-        {eventSales.length === 0 ? (
+        {doorSalesQuery.isError ? (
+          <View style={styles.emptyHost}>
+            <EmptyState
+              illustration="ticket"
+              title="Couldn't load door sales"
+              description="Check your connection and try again."
+              cta={{
+                label: "Try again",
+                onPress: () => void doorSalesQuery.refetch(),
+                variant: "primary",
+              }}
+            />
+          </View>
+        ) : doorSalesQuery.isLoading ? (
+          <View style={styles.emptyHost}>
+            <Text style={styles.emptyLoadingText}>Loading door sales...</Text>
+          </View>
+        ) : eventSales.length === 0 ? (
           <View style={styles.emptyHost}>
             <EmptyState
               illustration="ticket"
@@ -569,8 +588,6 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
         <DoorSaleNewSheet
           visible={newSheetOpen}
           event={event}
-          brandId={brand.id}
-          operatorAccountId={operatorAccountId}
           onClose={() => setNewSheetOpen(false)}
           onSuccess={handleNewSaleSuccess}
         />

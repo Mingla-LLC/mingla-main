@@ -15,9 +15,9 @@
       "op": "replace",
       "path": "/workflowMetadata/sourceSha256",
       "expected": "d254d77692242a491396e9301490e295095ad188b125d6b5057e93d8edbef8eb",
-      "value": "682215f925236ea6014dc80eda6d3163b3e4c0c8784334f1ff38144dc0469d81"
+      "value": "1b6dffa5a9f074b91305db20f8343e6eef48b853f27647518d938d7494de766c"
     }
   ],
   "dependentSeals": [],
-  "reason": "Issue #3281 extends the private-event replay skip list (Round 2 checkout units/repair, #2947/#3281 booked-start re-emissions, Round 3 spacing/spots, and many-dates foundation) without changing its execution topology. #3827 adds its going-box and private-ticket-link migrations, whose reader and checkout re-emissions require the same exact filtered-lane treatment, and its link cover and dates and orders foreign-key migrations, which alter or reference those private-link tables. #3872 adds its exact host-operations and live-save correction migrations because those migrations depend on discount objects omitted by the filtered lane."
+  "reason": "Issue #3281 extends the private-event replay skip list (Round 2 checkout units/repair, #2947/#3281 booked-start re-emissions, Round 3 spacing/spots, and many-dates foundation) without changing its execution topology. #3827 adds its going-box and private-ticket-link migrations, whose reader and checkout re-emissions require the same exact filtered-lane treatment, and its link cover and dates and orders foreign-key migrations, which alter or reference those private-link tables. #3872 adds its exact host-operations and live-save correction migrations because those migrations depend on discount objects omitted by the filtered lane. #4073 adds its exact Discover V2 migration because the unified public feed retains privacy helpers omitted by this filtered lane. #4063 adds its exact buyer-claim, door-sale, and ticket-transfer migrations because those migrations depend on ticket, RSVP, claim, discount, and occurrence objects omitted by the filtered lane."
 }

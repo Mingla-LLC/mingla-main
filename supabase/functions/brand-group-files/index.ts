@@ -123,7 +123,7 @@ async function userIdFor(request: Request, user: AdminClient): Promise<string | 
   return error || !data.user ? null : data.user.id;
 }
 
-async function finalize(
+export async function finalize(
   admin: AdminClient,
   drive: GoogleDriveClient,
   fileId: string,
@@ -185,6 +185,31 @@ async function finalize(
       }
       throw new Error("FILE_COMMIT_FAILED");
     }
+    const completedMime = uploaded.mimeType || verifiedMime;
+    try {
+      if (completedMime.startsWith("image/") || completedMime.startsWith("video/")) {
+        const media = await drive.mediaInfo(uploaded.id);
+        const updated = await admin.rpc("issue_3988_set_brand_group_file_media", {
+          p_file_id: fileId,
+          p_width: media.width,
+          p_height: media.height,
+          p_duration_ms: media.durationMs,
+          p_thumb_state: media.hasThumbnail && media.thumbnailLink ? "ready" : "pending",
+        });
+        if (updated.error) throw new Error("MEDIA_METADATA_WRITE_FAILED");
+      } else {
+        const updated = await admin.rpc("issue_3988_set_brand_group_file_media", {
+          p_file_id: fileId,
+          p_width: null,
+          p_height: null,
+          p_duration_ms: null,
+          p_thumb_state: "none",
+        });
+        if (updated.error) throw new Error("MEDIA_METADATA_WRITE_FAILED");
+      }
+    } catch (mediaError) {
+      console.warn("#3988 Brand-group media metadata remains pending", safeError(mediaError));
+    }
     await admin.storage.from("brand-group-file-staging").remove([claim.storage_path]);
     return json(200, { ok: true, file_id: fileId, message_id: completed.data });
   } catch (cause) {
@@ -196,6 +221,80 @@ async function finalize(
       provider_object_committed: providerFileId !== null,
     });
   }
+}
+
+export async function openThumbnail(
+  admin: AdminClient,
+  drive: GoogleDriveClient,
+  userId: string,
+  fileId: string,
+): Promise<Response> {
+  const authorized = await admin.rpc("issue_3720_authorize_brand_group_file", {
+    p_file_id: fileId,
+    p_user_id: userId,
+  });
+  if (authorized.error || !authorized.data) return json(404, { code: "FILE_UNAVAILABLE" });
+  const file = authorized.data as {
+    provider_file_id: string;
+    mime_type: string;
+  };
+  if (!file.mime_type?.startsWith("image/") && !file.mime_type?.startsWith("video/")) {
+    return json(404, { code: "THUMB_UNAVAILABLE" });
+  }
+
+  const currentResult = await admin.rpc("issue_3988_file_thumb_state", { p_file_id: fileId });
+  const current = !currentResult.error && currentResult.data
+    ? currentResult.data as {
+      thumbState?: unknown;
+      thumbCheckedAt?: unknown;
+      width?: unknown;
+      height?: unknown;
+      durationMs?: unknown;
+    }
+    : null;
+  const media = await drive.mediaInfo(file.provider_file_id);
+  const nextThumbState = media.hasThumbnail && media.thumbnailLink ? "ready" : "pending";
+  const lastChecked = typeof current?.thumbCheckedAt === "string"
+    ? Date.parse(current.thumbCheckedAt)
+    : Number.NaN;
+  const setterAllowed = !Number.isFinite(lastChecked) || Date.now() - lastChecked >= 60_000;
+  const metadataChanged = current?.thumbState !== nextThumbState ||
+    current?.width !== media.width ||
+    current?.height !== media.height ||
+    current?.durationMs !== media.durationMs;
+  // A pending-to-ready transition is terminal progress and must not leave the
+  // gallery stuck. Already-ready rows still honor the 60-second setter limit,
+  // including requests whose Drive response is unchanged.
+  const shouldPersistMetadata =
+    (current?.thumbState === "pending" && nextThumbState === "ready") ||
+    (setterAllowed && (current?.thumbState === "pending" || metadataChanged));
+  if (shouldPersistMetadata) {
+    const updated = await admin.rpc("issue_3988_set_brand_group_file_media", {
+      p_file_id: fileId,
+      p_width: media.width,
+      p_height: media.height,
+      p_duration_ms: media.durationMs,
+      p_thumb_state: nextThumbState,
+    });
+    if (updated.error) {
+      console.warn("#3988 Brand-group thumbnail metadata write skipped", "MEDIA_METADATA_WRITE_FAILED");
+    }
+  }
+  if (!media.hasThumbnail || !media.thumbnailLink) {
+    return json(404, { code: "THUMB_UNAVAILABLE" });
+  }
+
+  const upstream = await drive.thumbnail(media.thumbnailLink);
+  if (!upstream.ok) {
+    await upstream.arrayBuffer().catch(() => null);
+    return json(upstream.status === 404 ? 404 : 503, { code: "THUMB_UNAVAILABLE" });
+  }
+  const headers = new Headers(cors);
+  headers.set("Cache-Control", "private, max-age=86400");
+  headers.set("Content-Type", upstream.headers.get("content-type") || "image/jpeg");
+  const contentLength = upstream.headers.get("content-length");
+  if (contentLength) headers.set("Content-Length", contentLength);
+  return new Response(upstream.body, { status: 200, headers });
 }
 
 async function openFile(
@@ -253,10 +352,14 @@ export async function handleBrandGroupFiles(request: Request): Promise<Response>
       return await finalize(clients.admin, drive, body.file_id, userId);
     }
     if (request.method === "GET") {
-      const fileId = new URL(request.url).searchParams.get("file_id") ?? "";
+      const requestUrl = new URL(request.url);
+      const fileId = requestUrl.searchParams.get("file_id") ?? "";
       if (!UUID.test(fileId)) return json(400, { code: "BAD_REQUEST" });
+      const variant = requestUrl.searchParams.get("variant");
+      if (variant !== null && variant !== "thumb") return json(400, { code: "BAD_VARIANT" });
       const userId = await userIdFor(request, clients.user);
       if (!userId) return json(401, { code: "UNAUTHENTICATED" });
+      if (variant === "thumb") return await openThumbnail(clients.admin, drive, userId, fileId);
       return await openFile(request, clients.admin, drive, userId, fileId);
     }
     return json(405, { code: "METHOD_NOT_ALLOWED" });

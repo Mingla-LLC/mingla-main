@@ -217,7 +217,7 @@ Deno.test("G4 the flag is read from theme.business_event.settings.privateGuestLi
   }
 });
 
-Deno.test("G5 ticket-confirmation-dispatch threads the flag into every offering arm", () => {
+Deno.test("G5 ticket-confirmation-dispatch keeps privacy while unifying every offering arm", () => {
   const source = Deno.readTextFileSync(
     new URL("../../../ticket-confirmation-dispatch/index.ts", import.meta.url),
   );
@@ -226,20 +226,14 @@ Deno.test("G5 ticket-confirmation-dispatch threads the flag into every offering 
     source,
     "privateGuestList: isGuestListPrivate(order.events.theme),",
   );
-  // …and handed to the trip and experience templates from that same value.
-  for (
-    const arm of [
-      "renderEmailBody = (appCtaClaimUrl) => renderTripConfirmationEmail({",
-      "renderEmailBody = (appCtaClaimUrl) => renderExperienceConfirmationEmail({",
-    ]
-  ) {
-    const at = source.indexOf(arm);
-    assert(at > 0, `arm missing: ${arm}`);
-    const callHead = source.slice(at, at + 400);
-    assertStringIncludes(
-      callHead,
-      "privateGuestList: context.bodyInput.event.privateGuestList,",
-      `this arm does not pass the private-guest-list flag: ${arm}`,
-    );
-  }
+  // #4063 unifies event, trip, and experience delivery behind one purchase
+  // message that never renders the former "who's going" CTA. The legacy flag
+  // stays in the shared body input for authenticated/PDF compatibility, while
+  // the public email path can no longer branch back into any old template.
+  const at = source.indexOf("renderEmailBody = (legacyClaimUrl) => {");
+  assert(at > 0, "the unified purchase-message render closure must exist");
+  const callHead = source.slice(at, at + 700);
+  assertStringIncludes(callHead, 'variant: "purchase_message"');
+  assert(!callHead.includes("renderTripConfirmationEmail"));
+  assert(!callHead.includes("renderExperienceConfirmationEmail"));
 });

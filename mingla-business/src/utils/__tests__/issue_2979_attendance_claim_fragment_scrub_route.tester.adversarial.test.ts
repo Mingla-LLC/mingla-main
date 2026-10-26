@@ -6,11 +6,20 @@
 
 import React from "react";
 
-import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  jest,
+  test,
+} from "@jest/globals";
 
-(globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean;
-}).IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as typeof globalThis & {
+    IS_REACT_ACT_ENVIRONMENT?: boolean;
+  }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 const EVENT_ID = "11111111-1111-4111-8111-111111111111";
 const SOURCE_ID = "22222222-2222-4222-8222-222222222222";
@@ -52,14 +61,21 @@ jest.mock("react-native", () => ({
   },
   Pressable: "Pressable",
   ScrollView: "ScrollView",
-  StyleSheet: { create: <T,>(styles: T): T => styles },
+  StyleSheet: { create: <T>(styles: T): T => styles },
   Text: "Text",
   View: "View",
 }));
 
 jest.mock("../../components/ui/Button", () => ({ Button: "Button" }));
 jest.mock("../../components/ui/Icon", () => ({ Icon: "Icon" }));
-jest.mock("../../components/ui/SafeScreen", () => ({ SafeScreen: "SafeScreen" }));
+jest.mock("../../components/ui/SafeScreen", () => ({
+  SafeScreen: "SafeScreen",
+}));
+// [TEST-MOD-APPROVED #4063] The claim-card renderer is independently covered;
+// this route integration owns only fragment lifecycle and navigation behavior.
+jest.mock("../../components/checkout/DownloadMinglaCta", () => ({
+  BuyerClaimCard: () => null,
+}));
 
 jest.mock("../attendanceClaimDeepLink", () => {
   const actual = jest.requireActual(
@@ -67,9 +83,13 @@ jest.mock("../attendanceClaimDeepLink", () => {
   ) as typeof import("../attendanceClaimDeepLink");
   return {
     ...actual,
-    attendanceAppUrlFromFragment: (raw: string): string | null => {
+    // [TEST-MOD-APPROVED #4063] The production route now parses the claim
+    // without rebuilding a credential-bearing app URL.
+    attendanceClaimFromFragment: (
+      raw: string,
+    ): ReturnType<typeof actual.attendanceClaimFromFragment> => {
       mockLifecycleCalls.push("parse");
-      return actual.attendanceAppUrlFromFragment(raw);
+      return actual.attendanceClaimFromFragment(raw);
     },
     consumeAttendanceClaimFragment: (
       ...args: Parameters<typeof actual.consumeAttendanceClaimFragment>
@@ -132,7 +152,8 @@ beforeEach(() => {
   replacements = [];
 
   const browserWindow = {
-    open: (url: string, target?: string): unknown => mockWindowOpen(url, target),
+    open: (url: string, target?: string): unknown =>
+      mockWindowOpen(url, target),
     location: {
       hash: "",
       pathname: "/attendance/claim",
@@ -153,19 +174,15 @@ beforeEach(() => {
       return scheduledFrames.length;
     },
   };
-  Object.defineProperty(
-    browserWindow,
-    ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY,
-    {
-      configurable: true,
-      enumerable: false,
-      value: {
-        cleanUrl: CLEAN_URL,
-        fragment: CLAIM_FRAGMENT,
-        historyState: launchState,
-      },
+  Object.defineProperty(browserWindow, ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY, {
+    configurable: true,
+    enumerable: false,
+    value: {
+      cleanUrl: CLEAN_URL,
+      fragment: CLAIM_FRAGMENT,
+      historyState: launchState,
     },
-  );
+  });
 
   Object.defineProperty(globalThis, "window", {
     configurable: true,
@@ -215,10 +232,12 @@ describe("issue #2979 attendance claim route fragment scrub integration", () => 
       "parse",
       "schedule-frame",
     ]);
-    expect(Object.prototype.hasOwnProperty.call(
-      window,
-      ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY,
-    )).toBe(false);
+    expect(
+      Object.prototype.hasOwnProperty.call(
+        window,
+        ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY,
+      ),
+    ).toBe(false);
     // ─── issue #3524 INVERTS THIS ONE ASSERTION, AND ONLY THIS ONE ──────────
     //
     // This line used to read `expect(mockOpenUrl).toHaveBeenCalledWith(APP_URL)`
@@ -258,8 +277,10 @@ describe("issue #2979 attendance claim route fragment scrub integration", () => 
 
     expect(visibleUrl).toBe(CLEAN_URL);
     expect(replacements).toHaveLength(4);
-    expect(replacements.every(({ state, url }) =>
-      state === launchState && url === CLEAN_URL
-    )).toBe(true);
+    expect(
+      replacements.every(
+        ({ state, url }) => state === launchState && url === CLEAN_URL,
+      ),
+    ).toBe(true);
   });
 });

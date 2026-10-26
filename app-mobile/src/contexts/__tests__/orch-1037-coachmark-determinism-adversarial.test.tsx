@@ -32,7 +32,7 @@
 //   X-3  WRONG-NODE width guard — no non-deck step may target a near-full-width container.
 //        SPEC §9b/§11: every registered rect except step 1 (deck) must be narrower than
 //        screenWidth*0.98. We (a) statically prove the re-pointed steps 4/5/6/7 attach to
-//        leaf affordances (per-tab Pressable / people Pressable / + Pressable) and NOT the
+//        leaf affordances (content pill / filter / people Pressable / + Pressable) and NOT the
 //        broad header containers (headerPanel / headerRowAbsolute); (b) model the guard:
 //        a rect at 98%+ screen width is flagged for every step id ≠ 1. Fails if step 4/5/6
 //        is re-pointed back to a full-width header container.
@@ -115,6 +115,8 @@ function run() {
   const contextSrc = readSource('src/contexts/CoachMarkContext.tsx');
   const profileSrc = readSource('src/components/ProfilePage.tsx');
   const discoverSrc = readSource('src/components/DiscoverScreen.tsx');
+  const discoverHeaderSrc = readSource('src/components/discover/DiscoverHeader.tsx');
+  const discoverPillRowSrc = readSource('src/components/discover/DiscoverPillRow.tsx');
   const connectionsSrc = readSource('src/components/ConnectionsPage.tsx');
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -168,14 +170,16 @@ function run() {
         'X-2a the reconstruction fallback must be the explicitly-logged no-measurer branch');
     }
 
-    // (b) ProfilePage must register FOUR distinct measurer thunks bound to FOUR distinct
+    // [TEST-MOD-APPROVED #4063] Purchases is now the first Profile coach target,
+    // so ProfilePage must register FIVE distinct measurer thunks bound to FIVE distinct
     //     refs — so two scroll steps can never resolve to the same node (the identical-
     //     contentY tell). Each wireScrollStep(stepId, ref) call pairs a step id with a ref.
     const wirePairs = [
-      [8, 'interestsRef'],
-      [9, 'circleRef'],
-      [10, 'accountSettingsRef'],
-      [11, 'feedbackButtonRef'],
+      [8, 'purchasesRef'],
+      [9, 'interestsRef'],
+      [10, 'circleRef'],
+      [11, 'accountSettingsRef'],
+      [12, 'feedbackButtonRef'],
     ];
     const seenRefs = new Set();
     for (const [sid, ref] of wirePairs) {
@@ -185,7 +189,7 @@ function run() {
       assert.ok(!seenRefs.has(ref), `X-2b ref ${ref} must be used by exactly one scroll step (no shared node)`);
       seenRefs.add(ref);
     }
-    assert.equal(seenRefs.size, 4, 'X-2b all four scroll steps must bind to four DISTINCT refs');
+    assert.equal(seenRefs.size, 5, 'X-2b all five scroll steps must bind to five DISTINCT refs');
     // The measurer thunk must measure the LIVE node via measureInWindow (not arithmetic).
     assert.ok(/registerTargetMeasurer\(stepId,\s*\(cb\)\s*=>/.test(squish(profileSrc).replace(/\s+/g, ' ')) ||
       /registerTargetMeasurer\(stepId/.test(profileSrc),
@@ -215,14 +219,15 @@ function run() {
   // ══════════════════════════════════════════════════════════════════════════
   {
     // (a) Static proof: the re-pointed steps target leaf affordances, NOT broad containers.
-    // Step 4/5 → per-tab Pressable via coachTabRefFor(tab.id) on the tab Pressable, NOT the
-    // headerPanel View.
-    assert.ok(/ref=\{coachTabRefFor\(tab\.id\)/.test(discoverSrc),
-      'X-3a Discover steps 4/5 must attach via coachTabRefFor on the tab Pressable');
-    // The header-panel View must no longer carry a coach ref (the old wrong-node target).
+    // [TEST-MOD-APPROVED #3988] #4073's one-page Discover maps step 4 to the
+    // first visible content-type pill and step 5 to the filter Pressable.
+    assert.ok(/ref=\{index === 0 \? targetRef : undefined\}/.test(discoverPillRowSrc),
+      'X-3a Discover step 4 must attach to the first visible pill Pressable');
+    assert.ok(/ref=\{setFilterRef\}/.test(discoverHeaderSrc) && /props\.filterTargetRef\(node\)/.test(discoverHeaderSrc),
+      'X-3a Discover step 5 must attach to the filter Pressable');
     const discoverNoComments = stripComments(discoverSrc);
-    assert.ok(!/coachDiscoverFeed\.targetRef/.test(discoverNoComments),
-      'X-3a the old full-width headerPanel coach ref (coachDiscoverFeed) must be gone');
+    assert.ok(!/coachTabRefFor\(|coachDiscoverFeed\.targetRef/.test(discoverNoComments),
+      'X-3a retired tab helpers and the old full-width header target must stay gone');
 
     // Step 6 → people Pressable; step 7 → + Pressable; neither on the header row container.
     assert.ok(/ref=\{coachPeopleIcon\.targetRef/.test(connectionsSrc),
@@ -260,7 +265,7 @@ if (require.main === module) {
     run();
     console.log(
       'PASS X-1..X-3 ORCH-1037/1035 adversarial: context scroll loop rejects the mid-scroll transient (X-1), ' +
-      'scroll steps measured via four distinct measurer thunks → distinct rects, reconstruction is fallback-only (X-2), ' +
+      'scroll steps measured via five distinct measurer thunks → distinct rects, reconstruction is fallback-only (X-2), ' +
       'wrong-node width guard — steps 4/5/6/7 on leaf affordances not header containers, full-width rejected for every non-deck step (X-3)'
     );
   } catch (error) {

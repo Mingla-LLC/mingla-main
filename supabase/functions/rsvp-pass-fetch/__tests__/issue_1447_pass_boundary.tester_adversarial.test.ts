@@ -1,7 +1,7 @@
 // Issue #1447 tester-owned adversarial guard.
 // [TEST-MOD-APPROVED ORCH-1447] Bind to the split recovery client module.
-// Angle: one authorization barrier must protect both metadata and PDF
-// representations, and anonymous recovery secrets must remain fragment-only.
+// Angle: one signed-in ownership barrier must protect both metadata and PDF
+// representations. #4063 retires recovery tokens as bearer pass credentials.
 
 const assert: (condition: unknown, message: string) => asserts condition = (
   condition,
@@ -27,22 +27,23 @@ const explorerClient = await read(
 
 function representationBoundaryIsSafe(source: string): boolean {
   const deny = source.indexOf(
-    "if (!authenticatedEntityOwner && !authenticatedPartyOwner && !recoveryAuthorized)",
+    "if (!authenticatedEntityOwner && !authenticatedPartyOwner)",
   );
   const metadata = source.indexOf("if (wantsMetadata)");
   const pdf = source.indexOf("const pdf = await buildRsvpPassPdf");
   return deny >= 0 && metadata > deny && pdf > metadata;
 }
 
-Deno.test("one owner-or-recovery barrier protects metadata and PDF", () => {
+Deno.test("one signed-in owner barrier protects metadata and PDF", () => {
   assert(
     representationBoundaryIsSafe(passEdge),
-    "metadata/PDF must not render before the shared owner-or-recovery denial",
+    "metadata/PDF must not render before the shared signed-in owner denial",
   );
   assert(
-    passEdge.includes("constantTimeHexEqual(") &&
-      passEdge.includes("await sha256Hex(recoveryToken)"),
-    "anonymous recovery must compare only a hash in constant time",
+    passEdge.includes('return reply(403, { error: "sign_in_required" })') &&
+      !passEdge.includes("constantTimeHexEqual(") &&
+      !passEdge.includes("sha256Hex(recoveryToken)"),
+    "anonymous recovery must not authorize metadata or PDF bytes",
   );
   assert(
     passEdge.includes('"Cache-Control": "no-store"') &&
@@ -69,7 +70,7 @@ Deno.test("clients explicitly negotiate metadata versus PDF", () => {
   );
 });
 
-Deno.test("anonymous recovery proof stays out of request URLs and analytics", () => {
+Deno.test("legacy anonymous recovery pages scrub proofs and reveal nothing", () => {
   assert(
     recoveryPrimitives.includes(
       "return `https://host.usemingla.com/rsvp/pass#${fragment}`;",
@@ -77,13 +78,17 @@ Deno.test("anonymous recovery proof stays out of request URLs and analytics", ()
     "recovery proof must be placed after the URL fragment marker",
   );
   assert(
-    recoveryRoute.includes("window.location.hash") &&
-      !recoveryRoute.includes("window.location.search"),
-    "the recovery route must read the fragment, never the query string",
+    recoveryRoute.includes("StaticBuyerClaimPage") &&
+      recoveryRoute.includes("scrubFragment") &&
+      !recoveryRoute.includes("fetchPublicRsvpPass") &&
+      !recoveryRoute.includes("react-native-qrcode-svg"),
+    "the legacy route must render a static claim page without reading pass data",
   );
   for (const forbidden of ["recoveryToken:", "qrCode:", "email:", "phone:"]) {
     assert(
-      !recoveryRoute.includes(`captureWeb(\"rsvp_pass_viewed\", { ${forbidden}`),
+      !recoveryRoute.includes(
+        `captureWeb(\"rsvp_pass_viewed\", { ${forbidden}`,
+      ),
       `analytics must not include ${forbidden}`,
     );
   }
@@ -91,7 +96,7 @@ Deno.test("anonymous recovery proof stays out of request URLs and analytics", ()
 
 Deno.test("true-source authorization reversion is rejected", () => {
   const reverted = passEdge.replace(
-    "if (!authenticatedEntityOwner && !authenticatedPartyOwner && !recoveryAuthorized)",
+    "if (!authenticatedEntityOwner && !authenticatedPartyOwner)",
     "if (false)",
   );
   assert(

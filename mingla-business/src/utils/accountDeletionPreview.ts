@@ -25,7 +25,7 @@
 
 import type { BrandTeamEntry } from "../store/brandTeamStore";
 import type { Brand } from "../store/currentBrandStore";
-import type { DoorSaleRecord } from "../store/doorSalesStore";
+import type { DoorSaleRecord } from "../types/doorSales";
 import type { LiveEvent } from "../store/liveEventStore";
 import type { OrderRecord } from "../store/orderStore";
 import type { ScanRecord } from "../store/scanStore";

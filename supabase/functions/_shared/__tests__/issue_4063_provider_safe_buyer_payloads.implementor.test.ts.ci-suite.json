@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4063_provider_safe_buyer_payloads.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4063-provider-safe-buyer-payloads",
+  "profile": "deno-2-unit"
+}

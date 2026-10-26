@@ -263,9 +263,9 @@ Deno.test("ADV/I-3 — the retired `rsvp_pass_qr:` keyspace is absent from migra
   // [FAILS-ON-REVERT KEY] — the second keyspace must be fully merged away.
   assertEquals(count(rawSql, "rsvp_pass_qr:"), 0, "no rsvp_pass_qr: in migration (incl comments)");
   hasNotIn(drain, "rsvp_pass_qr:%", "drain no longer filters the retired prefix");
-  // Drain instead covers the canonical keyspace by template_key + pending.
-  hasIn(drain, '.eq("template_key", "rsvp_pass")', "drain selects canonical rsvp_pass rows");
-  hasIn(drain, '.eq("status", "pending")', "drain only pending (never re-invokes sent)");
+  // The canonical worker owns all RSVP queue selection and retry rules.
+  hasIn(drain, 'admin.functions.invoke(\n      "rsvp-notify"', "drain invokes the canonical worker");
+  hasIn(drain, "{ body: {} }", "worker receives a queue-drain request");
 });
 
 Deno.test("ADV/I-3 — EVERY SQL enqueue is ON CONFLICT DO NOTHING (count parity, no naked insert)", () => {
@@ -284,23 +284,24 @@ Deno.test("ADV/I-3 — EVERY SQL enqueue is ON CONFLICT DO NOTHING (count parity
 // ANGLE 4 (C-1) — the submit gate is a CONJUNCTION in ONE if(): drop EITHER
 // conjunct and the test goes RED. Proven structurally, not by string presence.
 // ─────────────────────────────────────────────────────────────────────────────
-Deno.test("ADV/C-1 — submit dispatch is gated on going AND approved AND a string rsvpId", () => {
-  // [FAILS-ON-REVERT KEY] — locate the dispatch call, then prove BOTH conjuncts
-  // appear in the if-condition immediately preceding it (between `if (` and the
-  // dispatch). A dropped conjunct breaks one of these includes.
-  const dispatchIdx = submit.indexOf("dispatchRsvpPasses(admin, eventId, result.rsvpId, userId)");
-  assert(dispatchIdx !== -1, "the submit dispatch call must exist");
-  // The nearest enclosing `if (` before the dispatch.
-  const ifIdx = submit.lastIndexOf("if (", dispatchIdx);
-  assert(ifIdx !== -1, "dispatch must be inside an if()");
-  const cond = submit.slice(ifIdx, dispatchIdx);
+Deno.test("ADV/C-1 — submit delivery is DB-owned and pass exposure requires going AND approved", () => {
+  // [FAILS-ON-REVERT KEY] — the delivery wrapper owns the enqueue transaction;
+  // the edge response independently exposes pass material only to admitted rows.
+  hasIn(
+    submit,
+    '.rpc("submit_event_rsvp_with_delivery"',
+    "submit calls the DB-owned delivery wrapper",
+  );
+  const gateIdx = submit.indexOf("const passEligible =");
+  assert(gateIdx !== -1, "the pass eligibility gate must exist");
+  const cond = submit.slice(gateIdx, submit.indexOf(";", gateIdx));
   assert(
     cond.includes('result.status === "going"'),
-    "the going conjunct must guard the dispatch",
+    "the going conjunct must guard pass exposure",
   );
   assert(
     cond.includes('result.approvalStatus === "approved"'),
-    "the approved conjunct must guard the dispatch",
+    "the approved conjunct must guard pass exposure",
   );
   // Both joined by && (a conjunction, not an OR that would leak a pending pass).
   assert(cond.includes("&&"), "the conjuncts are AND-joined (never OR)");

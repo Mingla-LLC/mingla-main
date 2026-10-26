@@ -84,7 +84,7 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
         "refund_decision, escalation_level, pickup_code, spot_label_at_order, " +
         "currency, subtotal_cents, service_charge_cents, buyer_subtotal_cents, " +
         "tax_amount_cents, tip_cents, total_cents, refunded_amount_cents, money_path, " +
-        "brand_id, provider, expires_at, stripe_payment_intent_id, " +
+        "brand_id, venue_id, buyer_name, provider, expires_at, stripe_payment_intent_id, " +
         "stripe_checkout_session_id, stripe_account_id, paystack_reference, metadata",
     )
     .eq("id", orderId)
@@ -108,6 +108,13 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
   if (stored.length === 0 || !constantTimeEquals(presented, stored)) {
     return jsonResponse({ error: "not_authorized" }, 403);
   }
+
+  const [{ data: brand }, { data: venue }] = await Promise.all([
+    supabase.from("brands").select("slug").eq("id", order.brand_id)
+      .maybeSingle(),
+    supabase.from("venues").select("slug").eq("id", order.venue_id)
+      .maybeSingle(),
+  ]);
 
   // D-7a — the guest ALWAYS has a way out, and the status card is where they
   // learn it. Cancel is legal only while nobody has picked the order up;
@@ -134,6 +141,9 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
 
   return jsonResponse({
     orderId: String(order.id),
+    buyerName: typeof order.buyer_name === "string" ? order.buyer_name : "",
+    brandSlug: typeof brand?.slug === "string" ? brand.slug : null,
+    venueSlug: typeof venue?.slug === "string" ? venue.slug : null,
     paymentStatus: String(order.payment_status),
     fulfillmentStatus: String(order.fulfillment_status),
     placedAt: order.created_at,

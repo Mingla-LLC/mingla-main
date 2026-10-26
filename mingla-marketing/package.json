@@ -36,6 +36,7 @@
     "test:issue-3548": "node scripts/issue-3548-local-fonts.implementor.happy.test.mjs",
     "test:issue-3645": "node ../scripts/ci/issue-3645-payout-screens.implementor.happy.test.mjs && node scripts/issue-3645-organiser-terms.implementor.happy.test.mjs && node scripts/issue-3645-organiser-terms.implementor.happy.test.mjs --built-only && node scripts/issue-3645-organiser-terms-search-ready.implementor.happy.test.mjs && node scripts/issue-3645-organiser-terms-search-ready.implementor.happy.test.mjs --built-only",
     "test:issue-3697": "node scripts/issue-3697-ad-privacy-copy.implementor.test.mjs",
+    "test:issue-4063": "node app/c/[code]/__tests__/issue-4063-claim-link.implementor.happy.test.mjs",
     "test:issue-3548:tester": "node scripts/issue-3548-local-fonts.tester.adversarial.test.mjs"
   },
   "dependencies": {

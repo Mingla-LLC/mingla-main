@@ -410,7 +410,6 @@ describe("server-backed draft lifecycle guards", () => {
       "app/(tabs)/home.tsx",
       "app/event/[id]/index.tsx",
       "app/checkout/[eventId]/index.tsx",
-      "app/o/[orderId].tsx",
     ];
 
     for (const file of files) {
@@ -418,6 +417,11 @@ describe("server-backed draft lifecycle guards", () => {
       expect(source).toContain("EventCoverMedia");
       expect(source).not.toContain("EventCover hue={event.coverHue}");
     }
+    // [TEST-MOD-APPROVED #4063] The legacy public order URL is now a static,
+    // credential-free app handoff, so it intentionally renders no event cover.
+    const legacyOrder = repoFile("app/o/[orderId].tsx");
+    expect(legacyOrder).toContain("StaticBuyerClaimPage");
+    expect(legacyOrder).not.toContain("EventCoverMedia");
   });
 
   test("published cover media server write is guarded by side-effect-free validation", () => {

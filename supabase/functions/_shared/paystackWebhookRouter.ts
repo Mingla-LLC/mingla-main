@@ -24,6 +24,10 @@ import { writeAudit } from "./audit.ts";
 import { qrTokenPepper } from "./ticketCheckout.ts";
 import { recordTicketProviderTotal } from "./orderMoneyTruth.ts";
 import {
+  cardFromPaystackAuthorization,
+  recordTicketPaymentCard,
+} from "./paymentCard.ts";
+import {
   isEvidenceHoldCandidate,
   releaseTicketEvidenceHold,
 } from "./ticketEvidenceHold.ts";
@@ -440,6 +444,16 @@ export async function handlePaystackChargeSuccess(
     provider: "paystack",
     providerTotalCents: verifiedAmount,
   });
+  const paymentCard = cardFromPaystackAuthorization(
+    txn?.authorization,
+    channel,
+  );
+  if (paymentCard) {
+    await recordTicketPaymentCard(supabase, {
+      checkoutSessionId: String(session.id),
+      card: paymentCard,
+    });
+  }
   const { data: finalized, error: finalizeError } = await supabase.rpc(
       "biz_ticket_checkout_finalize",
     {

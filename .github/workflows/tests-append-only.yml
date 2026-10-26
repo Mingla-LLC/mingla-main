@@ -188,6 +188,8 @@ jobs:
       # own logic is unproven can report a confident green it never measured.
       - name: "main-health self-test (regression guard)"
         run: node scripts/ci/main-health.mjs --self-test
+      - name: "Merge Certifier state-totality regression"
+        run: node --test scripts/ci/__tests__/issue-1865-merge-certifier.test.mjs
       - name: "Refuse to certify a merge onto a red main"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

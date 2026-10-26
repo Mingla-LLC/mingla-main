@@ -4,7 +4,7 @@
 //
 // Source-static-analysis + executable-model test (the app-mobile convention — no jest;
 // node-runnable, self-runs via require.main === module). Two halves:
-//   (A) STRUCTURE — the 11-step tour shape, the exact per-step tab mapping, the
+//   (A) STRUCTURE — the 12-step tour shape, the exact per-step tab mapping, the
 //       re-pointed/added ref-target wiring, the lockstep call-site bijection, and the
 //       removal of the step-4 'center' band-aid + the stale "step 6" comment.
 //   (B) BEHAVIOR — an executable model of the two-consecutive-match stable-measure loop
@@ -105,6 +105,8 @@ function run() {
   const contextSrc = readSource('src/contexts/CoachMarkContext.tsx');
   const hookSrc = readSource('src/hooks/useCoachMark.ts');
   const discoverSrc = readSource('src/components/DiscoverScreen.tsx');
+  const discoverHeaderSrc = readSource('src/components/discover/DiscoverHeader.tsx');
+  const discoverPillRowSrc = readSource('src/components/discover/DiscoverPillRow.tsx');
   const connectionsSrc = readSource('src/components/ConnectionsPage.tsx');
   const profileSrc = readSource('src/components/ProfilePage.tsx');
   const homeSrc = readSource('src/components/HomePage.tsx');
@@ -115,18 +117,18 @@ function run() {
   // PART A — STRUCTURE
   // ════════════════════════════════════════════════════════════════════════
 
-  // ── T-01 [FAILS-ON-REVERT]: exactly 11 contiguous steps ──
+  // ── T-01 [FAILS-ON-REVERT]: exactly 12 contiguous steps ──
   const steps = parseCoachSteps(stepsSrc);
   const ids = steps.map((s) => s.id);
-  assert.deepEqual(ids, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-    `T-01 COACH_STEPS must be 11 contiguous steps [1..11]; got [${ids.join(',')}]`);
+  assert.deepEqual(ids, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    `T-01 COACH_STEPS must be 12 contiguous steps [1..12]; got [${ids.join(',')}]`);
 
   // ── T-02 [FAILS-ON-REVERT]: exact per-step tab mapping (SPEC §5) ──
   const expectedTabs = {
     1: 'home', 2: 'home', 3: 'home',
     4: 'discover', 5: 'discover',
     6: 'connections', 7: 'connections',
-    8: 'profile', 9: 'profile', 10: 'profile', 11: 'profile',
+    8: 'profile', 9: 'profile', 10: 'profile', 11: 'profile', 12: 'profile',
   };
   for (const s of steps) {
     assert.equal(s.tab, expectedTabs[s.id],
@@ -134,16 +136,23 @@ function run() {
   }
 
   // ── T-03 [FAILS-ON-REVERT]: ref-target wiring per surface ──
-  // Discover: step 4 Events pill + step 5 Trips pill, attached per tab.id via the helper.
-  assert.ok(/useCoachMark\(4\b/.test(discoverSrc), 'T-03 DiscoverScreen step 4 (Events) present');
-  assert.ok(/useCoachMark\(5\b/.test(discoverSrc), 'T-03 DiscoverScreen step 5 (Trips) present');
-  assert.ok(/coachTabRefFor\(tab\.id\)/.test(discoverSrc),
-    'T-03 DiscoverScreen must attach the coach ref per tab.id on the tab Pressable');
-  assert.ok(/tabId === 'events'/.test(discoverSrc) && /tabId === 'trips'/.test(discoverSrc),
-    'T-03 the per-tab helper must map events→step4 and trips→step5');
-  // The step-4 ref must NOT still be on the broad header panel (wrong-node regression).
-  assert.ok(!/ref=\{coachDiscoverFeed\.targetRef\}/.test(discoverSrc),
-    'T-03 the step-4 ref must NOT be on the header panel (coachDiscoverFeed removed)');
+  // [TEST-MOD-APPROVED #3988] #4073 replaced the Events/Trips tabs with one
+  // content-type pill rail plus a filter affordance. Keep both coach steps on
+  // exact leaf controls: step 4 = first visible pill, step 5 = filter button.
+  assert.ok(/useCoachMark\(4\b/.test(discoverSrc), 'T-03 DiscoverScreen step 4 (content pill) present');
+  assert.ok(/useCoachMark\(5\b/.test(discoverSrc), 'T-03 DiscoverScreen step 5 (filter button) present');
+  assert.ok(/pillTargetRef=\{coachPills\.targetRef\}/.test(discoverSrc),
+    'T-03 DiscoverScreen must route step 4 into the generic pill rail');
+  assert.ok(/filterTargetRef=\{coachFilters\.targetRef\}/.test(discoverSrc),
+    'T-03 DiscoverScreen must route step 5 into the filter affordance');
+  assert.ok(/targetRef=\{props\.pillTargetRef\}/.test(discoverHeaderSrc),
+    'T-03 DiscoverHeader must forward the step-4 ref to DiscoverPillRow');
+  assert.ok(/ref=\{index === 0 \? targetRef : undefined\}/.test(discoverPillRowSrc),
+    'T-03 step 4 must attach to the first visible pill Pressable');
+  assert.ok(/ref=\{setFilterRef\}/.test(discoverHeaderSrc) && /props\.filterTargetRef\(node\)/.test(discoverHeaderSrc),
+    'T-03 step 5 must attach to the filter Pressable');
+  assert.ok(!/coachTabRefFor\(|coachDiscoverFeed\.targetRef/.test(discoverSrc),
+    'T-03 retired tab helpers and broad header targets must stay gone');
 
   // Connections: step 6 people icon + step 7 + button.
   assert.ok(/useCoachMark\(6\b/.test(connectionsSrc), 'T-03 ConnectionsPage step 6 (people) present');
@@ -154,13 +163,13 @@ function run() {
   assert.ok(!/ref=\{coachChatHeader\.targetRef/.test(connectionsSrc),
     'T-03 the people-icon ref must NOT be on the header row (coachChatHeader removed)');
 
-  // Profile: scroll steps 8/9/10/11 with explicit offset registrations + ref wrappers.
-  for (const sid of [8, 9, 10, 11]) {
+  // Profile: scroll steps 8..12 with explicit offset registrations + ref wrappers.
+  for (const sid of [8, 9, 10, 11, 12]) {
     assert.ok(new RegExp(`registerTargetScrollOffset\\(${sid}\\b`).test(profileSrc),
       `T-03 ProfilePage must register the step-${sid} scroll offset`);
   }
-  assert.ok(/interestsRef/.test(profileSrc) && /circleRef/.test(profileSrc),
-    'T-03 ProfilePage must add interestsRef + circleRef wrapping Views');
+  assert.ok(/purchasesRef/.test(profileSrc) && /interestsRef/.test(profileSrc) && /circleRef/.test(profileSrc),
+    'T-03 ProfilePage must add purchasesRef + interestsRef + circleRef wrapping Views');
   assert.ok(/registerTargetMeasurer\(/.test(profileSrc),
     'T-03 ProfilePage must register a direct post-scroll measurer per scroll step');
 
@@ -169,9 +178,9 @@ function run() {
     'T-03 HomePage steps 1+2 unchanged');
   assert.ok(/useCoachMark\(3\b/.test(indexSrc), 'T-03 app/index step 3 (Likes) unchanged');
 
-  // ── T-04 [FAILS-ON-REVERT]: SCROLL_STEPS = new Set([8, 9, 10, 11]) ──
-  assert.ok(/SCROLL_STEPS\s*=\s*new Set\(\[\s*8\s*,\s*9\s*,\s*10\s*,\s*11\s*\]\)/.test(contextSrc),
-    'T-04 SCROLL_STEPS must be new Set([8, 9, 10, 11])');
+  // ── T-04 [FAILS-ON-REVERT]: SCROLL_STEPS = new Set([8, 9, 10, 11, 12]) ──
+  assert.ok(/SCROLL_STEPS\s*=\s*new Set\(\[\s*8\s*,\s*9\s*,\s*10\s*,\s*11\s*,\s*12\s*\]\)/.test(contextSrc),
+    'T-04 SCROLL_STEPS must be new Set([8, 9, 10, 11, 12])');
 
   // ── T-05 [FAILS-ON-REVERT]: step-4 'center' band-aid removed; no step uses 'center' ──
   const stepsArrayBody = stepsSrc.slice(stepsSrc.indexOf('export const COACH_STEPS'));
@@ -199,11 +208,13 @@ function run() {
     assert.ok(stepIdSet.has(id), `T-07 dangling: call-site id ${id} references no step`);
   }
 
-  // ── T-08: progress bar + counter derive from COACH_STEP_COUNT (auto 11) ──
-  assert.ok(/length:\s*COACH_STEP_COUNT/.test(overlaySrc),
-    'T-08 progress bar must derive segment count from COACH_STEP_COUNT');
-  assert.ok(/total:\s*COACH_STEP_COUNT/.test(overlaySrc),
-    'T-08 step counter "N of M" must derive total from COACH_STEP_COUNT');
+  // ── T-08: progress bar + counter derive from the skip-aware tour progress ──
+  // [TEST-MOD-APPROVED #3988] #4073 made unavailable Discover pill steps
+  // skippable, so rendered progress must use the context's effective count.
+  assert.ok(/length:\s*coachProgress\.total/.test(overlaySrc),
+    'T-08 progress bar must derive segment count from skip-aware coachProgress.total');
+  assert.ok(/step_counter['"],\s*coachProgress/.test(overlaySrc),
+    'T-08 step counter "N of M" must use the same skip-aware coachProgress');
 
   // ════════════════════════════════════════════════════════════════════════
   // PART B — STABLE-MEASURE BEHAVIOR (executable model)
@@ -267,8 +278,8 @@ if (require.main === module) {
   try {
     run();
     console.log(
-      'PASS ORCH-1037/1035: 11-step tour with exact per-tab mapping, Events/Trips/people/+ refs ' +
-      're-pointed to leaf affordances, Profile scroll steps 8-11 measured (offset+measurer), ' +
+      'PASS ORCH-1037/1035/#4063: 12-step tour with exact per-tab mapping, Discover pill/filter and people/+ refs ' +
+      'point to leaf affordances, Profile scroll steps 8-12 measured (offset+measurer), ' +
       "step-4 'center' + stale comment removed, lockstep bijection holds, progress/counter auto-derive; " +
       'stable-measure loop rejects the mid-animation transient and accepts the settled rect'
     );

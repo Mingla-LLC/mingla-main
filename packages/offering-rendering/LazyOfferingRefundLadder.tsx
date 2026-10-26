@@ -12,8 +12,8 @@
  * evaluated: on business web the offering bodies are evaluated at boot on every
  * route, so a module-level load would fetch the ladder for visitors who never see
  * it. Once the chunk is in memory, every later mount renders the real ladder on
- * its first frame. On native the ladder is in the same bundle and the import
- * resolves at once.
+ * its first frame. Metro resolves `LazyOfferingRefundLadder.native.tsx` for
+ * iOS/Android so native never crosses this web-only chunk boundary.
  *
  * Until then the section reserves the ladder's height (`reservedLadderHeight`),
  * built from the ladder's own metrics and from the props it will render, so the
@@ -29,6 +29,9 @@ import { View } from "react-native";
 import type { FollowerCountLineProps } from "./FollowerCountLine";
 import type { OfferingRefundLadderProps } from "./OfferingRefundLadder";
 import type { SaleAvailabilityTextProps } from "./SaleAvailabilityText";
+import { reservedLadderHeight } from "./offeringRefundLadderReservation";
+
+export { reservedLadderHeight } from "./offeringRefundLadderReservation";
 
 type OfferingRefundLadderModule = typeof import("./OfferingRefundLadder");
 
@@ -58,36 +61,6 @@ export const loadOfferingRefundLadder =
     );
     return pendingLadder;
   };
-
-/**
- * The height OfferingRefundLadder takes for these props, from its own styles:
- * section margin 24; title 20px (line 24) + 12; a strip is 14 + 12×2 padding +
- * one 18px line (19 when its 15px check glyph shows); rows 8 + (7×2 + one 13px
- * line) each, with a 1px rule between rows; the closing note 12 + 18. A default
- * line is 1.2× its font size, and every text is taken as one line.
- */
-export function reservedLadderHeight({
-  policy,
-  bookingDeadline = null,
-  offeringType = "trip",
-  isPaid = true,
-}: OfferingRefundLadderProps): number {
-  const isTrip = offeringType === "trip";
-  const tiers = policy?.tiers ?? [];
-  const final =
-    !isTrip && tiers.length > 0 && tiers.every((t) => t.refund_pct === 0);
-  const disclosure = !isTrip && policy === null && isPaid;
-  const deadline = isTrip && Number.isFinite(Date.parse(bookingDeadline ?? ""));
-  if (policy === null && !deadline && !disclosure) return 0;
-  return (
-    60 +
-    (policy === null ? 0 : final ? 56 : 57) +
-    (disclosure ? 56 : 0) +
-    (tiers.length > 0 && !final ? 7 + tiers.length * 30.6 : 0) +
-    (!isTrip && policy !== null && !final ? 30 : 0) +
-    (deadline ? 57 : 0)
-  );
-}
 
 export const LazyOfferingRefundLadder = (props: OfferingRefundLadderProps) => {
   const [ladderModule, setLadderModule] = useState(loadedLadder);

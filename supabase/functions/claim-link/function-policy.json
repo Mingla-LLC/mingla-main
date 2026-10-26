@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "claim-link",
+  "verify_jwt": false,
+  "gateway_reason": "Public claim pointers resolve masked display data and mint bounded one-use handoffs; authenticated prefill and code settlement are rechecked inside the handler.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [
+      "RESEND_NOREPLY_FROM"
+    ],
+    "required_bundle_fields": {},
+    "required_top_level": [
+      "OFFERING_INVITE_TOKEN_PEPPER",
+      "RESEND_API_KEY",
+      "TERMII_API_KEY",
+      "TERMII_SENDER_ID",
+      "TWILIO_ACCOUNT_SID",
+      "TWILIO_AUTH_TOKEN",
+      "TWILIO_MESSAGING_SERVICE_SID",
+      "TWILIO_STATUS_CALLBACK_SECRET",
+      "app.qr_token_pepper"
+    ]
+  }
+}

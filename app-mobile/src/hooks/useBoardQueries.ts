@@ -34,6 +34,8 @@ export const boardKeys = {
   experiences: (boardId: string) => [...boardKeys.all, 'experiences', boardId] as const,
 };
 
+let nextBoardRealtimeOwner = 0;
+
 // ─── Query Hooks ─────────────────────────────────────────────────
 
 /** Fetch all boards for the current user. Replaces useBoards().boards and useEnhancedBoards().boards. */
@@ -317,14 +319,18 @@ export function useBoardRealtimeSync() {
   const queryClient = useQueryClient();
   const { user } = useAppStore();
   const userIdRef = useRef(user?.id);
+  const ownerRef = useRef<number | null>(null);
+  const epochRef = useRef(0);
+  if (ownerRef.current === null) ownerRef.current = ++nextBoardRealtimeOwner;
   userIdRef.current = user?.id;
 
   useEffect(() => {
     const userId = userIdRef.current;
     if (!userId) return;
+    const channelEpoch = ++epochRef.current;
 
     const channel = supabase
-      .channel(`board_changes_rq_${userId}`)
+      .channel(`board_changes_rq_${userId}:${ownerRef.current}:${channelEpoch}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'boards', filter: `created_by=eq.${userId}` },
@@ -356,7 +362,7 @@ export function useBoardRealtimeSync() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
   }, [queryClient, user?.id]);
 }
