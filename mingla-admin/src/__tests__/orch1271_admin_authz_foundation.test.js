@@ -146,10 +146,14 @@ describe("ORCH-1271 — admin UI scaffolding", () => {
     assert.match(sb, /const ICON_MAP = \{[\s\S]*?\bBuilding2\b[\s\S]*?\};/);
   });
   it("App.jsx routes #/business-people + #/business-brands (ORCH-1272 repoint)", () => {
-    // #4130: the consoles are drawn as tabs of People and Brands.
-    const hubs = readSrc("pages/shellHubs.jsx");
-    assert.match(hubs, /"business-people": PeopleConsolePage/);
-    assert.match(hubs, /"business-brands": BrandsConsolePage/);
+    // #4130: Wave 0 drew the consoles as tabs of People and Brands; Wave 3
+    // made People and Brands real pages that open each console as the full
+    // record of a person or brand.
+    const app = readSrc("App.jsx");
+    assert.match(app, /people: PeoplePage/);
+    assert.match(app, /brands: BrandsPage/);
+    assert.match(readSrc("pages/PeoplePage.jsx"), /return <PeopleConsolePage \/>/);
+    assert.match(readSrc("pages/BrandsPage.jsx"), /return <BrandsConsolePage \/>/);
   });
   it("HighRiskActionModal disables confirm until a non-empty reason (+ never fires onConfirm empty)", () => {
     const m = readSrc("components/entity/HighRiskActionModal.jsx");

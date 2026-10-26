@@ -245,6 +245,18 @@ on:
       - "mingla-admin/src/hooks/useHashQuery.js"
       - "mingla-admin/src/hooks/useReviewCount.js"
       - "mingla-admin/src/App.jsx"
+      # #4130 Wave 3 (People, Brands, Offerings): the suite and the files it reads.
+      - "mingla-admin/src/__tests__/issue_4130_wave3_people.implementor.test.js"
+      - "mingla-admin/src/lib/personActions.js"
+      - "mingla-admin/src/lib/peopleSegments.js"
+      - "mingla-admin/src/components/people/**"
+      - "mingla-admin/src/components/brands/**"
+      - "mingla-admin/src/pages/PeoplePage.jsx"
+      - "mingla-admin/src/pages/BrandsPage.jsx"
+      - "mingla-admin/src/pages/OfferingsConsolePage.jsx"
+      - "mingla-admin/src/pages/shellHubs.jsx"
+      - "mingla-admin/src/services/identityReadService.js"
+      - "supabase/migrations/20280113004130_issue_4130_people_brands_offerings.sql"
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
@@ -520,6 +532,18 @@ on:
       - "mingla-admin/src/hooks/useHashQuery.js"
       - "mingla-admin/src/hooks/useReviewCount.js"
       - "mingla-admin/src/App.jsx"
+      # #4130 Wave 3 (People, Brands, Offerings): the suite and the files it reads.
+      - "mingla-admin/src/__tests__/issue_4130_wave3_people.implementor.test.js"
+      - "mingla-admin/src/lib/personActions.js"
+      - "mingla-admin/src/lib/peopleSegments.js"
+      - "mingla-admin/src/components/people/**"
+      - "mingla-admin/src/components/brands/**"
+      - "mingla-admin/src/pages/PeoplePage.jsx"
+      - "mingla-admin/src/pages/BrandsPage.jsx"
+      - "mingla-admin/src/pages/OfferingsConsolePage.jsx"
+      - "mingla-admin/src/pages/shellHubs.jsx"
+      - "mingla-admin/src/services/identityReadService.js"
+      - "supabase/migrations/20280113004130_issue_4130_people_brands_offerings.sql"
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
@@ -750,6 +774,9 @@ jobs:
       - name: "Issue #4130 — admin menu as approved: retired pages redirect to their new homes, merged pages keep the union of their access, list export and sort cover every filtered row, stat trends coloured by direction"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_4130_wave0_shell.implementor.test.js
+      - name: "Issue #4130 — People, Brands and Offerings: a refused server action changes nothing (no browser-side delete), segment and readiness words, one state per offering, old addresses still open"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue_4130_wave3_people.implementor.test.js
       - name: "#3720 Slice B — email segments + single log writer (admin node:test)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_3720_email_segments.implementor.happy.test.js

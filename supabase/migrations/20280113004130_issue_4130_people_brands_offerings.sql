@@ -536,6 +536,7 @@ BEGIN
             OR (p_payments = 'ready' AND b.payment_readiness <> 'needs_bank')
             OR (p_payments = 'needs_bank' AND b.payment_readiness = 'needs_bank'))
        AND (v_search IS NULL
+            OR b.id::text = v_search
             OR b.name ILIKE '%' || v_search || '%'
             OR b.slug ILIKE '%' || v_search || '%'
             OR b.city ILIKE '%' || v_search || '%'

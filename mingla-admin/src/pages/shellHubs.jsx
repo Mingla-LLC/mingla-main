@@ -8,7 +8,7 @@
 //     is coming, plainly, and shows no numbers.
 //
 // [TRANSITIONAL] every export here is replaced by its wave's real page
-// (Wave 2a Mingla money, Wave 3 People and Brands, Wave 4a Hosts and creators
+// (Wave 2a Mingla money, Wave 4a Hosts and creators
 // and Inbound leads, Wave 4b Place pool, Platform health, Feature flags,
 // Settings, Team and roles) — exit when the last of those waves lands.
 import { Construction } from "lucide-react";
@@ -18,12 +18,6 @@ import { PageHub } from "../components/layout/PageHub";
 import { HostsPage, CreatorsPage } from "./PipelinePage";
 import { BetaLeadsPage } from "./BetaLeadsPage";
 import { ToolLeadsPage } from "./ToolLeadsPage";
-import { UserManagementPage } from "./UserManagementPage";
-import { PeopleConsolePage } from "./PeopleConsolePage";
-import { BrandsConsolePage } from "./BrandsConsolePage";
-import { BrandSitesPage } from "./BrandSitesPage";
-import { VenuesConsolePage } from "./VenuesConsolePage";
-import { ClaimsPage } from "./ClaimsPage";
 import { PlacePoolManagementPage } from "./PlacePoolManagementPage";
 import { LaunchCitiesPage } from "./LaunchCitiesPage";
 import { SignalLibraryPage } from "./SignalLibraryPage";
@@ -39,13 +33,6 @@ import { CareersPage } from "./CareersPage";
 // Old page id -> the component that draws it, per hub (lib/adminRoutes.js).
 const OUTREACH = { hosts: HostsPage, creators: CreatorsPage };
 const INBOUND = { "beta-leads": BetaLeadsPage, "tool-leads": ToolLeadsPage };
-const PEOPLE = { users: UserManagementPage, "business-people": PeopleConsolePage };
-const BRANDS = {
-  "business-brands": BrandsConsolePage,
-  "brand-sites": BrandSitesPage,
-  "business-venues": VenuesConsolePage,
-  claims: ClaimsPage,
-};
 const PLACE_POOL = {
   placepool: PlacePoolManagementPage,
   "launch-cities": LaunchCitiesPage,
@@ -59,8 +46,6 @@ const TEAM_AND_ROLES = { admin: AdminPage, careers: CareersPage };
 export const HUB_COMPONENTS = Object.freeze({
   outreach: OUTREACH,
   inbound: INBOUND,
-  people: PEOPLE,
-  brands: BRANDS,
   placepool: PLACE_POOL,
   "platform-health": PLATFORM_HEALTH,
   settings: SETTINGS,
@@ -72,12 +57,6 @@ export function OutreachHub({ onTabChange }) {
 }
 export function InboundHub({ onTabChange }) {
   return <PageHub pageId="inbound" components={INBOUND} onTabChange={onTabChange} />;
-}
-export function PeopleHub({ onTabChange }) {
-  return <PageHub pageId="people" components={PEOPLE} onTabChange={onTabChange} />;
-}
-export function BrandsHub({ onTabChange }) {
-  return <PageHub pageId="brands" components={BRANDS} onTabChange={onTabChange} />;
 }
 export function PlacePoolHub({ onTabChange }) {
   return <PageHub pageId="placepool" components={PLACE_POOL} onTabChange={onTabChange} />;

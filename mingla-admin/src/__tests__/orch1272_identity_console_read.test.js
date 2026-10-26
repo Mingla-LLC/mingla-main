@@ -182,12 +182,14 @@ describe("ORCH-1272 — nav + routing repointed", () => {
   });
   it("App.jsx routes #/business-people + #/business-brands (business-console gone)", () => {
     const app = readSrc("App.jsx");
-    // #4130: the consoles are drawn as tabs of People and Brands.
-    const hubs = readSrc("pages/shellHubs.jsx");
-    assert.match(hubs, /import \{ PeopleConsolePage \} from "\.\/PeopleConsolePage"/);
-    assert.match(hubs, /import \{ BrandsConsolePage \} from "\.\/BrandsConsolePage"/);
-    assert.match(hubs, /"business-people": PeopleConsolePage/);
-    assert.match(hubs, /"business-brands": BrandsConsolePage/);
+    // #4130 (Wave 3): People and Brands open each console as the full record
+    // of a person or brand (#/people?view=record, #/brands?view=record).
+    const people = readSrc("pages/PeoplePage.jsx");
+    const brands = readSrc("pages/BrandsPage.jsx");
+    assert.match(people, /import \{ PeopleConsolePage \} from "\.\/PeopleConsolePage"/);
+    assert.match(brands, /import \{ BrandsConsolePage \} from "\.\/BrandsConsolePage"/);
+    assert.match(app, /people: PeoplePage/);
+    assert.match(app, /brands: BrandsPage/);
     assert.doesNotMatch(app, /"business-console"/);
     assert.doesNotMatch(app, /BusinessConsolePage/);
   });

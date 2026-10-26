@@ -58,16 +58,10 @@ export const PAGE_HUB_TABS = Object.freeze({
     Object.freeze({ id: "beta", label: "Beta leads", hosts: "beta-leads" }),
     Object.freeze({ id: "tools", label: "Web tool leads", hosts: "tool-leads" }),
   ]),
-  people: Object.freeze([
-    Object.freeze({ id: "explorers", label: "Explorers", hosts: "users" }),
-    Object.freeze({ id: "hosts", label: "Hosts", hosts: "business-people" }),
-  ]),
-  brands: Object.freeze([
-    Object.freeze({ id: "brands", label: "Brands", hosts: "business-brands" }),
-    Object.freeze({ id: "websites", label: "Websites", hosts: "brand-sites" }),
-    Object.freeze({ id: "venues", label: "Venues", hosts: "business-venues" }),
-    Object.freeze({ id: "claims", label: "Venue claims", hosts: "claims" }),
-  ]),
+  // #4130 Wave 3: People and Brands are real pages now (PeoplePage,
+  // BrandsPage), not hubs. Their tab values above stay valid addresses:
+  // People reads explorers/hosts/..., Brands opens websites/venues/claims as
+  // the tools folded inside it (lib/peopleSegments.js BRAND_TOOL_TABS).
   placepool: Object.freeze([
     Object.freeze({ id: "places", label: "Places", hosts: "placepool" }),
     Object.freeze({ id: "cities", label: "Cities", hosts: "launch-cities" }),
