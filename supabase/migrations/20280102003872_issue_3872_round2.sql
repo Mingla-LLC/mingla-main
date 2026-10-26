@@ -5,6 +5,8 @@
 -- 3. Gig counts: a hired creator is no longer counted or listed as interested.
 -- 4. The contract workspace says where the creator's money is (money_state).
 -- 5. brand_promotion_overview: one read for the Blast Overview.
+-- 6. Gigs keep an exact video-due time and an optional exact shoot time.
+-- 7. gig_results can count from a date (p_since).
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 
@@ -359,7 +361,7 @@ BEGIN
     ) END,
     'next_action',public.issue_3872_creator_next_action(v.state),
     'pending_topup',(SELECT jsonb_build_object('terms_version',a.terms_version,'amount_minor',a.amount_minor,'currency',a.currency) FROM public.gig_hold_adjustments a WHERE a.contract_id=v.id AND a.kind='topup' AND a.status='pending'),
-    'gig',jsonb_build_object('id',g.id,'title_public',g.title_public,'brief_public',g.brief_public,'brief_private',CASE WHEN v_revealed THEN g.brief_private END,'brand_id',CASE WHEN v_revealed THEN g.brand_id END,'listing_kind',CASE WHEN v_revealed THEN g.listing_kind END,'listing_id',CASE WHEN v_revealed THEN g.listing_id END,'must_tag',CASE WHEN v_revealed THEN g.must_tag END,'format_key',g.format_key,'post_by',g.post_by),
+    'gig',jsonb_build_object('id',g.id,'video_due_at',g.video_due_at,'shoot_at',g.shoot_at,'title_public',g.title_public,'brief_public',g.brief_public,'brief_private',CASE WHEN v_revealed THEN g.brief_private END,'brand_id',CASE WHEN v_revealed THEN g.brand_id END,'listing_kind',CASE WHEN v_revealed THEN g.listing_kind END,'listing_id',CASE WHEN v_revealed THEN g.listing_id END,'must_tag',CASE WHEN v_revealed THEN g.must_tag END,'format_key',g.format_key,'post_by',g.post_by),
     'terms',coalesce((SELECT jsonb_agg(to_jsonb(t) ORDER BY version) FROM public.gig_terms_versions t WHERE t.contract_id=v.id),'[]'::jsonb),
     'proposals',coalesce((SELECT jsonb_agg(to_jsonb(p) ORDER BY created_at,id) FROM public.gig_change_proposals p WHERE p.contract_id=v.id),'[]'::jsonb),
     'events',coalesce((SELECT jsonb_agg(to_jsonb(e) ORDER BY at,id) FROM public.gig_events e WHERE e.contract_id=v.id),'[]'::jsonb),
@@ -544,5 +546,286 @@ END;
 $fn$;
 REVOKE ALL ON FUNCTION public.brand_promotion_overview(uuid,text,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.brand_promotion_overview(uuid,text,uuid) TO authenticated,service_role;
+
+-- 6. Exact video-due and shoot times on gigs -------------------------------
+-- The brief editor sends video_due_at (required) and shoot_at (optional; null
+-- means the creator proposes a time in Plan the shoot). post_by and the shoot
+-- window stay as the date view of the same facts for older readers.
+ALTER TABLE public.gigs
+  ADD COLUMN video_due_at timestamptz,
+  ADD COLUMN shoot_at timestamptz;
+-- Existing gigs: due at 23:59 on post_by in the listing's time zone.
+UPDATE public.gigs g SET video_due_at=(g.post_by+time '23:59') AT TIME ZONE public.issue_3872_gig_timezone(g.id)
+ WHERE g.video_due_at IS NULL AND g.post_by IS NOT NULL;
+
+-- Reads an exact time sent by a client. A value with no offset is the
+-- listing's local wall time. Returns NULL for anything unreadable.
+CREATE OR REPLACE FUNCTION public.issue_3872_listing_time(p_value text,p_tz text) RETURNS timestamptz
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+DECLARE v text:=btrim(coalesce(p_value,''));
+BEGIN
+  IF v='' THEN RETURN NULL; END IF;
+  IF v ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?$' THEN
+    RETURN v::timestamp AT TIME ZONE coalesce(nullif(p_tz,''),'UTC');
+  END IF;
+  IF v ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?(Z|[+-][0-9]{2}(:?[0-9]{2})?)$' THEN
+    RETURN v::timestamptz;
+  END IF;
+  RETURN NULL;
+EXCEPTION WHEN others THEN RETURN NULL;
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_3872_listing_time(text,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3872_listing_time(text,text) TO service_role;
+
+-- gig_save stores the exact times (everything else is unchanged).
+CREATE OR REPLACE FUNCTION public.gig_save(p_payload jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $fn$
+DECLARE
+  v_actor uuid:=auth.uid();
+  v_uuid constant text:='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+  v_date constant text:='^[0-9]{4}-[0-9]{2}-[0-9]{2}$';
+  v_int constant text:='^[0-9]{1,9}$';
+  v_brand uuid; v_id uuid; v_existing public.gigs; v_hits text[];
+  v_kind text; v_listing uuid; v_title text; v_brief text; v_private text; v_format text;
+  v_deliverables jsonb; v_must_tag jsonb; v_city uuid; v_category text;
+  v_start date; v_end date; v_post_by date; v_usage integer; v_band text; v_currency text;
+  v_share integer; v_passes integer; v_slots integer; v_visibility text; v_status text;
+  v_hired integer; v_constraint text;
+  v_tz text; v_due timestamptz; v_shoot_at timestamptz; v_due_txt text; v_shoot_txt text;
+BEGIN
+  IF v_actor IS NULL THEN RAISE EXCEPTION 'authentication_required' USING ERRCODE='28000'; END IF;
+  IF p_payload IS NULL OR jsonb_typeof(p_payload)<>'object' THEN
+    RETURN jsonb_build_object('ok',false,'error','invalid_payload');
+  END IF;
+  IF coalesce(p_payload->>'brand_id','')!~v_uuid THEN
+    RETURN jsonb_build_object('ok',false,'error','brand_required','field','brand_id');
+  END IF;
+  v_brand:=(p_payload->>'brand_id')::uuid;
+  IF NOT public.issue_3872_gig_host_writer(v_brand,v_actor) THEN RAISE EXCEPTION 'permission_denied' USING ERRCODE='42501'; END IF;
+  IF NOT public.issue_3872_creator_gigs_on(v_brand) THEN RAISE EXCEPTION 'creator_gigs_disabled' USING ERRCODE='55000'; END IF;
+
+  IF nullif(p_payload->>'id','') IS NOT NULL THEN
+    IF p_payload->>'id'!~v_uuid THEN RETURN jsonb_build_object('ok',false,'error','gig_not_found','field','id'); END IF;
+    v_id:=(p_payload->>'id')::uuid;
+    SELECT * INTO v_existing FROM public.gigs WHERE id=v_id FOR UPDATE;
+    -- Another brand's gig id used to fall through ON CONFLICT ... WHERE and
+    -- return ok without saving anything.
+    IF NOT FOUND OR v_existing.brand_id<>v_brand THEN RETURN jsonb_build_object('ok',false,'error','gig_not_found','field','id'); END IF;
+    IF v_existing.status NOT IN ('draft','open') THEN RETURN jsonb_build_object('ok',false,'error','gig_not_editable'); END IF;
+  ELSE
+    v_id:=gen_random_uuid();
+  END IF;
+
+  v_kind:=p_payload->>'listing_kind';
+  IF v_kind NOT IN ('event','venue') OR v_kind IS NULL THEN RETURN jsonb_build_object('ok',false,'error','listing_required','field','listing_kind'); END IF;
+  IF coalesce(p_payload->>'listing_id','')!~v_uuid THEN RETURN jsonb_build_object('ok',false,'error','listing_required','field','listing_id'); END IF;
+  v_listing:=(p_payload->>'listing_id')::uuid;
+  -- The listing must belong to the saving brand (cross-brand ids were accepted).
+  IF (v_kind='event' AND NOT EXISTS(SELECT 1 FROM public.events e WHERE e.id=v_listing AND e.brand_id=v_brand AND e.deleted_at IS NULL))
+     OR (v_kind='venue' AND NOT EXISTS(SELECT 1 FROM public.venue_listings vl WHERE vl.id=v_listing AND vl.brand_id=v_brand)) THEN
+    RETURN jsonb_build_object('ok',false,'error','listing_not_found','field','listing_id');
+  END IF;
+  IF v_existing.id IS NOT NULL AND (v_existing.listing_kind<>v_kind OR v_existing.listing_id<>v_listing) THEN
+    RETURN jsonb_build_object('ok',false,'error','listing_immutable','field','listing_id');
+  END IF;
+
+  v_title:=btrim(coalesce(p_payload->>'title_public',''));
+  IF char_length(v_title) NOT BETWEEN 8 AND 70 THEN RETURN jsonb_build_object('ok',false,'error','title_length','field','title_public'); END IF;
+  v_brief:=btrim(coalesce(p_payload->>'brief_public',''));
+  IF char_length(v_brief) NOT BETWEEN 40 AND 800 THEN RETURN jsonb_build_object('ok',false,'error','brief_length','field','brief_public'); END IF;
+  v_private:=nullif(btrim(coalesce(p_payload->>'brief_private','')),'');
+  IF char_length(coalesce(v_private,''))>2000 THEN RETURN jsonb_build_object('ok',false,'error','private_brief_length','field','brief_private'); END IF;
+  v_format:=p_payload->>'format_key';
+  IF NOT EXISTS(SELECT 1 FROM public.gig_formats f WHERE f.key=v_format AND f.active) THEN RETURN jsonb_build_object('ok',false,'error','format_invalid','field','format_key'); END IF;
+  v_deliverables:=p_payload->'deliverables';
+  IF v_deliverables IS NULL OR jsonb_typeof(v_deliverables)<>'array' OR jsonb_array_length(v_deliverables) NOT BETWEEN 1 AND 10 THEN
+    RETURN jsonb_build_object('ok',false,'error','deliverables_invalid','field','deliverables');
+  END IF;
+  v_must_tag:=CASE WHEN p_payload->'must_tag' IS NULL OR jsonb_typeof(p_payload->'must_tag')='null' THEN '{}'::jsonb ELSE p_payload->'must_tag' END;
+  IF jsonb_typeof(v_must_tag)<>'object' THEN RETURN jsonb_build_object('ok',false,'error','must_tag_invalid','field','must_tag'); END IF;
+  IF coalesce(p_payload->>'city_id','')!~v_uuid OR NOT EXISTS(SELECT 1 FROM public.seeding_cities WHERE id=(p_payload->>'city_id')::uuid) THEN
+    RETURN jsonb_build_object('ok',false,'error','city_required','field','city_id');
+  END IF;
+  v_city:=(p_payload->>'city_id')::uuid;
+  v_category:=btrim(coalesce(p_payload->>'category',''));
+  IF char_length(v_category) NOT BETWEEN 2 AND 60 THEN RETURN jsonb_build_object('ok',false,'error','category_invalid','field','category'); END IF;
+  -- Round 2: exact times. video_due_at is required (old clients may send
+  -- post_by only: due at 23:59 that day); shoot_at is optional (null means
+  -- the creator proposes a time in Plan the shoot). A time with no offset is
+  -- the listing's local time.
+  v_tz:=coalesce((SELECT nullif(e.timezone,'') FROM public.events e WHERE v_kind='event' AND e.id=v_listing),'UTC');
+  v_due_txt:=nullif(btrim(coalesce(p_payload->>'video_due_at','')),'');
+  v_shoot_txt:=nullif(btrim(coalesce(p_payload->>'shoot_at','')),'');
+  IF v_due_txt IS NOT NULL THEN
+    v_due:=public.issue_3872_listing_time(v_due_txt,v_tz);
+    IF v_due IS NULL THEN RETURN jsonb_build_object('ok',false,'error','video_due_required','field','video_due_at'); END IF;
+    v_post_by:=(v_due AT TIME ZONE v_tz)::date;
+  ELSIF coalesce(p_payload->>'post_by','')~v_date THEN
+    BEGIN v_post_by:=(p_payload->>'post_by')::date;
+    EXCEPTION WHEN others THEN RETURN jsonb_build_object('ok',false,'error','date_invalid','field','post_by'); END;
+    v_due:=(v_post_by+time '23:59') AT TIME ZONE v_tz;
+  ELSE
+    RETURN jsonb_build_object('ok',false,'error','video_due_required','field','video_due_at');
+  END IF;
+  IF v_shoot_txt IS NOT NULL THEN
+    v_shoot_at:=public.issue_3872_listing_time(v_shoot_txt,v_tz);
+    IF v_shoot_at IS NULL THEN RETURN jsonb_build_object('ok',false,'error','date_invalid','field','shoot_at'); END IF;
+  END IF;
+  -- A set shoot time with no window shoots on that day.
+  IF v_shoot_at IS NOT NULL AND coalesce(p_payload->>'shoot_window_start','')='' AND coalesce(p_payload->>'shoot_window_end','')='' THEN
+    v_start:=(v_shoot_at AT TIME ZONE v_tz)::date; v_end:=v_start;
+  ELSE
+    IF coalesce(p_payload->>'shoot_window_start','')!~v_date THEN RETURN jsonb_build_object('ok',false,'error','date_invalid','field','shoot_window_start'); END IF;
+    IF coalesce(p_payload->>'shoot_window_end','')!~v_date THEN RETURN jsonb_build_object('ok',false,'error','date_invalid','field','shoot_window_end'); END IF;
+    BEGIN
+      v_start:=(p_payload->>'shoot_window_start')::date; v_end:=(p_payload->>'shoot_window_end')::date;
+    EXCEPTION WHEN others THEN RETURN jsonb_build_object('ok',false,'error','date_invalid','field','shoot_window_start');
+    END;
+  END IF;
+  -- Past shoot windows were accepted. A new or moved window must start today
+  -- or later; every window must still be open.
+  IF v_end<current_date THEN RETURN jsonb_build_object('ok',false,'error','shoot_window_in_past','field','shoot_window_end'); END IF;
+  IF v_start<current_date AND (v_existing.id IS NULL OR v_existing.shoot_window_start IS DISTINCT FROM v_start) THEN
+    RETURN jsonb_build_object('ok',false,'error','shoot_window_in_past','field','shoot_window_start');
+  END IF;
+  IF v_end<v_start THEN RETURN jsonb_build_object('ok',false,'error','shoot_window_order','field','shoot_window_end'); END IF;
+  IF v_shoot_at IS NOT NULL THEN
+    IF v_shoot_at<=now() AND (v_existing.id IS NULL OR v_existing.shoot_at IS DISTINCT FROM v_shoot_at) THEN
+      RETURN jsonb_build_object('ok',false,'error','shoot_window_in_past','field','shoot_at');
+    END IF;
+    IF (v_shoot_at AT TIME ZONE v_tz)::date NOT BETWEEN v_start AND v_end THEN
+      RETURN jsonb_build_object('ok',false,'error','shoot_outside_window','field','shoot_at');
+    END IF;
+  END IF;
+  -- The video must be due in the future (an unchanged due time on an edit
+  -- may stay as it was) and after the shoot.
+  IF v_due<=now() AND (v_existing.id IS NULL OR v_existing.video_due_at IS DISTINCT FROM v_due) THEN
+    RETURN jsonb_build_object('ok',false,'error','video_due_required','field','video_due_at');
+  END IF;
+  IF v_shoot_at IS NOT NULL AND v_due<=v_shoot_at THEN
+    RETURN jsonb_build_object('ok',false,'error','video_due_before_shoot','field','video_due_at');
+  END IF;
+  IF v_post_by<v_end THEN RETURN jsonb_build_object('ok',false,'error','post_by_before_shoot','field','post_by'); END IF;
+  IF coalesce(nullif(p_payload->>'usage_days',''),'90')!~v_int THEN RETURN jsonb_build_object('ok',false,'error','usage_invalid','field','usage_days'); END IF;
+  v_usage:=coalesce(nullif(p_payload->>'usage_days',''),'90')::integer;
+  IF v_usage NOT IN (30,90,365) THEN RETURN jsonb_build_object('ok',false,'error','usage_invalid','field','usage_days'); END IF;
+  v_band:=p_payload->>'budget_band';
+  IF v_band IS NULL OR v_band NOT IN ('b1','b2','b3','b4') THEN RETURN jsonb_build_object('ok',false,'error','budget_band_invalid','field','budget_band'); END IF;
+  v_currency:=upper(btrim(coalesce(p_payload->>'currency','')));
+  IF v_currency!~'^[A-Z]{3}$' THEN RETURN jsonb_build_object('ok',false,'error','currency_invalid','field','currency'); END IF;
+  IF v_existing.id IS NOT NULL AND v_existing.currency<>v_currency THEN RETURN jsonb_build_object('ok',false,'error','currency_immutable','field','currency'); END IF;
+  IF nullif(p_payload->>'sales_share_bps','') IS NOT NULL THEN
+    IF p_payload->>'sales_share_bps'!~v_int OR (p_payload->>'sales_share_bps')::integer NOT BETWEEN 100 AND 3000 THEN
+      RETURN jsonb_build_object('ok',false,'error','sales_share_invalid','field','sales_share_bps');
+    END IF;
+    v_share:=(p_payload->>'sales_share_bps')::integer;
+  END IF;
+  IF coalesce(nullif(p_payload->>'shoot_passes',''),'1')!~v_int OR coalesce(nullif(p_payload->>'shoot_passes',''),'1')::integer NOT BETWEEN 0 AND 4 THEN
+    RETURN jsonb_build_object('ok',false,'error','shoot_passes_invalid','field','shoot_passes');
+  END IF;
+  v_passes:=coalesce(nullif(p_payload->>'shoot_passes',''),'1')::integer;
+  IF coalesce(nullif(p_payload->>'slots',''),'1')!~v_int OR coalesce(nullif(p_payload->>'slots',''),'1')::integer NOT BETWEEN 1 AND 10 THEN
+    RETURN jsonb_build_object('ok',false,'error','slots_invalid','field','slots');
+  END IF;
+  v_slots:=coalesce(nullif(p_payload->>'slots',''),'1')::integer;
+  IF v_existing.id IS NOT NULL THEN
+    SELECT count(*) INTO v_hired FROM public.gig_contracts x WHERE x.gig_id=v_id AND x.state NOT IN ('declined','expired','cancelled','resolved_refund');
+    IF v_slots<v_hired THEN RETURN jsonb_build_object('ok',false,'error','slots_below_hired','field','slots'); END IF;
+  END IF;
+  v_visibility:=coalesce(nullif(p_payload->>'visibility',''),'board');
+  IF v_visibility NOT IN ('board','invite_only') THEN RETURN jsonb_build_object('ok',false,'error','visibility_invalid','field','visibility'); END IF;
+  v_status:=coalesce(nullif(p_payload->>'status',''),coalesce(v_existing.status,'draft'));
+  IF v_status NOT IN ('draft','open','closed','cancelled') OR (v_existing.id IS NULL AND v_status NOT IN ('draft','open')) THEN
+    RETURN jsonb_build_object('ok',false,'error','status_invalid','field','status');
+  END IF;
+
+  v_hits:=public.issue_3872_brief_lint(v_brand,v_kind,v_listing,v_title)
+    || public.issue_3872_brief_lint(v_brand,v_kind,v_listing,v_brief);
+  IF cardinality(v_hits)>0 THEN
+    RETURN jsonb_build_object('ok',false,'error','public_brief_not_anonymous','reasons',to_jsonb(v_hits),'field','brief_public');
+  END IF;
+
+  BEGIN
+    IF v_existing.id IS NULL THEN
+      INSERT INTO public.gigs(id,brand_id,listing_kind,listing_id,title_public,brief_public,brief_private,format_key,deliverables,must_tag,city_id,category,shoot_window_start,shoot_window_end,post_by,video_due_at,shoot_at,usage_days,budget_band,currency,sales_share_bps,shoot_passes,slots,visibility,status,created_by)
+      VALUES(v_id,v_brand,v_kind,v_listing,v_title,v_brief,v_private,v_format,v_deliverables,v_must_tag,v_city,v_category,v_start,v_end,v_post_by,v_due,v_shoot_at,v_usage,v_band,v_currency,v_share,v_passes,v_slots,v_visibility,v_status,v_actor);
+    ELSE
+      UPDATE public.gigs SET title_public=v_title,brief_public=v_brief,brief_private=v_private,format_key=v_format,
+        deliverables=v_deliverables,must_tag=v_must_tag,city_id=v_city,category=v_category,
+        shoot_window_start=v_start,shoot_window_end=v_end,post_by=v_post_by,video_due_at=v_due,shoot_at=v_shoot_at,usage_days=v_usage,
+        budget_band=v_band,sales_share_bps=v_share,shoot_passes=v_passes,slots=v_slots,
+        visibility=v_visibility,status=v_status,version=version+1
+      WHERE id=v_id;
+    END IF;
+  EXCEPTION WHEN check_violation OR not_null_violation OR foreign_key_violation OR invalid_text_representation OR numeric_value_out_of_range THEN
+    -- Never surface raw constraint text; name the constraint as the field.
+    GET STACKED DIAGNOSTICS v_constraint=CONSTRAINT_NAME;
+    RETURN jsonb_build_object('ok',false,'error','invalid_gig','field',coalesce(nullif(v_constraint,''),'gig'));
+  END;
+  RETURN jsonb_build_object('ok',true,'id',v_id,'status',v_status);
+END;
+$fn$
+;
+
+-- The creator's gig card and detail carry the exact times.
+CREATE OR REPLACE FUNCTION public.issue_3872_public_gig_json(p_gig_id uuid,p_viewer uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+  SELECT jsonb_build_object(
+    'id',g.id,'title_public',g.title_public,'brief_public',g.brief_public,'format_key',g.format_key,
+    'deliverables',g.deliverables,'city_name',c.name,'category',g.category,
+    'shoot_window',jsonb_build_object('start',g.shoot_window_start,'end',g.shoot_window_end),
+    'post_by',g.post_by,'video_due_at',g.video_due_at,'shoot_at',g.shoot_at,
+    'usage_days',g.usage_days,'budget_band',g.budget_band,
+    'budget_min_minor',bb.min_minor,'budget_max_minor',bb.max_minor,'budget_currency',bb.currency,
+    'sales_share_bps',g.sales_share_bps,'slots_left',public.issue_3872_gig_slots_left(g.id),
+    'saved',EXISTS(SELECT 1 FROM public.creator_saved_gigs s WHERE s.gig_id=g.id AND s.creator_account_id=p_viewer)
+  )
+  FROM public.gigs g
+  JOIN public.seeding_cities c ON c.id=g.city_id
+  LEFT JOIN public.gig_budget_bands bb ON bb.currency=g.currency AND bb.band=g.budget_band
+  WHERE g.id=p_gig_id;
+$fn$;
+
+-- 7. Results since a date --------------------------------------------------
+-- p_since (optional) counts only orders, sales and clicks attributed on or
+-- after it. The old two-argument form is replaced; calls without p_since
+-- behave exactly as before.
+DROP FUNCTION IF EXISTS public.gig_results(uuid,uuid);
+CREATE FUNCTION public.gig_results(p_brand_id uuid,p_gig_id uuid DEFAULT NULL,p_since timestamptz DEFAULT NULL) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+BEGIN
+  IF NOT public.biz_is_brand_member_for_read(p_brand_id,auth.uid()) THEN RAISE EXCEPTION 'permission_denied' USING ERRCODE='42501'; END IF;
+  RETURN coalesce((
+    SELECT jsonb_agg(jsonb_build_object(
+      'contract_id',c.id,'gig_id',g.id,'gig_title',g.title_public,'creator_id',c.creator_account_id,
+      'creator_display_name',p.display_name,'fee_minor',tv.fee_minor,'currency',tv.currency,
+      'orders',coalesce(st.orders,0),'tickets',coalesce(st.tickets,0),'sold_minor',coalesce(st.sold_minor,0),
+      'clicks',coalesce((SELECT count(*) FROM public.attribution_touches t WHERE c.referral_member_id IS NOT NULL AND t.member_id=c.referral_member_id
+        AND (p_since IS NULL OR t.touched_at>=p_since)),0)
+    ) ORDER BY c.created_at DESC)
+    FROM public.gig_contracts c
+    JOIN public.gigs g ON g.id=c.gig_id
+    JOIN public.creator_profiles p ON p.creator_account_id=c.creator_account_id
+    LEFT JOIN public.gig_terms_versions tv ON tv.contract_id=c.id AND tv.version=c.current_terms_version
+    LEFT JOIN LATERAL (
+      SELECT count(*)::integer AS orders,
+        coalesce(sum(a.eligible_minor),0)::bigint AS sold_minor,
+        coalesce(sum((SELECT count(*) FROM public.tickets tk WHERE a.order_kind='ticket' AND tk.order_id=a.order_id)),0)::integer AS tickets
+      FROM public.order_attributions a
+      WHERE c.referral_member_id IS NOT NULL AND a.member_id=c.referral_member_id AND a.rejected_reason IS NULL
+        AND (p_since IS NULL OR a.created_at>=p_since)
+    ) st ON true
+    WHERE c.brand_id=p_brand_id AND (p_gig_id IS NULL OR c.gig_id=p_gig_id)
+      AND c.state NOT IN ('offered','declined','expired','cancelled')
+  ),'[]'::jsonb);
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.gig_results(uuid,uuid,timestamptz) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.gig_results(uuid,uuid,timestamptz) TO authenticated,service_role;
 
 COMMIT;

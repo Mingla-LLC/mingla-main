@@ -187,4 +187,47 @@ BEGIN
 END;
 $test$;
 
+-- Exact times: the video due time is required, in the future and after the
+-- shoot; a shoot time must sit in its window. gig_results keeps its old
+-- call shape and p_since never widens what a stranger can read.
+DO $test$
+DECLARE
+  v_day date:=current_date+5; v_base jsonb; v_r jsonb; v_failed boolean;
+BEGIN
+  PERFORM pg_temp.act('38725000-0000-4000-8000-0000000000a1');
+  v_base:=jsonb_build_object('brand_id','38725000-0000-4000-8000-0000000000b1','listing_kind','event','listing_id','38725000-0000-4000-8000-0000000000e1',
+    'title_public','An evening rooftop reel','brief_public','Show a relaxed evening on a rooftop with music, drinks and the view across the city.',
+    'format_key','date_idea','deliverables','[{"platform":"instagram","kind":"reel","count":1}]'::jsonb,'city_id','38725000-0000-4000-8000-0000000000c1',
+    'category','experience','shoot_window_start',v_day,'shoot_window_end',v_day,
+    'budget_band','b2','currency','USD','slots',1,'status','open');
+  v_r:=public.gig_save(v_base);
+  IF v_r->>'error' IS DISTINCT FROM 'video_due_required' OR v_r->>'field' IS DISTINCT FROM 'video_due_at' THEN RAISE EXCEPTION 'missing due time: %',v_r; END IF;
+  v_r:=public.gig_save(v_base||jsonb_build_object('video_due_at','next tuesday'));
+  IF v_r->>'error' IS DISTINCT FROM 'video_due_required' THEN RAISE EXCEPTION 'unreadable due time: %',v_r; END IF;
+  v_r:=public.gig_save(v_base||jsonb_build_object('video_due_at',to_char(current_date-1,'YYYY-MM-DD')||'T12:00','shoot_window_start',current_date,'shoot_window_end',current_date));
+  IF v_r->>'error' IS DISTINCT FROM 'video_due_required' OR v_r->>'field' IS DISTINCT FROM 'video_due_at' THEN RAISE EXCEPTION 'past due time: %',v_r; END IF;
+  v_r:=public.gig_save(v_base||jsonb_build_object('video_due_at',to_char(v_day,'YYYY-MM-DD')||'T18:00','shoot_at',to_char(v_day,'YYYY-MM-DD')||'T20:00'));
+  IF v_r->>'error' IS DISTINCT FROM 'video_due_before_shoot' OR v_r->>'field' IS DISTINCT FROM 'video_due_at' THEN RAISE EXCEPTION 'due before shoot: %',v_r; END IF;
+  v_r:=public.gig_save(v_base||jsonb_build_object('video_due_at',to_char(v_day,'YYYY-MM-DD')||'T20:00','shoot_at',to_char(v_day,'YYYY-MM-DD')||'T20:00'));
+  IF v_r->>'error' IS DISTINCT FROM 'video_due_before_shoot' THEN RAISE EXCEPTION 'due equal to shoot: %',v_r; END IF;
+  v_r:=public.gig_save(v_base||jsonb_build_object('video_due_at',to_char(v_day+5,'YYYY-MM-DD')||'T20:00','shoot_at',to_char(v_day+2,'YYYY-MM-DD')||'T20:00','post_by',v_day+5));
+  IF v_r->>'error' IS DISTINCT FROM 'shoot_outside_window' OR v_r->>'field' IS DISTINCT FROM 'shoot_at' THEN RAISE EXCEPTION 'shoot outside window: %',v_r; END IF;
+  IF EXISTS(SELECT 1 FROM public.gigs WHERE brand_id='38725000-0000-4000-8000-0000000000b1' AND title_public='An evening rooftop reel') THEN
+    RAISE EXCEPTION 'a refused save wrote a gig';
+  END IF;
+
+  -- gig_results: the old named and positional calls still work.
+  PERFORM public.gig_results('38725000-0000-4000-8000-0000000000b1');
+  PERFORM public.gig_results('38725000-0000-4000-8000-0000000000b1','38725000-0000-4000-8000-0000000000f1');
+  v_r:=public.gig_results('38725000-0000-4000-8000-0000000000b1',NULL,now()+interval '1 day');
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(v_r) r WHERE (r->>'orders')::int>0 OR (r->>'clicks')::int>0) THEN RAISE EXCEPTION 'future p_since still counted: %',v_r; END IF;
+  IF to_regprocedure('public.gig_results(uuid,uuid)') IS NOT NULL THEN RAISE EXCEPTION 'an ambiguous two-argument gig_results remains'; END IF;
+  PERFORM pg_temp.act('38725000-0000-4000-8000-0000000000a5');
+  v_failed:=false;
+  BEGIN PERFORM public.gig_results('38725000-0000-4000-8000-0000000000b1',NULL,now()-interval '1 year');
+  EXCEPTION WHEN others THEN v_failed:=SQLERRM='permission_denied'; END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'stranger read results with p_since'; END IF;
+END;
+$test$;
+
 ROLLBACK;

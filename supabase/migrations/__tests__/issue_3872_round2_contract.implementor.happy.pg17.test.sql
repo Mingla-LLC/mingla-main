@@ -30,6 +30,7 @@ INSERT INTO public.events(id,brand_id,title,slug,status,published_at,created_at)
   ('38724000-0000-4000-8000-0000000000e4','38724000-0000-4000-8000-0000000000b1','Draft Party','r2-draft','draft',NULL,now());
 INSERT INTO public.event_dates(event_id,start_at,end_at,is_master) VALUES
   ('38724000-0000-4000-8000-0000000000e1',now()+interval '10 days',now()+interval '10 days 4 hours',true);
+UPDATE public.events SET timezone='America/New_York' WHERE id='38724000-0000-4000-8000-0000000000e1';
 INSERT INTO public.creator_accounts(id,email,display_name) VALUES
   ('38724000-0000-4000-8000-0000000000a3','r2-creator@mingla.test','Ada Films'),
   ('38724000-0000-4000-8000-0000000000a4','r2-creator2@mingla.test','Bo Clips'),
@@ -286,6 +287,90 @@ BEGIN
    WHERE c.gig_id='38724000-0000-4000-8000-0000000000f1' AND c.creator_account_id='38724000-0000-4000-8000-0000000000a3';
   IF v_r->>'money_state' IS DISTINCT FROM 'ready' OR v_r->'money_paid_at'<>'null'::jsonb THEN
     RAISE EXCEPTION 'ready fee: state % paid_at %',v_r->>'money_state',v_r->'money_paid_at';
+  END IF;
+END;
+$test$;
+
+-- 6. Exact video-due and shoot times. The Host sends local wall times; the
+-- Sunset event is in New York.
+DO $test$
+DECLARE
+  v_brand constant uuid:='38724000-0000-4000-8000-0000000000b1';
+  v_day date:=current_date+5; v_r jsonb; v_gig uuid; v_row public.gigs; v_payload jsonb; v_c uuid;
+BEGIN
+  PERFORM pg_temp.act('38724000-0000-4000-8000-0000000000a1');
+  v_payload:=jsonb_build_object('brand_id',v_brand,'listing_kind','event','listing_id','38724000-0000-4000-8000-0000000000e1',
+    'title_public','An evening rooftop reel','brief_public','Show a relaxed evening on a rooftop with music, drinks and the view across the city.',
+    'format_key','date_idea','deliverables','[{"platform":"instagram","kind":"reel","count":1}]'::jsonb,'city_id','38724000-0000-4000-8000-0000000000c1',
+    'category','experience','shoot_window_start',v_day,'shoot_window_end',v_day,'post_by',v_day+2,
+    'video_due_at',to_char(v_day+2,'YYYY-MM-DD')||'T18:30','shoot_at',to_char(v_day,'YYYY-MM-DD')||'T21:00',
+    'budget_band','b2','currency','USD','slots',1,'status','open');
+  v_r:=public.gig_save(v_payload);
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'gig_save with exact times: %',v_r; END IF;
+  v_gig:=(v_r->>'id')::uuid;
+  SELECT * INTO v_row FROM public.gigs WHERE id=v_gig;
+  IF v_row.video_due_at IS DISTINCT FROM ((v_day+2)+time '18:30') AT TIME ZONE 'America/New_York'
+     OR v_row.shoot_at IS DISTINCT FROM (v_day+time '21:00') AT TIME ZONE 'America/New_York'
+     OR v_row.post_by<>v_day+2 THEN
+    RAISE EXCEPTION 'exact times not stored in the listing time zone: due % shoot % post_by %',v_row.video_due_at,v_row.shoot_at,v_row.post_by;
+  END IF;
+  IF (SELECT (g->>'video_due_at')::timestamptz FROM jsonb_array_elements(public.gig_host_home(v_brand)->'gigs') g WHERE g->>'id'=v_gig::text) IS DISTINCT FROM v_row.video_due_at
+     OR (SELECT (g->>'shoot_at')::timestamptz FROM jsonb_array_elements(public.gig_host_home(v_brand)->'gigs') g WHERE g->>'id'=v_gig::text) IS DISTINCT FROM v_row.shoot_at THEN
+    RAISE EXCEPTION 'host home lacks the exact times';
+  END IF;
+  -- Leaving the shoot time empty means the creator proposes one.
+  v_r:=public.gig_save(v_payload||jsonb_build_object('id',v_gig,'shoot_at',NULL));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (SELECT shoot_at FROM public.gigs WHERE id=v_gig) IS NOT NULL THEN RAISE EXCEPTION 'clearing shoot_at: %',v_r; END IF;
+  PERFORM public.gig_save(v_payload||jsonb_build_object('id',v_gig));
+  -- Creator reads.
+  PERFORM pg_temp.act('38724000-0000-4000-8000-0000000000a4');
+  v_r:=public.creator_gig_detail(v_gig);
+  IF (v_r->>'video_due_at')::timestamptz IS DISTINCT FROM v_row.video_due_at OR (v_r->>'shoot_at')::timestamptz IS DISTINCT FROM v_row.shoot_at THEN
+    RAISE EXCEPTION 'creator gig detail lacks the exact times: %',v_r;
+  END IF;
+  -- The contract workspace carries them too.
+  PERFORM pg_temp.act('38724000-0000-4000-8000-0000000000a1');
+  SELECT id INTO v_c FROM public.gig_contracts WHERE gig_id='38724000-0000-4000-8000-0000000000f1' AND creator_account_id='38724000-0000-4000-8000-0000000000a3';
+  UPDATE public.gigs SET video_due_at=v_row.video_due_at,shoot_at=v_row.shoot_at WHERE id='38724000-0000-4000-8000-0000000000f1';
+  v_r:=public.gig_contract_workspace(v_c);
+  IF (v_r->'gig'->>'video_due_at')::timestamptz IS DISTINCT FROM v_row.video_due_at OR (v_r->'gig'->>'shoot_at')::timestamptz IS DISTINCT FROM v_row.shoot_at THEN
+    RAISE EXCEPTION 'workspace gig lacks the exact times: %',v_r->'gig';
+  END IF;
+  -- An old client sending dates only still works: due at 23:59 local.
+  v_r:=public.gig_save(v_payload-'video_due_at'-'shoot_at');
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'date-only gig_save: %',v_r; END IF;
+  IF (SELECT video_due_at FROM public.gigs WHERE id=(v_r->>'id')::uuid) IS DISTINCT FROM ((v_day+2)+time '23:59') AT TIME ZONE 'America/New_York'
+     OR (SELECT shoot_at FROM public.gigs WHERE id=(v_r->>'id')::uuid) IS NOT NULL THEN
+    RAISE EXCEPTION 'date-only save did not derive the due time';
+  END IF;
+END;
+$test$;
+
+-- 7. Results since a date: Ada's promoter link has one old and one recent
+-- sale and click.
+SET LOCAL session_replication_role = replica;
+UPDATE public.gig_contracts SET referral_member_id='38724000-0000-4000-8000-000000000503'
+ WHERE gig_id='38724000-0000-4000-8000-0000000000f1' AND creator_account_id='38724000-0000-4000-8000-0000000000a3';
+INSERT INTO public.orders(id,event_id,total_cents,currency,payment_method,payment_status,source) VALUES
+  ('38724000-0000-4000-8000-000000000204','38724000-0000-4000-8000-0000000000e2',4000,'USD','online_card','paid','manual_import');
+INSERT INTO public.attribution_touches(id,kind,member_id,brand_id,listing_kind,listing_id,visitor_key,surface,touched_at,expires_at) VALUES
+  ('38724000-0000-4000-8000-000000000605','member','38724000-0000-4000-8000-000000000503','38724000-0000-4000-8000-0000000000b1','event','38724000-0000-4000-8000-0000000000e2',repeat('e',64),'web',now()-interval '10 days',now()-interval '3 days');
+INSERT INTO public.order_attributions(order_kind,order_id,brand_id,source,touch_id,member_id,offer_id,eligible_minor,share_bps,share_minor,created_at) VALUES
+  ('ticket','38724000-0000-4000-8000-000000000204','38724000-0000-4000-8000-0000000000b1','member_link','38724000-0000-4000-8000-000000000605','38724000-0000-4000-8000-000000000503','38724000-0000-4000-8000-000000000402',4000,1000,400,now()-interval '10 days');
+SET LOCAL session_replication_role = origin;
+DO $test$
+DECLARE v_all jsonb; v_recent jsonb;
+BEGIN
+  PERFORM pg_temp.act('38724000-0000-4000-8000-0000000000a1');
+  SELECT r INTO v_all FROM jsonb_array_elements(public.gig_results('38724000-0000-4000-8000-0000000000b1','38724000-0000-4000-8000-0000000000f1')) r
+   WHERE r->>'creator_id'='38724000-0000-4000-8000-0000000000a3';
+  SELECT r INTO v_recent FROM jsonb_array_elements(public.gig_results('38724000-0000-4000-8000-0000000000b1','38724000-0000-4000-8000-0000000000f1',now()-interval '1 day')) r
+   WHERE r->>'creator_id'='38724000-0000-4000-8000-0000000000a3';
+  IF (v_all->>'orders')::int<>2 OR (v_all->>'sold_minor')::bigint<>11000 OR (v_all->>'clicks')::int<>2 OR (v_all->>'tickets')::int<>1 THEN
+    RAISE EXCEPTION 'results without p_since: %',v_all;
+  END IF;
+  IF (v_recent->>'orders')::int<>1 OR (v_recent->>'sold_minor')::bigint<>7000 OR (v_recent->>'clicks')::int<>1 OR (v_recent->>'tickets')::int<>1 THEN
+    RAISE EXCEPTION 'results since yesterday: %',v_recent;
   END IF;
 END;
 $test$;

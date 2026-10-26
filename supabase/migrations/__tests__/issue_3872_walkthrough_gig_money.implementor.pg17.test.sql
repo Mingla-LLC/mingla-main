@@ -280,7 +280,7 @@ BEGIN
      OR has_function_privilege('authenticated','public.issue_3872_contract_apply_state(uuid,text,timestamptz,integer,integer,text)','execute')
      OR has_function_privilege('authenticated','public.gig_topup_mark_captured(uuid,integer,text)','execute')
      OR NOT has_function_privilege('authenticated','public.gig_counter_send(uuid,bigint,text)','execute')
-     OR NOT has_function_privilege('authenticated','public.gig_results(uuid,uuid)','execute')
+     OR NOT has_function_privilege('authenticated','public.gig_results(uuid,uuid,timestamptz)','execute')
      OR has_function_privilege('anon','public.creator_gig_detail(uuid)','execute') THEN
     RAISE EXCEPTION 'walkthrough gig grants drifted';
   END IF;
