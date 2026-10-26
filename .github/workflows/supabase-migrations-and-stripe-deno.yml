@@ -276,6 +276,25 @@ on:
       - "mingla-admin/src/pages/shellHubs.jsx"
       - "mingla-admin/src/services/identityReadService.js"
       - "supabase/migrations/20280113004130_issue_4130_people_brands_offerings.sql"
+      # #4130 Wave 4b (Place pool, Ads, Team and roles, Platform health, Feature
+      # flags, Settings): the suite and the files it reads that are not already
+      # listed here. The SQL suite rides on supabase/migrations/**.
+      - "mingla-admin/src/__tests__/issue_4130_wave4b_system.implementor.test.js"
+      - "mingla-admin/src/lib/systemPages.js"
+      - "mingla-admin/src/lib/stripeModeSignals.js"
+      - "mingla-admin/src/services/systemPagesService.js"
+      - "mingla-admin/src/services/queueHealthService.js"
+      - "mingla-admin/src/components/placePool/**"
+      - "mingla-admin/src/pages/PlacePoolPage.jsx"
+      - "mingla-admin/src/pages/PlacePoolManagementPage.jsx"
+      - "mingla-admin/src/pages/LaunchCitiesPage.jsx"
+      - "mingla-admin/src/pages/SignalLibraryPage.jsx"
+      - "mingla-admin/src/pages/PlatformHealthPage.jsx"
+      - "mingla-admin/src/pages/QueueHealthPage.jsx"
+      - "mingla-admin/src/pages/FeatureFlagsPage.jsx"
+      - "mingla-admin/src/pages/SettingsPage.jsx"
+      - "mingla-admin/src/pages/AdminPage.jsx"
+      - "mingla-admin/src/pages/AdEnginePage.jsx"
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
@@ -582,6 +601,25 @@ on:
       - "mingla-admin/src/pages/shellHubs.jsx"
       - "mingla-admin/src/services/identityReadService.js"
       - "supabase/migrations/20280113004130_issue_4130_people_brands_offerings.sql"
+      # #4130 Wave 4b (Place pool, Ads, Team and roles, Platform health, Feature
+      # flags, Settings): the suite and the files it reads that are not already
+      # listed here. The SQL suite rides on supabase/migrations/**.
+      - "mingla-admin/src/__tests__/issue_4130_wave4b_system.implementor.test.js"
+      - "mingla-admin/src/lib/systemPages.js"
+      - "mingla-admin/src/lib/stripeModeSignals.js"
+      - "mingla-admin/src/services/systemPagesService.js"
+      - "mingla-admin/src/services/queueHealthService.js"
+      - "mingla-admin/src/components/placePool/**"
+      - "mingla-admin/src/pages/PlacePoolPage.jsx"
+      - "mingla-admin/src/pages/PlacePoolManagementPage.jsx"
+      - "mingla-admin/src/pages/LaunchCitiesPage.jsx"
+      - "mingla-admin/src/pages/SignalLibraryPage.jsx"
+      - "mingla-admin/src/pages/PlatformHealthPage.jsx"
+      - "mingla-admin/src/pages/QueueHealthPage.jsx"
+      - "mingla-admin/src/pages/FeatureFlagsPage.jsx"
+      - "mingla-admin/src/pages/SettingsPage.jsx"
+      - "mingla-admin/src/pages/AdminPage.jsx"
+      - "mingla-admin/src/pages/AdEnginePage.jsx"
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
@@ -818,6 +856,9 @@ jobs:
       - name: "Issue #4130 — People, Brands and Offerings: a refused server action changes nothing (no browser-side delete), segment and readiness words, one state per offering, old addresses still open"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_4130_wave3_people.implementor.test.js
+      - name: "Issue #4130 — Place pool funnel of active places, Scored capped at 100%, honest Platform health and Stripe mode, queue health 'not set up yet', flags changed only with a reason, owner-only tour restart, Team and roles tabs, Ads in plain words, old addresses still open"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue_4130_wave4b_system.implementor.test.js
       - name: "Issue #4130 — Work views and Team dashboard: (needs the admin npm ci above) Board, Today, This week and This month; drafts, approvals and roadmap wording reachable from Work cards; the dashboard's numbers first"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_4130_wave1_work.implementor.test.js
