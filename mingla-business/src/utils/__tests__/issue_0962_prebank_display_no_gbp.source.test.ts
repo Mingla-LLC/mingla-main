@@ -45,7 +45,11 @@ describe("#962 R4 (source shape) — no fabricated GBP on the screen surfaces", 
   test("G5 DoorSaleNewSheet.tsx — paid record gated on a set currency, no GBP freeze", () => {
     const src = read("src/components/door/DoorSaleNewSheet.tsx");
     expect(src).toContain("eventCurrencyCode !== null");
-    expect(src).toContain("currency: eventCurrencyCode,");
+    // [TEST-MOD-APPROVED #4063] The durable door-sale RPC derives currency
+    // from the locked event row. The client still refuses pre-bank submission,
+    // but must not send a caller-controlled currency to the server owner.
+    expect(src).toContain("if (eventCurrencyCode === null) return;");
+    expect(src).not.toContain("currency: eventCurrencyCode,");
     expect(src).not.toContain('event.currency ?? "GBP"');
   });
 

@@ -29,6 +29,7 @@ import QRCode from "react-native-qrcode-svg";
 import * as Sharing from "expo-sharing";
 
 import { DoorModeModal } from "../../../src/components/purchases/DoorModeModal";
+import { SendTicketSheet } from "../../../src/components/purchases/SendTicketSheet";
 import RsvpPassSheet from "../../../src/components/activity/RsvpPassSheet";
 import { Icon } from "../../../src/components/ui/Icon";
 import { toastManager } from "../../../src/components/ui/Toast";
@@ -42,6 +43,10 @@ import type { ConsumerRsvpRow } from "../../../src/services/calendarService";
 import type {
   PurchaseOrderRecord,
   PurchaseTicket,
+} from "../../../src/services/purchasesService";
+import {
+  takeBackTicket,
+  TicketTransferError,
 } from "../../../src/services/purchasesService";
 import { useAppStore } from "../../../src/store/appStore";
 import { TicketService } from "../../../src/services/ticketService";
@@ -184,6 +189,7 @@ export default function PurchaseDetailRoute(): React.ReactElement {
   const [rsvpSheetVisible, setRsvpSheetVisible] = useState(false);
   const [rsvpTickets, setRsvpTickets] = useState<PurchaseTicket[]>([]);
   const [ticketPage, setTicketPage] = useState(0);
+  const [sendTicketId, setSendTicketId] = useState<string | null>(null);
   const [pdfPreparing, setPdfPreparing] = useState(false);
   const ticketScrollRef = useRef<ScrollView>(null);
   const viewedItemRef = useRef<string | null>(null);
@@ -197,6 +203,8 @@ export default function PurchaseDetailRoute(): React.ReactElement {
   const reservation =
     item?.kind === "reservation" ? (item.raw as MyReservationRow) : null;
   const allTickets = order?.tickets ?? rsvpTickets;
+  const sendTicket =
+    allTickets.find((ticket) => ticket.id === sendTicketId) ?? null;
   const validTickets = allTickets.filter((ticket) => ticket.status === "valid");
   const ticketPageWidth = Math.max(280, width - 36);
   const ticketQrSize = Math.max(160, Math.min(ticketPageWidth - 64, 360));
@@ -222,14 +230,16 @@ export default function PurchaseDetailRoute(): React.ReactElement {
               attendeeName: reservation.brand_name,
               attendeeEmail: null,
               eventDateIds: [],
+              ticketIndex: 1,
+              transferState: "none",
+              holderFirstName: null,
             },
           ]
         : [],
     [reservation, reservationCanShow, t],
   );
-  const doorTickets = validTickets.length > 0
-    ? validTickets
-    : reservationDoorTickets;
+  const doorTickets =
+    validTickets.length > 0 ? validTickets : reservationDoorTickets;
   const followedBrandId =
     order?.brandId ?? rsvp?.brandId ?? reservation?.brand_id ?? null;
   const followedBrandName =
@@ -253,6 +263,9 @@ export default function PurchaseDetailRoute(): React.ReactElement {
       attendeeName: rsvp.displayName,
       attendeeEmail: null,
       eventDateIds: [],
+      ticketIndex: 1,
+      transferState: "none",
+      holderFirstName: null,
     };
     setRsvpTickets([fallback]);
     void fetchRsvpPartyPasses(rsvp.rsvpId)
@@ -271,6 +284,9 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                     attendeeName: credential.displayName,
                     attendeeEmail: null,
                     eventDateIds: [],
+                    ticketIndex: 1,
+                    transferState: "none",
+                    holderFirstName: null,
                   },
                 ]
               : [],
@@ -457,6 +473,52 @@ export default function PurchaseDetailRoute(): React.ReactElement {
       toastManager.error(t("ticket.actionFailed"), 3000);
     });
   }, [brandFollow, captureQuietAction, followedBrandId, t]);
+
+  const openSendTicket = useCallback((ticket: PurchaseTicket): void => {
+    postHogService.capture("ticket_send_opened", {
+      ticket_index: ticket.ticketIndex,
+    });
+    setSendTicketId(ticket.id);
+  }, []);
+
+  const confirmTakeBack = useCallback(
+    (ticket: PurchaseTicket): void => {
+      const name = ticket.holderFirstName ?? t("door.guest");
+      Alert.alert(
+        t("send.takeBack"),
+        t("send.takeBackConfirm", { index: ticket.ticketIndex, name }),
+        [
+          { text: t("send.takeBackNo", { name }), style: "cancel" },
+          {
+            text: t("send.takeBackYes"),
+            style: "destructive",
+            onPress: () => {
+              void takeBackTicket(ticket.id)
+                .then(async () => {
+                  postHogService.capture("ticket_taken_back", {
+                    ticket_index: ticket.ticketIndex,
+                  });
+                  await purchase.refetch();
+                })
+                .catch((reason) => {
+                  const tooLate =
+                    reason instanceof TicketTransferError &&
+                    reason.code === "too_late";
+                  toastManager.error(
+                    tooLate
+                      ? t("send.errorTooLate", { name })
+                      : t("send.errorGeneric"),
+                    3000,
+                  );
+                  if (tooLate) void purchase.refetch();
+                });
+            },
+          },
+        ],
+      );
+    },
+    [purchase, t],
+  );
 
   const handleManageReservation = useCallback((): void => {
     if (!reservation) return;
@@ -728,6 +790,63 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                             {t(`ticket.status.${statusKey}`)}
                           </Text>
                         </View>
+                        {order?.source !== "transfer" &&
+                        statusKey === "valid" &&
+                        ticket.ticketIndex >= 2 ? (
+                          ticket.transferState === "offered" ? (
+                            <View style={styles.sendState}>
+                              <View style={styles.sentChip}>
+                                <Text style={styles.sentChipText}>
+                                  {t("send.with", {
+                                    name:
+                                      ticket.holderFirstName ?? t("door.guest"),
+                                  })}
+                                </Text>
+                              </View>
+                              <Text style={styles.sendHint}>
+                                {t("send.takeBackHint", {
+                                  name:
+                                    ticket.holderFirstName ?? t("door.guest"),
+                                })}
+                              </Text>
+                              <Pressable
+                                accessibilityRole="button"
+                                onPress={() => confirmTakeBack(ticket)}
+                                style={({ pressed }) => [
+                                  styles.sendTextButton,
+                                  pressed && styles.pressed,
+                                ]}
+                              >
+                                <Text style={styles.sendTextButtonCopy}>
+                                  {t("send.takeBack")}
+                                </Text>
+                              </Pressable>
+                            </View>
+                          ) : (
+                            <View style={styles.sendState}>
+                              <Text style={styles.sendHint}>
+                                {t("send.notSent", {
+                                  index: ticket.ticketIndex,
+                                  total:
+                                    order?.ticketStates.length ||
+                                    allTickets.length,
+                                })}
+                              </Text>
+                              <Pressable
+                                accessibilityRole="button"
+                                onPress={() => openSendTicket(ticket)}
+                                style={({ pressed }) => [
+                                  styles.sendButton,
+                                  pressed && styles.pressed,
+                                ]}
+                              >
+                                <Text style={styles.sendButtonCopy}>
+                                  {t("send.cta")}
+                                </Text>
+                              </Pressable>
+                            </View>
+                          )
+                        ) : null}
                       </View>
                     );
                   })}
@@ -745,6 +864,27 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                     ))}
                   </View>
                 ) : null}
+                {order?.source !== "transfer"
+                  ? order?.ticketStates
+                      .filter((state) => state.transferState === "claimed")
+                      .map((state) => (
+                        <View
+                          key={`claimed:${state.ticketId}`}
+                          style={styles.claimedNote}
+                        >
+                          <Text style={styles.claimedNoteTitle}>
+                            {t("ticket.status.sentOpened", {
+                              name: state.holderFirstName ?? t("door.guest"),
+                            })}
+                          </Text>
+                          <Text style={styles.claimedNoteBody}>
+                            {t("send.claimedNote", {
+                              name: state.holderFirstName ?? t("door.guest"),
+                            })}
+                          </Text>
+                        </View>
+                      ))
+                  : null}
                 {validTickets.length > 0 ? (
                   <Pressable
                     accessibilityRole="button"
@@ -790,7 +930,10 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                   </View>
                   <Text style={styles.reservationRef}>
                     RES-
-                    {reservation.id.replaceAll("-", "").slice(0, 6).toUpperCase()}
+                    {reservation.id
+                      .replaceAll("-", "")
+                      .slice(0, 6)
+                      .toUpperCase()}
                   </Text>
                 </View>
                 <Pressable
@@ -1034,6 +1177,15 @@ export default function PurchaseDetailRoute(): React.ReactElement {
           visible={rsvpSheetVisible}
         />
       ) : null}
+      <SendTicketSheet
+        onClose={() => setSendTicketId(null)}
+        onSent={async () => {
+          await purchase.refetch();
+        }}
+        ticket={sendTicket}
+        total={order?.ticketStates.length || allTickets.length}
+        visible={sendTicket !== null}
+      />
     </View>
   );
 }
@@ -1172,6 +1324,47 @@ const styles = StyleSheet.create({
   ticketStatusText: { fontSize: 12, fontWeight: "800" },
   ticketStatusTextValid: { color: "#86efac" },
   ticketStatusTextInactive: { color: "#fca5a5" },
+  sendState: { width: "100%", alignItems: "center", marginTop: 14 },
+  sendHint: {
+    color: "rgba(255,255,255,0.56)",
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: "center",
+  },
+  sendButton: {
+    minHeight: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(235,120,37,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+    marginTop: 10,
+  },
+  sendButtonCopy: { color: "#f8a35f", fontSize: 14, fontWeight: "800" },
+  sentChip: {
+    borderRadius: 999,
+    backgroundColor: "rgba(235,120,37,0.16)",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    marginBottom: 8,
+  },
+  sentChipText: { color: "#f8a35f", fontSize: 12, fontWeight: "800" },
+  sendTextButton: { minHeight: 40, justifyContent: "center", marginTop: 4 },
+  sendTextButtonCopy: { color: "#f8a35f", fontSize: 13, fontWeight: "800" },
+  claimedNote: {
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    padding: 13,
+    marginTop: 12,
+  },
+  claimedNoteTitle: { color: "#f8a35f", fontSize: 13, fontWeight: "800" },
+  claimedNoteBody: {
+    color: "rgba(255,255,255,0.56)",
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 3,
+  },
   dots: { flexDirection: "row", alignSelf: "center", gap: 7, marginTop: 14 },
   dot: {
     width: 7,

@@ -164,7 +164,10 @@ function isPlusOne(value: unknown): value is PlusOneInput {
     if (typeof value.name !== "string" || value.name.trim().length === 0) {
       return false;
     }
-  } else if (email === "" && phone === "") return false;
+  } else if (
+    email === "" && phone === "" &&
+    typeof value.name === "string" && value.name.trim().length > 0
+  ) return false;
   return true;
 }
 

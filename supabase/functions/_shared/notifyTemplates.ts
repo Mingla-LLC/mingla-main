@@ -9,10 +9,7 @@ import { discoverCityWatchCopy } from "./discoverCityWatchCopy.ts";
 // rendered moments are present so the v2 core can fan out the seeded categories.
 
 import { formatMessageTime, type MessageTime } from "./messageTime.ts";
-import {
-  type BuyerSmsNoun,
-  renderBuyerSms,
-} from "./sms/buyerSms.ts";
+import { type BuyerSmsNoun, renderBuyerSms } from "./sms/buyerSms.ts";
 
 export interface RenderedMessage {
   push: { title: string; body: string };
@@ -703,6 +700,59 @@ export function renderCategoryMessage(
           link,
           noun: "receipt",
           claimed,
+        }),
+      };
+    }
+
+    case "buyer_door_receipt": {
+      const link = str(
+        payload.message_link_display ?? payload.message_link_url,
+        "usemingla.com/download",
+      );
+      return {
+        push: {
+          title: `Receipt from ${eventTitle}`,
+          body: "Your door-sale receipt is in Mingla.",
+        },
+        email: {
+          subject: `Your ${eventTitle} receipt`,
+          body: "Your door-sale receipt is in the Mingla app.",
+        },
+        sms: renderBuyerSms("S15", {
+          title: eventTitle,
+          link,
+          noun: "receipt",
+        }),
+      };
+    }
+
+    case "buyer_ticket_sent": {
+      const sender = str(payload.sender, "A friend");
+      const context = issue4063BuyerContext(payload);
+      const link = context?.link ?? str(
+        payload.message_link_display ?? payload.message_link_url,
+        "usemingla.com/download",
+      );
+      const when = context?.when ?? { date, time };
+      const whenLine = [when.date, when.time].filter(Boolean).join(" ");
+      const detail = [eventTitle, whenLine].filter(Boolean).join(" · ");
+      return {
+        push: {
+          title: `${sender} sent you a ticket`,
+          body: detail || "Your ticket is waiting in Mingla.",
+        },
+        email: {
+          subject: `${sender} sent you a ticket for ${eventTitle}`,
+          body: `${sender} sent you a ticket.${
+            detail ? `\n\n${detail}` : ""
+          }\n\nGet your ticket using this number: ${link}`,
+        },
+        sms: renderBuyerSms("S16", {
+          sender,
+          title: eventTitle,
+          date: when.date,
+          time: when.time,
+          link,
         }),
       };
     }

@@ -3,6 +3,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
+  qrTokenPepper,
   serviceClient,
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
@@ -60,6 +61,7 @@ type RpcResult = {
 export interface ClaimContactDeps {
   rpc(name: string, args: Record<string, unknown>): Promise<RpcResult>;
   pepper(): Promise<OfferingInvitePepper>;
+  qrPepper(): string;
   userId(req: Request): Promise<string | null>;
   sendEmail(
     target: string,
@@ -153,8 +155,23 @@ async function sweep(
   const claimed = await deps.rpc("claim_attendance_by_verified_identity", {
     p_user_id: userId,
   });
+  if (claimed.error) return { result: null, limited: false };
+  const transfer = await deps.rpc("issue_4063_claim_offered_tickets", {
+    p_user_id: userId,
+    p_qr_token_pepper: deps.qrPepper(),
+  });
+  if (transfer.error) return { result: null, limited: false };
+  const primary = objectResult(claimed.data);
+  const held = objectResult(transfer.data);
+  const primaryClaimed = Array.isArray(primary.claimed) ? primary.claimed : [];
+  const heldClaimed = Array.isArray(held.claimed) ? held.claimed : [];
   return {
-    result: claimed.error ? null : objectResult(claimed.data),
+    result: {
+      ...primary,
+      claimed: [...primaryClaimed, ...heldClaimed],
+      count: primaryClaimed.length + heldClaimed.length,
+      more: primary.more === true || held.more === true,
+    },
     limited: false,
   };
 }
@@ -411,6 +428,7 @@ function productionDeps(): ClaimContactDeps {
       return { data, error: error ? { message: error.message } : null };
     },
     pepper: resolveOfferingInviteTokenPepper,
+    qrPepper: qrTokenPepper,
     userId: userIdFromAuthHeader,
     sendEmail: async (target, code, challengeId) => {
       const rendered = renderContactCodeEmail({

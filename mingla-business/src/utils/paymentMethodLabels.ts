@@ -9,7 +9,7 @@
  * lift — see implementation report for verification matrix.
  */
 
-import type { DoorPaymentMethod } from "../store/doorSalesStore";
+import type { DoorPaymentMethod } from "../types/doorSales";
 
 export const PAYMENT_METHOD_LABELS: Record<DoorPaymentMethod, string> = {
   cash: "Cash",

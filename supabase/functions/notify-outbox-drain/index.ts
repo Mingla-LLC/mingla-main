@@ -271,6 +271,14 @@ export function genericBuyerLinkRequest(
     const sourceId = from("venue_order_id");
     return sourceId ? { kind: "venue_order", sourceId } : null;
   }
+  if (category === "buyer_door_receipt") {
+    const sourceId = from("order_id");
+    return sourceId ? { kind: "order", sourceId } : null;
+  }
+  if (category === "buyer_ticket_sent") {
+    const sourceId = from("ticket_id");
+    return sourceId ? { kind: "ticket", sourceId } : null;
+  }
   return null;
 }
 

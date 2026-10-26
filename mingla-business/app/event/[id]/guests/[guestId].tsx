@@ -40,10 +40,8 @@ import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../../../src/utils/permissionGates";
 import { BRAND_ROLE_RANK } from "../../../../src/utils/brandRole";
 import { isCompOrder } from "../../../../src/utils/compOrders";
-import {
-  useDoorSalesStore,
-  type DoorSaleRecord,
-} from "../../../../src/store/doorSalesStore";
+import type { DoorSaleRecord } from "../../../../src/types/doorSales";
+import { useEventDoorSales } from "../../../../src/hooks/useEventDoorSales";
 import { formatCurrency } from "../../../../src/utils/currency";
 import { deferAfterDismiss } from "../../../../src/utils/deferAfterDismiss";
 import { expandDoorTickets } from "../../../../src/utils/expandDoorTickets";
@@ -256,11 +254,15 @@ export default function GuestDetailRoute(): React.ReactElement {
     parsed !== null && parsed.kind === "order" ? parsed.innerId : null,
   );
   const order = orderRead.data;
-  // Cycle 12 — single-existing-reference selector; safe to subscribe.
-  const sale = useDoorSalesStore((s) =>
-    parsed !== null && parsed.kind === "door"
-      ? s.getSaleById(parsed.innerId)
-      : null,
+  const doorSalesRead = useEventDoorSales(
+    typeof eventId === "string" && parsed?.kind === "door" ? eventId : null,
+  );
+  const sale = useMemo(
+    () =>
+      parsed?.kind === "door"
+        ? doorSalesRead.data?.find((entry) => entry.id === parsed.innerId) ?? null
+        : null,
+    [doorSalesRead.data, parsed],
   );
 
   // Cross-event purchase history for this buyer's email (same brand only).
@@ -487,6 +489,41 @@ export default function GuestDetailRoute(): React.ReactElement {
         </View>
         <View style={styles.emptyHost} accessibilityRole="progressbar">
           <Text style={styles.emptyLoadingText}>Loading guest…</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (parsed?.kind === "door" && doorSalesRead.isLoading) {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <View style={styles.chromeRow}>
+          <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
+          <Text style={styles.chromeTitle}>Guest</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost} accessibilityRole="progressbar">
+          <Text style={styles.emptyLoadingText}>Loading guest…</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (parsed?.kind === "door" && doorSalesRead.isError) {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <View style={styles.chromeRow}>
+          <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
+          <Text style={styles.chromeTitle}>Guest</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <EmptyState
+            illustration="ticket"
+            title="Couldn't load guest"
+            description="Check your connection and try again."
+            cta={{ label: "Try again", onPress: () => { void doorSalesRead.refetch(); }, variant: "primary" }}
+          />
         </View>
       </View>
     );

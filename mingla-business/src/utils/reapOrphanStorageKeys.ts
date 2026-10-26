@@ -29,7 +29,6 @@ const KNOWN_MINGLA_KEYS = new Set<string>([
   "mingla-business.guestStore.v1",
   "mingla-business.eventEditLog.v1",
   "mingla-business.notificationPrefsStore.v1",
-  "mingla-business.doorSalesStore.v1",
   "mingla-business.scanStore.v1",
   "mingla-business.liveSectionCollapse.v1", // ORCH-1143: home live-section accordion collapse
   "mingla-business.todoToggleCollapse.v1", // #882: To-Do toggle collapse position (Home/Hub shared)
