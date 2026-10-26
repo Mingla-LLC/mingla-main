@@ -49,7 +49,9 @@ import { useOpsCalendar } from "../hooks/useOpsCalendar";
 import { useServerRead } from "../hooks/useServerRead";
 import { Tabs } from "../components/ui/Tabs";
 import { getCalendarRunway } from "../services/dashboardService";
-import { localWhen, testAnchorIds, visibleRunwayRows } from "../lib/calendarRunway";
+import { liveLabel, localWhen, promotionWindow, runwayAction, runwayCardItem, runwayPostTitle, testAnchorIds, visibleRunwayRows } from "../lib/calendarRunway";
+import { Badge } from "../components/ui/Badge";
+import * as ops from "../services/opsService";
 import { PLAIN_STATES, STATE_LEGEND, dayLong, opsErrorWords, parseEventParam, stateName, todayIso } from "../lib/opsModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
@@ -65,12 +67,6 @@ const VIEW_OPTIONS = [
   { value: "calendar", label: "Month" },
   { value: "list", label: "List" },
   { value: "board", label: "Posts board" },
-];
-const LIST_GROUPS = [
-  { k: "notlive", label: "Needs to go live" },
-  { k: "short", label: "Promote now" },
-  { k: "ready", label: "Ready to promote" },
-  { k: "late", label: "Too late for promo" },
 ];
 // A day shows up to three things; with more than three it shows two, then
 // "+N more" opens the whole day (never "+1 more" in place of one entry).
@@ -222,33 +218,50 @@ function Legend({ undated, onUndated, show }) {
   );
 }
 
-function StateList({ rows, onSelect, today }) {
+// #4130 (integration): the Event runway is a table, as designed: Event, Host,
+// When (local), Live?, Promotion window, and one action per row. The actions
+// only open a confirmation (Make a card) or the existing Add content form
+// (Plan a post); nothing is written from the row itself.
+function RunwayTable({ rows, onSelect, onMakeCard, onPlanPost, online }) {
+  if (rows.length === 0) return <p className="p-4 text-[13px] text-[var(--color-text-secondary)]">Nothing dated in the next 90 days. Events and promised dates will appear here.</p>;
   return (
-    <div className="flex min-w-0 flex-col gap-3 p-3">
-      <p className="rounded-lg bg-[var(--color-brand-50)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--color-brand-700)]">Today, {dayLong(today)}</p>
-      {rows.length === 0 && <p className="text-[13px] text-[var(--color-text-secondary)]">Nothing dated in the next 90 days.</p>}
-      {LIST_GROUPS.map((g) => {
-        const list = rows.filter((r) => r.state?.k === g.k);
-        if (!list.length) return null;
-        return (
-          <section key={g.k} aria-label={g.label} className="min-w-0">
-            <h3 className="mb-1 flex items-center justify-between px-1 text-[12px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]"><span>{g.label}</span><span className="tabular-nums">{list.length}</span></h3>
-            <ul className="flex min-w-0 flex-col divide-y divide-[var(--gray-100)]">
-              {list.map((r) => (
-                <li key={`${r.anchor_kind}:${r.anchor_id}:${r.start_on}`}>
-                  <button type="button" data-runway-row={`${r.anchor_kind}:${r.anchor_id}`} onClick={() => onSelect({ kind: r.anchor_kind, id: r.anchor_id }, r.start_on)} className={`flex min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg px-2 py-2 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}>
-                    <span className="min-w-0 flex-1">
-                      <span className={`block text-[13.5px] font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{r.title}</span>
-                      <span className={`block text-[12px] text-[var(--color-text-tertiary)] ${WORDS}`}>{localWhen(r)}{r.host_name || r.brand_name ? ` · ${r.host_name || r.brand_name}` : ""}{r.is_public ? " · Live" : " · Not live yet"}{r.is_test ? " · Test" : ""}</span>
-                    </span>
-                    <StatePill state={r.state} />
+    <div className="min-w-0 overflow-x-auto">
+      <table className="w-full min-w-[720px] border-collapse text-left text-[13px]">
+        <thead>
+          <tr className="border-b border-[var(--gray-200)] text-[11.5px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
+            <th scope="col" className="px-3 py-2">Event</th>
+            <th scope="col" className="px-3 py-2">Host</th>
+            <th scope="col" className="px-3 py-2">When (local)</th>
+            <th scope="col" className="px-3 py-2">Live?</th>
+            <th scope="col" className="px-3 py-2">Promotion window</th>
+            <th scope="col" className="px-3 py-2"><span className="sr-only">Action</span></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[var(--gray-100)]">
+          {rows.map((r) => {
+            const live = liveLabel(r);
+            const windowCell = promotionWindow(r);
+            const action = runwayAction(r);
+            return (
+              <tr key={`${r.anchor_kind}:${r.anchor_id}:${r.start_on}`} className="align-middle">
+                <td className="px-3 py-2">
+                  <button type="button" data-runway-row={`${r.anchor_kind}:${r.anchor_id}`} onClick={() => onSelect({ kind: r.anchor_kind, id: r.anchor_id }, r.start_on)} className={`min-h-11 text-left font-semibold text-[var(--color-text-primary)] underline-offset-2 hover:underline ${WORDS} ${FOCUS}`}>
+                    {r.title}{r.is_test ? <span className="ml-1.5 text-[12px] font-normal text-[var(--color-text-tertiary)]">Test</span> : null}
                   </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        );
-      })}
+                </td>
+                <td className={`px-3 py-2 text-[var(--color-text-secondary)] ${WORDS}`}>{r.host_name || r.brand_name || "No host yet"}</td>
+                <td className="whitespace-nowrap px-3 py-2 tabular-nums text-[var(--color-text-secondary)]">{localWhen(r)}</td>
+                <td className="px-3 py-2"><Badge variant={live.tone}>{live.label}</Badge></td>
+                <td className="px-3 py-2"><Badge variant={windowCell.tone}>{windowCell.label}</Badge></td>
+                <td className="px-3 py-2 text-right">
+                  {action === "card" && <Button type="button" variant="secondary" size="sm" className="min-h-11 whitespace-nowrap" disabled={!online} onClick={() => onMakeCard(r)}>Make a card</Button>}
+                  {action === "post" && <Button type="button" variant="secondary" size="sm" className="min-h-11 whitespace-nowrap" disabled={!online} onClick={() => onPlanPost(r)}>Plan a post</Button>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -330,6 +343,10 @@ export function ContentCalendarPage() {
   const [focusTarget, setFocusTarget] = useState(null);
   const [move, setMove] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [cardFor, setCardFor] = useState(null);
+  const [cardBusy, setCardBusy] = useState(false);
+  const [cardProblem, setCardProblem] = useState(null);
+  const cardKey = useRef(null);
   const createFlight = useRef(createSingleFlight());
   const detailGate = useRef(createLatestOnlyGate());
   const eventDetailRef = useRef(null);
@@ -509,6 +526,33 @@ export function ContentCalendarPage() {
   };
   const shiftMonth = (by) => { const [year, month] = route.month.split("-").map(Number); setParam("month", monthKey(new Date(year, month - 1 + by, 1))); };
   const updateTitle = (value) => { setTitle(value); setSimilarAccepted(false); createFlight.current.reset(); };
+  // #4130 (integration): "Plan a post" opens the existing Add content form with
+  // a title about the event; the form's duplicate check and Add button are
+  // the confirmation, and the post is created through the same path.
+  const planPost = (row) => { setTitle(runwayPostTitle(row)); setSimilarAccepted(false); createFlight.current.reset(); setAddOpen(true); };
+  // "Make a card" adds one Work card through the existing checked add
+  // (ops_work_add), after a confirmation that shows the card.
+  const makeCard = async () => {
+    if (!cardFor || cardBusy) return;
+    setCardBusy(true); setCardProblem(null);
+    try {
+      const answer = await ops.addWork([runwayCardItem(cardFor, people.me)], cardKey.current || (cardKey.current = requestKey("runway_card")));
+      const row = answer?.results?.[0];
+      if (row?.status === "added") {
+        cardKey.current = null; setCardFor(null);
+        addToast({ variant: "success", title: "Work card added", duration: 8000, action: { label: "Open Work", onClick: () => { window.location.hash = "#/work-board"; } } });
+      } else if (row?.status === "duplicate") {
+        setCardProblem(row.message || "An open card already does this.");
+      } else {
+        setCardProblem((row?.fixes || []).map((f) => f.message).filter(Boolean).join(" ") || "The card was not added.");
+      }
+    } catch (error) {
+      setCardProblem(opsErrorWords(error));
+    } finally {
+      setCardBusy(false);
+    }
+  };
+  const closeCard = () => { if (!cardBusy) { setCardFor(null); setCardProblem(null); cardKey.current = null; } };
   const closeAdd = () => { if (!busy) { setAddOpen(false); setTitle(""); setSimilarAccepted(false); createFlight.current.reset(); } };
 
   const duplicateBlocked = !!duplicate.exact || (duplicate.similar.length > 0 && !similarAccepted);
@@ -564,7 +608,7 @@ export function ContentCalendarPage() {
         <>
           {route.show !== "posts" && (runway.error && !runway.data
             ? <div className="p-3"><AlertCard variant="warning" title="Couldn’t load events on Mingla" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => runway.refetch()}>Try again</Button>}>{opsErrorWords(runway.error)}</AlertCard></div>
-            : <StateList rows={runwayRows} onSelect={selectEvent} today={today} />)}
+            : <RunwayTable rows={runwayRows} onSelect={selectEvent} onMakeCard={(r) => setCardFor(r)} onPlanPost={planPost} online={online} />)}
           {route.show !== "events" && <PostsList items={calendar.items} open={open} />}
           <Legend undated={undated.length} onUndated={openUndated} show={route.show} />
         </>
@@ -591,6 +635,7 @@ export function ContentCalendarPage() {
           : <div className="flex min-w-0 flex-col gap-4">{box}</div>}
 
       <ContentDrawer activeId={route.card} detail={detail} config={calendar.config} online={online} loading={detailLoading} focusTarget={focusTarget} suspended={!!move} onFocusHandled={() => setFocusTarget(null)} onClose={close} onChanged={changed} onMove={beginMove} onDeleted={calendar.removeItem} />
+      <Modal open={!!cardFor} onClose={closeCard} title="Make a Work card?" size="sm"><ModalBody>{cardFor && (() => { const item = runwayCardItem(cardFor, people.me); return <div className="flex min-w-0 flex-col gap-2 text-sm text-[var(--color-text-secondary)]"><p className="font-semibold text-[var(--color-text-primary)]">{item.title}</p><p className="break-words">{item.instructions}</p><p>Done means: {item.done_means}</p><p>It is yours, linked to this event, and due before the event starts.</p>{cardProblem && <p role="alert" className="break-words text-[var(--color-error-700)]">{cardProblem}</p>}</div>; })()}</ModalBody><ModalFooter><Button type="button" variant="secondary" className="min-h-11" disabled={cardBusy} onClick={closeCard}>Cancel</Button><Button type="button" variant="brandContrast" className="min-h-11" loading={cardBusy} disabled={!online || !people.me} onClick={() => void makeCard()}>Make the card</Button></ModalFooter></Modal>
       <Modal open={addOpen} onClose={closeAdd} title="Add content" size="sm"><ModalBody><label htmlFor="new-content-title" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Title</label><input id="new-content-title" autoFocus className={`${CONTROL_CLASS} min-h-11`} value={title} maxLength={160} disabled={busy} onChange={(event) => updateTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); create(); } }} /><p className="mt-2 text-sm text-[var(--color-text-secondary)]">It starts in Idea and is assigned to you. Add other owners here.</p><div className="mt-3"><PeopleField id="new-content-owners" label="Owners" value={addOwners} onChange={(next) => setAddOwners(next)} team={people.people} suggested={[people.me].filter(Boolean)} me={people.me} disabled={busy} /></div>{duplicate.checking && <p role="status" className="mt-2 text-sm text-[var(--color-text-secondary)]">Checking for similar titles…</p>}{duplicate.exact && <AlertCard variant="error" title="That title already exists" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => { closeAdd(); open(duplicate.exact.id); }}>Open existing</Button>}>Use the existing card instead of creating a duplicate.</AlertCard>}{duplicate.similar.length > 0 && !duplicate.exact && <AlertCard variant="warning" title="This may be a duplicate" action={!similarAccepted ? <Button type="button" variant="secondary" className="min-h-11" onClick={() => setSimilarAccepted(true)}>Add anyway</Button> : null}>Similar: {duplicate.similar.map((row) => row.title).join(", ")}{similarAccepted ? ". You can continue." : ". Review before continuing."}</AlertCard>}</ModalBody><ModalFooter><Button type="button" variant="secondary" className="min-h-11" disabled={busy} onClick={closeAdd}>Cancel</Button><Button type="button" variant="brandContrast" className="min-h-11" loading={busy} disabled={!title.trim() || !online || duplicate.checking || duplicateBlocked} onClick={create}>Add content</Button></ModalFooter></Modal>
       <Modal open={!!move} onClose={() => setMove(null)} title={move?.prompt?.title || "Move content"} size="sm"><ModalBody><p className="text-sm text-[var(--color-text-secondary)]">{move?.prompt?.flag === "approve_copy" ? "Confirm that the copy is ready for design." : move?.prompt?.flag === "approve_design" ? "Confirm that the design is ready and the publish time and channels are set." : "A stable live link is not on this card yet. You can add it first, or explicitly continue without one."}</p></ModalBody><ModalFooter><Button type="button" variant="secondary" className="min-h-11" onClick={() => { if (move?.prompt?.flag === "publish_without_link") openForField(move.item, "content-live", "Add and save the live link, then publish again."); else setMove(null); }}>{move?.prompt?.flag === "publish_without_link" ? "Add link first" : "Cancel"}</Button><Button type="button" variant="brandContrast" className="min-h-11" loading={busy} onClick={() => performMove(move.item, move.to, { [move.prompt.flag]: true })}>{move?.prompt?.action}</Button></ModalFooter></Modal>
     </div>

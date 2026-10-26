@@ -5,7 +5,8 @@
 //     summary), hosts with a next event (and how many have none), and the Work
 //     cards waiting on you.
 //   - "Needs you today": Money, Platform health, Work, Support and Inbound
-//     leads in one list (lib/dashboardToday.js). A source that failed to load
+//     leads, plus failed announcement pushes for admins, in one list
+//     (lib/dashboardToday.js). A source that failed to load
 //     says so with Retry; it is never read as "nothing needs you".
 //   - The last 8 weeks of sign-ups and paid tickets.
 // Place stats moved to Place pool; the raw table counts and the buttons to
@@ -24,6 +25,9 @@ import { getDashboardSummary } from "../services/dashboardService";
 import { getMinglaMoneySummary } from "../services/adminMoneyService";
 import { getApiHealth } from "../services/apiHealthService";
 import { getQueueHealth } from "../services/queueHealthService";
+import { listAnnouncementDeliveries } from "../services/communityService";
+import { useAuth } from "../context/AuthContext";
+import { AREA } from "../lib/access";
 import { useReviewCount } from "../hooks/useReviewCount";
 import { useServerRead } from "../hooks/useServerRead";
 import { headline } from "../lib/minglaMoney";
@@ -70,12 +74,18 @@ export function OverviewPage() {
   const loadMoney = useCallback(() => getMinglaMoneySummary(null, null), []);
   const loadHealth = useCallback(() => getApiHealth(), []);
   const loadQueue = useCallback(() => getQueueHealth(), []);
+  // #4130 (integration): failed announcement pushes, for admins only (the
+  // delivery list is an admin RPC); nobody else's dashboard reads it.
+  const { access } = useAuth();
+  const isAdmin = Array.isArray(access?.areas) && access.areas.includes(AREA.ADMIN_CONSOLE);
+  const loadPushes = useCallback(() => (isAdmin ? listAnnouncementDeliveries() : Promise.resolve(null)), [isAdmin]);
 
   const summary = useServerRead(loadSummary);
   const profit = useServerRead(loadProfit);
   const money = useServerRead(loadMoney);
   const health = useServerRead(loadHealth);
   const queue = useServerRead(loadQueue);
+  const pushes = useServerRead(loadPushes);
   const review = useReviewCount();
   const work = review.loaded ? { status: "ready", data: { cards: review.cards } } : { status: "loading" };
 
@@ -83,8 +93,8 @@ export function OverviewPage() {
   const signups = s ? weekTrend(s.signups?.last7, s.signups?.prev7) : null;
   const tickets = s ? weekTrend(s.paid_tickets?.last7, s.paid_tickets?.prev7) : null;
   const profitUsd = profit.data ? headline(profit.data).profit.usdTotal : null;
-  const items = needsYouToday({ work, money, health, queue, summary });
-  const retryFor = { money: money.retry, health: health.retry, queue: queue.retry, summary: summary.retry, work: review.refetch };
+  const items = needsYouToday({ work, money, health, queue, summary, announcements: isAdmin ? pushes : undefined });
+  const retryFor = { money: money.retry, health: health.retry, queue: queue.retry, summary: summary.retry, work: review.refetch, announcements: pushes.retry };
   const weekly = s ? weeklyRows(s) : [];
   const stillChecking = [money, health, summary].some((x) => x.status === "loading") || !review.loaded;
 

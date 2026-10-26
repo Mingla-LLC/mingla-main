@@ -17,10 +17,12 @@ import { logAdminAction } from "../lib/auditLog";
 import { PageHeader } from "../components/ui/PageHeader";
 import { useOnline } from "../hooks/useCrmPipeline";
 import { useHashTab } from "../hooks/useHashTab";
-import { RESTART_WORD, SETTINGS_SECTIONS, canRestartTour, sectionFor } from "../lib/systemPages";
+import { COMPETITOR_WATCH_FROM, RESTART_WORD, SETTINGS_SECTIONS, canRestartTour, sectionFor } from "../lib/systemPages";
 import { fetchTrialRunHistory, restartTourForEveryone, systemErrorWords } from "../services/systemPagesService";
 import { TeamAutomationSettings } from "../components/ops/TeamSettingsPanels";
 import { RunHistoryGroups } from "../components/placeIntelligenceTrial/RunHistoryGroups";
+import { CompetitorOpsPanel } from "./ToolLeadsPage";
+import { canOpenOwnPage } from "../lib/access";
 
 // ─── Appearance Tab ─────────────────────────────────────────────────────────
 
@@ -402,6 +404,9 @@ export function SettingsPage() {
   const { access } = useAuth();
   const online = useOnline();
   const isOwner = access?.role === "owner";
+  const { addToast } = useToast();
+  // #4130 (integration): Competitor Ops keeps the access it had on Tool leads.
+  const canSeeCompetitorWatch = canOpenOwnPage(access, COMPETITOR_WATCH_FROM);
   const [requested] = useHashTab("settings");
   const focus = sectionFor(SETTINGS_SECTIONS, requested);
 
@@ -431,9 +436,17 @@ export function SettingsPage() {
         <AppConfigView />
       </Section>
 
-      {/* Competitor watch — moves here from Tool leads (#4130 Wave 4a); that
-          wave fills this slot. */}
-      <div id="settings-competitor-watch" data-slot="competitor-watch" />
+      {/* Competitor watch — Competitor Ops from the old Tool leads page (#4130
+          Wave 4a exports it), shown to exactly who could open Tool leads. The
+          server's admin_competitor_intel_* RPCs check again. */}
+      {canSeeCompetitorWatch && (
+        <Section id="competitor-watch" title="Competitor watch">
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            Which competitor sources Mingla checks, and the checks that failed.
+          </p>
+          <CompetitorOpsPanel addToast={addToast} />
+        </Section>
+      )}
 
       <Section id="intelligence-trial" title="Research history">
         <TrialHistory />

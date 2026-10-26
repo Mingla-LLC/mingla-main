@@ -332,6 +332,14 @@ on:
       - "mingla-admin/src/pages/ToolLeadsPage.jsx"
       - "mingla-admin/src/pages/ContentCalendarPage.jsx"
       - "supabase/migrations/20280114004130_issue_4130_dashboard_outreach_inbound.sql"
+      # #4130 integration: the suite and the files it reads that are not
+      # already listed here. The SQL suite rides on supabase/migrations/**.
+      - "mingla-admin/src/__tests__/issue_4130_integration.implementor.test.js"
+      - "mingla-admin/src/lib/paymentReadiness.js"
+      - "mingla-admin/src/lib/peopleSegments.js"
+      - "mingla-admin/src/lib/access.js"
+      - "mingla-admin/src/lib/announcementDelivery.js"
+      - "supabase/migrations/20280118004130_issue_4130_integration.sql"
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
@@ -694,6 +702,14 @@ on:
       - "mingla-admin/src/pages/ToolLeadsPage.jsx"
       - "mingla-admin/src/pages/ContentCalendarPage.jsx"
       - "supabase/migrations/20280114004130_issue_4130_dashboard_outreach_inbound.sql"
+      # #4130 integration: the suite and the files it reads that are not
+      # already listed here. The SQL suite rides on supabase/migrations/**.
+      - "mingla-admin/src/__tests__/issue_4130_integration.implementor.test.js"
+      - "mingla-admin/src/lib/paymentReadiness.js"
+      - "mingla-admin/src/lib/peopleSegments.js"
+      - "mingla-admin/src/lib/access.js"
+      - "mingla-admin/src/lib/announcementDelivery.js"
+      - "supabase/migrations/20280118004130_issue_4130_integration.sql"
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
@@ -945,6 +961,9 @@ jobs:
       - name: "Issue #4130 — Dashboard, Notifications, Hosts and creators, Inbound leads, Calendar: a failed source is never read as nothing to do, grouped Work updates, due chips and funnel as the server counts them, phone numbers hidden, app runs never leads, event times in local time"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_4130_wave4a_outreach.implementor.test.js
+      - name: "Issue #4130 — integration: Brands and Payments agree on payment readiness, Competitor watch in Settings for who could open Tool leads, failed announcement pushes on the Dashboard for admins, the Event runway table and its two actions"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue_4130_integration.implementor.test.js
       - name: "#3720 Slice B — email segments + single log writer (admin node:test)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_3720_email_segments.implementor.happy.test.js

@@ -37,6 +37,10 @@ export const SETTINGS_SECTIONS = Object.freeze([
   "danger-zone",
 ]);
 
+// #4130 (integration): Settings' Competitor watch is Competitor Ops from the
+// old Tool leads page; it opens for whoever could open that page.
+export const COMPETITOR_WATCH_FROM = "tool-leads";
+
 /** The tab a link asks for, or the first tab when it names none we know. */
 export function tabFor(tabs, requested, aliases = {}) {
   const id = typeof requested === "string" && Object.hasOwn(aliases, requested) ? aliases[requested] : requested;

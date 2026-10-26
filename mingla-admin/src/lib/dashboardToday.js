@@ -1,5 +1,7 @@
 // Issue #4130 (Wave 4a) — the Dashboard's founder numbers and "Needs you
 // today". Pure: no React, no Supabase.
+
+import { announcementsWithFailedPushes } from "./announcementDelivery.js";
 //
 // Each source (Work, Money, Platform health, Support, Inbound) is passed in as
 // { status: "loading" | "error" | "ready", data, error }. A source that failed
@@ -21,7 +23,7 @@ export function weekTrend(last7, prev7) {
 /** Days with no inbound lead before the Dashboard and Inbound leads warn. */
 export const INBOUND_QUIET_DAYS = 14;
 
-const AREA_LABEL = { work: "Work", money: "Money", system: "System", support: "Support", growth: "Growth" };
+const AREA_LABEL = { work: "Work", money: "Money", system: "System", support: "Support", growth: "Growth", community: "Community" };
 
 function failed(id, area, what, source) {
   return {
@@ -85,10 +87,12 @@ export function queueHealthItem(source) {
  *   sources.health   admin_get_api_health services
  *   sources.queue    admin_get_queue_health (only its failure matters here)
  *   sources.summary  admin_dashboard_summary (support and inbound)
+ *   sources.announcements  issue_3720_admin_announcement_deliveries rows
+ *                    (admins only: the page leaves it out for anyone else)
  */
 export function needsYouToday(sources = {}) {
   const items = [];
-  const { work, money, health, queue, summary } = sources;
+  const { work, money, health, queue, summary, announcements } = sources;
 
   if (money?.status === "error") items.push(failed("money", "money", "money", "money"));
   else if (money?.status === "ready") {
@@ -148,6 +152,25 @@ export function needsYouToday(sources = {}) {
         title: days == null ? "No inbound lead has arrived yet" : `No inbound lead for ${days} days`,
         detail: "Check the free tools are still reachable and promoted.",
         href: "#/inbound",
+      });
+    }
+  }
+
+  // #4130 (integration): failed announcement pushes, the same reading as the
+  // Support banner (lib/announcementDelivery.js, Wave 6).
+  if (announcements?.status === "error") {
+    items.push(failed("announcements", "community", "announcement pushes", "announcements"));
+  } else if (announcements?.status === "ready") {
+    const pushes = announcementsWithFailedPushes(announcements.data);
+    const latest = pushes[0];
+    if (latest) {
+      const others = pushes.length - 1;
+      items.push({
+        id: "announcement-push-failed", area: "community", areaLabel: AREA_LABEL.community, tone: "bad",
+        title: `${latest.failed} of ${latest.tried} announcement pushes failed`,
+        detail: `${latest.title ? `"${latest.title}": t` : "T"}hose hosts did not get it on their phone.`
+          + (others > 0 ? ` ${plural(others, "older announcement has", "older announcements have")} failed pushes too.` : ""),
+        href: "#/community?tab=announcements",
       });
     }
   }
