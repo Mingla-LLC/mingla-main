@@ -254,7 +254,7 @@ describe("#3697 / #2331 public arrival runtime", () => {
     expect(html).not.toContain("Ad privacy choices");
     expect(html).not.toContain("Opt out of ad tracking");
     expect(html).toContain(
-      "#root{box-sizing:border-box;padding-bottom:var(--mingla-privacy-inset,0px)}",
+      "#root{box-sizing:border-box;height:calc(100% - var(--mingla-privacy-inset,0px))}",
     );
   });
 

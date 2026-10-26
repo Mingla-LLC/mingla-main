@@ -40,8 +40,9 @@ export function privacyToastFor(choice: { analytics: boolean; ads: boolean }): s
 
 // Below sheets and dialogs (react-native-web's Modal layer sits at 9999).
 const BAR_CSS = `
-#root{box-sizing:border-box;padding-bottom:var(${PRIVACY_INSET_PROPERTY},0px)}
-html[data-mingla-privacy-bar="shown"] #root{overflow-y:auto}
+#root{box-sizing:border-box;height:calc(100% - var(${PRIVACY_INSET_PROPERTY},0px))}
+html[data-mingla-privacy-bar="shown"] #root{overflow-y:auto;overscroll-behavior:contain}
+html[data-mingla-privacy-bar="shown"] #root>*{flex-shrink:0;min-height:calc(100vh - 53px - env(safe-area-inset-bottom,0px));min-height:calc(100dvh - 53px - env(safe-area-inset-bottom,0px))}
 .mpb{position:fixed;left:0;right:0;bottom:0;z-index:9000;box-sizing:border-box;margin:0;background:#171a20;color:#fff;border-top:1px solid rgba(255,255,255,.14);padding:4px max(12px,env(safe-area-inset-right,0px)) calc(4px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));max-height:60vh;max-height:60dvh;overflow-y:auto;overscroll-behavior:contain;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
 .mpb *{box-sizing:border-box}
 .mpb[hidden],.mpb [hidden]{display:none!important}
@@ -89,9 +90,11 @@ function ensureBarStyle(): void {
 function writeInset(px: number): void {
   const inset = Math.max(0, Math.round(px));
   document.documentElement.style.setProperty(PRIVACY_INSET_PROPERTY, `${inset}px`);
-  // While the bar shows, a screen that cannot scroll on its own (a centred
-  // card, a short landscape viewport) can still scroll its last control
-  // clear of the bar inside the root.
+  // While the bar shows, the app root ends at the bar's top edge and clips
+  // there. The app inside keeps at least its collapsed-bar height, so when
+  // Options grows the bar a screen that cannot scroll on its own (a centred
+  // card, a short landscape viewport) scrolls inside the root instead of
+  // sliding under the bar.
   if (inset > 0) document.documentElement.setAttribute(PRIVACY_BAR_ATTRIBUTE, "shown");
   else document.documentElement.removeAttribute(PRIVACY_BAR_ATTRIBUTE);
 }
