@@ -1,6 +1,6 @@
 // ORCH-0908: Thin strip banner that pins above the message list in a
-// collab session's group chat (mounted by BoardDiscussion.tsx between
-// the header and the FlatList). Renders when the session has a card
+// collab session's group chat (mounted by BoardDiscussionTab.tsx between
+// the header and the FlatList; the unused BoardDiscussion.tsx was deleted in #4114). Renders when the session has a card
 // with is_locked=true AND the corresponding calendar_entries row has
 // a scheduled_at value.
 //

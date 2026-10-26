@@ -5,9 +5,7 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  ScrollView,
   FlatList,
-  Image,
   Alert,
   Platform,
   Linking,
@@ -15,16 +13,11 @@ import {
   Dimensions,
   ActivityIndicator,
   useWindowDimensions,
-  BackHandler,
   type ListRenderItemInfo,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
 } from "react-native";
 import { Icon } from "./ui/Icon";
 import * as ImagePicker from "expo-image-picker";
 import * as WebBrowser from "expo-web-browser";
-// TODO: Uncomment after rebuilding app with expo-av native module
-// import { Video, ResizeMode } from "expo-av";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { supabase } from "../services/supabase";
 import { useKeyboard } from "../hooks/useKeyboard";
@@ -52,6 +45,7 @@ import { useSeenSessionMatches } from "../hooks/useSeenSessionMatches";
 import { ChatActionList } from "./chat/ChatActionList";
 import { GroupInfoSheet } from "./chat/GroupInfoSheet";
 import { ChatMediaSheet } from "./chat/ChatMediaSheet";
+import { SavedCardPicker } from "./chat/SavedCardPicker";
 import { buildFriendMenu, type FriendMenuItemId } from "../utils/chatMenuModel";
 import {
   getCollabChatHeaderActions,
@@ -61,24 +55,24 @@ import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
 import { MentionPopover } from "./board/MentionPopover";
 import { CardTagPopover } from "./board/CardTagPopover";
 import type { Participant } from "./board/ParticipantAvatars";
-import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
+import { groupMessages } from "../utils/messageGrouping";
 import {
   aggregateReactions,
   dayLabelKind,
   firstUnreadMessageId,
-  resolveChatBack,
   shouldShowSenderName,
   typingLabel,
   COMPOSER_INPUT_MAX_HEIGHT,
   COMPOSER_LINE_HEIGHT,
   COMPOSER_MIN_HEIGHT,
-  type ChatBackLayer,
   type GroupPosition,
   type ReactionRow,
   type ReactionSummary,
 } from "../utils/threadModel";
 import { TypingIndicator } from "./chat/TypingIndicator";
 import { useComposerLayout } from "../hooks/useComposerLayout";
+import { useChatBackHandler } from "../hooks/useChatBackHandler";
+import { useScrollToLatest } from "../hooks/useScrollToLatest";
 import { requestGalleryPermission } from "../utils/mediaLibraryPermission";
 import { DirectMessage, messagingService, CardPayload, MentionEntry, CardTagEntry, isContentShareCardPayload, type LegacyCardPayload } from "../services/messagingService";
 import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
@@ -107,7 +101,7 @@ import type { BusinessEventCard } from "../types/mergedDiscover";
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
 import { HapticFeedback } from "../utils/hapticFeedback";
-import { colors as dsColors, spacing as dsSpacing, glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
+import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
 import { colors } from "../constants/colors";
 import { chatTokens } from "../constants/chatTokens";
 import { useAppLayout } from "../hooks/useAppLayout";
@@ -780,7 +774,7 @@ export default function MessageInterface({
   const safeInsets = useSafeAreaInsets();
 
   // ── Keyboard handling via useKeyboard hook ─────────────────
-  const { keyboardHeight, isVisible: keyboardVisible, dismiss: dismissKeyboard } = useKeyboard({
+  const { keyboardHeight, isVisible: keyboardVisible } = useKeyboard({
     disableLayoutAnimation: true, // We use animated values instead
   });
   // Issue #4114 Wave 3: the growing composer's measured height.
@@ -1134,21 +1128,6 @@ export default function MessageInterface({
       console.error("Error opening video:", error);
       Alert.alert(t('social:error'), t('chat:errorOpenVideoGeneric'));
     }
-  };
-
-  const formatTimestamp = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (minutes < 1) return "Just now";
-    if (minutes < 60) return `${minutes}m`;
-    if (hours < 24) return `${hours}h`;
-    if (days < 7) return `${days}d`;
-    return date.toLocaleDateString();
   };
 
   // Notification management
@@ -1809,29 +1788,13 @@ export default function MessageInterface({
 
   // Scroll-to-latest: shown once you scroll away from the newest message;
   // counts incoming messages that land meanwhile.
-  const [showScrollToLatest, setShowScrollToLatest] = useState(false);
-  const [unseenWhileScrolled, setUnseenWhileScrolled] = useState(0);
-  const showScrollToLatestRef = useRef(false);
-  const handleThreadScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const away = event.nativeEvent.contentOffset.y > SCROLL_TO_LATEST_THRESHOLD;
-    if (away === showScrollToLatestRef.current) return;
-    showScrollToLatestRef.current = away;
-    setShowScrollToLatest(away);
-    if (!away) setUnseenWhileScrolled(0);
-  }, []);
-  const newestMessageId = visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1].id : null;
-  const newestMessageIsMine = visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1].isMe : false;
-  const previousNewestRef = useRef<string | null>(newestMessageId);
-  useEffect(() => {
-    if (newestMessageId && newestMessageId !== previousNewestRef.current && showScrollToLatestRef.current && !newestMessageIsMine) {
-      setUnseenWhileScrolled((count) => count + 1);
-    }
-    previousNewestRef.current = newestMessageId;
-  }, [newestMessageId, newestMessageIsMine]);
-  const scrollToLatest = useCallback(() => {
-    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-    setUnseenWhileScrolled(0);
-  }, []);
+  const newestVisible = visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1] : null;
+  const { showScrollToLatest, unseenWhileScrolled, handleThreadScroll, scrollToLatest } = useScrollToLatest({
+    listRef: flatListRef,
+    newestMessageId: newestVisible?.id ?? null,
+    newestIsMine: newestVisible?.isMe ?? false,
+    threshold: SCROLL_TO_LATEST_THRESHOLD,
+  });
 
   // Typing in a group: names of everyone typing, above the composer.
   const groupTypingLabel = useMemo(() => {
@@ -1984,36 +1947,28 @@ export default function MessageInterface({
 
   // ── Issue #4114 Wave 3: Android back ─────────────────────────
   // Closes the top-most open layer first (sheets, menus, previews), then the
-  // thread. Registered once and reads the latest state from a ref, so sheets
-  // that register their own handler later still get the press first.
-  const backLayersRef = useRef<Partial<Record<ChatBackLayer, boolean>>>({});
-  backLayersRef.current = {
-    contextMenu: contextMenu.visible,
-    attachmentMenu: showAttachmentMenu,
-    imagePreview: showImagePreview || !!lightboxUrl,
-    expandedCard: showExpandedCardFromChat,
-    eventDetail: showGroupEventSheet,
-    savedCardPicker: showSavedCardPicker,
-    mediaSheet: showMediaSheet,
-    groupInfo: showGroupInfo,
-    moreMenu: showMoreOptionsMenu,
-    eventAudience: showEventAudienceSheet,
-    collabDeck: showCollabDeckSheet,
-    collabMatches: showCollabMatchesSheet,
-    collabPlans: showCollabPlansSheet,
-    collabPrefs: collabPrefsLink.visible,
-  };
-  const onBackRef = useRef(onBack);
-  onBackRef.current = onBack;
-  useEffect(() => {
-    if (Platform.OS !== 'android') return undefined;
-    const closers: Record<ChatBackLayer, () => void> = {
-      contextMenu: () => setContextMenu(CLOSED_CONTEXT_MENU),
+  // thread (hooks/useChatBackHandler).
+  useChatBackHandler(
+    {
+      contextMenu: contextMenu.visible,
+      attachmentMenu: showAttachmentMenu,
+      imagePreview: showImagePreview || !!lightboxUrl,
+      expandedCard: showExpandedCardFromChat,
+      eventDetail: showGroupEventSheet,
+      savedCardPicker: showSavedCardPicker,
+      mediaSheet: showMediaSheet,
+      groupInfo: showGroupInfo,
+      moreMenu: showMoreOptionsMenu,
+      eventAudience: showEventAudienceSheet,
+      collabDeck: showCollabDeckSheet,
+      collabMatches: showCollabMatchesSheet,
+      collabPlans: showCollabPlansSheet,
+      collabPrefs: collabPrefsLink.visible,
+    },
+    {
+      contextMenu: closeContextMenu,
       attachmentMenu: () => setShowAttachmentMenu(false),
-      imagePreview: () => {
-        setShowImagePreview(false);
-        setLightboxUrl(null);
-      },
+      imagePreview: closeImagePreview,
       expandedCard: () => {
         setShowExpandedCardFromChat(false);
         setExpandedCardFromChat(null);
@@ -2028,18 +1983,9 @@ export default function MessageInterface({
       collabMatches: () => setShowCollabMatchesSheet(false),
       collabPlans: () => setShowCollabPlansSheet(false),
       collabPrefs: () => setCollabPrefsLink({ visible: false }),
-    };
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      const target = resolveChatBack(backLayersRef.current);
-      if (target === 'leaveThread') {
-        onBackRef.current();
-      } else {
-        closers[target]();
-      }
-      return true;
-    });
-    return () => sub.remove();
-  }, []);
+    },
+    onBack,
+  );
 
   const handleOpenAudienceProfile = (participantId: string) => {
     setShowEventAudienceSheet(false);
@@ -2645,89 +2591,14 @@ export default function MessageInterface({
         <ActivityIndicator size="large" color="#fff" />
       </View> : null}
       {showSavedCardPicker && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t('chat:pickerTitle')}</Text>
-              <TouchableOpacity
-                onPress={() => setShowSavedCardPicker(false)}
-                style={styles.modalCloseButton}
-              >
-                <Icon name="close" size={12} color="rgba(255, 255, 255, 0.72)" />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.modalSubtitle}>
-              {t('chat:pickerSubtitle', { name: friend.name })}
-            </Text>
-
-            {savedCardsQuery.isLoading ? (
-              <View style={styles.boardList}>
-                {[0, 1, 2].map((i) => (
-                  <View key={i} style={styles.savedCardSkeletonRow}>
-                    <View style={styles.savedCardSkeletonThumb} />
-                    <View style={styles.savedCardSkeletonText}>
-                      <View style={[styles.savedCardSkeletonBar, { width: '60%' }]} />
-                      <View style={[styles.savedCardSkeletonBar, { width: '40%', marginTop: 6 }]} />
-                    </View>
-                  </View>
-                ))}
-              </View>
-            ) : (savedCardsQuery.data?.length ?? 0) === 0 ? (
-              <View style={styles.savedCardEmptyContainer}>
-                <Text style={styles.savedCardEmptyTitle}>
-                  {t('chat:noSavedCardsToShareTitle')}
-                </Text>
-                <Text style={styles.savedCardEmptyBody}>
-                  {t('chat:noSavedCardsToShareBody')}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setShowSavedCardPicker(false)}
-                  style={styles.confirmButton}
-                >
-                  <Text style={styles.confirmButtonText}>{t('chat:ok')}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <ScrollView style={styles.boardList}>
-                {savedCardsQuery.data?.map((card) => {
-                  const isSubmitting = pickerSubmittingCardId === card.id;
-                  const isOtherSubmitting =
-                    !!pickerSubmittingCardId && pickerSubmittingCardId !== card.id;
-                  return (
-                    <TouchableOpacity
-                      key={card.id}
-                      onPress={() => handleSelectCardToShare(card)}
-                      disabled={isSubmitting || isOtherSubmitting}
-                      style={[
-                        styles.savedCardRow,
-                        isSubmitting && { opacity: 0.5 },
-                      ]}
-                    >
-                      {card.image ? (
-                        <Image
-                          source={{ uri: card.image }}
-                          style={styles.savedCardThumb}
-                        />
-                      ) : (
-                        <View style={[styles.savedCardThumb, styles.savedCardThumbPlaceholder]}>
-                          <Icon name="bookmark" size={20} color="rgba(255,255,255,0.5)" />
-                        </View>
-                      )}
-                      <View style={styles.savedCardInfo}>
-                        <Text style={styles.savedCardTitle} numberOfLines={1}>
-                          {card.title}
-                        </Text>
-                        <Text style={styles.savedCardSubtitle} numberOfLines={1}>
-                          {isSubmitting ? t('chat:cardSending') : (card.category || '')}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            )}
-          </View>
-        </View>
+        <SavedCardPicker
+          friendName={friend.name}
+          isLoading={savedCardsQuery.isLoading}
+          cards={savedCardsQuery.data}
+          submittingCardId={pickerSubmittingCardId}
+          onSelect={handleSelectCardToShare}
+          onClose={() => setShowSavedCardPicker(false)}
+        />
       )}
 
       {/* ORCH-0667 + ORCH-0685: tap-to-expand shared card from chat with real Save wiring */}
@@ -3278,145 +3149,6 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.65)",
     textAlign: "center",
   },
-  messagesList: {
-    gap: 16,
-  },
-  messageContainer: {
-    marginBottom: 16,
-  },
-  messageContainerLeft: {
-    alignItems: "flex-start",
-  },
-  messageContainerRight: {
-    alignItems: "flex-end",
-  },
-  messageBubble: {
-    padding: 12,
-    borderRadius: 16,
-    maxWidth: "70%",
-  },
-  messageBubbleLeft: {
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.14)", // __not_chrome__: incoming message bubble, separate design language from glass.chrome.* — see ORCH-0669 D-1
-  },
-  messageBubbleRight: {
-    backgroundColor: "#eb7825",
-    borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.55)",
-    shadowColor: "#eb7825",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  messageText: {
-    fontSize: 16,
-    lineHeight: 20,
-  },
-  messageTextLeft: {
-    color: "#FFFFFF",
-  },
-  messageTextRight: {
-    color: "#FFFFFF",
-  },
-  messageCaption: {
-    marginBottom: 8,
-  },
-  messageImage: {
-    width: 200,
-    height: 150,
-    borderRadius: 8,
-  },
-  videoContainer: {
-    width: 200,
-    height: 150,
-    borderRadius: 8,
-    overflow: "hidden",
-  },
-  videoPlaceholder: {
-    width: 200,
-    height: 150,
-    backgroundColor: "rgba(0, 0, 0, 0.1)",
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  videoPlayer: {
-    width: "100%",
-    height: "100%",
-  },
-  videoText: {
-    fontSize: 14,
-    marginTop: 8,
-  },
-  videoTextLeft: {
-    color: "rgba(255, 255, 255, 0.72)",
-  },
-  videoTextRight: {
-    color: "#FFFFFF",
-  },
-  fileContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 8,
-    borderRadius: 8,
-  },
-  fileContainerLeft: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-  },
-  fileContainerRight: {
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-  },
-  fileIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  fileIconLeft: {
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-  },
-  fileIconRight: {
-    backgroundColor: "rgba(255, 255, 255, 0.3)",
-  },
-  fileInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  fileName: {
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  fileNameLeft: {
-    color: "#FFFFFF",
-  },
-  fileNameRight: {
-    color: "#FFFFFF",
-  },
-  fileSize: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  fileSizeLeft: {
-    color: "rgba(255, 255, 255, 0.6)",
-  },
-  fileSizeRight: {
-    color: "rgba(255, 255, 255, 0.7)",
-  },
-  messageTimestamp: {
-    fontSize: 12,
-    color: "rgba(255, 255, 255, 0.45)",
-    marginTop: 4,
-  },
-  messageTimestampLeft: {
-    textAlign: "left",
-  },
-  messageTimestampRight: {
-    textAlign: "right",
-  },
   processingOverlay: {
     flex: 1,
     width: SCREEN_WIDTH,
@@ -3592,196 +3324,7 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     opacity: 0.5,
   },
-  modalOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
-    zIndex: 50,
-  },
-  modalContainer: {
-    backgroundColor: "white",
-    borderRadius: 16,
-    padding: 24,
-    width: "100%",
-    maxWidth: 400,
-    maxHeight: "80%",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  modalCloseButton: {
-    width: 24,
-    height: 24,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginBottom: 16,
-  },
-  boardList: {
-    marginBottom: 24,
-  },
-  boardItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  boardItemSelected: {
-    backgroundColor: "#fef3f2",
-    borderColor: "#fecaca",
-  },
-  checkbox: {
-    width: 16,
-    height: 16,
-    borderWidth: 2,
-    borderColor: "#d1d5db",
-    borderRadius: 4,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkboxSelected: {
-    backgroundColor: "#eb7825",
-    borderColor: "#eb7825",
-  },
-  boardInfo: {
-    flex: 1,
-  },
-  boardName: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#111827",
-  },
-  boardParticipants: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginTop: 2,
-  },
   // ORCH-0667: shared-card picker styles
-  savedCardRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.05)",
-  },
-  savedCardThumb: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
-    backgroundColor: "rgba(0,0,0,0.06)",
-  },
-  savedCardThumbPlaceholder: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  savedCardInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  savedCardTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  savedCardSubtitle: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginTop: 2,
-  },
-  savedCardSkeletonRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  savedCardSkeletonThumb: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
-    backgroundColor: "rgba(0,0,0,0.08)",
-  },
-  savedCardSkeletonText: {
-    flex: 1,
-  },
-  savedCardSkeletonBar: {
-    height: 10,
-    borderRadius: 4,
-    backgroundColor: "rgba(0,0,0,0.08)",
-  },
-  savedCardEmptyContainer: {
-    paddingHorizontal: 24,
-    paddingVertical: 32,
-    alignItems: "center",
-    gap: 12,
-  },
-  savedCardEmptyTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-    textAlign: "center",
-  },
-  savedCardEmptyBody: {
-    fontSize: 14,
-    color: "#6b7280",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  modalActions: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  cancelButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  cancelButtonText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#374151",
-  },
-  confirmButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: "#eb7825",
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  confirmButtonText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "white",
-  },
   notificationsContainer: {
     position: "absolute",
     top: 80,

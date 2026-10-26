@@ -128,11 +128,13 @@ Deno.test("W3 composer grows to 5 lines and the list padding follows it", async 
 });
 
 Deno.test("W3 Android back closes open sheets first, then the thread", async () => {
-  const chat = strip(await read("components/MessageInterface.tsx"));
-  assert(/BackHandler\.addEventListener\('hardwareBackPress', \(\) => \{\s*const target = resolveChatBack\(backLayersRef\.current\);/.test(chat),
+  const hook = strip(await read("hooks/useChatBackHandler.ts"));
+  assert(/BackHandler\.addEventListener\("hardwareBackPress", \(\) => \{\s*const target = resolveChatBack\(backLayersRef\.current\);/.test(hook),
     "back resolves the top-most open layer");
-  assert(/if \(target === 'leaveThread'\) \{\s*onBackRef\.current\(\);\s*\} else \{\s*closers\[target\]\(\);/.test(chat),
+  assert(/if \(target === "leaveThread"\) \{\s*onBackRef\.current\(\);\s*\} else \{\s*closersRef\.current\[target\]\(\);/.test(hook),
     "a layer closes before the thread does");
+  const chat = strip(await read("components/MessageInterface.tsx"));
+  assert(/useChatBackHandler\(/.test(chat), "the thread registers the back handler");
   assert(/moreMenu: showMoreOptionsMenu,/.test(chat) && /collabDeck: showCollabDeckSheet,/.test(chat), "sheets are tracked");
 });
 
@@ -161,4 +163,30 @@ Deno.test("W3 message actions: unsend, reply jump, labelled 44pt actions, report
   const service = strip(await read("services/messagingService.ts"));
   assert(/update\(\{ deleted_at: new Date\(\)\.toISOString\(\) \}\)\s*\.eq\('id', messageId\)\s*\.eq\('sender_id', senderId\)/.test(service),
     "unsend is the sender's soft delete");
+});
+
+Deno.test("W3 structure: the unused discussion code is gone and the thread is split", async () => {
+  for (const path of [
+    "components/BoardDiscussion.tsx",
+    "components/discussion/MessageBubble.tsx",
+    "components/discussion/EmojiReactionPicker.tsx",
+    "components/discussion/SuggestionPopup.tsx",
+    "components/discussion/EmptyDiscussion.tsx",
+    "components/discussion/TypingIndicator.tsx",
+  ]) {
+    let exists = true;
+    try {
+      await Deno.stat(new URL(path, root));
+    } catch {
+      exists = false;
+    }
+    assert(!exists, `${path} has no importers and stays deleted`);
+  }
+  const chat = strip(await read("components/MessageInterface.tsx"));
+  for (const part of ["ChatHeader", "GroupInfoSheet", "ChatMediaSheet", "SavedCardPicker", "ChatActionList"]) {
+    assert(new RegExp(`<${part}\\b`).test(chat), `MessageInterface composes ${part}`);
+  }
+  for (const hook of ["useComposerLayout", "useChatBackHandler", "useScrollToLatest", "useSeenSessionMatches"]) {
+    assert(new RegExp(`${hook}\\(`).test(chat), `MessageInterface uses ${hook}`);
+  }
 });
