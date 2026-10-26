@@ -27,7 +27,7 @@
 --     exactly the shape above and sit in the message's own conversation folder, and a path another sender's
 --     message already points at cannot be reused. A client cannot choose or
 --     change any message's send time (the 14-day view-once expiry counts from
---     it).
+--     it), and once a view-once item is purged a client cannot undo the purge.
 --   * `message_media_views(message_id, user_id, viewed_at)`: one row per person
 --     per view-once message. Clients can read (their own rows, and every row of
 --     the messages they sent) but never write; only the edge function inserts.
@@ -127,7 +127,8 @@ CREATE INDEX IF NOT EXISTS messages_file_url_idx
 --    stamped now(), and no client can change any message's created_at
 --    afterwards (the 14-day view-once expiry is counted from it, so a message
 --    sent as ordinary and later turned view-once still carries the server's
---    time).
+--    time). Once view_once_purged_at is set, a client can neither clear or
+--    change it nor bring the message back (deleted_at set back to NULL).
 --    SECURITY DEFINER so the reuse check sees every message, not only the rows
 --    the writer can read. The canonical-shape function is defined in section 5
 --    and only called at row time.
@@ -142,7 +143,8 @@ DECLARE
   v_is_path boolean := NEW.file_url IS NOT NULL AND NOT (NEW.file_url ~* '^https?://');
   v_client boolean := COALESCE(auth.role(), '') IN ('authenticated', 'anon');
 BEGIN
-  -- Server-owned send time (clients only; migrations and service code keep theirs).
+  -- Server-owned send time and final purges (clients only; migrations and
+  -- service code keep theirs).
   IF v_client THEN
     IF TG_OP = 'INSERT' THEN
       NEW.created_at := now();
@@ -150,7 +152,27 @@ BEGIN
       IF NEW.created_at IS DISTINCT FROM OLD.created_at THEN
         RAISE EXCEPTION 'message_created_at_is_server_owned' USING ERRCODE = '23514';
       END IF;
+      IF OLD.view_once_purged_at IS NOT NULL THEN
+        IF NEW.view_once_purged_at IS DISTINCT FROM OLD.view_once_purged_at THEN
+          RAISE EXCEPTION 'view_once_purge_is_final' USING ERRCODE = '23514';
+        END IF;
+        IF OLD.deleted_at IS NOT NULL AND NEW.deleted_at IS NULL THEN
+          RAISE EXCEPTION 'view_once_purge_is_final' USING ERRCODE = '23514';
+        END IF;
+      END IF;
     END IF;
+  END IF;
+
+  -- An update that leaves the path columns alone (an unsend, a purge mark, an
+  -- edit) is not re-checked, exactly as before deleted_at and
+  -- view_once_purged_at joined the trigger's column list.
+  IF TG_OP = 'UPDATE'
+     AND NEW.view_once IS NOT DISTINCT FROM OLD.view_once
+     AND NEW.file_url IS NOT DISTINCT FROM OLD.file_url
+     AND NEW.message_type IS NOT DISTINCT FROM OLD.message_type
+     AND NEW.conversation_id IS NOT DISTINCT FROM OLD.conversation_id
+     AND NEW.sender_id IS NOT DISTINCT FROM OLD.sender_id THEN
+    RETURN NEW;
   END IF;
 
   IF v_is_path THEN
@@ -189,7 +211,7 @@ REVOKE ALL ON FUNCTION public.issue_4114_enforce_view_once_shape() FROM PUBLIC, 
 
 DROP TRIGGER IF EXISTS issue_4114_view_once_shape ON public.messages;
 CREATE TRIGGER issue_4114_view_once_shape
-  BEFORE INSERT OR UPDATE OF view_once, file_url, message_type, conversation_id, sender_id, created_at ON public.messages
+  BEFORE INSERT OR UPDATE OF view_once, file_url, message_type, conversation_id, sender_id, created_at, deleted_at, view_once_purged_at ON public.messages
   FOR EACH ROW EXECUTE FUNCTION public.issue_4114_enforce_view_once_shape();
 
 -- 4. Who opened which view-once message.
