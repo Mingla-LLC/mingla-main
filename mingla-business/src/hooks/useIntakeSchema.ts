@@ -22,6 +22,7 @@ import {
   type IntakeSchema,
   type IntakeSchemaServiceError,
 } from "../services/intakeSchemaService";
+import type { TripRevisionCursor } from "../services/tripsService";
 
 // ---------------------------------------------------------------------------
 // Query keys
@@ -69,6 +70,8 @@ interface UpsertIntakeSchemaInput {
   reason?: string;
   /** Optimisation hint when caller already knows draft state. */
   skipStatusProbe?: boolean;
+  /** Issue #3801 — the revision the editor holds (draft saves send and adopt it). */
+  revision?: TripRevisionCursor;
 }
 
 /**
@@ -93,13 +96,14 @@ export function useUpsertTripIntakeSchema(): UseMutationResult<
 > {
   const qc = useQueryClient();
   return useMutation<void, IntakeSchemaServiceError, UpsertIntakeSchemaInput>({
-    mutationFn: ({ eventId, ticketTypeId, schema, reason, skipStatusProbe }) =>
+    mutationFn: ({ eventId, ticketTypeId, schema, reason, skipStatusProbe, revision }) =>
       upsertTripIntakeSchema({
         eventId,
         ticketTypeId,
         schema,
         reason,
         skipStatusProbe,
+        revision,
       }),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({
