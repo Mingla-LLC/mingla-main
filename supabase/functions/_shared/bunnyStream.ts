@@ -124,7 +124,7 @@ export async function fetchWithTimeout(
   fetchImpl: typeof fetch = fetch,
 ): Promise<Response> {
   const controller = new AbortController();
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       controller.abort();
