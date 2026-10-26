@@ -148,3 +148,14 @@ export function renderIssue4111SubscribeSms(
     sms: line,
   };
 }
+
+/**
+ * notify-dispatch records a transactional consent row the first time it
+ * sends to a contact. That row's `source` historically was always
+ * 'reservation'; a subscribe confirmation text is not a reservation, so it is
+ * labelled by its own provenance. Every other category keeps 'reservation'
+ * byte for byte.
+ */
+export function transactionalConsentSourceForCategory(categoryKey: string): string {
+  return categoryKey === ISSUE_4111_SUBSCRIBE_SMS_CATEGORY ? "brand_subscribe" : "reservation";
+}
