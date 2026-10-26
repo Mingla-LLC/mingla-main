@@ -75,3 +75,14 @@ Deno.test("#3872 anonymous-copy linter rejects every off-platform identity route
     true,
   );
 });
+
+Deno.test("#3872 public gig DTO carries the gig's pay, never a budget level", () => {
+  const dto = toPublicGig({
+    id: "g1",
+    pay_up_to_minor: 30000,
+    currency: "USD",
+  });
+  assertEquals(dto.pay_up_to_minor, 30000);
+  assertEquals(dto.currency, "USD");
+  assertEquals(Object.keys(dto).some((key) => key.startsWith("budget")), false);
+});

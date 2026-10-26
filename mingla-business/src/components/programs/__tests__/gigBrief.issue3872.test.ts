@@ -4,7 +4,6 @@ import {
   briefServerErrors,
   emptyBrief,
   gigPayload,
-  payBandCaption,
   shootWindow,
   stepForErrors,
   validateBrief,
@@ -21,11 +20,6 @@ const ctx: BriefContext = {
   currency: "USD",
   today: "2026-10-26",
   eventDay: "2026-11-25",
-  bands: [
-    { currency: "USD", band: "b1", min_minor: 5000, max_minor: 15000 },
-    { currency: "USD", band: "b2", min_minor: 15000, max_minor: 32000 },
-    { currency: "USD", band: "b3", min_minor: 32000, max_minor: 80000 },
-  ],
   brandName: "Sky Lounge",
   listingTitle: "QA Rooftop Social",
 };
@@ -140,18 +134,19 @@ describe("gig brief payload", () => {
       slots: 2,
       usage_days: 365,
       sales_share_bps: 1500,
-      budget_band: "b2",
+      pay_up_to_minor: 30000,
       currency: "USD",
       status: "open",
     });
     expect(payload).not.toHaveProperty("id");
+    expect(Object.keys(payload).some((key) => key.startsWith("budget"))).toBe(false);
   });
 
-  it("uses the chosen level when no ranges are configured, and drops the share for Get seen", () => {
+  it("sends the typed pay as minor units and drops the share for Get seen", () => {
     const payload = gigPayload({
-      form: { ...filled(), goal: "seen", level: "b4" },
-      ctx: { ...ctx, bands: [] },
-      payMinor: 30000,
+      form: { ...filled(), goal: "seen" },
+      ctx,
+      payMinor: 45000,
       brandId: "b",
       listingKind: "venue",
       listingId: "v",
@@ -159,7 +154,7 @@ describe("gig brief payload", () => {
     });
     expect(payload).toMatchObject({
       id: "gig-1",
-      budget_band: "b4",
+      pay_up_to_minor: 45000,
       sales_share_bps: null,
       category: "venue",
     });
@@ -181,7 +176,7 @@ describe("gig brief payload", () => {
       shoot_window_end: "2026-11-21",
       post_by: "2026-11-30",
       usage_days: 30,
-      budget_band: "b3",
+      pay_up_to_minor: 32000,
       currency: "USD",
       sales_share_bps: null,
       slots: 3,
@@ -195,8 +190,9 @@ describe("gig brief payload", () => {
       platforms: ["youtube"],
       slots: 3,
       usageDays: 30,
-      level: "b3",
+      payText: "320",
     });
+    expect(briefFromGig({ ...gig, pay_up_to_minor: null }, "USD").payText).toBe("");
   });
 });
 
@@ -237,9 +233,11 @@ describe("shoot window from the host's choice", () => {
 });
 
 describe("pay and the footer total", () => {
-  it("shows the level's money range under the pay field", () => {
-    expect(payBandCaption(filled(), ctx, 30000)).toBe("Level 2 · $150–$320");
-    expect(payBandCaption(filled(), { ...ctx, bands: [] }, 30000)).toBeNull();
+  it("puts a missing pay from the server next to the pay field", () => {
+    expect(
+      briefServerErrors({ error: "pay_required", field: "pay_up_to_minor" }),
+    ).toEqual({ pay: "Enter the most you'll pay each creator." });
+    expect(briefServerErrors({ error: "invalid_gig", field: "pay_up_to_minor" })).toHaveProperty("pay");
   });
 
   it("words the most you'll spend in one short line", () => {

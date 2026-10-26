@@ -65,7 +65,8 @@ test("#3872 working screens carry no marketing hero and no raw values", () => {
     const source = read(file);
     assert.doesNotMatch(source, /s\.eyebrow|s\.heading|s\.lede/, `${file} reintroduced the marketing hero`);
     assert.doesNotMatch(source, /replaceAll\('_'/, `${file} prints a raw key with underscores swapped out`);
-    assert.doesNotMatch(source, /toUpperCase\(\)\}<\/Text>|budget_band\.toUpperCase/, `${file} shows a raw code`);
+    assert.doesNotMatch(source, /toUpperCase\(\)\}<\/Text>/, `${file} shows a raw code`);
+    assert.doesNotMatch(source, /LevelDots|Starter budget|Top budget|\bbudget_/, `${file} still shows a budget level`);
     assert.doesNotMatch(source, /minor units|YYYY-MM-DD|Stripe|Paystack|Seth/, `${file} shows raw or internal copy`);
   }
 });

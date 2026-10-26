@@ -10,16 +10,10 @@
  */
 import {
   addDays,
-  bandForAmount,
-  bandsForCurrency,
   briefLintMessage,
   lintPublicBrief,
-  bandLevel,
   minorToWholeText,
   programErrorMessage,
-  programMoney,
-  type BudgetBandKey,
-  type BudgetBandRange,
 } from "../../utils/creatorProgramFormat";
 import type { HostGig } from "../../services/creatorGigsService";
 
@@ -71,7 +65,6 @@ export type BriefForm = {
   shootTime: string;
   slots: number;
   payText: string;
-  level: BudgetBandKey;
   salesShare: boolean;
   salesSharePercent: number;
   usageDays: UsageDays;
@@ -107,7 +100,6 @@ export function emptyBrief(): BriefForm {
     shootTime: "",
     slots: 1,
     payText: "",
-    level: "b2",
     salesShare: true,
     salesSharePercent: 10,
     usageDays: 90,
@@ -151,9 +143,6 @@ export function briefFromGig(gig: HostGig, currency: string): BriefForm {
       : { shootMode: "open" as const, shootDay: "", shootTime: "" }),
     slots: typeof gig.slots === "number" ? gig.slots : 1,
     payText: payMinor ? minorToWholeText(payMinor, currency) : "",
-    level: (/^b[1-4]$/.test(gig.budget_band)
-      ? gig.budget_band
-      : "b2") as BudgetBandKey,
     salesShare: share !== null,
     salesSharePercent: share ? Math.round(share / 100) : 10,
     usageDays: usage,
@@ -173,7 +162,6 @@ export type BriefContext = {
   today: string;
   /** The event's first day ("YYYY-MM-DD"); null for venues. */
   eventDay?: string | null;
-  bands: readonly BudgetBandRange[];
   brandName?: string | null;
   brandSlug?: string | null;
   listingTitle?: string | null;
@@ -302,18 +290,6 @@ export function briefMaxSpend(input: {
     : input.money(total);
 }
 
-/** The band creators see: from the pay-up-to amount when ranges exist, else the chosen level. */
-export function briefBand(
-  form: BriefForm,
-  ctx: BriefContext,
-  payMinor: number | null,
-): BudgetBandKey {
-  const ranges = bandsForCurrency(ctx.bands, ctx.currency);
-  if (ranges.length > 0 && payMinor !== null)
-    return bandForAmount(ranges, payMinor);
-  return form.level;
-}
-
 export function gigPayload(input: {
   form: BriefForm;
   ctx: BriefContext;
@@ -355,7 +331,8 @@ export function gigPayload(input: {
         ? `${form.shootDay}T${form.shootTime}`
         : null,
     usage_days: form.usageDays,
-    budget_band: briefBand(form, ctx, input.payMinor),
+    // The most each creator can be paid, in the listing's minor units.
+    pay_up_to_minor: input.payMinor,
     currency: ctx.currency,
     sales_share_bps:
       form.goal === "sell" && form.salesShare
@@ -379,7 +356,7 @@ const SERVER_FIELD: Record<string, BriefField> = {
   video_due_at: "videoDue",
   shoot_at: "shoot",
   slots: "slots",
-  budget_band: "pay",
+  pay_up_to_minor: "pay",
   city_id: "city",
 };
 
@@ -406,6 +383,9 @@ export function briefServerErrors(result: {
         "The video can't be due before the shoot. Pick a later time or an earlier shoot.",
     };
   }
+  if (result.error === "pay_required") {
+    return { pay: "Enter the most you'll pay each creator." };
+  }
   const field = result.field ? SERVER_FIELD[result.field] : undefined;
   const message =
     result.error === "shoot_outside_window"
@@ -422,22 +402,4 @@ export function briefServerErrors(result: {
       "We couldn't post this gig. Check the details and try again.",
     ),
   };
-}
-
-/**
- * Under the pay field: the level creators see with its money range
- * ("Level 2 · $250–$500"), or null when no ranges are set for the currency
- * (the editor then shows the level picker instead).
- */
-export function payBandCaption(
-  form: BriefForm,
-  ctx: BriefContext,
-  payMinor: number | null,
-): string | null {
-  const ranges = bandsForCurrency(ctx.bands, ctx.currency);
-  if (ranges.length === 0) return null;
-  const band = briefBand(form, ctx, payMinor);
-  const row = ranges.find((item) => item.band === band);
-  if (!row) return null;
-  return `Level ${bandLevel(band)} · ${programMoney(row.min_minor, ctx.currency)}–${programMoney(row.max_minor, ctx.currency)}`;
 }

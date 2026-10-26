@@ -4,7 +4,7 @@
  * public/private brief boxes with counters. Timing and pay — "Video needed
  * by" (date and time, required), "Shoot" (optional; The event day / Any day
  * before; blank lets the creator propose a time), city, creators, a money
- * field with the level's range under it, sales share and reuse. The footer
+ * field ("Pay each creator up to"), sales share and reuse. The footer
  * total never overflows; the keyboard rule hides it while typing.
  */
 import React, { useEffect, useMemo, useState } from "react";
@@ -40,7 +40,6 @@ import {
   briefServerErrors,
   emptyBrief,
   gigPayload,
-  payBandCaption,
   stepForErrors,
   validateBrief,
   validateBriefStep,
@@ -61,7 +60,6 @@ import {
   type PromoteListing,
 } from "../../../../src/services/promoteListingService";
 import {
-  bandsForCurrency,
   bookingFeeMinor,
   briefLintMessage,
   formatName,
@@ -71,7 +69,6 @@ import {
   shortDate,
   toIsoDay,
   wholeCurrencyToMinor,
-  type BudgetBandRange,
 } from "../../../../src/utils/creatorProgramFormat";
 import { formatCurrencyRound } from "../../../../src/utils/currency";
 import { blastHubHref } from "../../../../src/components/marketing/marketingSubNavTabs";
@@ -90,7 +87,6 @@ const USAGE_OPTIONS: ReadonlyArray<readonly [UsageDays, string]> = [
   [90, "90 days"],
   [365, "1 year"],
 ];
-const LEVELS = ["b1", "b2", "b3", "b4"] as const;
 
 /** A tall brief box with its label and a character count under it. */
 function BriefBox({
@@ -156,7 +152,6 @@ export default function GigBriefEditor(): React.ReactElement {
   const [listingId, setListingId] = useState(params.listingId ?? "");
   const [listing, setListing] = useState<PromoteListing | null>(null);
   const [cities, setCities] = useState<ProgramCity[]>([]);
-  const [bands, setBands] = useState<BudgetBandRange[]>([]);
   const [form, setForm] = useState<BriefForm>(emptyBrief);
   const [ready, setReady] = useState(false);
   const [touched, setTouched] = useState(false);
@@ -171,12 +166,11 @@ export default function GigBriefEditor(): React.ReactElement {
     let active = true;
     void (async () => {
       const sourceGigId = params.gigId ?? params.fromGigId;
-      const [home, nextCities, nextBands] = await Promise.all([
+      const [home, nextCities] = await Promise.all([
         sourceGigId
           ? creatorGigsService.hostHome(brandId).catch(() => null)
           : Promise.resolve(null),
         fetchProgramCities().catch(() => [] as ProgramCity[]),
-        creatorGigsService.budgetBands(),
       ]);
       if (!active) return;
       const source = home?.gigs.find((gig) => gig.id === sourceGigId) ?? null;
@@ -189,7 +183,6 @@ export default function GigBriefEditor(): React.ReactElement {
         : null;
       if (!active) return;
       setCities(nextCities);
-      setBands(nextBands);
       setListingId(nextListingId);
       setListing(nextListing);
       setForm(() => {
@@ -235,12 +228,11 @@ export default function GigBriefEditor(): React.ReactElement {
       currency,
       today,
       eventDay: listing?.kind === "event" ? listing.startDay : null,
-      bands,
       brandName: brand?.displayName,
       brandSlug: brand?.slug,
       listingTitle: listing?.title,
     }),
-    [currency, today, listing?.kind, listing?.startDay, bands, brand?.displayName, brand?.slug, listing?.title],
+    [currency, today, listing?.kind, listing?.startDay, brand?.displayName, brand?.slug, listing?.title],
   );
   const errors: BriefErrors = {
     ...(touched ? validateBriefStep(step, form, ctx, payMinor) : {}),
@@ -251,8 +243,6 @@ export default function GigBriefEditor(): React.ReactElement {
     brandSlug: brand?.slug,
     listingTitle: listing?.title,
   });
-  const ranges = bandsForCurrency(bands, currency);
-  const bandCaption = payBandCaption(form, ctx, payMinor);
   const fee = payMinor ?? 0;
   const shareOn = form.goal === "sell" && form.salesShare;
   const maxSpend = briefMaxSpend({
@@ -624,23 +614,8 @@ export default function GigBriefEditor(): React.ReactElement {
               style={styles.moneyInput}
             />
           </View>
-          {bandCaption ? <Text style={styles.tiny}>{bandCaption}</Text> : null}
+          <Text style={styles.tiny}>Creators see this as the most the gig pays.</Text>
           <FieldError message={errors.pay} />
-          {ranges.length === 0 ? (
-            <>
-              <Text style={styles.fieldLabel}>Budget level creators see</Text>
-              <View style={styles.chips}>
-                {LEVELS.map((level, index) => (
-                  <Chip
-                    key={level}
-                    label={`Level ${index + 1}`}
-                    selected={form.level === level}
-                    onPress={() => update("level", level)}
-                  />
-                ))}
-              </View>
-            </>
-          ) : null}
           {form.goal === "sell" ? (
             <>
               <ListGroup>

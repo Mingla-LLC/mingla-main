@@ -7,16 +7,15 @@ import { creatorProgramService, setupChecks } from '../../src/services/creatorPr
 import { creatorGigsService, type CreatorHomeContract, type PublicGig } from '../../src/services/creatorGigsService';
 import { programErrorText } from '../../src/services/programResult';
 import {
-  CLOSED_CONTRACT_STATES, FORMAT_INFO, budgetDisplay, creatorOwnsNextStep, creatorStateWords, deliverablesLabel, formatDateRange,
+  CLOSED_CONTRACT_STATES, FORMAT_INFO, creatorOwnsNextStep, creatorStateWords, deliverablesLabel, formatDateRange, payUpToText,
   formatDue, formatMoney, formatName, formatShortDate, nicheLabel, setupMinutesLeft,
 } from '../../src/utils/programFormat';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramLoadError, ProgramLoading, ProgramNotice, ProgramPill, ProgramScreen, programStyles as s } from '../../src/components/programs/ProgramUi';
-import { ChoiceSheet, Chip, LevelDots, Segmented, type Choice } from '../../src/components/programs/ProgramPickers';
+import { ChoiceSheet, Chip, Segmented, type Choice } from '../../src/components/programs/ProgramPickers';
 import { GlassIconButton } from '../../src/components/ui/GlassIconButton';
 import { Icon } from '../../src/components/ui/Icon';
 
 type Tab = 'work' | 'gigs' | 'interest';
-type Budget = 'any' | 'b1' | 'b2' | 'b3' | 'b4';
 
 const VERIFICATION_COPY: Record<string, { title: string; text: string }> = {
   review: { title: 'A person is checking one thing', text: 'Most profiles verify instantly. Yours was flagged, so someone at Mingla takes a look, usually within a day.' },
@@ -31,9 +30,8 @@ export default function CreatorHubScreen(): React.ReactElement {
   const [tab, setTab] = useState<Tab>('work');
   const [cityId, setCityId] = useState<string | null>(null);
   const [formatKey, setFormatKey] = useState<string | null>(null);
-  const [budget, setBudget] = useState<Budget>('any');
   const [savedOnly, setSavedOnly] = useState(false);
-  const [sheet, setSheet] = useState<'city' | 'format' | 'budget' | null>(null);
+  const [sheet, setSheet] = useState<'city' | 'format' | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const status = useQuery({ queryKey: ['creator', 'status'], queryFn: () => creatorProgramService.status() });
@@ -79,9 +77,8 @@ export default function CreatorHubScreen(): React.ReactElement {
     const source = savedOnly ? saved : board.data ?? [];
     return source
       .filter((g) => g.slots_left > 0)
-      .filter((g) => budget === 'any' || (g.budget_band ?? '').toLowerCase() === budget)
       .filter((g) => !savedOnly || !formatKey || g.format_key === formatKey);
-  }, [board.data, saved, savedOnly, budget, formatKey]);
+  }, [board.data, saved, savedOnly, formatKey]);
 
   const toggleSave = async (gig: PublicGig): Promise<void> => {
     const next = !(gig.saved ?? savedIds.has(gig.id));
@@ -101,9 +98,6 @@ export default function CreatorHubScreen(): React.ReactElement {
   const sub = [...(profile.data?.niches ?? []).slice(0, 2).map(nicheLabel), profile.data?.home_city_name].filter(Boolean).join(' · ');
   const cityOptions: Array<Choice<string>> = [{ value: 'any', label: 'Any city' }, ...(cities.data ?? []).map((c) => ({ value: c.id, label: c.name }))];
   const formatOptions: Array<Choice<string>> = [{ value: 'any', label: 'Any format' }, ...FORMAT_INFO.map((f) => ({ value: f.key, label: f.name, hint: `${f.seconds[0]}–${f.seconds[1]}s` }))];
-  const budgetOptions: Array<Choice<Budget>> = [
-    { value: 'any', label: 'Any budget' }, { value: 'b1', label: 'Starter budget' }, { value: 'b2', label: 'Mid budget' }, { value: 'b3', label: 'High budget' }, { value: 'b4', label: 'Top budget' },
-  ];
   const cityLabel = effectiveCity ? (cities.data ?? []).find((c) => c.id === effectiveCity)?.name ?? 'Your city' : 'Any city';
 
   return <ProgramScreen
@@ -171,12 +165,11 @@ export default function CreatorHubScreen(): React.ReactElement {
         <View style={s.wrap}>
           <Chip label={cityLabel} selected={Boolean(effectiveCity)} onPress={() => setSheet('city')} />
           <Chip label={formatKey ? formatName(formatKey) : 'Any format'} selected={Boolean(formatKey)} onPress={() => setSheet('format')} />
-          <Chip label={budgetOptions.find((b) => b.value === budget)?.label ?? 'Any budget'} selected={budget !== 'any'} onPress={() => setSheet('budget')} />
           <Chip label={`Saved${saved.length ? ` ${saved.length}` : ''}`} selected={savedOnly} onPress={() => setSavedOnly((v) => !v)} />
         </View>
         {!verified ? <ProgramNotice text="Browse now. Sending interest unlocks when setup is done." /> : null}
         {board.isLoading ? <ProgramLoading /> : board.isError ? <ProgramNotice tone="error" text={programErrorText(board.error)} />
-          : gigs.length === 0 ? <ProgramEmpty title={savedOnly ? 'No saved gigs' : 'Nothing matches yet'} text={savedOnly ? 'Tap the bookmark on a gig to keep it here.' : 'Try another city, format or budget. New gigs show up as hosts post them.'} />
+          : gigs.length === 0 ? <ProgramEmpty title={savedOnly ? 'No saved gigs' : 'Nothing matches yet'} text={savedOnly ? 'Tap the bookmark on a gig to keep it here.' : 'Try another city or format. New gigs show up as hosts post them.'} />
           : gigs.map((gig) => <GigCard key={gig.id} gig={gig} saved={gig.saved ?? savedIds.has(gig.id)} saving={savingId === gig.id}
             onSave={() => void toggleSave(gig)} onPress={() => router.push(`/creator/gig/${gig.id}` as never)} />)}
       </> : null}
@@ -199,7 +192,6 @@ export default function CreatorHubScreen(): React.ReactElement {
 
     <ChoiceSheet visible={sheet === 'city'} onClose={() => setSheet(null)} title="City" searchable options={cityOptions} value={effectiveCity ?? 'any'} onSelect={(v) => setCityId(v === 'any' ? null : v)} />
     <ChoiceSheet visible={sheet === 'format'} onClose={() => setSheet(null)} title="Format" options={formatOptions} value={formatKey ?? 'any'} onSelect={(v) => setFormatKey(v === 'any' ? null : v)} />
-    <ChoiceSheet visible={sheet === 'budget'} onClose={() => setSheet(null)} title="Budget" options={budgetOptions} value={budget} onSelect={setBudget} />
   </ProgramScreen>;
 }
 
@@ -234,7 +226,7 @@ function ContractRow({ contract, isLast, onPress }: { contract: CreatorHomeContr
 }
 
 function GigCard({ gig, saved, saving, onSave, onPress }: { gig: PublicGig; saved: boolean; saving: boolean; onSave: () => void; onPress: () => void }): React.ReactElement {
-  const budgetInfo = budgetDisplay(gig);
+  const pay = payUpToText(gig);
   return <ProgramCard onPress={onPress} accessibilityLabel={`${gig.title_public}. ${formatName(gig.format_key)}`}>
     <View style={s.rowLine}>
       <ProgramPill label={formatName(gig.format_key)} tone="accent" />
@@ -250,7 +242,7 @@ function GigCard({ gig, saved, saving, onSave, onPress }: { gig: PublicGig; save
       <Text style={s.small}>{gig.slots_left} spot{gig.slots_left === 1 ? '' : 's'} left</Text>
     </View>
     <View style={s.rowLine}>
-      {budgetInfo.kind === 'range' ? <Text style={s.strong}>{budgetInfo.text}</Text> : <View style={styles.level}><LevelDots level={budgetInfo.level} /><Text style={s.small}>{budgetInfo.text}</Text></View>}
+      {pay ? <Text style={s.strong}>{pay}</Text> : <View />}
       {gig.sales_share_bps ? <Text style={s.successText}>+{Math.round(gig.sales_share_bps / 100)}% of sales</Text> : null}
     </View>
   </ProgramCard>;
@@ -272,5 +264,4 @@ const styles = StyleSheet.create({
   fmt: { width: 34, height: 34, borderRadius: 10, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
   right: { alignItems: 'flex-end', maxWidth: '42%', gap: 2 },
   foot: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 2 },
-  level: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });

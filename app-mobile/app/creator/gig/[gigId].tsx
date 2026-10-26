@@ -8,11 +8,10 @@ import { creatorProgramService } from '../../../src/services/creatorProgramServi
 import { creatorGigsService } from '../../../src/services/creatorGigsService';
 import { ProgramActionError, programErrorText } from '../../../src/services/programResult';
 import {
-  budgetDisplay, currencySymbol, deliverablesLabel, formatDateRange, formatInfo, formatMoney, formatName, formatShortDate,
+  currencySymbol, deliverablesLabel, formatDateRange, formatInfo, formatMoney, formatName, formatShortDate, payUpToText,
   moneyInputValue, parseMoneyInput, usageLabel,
 } from '../../../src/utils/programFormat';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoading, ProgramNotice, ProgramRow, ProgramScreen, ProgramSheet, programStyles as s } from '../../../src/components/programs/ProgramUi';
-import { LevelDots } from '../../../src/components/programs/ProgramPickers';
 import { VideoTile, playPublicVideo } from '../../../src/components/programs/VideoTile';
 import { Icon } from '../../../src/components/ui/Icon';
 
@@ -89,7 +88,7 @@ export default function CreatorGigScreen(): React.ReactElement {
     action={<ProgramButton label="Find gigs" variant="secondary" onPress={() => router.replace('/creator' as never)} />} /></ProgramScreen>;
 
   const info = formatInfo(g.format_key);
-  const budget = budgetDisplay(g);
+  const pay = payUpToText(g);
   const structure = format.data?.structure ?? [];
   const examples = format.data?.example_asset_ids ?? [];
   const noteError = error?.code === 'note_not_anonymous' ? error.message : null;
@@ -130,7 +129,7 @@ export default function CreatorGigScreen(): React.ReactElement {
       <ProgramRow title="Deliverables" value={deliverablesLabel(g.deliverables)} chevron={false} />
       <ProgramRow title="Host may reuse" value={usageLabel(g.usage_days)} chevron={false} />
       <ProgramRow title="Where" value={g.city_name} chevron={false} />
-      <ProgramRow title="Budget" chevron={false} right={budget.kind === 'range' ? <Text style={s.strong}>{budget.text}</Text> : <View style={styles.level}><LevelDots level={budget.level} /><Text style={s.small}>{budget.text}</Text></View>} />
+      {pay ? <ProgramRow title="Pay" chevron={false} right={<Text style={s.strong}>{pay}</Text>} /> : null}
       {g.sales_share_bps ? <ProgramRow title="Plus" value={`${Math.round(g.sales_share_bps / 100)}% of sales from your link`} chevron={false} /> : null}
       <ProgramRow title="Spots left" value={String(g.slots_left)} chevron={false} isLast />
     </ProgramCard>
@@ -158,5 +157,4 @@ const styles = StyleSheet.create({
   tiles: { flexDirection: 'row', gap: 8 },
   beats: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   beat: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: C.field, gap: 2 },
-  level: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });

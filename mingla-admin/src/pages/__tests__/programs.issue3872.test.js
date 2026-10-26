@@ -1,6 +1,6 @@
-// Issue #3872 — the Programs group: Creators, Gigs, Mingla Locals, Disputes,
-// and the budget ranges editor, each on its own page and calling the agreed
-// server contract.
+// Issue #3872 — the Programs group: Creators, Gigs, Mingla Locals and
+// Disputes, each on its own page and calling the agreed server contract.
+// Gig budget levels are retired: a gig carries the exact pay the host set.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -16,7 +16,6 @@ const creators = code("pages/ProgramCreatorsPage.jsx");
 const gigs = code("pages/ProgramGigsPage.jsx");
 const locals = code("pages/locals/LocalsPanel.jsx");
 const disputes = code("pages/ProgramDisputesPage.jsx");
-const budgets = code("pages/programs/BudgetBandsEditor.jsx");
 const app = code("App.jsx");
 
 test("a Programs menu group holds Creators, Gigs, Mingla Locals and Disputes, each its own page", () => {
@@ -47,23 +46,23 @@ test("Creators: pipeline from admin_creator_queue, decisions through admin_creat
   assert.match(creators, /setNoteError\(programErrorMessage\(cause\)\)/, "a failed decision shows next to the note");
 });
 
-test("Gigs: read-only list with plain state words and the shared timeline in a drawer; budget ranges tab", () => {
+test("Gigs: read-only list with plain state words, the gig's pay and the shared timeline in a drawer", () => {
   assert.match(gigs, /contractStateWord\(row\.state\)/);
   assert.match(gigs, /getContractWorkspace\(gig\.contract_id\)/);
   assert.match(gigs, /<GigTimeline /);
   assert.match(gigs, /Read-only\. Mingla watches; the two parties run the deal\./);
   assert.doesNotMatch(gigs, /supabase\.rpc\(|\.functions\.invoke\(/, "the Gigs page writes nothing");
-  assert.match(gigs, /<BudgetBandsEditor \/>/);
+  assert.match(gigs, /payUpToWord\(row\.pay_up_to_minor, row\.pay_currency \?\? row\.currency\)/);
   assert.match(code("pages/crm/GigTimeline.jsx"), /gigEventWord\(event\.kind\)/);
   assert.doesNotMatch(code("pages/crm/GigTimeline.jsx"), /replaceAll\("_"/);
 });
 
-test("Budget ranges: per currency x level 1-4, whole amounts in, minor units out, empty means level only", () => {
-  assert.match(service, /from\("gig_budget_bands"\)/);
-  assert.match(service, /write\("admin_budget_band_save", \{\s*p_currency: currency,\s*p_band: band,\s*p_min_minor: minMinor,\s*p_max_minor: maxMinor,/);
-  assert.match(budgets, /validateBudgetBand\(draft\[band\.id\], currency\)/);
-  assert.match(budgets, /Level only/);
-  assert.match(read("lib/creatorPrograms.js"), /DEFAULT_BUDGET_CURRENCIES = \["USD", "NGN"\]/);
+test("Budget levels are gone: no ranges editor, tab, table read or save call", () => {
+  assert.equal(fs.existsSync(path.join(root, "pages/programs")), false, "the ranges editor folder still exists");
+  for (const [name, source] of [["service", service], ["gigs page", gigs], ["lib", code("lib/creatorPrograms.js")]]) {
+    assert.doesNotMatch(source, /budget/i, `${name} still mentions budget levels`);
+  }
+  assert.doesNotMatch(gigs, /tab=|<Tabs /, "the Gigs page keeps no second tab");
 });
 
 test("Mingla Locals: city cards with seats, open or paused, rate and payout currency; four tabs with the existing decisions", () => {

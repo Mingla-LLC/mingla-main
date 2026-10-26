@@ -50,7 +50,7 @@ import {
   nicheLabel,
   programErrorMessage,
   programMoney,
-  programMoneyShort,
+  payUpToLabel,
   videoDueWords,
 } from "../../../../../src/utils/creatorProgramFormat";
 import { blastHubHref } from "../../../../../src/components/marketing/marketingSubNavTabs";
@@ -127,18 +127,17 @@ export default function GigApplicants(): React.ReactElement {
       const payload = {
         ...gigPayload({
           form,
-          ctx: { currency, today: gig.shoot_window_start, bands: [] },
-          payMinor: null,
+          ctx: { currency, today: gig.shoot_window_start },
+          payMinor: gig.pay_up_to_minor ?? null,
           brandId,
           listingKind: gig.listing_kind,
           listingId: gig.listing_id,
           gigId: gig.id,
         }),
-        // Closing keeps the gig's own dates and level exactly as saved.
+        // Closing keeps the gig's own dates and pay exactly as saved.
         shoot_window_start: gig.shoot_window_start,
         shoot_window_end: gig.shoot_window_end,
         post_by: gig.post_by,
-        budget_band: gig.budget_band,
         status: "closed",
       };
       const result = await creatorGigsService.saveGig(payload);
@@ -158,10 +157,7 @@ export default function GigApplicants(): React.ReactElement {
     }
   };
 
-  const payUpTo =
-    typeof gig?.pay_up_to_minor === "number"
-      ? `up to ${programMoneyShort(gig.pay_up_to_minor, currency)}`
-      : null;
+  const payUpTo = payUpToLabel(gig?.pay_up_to_minor, gig?.currency ?? currency);
   const summary = gig
     ? [
         `Hiring ${gig.slots}`,

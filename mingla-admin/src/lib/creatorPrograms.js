@@ -288,49 +288,24 @@ export function money(minor, currency) {
 
 export const PAYOUT_CURRENCIES = ["USD", "NGN", "GBP", "EUR", "CAD"];
 
-// ── Budget ranges (gig_budget_bands) ────────────────────────────────────────
+// ── Gig pay ─────────────────────────────────────────────────────────────────
 
-export const BUDGET_BANDS = [
-  { id: "b1", label: "Level 1" },
-  { id: "b2", label: "Level 2" },
-  { id: "b3", label: "Level 3" },
-  { id: "b4", label: "Level 4" },
-];
-
-export const DEFAULT_BUDGET_CURRENCIES = ["USD", "NGN"];
-
-/**
- * Check one band's typed range. Both empty = "level only" (no range shown).
- * Returns { ok, min_minor, max_minor } or { ok:false, field, error }.
- */
-export function validateBudgetBand({ min, max }, currency) {
-  const minMinor = wholeToMinor(min, currency);
-  const maxMinor = wholeToMinor(max, currency);
-  if (Number.isNaN(minMinor)) return { ok: false, field: "min", error: "Use a whole number, like 300." };
-  if (Number.isNaN(maxMinor)) return { ok: false, field: "max", error: "Use a whole number, like 800." };
-  if (minMinor === null && maxMinor === null) return { ok: true, min_minor: null, max_minor: null };
-  if (minMinor === null) return { ok: false, field: "min", error: "Add the lowest amount, or clear both to show the level only." };
-  if (maxMinor === null) return { ok: false, field: "max", error: "Add the highest amount, or clear both to show the level only." };
-  if (minMinor <= 0) return { ok: false, field: "min", error: "The lowest amount must be more than 0." };
-  if (maxMinor < minMinor) return { ok: false, field: "max", error: "The highest amount can't be below the lowest." };
-  return { ok: true, min_minor: minMinor, max_minor: maxMinor };
-}
-
-/** Rows from gig_budget_bands -> { USD: { b1: {min,max}, ... }, ... } as input text. */
-export function budgetGridFromRows(rows, currencies = DEFAULT_BUDGET_CURRENCIES) {
-  const grid = {};
-  const all = new Set(currencies);
-  for (const row of Array.isArray(rows) ? rows : []) if (row?.currency) all.add(String(row.currency).toUpperCase());
-  for (const currency of all) {
-    grid[currency] = {};
-    for (const band of BUDGET_BANDS) grid[currency][band.id] = { min: "", max: "" };
+/** "Up to $300" from a gig's pay_up_to_minor in the gig's currency; "—" when none was stored. */
+export function payUpToWord(minor, currency) {
+  const n = Number(minor);
+  if (minor === null || minor === undefined || !Number.isFinite(n) || n <= 0) return "—";
+  const code = String(currency ?? "").trim().toUpperCase();
+  const amount = n / minorPerUnit(code);
+  if (!/^[A-Z]{3}$/.test(code)) return `Up to ${amount.toLocaleString("en-US")}`;
+  try {
+    const whole = Number.isInteger(amount);
+    return `Up to ${new Intl.NumberFormat("en-US", {
+      style: "currency", currency: code, currencyDisplay: "narrowSymbol",
+      minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2,
+    }).format(amount)}`;
+  } catch {
+    return `Up to ${money(n, code)}`;
   }
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const currency = String(row?.currency ?? "").toUpperCase();
-    if (!grid[currency] || !grid[currency][row.band]) continue;
-    grid[currency][row.band] = { min: minorToWhole(row.min_minor, currency), max: minorToWhole(row.max_minor, currency) };
-  }
-  return grid;
 }
 
 // ── Mingla Locals ───────────────────────────────────────────────────────────
@@ -462,7 +437,6 @@ const ERROR_WORDS = {
   local_month_not_voidable: "This pick can't be cancelled anymore.",
   agreement_version_required: "Add the approved agreement version before seating a Local.",
   seats_full: "This city has no free seats.",
-  invalid_band: "Choose a level from 1 to 4.",
   invalid_currency: "Use a three-letter currency code, like USD.",
   invalid_range: "The highest amount can't be below the lowest.",
   invalid_rate: "Enter a monthly rate above 0.",

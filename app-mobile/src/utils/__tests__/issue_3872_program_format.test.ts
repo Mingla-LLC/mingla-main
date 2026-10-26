@@ -7,7 +7,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  budgetDisplay,
   creatorStateWords,
   deliverableLabel,
   followerBandLabel,
@@ -18,6 +17,7 @@ import {
   formatTimeLeft,
   hostsSeeYouAs,
   localRowCopy,
+  payUpToText,
   nicheLabel,
   isAdult,
   latestAdultBirthDate,
@@ -68,17 +68,20 @@ test('#3872 relative due text and countdowns', () => {
   assert.equal(formatTimeLeft(new Date(NOW.getTime() - 1000), NOW), 'Time’s up');
 });
 
-test('#3872 follower bands and budgets never show raw keys', () => {
+test('#3872 follower bands never show raw keys', () => {
   assert.equal(followerBandLabel('10k_50k'), '10k–50k');
   assert.equal(followerBandLabel('gt1m'), '1M+');
   assert.equal(followerBandLabel('weird_key'), 'Not set');
-  const range = budgetDisplay({ budget_band: 'b2', budget_min_minor: 25000, budget_max_minor: 50000, budget_currency: 'USD' });
-  assert.deepEqual(range, { kind: 'range', text: '$250–$500' });
-  const level = budgetDisplay({ budget_band: 'b2', budget_min_minor: null, budget_max_minor: null, budget_currency: null });
-  assert.equal(level.kind, 'level');
-  assert.equal(level.kind === 'level' && level.level, 2);
-  assert.doesNotMatch(level.text, /b2|B2/);
   assert.equal(deliverableLabel({ platform: 'instagram', kind: 'reel', count: 1 }), '1 Instagram Reel');
+});
+
+test('#3872 a gig says what it pays, in its own currency, never a level', () => {
+  assert.equal(payUpToText({ pay_up_to_minor: 30000, currency: 'USD' }), 'Pays up to $300');
+  assert.equal(payUpToText({ pay_up_to_minor: 30050, currency: 'USD' }), 'Pays up to $300.50');
+  assert.match(payUpToText({ pay_up_to_minor: 5000000, currency: 'NGN' }) ?? '', /^Pays up to ₦50,000$/);
+  assert.equal(payUpToText({ pay_up_to_minor: null, currency: 'USD' }), null);
+  assert.equal(payUpToText({ pay_up_to_minor: 0, currency: 'USD' }), null);
+  assert.equal(payUpToText({}), null);
 });
 
 test('#3872 contract states use the creator column of the status-words table', () => {

@@ -36,10 +36,10 @@ INSERT INTO public.creator_packages(id,creator_account_id,format_key,platforms,p
   ('38725000-0000-4000-8000-0000000000d3','38725000-0000-4000-8000-0000000000a3','date_idea',ARRAY['instagram'],30000,'USD',5);
 INSERT INTO public.payee_accounts(user_id,stripe_account_id,stripe_status) VALUES
   ('38725000-0000-4000-8000-0000000000a3','acct_r2a1','active');
-INSERT INTO public.gigs(id,brand_id,listing_kind,listing_id,title_public,brief_public,format_key,deliverables,city_id,category,shoot_window_start,shoot_window_end,post_by,budget_band,currency,slots,status,created_by) VALUES
+INSERT INTO public.gigs(id,brand_id,listing_kind,listing_id,title_public,brief_public,format_key,deliverables,city_id,category,shoot_window_start,shoot_window_end,post_by,pay_up_to_minor,currency,slots,status,created_by) VALUES
   ('38725000-0000-4000-8000-0000000000f1','38725000-0000-4000-8000-0000000000b1','event','38725000-0000-4000-8000-0000000000e1',
    'A rooftop date night','Show a relaxed evening on a rooftop with music, drinks and the view across the city.','date_idea','["1 reel"]'::jsonb,
-   '38725000-0000-4000-8000-0000000000c1','nightlife',current_date+1,current_date+20,current_date+30,'b2','USD',2,'open','38725000-0000-4000-8000-0000000000a1');
+   '38725000-0000-4000-8000-0000000000c1','nightlife',current_date+1,current_date+20,current_date+30,30000,'USD',2,'open','38725000-0000-4000-8000-0000000000a1');
 INSERT INTO public.gig_interest(id,gig_id,creator_account_id,package_id,quoted_minor,status) VALUES
   ('38725000-0000-4000-8000-000000000101','38725000-0000-4000-8000-0000000000f1','38725000-0000-4000-8000-0000000000a3','38725000-0000-4000-8000-0000000000d3',30000,'sent');
 SET LOCAL session_replication_role = origin;
@@ -199,7 +199,7 @@ BEGIN
     'title_public','An evening rooftop reel','brief_public','Show a relaxed evening on a rooftop with music, drinks and the view across the city.',
     'format_key','date_idea','deliverables','[{"platform":"instagram","kind":"reel","count":1}]'::jsonb,'city_id','38725000-0000-4000-8000-0000000000c1',
     'category','experience','shoot_window_start',v_day,'shoot_window_end',v_day,
-    'budget_band','b2','currency','USD','slots',1,'status','open');
+    'pay_up_to_minor',30000,'currency','USD','slots',1,'status','open');
   v_r:=public.gig_save(v_base);
   IF v_r->>'error' IS DISTINCT FROM 'video_due_required' OR v_r->>'field' IS DISTINCT FROM 'video_due_at' THEN RAISE EXCEPTION 'missing due time: %',v_r; END IF;
   v_r:=public.gig_save(v_base||jsonb_build_object('video_due_at','next tuesday'));
@@ -212,6 +212,14 @@ BEGIN
   IF v_r->>'error' IS DISTINCT FROM 'video_due_before_shoot' THEN RAISE EXCEPTION 'due equal to shoot: %',v_r; END IF;
   v_r:=public.gig_save(v_base||jsonb_build_object('video_due_at',to_char(v_day+5,'YYYY-MM-DD')||'T20:00','shoot_at',to_char(v_day+2,'YYYY-MM-DD')||'T20:00','post_by',v_day+5));
   IF v_r->>'error' IS DISTINCT FROM 'shoot_outside_window' OR v_r->>'field' IS DISTINCT FROM 'shoot_at' THEN RAISE EXCEPTION 'shoot outside window: %',v_r; END IF;
+  -- Pay: fractions, huge numbers and blanks are refused next to the pay field.
+  v_base:=v_base||jsonb_build_object('video_due_at',to_char(v_day+1,'YYYY-MM-DD')||'T12:00','post_by',v_day+1);
+  v_r:=public.gig_save(v_base||jsonb_build_object('pay_up_to_minor','300.50'));
+  IF v_r->>'error' IS DISTINCT FROM 'pay_required' OR v_r->>'field' IS DISTINCT FROM 'pay_up_to_minor' THEN RAISE EXCEPTION 'fractional pay: %',v_r; END IF;
+  v_r:=public.gig_save(v_base||jsonb_build_object('pay_up_to_minor','99999999999999999999'));
+  IF v_r->>'error' IS DISTINCT FROM 'pay_required' THEN RAISE EXCEPTION 'huge pay: %',v_r; END IF;
+  v_r:=public.gig_save(v_base||jsonb_build_object('pay_up_to_minor',''));
+  IF v_r->>'error' IS DISTINCT FROM 'pay_required' THEN RAISE EXCEPTION 'blank pay: %',v_r; END IF;
   IF EXISTS(SELECT 1 FROM public.gigs WHERE brand_id='38725000-0000-4000-8000-0000000000b1' AND title_public='An evening rooftop reel') THEN
     RAISE EXCEPTION 'a refused save wrote a gig';
   END IF;

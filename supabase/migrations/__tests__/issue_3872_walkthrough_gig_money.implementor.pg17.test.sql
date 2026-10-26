@@ -3,7 +3,7 @@
 -- #7 slots / interest state / unpaid offers, #8 gig_save validation, #9 brief
 -- linter, #10 state token, #11 script rounds, #12 replays, #13 upload
 -- deadline, #19 detail access, plus counters, top-ups, saved gigs and
--- budget ranges from the walkthrough contract. Every fixture rolls back.
+-- the gig's pay from the walkthrough contract. Every fixture rolls back.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -42,16 +42,16 @@ INSERT INTO public.creator_packages(id,creator_account_id,format_key,platforms,p
 INSERT INTO public.payee_accounts(user_id,stripe_account_id,stripe_status) VALUES
   ('38723000-0000-4000-8000-0000000000a3','acct_w1c1','active'),
   ('38723000-0000-4000-8000-0000000000a4','acct_w1c2','active');
-INSERT INTO public.gigs(id,brand_id,listing_kind,listing_id,title_public,brief_public,format_key,deliverables,city_id,category,shoot_window_start,shoot_window_end,post_by,budget_band,currency,slots,status,created_by)
+INSERT INTO public.gigs(id,brand_id,listing_kind,listing_id,title_public,brief_public,format_key,deliverables,city_id,category,shoot_window_start,shoot_window_end,post_by,pay_up_to_minor,currency,slots,status,created_by)
 VALUES('38723000-0000-4000-8000-0000000000f1','38723000-0000-4000-8000-0000000000b1','event','38723000-0000-4000-8000-0000000000e1',
   'A rooftop date night','Show a relaxed evening on a rooftop with music, drinks and the view across the city.','date_idea','["1 reel"]'::jsonb,
-  '38723000-0000-4000-8000-0000000000c1','nightlife',current_date+1,current_date+20,current_date+30,'b2','USD',1,'open','38723000-0000-4000-8000-0000000000a1'),
+  '38723000-0000-4000-8000-0000000000c1','nightlife',current_date+1,current_date+20,current_date+30,30000,'USD',1,'open','38723000-0000-4000-8000-0000000000a1'),
   ('38723000-0000-4000-8000-0000000000f2','38723000-0000-4000-8000-0000000000b1','event','38723000-0000-4000-8000-0000000000e1',
   'A second rooftop gig','Show a relaxed evening on a rooftop with music, drinks and the view across the city.','date_idea','["1 reel"]'::jsonb,
-  '38723000-0000-4000-8000-0000000000c1','nightlife',current_date+1,current_date+20,current_date+30,'b2','USD',2,'open','38723000-0000-4000-8000-0000000000a1'),
+  '38723000-0000-4000-8000-0000000000c1','nightlife',current_date+1,current_date+20,current_date+30,30000,'USD',2,'open','38723000-0000-4000-8000-0000000000a1'),
   ('38723000-0000-4000-8000-0000000000f3','38723000-0000-4000-8000-0000000000b1','event','38723000-0000-4000-8000-0000000000e1',
   'A third rooftop gig','Show a relaxed evening on a rooftop with music, drinks and the view across the city.','date_idea','["1 reel"]'::jsonb,
-  '38723000-0000-4000-8000-0000000000c1','nightlife',current_date+1,current_date+20,current_date+30,'b2','USD',1,'draft','38723000-0000-4000-8000-0000000000a1');
+  '38723000-0000-4000-8000-0000000000c1','nightlife',current_date+1,current_date+20,current_date+30,30000,'USD',1,'draft','38723000-0000-4000-8000-0000000000a1');
 INSERT INTO public.gig_interest(id,gig_id,creator_account_id,package_id,quoted_minor,status) VALUES
   ('38723000-0000-4000-8000-000000000101','38723000-0000-4000-8000-0000000000f1','38723000-0000-4000-8000-0000000000a3','38723000-0000-4000-8000-0000000000d3',30000,'sent'),
   ('38723000-0000-4000-8000-000000000102','38723000-0000-4000-8000-0000000000f1','38723000-0000-4000-8000-0000000000a4','38723000-0000-4000-8000-0000000000d4',30000,'sent'),
@@ -217,16 +217,16 @@ BEGIN
   v_r:=public.gig_save(jsonb_build_object('brand_id','38723000-0000-4000-8000-0000000000b1','listing_kind','event','listing_id','38723000-0000-4000-8000-0000000000e2',
     'title_public','A rooftop date night','brief_public','Show a relaxed evening on a rooftop with music, drinks and the view across the city.',
     'format_key','date_idea','deliverables','["1 reel"]'::jsonb,'city_id','38723000-0000-4000-8000-0000000000c1','category','nightlife',
-    'shoot_window_start',current_date+1,'shoot_window_end',current_date+5,'post_by',current_date+9,'budget_band','b2','currency','USD'));
+    'shoot_window_start',current_date+1,'shoot_window_end',current_date+5,'post_by',current_date+9,'pay_up_to_minor',30000,'currency','USD'));
   IF v_r->>'error' IS DISTINCT FROM 'listing_not_found' THEN RAISE EXCEPTION '#8 cross-brand listing accepted: %',v_r; END IF;
   v_r:=public.gig_save(jsonb_build_object('brand_id','38723000-0000-4000-8000-0000000000b1','listing_kind','event','listing_id','38723000-0000-4000-8000-0000000000e1',
     'title_public','A rooftop date night','brief_public','Show a relaxed evening on a rooftop with music, drinks and the view across the city.',
     'format_key','date_idea','deliverables','["1 reel"]'::jsonb,'city_id','38723000-0000-4000-8000-0000000000c1','category','nightlife',
-    'shoot_window_start',current_date-10,'shoot_window_end',current_date-5,'post_by',current_date+9,'budget_band','b2','currency','USD'));
+    'shoot_window_start',current_date-10,'shoot_window_end',current_date-5,'post_by',current_date+9,'pay_up_to_minor',30000,'currency','USD'));
   IF v_r->>'error' IS DISTINCT FROM 'shoot_window_in_past' THEN RAISE EXCEPTION '#8 past window accepted: %',v_r; END IF;
   v_r:=public.gig_save(jsonb_build_object('brand_id','38723000-0000-4000-8000-0000000000b1','listing_kind','event','listing_id','38723000-0000-4000-8000-0000000000e1',
     'title_public','Short','brief_public','too short','format_key','date_idea','deliverables','["1 reel"]'::jsonb,'city_id','38723000-0000-4000-8000-0000000000c1',
-    'category','nightlife','shoot_window_start',current_date+1,'shoot_window_end',current_date+5,'post_by',current_date+9,'budget_band','b2','currency','USD'));
+    'category','nightlife','shoot_window_start',current_date+1,'shoot_window_end',current_date+5,'post_by',current_date+9,'pay_up_to_minor',30000,'currency','USD'));
   IF v_r->>'field' IS DISTINCT FROM 'title_public' THEN RAISE EXCEPTION '#8 constraint violations must be {ok:false,field}: %',v_r; END IF;
   v_r:=public.gig_save(jsonb_build_object('id','38723000-0000-4000-8000-0000000000f9','brand_id','38723000-0000-4000-8000-0000000000b1','listing_kind','event','listing_id','38723000-0000-4000-8000-0000000000e1'));
   IF v_r->>'error' IS DISTINCT FROM 'gig_not_found' THEN RAISE EXCEPTION '#8 unknown gig id silently ok: %',v_r; END IF;
@@ -244,18 +244,21 @@ BEGIN
   v_lint:=public.issue_3872_brief_lint(NULL,NULL,NULL,'Doors 10.00-12.00, e.g. a calm brunch for two at $45.');
   IF cardinality(v_lint)>0 THEN RAISE EXCEPTION '#9 false positive: %',v_lint; END IF;
 
-  -- Budget range and saved gigs on the board; full gigs drop off.
-  INSERT INTO public.gig_budget_bands(currency,band,min_minor,max_minor) VALUES('USD','b2',20000,50000);
+  -- The gig's pay and saved gigs on the board; full gigs drop off.
   PERFORM pg_temp.act(v_creator);
   v_r:=public.creator_gig_save('38723000-0000-4000-8000-0000000000f2',true);
   IF (v_r->>'saved')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'save gig: %',v_r; END IF;
   v_r:=public.creator_gig_board(NULL,NULL);
   SELECT e INTO v_hold FROM jsonb_array_elements(v_r) e WHERE e->>'id'='38723000-0000-4000-8000-0000000000f2';
-  IF v_hold IS NULL OR (v_hold->>'budget_min_minor')::bigint<>20000 OR (v_hold->>'saved')::boolean IS DISTINCT FROM true
-     OR v_hold->>'budget_currency'<>'USD' THEN
+  IF v_hold IS NULL OR (v_hold->>'pay_up_to_minor')::bigint IS DISTINCT FROM 30000 OR (v_hold->>'saved')::boolean IS DISTINCT FROM true
+     OR v_hold->>'currency' IS DISTINCT FROM 'USD' OR EXISTS(SELECT 1 FROM jsonb_object_keys(v_hold) k WHERE k LIKE 'budget%') THEN
     RAISE EXCEPTION 'board shape: %',v_r;
   END IF;
   IF jsonb_array_length(public.creator_saved_gigs())<>1 THEN RAISE EXCEPTION 'saved gigs missing'; END IF;
+  IF (public.creator_saved_gigs()->0->>'pay_up_to_minor')::bigint IS DISTINCT FROM 30000
+     OR (public.gig_creator_home()->'saved'->0->>'currency') IS DISTINCT FROM 'USD' THEN
+    RAISE EXCEPTION 'saved gigs lack the pay: %',public.creator_saved_gigs();
+  END IF;
 
   -- #2: the brand's rollout gates the board and host writes.
   DELETE FROM public.program_brand_rollouts WHERE brand_id='38723000-0000-4000-8000-0000000000b1' AND program='creator_gigs';
