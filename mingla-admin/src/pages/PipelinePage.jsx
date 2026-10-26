@@ -778,18 +778,7 @@ function PipelinePage({ pipeline, onTabChange }) {
           ) : null
         }
         dialog={
-          resetOpen ? (
-            <ResetDueModal
-              open
-              count={staleOnScreen.length}
-              singular={singular}
-              today={today}
-              busy={resetBusy}
-              error={resetError}
-              onConfirm={confirmReset}
-              onCancel={() => setResetOpen(false)}
-            />
-          ) : reasonFor ? (
+          reasonFor ? (
             <ReasonPrompt
               key={reasonFor ? `${reasonFor.record.id}:${reasonFor.to}` : "closed"}
               open={!!reasonFor}
@@ -806,6 +795,20 @@ function PipelinePage({ pipeline, onTabChange }) {
           ) : null
         }
       />
+
+      {/* #4130: the bulk due-date reset asks first, in the shared Modal. */}
+      {resetOpen && (
+        <ResetDueModal
+          open
+          count={staleOnScreen.length}
+          singular={singular}
+          today={today}
+          busy={resetBusy}
+          error={resetError}
+          onConfirm={confirmReset}
+          onCancel={() => setResetOpen(false)}
+        />
+      )}
     </div>
   );
 }

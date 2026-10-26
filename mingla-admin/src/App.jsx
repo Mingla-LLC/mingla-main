@@ -16,7 +16,7 @@ import { pageTitle, resolveRoute } from "./lib/access";
 // Issue #4130 (Wave 0) — retired page ids and where they now live.
 import { isRetiredPageId, redirectHash } from "./lib/adminRoutes";
 // #4130 Wave 4a: Hosts and creators and Inbound leads are built pages now.
-import { OutreachPage } from "./pages/OutreachPage";
+import { OutreachPage } from "./pages/HostsAndCreatorsHub";
 import { InboundLeadsPage } from "./pages/InboundLeadsPage";
 import {
   PlacePoolHub,

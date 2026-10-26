@@ -172,9 +172,12 @@ describe("#4130 W0-3: every redirect lands somewhere real", () => {
     assert.deepEqual(menu, ["support", "community"]);
   });
   it("every page the old menu opened is still drawn by its own component, inside a hub tab", () => {
-    const hubs = read("pages/shellHubs.jsx");
+    // #4130 (Wave 4a): Hosts and creators is built (pages/HostsAndCreatorsHub.jsx)
+    // and still draws each old board as a tab; Inbound leads is one page now.
+    const hubFile = (hub) => (hub === "outreach" ? "pages/HostsAndCreatorsHub.jsx" : "pages/shellHubs.jsx");
     for (const [hub, tabs] of Object.entries(PAGE_HUB_TABS)) {
       assert.ok(PAGE_IDS.includes(hub), hub);
+      const hubs = read(hubFile(hub));
       for (const t of tabs) assert.ok(new RegExp(`(?:"${t.hosts}"|\\b${t.hosts}): [A-Z]\\w+Page\\b`).test(hubs), `${hub}: ${t.hosts} has no component`);
     }
   });

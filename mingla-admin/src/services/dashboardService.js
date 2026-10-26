@@ -38,3 +38,7 @@ export const getInbox = (alertTypes) => rpc("team_inbox", { p_alert_types: alert
 /** Mark read: "all", "mentions", "work_updates" or "support". */
 export const markInboxRead = (scope, alertTypes) =>
   rpc("team_inbox_mark_read", { p_scope: scope, p_alert_types: alertTypes });
+
+/** The Calendar's event runway in each event's own time, test brands marked. */
+export const getCalendarRunway = (from, to, today) =>
+  rpc("calendar_runway", { p_from: from || null, p_to: to || null, p_today: today || null });

@@ -54,10 +54,6 @@ export const PAGE_HUB_TABS = Object.freeze({
     Object.freeze({ id: "hosts", label: "Hosts", hosts: "hosts" }),
     Object.freeze({ id: "creators", label: "Creators", hosts: "creators" }),
   ]),
-  inbound: Object.freeze([
-    Object.freeze({ id: "beta", label: "Beta leads", hosts: "beta-leads" }),
-    Object.freeze({ id: "tools", label: "Web tool leads", hosts: "tool-leads" }),
-  ]),
   // #4130 Wave 3: People and Brands are real pages now (PeoplePage,
   // BrandsPage), not hubs. Their tab values above stay valid addresses:
   // People reads explorers/hosts/..., Brands opens websites/venues/claims as
