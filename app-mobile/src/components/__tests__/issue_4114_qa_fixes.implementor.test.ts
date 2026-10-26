@@ -28,19 +28,25 @@ function body(source: string, signature: RegExp): string {
   throw new Error(`unterminated body for ${signature}`);
 }
 
-Deno.test("QA1 the composer clears before it sends and drops the iOS echo", async () => {
+Deno.test("QA1 the composer sends the settled latest text, clears first, and drops only an echo", async () => {
   const chat = strip(await read("components/MessageInterface.tsx"));
-  const clear = body(chat, /const clearComposerAfterSend = \(sentText: string\) =>/);
-  assert(/sentSnapshotRef\.current = \{ text: sentText, at: Date\.now\(\) \}/.test(clear), "snapshots the sent text");
+  const clear = body(chat, /const clearComposerAfterSend = \(\) =>/);
   assert(/chatController\.reset\(\)/.test(clear) && /inputRef\.current\?\.clear\(\)/.test(clear), "controlled and native clear");
+  assert(/settle: \(run\) => \{ requestAnimationFrame\(\(\) => run\(\)\); \}/.test(chat), "send waits one frame for native text");
   const send = body(chat, /const handleSendMessage = \(\) =>/);
-  assert(/isDuplicateSend\(sentSnapshotRef\.current, sentText, Date\.now\(\)\)\) return;/.test(send), "double tap refused");
-  assert(send.indexOf("clearComposerAfterSend(sentText)") >= 0 &&
-    send.indexOf("clearComposerAfterSend(sentText)") < send.indexOf("onSendMessage("), "clears before sending");
+  assert(/sendCoordinator\.requestSend\(\{\s*read: chatController\.readText,/.test(send), "send reads the controller ref");
+  assert(!/newMessage/.test(send), "send never reads the render copy");
+  assert(send.indexOf("clearComposerAfterSend()") >= 0 &&
+    send.indexOf("clearComposerAfterSend()") < send.indexOf("onSendMessage("), "clears before sending");
   const media = body(chat, /const handleSendPickedMedia = \(\) =>/);
+  assert(/read: chatController\.readText/.test(media), "media caption reads the ref too");
   assert(media.indexOf("clearComposerAfterSend(") < media.indexOf("onSendMedia("), "media send clears first too");
-  assert(/onChangeText=\{\(text\) => \{\s*if \(isComposerSendEcho\(sentSnapshotRef\.current, text, Date\.now\(\)\)\) \{\s*inputRef\.current\?\.clear\(\);\s*return;/.test(chat),
+  assert(/onChangeText=\{\(text\) => \{\s*if \(!sendCoordinator\.acceptChange\(text\)\) \{\s*inputRef\.current\?\.clear\(\);\s*return;/.test(chat),
     "echo dropped before the controller sees it");
+  assert(/onKeyPress=\{\(event\) => \{\s*sendCoordinator\.noteKeystroke\(\);/.test(chat), "key presses end echo suppression");
+  const controller = strip(await read("hooks/useChatInputController.ts"));
+  assert(/textRef\.current = nextText;/.test(controller), "controller writes the ref synchronously");
+  assert(/content: textRef\.current\.trim\(\)/.test(controller), "serialize reads the ref");
 });
 
 Deno.test("QA1 one client id is delivered at most once at a time", async () => {

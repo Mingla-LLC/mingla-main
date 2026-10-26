@@ -116,7 +116,7 @@ import {
   type ReactionRow,
   type ReactionSummary,
 } from "../utils/threadModel";
-import { isComposerSendEcho, isDuplicateSend, type ComposerSendSnapshot } from "../utils/composerSendGuard";
+import { createComposerSendCoordinator, type ComposerSendCoordinator } from "../utils/composerSendGuard";
 import { TypingIndicator } from "./chat/TypingIndicator";
 import { useComposerLayout } from "../hooks/useComposerLayout";
 import { useChatBackHandler } from "../hooks/useChatBackHandler";
@@ -1157,11 +1157,19 @@ export default function MessageInterface({
     ? typingUsers.some((uid) => uid !== currentUserId)
     : false;
 
-  // Issue #4114 QA (evidence 27/28): snapshot what was sent so an iOS
-  // autocorrect commit that lands after the reset cannot put it back.
-  const sentSnapshotRef = useRef<ComposerSendSnapshot | null>(null);
-  const clearComposerAfterSend = (sentText: string) => {
-    sentSnapshotRef.current = { text: sentText, at: Date.now() };
+  // Issue #4114 QA (run 1 evidence 27/28, run 2 evidence 01g): Send waits one
+  // frame for pending native text, then reads the controller's synchronous
+  // ref, so a fast type-then-send sends the full final text. The coordinator
+  // then drops only an iOS echo of exactly what was sent (see composerSendGuard).
+  const sendCoordinatorRef = useRef<ComposerSendCoordinator | null>(null);
+  if (!sendCoordinatorRef.current) {
+    sendCoordinatorRef.current = createComposerSendCoordinator({
+      settle: (run) => { requestAnimationFrame(() => run()); },
+      now: () => Date.now(),
+    });
+  }
+  const sendCoordinator = sendCoordinatorRef.current;
+  const clearComposerAfterSend = () => {
     chatController.reset();
     // The native clear drops any pending autocorrect text in the view itself;
     // the controlled reset above alone races it on a multiline input.
@@ -1169,17 +1177,20 @@ export default function MessageInterface({
   };
 
   const handleSendMessage = () => {
-    const sentText = newMessage;
-    if (!sentText.trim()) return;
-    if (isDuplicateSend(sentSnapshotRef.current, sentText, Date.now())) return;
-    const replyToId = replyingTo?.messageId;
-    const { content, mentions, cardTags } = chatController.serializeForSend();
-    // Clear first, synchronously, then send.
-    clearComposerAfterSend(sentText);
-    setReplyingTo(null); // Clear reply state immediately
-    onSendMessage(content, "text", undefined, replyToId, mentions, cardTags);
-    stopTyping();
-    HapticFeedback.light();
+    if (!chatController.readText().trim()) return;
+    sendCoordinator.requestSend({
+      read: chatController.readText,
+      send: () => {
+        const replyToId = replyingTo?.messageId;
+        const { content, mentions, cardTags } = chatController.serializeForSend();
+        // Clear first, synchronously, then send.
+        clearComposerAfterSend();
+        setReplyingTo(null); // Clear reply state immediately
+        onSendMessage(content, "text", undefined, replyToId, mentions, cardTags);
+        stopTyping();
+        HapticFeedback.light();
+      },
+    });
   };
 
   // ── Issue #4114 Wave 4: attach sheet ─────────────────────────
@@ -1319,16 +1330,24 @@ export default function MessageInterface({
 
   const handleSendPickedMedia = () => {
     if (pendingMedia.length === 0 || !onSendMedia) return;
-    const replyToId = replyingTo?.messageId;
-    const { content } = chatController.serializeForSend();
-    clearComposerAfterSend(newMessage);
-    onSendMedia(pendingMedia, content, attachViewOnce, replyToId);
-    setPendingMedia([]);
-    setAttachViewOnce(false);
-    setShowAttachmentMenu(false);
-    setReplyingTo(null);
-    stopTyping();
-    HapticFeedback.light();
+    const media = pendingMedia;
+    const viewOnce = attachViewOnce;
+    sendCoordinator.requestSend({
+      read: chatController.readText,
+      allowEmpty: true,
+      send: () => {
+        const replyToId = replyingTo?.messageId;
+        const { content } = chatController.serializeForSend();
+        clearComposerAfterSend();
+        onSendMedia(media, content, viewOnce, replyToId);
+        setPendingMedia([]);
+        setAttachViewOnce(false);
+        setShowAttachmentMenu(false);
+        setReplyingTo(null);
+        stopTyping();
+        HapticFeedback.light();
+      },
+    });
   };
 
   const closeMediaViewers = () => {
@@ -3180,7 +3199,7 @@ export default function MessageInterface({
               ref={inputRef}
               value={newMessage}
               onChangeText={(text) => {
-                if (isComposerSendEcho(sentSnapshotRef.current, text, Date.now())) {
+                if (!sendCoordinator.acceptChange(text)) {
                   // iOS committed the just-sent text back after the reset.
                   inputRef.current?.clear();
                   return;
@@ -3192,8 +3211,18 @@ export default function MessageInterface({
                   stopTyping();
                 }
               }}
-              onKeyPress={chatController.onKeyPress}
+              onKeyPress={(event) => {
+                sendCoordinator.noteKeystroke();
+                chatController.onKeyPress(event);
+              }}
               onSelectionChange={chatController.onSelectionChange}
+              onEndEditing={(event) => {
+                // Composition end: keep the ref equal to what the view holds.
+                const nativeText = event.nativeEvent.text;
+                if (nativeText !== chatController.readText() && sendCoordinator.acceptChange(nativeText)) {
+                  chatController.onChangeText(nativeText);
+                }
+              }}
               onBlur={stopTyping}
               accessibilityLabel={t('chat:a11yMessageInput')}
               placeholder={
