@@ -23,11 +23,10 @@ export function ChoiceSheet<T extends string>({ visible, onClose, title, options
     const q = query.trim().toLowerCase();
     return q ? options.filter((o) => o.label.toLowerCase().includes(q) || (o.hint ?? '').toLowerCase().includes(q)) : options;
   }, [options, query]);
-  return <ProgramSheet visible={visible} onClose={onClose} title={title} snapPoints={[searchable ? '85%' : '60%']}>
-    {searchable ? <View style={[s.field, styles.search]}>
-      <Icon name="search" size={16} color={C.muted} />
-      <BottomSheetTextInput value={query} onChangeText={setQuery} placeholder="Search" placeholderTextColor={C.faint} style={s.input} autoCorrect={false} autoCapitalize="none" accessibilityLabel="Search" />
-    </View> : null}
+  // W5.1: the search field sits in the sheet's fixed subheader, so it and the
+  // title stay on screen while the matches scroll above the keyboard.
+  return <ProgramSheet visible={visible} onClose={onClose} title={title} snapPoints={[searchable ? '85%' : '60%']}
+    subheader={searchable ? <SearchInput value={query} onChangeText={setQuery} /> : undefined}>
     {shown.length === 0 ? <Text style={s.copy}>{emptyText}</Text> : shown.map((option) => {
       const selected = option.value === value;
       return <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ selected, disabled: option.disabled }} disabled={option.disabled}
@@ -41,6 +40,15 @@ export function ChoiceSheet<T extends string>({ visible, onClose, title, options
       </Pressable>;
     })}
   </ProgramSheet>;
+}
+
+/** The search box used at the top of searchable sheets. */
+export function SearchInput({ value, onChangeText, placeholder = 'Search', autoFocus = false }: { value: string; onChangeText: (text: string) => void; placeholder?: string; autoFocus?: boolean }): React.ReactElement {
+  return <View style={[s.field, styles.search]}>
+    <Icon name="search" size={16} color={C.muted} />
+    <BottomSheetTextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={C.faint} style={s.input}
+      autoCorrect={false} autoCapitalize="words" autoFocus={autoFocus} returnKeyType="search" accessibilityLabel={placeholder} />
+  </View>;
 }
 
 /** Select field + its choice sheet in one. */
@@ -228,7 +236,7 @@ export function LevelDots({ level }: { level: number }): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  search: { marginBottom: 4 },
+  search: { marginBottom: 0 },
   choice: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, paddingHorizontal: 12, borderRadius: 12 },
   choiceOn: { backgroundColor: C.accentSoft },
   spinner: { alignSelf: 'stretch', height: 216 },

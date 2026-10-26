@@ -3,17 +3,15 @@
  * glass components (GlassCard, GlassIconButton, Icon, BaseBottomSheet) so the
  * programs read as part of Mingla, not a separate kit.
  *
- * Working screens get a plain title bar with Back (falling back to the app
- * root when there is no history) and no marketing hero.
+ * Working screens get a plain title bar with Back (setup steps return to the
+ * setup checklist; other screens fall back to Creator or the app root when
+ * there is no history) and no marketing hero.
  */
 import React from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -22,12 +20,15 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Stack, usePathname, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassCard } from '../ui/GlassCard';
 import { GlassIconButton } from '../ui/GlassIconButton';
 import { Icon, type IconName } from '../ui/Icon';
 import { BaseBottomSheet, BottomSheetTextInput } from '../ui/BaseBottomSheet';
+import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView';
+import { useKeyboard } from '../../hooks/useKeyboard';
+import { programBackNav, runProgramNav } from './programNav';
 import { glass } from '../../constants/designSystem';
 
 export const PROGRAM_COLORS = {
@@ -53,14 +54,16 @@ const C = PROGRAM_COLORS;
 
 /**
  * Every Creator and Local screen opens as a pushed route with the native header
- * hidden, so this bar is the only way back. A screen opened from a link has no
- * history; it falls back to the app root instead of stranding the person.
+ * hidden, so this bar is the only way back. Setup steps always return to the
+ * setup checklist. A screen opened from a link has no history; it falls back to
+ * Creator (or the app root) instead of stranding the person.
  */
 export function ProgramHeader({ title, right, onBack }: { title: string; right?: React.ReactNode; onBack?: () => void }): React.ReactElement {
   const router = useRouter();
+  const pathname = usePathname();
   const goBack = (): void => {
     if (onBack) { onBack(); return; }
-    if (router.canGoBack()) router.back(); else router.replace('/' as never);
+    runProgramNav(router, programBackNav(pathname, router.canGoBack()));
   };
   return <View style={styles.header}>
     <GlassIconButton iconName="chevron-back" onPress={goBack} accessibilityLabel="Back" size={40} />
@@ -81,24 +84,39 @@ type ScreenProps = {
   contentStyle?: StyleProp<ViewStyle>;
 };
 
-/** Title bar + keyboard-safe scroll + optional sticky footer. */
+/**
+ * Title bar + keyboard-safe scroll + optional sticky footer.
+ *
+ * W2.2: the top inset is plain padding from `useSafeAreaInsets`, and the scroll
+ * view never adds its own automatic inset. The native SafeAreaView plus iOS's
+ * automatic scroll insets re-measured when a pushed screen came back and
+ * counted the status bar twice, leaving a gap at the top.
+ *
+ * Keyboard rule: the focused field scrolls to just above the keyboard
+ * (KeyboardAwareScrollView), and the footer button hides while typing so it
+ * never rides up over the field.
+ */
 export function ProgramScreen({ title, children, footer, right, onBack, refreshing, onRefresh, contentStyle }: ScreenProps): React.ReactElement {
-  return <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
+  const insets = useSafeAreaInsets();
+  const { isVisible: typing } = useKeyboard({ disableLayoutAnimation: true });
+  const showFooter = Boolean(footer) && !typing;
+  return <View style={[styles.safe, { paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
     <Stack.Screen options={{ headerShown: false }} />
     <ProgramHeader title={title} right={right} onBack={onBack} />
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView
-        style={styles.flex}
-        contentContainerStyle={[styles.content, contentStyle]}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        refreshControl={onRefresh ? <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} tintColor={C.accent} /> : undefined}
-      >
-        {children}
-      </ScrollView>
-      {footer ? <View style={styles.footer}>{footer}</View> : null}
-    </KeyboardAvoidingView>
-  </SafeAreaView>;
+    <KeyboardAwareScrollView
+      style={styles.flex}
+      contentContainerStyle={[styles.content, contentStyle, !showFooter && { paddingBottom: 48 + insets.bottom }]}
+      automaticallyAdjustContentInsets={false}
+      contentInsetAdjustmentBehavior="never"
+      automaticallyAdjustKeyboardInsets={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      refreshControl={onRefresh ? <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} tintColor={C.accent} /> : undefined}
+    >
+      {children}
+    </KeyboardAwareScrollView>
+    {showFooter ? <View style={[styles.footer, { paddingBottom: 12 + insets.bottom }]}>{footer}</View> : null}
+  </View>;
 }
 
 // ── Cards, rows, text ──────────────────────────────────────────────────────
@@ -269,18 +287,29 @@ export function SelectField({ label, value, placeholder, onPress, error, icon = 
 
 // ── Sheet ──────────────────────────────────────────────────────────────────
 
-export function ProgramSheet({ visible, onClose, title, children, footer, snapPoints = ['70%'], busy = false }: {
-  visible: boolean; onClose: () => void; title: string; children: React.ReactNode; footer?: React.ReactNode; snapPoints?: (string | number)[]; busy?: boolean;
+/**
+ * W5.1: the sheet never rises past the top safe-area inset (it used to slide its
+ * title under the status bar when a search field opened the keyboard), and a
+ * `subheader` (e.g. a search field) stays fixed under the title while the list
+ * below it scrolls above the keyboard.
+ */
+export function ProgramSheet({ visible, onClose, title, children, footer, subheader, snapPoints = ['70%'], busy = false }: {
+  visible: boolean; onClose: () => void; title: string; children: React.ReactNode; footer?: React.ReactNode; subheader?: React.ReactNode; snapPoints?: (string | number)[]; busy?: boolean;
 }): React.ReactElement {
-  const header = <View style={styles.sheetHeader}>
-    <Text style={styles.sheetTitle} accessibilityRole="header" numberOfLines={2}>{title}</Text>
-    <Pressable accessibilityRole="button" accessibilityLabel="Close" hitSlop={12} onPress={onClose} disabled={busy}><Icon name="close" size={22} color={C.muted} /></Pressable>
+  const insets = useSafeAreaInsets();
+  const header = <View>
+    <View style={styles.sheetHeader}>
+      <Text style={styles.sheetTitle} accessibilityRole="header" numberOfLines={2}>{title}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close" hitSlop={12} onPress={onClose} disabled={busy}><Icon name="close" size={22} color={C.muted} /></Pressable>
+    </View>
+    {subheader ? <View style={styles.sheetSubheader}>{subheader}</View> : null}
   </View>;
   return <BaseBottomSheet
     visible={visible}
     onClose={onClose}
     theme="dark"
     snapPoints={snapPoints}
+    topInset={sheetTopInset(insets.top)}
     scrollMode="scroll"
     wrapInRNModal
     keyboardBehavior="interactive"
@@ -294,6 +323,11 @@ export function ProgramSheet({ visible, onClose, title, children, footer, snapPo
   >
     {children}
   </BaseBottomSheet>;
+}
+
+/** Keep a little air between the status bar and a fully raised sheet. */
+export function sheetTopInset(safeTop: number): number {
+  return Math.max(0, safeTop) + 8;
 }
 
 // ── Styles ─────────────────────────────────────────────────────────────────
@@ -362,6 +396,7 @@ export const programStyles = StyleSheet.create({
   fieldHint: { color: C.faint, fontSize: 12, lineHeight: 17 },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 20, paddingTop: 4, paddingBottom: 12 },
   sheetTitle: { flex: 1, color: C.text, fontSize: 19, fontWeight: '900' },
+  sheetSubheader: { paddingHorizontal: 20, paddingBottom: 10 },
   sheetBody: { paddingHorizontal: 20, paddingBottom: 24, gap: 14 },
   sheetFooter: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, gap: 10 },
 });
