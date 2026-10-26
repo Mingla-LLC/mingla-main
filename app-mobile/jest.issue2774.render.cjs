@@ -75,5 +75,8 @@ module.exports = {
     "**/__tests__/issue_4111_explorer_enquiry_model.implementor.happy.test.ts",
     "**/__tests__/issue_4111_explorer_message_entry_points.implementor.happy.render.test.tsx",
     "**/__tests__/issue_4111_explorer_enquiry_thread.implementor.happy.render.test.tsx",
+    // issue #4111 — tester adversarial: enquiry rows and read status under
+    // hostile data (other people's receipts, system rows, cross-thread pages).
+    "**/__tests__/issue_4111_explorer_enquiry_rows.tester.adversarial.test.ts",
   ],
 };
