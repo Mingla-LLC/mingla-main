@@ -34,6 +34,13 @@ import {
   type MergeMessagesOptions,
 } from "../utils/mergeMessages";
 import { releaseConversationSubscription, switchConversationSubscription } from "../utils/conversationSubscription";
+import {
+  ChatMediaUploadError,
+  cancelChatMediaUpload,
+  prepareChatMedia,
+  uploadChatMedia,
+} from "../services/chatMediaUploadService";
+import type { PickedChatMedia } from "../utils/chatMedia";
 import { invalidateContentShareRecipients } from "../services/contentShareDeliveryService";
 import type { CollabDeadEndBannerPayload } from "../services/collabDeadEndBannerService";
 import { blockService, BlockReason } from "../services/blockService";
@@ -711,7 +718,8 @@ function ConnectionsPageRefactored({
   const olderLoadInFlightRef = useRef<string | null>(null);
   // Issue #4114: client ids of sends in flight, so a double tap on Retry sends once.
   const sendsInFlightRef = useRef<Set<string>>(new Set());
-  const [uploadingFile, setUploadingFile] = useState(false);
+  // Issue #4114 Wave 4: upload progress (0..1) of media sends, by client id.
+  const [mediaUploadProgress, setMediaUploadProgress] = useState<Record<string, number>>({});
   const [activeChatIsBlocked, setActiveChatIsBlocked] = useState(false);
   const [activeChatIsUnfriended, setActiveChatIsUnfriended] = useState(false);
   const [activeChatIsDeletedAccount, setActiveChatIsDeletedAccount] = useState(false);
@@ -1737,6 +1745,11 @@ function ConnectionsPageRefactored({
       // unsent message (deleted_at, via the realtime UPDATE) is hidden.
       reactions: msg.reactions,
       unsent: msg.deleted_at ? true : undefined,
+      // Issue #4114 Wave 4: view once. `mediaViews` is undefined on a realtime
+      // row, so the merge keeps what the last page read found.
+      viewOnce: msg.view_once === true ? true : undefined,
+      viewOncePurged: msg.view_once_purged_at ? true : undefined,
+      mediaViews: msg.media_views,
     }),
     []
   );
@@ -2767,9 +2780,12 @@ function ConnectionsPageRefactored({
     if (sendsInFlightRef.current.has(clientId)) return; // double tap on Retry
     sendsInFlightRef.current.add(clientId);
 
+    // The latest local copy: after a media upload it carries the storage path,
+    // so a failed send keeps it and Retry does not upload again.
+    let current: Message = pending;
     const markFailed = () => {
       // Ignored by the merge if the server already confirmed this client id.
-      writeConversationMessages(conversationId, [{ ...pending, failed: true }]);
+      writeConversationMessages(conversationId, [{ ...current, failed: true }]);
     };
 
     try {
@@ -2781,24 +2797,69 @@ function ConnectionsPageRefactored({
       ) {
         throw new Error(`Unsupported message type for send: ${pending.type}`);
       }
-      const mentionEntries = (pending.mentions ?? []).filter(
+
+      // Issue #4114 Wave 4: a media send uploads first (private bucket, real
+      // MIME type, progress, cancel) through the one upload service.
+      if (pending.localMedia && !pending.fileUrl) {
+        try {
+          const prepared = await prepareChatMedia(pending.localMedia);
+          const uploaded = await uploadChatMedia({
+            conversationId,
+            clientId,
+            item: prepared,
+            viewOnce: pending.viewOnce === true,
+            onProgress: (fraction) => reportUploadProgress(clientId, fraction),
+          });
+          current = {
+            ...pending,
+            fileUrl: uploaded.path,
+            fileName: prepared.fileName,
+            fileSize: uploaded.fileSize !== null ? String(uploaded.fileSize) : undefined,
+          };
+          writeConversationMessages(conversationId, [current]);
+        } catch (uploadError) {
+          clearUploadProgress(clientId);
+          if (uploadError instanceof ChatMediaUploadError && uploadError.code === "cancelled") {
+            // Cancelled by the sender: hide the bubble (it never reached the server).
+            writeConversationMessages(conversationId, [{ ...pending, failed: true, unsent: true }]);
+            return;
+          }
+          console.error("[ConnectionsPage] Media upload failed:", uploadError);
+          markFailed();
+          const code = uploadError instanceof ChatMediaUploadError ? uploadError.code : "failed";
+          showToast({
+            message:
+              code === "refused_type"
+                ? t("chat:mediaTypeNotSupported")
+                : code === "refused_size"
+                  ? t("chat:mediaTooLarge")
+                  : t("chat:mediaUploadFailed"),
+            type: "error",
+          });
+          return;
+        }
+        clearUploadProgress(clientId);
+      }
+
+      const mentionEntries = (current.mentions ?? []).filter(
         (mention): mention is MentionEntry => typeof mention !== "string"
       );
-      const parsedFileSize = pending.fileSize ? Number(pending.fileSize) : undefined;
+      const parsedFileSize = current.fileSize ? Number(current.fileSize) : undefined;
 
       const { message: sentMessage, error: sendError } =
         await messagingService.sendMessage(
           conversationId,
           user.id,
-          pending.content,
-          pending.type,
-          pending.fileUrl,
-          pending.fileName,
+          current.content,
+          current.type as "text" | "image" | "video" | "file",
+          current.fileUrl,
+          current.fileName,
           parsedFileSize !== undefined && Number.isFinite(parsedFileSize) ? parsedFileSize : undefined,
-          pending.replyToId,
+          current.replyToId,
           mentionEntries,
-          pending.cardTags ?? [],
+          current.cardTags ?? [],
           clientId,
+          { viewOnce: current.viewOnce === true },
         );
 
       if (sendError || !sentMessage) {
@@ -2974,197 +3035,82 @@ function ConnectionsPageRefactored({
     }
   };
 
+  // ── Issue #4114 Wave 4: upload progress for media sends ──
+  const lastProgressRef = useRef<Record<string, number>>({});
+  const reportUploadProgress = useCallback((clientId: string, fraction: number) => {
+    // Re-render at most every 5%, so a large video does not redraw the thread per chunk.
+    const step = Math.floor(fraction * 20) / 20;
+    if (lastProgressRef.current[clientId] === step) return;
+    lastProgressRef.current[clientId] = step;
+    setMediaUploadProgress((prev) => ({ ...prev, [clientId]: step }));
+  }, []);
+  const clearUploadProgress = useCallback((clientId: string) => {
+    delete lastProgressRef.current[clientId];
+    setMediaUploadProgress((prev) => {
+      if (!(clientId in prev)) return prev;
+      const next = { ...prev };
+      delete next[clientId];
+      return next;
+    });
+  }, []);
+
   // ── Send message ─────────────────────────────────────────
-  const handleSendMessage = async (
-    content: string,
-    type: "text" | "image" | "video" | "file",
-    file?: any,
-    replyToId?: string,
-    mentions: MentionEntry[] = [],
-    cardTags: CardTagEntry[] = [],
-  ) => {
-    if (!activeChat || !user?.id) return;
-
-    // Issue #4114: minted before anything else and reused on every retry.
-    const clientId = createClientMessageId();
-
-    // ORCH-0436: First message — create conversation + send atomically
-    if (!currentConversationId) {
-      // Handle file upload if needed — create conversation first for storage path
-      let firstFileUrl: string | undefined;
-      let firstFileName: string | undefined;
-      let firstFileSize: number | undefined;
-
-      const { conversationId: newConvId, error: convError } =
-        await messagingService.ensureConversation(user.id, activeChat.id);
-
-      if (convError || !newConvId) {
-        Alert.alert(
-          t('connections:message_not_sent'),
-          convError || t('connections:message_failed')
-        );
-        return;
-      }
-
-      if (file && type !== 'text') {
-        try {
-          const ext = file.name?.split('.').pop() || 'file';
-          const storagePath = `messages/${newConvId}/${Date.now()}.${ext}`;
-          const { error: uploadError } = await supabase.storage
-            .from('chat-files')
-            .upload(storagePath, file);
-          if (uploadError) throw uploadError;
-          const { data: urlData } = supabase.storage
-            .from('chat-files')
-            .getPublicUrl(storagePath);
-          firstFileUrl = urlData?.publicUrl;
-          firstFileName = file.name;
-          firstFileSize = file.size;
-        } catch (uploadErr) {
-          console.error('[ConnectionsPage] First message file upload failed:', uploadErr);
-          Alert.alert(t('connections:upload_error_title'), t('connections:upload_error_body'));
-          return;
-        }
-      }
-
-      const { message: sentMsg, error: sendError } = await messagingService.sendMessage(
-        newConvId, user.id, content, type, firstFileUrl, firstFileName, firstFileSize, replyToId, mentions, cardTags, clientId
+  // Issue #4114 Wave 4: the first message of a new chat takes the same path as
+  // every other send (optimistic bubble, deliverMessage, the one upload
+  // service). It used to upload to a bucket that does not exist.
+  const ensureChatConversation = async (): Promise<string | null> => {
+    if (!activeChat || !user?.id) return null;
+    if (currentConversationId) return currentConversationId;
+    // ORCH-0436: first message — create the conversation, then send into it.
+    const { conversationId: newConvId, error: convError } =
+      await messagingService.ensureConversation(user.id, activeChat.id);
+    if (convError || !newConvId) {
+      Alert.alert(
+        t('connections:message_not_sent'),
+        convError || t('connections:message_failed')
       );
-
-      if (sendError || !sentMsg) {
-        Alert.alert(
-          t('connections:message_not_sent'),
-          sendError || t('connections:message_failed')
-        );
-        return;
-      }
-
-      // Set conversation ID + start Realtime
-      setCurrentConversationId(newConvId);
-      setupRealtimeSubscription(newConvId, user.id);
-
-      // Add the sent message to the store (merged by client id)
-      writeConversationMessages(newConvId, [transformMessage(sentMsg, user.id)]);
-      noteNewestPageLoaded(newConvId, false);
-      broadcastSeenIds.current.add(sentMsg.id);
-
-      // Refresh conversations list to pick up the new conversation
-      fetchConversations(user.id);
-
-      return;
+      return null;
     }
+    setCurrentConversationId(newConvId);
+    setupRealtimeSubscription(newConvId, user.id);
+    noteNewestPageLoaded(newConvId, false);
+    return newConvId;
+  };
 
-    // ── Existing conversation ──
-    const conversationId = currentConversationId;
-
+  const isActiveChatBlocked = (): boolean => {
     // Synchronous block check — uses cached list + background reconciliation state.
     // No network call on the send path. RLS enforces server-side as the real authority.
-    if (activeChatIsBlocked || blockedUsers.some((b) => b.id === activeChat.id)) {
+    if (activeChatIsBlocked || (activeChat && blockedUsers.some((b) => b.id === activeChat.id))) {
       Alert.alert(
         t('connections:message_not_sent'),
         t('connections:message_blocked')
       );
-      return;
+      return true;
     }
+    return false;
+  };
 
-    const tempId = `${LOCAL_MESSAGE_ID_PREFIX}${clientId}`;
-
-    // Upload file if needed
-    let fileUrl: string | undefined;
-    let fileName: string | undefined;
-    let fileSize: number | undefined;
-
-    if (file && type !== "text") {
-      setUploadingFile(true);
-      try {
-        const fileUri = file.uri || file;
-        const fileExt =
-          file.name?.split(".").pop() ||
-          (file.type === "image" ? "jpg" : file.type === "video" ? "mp4" : fileUri.split(".").pop() || "bin");
-        const fileNameWithExt = `${user.id}_${Date.now()}.${fileExt}`;
-        const filePath = `${conversationId}/${fileNameWithExt}`;
-
-        let contentType = "application/octet-stream";
-        if (type === "image") contentType = file.type === "image" ? "image/jpeg" : "image/png";
-        else if (type === "video") contentType = "video/mp4";
-
-        const formData = new FormData();
-        formData.append("file", {
-          uri: fileUri,
-          type: contentType,
-          name: fileNameWithExt,
-        } as any);
-
-        const { error: uploadError } = await supabase.storage
-          .from("messages")
-          .upload(filePath, formData, { contentType, upsert: false });
-
-        if (uploadError) {
-          console.error("Error uploading file:", uploadError);
-          setUploadingFile(false);
-          Alert.alert(t('connections:upload_error_title'), t('connections:upload_error_body'));
-          return;
-        }
-
-        const { data: urlData } = supabase.storage.from("messages").getPublicUrl(filePath);
-        fileUrl = urlData.publicUrl;
-        fileName = file.name || fileNameWithExt;
-        fileSize = file.size || 0;
-        setUploadingFile(false);
-      } catch (e) {
-        console.error("Error uploading file:", e);
-        setUploadingFile(false);
-        Alert.alert(t('connections:upload_error_title'), t('connections:upload_error_body'));
-        return;
-      }
-    }
-
-    // Issue #4114: stamp the optimistic time AFTER the upload, so a photo's
-    // bubble sorts where the send actually happened. Once confirmed, the
-    // server's created_at replaces it.
-    const now = new Date().toISOString();
-
-    // Optimistic message
-    const optimisticMsg: Message = {
-      id: tempId,
-      clientId,
-      senderId: user.id,
-      senderName: "Me",
-      content,
-      timestamp: now,
-      type,
-      fileUrl,
-      fileName,
-      fileSize: fileSize?.toString(),
-      isMe: true,
-      unread: false,
-      replyToId,
-      mentions,
-      cardTags,
-      marketingCampaignId: null,
-    };
-
+  /** Puts a not-yet-sent message on screen and in the chat list row. */
+  const postOptimisticMessage = (conversationId: string, optimisticMsg: Message) => {
     writeConversationMessages(conversationId, [optimisticMsg]);
-
-    // Update conversation list optimistically
     setConversations((prev) =>
       prev.map((conv) => {
         if (conv.id === conversationId) {
           return {
             ...conv,
             last_message: {
-              id: tempId,
+              id: optimisticMsg.id,
               conversation_id: conversationId,
-              sender_id: user.id,
-              content,
-              message_type: type as "text" | "image" | "video" | "file" | "card",
-              file_url: fileUrl,
-              file_name: fileName,
-              file_size: fileSize,
-              mentions,
-              card_tags: cardTags,
+              sender_id: optimisticMsg.senderId,
+              content: optimisticMsg.content,
+              message_type: optimisticMsg.type as "text" | "image" | "video" | "file" | "card",
+              file_url: undefined,
+              file_name: optimisticMsg.fileName,
+              file_size: optimisticMsg.fileSize ? Number(optimisticMsg.fileSize) : undefined,
+              mentions: optimisticMsg.mentions,
+              card_tags: optimisticMsg.cardTags,
               marketing_campaign_id: null,
-              created_at: now,
+              created_at: optimisticMsg.timestamp,
               sender_name: "Me",
               is_read: true,
             },
@@ -3173,8 +3119,122 @@ function ConnectionsPageRefactored({
         return conv;
       })
     );
+  };
 
+  const handleSendMessage = async (
+    content: string,
+    type: "text" | "image" | "video" | "file",
+    _file?: unknown,
+    replyToId?: string,
+    mentions: MentionEntry[] = [],
+    cardTags: CardTagEntry[] = [],
+  ) => {
+    if (!activeChat || !user?.id) return;
+    // Photos, videos and files go through handleSendMedia (the attach sheet).
+    if (type !== "text") return;
+
+    // Issue #4114: minted before anything else and reused on every retry.
+    const clientId = createClientMessageId();
+    const isNewChat = !currentConversationId;
+    const conversationId = await ensureChatConversation();
+    if (!conversationId) return;
+    if (isActiveChatBlocked()) return;
+
+    const optimisticMsg: Message = {
+      id: `${LOCAL_MESSAGE_ID_PREFIX}${clientId}`,
+      clientId,
+      senderId: user.id,
+      senderName: "Me",
+      content,
+      timestamp: new Date().toISOString(),
+      type: "text",
+      isMe: true,
+      unread: false,
+      replyToId,
+      mentions,
+      cardTags,
+      marketingCampaignId: null,
+    };
+    postOptimisticMessage(conversationId, optimisticMsg);
     await deliverMessage(conversationId, optimisticMsg);
+    if (isNewChat) fetchConversations(user.id);
+  };
+
+  // ── Issue #4114 Wave 4: send photos, videos and files from the attach sheet ──
+  // Each item is its own message with its own client id, shown at once with
+  // its upload progress, then uploaded and sent in order. A caption rides on
+  // the first item; with view once it is sent as its own text message instead,
+  // so the words never sit on an item that disappears.
+  const handleSendMedia = async (
+    items: PickedChatMedia[],
+    caption: string,
+    viewOnce: boolean,
+    replyToId?: string,
+  ) => {
+    if (!activeChat || !user?.id || items.length === 0) return;
+    const isNewChat = !currentConversationId;
+    const conversationId = await ensureChatConversation();
+    if (!conversationId) return;
+    if (isActiveChatBlocked()) return;
+
+    const text = caption.trim();
+    const queue: Message[] = [];
+    const base = Date.now();
+    if (text && viewOnce) {
+      const clientId = createClientMessageId();
+      queue.push({
+        id: `${LOCAL_MESSAGE_ID_PREFIX}${clientId}`,
+        clientId,
+        senderId: user.id,
+        senderName: "Me",
+        content: text,
+        timestamp: new Date(base).toISOString(),
+        type: "text",
+        isMe: true,
+        unread: false,
+        replyToId,
+        mentions: [],
+        cardTags: [],
+        marketingCampaignId: null,
+      });
+    }
+    items.forEach((item, index) => {
+      const clientId = createClientMessageId();
+      const first = index === 0;
+      queue.push({
+        id: `${LOCAL_MESSAGE_ID_PREFIX}${clientId}`,
+        clientId,
+        senderId: user.id,
+        senderName: "Me",
+        content: first && !viewOnce ? text : "",
+        timestamp: new Date(base + queue.length).toISOString(),
+        type: item.kind,
+        fileName: item.fileName ?? undefined,
+        fileSize: typeof item.fileSize === "number" ? String(item.fileSize) : undefined,
+        isMe: true,
+        unread: false,
+        replyToId: first && !(text && viewOnce) ? replyToId : undefined,
+        mentions: [],
+        cardTags: [],
+        marketingCampaignId: null,
+        viewOnce: viewOnce && item.kind !== "file" ? true : undefined,
+        localMedia: item,
+      });
+    });
+
+    for (const message of queue) postOptimisticMessage(conversationId, message);
+    for (const message of queue) {
+      await deliverMessage(conversationId, message);
+    }
+    if (isNewChat) fetchConversations(user.id);
+  };
+
+  // ── Issue #4114 Wave 4: cancel a media send while it uploads ──
+  const handleCancelMediaUpload = (messageId: string) => {
+    if (!currentConversationId) return;
+    const target = (messagesCache[currentConversationId] ?? EMPTY_MESSAGES).find((msg) => msg.id === messageId);
+    if (!target?.clientId || !isLocalMessage(target)) return;
+    void cancelChatMediaUpload(target.clientId);
   };
 
   // ── Collaboration session cleanup ────────────────────────
@@ -3864,6 +3924,11 @@ function ConnectionsPageRefactored({
           onBack={handleBackFromMessage}
           onSendMessage={handleSendMessage}
           messages={messages}
+          onSendMedia={(items, caption, viewOnce, replyToId) => {
+            void handleSendMedia(items, caption, viewOnce, replyToId);
+          }}
+          uploadProgress={mediaUploadProgress}
+          onCancelUpload={handleCancelMediaUpload}
           onRetryMessage={handleRetryMessage}
           onLoadOlderMessages={handleLoadOlderMessages}
           hasOlderMessages={olderPaging.conversationId === currentConversationId && olderPaging.hasMore}

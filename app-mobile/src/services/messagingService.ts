@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { blockService } from './blockService';
 import { getDisplayName } from '../utils/getDisplayName';
+import type { MediaViewRow } from '../utils/chatMedia';
 import type { NativeContentCardDescriptorV1, PublicShareDetails, ShareDestination, ShareEntityKind, ShareFactsV1, ShareMediaIdentity } from '@mingla/sharing';
 
 /**
@@ -204,7 +205,22 @@ export interface DirectMessage {
    * query per page (never per message). Absent on realtime rows.
    */
   reactions?: MessageReactionRow[];
+  /**
+   * Issue #4114 Wave 4: a photo or video each recipient may open once (through
+   * the open-view-once edge function). `file_url` holds its storage path.
+   */
+  view_once?: boolean;
+  /** Issue #4114 Wave 4: the view-once file was deleted (everyone opened it, or 14 days passed). */
+  view_once_purged_at?: string | null;
+  /**
+   * Issue #4114 Wave 4: who opened this view-once message — your own row as a
+   * recipient, every row as its sender (RLS). Absent on realtime rows.
+   */
+  media_views?: MediaViewRow[];
 }
+
+/** Issue #4114 Wave 4: one row of `message_media_views`. */
+export type { MediaViewRow };
 
 /** Issue #4114 Wave 3: one row of `direct_message_reactions`. */
 export interface MessageReactionRow {
@@ -969,9 +985,14 @@ export class MessagingService {
       );
       // Issue #4114 Wave 3: one reactions read for the whole page.
       const reactionsByMessage = await this.getReactionsForMessages(enrichedMessages.map((msg) => msg.id));
+      // Issue #4114 Wave 4: one read of who opened the page's view-once messages.
+      const viewsByMessage = await this.getMediaViewsForMessages(
+        enrichedMessages.filter((msg) => msg.view_once === true).map((msg) => msg.id),
+      );
       const withReactions = enrichedMessages.map((msg) => ({
         ...msg,
         reactions: reactionsByMessage.get(msg.id) ?? [],
+        ...(msg.view_once === true ? { media_views: viewsByMessage.get(msg.id) ?? [] } : {}),
       }));
 
       return { messages: withReactions.reverse(), error: null, hasMore: (data?.length ?? 0) >= limit };
@@ -1002,6 +1023,32 @@ export class MessagingService {
     for (const row of (data ?? []) as Array<{ message_id: string; user_id: string; emoji: string }>) {
       const list = byMessage.get(row.message_id) ?? [];
       list.push({ user_id: row.user_id, emoji: row.emoji });
+      byMessage.set(row.message_id, list);
+    }
+    return byMessage;
+  }
+
+  /**
+   * Issue #4114 Wave 4: who opened a page of view-once messages, in one query.
+   * RLS returns your own rows and, for messages you sent, everyone's. A read
+   * failure logs and returns an empty map (the bubble shows "not opened yet"
+   * until the next read; the server still refuses a second open).
+   */
+  async getMediaViewsForMessages(messageIds: string[]): Promise<Map<string, MediaViewRow[]>> {
+    const byMessage = new Map<string, MediaViewRow[]>();
+    const ids = messageIds.filter((id) => !!id && !id.startsWith('temp-'));
+    if (ids.length === 0) return byMessage;
+    const { data, error } = await supabase
+      .from('message_media_views')
+      .select('message_id, user_id, viewed_at')
+      .in('message_id', ids);
+    if (error) {
+      console.warn('[messagingService] view-once opens read failed', error);
+      return byMessage;
+    }
+    for (const row of (data ?? []) as Array<{ message_id: string; user_id: string; viewed_at: string }>) {
+      const list = byMessage.get(row.message_id) ?? [];
+      list.push({ user_id: row.user_id, viewed_at: row.viewed_at });
       byMessage.set(row.message_id, list);
     }
     return byMessage;
@@ -1040,14 +1087,16 @@ export class MessagingService {
     try {
       const { data, error } = await supabase
         .from('messages')
-        .select('id, conversation_id, sender_id, content, message_type, file_url, file_name, card_payload, created_at')
+        .select('*')
         .eq('conversation_id', conversationId)
         .in('message_type', ['image', 'video', 'card'])
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .limit(limit);
       if (error) throw error;
-      return { items: (data ?? []) as DirectMessage[], error: null };
+      // Issue #4114 Wave 4: view-once items never appear in the shared media grid.
+      const items = ((data ?? []) as DirectMessage[]).filter((item) => item.view_once !== true);
+      return { items, error: null };
     } catch (error: any) {
       console.error('Error loading chat media:', error);
       return { items: [], error: error?.message ?? 'media_failed' };
@@ -1117,6 +1166,7 @@ export class MessagingService {
     mentions: MentionEntry[] = [],
     cardTags: CardTagEntry[] = [],
     clientId?: string,
+    options: { viewOnce?: boolean } = {},
   ): Promise<{ message: DirectMessage | null; error: string | null }> {
     try {
       const validatedMentions = this.validateMentionEntries(mentions);
@@ -1137,6 +1187,8 @@ export class MessagingService {
           card_tags: validatedCardTags,
           ...(replyToId ? { reply_to_id: replyToId } : {}),
           ...(clientId ? { client_id: clientId } : {}),
+          // Issue #4114 Wave 4: only sent when true, so ordinary sends never name the column.
+          ...(options.viewOnce === true ? { view_once: true } : {}),
         })
         .select()
         .single();

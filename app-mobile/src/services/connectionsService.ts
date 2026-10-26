@@ -66,6 +66,27 @@ export interface Message {
   reactions?: Array<{ user_id: string; emoji: string }>;
   /** Issue #4114 Wave 3: unsent (soft-deleted); hidden from the thread. */
   unsent?: boolean;
+  /** Issue #4114 Wave 4: a photo or video each recipient may open once. */
+  viewOnce?: boolean;
+  /** Issue #4114 Wave 4: the view-once file was deleted from storage. */
+  viewOncePurged?: boolean;
+  /** Issue #4114 Wave 4: who opened it (message_media_views; absent on realtime rows). */
+  mediaViews?: Array<{ user_id: string; viewed_at: string }>;
+  /**
+   * Issue #4114 Wave 4: the picked file of a media send that has not uploaded
+   * yet (this phone only; never persisted, never sent to the server). A retry
+   * uploads it again under the same client id.
+   */
+  localMedia?: {
+    uri: string;
+    kind: 'image' | 'video' | 'file';
+    mimeType?: string | null;
+    fileName?: string | null;
+    fileSize?: number | null;
+    durationMs?: number | null;
+    width?: number | null;
+    height?: number | null;
+  };
 }
 
 export interface Conversation {

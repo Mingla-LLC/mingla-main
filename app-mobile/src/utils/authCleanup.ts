@@ -56,6 +56,13 @@ export async function performPrivateAuthCleanup(options: CleanupOptions): Promis
     queryClient.clear();
   }
 
+  // Issue #4114 Wave 4: signed chat-media links belong to the signed-in user.
+  import("../services/chatMediaUploadService").then(({ clearChatMediaUrlCache }) => {
+    clearChatMediaUrlCache();
+  }).catch((error) => {
+    console.warn(`[AUTH_CLEANUP] chat media link cache clear failed (${reason}):`, error);
+  });
+
   if (includeIntegrations) {
     try {
       const { logoutOneSignal } = await import("../services/oneSignalService");
