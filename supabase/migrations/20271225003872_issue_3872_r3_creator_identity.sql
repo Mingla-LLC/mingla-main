@@ -294,11 +294,9 @@ $fn$;
 CREATE OR REPLACE FUNCTION public.public_creator_profile(p_creator_account_id uuid) RETURNS jsonb
 LANGUAGE sql SECURITY DEFINER STABLE SET search_path=public,pg_temp AS $fn$
   SELECT CASE WHEN p.mode_enabled AND p.verification='verified' THEN jsonb_build_object(
-    'id',p.creator_account_id,'display_name',p.display_name,'bio',p.bio,'home_city_id',p.home_city_id,
-    'niches',p.niches,'languages',p.languages,'is_18_plus',true,'rating_avg_x100',p.rating_avg_x100,
-    'rating_count',p.rating_count,'completed_gigs',p.completed_gigs,
-    'handles',(SELECT coalesce(jsonb_agg(jsonb_build_object('platform',h.platform,'handle',h.handle,'follower_band',h.follower_band,'follower_source',h.follower_source) ORDER BY h.platform),'[]'::jsonb) FROM public.creator_handles h WHERE h.creator_account_id=p.creator_account_id AND h.verified_at IS NOT NULL AND NOT h.review_required),
-    'packages',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',c.id,'format_key',c.format_key,'platforms',c.platforms,'price_minor',c.price_minor,'currency',c.currency,'turnaround_days',c.turnaround_days,'includes_usage_days',c.includes_usage_days,'extra_usage_price_minor',c.extra_usage_price_minor) ORDER BY c.format_key),'[]'::jsonb) FROM public.creator_packages c WHERE c.creator_account_id=p.creator_account_id AND c.active)
+    'id',p.creator_account_id,'display_name',p.display_name,'niches',p.niches,
+    'showcase',(SELECT coalesce(jsonb_agg(jsonb_build_object('media_id',m.id,'thumb',NULL) ORDER BY m.created_at DESC),'[]'::jsonb) FROM public.creator_media_jobs m WHERE m.owner_id=p.creator_account_id AND m.owner_kind='creator' AND m.purpose='showcase' AND m.status='ready' AND m.deleted_at IS NULL),
+    'completed_gigs',p.completed_gigs
   ) ELSE NULL END FROM public.creator_profiles p WHERE p.creator_account_id=p_creator_account_id;
 $fn$;
 
@@ -318,6 +316,6 @@ REVOKE ALL ON FUNCTION public.public_creator_profile(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.public_creator_profile(uuid) TO anon,authenticated,service_role;
 
 COMMENT ON FUNCTION public.public_creator_profile(uuid) IS
-  '#3872 privacy allow-list. Never add date_of_birth, email, payout identifiers, private media or agreement evidence.';
+  '#3872 Explorer privacy allow-list: id, display_name, niches, showcase media ids and completed_gigs only. Never add handles, bio, date_of_birth, email, payout identifiers or agreement evidence.';
 
 COMMIT;

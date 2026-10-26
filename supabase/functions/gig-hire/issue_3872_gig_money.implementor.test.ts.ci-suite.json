@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "path": "supabase/functions/gig-hire/issue_3872_gig_money.implementor.test.ts",
+  "runner": "deno",
+  "command": ["deno", "test", "--allow-env", "supabase/functions/gig-hire/issue_3872_gig_money.implementor.test.ts"],
+  "timeout_seconds": 60,
+  "owner": "#3872"
+}

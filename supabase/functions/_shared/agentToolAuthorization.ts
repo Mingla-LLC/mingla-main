@@ -152,6 +152,7 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   list_referral_offers: role("marketing_manager", "brand"),
   create_referral_offer: role("marketing_manager", "brand"),
   invite_promoters: role("marketing_manager", "brand"),
+  draft_gig_script: role("marketing_manager", "brand"),
   update_campaign_draft: role("marketing_manager", "campaign"),
   delete_campaign_draft: role("marketing_manager", "campaign"),
   schedule_campaign: role("marketing_manager", "campaign"),

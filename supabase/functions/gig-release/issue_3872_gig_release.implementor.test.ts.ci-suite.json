@@ -1,0 +1,6 @@
+{
+  "suite": "deno2",
+  "issue": 3872,
+  "owner": "implementor",
+  "command": "deno test --allow-read supabase/functions/gig-release/issue_3872_gig_release.implementor.test.ts"
+}

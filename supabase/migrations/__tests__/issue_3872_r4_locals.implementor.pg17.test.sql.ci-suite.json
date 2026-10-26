@@ -1,0 +1,6 @@
+{
+  "suite": "migrations",
+  "issue": 3872,
+  "owner": "implementor",
+  "profile": "psql-pg17-post-replay"
+}

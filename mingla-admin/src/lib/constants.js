@@ -145,6 +145,7 @@ export const NAV_GROUPS = [
     items: [
       { id: "hosts",                     label: "Hosts",              icon: "Handshake" },
       { id: "creators",                  label: "Creators",           icon: "Sparkles" },
+      { id: "gig-queue",                 label: "Creator gigs",       icon: "Scale" },
       // #3980 (D-11): Needs you, Work and Calendar sit together; the Agent
       // log is a tab on Work (#/agent-log still opens it there).
       { id: "drafts",                    label: "Needs you",          icon: "FileText" },

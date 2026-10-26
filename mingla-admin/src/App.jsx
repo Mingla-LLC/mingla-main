@@ -75,6 +75,7 @@ import { GuidePage } from "./pages/GuidePage";
 import { ContentCalendarPage } from "./pages/ContentCalendarPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { DataRoomPage } from "./pages/DataRoomPage";
+import { GigQueuePage } from "./pages/GigQueuePage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -140,6 +141,7 @@ const PAGES = {
   hosts: HostsPage,
   "team-dashboard": TeamDashboardPage,
   creators: CreatorsPage,
+  "gig-queue": GigQueuePage,
   drafts: DraftsPage,
   "work-board": WorkBoardPage,
   "agent-log": AgentLogPage,

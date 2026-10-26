@@ -31,6 +31,7 @@ import { providerExecutionTargeting } from "./adTargetingCompiler.ts";
 // the only writer that has no human between it and the send path, so it is the
 // writer that most needs to be told "no" before the row is stored.
 import { campaignPayloadIssues } from "./campaignPayloadContract.ts";
+import { validateGigScript } from "./gigScript.ts";
 
 const UUID = { type: "string", format: "uuid" };
 const STR = { type: "string", minLength: 1, maxLength: 500 };
@@ -8314,6 +8315,29 @@ export async function preflightMoneyProposal(
   return null;
 }
 
+const draftGigScript = writeTool(
+  "draft_gig_script",
+  "Draft a Creator Gig script from server-provided format and listing facts. Never invent price or claims; always include #ad or paid partnership.",
+  {
+    brand_id: UUID,
+    format_key: STR,
+    length_min: { type: "integer", minimum: 1, maximum: 90 },
+    length_max: { type: "integer", minimum: 1, maximum: 90 },
+    display_price: STR,
+    listing_facts: { type: "array", items: STR, minItems: 1, maxItems: 20 },
+    sections: { type: "array", minItems: 1, maxItems: 12, items: { type: "object", additionalProperties: false, properties: { on_screen: STR, voiceover: STR, shot_notes: STR }, required: ["on_screen", "voiceover", "shot_notes"] } },
+    disclosure: { type: "string", enum: ["#ad", "paid partnership"] },
+    estimated_seconds: { type: "integer", minimum: 1, maximum: 90 },
+  },
+  ["brand_id", "format_key", "length_min", "length_max", "display_price", "listing_facts", "sections", "disclosure", "estimated_seconds"],
+  async (args, client, userId) => {
+    await assertAgentReadBrand(client, args.brand_id as string, userId);
+    const checked = validateGigScript({ script: { sections: args.sections as Array<{ on_screen: string; voiceover: string; shot_notes: string }>, disclosure: args.disclosure as string, estimated_seconds: args.estimated_seconds as number }, lengthMin: args.length_min as number, lengthMax: args.length_max as number, displayPrice: args.display_price as string, listingFacts: args.listing_facts as string[] });
+    if (!checked.ok) throw new ToolError("INVALID_ARGS", `Script failed guardrails: ${checked.reasons.join(", ")}`);
+    return { format_key: args.format_key, body: checked.script };
+  },
+);
+
 export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   publishEvent,
   unpublishEvent,
@@ -8431,6 +8455,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   createSupportTicket,
   requestAccountDeletion,
   getOperatorSnapshot,
+  draftGigScript,
 ];
 
 export const DOMAIN_READ_ONLY = new Set<string>([
@@ -8456,6 +8481,7 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "get_growth_tool_report",
   "get_operator_snapshot",
   "get_event_order_reconciliation",
+  "draft_gig_script",
   // issue #1978 — venue discovery reads run inline; they never mutate.
   "list_venue_listings",
   "get_venue_listing_status",

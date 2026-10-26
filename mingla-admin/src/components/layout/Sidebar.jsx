@@ -43,6 +43,7 @@ import {
   Bell,
   FolderLock,
   SquareKanban,
+  Scale,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -101,6 +102,7 @@ const ICON_MAP = {
   Wallet,
   HeartPulse,
   Hourglass,
+  Scale,
   Settings,
   Bot,
   FileText,

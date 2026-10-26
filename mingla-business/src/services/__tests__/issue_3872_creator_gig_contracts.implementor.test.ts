@@ -1,0 +1,48 @@
+import fs from "node:fs";
+import path from "node:path";
+
+// [TEST-MOD-APPROVED #3872] Source contracts keep the Creator and Host gig
+// journeys wired to the reviewed RPC and Edge boundaries on every platform.
+const root = process.cwd();
+const read = (relative: string): string => fs.readFileSync(path.join(root, relative), "utf8");
+
+const service = read("src/services/creatorGigsService.ts");
+const creator = read("app/creator/contract/[contractId].tsx");
+const host = read("app/brand/[id]/creators/contract/[contractId].tsx");
+const applicants = read("app/brand/[id]/creators/[gigId]/interest.tsx");
+const hireSheet = read("src/components/gigs/HireSheet.tsx");
+
+describe("issue #3872 — Creator gig contract journeys", () => {
+  test("both sides resolve structured settlement offers through the guarded Edge boundary", () => {
+    expect(service).toContain('supabase.functions.invoke("gig-dispute-resolve"');
+    expect(service).toContain('offerDispute: (disputeId: string, refundBps: number');
+    expect(creator).toContain("Accept settlement");
+    expect(creator).toContain("Make counteroffer");
+    expect(host).toContain("Accept settlement");
+    expect(host).toContain("Make counteroffer");
+    expect(creator).toContain("respondToDisputeOffer(openOffer.id, true)");
+    expect(host).toContain("respondToDisputeOffer(openOffer.id, false)");
+  });
+
+  test("pre-lock cancellations use the party-specific reviewed refund branches", () => {
+    expect(creator).toContain('creatorGigsService.refund(contractId, "creator_after_accept")');
+    expect(host).toContain('creatorGigsService.refund(contractId, "host_before_accept")');
+    expect(host).toContain('creatorGigsService.refund(contractId, "host_after_accept_before_lock")');
+    expect(creator).toContain("provider fees follow the payment provider’s refund rules");
+    expect(host).toContain("Provider fees follow the payment provider’s refund rules");
+  });
+
+  test("the UI labels refund shares from the Host perspective", () => {
+    expect(creator).toContain("% refund to Host");
+    expect(creator).toContain("You receive the remaining contract fee.");
+    expect(host).toContain("% refund to you");
+    expect(host).toContain("keeps the remainder of the contract fee");
+  });
+
+  test("the Host can fund the quoted fee or send a structured pre-hire counter", () => {
+    expect(applicants).toContain('label="Counter"');
+    expect(hireSheet).toContain("Send a structured counter");
+    expect(hireSheet).toContain("Secure payment and send counter");
+    expect(hireSheet).toContain("Mingla booking fee (15%)");
+  });
+});

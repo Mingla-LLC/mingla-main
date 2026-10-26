@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "path": "supabase/functions/gig-post-verify/issue_3872_gig_post_verify.implementor.test.ts",
+  "runner": "deno",
+  "command": ["deno", "test", "supabase/functions/gig-post-verify/issue_3872_gig_post_verify.implementor.test.ts"],
+  "timeout_seconds": 60,
+  "owner": "#3872"
+}

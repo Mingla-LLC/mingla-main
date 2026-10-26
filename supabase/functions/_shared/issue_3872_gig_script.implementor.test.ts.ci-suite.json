@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "path": "supabase/functions/_shared/issue_3872_gig_script.implementor.test.ts",
+  "runner": "deno",
+  "command": ["deno", "test", "--allow-env", "supabase/functions/_shared/issue_3872_gig_script.implementor.test.ts"],
+  "timeout_seconds": 60,
+  "owner": "#3872"
+}
