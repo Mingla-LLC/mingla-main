@@ -1,0 +1,5 @@
+{
+  "verify_jwt": true,
+  "auth": "authenticated_user",
+  "notes": "Removal stops future attribution while preserving earned shares."
+}

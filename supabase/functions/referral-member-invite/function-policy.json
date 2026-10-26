@@ -1,0 +1,5 @@
+{
+  "verify_jwt": true,
+  "auth": "authenticated_user",
+  "notes": "Tokens are single-use, random and stored only as SHA-256 hashes. The existing RESEND_API_KEY and invite sender are reused."
+}

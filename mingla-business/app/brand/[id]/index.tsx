@@ -178,6 +178,10 @@ export default function BrandProfileRoute(): React.ReactElement {
     router.push(`/brand/${brandId}/discounts` as never);
   };
 
+  const handleOpenReferrals = (brandId: string): void => {
+    router.push(`/brand/${brandId}/referrals` as never);
+  };
+
   // Cycle 13a (SPEC §4.14): brand-admin+ menu row → audit log viewer.
   const handleOpenAuditLog = (brandId: string): void => {
     router.push(`/brand/${brandId}/audit-log` as never);
@@ -276,6 +280,7 @@ export default function BrandProfileRoute(): React.ReactElement {
         onPayments={handleOpenPayments}
         onPricingDefaults={handleOpenPricingDefaults}
         onDiscounts={handleOpenDiscounts}
+        onReferrals={handleOpenReferrals}
         onReports={handleOpenReports}
         onAuditLog={handleOpenAuditLog}
         onWebsite={handleOpenWebsite}

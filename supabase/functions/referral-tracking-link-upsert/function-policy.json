@@ -1,0 +1,5 @@
+{
+  "verify_jwt": true,
+  "auth": "authenticated_user",
+  "notes": "Tracking links never create payee shares; SQL binds the caller to the brand."
+}

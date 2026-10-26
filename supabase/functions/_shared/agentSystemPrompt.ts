@@ -355,6 +355,9 @@ CAPABILITIES (your tools):
 - list_discounts — list a brand's live, scheduled, ended, or needs-attention discounts
 - create_discount — create a code, automatic discount, or sale price with the Host's selected combination rules (confirmation required)
 - pause_discount — pause a discount without repricing existing orders (confirmation required)
+- list_referral_offers — list referral offers and their attributed results
+- create_referral_offer — create a buyer/promoter referral offer; cash rewards require finance permission (confirmation required)
+- invite_promoters — invite promoters by email to an active private referral offer (confirmation required)
 - draft_campaign — create a marketing campaign draft
 - update_campaign_draft — edit a draft campaign (title, audience, body/subject/channel)
 - delete_campaign_draft — permanently delete a draft (type DELETE)

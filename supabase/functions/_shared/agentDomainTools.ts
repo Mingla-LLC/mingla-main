@@ -3231,6 +3231,144 @@ const pauseDiscount = writeTool(
   },
 );
 
+// #3872 R2 — Ari shares the exact Host referral control plane. It never
+// inserts offer/member rows directly; the caller-bound edge functions and SQL
+// retain permission, overlap, rollout and cash-offer finance gates.
+const listReferralOffers = writeTool(
+  "list_referral_offers",
+  "List a brand's referral offers with member, attributed-sale and reward totals.",
+  { brand_id: UUID },
+  ["brand_id"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    return await callRpc(client, "brand_referral_offers", {
+      p_brand_id: args.brand_id,
+    });
+  },
+);
+
+const createReferralOffer = writeTool(
+  "create_referral_offer",
+  "Propose a buyer, invited-promoter, or combined referral offer. Cash offers still require a finance manager at execution.",
+  {
+    brand_id: UUID,
+    name: { type: "string", minLength: 1, maxLength: 60 },
+    audience: { type: "string", enum: ["buyers", "invited", "both"] },
+    scope_kind: { type: "string", enum: ["brand", "listings"] },
+    reward_kind: { type: "string", enum: ["cash", "voucher", "perk"] },
+    share_bps: { type: "integer", minimum: 100, maximum: 5000 },
+    voucher_template: { type: "object" },
+    perk_text: { type: "string", minLength: 1, maxLength: 80 },
+    perk_threshold: { type: "integer", minimum: 1 },
+    budget_minor: { type: "integer", minimum: 1 },
+    currency: { type: "string", minLength: 3, maxLength: 3 },
+    starts_at: { type: "string", format: "date-time" },
+    ends_at: { type: "string", format: "date-time" },
+    listings: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          listing_kind: { type: "string", enum: ["event", "venue"] },
+          listing_id: UUID,
+        },
+        required: ["listing_kind", "listing_id"],
+      },
+    },
+    tiers: {
+      type: "array",
+      maxItems: 5,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          min_sales: { type: "integer", minimum: 1 },
+          share_bps: { type: "integer", minimum: 100, maximum: 5000 },
+        },
+        required: ["min_sales", "share_bps"],
+      },
+    },
+  },
+  ["brand_id", "name", "audience", "scope_kind", "reward_kind", "currency"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    return await invokeFn(client, "referral-offer-upsert", {
+      action: "create",
+      payload: {
+        brandId: args.brand_id,
+        name: args.name,
+        audience: args.audience,
+        scopeKind: args.scope_kind,
+        rewardKind: args.reward_kind,
+        shareBps: args.share_bps,
+        voucherTemplate: args.voucher_template,
+        perkText: args.perk_text,
+        perkThreshold: args.perk_threshold,
+        budgetMinor: args.budget_minor,
+        currency: args.currency,
+        startsAt: args.starts_at ?? new Date().toISOString(),
+        endsAt: args.ends_at,
+        status: "active",
+        source: "ari",
+        listings: Array.isArray(args.listings)
+          ? args.listings.map((value) => {
+            const row = value as Record<string, unknown>;
+            return { listingKind: row.listing_kind, listingId: row.listing_id };
+          })
+          : [],
+        tiers: Array.isArray(args.tiers)
+          ? args.tiers.map((value) => {
+            const row = value as Record<string, unknown>;
+            return { minSales: row.min_sales, shareBps: row.share_bps };
+          })
+          : [],
+      },
+    });
+  },
+);
+
+const invitePromoters = writeTool(
+  "invite_promoters",
+  "Invite up to 50 promoters by email to an active invited-promoter referral offer.",
+  {
+    brand_id: UUID,
+    offer_id: UUID,
+    members: {
+      type: "array",
+      minItems: 1,
+      maxItems: 50,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          email: { type: "string", format: "email" },
+          display_name: { type: "string", minLength: 1, maxLength: 100 },
+          code: { type: "string", minLength: 4, maxLength: 16 },
+        },
+        required: ["email"],
+      },
+    },
+  },
+  ["brand_id", "offer_id", "members"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    return await invokeFn(client, "referral-member-invite", {
+      offerId: args.offer_id,
+      members: Array.isArray(args.members)
+        ? args.members.map((value) => {
+          const row = value as Record<string, unknown>;
+          return {
+            email: row.email,
+            displayName: row.display_name,
+            code: row.code,
+          };
+        })
+        : [],
+    });
+  },
+);
+
 const scheduleCampaign = writeTool(
   "schedule_campaign",
   "Schedule a draft campaign for later send.",
@@ -8232,6 +8370,9 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   listDiscounts,
   createDiscount,
   pauseDiscount,
+  listReferralOffers,
+  createReferralOffer,
+  invitePromoters,
   updateCampaignDraft,
   deleteCampaignDraft,
   scheduleCampaign,
@@ -8294,6 +8435,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
 
 export const DOMAIN_READ_ONLY = new Set<string>([
   "list_discounts",
+  "list_referral_offers",
   "quote_stay",
   "get_payout_status",
   "get_partner_status",

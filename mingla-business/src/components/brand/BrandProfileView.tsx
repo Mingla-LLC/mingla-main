@@ -76,6 +76,10 @@ import {
   canShowDiscountsOperation,
   DISCOUNTS_OPERATION_COPY,
 } from "../discounts/discountOperationContract";
+import {
+  canShowReferralsOperation,
+  REFERRALS_OPERATION_COPY,
+} from "../referrals/referralOperationContract";
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
@@ -204,6 +208,8 @@ export interface BrandProfileViewProps {
   onPricingDefaults: (brandId: string) => void;
   /** Issue #3872 — opens the pilot-gated Discounts workspace. */
   onDiscounts?: (brandId: string) => void;
+  /** Issue #3872 R2 — opens the pilot-gated Referrals workspace. */
+  onReferrals?: (brandId: string) => void;
   /**
    * Called when user taps the "Finance reports" Operations row.
    * Receives the brand id. NEW in J-A12 — final navigation prop in
@@ -286,6 +292,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onPayments,
   onPricingDefaults,
   onDiscounts,
+  onReferrals,
   onReports,
   onAuditLog,
   onWebsite,
@@ -449,6 +456,20 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       .catch(() => { if (active) setDiscountsEnabled(false); });
     return () => { active = false; };
   }, [brand,currentRank,onDiscounts]);
+  const [referralsEnabled, setReferralsEnabled] = useState(false);
+  useEffect(() => {
+    let active = true;
+    if (brand === null || currentRank < 20 || onReferrals === undefined) {
+      setReferralsEnabled(false);
+      return () => { active = false; };
+    }
+    setReferralsEnabled(false);
+    void import("../../services/referralService")
+      .then(({ fetchReferralAccess }) => fetchReferralAccess(brand.id))
+      .then((enabled) => { if (active) setReferralsEnabled(enabled); })
+      .catch(() => { if (active) setReferralsEnabled(false); });
+    return () => { active = false; };
+  }, [brand,currentRank,onReferrals]);
   const canCheckWebsiteAvailability = isFeatureEnabled("sites") &&
     canPerformAction(currentRank, "WEBSITE_WORKSPACE");
   const [websiteContext, setWebsiteContext] = useState<string | null>(null);
@@ -545,6 +566,14 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           if (brand !== null) onDiscounts?.(brand.id);
         },
       }] : []),
+      ...(canShowReferralsOperation(currentRank, referralsEnabled, onReferrals) ? [{
+        icon: "users" as const,
+        label: REFERRALS_OPERATION_COPY.label,
+        sub: REFERRALS_OPERATION_COPY.sub,
+        onPress: () => {
+          if (brand !== null) onReferrals?.(brand.id);
+        },
+      }] : []),
       {
         icon: "users",
         label: "Team & permissions",
@@ -605,8 +634,11 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     onAds,
     onPayments,
     onPricingDefaults,
+    currentRank,
     onDiscounts,
     discountsEnabled,
+    onReferrals,
+    referralsEnabled,
     onReports,
     onAuditLog,
     canViewAuditLog,

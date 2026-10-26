@@ -1,0 +1,5 @@
+{
+  "verify_jwt": true,
+  "auth": "authenticated_user",
+  "notes": "Acceptance requires the authenticated email to match the invite; only the SHA-256 token hash reaches SQL."
+}

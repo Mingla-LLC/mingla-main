@@ -1,0 +1,5 @@
+{
+  "verify_jwt": true,
+  "auth": "authenticated_user",
+  "notes": "Caller identity is recovered from the bearer token; SQL rechecks brand rank and rollout state."
+}
