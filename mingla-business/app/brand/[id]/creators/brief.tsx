@@ -1,21 +1,23 @@
 /**
- * #3872 — Hire a creator: the brief (approved P-brief / M-brief / M-daterange).
- * Goal, format with an example, a brand-free public brief checked live, a
- * private brief, platforms, shoot dates anchored to the event, post-by, how
- * many creators, pay up to, sales share, usage and the max spend.
+ * #3872 — Hire a creator. Round 2 (approved M-brief1 / M-brief2 /
+ * M-keyboard): two steps. Brief — goal, format, platforms, title and tall
+ * public/private brief boxes with counters. Timing and pay — "Video needed
+ * by" (date and time, required), "Shoot" (optional; The event day / Any day
+ * before; blank lets the creator propose a time), city, creators, a money
+ * field with the level's range under it, sales share and reuse. The footer
+ * total never overflows; the keyboard rule hides it while typing.
  */
 import React, { useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { Button } from "../../../../src/components/ui/Button";
 import { DateField } from "../../../../src/components/ui/DateField";
-import { Input } from "../../../../src/components/ui/Input";
 import { NumberStepper } from "../../../../src/components/ui/NumberStepper";
 import { Sheet } from "../../../../src/components/ui/Sheet";
-import { DateRangeSheet } from "../../../../src/components/programs/DateRangeSheet";
+import { Input } from "../../../../src/components/ui/Input";
+import { TimeField } from "../../../../src/components/programs/TimeField";
 import {
-  Card,
   Chip,
   FieldError,
   ListGroup,
@@ -26,20 +28,27 @@ import {
   SectionLabel,
   Segmented,
   SheetBody,
-  programStyles,
 } from "../../../../src/components/programs/ProgramKit";
 import { useProgramParams } from "../../../../src/components/programs/useProgramParams";
 import {
   FORMAT_EXAMPLES,
   PLATFORM_DELIVERABLES,
+  PRIVATE_BRIEF_MAX,
+  PUBLIC_BRIEF_MAX,
   briefFromGig,
+  briefMaxSpend,
   briefServerErrors,
   emptyBrief,
   gigPayload,
+  payBandCaption,
+  stepForErrors,
   validateBrief,
+  validateBriefStep,
   type BriefErrors,
   type BriefForm,
   type BriefPlatform,
+  type BriefStep,
+  type ShootMode,
   type UsageDays,
 } from "../../../../src/components/programs/gigBrief";
 import { CREATOR_FORMATS } from "../../../../src/services/creatorProgramContract";
@@ -55,16 +64,21 @@ import {
   bandsForCurrency,
   bookingFeeMinor,
   briefLintMessage,
-  dateRangeLabel,
   formatName,
   lintPublicBrief,
   programErrorMessage,
   programMoney,
+  shortDate,
   toIsoDay,
   wholeCurrencyToMinor,
   type BudgetBandRange,
 } from "../../../../src/utils/creatorProgramFormat";
+import { formatCurrencyRound } from "../../../../src/utils/currency";
+import { blastHubHref } from "../../../../src/components/marketing/marketingSubNavTabs";
 import {
+  accent,
+  glass,
+  radius,
   semantic,
   spacing,
   text as textTokens,
@@ -77,6 +91,58 @@ const USAGE_OPTIONS: ReadonlyArray<readonly [UsageDays, string]> = [
   [365, "1 year"],
 ];
 const LEVELS = ["b1", "b2", "b3", "b4"] as const;
+
+/** A tall brief box with its label and a character count under it. */
+function BriefBox({
+  value,
+  onChange,
+  placeholder,
+  caption,
+  max,
+  minHeight,
+  error,
+  accessibilityLabel,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  caption: string;
+  max: number;
+  minHeight: number;
+  error?: string | null;
+  accessibilityLabel: string;
+}): React.ReactElement {
+  const [focused, setFocused] = useState(false);
+  return (
+    <View style={styles.boxWrap}>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor={textTokens.tertiary}
+        multiline
+        textAlignVertical="top"
+        maxLength={max}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        accessibilityLabel={accessibilityLabel}
+        style={[
+          styles.box,
+          { minHeight },
+          focused && styles.boxFocused,
+          error ? styles.boxError : null,
+        ]}
+      />
+      <View style={styles.counterRow}>
+        <Text style={styles.counter} numberOfLines={1}>
+          {caption}
+        </Text>
+        <Text style={styles.counter}>{`${value.length} / ${max}`}</Text>
+      </View>
+      <FieldError message={error} />
+    </View>
+  );
+}
 
 export default function GigBriefEditor(): React.ReactElement {
   const router = useRouter();
@@ -96,7 +162,7 @@ export default function GigBriefEditor(): React.ReactElement {
   const [touched, setTouched] = useState(false);
   const [serverErrors, setServerErrors] = useState<BriefErrors>({});
   const [busy, setBusy] = useState(false);
-  const [rangeOpen, setRangeOpen] = useState(false);
+  const [step, setStep] = useState<BriefStep>(1);
   const [formatOpen, setFormatOpen] = useState(false);
   const today = toIsoDay(new Date());
   const editingGigId = params.gigId ?? null;
@@ -132,7 +198,14 @@ export default function GigBriefEditor(): React.ReactElement {
           // Book again starts fresh dates; edit keeps them.
           return params.gigId
             ? prefill
-            : { ...prefill, shoot: null, postBy: "" };
+            : {
+                ...prefill,
+                videoDueDay: "",
+                videoDueTime: "",
+                shootMode: "open",
+                shootDay: "",
+                shootTime: "",
+              };
         }
         const base = emptyBrief();
         return {
@@ -152,7 +225,8 @@ export default function GigBriefEditor(): React.ReactElement {
 
   const update = <K extends keyof BriefForm>(key: K, value: BriefForm[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
-    setServerErrors((current) => ({ ...current, form: undefined }));
+    // A server answer is about what was sent; editing anything clears it.
+    setServerErrors({});
   };
 
   const payMinor = wholeCurrencyToMinor(form.payText, currency);
@@ -160,15 +234,16 @@ export default function GigBriefEditor(): React.ReactElement {
     () => ({
       currency,
       today,
+      eventDay: listing?.kind === "event" ? listing.startDay : null,
       bands,
       brandName: brand?.displayName,
       brandSlug: brand?.slug,
       listingTitle: listing?.title,
     }),
-    [currency, today, bands, brand?.displayName, brand?.slug, listing?.title],
+    [currency, today, listing?.kind, listing?.startDay, bands, brand?.displayName, brand?.slug, listing?.title],
   );
   const errors: BriefErrors = {
-    ...(touched ? validateBrief(form, ctx, payMinor) : {}),
+    ...(touched ? validateBriefStep(step, form, ctx, payMinor) : {}),
     ...serverErrors,
   };
   const liveLint = lintPublicBrief(form.briefPublic, {
@@ -177,22 +252,34 @@ export default function GigBriefEditor(): React.ReactElement {
     listingTitle: listing?.title,
   });
   const ranges = bandsForCurrency(bands, currency);
-  const formatRange =
-    ranges.length > 0
-      ? `${programMoney(ranges[0].min_minor, currency)}–${programMoney(ranges[ranges.length - 1].max_minor, currency)}`
-      : null;
+  const bandCaption = payBandCaption(form, ctx, payMinor);
   const fee = payMinor ?? 0;
-  const perCreator = fee + bookingFeeMinor(fee);
-  const maxSpend =
-    payMinor === null
-      ? "Set pay to see your max spend"
-      : `${programMoney(fee * form.slots, currency)} + ${programMoney(bookingFeeMinor(fee) * form.slots, currency)} booking fee`;
+  const shareOn = form.goal === "sell" && form.salesShare;
+  const maxSpend = briefMaxSpend({
+    payMinor,
+    slots: form.slots,
+    bookingFeeMinor: bookingFeeMinor(fee),
+    shareLabel: shareOn ? `${form.salesSharePercent}%` : null,
+    money: (minor) => programMoney(minor, currency),
+  });
+  const currencyGlyph = formatCurrencyRound(0, currency).replace(/[0\s.,]/g, "");
+
+  const next = () => {
+    setTouched(true);
+    if (Object.keys(validateBriefStep(1, form, ctx, payMinor)).length > 0) return;
+    setTouched(false);
+    setStep(2);
+  };
 
   const post = async () => {
     setTouched(true);
     setServerErrors({});
     const found = validateBrief(form, ctx, payMinor);
-    if (Object.keys(found).length > 0 || !listingId) return;
+    if (Object.keys(found).length > 0) {
+      setStep(stepForErrors(found));
+      return;
+    }
+    if (!listingId) return;
     setBusy(true);
     try {
       const result = await creatorGigsService.saveGig(
@@ -207,7 +294,9 @@ export default function GigBriefEditor(): React.ReactElement {
         }),
       );
       if (!result.ok) {
-        setServerErrors(briefServerErrors(result));
+        const mapped = briefServerErrors(result);
+        setServerErrors(mapped);
+        setStep(stepForErrors(mapped));
         return;
       }
       const gigId = result.id ?? editingGigId;
@@ -233,109 +322,115 @@ export default function GigBriefEditor(): React.ReactElement {
         ? form.platforms.filter((item) => item !== platform)
         : [...form.platforms, platform],
     );
+  const setShootMode = (mode: ShootMode) =>
+    setForm((current) => ({
+      ...current,
+      shootMode: current.shootMode === mode ? "open" : mode,
+      shootDay: mode === "day" ? current.shootDay : "",
+      shootTime: mode === "day" ? current.shootTime : "",
+    }));
+
+  const listingChip = listing
+    ? [listing.title, listing.startDay ? shortDate(listing.startDay) : null]
+        .filter(Boolean)
+        .join(" · ")
+    : null;
 
   return (
     <ProgramScreen
       title={editingGigId ? "Edit gig" : "Hire a creator"}
-      leading="close"
-      fallback={
-        listingId
-          ? `/brand/${brandId}/promote?kind=${listingKind}&listingId=${listingId}`
-          : `/brand/${brandId}/creators`
-      }
+      leading={step === 1 ? "close" : "back"}
+      onBack={step === 2 ? () => setStep(1) : undefined}
+      right={<Text style={styles.stepCount}>{`${step}/2`}</Text>}
+      fallback={blastHubHref("creators")}
       footer={
         ready ? (
-          <View style={styles.footer}>
-            <View style={styles.spendRow}>
-              <Text style={styles.spendLabel}>Max spend</Text>
-              <Text style={styles.spendValue} numberOfLines={2}>
-                {maxSpend}
-              </Text>
-            </View>
-            {payMinor !== null && form.slots > 1 ? (
-              <Muted>{`${programMoney(perCreator, currency)} per creator × ${form.slots}`}</Muted>
-            ) : null}
-            <FieldError
-              message={
-                errors.form ??
-                (touched &&
-                Object.keys(validateBrief(form, ctx, payMinor)).length > 0
-                  ? "Fix the highlighted fields to post."
-                  : null)
-              }
-            />
+          step === 1 ? (
             <Button
               fullWidth
-              label={editingGigId ? "Save changes" : "Post gig"}
-              loading={busy}
-              disabled={busy || !listingId}
-              onPress={() => void post()}
+              size="lg"
+              label="Next: timing and pay"
+              disabled={!listingId}
+              onPress={next}
             />
-          </View>
+          ) : (
+            <View style={styles.footer}>
+              <View style={styles.spendRow}>
+                <Text style={styles.spendLabel}>Most you'll spend</Text>
+                <Text
+                  style={styles.spendValue}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  {maxSpend ?? "Set pay first"}
+                </Text>
+              </View>
+              <FieldError
+                message={
+                  errors.form ??
+                  (touched &&
+                  Object.keys(validateBrief(form, ctx, payMinor)).length > 0
+                    ? "Fix the highlighted fields to post."
+                    : null)
+                }
+              />
+              <Button
+                fullWidth
+                size="lg"
+                label={editingGigId ? "Save changes" : "Post gig"}
+                loading={busy}
+                disabled={busy || !listingId}
+                onPress={() => void post()}
+              />
+            </View>
+          )
         ) : undefined
       }
       overlay={
-        <>
-          <DateRangeSheet
-            visible={rangeOpen}
-            onClose={() => setRangeOpen(false)}
-            value={form.shoot}
-            onChange={(range) => {
-              update("shoot", range);
-              if (!form.postBy || form.postBy < range.end) {
-                const post = new Date(
-                  Number(range.end.slice(0, 4)),
-                  Number(range.end.slice(5, 7)) - 1,
-                  Number(range.end.slice(8)) + 7,
-                );
-                update("postBy", toIsoDay(post));
-              }
-            }}
-            anchorDay={listing?.startDay ?? null}
-            minDay={today}
-          />
-          <Sheet
-            visible={formatOpen}
-            onClose={() => setFormatOpen(false)}
-            snapPoint="full"
-          >
-            <SheetBody title="Format">
-              <Muted>A proven structure creators can price consistently.</Muted>
-              <ListGroup>
-                {CREATOR_FORMATS.map((item) => (
-                  <ListRow
-                    key={item.key}
-                    title={item.name}
-                    subtitle={FORMAT_EXAMPLES[item.key]}
-                    chevron={false}
-                    right={
-                      form.formatKey === item.key ? (
-                        <Text style={styles.check}>Selected</Text>
-                      ) : undefined
-                    }
-                    onPress={() => {
-                      update("formatKey", item.key);
-                      setFormatOpen(false);
-                    }}
-                  />
-                ))}
-              </ListGroup>
-            </SheetBody>
-          </Sheet>
-        </>
+        <Sheet
+          visible={formatOpen}
+          onClose={() => setFormatOpen(false)}
+          snapPoint="full"
+        >
+          <SheetBody title="Format">
+            <Muted>A proven structure creators can price consistently.</Muted>
+            <ListGroup>
+              {CREATOR_FORMATS.map((item) => (
+                <ListRow
+                  key={item.key}
+                  title={item.name}
+                  subtitle={FORMAT_EXAMPLES[item.key]}
+                  chevron={false}
+                  right={
+                    form.formatKey === item.key ? (
+                      <Text style={styles.check}>Selected</Text>
+                    ) : undefined
+                  }
+                  onPress={() => {
+                    update("formatKey", item.key);
+                    setFormatOpen(false);
+                  }}
+                />
+              ))}
+            </ListGroup>
+          </SheetBody>
+        </Sheet>
       }
     >
       {!ready ? (
         <ProgramLoading />
-      ) : (
+      ) : step === 1 ? (
         <>
-          {listing ? (
-            <Muted>{listing.title}</Muted>
+          {listingChip ? (
+            <View style={styles.listingChip}>
+              <Text style={styles.listingChipText} numberOfLines={1}>
+                {listingChip}
+              </Text>
+            </View>
           ) : (
-            <FieldError message="Open this from a listing's Promote page to choose what creators promote." />
+            <FieldError message="Open this from Blast › Creators and pick what creators promote." />
           )}
-
-          <SectionLabel>Goal</SectionLabel>
           <Segmented
             options={
               [
@@ -346,17 +441,14 @@ export default function GigBriefEditor(): React.ReactElement {
             value={form.goal}
             onChange={(goal) => update("goal", goal)}
           />
-          <Card>
-            <Text style={programStyles.body}>
-              {form.goal === "sell"
-                ? "You pay a fixed fee, plus a share of every sale through their link or code. Results show sales."
-                : "You pay a fixed fee for the video. Results show views and link clicks."}
-            </Text>
-          </Card>
-
-          <SectionLabel>What they make</SectionLabel>
+          <Text style={styles.tiny}>
+            {form.goal === "sell"
+              ? "Fixed fee plus a share of each sale from their link."
+              : "Fixed fee for the video. Results show views and clicks."}
+          </Text>
           <ListGroup>
             <ListRow
+              compact
               title={formatName(form.formatKey)}
               subtitle={FORMAT_EXAMPLES[form.formatKey]}
               onPress={() => setFormatOpen(true)}
@@ -376,8 +468,6 @@ export default function GigBriefEditor(): React.ReactElement {
             )}
           </View>
           <FieldError message={errors.platforms} />
-
-          <SectionLabel>Brief</SectionLabel>
           <Input
             value={form.title}
             onChangeText={(value) => update("title", value)}
@@ -385,64 +475,119 @@ export default function GigBriefEditor(): React.ReactElement {
             accessibilityLabel="Gig title"
             error={errors.title ?? null}
           />
-          <Text style={styles.label}>
-            Public brief · creators see this before they're hired
-          </Text>
-          <Input
+          <BriefBox
             value={form.briefPublic}
-            onChangeText={(value) => update("briefPublic", value)}
+            onChange={(value) => update("briefPublic", value)}
             placeholder="What should the creator film? Keep names, links and handles out."
-            multiline
+            caption="Public brief · seen before hiring"
+            max={PUBLIC_BRIEF_MAX}
+            minHeight={140}
             accessibilityLabel="Public brief"
-            error={errors.briefPublic ?? null}
+            error={
+              errors.briefPublic ??
+              (liveLint.length > 0 ? briefLintMessage(liveLint) : null)
+            }
           />
-          {!errors.briefPublic ? (
-            liveLint.length > 0 ? (
-              <FieldError message={briefLintMessage(liveLint)} />
-            ) : form.briefPublic.trim().length >= 40 ? (
-              <Text style={styles.ok}>No brand names, links or contacts</Text>
-            ) : (
-              <Text
-                style={styles.counter}
-              >{`${form.briefPublic.trim().length} / 40 characters minimum`}</Text>
-            )
-          ) : null}
-          <Text style={styles.label}>
-            Private brief · shown after they accept
-          </Text>
-          <Input
+          <BriefBox
             value={form.briefPrivate}
-            onChangeText={(value) => update("briefPrivate", value)}
+            onChange={(value) => update("briefPrivate", value)}
             placeholder="Who to ask for at the door, parking, what to avoid"
-            multiline
+            caption="Private brief · hired creators only"
+            max={PRIVATE_BRIEF_MAX}
+            minHeight={110}
             accessibilityLabel="Private brief"
-            error={errors.briefPrivate ?? null}
+            error={errors.briefPrivate}
           />
-
-          <SectionLabel>When</SectionLabel>
-          <ListGroup>
-            <ListRow
-              title="Shoot dates"
-              right={
-                form.shoot
-                  ? dateRangeLabel(form.shoot.start, form.shoot.end)
-                  : "Choose"
-              }
-              onPress={() => setRangeOpen(true)}
+        </>
+      ) : (
+        <>
+          <SectionLabel>Video needed by</SectionLabel>
+          <View style={styles.pair}>
+            <View style={styles.pairDate}>
+              <DateField
+                label="Date"
+                value={form.videoDueDay}
+                onChangeValue={(value) => update("videoDueDay", value)}
+                accessibilityLabel="Video needed by date"
+                min={today}
+                placeholder="Choose"
+                hasError={Boolean(errors.videoDue)}
+              />
+            </View>
+            <TimeField
+              label="Time"
+              value={form.videoDueTime}
+              onChangeValue={(value) => update("videoDueTime", value)}
+              accessibilityLabel="Video needed by time"
+              hasError={Boolean(errors.videoDue)}
             />
-          </ListGroup>
+          </View>
+          <FieldError message={errors.videoDue} />
+
+          <View style={styles.labelRow}>
+            <SectionLabel>Shoot</SectionLabel>
+            <Text style={styles.optional}>Optional</Text>
+          </View>
+          <View style={styles.pair}>
+            <View style={styles.pairDate}>
+              <DateField
+                label="Date"
+                value={
+                  form.shootMode === "day"
+                    ? form.shootDay
+                    : form.shootMode === "event_day"
+                      ? (ctx.eventDay ?? "")
+                      : ""
+                }
+                onChangeValue={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    shootMode: value ? "day" : "open",
+                    shootDay: value,
+                  }))
+                }
+                accessibilityLabel="Shoot date"
+                min={today}
+                placeholder={form.shootMode === "any_before" ? "Any day before" : "Creator suggests"}
+                hasError={Boolean(errors.shoot)}
+              />
+            </View>
+            <TimeField
+              label="Time"
+              value={form.shootMode === "day" ? form.shootTime : ""}
+              onChangeValue={(value) =>
+                setForm((current) => ({
+                  ...current,
+                  shootTime: value,
+                  shootMode: current.shootMode === "event_day" && ctx.eventDay ? "day" : current.shootMode,
+                  shootDay: current.shootMode === "event_day" && ctx.eventDay ? ctx.eventDay : current.shootDay,
+                }))
+              }
+              accessibilityLabel="Shoot time"
+              placeholder="Any"
+            />
+          </View>
+          <View style={styles.chips}>
+            {ctx.eventDay ? (
+              <Chip
+                label="The event day"
+                selected={form.shootMode === "event_day"}
+                onPress={() => setShootMode("event_day")}
+              />
+            ) : null}
+            <Chip
+              label="Any day before"
+              selected={form.shootMode === "any_before"}
+              onPress={() => setShootMode("any_before")}
+            />
+          </View>
+          {form.shootMode === "open" ? (
+            <Text style={styles.tiny}>
+              Left blank, the creator suggests a shoot time and you approve it.
+            </Text>
+          ) : null}
           <FieldError message={errors.shoot} />
-          <DateField
-            label="Post by"
-            value={form.postBy}
-            onChangeValue={(value) => update("postBy", value)}
-            accessibilityLabel="Post by date"
-            min={form.shoot?.end ?? today}
-            placeholder="Choose a date"
-            hasError={Boolean(errors.postBy)}
-          />
-          <FieldError message={errors.postBy} />
-          <Text style={styles.label}>Shoot city</Text>
+          <Text style={styles.fieldLabel}>Shoot city</Text>
           <View style={styles.chips}>
             {cities.map((city) => (
               <Chip
@@ -464,22 +609,26 @@ export default function GigBriefEditor(): React.ReactElement {
             onChange={(value) => update("slots", value)}
           />
           <FieldError message={errors.slots} />
-          <Input
-            value={form.payText}
-            onChangeText={(value) =>
-              update("payText", value.replace(/[^0-9]/g, ""))
-            }
-            variant="number"
-            placeholder={`Pay each creator up to (${currency})`}
-            accessibilityLabel={`Pay each creator up to, in ${currency}`}
-            error={errors.pay ?? null}
-          />
-          {formatRange ? (
-            <Muted>{`Creators charge ${formatRange} for this kind of work.`}</Muted>
-          ) : null}
+          <Text style={styles.fieldLabel}>Pay each creator up to</Text>
+          <View style={[styles.money, errors.pay ? styles.boxError : null]}>
+            <Text style={styles.moneyGlyph}>{currencyGlyph || currency}</Text>
+            <TextInput
+              value={form.payText}
+              onChangeText={(value) =>
+                update("payText", value.replace(/[^0-9]/g, ""))
+              }
+              keyboardType="number-pad"
+              placeholder="300"
+              placeholderTextColor={textTokens.tertiary}
+              accessibilityLabel={`Pay each creator up to, in ${currency}`}
+              style={styles.moneyInput}
+            />
+          </View>
+          {bandCaption ? <Text style={styles.tiny}>{bandCaption}</Text> : null}
+          <FieldError message={errors.pay} />
           {ranges.length === 0 ? (
             <>
-              <Text style={styles.label}>Budget level creators see</Text>
+              <Text style={styles.fieldLabel}>Budget level creators see</Text>
               <View style={styles.chips}>
                 {LEVELS.map((level, index) => (
                   <Chip
@@ -490,17 +639,15 @@ export default function GigBriefEditor(): React.ReactElement {
                   />
                 ))}
               </View>
-              <Muted>
-                Level 1 suits newer creators; level 4 suits established ones.
-              </Muted>
             </>
           ) : null}
           {form.goal === "sell" ? (
             <>
               <ListGroup>
                 <ListRow
-                  title="Plus a sales share"
-                  subtitle="Paid automatically from each sale through their link or code"
+                  compact
+                  title="Share of each sale"
+                  subtitle="Paid from each sale through their link"
                   chevron={false}
                   right={
                     <Chip
@@ -530,7 +677,7 @@ export default function GigBriefEditor(): React.ReactElement {
               ) : null}
             </>
           ) : null}
-          <Text style={styles.label}>You can reuse the video for</Text>
+          <Text style={styles.fieldLabel}>You can reuse the video for</Text>
           <View style={styles.chips}>
             {USAGE_OPTIONS.map(([days, label]) => (
               <Chip
@@ -555,17 +702,75 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
   },
-  spendLabel: { color: textTokens.secondary, fontSize: 14 },
+  spendLabel: { color: textTokens.secondary, fontSize: 13 },
   spendValue: {
     color: textTokens.primary,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "800",
     flexShrink: 1,
     textAlign: "right",
   },
+  stepCount: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  label: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
-  ok: { color: semantic.success, fontSize: 13, fontWeight: "600" },
-  counter: { color: textTokens.tertiary, fontSize: 12 },
+  fieldLabel: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
+  tiny: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
+  optional: { color: textTokens.tertiary, fontSize: 12 },
+  labelRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+  },
   check: { color: semantic.success, fontWeight: "700", fontSize: 13 },
+  listingChip: {
+    alignSelf: "flex-start",
+    maxWidth: "100%",
+    height: 32,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: accent.border,
+    backgroundColor: accent.tint,
+  },
+  listingChipText: { color: textTokens.primary, fontSize: 13, fontWeight: "700" },
+  boxWrap: { gap: 6 },
+  box: {
+    color: textTokens.primary,
+    fontSize: 15,
+    lineHeight: 21,
+    padding: 14,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  boxFocused: { borderColor: accent.warm },
+  boxError: { borderColor: semantic.error },
+  counterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  counter: { color: textTokens.tertiary, fontSize: 12, flexShrink: 1 },
+  pair: { flexDirection: "row", gap: spacing.sm },
+  pairDate: { flex: 1.4 },
+  money: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 48,
+    paddingHorizontal: 14,
+    gap: 6,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  moneyGlyph: { color: textTokens.secondary, fontSize: 17, fontWeight: "700" },
+  moneyInput: {
+    flex: 1,
+    color: textTokens.primary,
+    fontSize: 17,
+    fontWeight: "700",
+    paddingVertical: spacing.sm,
+  },
 });

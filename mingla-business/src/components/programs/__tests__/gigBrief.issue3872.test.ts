@@ -1,13 +1,17 @@
 import {
   briefFromGig,
+  briefMaxSpend,
   briefServerErrors,
   emptyBrief,
   gigPayload,
+  payBandCaption,
+  shootWindow,
+  stepForErrors,
   validateBrief,
+  validateBriefStep,
   type BriefContext,
   type BriefForm,
 } from "../gigBrief";
-import { monthGrid, nextRange } from "../dateRangeGrid";
 import type { HostGig } from "../../../services/creatorGigsService";
 
 // #3872 walkthrough (08-host-gig-invalid-dates, brief redesign): the brief
@@ -16,6 +20,7 @@ import type { HostGig } from "../../../services/creatorGigsService";
 const ctx: BriefContext = {
   currency: "USD",
   today: "2026-10-26",
+  eventDay: "2026-11-25",
   bands: [
     { currency: "USD", band: "b1", min_minor: 5000, max_minor: 15000 },
     { currency: "USD", band: "b2", min_minor: 15000, max_minor: 32000 },
@@ -32,8 +37,9 @@ const filled = (): BriefForm => ({
     "Film a lively rooftop night: arrival, the view, signature drinks and the dance floor.",
   briefPrivate: "Ask for Sam at the door.",
   platforms: ["instagram", "tiktok"],
-  shoot: { start: "2026-11-20", end: "2026-11-25" },
-  postBy: "2026-12-05",
+  videoDueDay: "2026-12-05",
+  videoDueTime: "18:00",
+  shootMode: "open",
   slots: 2,
   payText: "300",
   salesShare: true,
@@ -54,9 +60,8 @@ describe("gig brief validation", () => {
       "city",
       "pay",
       "platforms",
-      "postBy",
-      "shoot",
       "title",
+      "videoDue",
     ]);
     expect(errors.briefPublic).toBe(
       "Describe what to film in at least 40 characters (0 so far).",
@@ -78,10 +83,37 @@ describe("gig brief validation", () => {
     );
   });
 
-  it("refuses a post-by date before the last shoot day", () => {
+  // Round 2 (H2.5): "Video needed by" date AND time are required; the shoot
+  // is optional and can't land after the video is due.
+  it("requires the video-needed-by day and time", () => {
     expect(
-      validateBrief({ ...filled(), postBy: "2026-11-21" }, ctx, 30000).postBy,
-    ).toBe("Pick a post-by date on or after the last shoot day.");
+      validateBrief({ ...filled(), videoDueTime: "" }, ctx, 30000).videoDue,
+    ).toBe("Pick the time you need the video by.");
+    expect(
+      validateBrief({ ...filled(), videoDueDay: "" }, ctx, 30000).videoDue,
+    ).toBe("Pick the day you need the finished video.");
+  });
+
+  it("leaves the shoot optional but never after the video is due", () => {
+    expect(validateBrief({ ...filled(), shootMode: "open" }, ctx, 30000)).toEqual({});
+    expect(
+      validateBrief(
+        { ...filled(), shootMode: "day", shootDay: "2026-12-10" },
+        ctx,
+        30000,
+      ).shoot,
+    ).toBe(
+      "The shoot is after the video is due. Pick an earlier shoot or a later due day.",
+    );
+  });
+
+  it("checks each step on its own (Next only checks the brief)", () => {
+    const step1 = validateBriefStep(1, { ...filled(), videoDueDay: "", title: "" }, ctx, 30000);
+    expect(Object.keys(step1)).toEqual(["title"]);
+    const step2 = validateBriefStep(2, { ...filled(), videoDueDay: "", title: "" }, ctx, 30000);
+    expect(Object.keys(step2)).toEqual(["videoDue"]);
+    expect(stepForErrors({ briefPublic: "x" })).toBe(1);
+    expect(stepForErrors({ videoDue: "x" })).toBe(2);
   });
 });
 
@@ -100,9 +132,11 @@ describe("gig brief payload", () => {
         { platform: "instagram", kind: "reel", count: 1 },
         { platform: "tiktok", kind: "video", count: 1 },
       ],
-      shoot_window_start: "2026-11-20",
-      shoot_window_end: "2026-11-25",
+      shoot_window_start: "2026-10-26",
+      shoot_window_end: "2026-12-05",
       post_by: "2026-12-05",
+      video_due_at: "2026-12-05T18:00",
+      shoot_at: null,
       slots: 2,
       usage_days: 365,
       sales_share_bps: 1500,
@@ -166,6 +200,59 @@ describe("gig brief payload", () => {
   });
 });
 
+describe("shoot window from the host's choice", () => {
+  it("maps a day, the event day, any day before, and blank", () => {
+    const base = filled();
+    expect(shootWindow({ ...base, shootMode: "day", shootDay: "2026-11-20" }, ctx)).toEqual({
+      start: "2026-11-20",
+      end: "2026-11-20",
+    });
+    expect(shootWindow({ ...base, shootMode: "event_day" }, ctx)).toEqual({
+      start: "2026-11-25",
+      end: "2026-11-25",
+    });
+    expect(shootWindow({ ...base, shootMode: "any_before" }, ctx)).toEqual({
+      start: "2026-10-26",
+      end: "2026-11-24",
+    });
+    // Blank: the creator proposes a time, any day up to the due day.
+    expect(shootWindow(base, ctx)).toEqual({ start: "2026-10-26", end: "2026-12-05" });
+  });
+
+  it("sends an exact shoot time only when a day and time are picked", () => {
+    const payload = gigPayload({
+      form: { ...filled(), shootMode: "day", shootDay: "2026-11-20", shootTime: "19:30" },
+      ctx,
+      payMinor: 30000,
+      brandId: "b",
+      listingKind: "event",
+      listingId: "e",
+    });
+    expect(payload).toMatchObject({
+      shoot_window_start: "2026-11-20",
+      shoot_window_end: "2026-11-20",
+      shoot_at: "2026-11-20T19:30",
+    });
+  });
+});
+
+describe("pay and the footer total", () => {
+  it("shows the level's money range under the pay field", () => {
+    expect(payBandCaption(filled(), ctx, 30000)).toBe("Level 2 · $150–$320");
+    expect(payBandCaption(filled(), { ...ctx, bands: [] }, 30000)).toBeNull();
+  });
+
+  it("words the most you'll spend in one short line", () => {
+    const money = (minor: number) => `$${minor / 100}`;
+    expect(
+      briefMaxSpend({ payMinor: 30000, slots: 1, bookingFeeMinor: 0, shareLabel: "10%", money }),
+    ).toBe("$300 + 10% of sales");
+    expect(
+      briefMaxSpend({ payMinor: null, slots: 1, bookingFeeMinor: 0, shareLabel: null, money }),
+    ).toBeNull();
+  });
+});
+
 describe("gig brief server answers", () => {
   it("shows the brand-free reasons next to the public brief", () => {
     expect(
@@ -182,40 +269,12 @@ describe("gig brief server answers", () => {
   it("never shows a raw code", () => {
     expect(
       briefServerErrors({ error: "check_violation", field: "post_by" }),
-    ).toEqual({ postBy: "Check this and try again." });
+    ).toEqual({ videoDue: "Check this and try again." });
     expect(briefServerErrors({ error: "something_else" })).toEqual({
       form: "We couldn't post this gig. Check the details and try again.",
     });
     expect(briefServerErrors({ error: "permission_denied" })).toEqual({
       form: "You don't have permission to do that for this brand.",
-    });
-  });
-});
-
-describe("shoot date range picker", () => {
-  it("lays out a Monday-first month", () => {
-    const grid = monthGrid(2026, 10); // November 2026 starts on a Sunday
-    expect(grid.slice(0, 7)).toEqual([
-      null,
-      null,
-      null,
-      null,
-      null,
-      null,
-      "2026-11-01",
-    ]);
-    expect(grid.length % 7).toBe(0);
-  });
-
-  it("builds a range from two taps, in either order", () => {
-    const first = nextRange(null, "start", "2026-11-25");
-    expect(first).toEqual({
-      range: { start: "2026-11-25", end: "2026-11-25" },
-      picking: "end",
-    });
-    expect(nextRange(first.range, first.picking, "2026-11-20").range).toEqual({
-      start: "2026-11-20",
-      end: "2026-11-25",
     });
   });
 });

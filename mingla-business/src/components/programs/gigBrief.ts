@@ -1,14 +1,23 @@
 /**
  * #3872 — the "Hire a creator" brief: form state, inline validation and the
  * gig_save payload. Pure so it can be unit tested.
+ *
+ * Round 2 (approved M-brief1 / M-brief2, H2.5): two steps — Brief, then
+ * Timing and pay. "Video needed by" (date and time) is required; "Shoot"
+ * (date, optional time) is optional, with "The event day" / "Any day before"
+ * shortcuts. Left blank, the creator proposes a time in Plan the shoot and
+ * the host approves it, so the shoot window runs from today to the due day.
  */
 import {
+  addDays,
   bandForAmount,
   bandsForCurrency,
   briefLintMessage,
   lintPublicBrief,
+  bandLevel,
   minorToWholeText,
   programErrorMessage,
+  programMoney,
   type BudgetBandKey,
   type BudgetBandRange,
 } from "../../utils/creatorProgramFormat";
@@ -17,6 +26,11 @@ import type { HostGig } from "../../services/creatorGigsService";
 export type BriefGoal = "sell" | "seen";
 export type BriefPlatform = "instagram" | "tiktok" | "youtube";
 export type UsageDays = 30 | 90 | 365;
+/** How the shoot day was chosen. "open" = blank: the creator proposes one. */
+export type ShootMode = "open" | "day" | "event_day" | "any_before";
+export type BriefStep = 1 | 2;
+export const PUBLIC_BRIEF_MAX = 800;
+export const PRIVATE_BRIEF_MAX = 2000;
 
 export const PLATFORM_DELIVERABLES: Record<
   BriefPlatform,
@@ -48,8 +62,13 @@ export type BriefForm = {
   briefPublic: string;
   briefPrivate: string;
   platforms: BriefPlatform[];
-  shoot: { start: string; end: string } | null;
-  postBy: string;
+  /** "Video needed by" — required day ("YYYY-MM-DD") and time ("HH:MM"). */
+  videoDueDay: string;
+  videoDueTime: string;
+  /** "Shoot" — optional. */
+  shootMode: ShootMode;
+  shootDay: string;
+  shootTime: string;
   slots: number;
   payText: string;
   level: BudgetBandKey;
@@ -64,8 +83,8 @@ export type BriefField =
   | "briefPublic"
   | "briefPrivate"
   | "platforms"
+  | "videoDue"
   | "shoot"
-  | "postBy"
   | "slots"
   | "pay"
   | "city"
@@ -81,8 +100,11 @@ export function emptyBrief(): BriefForm {
     briefPublic: "",
     briefPrivate: "",
     platforms: ["instagram"],
-    shoot: null,
-    postBy: "",
+    videoDueDay: "",
+    videoDueTime: "",
+    shootMode: "open",
+    shootDay: "",
+    shootTime: "",
     slots: 1,
     payText: "",
     level: "b2",
@@ -117,11 +139,16 @@ export function briefFromGig(gig: HostGig, currency: string): BriefForm {
     briefPrivate: gig.brief_private ?? "",
     platforms:
       platforms.length > 0 ? Array.from(new Set(platforms)) : ["instagram"],
-    shoot:
-      gig.shoot_window_start && gig.shoot_window_end
-        ? { start: gig.shoot_window_start, end: gig.shoot_window_end }
-        : null,
-    postBy: gig.post_by ?? "",
+    videoDueDay: gig.post_by ?? "",
+    videoDueTime: timeOf(gig.video_due_at),
+    ...(gig.shoot_window_start &&
+    gig.shoot_window_start === gig.shoot_window_end
+      ? {
+          shootMode: "day" as const,
+          shootDay: gig.shoot_window_start,
+          shootTime: timeOf(gig.shoot_at),
+        }
+      : { shootMode: "open" as const, shootDay: "", shootTime: "" }),
     slots: typeof gig.slots === "number" ? gig.slots : 1,
     payText: payMinor ? minorToWholeText(payMinor, currency) : "",
     level: (/^b[1-4]$/.test(gig.budget_band)
@@ -134,9 +161,18 @@ export function briefFromGig(gig: HostGig, currency: string): BriefForm {
   };
 }
 
+/** "HH:MM" from a stored "YYYY-MM-DDTHH:MM" value, or "". */
+function timeOf(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const match = /T(\d{2}:\d{2})/.exec(value);
+  return match ? match[1] : "";
+}
+
 export type BriefContext = {
   currency: string;
   today: string;
+  /** The event's first day ("YYYY-MM-DD"); null for venues. */
+  eventDay?: string | null;
   bands: readonly BudgetBandRange[];
   brandName?: string | null;
   brandSlug?: string | null;
@@ -173,18 +209,97 @@ export function validateBrief(
     errors.briefPrivate = "Keep the private brief under 2,000 characters.";
   if (form.platforms.length === 0)
     errors.platforms = "Pick at least one place to post.";
-  if (!form.shoot) errors.shoot = "Pick the days a creator can film.";
-  else if (form.shoot.start < ctx.today)
-    errors.shoot = "Shoot dates can't be in the past.";
-  if (!form.postBy)
-    errors.postBy = "Pick the date the video should be posted by.";
-  else if (form.shoot && form.postBy < form.shoot.end)
-    errors.postBy = "Pick a post-by date on or after the last shoot day.";
+  if (!form.videoDueDay)
+    errors.videoDue = "Pick the day you need the finished video.";
+  else if (form.videoDueDay < ctx.today)
+    errors.videoDue = "The video can't be due in the past.";
+  else if (!form.videoDueTime)
+    errors.videoDue = "Pick the time you need the video by.";
+  if (form.shootMode === "day" && !form.shootDay)
+    errors.shoot = "Pick the shoot day, or leave Shoot blank.";
+  else if (form.shootMode === "event_day" && !ctx.eventDay)
+    errors.shoot = "This listing has no event day. Pick a shoot day instead.";
+  else if (form.shootMode === "day" && form.shootDay < ctx.today)
+    errors.shoot = "The shoot can't be in the past.";
+  else if (!errors.videoDue && form.videoDueDay) {
+    const window = shootWindow(form, ctx);
+    if (window && window.end > form.videoDueDay)
+      errors.shoot =
+        "The shoot is after the video is due. Pick an earlier shoot or a later due day.";
+  }
   if (!Number.isInteger(form.slots) || form.slots < 1 || form.slots > 10)
     errors.slots = "Hire between 1 and 10 creators.";
   if (payMinor === null) errors.pay = "Enter the most you'll pay each creator.";
   if (!form.cityId) errors.city = "Pick the city the shoot is in.";
   return errors;
+}
+
+const STEP_FIELDS: Record<BriefStep, readonly BriefField[]> = {
+  1: ["title", "briefPublic", "briefPrivate", "platforms"],
+  2: ["videoDue", "shoot", "slots", "pay", "city"],
+};
+
+/** Only the problems that belong to one step (Next checks step 1 only). */
+export function validateBriefStep(
+  step: BriefStep,
+  form: BriefForm,
+  ctx: BriefContext,
+  payMinor: number | null,
+): BriefErrors {
+  const all = validateBrief(form, ctx, payMinor);
+  const errors: BriefErrors = {};
+  for (const field of STEP_FIELDS[step]) {
+    if (all[field]) errors[field] = all[field];
+  }
+  return errors;
+}
+
+/** The step a server field error belongs to, so the editor can go back to it. */
+export function stepForErrors(errors: BriefErrors): BriefStep {
+  return STEP_FIELDS[1].some((field) => errors[field]) ? 1 : 2;
+}
+
+/**
+ * The shoot window gig_save needs, from what the host chose:
+ * - a day → that day;
+ * - The event day → the event's first day;
+ * - Any day before → today until the day before the event (or the due day);
+ * - blank → today until the due day; the creator proposes a time.
+ */
+export function shootWindow(
+  form: BriefForm,
+  ctx: BriefContext,
+): { start: string; end: string } | null {
+  switch (form.shootMode) {
+    case "day":
+      return form.shootDay ? { start: form.shootDay, end: form.shootDay } : null;
+    case "event_day":
+      return ctx.eventDay ? { start: ctx.eventDay, end: ctx.eventDay } : null;
+    case "any_before": {
+      const lastDay = ctx.eventDay ? addDays(ctx.eventDay, -1) : form.videoDueDay;
+      if (!lastDay) return null;
+      const end =
+        form.videoDueDay && form.videoDueDay < lastDay ? form.videoDueDay : lastDay;
+      return { start: ctx.today, end: end < ctx.today ? ctx.today : end };
+    }
+    default:
+      return form.videoDueDay ? { start: ctx.today, end: form.videoDueDay } : null;
+  }
+}
+
+/** "Most you'll spend": fee (with booking fee) per creator × creators, plus the share. */
+export function briefMaxSpend(input: {
+  payMinor: number | null;
+  slots: number;
+  bookingFeeMinor: number;
+  shareLabel: string | null;
+  money: (minor: number) => string;
+}): string | null {
+  if (input.payMinor === null) return null;
+  const total = (input.payMinor + input.bookingFeeMinor) * input.slots;
+  return input.shareLabel
+    ? `${input.money(total)} + ${input.shareLabel} of sales`
+    : input.money(total);
 }
 
 /** The band creators see: from the pay-up-to amount when ranges exist, else the chosen level. */
@@ -227,9 +342,18 @@ export function gigPayload(input: {
     must_tag: { disclosure: "#ad", mingla: "@usemingla" },
     city_id: form.cityId,
     category: input.listingKind === "venue" ? "venue" : "experience",
-    shoot_window_start: form.shoot?.start ?? null,
-    shoot_window_end: form.shoot?.end ?? null,
-    post_by: form.postBy,
+    shoot_window_start: shootWindow(form, ctx)?.start ?? null,
+    shoot_window_end: shootWindow(form, ctx)?.end ?? null,
+    post_by: form.videoDueDay,
+    // Round 2: the due time and an exact shoot time. gig_save stores dates
+    // only today; these keys carry the times for the server to keep.
+    video_due_at: form.videoDueDay
+      ? `${form.videoDueDay}T${form.videoDueTime || "23:59"}`
+      : null,
+    shoot_at:
+      form.shootMode === "day" && form.shootDay && form.shootTime
+        ? `${form.shootDay}T${form.shootTime}`
+        : null,
     usage_days: form.usageDays,
     budget_band: briefBand(form, ctx, input.payMinor),
     currency: ctx.currency,
@@ -251,7 +375,9 @@ const SERVER_FIELD: Record<string, BriefField> = {
   deliverables: "platforms",
   shoot_window_start: "shoot",
   shoot_window_end: "shoot",
-  post_by: "postBy",
+  post_by: "videoDue",
+  video_due_at: "videoDue",
+  shoot_at: "shoot",
   slots: "slots",
   budget_band: "pay",
   city_id: "city",
@@ -270,10 +396,24 @@ export function briefServerErrors(result: {
         "Keep the public brief brand-free.",
     };
   }
+  // Round 2 server checks on the video-due time, shown next to Video needed by.
+  if (result.error === "video_due_required") {
+    return { videoDue: "Pick the day and time you need the video by." };
+  }
+  if (result.error === "video_due_before_shoot") {
+    return {
+      videoDue:
+        "The video can't be due before the shoot. Pick a later time or an earlier shoot.",
+    };
+  }
   const field = result.field ? SERVER_FIELD[result.field] : undefined;
   const message =
     result.error === "shoot_outside_window"
-      ? "Pick shoot dates that work for the listing."
+      ? "Pick a shoot day that works for the listing."
+      : result.error === "post_by_before_shoot"
+        ? "The video can't be due before the shoot."
+        : result.error === "shoot_window_in_past"
+          ? "The shoot can't be in the past."
       : "Check this and try again.";
   if (field) return { [field]: message };
   return {
@@ -282,4 +422,22 @@ export function briefServerErrors(result: {
       "We couldn't post this gig. Check the details and try again.",
     ),
   };
+}
+
+/**
+ * Under the pay field: the level creators see with its money range
+ * ("Level 2 · $250–$500"), or null when no ranges are set for the currency
+ * (the editor then shows the level picker instead).
+ */
+export function payBandCaption(
+  form: BriefForm,
+  ctx: BriefContext,
+  payMinor: number | null,
+): string | null {
+  const ranges = bandsForCurrency(ctx.bands, ctx.currency);
+  if (ranges.length === 0) return null;
+  const band = briefBand(form, ctx, payMinor);
+  const row = ranges.find((item) => item.band === band);
+  if (!row) return null;
+  return `Level ${bandLevel(band)} · ${programMoney(row.min_minor, ctx.currency)}–${programMoney(row.max_minor, ctx.currency)}`;
 }

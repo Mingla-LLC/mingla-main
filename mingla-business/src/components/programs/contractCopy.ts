@@ -1,4 +1,11 @@
 // #3872 — host contract words and pure helpers (testable without RN).
+import {
+  hostContractPill,
+  hostContractStatus,
+  activityWords,
+  programMoney,
+  type HostStatusTone,
+} from "../../utils/creatorProgramFormat";
 import type {
   GigScript,
   GigScriptSection,
@@ -127,4 +134,126 @@ const POST_CHECK_WORDS: Record<string, string> = {
 
 export function postCheckWords(status: string): string {
   return POST_CHECK_WORDS[status] ?? "Checking";
+}
+
+// ---------------------------------------------------------------------------
+// Round 2 — money_state, the one status card, and Activity
+// ---------------------------------------------------------------------------
+
+export type ContractMoneyState =
+  | "on_the_way"
+  | "ready"
+  | "paid"
+  | "refunded"
+  | "partially_refunded";
+
+const MONEY_STATES: ReadonlySet<string> = new Set([
+  "on_the_way",
+  "ready",
+  "paid",
+  "refunded",
+  "partially_refunded",
+]);
+
+/** gig_contract_workspace.money_state; null when no money was captured yet. */
+export function contractMoneyState(raw: unknown): ContractMoneyState | null {
+  return typeof raw === "string" && MONEY_STATES.has(raw)
+    ? (raw as ContractMoneyState)
+    : null;
+}
+
+/**
+ * The Fee row: the fee in the contract's currency plus a money word from
+ * money_state (On the way · Ready · Paid). Never "held" after release, never
+ * "paid" before the server says paid; no word when nothing was captured.
+ */
+export function contractFeeWords(
+  feeMinor: number,
+  currency: string,
+  moneyState: ContractMoneyState | null,
+): string {
+  const fee = programMoney(feeMinor, currency);
+  switch (moneyState) {
+    case "on_the_way":
+      return `${fee} · On the way`;
+    case "ready":
+      return `${fee} · Ready`;
+    case "paid":
+      return `${fee} paid`;
+    case "refunded":
+      return `${fee} refunded`;
+    case "partially_refunded":
+      return `${fee} · part refunded`;
+    default:
+      return fee;
+  }
+}
+
+const PAYOUT_STATES: ReadonlySet<string> = new Set([
+  "released",
+  "day30",
+  "completed",
+  "resolved_release",
+]);
+
+/** The one status card at the top of the host contract page. */
+export function contractStatusCard(input: {
+  state: string;
+  moneyState: ContractMoneyState | null;
+  creatorName: string;
+  hostRated: boolean;
+  stepCaption: string;
+}): {
+  title: string;
+  pill: string;
+  tone: HostStatusTone;
+  line: string;
+  canRate: boolean;
+} {
+  const base = hostContractStatus(input.state);
+  const pill = hostContractPill({ state: input.state });
+  let title = base.label;
+  if (PAYOUT_STATES.has(input.state)) {
+    title =
+      input.moneyState === "paid"
+        ? "Paid to the creator"
+        : input.moneyState === "ready"
+          ? "Released to the creator"
+          : input.state === "completed"
+            ? "Done"
+            : "Payment released";
+  }
+  const canRate = input.state === "completed" && !input.hostRated;
+  const line =
+    input.state === "released" || input.state === "day30"
+      ? `Posts stay up for 30 days. You can rate ${input.creatorName} when the gig is done.`
+      : input.state === "completed"
+        ? input.hostRated
+          ? "You've rated this gig."
+          : `Rate ${input.creatorName} when you're ready.`
+        : input.stepCaption;
+  return {
+    title,
+    pill: input.state === "completed" ? "Done" : pill.label,
+    tone: pill.tone,
+    line,
+    canRate,
+  };
+}
+
+/**
+ * Activity rows: events in words, newest first. A step recorded twice (the
+ * button and the event) shows once; unknown kinds are left out.
+ */
+export function activityEvents<T extends { kind: string }>(
+  events: readonly T[],
+): Array<T & { words: string }> {
+  const out: Array<T & { words: string }> = [];
+  for (const event of [...events].reverse()) {
+    const words = activityWords(event.kind);
+    if (words === null) continue;
+    if (out.length > 0 && out[out.length - 1].words === words) continue;
+    out.push({ ...event, words });
+  }
+  return out;
 }

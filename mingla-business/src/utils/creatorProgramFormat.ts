@@ -450,6 +450,51 @@ const EVENT_WORDS: Record<string, string> = {
   counter_declined: "Counter-offer declined",
 };
 
+/**
+ * #3872 round 2 — Activity lists what happened, never the buttons pressed.
+ * gig_transition records the action name ("approve", "lock_script") and
+ * other writers record the event ("approved"), so the same step showed twice
+ * ("Approve" and "Video approved"). Both now read as the event; unknown kinds
+ * are left out rather than shown as raw words.
+ */
+const ACTION_EVENT_WORDS: Record<string, string> = {
+  accept: "Creator accepted",
+  decline: "Creator declined",
+  creator_decline: "Creator declined",
+  approve: "Video approved",
+  auto_approve: "Video approved",
+  lock_script: "Script approved",
+  auto_lock: "Script approved",
+  posts_passed: "Posts verified",
+  host_confirm: "Posts verified",
+  auto_confirm: "Posts verified",
+  release: "Payment released to the creator",
+  expire: "Offer expired",
+  cancel: "Offer cancelled",
+  offer_created: "Offer sent",
+  hold_captured: "Payment received",
+  offer_payment_abandoned: "Payment not completed",
+  delivery_submitted: "Video sent for review",
+  refund_recorded: "Refund recorded",
+  topup_captured: "Difference paid",
+  counter_refund_recorded: "Difference refunded",
+  terms_change_declined: "Change declined",
+  dispute_offer_made: "Settlement offered",
+  dispute_offer_accepted: "Settlement accepted",
+  dispute_offer_declined: "Settlement declined",
+  dispute_decided: "Dispute decided by Mingla",
+  dispute_release_recorded: "Payment released to the creator",
+};
+
+export function activityWords(kind: string | null | undefined): string | null {
+  if (typeof kind !== "string") return null;
+  if (Object.prototype.hasOwnProperty.call(EVENT_WORDS, kind))
+    return EVENT_WORDS[kind];
+  if (Object.prototype.hasOwnProperty.call(ACTION_EVENT_WORDS, kind))
+    return ACTION_EVENT_WORDS[kind];
+  return null;
+}
+
 /** Timeline row words for a contract event kind (falls back to plain words). */
 export function timelineWords(kind: string | null | undefined): string {
   if (typeof kind !== "string" || kind.length === 0) return "Update";
@@ -657,13 +702,77 @@ export function needsYouCopy(
   }
 }
 
-/** Status for a contract row: unpaid offers read "Payment not completed". */
-export function hostContractRowStatus(contract: {
+/**
+ * #3872 round 2 — short words for a status pill on a list row. Full status
+ * words ("Paid to the creator") are too long for a pill; the contract page
+ * keeps the full words in its status card.
+ */
+const HOST_PILL_WORDS: Record<string, string> = {
+  offered: "Offer sent",
+  accepted: "Plan shoot",
+  shoot_planned: "Plan shoot",
+  script_drafting: "Script",
+  script_sent: "Review script",
+  script_locked: "Filming",
+  delivered: "Review video",
+  fix_requested: "Fixing",
+  approved: "Posting",
+  posting: "Posting",
+  posts_failed: "Posting",
+  posts_submitted: "Checking",
+  posts_verified: "Verified",
+  released: "Paid",
+  day30: "Paid",
+  completed: "Done",
+  disputed: "Dispute",
+  resolved_release: "Settled",
+  resolved_partial: "Settled",
+  resolved_refund: "Refunded",
+  declined: "Declined",
+  expired: "Expired",
+  cancelled: "Cancelled",
+};
+
+export function hostContractPill(contract: {
   state?: string | null;
   payment_pending?: boolean | null;
 }): { label: string; tone: HostStatusTone } {
   if (contract.payment_pending === true) {
-    return { label: "Payment not completed", tone: "problem" };
+    return { label: "Unpaid", tone: "problem" };
   }
-  return hostContractStatus(contract.state);
+  const full = hostContractStatus(contract.state);
+  return {
+    label: HOST_PILL_WORDS[contract.state ?? ""] ?? full.label,
+    tone: full.tone,
+  };
+}
+
+/**
+ * #3872 round 2 — "Dec 5, 6:00 PM" from the gig's video_due_at; falls back to
+ * the post-by day ("Dec 5") when no time is stored.
+ */
+export function videoDueWords(
+  videoDueAt: unknown,
+  postBy: unknown,
+): string {
+  if (typeof videoDueAt === "string" && videoDueAt.length > 0) {
+    const date = new Date(videoDueAt);
+    if (!Number.isNaN(date.getTime())) {
+      const hours = date.getHours();
+      const minutes = String(date.getMinutes()).padStart(2, "0");
+      const twelve = hours % 12 === 0 ? 12 : hours % 12;
+      return `${shortDate(toIsoDay(date))}, ${twelve}:${minutes} ${hours >= 12 ? "PM" : "AM"}`;
+    }
+  }
+  return typeof postBy === "string" && postBy.length > 0 ? shortDate(postBy) : "";
+}
+
+export type ResultsPeriod = "7d" | "30d" | "all";
+
+/** p_since for gig_results: null for All. */
+export function resultsSince(period: ResultsPeriod, now: Date = new Date()): string | null {
+  if (period === "all") return null;
+  const since = new Date(now.getTime());
+  since.setDate(since.getDate() - (period === "7d" ? 7 : 30));
+  return since.toISOString();
 }

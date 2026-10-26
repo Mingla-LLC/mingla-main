@@ -20,10 +20,10 @@ import {
 } from "../creatorGigsService";
 import {
   contractNeedsHost,
-  hostContractRowStatus,
+  hostContractPill,
 } from "../../utils/creatorProgramFormat";
 import { confirmGigHire, startGigHire, startGigTopup } from "../gigHireService";
-import { sortApplicants } from "../../components/programs/applicantFilters";
+import { interestedApplicants } from "../../components/programs/applicantFilters";
 import {
   fixesLeft,
   latestScript,
@@ -89,7 +89,8 @@ describe("applicants", () => {
     });
   });
 
-  it("filters within budget and sorts top rated, hiding passed creators", () => {
+  // Round 2 (approved M-gig): Within budget became Lowest price.
+  it("sorts by price and top rated, hiding passed creators", () => {
     const base = normalizeApplicants([
       {
         interest_id: "a",
@@ -123,10 +124,10 @@ describe("applicants", () => {
       },
     ]);
     expect(
-      sortApplicants(base, "budget", 25000).map((x) => x.interest_id),
-    ).toEqual(["b"]);
+      interestedApplicants(base, [], "price").map((x) => x.interest_id),
+    ).toEqual(["b", "a"]);
     expect(
-      sortApplicants(base, "rated", null).map((x) => x.interest_id),
+      interestedApplicants(base, [], "rated").map((x) => x.interest_id),
     ).toEqual(["b", "a"]);
   });
 });
@@ -333,10 +334,9 @@ describe("server contract updates (coordinator, 26 Oct)", () => {
       fee_minor: 30000,
       currency: "USD",
     });
-    expect(hostContractRowStatus(row)).toEqual({
-      label: "Payment not completed",
-      tone: "problem",
-    });
+    // Round 2: list pills use short words; the row subtitle says
+    // "Payment not completed".
+    expect(hostContractPill(row)).toEqual({ label: "Unpaid", tone: "problem" });
     expect(contractNeedsHost({ ...row, needs_host: true })).toBe(false);
   });
 

@@ -26,16 +26,17 @@ import {
   programMoneyShort,
 } from "../../utils/creatorProgramFormat";
 import { Button } from "../ui/Button";
+import { useAuth } from "../../context/AuthContext";
 import {
   Card,
   ListGroup,
   ListRow,
   Muted,
+  ProgramEmpty,
   ProgramLoading,
   SectionLabel,
-  StatTile,
+  StatStrip,
   StatusTag,
-  TileGrid,
   programStyles,
 } from "../programs/ProgramKit";
 
@@ -59,6 +60,8 @@ export function rewardWords(
 }
 
 export const PromoterHomeView: React.FC = () => {
+  const { user } = useAuth();
+  const signedInEmail = user?.email ?? null;
   const offers = useQuery({
     queryKey: ["my-promoting-offers"],
     queryFn: fetchPromotingOffers,
@@ -102,37 +105,31 @@ export const PromoterHomeView: React.FC = () => {
     );
   }
   if (rows.length === 0) {
+    // Round 2 (approved M-promoting): centred, and it names the email to
+    // accept with instead of "the same email address".
     return (
-      <Card>
-        <Text style={programStyles.title}>Nothing to promote yet</Text>
-        <Muted>
-          When a host invites you, accept with the same email address. Your link
-          appears here.
-        </Muted>
-      </Card>
+      <ProgramEmpty
+        icon="link"
+        title="No links yet"
+        body={
+          signedInEmail
+            ? `When a host adds you as a promoter, your link and earnings show here. Accept with this email: ${signedInEmail}`
+            : "When a host adds you as a promoter, your link and earnings show here. Accept with the email you signed in with."
+        }
+      />
     );
   }
 
   const payoutState = payout.data?.state ?? "none";
   return (
     <>
-      <TileGrid>
-        <StatTile
-          icon="cash"
-          value={programMoneyShort(ready, currency)}
-          label="Ready"
-          hint="Released for payout"
-        />
-        <StatTile
-          icon="clock"
-          value={programMoneyShort(onTheWay, currency)}
-          label="On the way"
-          hint="After the event"
-        />
-      </TileGrid>
-      {paid > 0 ? (
-        <Muted>{`${programMoney(paid, currency)} paid to you so far.`}</Muted>
-      ) : null}
+      <StatStrip
+        items={[
+          { value: programMoneyShort(ready, currency), label: "Ready" },
+          { value: programMoneyShort(onTheWay, currency), label: "On the way" },
+          { value: programMoney(paid, currency), label: "Paid" },
+        ]}
+      />
 
       <SectionLabel>Your links</SectionLabel>
       {rows.map((offer) => {

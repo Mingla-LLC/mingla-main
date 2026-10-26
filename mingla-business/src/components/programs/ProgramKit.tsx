@@ -5,6 +5,7 @@
 import React from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -14,9 +15,10 @@ import {
   type ViewStyle,
 } from "react-native";
 import { Stack } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ScrollView } from "../../wrappers/SmartScrollView";
+import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon, type IconName } from "../ui/Icon";
 import {
@@ -29,12 +31,28 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { ProgramBackBar } from "./ProgramBackBar";
+import {
+  PROGRAM_BLOCK_GAP,
+  PROGRAM_CARD_PADDING,
+  PROGRAM_GUTTER,
+  PROGRAM_LABEL_GAP,
+  PROGRAM_ROW_MIN_HEIGHT,
+  programFormChrome,
+  stripItems,
+} from "./programLayout";
 import type { HostStatusTone } from "../../utils/creatorProgramFormat";
 
 // ---------------------------------------------------------------------------
 // Screen shell: plain title bar, scrolling content, optional sticky footer.
 // ---------------------------------------------------------------------------
 
+/**
+ * Round 2: the screen pads its own safe area from `useSafeAreaInsets` instead
+ * of a measuring `SafeAreaView`, so coming back to a program screen never
+ * re-measures and leaves a gap at the top. `embedded` renders the same body
+ * inside another screen's chrome (the Blast tab): no title bar, no safe area,
+ * and the footer flows at the end of the content instead of pinning.
+ */
 export function ProgramScreen({
   title,
   fallback,
@@ -46,7 +64,10 @@ export function ProgramScreen({
   onRefresh,
   children,
   testID,
+  embedded = false,
+  onBack,
 }: {
+  onBack?: () => void;
   title: string;
   fallback: string;
   leading?: "back" | "close";
@@ -58,45 +79,103 @@ export function ProgramScreen({
   onRefresh?: () => void;
   children: React.ReactNode;
   testID?: string;
+  embedded?: boolean;
 }): React.ReactElement {
+  const insets = useSafeAreaInsets();
+  const keyboardVisible = useKeyboardIsVisible();
+  const chrome = programFormChrome({
+    keyboardVisible,
+    hasFooter: Boolean(footer),
+  });
+  const scroll = (
+    <ScrollView
+      contentContainerStyle={[styles.content, embedded && styles.contentEmbedded]}
+      keyboardShouldPersistTaps="handled"
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl
+            refreshing={refreshing === true}
+            onRefresh={onRefresh}
+            tintColor={accent.warm}
+          />
+        ) : undefined
+      }
+    >
+      {children}
+      {embedded && footer && chrome.showFooter ? (
+        <View style={styles.inlineFooter}>{footer}</View>
+      ) : null}
+    </ScrollView>
+  );
+  if (embedded) {
+    return (
+      <View style={styles.embedded} testID={testID}>
+        {scroll}
+        {overlay ?? null}
+      </View>
+    );
+  }
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "bottom"]} testID={testID}>
+    <View
+      style={[
+        styles.safe,
+        { paddingTop: insets.top, paddingBottom: chrome.showFooter ? 0 : insets.bottom },
+      ]}
+      testID={testID}
+    >
       <Stack.Screen options={{ headerShown: false }} />
       <ProgramBackBar
         title={title}
         fallback={fallback}
         leading={leading}
-        right={right}
+        onBack={onBack}
+        right={chrome.showDone ? <KeyboardDone /> : right}
       />
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          onRefresh ? (
-            <RefreshControl
-              refreshing={refreshing === true}
-              onRefresh={onRefresh}
-              tintColor={accent.warm}
-            />
-          ) : undefined
-        }
-      >
-        {children}
-      </ScrollView>
-      {footer ? <View style={styles.footer}>{footer}</View> : null}
+      {scroll}
+      {chrome.showFooter ? (
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+          {footer}
+        </View>
+      ) : null}
       {overlay ?? null}
-    </SafeAreaView>
+    </View>
   );
 }
 
-/** Scrollable, padded body for a Sheet (inputs stay above the keyboard). */
+/** Title-bar Done while the keyboard is open (closes it). */
+function KeyboardDone(): React.ReactElement {
+  return (
+    <Pressable
+      onPress={() => Keyboard.dismiss()}
+      accessibilityRole="button"
+      accessibilityLabel="Done typing"
+      hitSlop={8}
+      style={styles.done}
+    >
+      <Text style={styles.doneText}>Done</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Scrollable, padded body for a Sheet. Inputs stay above the keyboard (the
+ * scroll view is keyboard-aware) and an optional `footer` (the sheet's main
+ * button) hides while typing, the same rule as program screens.
+ */
 export function SheetBody({
   title,
   children,
+  footer,
 }: {
   title?: string;
   children: React.ReactNode;
+  footer?: React.ReactNode;
 }): React.ReactElement {
+  const keyboardVisible = useKeyboardIsVisible();
+  const chrome = programFormChrome({
+    keyboardVisible,
+    hasFooter: Boolean(footer),
+  });
   return (
     <ScrollView
       contentContainerStyle={styles.sheetBody}
@@ -108,6 +187,7 @@ export function SheetBody({
         </Text>
       ) : null}
       {children}
+      {chrome.showFooter ? footer : null}
     </ScrollView>
   );
 }
@@ -178,8 +258,17 @@ export function Card({
   onPress?: () => void;
   accessibilityLabel?: string;
 }): React.ReactElement {
+  // Round 2: ONE inner padding, set once here. The old card passed its own
+  // padding on GlassCard's chrome on top of GlassCard's default padding, so
+  // every card sat 16pt further in than the headings around it.
   const card = (
-    <GlassCard variant="base" style={[styles.card, style]}>
+    <GlassCard
+      variant="base"
+      radius="lg"
+      padding={PROGRAM_CARD_PADDING}
+      style={style}
+      contentStyle={styles.cardContent}
+    >
       {children}
     </GlassCard>
   );
@@ -203,7 +292,12 @@ export function ListGroup({
 }): React.ReactElement {
   const items = React.Children.toArray(children).filter(Boolean);
   return (
-    <GlassCard variant="base" style={styles.group}>
+    <GlassCard
+      variant="base"
+      radius="lg"
+      padding={0}
+      contentStyle={styles.group}
+    >
       {items.map((child, index) => (
         <View key={index} style={index > 0 ? styles.groupDivider : null}>
           {child}
@@ -222,6 +316,7 @@ export function ListRow({
   chevron = Boolean(onPress),
   accessibilityLabel,
   leading,
+  compact = false,
 }: {
   icon?: IconName;
   title: string;
@@ -231,6 +326,8 @@ export function ListRow({
   chevron?: boolean;
   accessibilityLabel?: string;
   leading?: React.ReactNode;
+  /** One line for the title and one for the subtitle (list rows, not details). */
+  compact?: boolean;
 }): React.ReactElement {
   const body = (
     <View style={styles.row}>
@@ -241,11 +338,11 @@ export function ListRow({
           </View>
         ) : null)}
       <View style={styles.rowText}>
-        <Text style={styles.rowTitle} numberOfLines={2}>
+        <Text style={styles.rowTitle} numberOfLines={compact ? 1 : 2}>
           {title}
         </Text>
         {subtitle ? (
-          <Text style={styles.rowSubtitle} numberOfLines={3}>
+          <Text style={styles.rowSubtitle} numberOfLines={compact ? 1 : 3}>
             {subtitle}
           </Text>
         ) : null}
@@ -273,54 +370,67 @@ export function ListRow({
   );
 }
 
-export function StatTile({
-  value,
-  label,
-  hint,
-  icon,
+/**
+ * Round 2: numbers sit in ONE strip of up to three (never a tile grid).
+ * `tone: "muted"` keeps a value in the normal text colour; only money coming
+ * in may be green, so spend and fees are never green.
+ */
+export function StatStrip({
+  items,
 }: {
-  value: string;
-  label: string;
-  hint?: string | null;
-  icon?: IconName;
+  items: ReadonlyArray<
+    { value: string; label: string } | null | undefined | false
+  >;
 }): React.ReactElement {
+  const shown = stripItems(items);
   return (
-    <GlassCard variant="base" style={styles.tile}>
-      {icon ? (
-        <View style={styles.tileIcon}>
-          <Icon name={icon} size={14} color={accent.warm} />
+    <GlassCard
+      variant="base"
+      radius="lg"
+      padding={0}
+      contentStyle={styles.strip}
+    >
+      {shown.map((item, index) => (
+        <View
+          key={item.label}
+          style={[styles.stripCell, index > 0 && styles.stripDivider]}
+          accessible
+          accessibilityLabel={`${item.label}: ${item.value}`}
+        >
+          <Text style={styles.stripValue} numberOfLines={1} adjustsFontSizeToFit>
+            {item.value}
+          </Text>
+          <Text style={styles.stripLabel} numberOfLines={2}>
+            {item.label}
+          </Text>
         </View>
-      ) : null}
-      <Text style={styles.tileLabel} numberOfLines={1}>
-        {label}
-      </Text>
-      <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
-        {value}
-      </Text>
-      {hint ? (
-        <Text style={styles.tileHint} numberOfLines={1}>
-          {hint}
-        </Text>
-      ) : null}
+      ))}
     </GlassCard>
   );
 }
 
-/** 2-up grid of tiles that wraps on phones (2×2) and stays 2-up on desktop. */
-export function TileGrid({
-  children,
+/** Centred empty state: icon, one heading, one sentence, one action. */
+export function ProgramEmpty({
+  icon,
+  title,
+  body,
+  action,
 }: {
-  children: React.ReactNode;
+  icon: IconName;
+  title: string;
+  body: string;
+  action?: React.ReactNode;
 }): React.ReactElement {
   return (
-    <View style={styles.tileGrid}>
-      {React.Children.toArray(children)
-        .filter(Boolean)
-        .map((child, index) => (
-          <View key={index} style={styles.tileCell}>
-            {child}
-          </View>
-        ))}
+    <View style={styles.empty}>
+      <View style={styles.emptyIcon}>
+        <Icon name={icon} size={26} color={accent.warm} />
+      </View>
+      <Text style={styles.emptyTitle} accessibilityRole="header">
+        {title}
+      </Text>
+      <Text style={styles.emptyBody}>{body}</Text>
+      {action ?? null}
     </View>
   );
 }
@@ -503,30 +613,35 @@ export const programStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: canvas.profile },
+  embedded: { flex: 1 },
   content: {
     width: "100%",
     maxWidth: 720,
     alignSelf: "center",
-    padding: spacing.md,
+    paddingHorizontal: PROGRAM_GUTTER,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.xxl,
-    gap: spacing.md,
+    gap: PROGRAM_BLOCK_GAP,
   },
+  contentEmbedded: { paddingTop: spacing.md, paddingBottom: 120 },
+  inlineFooter: { gap: spacing.sm, marginTop: spacing.xs },
+  done: { minWidth: 40, height: 40, alignItems: "flex-end", justifyContent: "center" },
+  doneText: { color: accent.warm, fontSize: 16, fontWeight: "700" },
   footer: {
     width: "100%",
     maxWidth: 720,
     alignSelf: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: PROGRAM_GUTTER,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
     gap: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: glass.border.profileBase,
     backgroundColor: canvas.profile,
   },
   sheetBody: {
-    padding: spacing.md,
+    padding: PROGRAM_GUTTER,
     paddingBottom: spacing.xl,
-    gap: spacing.md,
+    gap: PROGRAM_BLOCK_GAP,
   },
   sheetTitle: { color: textTokens.primary, fontSize: 20, fontWeight: "800" },
   loading: { paddingVertical: spacing.xl, alignItems: "center" },
@@ -537,6 +652,9 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     textTransform: "uppercase",
     marginTop: spacing.sm,
+    // Blocks are PROGRAM_BLOCK_GAP apart; a label sits PROGRAM_LABEL_GAP above
+    // its own card.
+    marginBottom: PROGRAM_LABEL_GAP - PROGRAM_BLOCK_GAP,
   },
   muted: { color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
   fieldError: {
@@ -545,9 +663,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     lineHeight: 18,
   },
-  card: { padding: spacing.md, gap: spacing.sm },
+  cardContent: { gap: spacing.sm },
   pressed: { opacity: 0.85 },
-  group: { paddingHorizontal: spacing.md },
+  group: { paddingHorizontal: PROGRAM_CARD_PADDING },
   groupDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: glass.border.profileElevated,
@@ -556,8 +674,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    paddingVertical: spacing.md,
-    minHeight: 56,
+    paddingVertical: 10,
+    minHeight: PROGRAM_ROW_MIN_HEIGHT,
   },
   rowIcon: {
     width: 36,
@@ -571,25 +689,41 @@ const styles = StyleSheet.create({
   rowTitle: { color: textTokens.primary, fontSize: 16, fontWeight: "600" },
   rowSubtitle: { color: textTokens.secondary, fontSize: 13, lineHeight: 18 },
   rowRight: { color: textTokens.primary, fontSize: 15, fontWeight: "700" },
-  tile: { padding: spacing.md, gap: 4, minHeight: 104 },
-  tileIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: radius.sm,
+  strip: { flexDirection: "row", paddingVertical: 14 },
+  stripCell: { flex: 1, paddingHorizontal: spacing.sm, alignItems: "center", gap: 2 },
+  stripDivider: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: glass.border.profileElevated,
+  },
+  stripValue: { color: textTokens.primary, fontSize: 20, fontWeight: "800" },
+  stripLabel: { color: textTokens.secondary, fontSize: 12, textAlign: "center" },
+  empty: {
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+  },
+  emptyIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.lg,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: accent.tint,
-    marginBottom: 2,
   },
-  tileLabel: { color: textTokens.secondary, fontSize: 13 },
-  tileValue: { color: textTokens.primary, fontSize: 24, fontWeight: "800" },
-  tileHint: { color: semantic.success, fontSize: 12, fontWeight: "600" },
-  tileGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginHorizontal: -spacing.xs,
+  emptyTitle: {
+    color: textTokens.primary,
+    fontSize: 17,
+    fontWeight: "800",
+    textAlign: "center",
   },
-  tileCell: { width: "50%", padding: spacing.xs },
+  emptyBody: {
+    color: textTokens.secondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+    maxWidth: 280,
+  },
   tag: {
     paddingHorizontal: 10,
     paddingVertical: 4,

@@ -1,10 +1,10 @@
 /**
- * #3872 — creator profile before hire (approved P-creator): who they are,
- * showcase videos, rate for this gig, track record, audience, packages, and a
- * sticky Not now / Hire bar when opened from a gig.
+ * #3872 — creator profile before hire. Round 2 (approved M-prehire): name,
+ * niches and Verified in one row, a three-number strip, three showcase
+ * thumbnails, packages, and Offer at the bottom (Not now in the title bar).
  */
 import React, { useCallback, useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { Button } from "../../../../../src/components/ui/Button";
@@ -13,20 +13,24 @@ import {
   type HireSheetMode,
 } from "../../../../../src/components/gigs/HireSheet";
 import {
-  Card,
   FieldError,
   Initials,
   ListGroup,
   ListRow,
   Muted,
+  ProgramEmpty,
   ProgramLoading,
   ProgramScreen,
   SectionLabel,
-  StatTile,
-  SummaryLine,
-  TileGrid,
-  programStyles,
+  StatStrip,
+  StatusTag,
 } from "../../../../../src/components/programs/ProgramKit";
+import { blastHubHref } from "../../../../../src/components/marketing/marketingSubNavTabs";
+import {
+  accent,
+  spacing,
+  text as textTokens,
+} from "../../../../../src/constants/designSystem";
 import { ShowcaseStrip } from "../../../../../src/components/programs/ShowcaseStrip";
 import { useProgramParams } from "../../../../../src/components/programs/useProgramParams";
 import {
@@ -127,13 +131,29 @@ export default function PrehireCreatorProfile(): React.ReactElement {
     }
   };
 
+  const offerLabel = applicant
+    ? `Offer ${programMoney(applicant.quote_minor, applicant.currency)}`
+    : "Offer";
   return (
     <ProgramScreen
-      title={name}
+      title="Creator"
       fallback={
         params.gigId
           ? `/brand/${brandId}/creators/${params.gigId}/interest`
-          : `/brand/${brandId}/creators`
+          : blastHubHref("creators")
+      }
+      right={
+        canHire ? (
+          <Pressable
+            onPress={() => void notNow()}
+            accessibilityRole="button"
+            accessibilityLabel={`Not now: pass on ${name}`}
+            hitSlop={8}
+            disabled={passing}
+          >
+            <Text style={styles.pass}>{passing ? "…" : "Not now"}</Text>
+          </Pressable>
+        ) : undefined
       }
       refreshing={false}
       onRefresh={() => void load()}
@@ -141,27 +161,19 @@ export default function PrehireCreatorProfile(): React.ReactElement {
         canHire && applicant ? (
           <>
             <FieldError message={actionError} />
-            <View style={programStyles.footerRow}>
-              <Button
-                variant="secondary"
-                label="Not now"
-                loading={passing}
-                style={programStyles.grow}
-                onPress={() => void notNow()}
-              />
-              <Button
-                label="Hire"
-                style={programStyles.grow}
-                onPress={() =>
-                  setHireMode({
-                    kind: "hire",
-                    interestId: applicant.interest_id,
-                    quoteMinor: applicant.quote_minor,
-                    allowCounter: true,
-                  })
-                }
-              />
-            </View>
+            <Button
+              fullWidth
+              size="lg"
+              label={offerLabel}
+              onPress={() =>
+                setHireMode({
+                  kind: "hire",
+                  interestId: applicant.interest_id,
+                  quoteMinor: applicant.quote_minor,
+                  allowCounter: true,
+                })
+              }
+            />
           </>
         ) : undefined
       }
@@ -188,92 +200,60 @@ export default function PrehireCreatorProfile(): React.ReactElement {
       {profile === undefined ? <ProgramLoading /> : null}
       {error ? <FieldError message={error} /> : null}
       {profile === null && !error ? (
-        <Card>
-          <Text style={programStyles.title}>This profile isn't available</Text>
-          <Muted>The creator may have paused their profile.</Muted>
-        </Card>
+        <ProgramEmpty
+          icon="user"
+          title="This profile isn't available"
+          body="The creator may have paused their profile."
+        />
       ) : null}
       {profile ? (
         <>
-          <Card>
-            <ListRow
-              leading={<Initials name={name} size={48} />}
-              title={name}
-              subtitle={[
-                profile.niches.map(nicheLabel).join(", "),
-                profile.languages.join(", "),
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-              chevron={false}
-            />
-            <Muted>Handles and contact details are shared when you hire.</Muted>
-          </Card>
+          <View style={styles.who}>
+            <Initials name={name} size={52} />
+            <View style={styles.whoText}>
+              <Text style={styles.name} numberOfLines={1}>
+                {name}
+              </Text>
+              <Text style={styles.sub} numberOfLines={2}>
+                {[
+                  profile.niches.map(nicheLabel).join(", "),
+                  profile.languages.join(", "),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </Text>
+            </View>
+            <StatusTag label="Verified" tone="live" />
+          </View>
+
+          <StatStrip
+            items={[
+              { value: String(profile.completed ?? 0), label: "Gigs done" },
+              {
+                value:
+                  profile.rating !== null
+                    ? `★ ${Number(profile.rating).toFixed(1)}`
+                    : "New",
+                label: "Rating",
+              },
+              {
+                value:
+                  profile.reliability === null
+                    ? "—"
+                    : `${Math.round(profile.reliability / 100)}%`,
+                label: "On time",
+              },
+            ]}
+          />
 
           {profile.showcase.length > 0 ? (
-            <>
-              <SectionLabel>Showcase</SectionLabel>
-              <ShowcaseStrip
-                items={profile.showcase}
-                creatorName={name}
-                size="large"
-              />
-            </>
+            <ShowcaseStrip
+              items={profile.showcase.slice(0, 3)}
+              creatorName={name}
+            />
           ) : null}
 
-          {applicant ? (
-            <Card>
-              <SummaryLine
-                label="Rate for this gig"
-                value={programMoney(applicant.quote_minor, applicant.currency)}
-                strong
-              />
-              {applicant.note ? <Muted>{`"${applicant.note}"`}</Muted> : null}
-            </Card>
-          ) : null}
-
-          <TileGrid>
-            <StatTile
-              value={String(profile.completed ?? 0)}
-              label="Completed gigs"
-            />
-            <StatTile
-              value={
-                profile.rating !== null
-                  ? `★ ${Number(profile.rating).toFixed(1)}`
-                  : "New"
-              }
-              label={
-                profile.rating_count > 0
-                  ? `${profile.rating_count} ratings`
-                  : "Rating"
-              }
-            />
-            <StatTile
-              value={
-                profile.reliability === null
-                  ? "Building"
-                  : `${Math.round(profile.reliability / 100)}%`
-              }
-              label="On time"
-            />
-          </TileGrid>
-
-          {profile.follower_bands.length > 0 ? (
-            <>
-              <SectionLabel>Verified audience</SectionLabel>
-              <ListGroup>
-                {profile.follower_bands.map((band) => (
-                  <ListRow
-                    key={band.platform}
-                    title={platformLabel(band.platform)}
-                    right={followerBandLabel(band.band) || "Verified"}
-                    chevron={false}
-                  />
-                ))}
-              </ListGroup>
-            </>
-          ) : null}
+          {applicant?.note ? <Muted>{`"${applicant.note}"`}</Muted> : null}
 
           {profile.packages.length > 0 ? (
             <>
@@ -282,8 +262,9 @@ export default function PrehireCreatorProfile(): React.ReactElement {
                 {profile.packages.map((item) => (
                   <ListRow
                     key={item.id}
+                    compact
                     title={formatName(item.format_key)}
-                    subtitle={`${item.turnaround_days} day${item.turnaround_days === 1 ? "" : "s"} to deliver · reuse for ${item.includes_usage_days} days`}
+                    subtitle={`${item.turnaround_days} day${item.turnaround_days === 1 ? "" : "s"} · reuse ${item.includes_usage_days} days`}
                     right={programMoney(item.price_minor, item.currency)}
                     chevron={false}
                   />
@@ -291,8 +272,35 @@ export default function PrehireCreatorProfile(): React.ReactElement {
               </ListGroup>
             </>
           ) : null}
+
+          {profile.follower_bands.length > 0 ? (
+            <>
+              <SectionLabel>Verified audience</SectionLabel>
+              <ListGroup>
+                {profile.follower_bands.map((band) => (
+                  <ListRow
+                    key={band.platform}
+                    compact
+                    title={platformLabel(band.platform)}
+                    right={followerBandLabel(band.band) || "Verified"}
+                    chevron={false}
+                  />
+                ))}
+              </ListGroup>
+            </>
+          ) : null}
+          <Text style={styles.tiny}>Handles are shared when you hire.</Text>
         </>
       ) : null}
     </ProgramScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  who: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  whoText: { flex: 1, minWidth: 0, gap: 2 },
+  name: { color: textTokens.primary, fontSize: 18, fontWeight: "800" },
+  sub: { color: textTokens.secondary, fontSize: 13, lineHeight: 18 },
+  pass: { color: accent.warm, fontSize: 15, fontWeight: "700" },
+  tiny: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
+});

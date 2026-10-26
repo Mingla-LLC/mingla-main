@@ -10,6 +10,8 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
+import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
+import { programFormChrome } from "../programs/programLayout";
 
 import {
   accent,
@@ -105,6 +107,7 @@ export const ReferralOfferSheet: React.FC<ReferralOfferSheetProps> = ({
   onSave,
 }) => {
   const { width } = useWindowDimensions();
+  const keyboardVisible = useKeyboardIsVisible();
   const [name, setName] = React.useState("");
   const [audience, setAudience] = React.useState<ReferralAudience>("buyers");
   const [rewardKind, setRewardKind] =
@@ -602,6 +605,9 @@ export const ReferralOfferSheet: React.FC<ReferralOfferSheetProps> = ({
               <Text style={styles.previewText}>{rewardPreview}</Text>
             </View>
           </ScrollView>
+          {/* #3872 round 2 — keyboard rule: the footer hides while typing so
+              it never rides over the field being edited. */}
+          {programFormChrome({ keyboardVisible, hasFooter: true }).showFooter ? (
           <View style={styles.footer}>
             <Button variant="secondary" label="Cancel" onPress={onClose} />
             <Button
@@ -610,6 +616,7 @@ export const ReferralOfferSheet: React.FC<ReferralOfferSheetProps> = ({
               onPress={() => void save()}
             />
           </View>
+          ) : null}
         </View>
       </View>
     </Modal>

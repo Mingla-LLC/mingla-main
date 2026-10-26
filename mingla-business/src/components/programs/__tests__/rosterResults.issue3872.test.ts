@@ -76,6 +76,10 @@ describe("Creator results", () => {
     ]);
   });
   it("has no ratio when nothing was spent or clicked", () => {
+    // Round 2: a dash, not "0.0×", until a creator's link makes a sale.
+    expect(
+      summarizeResults([row("Ada", "g1", 0, 30000, 0, 0)]).returnOnSpend,
+    ).toBeNull();
     expect(summarizeResults([])).toMatchObject({
       returnOnSpend: null,
       conversion: null,
