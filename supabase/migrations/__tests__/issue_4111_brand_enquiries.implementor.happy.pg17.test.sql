@@ -5,6 +5,7 @@
 -- raise. Reverting the migrations removes every function this suite calls.
 -- MINGLA-INVARIANT: I-4111-ENQUIRY-STAFF-BLIND | issue #4111 | Staff and admins read an enquiry only while an open report exists; scanner-only members never read one.
 -- MINGLA-INVARIANT: I-4111-ENQUIRY-RPC-ONLY | issue #4111 | No client role writes enquiry rows or enquiry messages directly.
+-- MINGLA-INVARIANT: I-4111-SUBSCRIBE-SMS-SHARES-BLAST-CAP | issue #4111 | Subscribe confirmation texts count against the same per-brand monthly SMS cap as host blasts, in both directions.
 \set ON_ERROR_STOP on
 BEGIN;
 
