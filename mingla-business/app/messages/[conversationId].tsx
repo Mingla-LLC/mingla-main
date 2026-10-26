@@ -16,7 +16,7 @@ import {
   type TextInputSelectionChangeEventData,
   type ViewStyle,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -24,6 +24,7 @@ import { BrandGroupSignalModal } from "../../src/components/messages/BrandGroupS
 import { BrandGroupFilePreviewModal } from "../../src/components/messages/BrandGroupFilePreviewModal";
 import { BrandGroupFileUploadSheet } from "../../src/components/messages/BrandGroupFileUploadSheet";
 import { BrandGroupMediaBubble } from "../../src/components/messages/BrandGroupMediaBubble";
+import { BrandEnquiryCard } from "../../src/components/messages/BrandEnquiryCard";
 import { Button } from "../../src/components/ui/Button";
 import { Icon } from "../../src/components/ui/Icon";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
@@ -39,6 +40,9 @@ import {
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandGroups } from "../../src/hooks/useBrandGroups";
 import { brandGroupMediaKeys } from "../../src/hooks/brandGroupMediaKeys";
+import { brandEnquiryKeys } from "../../src/hooks/useBrandEnquiries";
+import { findBrandEnquiryIdForConversation } from "../../src/services/brandEnquiryList";
+import { brandEnquiryThreadRoute } from "../../src/utils/brandEnquiryWaiting";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { useSupportStaff } from "../../src/hooks/useSupportStaff";
 import { useBusinessMediaTranslation } from "../../src/i18n";
@@ -87,7 +91,42 @@ function first(value: string | string[] | undefined): string | null {
   return typeof item === "string" && item.length ? item : null;
 }
 
+/**
+ * #4111 — /messages/{conversationId} is also where a customer-enquiry push and
+ * the nudge email land. When the conversation is an enquiry the caller can
+ * read, send them to the enquiry thread; otherwise it is a Brand group.
+ */
 export default function BrandGroupThreadRoute(): React.ReactElement {
+  const params = useLocalSearchParams<{ conversationId?: string | string[] }>();
+  const conversationId = first(params.conversationId);
+  const { user, isAuthReady } = useAuth();
+  const userId = user?.id ?? null;
+  const lookup = useQuery({
+    queryKey: userId && conversationId
+      ? brandEnquiryKeys.byConversation(userId, conversationId)
+      : (["brandEnquiries", "byConversation-disabled"] as const),
+    enabled: isAuthReady === true && Boolean(userId && conversationId),
+    queryFn: () => {
+      if (!conversationId) throw new Error("conversation_required");
+      return findBrandEnquiryIdForConversation(conversationId);
+    },
+    staleTime: Infinity,
+  });
+  const enquiryId = typeof lookup.data === "string" ? lookup.data : null;
+  // Redirect, never import the enquiry screen here: Brand groups must not load
+  // the enquiry thread's dialogs and animations just to render a group.
+  if (enquiryId) return <Redirect href={brandEnquiryThreadRoute(enquiryId) as never} />;
+  if (lookup.isPending === true && lookup.fetchStatus === "fetching") {
+    return (
+      <SafeScreen edges={["top"]} style={styles.screen}>
+        <View style={styles.state}><ActivityIndicator color={accent.warm} /></View>
+      </SafeScreen>
+    );
+  }
+  return <BrandGroupThreadScreen />;
+}
+
+function BrandGroupThreadScreen(): React.ReactElement {
   const params = useLocalSearchParams<{ conversationId?: string | string[]; mode?: string | string[]; focusMessageId?: string | string[]; gallery?: string | string[] }>();
   const conversationId = first(params.conversationId);
   const requestedMode = first(params.mode);
@@ -471,6 +510,20 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
           {messages.length === 0 ? (
             <View style={styles.empty}><Text style={styles.stateText}>This is the official Brand group. Start the first conversation here.</Text></View>
           ) : messages.map((message) => {
+            // #4111 — a new customer enquiry: a card, never a chat bubble. It
+            // names no guest (staff and scanners read Brand groups, D8).
+            if (message.message_type === "brand_enquiry_card") {
+              const cardEnquiryId = message.card_payload?.enquiry_id ?? null;
+              return (
+                <View key={message.id} onLayout={(event: LayoutChangeEvent) => messageOffsets.current.set(message.id, event.nativeEvent.layout.y)}>
+                  <BrandEnquiryCard
+                    content={message.content}
+                    createdAt={message.created_at}
+                    onOpen={cardEnquiryId ? () => router.push(brandEnquiryThreadRoute(cardEnquiryId) as never) : null}
+                  />
+                </View>
+              );
+            }
             const mine = message.sender_id === user?.id;
             const selected = selectedIds.includes(message.id);
             const supportIdentity = message.sender_role === "Mingla Support";

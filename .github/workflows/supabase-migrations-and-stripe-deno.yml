@@ -161,6 +161,10 @@ on:
       - ".github/scripts/strict-grep/issue-1971-ari-trip-lifecycle.mjs"
       - "mingla-admin/src/pages/ClaimsPage.jsx"
       - "mingla-admin/src/__tests__/issue2724_admin_approve_without_call.happy.test.js"
+      - "mingla-admin/src/__tests__/issue4111_reported_enquiries.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue4111_reported_enquiries.tester.adversarial.test.js"
+      - "mingla-admin/src/lib/reportedEnquiries.js"
+      - "mingla-admin/src/components/community/ReportedEnquiriesPanel.jsx"
       - "mingla-business/src/services/rsvpEvents.ts"
       - "mingla-business/src/services/rsvpApprovals.ts"
       - "mingla-business/src/services/guestRosterService.ts"
@@ -420,6 +424,10 @@ on:
       - ".github/scripts/strict-grep/issue-1971-ari-trip-lifecycle.mjs"
       - "mingla-admin/src/pages/ClaimsPage.jsx"
       - "mingla-admin/src/__tests__/issue2724_admin_approve_without_call.happy.test.js"
+      - "mingla-admin/src/__tests__/issue4111_reported_enquiries.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue4111_reported_enquiries.tester.adversarial.test.js"
+      - "mingla-admin/src/lib/reportedEnquiries.js"
+      - "mingla-admin/src/components/community/ReportedEnquiriesPanel.jsx"
       - "mingla-business/src/services/rsvpEvents.ts"
       - "mingla-business/src/services/rsvpApprovals.ts"
       - "mingla-business/src/services/guestRosterService.ts"
@@ -681,6 +689,9 @@ jobs:
       - name: "Issue #3802 — a question opened from an open card is drawn above the card (rendered, every width)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave1_overlay_stack.rendered.test.js
+      - name: "Issue #4111 — Admin Reported enquiries: (needs the admin npm ci above) only reported threads, dismiss and block everywhere"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue4111_reported_enquiries.implementor.happy.test.js src/__tests__/issue4111_reported_enquiries.tester.adversarial.test.js
       - name: "Issue #3802 — role homes, targets, Beta leads and invite follow-ups: independent tester adversarial proof (hostile addresses, every area combination, answers that are not answers, no raw error on screen)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js

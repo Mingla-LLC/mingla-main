@@ -49,7 +49,9 @@ on:
       - "mingla-marketing/public/.well-known/**"
       # What a phone WITH the app does with these same URLs (#2219), and the
       # evidence for what `/board/{id}` actually means.
-      - "app-mobile/app/+native-intent.tsx"
+      # `+` is a pattern operator in GitHub path filters; escape it so the
+      # literal file name matches (the Merge Certifier reads `\+` the same way).
+      - "app-mobile/app/\\+native-intent.tsx"
       - "app-mobile/app.json"
       - "app-mobile/src/services/boardInviteService.ts"
       # The shared route model, and this issue's suites.

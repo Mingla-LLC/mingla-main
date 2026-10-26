@@ -32,6 +32,8 @@ import {
 // #3392 — the booking confirmation email's "Manage or cancel" button. Accepted
 // only from the service role, for that category, for that reservation.
 import { trustedReservationManageCta } from "../_shared/venueReservationManageLink.ts";
+// #4111 — consent provenance for the automatic transactional consent row.
+import { transactionalConsentSourceForCategory } from "../_shared/issue4111EnquiryNotifications.ts";
 import {
   isQuietHours,
   LEGACY_QUIET_HOURS_CATEGORY,
@@ -593,7 +595,7 @@ serve(async (req) => {
               channel,
               scope: "transactional",
               action: "granted",
-              source: "reservation",
+              source: transactionalConsentSourceForCategory(v2Input.category_key),
               country_code: v2Input.country_code,
             });
           }

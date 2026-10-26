@@ -155,6 +155,11 @@ jest.mock("../../../hooks/queryKeys", () => ({
   socialProofKeys: { summary: (id: string) => ["socialProof", id] },
 }));
 jest.mock("../../../components/ui/Icon", () => ({ Icon: () => null }));
+// #4111 Wave D — the organiser row's Follow + Message, stubbed like the
+// screen's other collaborators.
+jest.mock("../../../components/brandEnquiry/PresentedByFollowAndMessage", () => ({
+  PresentedByFollowAndMessage: () => null,
+}));
 jest.mock("../../../components/ui/BaseBottomSheet", () => {
   const React = require("react");
   return {

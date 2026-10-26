@@ -274,7 +274,9 @@ describe("issue #3380 — brand phone keeps its country", () => {
     expect(editor).not.toContain('draft.contact?.phoneCountryIso ?? draft.countryCode ?? "GB"');
     expect(profile).toContain("url: brandPhoneTelHref(brand.contact.phone)");
     expect(profile).not.toContain("url: `tel:${brand.contact.phone}`");
-    expect(publicPage).toContain("onExternal(`tel:${brandPhoneDialNumber(phone)}`)");
+    // [TEST-MOD-APPROVED #4111] D10: the public brand page no longer shows the
+    // brand's phone at all (venue pages keep theirs), so it builds no tel: link.
+    expect(publicPage).not.toContain("tel:");
     expect(publicPage).not.toContain("onExternal(`tel:${phone}`)");
   });
 });

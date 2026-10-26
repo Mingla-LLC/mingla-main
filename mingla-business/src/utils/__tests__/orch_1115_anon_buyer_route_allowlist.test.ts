@@ -258,6 +258,8 @@ describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web 
       "/o/",
       "/booking/",
       "/attendance/claim/",
+      // #4111 — the guest enquiry thread (/m/{token}) is anon by design.
+      "/m/",
     ]);
   });
 

@@ -63,6 +63,10 @@ import { BaseBottomSheet } from "./ui/BaseBottomSheet";
 
 // Sub-components
 import { ChatListItem } from "./connections/ChatListItem";
+// #4111 Wave D — brand enquiry threads: always their own row (EnquiryChatListRow).
+import { EnquiryChatListRow } from "./brandEnquiry/EnquiryChatListRow";
+import { isEnquiryConversation, mergeEnquiryConversations } from "./brandEnquiry/enquiryChatRows";
+import { useEnquiryChatRows } from "./brandEnquiry/useEnquiryChatRows";
 import { FriendPickerSheet } from "./connections/FriendPickerSheet";
 import { AddFriendView } from "./connections/AddFriendView";
 // ORCH-1371 [add-friend-country-picker-hidden]: the add-friend country picker is
@@ -642,11 +646,14 @@ function ConnectionsPageRefactored({
     fetchBlockedUsers,
   } = useFriends();
 
+  // #4111 Wave D — the guest's brand enquiries (own query + realtime).
+  const enquiryRows = useEnquiryChatRows(user?.id ?? null);
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     await fetchFriends();
+    await enquiryRows.refetch();
     setIsRefreshing(false);
-  }, [fetchFriends]);
+  }, [fetchFriends, enquiryRows.refetch]);
 
   // ── Mute tracking ────────────────────────────────────────
   const [mutedUserIds, setMutedUserIds] = useState<string[]>([]);
@@ -1056,6 +1063,11 @@ function ConnectionsPageRefactored({
       return nameMatch || contentMatch;
     });
   }, [sortedConversations, searchQuery, user?.id]);
+  // #4111 Wave D — enquiries woven in by recency (never merged into other rows).
+  const visibleConversations = useMemo(
+    () => mergeEnquiryConversations(filteredConversations, enquiryRows.conversations, searchQuery),
+    [enquiryRows.conversations, filteredConversations, searchQuery],
+  );
 
   const pendingCreatorCollabSessionIds = useMemo(
     () =>
@@ -3564,7 +3576,7 @@ function ConnectionsPageRefactored({
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#eb7825" />
             </View>
-          ) : filteredConversations.length === 0 && !searchQuery.trim() ? (
+          ) : visibleConversations.length === 0 && !searchQuery.trim() ? (
             <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.emptyContainer}>
               <Icon name="chatbubbles-outline" size={56} color="#d1d5db" />
@@ -3579,7 +3591,7 @@ function ConnectionsPageRefactored({
               </TouchableOpacity>
             </View>
             </TouchableWithoutFeedback>
-          ) : filteredConversations.length === 0 && searchQuery.trim() ? (
+          ) : visibleConversations.length === 0 && searchQuery.trim() ? (
             <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyTitle}>{t('connections:no_results', { query: searchQuery })}</Text>
@@ -3587,11 +3599,14 @@ function ConnectionsPageRefactored({
             </TouchableWithoutFeedback>
           ) : (
             <FlatList
-              data={filteredConversations}
+              data={visibleConversations}
               keyExtractor={(item) => item.id}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
               renderItem={({ item, index }) => {
+                if (isEnquiryConversation(item)) {
+                  return <EnquiryChatListRow conversation={item} onPress={enquiryRows.open} />;
+                }
                 if (isPendingInviteConversation(item)) {
                   return (
                     <PendingSessionInviteRow
