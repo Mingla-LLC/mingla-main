@@ -28,6 +28,25 @@ export interface PinnedBottomBarProps {
 const LIFT_GAP = 8;
 
 /**
+ * True when `el` is page content scrolling BEHIND the composer (it sits inside
+ * a scroll container that does not hold the composer). Thread messages are
+ * such content: counting them as floaters made the composer jump up and down
+ * as the guest scrolled (#4111 tester retest). Floating UI (the privacy
+ * button, the consent card) is never inside such a scroller.
+ */
+function insidePageScroller(el: Element, bar: HTMLElement, view: Window): boolean {
+  if (typeof view.getComputedStyle !== "function") return false;
+  let node: Element | null = el.parentElement;
+  while (node !== null && node !== undefined) {
+    if (node.contains(bar)) return false;
+    const overflowY = view.getComputedStyle(node).overflowY;
+    if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight) return true;
+    node = node.parentElement;
+  }
+  return false;
+}
+
+/**
  * How far (px) the bar must rise so nothing floating covers the area it
  * occupies when unlifted. Exported for the DOM hit-test proof.
  */
@@ -49,6 +68,7 @@ export function measureObstructionLift(bar: HTMLElement, currentLift: number, do
         if (el === bar || bar.contains(el)) break; // reached the composer: nothing above it here
         if (el.contains(bar)) continue; // a page container that holds the composer
         if (!(el instanceof view.HTMLElement)) continue;
+        if (insidePageScroller(el, bar, view)) continue; // thread content behind the bar, not a floater
         // Anything hit-tested ABOVE the composer here is painted over it
         // (the consent card's inner nodes are position: relative inside a
         // floating wrapper, so position alone cannot tell).
