@@ -96,22 +96,22 @@ describe("META-ORCH-1104 Phase 2 — Support desk + segmentation (happy path)", 
     assert.match(page, /#\/community-support\?tab=team/);
   });
 
-  it("UserManagementPage exposes All/Explorer/Business/Admin segment tabs", () => {
-    const page = read("src/pages/UserManagementPage.jsx");
-    // tab definitions
-    for (const seg of ["all", "explorer", "business", "admin"]) {
-      assert.match(page, new RegExp(`id:\\s*"${seg}"`), `segment tab ${seg} present`);
+  // #4130: the Users page and its client-side segment tabs are gone. People
+  // shows the server's segments (explorer / host / both / incomplete /
+  // internal) with counts the server made, never a fabricated number.
+  it("People exposes the server's segments as tabs", () => {
+    const lib = read("src/lib/peopleSegments.js");
+    for (const seg of ["explorer", "host", "both", "incomplete", "internal"]) {
+      assert.match(lib, new RegExp(`segment:\\s*"${seg}"`), `segment tab ${seg} present`);
     }
-    assert.match(page, /SEGMENT_TABS/);
-    assert.match(page, /setSegment/);
+    const page = read("src/pages/PeoplePage.jsx");
+    assert.match(page, /PEOPLE_TABS/);
+    assert.match(page, /peopleTabLabel\(t, countsError \? null : counts\)/);
   });
 
-  it("UserManagementPage reads the derived segment from profiles_with_segment", () => {
-    const page = read("src/pages/UserManagementPage.jsx");
-    assert.match(page, /profiles_with_segment/, "must read the derived-segment view");
-    // filters via the view's `segment` column
-    assert.match(page, /\.eq\("segment",\s*segment\)/);
-    // segment-count badges come from the view, not a fabricated number
-    assert.match(page, /segmentCounts/);
+  it("People reads segments and counts from the admin RPCs", () => {
+    const svc = read("src/services/peopleService.js");
+    assert.match(svc, /rpc\("admin_people_segments"\)/);
+    assert.match(svc, /rpc\("admin_list_people", \{\s*p_segment: segment,/);
   });
 });

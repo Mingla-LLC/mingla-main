@@ -18,8 +18,6 @@ import { isRetiredPageId, redirectHash } from "./lib/adminRoutes";
 import {
   OutreachHub,
   InboundHub,
-  PeopleHub,
-  BrandsHub,
   PlacePoolHub,
   PlatformHealthHub,
   SettingsHub,
@@ -39,6 +37,10 @@ import { CommunitySupportPage } from "./pages/CommunitySupportPage";
 // (#/business-offerings). Detail views deep-link via ?offeringId=. Venues now
 // open inside Brands (#4130).
 import { OfferingsConsolePage } from "./pages/OfferingsConsolePage";
+// #4130 (Wave 3) — People (Users + business People) and Brands (Brand Sites,
+// Venues and Venue claims inside each brand).
+import { PeoplePage } from "./pages/PeoplePage";
+import { BrandsPage } from "./pages/BrandsPage";
 // ORCH-1274 — Business Money console (READ-ONLY): Payments (#/business-payments),
 // Orders (#/business-orders), Money ledger (#/business-money-ledger).
 import { BusinessPaymentsPage } from "./pages/BusinessPaymentsPage";
@@ -88,9 +90,10 @@ const PAGES = {
   // ── Support ── #3720 Slice F console; the menu's Support and Community
   // entries open its tabs until Wave 6 splits it (#/support, #/community).
   "community-support": CommunitySupportPage,
-  // ── Business ── #4130: Users + People; Brands + Brand Sites, Venues, claims.
-  people: PeopleHub,
-  brands: BrandsHub,
+  // ── Business ── #4130 Wave 3: People replaces Users + People; Brands holds
+  // Brand Sites, Venues and Venue claims inside each brand.
+  people: PeoplePage,
+  brands: BrandsPage,
   // ORCH-1273: Business offerings console (READ-ONLY).
   "business-offerings": OfferingsConsolePage,
   // ── Money ── ORCH-1274 Business Money console; #4130 Mingla money (Wave 2a).

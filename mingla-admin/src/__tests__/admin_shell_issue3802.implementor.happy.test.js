@@ -416,9 +416,11 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     "GuidePage.jsx", "LaunchCitiesPage.jsx", "NotificationsPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
     "PlaceIntelligenceTrialPage.jsx", "PlacePoolManagementPage.jsx", "PricingPage.jsx", "QueueHealthPage.jsx", "RefundOperationsPage.jsx",
     "RoleHomePage.jsx", "SettingsPage.jsx", "SignalLibraryPage.jsx", "StripeModePage.jsx", "SubscriptionManagementPage.jsx",
-    "SupportDeskPage.jsx", "TeamDashboardPage.jsx", "ToolLeadsPage.jsx", "UserManagementPage.jsx", "VenuesConsolePage.jsx",
+    "SupportDeskPage.jsx", "TeamDashboardPage.jsx", "ToolLeadsPage.jsx", "VenuesConsolePage.jsx",
     // #4130: Wave 2a's Mingla money page draws the one header.
     "MinglaMoneyPage.jsx",
+    // #4130: People replaces the Users page (deleted); Brands is its own page.
+    "PeoplePage.jsx", "BrandsPage.jsx",
   ];
   // The five pages that moved later (My agent, Hosts and Creators, Beta Leads,
   // Home, Team dashboard) are now in the list above; none is left to follow.
@@ -452,7 +454,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     // [TEST-MOD-APPROVED #2879] Queue health page (+1 over #3720 Wave 6's 41).
     // [TEST-MOD-APPROVED #3980] Work board and Agent log pages (+2).
     // #4130: Mingla money page (+1, Wave 2a).
-    assert.equal(MIGRATED.length, 45);
+    // #4130: Users page deleted (-1); People and Brands pages added (+2).
+    assert.equal(MIGRATED.length, 46);
     assert.equal(FOLLOW_UP.length, 0);
   });
 
@@ -583,15 +586,20 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
     "OfferingsConsolePage.jsx": 1,
     "PeopleConsolePage.jsx": 1,
     "VenuesConsolePage.jsx": 1,
-    // The opened person, and the read-only preview of that person.
-    "UserManagementPage.jsx": 2,
+    // #4130: the Users page is gone. People hands its full-record address to
+    // the business People record; Brands hands its full record and the tools
+    // folded inside it (Websites, Venues, Venue claims) to those pages, which
+    // each draw their own header.
+    "PeoplePage.jsx": 1,
+    "BrandsPage.jsx": 2,
   };
 
   it("every state of every migrated page draws the page header", () => {
     // [TEST-MOD-APPROVED #2879] Queue health page (+1 over #3720 Wave 6's 41).
     // [TEST-MOD-APPROVED #3980] Work board and Agent log pages (+2).
     // #4130: Mingla money page (+1, Wave 2a).
-    assert.equal(MIGRATED.length, 45);
+    // #4130: Users page deleted (-1); People and Brands pages added (+2).
+    assert.equal(MIGRATED.length, 46);
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);
       assert.equal(
@@ -622,8 +630,8 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
     // Brand Sites: an opened site that is still loading, or could not be loaded.
     assert.equal(states("BrandSitesPage.jsx").length, 4, "the list, the site, the site loading, the site not loaded");
     assert.equal((raw("BrandSitesPage.jsx").match(/<PageHeader title="Brand Sites" back=\{\{ label: "Back to all sites", onClick: onBack \}\} \/>/g) || []).length, 2);
-    // Users: an opened person that is still loading, or was not found.
-    assert.equal((raw("UserManagementPage.jsx").match(/<PageHeader title="Users" back=\{\{ label: "Back to Users", onClick: backToList \}\} \/>/g) || []).length, 2);
+    // #4130: the Users page and its opened-person states are gone; a person
+    // opens in the People page's drawer, under the People header.
     // None of these states wraps itself in padding: the first element of each is the plain 24px column.
     for (const file of MIGRATED) {
       for (const r of states(file)) {

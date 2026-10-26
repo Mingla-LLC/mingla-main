@@ -60,23 +60,17 @@ describe("META-ORCH-1104 Phase 2 — adversarial", () => {
       `${support.icon} must be imported from lucide-react before ICON_MAP`);
   });
 
-  it("B. segmentation filters via the derived view, not the lying account_type guess", () => {
-    const page = read("src/pages/UserManagementPage.jsx");
-    // Must read the view AND filter on its segment column.
-    assert.match(page, /from\(source\)/, "fetchUsers must read from a `source` table that can be the view");
-    assert.match(page, /profiles_with_segment/);
-    assert.match(page, /\.eq\("segment",\s*segment\)/);
-    // The legacy admin-hide guard must be conditional — applied ONLY when no
-    // segment is selected, NOT unconditionally (else the Admin tab is empty).
-    // Assert the fetchUsers guard (`query = query.or('account_type…)`) sits in
-    // the non-segment else-branch. (The unrelated fetchCountries `.or(...)` is
-    // a bare `supabase.from(...).or(...)` chain and is NOT matched here.)
-    assert.match(page, /segmentActive/);
-    const guardIdx = page.indexOf("query = query.or('account_type.neq.admin");
-    assert.ok(guardIdx !== -1, "the fetchUsers account_type guard still exists (for the 'all' tab)");
-    // Find the nearest preceding `else {` to confirm it is gated, not top-level.
-    const before = page.slice(Math.max(0, guardIdx - 400), guardIdx);
-    assert.match(before, /else\s*\{/, "the account_type guard must be in the non-segment else-branch");
+  // #4130: segmentation moved to the server (admin_list_people classifies
+  // explorer / host / both / incomplete / internal). Neither the page nor its
+  // service may fall back to the account_type guess.
+  it("B. segmentation comes from the server, not the lying account_type guess", () => {
+    const page = read("src/pages/PeoplePage.jsx");
+    const svc = read("src/services/peopleService.js");
+    assert.match(svc, /p_segment: segment/);
+    for (const src of [page, svc]) {
+      assert.doesNotMatch(src, /account_type/);
+      assert.doesNotMatch(src, /\.from\(/);
+    }
   });
 
   it("C. dual-role users derive as admin (admin-first precedence; no business double-count)", () => {

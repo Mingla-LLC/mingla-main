@@ -224,10 +224,10 @@ describe("ORCH-1273 — nav + routing", () => {
     const app = readSrc("App.jsx");
     assert.match(app, /import \{ OfferingsConsolePage \} from "\.\/pages\/OfferingsConsolePage"/);
     assert.match(app, /"business-offerings": OfferingsConsolePage/);
-    // #4130: Venues is drawn as a tab of Brands.
-    const hubs = readSrc("pages/shellHubs.jsx");
-    assert.match(hubs, /import \{ VenuesConsolePage \} from "\.\/VenuesConsolePage"/);
-    assert.match(hubs, /"business-venues": VenuesConsolePage/);
+    // #4130 (Wave 3): Venues opens inside Brands (#/brands?tab=venues).
+    const brands = readSrc("pages/BrandsPage.jsx");
+    assert.match(brands, /import \{ VenuesConsolePage \} from "\.\/VenuesConsolePage"/);
+    assert.match(brands, /"business-venues": VenuesConsolePage/);
   });
   it("Sidebar ICON_MAP registers CalendarDays (else silent fallback)", () => {
     const sb = readSrc("components/layout/Sidebar.jsx");

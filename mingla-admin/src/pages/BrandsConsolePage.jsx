@@ -288,9 +288,10 @@ function buildBrandSections(detail, callbacks) {
         field("Venue category", b.venue_category),
         field("City", b.city),
         field("Country", b.country_code),
-        field("Coordinates", b.latitude != null && b.longitude != null ? `${b.latitude}, ${b.longitude}` : null),
+        // #4130: lat/lng are the real column names (the old names made every detail fail).
+        field("Coordinates", b.lat != null && b.lng != null ? `${b.lat}, ${b.lng}` : null),
         field("Cover media", b.cover_media_url, (v) => <span className="break-all text-xs">{v}</span>),
-        field("Profile media", b.profile_media_url, (v) => <span className="break-all text-xs">{v}</span>),
+        field("Profile photo", b.profile_photo_url, (v) => <span className="break-all text-xs">{v}</span>),
         field("Theme color", b.theme_color),
         field("Theme font", b.theme_font),
         field("Theme animation", b.theme_animation),
