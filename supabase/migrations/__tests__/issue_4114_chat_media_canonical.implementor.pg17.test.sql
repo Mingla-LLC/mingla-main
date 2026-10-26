@@ -10,8 +10,8 @@
 --   C-02  legacy public-bucket URLs keep working: an https:// file_url is
 --         accepted on insert and on update; a view-once message can never use
 --         one (23514).
---   C-03  a client cannot choose a view-once message's send time (an insert is
---         stamped with the server clock) and cannot change any message's
+--   C-03  a client cannot choose a message's send time (every client insert
+--         is stamped with the server clock) and cannot change any message's
 --         created_at afterwards (23514).
 --   C-04  the cleanup listing only hands out canonical paths: a planted
 --         view-once row with a non-canonical path and a non-canonical storage
@@ -19,8 +19,12 @@
 --   C-05  issue_4114_chat_attachment_owner returns the uploader, NULL for a
 --         missing or non-canonical name, and clients cannot call it.
 --
--- FAILS-ON-REVERT: delete the "attachment_path_not_canonical" branch of
--- issue_4114_enforce_view_once_shape and C-01 fails; delete the created_at
+-- FAILS-ON-REVERT: loosen the canonical-shape regex in
+-- issue_4114_chat_attachment_conversation and C-01 fails (that regex is the
+-- real guard: deleting only the "attachment_path_not_canonical" branch of
+-- issue_4114_enforce_view_once_shape does NOT fail C-01, because a NULL
+-- conversation is still refused as attachment_path_outside_conversation, also
+-- 23514); delete the created_at
 -- block and C-03 fails; delete the canonical filters from
 -- issue_4114_view_once_media_due and C-04 fails.
 --

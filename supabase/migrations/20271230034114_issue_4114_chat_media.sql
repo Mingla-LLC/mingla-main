@@ -26,7 +26,8 @@
 --     message can never point into a `once/` folder, a stored path must be
 --     exactly the shape above and sit in the message's own conversation folder, and a path another sender's
 --     message already points at cannot be reused. A client cannot choose or
---     change a view-once message's send time (the 14-day expiry counts from it).
+--     change any message's send time (the 14-day view-once expiry counts from
+--     it).
 --   * `message_media_views(message_id, user_id, viewed_at)`: one row per person
 --     per view-once message. Clients can read (their own rows, and every row of
 --     the messages they sent) but never write; only the edge function inserts.
@@ -122,9 +123,11 @@ CREATE INDEX IF NOT EXISTS messages_file_url_idx
 --    video whose path is in its conversation's once/ folder; an ordinary
 --    message never points into a once/ folder. Legacy public-bucket URLs keep
 --    working unchanged.
---    The send time of a view-once message is the server's: a client insert of
---    one is stamped now(), and no client can change any message's created_at
---    afterwards (the 14-day expiry is counted from it).
+--    The send time of every message is the server's: every client insert is
+--    stamped now(), and no client can change any message's created_at
+--    afterwards (the 14-day view-once expiry is counted from it, so a message
+--    sent as ordinary and later turned view-once still carries the server's
+--    time).
 --    SECURITY DEFINER so the reuse check sees every message, not only the rows
 --    the writer can read. The canonical-shape function is defined in section 5
 --    and only called at row time.
@@ -141,10 +144,12 @@ DECLARE
 BEGIN
   -- Server-owned send time (clients only; migrations and service code keep theirs).
   IF v_client THEN
-    IF TG_OP = 'INSERT' AND NEW.view_once IS TRUE THEN
+    IF TG_OP = 'INSERT' THEN
       NEW.created_at := now();
-    ELSIF TG_OP = 'UPDATE' AND NEW.created_at IS DISTINCT FROM OLD.created_at THEN
-      RAISE EXCEPTION 'message_created_at_is_server_owned' USING ERRCODE = '23514';
+    ELSIF TG_OP = 'UPDATE' THEN
+      IF NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+        RAISE EXCEPTION 'message_created_at_is_server_owned' USING ERRCODE = '23514';
+      END IF;
     END IF;
   END IF;
 
