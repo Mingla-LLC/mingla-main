@@ -127,8 +127,9 @@ CREATE INDEX IF NOT EXISTS messages_file_url_idx
 --    stamped now(), and no client can change any message's created_at
 --    afterwards (the 14-day view-once expiry is counted from it, so a message
 --    sent as ordinary and later turned view-once still carries the server's
---    time). Once view_once_purged_at is set, a client can neither clear or
---    change it nor bring the message back (deleted_at set back to NULL).
+--    time). Only the service-role sweep sets view_once_purged_at: no client
+--    may set it on insert or update. Once it is set, a client can neither clear
+--    or change it nor bring the message back (deleted_at set back to NULL).
 --    SECURITY DEFINER so the reuse check sees every message, not only the rows
 --    the writer can read. The canonical-shape function is defined in section 5
 --    and only called at row time.
@@ -148,17 +149,22 @@ BEGIN
   IF v_client THEN
     IF TG_OP = 'INSERT' THEN
       NEW.created_at := now();
+      IF NEW.view_once_purged_at IS NOT NULL THEN
+        RAISE EXCEPTION 'view_once_purge_is_server_owned' USING ERRCODE = '23514';
+      END IF;
     ELSIF TG_OP = 'UPDATE' THEN
       IF NEW.created_at IS DISTINCT FROM OLD.created_at THEN
         RAISE EXCEPTION 'message_created_at_is_server_owned' USING ERRCODE = '23514';
       END IF;
-      IF OLD.view_once_purged_at IS NOT NULL THEN
-        IF NEW.view_once_purged_at IS DISTINCT FROM OLD.view_once_purged_at THEN
+      IF NEW.view_once_purged_at IS DISTINCT FROM OLD.view_once_purged_at THEN
+        IF OLD.view_once_purged_at IS NOT NULL THEN
           RAISE EXCEPTION 'view_once_purge_is_final' USING ERRCODE = '23514';
         END IF;
-        IF OLD.deleted_at IS NOT NULL AND NEW.deleted_at IS NULL THEN
-          RAISE EXCEPTION 'view_once_purge_is_final' USING ERRCODE = '23514';
-        END IF;
+        RAISE EXCEPTION 'view_once_purge_is_server_owned' USING ERRCODE = '23514';
+      END IF;
+      IF OLD.view_once_purged_at IS NOT NULL
+         AND OLD.deleted_at IS NOT NULL AND NEW.deleted_at IS NULL THEN
+        RAISE EXCEPTION 'view_once_purge_is_final' USING ERRCODE = '23514';
       END IF;
     END IF;
   END IF;

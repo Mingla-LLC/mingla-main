@@ -321,7 +321,12 @@ BEGIN
   END IF;
 END $i06$;
 
--- I-07 marking purged removes it from the next sweep.
+-- I-07 marking purged removes it from the next sweep. The sweep runs as the
+-- service role, so its request carries the service_role claim (not the last
+-- client's claims left over from the steps above).
+SELECT set_config('request.jwt.claim.sub', '', true),
+       set_config('request.jwt.claim.role', 'service_role', true),
+       set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
 DO $i07$
 DECLARE v_marked integer;
 BEGIN
