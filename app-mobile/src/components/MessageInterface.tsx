@@ -2172,14 +2172,24 @@ export default function MessageInterface({
   }, []);
 
   // Scroll-to-latest: shown once you scroll away from the newest message;
-  // counts incoming messages that land meanwhile.
+  // counts incoming messages that land meanwhile. Issue #4114: your own send
+  // jumps to the latest from anywhere and clears the new-messages divider.
   const newestVisible = visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1] : null;
-  const { showScrollToLatest, unseenWhileScrolled, handleThreadScroll, scrollToLatest } = useScrollToLatest({
-    listRef: flatListRef,
-    newestMessageId: newestVisible?.id ?? null,
-    newestIsMine: newestVisible?.isMe ?? false,
-    threshold: SCROLL_TO_LATEST_THRESHOLD,
-  });
+  const newestForScroll = useMemo(
+    () =>
+      newestVisible
+        ? { id: newestVisible.id, key: newestVisible.clientId ?? newestVisible.id, isMine: newestVisible.isMe }
+        : null,
+    [newestVisible],
+  );
+  const clearNewDivider = useCallback(() => setNewDividerMessageId(null), []);
+  const { showScrollToLatest, unseenWhileScrolled, handleThreadScroll, handleContentSizeChange, scrollToLatest } =
+    useScrollToLatest({
+      listRef: flatListRef,
+      newest: newestForScroll,
+      threshold: SCROLL_TO_LATEST_THRESHOLD,
+      onOwnSendJump: clearNewDivider,
+    });
 
   // Typing in a group: names of everyone typing, above the composer.
   const groupTypingLabel = useMemo(() => {
@@ -2662,6 +2672,7 @@ export default function MessageInterface({
           // arrive; near the latest message the list follows the new one.
           maintainVisibleContentPosition={THREAD_VISIBLE_CONTENT_POSITION}
           onScroll={handleThreadScroll}
+          onContentSizeChange={handleContentSizeChange}
           scrollEventThrottle={64}
           onScrollToIndexFailed={handleScrollToIndexFailed}
           ListHeaderComponent={

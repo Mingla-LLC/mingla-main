@@ -89,6 +89,39 @@ export function firstUnreadMessageId(messages: readonly UnreadCandidate[]): stri
   return null;
 }
 
+/** The newest message in the thread, as the scroll logic sees it. */
+export interface NewestMessage {
+  id: string;
+  /** Row key: the client id when present, so an optimistic copy and its confirmed row match. */
+  key: string;
+  isMine: boolean;
+}
+
+export type NewestArrivalAction = "none" | "jumpToLatest" | "countUnseen";
+
+/**
+ * Issue #4114: what the thread does when its newest message changes.
+ * - Your own new message (text, card, media) always jumps to the latest, even
+ *   when you were reading higher up.
+ * - Someone else's message while you are scrolled up does not move you; it
+ *   bumps the scroll-to-latest count. At the bottom, the list keeps following
+ *   on its own (maintainVisibleContentPosition).
+ * - The same message again (its optimistic copy confirmed, or a retry of a
+ *   failed one) is not a new arrival, and neither is the first load.
+ */
+export function newestArrivalAction(
+  previous: NewestMessage | null,
+  next: NewestMessage | null,
+  awayFromLatest: boolean,
+): NewestArrivalAction {
+  if (!previous || !next) return "none";
+  const sameMessage =
+    next.id === previous.id || next.key === previous.key || next.id === previous.key || next.key === previous.id;
+  if (sameMessage) return "none";
+  if (next.isMine) return "jumpToLatest";
+  return awayFromLatest ? "countUnseen" : "none";
+}
+
 /** "today" / "yesterday" / a date, by the phone's calendar day. */
 export function dayLabelKind(timestamp: string, now: Date): "today" | "yesterday" | "date" {
   const date = new Date(timestamp);
