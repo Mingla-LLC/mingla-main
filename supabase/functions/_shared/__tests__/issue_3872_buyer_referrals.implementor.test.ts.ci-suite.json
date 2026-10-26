@@ -1,4 +1,8 @@
 {
-  "runtime": "deno2",
-  "timeoutSeconds": 30
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3872_buyer_referrals.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3872-r2-buyer-referrals",
+  "profile": "deno-2-unit"
 }

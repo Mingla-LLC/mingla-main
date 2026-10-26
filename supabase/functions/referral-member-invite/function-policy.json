@@ -1,5 +1,20 @@
 {
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "referral-member-invite",
   "verify_jwt": true,
-  "auth": "authenticated_user",
-  "notes": "Tokens are single-use, random and stored only as SHA-256 hashes. The existing RESEND_API_KEY and invite sender are reused."
+  "gateway_reason": "Authenticated brand-team invitation; SQL repeats brand authority while the handler creates a single-use random token and stores only its SHA-256 hash.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [
+      "BUSINESS_WEB_ORIGIN",
+      "MINGLA_BUSINESS_WEB_URL",
+      "RESEND_API_KEY",
+      "RESEND_INVITE_FROM",
+      "RESEND_MARKETING_FROM",
+      "app.qr_token_pepper"
+    ],
+    "required_bundle_fields": {},
+    "required_top_level": []
+  }
 }

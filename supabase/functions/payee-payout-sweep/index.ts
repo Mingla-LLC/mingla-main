@@ -33,7 +33,8 @@ import {
 type AdminClient = any;
 
 interface SweepDeps {
-  env: (name: string) => string | undefined;
+  supabaseUrl: () => string | undefined;
+  serviceRoleKey: () => string | undefined;
   createAdmin: typeof createClient;
   createStripe: () => StripeClient;
   initiatePaystack: typeof paystackInitiateTransfer;
@@ -42,7 +43,8 @@ interface SweepDeps {
 }
 
 const defaultDeps: SweepDeps = {
-  env: (name) => Deno.env.get(name),
+  supabaseUrl: () => Deno.env.get("SUPABASE_URL"),
+  serviceRoleKey: () => Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
   createAdmin: createClient,
   createStripe: stripeWebhook,
   initiatePaystack: paystackInitiateTransfer,
@@ -305,8 +307,8 @@ export async function handlePayeePayoutSweep(
   deps: SweepDeps = defaultDeps,
 ): Promise<Response> {
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-  const url = deps.env("SUPABASE_URL") ?? "";
-  const serviceKey = deps.env("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const url = deps.supabaseUrl() ?? "";
+  const serviceKey = deps.serviceRoleKey() ?? "";
   if (!url || !serviceKey) return json({ error: "server_misconfigured" }, 500);
   if ((req.headers.get("authorization") ?? "") !== `Bearer ${serviceKey}`) {
     return json({ error: "unauthorized" }, 401);

@@ -108,12 +108,8 @@ Deno.test("#3872 worker claims once, marks attempts before provider I/O and nudg
     },
   };
   const response = await handlePayeePayoutSweep(request(), {
-    env: (name: string) =>
-      name === "SUPABASE_URL"
-        ? "http://supabase.test"
-        : name === "SUPABASE_SERVICE_ROLE_KEY"
-        ? "service-key"
-        : undefined,
+    supabaseUrl: () => "http://supabase.test",
+    serviceRoleKey: () => "service-key",
     createAdmin: () => admin,
     createStripe: () => ({
       transfers: {
@@ -179,12 +175,8 @@ Deno.test("#3872 Paystack reconciliation prevents duplicate initiation after a l
     },
   };
   const response = await handlePayeePayoutSweep(request(), {
-    env: (name: string) =>
-      name === "SUPABASE_URL"
-        ? "http://supabase.test"
-        : name === "SUPABASE_SERVICE_ROLE_KEY"
-        ? "service-key"
-        : undefined,
+    supabaseUrl: () => "http://supabase.test",
+    serviceRoleKey: () => "service-key",
     createAdmin: () => admin,
     createStripe: () => {
       throw new Error("stripe not expected");
@@ -204,12 +196,8 @@ Deno.test("#3872 Paystack reconciliation prevents duplicate initiation after a l
 Deno.test("#3872 service-role boundary rejects unauthorized callers before claims", async () => {
   let claimed = false;
   const response = await handlePayeePayoutSweep(request("wrong-key"), {
-    env: (name: string) =>
-      name === "SUPABASE_URL"
-        ? "http://supabase.test"
-        : name === "SUPABASE_SERVICE_ROLE_KEY"
-        ? "service-key"
-        : undefined,
+    supabaseUrl: () => "http://supabase.test",
+    serviceRoleKey: () => "service-key",
     createAdmin: () => {
       claimed = true;
       return {};
@@ -233,12 +221,8 @@ Deno.test("#3872 deterministic Paystack reference conflicts fail closed", async 
     },
   };
   const response = await handlePayeePayoutSweep(request(), {
-    env: (name: string) =>
-      name === "SUPABASE_URL"
-        ? "http://supabase.test"
-        : name === "SUPABASE_SERVICE_ROLE_KEY"
-        ? "service-key"
-        : undefined,
+    supabaseUrl: () => "http://supabase.test",
+    serviceRoleKey: () => "service-key",
     createAdmin: () => admin,
     createStripe: () => {
       throw new Error("stripe not expected");
