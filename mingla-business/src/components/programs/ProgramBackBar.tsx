@@ -13,6 +13,8 @@ type Props = {
   leading?: "back" | "close";
   /** Optional right-hand accessory (a pill, an action). */
   right?: React.ReactNode;
+  /** In-screen back (step 2 of a form goes back to step 1, not off the screen). */
+  onBack?: () => void;
 };
 
 /**
@@ -25,13 +27,18 @@ export function ProgramBackBar({
   fallback,
   leading = "back",
   right,
+  onBack,
 }: Props): React.ReactElement {
   const router = useRouter();
   return (
     <View style={styles.header}>
       <Pressable
         onPress={() =>
-          router.canGoBack() ? router.back() : router.replace(fallback as never)
+          onBack
+            ? onBack()
+            : router.canGoBack()
+              ? router.back()
+              : router.replace(fallback as never)
         }
         accessibilityRole="button"
         accessibilityLabel={leading === "close" ? "Close" : "Back"}

@@ -65,7 +65,9 @@ export function ProgramScreen({
   children,
   testID,
   embedded = false,
+  onBack,
 }: {
+  onBack?: () => void;
   title: string;
   fallback: string;
   leading?: "back" | "close";
@@ -126,6 +128,7 @@ export function ProgramScreen({
         title={title}
         fallback={fallback}
         leading={leading}
+        onBack={onBack}
         right={chrome.showDone ? <KeyboardDone /> : right}
       />
       {scroll}
@@ -364,58 +367,6 @@ export function ListRow({
     >
       {body}
     </Pressable>
-  );
-}
-
-export function StatTile({
-  value,
-  label,
-  hint,
-  icon,
-}: {
-  value: string;
-  label: string;
-  hint?: string | null;
-  icon?: IconName;
-}): React.ReactElement {
-  return (
-    <GlassCard variant="base" style={styles.tile}>
-      {icon ? (
-        <View style={styles.tileIcon}>
-          <Icon name={icon} size={14} color={accent.warm} />
-        </View>
-      ) : null}
-      <Text style={styles.tileLabel} numberOfLines={1}>
-        {label}
-      </Text>
-      <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
-        {value}
-      </Text>
-      {hint ? (
-        <Text style={styles.tileHint} numberOfLines={1}>
-          {hint}
-        </Text>
-      ) : null}
-    </GlassCard>
-  );
-}
-
-/** 2-up grid of tiles that wraps on phones (2×2) and stays 2-up on desktop. */
-export function TileGrid({
-  children,
-}: {
-  children: React.ReactNode;
-}): React.ReactElement {
-  return (
-    <View style={styles.tileGrid}>
-      {React.Children.toArray(children)
-        .filter(Boolean)
-        .map((child, index) => (
-          <View key={index} style={styles.tileCell}>
-            {child}
-          </View>
-        ))}
-    </View>
   );
 }
 
@@ -738,25 +689,6 @@ const styles = StyleSheet.create({
   rowTitle: { color: textTokens.primary, fontSize: 16, fontWeight: "600" },
   rowSubtitle: { color: textTokens.secondary, fontSize: 13, lineHeight: 18 },
   rowRight: { color: textTokens.primary, fontSize: 15, fontWeight: "700" },
-  tile: { padding: spacing.md, gap: 4, minHeight: 104 },
-  tileIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: radius.sm,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: accent.tint,
-    marginBottom: 2,
-  },
-  tileLabel: { color: textTokens.secondary, fontSize: 13 },
-  tileValue: { color: textTokens.primary, fontSize: 24, fontWeight: "800" },
-  tileHint: { color: semantic.success, fontSize: 12, fontWeight: "600" },
-  tileGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginHorizontal: -spacing.xs,
-  },
-  tileCell: { width: "50%", padding: spacing.xs },
   strip: { flexDirection: "row", paddingVertical: 14 },
   stripCell: { flex: 1, paddingHorizontal: spacing.sm, alignItems: "center", gap: 2 },
   stripDivider: {
