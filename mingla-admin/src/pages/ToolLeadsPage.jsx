@@ -562,7 +562,9 @@ export function ToolLeadsPage() {
 
 const OPS_STATES = ["", "due", "leased", "retry_wait", "succeeded", "partial", "no_change", "failed_terminal", "budget_deferred", "cancelled"];
 
-function CompetitorOpsPanel({ addToast }) {
+// #4130 (Wave 4a): Competitor Ops leaves Inbound leads and moves to Settings;
+// exported so Wave 4b's Settings page renders it unchanged.
+export function CompetitorOpsPanel({ addToast }) {
   const [data, setData] = useState({ capabilities: [], jobs: [] });
   const [loading, setLoading] = useState(true); const [error, setError] = useState(null);
   const [provider, setProvider] = useState(""); const [state, setState] = useState(""); const [due, setDue] = useState("any"); const [brand, setBrand] = useState(""); const [safeError, setSafeError] = useState("");

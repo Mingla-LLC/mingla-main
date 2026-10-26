@@ -281,7 +281,9 @@ describe("#3802 P-5: addresses", () => {
   it("defaults are left out", () => {
     assert.equal(buildCrmHash("hosts", EMPTY_CRM_STATE), "#/hosts");
     assert.equal(buildCrmHash("creators", {}), "#/creators");
-    assert.equal(buildCrmHash("hosts", { view: "board", mine: false, q: "" }), "#/hosts");
+    // #4130: the list is the default view now; the board has its own address.
+    assert.equal(buildCrmHash("hosts", { view: "list", mine: false, q: "" }), "#/hosts");
+    assert.equal(buildCrmHash("hosts", { view: "board" }), "#/hosts?view=board");
   });
   it("the spec's two examples", () => {
     assert.equal(buildCrmHash("hosts", { region: "lagos", icp: "event_organizer" }), "#/hosts?icp=event_organizer&region=lagos");

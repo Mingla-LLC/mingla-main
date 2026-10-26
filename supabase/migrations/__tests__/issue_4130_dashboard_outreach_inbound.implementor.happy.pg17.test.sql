@@ -28,6 +28,8 @@
 --         card change is a Work update with who did it; an alert whose ticket
 --         is resolved is never unread.
 --   N-02  team_inbox_mark_read marks only the asked tab, then everything.
+--   R-01  calendar_runway: each event carries its own start time and time
+--         zone; an event of a staff/test brand is marked test.
 --
 -- FAILS-ON-REVERT: dropping `AND NOT public.admin_account_is_internal(p.id)`
 -- from admin_dashboard_summary makes D-02 count the staff sign-up; dropping
@@ -67,7 +69,8 @@ BEGIN
     'public.outreach_summary(date)',
     'public.outreach_reset_stale_due(text,uuid[],date,date)',
     'public.team_inbox(text[],integer)',
-    'public.team_inbox_mark_read(text,text[])'
+    'public.team_inbox_mark_read(text,text[])',
+    'public.calendar_runway(date,date,date)'
   ] LOOP
     PERFORM pg_temp.w4a_assert(to_regprocedure(v_fn) IS NOT NULL, 'C-01 exists ' || v_fn);
     PERFORM pg_temp.w4a_assert((SELECT p.prosecdef FROM pg_proc p WHERE p.oid = v_fn::regprocedure), 'C-01 definer ' || v_fn);
@@ -78,7 +81,8 @@ BEGIN
     'public.inbound_lead_is_test(text,text)',
     'public.team_inbox_alert_types(text[])',
     'public.team_inbox_kind(text,text)',
-    'public.team_inbox_ticket_resolved(jsonb)'
+    'public.team_inbox_ticket_resolved(jsonb)',
+    'public.calendar_brand_is_test(uuid)'
   ] LOOP
     PERFORM pg_temp.w4a_assert(NOT has_function_privilege('authenticated', v_fn, 'EXECUTE'), 'C-01 helper not callable ' || v_fn);
   END LOOP;
@@ -126,6 +130,9 @@ DECLARE
   v_conv2    constant uuid := '41300000-0000-4000-a400-000000000601';
   v_tk_open  constant uuid := '41300000-0000-4000-a400-000000000610';
   v_tk_done  constant uuid := '41300000-0000-4000-a400-000000000611';
+  v_brand_st constant uuid := '41300000-0000-4000-a400-000000000700';
+  v_ev_live  constant uuid := '41300000-0000-4000-a400-000000000701';
+  v_ev_staff constant uuid := '41300000-0000-4000-a400-000000000702';
   v_today    constant date := (now() AT TIME ZONE 'UTC')::date;
   v_d0 jsonb; v_d1 jsonb;
   v_o0 jsonb; v_o1 jsonb;
@@ -353,6 +360,29 @@ BEGIN
   PERFORM pg_temp.w4a_assert((v #>> '{unread,mentions}')::int = 0 AND (v #>> '{unread,support}')::int = 0, 'N-02 Mark all read clears the rest');
   PERFORM pg_temp.w4a_assert((SELECT read_at IS NULL FROM public.notifications WHERE user_id = v_growth AND body = 'Not yours'),
     'N-02 another teammate''s alert is untouched');
+
+  -- ── R-01 calendar runway ──────────────────────────────────────────────────
+  INSERT INTO public.creator_accounts(id, email) VALUES (v_staff, 'w4a-staff@usemingla.com') ON CONFLICT (id) DO NOTHING;
+  INSERT INTO public.brands(id, account_id, name, slug, default_currency) VALUES
+    (v_brand_st, v_staff, 'W4a Staff Brand', 'w4a-4130-staff', 'NGN');
+  INSERT INTO public.events(id, brand_id, title, slug, status, currency, timezone, published_at, visibility) VALUES
+    (v_ev_live,  v_brand,    'W4a Lagos Night', 'w4a-4130-lagos', 'scheduled', 'USD', 'Africa/Lagos', now() - interval '1 day', 'public'),
+    (v_ev_staff, v_brand_st, 'W4a Staff Night', 'w4a-4130-staff-night', 'scheduled', 'NGN', 'Africa/Lagos', now() - interval '1 day', 'public');
+  INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master) VALUES
+    (v_ev_live,  ((v_today + 10)::timestamp + interval '20 hours') AT TIME ZONE 'UTC', ((v_today + 10)::timestamp + interval '23 hours') AT TIME ZONE 'UTC', 'Africa/Lagos', true),
+    (v_ev_staff, ((v_today + 12)::timestamp + interval '20 hours') AT TIME ZONE 'UTC', ((v_today + 12)::timestamp + interval '23 hours') AT TIME ZONE 'UTC', 'Africa/Lagos', true);
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.w4a_as(v_admin);
+  v := public.calendar_runway(v_today, v_today + 30, v_today);
+  RESET ROLE;
+  PERFORM pg_temp.w4a_assert(
+    (SELECT r ->> 'timezone' = 'Africa/Lagos' AND (r ->> 'start_at') IS NOT NULL AND NOT (r ->> 'is_test')::boolean
+       FROM jsonb_array_elements(v -> 'rows') r WHERE r ->> 'anchor_id' = v_ev_live::text),
+    'R-01 the event carries its own start time and time zone (' || COALESCE((SELECT r::text FROM jsonb_array_elements(v -> 'rows') r WHERE r ->> 'anchor_id' = v_ev_live::text), 'missing') || ')');
+  PERFORM pg_temp.w4a_assert(
+    (SELECT (r ->> 'is_test')::boolean FROM jsonb_array_elements(v -> 'rows') r WHERE r ->> 'anchor_id' = v_ev_staff::text),
+    'R-01 the staff brand''s event is marked test');
+  PERFORM pg_temp.w4a_assert((v ->> 'test_hidden')::int >= 1, 'R-01 the test events are counted');
 END
 $main$;
 ROLLBACK;

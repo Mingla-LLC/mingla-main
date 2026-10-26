@@ -8,16 +8,14 @@
 //     is coming, plainly, and shows no numbers.
 //
 // [TRANSITIONAL] every export here is replaced by its wave's real page
-// (Wave 4a Hosts and creators
-// and Inbound leads, Wave 4b Place pool, Platform health, Feature flags,
-// Settings, Team and roles) — exit when the last of those waves lands.
+// (Wave 4b Place pool, Platform health, Feature flags, Settings, Team and
+// roles) — exit when the last of those waves lands. Wave 4a's Hosts and
+// creators (pages/OutreachPage.jsx) and Inbound leads
+// (pages/InboundLeadsPage.jsx) have replaced their hubs.
 import { Construction } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { SectionCard } from "../components/ui/Card";
 import { PageHub } from "../components/layout/PageHub";
-import { HostsPage, CreatorsPage } from "./PipelinePage";
-import { BetaLeadsPage } from "./BetaLeadsPage";
-import { ToolLeadsPage } from "./ToolLeadsPage";
 import { PlacePoolManagementPage } from "./PlacePoolManagementPage";
 import { LaunchCitiesPage } from "./LaunchCitiesPage";
 import { SignalLibraryPage } from "./SignalLibraryPage";
@@ -31,8 +29,6 @@ import { AdminPage } from "./AdminPage";
 import { CareersPage } from "./CareersPage";
 
 // Old page id -> the component that draws it, per hub (lib/adminRoutes.js).
-const OUTREACH = { hosts: HostsPage, creators: CreatorsPage };
-const INBOUND = { "beta-leads": BetaLeadsPage, "tool-leads": ToolLeadsPage };
 const PLACE_POOL = {
   placepool: PlacePoolManagementPage,
   "launch-cities": LaunchCitiesPage,
@@ -44,20 +40,12 @@ const SETTINGS = { settings: SettingsPage, "place-intelligence-trial": PlaceInte
 const TEAM_AND_ROLES = { admin: AdminPage, careers: CareersPage };
 
 export const HUB_COMPONENTS = Object.freeze({
-  outreach: OUTREACH,
-  inbound: INBOUND,
   placepool: PLACE_POOL,
   "platform-health": PLATFORM_HEALTH,
   settings: SETTINGS,
   admin: TEAM_AND_ROLES,
 });
 
-export function OutreachHub({ onTabChange }) {
-  return <PageHub pageId="outreach" components={OUTREACH} onTabChange={onTabChange} />;
-}
-export function InboundHub({ onTabChange }) {
-  return <PageHub pageId="inbound" components={INBOUND} onTabChange={onTabChange} />;
-}
 export function PlacePoolHub({ onTabChange }) {
   return <PageHub pageId="placepool" components={PLACE_POOL} onTabChange={onTabChange} />;
 }

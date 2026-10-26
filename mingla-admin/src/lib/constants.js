@@ -62,19 +62,6 @@ export const TABLES = [
   "email_templates",
 ];
 
-// ORCH-0640 ch08: STAT_CARDS stripped of "Cards" (card_pool archived).
-// Added "Signal Scores" + "Engagement 7d" (new place-level metrics).
-export const STAT_CARDS = [
-  { label: "Users", table: "profiles", icon: "Users" },
-  { label: "Places", table: "place_pool", icon: "Globe" },
-  { label: "Signal Scores", table: "place_scores", icon: "Activity" },
-  { label: "Engagement (7d)", table: "engagement_metrics", icon: "TrendingUp" },
-  { label: "Collab Sessions", table: "collaboration_sessions", icon: "Handshake" },
-  { label: "Boards", table: "boards", icon: "LayoutDashboard" },
-  { label: "Reviews", table: "place_reviews", icon: "Star" },
-  { label: "Feedback", table: "app_feedback", icon: "MessageSquare" },
-];
-
 export const SEED_SCRIPTS = [
   {
     label: "Seed Demo Profiles",

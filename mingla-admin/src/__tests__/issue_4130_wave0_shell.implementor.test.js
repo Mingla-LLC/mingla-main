@@ -288,7 +288,10 @@ describe("#4130 W0-8: a stat card's trend colour follows its direction", () => {
     assert.ok(card.includes("trendTone(trendUp).className"));
     assert.equal(/#ef4444"\s*\}|"text-\[#ef4444\]"/.test(card.slice(card.indexOf("export function StatCard"), card.indexOf("export function SectionCard"))), false);
     const overview = stripComments(read("pages/OverviewPage.jsx"));
-    assert.ok(overview.includes("trendUp={trendUpFromDirection(trend?.direction)}"));
+    // #4130 (Wave 4a): the rebuilt Dashboard draws its own tiles and colours
+    // each trend through the same tone, from the same direction.
+    assert.ok(overview.includes("trendTone(trendUpFromDirection(signups.direction))"));
+    assert.ok(overview.includes("trendTone(trendUpFromDirection(tickets.direction))"));
   });
 });
 

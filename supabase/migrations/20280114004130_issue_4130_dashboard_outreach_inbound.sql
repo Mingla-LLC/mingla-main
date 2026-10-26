@@ -32,6 +32,10 @@
 --       (a resolved ticket's alert is no longer "new").
 --   team_inbox_mark_read(p_scope, p_alert_types)  an active teammate, own
 --       rows only. Mark all read, per tab.
+--   calendar_runway(p_from, p_to, p_today)  Calendar (crm area). The event
+--       runway rows of ops_runway_report, each with the event's own start
+--       time and time zone (so it is shown in local time, not the viewer's)
+--       and whether its brand is staff or test (hidden by default).
 --
 -- MINGLA-INVARIANT: I-4130-DASHBOARD-ADMIN-AGGREGATES | issue #4130 | the Dashboard numbers come from one admin-only aggregate; a failed read is shown as failed, never as 0.
 -- MINGLA-INVARIANT: I-4130-INBOUND-EXCLUDES-APP-RUNS | issue #4130 | Inbound leads list and count beta leads and web tool leads only; app-lane tool runs are never leads.
@@ -477,7 +481,84 @@ REVOKE ALL ON FUNCTION public.team_inbox_mark_read(text, text[]) FROM PUBLIC, an
 GRANT EXECUTE ON FUNCTION public.team_inbox_mark_read(text, text[]) TO authenticated, service_role;
 
 --------------------------------------------------------------------------------
--- 5. Self-check
+-- 5. Calendar: the runway in each event's own time, test brands marked
+--------------------------------------------------------------------------------
+-- Is a brand staff or test? Deleted, a staff/test owner (Wave 3 rule), or a
+-- name that says test.
+CREATE OR REPLACE FUNCTION public.calendar_brand_is_test(p_brand_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT COALESCE((
+    SELECT b.deleted_at IS NOT NULL
+        OR (b.account_id IS NOT NULL AND public.admin_account_is_internal(b.account_id))
+        OR COALESCE(b.name, '') ~* '\m(test|testing|demo)\M'
+      FROM public.brands b WHERE b.id = p_brand_id), false)
+$$;
+REVOKE ALL ON FUNCTION public.calendar_brand_is_test(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.calendar_brand_is_test(uuid) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.calendar_runway(
+  p_from date DEFAULT NULL,
+  p_to date DEFAULT NULL,
+  p_today date DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v        record;
+  v_report jsonb;
+  v_rows   jsonb;
+BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  v_report := public.ops_runway_report(p_from, p_to, p_today);
+
+  SELECT COALESCE(jsonb_agg(r.row || x.extra ORDER BY r.ord), '[]'::jsonb) INTO v_rows
+    FROM jsonb_array_elements(v_report -> 'rows') WITH ORDINALITY AS r(row, ord)
+    CROSS JOIN LATERAL (
+      SELECT CASE WHEN r.row ->> 'anchor_kind' = 'event' THEN (
+        SELECT jsonb_build_object(
+          'brand_id', e.brand_id,
+          'brand_name', (SELECT b.name FROM public.brands b WHERE b.id = e.brand_id),
+          'is_test', public.calendar_brand_is_test(e.brand_id),
+          'timezone', COALESCE(d.timezone, e.timezone),
+          'start_at', d.start_at)
+          FROM public.events e
+          LEFT JOIN LATERAL (
+            SELECT ed.start_at, ed.timezone FROM public.event_dates ed
+             WHERE ed.event_id = e.id
+               AND (ed.start_at AT TIME ZONE COALESCE(NULLIF(ed.timezone, ''), NULLIF(e.timezone, ''), 'UTC'))::date
+                   = (r.row ->> 'start_on')::date
+             ORDER BY ed.start_at LIMIT 1) d ON true
+         WHERE e.id = (r.row ->> 'anchor_id')::uuid)
+      ELSE (
+        SELECT jsonb_build_object(
+          'brand_id', c.brand_id,
+          'brand_name', (SELECT b.name FROM public.brands b WHERE b.id = c.brand_id),
+          'is_test', COALESCE(public.calendar_brand_is_test(c.brand_id), false),
+          'timezone', NULL, 'start_at', NULL)
+          FROM public.ops_expected_events x
+          LEFT JOIN public.crm_records c ON c.id = x.record_id
+         WHERE x.id = (r.row ->> 'anchor_id')::uuid)
+      END AS extra
+    ) x;
+
+  RETURN (v_report - 'rows' - 'at_risk')
+    || jsonb_build_object(
+      'rows', v_rows,
+      'test_hidden', (SELECT count(*) FROM jsonb_array_elements(v_rows) z WHERE (z ->> 'is_test')::boolean));
+END;
+$$;
+COMMENT ON FUNCTION public.calendar_runway(date, date, date) IS
+  'Issue #4130: the Calendar''s event runway (ops_runway_report rows) with each event''s own start time and time zone, and whether its brand is staff or test. Anyone with the crm area.';
+REVOKE ALL ON FUNCTION public.calendar_runway(date, date, date) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.calendar_runway(date, date, date) TO authenticated, service_role;
+
+--------------------------------------------------------------------------------
+-- 6. Self-check
 --------------------------------------------------------------------------------
 DO $w4a$
 DECLARE
@@ -489,7 +570,8 @@ BEGIN
     'public.outreach_summary(date)',
     'public.outreach_reset_stale_due(text,uuid[],date,date)',
     'public.team_inbox(text[],integer)',
-    'public.team_inbox_mark_read(text,text[])'
+    'public.team_inbox_mark_read(text,text[])',
+    'public.calendar_runway(date,date,date)'
   ] LOOP
     IF has_function_privilege('anon', v_fn, 'EXECUTE') THEN
       RAISE EXCEPTION 'issue #4130 wave 4a: % is executable by anon', v_fn;
@@ -502,7 +584,8 @@ BEGIN
     'public.inbound_lead_is_test(text,text)',
     'public.team_inbox_alert_types(text[])',
     'public.team_inbox_kind(text,text)',
-    'public.team_inbox_ticket_resolved(jsonb)'
+    'public.team_inbox_ticket_resolved(jsonb)',
+    'public.calendar_brand_is_test(uuid)'
   ] LOOP
     IF has_function_privilege('authenticated', v_fn, 'EXECUTE') OR has_function_privilege('anon', v_fn, 'EXECUTE') THEN
       RAISE EXCEPTION 'issue #4130 wave 4a: helper % is callable from the browser', v_fn;
