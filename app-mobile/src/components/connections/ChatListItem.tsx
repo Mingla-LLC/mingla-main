@@ -1,27 +1,56 @@
-import React, { useRef, useCallback, useState } from "react";
+/**
+ * Issue #4114 Wave 2a — one chat in the Chats list.
+ *
+ * A flat 72pt row (no card chrome): 52pt avatar, 12pt gap, 14pt side padding,
+ * a hairline from the text edge. Name 16/600 (700 when unread) with the time
+ * right-aligned on the same line; a one-line 14pt preview (white when unread);
+ * a 20pt unread badge that is orange, or grey when the chat is muted. One tag
+ * slot: "Event" (or the next event's date) for event and trip chats, and
+ * "Enquiry" reserved for #4111. No Pair button, no "Broadcast" label, no
+ * "Collab session" pill — the avatar shape says what kind of chat it is.
+ *
+ * Swipe left for Mute and Archive, swipe right for Pin and Mark unread
+ * (react-native-gesture-handler's Reanimated swipeable, the newer gesture API).
+ * Long-press opens the same actions in a sheet owned by the page.
+ */
+import React, { useCallback, useMemo, useRef } from "react";
 import {
+  AccessibilityActionEvent,
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
   Text,
   View,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  Animated,
-  Platform,
-  Image,
 } from "react-native";
-import { Swipeable } from "react-native-gesture-handler";
-import { useTranslation } from 'react-i18next';
+import ReanimatedSwipeable, {
+  type SwipeableMethods,
+} from "react-native-gesture-handler/ReanimatedSwipeable";
+import { useTranslation } from "react-i18next";
 import { Icon } from "../ui/Icon";
 import { Conversation } from "../../hooks/useMessages";
 import { getDisplayName } from "../../utils/getDisplayName";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
+import { glass } from "../../constants/designSystem";
+import { ChatAvatar } from "./ChatAvatar";
+import {
+  CHAT_ROW_GAP,
+  CHAT_ROW_HEIGHT,
+  CHAT_ROW_SIDE_PADDING,
+  CHAT_SEPARATOR_INSET,
+  chatKind,
+  formatChatListTime,
+  formatUpcomingEventTag,
+  isUnreadChat,
+  unreadBadge,
+} from "./chatListModel";
+
+const tk = glass.discover.chatList;
+const SWIPE_ACTION_WIDTH = 72;
 
 /**
- * ORCH-0898: extended Conversation shape with type + name + session_id so ChatListItem
- * can branch on direct vs group rendering. The base `Conversation` (from useMessages —
- * locked for ORCH-0900 scope) stays unchanged; the extra fields are optional and
- * populated by ConnectionsPage's transform layer for post-ORCH-0898 group conversations.
- * Direct conversations leave them undefined; ChatListItem renders the legacy direct path.
+ * ORCH-0898: extended Conversation shape with the group / event extras the
+ * ConnectionsPage transform passes through. Issue #4114 adds the member's
+ * private list state (pinned_at, marked_unread_at).
  */
 export type ChatListItemConversation = Conversation & {
   type?: 'direct' | 'group';
@@ -35,780 +64,419 @@ export type ChatListItemConversation = Conversation & {
   eventPublicCard?: BusinessEventCard | null;
   is_broadcast_only?: boolean;
   isPendingCreatorCollab?: boolean;
+  pinned_at?: string | null;
+  marked_unread_at?: string | null;
+  /** Reserved for #4111 enquiry threads: renders the Enquiry tag. */
+  isEnquiry?: boolean;
 };
 
-interface ChatListItemProps {
+export interface ChatListItemProps {
   conversation: ChatListItemConversation;
   currentUserId: string;
   onPress: (conversation: ChatListItemConversation) => void;
+  onLongPress?: (conversation: ChatListItemConversation) => void;
   isMuted?: boolean;
-  onAvatarPress?: (userId: string) => void;
-  /** ORCH-0435: Pair status for the other participant */
-  pairStatus?: 'paired' | 'pending' | 'unpaired' | 'not-friend';
-  /** ORCH-0435: Send pair request */
-  onPairPress?: (userId: string) => void;
-  /** ORCH-0435: Unpair */
-  onUnpairPress?: (userId: string) => void;
-  /** ORCH-0435: Loading state for pair request */
-  pairLoading?: boolean;
-  /** ORCH-0435: Cancel pending pair request */
-  onPendingPairPress?: (userId: string) => void;
-  /** ORCH-0435: Archive chat */
+  /** Direct chats only: mute / unmute the other person. */
+  onToggleMute?: (conversation: ChatListItemConversation) => void;
   onArchive?: (conversationId: string) => void;
-  /** ORCH-0435: Delete chat */
-  onDelete?: (conversationId: string) => void;
+  onTogglePin?: (conversation: ChatListItemConversation) => void;
+  onToggleUnread?: (conversation: ChatListItemConversation) => void;
   lifecycleBusy?: boolean;
+  /** Draw the hairline above this row (every row but the first in a section). */
+  showSeparator?: boolean;
 }
 
-/**
- * Format a timestamp into "seen X ago" string.
- */
-function formatRelativeTime(timestamp: string): string {
-  if (!timestamp) return "";
-  const date = new Date(timestamp);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const minutes = Math.floor(diffMs / 60000);
-  const hours = Math.floor(diffMs / 3600000);
-  const days = Math.floor(diffMs / 86400000);
-
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-/**
- * Get the initials from a name string (max 2 characters).
- */
-function getInitials(name: string): string {
-  if (!name) return "?";
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .substring(0, 2);
-}
-
-/**
- * Consistent orange avatar background for all users without profile pictures.
- */
-function getAvatarColor(_seed: string): string {
-  return "#eb7825";
-}
-
-function formatEventListDate(card?: BusinessEventCard | null): string | null {
-  const value = card?.masterDateUtc;
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function formatEventListCountdown(card?: BusinessEventCard | null): string | null {
-  const value = card?.masterDateUtc;
-  if (!value) return null;
-  const start = new Date(value);
-  if (Number.isNaN(start.getTime())) return null;
-
-  const now = new Date();
-  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const diffDays = Math.round((startDay.getTime() - today.getTime()) / 86400000);
-
-  if (diffDays < 0) return "Past";
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Tomorrow";
-  return `${diffDays}d out`;
-}
-
-export function ChatListItem({
+function ChatListItemImpl({
   conversation,
   currentUserId,
   onPress,
+  onLongPress,
   isMuted = false,
-  onAvatarPress,
-  pairStatus,
-  onPairPress,
-  onUnpairPress,
-  pairLoading,
-  onPendingPairPress,
+  onToggleMute,
   onArchive,
-  onDelete,
+  onTogglePin,
+  onToggleUnread,
   lifecycleBusy = false,
-}: ChatListItemProps) {
-  const { t } = useTranslation(['chat', 'common']);
+  showSeparator = false,
+}: ChatListItemProps): React.ReactElement {
+  const { t, i18n } = useTranslation(['connections', 'chat', 'common']);
+  const swipeRef = useRef<SwipeableMethods>(null);
 
-  // ORCH-0898: group vs direct branch. Group conversations have `type === 'group'` (passed
-  // through by ConnectionsPage transform from messagingService.getConversations server-shape).
-  // Direct conversations either omit `type` (legacy field) or have `type === 'direct'`.
+  const kind = chatKind(conversation);
   const isGroup = conversation.type === 'group';
-  const isTripEventGroup =
-    isGroup && (conversation.linked_entity_type === 'trip' || conversation.linked_entity_type === 'event');
-  const isCollaborationGroup = isGroup && !isTripEventGroup;
-  const isPendingCreatorCollab = Boolean(conversation.isPendingCreatorCollab);
-  const isBroadcastOnly = isTripEventGroup && conversation.is_broadcast_only === true;
-  const eventKind = conversation.linked_entity_type === 'trip' ? 'Trip' : 'Event';
+  const isEvent = kind === 'event';
+  const isPinned = Boolean(conversation.pinned_at);
+  const unread = isUnreadChat(conversation);
+  const badge = unreadBadge(conversation, isMuted);
 
-  // For direct conversations: find the other participant; for group conversations: collect
-  // up to 3 non-self participants for the multi-avatar stack.
-  const otherParticipant = conversation.participants.find(
-    (p) => p.id !== currentUserId,
-  );
-  const groupAvatarParticipants = isGroup
-    ? conversation.participants.filter((p) => p.id !== currentUserId).slice(0, 3)
-    : [];
+  const others = conversation.participants.filter((p) => p.id !== currentUserId);
+  const otherParticipant = others[0];
 
-  const displayName = isGroup
-    ? conversation.name?.trim() || 'Collaboration chat'
+  const rawName = isGroup
+    ? conversation.name?.trim() || t('connections:group_fallback_name')
     : getDisplayName(otherParticipant);
-
-  // Clean email-like names (direct path only — group names are user-set + don't contain emails).
-  const cleanedName = isGroup
-    ? displayName
-    : displayName.includes('@')
-      ? displayName.substring(0, displayName.indexOf('@')).trim()
-      : displayName;
+  const displayName = !isGroup && rawName.includes('@')
+    ? rawName.substring(0, rawName.indexOf('@')).trim()
+    : rawName;
 
   const lastMessage = conversation.last_message;
-  const unreadCount = conversation.unread_count || 0;
-  const hasUnread = unreadCount > 0 && !isMuted;
-  const eventDate = formatEventListDate(conversation.eventPublicCard);
-  const eventCountdown = formatEventListCountdown(conversation.eventPublicCard);
-  const eventDefaultPreview = [eventCountdown, eventDate].filter(Boolean).join(" · ");
-  const collaborationDefaultPreview =
-    isPendingCreatorCollab
-      ? "Waiting for at least one person to accept"
-      : conversation.participants.length > 1
-      ? `${conversation.participants.length} people planning together`
-      : "Collaboration space ready";
-  const directDefaultPreview = "Start the conversation";
-
-  // Message preview
-  let messagePreview = "";
-  if (lastMessage) {
-    if (lastMessage.message_type === "image") {
-      messagePreview = t('chat:photoPreview');
-    } else if (lastMessage.message_type === "file") {
-      messagePreview = t('chat:filePreview');
-    } else {
-      const content = lastMessage.content || "";
-      messagePreview =
-        content.length > 40 ? content.substring(0, 40) + "..." : content;
-    }
-  }
-  if (isGroup && messagePreview && lastMessage?.sender_name) {
-    const brandName = conversation.eventBrandName?.trim();
-    const brandSenderName =
-      isTripEventGroup &&
-      brandName &&
-      (
-        (lastMessage as any).marketing_campaign_id ||
-        (conversation.eventBrandAccountId && lastMessage.sender_id === conversation.eventBrandAccountId)
-      )
-        ? brandName
-        : null;
-    messagePreview = `${brandSenderName ?? lastMessage.sender_name}: ${messagePreview}`;
-  }
-  const fallbackPreview = isTripEventGroup
-    ? eventDefaultPreview || (isBroadcastOnly ? `${conversation.eventBrandName?.trim() || 'Organiser'} updates only` : `${eventKind} broadcast ready`)
-    : isCollaborationGroup
-      ? collaborationDefaultPreview
-      : directDefaultPreview;
-
-  const rowMetaLabel = isTripEventGroup
-    ? "Broadcast"
-    : isPendingCreatorCollab
-      ? "Pending"
-    : isCollaborationGroup
-      ? "Collab session"
-      : null;
-
-  // Timestamp
-  const timestamp = lastMessage?.created_at
-    ? formatRelativeTime(lastMessage.created_at)
-    : "";
-
-  const swipeableRef = useRef<Swipeable>(null);
-  const [isSwipeInteracting, setIsSwipeInteracting] = useState(false);
-
-  const hideTrailingChromeForSwipe = useCallback(() => {
-    setIsSwipeInteracting(true);
-  }, []);
-
-  const restoreTrailingChromeAfterSwipe = useCallback(() => {
-    setIsSwipeInteracting(false);
-  }, []);
-
-  const renderRightActions = useCallback(
-    (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
-      const translateArchive = dragX.interpolate({
-        inputRange: [-160, -80, 0],
-        outputRange: [0, 0, 80],
-        extrapolate: 'clamp',
-      });
-      const translateDelete = dragX.interpolate({
-        inputRange: [-160, -80, 0],
-        outputRange: [0, 0, 160],
-        extrapolate: 'clamp',
-      });
-      return (
-        <View style={styles.swipeActions}>
-          <Animated.View style={{ transform: [{ translateX: translateArchive }] }}>
-            <TouchableOpacity
-              style={styles.swipeArchive}
-              disabled={lifecycleBusy}
-              accessibilityState={{ disabled: lifecycleBusy, busy: lifecycleBusy }}
-              onPress={() => {
-                swipeableRef.current?.close();
-                onArchive?.(conversation.id);
-              }}
-            >
-              <Icon name="archive-outline" size={20} color="#ffffff" />
-              <Text style={styles.swipeActionText}>Archive</Text>
-            </TouchableOpacity>
-          </Animated.View>
-          <Animated.View style={{ transform: [{ translateX: translateDelete }] }}>
-            <TouchableOpacity
-              style={styles.swipeDelete}
-              disabled={lifecycleBusy}
-              accessibilityState={{ disabled: lifecycleBusy, busy: lifecycleBusy }}
-              onPress={() => {
-                swipeableRef.current?.close();
-                onDelete?.(conversation.id);
-              }}
-            >
-              {lifecycleBusy ? <ActivityIndicator color="#ffffff" /> : <Icon name={isGroup ? "exit-outline" : "trash-outline"} size={20} color="#ffffff" />}
-              <Text style={styles.swipeActionText}>{isGroup ? 'Leave' : 'Remove'}</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
-      );
-    },
-    [conversation.id, isGroup, lifecycleBusy, onArchive, onDelete],
+  const timeLabel = formatChatListTime(
+    lastMessage?.created_at,
+    new Date(),
+    i18n.language,
+    t('connections:time_yesterday'),
   );
 
+  const preview = useMemo(() => {
+    let text = '';
+    if (lastMessage) {
+      if (lastMessage.message_type === 'image') text = t('chat:photoPreview');
+      else if (lastMessage.message_type === 'file') text = t('chat:filePreview');
+      else text = (lastMessage.content || '').replace(/\s+/g, ' ').trim();
+    }
+    if (text && lastMessage) {
+      if (lastMessage.sender_id && lastMessage.sender_id === currentUserId) {
+        return t('connections:preview_you', { text });
+      }
+      if (isGroup && lastMessage.sender_name) {
+        const brandName = conversation.eventBrandName?.trim();
+        const fromBrand = isEvent && brandName && (
+          (lastMessage as { marketing_campaign_id?: string | null }).marketing_campaign_id ||
+          (conversation.eventBrandAccountId && lastMessage.sender_id === conversation.eventBrandAccountId)
+        );
+        return `${fromBrand ? brandName : lastMessage.sender_name}: ${text}`;
+      }
+      return text;
+    }
+    if (isEvent) return t('connections:preview_event_ready');
+    if (conversation.isPendingCreatorCollab) return t('connections:preview_pending_collab');
+    if (isGroup) {
+      return conversation.participants.length > 1
+        ? t('connections:preview_group_people', { count: conversation.participants.length })
+        : t('connections:preview_collab_ready');
+    }
+    return t('connections:preview_start');
+  }, [conversation, currentUserId, isEvent, isGroup, lastMessage, t]);
+
+  const tagLabel = isEvent
+    ? formatUpcomingEventTag(conversation.eventPublicCard?.masterDateUtc, new Date(), i18n.language)
+      ?? t('connections:tag_event')
+    : conversation.isEnquiry
+      ? t('connections:tag_enquiry')
+      : null;
+
+  const avatarPeople = (isGroup ? others : otherParticipant ? [otherParticipant] : []).slice(0, 2).map((p) => ({
+    id: p.id,
+    name: getDisplayName(p),
+    avatarUrl: p.avatar_url ?? null,
+  }));
+
+  const close = useCallback(() => swipeRef.current?.close(), []);
+
+  const runAction = useCallback((action: 'pin' | 'unread' | 'mute' | 'archive') => {
+    close();
+    if (action === 'pin') onTogglePin?.(conversation);
+    else if (action === 'unread') onToggleUnread?.(conversation);
+    else if (action === 'mute') onToggleMute?.(conversation);
+    else onArchive?.(conversation.id);
+  }, [close, conversation, onArchive, onToggleMute, onTogglePin, onToggleUnread]);
+
+  const renderLeftActions = useCallback(() => (
+    <View style={styles.swipeActions}>
+      <SwipeAction
+        icon={isPinned ? 'pin-off-outline' : 'pin-outline'}
+        label={isPinned ? t('connections:action_unpin') : t('connections:action_pin')}
+        color={tk.swipePin}
+        onPress={() => runAction('pin')}
+      />
+      <SwipeAction
+        icon={unread ? 'mail-open-outline' : 'mail-outline'}
+        label={unread ? t('connections:action_mark_read') : t('connections:action_mark_unread')}
+        color={tk.swipeUnread}
+        onPress={() => runAction('unread')}
+      />
+    </View>
+  ), [isPinned, runAction, t, unread]);
+
+  const renderRightActions = useCallback(() => (
+    <View style={styles.swipeActions}>
+      {!isGroup && onToggleMute ? (
+        <SwipeAction
+          icon={isMuted ? 'notifications-outline' : 'volume-mute'}
+          label={isMuted ? t('connections:action_unmute') : t('connections:action_mute')}
+          color={tk.swipeMute}
+          onPress={() => runAction('mute')}
+        />
+      ) : null}
+      <SwipeAction
+        icon="archive-outline"
+        label={t('connections:action_archive')}
+        color={tk.swipeArchive}
+        busy={lifecycleBusy}
+        onPress={() => runAction('archive')}
+      />
+    </View>
+  ), [isGroup, isMuted, lifecycleBusy, onToggleMute, runAction, t]);
+
+  const a11yParts = [
+    displayName,
+    isPinned ? t('connections:pinned_a11y') : null,
+    tagLabel,
+    badge.visible
+      ? badge.label
+        ? t('connections:unread_a11y', { count: conversation.unread_count ?? 0 })
+        : t('connections:marked_unread_a11y')
+      : null,
+    isMuted ? t('connections:muted_a11y') : null,
+    timeLabel,
+    preview,
+  ].filter(Boolean);
+
+  const accessibilityActions = [
+    { name: 'pin', label: isPinned ? t('connections:action_unpin') : t('connections:action_pin') },
+    { name: 'unread', label: unread ? t('connections:action_mark_read') : t('connections:action_mark_unread') },
+    ...(!isGroup && onToggleMute
+      ? [{ name: 'mute', label: isMuted ? t('connections:action_unmute') : t('connections:action_mute') }]
+      : []),
+    { name: 'archive', label: t('connections:action_archive') },
+    { name: 'longpress', label: t('connections:actions_more') },
+  ];
+
+  const onAccessibilityAction = (event: AccessibilityActionEvent): void => {
+    const name = event.nativeEvent.actionName;
+    if (name === 'longpress') onLongPress?.(conversation);
+    else if (name === 'pin' || name === 'unread' || name === 'mute' || name === 'archive') runAction(name);
+  };
+
   return (
-    <Swipeable
-      ref={swipeableRef}
+    <ReanimatedSwipeable
+      ref={swipeRef}
+      renderLeftActions={renderLeftActions}
       renderRightActions={renderRightActions}
+      overshootLeft={false}
       overshootRight={false}
       friction={2}
-      onSwipeableOpenStartDrag={hideTrailingChromeForSwipe}
-      onSwipeableWillOpen={hideTrailingChromeForSwipe}
-      onSwipeableClose={restoreTrailingChromeAfterSwipe}
+      leftThreshold={40}
+      rightThreshold={40}
     >
-      <TouchableOpacity
+      <Pressable
         onPress={() => onPress(conversation)}
-        style={[
-          styles.container,
-          isTripEventGroup && styles.eventContainer,
-          isPendingCreatorCollab && styles.pendingCollabContainer,
-          isCollaborationGroup && styles.collaborationContainer,
-          !isGroup && styles.directContainer,
-        ]}
-        activeOpacity={0.7}
+        onLongPress={onLongPress ? () => onLongPress(conversation) : undefined}
+        delayLongPress={350}
+        accessibilityRole="button"
+        accessibilityLabel={a11yParts.join(', ')}
+        accessibilityActions={accessibilityActions}
+        onAccessibilityAction={onAccessibilityAction}
+        style={({ pressed }) => [styles.row, pressed ? styles.rowPressed : null]}
+        testID={`chat-row-${conversation.id}`}
       >
-        <View style={styles.avatarColumn}>
-          {/* Avatar — ORCH-0898 branches on conversation.type */}
-          {isGroup ? (
-            // Group: multi-avatar stack (up to 3 participants in a layered fan).
-            // Tapping opens the conversation (no per-participant route for groups in v1).
-            <TouchableOpacity
-              style={styles.avatarContainer}
-              onPress={() => onPress(conversation)}
-              activeOpacity={0.7}
-              accessibilityLabel={t('chat:groupChatAvatarLabel', { defaultValue: 'Group chat with {{count}} people', count: conversation.participants.length })}
-            >
-              <View style={[styles.groupAvatarStack, isTripEventGroup && styles.eventGroupAvatarStack]}>
-                {conversation.eventCoverMediaUrl ? (
-                  <Image
-                    source={{ uri: conversation.eventCoverMediaUrl }}
-                    style={[styles.avatar, styles.groupCoverAvatar, styles.eventCoverAvatar]}
-                    resizeMode="cover"
-                  />
-                ) : groupAvatarParticipants.length === 0 ? (
-                  // Fallback: empty group (host hasn't accepted anyone yet) — single placeholder avatar.
-                  <View
-                    style={[
-                      styles.avatar,
-                      { backgroundColor: getAvatarColor(conversation.id) },
-                    ]}
-                  >
-                    <Text style={styles.avatarText}>{getInitials(cleanedName)}</Text>
-                  </View>
-                ) : (
-                  groupAvatarParticipants.map((p, idx) => (
-                    <View
-                      key={p.id}
-                      style={[
-                        styles.avatar,
-                        styles.groupAvatarSegment,
-                        {
-                          backgroundColor: getAvatarColor(p.id),
-                          // Layer offset — successive avatars shift right by half-width.
-                          left: idx * 14,
-                          zIndex: groupAvatarParticipants.length - idx,
-                        },
-                      ]}
-                    >
-                      {p.avatar_url ? (
-                        <Image
-                          source={{ uri: p.avatar_url }}
-                          style={styles.groupAvatarImage}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <Text style={styles.avatarText}>{getInitials(getDisplayName(p))}</Text>
-                      )}
-                    </View>
-                  ))
-                )}
-              </View>
-            </TouchableOpacity>
-          ) : (
-            // Direct: single avatar.
-            <TouchableOpacity
-              style={styles.avatarContainer}
-              onPress={() => {
-                if (onAvatarPress && otherParticipant?.id) {
-                  onAvatarPress(otherParticipant.id);
-                } else {
-                  onPress(conversation);
-                }
-              }}
-              activeOpacity={0.7}
-            >
-              {otherParticipant?.avatar_url ? (
-                <Image
-                  source={{ uri: otherParticipant.avatar_url }}
-                  style={[styles.avatar, styles.directAvatarImage]}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View
-                  style={[
-                    styles.avatar,
-                    {
-                      backgroundColor: getAvatarColor(
-                        otherParticipant?.id || conversation.id
-                      ),
-                    },
-                  ]}
-                >
-                  <Text style={styles.avatarText}>{getInitials(cleanedName)}</Text>
-                </View>
-              )}
-              {otherParticipant?.is_online && <View style={styles.onlineDot} />}
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Content */}
-        <View style={styles.content}>
-          <View style={styles.nameRow}>
-            <Text
-              style={[
-                styles.name,
-                isTripEventGroup && styles.eventName,
-                hasUnread && styles.nameBold,
-              ]}
-              numberOfLines={1}
-            >
-              {cleanedName}
+        {showSeparator ? <View style={styles.separator} /> : null}
+        <ChatAvatar
+          people={avatarPeople}
+          shape={isEvent ? 'square' : isGroup ? 'group' : 'circle'}
+          label={displayName}
+          coverUrl={isEvent ? conversation.eventCoverMediaUrl : null}
+          deckBadge={kind === 'group' || kind === 'direct_collab'}
+        />
+        <View style={styles.body}>
+          <View style={styles.line}>
+            <Text style={[styles.name, unread ? styles.nameUnread : null]} numberOfLines={1}>
+              {displayName}
             </Text>
-            {rowMetaLabel ? (
-              <View
-                style={[
-                  styles.rowTypePill,
-                  isTripEventGroup && styles.eventTypePill,
-                  isSwipeInteracting && styles.trailingRowElementHidden,
-                ]}
-              >
-                <Icon
-                  name={isTripEventGroup ? "megaphone" : "users"}
-                  size={11}
-                  color={isTripEventGroup ? "#ffffff" : "#f97316"}
-                />
-                <Text style={[styles.rowTypePillText, isTripEventGroup && styles.eventTypePillText]}>
-                  {rowMetaLabel}
+            {tagLabel ? (
+              <View style={[styles.tag, conversation.isEnquiry && !isEvent ? styles.tagEnquiry : styles.tagEvent]}>
+                <Text
+                  style={[styles.tagText, conversation.isEnquiry && !isEvent ? styles.tagTextEnquiry : null]}
+                  numberOfLines={1}
+                >
+                  {tagLabel}
                 </Text>
               </View>
             ) : null}
-            {isMuted && (
-              <Icon name="volume-mute" size={13} color="#9ca3af" style={styles.muteIcon} />
-            )}
-            {hasUnread && (
-              <View style={styles.unreadBadge}>
-                <Text style={styles.unreadText}>
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </Text>
-              </View>
-            )}
-          </View>
-          <Text
-            style={[
-              styles.preview,
-              isTripEventGroup && styles.eventPreview,
-              isCollaborationGroup && styles.collaborationPreview,
-              hasUnread && styles.previewBold,
-              isSwipeInteracting && styles.trailingRowElementHidden,
-            ]}
-            numberOfLines={1}
-          >
-            {messagePreview || fallbackPreview || t('chat:noMessagesYet')}
-          </Text>
-          {timestamp ? (
-            <Text style={[styles.seenAgo, isSwipeInteracting && styles.trailingRowElementHidden]}>
-              {timestamp}
+            {isPinned ? <Icon name="pin-outline" size={12} color={tk.faint} style={styles.lineIcon} /> : null}
+            <Text style={[styles.time, unread && !isMuted ? styles.timeUnread : null]} numberOfLines={1}>
+              {timeLabel}
             </Text>
-          ) : null}
+          </View>
+          <View style={styles.line}>
+            <Text style={[styles.preview, unread ? styles.previewUnread : null]} numberOfLines={1}>
+              {preview}
+            </Text>
+            {isMuted ? <Icon name="volume-mute" size={13} color={tk.faint} style={styles.lineIcon} /> : null}
+            {badge.visible ? (
+              <View
+                style={[
+                  styles.badge,
+                  badge.tone === 'muted' ? styles.badgeMuted : styles.badgeAccent,
+                  badge.label ? null : styles.badgeDot,
+                ]}
+                testID={`chat-row-badge-${badge.tone}`}
+              >
+                {badge.label ? <Text style={styles.badgeText} allowFontScaling={false}>{badge.label}</Text> : null}
+              </View>
+            ) : null}
+          </View>
         </View>
-
-        {/* Pair/Unpair button — centered in row (ORCH-0435).
-            ORCH-0898: HIDDEN for group conversations (pairing is a 1-on-1 social-graph concept). */}
-        {!isGroup && pairStatus === 'paired' && onUnpairPress && (
-          <TouchableOpacity
-            onPress={() => { if (otherParticipant?.id) onUnpairPress(otherParticipant.id); }}
-            style={[styles.unpairBtn, isSwipeInteracting && styles.trailingRowElementHidden]}
-            activeOpacity={0.7}
-          >
-            <Icon name="star" size={14} color="#10b981" />
-            <Text style={styles.unpairBtnText}>Unpair</Text>
-          </TouchableOpacity>
-        )}
-        {!isGroup && pairStatus === 'unpaired' && onPairPress && (
-          <TouchableOpacity
-            onPress={() => { if (otherParticipant?.id) onPairPress(otherParticipant.id); }}
-            disabled={pairLoading}
-            style={[styles.pairBtn, isSwipeInteracting && styles.trailingRowElementHidden]}
-            activeOpacity={0.7}
-          >
-            {pairLoading ? (
-              <ActivityIndicator size="small" color="#ffffff" />
-            ) : (
-              <>
-                <Icon name="star" size={14} color="#ffffff" />
-                <Text style={styles.pairBtnText}>Pair</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        )}
-        {!isGroup && pairStatus === 'pending' && (
-          <TouchableOpacity
-            style={[styles.pendingPairBadge, isSwipeInteracting && styles.trailingRowElementHidden]}
-            onPress={() => { if (otherParticipant?.id) onPendingPairPress?.(otherParticipant.id); }}
-            activeOpacity={0.7}
-          >
-            <Icon name="star" size={14} color="#9ca3af" />
-            <Text style={styles.pendingPairText}>Pending</Text>
-          </TouchableOpacity>
-        )}
-      </TouchableOpacity>
-    </Swipeable>
+      </Pressable>
+    </ReanimatedSwipeable>
   );
 }
 
+function SwipeAction({
+  icon,
+  label,
+  color,
+  busy = false,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  color: string;
+  busy?: boolean;
+  onPress: () => void;
+}): React.ReactElement {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={busy}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: busy, busy }}
+      style={[styles.swipeAction, { backgroundColor: color }]}
+    >
+      {busy ? <ActivityIndicator color="#FFFFFF" /> : <Icon name={icon} size={20} color="#FFFFFF" />}
+      <Text style={styles.swipeActionText} numberOfLines={1}>{label}</Text>
+    </Pressable>
+  );
+}
+
+export const ChatListItem = React.memo(ChatListItemImpl);
+
 const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 18,
-    marginHorizontal: 10,
-    marginVertical: 4,
-    minHeight: 100,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.075)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.10)',
-    // META-ORCH-1002 Sub-B (C6, dark-canvas): clip the translucent glass fill + border
-    // to the radius (kills the corner ring); zero the Android elevation so no hard
-    // shadow rectangle draws under the rounded row. iOS shadow + glass fill preserved.
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.12,
-        shadowRadius: 12,
-      },
-      android: {
-        backgroundColor: 'rgba(255, 255, 255, 0.09)',
-        elevation: 0,
-      },
-    }),
+  row: {
+    height: CHAT_ROW_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: CHAT_ROW_GAP,
+    paddingHorizontal: CHAT_ROW_SIDE_PADDING,
+    backgroundColor: glass.discover.screenBg,
   },
-  directContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.085)',
+  rowPressed: {
+    backgroundColor: tk.rowPressed,
   },
-  collaborationContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.07)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-  },
-  pendingCollabContainer: {
-    backgroundColor: 'rgba(249, 115, 22, 0.075)',
-    borderColor: 'rgba(249, 115, 22, 0.22)',
-  },
-  eventContainer: {
-    backgroundColor: 'rgba(249, 115, 22, 0.085)',
-    borderColor: 'rgba(249, 115, 22, 0.24)',
-  },
-  avatarColumn: {
-    width: 82,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
-    flexShrink: 0,
-  },
-  avatarContainer: {
-    position: "relative",
-  },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    color: "#ffffff",
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  // ORCH-0898: layered fan stack of up to 3 participant avatars for group conversations.
-  groupAvatarStack: {
-    width: 78, // accommodates 3 × 50px avatars with 14px overlap = 50 + 2*14 = 78
-    height: 50,
-    position: 'relative',
-  },
-  eventGroupAvatarStack: {
-    width: 56,
-    height: 56,
-  },
-  groupAvatarSegment: {
+  separator: {
     position: 'absolute',
     top: 0,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    borderWidth: 2,
-    borderColor: '#ffffff',
-    overflow: 'hidden',
-  },
-  groupAvatarImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 25,
-  },
-  groupCoverAvatar: {
-    borderWidth: 2,
-    borderColor: '#ffffff',
-    overflow: 'hidden',
-  },
-  eventCoverAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.88)',
-  },
-  directAvatarImage: {
-    borderWidth: 2,
-    borderColor: "#ffffff",
-  },
-  onlineDot: {
-    position: "absolute",
-    bottom: 0,
+    left: CHAT_SEPARATOR_INSET,
     right: 0,
-    width: 14,
-    height: 14,
-    backgroundColor: "#10b981",
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: "#ffffff",
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: tk.separator,
   },
-  content: {
+  body: {
     flex: 1,
-    justifyContent: "center",
+    minWidth: 0,
+    gap: 3,
+  },
+  line: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     minWidth: 0,
   },
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
   name: {
+    flexShrink: 1,
     fontSize: 16,
-    fontWeight: "700",
-    color: "#f8fafc",
-    flex: 1,
-    marginRight: 6,
+    fontWeight: '600',
+    color: tk.ink,
   },
-  eventName: {
-    fontWeight: "700",
-    color: "#fff7ed",
+  nameUnread: {
+    fontWeight: '700',
   },
-  nameBold: {
-    fontWeight: "700",
+  lineIcon: {
+    flexShrink: 0,
   },
-  rowTypePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    borderRadius: 999,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    backgroundColor: "rgba(255, 255, 255, 0.07)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    marginRight: 6,
-  },
-  eventTypePill: {
-    backgroundColor: "rgba(249, 115, 22, 0.14)",
-    borderColor: "rgba(249, 115, 22, 0.28)",
-  },
-  rowTypePillText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "rgba(255, 255, 255, 0.72)",
-    letterSpacing: 0,
-  },
-  eventTypePillText: {
-    color: "#fed7aa",
-  },
-  pairBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    backgroundColor: "#eb7825",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 14,
-    marginLeft: 8,
-  },
-  pairBtnText: {
+  time: {
+    marginLeft: 'auto',
+    flexShrink: 0,
     fontSize: 13,
-    fontWeight: "700",
-    color: "#ffffff",
+    color: tk.faint,
+    fontVariant: ['tabular-nums'],
   },
-  unpairBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    backgroundColor: "#f0fdf4",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#bbf7d0",
-    marginLeft: 8,
-  },
-  unpairBtnText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#10b981",
-  },
-  pendingPairBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    backgroundColor: "#f3f4f6",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 14,
-    marginLeft: 8,
-  },
-  pendingPairText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#9ca3af",
-  },
-  trailingRowElementHidden: {
-    opacity: 0,
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  muteIcon: {
-    marginRight: 4,
-  },
-  seenAgo: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "rgba(255, 255, 255, 0.36)",
-    marginTop: 2,
+  timeUnread: {
+    color: tk.accent,
+    fontWeight: '600',
   },
   preview: {
+    flex: 1,
+    minWidth: 0,
     fontSize: 14,
-    color: "rgba(255, 255, 255, 0.56)",
-    lineHeight: 18,
+    color: tk.dim,
   },
-  eventPreview: {
-    color: "#fdba74",
-    fontWeight: "600",
+  previewUnread: {
+    color: tk.ink,
   },
-  collaborationPreview: {
-    color: "rgba(255, 255, 255, 0.58)",
-  },
-  previewBold: {
-    fontWeight: "600",
-    color: "#f8fafc",
-  },
-  unreadBadge: {
+  badge: {
+    flexShrink: 0,
     minWidth: 20,
     height: 20,
-    backgroundColor: "#eb7825",
     borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
     paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  unreadText: {
-    fontSize: 11,
-    color: "#ffffff",
-    fontWeight: "700",
+  badgeAccent: {
+    backgroundColor: tk.accent,
   },
-  // Swipe actions
+  badgeMuted: {
+    backgroundColor: tk.badgeMutedBg,
+  },
+  badgeDot: {
+    minWidth: 12,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    paddingHorizontal: 0,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  tag: {
+    flexShrink: 0,
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  tagEvent: {
+    backgroundColor: tk.eventTagBg,
+  },
+  tagEnquiry: {
+    backgroundColor: tk.enquiryTagBg,
+  },
+  tagText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    color: tk.eventTagLabel,
+  },
+  tagTextEnquiry: {
+    color: tk.dim,
+  },
   swipeActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 4,
-    marginRight: 12,
+    flexDirection: 'row',
+    height: CHAT_ROW_HEIGHT,
   },
-  swipeArchive: {
-    backgroundColor: "#6366f1",
-    justifyContent: "center",
-    alignItems: "center",
-    width: 72,
-    height: "100%",
-    borderTopLeftRadius: 12,
-    borderBottomLeftRadius: 12,
-    gap: 4,
-  },
-  swipeDelete: {
-    backgroundColor: "#ef4444",
-    justifyContent: "center",
-    alignItems: "center",
-    width: 72,
-    height: "100%",
-    borderTopRightRadius: 12,
-    borderBottomRightRadius: 12,
+  swipeAction: {
+    width: SWIPE_ACTION_WIDTH,
+    height: CHAT_ROW_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 4,
   },
   swipeActionText: {
     fontSize: 11,
-    fontWeight: "600",
-    color: "#ffffff",
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

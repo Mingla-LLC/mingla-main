@@ -819,9 +819,24 @@ export class MessagingService {
       if (conversationsResult.error) throw conversationsResult.error;
       if (unreadResult.error) throw unreadResult.error;
 
+      // Issue #4114: the access RPC also carries this member's private pin and
+      // mark-unread state (conversation_participant_lifecycle), so the list gets
+      // them with no extra round trip.
+      type AccessRow = {
+        conversation_id: string;
+        archived_at: string | null;
+        pinned_at?: string | null;
+        marked_unread_at?: string | null;
+      };
+      const accessRows = (accessResult.data ?? []) as AccessRow[];
       const accessByConversation = new Map(
-        ((accessResult.data ?? []) as Array<{ conversation_id: string; archived_at: string | null }>)
-          .map((row) => [row.conversation_id, row.archived_at]),
+        accessRows.map((row) => [row.conversation_id, row.archived_at]),
+      );
+      const listStateByConversation = new Map(
+        accessRows.map((row) => [
+          row.conversation_id,
+          { pinned_at: row.pinned_at ?? null, marked_unread_at: row.marked_unread_at ?? null },
+        ]),
       );
 
       const unreadByConv = new Map<string, number>();
@@ -893,7 +908,9 @@ export class MessagingService {
           last_message: lastMessage,
           unread_count: unreadByConv.get(conv.id) || 0,
           archived_at: accessByConversation.get(conv.id) ?? null,
-        } as Conversation & { archived_at: string | null });
+          pinned_at: listStateByConversation.get(conv.id)?.pinned_at ?? null,
+          marked_unread_at: listStateByConversation.get(conv.id)?.marked_unread_at ?? null,
+        } as Conversation & { archived_at: string | null; pinned_at: string | null; marked_unread_at: string | null });
       }
 
       return { conversations, error: null };
@@ -1305,6 +1322,34 @@ export class MessagingService {
     } catch (error: any) {
       console.error('Error updating conversation lifecycle:', error);
       return { error: error.message };
+    }
+  }
+
+  /**
+   * Issue #4114: this member's private list state for one chat — pin, unpin,
+   * mark unread, mark read. The server refuses a 4th pin with
+   * `pin_limit_reached`; that code is returned as the error so the caller can
+   * explain it.
+   */
+  async setConversationListState(
+    conversationId: string,
+    action: 'pin' | 'unpin' | 'mark_unread' | 'mark_read',
+  ): Promise<{ error: string | null; pinLimitReached: boolean }> {
+    try {
+      const { error } = await supabase.rpc('set_conversation_list_state', {
+        p_conversation_id: conversationId,
+        p_action: action,
+      });
+      if (error) {
+        if (error.message?.includes('pin_limit_reached')) {
+          return { error: 'pin_limit_reached', pinLimitReached: true };
+        }
+        throw error;
+      }
+      return { error: null, pinLimitReached: false };
+    } catch (error: any) {
+      console.error('Error updating conversation list state:', error);
+      return { error: error?.message ?? 'unknown_error', pinLimitReached: false };
     }
   }
 

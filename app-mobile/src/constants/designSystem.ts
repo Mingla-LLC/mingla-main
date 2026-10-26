@@ -964,6 +964,44 @@ export const glass = {
       actionPaddingHorizontal: 20,
     },
 
+    // Issue #4114 Wave 2a — the Chats list (design contract "The chat list").
+    // Flat 72pt rows on the dark discover canvas; geometry lives in
+    // components/connections/chatListModel.ts so the tab-switch skeleton
+    // stays in lockstep with the real rows.
+    chatList: {
+      ink: '#F8FAFC',
+      dim: 'rgba(255, 255, 255, 0.56)',
+      faint: 'rgba(255, 255, 255, 0.36)',
+      accent: '#EB7825',
+      separator: 'rgba(255, 255, 255, 0.07)',
+      rowPressed: 'rgba(255, 255, 255, 0.04)',
+      headerButtonBg: 'rgba(255, 255, 255, 0.075)',
+      headerButtonBorder: 'rgba(255, 255, 255, 0.10)',
+      searchBg: 'rgba(255, 255, 255, 0.08)',
+      chipBg: 'rgba(255, 255, 255, 0.08)',
+      chipActiveBg: '#F8FAFC',
+      chipActiveLabel: 'rgba(12, 14, 18, 1)',
+      badgeMutedBg: 'rgba(255, 255, 255, 0.22)',
+      avatarFallbackBg: 'rgba(235, 120, 37, 0.85)',
+      avatarRing: 'rgba(12, 14, 18, 1)',
+      eventTagBg: 'rgba(99, 102, 241, 0.22)',
+      eventTagLabel: '#C7D2FE',
+      enquiryTagBg: 'rgba(255, 255, 255, 0.12)',
+      sectionLabel: 'rgba(255, 255, 255, 0.36)',
+      offlineBarBg: 'rgba(255, 255, 255, 0.06)',
+      errorLabel: '#FCA5A5',
+      swipeMute: '#475569',
+      swipeArchive: '#6366F1',
+      swipePin: '#EB7825',
+      swipeUnread: '#0EA5E9',
+      skeletonBlock: 'rgba(255, 255, 255, 0.055)',
+      skeletonBlockStrong: 'rgba(255, 255, 255, 0.075)',
+      sheetRowBg: 'rgba(255, 255, 255, 0.06)',
+      plusBadgeBg: 'rgba(245, 158, 11, 0.18)',
+      plusBadgeLabel: '#FBBF24',
+      destructive: '#F87171',
+    },
+
     motion: {
       stickyHeaderFadeMs: 180,
       chipPressDurationMs: 120,
