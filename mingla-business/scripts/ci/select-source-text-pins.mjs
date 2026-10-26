@@ -9,8 +9,9 @@
  *   QUARANTINE_SAFE   — pure source-text pins (readFileSync + every expect on a
  *                       source-derived value, no render, no behavioral exec).
  *                       Safe to exclude from the default jest config: they guard
- *                       nothing behavioral. The file stays in the repo (never
- *                       deleted — `tests-append-only.yml` makes deletion absolute).
+ *                       nothing behavioral. The file was kept in the repo while
+ *                       `tests-append-only.yml` made deletion absolute; that gate
+ *                       was retired toward #3643, so a pin may now be deleted.
  *   INVARIANT_CONVERT — source-text pins that DO encode a load-bearing rule. Each
  *                       is re-pinned by an additive strict-grep .mjs gate (that
  *                       actually runs in CI) BEFORE its jest pin is quarantined,
@@ -248,7 +249,7 @@ function isBizTest(p) {
 }
 
 function assertNoNewSourcePin(baseRef) {
-  // Resolve the base ref best-effort (mirrors test-append-only-check.js).
+  // Resolve the base ref best-effort.
   let base = baseRef;
   const REPO_ROOT = path.resolve(BIZ_ROOT, "..");
   const git = (args) => execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8" });

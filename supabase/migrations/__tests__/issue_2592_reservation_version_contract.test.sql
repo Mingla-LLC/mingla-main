@@ -113,7 +113,8 @@ BEGIN
 
   -- The canonical venue-keyed create RPC owns every required column.
   v_res := public.biz_reservation_create(
-    v_venue, now() + interval '2 hours', 2, 'phone', 'Issue 2592 Guest'
+    v_venue, now() + interval '2 hours', 2, 'phone', 'Issue 2592 Guest',
+    '+15552592001'
   );
   IF v_res.version IS NULL OR v_res.version < 1 THEN
     RAISE EXCEPTION 'issue_2592_new_reservation_has_no_version:%', v_res.version;
