@@ -282,6 +282,10 @@ const AUTH_SCOPED_HOOK_FILES = [
   // through an auth.uid()-scoped RPC. A pre-auth read must not be cached as a
   // missing or zero refund preview.
   "useRefundPreview.ts",
+  // #4111 — the host's customer enquiries come from auth.uid()-scoped RPCs
+  // (team members of the enquiry's brand). A pre-auth read would cache an
+  // empty inbox and a zero Messages badge; it folds isAuthReady into enabled.
+  "useBrandEnquiries.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads

@@ -52,6 +52,8 @@ import { useBrandPayoutScreen } from "./useBrandPayoutScreen";
 import { formatCurrency } from "../utils/currency";
 import { useCurrentBrandRole } from "./useCurrentBrandRole";
 import { canViewBrandPayments } from "../utils/brandPaymentsPermission";
+import { useBrandEnquiries } from "./useBrandEnquiries";
+import { brandEnquiryTodos } from "../utils/brandEnquiryDisplay";
 
 export function useBusinessTodos(): BusinessTodo[] {
   const { user, isAuthReady } = useAuth();
@@ -317,10 +319,19 @@ export function useBusinessTodos(): BusinessTodo[] {
     return undefined;
   }, [payoutScreen.data]);
 
+  // #4111 D4 — one "Reply to {name}" row per enquiry waiting on the team.
+  const enquiries = useBrandEnquiries("open", { enabled: isAuthReady === true });
+  const enquiryItems = enquiries.data?.items;
+  const enquiryTodos = useMemo(
+    () => brandEnquiryTodos(enquiryItems ?? []),
+    [enquiryItems],
+  );
+
   return useMemo(
     () =>
       buildBusinessTodos({
         pendingInvites,
+        enquiryTodos,
         hasNoBrands,
         hasBrandsButNoSelection,
         brandResolving: isBrandResolving,
@@ -361,6 +372,7 @@ export function useBusinessTodos(): BusinessTodo[] {
     [
       profile,
       pendingInvites,
+      enquiryTodos,
       hasNoBrands,
       hasBrandsButNoSelection,
       isBrandResolving,

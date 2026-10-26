@@ -237,6 +237,11 @@ export type Brand = {
    */
   displayAttendeeCount?: boolean;
   /**
+   * #4111 — `brands.enquiries_enabled` ("Let guests message us"). Undefined
+   * when the row was read without the column; the database default is on.
+   */
+  enquiriesEnabled?: boolean;
+  /**
    * Stripe Connect status. NEW in J-A10 schema v8. Undefined treated as
    * `"not_connected"` at read sites — drives the J-A7 banner + payments
    * dashboard banner variant.

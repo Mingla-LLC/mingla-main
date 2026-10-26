@@ -22,10 +22,11 @@
  * overrides per ORCH-BIZ-0a-D2 (Path D — full premium).
  */
 
-import React, { useState } from "react";
+import React, { useContext, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useRouter } from "expo-router";
+import { QueryClientContext } from "@tanstack/react-query";
 
 import {
   glass,
@@ -43,6 +44,8 @@ import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useAuth } from "../../context/AuthContext";
 import { useBusinessNotificationsInbox } from "../../hooks/useBusinessNotifications";
 import { useBrandGroups } from "../../hooks/useBrandGroups";
+import { useBrandEnquiries } from "../../hooks/useBrandEnquiries";
+import { messagesBadgeCount } from "../../utils/brandEnquiryDisplay";
 
 import { GlassChrome } from "./GlassChrome";
 import { Icon } from "./Icon";
@@ -130,6 +133,38 @@ const truncate = (value: string, max: number): string =>
  * one flex row. The wrapping `<View style={styles.rightCluster}>` lives
  * in the TopBar render branch below.
  */
+/** Stands in when a test replaces react-query without its context. */
+const NO_QUERY_CLIENT = React.createContext<undefined>(undefined);
+
+const MessagesButton: React.FC<{ unread: number }> = ({ unread }) => {
+  const router = useRouter();
+  return (
+    <IconChrome
+      icon="chat"
+      size={36}
+      badge={unread}
+      badgeCap={9}
+      accessibilityLabel={unread > 0 ? `Messages, ${unread} unread` : "Messages"}
+      onPress={() => router.push("/messages" as never)}
+    />
+  );
+};
+
+/**
+ * #4111 D4 — the speech bubble also counts customer enquiries waiting on the
+ * team (new|waiting). Enquiry cards in Brand groups are never unread.
+ */
+const EnquiryAwareMessagesButton: React.FC<{ groupUnread: number }> = ({
+  groupUnread,
+}) => {
+  const enquiries = useBrandEnquiries("open");
+  return (
+    <MessagesButton
+      unread={messagesBadgeCount(groupUnread, enquiries.data?.counts)}
+    />
+  );
+};
+
 const DefaultRightSlotInner: React.FC<{ unreadCount: number | undefined }> = ({
   unreadCount,
 }) => {
@@ -142,18 +177,20 @@ const DefaultRightSlotInner: React.FC<{ unreadCount: number | undefined }> = ({
   const { unreadCount: derivedUnread } = useBusinessNotificationsInbox(
     user?.id ?? null,
   );
-  const { unreadCount: messageUnread } = useBrandGroups();
+  const { unreadCount: groupUnread } = useBrandGroups();
+  // #4111 D4 — the enquiry count needs the app's query client. The top bar is
+  // also mounted without one (isolated renders); then it counts Brand groups
+  // only instead of crashing.
+  const hasQueryClient =
+    useContext(QueryClientContext ?? NO_QUERY_CLIENT) !== undefined;
   const badge = unreadCount ?? derivedUnread;
   return (
     <>
-      <IconChrome
-        icon="chat"
-        size={36}
-        badge={messageUnread}
-        badgeCap={9}
-        accessibilityLabel={messageUnread > 0 ? `Messages, ${messageUnread} unread` : "Messages"}
-        onPress={() => router.push("/messages" as never)}
-      />
+      {hasQueryClient ? (
+        <EnquiryAwareMessagesButton groupUnread={groupUnread} />
+      ) : (
+        <MessagesButton unread={groupUnread} />
+      )}
       {/* META-ORCH-1074 Sub-C: the bell opens the notifications inbox route.
           Badge caps at 9+ (operator noise reduction; other call-sites keep 99). */}
       <IconChrome
