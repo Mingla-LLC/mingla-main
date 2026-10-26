@@ -80,7 +80,8 @@ BEGIN
     -- while pending/other outcomes retain acknowledgement delivery.
     ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'c043d726559b59db1ea641ff4b5503de'),
     ('public.issue_1388_create_stay_group(uuid,text,jsonb,bigint,uuid)', 'eec5f6a9750eb113d3c75c027455a704'),
-    ('public.biz_reservation_create(uuid,timestamp with time zone,integer,text,text,text,text,uuid,text,text,text[],text)', '49ffd0c7006d839ca41fbcf0a082d643'),
+    -- #4063 M9 last-writes this function so every direct host booking has a phone.
+    ('public.biz_reservation_create(uuid,timestamp with time zone,integer,text,text,text,text,uuid,text,text,text[],text)', '0ba36254ae1120c8fcb981cfa336cc60'),
     ('public.pg_create_guest_reservation(uuid,timestamp with time zone,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)', '97adc49789e7e254744ff9b60efbe9ba'),
     ('public.pg_finalize_guest_reservation(uuid,text)', '51b79bcbec509bfd5f3a115f87af472d'),
     -- 20270327001773_issue_1773_reservation_stay_ingest.sql is the legitimate current last writer of these two definitions.
