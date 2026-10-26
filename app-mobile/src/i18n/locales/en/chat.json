@@ -17,6 +17,7 @@
   "unknownSize": "Unknown size",
   "failed": "Failed",
   "failedTapToRetry": "Not sent. Tap to retry",
+  "failedDailyLimit": "Not sent · daily photo and video limit reached",
   "loadingOlderMessages": "Loading older messages",
   "olderMessagesFailed": "Couldn't load older messages. Scroll up to try again.",
   "youSaid": "You said: {{content}}, {{time}}",

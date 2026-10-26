@@ -37,7 +37,8 @@ import {
   buildChatThumbPath,
   shouldMakeThumbnail,
   thumbResize,
-  wouldExceedDailyLimit,
+  isOverDailyQuota,
+  type ChatMediaQuota,
   ChatUploadCancelRegistry,
   SignedUrlCache,
   buildChatAttachmentPath,
@@ -240,7 +241,7 @@ export async function makeChatThumbnail(item: PreparedChatMedia, viewOnce: boole
  * Wave 7 (D17): what the signed-in person uploaded in the last 24 hours. Null
  * when it cannot be read (storage still enforces the allowance).
  */
-export async function readChatMediaQuota(): Promise<{ usedBytes: number; limitBytes: number } | null> {
+export async function readChatMediaQuota(): Promise<ChatMediaQuota | null> {
   const { data, error } = await supabase.rpc('issue_4114_chat_media_quota');
   if (error) {
     console.warn('[chatMediaUpload] allowance read failed', { code: error.code });
@@ -278,8 +279,7 @@ export async function uploadChatMedia(args: UploadChatMediaArgs): Promise<Upload
   if (uploads.takeCancelledBeforeStart(clientId)) throw new ChatMediaUploadError('cancelled');
 
   // Wave 7 (D17): refuse before any bytes move when this would pass today's allowance.
-  const quota = await readChatMediaQuota();
-  if (quota && wouldExceedDailyLimit(quota.usedBytes, size)) throw new ChatMediaUploadError('daily_limit');
+  if (isOverDailyQuota(await readChatMediaQuota(), size)) throw new ChatMediaUploadError('daily_limit');
 
   const objectUrl = `${supabaseUrl}/storage/v1/object/${CHAT_MEDIA_BUCKET}/${path}`;
   const task = FileSystem.createUploadTask(
@@ -309,6 +309,9 @@ export async function uploadChatMedia(args: UploadChatMediaArgs): Promise<Upload
   } catch (error) {
     uploads.settle(clientId, false);
     if (entry.cancelled) throw new ChatMediaUploadError('cancelled');
+    // QA run 2: any failure asks the allowance, so a refusal that surfaced as
+    // a dropped or generic response still says "today's limit".
+    if (isOverDailyQuota(await readChatMediaQuota(), size)) throw new ChatMediaUploadError('daily_limit');
     throw new ChatMediaUploadError('network', error instanceof Error ? error.message : String(error));
   }
   const outcome = response ? classifyUploadResponse(response.status, response.body ?? '') : null;
@@ -331,9 +334,9 @@ export async function uploadChatMedia(args: UploadChatMediaArgs): Promise<Upload
   if (outcome === 'refused_type') throw new ChatMediaUploadError('refused_type');
   if (outcome === 'refused_size') throw new ChatMediaUploadError('refused_size');
   if (outcome === 'daily_limit') throw new ChatMediaUploadError('daily_limit');
-  // Storage may wrap the allowance refusal in a generic error: ask the allowance.
-  const after = await readChatMediaQuota();
-  if (after && wouldExceedDailyLimit(after.usedBytes, size)) throw new ChatMediaUploadError('daily_limit');
+  // Storage may wrap the allowance refusal in a generic 500: ask the allowance,
+  // with the server's own limit (QA run 2: the hardcoded 200 MB missed it).
+  if (isOverDailyQuota(await readChatMediaQuota(), size)) throw new ChatMediaUploadError('daily_limit');
   throw new ChatMediaUploadError('failed', `upload_status_${response.status}`);
 }
 

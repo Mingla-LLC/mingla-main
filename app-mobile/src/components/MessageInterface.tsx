@@ -225,6 +225,11 @@ interface Message {
   isMe: boolean;
   unread?: boolean;
   failed?: boolean;
+  /**
+   * Issue #4114 QA run 2: why a failed send cannot be retried. "daily_limit"
+   * is today's photo and video allowance: the bubble says so and offers no retry.
+   */
+  failedReason?: "daily_limit";
   isRead?: boolean;
   replyToId?: string;
   marketingCampaignId?: string | null;
@@ -2191,6 +2196,7 @@ export default function MessageInterface({
           marketingCampaignId: message.marketingCampaignId,
           isMe: message.isMe,
           failed: message.failed,
+          failedReason: message.failedReason,
           isSystem: message.isSystem,
           systemPayload: message.systemPayload,
           // Issue #4114 Wave 4: the sender's own file while it is local, upload
@@ -2553,9 +2559,9 @@ export default function MessageInterface({
             activeOpacity={1}
             // Issue #4114: a failed bubble is tap-to-retry (whole bubble, so it
             // also works for screen readers, which focus this wrapper).
-            accessibilityHint={item.message.failed && onRetryMessage ? t('chat:failedTapToRetry') : undefined}
+            accessibilityHint={item.message.failed && !item.message.failedReason && onRetryMessage ? t('chat:failedTapToRetry') : undefined}
             onPress={() => {
-              if (item.message.failed && onRetryMessage) {
+              if (item.message.failed && !item.message.failedReason && onRetryMessage) {
                 onRetryMessage(item.message.id);
                 return;
               }
@@ -2572,7 +2578,7 @@ export default function MessageInterface({
               onSystemTokenPress={handleSystemTokenPress}
               isMe={item.message.isMe}
               groupPosition={item.groupPosition}
-              onRetry={item.message.failed && onRetryMessage ? () => onRetryMessage(item.message.id) : undefined}
+              onRetry={item.message.failed && !item.message.failedReason && onRetryMessage ? () => onRetryMessage(item.message.id) : undefined}
               showTimestamp={revealedTimestampId === item.message.id}
               isRead={item.isRead}
               replyTo={item.replyTo}

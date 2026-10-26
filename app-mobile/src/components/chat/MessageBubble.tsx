@@ -43,6 +43,8 @@ interface MessageData {
   marketingCampaignId?: string | null;
   isMe: boolean;
   failed?: boolean;
+  /** Issue #4114 QA run 2: a failed send that a retry cannot fix (today's media limit). */
+  failedReason?: 'daily_limit';
   // ORCH-0898: set true when the upstream message has sender_id === null (e.g., ORCH-0899
   // "Plan another outing" round-start announcements). Renders as a centered muted system
   // row with no chrome (no reactions, no replies, no swipe actions). The data-transform
@@ -934,7 +936,11 @@ function MessageBubbleImpl({
       {/* Issue #4114: every failed send says so and offers tap-to-retry,
           wherever it sits in its group. */}
       {isMe && isFailed && (
-        onRetry ? (
+        message.failedReason === 'daily_limit' ? (
+          <View style={styles.readReceiptContainer} accessible accessibilityLabel={t('chat:failedDailyLimit')}>
+            <Text style={styles.failedText}>{t('chat:failedDailyLimit')}</Text>
+          </View>
+        ) : onRetry ? (
           <TouchableOpacity
             style={styles.readReceiptContainer}
             onPress={onRetry}

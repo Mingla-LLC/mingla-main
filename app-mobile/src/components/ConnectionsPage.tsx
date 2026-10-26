@@ -3168,9 +3168,9 @@ function ConnectionsPageRefactored({
     // The latest local copy: after a media upload it carries the storage path,
     // so a failed send keeps it and Retry does not upload again.
     let current: Message = pending;
-    const markFailed = () => {
+    const markFailed = (failedReason?: "daily_limit") => {
       // Ignored by the merge if the server already confirmed this client id.
-      writeConversationMessages(conversationId, [{ ...current, failed: true }]);
+      writeConversationMessages(conversationId, [{ ...current, failed: true, failedReason }]);
     };
 
     try {
@@ -3213,8 +3213,10 @@ function ConnectionsPageRefactored({
             return;
           }
           console.error("[ConnectionsPage] Media upload failed:", uploadError);
-          markFailed();
           const code = uploadError instanceof ChatMediaUploadError ? uploadError.code : "failed";
+          // QA run 2: today's limit is not retryable, so its bubble says so
+          // instead of "Tap to retry".
+          markFailed(code === "daily_limit" ? "daily_limit" : undefined);
           // Issue #4114 QA (P3): a retryable upload failure shows only the
           // bubble's "Tap to retry"; a refusal that a retry cannot fix toasts.
           if (code === "refused_type" || code === "refused_size" || code === "daily_limit") {
@@ -3373,6 +3375,7 @@ function ConnectionsPageRefactored({
       (msg) => msg.id === messageId
     );
     if (!failedMessage || failedMessage.failed !== true || !isLocalMessage(failedMessage)) return;
+    if (failedMessage.failedReason === "daily_limit") return; // a retry cannot fix today's limit
     if (activeChatIsBlocked || (activeChat && blockedUsers.some((b) => b.id === activeChat.id))) {
       Alert.alert(
         t('connections:message_not_sent'),

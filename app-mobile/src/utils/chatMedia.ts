@@ -38,7 +38,11 @@ export const SIGNED_URL_SECONDS = 7 * 24 * 60 * 60;
 /** Wave 7: the bubble thumbnail's longer edge, and its JPEG quality (about 40–60 KB). */
 export const THUMB_MAX_EDGE = 480;
 export const THUMB_JPEG_QUALITY = 0.7;
-/** Wave 7 (D17): chat photos and videos one person may upload per 24 hours. */
+/**
+ * Wave 7 (D17): chat photos and videos one person may upload per 24 hours.
+ * QA run 2: only a FALLBACK — the app reads the real limit from the server's
+ * `issue_4114_chat_media_quota()` and uses this only when that read fails.
+ */
 export const DAILY_CHAT_MEDIA_BYTES = 200 * 1024 * 1024;
 /** Wave 7: the storage error text of the daily allowance trigger. */
 export const DAILY_LIMIT_ERROR = 'chat_media_daily_limit';
@@ -212,10 +216,29 @@ export function shouldMakeThumbnail(kind: ChatMediaKind, viewOnce: boolean): boo
   return !viewOnce && (kind === 'image' || kind === 'video');
 }
 
-/** Wave 7: would this upload take the person past today's allowance? */
-export function wouldExceedDailyLimit(usedBytes: number, nextBytes: number | null | undefined): boolean {
+/**
+ * Wave 7: would this upload take the person past today's allowance? The limit
+ * is the server's (QA run 2); the 200 MB constant is only the fallback.
+ */
+export function wouldExceedDailyLimit(
+  usedBytes: number,
+  nextBytes: number | null | undefined,
+  limitBytes: number = DAILY_CHAT_MEDIA_BYTES,
+): boolean {
   const next = typeof nextBytes === 'number' && Number.isFinite(nextBytes) ? Math.max(0, nextBytes) : 0;
-  return usedBytes >= DAILY_CHAT_MEDIA_BYTES || usedBytes + next > DAILY_CHAT_MEDIA_BYTES;
+  const limit = Number.isFinite(limitBytes) && limitBytes > 0 ? limitBytes : DAILY_CHAT_MEDIA_BYTES;
+  return usedBytes >= limit || usedBytes + next > limit;
+}
+
+/** What `issue_4114_chat_media_quota()` returned (null when it could not be read). */
+export interface ChatMediaQuota {
+  usedBytes: number;
+  limitBytes: number;
+}
+
+/** QA run 2: the server's allowance says this upload is (or was) over today's limit. */
+export function isOverDailyQuota(quota: ChatMediaQuota | null, nextBytes: number | null | undefined): boolean {
+  return quota !== null && wouldExceedDailyLimit(quota.usedBytes, nextBytes, quota.limitBytes);
 }
 
 /** A message `file_url` that is an object path in the private bucket (Wave 4+). */

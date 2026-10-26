@@ -57,6 +57,11 @@ export interface Message {
   isMe: boolean;
   unread?: boolean;
   failed?: boolean;
+  /**
+   * Issue #4114 QA run 2: why a failed send cannot be retried. "daily_limit"
+   * is today's photo and video allowance: the bubble says so and offers no retry.
+   */
+  failedReason?: "daily_limit";
   isRead?: boolean;
   replyToId?: string;
   marketingCampaignId?: string | null;
