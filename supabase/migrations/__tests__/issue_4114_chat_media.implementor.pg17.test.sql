@@ -67,7 +67,7 @@ BEGIN
     SELECT v_conv, id, now() - interval '30 days' FROM t4114m_ids WHERE tag IN ('sender', 'friend');
   INSERT INTO t4114m_ids VALUES ('dm', v_conv);
 
-  INSERT INTO public.conversations(type, created_by) VALUES ('group', v_sender) RETURNING id INTO v_group;
+  INSERT INTO public.conversations(type, created_by, name) VALUES ('group', v_sender, 'T4114 media group') RETURNING id INTO v_group;
   INSERT INTO public.conversation_participants(conversation_id, user_id, joined_at)
     SELECT v_group, id, now() - interval '30 days' FROM t4114m_ids WHERE tag IN ('sender', 'friend', 'third');
   INSERT INTO t4114m_ids VALUES ('group', v_group);
