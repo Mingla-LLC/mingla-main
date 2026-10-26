@@ -890,7 +890,7 @@ BEGIN
       gen_random_uuid()
     );
     RAISE EXCEPTION 'H-8 FAIL: scarce Place oversold';
-  EXCEPTION WHEN serialization_failure THEN
+  EXCEPTION WHEN sqlstate 'PT409' THEN
     IF SQLERRM NOT LIKE '%stay_inventory_changed%' THEN
       RAISE;
     END IF;
@@ -928,7 +928,7 @@ BEGIN
       gen_random_uuid()
     );
     RAISE EXCEPTION 'H-9 FAIL: Instant group entered Request approval';
-  EXCEPTION WHEN serialization_failure THEN
+  EXCEPTION WHEN sqlstate 'PT409' THEN
     IF SQLERRM NOT LIKE '%stay_invalid_transition%' THEN
       RAISE;
     END IF;
