@@ -33,6 +33,34 @@ Deno.test("QA run 2: the Plans sheet is dark", async () => {
   }
 });
 
+// QA run 2 follow-up: the Matches sheet uses the same shell as Plans and was
+// still light; it asks for the dark tone and so does its card deck, while the
+// session view's deck keeps the light default.
+Deno.test("QA run 2: the Matches sheet is dark", async () => {
+  const banners = strip(await read("components/chat/CollabSessionChatBanners.tsx"));
+  const at = banners.indexOf('title="Matches"');
+  const matches = banners.slice(at, banners.indexOf("</CompactCollabBottomSheet>", at));
+  assert(/snapPoints=\{MATCHES_SHEET_SNAP_POINTS\}\s*tone="dark"/.test(matches), "Matches asks for the dark sheet");
+  assert(/<SwipeableSessionCards[\s\S]*?tone="dark"\s*\/>/.test(matches), "the deck inside it is dark");
+
+  const deck = strip(await read("components/board/SwipeableSessionCards.tsx"));
+  assert(/tone = "light",\s*\}\) => \{\s*const dark = tone === "dark";/.test(deck), "light by default");
+  assert(/style=\{\[styles\.container, dark && styles\.containerDark\]\}/.test(deck), "dark deck surface");
+  assert(/containerDark: \{ backgroundColor: chatTokens\.surface \}/.test(deck), "same surface token as Plans");
+  for (const [base, dark] of [
+    ["emptyText", "emptyTextDark"], ["emptySubtext", "emptySubtextDark"], ["cardCountText", "cardCountTextDark"],
+    ["categoryText", "categoryTextDark"], ["description", "descriptionDark"],
+  ]) {
+    assert(deck.includes(`styles.${base}, dark && styles.${dark}`), `${base} follows the tone`);
+    const block = deck.slice(deck.indexOf(`${dark}: {`), deck.indexOf("}", deck.indexOf(`${dark}: {`)));
+    assert(/color: chatTokens\.text(Primary|Secondary|Soft|Muted)/.test(block), `${dark} uses a chat text token`);
+  }
+
+  const session = strip(await read("components/SessionViewModal.tsx"));
+  const sessionDeck = session.slice(session.indexOf("<SwipeableSessionCards"), session.indexOf("/>", session.indexOf("<SwipeableSessionCards")));
+  assert(!/tone="dark"/.test(sessionDeck), "the session view's deck stays light");
+});
+
 Deno.test("QA run 2: the Chats tab country picker is dark, other callers stay light", async () => {
   const wrapper = strip(await read("components/onboarding/CountryPickerModal.tsx"));
   assert(/theme=\{tone === "dark" \? CHAT_DARK_COUNTRY_PICKER_THEME : undefined\}/.test(wrapper), "tone maps to the dark theme");

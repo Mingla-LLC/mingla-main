@@ -124,6 +124,7 @@ import { useComposerLayout } from "../hooks/useComposerLayout";
 import { useChatBackHandler } from "../hooks/useChatBackHandler";
 import { useScrollToLatest } from "../hooks/useScrollToLatest";
 import { requestGalleryPermission } from "../utils/mediaLibraryPermission";
+import { preferSmallerOriginalVideo } from "../services/chatVideoOriginalService";
 import { DirectMessage, messagingService, CardPayload, MentionEntry, CardTagEntry, isContentShareCardPayload, type LegacyCardPayload } from "../services/messagingService";
 import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
 import { prepareContentShare } from "../services/contentShareAdapter";
@@ -290,21 +291,20 @@ interface ThreadRow {
 const EMPTY_EMOJIS: string[] = [];
 
 /**
- * Issue #4114 Wave 7: the picker's video export, iPhone only, from the library
- * (videoExportPreset) and the camera (videoQuality).
+ * Issue #4114 Wave 7: the picker's video export, iPhone only. 1280×720 H.264
+ * from the library (videoExportPreset) and the camera (videoQuality).
  *
- * QA run 2: the fixed 1280×720 H.264 preset re-encodes at a high target
- * bitrate, so a 12 s 1080p HEVC clip (9.7 MB) came out at 13.3 MB. The
- * MediumQuality preset targets a low bitrate (well under any iPhone camera
- * recording, HEVC or H.264), so the export is never larger than the source and
- * a 60 s clip stays well inside the 25 MB cap. The trade is a smaller picture
- * (about 480p), which is what chat video needs. The 60 s / 25 MB guards stay.
+ * QA run 2: Seth approved 720p (the medium preset, about 480p, is too
+ * low). The 720p re-encode can come out larger than a compact HEVC original
+ * (9.7 MB became 13.3 MB), so a library pick then reads the original and sends
+ * whichever is smaller (preferSmallerOriginalVideo / chooseChatVideoSource).
+ * The camera records straight at 720p, so it has no larger original.
  */
 export const CHAT_VIDEO_EXPORT: Pick<ImagePicker.ImagePickerOptions, "videoExportPreset" | "videoQuality"> =
   Platform.OS === "ios"
     ? {
-        videoExportPreset: ImagePicker.VideoExportPreset.MediumQuality,
-        videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
+        videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
+        videoQuality: ImagePicker.UIImagePickerControllerQualityType.IFrame1280x720,
       }
     : {};
 
@@ -1278,13 +1278,16 @@ export default function MessageInterface({
         // Full quality: the upload service resizes and compresses photos itself.
         quality: 1,
         videoMaxDuration: 60,
-        // Issue #4114 Wave 7 / QA run 2: iPhone re-encodes videos at the
-        // MediumQuality preset (never larger than the source). Android ignores
-        // it and keeps the 25 MB cap.
+        // Issue #4114 Wave 7 / QA run 2: iPhone exports videos at 720p H.264.
+        // Android ignores it and keeps the 25 MB cap.
         ...CHAT_VIDEO_EXPORT,
       });
       if (result.canceled || !result.assets?.length) return;
-      addPickedMedia(result.assets.map(assetToPicked));
+      // QA run 2: a 720p export larger than its original sends the original.
+      const picked = await Promise.all(
+        result.assets.map((asset) => preferSmallerOriginalVideo(assetToPicked(asset), asset.assetId)),
+      );
+      addPickedMedia(picked);
     } catch (error) {
       console.error("Error picking photos or videos:", error);
       Alert.alert(t('social:error'), t('chat:errorSelectFile'));

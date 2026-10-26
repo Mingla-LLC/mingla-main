@@ -450,6 +450,7 @@ export function SavedToSessionCardsSheet({
         title="Matches"
         closeAccessibilityLabel="Close matches"
         snapPoints={MATCHES_SHEET_SNAP_POINTS}
+        tone="dark"
       >
         <View
           style={[
@@ -466,6 +467,7 @@ export function SavedToSessionCardsSheet({
             loading={savedCardsLoading}
             accountPreferences={accountPreferences}
             isAdmin={isAdmin}
+            tone="dark"
           />
         </View>
       </CompactCollabBottomSheet>

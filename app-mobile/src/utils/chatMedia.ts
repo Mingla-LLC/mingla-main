@@ -154,6 +154,53 @@ export function validateChatMedia(item: PickedChatMedia): ChatMediaRefusal | nul
   return null;
 }
 
+/**
+ * Issue #4114 QA run 2 (Seth: iPhone videos are 720p): the picker re-encodes a
+ * library video to H.264 1280x720, and that export can come out LARGER than
+ * the original (a 9.7 MB 1080p HEVC clip became 13.3 MB). When the original
+ * could be read, send it instead only if it is strictly smaller than the
+ * export AND it passes the same 60 s / 25 MB guards; in every other case
+ * (sizes unknown, original missing, original larger or refused) send the
+ * export. A sent video is therefore never larger than the original.
+ */
+export type ChatVideoSource = 'export' | 'original';
+
+export interface ChatVideoSizeFacts {
+  fileSize?: number | null;
+  durationMs?: number | null;
+}
+
+export function chooseChatVideoSource(
+  exported: ChatVideoSizeFacts,
+  original: ChatVideoSizeFacts | null | undefined,
+): ChatVideoSource {
+  if (!original) return 'export';
+  const known = (n: number | null | undefined): n is number =>
+    typeof n === 'number' && Number.isFinite(n) && n > 0;
+  if (!known(original.fileSize) || !known(exported.fileSize)) return 'export';
+  if (original.fileSize >= exported.fileSize) return 'export';
+  if (original.fileSize > MAX_ATTACHMENT_BYTES) return 'export';
+  const ms = original.durationMs ?? exported.durationMs;
+  if (typeof ms === 'number' && Number.isFinite(ms) && ms / 1000 > MAX_VIDEO_SECONDS + 0.5) return 'export';
+  return 'original';
+}
+
+/**
+ * The MIME type of an ISO media file from its first 12 bytes (base64): the
+ * `ftyp` brand `qt  ` is QuickTime (.mov), any other brand is MP4. Null when
+ * the header is not an ISO media file.
+ */
+export function videoMimeFromHeader(headerBase64: string): 'video/quicktime' | 'video/mp4' | null {
+  let bytes: string;
+  try {
+    bytes = atob(headerBase64);
+  } catch {
+    return null;
+  }
+  if (bytes.length < 12 || bytes.slice(4, 8) !== 'ftyp') return null;
+  return bytes.slice(8, 12) === 'qt  ' ? 'video/quicktime' : 'video/mp4';
+}
+
 /** Size check after preparation (a photo can only shrink; files and videos are unchanged). */
 export function isWithinUploadLimit(bytes: number | null | undefined): boolean {
   return typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= MAX_ATTACHMENT_BYTES;
