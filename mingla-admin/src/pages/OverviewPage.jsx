@@ -8,6 +8,8 @@ import {
 import { supabase } from "../lib/supabase";
 import { STAT_CARDS } from "../lib/constants";
 import { StatCard, SectionCard } from "../components/ui/Card";
+// #4130: the card colours each trend by its direction (green up, red down).
+import { trendUpFromDirection } from "../lib/trendTone";
 import { Badge } from "../components/ui/Badge";
 import { Avatar } from "../components/ui/Avatar";
 import { StatCardSkeleton, ListItemSkeleton } from "../components/ui/Skeleton";
@@ -350,6 +352,7 @@ export function OverviewPage({ onTabChange }) {
                       label={card.label}
                       value={(counts[card.table] ?? 0).toLocaleString()}
                       trend={trend?.label || ""}
+                      trendUp={trendUpFromDirection(trend?.direction)}
                     />
                   </motion.div>
                 );

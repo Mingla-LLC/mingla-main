@@ -198,6 +198,7 @@ export function OfferingsConsolePage() {
         title="All offerings"
         columns={COLUMNS}
         fetchPage={listOfferings}
+        serverSort
         searchPlaceholder="Search title, brand, city, or slug…"
         filters={filters}
         onRowClick={(row) => openOffering(row.id)}

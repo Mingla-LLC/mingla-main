@@ -20,7 +20,8 @@ export function announceReviewChange() {
 export function useReviewCount() {
   const { access } = useAuth();
   const drafts = useDraftCountValue();
-  const enabled = canOpenPage(access, "drafts");
+  // #4130: Needs you (#/drafts) was retired into Work; the count follows it.
+  const enabled = canOpenPage(access, "work-board");
   const counts = useOpsPoll(() => ops.fetchMyCounts(todayIso()), { key: access?.email || "", intervalMs: 30_000, enabled });
   const refetchCounts = counts.refetch;
   useEffect(() => {
@@ -37,5 +38,9 @@ export function useReviewCount() {
   // Loaded once both counts have answered (the work counts only when this
   // person can open the page).
   const loaded = drafts.data != null && (!enabled || counts.data != null);
-  return { waiting, needsPerson, draftNeeded, wording, total: waiting + needsPerson + draftNeeded + wording, loaded, refetch: counts.refetch };
+  // #4130: the Work menu entry's count — this person's own cards waiting on
+  // a person (send, spend, publish, other, and roadmap wording). Waiting
+  // drafts are not cards, so they are not in it.
+  const cards = needsPerson + draftNeeded + wording;
+  return { waiting, needsPerson, draftNeeded, wording, cards, total: waiting + cards, loaded, refetch: counts.refetch };
 }

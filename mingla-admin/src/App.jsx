@@ -13,44 +13,33 @@ import { Button } from "./components/ui/Button";
 import { useToast } from "./context/ToastContext";
 import { NAV_ITEMS } from "./lib/constants";
 import { pageTitle, resolveRoute } from "./lib/access";
+// Issue #4130 (Wave 0) — retired page ids and where they now live.
+import { isRetiredPageId, redirectHash } from "./lib/adminRoutes";
+import {
+  OutreachHub,
+  InboundHub,
+  PeopleHub,
+  BrandsHub,
+  PlacePoolHub,
+  PlatformHealthHub,
+  SettingsHub,
+  TeamAndRolesHub,
+  MinglaMoneyPlaceholder,
+  FeatureFlagsPlaceholder,
+} from "./pages/shellHubs";
 import { INVITE_ROUTE, parseInviteHash } from "./lib/inviteLink";
 // Issue #3802 — the home page of the two non-admin team roles (#/home).
 import { RoleHomePage } from "./pages/RoleHomePage";
 import { TeamDashboardPage } from "./pages/TeamDashboardPage";
 import { OverviewPage } from "./pages/OverviewPage";
-import { AdminPage } from "./pages/AdminPage";
-import { PlacePoolManagementPage } from "./pages/PlacePoolManagementPage";
-import { UserManagementPage } from "./pages/UserManagementPage";
-import { SettingsPage } from "./pages/SettingsPage";
 import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
-import { SignalLibraryPage } from "./pages/SignalLibraryPage";
-import { PlaceIntelligenceTrialPage } from "./pages/PlaceIntelligenceTrialPage";
-import { ClaimsPage } from "./pages/ClaimsPage";
-import { DeckScoreTunerPage } from "./pages/DeckScoreTunerPage";
 import { PricingPage } from "./pages/PricingPage";
-import { LaunchCitiesPage } from "./pages/LaunchCitiesPage";
-import { BetaLeadsPage } from "./pages/BetaLeadsPage";
-// ISSUE-1354 — Tool Leads: all free-tool submissions + report detail (#/tool-leads).
-import { ToolLeadsPage } from "./pages/ToolLeadsPage";
-import { StripeModePage } from "./pages/StripeModePage";
 // #3720 Slice F — unified Community & Support console (replaces Support + Email nav).
 import { CommunitySupportPage } from "./pages/CommunitySupportPage";
-// ORCH-1201 — Admin API-Health hub (board of external-service health + alerts).
-import { ApiHealthPage } from "./pages/ApiHealthPage";
-// #2879 / #2947 — waiting-room queue-health gauges (hash route #/queue-health).
-import { QueueHealthPage } from "./pages/QueueHealthPage";
-// META-ORCH-1222 — Careers: applications list+detail + role CRUD (hash #/careers).
-import { CareersPage } from "./pages/CareersPage";
-// ORCH-1272 — Business identity console (READ-ONLY): People (#/business-people)
-// + Brands (#/business-brands). Replaces the ORCH-1271 scaffolding placeholder.
-import { PeopleConsolePage } from "./pages/PeopleConsolePage";
-import { BrandsConsolePage } from "./pages/BrandsConsolePage";
-import { BrandSitesPage } from "./pages/BrandSitesPage";
 // ORCH-1273 — Business offerings console (READ-ONLY): Offerings
-// (#/business-offerings) + Venues (#/business-venues). Detail views deep-link via
-// ?offeringId= / ?venueId= within the same tab (matches the 1272 pattern).
+// (#/business-offerings). Detail views deep-link via ?offeringId=. Venues now
+// open inside Brands (#4130).
 import { OfferingsConsolePage } from "./pages/OfferingsConsolePage";
-import { VenuesConsolePage } from "./pages/VenuesConsolePage";
 // ORCH-1274 — Business Money console (READ-ONLY): Payments (#/business-payments),
 // Orders (#/business-orders), Money ledger (#/business-money-ledger).
 import { BusinessPaymentsPage } from "./pages/BusinessPaymentsPage";
@@ -64,9 +53,6 @@ import { AdEnginePage } from "./pages/AdEnginePage";
 import { CampaignBuilderPage } from "./pages/CampaignBuilderPage";
 import { CampaignsPage } from "./pages/CampaignsPage";
 import { RefundOperationsPage } from "./pages/RefundOperationsPage";
-// Issue #3802 (Wave 1) — the team's Hosts and Creators boards (#/hosts, #/creators).
-import { HostsPage, CreatorsPage } from "./pages/PipelinePage";
-import { DraftsPage } from "./pages/DraftsPage";
 import { WorkBoardPage } from "./pages/WorkBoardPage";
 import { AGENT_LOG_REDIRECT, AgentLogPage } from "./pages/AgentLogPage";
 // Issue #3802 (Wave 4) — connect your own agent (#/agent).
@@ -86,67 +72,56 @@ import { DataRoomPage } from "./pages/DataRoomPage";
 
 const PAGES = {
   home: RoleHomePage,
+  // ── Home ── #4130 Wave 0: the menu order (lib/constants.js NAV_GROUPS).
   overview: OverviewPage,
-  users: UserManagementPage,
-  subscriptions: SubscriptionManagementPage,
-  placepool: PlacePoolManagementPage,
-  "launch-cities": LaunchCitiesPage,
-  "beta-leads": BetaLeadsPage,
-  // ISSUE-1354: all free-tool submissions + report detail (hash route #/tool-leads).
-  "tool-leads": ToolLeadsPage,
-  claims: ClaimsPage,
-  // #3720 Slice F — #/community-support (legacy #/support and #/email rewrite below).
-  "community-support": CommunitySupportPage,
+  // Issue #3980: everyone who works the pipelines. Needs you (#/drafts) was
+  // retired into Work's first column (#4130); Wave 1 opens its draft editor
+  // from the card.
+  "work-board": WorkBoardPage,
   notifications: NotificationsPage,
-  // ORCH-0671: 'photos' route deleted — getTabFromHash falls back to 'overview' via PAGES[hash] guard.
-  pricing: PricingPage,
-  admin: AdminPage,
-  settings: SettingsPage,
-  signals: SignalLibraryPage,
-  // ORCH-1066: deck score tuner (hash route #/deck-tuner).
-  "deck-tuner": DeckScoreTunerPage,
-  "place-intelligence-trial": PlaceIntelligenceTrialPage,
-  // ORCH-1056: unified Stripe mode dashboard (hash route #/stripe-mode).
-  "stripe-mode": StripeModePage,
-  // ORCH-1201: API-health hub (hash route #/api-health).
-  "api-health": ApiHealthPage,
-  // #2879 / #2947: waiting-room queue-health gauges (hash route #/queue-health).
-  "queue-health": QueueHealthPage,
-  // META-ORCH-1222: careers applications + role manager (hash route #/careers).
-  careers: CareersPage,
-  "data-room": DataRoomPage,
-  // ORCH-1272: Business identity console (READ-ONLY) — People + Brands
-  // (hash routes #/business-people, #/business-brands).
-  "business-people": PeopleConsolePage,
-  "business-brands": BrandsConsolePage,
-  "brand-sites": BrandSitesPage,
-  // ORCH-1273: Business offerings console (READ-ONLY) — Offerings + Venues
-  // (hash routes #/business-offerings, #/business-venues).
+  // ── Outreach ── #4130: Hosts and Creators, Beta and Tool leads as tabs.
+  outreach: OutreachHub,
+  inbound: InboundHub,
+  "content-calendar": ContentCalendarPage,
+  "team-dashboard": TeamDashboardPage,
+  // ── Support ── #3720 Slice F console; the menu's Support and Community
+  // entries open its tabs until Wave 6 splits it (#/support, #/community).
+  "community-support": CommunitySupportPage,
+  // ── Business ── #4130: Users + People; Brands + Brand Sites, Venues, claims.
+  people: PeopleHub,
+  brands: BrandsHub,
+  // ORCH-1273: Business offerings console (READ-ONLY).
   "business-offerings": OfferingsConsolePage,
-  "business-venues": VenuesConsolePage,
-  // ORCH-1274: Business Money console (READ-ONLY) — Payments + Orders + Money
-  // ledger (hash routes #/business-payments, #/business-orders, #/business-money-ledger).
+  // ── Money ── ORCH-1274 Business Money console; #4130 Mingla money (Wave 2a).
+  "mingla-money": MinglaMoneyPlaceholder,
   "business-payments": BusinessPaymentsPage,
   "business-orders": BusinessOrdersPage,
   "business-money-ledger": BusinessMoneyLedgerPage,
-  // ISSUE-862 WP1: Full Rooms Ad Engine (hash route #/ad-engine).
+  "refund-operations": RefundOperationsPage,
+  subscriptions: SubscriptionManagementPage,
+  pricing: PricingPage,
+  // ── Explorer app ── #4130: Launch Cities, Signal Library, Deck tuner as tabs.
+  placepool: PlacePoolHub,
+  // ── Growth ── ISSUE-862 WP1: Full Rooms Ad Engine (hash route #/ad-engine).
   "ad-engine": AdEnginePage,
   // ISSUE-864 WP4: Campaign Builder wizard + campaign surface (launch lives
   // on #/campaigns, never in the builder — I-PROPOSED-864-CREATE-PAUSED).
   "campaign-builder": CampaignBuilderPage,
   campaigns: CampaignsPage,
-  "refund-operations": RefundOperationsPage,
-  // Issue #3802 (Wave 1): opened by the `crm` area, not by admin_console.
-  hosts: HostsPage,
-  "team-dashboard": TeamDashboardPage,
-  creators: CreatorsPage,
-  drafts: DraftsPage,
-  "work-board": WorkBoardPage,
+  // ── Company ── #4130: Careers is a tab of Team and roles.
+  admin: TeamAndRolesHub,
+  "data-room": DataRoomPage,
+  // ── System ── #4130: Stripe mode, API health, Queue health in one page;
+  // Intelligence Trial history is a tab of Settings; Feature flags (Wave 4b).
+  "platform-health": PlatformHealthHub,
+  "feature-flags": FeatureFlagsPlaceholder,
+  settings: SettingsHub,
+  // Issue #3980: #/agent-log stays a page that opens Work > Agent activity.
   "agent-log": AgentLogPage,
-  // Issue #3802 (Wave 4): opened by the `crm` area, like the boards.
+  // Issue #3802 (Wave 4): opened by the `crm` area. #4130: from the header's
+  // profile menu (My agent) and ? help button (Guide), no longer the menu.
   agent: AgentPage,
   guide: GuidePage,
-  "content-calendar": ContentCalendarPage,
 };
 
 // Issue #3802 — every page id the app knows. Which of them a person may open
@@ -158,18 +133,13 @@ function requestedPageId() {
   return window.location.hash.replace("#/", "").split("?")[0].split("/")[0];
 }
 
-// #3720 Slice F — old Support / Email bookmarks open the matching console tab.
+// Issue #4130 (Wave 0) — an address of a retired page (and #3720's old
+// Support / Email bookmarks) is rewritten to the page that now holds it,
+// keeping its query, before any page is chosen (lib/adminRoutes.js).
 function canonicalizeLegacyCommunityHashes() {
   const page = requestedPageId();
-  if (page === "support") {
-    const next = "#/community-support?tab=support";
-    if (window.location.hash !== next) {
-      window.history.replaceState(null, "", next);
-    }
-    return;
-  }
-  if (page === "email") {
-    const next = "#/community-support?tab=email";
+  const next = redirectHash(window.location.hash);
+  if (next) {
     if (window.location.hash !== next) {
       window.history.replaceState(null, "", next);
     }
@@ -194,10 +164,10 @@ function getTabFromHash() {
 }
 
 // Did the address name a real page? Only then is a refusal worth a message.
-// Legacy #/support and #/email count as named (they rewrite to community-support).
+// A retired page's address counts as named (it rewrites to its new home).
 function addressNamesPage() {
   const page = requestedPageId();
-  if (page === "support" || page === "email") return true;
+  if (isRetiredPageId(page)) return true;
   return Object.hasOwn(PAGES, page);
 }
 

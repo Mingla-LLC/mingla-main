@@ -1014,6 +1014,7 @@ export function BrandsConsolePage() {
         title="All brands"
         columns={COLUMNS}
         fetchPage={listBrands}
+        serverSort
         searchPlaceholder="Search name, slug, or city…"
         filters={FILTERS}
         onRowClick={(row) => openBrand(row.id)}
