@@ -19,8 +19,8 @@
  * removing the spam check from brandEnquiryNeedsReply fails A-6; showing the
  * phone without ok_to_call fails A-7; dropping the UUID guard fails A-8.
  */
-import { describe, expect, test } from "@jest/globals";
-import * as fs from "fs";
+import { beforeAll, describe, expect, test } from "@jest/globals";
+import { readFile } from "fs/promises";
 import * as path from "path";
 
 import {
@@ -147,12 +147,16 @@ describe("A-3 the 90-day Past window", () => {
 });
 
 describe("A-4 every reason the sheet can send is known to the server", () => {
-  const sql = fs.readFileSync(
-    path.resolve(__dirname, "../../../../../supabase/migrations/20271221014111_issue_4111_brand_enquiry_rpcs.sql"),
-    "utf8",
-  );
-  const catalog = sql.slice(sql.indexOf("FUNCTION public.issue_4111_reason_label"), sql.indexOf("REVOKE ALL ON FUNCTION public.issue_4111_reason_label"));
-  const serverKeys = new Set(Array.from(catalog.matchAll(/WHEN '([a-z_]+)' THEN/g), (m) => m[1]));
+  // The server's reason catalog, parsed from the migration that defines it.
+  const serverKeys = new Set<string>();
+  beforeAll(async () => {
+    const sql = await readFile(
+      path.resolve(__dirname, "../../../../../supabase/migrations/20271221014111_issue_4111_brand_enquiry_rpcs.sql"),
+      "utf8",
+    );
+    const catalog = sql.slice(sql.indexOf("FUNCTION public.issue_4111_reason_label"), sql.indexOf("REVOKE ALL ON FUNCTION public.issue_4111_reason_label"));
+    for (const m of catalog.matchAll(/WHEN '([a-z_]+)' THEN/g)) serverKeys.add(m[1]);
+  });
   const shapes: EnquiryPickShape[] = [
     "ticket_order", "booking", "food_order", "rsvp", "upcoming_offering", "past_offering", "trip", "table", "direct",
   ];
