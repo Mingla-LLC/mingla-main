@@ -69,7 +69,22 @@ for (const size of SIZES) {
   });
 }
 
-test("home: first visit starts analytics; the footer link reopens the bar; analytics off stops it", async ({ browser }) => {
+for (const size of SIZES) {
+  test(`${size.width}x${size.height}: home (one screen, no footer) ends above the bar; no chip sits under it`, async ({ browser }) => {
+    const context = await browser.newContext({ viewport: size });
+    await record(context);
+    const page = await context.newPage();
+    await page.goto("/");
+    await expect(page.getByTestId("privacy-bar")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Privacy", exact: true })).toBeVisible();
+    await page.waitForTimeout(2500);
+    expect(await underBar(page)).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1)).toBe(true);
+    await context.close();
+  });
+}
+
+test("home: first visit starts analytics; the privacy sheet reopens the bar; analytics off stops it", async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 412, height: 718 } });
   const hits = await record(context);
   const page = await context.newPage();
@@ -78,7 +93,9 @@ test("home: first visit starts analytics; the footer link reopens the bar; analy
   await expect.poll(() => hits.some((h) => h.vendor === "ga"), { timeout: 30_000 }).toBe(true);
   await page.getByTestId("privacy-bar-ok").click();
   await expect(page.getByTestId("privacy-bar")).toHaveCount(0);
-  await page.getByTestId("privacy-choices-link").first().click();
+  await page.getByRole("button", { name: "Privacy", exact: true }).click();
+  await page.getByRole("dialog").getByTestId("privacy-choices-link").click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByTestId("privacy-panel")).toBeVisible();
   await expect(page.getByTestId("privacy-switch-analytics")).toBeChecked();
   await page.getByTestId("privacy-switch-analytics").uncheck();

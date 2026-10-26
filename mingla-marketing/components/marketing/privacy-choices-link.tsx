@@ -10,11 +10,21 @@ export function openPrivacyChoices(): void {
   window.dispatchEvent(new Event(PRIVACY_CHOICES_EVENT))
 }
 
-export function PrivacyChoicesLink({ className }: { readonly className?: string }) {
+export function PrivacyChoicesLink({
+  className,
+  onOpen,
+}: {
+  readonly className?: string
+  /** Runs before the bar reopens (e.g. a modal closing itself first). */
+  readonly onOpen?: () => void
+}) {
   return (
     <button
       type="button"
-      onClick={openPrivacyChoices}
+      onClick={() => {
+        onOpen?.()
+        openPrivacyChoices()
+      }}
       data-testid="privacy-choices-link"
       className={
         className ??
