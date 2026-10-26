@@ -114,10 +114,12 @@ BEGIN
     FROM t4114m_names;
 
   -- Views: the friend opened the 1:1 'once' item; in the group only the friend
-  -- (not the third member) opened 'group_once'.
-  INSERT INTO public.message_media_views(message_id, user_id)
-    VALUES ((SELECT id FROM t4114m_ids WHERE tag = 'msg_once'), (SELECT id FROM t4114m_ids WHERE tag = 'friend')),
-           ((SELECT id FROM t4114m_ids WHERE tag = 'msg_group_once'), (SELECT id FROM t4114m_ids WHERE tag = 'friend'));
+  -- (not the third member) opened 'group_once'. #4114 QA run 2: the views are
+  -- 10 minutes old, past the sweep's 5-minute first-view grace (pinned in the
+  -- guards suite, G-05), so I-06 still measures the 'opened' rule itself.
+  INSERT INTO public.message_media_views(message_id, user_id, viewed_at)
+    VALUES ((SELECT id FROM t4114m_ids WHERE tag = 'msg_once'), (SELECT id FROM t4114m_ids WHERE tag = 'friend'), now() - interval '10 minutes'),
+           ((SELECT id FROM t4114m_ids WHERE tag = 'msg_group_once'), (SELECT id FROM t4114m_ids WHERE tag = 'friend'), now() - interval '10 minutes');
 END $fixture$;
 
 -- I-01 schema.

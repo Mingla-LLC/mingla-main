@@ -301,6 +301,12 @@ GRANT EXECUTE ON FUNCTION public.issue_4114_can_read_chat_attachment(text, uuid,
 --                               after it was sent (its thumbnail is kept)
 --            'orphan'           an object no message points at (neither as its
 --                               file nor as its thumbnail), older than 2 days
+--    #4114 QA run 2 (grace): an opened or expired view-once item is NOT listed
+--    while any recipient's first view of it is under 5 minutes old. After the
+--    first open the recipient may re-sign the link for 2 minutes (a failed
+--    load retries once); deleting the object inside that window broke the
+--    open. 5 minutes covers the window with margin. An unsent item is still
+--    listed at once (the sender withdrew it; open-view-once refuses it).
 CREATE OR REPLACE FUNCTION public.issue_4114_view_once_media_due(
   p_limit integer DEFAULT 200,
   p_now timestamptz DEFAULT now()
@@ -328,6 +334,11 @@ BEGIN
     SELECT o.id, o.file_url,
       CASE
         WHEN o.deleted_at IS NOT NULL THEN 'unsent'
+        WHEN EXISTS (
+          SELECT 1 FROM public.message_media_views rv
+          WHERE rv.message_id = o.id
+            AND rv.viewed_at > p_now - interval '5 minutes'
+        ) THEN NULL
         WHEN o.created_at < p_now - interval '14 days' THEN 'expired'
         WHEN NOT EXISTS (
           SELECT 1 FROM public.conversation_participants cp

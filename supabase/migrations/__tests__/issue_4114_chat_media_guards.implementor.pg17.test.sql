@@ -23,13 +23,19 @@
 --         one is.
 --   G-04  early warning: 6 GB names the 5 GB threshold once; after marking it
 --         is not named again; 12 GB names only 10 GB. Clients cannot call it.
+--   G-05  QA run 2 grace: an opened view-once item is not listed while the
+--         recipient's first view is under 5 minutes old (the 2-minute re-sign
+--         window), nor an expired one; it is listed once the view is older;
+--         an unsent one is listed at once.
 --
 -- FAILS-ON-REVERT: drop the `|..._thumb\.jpg` alternative from
 -- issue_4114_chat_attachment_conversation and G-01's upload fails; delete the
 -- thumbnail block of issue_4114_enforce_view_once_shape and G-01's refusals
 -- fail; delete the daily-limit trigger and G-02 fails; delete the
 -- 'video_retention' query (or its 90-day filter) and G-03 fails; delete the
--- NOT EXISTS on issue_4114_chat_media_storage_alerts and G-04 fails.
+-- NOT EXISTS on issue_4114_chat_media_storage_alerts and G-04 fails; delete
+-- the 5-minute first-view grace from issue_4114_view_once_media_due and G-05
+-- fails.
 --
 -- Run after the full migration chain on PostgreSQL 17. Everything rolls back.
 
@@ -468,6 +474,65 @@ BEGIN
 END $g04_client$;
 RESET ROLE;
 
-SELECT 'issue_4114_chat_media_guards: G-01..G-04 PASS' AS result;
+-- G-05 the sweep's first-view grace (QA run 2).
+SELECT pg_temp.t4114g_service();
+DO $g05$
+DECLARE
+  v_dm uuid := (SELECT id FROM t4114g_ids WHERE tag = 'dm');
+  v_ana uuid := (SELECT id FROM t4114g_ids WHERE tag = 'ana');
+  v_ben uuid := (SELECT id FROM t4114g_ids WHERE tag = 'ben');
+  v_fresh uuid;
+  v_settled uuid;
+  v_expired uuid;
+  v_unsent uuid;
+  v_rows text[];
+BEGIN
+  INSERT INTO public.messages(conversation_id, sender_id, content, message_type, file_url, view_once, created_at)
+    VALUES (v_dm, v_ana, 'Photo', 'image', v_dm || '/once/' || gen_random_uuid() || '.jpg', true, now() - interval '1 hour')
+    RETURNING id INTO v_fresh;
+  INSERT INTO public.messages(conversation_id, sender_id, content, message_type, file_url, view_once, created_at)
+    VALUES (v_dm, v_ana, 'Photo', 'image', v_dm || '/once/' || gen_random_uuid() || '.jpg', true, now() - interval '1 hour')
+    RETURNING id INTO v_settled;
+  INSERT INTO public.messages(conversation_id, sender_id, content, message_type, file_url, view_once, created_at)
+    VALUES (v_dm, v_ana, 'Photo', 'image', v_dm || '/once/' || gen_random_uuid() || '.jpg', true, now() - interval '20 days')
+    RETURNING id INTO v_expired;
+  INSERT INTO public.messages(conversation_id, sender_id, content, message_type, file_url, view_once, created_at, deleted_at)
+    VALUES (v_dm, v_ana, 'Photo', 'image', v_dm || '/once/' || gen_random_uuid() || '.jpg', true, now() - interval '1 hour', now())
+    RETURNING id INTO v_unsent;
+  INSERT INTO public.message_media_views(message_id, user_id, viewed_at) VALUES
+    (v_fresh, v_ben, now() - interval '1 minute'),
+    (v_settled, v_ben, now() - interval '6 minutes'),
+    (v_expired, v_ben, now() - interval '30 seconds'),
+    (v_unsent, v_ben, now() - interval '30 seconds');
+
+  SELECT array_agg(CASE d.message_id
+                     WHEN v_fresh THEN 'fresh'
+                     WHEN v_settled THEN 'settled'
+                     WHEN v_expired THEN 'expired'
+                     WHEN v_unsent THEN 'unsent'
+                   END || ':' || d.reason ORDER BY 1)
+    INTO v_rows
+    FROM public.issue_4114_view_once_media_due(1000) d
+   WHERE d.message_id IN (v_fresh, v_settled, v_expired, v_unsent);
+  IF v_rows IS DISTINCT FROM ARRAY['settled:opened', 'unsent:unsent'] THEN
+    RAISE EXCEPTION 'G-05: inside 5 minutes of a first view only the settled and unsent items are listed, got %', v_rows;
+  END IF;
+
+  -- Ten minutes later every first view is past the grace.
+  SELECT array_agg(CASE d.message_id
+                     WHEN v_fresh THEN 'fresh'
+                     WHEN v_settled THEN 'settled'
+                     WHEN v_expired THEN 'expired'
+                     WHEN v_unsent THEN 'unsent'
+                   END || ':' || d.reason ORDER BY 1)
+    INTO v_rows
+    FROM public.issue_4114_view_once_media_due(1000, now() + interval '10 minutes') d
+   WHERE d.message_id IN (v_fresh, v_settled, v_expired, v_unsent);
+  IF v_rows IS DISTINCT FROM ARRAY['expired:expired', 'fresh:opened', 'settled:opened', 'unsent:unsent'] THEN
+    RAISE EXCEPTION 'G-05: after the grace all four are listed, got %', v_rows;
+  END IF;
+END $g05$;
+
+SELECT 'issue_4114_chat_media_guards: G-01..G-05 PASS' AS result;
 
 ROLLBACK;
