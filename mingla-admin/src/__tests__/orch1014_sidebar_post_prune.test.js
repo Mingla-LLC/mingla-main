@@ -157,7 +157,9 @@ describe("ORCH-1014 Finding A — photo pages pruned + locked sidebar order", ()
     }
   });
 
-  it("PhotoLightbox.jsx is RETAINED (shared UI primitive consumed by SignalAnchorsTab)", () => {
+  // #4130 (Wave 4b): SignalAnchorsTab.jsx was dead (its table was dropped by
+  // ORCH-0734) and is deleted; PhotoLightbox stays for Venue claims.
+  it("PhotoLightbox.jsx is RETAINED (shared UI primitive consumed by Venue claims)", () => {
     const lightboxPath = path.join(
       ADMIN_ROOT,
       "src",
@@ -170,17 +172,12 @@ describe("ORCH-1014 Finding A — photo pages pruned + locked sidebar order", ()
       true,
       "PhotoLightbox.jsx must remain — used by placeIntelligenceTrial/SignalAnchorsTab.jsx",
     );
-    const anchorsTabPath = path.join(
-      ADMIN_ROOT,
-      "src",
-      "components",
-      "placeIntelligenceTrial",
-      "SignalAnchorsTab.jsx",
-    );
-    const anchorsSrc = fs.readFileSync(anchorsTabPath, "utf8");
-    assert.ok(
-      anchorsSrc.includes("PhotoLightbox"),
-      "SignalAnchorsTab.jsx must still import PhotoLightbox",
+    const claimsSrc = fs.readFileSync(path.join(ADMIN_ROOT, "src", "pages", "ClaimsPage.jsx"), "utf8");
+    assert.ok(claimsSrc.includes("PhotoLightbox"), "ClaimsPage.jsx must still import PhotoLightbox");
+    assert.equal(
+      fs.existsSync(path.join(ADMIN_ROOT, "src", "components", "placeIntelligenceTrial", "SignalAnchorsTab.jsx")),
+      false,
+      "the dead SignalAnchorsTab.jsx is gone",
     );
   });
 });

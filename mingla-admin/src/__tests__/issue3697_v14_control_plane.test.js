@@ -113,8 +113,9 @@ describe("issue #3697 v1.4 Admin control plane", () => {
   });
 
   it("removes the legacy direct-create and launch bypass from Ads console", () => {
-    assert.match(adsConsole, /Governed campaign operations/);
-    assert.match(adsConsole, /no direct provider-write shortcut/);
+    // #4130 (Wave 4b): the same promise, in plain English.
+    assert.match(adsConsole, /How campaigns are made/);
+    assert.match(adsConsole, /Nothing is created on an ad platform any other way/);
     assert.doesNotMatch(adsConsole, /createCampaign|campaignAction|budget_usd/);
     assert.match(createEndpoint, /provider_budget_floor_currency_unsupported/);
     assert.match(createEndpoint, /provider_delivery_budget_cents/);

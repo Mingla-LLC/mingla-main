@@ -126,7 +126,7 @@ const MINOR_UNIT_PROVIDERS = new Set(["paystack", "stripe"]);
 function money(amount, currency) {
   const code = String(currency || "").toUpperCase();
   try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: code, maximumFractionDigits: 2 }).format(amount);
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: code, currencyDisplay: "narrowSymbol", maximumFractionDigits: 2 }).format(amount);
   } catch {
     return `${amount.toLocaleString()} ${code}`;
   }

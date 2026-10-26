@@ -28,18 +28,20 @@ const CONSTANTS = fs.readFileSync(
 );
 const APP = fs.readFileSync(path.join(ADMIN_ROOT, "src", "App.jsx"), "utf8");
 const ROUTES = fs.readFileSync(path.join(ADMIN_ROOT, "src", "lib", "adminRoutes.js"), "utf8");
-const HUBS = fs.readFileSync(path.join(ADMIN_ROOT, "src", "pages", "shellHubs.jsx"), "utf8");
+// #4130 (Wave 4b): Place pool is a real page; its Cities tab draws this page.
+const PLACE_POOL = fs.readFileSync(path.join(ADMIN_ROOT, "src", "pages", "PlacePoolPage.jsx"), "utf8");
+const SYSTEM = fs.readFileSync(path.join(ADMIN_ROOT, "src", "lib", "systemPages.js"), "utf8");
 
 describe("ORCH-1027 — nav wiring", () => {
   // #4130: Launch Cities is the Cities tab of Place pool; #/launch-cities redirects there.
   it("registers launch-cities as the Cities tab of Place pool", () => {
     assert.match(ROUTES, /"launch-cities": Object\.freeze\(\{ page: "placepool", tab: "cities" \}\)/);
-    assert.match(ROUTES, /\{ id: "cities", label: "Cities", hosts: "launch-cities" \}/);
+    assert.match(SYSTEM, /\{ id: "cities", label: "Cities" \}/);
   });
 
   it("draws the Cities tab with LaunchCitiesPage", () => {
-    assert.match(HUBS, /import\s*\{\s*LaunchCitiesPage\s*\}\s*from\s*"\.\/LaunchCitiesPage"/);
-    assert.match(HUBS, /"launch-cities":\s*LaunchCitiesPage/);
+    assert.match(PLACE_POOL, /import\s*\{\s*LaunchCitiesPage\s*\}\s*from\s*"\.\/LaunchCitiesPage"/);
+    assert.match(PLACE_POOL, /tab === "cities" && <LaunchCitiesPage \/>/);
   });
 });
 
