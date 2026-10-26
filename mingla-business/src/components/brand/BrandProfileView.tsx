@@ -76,10 +76,6 @@ import {
   canShowDiscountsOperation,
   DISCOUNTS_OPERATION_COPY,
 } from "../discounts/discountOperationContract";
-import {
-  canShowReferralsOperation,
-  REFERRALS_OPERATION_COPY,
-} from "../referrals/referralOperationContract";
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
@@ -208,10 +204,6 @@ export interface BrandProfileViewProps {
   onPricingDefaults: (brandId: string) => void;
   /** Issue #3872 — opens the pilot-gated Discounts workspace. */
   onDiscounts?: (brandId: string) => void;
-  /** Issue #3872 R2 — opens the pilot-gated Referrals workspace. */
-  onReferrals?: (brandId: string) => void;
-  /** Issue #3872 R3 — opens the pilot-gated Creators (gigs) workspace. */
-  onCreators?: (brandId: string) => void;
   /**
    * Called when user taps the "Finance reports" Operations row.
    * Receives the brand id. NEW in J-A12 — final navigation prop in
@@ -236,8 +228,12 @@ export interface BrandProfileViewProps {
    * customers →" CTA that pre-fills the marketing composer.
    */
   onBlasts: (brandId: string) => void;
-  /** toward #3697 Wave 7 — Blast → Ads credit. */
-  onAds: (brandId: string) => void;
+  /**
+   * #3872 round 2 — the one Promote row (campaigns, ads, creators,
+   * referrals). Opens the Blast tab for this brand; the route sets the
+   * current brand first. Replaces the Referrals, Creators and Ads rows.
+   */
+  onPromote: (brandId: string) => void;
   /**
    * Called when user taps "View public page". Receives the brand SLUG
    * (not id) — the public page route is `/b/{brandSlug}`.
@@ -294,13 +290,11 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onPayments,
   onPricingDefaults,
   onDiscounts,
-  onReferrals,
-  onCreators,
   onReports,
   onAuditLog,
   onWebsite,
   onBlasts,
-  onAds,
+  onPromote,
   onViewPublic,
   onCreateEvent,
   onOpenEvent,
@@ -459,34 +453,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       .catch(() => { if (active) setDiscountsEnabled(false); });
     return () => { active = false; };
   }, [brand,currentRank,onDiscounts]);
-  const [referralsEnabled, setReferralsEnabled] = useState(false);
-  useEffect(() => {
-    let active = true;
-    if (brand === null || currentRank < 20 || onReferrals === undefined) {
-      setReferralsEnabled(false);
-      return () => { active = false; };
-    }
-    setReferralsEnabled(false);
-    void import("../../services/referralService")
-      .then(({ fetchReferralAccess }) => fetchReferralAccess(brand.id))
-      .then((enabled) => { if (active) setReferralsEnabled(enabled); })
-      .catch(() => { if (active) setReferralsEnabled(false); });
-    return () => { active = false; };
-  }, [brand,currentRank,onReferrals]);
-  const [creatorsEnabled, setCreatorsEnabled] = useState(false);
-  useEffect(() => {
-    let active = true;
-    if (brand === null || currentRank < 20 || onCreators === undefined) {
-      setCreatorsEnabled(false);
-      return () => { active = false; };
-    }
-    setCreatorsEnabled(false);
-    void import("../../services/creatorGigsService")
-      .then(({ fetchCreatorGigsAccess }) => fetchCreatorGigsAccess(brand.id))
-      .then((enabled) => { if (active) setCreatorsEnabled(enabled); })
-      .catch(() => { if (active) setCreatorsEnabled(false); });
-    return () => { active = false; };
-  }, [brand,currentRank,onCreators]);
   const canCheckWebsiteAvailability = isFeatureEnabled("sites") &&
     canPerformAction(currentRank, "WEBSITE_WORKSPACE");
   const [websiteContext, setWebsiteContext] = useState<string | null>(null);
@@ -583,24 +549,9 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           if (brand !== null) onDiscounts?.(brand.id);
         },
       }] : []),
-      ...(canShowReferralsOperation(currentRank, referralsEnabled, onReferrals) ? [{
-        icon: "users" as const,
-        label: REFERRALS_OPERATION_COPY.label,
-        sub: REFERRALS_OPERATION_COPY.sub,
-        onPress: () => {
-          if (brand !== null) onReferrals?.(brand.id);
-        },
-      }] : []),
-      ...(currentRank >= 20 && creatorsEnabled && onCreators !== undefined ? [{
-        icon: "users" as const,
-        label: "Creators",
-        sub: "Hire creators to make short videos about your listings",
-        onPress: () => {
-          if (brand !== null) onCreators?.(brand.id);
-        },
-      }] : []),
       {
-        icon: "users",
+        // #3872 round 2 (H1.1) — distinct icons: Team is a person.
+        icon: "user",
         label: "Team & permissions",
         // Cycle 13a: brand.members is dropped (DEC-092). Member count now lives
         // in brandTeamStore + useCurrentBrandRole synthesis; the row caption is
@@ -621,15 +572,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         sub: "Message your event buyers about what's next",
         onPress: () => {
           if (brand !== null) onBlasts(brand.id);
-        },
-      },
-      {
-        // toward #3697 Wave 7 — compact Ads entry → Blast → Ads credit.
-        icon: "sparkle",
-        label: "Ads",
-        sub: "Credit balance, top-up, withdraw, and ad history",
-        onPress: () => {
-          if (brand !== null) onAds(brand.id);
         },
       },
       {
@@ -656,16 +598,11 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     brand,
     onTeam,
     onBlasts,
-    onAds,
     onPayments,
     onPricingDefaults,
     currentRank,
     onDiscounts,
     discountsEnabled,
-    onReferrals,
-    referralsEnabled,
-    onCreators,
-    creatorsEnabled,
     onReports,
     onAuditLog,
     canViewAuditLog,
@@ -810,7 +747,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: 96 + Math.max(insets.bottom, spacing.md) }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: SHELF_CLEARANCE + Math.max(insets.bottom, spacing.md) }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
@@ -1000,17 +937,12 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         </GlassCard>
 
         {/* SECTION B — Stats Strip */}
+        {/* #3872 round 2 — one strip of three numbers (Attendees, Sales,
+            Followers); no tile grid. */}
         <View style={styles.statsRow}>
-          <View style={styles.statCell}>
-            <FollowersKpiTile
-              brandId={brand.id}
-              onOpenPeople={onOpenPeople}
-            />
-          </View>
-          <KpiTile label="Events" value={brand.stats.events} sub="all time" style={styles.statCell} />
           <KpiTile label="Attendees" value={formatCount(brand.stats.attendees)} sub="all time" style={styles.statCell} />
           <KpiTile
-            label="GMV"
+            label="Sales"
             value={
               brand.defaultCurrency !== undefined
                 ? formatCurrencyRound(brand.stats.rev, brand.defaultCurrency)
@@ -1019,7 +951,33 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             sub="all time"
             style={styles.statCell}
           />
+          <View style={styles.statCell}>
+            <FollowersKpiTile
+              brandId={brand.id}
+              onOpenPeople={onOpenPeople}
+            />
+          </View>
         </View>
+
+        {/* #3872 round 2 — one Promote row opens Blast (campaigns, ads,
+            creators, referrals) for this brand. */}
+        <GlassCard variant="base" padding={0}>
+          <Pressable
+            onPress={() => onPromote(brand.id)}
+            accessibilityRole="button"
+            accessibilityLabel="Promote: campaigns, ads, creators and referrals"
+            style={styles.opsRow}
+          >
+            <View style={styles.opsIconWrap}>
+              <Icon name="megaphone" size={18} color={textTokens.primary} />
+            </View>
+            <View style={styles.opsTextCol}>
+              <Text style={styles.opsLabel}>Promote</Text>
+              <Text style={styles.opsSub}>Campaigns, ads, creators, referrals</Text>
+            </View>
+            <Icon name="chevR" size={16} color={textTokens.tertiary} />
+          </Pressable>
+        </GlassCard>
 
         {/* SECTION C — Status-driven Stripe banner. Suppressed entirely
             when effective stripeStatus === "active" (banner copy is null
@@ -1065,6 +1023,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         })()}
 
         {/* SECTION D — Operations List */}
+        <Text style={styles.runLabel}>Run</Text>
         <GlassCard variant="base" padding={0}>
           {operationsRows.map((row, index) => {
             const isLast = index === operationsRows.length - 1;
@@ -1235,6 +1194,9 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     </View>
   );
 };
+
+/** Shelf height (button + padding) plus a gap, so the last row clears it. */
+const SHELF_CLEARANCE = 44 + spacing.sm + spacing.lg + spacing.md;
 
 const styles = StyleSheet.create({
   host: {
@@ -1436,12 +1398,19 @@ const styles = StyleSheet.create({
   // Stats Strip ----------------------------------------------------------
   statsRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: spacing.sm,
   },
   statCell: {
-    flexBasis: "48%",
-    flexGrow: 1,
+    flex: 1,
+    minWidth: 0,
+  },
+  runLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: textTokens.tertiary,
+    marginBottom: -spacing.xs,
   },
 
   // Banner ---------------------------------------------------------------
@@ -1606,7 +1575,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
-    backgroundColor: "rgba(12, 14, 18, 0.85)",
+    // #3872 round 2 — an opaque footer with a hairline, so the Edit brand and
+    // Public page buttons never sit over a row (the scroll ends above it).
+    backgroundColor: canvas.discover,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: glass.border.profileBase,
   },
   shelfRow: {
     flexDirection: "row",

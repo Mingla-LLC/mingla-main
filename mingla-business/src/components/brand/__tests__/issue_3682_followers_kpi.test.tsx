@@ -41,19 +41,20 @@ describe("#3682 follower KPI", () => {
     });
   });
 
-  test("profile orders Followers before Events, Attendees and GMV", () => {
+  // #3872 round 2 (approved M-brandone): the four tiles became one strip of
+  // three numbers — Attendees, Sales, Followers. Followers stays a live tile.
+  test("profile shows one strip: Attendees, Sales, Followers", () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, "../BrandProfileView.tsx"),
       "utf8",
     );
-    const followers = source.indexOf("<FollowersKpiTile");
-    const events = source.indexOf('label="Events"', followers);
-    const attendees = source.indexOf('label="Attendees"', events);
-    const gmv = source.indexOf('label="GMV"', attendees);
-    expect(followers).toBeGreaterThan(-1);
-    expect(events).toBeGreaterThan(followers);
-    expect(attendees).toBeGreaterThan(events);
-    expect(gmv).toBeGreaterThan(attendees);
+    const attendees = source.indexOf('label="Attendees"');
+    const sales = source.indexOf('label="Sales"', attendees);
+    const followers = source.indexOf("<FollowersKpiTile", sales);
+    expect(attendees).toBeGreaterThan(-1);
+    expect(sales).toBeGreaterThan(attendees);
+    expect(followers).toBeGreaterThan(sales);
+    expect(source).not.toContain('label="Events"');
   });
 
   test("KpiTile keeps a 72 by 24 loading skeleton", () => {

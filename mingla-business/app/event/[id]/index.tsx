@@ -6,8 +6,10 @@
  * Founder-side screen showing event KPIs, ticket types, and recent
  * activity. Drafts redirect to /event/{id}/edit (drafts have no detail).
  *
- * Hero (cover band + status pill + name + date+venue) → action grid (5
- * tiles: Scan, Orders, Guests, Public page, Brand page) → revenue card
+ * #3872 round 2: compact header (thumb, status, name, date, city) → action
+ * grid (Scan tickets full width, then Scanners, Orders, Guests, Promote,
+ * Insights, Group chat, Door sales, Reconciliation, Public page, Brand
+ * page; no Blasts tile) → revenue card
  * → ticket types section → recent activity section.
  *
  * 9a renders zero KPIs / empty activity feed (orderStore lands in 9c).
@@ -27,7 +29,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
-  radius as radiusTokens,
   spacing,
   text as textTokens,
 } from "../../../src/constants/designSystem";
@@ -73,6 +74,16 @@ import { EventDetailKpiCard } from "../../../src/components/event/EventDetailKpi
 import { EventDetailTicketTypeRow } from "../../../src/components/event/EventDetailTicketTypeRow";
 import { EventManageMenu } from "../../../src/components/event/EventManageMenu";
 import { ReconciliationCtaTile } from "../../../src/components/event/ReconciliationCtaTile";
+import {
+  eventGridTiles,
+  type EventGridTileKey,
+} from "../../../src/components/event/eventGridTiles";
+import {
+  blastOverviewHref,
+  promoteTileStatus,
+  type PromotionOverview,
+} from "../../../src/services/promotionOverview";
+import { useCurrentBrandStore } from "../../../src/store/currentBrandStore";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import { useEventDoorSales } from "../../../src/hooks/useEventDoorSales";
 import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
@@ -174,6 +185,46 @@ export default function EventDetailScreen(): React.ReactElement {
       active = false;
     };
   }, [promoteBrandId, currentBrandRole.rank]);
+
+  // #3872 round 2 — the Promote tile shows what is running for this event
+  // ("1 gig · 2 interested"), read from brand_promotion_overview.
+  const [promoteOverview, setPromoteOverview] =
+    useState<PromotionOverview | null>(null);
+  const promoteListingId = routeEvent.event?.id ?? null;
+  useEffect(() => {
+    if (!promoteEnabled || promoteBrandId === null || promoteListingId === null) {
+      setPromoteOverview(null);
+      return;
+    }
+    let active = true;
+    void import("../../../src/services/promotionOverviewService")
+      .then((mod) =>
+        mod.fetchPromotionOverview(promoteBrandId, {
+          kind: "event",
+          id: promoteListingId,
+        }),
+      )
+      .then((overview) => {
+        if (active) setPromoteOverview(overview);
+      })
+      .catch(() => {
+        if (active) setPromoteOverview(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [promoteEnabled, promoteBrandId, promoteListingId]);
+
+  // Get it seen, the Promote tile and Manage → Promote all open Blast ›
+  // Overview for this event. Blast reads the current brand, so set it first.
+  const setCurrentBrandId = useCurrentBrandStore((s) => s.setCurrentBrandId);
+  const handleGetSeen = useCallback((): void => {
+    if (promoteBrandId === null || promoteListingId === null) return;
+    setCurrentBrandId(promoteBrandId);
+    router.push(
+      blastOverviewHref({ kind: "event", id: promoteListingId }) as never,
+    );
+  }, [promoteBrandId, promoteListingId, router, setCurrentBrandId]);
 
   // ----- Defensive: draft → redirect to edit ---------------------
   useEffect(() => {
@@ -324,17 +375,6 @@ export default function EventDetailScreen(): React.ReactElement {
   const handleGuests = useCallback((): void => {
     if (id !== null) {
       router.push(`/event/${id}/guests` as never);
-    }
-  }, [router, id]);
-
-  // ORCH-0815-A2-ui (DEC-149): event-context entry point for the dual-
-  // surface Marketing Hub. Lists this event's ticket buyers and surfaces
-  // "Blast these N buyers →" CTA pre-filling the marketing composer.
-  // Renamed "Buyers" → "Blasts" + route `/buyers` → `/blasts` 2026-05-12
-  // for consistency with the bottom-nav "Blast" tab.
-  const handleBlasts = useCallback((): void => {
-    if (id !== null) {
-      router.push(`/event/${id}/blasts` as never);
     }
   }, [router, id]);
 
@@ -891,129 +931,185 @@ export default function EventDetailScreen(): React.ReactElement {
               shareability.shareable ? handleViewPublic : undefined
             }
             onDismiss={publishedArrival.dismiss}
+            onGetSeen={promoteEnabled ? handleGetSeen : undefined}
             testID="event-published-banner"
           />
         ) : null}
-        {/* Hero — cover band + status pill + name + date+venue */}
-        <View style={styles.hero}>
-          <View style={styles.heroCoverWrap}>
+        {/* #3872 round 2 — compact header: thumb, status, name, date, city. */}
+        <GlassCard variant="base" radius="lg" padding={10} contentStyle={styles.headerCard}>
+          <View style={styles.headerThumb}>
             <EventCoverMedia
               hue={event.coverHue}
               mediaUrl={event.coverMediaUrl}
               mediaType={event.coverMediaType}
-              radius={24}
+              radius={12}
               label=""
-              height={200}
+              height={56}
             />
           </View>
-          <View style={styles.heroOverlay} pointerEvents="none">
+          <View style={styles.headerText}>
             <View style={styles.heroPillRow}>
               <EventDetailHeroStatusPill
                 status={status}
                 cancelled={event.status === "cancelled"}
               />
             </View>
-            <Text style={styles.heroTitle} numberOfLines={2}>
+            <Text style={styles.headerTitle} numberOfLines={2}>
               {event.name.trim().length > 0 ? event.name : "Untitled event"}
             </Text>
-            <Text style={styles.heroSubline} numberOfLines={1}>
-              {dateLine}
-              {event.venueName !== null && event.venueName.length > 0
-                ? ` · ${event.venueName}`
-                : ""}
+            <Text style={styles.headerSubline} numberOfLines={1}>
+              {[
+                dateLine,
+                event.city != null && event.city.length > 0
+                  ? event.city
+                  : event.venueName,
+              ]
+                .filter((part) => typeof part === "string" && part.length > 0)
+                .join(" · ")}
             </Text>
           </View>
-        </View>
+        </GlassCard>
 
-        {/* Action grid */}
+        {/* Action grid (#3872 round 2): Scan tickets full width, then compact
+            tiles two per row. No Blasts tile — Promote leads to Blast. */}
         <View style={styles.actionGrid}>
-          <ActionTile
-            icon="qr"
-            label="Scan tickets"
-            primary
-            onPress={handleScanTickets}
-          />
-          <ActionTile
-            icon="users"
-            label="Scanners"
-            onPress={handleScanners}
-          />
-          <ActionTile
-            icon="ticket"
-            label="Orders"
-            sub={ordersReady ? `${totalSoldCount} sold` : eventOrdersQuery.status === "error" ? "Unable to load" : "Loading…"}
-            onPress={handleOrders}
-          />
-          <ActionTile
-            icon="user"
-            label="Guests"
-            sub={ordersReady ? `${totalGuestCount} ${totalGuestCount === 1 ? "guest" : "guests"}` : eventOrdersQuery.status === "error" ? "Unable to load" : "Loading…"}
-            onPress={handleGuests}
-          />
-          {canShowListingInsights ? (
-            <ActionTile
-              icon="chart"
-              label="Insights"
-              sub="Customers Mingla drove"
-              accessibilityLabel={`Open Insights for ${event.name}`}
-              onPress={() =>
-                router.push(`/insights/${event.id}?entry=detail_action` as never)
-              }
-            />
-          ) : null}
-          {/* ORCH-0815-A2-ui (DEC-149) — event-context Marketing entry.
-              Renamed "Buyers" → "Blasts" + icon `users` → `send` for
-              consistency with the bottom-nav Blast tab. */}
-          <ActionTile
-            icon="send"
-            label="Blasts"
-            sub="Message ticket buyers"
-            onPress={handleBlasts}
-          />
-          <ActionTile
-            icon="chat"
-            label="Group chat"
-            sub="Read + reply + moderate"
-            onPress={() => router.push(`/event/${event.id}/group-chat` as never)}
-          />
-          {event.whenMode === "multi_date" ? (
-            <ActionTile
-              icon="calendar"
-              label="Dates"
-              sub="Titles and places per date"
-              onPress={() => router.push(`/event/${event.id}/dates` as never)}
-            />
-          ) : null}
-          <ActionTile
-            icon="eye"
-            label="Public page"
-            onPress={handleViewPublic}
-          />
-          {brand !== null ? (
-            <ActionTile
-              icon="user"
-              label="Brand page"
-              onPress={handleBrandPage}
-            />
-          ) : null}
-          {/* Cycle 12 — J-D1 Door Sales tile, gated on per-event toggle. */}
-          {event.inPersonPaymentsEnabled ? (
-            <ActionTile
-              icon="ticket"
-              label="Door Sales"
-              sub={`${doorSoldCount} sold${
-                displayCurrency !== null
-                  ? ` · ${formatCurrency(doorRevenue, displayCurrency)}`
-                  : ""
-              }`}
-              onPress={handleDoorSales}
-            />
-          ) : null}
-          {/* Cycle 13 — J-R1 Reconciliation tile, permission-gated (finance_manager+). */}
-          <ReconciliationCtaTile
-            brandId={brand?.id ?? null}
-            onPress={handleReconciliation}
-          />
+          {eventGridTiles({
+            promote: promoteEnabled,
+            insights: canShowListingInsights,
+            dates: event.whenMode === "multi_date",
+            doorSales: event.inPersonPaymentsEnabled === true,
+            brandPage: brand !== null,
+          }).map((key: EventGridTileKey) => {
+            switch (key) {
+              case "scan":
+                return (
+                  <ActionTile
+                    key={key}
+                    icon="qr"
+                    label="Scan tickets"
+                    primary
+                    wide
+                    onPress={handleScanTickets}
+                  />
+                );
+              case "scanners":
+                return (
+                  <ActionTile
+                    key={key}
+                    icon="users"
+                    label="Scanners"
+                    onPress={handleScanners}
+                  />
+                );
+              case "orders":
+                return (
+                  <ActionTile
+                    key={key}
+                    icon="ticket"
+                    label="Orders"
+                    sub={ordersReady ? `${totalSoldCount} sold` : eventOrdersQuery.status === "error" ? "Unable to load" : "Loading…"}
+                    onPress={handleOrders}
+                  />
+                );
+              case "guests":
+                return (
+                  <ActionTile
+                    key={key}
+                    icon="user"
+                    label="Guests"
+                    sub={ordersReady ? `${totalGuestCount} ${totalGuestCount === 1 ? "guest" : "guests"}` : eventOrdersQuery.status === "error" ? "Unable to load" : "Loading…"}
+                    onPress={handleGuests}
+                  />
+                );
+              case "promote":
+                return (
+                  <ActionTile
+                    key={key}
+                    icon="megaphone"
+                    label="Promote"
+                    sub={promoteTileStatus(promoteOverview)}
+                    accessibilityLabel={`Promote ${event.name}`}
+                    onPress={handleGetSeen}
+                  />
+                );
+              case "insights":
+                return (
+                  <ActionTile
+                    key={key}
+                    icon="chart"
+                    label="Insights"
+                    sub="Customers Mingla drove"
+                    accessibilityLabel={`Open Insights for ${event.name}`}
+                    onPress={() =>
+                      router.push(`/insights/${event.id}?entry=detail_action` as never)
+                    }
+                  />
+                );
+              case "groupChat":
+                return (
+                  <ActionTile
+                    key={key}
+                    icon="chat"
+                    label="Group chat"
+                    sub="Read, reply, moderate"
+                    onPress={() => router.push(`/event/${event.id}/group-chat` as never)}
+                  />
+                );
+              case "dates":
+                return (
+                  <ActionTile
+                    key={key}
+                    icon="calendar"
+                    label="Dates"
+                    sub="Titles and places per date"
+                    onPress={() => router.push(`/event/${event.id}/dates` as never)}
+                  />
+                );
+              case "doorSales":
+                return (
+                  <ActionTile
+                    key={key}
+                    icon="cash"
+                    label="Door sales"
+                    sub={`${doorSoldCount} sold${
+                      displayCurrency !== null
+                        ? ` · ${formatCurrency(doorRevenue, displayCurrency)}`
+                        : ""
+                    }`}
+                    onPress={handleDoorSales}
+                  />
+                );
+              case "reconciliation":
+                // Permission-gated inside (finance_manager+).
+                return (
+                  <ReconciliationCtaTile
+                    key={key}
+                    brandId={brand?.id ?? null}
+                    onPress={handleReconciliation}
+                  />
+                );
+              case "publicPage":
+                return (
+                  <ActionTile
+                    key={key}
+                    icon="eye"
+                    label="Public page"
+                    onPress={handleViewPublic}
+                  />
+                );
+              case "brandPage":
+                return (
+                  <ActionTile
+                    key={key}
+                    icon="home"
+                    label="Brand page"
+                    onPress={handleBrandPage}
+                  />
+                );
+              default:
+                return null;
+            }
+          })}
         </View>
 
         {/* Revenue card */}
@@ -1181,7 +1277,7 @@ export default function EventDetailScreen(): React.ReactElement {
           canEditEvent={canEditEvent}
           onPromote={promoteEnabled ? () => {
             setManageMenuVisible(false);
-            router.push(`/brand/${brand.id}/promote?kind=event&listingId=${event.id}` as never);
+            handleGetSeen();
           } : undefined}
           canUseLifecycleActions
         />
@@ -1265,56 +1361,40 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: spacing.lg,
   },
-  hero: {
-    position: "relative",
-    height: 200,
-    borderRadius: radiusTokens.xl,
+  headerCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  headerThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
     overflow: "hidden",
   },
-  heroCoverWrap: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  heroOverlay: {
-    position: "absolute",
-    left: spacing.md,
-    right: spacing.md,
-    bottom: spacing.md,
+  headerText: {
+    flex: 1,
+    minWidth: 0,
   },
   heroPillRow: {
     flexDirection: "row",
-    marginBottom: spacing.sm,
-  },
-  heroTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    letterSpacing: -0.2,
-    color: "#ffffff",
-    // ORCH-0743 / CF-2 — RN-only textShadow* triple → Platform.select. Web
-    // gets the CSS textShadow shorthand (react-native-web 0.21+ supports it);
-    // iOS/Android keep the RN-native triple for fidelity. Eliminates the
-    // `"shadow*" style props are deprecated` Metro warning on web export
-    // and restores the visible hero shadow on web target.
-    ...(Platform.OS === "web"
-      ? { textShadow: "0 2px 12px rgba(0, 0, 0, 0.4)" }
-      : {
-          textShadowColor: "rgba(0, 0, 0, 0.4)",
-          textShadowOffset: { width: 0, height: 2 },
-          textShadowRadius: 12,
-        }),
     marginBottom: 4,
   },
-  heroSubline: {
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: textTokens.primary,
+  },
+  headerSubline: {
     fontSize: 13,
-    color: "rgba(255, 255, 255, 0.85)",
+    color: textTokens.secondary,
+    marginTop: 2,
   },
   actionGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    justifyContent: "space-between",
+    rowGap: 8,
   },
   sectionLabel: {
     fontSize: 11,
