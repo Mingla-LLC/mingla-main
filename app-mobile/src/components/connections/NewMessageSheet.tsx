@@ -216,7 +216,7 @@ export function NewMessageSheet({
       onClose={handleClose}
       snapPoints={SNAP_POINTS}
       theme="dark"
-      scrollMode="flatlist"
+      scrollMode="scroll"
       wrapInRNModal
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
@@ -224,17 +224,21 @@ export function NewMessageSheet({
       accessibilityLabel={t("connections:new_message_title")}
       header={header}
       scrollProps={{
-        data: sortedFriends,
-        keyExtractor: (item: Friend) => item.id,
-        renderItem: renderFriend,
         keyboardShouldPersistTaps: "handled",
         keyboardDismissMode: "on-drag",
         showsVerticalScrollIndicator: false,
-        ListHeaderComponent: listHeader,
-        ListEmptyComponent: empty,
         contentContainerStyle: styles.listContent,
       }}
-    />
+    >
+      {/* A friends list is short enough to render in the sheet's scroll body;
+          the search header above stays pinned (BaseBottomSheet `header`). */}
+      {listHeader}
+      {sortedFriends.length > 0
+        ? sortedFriends.map((friend) => (
+            <React.Fragment key={friend.id}>{renderFriend({ item: friend })}</React.Fragment>
+          ))
+        : empty}
+    </BaseBottomSheet>
   );
 }
 

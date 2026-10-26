@@ -626,7 +626,7 @@ function ConnectionsPageRefactored({
   const handleDeleteChat = useCallback((conversationId: string) => {
     const isGroup = conversations.find((conversation) => conversation.id === conversationId)?.type === 'group';
     if (isGroup) {
-      Alert.alert(t('connections:leave_group_title'), t('connections:leave_group_body'), [
+      Alert.alert(t('connections:leave_group_title', { defaultValue: 'Leave group?' }), t('connections:leave_group_body'), [
         { text: t('common:cancel'), style: 'cancel' },
         { text: t('connections:action_leave'), style: 'destructive', onPress: () => void (async () => {
           setLifecycleBusyIds((current) => new Set(current).add(conversationId));
@@ -642,13 +642,13 @@ function ConnectionsPageRefactored({
       ]);
       return;
     }
-    Alert.alert(t('connections:remove_chat_title'), t('connections:remove_chat_body'), [
+    Alert.alert(t('connections:remove_chat_title', { defaultValue: 'Remove chat?' }), t('connections:remove_chat_body'), [
       { text: t('common:cancel'), style: 'cancel' },
       {
         text: t('connections:action_remove'), style: 'destructive', onPress: () => void (async () => {
           if (!await runLifecycle(conversationId, 'hide')) return;
           setConversations(prev => prev.filter(c => c.id !== conversationId));
-          AccessibilityInfo.announceForAccessibility(t('connections:chat_removed'));
+          AccessibilityInfo.announceForAccessibility(t('connections:chat_removed', { defaultValue: 'Chat removed.' }));
         })()
       },
     ]);
@@ -1285,10 +1285,10 @@ function ConnectionsPageRefactored({
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      await Promise.all([
-        user?.id ? fetchConversations(user.id) : Promise.resolve(),
-        fetchFriends(),
-      ]);
+      // Both reloads start together; chats are awaited after friends.
+      const chats = user?.id ? fetchConversations(user.id) : Promise.resolve();
+      await fetchFriends();
+      await chats;
     } finally {
       setIsRefreshing(false);
     }
