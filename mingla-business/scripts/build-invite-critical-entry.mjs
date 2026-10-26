@@ -173,12 +173,11 @@ function withPrivacyBar(payload) {
   if (styleStart === -1 || styleEnd === -1) fail("#2331 privacy-bar substitution did not apply: critical stylesheet");
   const legacyCss = next.slice(styleStart + styleOpen.length, styleEnd);
   next = `${next.slice(0, styleStart + styleOpen.length)}${withoutLegacyConsentCss(legacyCss)}${privacyBarCollapsedCss()}${next.slice(styleEnd)}`;
-  next = swapStrict(
-    next,
-    /<section class="i922-consent[\s\S]*?<\/section>/,
-    privacyBarCollapsedMarkup(),
-    "consent markup",
-  );
+  next = swapStrict(next, /<section class="i922-consent[\s\S]*?<\/section>/, "", "consent markup");
+  // The bar sits beside the host, not inside it: the host carries a
+  // translateZ(0) layer (mobile blur fix), which would make it the bar's
+  // containing block instead of the viewport.
+  next = swapStrict(next, "</main>';", `</main>${privacyBarCollapsedMarkup()}';`, "privacy bar placement");
   next = swapStrict(next, 'var consent=root.querySelector(".i922-consent");', "", "consent lookup");
   next = swapStrict(
     next,

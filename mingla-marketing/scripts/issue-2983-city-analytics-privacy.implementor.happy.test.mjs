@@ -111,9 +111,11 @@ function sourceContract() {
     /page_location: pageLocation/,
     /page_referrer: ''/,
     /if \(!isCityHubPathname\(window\.location\.pathname\)\) posthog\.capture\('\$pageview'\)/,
-    /if \(isCityHubPathname\(window\.location\.pathname\)\) return/,
     /transport: 'XHR'/,
   ]) assert.match(provider, contract)
+  // #2331 retired the grant step (on unless turned off), and with it the
+  // `consent_granted` event city hubs used to suppress: nothing replaces it.
+  assert.doesNotMatch(provider, /consent_granted|captureMarketingConsentGrantOnce/)
   assert.match(layout, /<PostHogProvider>\s*<GoogleAnalytics gaId=\{GA4_MEASUREMENT_ID\} \/>\s*<\/PostHogProvider>/)
   assert.match(actions, /subscribeMarketingConsent\(capture\)/)
   for (const event of CITY_EVENTS) assert.match(`${actions}\n${read('lib/city-hub-analytics.ts')}`, new RegExp(`['"]${event}['"]`))

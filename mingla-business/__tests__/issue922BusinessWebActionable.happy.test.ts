@@ -81,6 +81,8 @@ describe("issue #922 dedicated invitation entry", () => {
     }
     expect(output).toContain(privacy.privacyBarCollapsedCss());
     expect(output).toContain(privacy.privacyBarCollapsedMarkup());
+    // Beside the host, never inside its translateZ(0) layer.
+    expect(output).toContain(`</main>${privacy.privacyBarCollapsedMarkup()}'`);
     expect(output).toContain(privacy.privacyBarCollapsedRuntimeSource());
     // Every collapsed rule is a verbatim rule of the full bar's stylesheet.
     const full = privacy.privacyBarCss().split("\n");
