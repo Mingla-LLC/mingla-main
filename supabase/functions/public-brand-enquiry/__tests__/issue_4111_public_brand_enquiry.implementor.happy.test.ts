@@ -24,6 +24,7 @@ interface Harness {
 }
 
 function harness(opts: {
+  tokens?: string[];
   rpcStatus?: string;
   moderation?: { flagged: boolean; checked: boolean };
   siteHosts?: string[];
@@ -66,7 +67,10 @@ function harness(opts: {
       return Promise.resolve({ ok: true });
     },
     sendSms: () => Promise.reject(new Error("not used")),
-    makeToken: () => TOKEN,
+    makeToken: (() => {
+      const queue = [...(opts.tokens ?? [])];
+      return () => queue.shift() ?? TOKEN;
+    })(),
     log: (_level, event) => {
       logs.push(event);
     },
@@ -222,4 +226,21 @@ Deno.test("#4111 *.sites.localhost is denied unless the Sites config says enviro
   // Only an explicit local environment opens it.
   const local = await resolveAllowedOrigin(origin, harness({ sitesEnvironment: "local" }).deps.originDeps);
   assertEquals(local, { allowed: true, origin, kind: "local_site" });
+});
+
+Deno.test("#4111 P1-2 the browser gets its own token; only the emailed token is stored as the confirming one", async () => {
+  const EMAILED = "E".repeat(43);
+  const BROWSER = "B".repeat(43);
+  const h = harness({ tokens: [EMAILED, BROWSER] });
+  const res = await createPublicBrandEnquiryHandler(h.deps)(request(VALID));
+  assertEquals(res.status, 202);
+  // The sending browser can open the thread at once, with the browser token…
+  assertEquals(await res.json(), { status: "sent", thread_url: `https://host.usemingla.com/m/${BROWSER}` });
+  // …while the receipt email carries the emailed token, and only that one.
+  assertEquals((h.emails[0].cta as { url: string }).url, `https://host.usemingla.com/m/${EMAILED}`);
+  assertEquals(JSON.stringify(h.emails[0]).includes(BROWSER), false);
+  // The database learns which is which (and never a raw token).
+  assertEquals(h.rpcCalls.length, 1);
+  assertEquals(h.rpcCalls[0].args.p_token_hash, await sha256Hex(EMAILED));
+  assertEquals(h.rpcCalls[0].args.p_browser_token_hash, await sha256Hex(BROWSER));
 });

@@ -1,8 +1,11 @@
 /**
  * #4111 — public-enquiry-thread: the signed-out guest's conversation page
  * (https://host.usemingla.com/m/{token}). verify_jwt = false; the capability
- * is the 32-byte token from the guest's email (only its SHA-256 is stored).
- * The first valid GET confirms the guest's email. Every valid use rolls the
+ * is a 32-byte token (only its SHA-256 is stored). Two kinds (#4111 P1-2):
+ * an EMAILED token (receipt, reply digest, "Email me a new link") whose first
+ * valid GET confirms the guest's email, and the sending BROWSER's token (from
+ * public-brand-enquiry's 202) that reads and posts but never confirms — the
+ * database decides, in issue_4111_thread_by_token. Every valid use rolls the
  * token's 90-day expiry forward.
  *
  * GET ?token=<token>

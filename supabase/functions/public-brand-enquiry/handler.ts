@@ -32,8 +32,13 @@
  *   404 { error:"enquiries_unavailable" }  unknown brand, switch off, or no team to read it
  *   403 { error:"origin_not_allowed" }     browser Origin outside the allowlist
  *   405 { error:"method_not_allowed" }
- * Receipt email (with the /m/{token} link on host.usemingla.com) is sent to a
- * created enquiry's guest. Allowed origins: see _shared/brandEnquiry.ts header.
+ * Two tokens per created enquiry (#4111 P1-2):
+ *   - the EMAILED token rides only in the receipt email; its first read of
+ *     /m/{token} is what confirms the guest's email;
+ *   - the BROWSER token is the one in this 202's thread_url, so the sender can
+ *     open the conversation at once. It reads and posts, and never confirms.
+ * Receipt email (with the /m/{emailed token} link on host.usemingla.com) is
+ * sent to a created enquiry's guest. Allowed origins: see _shared/brandEnquiry.ts header.
  */
 import {
   boundedText,
@@ -84,8 +89,10 @@ export function createPublicBrandEnquiryHandler(deps: PublicEnquiryDeps) {
       return json(400, { error: "invalid_input", field: "json" });
     }
 
+    // Emailed token (confirms) and browser token (never confirms) — P1-2.
     const token = deps.makeToken();
-    const sent = () => json(202, { status: "sent", thread_url: threadUrl(token) });
+    const browserToken = deps.makeToken();
+    const sent = () => json(202, { status: "sent", thread_url: threadUrl(browserToken) });
 
     if (looksAutomated(input.hp, input.t0, deps.now())) return sent();
 
@@ -153,6 +160,7 @@ export function createPublicBrandEnquiryHandler(deps: PublicEnquiryDeps) {
         p_token_hash: await sha256Hex(token),
         p_disclosure_text: disclosureText,
         p_disclosure_version: disclosureVersion,
+        p_browser_token_hash: await sha256Hex(browserToken),
       });
       if (error) {
         deps.log("error", "[public-brand-enquiry] create_failed", { code: error.code ?? null });
@@ -164,6 +172,7 @@ export function createPublicBrandEnquiryHandler(deps: PublicEnquiryDeps) {
       if (status === "invalid_context") return json(400, { error: "invalid_input", field: "context" });
       if (status === "invalid") return json(400, { error: "invalid_input", field: "reason" });
       if (status !== "created") return sent(); // blocked | rate_limited → silent
+
 
       const receipt = receiptEmail({
         brandName: brand.name,

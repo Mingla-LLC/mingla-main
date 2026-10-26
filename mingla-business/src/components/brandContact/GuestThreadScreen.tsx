@@ -3,8 +3,10 @@
  * https://host.usemingla.com/m/{token} (edge `public-enquiry-thread`).
  *
  * ANON ROUTE: no useAuth, no sign-in redirect (`/m/` is on
- * PUBLIC_BUYER_ROUTE_PREFIXES). The token in the guest's email is the only
- * key. Brand-themed from the brand's accent.
+ * PUBLIC_BUYER_ROUTE_PREFIXES). The token in the URL is the only key: either
+ * the emailed token (its first open confirms the guest's email) or the sending
+ * browser's own token from "View conversation" (reads and posts, never
+ * confirms — #4111 P1-2). The page treats both alike. Brand-themed.
  *
  * States (guestThreadModel): loading · error (Try again) · invalid · expired
  * ("Email me a new link") · thread (resolved banner, "Get replies instantly"
