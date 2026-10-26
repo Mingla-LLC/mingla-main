@@ -521,7 +521,7 @@ function cookieNames(): string[] {
 /** PostHog and GA4 cookies/storage this site writes. */
 function isAnalyticsStorageName(name: string): boolean {
   return (
-    /^ph_.+_posthog$/.test(name) ||
+    /^ph_/.test(name) ||
     name === "_ga" ||
     name.startsWith("_ga_") ||
     name === "_gid" ||
@@ -566,15 +566,18 @@ function stopAnalytics(): void {
   for (const name of cookieNames()) {
     if (isAnalyticsStorageName(name)) expireCookie(name);
   }
-  try {
-    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
-      const key = window.localStorage.key(index);
-      if (key !== null && isAnalyticsStorageName(key)) {
-        window.localStorage.removeItem(key);
+  // PostHog keeps its identity in localStorage and a tab marker in
+  // sessionStorage (`ph_<token>_…`): both go.
+  for (const store of ["localStorage", "sessionStorage"] as const) {
+    try {
+      const target = window[store];
+      for (let index = target.length - 1; index >= 0; index -= 1) {
+        const key = target.key(index);
+        if (key !== null && isAnalyticsStorageName(key)) target.removeItem(key);
       }
+    } catch {
+      // Storage unavailable: nothing was persisted there either.
     }
-  } catch {
-    // Storage unavailable: nothing was persisted there either.
   }
   // A later turn-on starts a fresh boot on this page.
   bootPromise = null;

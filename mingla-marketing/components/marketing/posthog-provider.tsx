@@ -253,7 +253,7 @@ function expireCookie(name: string): void {
 }
 
 function isAnalyticsStorageName(name: string): boolean {
-  return /^ph_.+_posthog$/.test(name) || name === '_ga' || name.startsWith('_ga_') || name === '_gid' || name === '_gat'
+  return /^ph_/.test(name) || name === '_ga' || name.startsWith('_ga_') || name === '_gid' || name === '_gat'
 }
 
 /** Analytics turned off: stop PostHog + GA now and remove their cookies. */
@@ -287,9 +287,13 @@ function stopMarketingAnalytics(): void {
       const name = part.split('=', 1)[0]?.trim() ?? ''
       if (name && isAnalyticsStorageName(name)) expireCookie(name)
     }
-    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
-      const key = window.localStorage.key(index)
-      if (key !== null && isAnalyticsStorageName(key)) window.localStorage.removeItem(key)
+    // PostHog keeps its identity in localStorage and a tab marker in
+    // sessionStorage (`ph_<token>_…`): both go.
+    for (const store of [window.localStorage, window.sessionStorage]) {
+      for (let index = store.length - 1; index >= 0; index -= 1) {
+        const key = store.key(index)
+        if (key !== null && isAnalyticsStorageName(key)) store.removeItem(key)
+      }
     }
   } catch {
     // Nothing readable means nothing to clear.
