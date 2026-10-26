@@ -15,7 +15,6 @@ import React, { useCallback, useMemo, useState } from "react";
 import { Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
-import type { ResolvedTheme } from "@mingla/offering-rendering";
 import type {
   EnquiryEntry,
   EnquiryOffering,
@@ -29,14 +28,21 @@ import { postHogService } from "../../services/postHogService";
 import { useAppStore } from "../../store/appStore";
 import { getDisplayName } from "../../utils/getDisplayName";
 
-import ExplorerBrandMessageHost from "./ExplorerBrandMessageHost";
+import type { ExplorerBrandTarget, ExplorerMessageTrigger } from "./explorerBrandMessageTypes";
 
-export interface ExplorerBrandTarget {
-  id: string;
-  name: string;
-  slug: string | null;
-  theme: ResolvedTheme;
-}
+export type { ExplorerBrandTarget, ExplorerMessageTrigger } from "./explorerBrandMessageTypes";
+
+// LAZY: the host imports the shared sheet (and its icon set). Screens that only
+// show the Message button — the venue page, organiser rows — must not load it
+// until the first tap.
+// A deferred `require` (not `import()`): Metro still bundles it, the factory
+// runs only on the first tap, and the jest harnesses (no ESM dynamic import)
+// can render it.
+const ExplorerBrandMessageHost = React.lazy(async () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require("./ExplorerBrandMessageHost") as typeof import("./ExplorerBrandMessageHost");
+  return { default: mod.default };
+});
 
 export interface ExplorerBrandMessageInput {
   brand: ExplorerBrandTarget | null;
@@ -55,11 +61,6 @@ export interface ExplorerBrandMessageController {
   replyMinutes: number | null;
   open: (prefill?: EnquiryPrefill | null) => void;
   overlays: React.ReactNode;
-}
-
-export interface ExplorerMessageTrigger {
-  nonce: number;
-  prefill: EnquiryPrefill | null;
 }
 
 export function useExplorerBrandMessage(input: ExplorerBrandMessageInput): ExplorerBrandMessageController {
@@ -110,6 +111,7 @@ export function useExplorerBrandMessage(input: ExplorerBrandMessageInput): Explo
 
   const overlays =
     brand === null || trigger === null || userId === null ? null : (
+      <React.Suspense fallback={null}>
       <ExplorerBrandMessageHost
         brand={brand}
         entry={entry}
@@ -121,6 +123,7 @@ export function useExplorerBrandMessage(input: ExplorerBrandMessageInput): Explo
         viewerName={viewerName}
         trigger={trigger}
       />
+      </React.Suspense>
     );
 
   return {

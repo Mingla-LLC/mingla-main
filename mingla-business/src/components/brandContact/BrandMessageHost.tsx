@@ -31,7 +31,7 @@ import { captureWeb } from "../../analytics/webAnalytics";
 import type { MyBrandPlansState } from "./MyBrandPlansLoader";
 import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
 import { explorerAppUrl, openExternalUrl, threadPathFromUrl } from "./brandContactLinks";
-import type { BrandMessageTarget, UseBrandMessageInput } from "./useBrandMessage";
+import type { BrandMessageTarget, UseBrandMessageInput } from "./brandMessageTypes";
 
 const MyBrandPlansLoader = React.lazy(() => import("./MyBrandPlansLoader"));
 

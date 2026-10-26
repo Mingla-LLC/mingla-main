@@ -103,7 +103,10 @@ import { reportNonFatal } from "../../../../src/diagnostics/reportNonFatal";
 import { useCanonicalShareArrival } from "../../../../src/hooks/useCanonicalShareArrival";
 // DEEP specifier (the #1560 rule above): suites mock the offering barrel.
 import { resolveTheme } from "@mingla/offering-rendering/themeResolver";
-import { useExplorerBrandMessage } from "../../../../src/components/brandEnquiry/useExplorerBrandMessage";
+import VenueMessageController, {
+  VenueMessageBoundary,
+  type VenueMessageOpener,
+} from "../../../../src/components/brandEnquiry/VenueMessageController";
 
 /** This app's ONE analytics surface tag for the public venue page. */
 const ANALYTICS_SURFACE = "consumer_native";
@@ -455,15 +458,17 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
           },
     [venue],
   );
-  const venueMessage = useExplorerBrandMessage({
-    brand: venueMessageBrand,
-    entry: "offering",
-    venue: venueEnquiry,
-  });
-  const handleMessageBrand = useCallback((): void => {
-    if (venue === null) return;
-    venueMessage.open({ contextKind: "venue", contextId: venue.id });
-  }, [venue, venueMessage]);
+  // The controller is an isolated add-on, mounted after the page's first
+  // commit; it hands back an opener only when the brand takes messages.
+  const [venueMessageOpener, setVenueMessageOpener] = useState<VenueMessageOpener | null>(null);
+  const [venueMessageReady, setVenueMessageReady] = useState(false);
+  useEffect(() => {
+    setVenueMessageReady(true);
+  }, []);
+  const handleVenueMessageOpener = useCallback(
+    (opener: VenueMessageOpener | null): void => setVenueMessageOpener(opener),
+    [],
+  );
 
   const handleShare = useCallback((): void => {
     if (shareUrl === null) return;
@@ -710,11 +715,19 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       onShare={handleShare}
       onClose={handleClose}
       onOpenBrand={handleOpenBrand}
-      onMessageBrand={venueMessage.available ? handleMessageBrand : undefined}
+      onMessageBrand={venueMessageOpener === null ? undefined : venueMessageOpener.open}
       onOpenMaps={handleOpenMaps}
       onCopyAddress={handleCopyAddress}
     />
-    {venueMessage.overlays}
+    {venueMessageReady && venueMessageBrand !== null && venueEnquiry !== null ? (
+      <VenueMessageBoundary>
+        <VenueMessageController
+          brand={venueMessageBrand}
+          venue={venueEnquiry}
+          onOpener={handleVenueMessageOpener}
+        />
+      </VenueMessageBoundary>
+    ) : null}
     </>
   );
 }

@@ -11,45 +11,19 @@
  */
 import React, { useCallback, useState } from "react";
 import { Platform } from "react-native";
-import type { ResolvedTheme } from "@mingla/offering-rendering";
-import type {
-  EnquiryEntry,
-  EnquiryOffering,
-  EnquiryPick,
-  EnquiryPrefill,
-  EnquiryVenue,
-} from "@mingla/brand-rendering/enquiry/enquiryTopics";
+import type { EnquiryPrefill } from "@mingla/brand-rendering/enquiry/enquiryTopics";
 
 import { captureWeb } from "../../analytics/webAnalytics";
 import { usePublicBrandEnquiryProfile } from "../../hooks/usePublicBrandEnquiry";
+import type { UseBrandMessageInput } from "./brandMessageTypes";
 
 const BrandMessageHost = React.lazy(() => import("./BrandMessageHost"));
 
-export interface BrandMessageTarget {
-  id: string;
-  name: string;
-  slug: string;
-  theme: ResolvedTheme;
-  /** ISO country the phone picker starts on (brand or venue). */
-  countryIso?: string | null;
-}
-
-export interface BrandMessageViewer {
-  userId: string | null;
-  /** Shown in "Sending as {name}." */
-  name: string | null;
-}
-
-export interface UseBrandMessageInput {
-  brand: BrandMessageTarget | null;
-  viewer: BrandMessageViewer;
-  entry: EnquiryEntry;
-  offerings?: ReadonlyArray<EnquiryOffering>;
-  venue?: EnquiryVenue | null;
-  /** Where sign-in returns to (native signed-out). */
-  resumePath?: string;
-  onBookTable?: (pick: EnquiryPick) => void;
-}
+export type {
+  BrandMessageTarget,
+  BrandMessageViewer,
+  UseBrandMessageInput,
+} from "./brandMessageTypes";
 
 export interface BrandMessageController {
   /** The brand takes enquiries (card / buttons render only when true). */

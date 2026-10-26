@@ -34,7 +34,7 @@ import { sendExplorerEnquiry } from "../../services/brandEnquiryService";
 import { openShellDestination } from "../../services/deepLinkService";
 import { postHogService } from "../../services/postHogService";
 import { toastManager } from "../ui/Toast";
-import type { ExplorerBrandTarget, ExplorerMessageTrigger } from "./useExplorerBrandMessage";
+import type { ExplorerBrandTarget, ExplorerMessageTrigger } from "./explorerBrandMessageTypes";
 
 const EMPTY_OFFERINGS: readonly EnquiryOffering[] = [];
 
