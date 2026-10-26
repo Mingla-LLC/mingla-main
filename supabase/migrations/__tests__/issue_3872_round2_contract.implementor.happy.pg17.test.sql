@@ -219,6 +219,8 @@ BEGIN
   PERFORM pg_temp.act(v_host);
   v_r:=public.gig_contract_workspace(v_c1);
   IF v_r->>'money_state'<>'paid' OR NOT (v_r ? 'contract' AND v_r ? 'events' AND v_r ? 'reveal') THEN RAISE EXCEPTION 'released stripe fee is not paid: %',v_r->>'money_state'; END IF;
+  IF v_r->>'money_paid_at' IS NULL THEN RAISE EXCEPTION 'paid fee has no money_paid_at'; END IF;
+  IF public.gig_contract_workspace(v_c2)->'money_paid_at'<>'null'::jsonb THEN RAISE EXCEPTION 'refunded contract has money_paid_at'; END IF;
   IF public.gig_contract_workspace(v_c2)->>'money_state'<>'refunded' THEN RAISE EXCEPTION 'refunded contract: %',public.gig_contract_workspace(v_c2)->>'money_state'; END IF;
 
   -- 3. Gig counts: Ada is hired, Bo was refunded, Cy is still interested.
@@ -267,6 +269,24 @@ BEGIN
   -- A draft listing of the brand can still be scoped (zero everywhere).
   v_r:=public.brand_promotion_overview(v_brand,'event','38724000-0000-4000-8000-0000000000e4');
   IF (v_r->>'sold_minor')::bigint<>0 OR (v_r->'creators'->>'gigs_live')::int<>0 OR (v_r->'campaigns'->>'sent')::int<>0 THEN RAISE EXCEPTION 'draft listing scope: %',v_r; END IF;
+END;
+$test$;
+
+-- Released but the payout is not confirmed yet (Paystack rail): ready, no
+-- paid time. The paid share is frozen, so rewind it outside the RPCs.
+SET LOCAL session_replication_role = replica;
+UPDATE public.payee_shares SET status='releasable' WHERE order_kind='gig' AND payee_kind='gig_fee'
+  AND order_id IN (SELECT id FROM public.gig_contracts WHERE gig_id='38724000-0000-4000-8000-0000000000f1');
+SET LOCAL session_replication_role = origin;
+DO $test$
+DECLARE v_r jsonb;
+BEGIN
+  PERFORM pg_temp.act('38724000-0000-4000-8000-0000000000a1');
+  SELECT public.gig_contract_workspace(c.id) INTO v_r FROM public.gig_contracts c
+   WHERE c.gig_id='38724000-0000-4000-8000-0000000000f1' AND c.creator_account_id='38724000-0000-4000-8000-0000000000a3';
+  IF v_r->>'money_state' IS DISTINCT FROM 'ready' OR v_r->'money_paid_at'<>'null'::jsonb THEN
+    RAISE EXCEPTION 'ready fee: state % paid_at %',v_r->>'money_state',v_r->'money_paid_at';
+  END IF;
 END;
 $test$;
 

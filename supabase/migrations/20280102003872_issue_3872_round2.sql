@@ -322,7 +322,18 @@ $fn$;
 REVOKE ALL ON FUNCTION public.issue_3872_contract_money_state(uuid) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_3872_contract_money_state(uuid) TO service_role;
 
--- The workspace now carries money_state (round 2); everything else is unchanged.
+-- When the provider confirmed the creator's payout; NULL until it is paid.
+CREATE OR REPLACE FUNCTION public.issue_3872_contract_money_paid_at(p_contract_id uuid) RETURNS timestamptz
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+  SELECT CASE WHEN s.status='paid' THEN coalesce(po.settled_at,s.updated_at) END
+  FROM public.payee_shares s
+  LEFT JOIN public.payee_payouts po ON po.id=s.payout_id
+  WHERE s.order_kind='gig' AND s.order_id=p_contract_id AND s.payee_kind='gig_fee';
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_3872_contract_money_paid_at(uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3872_contract_money_paid_at(uuid) TO service_role;
+
+-- The workspace now carries money_state and money_paid_at (round 2); everything else is unchanged.
 CREATE OR REPLACE FUNCTION public.gig_contract_workspace(p_contract_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -360,7 +371,8 @@ BEGIN
     'dispute',(SELECT to_jsonb(d)||jsonb_build_object('offers',coalesce((SELECT jsonb_agg(to_jsonb(o) ORDER BY created_at,id) FROM public.gig_dispute_offers o WHERE o.dispute_id=d.id),'[]'::jsonb)) FROM public.gig_disputes d WHERE d.contract_id=v.id ORDER BY created_at DESC LIMIT 1),
     'ratings',coalesce((SELECT jsonb_agg(to_jsonb(r) ORDER BY rated_by) FROM public.gig_ratings r WHERE r.contract_id=v.id),'[]'::jsonb)
   ) INTO v_result FROM public.gigs g WHERE g.id=v.gig_id;
-  RETURN v_result||jsonb_build_object('money_state',public.issue_3872_contract_money_state(v.id));
+  RETURN v_result||jsonb_build_object('money_state',public.issue_3872_contract_money_state(v.id),
+    'money_paid_at',public.issue_3872_contract_money_paid_at(v.id));
 END;
 $fn$
 
