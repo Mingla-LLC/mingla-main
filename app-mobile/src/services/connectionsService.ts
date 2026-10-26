@@ -39,6 +39,8 @@ export interface Friend {
 
 export interface Message {
   id: string;
+  /** Issue #4114: messages.client_id — the merge key (with id) for every write. */
+  clientId?: string;
   senderId: string;
   senderName: string;
   content: string;

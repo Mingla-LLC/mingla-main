@@ -186,6 +186,13 @@ export interface DirectMessage {
   card_tags?: CardTagEntry[];
   reply_to_id?: string | null;
   marketing_campaign_id?: string | null;
+  /**
+   * Issue #4114: id minted by the sending phone before the insert and reused on
+   * every retry. The app merges the insert response, the realtime echo and every
+   * refresh by `client_id || id`, so one send shows once. NULL for legacy rows and
+   * server-written rows (system banners, blasts, RPC inserts).
+   */
+  client_id?: string | null;
   created_at: string;
   updated_at?: string;
   deleted_at?: string | null;
@@ -458,6 +465,12 @@ export interface Conversation {
   last_message?: DirectMessage;
   unread_count?: number;
 }
+
+/** Issue #4114: one page of chat history (newest page first, then older pages on scroll up). */
+export const MESSAGE_PAGE_SIZE = 50;
+
+/** Issue #4114: the partial unique index on (conversation_id, client_id) WHERE client_id IS NOT NULL. */
+export const MESSAGE_CLIENT_ID_UNIQUE_INDEX = 'messages_unique_client_id_per_conversation';
 
 export class MessagingService {
   private channels: Map<string, RealtimeChannel> = new Map();
@@ -893,14 +906,31 @@ export class MessagingService {
   /**
    * Get messages for a conversation
    */
-  async getMessages(conversationId: string, userId: string, limit: number = 50): Promise<{ messages: DirectMessage[]; error: string | null }> {
+  /**
+   * Get one page of messages for a conversation, oldest first.
+   *
+   * Issue #4114: `before` pages backwards from a created_at cursor (the oldest
+   * timestamp already on screen). The cursor is INCLUSIVE (`lte`) so messages
+   * that share the boundary timestamp are never skipped; the caller's
+   * `mergeMessages` drops the repeats by id. `hasMore` is true when the page came
+   * back full, i.e. there may be older messages to load.
+   */
+  async getMessages(
+    conversationId: string,
+    userId: string,
+    limit: number = MESSAGE_PAGE_SIZE,
+    before?: string,
+  ): Promise<{ messages: DirectMessage[]; error: string | null; hasMore: boolean }> {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .is('deleted_at', null)
+        .is('deleted_at', null);
+      if (before) query = query.lte('created_at', before);
+      const { data, error } = await query
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .limit(limit);
 
       if (error) throw error;
@@ -910,10 +940,10 @@ export class MessagingService {
         (data || []).map(msg => this.enrichMessage(msg, userId))
       );
 
-      return { messages: enrichedMessages.reverse(), error: null };
+      return { messages: enrichedMessages.reverse(), error: null, hasMore: (data?.length ?? 0) >= limit };
     } catch (error: any) {
       console.error('Error getting messages:', error);
-      return { messages: [], error: error.message };
+      return { messages: [], error: error.message, hasMore: false };
     }
   }
 
@@ -958,14 +988,15 @@ export class MessagingService {
     fileSize?: number,
     replyToId?: string,
     mentions: MentionEntry[] = [],
-    cardTags: CardTagEntry[] = []
+    cardTags: CardTagEntry[] = [],
+    clientId?: string,
   ): Promise<{ message: DirectMessage | null; error: string | null }> {
     try {
       const validatedMentions = this.validateMentionEntries(mentions);
       const validatedCardTags = this.validateCardTagEntries(cardTags);
 
       // Note: Server-side RLS will also enforce block check, but this provides faster feedback
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('messages')
         .insert({
           conversation_id: conversationId,
@@ -978,9 +1009,32 @@ export class MessagingService {
           mentions: validatedMentions,
           card_tags: validatedCardTags,
           ...(replyToId ? { reply_to_id: replyToId } : {}),
+          ...(clientId ? { client_id: clientId } : {}),
         })
         .select()
         .single();
+
+      // Issue #4114: idempotent send. A retry reuses the same client_id; if the
+      // first attempt already landed (its response was lost), the partial unique
+      // index refuses the second insert with 23505 and we return the row that is
+      // already there instead of inserting a copy. PostgREST upsert cannot target
+      // a partial index, so the conflict is caught and the row selected here.
+      if (error && clientId && error.code === '23505') {
+        const existing = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .eq('client_id', clientId)
+          .eq('sender_id', senderId)
+          .maybeSingle();
+        if (existing.error) throw existing.error;
+        if (!existing.data) {
+          // The index refused the insert but the row is not ours or not readable.
+          throw new Error('Message was refused as a duplicate but the original could not be found');
+        }
+        data = existing.data;
+        error = null;
+      }
 
       if (error) {
         // RLS violation (42501): either a block (DM context) OR broadcast-only enforcement

@@ -26,7 +26,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Icon } from "./ui/Icon";
 import { useFriends, Friend as UseFriend } from "../hooks/useFriends";
 import { useAppStore } from "../store/appStore";
-import { messagingService, DirectMessage, MentionEntry, CardTagEntry } from "../services/messagingService";
+import { messagingService, DirectMessage, MentionEntry, CardTagEntry, MESSAGE_PAGE_SIZE } from "../services/messagingService";
+import {
+  mergeMessages,
+  isLocalMessage,
+  createClientMessageId,
+  oldestConfirmedTimestamp,
+  LOCAL_MESSAGE_ID_PREFIX,
+  type MergeMessagesOptions,
+} from "../utils/mergeMessages";
+import { releaseConversationSubscription, switchConversationSubscription } from "../utils/conversationSubscription";
 import { invalidateContentShareRecipients } from "../services/contentShareDeliveryService";
 import type { CollabDeadEndBannerPayload } from "../services/collabDeadEndBannerService";
 import { blockService, BlockReason } from "../services/blockService";
@@ -358,6 +367,8 @@ interface ConnectionsPageProps {
 
 const CONNECTIONS_CACHE_VERSION = "v2-orch-0898-group-metadata";
 
+const EMPTY_MESSAGES: Message[] = [];
+
 const getMessagesCacheKey = (conversationId: string) =>
   `mingla:connections:messages:${CONNECTIONS_CACHE_VERSION}:${conversationId}`;
 
@@ -568,7 +579,7 @@ function ConnectionsPageRefactored({
   }
 
   useScreenLogger('connections');
-  const { t } = useTranslation(['connections', 'common', 'social']);
+  const { t } = useTranslation(['connections', 'common', 'social', 'chat']);
   // ORCH-1037 + ORCH-1035: step 6 = the in-page people icon (NOT the bottom-nav tab,
   // NOT the whole header row — operator-LOCKED); step 7 (NEW) = the + button that
   // opens the FriendsActionChooser (pair a friend + start a shared group chat).
@@ -731,8 +742,27 @@ function ConnectionsPageRefactored({
   const [activeChat, setActiveChat] = useState<Friend | null>(null);
   const [showMessageInterface, setShowMessageInterface] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  // Issue #4114: ONE owner for every chat's messages. The open chat's list is
+  // derived from the per-conversation store, and every write goes through
+  // `writeConversationMessages` → `mergeMessages` (keyed `clientId || id`,
+  // sorted by time, pending sends kept through refreshes). There is no second
+  // "visible messages" copy to drift from the store.
   const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>({});
+  const messages = useMemo<Message[]>(
+    () => (currentConversationId ? messagesCache[currentConversationId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES),
+    [currentConversationId, messagesCache],
+  );
+  // Issue #4114: which conversation's live channel is open (released on switch/back).
+  const subscribedConversationIdRef = useRef<string | null>(null);
+  // Issue #4114: older-history paging for the open chat.
+  const [olderPaging, setOlderPaging] = useState<{ conversationId: string | null; hasMore: boolean; loading: boolean }>({
+    conversationId: null,
+    hasMore: false,
+    loading: false,
+  });
+  const olderLoadInFlightRef = useRef<string | null>(null);
+  // Issue #4114: client ids of sends in flight, so a double tap on Retry sends once.
+  const sendsInFlightRef = useRef<Set<string>>(new Set());
   const [uploadingFile, setUploadingFile] = useState(false);
   const [activeChatIsBlocked, setActiveChatIsBlocked] = useState(false);
   const [activeChatIsUnfriended, setActiveChatIsUnfriended] = useState(false);
@@ -1596,6 +1626,9 @@ function ConnectionsPageRefactored({
   const transformMessage = useCallback(
     (msg: DirectMessage, userId: string): Message => ({
       id: msg.id,
+      // Issue #4114: the merge key that pairs the optimistic bubble, the insert
+      // response, the realtime echo and every refresh.
+      clientId: msg.client_id ?? undefined,
       senderId: msg.sender_id ?? '',
       senderName: msg.sender_name || "Unknown",
       content: msg.content,
@@ -1630,8 +1663,9 @@ function ConnectionsPageRefactored({
     (conversationId: string, msgs: Message[]) => {
       // Only persist real, successfully-sent messages — exclude optimistic
       // temp messages and failed messages (ghost messages across sessions)
+      // Issue #4114: `msgs` is the merged store (deduped, time-sorted).
       const persistable = msgs
-        .filter((m) => !m.id.startsWith("temp-") && !m.failed)
+        .filter((m) => !isLocalMessage(m) && !m.failed)
         .slice(-100); // Cap to last 100 to avoid unbounded AsyncStorage growth
       if (persistable.length === 0) return;
       AsyncStorage.setItem(
@@ -1649,7 +1683,9 @@ function ConnectionsPageRefactored({
         const cached = await AsyncStorage.getItem(getMessagesCacheKey(conversationId));
         if (cached) {
           const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          // Issue #4114: older builds could persist duplicate rows; hydrate
+          // through the merge so a cached chat shows each message once.
+          if (Array.isArray(parsed) && parsed.length > 0) return mergeMessages([], parsed as Message[]);
         }
       } catch (e) {
         console.warn("[ConnectionsPage] Message cache hydration failed:", e);
@@ -1658,6 +1694,30 @@ function ConnectionsPageRefactored({
     },
     []
   );
+
+  // ── Issue #4114: the single write path for chat messages ──
+  // Every source (send result, retry, realtime echo, broadcast, background
+  // refresh, reconnect refresh, AsyncStorage hydrate, older pages) lands here.
+  // Writes are keyed by conversation, so a late event for chat A can never
+  // land in chat B's list.
+  const writeConversationMessages = useCallback(
+    (conversationId: string, incoming: Message[], options?: MergeMessagesOptions) => {
+      setMessagesCache((prev) => ({
+        ...prev,
+        [conversationId]: mergeMessages(prev[conversationId] ?? EMPTY_MESSAGES, incoming, options),
+      }));
+    },
+    []
+  );
+
+  // Issue #4114: record whether older history exists after a server read of the newest page.
+  const noteNewestPageLoaded = useCallback((conversationId: string, hasMore: boolean) => {
+    setOlderPaging((prev) =>
+      prev.conversationId === conversationId && prev.loading
+        ? prev
+        : { conversationId, hasMore, loading: false }
+    );
+  }, []);
 
   // ── Select conversation from chat list ───────────────────
   const handleSelectConversation = async (conversation: Conversation) => {
@@ -1838,76 +1898,51 @@ function ConnectionsPageRefactored({
     setCurrentConversationId(conversation.id);
 
     // ── Offline-resilient message loading ──────────────────
-    // Priority: in-memory cache → AsyncStorage cache → network fetch
-    // Always open the chat immediately with whatever we have, then refresh in background.
+    // Priority: in-memory store → AsyncStorage cache → network fetch.
+    // Always open the chat immediately with whatever we have, then refresh in
+    // background. Issue #4114: the refresh MERGES into the store (it no longer
+    // replaces it), so a send still in flight survives it.
     const inMemoryCached = messagesCache[conversation.id];
-    let initialMessages: Message[] = [];
+    let initialMessages: Message[] = inMemoryCached ?? EMPTY_MESSAGES;
 
-    if (inMemoryCached && inMemoryCached.length > 0) {
-      initialMessages = inMemoryCached;
-    } else {
+    if (!inMemoryCached || inMemoryCached.length === 0) {
       // Try AsyncStorage before hitting network
       const storageCached = await hydrateMessages(conversation.id);
       if (storageCached.length > 0) {
         initialMessages = storageCached;
-        // Warm up in-memory cache
-        setMessagesCache((prev) => ({ ...prev, [conversation.id]: storageCached }));
+        writeConversationMessages(conversation.id, storageCached);
       }
     }
 
+    setShowMessageInterface(true);
     if (initialMessages.length > 0) {
-      // We have cached messages — show them immediately
-      setMessages(initialMessages);
-      setShowMessageInterface(true);
       markConversationAsRead(conversation.id, user.id, initialMessages);
-
-      // Refresh in background (silently fails if offline)
-      (async () => {
-        try {
-          const { messages: freshMsgs, error: msgError } =
-            await messagingService.getMessages(conversation.id, user.id);
-          if (!msgError && freshMsgs) {
-            const transformed = freshMsgs.map((m) => transformMessage(m, user.id));
-            setMessages(transformed);
-            setMessagesCache((prev) => ({ ...prev, [conversation.id]: transformed }));
-            persistMessages(conversation.id, transformed);
-            markConversationAsRead(conversation.id, user.id, transformed);
-          }
-        } catch (e) {
-          // Offline — user is already viewing cached messages, no action needed
-          console.warn("[ConnectionsPage] Background message refresh failed (offline?):", e);
-        }
-      })();
-    } else {
-      // No cache — open chat immediately with empty state, fetch in background
-      setMessages([]);
-      setShowMessageInterface(true);
-
-      const capturedConvId = conversation.id;
-      const capturedFriendId = friend.id;
-      withTimeout(
-        messagingService.getMessages(conversation.id, user.id),
-        8000,
-        'getMessages'
-      )
-        .then(({ messages: freshMsgs, error: msgError }) => {
-          // Guard against stale result if user switched chats
-          if (latestSelectedChatRef.current !== capturedFriendId) return;
-          if (msgError) {
-            console.error("Error loading messages:", msgError);
-            return;
-          }
-          const transformed = (freshMsgs || []).map((m) => transformMessage(m, user.id));
-          setMessages(transformed);
-          setMessagesCache((prev) => ({ ...prev, [capturedConvId]: transformed }));
-          persistMessages(capturedConvId, transformed);
-          markConversationAsRead(capturedConvId, user.id, transformed);
-        })
-        .catch((e) => {
-          // Timeout or network failure — chat is already open with empty state
-          console.warn("[ConnectionsPage] No-cache message fetch failed:", e);
-        });
     }
+
+    const capturedConvId = conversation.id;
+    const openedChatId = friend.id;
+    withTimeout(
+      messagingService.getMessages(conversation.id, user.id),
+      8000,
+      'getMessages'
+    )
+      .then(({ messages: freshMsgs, error: msgError, hasMore }) => {
+        if (msgError) {
+          console.error("Error loading messages:", msgError);
+          return;
+        }
+        const transformed = (freshMsgs || []).map((m) => transformMessage(m, user.id));
+        writeConversationMessages(capturedConvId, transformed, { snapshot: { complete: !hasMore } });
+        noteNewestPageLoaded(capturedConvId, hasMore);
+        // Only mark read while this chat is still the one on screen.
+        if (latestSelectedChatRef.current === openedChatId) {
+          markConversationAsRead(capturedConvId, user.id, transformed);
+        }
+      })
+      .catch((e) => {
+        // Offline / timeout — the chat is already open with whatever was cached.
+        console.warn("[ConnectionsPage] Background message refresh failed (offline?):", e);
+      });
 
     // Real-time subscription (gracefully degrades if offline)
     setupRealtimeSubscription(conversation.id, user.id);
@@ -1954,8 +1989,9 @@ function ConnectionsPageRefactored({
       })
       .catch(() => {});
 
-    // Open chat UI immediately — conversation creation happens in background
-    setMessages([]);
+    // Open chat UI immediately — conversation creation happens in background.
+    // Issue #4114: clear the open conversation so no other chat's list shows.
+    setCurrentConversationId(null);
     setShowMessageInterface(true);
 
     const capturedFriendId = friendUserId;
@@ -1971,11 +2007,8 @@ function ConnectionsPageRefactored({
       if (latestSelectedChatRef.current !== capturedFriendId) return true; // stale — don't update
       setCurrentConversationId(cachedConv.id);
       const storageCached = await hydrateMessages(cachedConv.id);
-      const inMemoryCached = messagesCache[cachedConv.id];
-      const msgs = (inMemoryCached && inMemoryCached.length > 0) ? inMemoryCached : storageCached;
-      setMessages(msgs);
-      if (msgs.length > 0) {
-        setMessagesCache((prev) => ({ ...prev, [cachedConv.id]: msgs }));
+      if (storageCached.length > 0) {
+        writeConversationMessages(cachedConv.id, storageCached);
       }
       if (!isOffline) {
         setupRealtimeSubscription(cachedConv.id, currentUserId);
@@ -1985,20 +2018,18 @@ function ConnectionsPageRefactored({
 
     // Helper: load messages for a conversation in the background
     const loadMessagesInBackground = (conversationId: string) => {
-      // Try in-memory cache first
+      // The open chat reads the in-memory store directly (Issue #4114).
       const inMemoryCached = messagesCache[conversationId];
       if (inMemoryCached && inMemoryCached.length > 0) {
         if (latestSelectedChatRef.current !== capturedFriendId) return;
-        setMessages(inMemoryCached);
         markConversationAsRead(conversationId, currentUserId, inMemoryCached);
       }
 
-      // Try AsyncStorage cache
+      // Try AsyncStorage cache — merged, so it can never wipe a newer write.
       hydrateMessages(conversationId).then((storageCached) => {
         if (latestSelectedChatRef.current !== capturedFriendId) return;
         if (!inMemoryCached?.length && storageCached.length > 0) {
-          setMessages(storageCached);
-          setMessagesCache((prev) => ({ ...prev, [conversationId]: storageCached }));
+          writeConversationMessages(conversationId, storageCached);
           markConversationAsRead(conversationId, currentUserId, storageCached);
         }
       });
@@ -2009,13 +2040,15 @@ function ConnectionsPageRefactored({
         8000,
         'getMessages'
       )
-        .then(({ messages: freshMsgs, error: msgError }) => {
-          if (latestSelectedChatRef.current !== capturedFriendId) return;
-          if (msgError || !freshMsgs) return;
+        .then(({ messages: freshMsgs, error: msgError, hasMore }) => {
+          if (msgError || !freshMsgs) {
+            if (msgError) console.warn("[ConnectionsPage] Background message fetch failed:", msgError);
+            return;
+          }
           const transformed = freshMsgs.map((m) => transformMessage(m, currentUserId));
-          setMessages(transformed);
-          setMessagesCache((prev) => ({ ...prev, [conversationId]: transformed }));
-          persistMessages(conversationId, transformed);
+          writeConversationMessages(conversationId, transformed, { snapshot: { complete: !hasMore } });
+          noteNewestPageLoaded(conversationId, hasMore);
+          if (latestSelectedChatRef.current !== capturedFriendId) return;
           markConversationAsRead(conversationId, currentUserId, transformed);
         })
         .catch((e) => {
@@ -2042,7 +2075,6 @@ function ConnectionsPageRefactored({
       } else {
         // No conversation yet — open empty chat UI, no DB row created
         setCurrentConversationId(null);
-        setMessages([]);
       }
     } catch (e) {
       if (latestSelectedChatRef.current !== capturedFriendId) return;
@@ -2085,7 +2117,6 @@ function ConnectionsPageRefactored({
       isOnline: false,
     });
     latestSelectedChatRef.current = targetId;
-    setMessages([]);
     setCurrentConversationId(null);
   }, [openDirectMessageWithUserId, user?.id, showMessageInterface, activeChat?.id]);
 
@@ -2257,7 +2288,6 @@ function ConnectionsPageRefactored({
         });
         setShowMessageInterface(true);
         setCurrentConversationId(null);
-        setMessages([]);
       } finally {
         if (active) {
           onOpenDirectMessageHandled?.();
@@ -2329,12 +2359,17 @@ function ConnectionsPageRefactored({
 
       (async () => {
         try {
-          const { messages: freshMsgs, error: msgError } =
+          const { messages: freshMsgs, error: msgError, hasMore } =
             await messagingService.getMessages(currentConversationId, user.id);
-          if (!msgError && freshMsgs) {
+          if (msgError) {
+            console.warn("[ConnectionsPage] Reconnection refresh failed:", msgError);
+            return;
+          }
+          if (freshMsgs) {
             const transformed = freshMsgs.map((m) => transformMessage(m, user.id));
-            setMessages(transformed);
-            setMessagesCache((prev) => ({ ...prev, [currentConversationId]: transformed }));
+            // Issue #4114: merge, never replace — pending sends survive the refresh.
+            writeConversationMessages(currentConversationId, transformed, { snapshot: { complete: !hasMore } });
+            noteNewestPageLoaded(currentConversationId, hasMore);
             markConversationAsRead(currentConversationId, user.id, transformed);
           }
         } catch (e) {
@@ -2345,7 +2380,7 @@ function ConnectionsPageRefactored({
       // Also refresh the conversations list
       fetchConversations(user.id);
     }
-  }, [isOffline, currentConversationId, user?.id, transformMessage, markConversationAsRead, fetchConversations]);
+  }, [isOffline, currentConversationId, user?.id, transformMessage, markConversationAsRead, fetchConversations, writeConversationMessages, noteNewestPageLoaded]);
 
   /**
    * ORCH-0664 (I-DEDUP-AFTER-DELIVERY): single owner for incoming-message UI
@@ -2355,11 +2390,12 @@ function ConnectionsPageRefactored({
    *   2. postgres_changes (conversation:${id}) via subscribeToConversation
    *      .onMessage → THIS HELPER
    *
-   * The seen-set add is INSIDE this helper, AFTER `setMessages` succeeds, to
-   * satisfy the invariant. If `broadcastSeenIds.current.has(newMessage.id)` is
-   * already true, the OTHER delivery path won the race — we skip the
-   * visible-messages add but still run idempotent side effects (cache,
-   * conversation list, mark-as-read).
+   * The seen-set add is INSIDE this helper, AFTER the store write, to satisfy
+   * the invariant. Issue #4114: the write is `writeConversationMessages`, which
+   * merges by `clientId || id` — idempotent, so whichever path wins the race
+   * (broadcast, postgres_changes echo, or the sender's own insert response)
+   * the message shows exactly once. The old sender + text + 5-second guess is
+   * gone; the client id pairs the echo with the optimistic bubble.
    *
    * Sender-side L1907-area `broadcastSeenIds.current.add(sentMessage.id)` is
    * the documented exception to I-DEDUP-AFTER-DELIVERY (sender already mutated
@@ -2367,68 +2403,15 @@ function ConnectionsPageRefactored({
    */
   const addIncomingMessageToUI = useCallback(
     (newMessage: DirectMessage, conversationId: string, userId: string) => {
-      const alreadyDelivered = broadcastSeenIds.current.has(newMessage.id);
+      // Store write ALWAYS runs: mergeMessages is idempotent by
+      // `clientId || id`, so a second delivery of the same row is a no-op and
+      // the sender's own echo replaces its optimistic bubble in place.
+      writeConversationMessages(conversationId, [transformMessage(newMessage, userId)]);
 
-      if (!alreadyDelivered) {
-        const transformedMsg = transformMessage(newMessage, userId);
-
-        // Add to messages (replace optimistic or add new)
-        setMessages((prev) => {
-          const exists = prev.some((msg) => msg.id === transformedMsg.id);
-          if (exists) return prev;
-
-          const optimisticIndex = prev.findIndex(
-            (msg) =>
-              msg.id.startsWith("temp-") &&
-              msg.senderId === transformedMsg.senderId &&
-              msg.content === transformedMsg.content &&
-              Math.abs(
-                new Date(msg.timestamp).getTime() -
-                  new Date(transformedMsg.timestamp).getTime()
-              ) < 5000
-          );
-
-          if (optimisticIndex !== -1) {
-            const updated = [...prev];
-            updated[optimisticIndex] = transformedMsg;
-            return updated;
-          }
-
-          return [...prev, transformedMsg];
-        });
-
-        // Couple the seen-set add to a successful UI mutation.
-        // I-DEDUP-AFTER-DELIVERY: never populate the seen-set without
-        // a corresponding visible-messages addition.
-        broadcastSeenIds.current.add(newMessage.id);
-      }
-
-      // Cache update ALWAYS runs (idempotent — uses same exists/optimistic checks)
-      const transformedForCache = transformMessage(newMessage, userId);
-      setMessagesCache((prev) => {
-        const existing = prev[conversationId] || [];
-        const exists = existing.some((msg) => msg.id === transformedForCache.id);
-        if (exists) return prev;
-
-        const optimisticIndex = existing.findIndex(
-          (msg) =>
-            msg.id.startsWith("temp-") &&
-            msg.senderId === transformedForCache.senderId &&
-            msg.content === transformedForCache.content &&
-            Math.abs(
-              new Date(msg.timestamp).getTime() -
-                new Date(transformedForCache.timestamp).getTime()
-            ) < 5000
-        );
-
-        if (optimisticIndex !== -1) {
-          const updated = [...existing];
-          updated[optimisticIndex] = transformedForCache;
-          return { ...prev, [conversationId]: updated };
-        }
-
-        return { ...prev, [conversationId]: [...existing, transformedForCache] };
-      });
+      // Couple the seen-set add to the successful store write.
+      // I-DEDUP-AFTER-DELIVERY: never populate the seen-set without
+      // a corresponding visible-messages write.
+      broadcastSeenIds.current.add(newMessage.id);
 
       // Conversation list update ALWAYS runs.
       // Do NOT increment unread_count — the chat is open, so the message
@@ -2452,7 +2435,7 @@ function ConnectionsPageRefactored({
         messagingService.markAsRead([newMessage.id], userId).catch(console.error);
       }
     },
-    [transformMessage]
+    [transformMessage, writeConversationMessages]
   );
 
   // ORCH-0664: callback passed to MessageInterface as `onBroadcastReceive`.
@@ -2468,14 +2451,15 @@ function ConnectionsPageRefactored({
 
   // ── Realtime subscription setup ──────────────────────────
   const setupRealtimeSubscription = (conversationId: string, userId: string) => {
-
-    // Cleanup existing subscription
-    if (conversationChannelRef.current) {
-      messagingService.unsubscribeFromConversation(conversationId);
-    }
-
-    conversationChannelRef.current = messagingService.subscribeToConversation(
+    // Issue #4114: release the conversation that is ACTUALLY subscribed (it used
+    // to unsubscribe `conversationId`, the one being opened, which left the
+    // previous chat's channel running).
+    conversationChannelRef.current = switchConversationSubscription(
+      subscribedConversationIdRef,
       conversationId,
+      messagingService,
+      (nextConversationId) => messagingService.subscribeToConversation(
+      nextConversationId,
       userId,
       {
         onMessage: (newMessage: DirectMessage) => {
@@ -2490,23 +2474,19 @@ function ConnectionsPageRefactored({
         // This callback updates the sender's UI with the read state.
         onMessageUpdated: (updatedMessage: DirectMessage) => {
           const transformed = transformMessage(updatedMessage, userId);
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === transformed.id ? { ...msg, ...transformed } : msg
-            )
-          );
+          // Issue #4114: an UPDATE only patches a row the chat already holds
+          // (read receipts, edits); it never adds one.
           setMessagesCache((prev) => {
-            const existing = prev[conversationId] || [];
-            return {
-              ...prev,
-              [conversationId]: existing.map((msg) =>
-                msg.id === transformed.id ? { ...msg, ...transformed } : msg
-              ),
-            };
+            const existing = prev[conversationId] || EMPTY_MESSAGES;
+            const known = existing.some((msg) =>
+              msg.id === transformed.id || (!!transformed.clientId && msg.clientId === transformed.clientId)
+            );
+            if (!known) return prev;
+            return { ...prev, [conversationId]: mergeMessages(existing, [transformed]) };
           });
         },
       }
-    );
+    ));
   };
 
   const handleCancelPendingCollabChat = useCallback(async () => {
@@ -2630,15 +2610,13 @@ function ConnectionsPageRefactored({
 
   // ── Back from MessageInterface ───────────────────────────
   const handleBackFromMessage = useCallback(() => {
-    if (currentConversationId && conversationChannelRef.current) {
-      messagingService.unsubscribeFromConversation(currentConversationId);
-      conversationChannelRef.current = null;
-    }
+    // Issue #4114: release whichever conversation is actually subscribed.
+    releaseConversationSubscription(subscribedConversationIdRef, messagingService);
+    conversationChannelRef.current = null;
 
     setShowMessageInterface(false);
     setActiveChat(null);
     setCurrentConversationId(null);
-    setMessages([]);
     setActiveChatIsBlocked(false);
     setActiveChatIsUnfriended(false);
     setActiveChatIsDeletedAccount(false);
@@ -2667,6 +2645,182 @@ function ConnectionsPageRefactored({
     handleBackFromMessage();
   }, [handleBackFromMessage]);
 
+  // ── Issue #4114: one delivery path for a fresh send and a retry ──
+  // The optimistic bubble is already in the store under its client id. The
+  // insert carries the same client id, so the response, the realtime echo
+  // (which usually lands first) and any refresh all merge into that one row.
+  // A retry reuses the client id; the server's unique index turns a retry of a
+  // send that already landed into a read of the original row.
+  const deliverMessage = async (conversationId: string, pending: Message): Promise<void> => {
+    if (!user?.id) return;
+    const clientId = pending.clientId;
+    if (!clientId) return;
+    if (sendsInFlightRef.current.has(clientId)) return; // double tap on Retry
+    sendsInFlightRef.current.add(clientId);
+
+    const markFailed = () => {
+      // Ignored by the merge if the server already confirmed this client id.
+      writeConversationMessages(conversationId, [{ ...pending, failed: true }]);
+    };
+
+    try {
+      if (
+        pending.type !== "text" &&
+        pending.type !== "image" &&
+        pending.type !== "video" &&
+        pending.type !== "file"
+      ) {
+        throw new Error(`Unsupported message type for send: ${pending.type}`);
+      }
+      const mentionEntries = (pending.mentions ?? []).filter(
+        (mention): mention is MentionEntry => typeof mention !== "string"
+      );
+      const parsedFileSize = pending.fileSize ? Number(pending.fileSize) : undefined;
+
+      const { message: sentMessage, error: sendError } =
+        await messagingService.sendMessage(
+          conversationId,
+          user.id,
+          pending.content,
+          pending.type,
+          pending.fileUrl,
+          pending.fileName,
+          parsedFileSize !== undefined && Number.isFinite(parsedFileSize) ? parsedFileSize : undefined,
+          pending.replyToId,
+          mentionEntries,
+          pending.cardTags ?? [],
+          clientId,
+        );
+
+      if (sendError || !sentMessage) {
+        console.error("Error sending message:", sendError);
+
+        // Mark optimistic message as failed (not removed — user sees tap-to-retry)
+        markFailed();
+
+        if (
+          sendError?.includes("Cannot") ||
+          sendError?.includes("blocked") ||
+          sendError?.includes("policy")
+        ) {
+          Alert.alert(
+            t('connections:message_not_sent'),
+            t('connections:message_blocked_alt')
+          );
+        } else {
+          Alert.alert(
+            t('connections:message_not_sent'),
+            t('connections:message_failed')
+          );
+        }
+        return;
+      }
+
+      // Confirmation: the server row replaces the optimistic bubble by client id
+      // (and shows the server's time). If the echo already did it, this is a no-op.
+      writeConversationMessages(conversationId, [transformMessage(sentMessage, user.id)]);
+
+      // Update conversation with real message
+      setConversations((prev) =>
+        prev.map((conv): Conversation => {
+          if (conv.id === conversationId) {
+            return { ...conv, last_message: sentMessage as unknown as ConvMessage };
+          }
+          return conv;
+        })
+      );
+
+      // Add real ID to broadcast seen set so postgres_changes backup won't dupe
+      broadcastSeenIds.current.add(sentMessage.id);
+
+      // Broadcast to other participants (instant delivery <500ms)
+      // NOTE: This depends on MessageInterface's useBroadcastReceiver having
+      // already subscribed to this channel. supabase.channel() returns the
+      // existing subscribed instance, enabling the send.
+      try {
+        const channelName = `chat:${conversationId}`;
+        const broadcastChannel = supabase.channel(channelName);
+        broadcastChannel.send({
+          type: "broadcast",
+          event: "new_message",
+          payload: {
+            ...sentMessage,
+            sender_name: currentUserDisplayName,
+          },
+        });
+      } catch (broadcastErr) {
+        // Broadcast failure is non-fatal — postgres_changes will deliver
+        console.warn("Broadcast send failed (non-fatal):", broadcastErr);
+      }
+    } catch (e) {
+      console.error("Error sending message:", e);
+      // Mark as failed instead of removing — the bubble offers tap-to-retry.
+      markFailed();
+    } finally {
+      sendsInFlightRef.current.delete(clientId);
+    }
+  };
+
+  // ── Issue #4114: tap a failed bubble to send it again with the same client id ──
+  const handleRetryMessage = (messageId: string) => {
+    if (!currentConversationId || !user?.id) return;
+    const failedMessage = (messagesCache[currentConversationId] ?? EMPTY_MESSAGES).find(
+      (msg) => msg.id === messageId
+    );
+    if (!failedMessage || failedMessage.failed !== true || !isLocalMessage(failedMessage)) return;
+    if (activeChatIsBlocked || (activeChat && blockedUsers.some((b) => b.id === activeChat.id))) {
+      Alert.alert(
+        t('connections:message_not_sent'),
+        t('connections:message_blocked')
+      );
+      return;
+    }
+    const pending: Message = {
+      ...failedMessage,
+      clientId: failedMessage.clientId ?? createClientMessageId(),
+      failed: false,
+    };
+    writeConversationMessages(currentConversationId, [pending]);
+    void deliverMessage(currentConversationId, pending);
+  };
+
+  // ── Issue #4114: load older messages when the user scrolls to the top ──
+  // Pages backwards from the oldest confirmed message (50 at a time) and merges
+  // the page into the store, so nothing already on screen moves or repeats.
+  const handleLoadOlderMessages = async () => {
+    const conversationId = currentConversationId;
+    if (!conversationId || !user?.id) return;
+    if (olderPaging.conversationId !== conversationId || !olderPaging.hasMore || olderPaging.loading) return;
+    if (olderLoadInFlightRef.current === conversationId) return;
+    const loaded = messagesCache[conversationId] ?? EMPTY_MESSAGES;
+    const before = oldestConfirmedTimestamp(loaded);
+    if (!before) return;
+
+    olderLoadInFlightRef.current = conversationId;
+    setOlderPaging({ conversationId, hasMore: true, loading: true });
+    try {
+      const { messages: page, error, hasMore } = await messagingService.getMessages(
+        conversationId,
+        user.id,
+        MESSAGE_PAGE_SIZE,
+        before,
+      );
+      if (error) throw new Error(error);
+      const transformed = page.map((m) => transformMessage(m, user.id));
+      const loadedIds = new Set(loaded.map((m) => m.id));
+      // The cursor is inclusive; a page with nothing new means we reached the start.
+      const gotNew = transformed.some((m) => !loadedIds.has(m.id));
+      writeConversationMessages(conversationId, transformed);
+      setOlderPaging({ conversationId, hasMore: hasMore && gotNew, loading: false });
+    } catch (e) {
+      console.warn("[ConnectionsPage] Loading older messages failed:", e);
+      setOlderPaging({ conversationId, hasMore: true, loading: false });
+      showToast({ message: t('chat:olderMessagesFailed'), type: "error" });
+    } finally {
+      olderLoadInFlightRef.current = null;
+    }
+  };
+
   // ── Send message ─────────────────────────────────────────
   const handleSendMessage = async (
     content: string,
@@ -2677,6 +2831,9 @@ function ConnectionsPageRefactored({
     cardTags: CardTagEntry[] = [],
   ) => {
     if (!activeChat || !user?.id) return;
+
+    // Issue #4114: minted before anything else and reused on every retry.
+    const clientId = createClientMessageId();
 
     // ORCH-0436: First message — create conversation + send atomically
     if (!currentConversationId) {
@@ -2718,7 +2875,7 @@ function ConnectionsPageRefactored({
       }
 
       const { message: sentMsg, error: sendError } = await messagingService.sendMessage(
-        newConvId, user.id, content, type, firstFileUrl, firstFileName, firstFileSize, replyToId, mentions, cardTags
+        newConvId, user.id, content, type, firstFileUrl, firstFileName, firstFileSize, replyToId, mentions, cardTags, clientId
       );
 
       if (sendError || !sentMsg) {
@@ -2733,10 +2890,10 @@ function ConnectionsPageRefactored({
       setCurrentConversationId(newConvId);
       setupRealtimeSubscription(newConvId, user.id);
 
-      // Add the sent message to UI
-      const transformed = transformMessage(sentMsg, user.id);
-      setMessages([transformed]);
-      setMessagesCache(prev => ({ ...prev, [newConvId]: [transformed] }));
+      // Add the sent message to the store (merged by client id)
+      writeConversationMessages(newConvId, [transformMessage(sentMsg, user.id)]);
+      noteNewestPageLoaded(newConvId, false);
+      broadcastSeenIds.current.add(sentMsg.id);
 
       // Refresh conversations list to pick up the new conversation
       fetchConversations(user.id);
@@ -2744,7 +2901,8 @@ function ConnectionsPageRefactored({
       return;
     }
 
-    // ── Existing conversation: original logic below ──
+    // ── Existing conversation ──
+    const conversationId = currentConversationId;
 
     // Synchronous block check — uses cached list + background reconciliation state.
     // No network call on the send path. RLS enforces server-side as the real authority.
@@ -2756,8 +2914,7 @@ function ConnectionsPageRefactored({
       return;
     }
 
-    const tempId = `temp-${Date.now()}-${Math.random()}`;
-    const now = new Date().toISOString();
+    const tempId = `${LOCAL_MESSAGE_ID_PREFIX}${clientId}`;
 
     // Upload file if needed
     let fileUrl: string | undefined;
@@ -2772,7 +2929,7 @@ function ConnectionsPageRefactored({
           file.name?.split(".").pop() ||
           (file.type === "image" ? "jpg" : file.type === "video" ? "mp4" : fileUri.split(".").pop() || "bin");
         const fileNameWithExt = `${user.id}_${Date.now()}.${fileExt}`;
-        const filePath = `${currentConversationId}/${fileNameWithExt}`;
+        const filePath = `${conversationId}/${fileNameWithExt}`;
 
         let contentType = "application/octet-stream";
         if (type === "image") contentType = file.type === "image" ? "image/jpeg" : "image/png";
@@ -2809,9 +2966,15 @@ function ConnectionsPageRefactored({
       }
     }
 
+    // Issue #4114: stamp the optimistic time AFTER the upload, so a photo's
+    // bubble sorts where the send actually happened. Once confirmed, the
+    // server's created_at replaces it.
+    const now = new Date().toISOString();
+
     // Optimistic message
     const optimisticMsg: Message = {
       id: tempId,
+      clientId,
       senderId: user.id,
       senderName: "Me",
       content,
@@ -2828,21 +2991,17 @@ function ConnectionsPageRefactored({
       marketingCampaignId: null,
     };
 
-    setMessages((prev) => [...prev, optimisticMsg]);
-    setMessagesCache((prev) => ({
-      ...prev,
-      [currentConversationId]: [...(prev[currentConversationId] || []), optimisticMsg],
-    }));
+    writeConversationMessages(conversationId, [optimisticMsg]);
 
     // Update conversation list optimistically
     setConversations((prev) =>
       prev.map((conv) => {
-        if (conv.id === currentConversationId) {
+        if (conv.id === conversationId) {
           return {
             ...conv,
             last_message: {
               id: tempId,
-              conversation_id: currentConversationId,
+              conversation_id: conversationId,
               sender_id: user.id,
               content,
               message_type: type as "text" | "image" | "video" | "file" | "card",
@@ -2862,119 +3021,7 @@ function ConnectionsPageRefactored({
       })
     );
 
-    try {
-      const { message: sentMessage, error: sendError } =
-        await messagingService.sendMessage(
-          currentConversationId,
-          user.id,
-          content,
-          type,
-          fileUrl,
-          fileName,
-          fileSize,
-          replyToId,
-          mentions,
-          cardTags,
-        );
-
-      if (sendError || !sentMessage) {
-        console.error("Error sending message:", sendError);
-
-        // Mark optimistic message as failed (not removed — user sees retry state)
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === tempId ? { ...msg, failed: true } : msg
-          )
-        );
-        setMessagesCache((prev) => ({
-          ...prev,
-          [currentConversationId]: (prev[currentConversationId] || []).map(
-            (msg) => (msg.id === tempId ? { ...msg, failed: true } : msg)
-          ),
-        }));
-
-        if (
-          sendError?.includes("Cannot") ||
-          sendError?.includes("blocked") ||
-          sendError?.includes("policy")
-        ) {
-          Alert.alert(
-            t('connections:message_not_sent'),
-            t('connections:message_blocked_alt')
-          );
-        } else {
-          Alert.alert(
-            t('connections:message_not_sent'),
-            t('connections:message_failed')
-          );
-        }
-        return;
-      }
-
-      // CRITICAL: Replace temp ID with real ID in messages state
-      const realMsg = transformMessage(sentMessage, user.id);
-
-      setMessages((prev) =>
-        prev.map((msg) => (msg.id === tempId ? realMsg : msg))
-      );
-
-      setMessagesCache((prev) => {
-        const existing = prev[currentConversationId] || [];
-        return {
-          ...prev,
-          [currentConversationId]: existing.map((msg) =>
-            msg.id === tempId ? realMsg : msg
-          ),
-        };
-      });
-
-      // Update conversation with real message
-      setConversations((prev) =>
-        prev.map((conv): Conversation => {
-          if (conv.id === currentConversationId) {
-            return { ...conv, last_message: sentMessage as unknown as ConvMessage };
-          }
-          return conv;
-        })
-      );
-
-      // Add real ID to broadcast seen set so postgres_changes backup won't dupe
-      broadcastSeenIds.current.add(sentMessage.id);
-
-      // Broadcast to other participants (instant delivery <500ms)
-      // NOTE: This depends on MessageInterface's useBroadcastReceiver having
-      // already subscribed to this channel. supabase.channel() returns the
-      // existing subscribed instance, enabling the send.
-      try {
-        const channelName = `chat:${currentConversationId}`;
-        const broadcastChannel = supabase.channel(channelName);
-        broadcastChannel.send({
-          type: "broadcast",
-          event: "new_message",
-          payload: {
-            ...sentMessage,
-            sender_name: currentUserDisplayName,
-          },
-        });
-      } catch (broadcastErr) {
-        // Broadcast failure is non-fatal — postgres_changes will deliver
-        console.warn("Broadcast send failed (non-fatal):", broadcastErr);
-      }
-    } catch (e) {
-      console.error("Error sending message:", e);
-      // Mark as failed instead of removing
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === tempId ? { ...msg, failed: true } : msg
-        )
-      );
-      setMessagesCache((prev) => ({
-        ...prev,
-        [currentConversationId]: (prev[currentConversationId] || []).map(
-          (msg) => (msg.id === tempId ? { ...msg, failed: true } : msg)
-        ),
-      }));
-    }
+    await deliverMessage(conversationId, optimisticMsg);
   };
 
   // ── Collaboration session cleanup ────────────────────────
@@ -3230,6 +3277,10 @@ function ConnectionsPageRefactored({
             onBack={handleBackFromMessage}
             onSendMessage={handleSendMessage}
             messages={messages}
+            onRetryMessage={handleRetryMessage}
+            onLoadOlderMessages={handleLoadOlderMessages}
+            hasOlderMessages={olderPaging.conversationId === currentConversationId && olderPaging.hasMore}
+            isLoadingOlderMessages={olderPaging.conversationId === currentConversationId && olderPaging.loading}
             onOpenAddToBoardModal={(friend: Friend) => handleAddToBoard(friend)}
             onShareSavedCard={handleShareSavedCard}
             onRemoveFriend={handleRemoveFriend}

@@ -61,6 +61,8 @@ interface MessageBubbleProps {
   onMentionTap?: (userId: string) => void;
   onCardTagTap?: (cardTag: CardTagEntry) => void;
   onSystemTokenPress?: (token: CollabSystemToken) => void;
+  /** Issue #4114: present on a failed send — tapping the status resends it (same client id). */
+  onRetry?: () => void;
 }
 
 export type CollabSystemToken =
@@ -243,6 +245,7 @@ export function MessageBubble({
   onMentionTap,
   onCardTagTap,
   onSystemTokenPress,
+  onRetry,
 }: MessageBubbleProps) {
   const { t } = useTranslation(['chat', 'common']);
 
@@ -481,12 +484,30 @@ export function MessageBubble({
         </View>
       </View>
 
-      {/* Read receipt — only on last sent message in group */}
-      {isMe && (groupPosition === 'solo' || groupPosition === 'last') && (
-        <View style={styles.readReceiptContainer}>
-          {isFailed ? (
+      {/* Issue #4114: every failed send says so and offers tap-to-retry,
+          wherever it sits in its group. */}
+      {isMe && isFailed && (
+        onRetry ? (
+          <TouchableOpacity
+            style={styles.readReceiptContainer}
+            onPress={onRetry}
+            accessibilityRole="button"
+            accessibilityLabel={t('chat:failedTapToRetry')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.failedText}>{t('chat:failedTapToRetry')}</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.readReceiptContainer}>
             <Text style={styles.failedText}>{t('chat:failed')}</Text>
-          ) : !isDelivered ? (
+          </View>
+        )
+      )}
+
+      {/* Read receipt — only on last sent message in group */}
+      {isMe && !isFailed && (groupPosition === 'solo' || groupPosition === 'last') && (
+        <View style={styles.readReceiptContainer}>
+          {!isDelivered ? (
             <Icon name="checkmark" size={12} color={colors.gray[400]} />
           ) : isRead ? (
             <Icon name="checkmark-done" size={12} color={colors.primary[500]} />

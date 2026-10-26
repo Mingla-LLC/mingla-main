@@ -108,6 +108,7 @@ const BROADCAST_COMPOSER_NOTICE_CONTENT_GAP = 12;
 
 interface Message {
   id: string;
+  clientId?: string;  // Issue #4114: stable key across optimistic → confirmed
   senderId: string;
   senderName: string;
   content: string;
@@ -175,6 +176,12 @@ interface MessageInterfaceProps {
     cardTags?: CardTagEntry[],
   ) => void;
   messages: Message[];
+  /** Issue #4114: tap a failed bubble to resend it with the same client id. */
+  onRetryMessage?: (messageId: string) => void;
+  /** Issue #4114: scrolled to the top — load the previous page of history. */
+  onLoadOlderMessages?: () => void;
+  hasOlderMessages?: boolean;
+  isLoadingOlderMessages?: boolean;
   /**
    * ORCH-0666: invoked when user taps "Add to Board" in the more-options menu.
    * Owner: ConnectionsPage (mounts AddToBoardModal with sessionMembershipService
@@ -227,6 +234,10 @@ export default function MessageInterface({
   onBack,
   onSendMessage,
   messages,
+  onRetryMessage,
+  onLoadOlderMessages,
+  hasOlderMessages = false,
+  isLoadingOlderMessages = false,
   onOpenAddToBoardModal,
   onShareSavedCard,
   onRemoveFriend,
@@ -1662,7 +1673,14 @@ export default function MessageInterface({
               >
               <TouchableOpacity
                 activeOpacity={1}
+                // Issue #4114: a failed bubble is tap-to-retry (whole bubble, so it
+                // also works for screen readers, which focus this wrapper).
+                accessibilityHint={item.message.failed && onRetryMessage ? t('chat:failedTapToRetry') : undefined}
                 onPress={() => {
+                  if (item.message.failed && onRetryMessage) {
+                    onRetryMessage(item.message.id);
+                    return;
+                  }
                   setRevealedTimestampId(prev => prev === item.message.id ? null : item.message.id);
                 }}
                 onLongPress={(e) => {
@@ -1744,6 +1762,7 @@ export default function MessageInterface({
                   onSystemTokenPress={handleSystemTokenPress}
                   isMe={item.message.isMe}
                   groupPosition={item.groupPosition}
+                  onRetry={item.message.failed && onRetryMessage ? () => onRetryMessage(item.message.id) : undefined}
                   showTimestamp={revealedTimestampId === item.message.id}
                   isRead={item.message.isMe && !item.message.id.startsWith("temp-") && (item.message.isRead === true)}
                   replyTo={item.message.replyToId ? (() => {
@@ -1764,8 +1783,26 @@ export default function MessageInterface({
             </>
             );
           }}
-          keyExtractor={(item) => item.message.id}
+          // Issue #4114: key by client id when present so the bubble keeps its
+          // identity (no remount flash) when the optimistic copy is confirmed.
+          keyExtractor={(item) => item.message.clientId ?? item.message.id}
           inverted={true}
+          // Issue #4114: inverted list — the "end" is the visual top (oldest).
+          // New pages append to the end of `data`, so the visible messages do
+          // not move while older history loads.
+          onEndReached={hasOlderMessages && !isLoadingOlderMessages ? onLoadOlderMessages : undefined}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={
+            isLoadingOlderMessages ? (
+              <View
+                style={styles.olderMessagesSpinner}
+                accessibilityRole="progressbar"
+                accessibilityLabel={t('chat:loadingOlderMessages')}
+              >
+                <ActivityIndicator size="small" color={colors.gray400} />
+              </View>
+            ) : null
+          }
           style={styles.messagesContainer}
           contentContainerStyle={[
             styles.messagesContentContainer,
@@ -3552,6 +3589,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   // ORCH-0435: Day separator
+  // Issue #4114: small spinner at the top while older history loads.
+  olderMessagesSpinner: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
   daySeparator: {
     flexDirection: 'row',
     alignItems: 'center',
