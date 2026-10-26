@@ -23,9 +23,15 @@ Deno.test("contentShare maps a label per occurrence for the share page", () => {
 
 Deno.test("brand Upcoming list orders by next_start_at (not master)", () => {
   const text = Deno.readTextFileSync(SRC);
-  // Past-master / future-next offerings must stay visible and ordered by next.
-  assert(text.includes('gte("next_start_at"'));
+  // In-progress next nights stay visible (filter end, not start); order by next start.
+  assert(text.includes('gte("next_end_at"'));
   assert(text.includes('order("next_start_at"'));
   assert(!/business_public_events_view"\)\.select\([^)]*\)\.eq\("brand_slug"[^;]*gte\("master_start_at"/.test(text));
+});
+
+Deno.test("event share derives scheduleLine from open dates when view columns absent", () => {
+  const text = Deno.readTextFileSync(SRC);
+  assert(text.includes("scheduleFromOpenDates"));
+  assert(text.includes("derived.scheduleLine"));
 });
 

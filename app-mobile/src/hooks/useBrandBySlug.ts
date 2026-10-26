@@ -242,8 +242,9 @@ const mapEvent = (
     eventType: row.event_type === "rsvp" ? "rsvp" : "event",
     operatorEndedAtUtc: null,
     terminalSource,
-    masterStartAtUtc: row.next_start_at ?? row.master_start_at,
-    masterEndAtUtc: row.next_end_at ?? row.master_end_at,
+    // True master for lifecycle; dateLine prefers next / schedule_line.
+    masterStartAtUtc: row.master_start_at,
+    masterEndAtUtc: row.master_end_at,
     masterTimezone: row.master_timezone,
     dateLine:
       typeof row.schedule_line === "string" && row.schedule_line.trim().length > 0

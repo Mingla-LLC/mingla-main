@@ -141,7 +141,12 @@ const mapEvent = (event: PublicEventRecord): PublicBrandEvent => ({
   dateLine:
     typeof event.scheduleLine === "string" && event.scheduleLine.trim().length > 0
       ? `NEXT: ${event.scheduleLine.trim()}`
-      : formatDraftDateLine(event),
+      : formatDraftDateLine({
+          // Display prefers next; master* on the record stay true master for lifecycle.
+          ...event,
+          masterStartAtUtc: event.nextStartAtUtc ?? event.masterStartAtUtc,
+          masterEndAtUtc: event.nextEndAtUtc ?? event.masterEndAtUtc,
+        }),
   venueName: event.venueName,
   format: event.format,
   coverHue: event.coverHue,

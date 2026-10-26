@@ -24,6 +24,12 @@ Deno.test("PR7 migration schedules public view, discover, and admin readers", ()
       "p_date_from IS NULL OR COALESCE(next_start_at_sort, master_start_at) >= p_date_from",
     ),
   );
+  // Discover schedule_line must null when upcoming_count is 0 (not <= 1 chip).
+  assert(
+    text.includes(
+      "WHEN COALESCE((sched.j->>'upcomingCount')::integer,0) = 0 THEN NULL",
+    ),
+  );
   assert(text.includes("page AS"));
   // Full schedule helper must not run on the filtered catalog CTE.
   // Bound at `ranked AS` (not `page AS`) — ranked sits between filtered and page.

@@ -170,8 +170,10 @@ AS $function$
     'next_start_at',ed.start_at,
     'next_end_at',ed.end_at,
     'upcoming_count',COALESCE((sched.j->>'upcomingCount')::integer,0),
+    -- Match helper/view: null when nothing upcoming; chip is the window occurrence.
     'schedule_line', CASE
-      WHEN COALESCE((sched.j->>'upcomingCount')::integer,0) <= 1 THEN
+      WHEN COALESCE((sched.j->>'upcomingCount')::integer,0) = 0 THEN NULL
+      WHEN COALESCE((sched.j->>'upcomingCount')::integer,0) = 1 THEN
         to_char(ed.start_at AT TIME ZONE COALESCE(NULLIF(btrim(e.timezone), ''), 'UTC'), 'Dy DD Mon')
       ELSE format(
         '%s · +%s more',

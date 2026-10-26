@@ -167,8 +167,9 @@ export function mapPublicEventSeedRow(
     // renders whenever cover_media_url is present). PROTECTIVE: do not derive
     // a fake hue — Constitution #9 (SPEC §4.7 binds the 0).
     coverHue: 0,
-    masterDateUtc: row.next_start_at ?? row.master_start_at ?? null,
-    masterEndAtUtc: row.next_end_at ?? row.master_end_at ?? null,
+    // True master; next_* live on optional schedule keys below.
+    masterDateUtc: row.master_start_at ?? null,
+    masterEndAtUtc: row.master_end_at ?? null,
     // #3281 — omit null schedule keys so sealed §4.7 exact maps (ORCH-1342) stay stable.
     ...(row.next_start_at != null || row.next_end_at != null || row.upcoming_count != null || row.schedule_line != null
       ? {

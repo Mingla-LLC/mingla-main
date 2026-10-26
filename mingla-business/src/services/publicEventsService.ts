@@ -444,6 +444,8 @@ export type PublicEventRecord = LiveEvent & {
   /** issue #3281 PR7 — server schedule line for cards / SEO. */
   scheduleLine?: string | null;
   upcomingCount?: number | null;
+  nextStartAtUtc?: string | null;
+  nextEndAtUtc?: string | null;
 };
 
 /** issue #2160 — the organiser's per-event multi-day pricing choice. */
@@ -1286,7 +1288,8 @@ export const publicEventViewRowToEvent = (
   const coverHue = asNumber(businessEvent.coverHue ?? theme.coverHue, 25);
   // ORCH-0792: dates sourced from event_dates via master_* columns on the
   // view (I-PROPOSED-AY EVENT_DATES_SOLE_DATE_AUTHORITY).
-  // issue #3281 PR7 — prefer server next occurrence for display when present.
+  // issue #3281 PR7 — card/SEO display prefers next occurrence; master_* stay
+  // true master for ORCH-0850 lifecycle (never silently remapped).
   const displayStartAt = row.next_start_at ?? master_start_at;
   const displayEndAt = row.next_end_at ?? master_end_at;
   const dateTimezone =
@@ -1316,9 +1319,10 @@ export const publicEventViewRowToEvent = (
     // Source of truth for cross-midnight display and ORCH-0850 lifecycle
     // math. When non-null these take precedence over the smart-infer
     // fallback in `computeMasterEndAtUtc`.
-    // issue #3281 PR7 — prefer next occurrence for buyer-facing display.
-    masterStartAtUtc: displayStartAt,
-    masterEndAtUtc: displayEndAt,
+    masterStartAtUtc: master_start_at,
+    masterEndAtUtc: master_end_at,
+    nextStartAtUtc: row.next_start_at ?? null,
+    nextEndAtUtc: row.next_end_at ?? null,
     scheduleLine: row.schedule_line ?? null,
     upcomingCount: row.upcoming_count ?? null,
     timezone: dateTimezone,
