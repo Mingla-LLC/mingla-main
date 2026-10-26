@@ -3,7 +3,8 @@
 -- Issue #4114 Wave 4 — chat media on the private bucket, view once, cleanup.
 --
 --   I-01  schema: messages.view_once (NOT NULL DEFAULT false), view_once_purged_at,
---         message_media_views with RLS on, and message-attachments is private.
+--         message_media_views with RLS on, and message-attachments exists (and is
+--         private wherever storage.buckets has a `public` column).
 --   I-02  a view-once message must be a photo or video stored under
 --         <conversation>/once/; anything else is refused (23514).
 --   I-03  storage reads: participants read normal attachments; a non-participant
@@ -133,9 +134,19 @@ BEGIN
   IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.message_media_views'::regclass) THEN
     RAISE EXCEPTION 'I-01: message_media_views must have RLS on';
   END IF;
-  SELECT public INTO v_public FROM storage.buckets WHERE id = 'message-attachments';
-  IF v_public IS DISTINCT FROM false THEN
-    RAISE EXCEPTION 'I-01: message-attachments must exist and be private (got %)', v_public;
+  -- The bucket must exist. Its `public` flag is checked only where the column
+  -- exists: the bare supabase/postgres image CI replays on has storage.buckets
+  -- without it (the Storage API adds it), so reading it directly fails to
+  -- compile there. Same shape as issue_3720_brand_group_files_guides.
+  IF NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'message-attachments') THEN
+    RAISE EXCEPTION 'I-01: message-attachments bucket missing';
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'storage' AND table_name = 'buckets' AND column_name = 'public') THEN
+    EXECUTE $sql$SELECT public FROM storage.buckets WHERE id = 'message-attachments'$sql$ INTO v_public;
+    IF v_public IS DISTINCT FROM false THEN
+      RAISE EXCEPTION 'I-01: message-attachments must be private (got %)', v_public;
+    END IF;
   END IF;
 END $i01$;
 
