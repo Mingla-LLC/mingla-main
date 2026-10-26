@@ -428,9 +428,9 @@ describe("issue #3380 tester — the public tel: link", () => {
 
   test("no phone, no link: both surfaces only build the link when a number exists", () => {
     const publicPage = source("../packages/brand-rendering/PublicBrandPage.tsx");
-    expect(publicPage).toMatch(
-      /\{phone !== undefined \? \(\s*<Pressable\s*onPress=\{\(\) => onExternal\(`tel:\$\{brandPhoneDialNumber\(phone\)\}`\)\}/,
-    );
+    // [TEST-MOD-APPROVED #4111] D10: the public brand page shows no brand phone,
+    // so it never builds a tel: link (the Host profile below still does).
+    expect(publicPage).not.toMatch(/tel:/);
     expect(publicPage).not.toContain("`tel:${phone}`");
 
     const profile = source("src/components/brand/BrandProfileView.tsx");

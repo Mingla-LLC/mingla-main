@@ -138,9 +138,15 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // That column is the table's non-partial primary key from
   // `20260612000000_orch_426_discover_scale.sql`; census +1 (97).
   //
+  // [TEST-MOD-APPROVED #4111] Explorer enquiry threads mark brand replies read
+  // via `brandEnquiryService.markEnquiryMessagesRead`, upserting
+  // `message_reads` on `(message_id,user_id)` — the same arbiter
+  // `useMessages` already uses for chat read receipts. No new arbiter columns;
+  // census +1 for the new call site only (98).
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 97);
+  assert.equal(sites.length, 98);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&

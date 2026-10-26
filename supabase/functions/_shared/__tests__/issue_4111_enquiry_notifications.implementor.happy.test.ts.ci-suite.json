@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4111_enquiry_notifications.implementor.happy.test.ts",
+  "lane": "notification-deno",
+  "orderKey": "issue-4111-enquiry-notifications",
+  "profile": "deno-1.46-notification"
+}

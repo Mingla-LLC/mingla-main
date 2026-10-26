@@ -52,6 +52,9 @@ pg_experience_slot_availability(p_event_id uuid, p_event_date_id uuid, p_ticket_
 # #3682: aggregate-only brand follower counts for public brand and offering pages; one bigint or (brand_id, follower_count) rows for live brands, never a user id; batch capped at 100 ids.
 get_brand_follower_count(p_brand_id uuid)
 get_brand_follower_counts(p_brand_ids uuid[])
+# #4111: signed-out brand pages need whether a brand takes enquiries and its measured reply time; both return only a boolean or an aggregate, never guest data.
+brand_enquiry_public_profile(p_brand_id uuid)
+issue_4111_brand_takes_enquiries(p_brand_id uuid)
 pg_public_rsvp_by_slug(p_brand_slug text, p_event_slug text)
 pg_public_social_proof(p_event_id uuid)
 # #2101: the ONE bounded public eligibility advisory. Returns exactly

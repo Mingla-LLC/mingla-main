@@ -143,6 +143,11 @@ import {
   type ReceivedRow,
   type SentRow,
 } from "./connections/friendsSheetModel";
+// #4111 Wave D: brand enquiry threads. Each is its own "enquiry" row in the
+// list model (never folded into a brand channel); the row is EnquiryChatListRow.
+import { EnquiryChatListRow } from "./brandEnquiry/EnquiryChatListRow";
+import { isEnquiryConversation, mergeEnquiryConversations } from "./brandEnquiry/enquiryChatRows";
+import { useEnquiryChatRows } from "./brandEnquiry/useEnquiryChatRows";
 // ORCH-1371 [add-friend-country-picker-hidden]: the add-friend country picker is
 // hoisted here (owner of the transient phone/country/flag state) and rendered as
 // a sibling of the friends sheet — iOS presents only one RN <Modal> at a time.
@@ -627,6 +632,11 @@ function ConnectionsPageRefactored({
     requestsLoading,
     fetchBlockedUsers,
   } = useFriends();
+
+  // #4111 Wave D: the guest's brand enquiries (own query + realtime). They
+  // come straight from here, so the Explorer guest-only rule (D19) and the
+  // brand-channel fold never touch them.
+  const enquiryRows = useEnquiryChatRows(user?.id ?? null);
 
   // Issue #4114: pull-to-refresh reloads chats AND friends (it used to reload
   // friends only). Declared after fetchConversations below.
@@ -1190,6 +1200,17 @@ function ConnectionsPageRefactored({
       return nameMatch || contentMatch;
     });
   }, [listConversations, searchQuery, user?.id]);
+  // #4111 Wave D: search also finds enquiries (brand name, topic, last
+  // message); they are woven in by recency and never merged into other rows.
+  const visibleConversations = useMemo(
+    () => mergeEnquiryConversations(filteredConversations, enquiryRows.conversations, searchQuery),
+    [enquiryRows.conversations, filteredConversations, searchQuery],
+  );
+  // Browse mode: every enquiry, after D19 and the brand-channel fold.
+  const browseConversations = useMemo(
+    () => mergeEnquiryConversations(listConversations, enquiryRows.conversations, ""),
+    [enquiryRows.conversations, listConversations],
+  );
 
   const pendingCreatorCollabSessionIds = useMemo(
     () =>
@@ -1558,17 +1579,19 @@ function ConnectionsPageRefactored({
   }, []);
 
   // ── Issue #4114: pull-to-refresh reloads chats and friends ──
+  // Pull to refresh: chats start first; friends (awaited, issue-1638 C3.7)
+  // and then the #4111 enquiry rows reload while they run.
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      // Both reloads start together; chats are awaited after friends.
       const chats = user?.id ? fetchConversations(user.id) : Promise.resolve();
       await fetchFriends();
+      await enquiryRows.refetch();
       await chats;
     } finally {
       setIsRefreshing(false);
     }
-  }, [fetchConversations, fetchFriends, user?.id]);
+  }, [enquiryRows.refetch, fetchConversations, fetchFriends, user?.id]);
 
   const patchConversation = useCallback((conversationId: string, patch: Partial<ChatListItemConversation>) => {
     setConversations((current) => current.map((conversation) =>
@@ -3932,18 +3955,18 @@ function ConnectionsPageRefactored({
     () =>
       searchActive
         ? buildSearchItems<Conversation, UseFriend>({
-            matchedChats: filteredConversations,
+            matchedChats: visibleConversations,
             friends: dbFriends,
             allConversations: explorerChats,
             currentUserId,
             query: searchQuery,
           })
         : buildBrowseItems<Conversation, UseFriend>({
-            active: listConversations,
+            active: browseConversations,
             archivedCount: archivedConversations.length,
             filter: chatFilter,
           }),
-    [archivedConversations.length, chatFilter, explorerChats, currentUserId, dbFriends, filteredConversations, listConversations, searchActive, searchQuery],
+    [archivedConversations.length, browseConversations, chatFilter, explorerChats, currentUserId, dbFriends, searchActive, searchQuery, visibleConversations],
   );
   const listLayouts = useMemo(() => chatListLayouts(listItems), [listItems]);
   const getItemLayout = useCallback(
@@ -4163,6 +4186,17 @@ function ConnectionsPageRefactored({
             />
           );
         }
+        case "enquiry": {
+          // #4111: an enquiry is always its own row, opening app/enquiry/[enquiryId].
+          if (!isEnquiryConversation(item.conversation)) return null;
+          return (
+            <EnquiryChatListRow
+              conversation={item.conversation}
+              onPress={enquiryRows.open}
+              showSeparator={showSeparator}
+            />
+          );
+        }
         case "chat": {
           const conversation = item.conversation as ChatListItemConversation;
           const isMuted = conversation.participants?.some((p) => mutedUserIds.includes(p.id)) ?? false;
@@ -4217,6 +4251,7 @@ function ConnectionsPageRefactored({
     },
     [
       currentUserId,
+      enquiryRows.open,
       handleAcceptInvite,
       handleDeclineInvite,
       handleOpenChatActions,

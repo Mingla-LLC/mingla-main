@@ -101,6 +101,22 @@ import type { ConsumerPublicVenue } from "../../../../src/services/publicVenueSe
 import { colors } from "../../../../src/constants/designSystem";
 import { reportNonFatal } from "../../../../src/diagnostics/reportNonFatal";
 import { useCanonicalShareArrival } from "../../../../src/hooks/useCanonicalShareArrival";
+// DEEP specifier (the #1560 rule above): suites mock the offering barrel.
+import { resolveTheme } from "@mingla/offering-rendering/themeResolver";
+import {
+  VenueMessageBoundary,
+  type VenueMessageOpener,
+} from "../../../../src/components/brandEnquiry/venueMessageBoundary";
+
+// #4111 — the Message add-on loads on mount after first commit, via a deferred
+// require (Metro bundles it; jest harnesses without ESM import() can render it).
+// Requiring this route therefore pulls in no i18n / React Query / message
+// stack; a load failure is caught by VenueMessageBoundary and only hides Message.
+const VenueMessageController = React.lazy(async () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require("../../../../src/components/brandEnquiry/VenueMessageController") as typeof import("../../../../src/components/brandEnquiry/VenueMessageController");
+  return { default: mod.default };
+});
 
 /** This app's ONE analytics surface tag for the public venue page. */
 const ANALYTICS_SURFACE = "consumer_native";
@@ -424,6 +440,46 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     venue === null
       ? null
       : `${BUYER_WEB_ORIGIN}/b/${venue.brandSlug}/v/${venue.slug}`;
+  // #4111 Wave D (D6) — "Message {Brand}" on the venue page opens the sheet
+  // with this venue picked ("At the venue" topics). Signed-out guests get the
+  // sign-in step; Explorer never sends anonymously. Absent until the brand is
+  // known to take messages, so no dead Message button renders.
+  const venueMessageBrand = useMemo(
+    () =>
+      venue === null
+        ? null
+        : {
+            id: venue.brandId,
+            name: venue.brandName,
+            slug: venue.brandSlug,
+            theme: resolveTheme(venue.theme, null),
+          },
+    [venue],
+  );
+  const venueEnquiry = useMemo(
+    () =>
+      venue === null
+        ? null
+        : {
+            id: venue.id,
+            name: venue.name,
+            orderingEnabled: false,
+            reservationsOnline: venue.reservability.state === "available",
+          },
+    [venue],
+  );
+  // The controller is an isolated add-on, mounted after the page's first
+  // commit; it hands back an opener only when the brand takes messages.
+  const [venueMessageOpener, setVenueMessageOpener] = useState<VenueMessageOpener | null>(null);
+  const [venueMessageReady, setVenueMessageReady] = useState(false);
+  useEffect(() => {
+    setVenueMessageReady(true);
+  }, []);
+  const handleVenueMessageOpener = useCallback(
+    (opener: VenueMessageOpener | null): void => setVenueMessageOpener(opener),
+    [],
+  );
+
   const handleShare = useCallback((): void => {
     if (shareUrl === null) return;
     if (venue !== null) void shareContent("venue", { brandSlug:venue.brandSlug, venueSlug:venue.slug });
@@ -562,6 +618,7 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
   }
 
   return (
+    <>
     <PublicVenueScreen
       venue={venueViewModel}
       discoveryPrice={venue.discoveryPrice}
@@ -668,9 +725,22 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       onShare={handleShare}
       onClose={handleClose}
       onOpenBrand={handleOpenBrand}
+      onMessageBrand={venueMessageOpener === null ? undefined : venueMessageOpener.open}
       onOpenMaps={handleOpenMaps}
       onCopyAddress={handleCopyAddress}
     />
+    {venueMessageReady && venueMessageBrand !== null && venueEnquiry !== null ? (
+      <VenueMessageBoundary>
+        <React.Suspense fallback={null}>
+        <VenueMessageController
+          brand={venueMessageBrand}
+          venue={venueEnquiry}
+          onOpener={handleVenueMessageOpener}
+        />
+        </React.Suspense>
+      </VenueMessageBoundary>
+    ) : null}
+    </>
   );
 }
 

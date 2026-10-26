@@ -44,7 +44,7 @@ export interface ChatListConversationLike {
   type?: "direct" | "group";
   name?: string | null;
   session_id?: string | null;
-  linked_entity_type?: "direct" | "session" | "trip" | "event";
+  linked_entity_type?: "direct" | "session" | "trip" | "event" | "brand_enquiry";
   participants: ChatListParticipant[];
   last_message?: { content?: string | null; created_at?: string | null; message_type?: string | null } | null;
   unread_count?: number;
@@ -275,6 +275,8 @@ export type ChatListItemModel<C, F> =
   | { kind: "section"; key: string; section: "invites" | "chats" | "friends" | "events" }
   | { kind: "invite"; key: string; conversation: C }
   | { kind: "chat"; key: string; conversation: C }
+  /** #4111: an enquiry thread, always its own row (never folded, never an event). */
+  | { kind: "enquiry"; key: string; conversation: C }
   | { kind: "friend"; key: string; friend: F }
   | { kind: "archived"; key: string; count: number };
 
@@ -286,6 +288,7 @@ export function chatListItemHeight(kind: ChatListItemModel<unknown, unknown>["ki
       return CHAT_ARCHIVED_ROW_HEIGHT;
     case "invite":
     case "chat":
+    case "enquiry":
     case "friend":
       return CHAT_ROW_HEIGHT;
     default: {
@@ -293,6 +296,13 @@ export function chatListItemHeight(kind: ChatListItemModel<unknown, unknown>["ki
       return exhaustive;
     }
   }
+}
+
+/** A chat or an enquiry row (enquiries keep their own row kind). */
+function conversationItem<C extends ChatListConversationLike, F>(conversation: C): ChatListItemModel<C, F> {
+  return chatKind(conversation) === "enquiry"
+    ? { kind: "enquiry", key: `enquiry:${conversation.id}`, conversation }
+    : { kind: "chat", key: conversation.id, conversation };
 }
 
 /**
@@ -314,7 +324,7 @@ export function buildBrowseItems<C extends ChatListConversationLike, F>(args: {
     for (const invite of invites) items.push({ kind: "invite", key: invite.id, conversation: invite });
     if (chats.length > 0) items.push({ kind: "section", key: "section:chats", section: "chats" });
   }
-  for (const chat of chats) items.push({ kind: "chat", key: chat.id, conversation: chat });
+  for (const chat of chats) items.push(conversationItem<C, F>(chat));
   if (args.archivedCount > 0 && args.filter === "all") {
     items.push({ kind: "archived", key: "archived", count: args.archivedCount });
   }
@@ -341,7 +351,7 @@ export function buildSearchItems<C extends ChatListConversationLike, F extends C
   if (chats.length > 0) {
     items.push({ kind: "section", key: "section:chats", section: "chats" });
     for (const chat of chats) {
-      items.push({ kind: isPendingInviteRow(chat) ? "invite" : "chat", key: chat.id, conversation: chat });
+      items.push(isPendingInviteRow(chat) ? { kind: "invite", key: chat.id, conversation: chat } : conversationItem<C, F>(chat));
     }
   }
   if (friends.length > 0) {

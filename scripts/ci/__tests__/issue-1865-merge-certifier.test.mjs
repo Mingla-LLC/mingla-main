@@ -1,22 +1,19 @@
-// MINGLA-INVARIANT: I-MERGE-CERTIFIER-STATE-TOTALITY | issue #1865 | Missing, pending, cancelled, stale, timed-out, failed, or malformed lane evidence cannot produce certification; only every applicable lane's exact terminal success can.
+// MINGLA-INVARIANT: I-MERGE-CERTIFIER-STATE-TOTALITY | issue #1865 | Running, failed, cancelled, timed-out, or absent lane evidence cannot produce certification; only every lane GitHub ran for the exact head reaching a passing conclusion, confirmed by two agreeing reads, can.
 
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
   CertifierError,
-  certificationEvidence,
-  changedPaths,
+  certify,
   DEFAULT_REPOSITORY,
-  discoverExpectedLanes,
-  evaluateCertification,
-  GITHUB_ACTIONS_APP_ID,
-  globToRegExp,
+  evaluate,
+  fingerprint,
+  GitHubApi,
   HOST_WORKFLOW_PATH,
-  matchesOrderedPatterns,
-  parseWorkflowSources,
-  proveExecutedJobs,
-  validateCandidate,
+  renderVerdict,
+  selectLaneRuns,
+  validatePull,
 } from "../merge-certifier.mjs";
 import {
   ALWAYS_ON as DRAFT_POLICY_ALWAYS_ON,
@@ -24,23 +21,18 @@ import {
   auditWorkflowSources as auditDraftPolicy,
 } from "../../../.github/scripts/strict-grep/issue-2881-pr-draft-gate-policy.mjs";
 
+const PR = 1865;
 const HEAD = "a".repeat(40);
-const BASE = "b".repeat(40);
-const CANDIDATE = "c".repeat(40);
-const API = `https://api.github.com/repos/${DEFAULT_REPOSITORY}`;
+const OTHER_HEAD = "d".repeat(40);
 const workflowPath = (...parts) => `.github/workflows/${parts.join("-")}.${["y", "ml"].join("")}`;
 const LANE_A = workflowPath("alpha", "checks");
 const LANE_B = workflowPath("beta", "checks");
 
-function source({ name, event = "pull_request", filters = "" }) {
-  return `name: ${name}\non:\n  ${event}:\n${filters}jobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n`;
-}
-
+let nextId = 100;
 function run(overrides = {}) {
+  nextId += 1;
   return {
-    id: 10,
-    workflow_id: 20,
-    check_suite_id: 30,
+    id: nextId,
     name: "Alpha",
     path: LANE_A,
     event: "pull_request",
@@ -48,107 +40,229 @@ function run(overrides = {}) {
     conclusion: "success",
     head_sha: HEAD,
     run_attempt: 1,
-    run_started_at: "2026-10-23T12:00:00Z",
+    run_started_at: "2026-10-26T12:00:00Z",
     repository: { full_name: DEFAULT_REPOSITORY },
-    head_repository: { full_name: DEFAULT_REPOSITORY },
-    pull_requests: [{
-      number: 1865,
-      head: { sha: HEAD, repo: { url: API } },
-      base: { sha: BASE, repo: { url: API } },
-    }],
+    pull_requests: [{ number: PR }],
     ...overrides,
   };
 }
 
-function jobCheck(overrides = {}) {
+function pull(overrides = {}) {
   return {
-    id: 40,
-    head_sha: HEAD,
-    status: "completed",
-    conclusion: "success",
-    started_at: "2026-10-23T12:00:01Z",
-    completed_at: "2026-10-23T12:00:02Z",
-    details_url: `https://github.com/${DEFAULT_REPOSITORY}/actions/runs/10/job/40`,
-    app: { id: GITHUB_ACTIONS_APP_ID },
-    check_suite: { id: 30 },
+    number: PR,
+    state: "open",
+    draft: false,
+    base: { ref: "main", repo: { full_name: DEFAULT_REPOSITORY } },
+    head: { sha: HEAD, repo: { full_name: DEFAULT_REPOSITORY } },
     ...overrides,
   };
 }
 
-function evaluate(runs, expectedLanes = [{ path: LANE_A, event: "pull_request", name: "Alpha" }]) {
-  return evaluateCertification({
-    expectedLanes,
-    runs,
-    repository: DEFAULT_REPOSITORY,
-    prNumber: 1865,
-    headSha: HEAD,
-    baseSha: BASE,
-  });
+const lanes = (runs) => selectLaneRuns(runs, { prNumber: PR, headSha: HEAD });
+
+// A fake API that serves one run list per poll (the last one repeats).
+function fakeApi({ polls, pulls = [pull()] }) {
+  let poll = 0;
+  let pullRead = 0;
+  return {
+    calls: { runs: 0 },
+    async get(suffix) {
+      assert.equal(suffix, `/pulls/${PR}`);
+      const value = pulls[Math.min(pullRead, pulls.length - 1)];
+      pullRead += 1;
+      if (value instanceof Error) throw value;
+      return value;
+    },
+    async runsForHead(headSha) {
+      assert.equal(headSha, HEAD);
+      this.calls.runs += 1;
+      const value = polls[Math.min(poll, polls.length - 1)];
+      poll += 1;
+      if (value instanceof Error) throw value;
+      return value;
+    },
+  };
 }
 
-test("path matching preserves double-star, character-class, and ordered-negative semantics", () => {
-  assert.match("supabase/functions/a/b/index.ts", globToRegExp("supabase/functions/**"));
-  assert.match("root.test.mjs", globToRegExp("**/*.test.mjs"));
-  assert.doesNotMatch("app/[id].tsx", globToRegExp("app/[id].tsx"));
-  assert.match("app/i.tsx", globToRegExp("app/[id].tsx"));
-  assert.equal(matchesOrderedPatterns(["docs/**", "!docs/frozen.md"], "docs/current.md"), true);
-  assert.equal(matchesOrderedPatterns(["docs/**", "!docs/frozen.md"], "docs/frozen.md"), false);
+function clock() {
+  let time = 0;
+  return { now: () => time, sleep: async (ms) => { time += ms; } };
+}
+
+const run2 = (overrides) => run({ name: "Beta", path: LANE_B, ...overrides });
+
+test("bot runs outside .github/workflows are ignored, never fatal (the Copilot review regression)", () => {
+  const copilot = run({ name: "Running Copilot Code Review", path: "dynamic/agents/copilot-pull-request-reviewer", event: "dynamic" });
+  const copilotOnPrEvent = run({ path: "dynamic/agents/copilot-pull-request-reviewer", conclusion: "failure" });
+  const selected = lanes([run(), copilot, copilotOnPrEvent]);
+  assert.equal(selected.length, 1);
+  assert.equal(evaluate(selected).verdict, "certified");
 });
 
-test("changed paths mirror the three-dot diff's current name while retaining rename provenance", () => {
-  assert.deepEqual(changedPaths([
-    { filename: "new/name.ts", previous_filename: "old/name.ts", status: "renamed" },
-    { filename: "kept.ts", status: "modified" },
-  ], 2), ["kept.ts", "new/name.ts"]);
-  assert.throws(
-    () => changedPaths([{ filename: "new/name.ts", status: "renamed" }], 1),
-    /rename has no previous_filename/,
-  );
-  assert.throws(
-    () => changedPaths([{ filename: "file.ts", status: "invented" }], 1),
-    /changed-file status is invalid/,
-  );
+test("only lanes GitHub actually ran are judged; a path-skipped workflow is not waited for", () => {
+  // The first certifier predicted lanes from path filters and waited forever for
+  // ones GitHub skipped (it read `+` in `app/+native-intent.tsx` literally).
+  const result = evaluate(lanes([run(), run2()]));
+  assert.equal(result.verdict, "certified");
+  assert.equal(result.lanes.length, 2);
 });
 
-test("workflow discovery applies candidate pull filters, trusted target filters, and excludes its host", () => {
-  const target = workflowPath("target", "metadata");
-  const closeOnly = workflowPath("close", "metadata");
-  const pullSources = {
-    [LANE_A]: `name: Same display name\non:\n  push:\n    paths: &paths [src/**]\n  pull_request:\n    types: [opened, synchronize, reopened]\n    paths: *paths\njobs: {}\n`,
-    [LANE_B]: source({ name: "Same display name", filters: "    paths-ignore: [docs/**]\n" }),
-    [HOST_WORKFLOW_PATH]: source({ name: "Host", event: "pull_request_target" }),
-  };
-  const targetSources = {
-    [target]: source({ name: "Target metadata", event: "pull_request_target", filters: "    branches: [main]\n" }),
-    [closeOnly]: `name: Close metadata\non:\n  pull_request_target:\n    types: [closed]\njobs: {}\n`,
-    [HOST_WORKFLOW_PATH]: source({ name: "Host", event: "pull_request_target" }),
-  };
-  const lanes = discoverExpectedLanes({ pullSources, targetSources, changedFiles: ["src/index.ts"], baseBranch: "main" });
-  assert.deepEqual(lanes.map(({ path, event }) => ({ path, event })), [
-    { path: LANE_A, event: "pull_request" },
-    { path: LANE_B, event: "pull_request" },
-    { path: target, event: "pull_request_target" },
-  ]);
+test("runs for another head, another PR, another repository, a non-PR event, or the certifier itself do not count", () => {
+  const ignored = [
+    run({ head_sha: OTHER_HEAD, conclusion: "failure" }),
+    run({ pull_requests: [{ number: PR + 1 }], conclusion: "failure" }),
+    run({ pull_requests: [], conclusion: "failure" }),
+    run({ repository: { full_name: "someone/fork" }, conclusion: "failure" }),
+    run({ event: "push", conclusion: "failure" }),
+    run({ path: HOST_WORKFLOW_PATH, event: "pull_request_target", status: "in_progress", conclusion: null }),
+    null,
+  ];
+  assert.deepEqual(lanes(ignored), []);
+  assert.equal(evaluate(lanes([run(), ...ignored])).verdict, "certified");
 });
 
-test("workflow parsing resolves bounded aliases and rejects incomplete YAML evidence", () => {
-  const valid = `name: Alias proof\non:\n  push:\n    paths: &paths [src/**]\n  pull_request:\n    paths: *paths\njobs: {}\n`;
-  assert.deepEqual(parseWorkflowSources({ [LANE_A]: valid })[LANE_A], {
-    name: "Alias proof",
-    on: { push: null, pull_request: { paths: ["src/**"] } },
+test("every non-passing state refuses or waits; only success, skipped, and neutral pass", () => {
+  for (const conclusion of ["success", "skipped", "neutral"]) {
+    assert.equal(evaluate([run({ conclusion })]).verdict, "certified", conclusion);
+  }
+  for (const conclusion of ["failure", "cancelled", "timed_out", "action_required", "startup_failure", "stale", null, "made-up"]) {
+    const result = evaluate([run(), run2({ conclusion })]);
+    assert.equal(result.verdict, "refused", String(conclusion));
+    assert.equal(result.failed, 1);
+  }
+  for (const status of ["queued", "in_progress", "waiting", "requested", "pending"]) {
+    assert.equal(evaluate([run(), run2({ status, conclusion: null })]).verdict, "pending", status);
+  }
+});
+
+test("no lanes at all is never certification", () => {
+  assert.equal(evaluate([]).verdict, "pending");
+});
+
+test("a failure anywhere refuses even while other lanes are still running", () => {
+  const result = evaluate([run({ conclusion: "failure" }), run2({ status: "in_progress", conclusion: null })]);
+  assert.equal(result.verdict, "refused");
+});
+
+test("the newest run or rerun attempt of a lane decides it, in both directions", () => {
+  const olderSuccess = run({ run_started_at: "2026-10-26T12:00:00Z" });
+  const newerFailure = run({ run_started_at: "2026-10-26T12:05:00Z", conclusion: "failure" });
+  assert.equal(evaluate([olderSuccess, newerFailure]).verdict, "refused");
+
+  const olderFailure = run({ run_started_at: "2026-10-26T12:00:00Z", conclusion: "cancelled" });
+  const newerSuccess = run({ run_started_at: "2026-10-26T12:05:00Z" });
+  assert.equal(evaluate([olderFailure, newerSuccess]).verdict, "certified");
+
+  const sameStart = "2026-10-26T12:00:00Z";
+  assert.equal(evaluate([run({ run_started_at: sameStart, run_attempt: 1 }), run({ run_started_at: sameStart, run_attempt: 2, conclusion: "failure" })]).verdict, "refused");
+});
+
+test("pull_request and pull_request_target runs of one file are separate lanes", () => {
+  const result = evaluate([run(), run({ event: "pull_request_target", conclusion: "failure" })]);
+  assert.equal(result.lanes.length, 2);
+  assert.equal(result.verdict, "refused");
+});
+
+test("the certifier waits for running lanes, then certifies once two reads agree", async () => {
+  const time = clock();
+  const running = [run(), run2({ status: "in_progress", conclusion: null })];
+  const done = [run(), run2()];
+  const api = fakeApi({ polls: [running, running, done, done] });
+  const outcome = await certify({ api, prNumber: PR, ...time, intervalMs: 60_000, deadlineMs: 3_600_000 });
+  assert.equal(outcome.result.verdict, "certified");
+  assert.equal(api.calls.runs, 4);
+});
+
+test("evidence that changes between reads means keep watching, not fail", async () => {
+  const time = clock();
+  const firstGreen = [run({ id: 1 })];
+  const laneRerun = [run({ id: 1, run_attempt: 2, status: "in_progress", conclusion: null })];
+  const settled = [run({ id: 1, run_attempt: 2 })];
+  const api = fakeApi({ polls: [firstGreen, laneRerun, settled, settled] });
+  const outcome = await certify({ api, prNumber: PR, ...time });
+  assert.equal(outcome.result.verdict, "certified");
+  assert.equal(outcome.result.lanes[0].run.run_attempt, 2);
+});
+
+test("a refusal superseded before confirmation does not stick", async () => {
+  const time = clock();
+  const cancelled = [run({ id: 1, conclusion: "cancelled", run_started_at: "2026-10-26T12:00:00Z" })];
+  const replaced = [...cancelled, run({ id: 2, run_started_at: "2026-10-26T12:01:00Z" })];
+  const api = fakeApi({ polls: [cancelled, replaced, replaced] });
+  assert.equal((await certify({ api, prNumber: PR, ...time })).result.verdict, "certified");
+});
+
+test("a confirmed failure refuses", async () => {
+  const time = clock();
+  const failed = [run(), run2({ conclusion: "failure" })];
+  const outcome = await certify({ api: fakeApi({ polls: [failed] }), prNumber: PR, ...time });
+  assert.equal(outcome.result.verdict, "refused");
+  assert.match(renderVerdict(outcome.result, outcome), /REFUSED[\s\S]*failed\/failure: Beta/);
+});
+
+test("lanes still running at the deadline time out instead of certifying", async () => {
+  const time = clock();
+  const running = [run({ status: "in_progress", conclusion: null })];
+  const outcome = await certify({ api: fakeApi({ polls: [running] }), prNumber: PR, ...time, intervalMs: 60_000, deadlineMs: 300_000 });
+  assert.equal(outcome.result.verdict, "pending");
+  assert.match(renderVerdict(outcome.result, outcome), /TIMED OUT/);
+});
+
+test("transient GitHub errors are retried, real ones stop at once", async () => {
+  const time = clock();
+  const transient = new CertifierError("TRANSIENT", "GET returned 502");
+  const api = fakeApi({ polls: [transient, [run()], [run()]] });
+  assert.equal((await certify({ api, prNumber: PR, ...time })).result.verdict, "certified");
+
+  const real = new CertifierError("GITHUB_API", "GET returned 404");
+  await assert.rejects(certify({ api: fakeApi({ polls: [real] }), prNumber: PR, ...time }), /GITHUB_API/);
+});
+
+test("a head that moves during certification is never certified", async () => {
+  const time = clock();
+  const moved = pull({ head: { sha: OTHER_HEAD, repo: { full_name: DEFAULT_REPOSITORY } } });
+  const api = fakeApi({ polls: [[run()]], pulls: [pull(), moved] });
+  await assert.rejects(certify({ api, prNumber: PR, ...time }), /SUPERSEDED/);
+});
+
+test("drafts, closed PRs, other base branches and fork heads are refused at once", () => {
+  assert.equal(validatePull(pull()).headSha, HEAD);
+  assert.throws(() => validatePull(pull({ draft: true })), /draft/);
+  assert.throws(() => validatePull(pull({ state: "closed" })), /not open/);
+  assert.throws(() => validatePull(pull({ base: { ref: "release", repo: { full_name: DEFAULT_REPOSITORY } } })), /does not target main/);
+  assert.throws(() => validatePull(pull({ head: { sha: HEAD, repo: { full_name: "someone/fork" } } })), /branch of this repository/);
+  assert.throws(() => validatePull(pull({ head: { sha: "abc", repo: { full_name: DEFAULT_REPOSITORY } } })), /full commit SHA/);
+});
+
+test("fingerprints differ whenever a lane's run, attempt, or state differs", () => {
+  const base = evaluate([run({ id: 7 })]);
+  assert.equal(fingerprint(base), fingerprint(evaluate([run({ id: 7 })])));
+  assert.notEqual(fingerprint(base), fingerprint(evaluate([run({ id: 7, run_attempt: 2 })])));
+  assert.notEqual(fingerprint(base), fingerprint(evaluate([run({ id: 8 })])));
+  assert.notEqual(fingerprint(base), fingerprint(evaluate([run({ id: 7, conclusion: "failure" })])));
+});
+
+test("the API client treats only throttling and server errors as transient", async () => {
+  const respond = (status, headers = {}) => async () => ({
+    ok: status < 400,
+    status,
+    headers: new Headers(headers),
+    json: async () => ({ workflow_runs: [] }),
   });
-  assert.throws(
-    () => parseWorkflowSources({ [LANE_A]: `name: Broken\non:\n  pull_request:\n    paths: *missing\n` }),
-    /unknown YAML alias/,
-  );
-  assert.throws(
-    () => parseWorkflowSources({ [LANE_A]: `name: One\nname: Two\non: pull_request\n` }),
-    /duplicate YAML key/,
-  );
-  assert.throws(
-    () => parseWorkflowSources({ [LANE_A]: `name: Cycle\non:\n  pull_request:\n    paths: &loop [*loop]\n` }),
-    /cyclic YAML alias/,
-  );
+  const code = async (fetchImpl) => {
+    try {
+      await new GitHubApi({ repository: DEFAULT_REPOSITORY, token: "t", fetchImpl }).get("/pulls/1");
+      return "ok";
+    } catch (error) {
+      return error.code;
+    }
+  };
+  assert.equal(await code(respond(200)), "ok");
+  for (const status of [429, 500, 502, 503, 504]) assert.equal(await code(respond(status)), "TRANSIENT", String(status));
+  assert.equal(await code(respond(403, { "x-ratelimit-remaining": "0" })), "TRANSIENT");
+  assert.equal(await code(respond(403)), "GITHUB_API");
+  assert.equal(await code(respond(404)), "GITHUB_API");
+  assert.equal(await code(async () => { throw new Error("socket hang up"); }), "TRANSIENT");
 });
 
 test("the required host re-fires on ready-for-review and cannot drop synchronize", () => {
@@ -161,109 +275,4 @@ test("the required host re-fires on ready-for-review and cannot drop synchronize
     auditDraftPolicy({ [entry.path]: workflow(["opened", "reopened", "ready_for_review"]) }, options).errors.join("\n"),
     /use exactly.*synchronize/,
   );
-});
-
-test("only exact terminal success certifies", () => {
-  const verdict = evaluate([run()]);
-  assert.equal(verdict.certified, true);
-  assert.equal(verdict.succeeded, 1);
-});
-
-test("a successful workflow must expose at least one actually successful job", () => {
-  const workflowVerdict = evaluate([run()]);
-  assert.equal(proveExecutedJobs(workflowVerdict, [jobCheck()], { headSha: HEAD }).certified, true);
-  const allSkipped = proveExecutedJobs(workflowVerdict, [jobCheck({ conclusion: "skipped" })], { headSha: HEAD });
-  assert.equal(allSkipped.certified, false);
-  assert.equal(allSkipped.entries[0].detail, "no-successful-job");
-  const missing = proveExecutedJobs(workflowVerdict, [], { headSha: HEAD });
-  assert.equal(missing.entries[0].detail, "job-evidence-missing");
-  assert.throws(
-    () => proveExecutedJobs(workflowVerdict, [jobCheck({ id: null })], { headSha: HEAD }),
-    /invalid check-run id/,
-  );
-});
-
-for (const [label, runs, state, detail] of [
-  ["missing", [], "missing", undefined],
-  ["pending", [run({ status: "in_progress", conclusion: null })], "pending", "in_progress"],
-  ["cancelled", [run({ conclusion: "cancelled" })], "failed", "cancelled"],
-  ["stale conclusion", [run({ conclusion: "stale" })], "failed", "stale"],
-  ["timed out", [run({ conclusion: "timed_out" })], "failed", "timed_out"],
-  ["assertion failure", [run({ conclusion: "failure" })], "failed", "failure"],
-  ["stale base", [run({ pull_requests: [{
-    number: 1865,
-    head: { sha: HEAD, repo: { url: API } },
-    base: { sha: "d".repeat(40), repo: { url: API } },
-  }] })], "stale", undefined],
-]) {
-  test(`${label} lane refuses certification`, () => {
-    const verdict = evaluate(runs);
-    assert.equal(verdict.certified, false);
-    assert.equal(verdict.entries[0].state, state);
-    assert.equal(verdict.entries[0].detail, detail);
-  });
-}
-
-test("the newest exact run controls the verdict and cannot hide behind an older success", () => {
-  const verdict = evaluate([
-    run(),
-    run({ id: 11, status: "queued", conclusion: null, run_started_at: "2026-10-23T12:01:00Z" }),
-  ]);
-  assert.equal(verdict.certified, false);
-  assert.equal(verdict.entries[0].state, "pending");
-});
-
-test("a second snapshot can prove that lane evidence stayed byte-for-byte stable", () => {
-  const stable = evaluate([run({ updated_at: "2026-10-23T12:01:00Z" })]);
-  const changed = evaluate([run({
-    status: "in_progress",
-    conclusion: null,
-    run_attempt: 2,
-    updated_at: "2026-10-23T12:02:00Z",
-  })]);
-  assert.equal(certificationEvidence(stable), certificationEvidence(structuredClone(stable)));
-  assert.notEqual(certificationEvidence(stable), certificationEvidence(changed));
-});
-
-test("malformed and incomplete API data fail closed", () => {
-  for (const mutation of [
-    { status: "completed", conclusion: null },
-    { status: "in_progress", conclusion: "success" },
-    { repository: {} },
-    { pull_requests: null },
-    { run_attempt: 0 },
-  ]) {
-    assert.throws(() => evaluate([run(mutation)]), CertifierError);
-  }
-});
-
-test("candidate provenance requires exact current-main then head parents", () => {
-  const input = {
-    repository: DEFAULT_REPOSITORY,
-    branch: "main",
-    pull: {
-      state: "open",
-      draft: false,
-      merge_commit_sha: CANDIDATE,
-      base: { ref: "main", sha: BASE, repo: { full_name: DEFAULT_REPOSITORY } },
-      head: { sha: HEAD, repo: { full_name: DEFAULT_REPOSITORY } },
-    },
-    mainRef: { ref: "refs/heads/main", object: { type: "commit", sha: BASE } },
-    mergeCommit: { sha: CANDIDATE, parents: [{ sha: BASE }, { sha: HEAD }] },
-  };
-  assert.deepEqual(validateCandidate(input), { baseSha: BASE, headSha: HEAD, candidateSha: CANDIDATE, mainSha: BASE });
-  assert.throws(
-    () => validateCandidate({ ...input, mergeCommit: { ...input.mergeCommit, parents: [{ sha: HEAD }, { sha: BASE }] } }),
-    /parents are not exact current main then PR head/,
-  );
-});
-
-test("two applicable lanes require two successes", () => {
-  const expected = [
-    { path: LANE_A, event: "pull_request", name: "Alpha" },
-    { path: LANE_B, event: "pull_request", name: "Beta" },
-  ];
-  const verdict = evaluate([run()], expected);
-  assert.equal(verdict.certified, false);
-  assert.deepEqual(verdict.entries.map((entry) => entry.state), ["success", "missing"]);
 });

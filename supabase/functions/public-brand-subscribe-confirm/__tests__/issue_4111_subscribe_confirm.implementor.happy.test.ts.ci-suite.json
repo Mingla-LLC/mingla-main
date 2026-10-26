@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/public-brand-subscribe-confirm/__tests__/issue_4111_subscribe_confirm.implementor.happy.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4111-subscribe-confirm",
+  "profile": "deno-2-unit"
+}

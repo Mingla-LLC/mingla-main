@@ -63,7 +63,7 @@ export type ChatListItemConversation = Conversation & {
   name?: string | null;
   session_id?: string | null;
   event_id?: string | null;
-  linked_entity_type?: 'direct' | 'session' | 'trip' | 'event';
+  linked_entity_type?: 'direct' | 'session' | 'trip' | 'event' | 'brand_enquiry';
   eventBrandName?: string | null;
   eventBrandAccountId?: string | null;
   /** Issue #4114 Wave 6: the event's brand, for folding into a brand channel. */

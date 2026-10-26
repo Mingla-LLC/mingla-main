@@ -674,6 +674,8 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
 
   // ----- Populated state -----
   const toggleValue = draft.displayAttendeeCount ?? true;
+  // #4111 — the column defaults to on; a row read without it shows on too.
+  const enquiriesEnabled = draft.enquiriesEnabled !== false;
 
   const saveButton = (
     <Button
@@ -946,6 +948,27 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               error={contactPhoneError}
               errorId="brand-edit-contact-phone-error"
             />
+            <Text style={styles.kindHint}>
+              Your email and phone stay private. Mingla uses them for reminders about waiting enquiries.
+            </Text>
+            {/* #4111 — "Let guests message us" (brands.enquiries_enabled). */}
+            <GlassCard variant="base" padding={spacing.md}>
+              <View style={styles.toggleRow}>
+                <View style={styles.toggleTextCol}>
+                  <Text style={styles.toggleLabel}>Let guests message us</Text>
+                  <Text style={styles.toggleSub}>
+                    Guests can send your team a message from your brand page and the Mingla app. Replies happen in Messages.
+                  </Text>
+                </View>
+                <InlineToggle
+                  value={enquiriesEnabled}
+                  onPress={() =>
+                    setDraft({ ...draft, enquiriesEnabled: !enquiriesEnabled })
+                  }
+                  accessibilityLabel="Let guests message us"
+                />
+              </View>
+            </GlassCard>
           </View>
 
           {/* SECTION D — Social links */}

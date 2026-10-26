@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
+import { moderateText } from "../_shared/contentModeration.ts";
 
 // ORCH-0977 — Content moderation gate for user-generated content.
 //
@@ -13,6 +14,9 @@ import { corsHeaders } from "../_shared/cors.ts";
 // function FAILS OPEN — it returns `flagged: false` so a moderation outage
 // never blocks all messaging. The report + block features backstop the
 // residual. Flagged results are logged for operator review.
+//
+// #4111 — the provider call lives in _shared/contentModeration.ts so the
+// public enquiry form uses the same logic. Response shape is unchanged.
 
 function jsonResponse(body: object, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -36,55 +40,23 @@ serve(async (req: Request) => {
     return jsonResponse({ flagged: false, categories: [] });
   }
 
-  // Empty / whitespace-only text is never objectionable.
-  if (!text.trim()) {
-    return jsonResponse({ flagged: false, categories: [] });
-  }
-
-  const openaiKey = Deno.env.get("OPENAI_API_KEY");
-  if (!openaiKey) {
+  const result = await moderateText(text);
+  if (result.failure === "key_missing") {
     // Fail open: no key configured, do not block users.
     console.warn("[moderate-content] OPENAI_API_KEY missing — failing open");
-    return jsonResponse({ flagged: false, categories: [] });
+  } else if (result.failure === "provider_status") {
+    console.warn(
+      `[moderate-content] OpenAI returned ${result.providerStatus} — failing open`,
+    );
+  } else if (result.failure === "network_or_parse") {
+    console.warn("[moderate-content] error — failing open");
   }
 
-  try {
-    const res = await fetch("https://api.openai.com/v1/moderations", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${openaiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "omni-moderation-latest",
-        input: text.slice(0, 4000),
-      }),
-    });
-
-    if (!res.ok) {
-      console.warn(`[moderate-content] OpenAI returned ${res.status} — failing open`);
-      return jsonResponse({ flagged: false, categories: [] });
-    }
-
-    const data = await res.json();
-    const result = data?.results?.[0];
-    const flagged = result?.flagged === true;
-    const categories: string[] = flagged && result?.categories
-      ? Object.entries(result.categories)
-          .filter(([, v]) => v === true)
-          .map(([k]) => k)
-      : [];
-
-    if (flagged) {
-      console.warn(
-        `[moderate-content] FLAGGED context=${context} categories=${categories.join(",")}`,
-      );
-    }
-
-    return jsonResponse({ flagged, categories });
-  } catch (err) {
-    // Fail open on any network/parse error.
-    console.warn(`[moderate-content] error — failing open: ${err}`);
-    return jsonResponse({ flagged: false, categories: [] });
+  if (result.flagged) {
+    console.warn(
+      `[moderate-content] FLAGGED context=${context} categories=${result.categories.join(",")}`,
+    );
   }
+
+  return jsonResponse({ flagged: result.flagged, categories: result.categories });
 });

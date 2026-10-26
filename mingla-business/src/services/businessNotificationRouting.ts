@@ -63,6 +63,12 @@ function currentBrandId(): string | null {
 const ACCOUNT_FALLBACK = "/(tabs)/account";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+/** #4111 — the three team-side customer enquiry categories. */
+const BRAND_ENQUIRY_PUSH_TYPES = new Set([
+  "business.brand_enquiry_new",
+  "business.brand_enquiry_message",
+  "business.brand_enquiry_nudge",
+]);
 
 /**
  * Parse a `mingla-business://…` deep link into an expo-router path.
@@ -178,6 +184,16 @@ export function resolveBusinessNavTarget(
 ): BusinessNavTarget {
   const type = data.type ?? "";
 
+  // 0) #4111 — a customer-enquiry push opens that enquiry's thread directly.
+  // Its deep link (mingla-business://messages/{conversationId}) also resolves
+  // there through the Messages route; the enquiry id skips that lookup.
+  if (BRAND_ENQUIRY_PUSH_TYPES.has(type)) {
+    const enquiryId = data.enquiryId ?? data.enquiry_id;
+    if (typeof enquiryId === "string" && UUID_RE.test(enquiryId)) {
+      return `/messages/enquiry/${enquiryId}`;
+    }
+  }
+
   // 1) Prefer the explicit deep link when present + parseable.
   if (typeof data.deepLink === "string" && data.deepLink.length > 0) {
     const parsed = parseBusinessDeepLink(data.deepLink);
@@ -246,6 +262,15 @@ export function resolveBusinessNavTarget(
       const ticketId = (data.ticketId ?? data.ticket_id ?? data.relatedId) as
         string | undefined;
       return ticketId ? `/support/${ticketId}` : ACCOUNT_FALLBACK;
+    }
+    case "business.brand_enquiry_new":
+    case "business.brand_enquiry_message":
+    case "business.brand_enquiry_nudge": {
+      const conversationId = (data.conversationId ??
+        data.conversation_id) as string | undefined;
+      return typeof conversationId === "string" && UUID_RE.test(conversationId)
+        ? `/messages/${conversationId}`
+        : "/messages";
     }
     case "business.brand_group_message": {
       const conversationId = (data.conversationId ??

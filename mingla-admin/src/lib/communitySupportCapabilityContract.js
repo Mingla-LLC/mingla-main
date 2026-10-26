@@ -70,6 +70,18 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     rpcs: Object.freeze(["issue_3720_admin_moderate", "issue_3720_admin_moderation_workspace"]),
     functions: Object.freeze([]),
   }),
+  // #4111 — guarded by issue_4111_is_mingla_staff (active admin_users OR
+  // is_support_staff), which is exactly community_can('moderate').
+  "enquiry-reports": Object.freeze({
+    area: COMMUNITY,
+    panel: "components/community/ReportedEnquiriesPanel.jsx",
+    rpcs: Object.freeze([
+      "admin_enquiry_block_everywhere",
+      "admin_enquiry_dismiss_report",
+      "admin_list_reported_enquiries",
+    ]),
+    functions: Object.freeze([]),
+  }),
   support: Object.freeze({
     area: SUPPORT,
     panel: "pages/SupportDeskPage.jsx",

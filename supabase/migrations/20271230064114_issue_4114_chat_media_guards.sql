@@ -141,7 +141,10 @@ BEGIN
   -- service code keep theirs).
   IF v_client THEN
     IF TG_OP = 'INSERT' THEN
-      NEW.created_at := now();
+      -- clock_timestamp(), not now(): two messages written in one transaction
+      -- (#4111's enquiry RPCs stamp clock_timestamp() for thread order) keep
+      -- their order instead of sharing the transaction's start time.
+      NEW.created_at := clock_timestamp();
       IF NEW.view_once_purged_at IS NOT NULL THEN
         RAISE EXCEPTION 'view_once_purge_is_server_owned' USING ERRCODE = '23514';
       END IF;

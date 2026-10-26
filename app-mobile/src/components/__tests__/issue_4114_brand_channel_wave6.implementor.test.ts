@@ -43,7 +43,9 @@ Deno.test("W6 the Chats list folds guests' event chats per brand (team members e
     "your own accepted, active brand team rows are read");
   assert(/useState<ReadonlySet<string> \| null>\(null\)/.test(page), "the team set starts unknown, so nothing folds until the read succeeds");
   assert(/if \(teamBrandRows !== null\) \{/.test(page), "a failed read never replaces the known set");
-  assert(/active: listConversations,/.test(page), "the browse list renders the folded rows");
+  // #4111 merge: the browse list is the folded rows plus the enquiry rows.
+  assert(/mergeEnquiryConversations\(listConversations, enquiryRows\.conversations, ""\)/.test(page) &&
+    /active: browseConversations,/.test(page), "the browse list renders the folded rows");
   assert(!/active: sortedConversations,/.test(page), "the unfolded list is no longer rendered");
   assert(/eventBrandId: eventMeta\?\.brandId \?\? null/.test(page), "each event chat carries its brand id");
 });

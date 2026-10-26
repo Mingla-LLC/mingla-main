@@ -139,7 +139,7 @@ import { TicketFoundBanner } from "../src/components/purchases/TicketFoundBanner
 import { useClaimRecheck } from "../src/hooks/useClaimRecheck";
 import type { OnboardingMode } from "../src/hooks/ticketFirstLogic";
 import * as friendsService from "../src/services/friendsService";
-import { parseDeepLink, executeDeepLink, typeFallbackDestination, registerOpenDirectMessageSink, type NavigationHandlers } from "../src/services/deepLinkService";
+import { parseDeepLink, executeDeepLink, typeFallbackDestination, registerOpenDirectMessageSink, registerShellDestinationSink, type NavigationHandlers } from "../src/services/deepLinkService";
 import {
   dismissCollaborationInviteNotifications,
   type ServerNotification,
@@ -639,6 +639,20 @@ function AppContent() {
     return () => {
       cancelled = true;
     };
+  }, [isAuthenticated, user?.id, user?.email]);
+
+  // #4111 Wave D — beside the follow-invite attach: an email sign-in claims the
+  // web enquiries and "Stay in the loop" sign-ups made with that address
+  // (claim_brand_enquiries_for_user + claim_brand_subscriptions_for_user).
+  // Once per account per session; failures are reported and retried.
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id || !user?.email) return;
+    void (async () => {
+      const { runBrandContactClaimForSession } = await import(
+        "../src/services/brandContactClaim"
+      );
+      await runBrandContactClaimForSession(user.id, user.email);
+    })();
   }, [isAuthenticated, user?.id, user?.email]);
 
   /**
@@ -1833,6 +1847,27 @@ function AppContent() {
       setCurrentPage("connections");
     });
     // All closure deps are React-stable setState setters — register once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // #4111 Wave D — a pushed route (brand page, message sheet) opens a shell
+  // page (Likes → Calendar for "Can't find my tickets"). Same pop-then-execute
+  // rail as the open-DM sink above, through the ONE deep-link executor.
+  const notificationHandlersRef = useRef<NavigationHandlers | null>(null);
+  notificationHandlersRef.current = notificationHandlers;
+  useEffect(() => {
+    registerShellDestinationSink((dest) => {
+      try {
+        if (router.canGoBack()) {
+          router.dismissAll();
+        }
+      } catch (e) {
+        console.warn("[DEEPLINK] shell-destination sink route pop failed:", e);
+      }
+      const handlers = notificationHandlersRef.current;
+      if (handlers !== null) executeDeepLink(dest, handlers);
+    });
+    return () => registerShellDestinationSink(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
