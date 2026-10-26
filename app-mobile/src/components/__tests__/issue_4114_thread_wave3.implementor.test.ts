@@ -86,7 +86,7 @@ Deno.test("W3 one menu: the chat ⋯ and FriendActionsSheet render the same list
 
 Deno.test("W3 reactions: read in one batched query and rendered under bubbles", async () => {
   const service = strip(await read("services/messagingService.ts"));
-  assert(/\.from\('direct_message_reactions'\)\s*\.select\('message_id, user_id, emoji, created_at'\)\s*\.in\('message_id', ids\)/.test(service),
+  assert(/\.from\('direct_message_reactions'\)\s*\.select\('id, message_id, user_id, emoji, created_at'\)\s*\.in\('message_id', ids\)/.test(service),
     "one .in() read per page, no N+1");
   assert(/reactionsByMessage = await this\.getReactionsForMessages\(/.test(service), "getMessages attaches the reactions");
   const page = strip(await read("components/ConnectionsPage.tsx"));

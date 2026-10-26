@@ -93,8 +93,8 @@ Deno.test("QA2c/QA4 reactions and view-once opens are subscribed on the conversa
   assert(/applyChatLiveChange\(existing, change\)/.test(setup), "merged into the store, no refetch");
   assert(!/onLiveChange[\s\S]*?fetchMessages|onLiveChange[\s\S]*?loadMessages/.test(setup.slice(setup.indexOf("onLiveChange"))), "no thread refetch");
   const migration = await Deno.readTextFile(new URL("../../supabase/migrations/20271230074114_issue_4114_chat_live_updates.sql", root));
-  assert(/ARRAY\['direct_message_reactions', 'message_media_views'\]/.test(migration) &&
-    /ALTER PUBLICATION supabase_realtime ADD TABLE public\.%I/.test(migration), "both tables published");
+  assert(/ALTER PUBLICATION supabase_realtime ADD TABLE public\.direct_message_reactions;/.test(migration) &&
+    /ALTER PUBLICATION supabase_realtime ADD TABLE public\.message_media_views;/.test(migration), "both tables published");
 });
 
 Deno.test("QA3 a pending 1:1 collab is watched until the friend's join activates it", async () => {
@@ -105,7 +105,7 @@ Deno.test("QA3 a pending 1:1 collab is watched until the friend's join activates
   assert(dmCollabSessionToWatch(null) === null, "no session, no watch");
   const hook = strip(await read("hooks/useDmCollabSession.ts"));
   assert(/const watchedSessionId = dmCollabSessionToWatch\(query\.data\);/.test(hook), "the hook watches the pending session");
-  assert(/event: 'UPDATE', schema: 'public', table: 'collaboration_sessions', filter: `id=eq\.\$\{watchedSessionId\}`/.test(hook),
+  assert(/event: 'UPDATE', schema: 'public', table: 'collaboration_sessions', filter: `conversation_id=eq\.\$\{conversationId\}`/.test(hook),
     "on its status");
   assert(/invalidateQueries\(\{ queryKey: dmCollabKeys\.session\(conversationId \?\? null\) \}\)/.test(hook.slice(hook.indexOf("watchedSessionId"))),
     "and re-reads the header's session");

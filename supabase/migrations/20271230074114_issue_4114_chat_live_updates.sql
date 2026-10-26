@@ -13,23 +13,23 @@
 -- exists and does not already carry it. No data is changed.
 
 DO $realtime$
-DECLARE
-  t text;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
     RETURN;
   END IF;
-  FOREACH t IN ARRAY ARRAY['direct_message_reactions', 'message_media_views'] LOOP
-    IF to_regclass(format('public.%I', t)) IS NOT NULL
-       AND NOT EXISTS (
-         SELECT 1
-         FROM pg_publication_tables
-         WHERE pubname = 'supabase_realtime'
-           AND schemaname = 'public'
-           AND tablename = t
-       ) THEN
-      EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE public.%I', t);
-    END IF;
-  END LOOP;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'direct_message_reactions'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.direct_message_reactions;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'message_media_views'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.message_media_views;
+  END IF;
 END;
 $realtime$;

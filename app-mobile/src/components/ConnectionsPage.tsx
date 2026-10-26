@@ -2982,7 +2982,9 @@ function ConnectionsPageRefactored({
               const existing = prev[id];
               if (!existing) continue;
               const patched = applyChatLiveChange(existing, change);
-              if (patched !== existing) next = { ...next, [id]: patched as Message[] };
+              if (patched === existing) continue;
+              // Only the patched rows go through the one merge.
+              next = { ...next, [id]: mergeMessages(existing, patched.filter((msg, index) => msg !== existing[index]) as Message[]) };
             }
             return next;
           });

@@ -34,12 +34,14 @@ export function useDmCollabSession(conversationId: string | null | undefined): {
   // pending. The channel closes once the session is no longer pending.
   const watchedSessionId = dmCollabSessionToWatch(query.data);
   useEffect(() => {
-    if (!watchedSessionId) return undefined;
+    if (!watchedSessionId || !conversationId) return undefined;
     const channel = supabase
       .channel(`dm_collab_session:${watchedSessionId}`)
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'collaboration_sessions', filter: `id=eq.${watchedSessionId}` },
+        // Keyed on the chat (conversation_id), never the primary key: realtime
+        // drops id=eq.* bindings on RLS tables (I-PROPOSED-ORCH-0931).
+        { event: 'UPDATE', schema: 'public', table: 'collaboration_sessions', filter: `conversation_id=eq.${conversationId}` },
         () => {
           void queryClient.invalidateQueries({ queryKey: dmCollabKeys.session(conversationId ?? null) });
         },
