@@ -138,7 +138,9 @@ describe("#3802 A-1: who may open My agent, and where it sits", () => {
     assert.ok(/import \{ Bot, [^}]*\} from "lucide-react";/.test(HEADER) && HEADER.includes("<Bot "), "the header draws the Bot icon for the profile menu");
     assert.equal(HEADER_PAGE_ITEMS.find((i) => i.id === "agent")?.label, "My agent");
     assert.equal(pageTitle("agent", growth, [...NAV_ITEMS, ...HEADER_PAGE_ITEMS]), "My agent");
-    assert.ok(SHELL.includes("pageTitle(menuId, access, [...NAV_ITEMS, ...HEADER_PAGE_ITEMS])"));
+    // #4130 (Wave 6): every page lights its own menu entry, so the shell titles
+    // the page id itself (the Community & Support stand-in id is gone).
+    assert.ok(SHELL.includes("pageTitle(activeTab, access, [...NAV_ITEMS, ...HEADER_PAGE_ITEMS])"));
     assert.ok(PALETTE.includes("[...TEAM_NAV_GROUP.items, ...NAV_ITEMS, ...HEADER_PAGE_ITEMS].filter((p) => canOpenPage(access, p.id))"));
   });
 });

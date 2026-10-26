@@ -40,23 +40,25 @@ const ADMIN_ROOT = path.resolve(__dirname, "..", "..");
 
 // [TEST-MOD-APPROVED ISSUE-3802] the approved menu order, every group.
 const EXPECTED_IDS_POST_1014 = [
-  // no label
+  // #4130: the approved menu (nine named groups, Home first; Wave 0 + Wave 6).
+  // Home
   "overview",
-  "support",
-  // Pipeline
-  "hosts",
-  "creators",
-  "beta-leads",
-  "tool-leads",
+  "work-board",
+  "notifications",
+  // Outreach
+  "outreach",
+  "inbound",
+  "content-calendar",
   "team-dashboard",
+  // Support
+  "support",
+  "community",
   // Business
-  "business-people",
-  "business-brands",
-  "brand-sites",
-  "business-venues",
+  "people",
+  "brands",
   "business-offerings",
-  "claims",
   // Money
+  "mingla-money",
   "business-payments",
   "business-orders",
   "business-money-ledger",
@@ -64,25 +66,16 @@ const EXPECTED_IDS_POST_1014 = [
   "subscriptions",
   "pricing",
   // Explorer app
-  "users",
   "placepool",
-  "launch-cities",
-  "signals",
-  "deck-tuner",
-  "place-intelligence-trial",
   // Growth
   "ad-engine",
-  "campaign-builder",
-  "campaigns",
-  "email",
   // Company
   "admin",
-  "careers",
+  "data-room",
   // System
-  "stripe-mode",
-  "api-health",
+  "platform-health",
+  "feature-flags",
   "settings",
-  "agent",
 ];
 
 const ORCH_1014_DELETED_IDS = ["photo-labeling", "photo-scorer"];
@@ -95,7 +88,8 @@ const ORCH_1014_DELETED_PAGES = [
 describe("ORCH-1014 Finding A — photo pages pruned + locked sidebar order", () => {
   it("the menu holds every page in the approved order (issue #3802)", () => {
     // [TEST-MOD-APPROVED ISSUE-3802] was: group[0] holds the 19-item snapshot.
-    assert.equal(NAV_GROUPS[0].label, null, "group[0] must remain the primary group (label:null)");
+    // #4130: every menu group is named now; the first is Home.
+    assert.equal(NAV_GROUPS[0].label, "Home", "group[0] must remain the primary group (Home)");
     assert.deepEqual(NAV_ITEMS.map((i) => i.id), EXPECTED_IDS_POST_1014);
   });
 
