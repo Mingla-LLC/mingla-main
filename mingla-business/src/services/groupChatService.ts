@@ -1,9 +1,5 @@
 import { supabase } from "./supabase";
-import {
-  GROUP_CHAT_MEDIA_BUCKET,
-  GroupChatSignedUrlCache,
-  createGroupChatMediaResolver,
-} from "../utils/groupChatMedia";
+
 
 export interface EventGroupConversation {
   id: string;
@@ -29,8 +25,8 @@ export interface EventGroupMessage {
   /**
    * Attachment location. Host uploads and pre-#4114 Explorer media: a public
    * URL into the `messages` bucket. Explorer media since #4114 Wave 4: an
-   * object path in the private `message-attachments` bucket (sign it with
-   * resolveGroupChatMediaUrl). NULL for plain text.
+   * object path in the private `message-attachments` bucket (signed in
+   * components/groupChat/GroupChatMessageMedia). NULL for plain text.
    */
   file_url: string | null;
   /** #4114 Wave 4: a photo or video each recipient may open once; never shown in the host panel. */
@@ -276,14 +272,3 @@ export async function deleteMessage(
   return { error: null };
 }
 
-// #4114 Wave 6: Explorer photos and videos live in the private bucket; the
-// host panel signs their path (cached), and old public URLs pass through.
-const groupChatSignedUrls = new GroupChatSignedUrlCache(async (path, seconds) => {
-  const { data, error } = await supabase.storage.from(GROUP_CHAT_MEDIA_BUCKET).createSignedUrl(path, seconds);
-  if (error || !data?.signedUrl) throw error ?? new Error("sign_failed");
-  return data.signedUrl;
-});
-const groupChatMedia = createGroupChatMediaResolver(groupChatSignedUrls);
-
-export const resolveGroupChatMediaUrl = groupChatMedia.resolve;
-export const peekGroupChatMediaUrl = groupChatMedia.peek;

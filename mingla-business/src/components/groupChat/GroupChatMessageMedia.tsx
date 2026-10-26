@@ -10,9 +10,26 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { accent, radius, spacing, text as textTokens } from "../../constants/designSystem";
-import { peekGroupChatMediaUrl, resolveGroupChatMediaUrl } from "../../services/groupChatService";
-import { groupChatMediaKind, type GroupChatMediaMessage } from "../../utils/groupChatMedia";
+import { supabase } from "../../services/supabase";
+import {
+  GROUP_CHAT_MEDIA_BUCKET,
+  GroupChatSignedUrlCache,
+  createGroupChatMediaResolver,
+  groupChatMediaKind,
+  type GroupChatMediaMessage,
+} from "../../utils/groupChatMedia";
 import { Icon } from "../ui/Icon";
+
+// Lives here (only the event chat panel imports it) so the signing code stays
+// out of the shared groupChatService chunk.
+const signedUrls = new GroupChatSignedUrlCache(async (path, seconds) => {
+  const { data, error } = await supabase.storage.from(GROUP_CHAT_MEDIA_BUCKET).createSignedUrl(path, seconds);
+  if (error || !data?.signedUrl) throw error ?? new Error("sign_failed");
+  return data.signedUrl;
+});
+const media = createGroupChatMediaResolver(signedUrls);
+const resolveGroupChatMediaUrl = media.resolve;
+const peekGroupChatMediaUrl = media.peek;
 
 interface GroupChatMessageMediaProps {
   message: GroupChatMediaMessage & { file_name: string | null };

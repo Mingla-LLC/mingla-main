@@ -64,7 +64,8 @@ Deno.test("#4114 row anatomy: flat row, no Pair button, no Broadcast label, grey
   assert(/badge\.tone === 'muted' \? styles\.badgeMuted : styles\.badgeAccent/.test(row), "muted chats get the grey badge");
   assert(!/hasUnread = unreadCount > 0 && !isMuted/.test(row), "the old hide-when-muted rule stays deleted");
   assert(/from "react-native-gesture-handler\/ReanimatedSwipeable"/.test(row), "swipes use the Reanimated swipeable");
-  assert(/renderLeftActions=\{renderLeftActions\}/.test(row) && /renderRightActions=\{renderRightActions\}/.test(row), "both swipe directions");
+  // Wave 6: a brand channel row (several chats) offers no pin / mark-unread swipe.
+  assert(/renderLeftActions=\{isBrandChannel \? undefined : renderLeftActions\}/.test(row) && /renderRightActions=\{renderRightActions\}/.test(row), "both swipe directions");
   assert(/export const ChatListItem = React\.memo\(/.test(row), "rows are memoised");
   const page = stripComments(await read("components/ConnectionsPage.tsx"));
   assert(!/is_online: false/.test(page), "no hard-coded presence");
