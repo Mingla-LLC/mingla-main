@@ -201,6 +201,7 @@ Deno.test("#2217 the consumer app runs the sweep once per signed-in account", ()
   // #4063 moves the lifecycle out of the root shell so every recheck reason
   // shares one in-flight, paginated sweep without duplicating claim requests.
   assertStringIncludes(sweep, "claimAttendanceByVerifiedIdentity()");
+  assertStringIncludes(sweep, "inFlightByUserId");
   assertStringIncludes(hook, "sweptForUserRef");
   assertStringIncludes(hook, 'runClaimSweep(currentUserId, "sign_in"');
   assertStringIncludes(shell, "useClaimRecheck({");

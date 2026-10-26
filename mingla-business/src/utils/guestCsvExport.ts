@@ -25,7 +25,7 @@ import { isCompOrder } from "./compOrders";
 import type {
   DoorPaymentMethod,
   DoorSaleRecord,
-} from "../store/doorSalesStore";
+} from "../types/doorSales";
 import type { ReconciliationSummary } from "./reconciliation";
 
 // Re-typed locally to avoid importing the screen-level GuestRow shape
@@ -151,7 +151,7 @@ const formatMoneyForCsv = (n: number): string => n.toFixed(2);
  * inventing a date would be worse (Constitution #9).
  */
 export const orderDayCell = (
-  order: { ticketDays?: Array<{ eventDateIds: string[] }> },
+  order: { ticketDays?: { eventDateIds: string[] }[] },
   dayLabels: ReadonlyMap<string, string>,
 ): string => {
   const ids = new Set<string>();

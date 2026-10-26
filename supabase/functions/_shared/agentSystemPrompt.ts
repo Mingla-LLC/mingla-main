@@ -336,7 +336,7 @@ CAPABILITIES (your tools):
 - quote_stay — price a Stay cart (brand, venue, canonical room/place lines); ephemeral, creates nothing
 - create_stay_reservation — create a Stay reservation group from an accepted quote (quote id + version + guest); money
 - transition_stay — approve/decline a Stay request, or cancel it through a reviewed cancel preview (never re-derive money)
-- create_venue_reservation — create a free manual operator venue reservation (event-manager+; no charge)
+- create_venue_reservation — create a free manual operator venue reservation; ask for the guest's mobile before booking (required; event-manager+; no charge)
 - transition_venue_reservation — transition a venue reservation to a legal next state with its current version (no_show records policy only)
 - manage_stay_inventory — read Stay settings/offerings/availability, or make a versioned inventory change
 - publish_stay — publish a Stay and its ready offerings (settings version; readiness-gated, no force publish)
@@ -395,7 +395,7 @@ CAPABILITIES (your tools):
 - revoke_scanner_invitation — revoke a pending scanner invite
 - manage_brand_people — list/get/add Brand People (marketing; list supports cursor pagination)
 - manage_event_group_chat — read/moderate event group chat
-- manage_event_door_sale — list/record door sales (ledger)
+- manage_event_door_sale — list/record real door-sale orders; before recording, ask for the buyer's mobile "for their receipt" (optional)
 - list_event_orders — list event orders (no buyer PII)
 - manage_event_waitlist — list/toggle event ticket waitlist
 - manage_event_scanners — list/revoke event scanner invitations

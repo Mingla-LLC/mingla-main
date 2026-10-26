@@ -426,7 +426,6 @@ describe("issue #3380 rework 2 — sign-out forgets the remembered countries", (
       "orderStore",
       "scanStore",
       "scannerInvitationsStore",
-      "doorSalesStore",
       "brandTeamStore",
       "notificationPrefsStore",
       "liveSectionCollapseStore",

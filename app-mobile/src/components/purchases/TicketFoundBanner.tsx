@@ -33,6 +33,9 @@ function destination(result: ClaimSweepResult): string {
   ) {
     return `/purchases/${item.routeKind}/${encodeURIComponent(item.routeId)}`;
   }
+  if (item.routeKind === "held_ticket") {
+    return `/purchases/order/${encodeURIComponent(item.routeId)}`;
+  }
   return "/purchases";
 }
 

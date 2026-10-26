@@ -563,10 +563,15 @@ ROLLBACK;
 -- ═══════════════════════════════════════════════════════════════════════════
 BEGIN;
 DO $$
-DECLARE v_minters text; v_rsvp_uses_epoch boolean; v_rsvp_amount_check boolean;
+DECLARE
+  v_minters text;
+  v_door_uses_epoch boolean;
+  v_door_reads_checkout boolean;
+  v_rsvp_uses_epoch boolean;
+  v_rsvp_amount_check boolean;
 BEGIN
-  -- TA-14a — exactly one function in the whole schema mints an order. If a
-  -- door-sale, comp or chip-in minter is ever added it inherits this analysis
+  -- TA-14a — every function in the whole schema that mints an order is named
+  -- exactly. A new door-sale, comp or chip-in minter inherits this analysis
   -- and must be re-checked for the same NULL-epoch defect.
   SELECT string_agg(p.proname, ', ' ORDER BY p.proname) INTO v_minters
     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -574,11 +579,26 @@ BEGIN
   -- [TEST-MOD-APPROVED #3827] issue_3827_comp_issue_one (guest-list comps) was
   -- audited for the #2136 defect: it reads no checkout session and no admission
   -- epoch; it mints zero-money comp orders under event + brand + tier locks after
-  -- an all-or-nothing capacity check. The list stays EXACT: a third minter fails.
-  IF v_minters IS DISTINCT FROM 'issue_1930_ticket_checkout_finalize_base, issue_3827_comp_issue_one' THEN
+  -- an all-or-nothing capacity check.
+  -- [TEST-MOD-APPROVED #4063] biz_door_sale_record is a third intentional
+  -- minter. It reads no ticket checkout session and has no admission-epoch CAS;
+  -- its independently locked capacity path therefore cannot share #2136's
+  -- NULL-epoch defect. The list remains exact so any fourth minter fails closed.
+  IF v_minters IS DISTINCT FROM 'biz_door_sale_record, issue_1930_ticket_checkout_finalize_base, issue_3827_comp_issue_one' THEN
     RAISE EXCEPTION 'TA-14a FAIL: order minters are now [%] (expected exactly '
-      'issue_1930_ticket_checkout_finalize_base, issue_3827_comp_issue_one). A new minter must be audited for the #2136 '
+      'biz_door_sale_record, issue_1930_ticket_checkout_finalize_base, issue_3827_comp_issue_one). A new minter must be audited for the #2136 '
       'zero-total / NULL-admission-epoch defect before it ships.', COALESCE(v_minters, '<none>');
+  END IF;
+
+  SELECT position('admission_epoch' in prosrc) > 0,
+         position('ticket_checkout_sessions' in prosrc) > 0
+    INTO v_door_uses_epoch, v_door_reads_checkout
+    FROM pg_proc WHERE proname = 'biz_door_sale_record';
+  IF v_door_uses_epoch IS NULL THEN
+    RAISE EXCEPTION 'TA-14a FAIL: biz_door_sale_record is missing from the catalog';
+  END IF;
+  IF v_door_uses_epoch OR v_door_reads_checkout THEN
+    RAISE EXCEPTION 'TA-14a FAIL: biz_door_sale_record now reads the checkout/epoch rail and must receive the full #2136 CAS audit';
   END IF;
 
   -- TA-14b — RSVP contributions cannot be zero-value at all, so the free
@@ -605,7 +625,7 @@ BEGIN
       'audited for the #2136 NULL-epoch defect.';
   END IF;
 
-  RAISE NOTICE 'TA-14 PASS: exactly one order minter in the schema; RSVP contributions are '
+  RAISE NOTICE 'TA-14 PASS: every order minter is named; the door minter reads no checkout session or epoch; RSVP contributions are '
     'CHECK(amount_cents > 0) so no zero-value analogue exists; the RSVP finalize has no epoch CAS. '
     'No other zero-total path shares the #2136 blind spot.';
 END $$;

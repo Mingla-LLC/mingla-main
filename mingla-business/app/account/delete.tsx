@@ -64,7 +64,6 @@ import {
 import { usePartnerBrandLinks } from "../../src/hooks/usePartnerBrandLinks";
 import { useBrandTeamStore } from "../../src/store/brandTeamStore";
 import { useBrandList } from "../../src/store/currentBrandStore";
-import { useDoorSalesStore } from "../../src/store/doorSalesStore";
 import { useLiveEventStore } from "../../src/store/liveEventStore";
 import { useOrderStore } from "../../src/store/orderStore";
 import { useScanStore } from "../../src/store/scanStore";
@@ -115,7 +114,6 @@ export default function DeleteAccountRoute(): React.ReactElement {
   const allBrandTeam = useBrandTeamStore((s) => s.entries);
   const allLiveEvents = useLiveEventStore((s) => s.events);
   const allOrders = useOrderStore((s) => s.entries);
-  const allDoorSales = useDoorSalesStore((s) => s.entries);
   const allScans = useScanStore((s) => s.entries);
 
   const { mutateAsync: requestDeletion, isPending: deleting } =
@@ -164,7 +162,9 @@ export default function DeleteAccountRoute(): React.ReactElement {
       brandTeamEntries: allBrandTeam,
       liveEvents: allLiveEvents,
       orderEntries: allOrders,
-      doorSalesEntries: allDoorSales,
+      // Door sales are server orders now. The authoritative deletion preflight
+      // below owns cross-device blockers; no server rows are mirrored in Zustand.
+      doorSalesEntries: [],
       scanEntries: allScans,
     });
   }, [
@@ -173,7 +173,6 @@ export default function DeleteAccountRoute(): React.ReactElement {
     allBrandTeam,
     allLiveEvents,
     allOrders,
-    allDoorSales,
     allScans,
   ]);
 

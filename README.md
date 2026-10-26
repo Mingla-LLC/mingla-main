@@ -113,7 +113,7 @@ Mingla/
   scripts/             Repo and documentation tooling
   docs/                Engineering references, contracts, runbooks
   tools/               Diagnostic harnesses
-  tests/               Repo-level tests (append-only, CI-gated)
+  tests/               Repo-level tests (CI-gated)
 ```
 
 ## App Surfaces

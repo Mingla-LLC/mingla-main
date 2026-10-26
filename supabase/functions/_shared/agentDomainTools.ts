@@ -1471,7 +1471,7 @@ const VENUE_RESERVATION_SOURCES = [
 
 const createVenueReservation = writeTool(
   "create_venue_reservation",
-  "Create a FREE manual operator venue reservation via biz_reservation_create (created_via='operator', no charge). Requires effective rank event_manager or higher.",
+  "Create a FREE manual operator venue reservation via biz_reservation_create (created_via='operator', no charge). Ask for the guest's mobile before booking; it is required. Requires effective rank event_manager or higher.",
   {
     brand_id: UUID,
     venue_id: UUID,
@@ -6278,22 +6278,36 @@ const manageEventGroupChat = writeTool(
 
 const manageEventDoorSale = writeTool(
   "manage_event_door_sale",
-  "List or record in-person door sales on door_sales_ledger (cash/card_reader/nfc/manual). 'list' is a read; 'create' records a sale.",
+  "List or record durable in-person door-sale orders (cash/card_reader/nfc/manual). Before create, ask for the buyer's mobile for their receipt; it is optional. 'list' is a read; 'create' records and checks in the selected tickets atomically.",
   {
     brand_id: UUID,
     event_id: UUID,
+    event_date_id: UUID,
     action: { type: "string", enum: ["list", "create"] },
     payment_method: {
       type: "string",
       enum: ["cash", "card_reader", "nfc", "manual"],
     },
-    amount_cents: { type: "integer", minimum: 0, maximum: 10_000_000 },
-    currency: { type: "string", minLength: 3, maxLength: 3 },
+    lines: {
+      type: "array",
+      minItems: 1,
+      maxItems: 50,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          ticket_type_id: UUID,
+          quantity: { type: "integer", minimum: 1, maximum: 99 },
+        },
+        required: ["ticket_type_id", "quantity"],
+      },
+    },
+    buyer_phone: { type: "string", minLength: 3, maxLength: 32 },
     notes: { type: "string", maxLength: 500 },
     limit: { type: "integer", minimum: 1, maximum: 100 },
   },
   ["brand_id", "event_id", "action"],
-  async (args, client, userId) => {
+  async (args, client, userId, context) => {
     const { eventId, brandId } = await requireEvent(args, client, userId);
     if (brandId !== args.brand_id) {
       throw new ToolError("INVALID_ARGS", "brand_id does not match the event");
@@ -6325,39 +6339,73 @@ const manageEventDoorSale = writeTool(
           "payment_method must be cash, card_reader, nfc, or manual",
         );
       }
-      if (
-        typeof args.amount_cents !== "number" ||
-        !Number.isInteger(args.amount_cents) ||
-        args.amount_cents < 0
-      ) {
+      if (!Array.isArray(args.lines) || args.lines.length < 1) {
         throw new ToolError(
           "INVALID_ARGS",
-          "amount_cents must be a non-negative integer",
+          "lines must contain at least one ticket type and quantity",
         );
       }
-      const currency = typeof args.currency === "string"
-        ? args.currency.trim().toUpperCase()
-        : "GBP";
-      if (!/^[A-Z]{3}$/.test(currency)) {
+      const lines = args.lines.map((line: unknown) => {
+        if (line === null || typeof line !== "object" || Array.isArray(line)) {
+          throw new ToolError("INVALID_ARGS", "each line must be an object");
+        }
+        const row = line as Record<string, unknown>;
+        if (!isUuid(row.ticket_type_id)) {
+          throw new ToolError(
+            "INVALID_ARGS",
+            "each ticket_type_id must be a uuid",
+          );
+        }
+        if (
+          typeof row.quantity !== "number" ||
+          !Number.isInteger(row.quantity) ||
+          row.quantity < 1 ||
+          row.quantity > 99
+        ) {
+          throw new ToolError(
+            "INVALID_ARGS",
+            "each quantity must be an integer from 1 to 99",
+          );
+        }
+        return {
+          ticket_type_id: row.ticket_type_id,
+          quantity: row.quantity,
+        };
+      });
+      if (args.event_date_id !== undefined && !isUuid(args.event_date_id)) {
         throw new ToolError(
           "INVALID_ARGS",
-          "currency must be a 3-letter ISO code",
+          "event_date_id must be a uuid",
         );
       }
-      const { data, error } = await client
-        .from("door_sales_ledger")
-        .insert({
-          event_id: eventId,
-          scanner_user_id: userId,
-          payment_method: method,
-          amount_cents: args.amount_cents,
-          currency,
-          notes: typeof args.notes === "string" ? args.notes : null,
-        })
-        .select("id, payment_method, amount_cents, currency, created_at")
-        .single();
-      if (error) throw new ToolError("RPC_FAILED", error.message);
-      return { sale: data, recorded: true };
+      const buyerPhone = typeof args.buyer_phone === "string" &&
+          args.buyer_phone.trim().length > 0
+        ? args.buyer_phone.trim()
+        : null;
+      if (buyerPhone !== null && !/^\+[1-9][0-9]{1,14}$/.test(buyerPhone)) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "buyer_phone must be an E.164 mobile number",
+        );
+      }
+      const sale = await callRpc<Record<string, unknown>>(
+        client,
+        "biz_door_sale_record",
+        {
+          p_event_id: eventId,
+          p_event_date_id: args.event_date_id ?? null,
+          p_lines: lines,
+          p_payment_method: method,
+          p_buyer_name: null,
+          p_buyer_phone_e164: buyerPhone,
+          p_buyer_email: null,
+          p_notes: typeof args.notes === "string" ? args.notes : null,
+          // A confirmed Ari operation is stable across retries, so the RPC's
+          // unique request id makes a repeated execution return the same order.
+          p_client_request_id: requireAgentOperationId(context),
+        },
+      );
+      return { sale, recorded: true };
     }
     throw new ToolError("INVALID_ARGS", "action must be list or create");
   },
