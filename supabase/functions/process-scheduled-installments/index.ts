@@ -15,7 +15,8 @@
  *   on next retry attempt).
  * - Customer + PaymentMethod live on the CONNECTED account — Stripe-Account
  *   header on every API call (no exceptions).
- * - Application fee = Math.round(amount * 0.045) per #3645 flat 4.5% rate.
+ * - Application fee = the brand's effective take rate + 3% service fee
+ *   (#3645; #4130 brand overrides apply), via installmentFeeRate.ts.
  * - At-risk flag flips on retry_count >= 3 + cron halts further retries.
  * - Dunning email fires on each failure attempt until success or at_risk.
  *
