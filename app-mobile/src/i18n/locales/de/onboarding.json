@@ -178,7 +178,14 @@
     "alert_decline_error": "Koppelungsanfrage konnte nicht abgelehnt werden. Versuche es erneut.",
     "alert_generic_error": "Anfrage konnte nicht verarbeitet werden. Versuche es erneut.",
     "share_message": "Hey! Mach mit bei Mingla und lass uns zusammen tolle Erlebnisse finden. https://usemingla.com",
-    "fallback_user": "Benutzer"
+    "fallback_user": "Benutzer",
+    "invite_card_title": "Deine Leute sind schon hier",
+    "invite_card_body": "{{name}} hat dich zu Mingla eingeladen. Nimm an, um befreundet zu sein und gegenseitig Geburtstage, Pläne und Gespeichertes zu sehen.",
+    "invite_card_sub": "★ Freund + Paar · hat dich per SMS eingeladen",
+    "invite_card_accept": "Annehmen",
+    "invite_card_not_now": "Nicht jetzt",
+    "invite_card_done": "Du bist mit {{name}} befreundet und gepaart",
+    "invite_card_friends_only": "Du bist mit {{name}} befreundet"
   },
   "collaborations": {
     "headline": "Plant es gemeinsam",

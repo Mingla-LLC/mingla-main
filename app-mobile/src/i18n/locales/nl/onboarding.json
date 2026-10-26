@@ -178,7 +178,14 @@
     "alert_decline_error": "Koppelverzoek kon niet worden geweigerd. Probeer het opnieuw.",
     "alert_generic_error": "Verzoek kon niet worden verwerkt. Probeer het opnieuw.",
     "share_message": "Hé! Doe mee op Mingla en laten we samen geweldige ervaringen vinden. https://usemingla.com",
-    "fallback_user": "Gebruiker"
+    "fallback_user": "Gebruiker",
+    "invite_card_title": "Je mensen zijn er al",
+    "invite_card_body": "{{name}} heeft je uitgenodigd voor Mingla. Accepteer om vrienden te worden en elkaars verjaardagen, plannen en bewaarde items te zien.",
+    "invite_card_sub": "★ Vriend + koppeling · heeft je per sms uitgenodigd",
+    "invite_card_accept": "Accepteren",
+    "invite_card_not_now": "Niet nu",
+    "invite_card_done": "Je bent bevriend en gekoppeld met {{name}}",
+    "invite_card_friends_only": "Je bent bevriend met {{name}}"
   },
   "collaborations": {
     "headline": "Plan het samen",

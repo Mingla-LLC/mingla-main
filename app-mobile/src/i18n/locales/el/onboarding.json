@@ -178,7 +178,14 @@
     "alert_decline_error": "Αδυναμία απόρριψης αιτήματος. Δοκίμασε ξανά.",
     "alert_generic_error": "Αδυναμία επεξεργασίας αιτήματος. Δοκίμασε ξανά.",
     "share_message": "Γεια! Μπες στο Mingla και ας βρούμε εκπληκτικές εμπειρίες μαζί. https://usemingla.com",
-    "fallback_user": "Χρήστης"
+    "fallback_user": "Χρήστης",
+    "invite_card_title": "Οι δικοί σου είναι ήδη εδώ",
+    "invite_card_body": "{{name}} σε προσκάλεσε στο Mingla. Αποδέξου για να γίνετε φίλοι και να βλέπετε γενέθλια, σχέδια και αποθηκευμένα.",
+    "invite_card_sub": "★ Φίλος + ζεύγος · σε προσκάλεσε με SMS",
+    "invite_card_accept": "Αποδοχή",
+    "invite_card_not_now": "Όχι τώρα",
+    "invite_card_done": "Είσαι φίλος και σε ζεύγος με {{name}}",
+    "invite_card_friends_only": "Είσαι φίλος με {{name}}"
   },
   "collaborations": {
     "headline": "Σχεδιάστε το μαζί",

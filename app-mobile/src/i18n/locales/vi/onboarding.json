@@ -178,7 +178,14 @@
     "alert_decline_error": "Không thể từ chối yêu cầu ghép đôi. Thử lại.",
     "alert_generic_error": "Không thể xử lý yêu cầu. Thử lại.",
     "share_message": "Này! Tham gia Mingla cùng mình để tìm trải nghiệm tuyệt vời nhé. https://usemingla.com",
-    "fallback_user": "Người dùng"
+    "fallback_user": "Người dùng",
+    "invite_card_title": "Những người của bạn đã ở đây",
+    "invite_card_body": "{{name}} đã mời bạn vào Mingla. Chấp nhận để thành bạn bè và xem sinh nhật, kế hoạch, mục đã lưu của nhau.",
+    "invite_card_sub": "★ Bạn bè + ghép đôi · đã mời bạn qua SMS",
+    "invite_card_accept": "Chấp nhận",
+    "invite_card_not_now": "Để sau",
+    "invite_card_done": "Bạn đã là bạn và ghép đôi với {{name}}",
+    "invite_card_friends_only": "Bạn đã là bạn của {{name}}"
   },
   "collaborations": {
     "headline": "Cùng nhau lên kế hoạch",
