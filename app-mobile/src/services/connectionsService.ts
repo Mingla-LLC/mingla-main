@@ -41,6 +41,8 @@ export interface Message {
   id: string;
   /** Issue #4114: messages.client_id — the merge key (with id) for every write. */
   clientId?: string;
+  /** Issue #4114 Wave 6: messages.conversation_id (a brand channel merges several chats). */
+  conversationId?: string;
   senderId: string;
   senderName: string;
   content: string;

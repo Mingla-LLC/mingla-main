@@ -24,6 +24,8 @@ export const CHAT_HEADER_METRICS = {
   backButtonWidth: 36,
   backButtonHeight: 44,
   avatar: 32,
+  /** Issue #4114 Wave 6: the brand channel's logo is a rounded square. */
+  brandAvatarRadius: 9,
   swipeButtonHeight: 34,
 } as const;
 

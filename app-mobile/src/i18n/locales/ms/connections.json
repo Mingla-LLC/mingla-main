@@ -58,7 +58,6 @@
   "preview_pending_collab": "Menunggu sekurang-kurangnya seorang menerima",
   "preview_group_people": "{{count}} orang merancang bersama",
   "preview_collab_ready": "Ruang kerjasama sedia",
-  "preview_event_ready": "Sembang acara sedia",
   "pinned_a11y": "Disematkan",
   "unread_a11y": "{{count}} belum dibaca",
   "marked_unread_a11y": "Ditanda belum dibaca",
@@ -187,5 +186,6 @@
   "af_this_friend": "rakan ini",
   "af_limit_cta": "Lihat Mingla+",
   "af_send_failed": "Gagal dihantar. Cuba lagi.",
-  "chat_menu_paired_view": "Hari jadi, cuti dan simpanan"
+  "chat_menu_paired_view": "Hari jadi, cuti dan simpanan",
+  "preview_no_messages": "Belum ada mesej"
 }

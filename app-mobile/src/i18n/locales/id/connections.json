@@ -58,7 +58,6 @@
   "preview_pending_collab": "Menunggu setidaknya satu orang menerima",
   "preview_group_people": "{{count}} orang merencanakan bersama",
   "preview_collab_ready": "Ruang kolaborasi siap",
-  "preview_event_ready": "Obrolan acara siap",
   "pinned_a11y": "Disematkan",
   "unread_a11y": "{{count}} belum dibaca",
   "marked_unread_a11y": "Ditandai belum dibaca",
@@ -187,5 +186,6 @@
   "af_this_friend": "teman ini",
   "af_limit_cta": "Lihat Mingla+",
   "af_send_failed": "Gagal mengirim. Coba lagi.",
-  "chat_menu_paired_view": "Ulang tahun, hari libur, dan simpanan"
+  "chat_menu_paired_view": "Ulang tahun, hari libur, dan simpanan",
+  "preview_no_messages": "Belum ada pesan"
 }

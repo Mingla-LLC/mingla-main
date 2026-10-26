@@ -58,7 +58,6 @@
   "preview_pending_collab": "Warte, bis mindestens eine Person annimmt",
   "preview_group_people": "{{count}} Personen planen gemeinsam",
   "preview_collab_ready": "Kollaborationsbereich bereit",
-  "preview_event_ready": "Event-Chat bereit",
   "pinned_a11y": "Angeheftet",
   "unread_a11y": "{{count}} ungelesen",
   "marked_unread_a11y": "Als ungelesen markiert",
@@ -187,5 +186,6 @@
   "af_this_friend": "diese Person",
   "af_limit_cta": "Mingla+ ansehen",
   "af_send_failed": "Das hat nicht geklappt. Versuche es erneut.",
-  "chat_menu_paired_view": "Geburtstag, Feiertage und Gespeichertes"
+  "chat_menu_paired_view": "Geburtstag, Feiertage und Gespeichertes",
+  "preview_no_messages": "Noch keine Nachrichten"
 }

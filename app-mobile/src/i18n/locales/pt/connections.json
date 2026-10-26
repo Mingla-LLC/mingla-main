@@ -58,7 +58,6 @@
   "preview_pending_collab": "Aguardando pelo menos uma pessoa aceitar",
   "preview_group_people": "{{count}} pessoas planejando juntas",
   "preview_collab_ready": "Espaço de colaboração pronto",
-  "preview_event_ready": "Chat do evento pronto",
   "pinned_a11y": "Fixado",
   "unread_a11y": "{{count}} não lidas",
   "marked_unread_a11y": "Marcado como não lido",
@@ -187,5 +186,6 @@
   "af_this_friend": "este amigo",
   "af_limit_cta": "Ver Mingla+",
   "af_send_failed": "Não foi possível enviar. Tente de novo.",
-  "chat_menu_paired_view": "Aniversário, feriados e salvos"
+  "chat_menu_paired_view": "Aniversário, feriados e salvos",
+  "preview_no_messages": "Ainda não há mensagens"
 }

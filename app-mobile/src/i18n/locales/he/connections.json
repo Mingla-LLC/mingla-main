@@ -58,7 +58,6 @@
   "preview_pending_collab": "ממתינים שלפחות אדם אחד יאשר",
   "preview_group_people": "{{count}} אנשים מתכננים יחד",
   "preview_collab_ready": "מרחב שיתוף הפעולה מוכן",
-  "preview_event_ready": "צ'אט האירוע מוכן",
   "pinned_a11y": "מוצמד",
   "unread_a11y": "{{count}} שלא נקראו",
   "marked_unread_a11y": "סומן כלא נקרא",
@@ -187,5 +186,6 @@
   "af_this_friend": "החבר הזה",
   "af_limit_cta": "ל-Mingla+",
   "af_send_failed": "השליחה נכשלה. נסו שוב.",
-  "chat_menu_paired_view": "יום הולדת, חגים ושמורים"
+  "chat_menu_paired_view": "יום הולדת, חגים ושמורים",
+  "preview_no_messages": "עדיין אין הודעות"
 }

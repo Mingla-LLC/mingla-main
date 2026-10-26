@@ -42,3 +42,19 @@ export function switchConversationSubscription<T>(
   ref.current = nextId;
   return channel;
 }
+
+/**
+ * Issue #4114 Wave 6: a brand channel listens to all of its event chats on ONE
+ * realtime channel. Its key is the sorted ids joined by commas (one id is just
+ * that id, so ordinary chats keep their old channel name).
+ */
+export function conversationChannelKey(ids: string | readonly string[]): string {
+  const list = typeof ids === 'string' ? [ids] : Array.from(new Set(ids)).sort();
+  return list.join(',');
+}
+
+/** The postgres_changes filter for one conversation or several (`in.(…)`). */
+export function conversationRealtimeFilter(ids: string | readonly string[]): string {
+  const list = typeof ids === 'string' ? [ids] : Array.from(new Set(ids)).sort();
+  return list.length === 1 ? `conversation_id=eq.${list[0]}` : `conversation_id=in.(${list.join(',')})`;
+}

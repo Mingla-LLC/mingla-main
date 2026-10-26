@@ -270,8 +270,8 @@ export function ScheduleSheet({
       <CompactCollabBottomSheet
         visible={visible}
         onClose={onClose}
-        title="Plans"
-        closeAccessibilityLabel="Close plans"
+        title={t("chat:plansTitle")}
+        closeAccessibilityLabel={t("chat:plansClose")}
         snapPoints={PLANS_SHEET_SNAP_POINTS}
         scroll={hasRows}
         scrollContentContainerStyle={styles.verticalListContent}
@@ -283,15 +283,15 @@ export function ScheduleSheet({
             onPress={refetch}
             style={styles.emptyState}
             accessibilityRole="button"
-            accessibilityLabel="Retry loading plans"
+            accessibilityLabel={t("chat:plansRetryA11y")}
           >
             <Text style={styles.emptyText}>
-              Could not load plans. Tap to retry.
+              {t("chat:plansLoadFailed")}
             </Text>
           </Pressable>
         ) : rows.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No locked-in plans yet.</Text>
+            <Text style={styles.emptyText}>{t("chat:plansEmpty")}</Text>
           </View>
         ) : (
           ([

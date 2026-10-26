@@ -154,6 +154,7 @@ export const CHAT_BACK_LAYERS = [
   "groupInfo",
   "moreMenu",
   "eventAudience",
+  "sendTarget",
   "collabDeck",
   "collabMatches",
   "collabPlans",

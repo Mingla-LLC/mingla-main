@@ -33,7 +33,24 @@ import {
   LOCAL_MESSAGE_ID_PREFIX,
   type MergeMessagesOptions,
 } from "../utils/mergeMessages";
-import { releaseConversationSubscription, switchConversationSubscription } from "../utils/conversationSubscription";
+import {
+  conversationChannelKey,
+  releaseConversationSubscription,
+  switchConversationSubscription,
+} from "../utils/conversationSubscription";
+import {
+  brandChannelId,
+  brandChannelMatchesSearch,
+  brandChannelMessages,
+  defaultSendTarget,
+  findBrandChannelEvent,
+  foldBrandChannels,
+  foldsIntoBrandChannel,
+  isBrandChannelId,
+  isBrandChannelRow,
+  resolveSendTarget,
+  type BrandChannel,
+} from "./connections/brandChannelModel";
 import {
   ChatMediaUploadError,
   cancelChatMediaUpload,
@@ -180,6 +197,8 @@ type GroupEventMeta = {
   brandAccountId: string | null;
   coverMediaUrl: string | null;
   publicCard: BusinessEventCard | null;
+  /** Issue #4114 Wave 6: the brand's logo (brand channel row and header). */
+  brandLogoUrl?: string | null;
 };
 
 function getThemeObject(value: unknown): Record<string, any> {
@@ -266,6 +285,7 @@ async function fetchGroupEventMetaByIds(eventIds: string[]): Promise<Map<string,
           brandSlug: brand?.slug ?? null,
           brandAccountId: brand?.account_id ?? null,
           coverMediaUrl: event.cover_media_url ?? null,
+          brandLogoUrl: event.brand_profile_photo_url ?? null,
           publicCard: {
             eventId: event.id,
             brandId: event.brand_id ?? '',
@@ -615,6 +635,10 @@ function ConnectionsPageRefactored({
 
   // ── Conversations data ───────────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  // Issue #4114 Wave 6: brands this user is on the team of. Their event chats
+  // stay per event; every other brand's event and trip chats fold into one
+  // brand channel row.
+  const [teamBrandIds, setTeamBrandIds] = useState<ReadonlySet<string>>(() => new Set());
   const [conversationsLoading, setConversationsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -652,6 +676,21 @@ function ConnectionsPageRefactored({
       if (result.error) console.warn('[ConnectionsPage] unpin after archive failed', result.error);
     }
   }, [conversations, runLifecycle]);
+
+  // Issue #4114 Wave 6: archiving a brand channel row archives each of its
+  // event chats (they come back one by one from the Archived list).
+  const handleArchiveRow = useCallback(async (rowId: string) => {
+    if (!isBrandChannelId(rowId)) {
+      await handleArchiveChat(rowId);
+      return;
+    }
+    const brandRow = conversations.filter((conversation) => {
+      const member = conversation as ChatListItemConversation;
+      return Boolean(member.eventBrandId) && rowId === brandChannelId(member.eventBrandId as string) &&
+        foldsIntoBrandChannel(member, teamBrandIds) && !archivedIds.has(conversation.id);
+    });
+    for (const member of brandRow) await handleArchiveChat(member.id);
+  }, [archivedIds, conversations, handleArchiveChat, teamBrandIds]);
 
   const handleUnarchiveChat = useCallback(async (conversationId: string) => {
     if (await runLifecycle(conversationId, 'unarchive')) setArchivedIds((current) => { const next = new Set(current); next.delete(conversationId); return next; });
@@ -698,10 +737,31 @@ function ConnectionsPageRefactored({
   // sorted by time, pending sends kept through refreshes). There is no second
   // "visible messages" copy to drift from the store.
   const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>({});
-  const messages = useMemo<Message[]>(
-    () => (currentConversationId ? messagesCache[currentConversationId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES),
-    [currentConversationId, messagesCache],
+  // Issue #4114 Wave 6: the open brand channel (null for every other chat).
+  // `currentConversationId` is then the event chat a new message goes to; the
+  // thread shows every member chat's messages merged (each cache stays keyed
+  // by its own conversation, so writes never cross chats).
+  const [activeBrandChannel, setActiveBrandChannel] = useState<BrandChannel | null>(null);
+  const activeBrandChannelRef = useRef<BrandChannel | null>(null);
+  activeBrandChannelRef.current = activeBrandChannel;
+  const brandChannelMemberIds = useMemo(
+    () => activeBrandChannel?.events.map((event) => event.conversationId) ?? [],
+    [activeBrandChannel],
   );
+  const messages = useMemo<Message[]>(() => {
+    if (activeBrandChannel) {
+      return brandChannelMessages(
+        brandChannelMemberIds.map((conversationId) => ({
+          conversationId,
+          messages: messagesCache[conversationId] ?? EMPTY_MESSAGES,
+        })),
+        (prev, incoming) => mergeMessages(prev, incoming),
+      );
+    }
+    return currentConversationId ? messagesCache[currentConversationId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES;
+  }, [activeBrandChannel, brandChannelMemberIds, currentConversationId, messagesCache]);
+  /** The key older-history paging is tracked under: the brand channel, or the open chat. */
+  const threadPagingKey = activeBrandChannel?.id ?? currentConversationId;
   // Issue #4114: which conversation's live channel is open (released on switch/back).
   const subscribedConversationIdRef = useRef<string | null>(null);
   // Issue #4114 Wave 3: chats whose first server read has finished (either
@@ -1030,6 +1090,24 @@ function ConnectionsPageRefactored({
     return [...pending, ...regular].filter(c => !archivedIds.has(c.id));
   }, [conversations, archivedIds]);
 
+  // Issue #4114 Wave 6: a guest's event and trip chats fold into one row per
+  // brand (brand team members keep per-event rows). The fold keeps the order;
+  // buildBrowseItems sorts again (pinned first, then activity).
+  const brandFold = useMemo(
+    () => foldBrandChannels(sortedConversations as ChatListItemConversation[], teamBrandIds),
+    [sortedConversations, teamBrandIds],
+  );
+  const listConversations = brandFold.rows as Conversation[];
+  const brandChannels = brandFold.channels;
+
+  // Keep the open brand channel in step with the list (new event chats,
+  // counts); it stays as it was if its rows briefly drop out.
+  useEffect(() => {
+    if (!activeBrandChannel) return;
+    const fresh = brandChannels.get(activeBrandChannel.id);
+    if (fresh && fresh !== activeBrandChannel) setActiveBrandChannel(fresh);
+  }, [activeBrandChannel, brandChannels]);
+
   const archivedConversations = useMemo(() => {
     return [...conversations]
       .filter(c => archivedIds.has(c.id))
@@ -1043,9 +1121,14 @@ function ConnectionsPageRefactored({
   // Search-filtered conversations
   const filteredConversations = useMemo(() => {
     const q = normalizeSearchText(searchQuery);
-    if (!q) return sortedConversations;
+    if (!q) return listConversations;
 
-    return sortedConversations.filter((conv) => {
+    return listConversations.filter((conv) => {
+      // Issue #4114 Wave 6: a brand channel matches its brand, its events and its last message.
+      if (isBrandChannelRow(conv)) {
+        return brandChannelMatchesSearch(conv.__brandChannel, q) ||
+          normalizeSearchText(conv.last_message?.content || "").includes(q);
+      }
       if (isPendingInviteConversation(conv)) {
         return normalizeSearchText(conv.__pendingInvite.inviterDisplayName).includes(q);
       }
@@ -1086,7 +1169,7 @@ function ConnectionsPageRefactored({
 
       return nameMatch || contentMatch;
     });
-  }, [sortedConversations, searchQuery, user?.id]);
+  }, [listConversations, searchQuery, user?.id]);
 
   const pendingCreatorCollabSessionIds = useMemo(
     () =>
@@ -1148,7 +1231,7 @@ function ConnectionsPageRefactored({
         }
       });
 
-      const [sessionsResult, pendingPhoneInvitesResult, eventMetaMap] = await Promise.all([
+      const [sessionsResult, pendingPhoneInvitesResult, eventMetaMap, teamBrandRows] = await Promise.all([
         groupSessionIds.size > 0
           ? supabase
               .from("collaboration_sessions")
@@ -1173,10 +1256,34 @@ function ConnectionsPageRefactored({
           console.warn('[ConnectionsPage] Failed to batch-resolve group chat event metadata:', error);
           return new Map<string, GroupEventMeta>();
         }),
+        // Issue #4114 Wave 6: your own active brand team rows (RLS: user_id =
+        // auth.uid()). A failed read keeps the last known set and logs.
+        groupEventIds.size > 0
+          ? Promise.resolve(
+              supabase
+                .from('brand_team_members')
+                .select('brand_id')
+                .eq('user_id', userId)
+                .is('removed_at', null),
+            ).then(({ data, error }) => {
+              if (error) {
+                console.warn('[ConnectionsPage] brand team read failed; keeping the last known teams', error);
+                return null;
+              }
+              return (data ?? []).map((row: { brand_id: string | null }) => row.brand_id).filter((id): id is string => Boolean(id));
+            })
+          : Promise.resolve([] as string[]),
       ]);
 
       if (sessionsResult.error) throw sessionsResult.error;
       if (pendingPhoneInvitesResult.error) throw pendingPhoneInvitesResult.error;
+      if (teamBrandRows !== null) {
+        // The brand's owner is on its team too (owner trigger); account_id is a belt and braces.
+        const owned = Array.from(eventMetaMap.values())
+          .filter((meta) => meta.brandId && meta.brandAccountId === userId)
+          .map((meta) => meta.brandId as string);
+        setTeamBrandIds(new Set([...teamBrandRows, ...owned]));
+      }
 
       for (const session of sessionsResult.data || []) {
         for (const participant of (session as any).session_participants || []) {
@@ -1368,6 +1475,12 @@ function ConnectionsPageRefactored({
           is_broadcast_only: Boolean((conv as any).is_broadcast_only),
           eventBrandName: eventMeta?.brandName ?? null,
           eventBrandAccountId: eventMeta?.brandAccountId ?? null,
+          // Issue #4114 Wave 6: what the brand channel fold reads.
+          eventBrandId: eventMeta?.brandId ?? null,
+          eventBrandSlug: eventMeta?.brandSlug ?? null,
+          eventBrandLogoUrl: eventMeta?.brandLogoUrl ?? null,
+          eventStartAt: eventMeta?.publicCard?.masterDateUtc ?? null,
+          eventEndAt: eventMeta?.publicCard?.masterEndAtUtc ?? null,
           eventCoverMediaUrl: eventMeta?.coverMediaUrl ?? null,
           eventPublicUrl,
           eventPublicCard,
@@ -1820,9 +1933,159 @@ function ConnectionsPageRefactored({
     );
   }, []);
 
+  // ── Issue #4114 Wave 6: the brand channel ─────────────────
+  // The open thread's "friend" is the event chat a new message goes to, so the
+  // broadcast receiver, typing and the participants read follow that chat.
+  const buildBrandChannelFriend = (channel: BrandChannel, conversationId: string): Friend => {
+    const member = conversations.find((conv) => conv.id === conversationId) as ChatListItemConversation | undefined;
+    const event = findBrandChannelEvent(channel, conversationId);
+    return {
+      id: channel.id,
+      name: event?.title || channel.brandName,
+      username: "group",
+      status: "offline",
+      isOnline: false,
+      conversationType: 'group',
+      sessionId: null,
+      eventId: event?.eventId ?? member?.event_id ?? null,
+      linkedEntityType: event?.linkedEntityType ?? 'event',
+      sessionCreatorId: null,
+      eventBrandName: channel.brandName,
+      eventBrandAccountId: channel.brandAccountId,
+      eventCoverMediaUrl: member?.eventCoverMediaUrl ?? null,
+      eventPublicUrl: member?.eventPublicUrl ?? null,
+      eventPublicCard: member?.eventPublicCard ?? null,
+      isBroadcastOnly: Boolean(member?.is_broadcast_only),
+      isSessionAdmin: false,
+      participantCount: member?.participants.length ?? event?.participantCount ?? 0,
+      participants: (member?.participants ?? []).map((p) => ({
+        id: p.id,
+        name: getDisplayName(p, p.username || 'User'),
+        username: p.username,
+        avatar_url: p.avatar_url,
+        is_online: p.is_online,
+      })),
+    };
+  };
+
+  /** Loads the newest page across every event chat of the channel (one query). */
+  const loadBrandChannelNewest = (channel: BrandChannel, userId: string) => {
+    const memberIds = channel.events.map((event) => event.conversationId);
+    return withTimeout(messagingService.getMessages(memberIds, userId), 8000, 'getMessages')
+      .then(({ messages: freshMsgs, error: msgError, hasMore }) => {
+        for (const id of memberIds) markMessagesSettled(id);
+        if (msgError) {
+          console.error("Error loading brand channel messages:", msgError);
+          return;
+        }
+        const byConversation = new Map<string, Message[]>(memberIds.map((id) => [id, []]));
+        for (const raw of freshMsgs || []) {
+          byConversation.get(raw.conversation_id)?.push(transformMessage(raw, userId));
+        }
+        for (const [conversationId, list] of byConversation) {
+          writeConversationMessages(conversationId, list, { snapshot: { complete: !hasMore } });
+          if (activeBrandChannelRef.current?.id === channel.id) {
+            markConversationAsRead(conversationId, userId, list);
+          }
+        }
+        noteNewestPageLoaded(channel.id, hasMore);
+      })
+      .catch((e) => {
+        for (const id of memberIds) markMessagesSettled(id);
+        console.warn("[ConnectionsPage] Brand channel refresh failed (offline?):", e);
+      });
+  };
+
+  const handleOpenBrandChannel = async (channel: BrandChannel, preferredConversationId?: string | null) => {
+    if (!user?.id) return;
+    const target = preferredConversationId && findBrandChannelEvent(channel, preferredConversationId)
+      ? preferredConversationId
+      : defaultSendTarget(channel.events, Date.now());
+    if (!target) return;
+    const userId = user.id;
+    const memberIds = channel.events.map((event) => event.conversationId);
+
+    setActiveChatIsBlocked(false);
+    setActiveChatIsUnfriended(false);
+    setActiveChatIsDeletedAccount(false);
+    latestSelectedChatRef.current = channel.id;
+    activeBrandChannelRef.current = channel;
+    setActiveBrandChannel(channel);
+    setActiveChat(buildBrandChannelFriend(channel, target));
+    setCurrentConversationId(target);
+
+    // Open at once with what is cached (memory, then AsyncStorage), then refresh.
+    for (const conversationId of memberIds) {
+      const inMemory = messagesCache[conversationId];
+      if (inMemory && inMemory.length > 0) {
+        markConversationAsRead(conversationId, userId, inMemory);
+        continue;
+      }
+      const stored = await hydrateMessages(conversationId);
+      if (stored.length > 0) {
+        writeConversationMessages(conversationId, stored);
+        markConversationAsRead(conversationId, userId, stored);
+      }
+    }
+    setShowMessageInterface(true);
+    void loadBrandChannelNewest(channel, userId);
+    setupRealtimeSubscription(memberIds, userId);
+  };
+
+  /** D10: the "Sending to" chip picked another of your upcoming events. */
+  const handleSelectBrandChannelTarget = useCallback((conversationId: string) => {
+    const channel = activeBrandChannelRef.current;
+    if (!channel || !findBrandChannelEvent(channel, conversationId)) return;
+    setCurrentConversationId(conversationId);
+    setActiveChat(buildBrandChannelFriend(channel, conversationId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reads the list through buildBrandChannelFriend at call time
+  }, [conversations]);
+
+  /** The chat a loaded message belongs to (a brand channel holds several). */
+  const conversationOfMessage = (messageId: string | null | undefined): string | null => {
+    if (!messageId) return null;
+    const channel = activeBrandChannelRef.current;
+    if (!channel) return currentConversationId;
+    for (const event of channel.events) {
+      if ((messagesCache[event.conversationId] ?? EMPTY_MESSAGES).some((msg) => msg.id === messageId)) {
+        return event.conversationId;
+      }
+    }
+    return null;
+  };
+
+  /** D10: where a brand channel send goes (a reply goes to the quoted message's event). */
+  const brandChannelSendTarget = (replyToId?: string): string | null => {
+    const channel = activeBrandChannelRef.current;
+    if (!channel) return null;
+    return resolveSendTarget({
+      events: channel.events,
+      chosenConversationId: currentConversationId,
+      replyToConversationId: replyToId ? conversationOfMessage(replyToId) : null,
+      now: Date.now(),
+    });
+  };
+
   // ── Select conversation from chat list ───────────────────
   const handleSelectConversation = async (conversation: Conversation) => {
     if (!user?.id) return;
+
+    // Issue #4114 Wave 6: a brand row opens its channel, and so does any of its
+    // event chats (deep links, notifications), with that event as the target.
+    if (isBrandChannelRow(conversation)) {
+      await handleOpenBrandChannel(conversation.__brandChannel);
+      return;
+    }
+    const folded = conversation as ChatListItemConversation;
+    if (folded.eventBrandId && foldsIntoBrandChannel(folded, teamBrandIds)) {
+      const channel = brandChannels.get(brandChannelId(folded.eventBrandId));
+      if (channel && findBrandChannelEvent(channel, conversation.id)) {
+        await handleOpenBrandChannel(channel, conversation.id);
+        return;
+      }
+    }
+    activeBrandChannelRef.current = null;
+    setActiveBrandChannel(null);
 
     const conversationMeta = conversation as Conversation & {
       type?: 'direct' | 'group';
@@ -2054,6 +2317,8 @@ function ConnectionsPageRefactored({
   // ── Start new conversation from friend picker ────────────
   const handlePickFriend = async (friend: UseFriend) => {
     if (!user?.id) return;
+    activeBrandChannelRef.current = null;
+    setActiveBrandChannel(null);
 
     const friendUserId = friend.friend_user_id || friend.id;
 
@@ -2211,6 +2476,8 @@ function ConnectionsPageRefactored({
     );
     const displayName = friend ? getDisplayName(friend) : "Chat";
 
+    activeBrandChannelRef.current = null;
+    setActiveBrandChannel(null);
     setShowMessageInterface(true);
     setActiveChat({
       id: targetId,
@@ -2473,16 +2740,19 @@ function ConnectionsPageRefactored({
   // 2-second debounce batches rapid mutations (send + confirm + reply)
   // into a single AsyncStorage write, avoiding excessive serialization.
   useEffect(() => {
-    if (!currentConversationId) return;
-    const msgs = messagesCache[currentConversationId];
-    if (!msgs || msgs.length === 0) return;
+    // Issue #4114 Wave 6: a brand channel persists each of its event chats.
+    const ids = activeBrandChannel ? brandChannelMemberIds : currentConversationId ? [currentConversationId] : [];
+    const pending = ids
+      .map((id) => [id, messagesCache[id]] as const)
+      .filter((entry): entry is readonly [string, Message[]] => Boolean(entry[1] && entry[1].length > 0));
+    if (pending.length === 0) return;
 
     const timeout = setTimeout(() => {
-      persistMessages(currentConversationId, msgs);
+      for (const [id, msgs] of pending) persistMessages(id, msgs);
     }, 2000);
 
     return () => clearTimeout(timeout);
-  }, [messagesCache, currentConversationId, persistMessages]);
+  }, [messagesCache, currentConversationId, activeBrandChannel, brandChannelMemberIds, persistMessages]);
 
   // ── Auto-refresh messages when network reconnects ───────
   const prevIsOfflineRef = useRef(isOffline);
@@ -2491,7 +2761,13 @@ function ConnectionsPageRefactored({
     prevIsOfflineRef.current = isOffline;
 
     // Just came back online while a chat is open — re-subscribe + refresh
-    if (wasOffline && !isOffline && currentConversationId && user?.id) {
+    const reconnectChannel = activeBrandChannelRef.current;
+    if (wasOffline && !isOffline && reconnectChannel && user?.id) {
+      // Issue #4114 Wave 6: a brand channel re-subscribes and refreshes all its chats.
+      setupRealtimeSubscription(reconnectChannel.events.map((event) => event.conversationId), user.id);
+      void loadBrandChannelNewest(reconnectChannel, user.id);
+      fetchConversations(user.id);
+    } else if (wasOffline && !isOffline && currentConversationId && user?.id) {
       // Re-establish realtime subscription (may have died or never been set up)
       setupRealtimeSubscription(currentConversationId, user.id);
 
@@ -2582,28 +2858,34 @@ function ConnectionsPageRefactored({
   const handleBroadcastReceive = useCallback(
     (msg: DirectMessage) => {
       if (!currentConversationId || !user?.id) return;
-      addIncomingMessageToUI(msg, currentConversationId, user.id);
+      // The broadcast channel is the open chat's (in a brand channel, the
+      // target event's); the row's own conversation id wins when present.
+      addIncomingMessageToUI(msg, msg.conversation_id || currentConversationId, user.id);
     },
     [currentConversationId, user?.id, addIncomingMessageToUI]
   );
 
   // ── Realtime subscription setup ──────────────────────────
-  const setupRealtimeSubscription = (conversationId: string, userId: string) => {
+  const setupRealtimeSubscription = (conversationIds: string | readonly string[], userId: string) => {
+    // Issue #4114 Wave 6: one chat, or every event chat of a brand channel on
+    // ONE channel (filter conversation_id=in.(…)). Each row is written to its
+    // own conversation's store.
+    const fallbackConversationId = typeof conversationIds === 'string' ? conversationIds : conversationIds[0] ?? '';
     // Issue #4114: release the conversation that is ACTUALLY subscribed (it used
     // to unsubscribe `conversationId`, the one being opened, which left the
     // previous chat's channel running).
     conversationChannelRef.current = switchConversationSubscription(
       subscribedConversationIdRef,
-      conversationId,
+      conversationChannelKey(conversationIds),
       messagingService,
-      (nextConversationId) => messagingService.subscribeToConversation(
-      nextConversationId,
+      () => messagingService.subscribeToConversation(
+      conversationIds,
       userId,
       {
         onMessage: (newMessage: DirectMessage) => {
           // ORCH-0664: delegate to single owner. Both delivery paths
           // (broadcast + postgres_changes) funnel here.
-          addIncomingMessageToUI(newMessage, conversationId, userId);
+          addIncomingMessageToUI(newMessage, newMessage.conversation_id || fallbackConversationId, userId);
         },
 
         // Read receipt flow: when the receiver marks a message as read,
@@ -2612,6 +2894,7 @@ function ConnectionsPageRefactored({
         // This callback updates the sender's UI with the read state.
         onMessageUpdated: (updatedMessage: DirectMessage) => {
           const transformed = transformMessage(updatedMessage, userId);
+          const conversationId = updatedMessage.conversation_id || fallbackConversationId;
           // Issue #4114: an UPDATE only patches a row the chat already holds
           // (read receipts, edits); it never adds one.
           setMessagesCache((prev) => {
@@ -2755,6 +3038,8 @@ function ConnectionsPageRefactored({
     setShowMessageInterface(false);
     setActiveChat(null);
     setCurrentConversationId(null);
+    activeBrandChannelRef.current = null;
+    setActiveBrandChannel(null);
     setActiveChatIsBlocked(false);
     setActiveChatIsUnfriended(false);
     setActiveChatIsDeletedAccount(false);
@@ -2951,8 +3236,9 @@ function ConnectionsPageRefactored({
   // ── Issue #4114 Wave 3: reactions, unsend and report from inside a thread ──
   // All three write through the one merge (writeConversationMessages).
   const handleToggleReaction = async (messageId: string, emoji: string): Promise<void> => {
-    if (!user?.id || !currentConversationId) return;
-    const conversationId = currentConversationId;
+    // Issue #4114 Wave 6: the message's own chat (a brand channel holds several).
+    const conversationId = conversationOfMessage(messageId);
+    if (!user?.id || !conversationId) return;
     const target = (messagesCache[conversationId] ?? EMPTY_MESSAGES).find((msg) => msg.id === messageId);
     if (!target || isLocalMessage(target) || target.isSystem) return;
     const before = target.reactions ?? [];
@@ -2965,8 +3251,8 @@ function ConnectionsPageRefactored({
   };
 
   const handleUnsendMessage = async (messageId: string): Promise<boolean> => {
-    if (!user?.id || !currentConversationId) return false;
-    const conversationId = currentConversationId;
+    const conversationId = conversationOfMessage(messageId);
+    if (!user?.id || !conversationId) return false;
     const target = (messagesCache[conversationId] ?? EMPTY_MESSAGES).find((msg) => msg.id === messageId);
     if (!target || !target.isMe || isLocalMessage(target)) return false;
     const { error } = await messagingService.unsendMessage(messageId, user.id);
@@ -2993,8 +3279,9 @@ function ConnectionsPageRefactored({
   };
 
   const handleRetryMessage = (messageId: string) => {
-    if (!currentConversationId || !user?.id) return;
-    const failedMessage = (messagesCache[currentConversationId] ?? EMPTY_MESSAGES).find(
+    const retryConversationId = conversationOfMessage(messageId);
+    if (!retryConversationId || !user?.id) return;
+    const failedMessage = (messagesCache[retryConversationId] ?? EMPTY_MESSAGES).find(
       (msg) => msg.id === messageId
     );
     if (!failedMessage || failedMessage.failed !== true || !isLocalMessage(failedMessage)) return;
@@ -3010,19 +3297,23 @@ function ConnectionsPageRefactored({
       clientId: failedMessage.clientId ?? createClientMessageId(),
       failed: false,
     };
-    writeConversationMessages(currentConversationId, [pending]);
-    void deliverMessage(currentConversationId, pending);
+    writeConversationMessages(retryConversationId, [pending]);
+    void deliverMessage(retryConversationId, pending);
   };
 
   // ── Issue #4114: load older messages when the user scrolls to the top ──
   // Pages backwards from the oldest confirmed message (50 at a time) and merges
   // the page into the store, so nothing already on screen moves or repeats.
   const handleLoadOlderMessages = async () => {
-    const conversationId = currentConversationId;
+    // Issue #4114 Wave 6: a brand channel pages all its event chats together
+    // (one `.in()` query, the oldest message on screen as the cursor) and each
+    // row lands in its own chat's store.
+    const conversationId = threadPagingKey;
     if (!conversationId || !user?.id) return;
     if (olderPaging.conversationId !== conversationId || !olderPaging.hasMore || olderPaging.loading) return;
     if (olderLoadInFlightRef.current === conversationId) return;
-    const loaded = messagesCache[conversationId] ?? EMPTY_MESSAGES;
+    const channel = activeBrandChannelRef.current;
+    const loaded = channel ? messages : messagesCache[conversationId] ?? EMPTY_MESSAGES;
     const before = oldestConfirmedTimestamp(loaded);
     if (!before) return;
 
@@ -3030,7 +3321,7 @@ function ConnectionsPageRefactored({
     setOlderPaging({ conversationId, hasMore: true, loading: true });
     try {
       const { messages: page, error, hasMore } = await messagingService.getMessages(
-        conversationId,
+        channel ? channel.events.map((event) => event.conversationId) : conversationId,
         user.id,
         MESSAGE_PAGE_SIZE,
         before,
@@ -3040,7 +3331,17 @@ function ConnectionsPageRefactored({
       const loadedIds = new Set(loaded.map((m) => m.id));
       // The cursor is inclusive; a page with nothing new means we reached the start.
       const gotNew = transformed.some((m) => !loadedIds.has(m.id));
-      writeConversationMessages(conversationId, transformed);
+      if (channel) {
+        const byConversation = new Map<string, Message[]>();
+        page.forEach((raw, index) => {
+          const list = byConversation.get(raw.conversation_id) ?? [];
+          list.push(transformed[index]);
+          byConversation.set(raw.conversation_id, list);
+        });
+        for (const [memberId, list] of byConversation) writeConversationMessages(memberId, list);
+      } else {
+        writeConversationMessages(conversationId, transformed);
+      }
       setOlderPaging({ conversationId, hasMore: hasMore && gotNew, loading: false });
     } catch (e) {
       console.warn("[ConnectionsPage] Loading older messages failed:", e);
@@ -3151,8 +3452,11 @@ function ConnectionsPageRefactored({
 
     // Issue #4114: minted before anything else and reused on every retry.
     const clientId = createClientMessageId();
-    const isNewChat = !currentConversationId;
-    const conversationId = await ensureChatConversation();
+    // Issue #4114 Wave 6 (D10): in a brand channel the message goes to exactly
+    // one event's chat (the quoted message's when replying).
+    const brandTarget = brandChannelSendTarget(replyToId);
+    const isNewChat = !brandTarget && !currentConversationId;
+    const conversationId = brandTarget ?? await ensureChatConversation();
     if (!conversationId) return;
     if (isActiveChatBlocked()) return;
 
@@ -3188,8 +3492,9 @@ function ConnectionsPageRefactored({
     replyToId?: string,
   ) => {
     if (!activeChat || !user?.id || items.length === 0) return;
-    const isNewChat = !currentConversationId;
-    const conversationId = await ensureChatConversation();
+    const brandTarget = brandChannelSendTarget(replyToId);
+    const isNewChat = !brandTarget && !currentConversationId;
+    const conversationId = brandTarget ?? await ensureChatConversation();
     if (!conversationId) return;
     if (isActiveChatBlocked()) return;
 
@@ -3247,8 +3552,9 @@ function ConnectionsPageRefactored({
 
   // ── Issue #4114 Wave 4: cancel a media send while it uploads ──
   const handleCancelMediaUpload = (messageId: string) => {
-    if (!currentConversationId) return;
-    const target = (messagesCache[currentConversationId] ?? EMPTY_MESSAGES).find((msg) => msg.id === messageId);
+    const uploadConversationId = conversationOfMessage(messageId);
+    if (!uploadConversationId) return;
+    const target = (messagesCache[uploadConversationId] ?? EMPTY_MESSAGES).find((msg) => msg.id === messageId);
     if (!target?.clientId || !isLocalMessage(target)) return;
     void cancelChatMediaUpload(target.clientId);
   };
@@ -3493,11 +3799,11 @@ function ConnectionsPageRefactored({
             query: searchQuery,
           })
         : buildBrowseItems<Conversation, UseFriend>({
-            active: sortedConversations,
+            active: listConversations,
             archivedCount: archivedConversations.length,
             filter: chatFilter,
           }),
-    [archivedConversations.length, chatFilter, conversations, currentUserId, dbFriends, filteredConversations, searchActive, searchQuery, sortedConversations],
+    [archivedConversations.length, chatFilter, conversations, currentUserId, dbFriends, filteredConversations, listConversations, searchActive, searchQuery],
   );
   const listLayouts = useMemo(() => chatListLayouts(listItems), [listItems]);
   const getItemLayout = useCallback(
@@ -3529,7 +3835,7 @@ function ConnectionsPageRefactored({
     togglePin: handleTogglePin,
     toggleUnread: handleToggleUnread,
     toggleMute: handleToggleMuteChat,
-    archive: handleArchiveChat,
+    archive: handleArchiveRow,
     unarchive: handleUnarchiveChat,
   });
   rowHandlersRef.current = {
@@ -3538,7 +3844,7 @@ function ConnectionsPageRefactored({
     togglePin: handleTogglePin,
     toggleUnread: handleToggleUnread,
     toggleMute: handleToggleMuteChat,
-    archive: handleArchiveChat,
+    archive: handleArchiveRow,
     unarchive: handleUnarchiveChat,
   };
   const onRowPress = useCallback((conversation: ChatListItemConversation) => {
@@ -3620,6 +3926,16 @@ function ConnectionsPageRefactored({
       // actions sheet has left (iOS presents one RN Modal at a time).
       setTimeout(run, delay);
     };
+    // Issue #4114 Wave 6: a brand channel row stands for several event chats;
+    // only Archive (all of them) applies to the row as a whole.
+    if (isBrandChannelRow(target)) {
+      return [{
+        key: "archive",
+        icon: "archive-outline",
+        label: t("connections:action_archive"),
+        onPress: close(() => void rowHandlersRef.current.archive(target.id)),
+      }];
+    }
     const isGroup = target.type === "group";
     const isArchived = archivedIds.has(target.id);
     const other = target.participants.find((participant) => participant.id !== currentUserId);
@@ -3947,8 +4263,8 @@ function ConnectionsPageRefactored({
           onCancelUpload={handleCancelMediaUpload}
           onRetryMessage={handleRetryMessage}
           onLoadOlderMessages={handleLoadOlderMessages}
-          hasOlderMessages={olderPaging.conversationId === currentConversationId && olderPaging.hasMore}
-          isLoadingOlderMessages={olderPaging.conversationId === currentConversationId && olderPaging.loading}
+          hasOlderMessages={olderPaging.conversationId === threadPagingKey && olderPaging.hasMore}
+          isLoadingOlderMessages={olderPaging.conversationId === threadPagingKey && olderPaging.loading}
           onOpenAddToBoardModal={(friend: Friend) => handleAddToBoard(friend)}
           onShareSavedCard={handleShareSavedCard}
           onRemoveFriend={handleRemoveFriend}
@@ -3967,6 +4283,8 @@ function ConnectionsPageRefactored({
           isUnfriended={activeChatIsUnfriended}
           isDeletedAccount={activeChatIsDeletedAccount}
           conversationId={currentConversationId}
+          brandChannel={activeBrandChannel}
+          onSelectBrandChannelTarget={handleSelectBrandChannelTarget}
           currentUserId={user?.id || null}
           currentUserName={currentUserDisplayName}
           broadcastSeenIds={broadcastSeenIds}

@@ -3,6 +3,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { blockService } from './blockService';
 import { getDisplayName } from '../utils/getDisplayName';
 import type { MediaViewRow } from '../utils/chatMedia';
+import { conversationChannelKey, conversationRealtimeFilter } from '../utils/conversationSubscription';
 import type { NativeContentCardDescriptorV1, PublicShareDetails, ShareDestination, ShareEntityKind, ShareFactsV1, ShareMediaIdentity } from '@mingla/sharing';
 
 /**
@@ -975,18 +976,22 @@ export class MessagingService {
    * that share the boundary timestamp are never skipped; the caller's
    * `mergeMessages` drops the repeats by id. `hasMore` is true when the page came
    * back full, i.e. there may be older messages to load.
+   *
+   * Issue #4114 Wave 6: a brand channel passes all of its event chats' ids and
+   * gets ONE page across them (`.in('conversation_id', ids)`, same cursor);
+   * each row keeps its own conversation_id.
    */
   async getMessages(
-    conversationId: string,
+    conversationId: string | readonly string[],
     userId: string,
     limit: number = MESSAGE_PAGE_SIZE,
     before?: string,
   ): Promise<{ messages: DirectMessage[]; error: string | null; hasMore: boolean }> {
     try {
-      let query = supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
+      const ids = typeof conversationId === 'string' ? [conversationId] : Array.from(new Set(conversationId));
+      if (ids.length === 0) return { messages: [], error: null, hasMore: false };
+      const base = supabase.from('messages').select('*');
+      let query = (ids.length === 1 ? base.eq('conversation_id', ids[0]) : base.in('conversation_id', ids))
         .is('deleted_at', null);
       if (before) query = query.lte('created_at', before);
       const { data, error } = await query
@@ -1693,7 +1698,7 @@ export class MessagingService {
    * Subscribe to real-time messages for a conversation
    */
   subscribeToConversation(
-    conversationId: string,
+    conversationId: string | readonly string[],
     userId: string,
     callbacks: {
       onMessage?: (message: DirectMessage) => void;
@@ -1701,11 +1706,16 @@ export class MessagingService {
       onMessageDeleted?: (messageId: string) => void;
     }
   ): RealtimeChannel {
-    const channelName = `conversation:${conversationId}`;
+    // Issue #4114 Wave 6: one channel for one chat, or for all of a brand
+    // channel's event chats (filter `conversation_id=in.(…)`). The channel is
+    // released with unsubscribeFromConversation(conversationChannelKey(ids)).
+    const channelKey = conversationChannelKey(conversationId);
+    const filter = conversationRealtimeFilter(conversationId);
+    const channelName = `conversation:${channelKey}`;
 
     // Unsubscribe if already subscribed
     if (this.channels.has(channelName)) {
-      this.unsubscribeFromConversation(conversationId);
+      this.unsubscribeFromConversation(channelKey);
     }
 
     const channel = supabase
@@ -1716,7 +1726,7 @@ export class MessagingService {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
+          filter,
         },
         async (payload) => {
           const enrichedMessage = await this.enrichMessageRealtime(payload.new as any);
@@ -1729,7 +1739,7 @@ export class MessagingService {
           event: 'UPDATE',
           schema: 'public',
           table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
+          filter,
         },
         async (payload) => {
           const enrichedMessage = await this.enrichMessageRealtime(payload.new as any);
@@ -1742,7 +1752,7 @@ export class MessagingService {
           event: 'DELETE',
           schema: 'public',
           table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
+          filter,
         },
         (payload) => {
           callbacks.onMessageDeleted?.(payload.old.id);
@@ -1750,7 +1760,7 @@ export class MessagingService {
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          console.log(`Subscribed to conversation: ${conversationId}`);
+          console.log(`Subscribed to conversation: ${channelKey}`);
         }
       });
 

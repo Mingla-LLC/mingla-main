@@ -58,7 +58,6 @@
   "preview_pending_collab": "少なくとも1人の承認を待っています",
   "preview_group_people": "{{count}}人で一緒に計画中",
   "preview_collab_ready": "コラボスペースの準備ができました",
-  "preview_event_ready": "イベントチャットの準備ができました",
   "pinned_a11y": "ピン留め済み",
   "unread_a11y": "未読{{count}}件",
   "marked_unread_a11y": "未読にしました",
@@ -187,5 +186,6 @@
   "af_this_friend": "この友達",
   "af_limit_cta": "Mingla+を見る",
   "af_send_failed": "送信できませんでした。もう一度お試しください。",
-  "chat_menu_paired_view": "誕生日・記念日・保存"
+  "chat_menu_paired_view": "誕生日・記念日・保存",
+  "preview_no_messages": "まだメッセージはありません"
 }

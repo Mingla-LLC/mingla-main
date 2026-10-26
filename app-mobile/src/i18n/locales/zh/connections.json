@@ -58,7 +58,6 @@
   "preview_pending_collab": "等待至少一人接受",
   "preview_group_people": "{{count}} 人正在一起计划",
   "preview_collab_ready": "协作空间已就绪",
-  "preview_event_ready": "活动聊天已就绪",
   "pinned_a11y": "已置顶",
   "unread_a11y": "{{count}} 条未读",
   "marked_unread_a11y": "已标为未读",
@@ -187,5 +186,6 @@
   "af_this_friend": "这位好友",
   "af_limit_cta": "查看 Mingla+",
   "af_send_failed": "发送失败，请重试。",
-  "chat_menu_paired_view": "生日、节日和收藏"
+  "chat_menu_paired_view": "生日、节日和收藏",
+  "preview_no_messages": "还没有消息"
 }

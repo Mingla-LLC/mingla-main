@@ -58,7 +58,6 @@
   "preview_pending_collab": "กำลังรออย่างน้อยหนึ่งคนตอบรับ",
   "preview_group_people": "{{count}} คนกำลังวางแผนด้วยกัน",
   "preview_collab_ready": "พื้นที่ทำงานร่วมกันพร้อมแล้ว",
-  "preview_event_ready": "แชทอีเวนต์พร้อมแล้ว",
   "pinned_a11y": "ปักหมุดแล้ว",
   "unread_a11y": "ยังไม่ได้อ่าน {{count}} รายการ",
   "marked_unread_a11y": "ทำเครื่องหมายว่ายังไม่ได้อ่านแล้ว",
@@ -187,5 +186,6 @@
   "af_this_friend": "เพื่อนคนนี้",
   "af_limit_cta": "ดู Mingla+",
   "af_send_failed": "ส่งไม่สำเร็จ ลองอีกครั้ง",
-  "chat_menu_paired_view": "วันเกิด วันหยุด และที่บันทึก"
+  "chat_menu_paired_view": "วันเกิด วันหยุด และที่บันทึก",
+  "preview_no_messages": "ยังไม่มีข้อความ"
 }

@@ -58,7 +58,6 @@
   "preview_pending_collab": "Wachten tot minstens één persoon accepteert",
   "preview_group_people": "{{count}} mensen plannen samen",
   "preview_collab_ready": "Samenwerkingsruimte klaar",
-  "preview_event_ready": "Evenementchat klaar",
   "pinned_a11y": "Vastgezet",
   "unread_a11y": "{{count}} ongelezen",
   "marked_unread_a11y": "Gemarkeerd als ongelezen",
@@ -187,5 +186,6 @@
   "af_this_friend": "deze vriend",
   "af_limit_cta": "Bekijk Mingla+",
   "af_send_failed": "Verzenden mislukt. Probeer opnieuw.",
-  "chat_menu_paired_view": "Verjaardag, feestdagen en bewaard"
+  "chat_menu_paired_view": "Verjaardag, feestdagen en bewaard",
+  "preview_no_messages": "Nog geen berichten"
 }

@@ -58,7 +58,6 @@
   "preview_pending_collab": "بانتظار قبول شخص واحد على الأقل",
   "preview_group_people": "{{count}} أشخاص يخططون معًا",
   "preview_collab_ready": "مساحة التعاون جاهزة",
-  "preview_event_ready": "محادثة الفعالية جاهزة",
   "pinned_a11y": "مثبّتة",
   "unread_a11y": "{{count}} غير مقروءة",
   "marked_unread_a11y": "تم تمييزها كغير مقروءة",
@@ -187,5 +186,6 @@
   "af_this_friend": "هذا الصديق",
   "af_limit_cta": "اطّلع على Mingla+",
   "af_send_failed": "تعذر الإرسال. حاول مرة أخرى.",
-  "chat_menu_paired_view": "عيد الميلاد والعطلات والمحفوظات"
+  "chat_menu_paired_view": "عيد الميلاد والعطلات والمحفوظات",
+  "preview_no_messages": "لا توجد رسائل بعد"
 }

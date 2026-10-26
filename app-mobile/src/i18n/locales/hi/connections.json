@@ -58,7 +58,6 @@
   "preview_pending_collab": "कम से कम एक व्यक्ति के स्वीकार करने का इंतज़ार",
   "preview_group_people": "{{count}} लोग साथ में योजना बना रहे हैं",
   "preview_collab_ready": "सहयोग स्पेस तैयार है",
-  "preview_event_ready": "इवेंट चैट तैयार है",
   "pinned_a11y": "पिन किया गया",
   "unread_a11y": "{{count}} अपठित",
   "marked_unread_a11y": "अपठित के रूप में चिह्नित",
@@ -187,5 +186,6 @@
   "af_this_friend": "यह दोस्त",
   "af_limit_cta": "Mingla+ देखें",
   "af_send_failed": "भेजा नहीं जा सका। फिर कोशिश करें।",
-  "chat_menu_paired_view": "जन्मदिन, छुट्टियाँ और सहेजे गए"
+  "chat_menu_paired_view": "जन्मदिन, छुट्टियाँ और सहेजे गए",
+  "preview_no_messages": "अभी कोई संदेश नहीं"
 }

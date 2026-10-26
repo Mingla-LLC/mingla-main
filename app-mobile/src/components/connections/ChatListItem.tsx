@@ -33,6 +33,11 @@ import type { BusinessEventCard } from "../../types/mergedDiscover";
 import { glass } from "../../constants/designSystem";
 import { ChatAvatar } from "./ChatAvatar";
 import {
+  isBrandChannelRow,
+  nextUpEvent,
+  type BrandChannel,
+} from "./brandChannelModel";
+import {
   CHAT_ROW_GAP,
   CHAT_ROW_HEIGHT,
   CHAT_ROW_SIDE_PADDING,
@@ -60,9 +65,18 @@ export type ChatListItemConversation = Conversation & {
   linked_entity_type?: 'direct' | 'session' | 'trip' | 'event';
   eventBrandName?: string | null;
   eventBrandAccountId?: string | null;
+  /** Issue #4114 Wave 6: the event's brand, for folding into a brand channel. */
+  eventBrandId?: string | null;
+  eventBrandSlug?: string | null;
+  eventBrandLogoUrl?: string | null;
+  eventStartAt?: string | null;
+  eventEndAt?: string | null;
   eventCoverMediaUrl?: string | null;
   eventPublicCard?: BusinessEventCard | null;
   is_broadcast_only?: boolean;
+  /** Issue #4114 Wave 6: set on a folded brand channel row (brandChannelModel). */
+  __brandChannel?: BrandChannel;
+  brandChannelLastEventTitle?: string | null;
   isPendingCreatorCollab?: boolean;
   pinned_at?: string | null;
   marked_unread_at?: string | null;
@@ -107,7 +121,11 @@ function ChatListItemImpl({
 
   const kind = chatKind(conversation);
   const isGroup = conversation.type === 'group';
-  const isEvent = kind === 'event';
+  // Issue #4114 Wave 6: a folded brand channel looks like an event row (square
+  // avatar, tag) but shows the brand and leads its preview with the event.
+  const brandChannel = isBrandChannelRow(conversation) ? conversation.__brandChannel : null;
+  const isBrandChannel = kind === 'brand_channel' && brandChannel !== null;
+  const isEvent = kind === 'event' || isBrandChannel;
   const isPinned = Boolean(conversation.pinned_at);
   const unread = isUnreadChat(conversation);
   // "Mark unread" is a private flag (it never touches read receipts). It is
@@ -120,7 +138,9 @@ function ChatListItemImpl({
   const others = conversation.participants.filter((p) => p.id !== currentUserId);
   const otherParticipant = others[0];
 
-  const rawName = isGroup
+  const rawName = isBrandChannel
+    ? brandChannel.brandName || conversation.name?.trim() || t('connections:group_fallback_name')
+    : isGroup
     ? conversation.name?.trim() || t('connections:group_fallback_name')
     : getDisplayName(otherParticipant);
   const displayName = !isGroup && rawName.includes('@')
@@ -143,6 +163,14 @@ function ChatListItemImpl({
       else if (lastMessage.message_type === 'video') text = t('chat:videoPreview');
       else text = (lastMessage.content || '').replace(/\s+/g, ' ').trim();
     }
+    if (text && lastMessage && isBrandChannel) {
+      // "{event} · {last message}" (the event the newest message came from).
+      const line = lastMessage.sender_id && lastMessage.sender_id === currentUserId
+        ? t('connections:preview_you', { text })
+        : text;
+      const eventTitle = conversation.brandChannelLastEventTitle?.trim();
+      return eventTitle ? `${eventTitle} · ${line}` : line;
+    }
     if (text && lastMessage) {
       if (lastMessage.sender_id && lastMessage.sender_id === currentUserId) {
         return t('connections:preview_you', { text });
@@ -157,7 +185,9 @@ function ChatListItemImpl({
       }
       return text;
     }
-    if (isEvent) return t('connections:preview_event_ready');
+    // Issue #4114 Wave 6: an event chat with nothing in it says so (it used to
+    // read "Event chat ready", or "Event broadcast ready" in older builds).
+    if (isEvent) return t('connections:preview_no_messages');
     if (conversation.isPendingCreatorCollab) return t('connections:preview_pending_collab');
     if (isGroup) {
       return conversation.participants.length > 1
@@ -165,16 +195,19 @@ function ChatListItemImpl({
         : t('connections:preview_collab_ready');
     }
     return t('connections:preview_start');
-  }, [conversation, currentUserId, isEvent, isGroup, lastMessage, t]);
+  }, [conversation, currentUserId, isBrandChannel, isEvent, isGroup, lastMessage, t]);
 
-  const tagLabel = isEvent
+  const tagLabel = isBrandChannel
+    ? formatUpcomingEventTag(nextUpEvent(brandChannel.events, Date.now())?.startAt, new Date(), i18n.language)
+      ?? t('connections:tag_event')
+    : isEvent
     ? formatUpcomingEventTag(conversation.eventPublicCard?.masterDateUtc, new Date(), i18n.language)
       ?? t('connections:tag_event')
     : conversation.isEnquiry
       ? t('connections:tag_enquiry')
       : null;
 
-  const avatarPeople = (isGroup ? others : otherParticipant ? [otherParticipant] : []).slice(0, 2).map((p) => ({
+  const avatarPeople = (isBrandChannel ? [] : isGroup ? others : otherParticipant ? [otherParticipant] : []).slice(0, 2).map((p) => ({
     id: p.id,
     name: getDisplayName(p),
     avatarUrl: p.avatar_url ?? null,
@@ -190,6 +223,8 @@ function ChatListItemImpl({
     else onArchive?.(conversation.id);
   }, [close, conversation, onArchive, onToggleMute, onTogglePin, onToggleUnread]);
 
+  // A brand channel row stands for several chats: it can be archived (all of
+  // them), but pin and mark-unread stay per chat, so they are not offered here.
   const renderLeftActions = useCallback(() => (
     <View style={styles.swipeActions}>
       <SwipeAction
@@ -244,8 +279,10 @@ function ChatListItemImpl({
   ].filter(Boolean);
 
   const accessibilityActions = [
-    { name: 'pin', label: isPinned ? t('connections:action_unpin') : t('connections:action_pin') },
-    ...(canToggleUnread
+    ...(isBrandChannel
+      ? []
+      : [{ name: 'pin', label: isPinned ? t('connections:action_unpin') : t('connections:action_pin') }]),
+    ...(canToggleUnread && !isBrandChannel
       ? [{ name: 'unread', label: markedUnread ? t('connections:action_mark_read') : t('connections:action_mark_unread') }]
       : []),
     ...(!isGroup && onToggleMute
@@ -264,7 +301,7 @@ function ChatListItemImpl({
   return (
     <ReanimatedSwipeable
       ref={swipeRef}
-      renderLeftActions={renderLeftActions}
+      renderLeftActions={isBrandChannel ? undefined : renderLeftActions}
       renderRightActions={renderRightActions}
       overshootLeft={false}
       overshootRight={false}
@@ -288,7 +325,7 @@ function ChatListItemImpl({
           people={avatarPeople}
           shape={isEvent ? 'square' : isGroup ? 'group' : 'circle'}
           label={displayName}
-          coverUrl={isEvent ? conversation.eventCoverMediaUrl : null}
+          coverUrl={isBrandChannel ? brandChannel.logoUrl : isEvent ? conversation.eventCoverMediaUrl : null}
           deckBadge={kind === 'group' || kind === 'direct_collab'}
         />
         <View style={styles.body}>

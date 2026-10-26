@@ -34,6 +34,22 @@ import { DoubleTapHeart } from "./chat/DoubleTapHeart";
 import { ChatStatusLine } from "./chat/ChatStatusLine";
 import { TripCountdownBanner } from "./chat/TripCountdownBanner";
 import {
+  BrandChannelEventMarker,
+  BrandChannelSendChip,
+  BrandChannelSendSheet,
+  formatBrandEventDate,
+} from "./chat/BrandChannelParts";
+import {
+  eventMarkerMessageIds,
+  findBrandChannelEvent,
+  nextUpEvent,
+  resolveSendTarget,
+  showSendTargetChip,
+  type BrandChannel,
+  type BrandChannelEvent,
+} from "./connections/brandChannelModel";
+import { getDisplayName } from "../utils/getDisplayName";
+import {
   SavedToSessionCardsSheet,
   ScheduleSheet,
   useSessionSavedCardsForSheet,
@@ -183,6 +199,8 @@ const BROADCAST_COMPOSER_NOTICE_CONTENT_GAP = 12;
 interface Message {
   id: string;
   clientId?: string;  // Issue #4114: stable key across optimistic → confirmed
+  /** Issue #4114 Wave 6: the event chat this message belongs to (brand channel). */
+  conversationId?: string;
   senderId: string;
   senderName: string;
   content: string;
@@ -233,6 +251,8 @@ interface ThreadRow {
   isRead: boolean;
   dayLabel: string | null;
   showNewDivider: boolean;
+  /** Issue #4114 Wave 6: brand channel — this message starts a run from this event. */
+  eventMarker: BrandChannelEvent | null;
 }
 
 const EMPTY_EMOJIS: string[] = [];
@@ -347,6 +367,14 @@ interface MessageInterfaceProps {
   isUnfriended?: boolean;
   isDeletedAccount?: boolean;
   conversationId?: string | null;
+  /**
+   * Issue #4114 Wave 6: the open brand channel. `messages` then holds every
+   * event chat's messages (each tagged with its conversationId) and
+   * `conversationId` is the event chat a new message goes to.
+   */
+  brandChannel?: BrandChannel | null;
+  /** Wave 6 (D10): the "Sending to" picker chose another upcoming event. */
+  onSelectBrandChannelTarget?: (conversationId: string) => void;
   currentUserId?: string | null;
   currentUserName?: string | null;
   broadcastSeenIds?: React.MutableRefObject<Set<string>>;
@@ -409,6 +437,8 @@ export default function MessageInterface({
   isUnfriended = false,
   isDeletedAccount = false,
   conversationId = null,
+  brandChannel = null,
+  onSelectBrandChannelTarget,
   currentUserId = null,
   currentUserName = null,
   broadcastSeenIds: broadcastSeenIdsProp,
@@ -480,6 +510,34 @@ export default function MessageInterface({
   const eventAudienceSubtitle = isTripChat
     ? t('chat:audienceTravellingCount', { count: headerParticipantCount })
     : t('chat:audienceAttendingCount', { count: headerParticipantCount });
+  // Issue #4114 Wave 6: the brand channel. Guest lists stay per event: the
+  // audience sheet shows ONE event's guests (the event marker or picker row
+  // you tapped, else the event you are sending to), never a merged roster.
+  const isBrandChannel = brandChannel !== null;
+  const brandSlug = brandChannel?.brandSlug ?? null;
+  const [audienceConversationId, setAudienceConversationId] = useState<string | null>(null);
+  const [eventOverlayConversationId, setEventOverlayConversationId] = useState<string | null>(null);
+  const [showSendTargetSheet, setShowSendTargetSheet] = useState(false);
+  const audienceEvent = brandChannel
+    ? findBrandChannelEvent(brandChannel, audienceConversationId ?? conversationId)
+    : null;
+  const audienceIsTrip = audienceEvent ? audienceEvent.linkedEntityType === "trip" : isTripChat;
+  const audienceCount = audienceEvent ? audienceEvent.participantCount : headerParticipantCount;
+  const audienceTitle = audienceIsTrip ? t('chat:audienceTravellers') : t('chat:audienceAttendees');
+  const audienceSubtitle = audienceIsTrip
+    ? t('chat:audienceTravellingCount', { count: audienceCount })
+    : t('chat:audienceAttendingCount', { count: audienceCount });
+  const audienceParticipants = useMemo(
+    () => audienceEvent
+      ? audienceEvent.people.map((person) => ({
+          id: person.id,
+          name: getDisplayName(person, person.username || 'User'),
+          username: person.username ?? undefined,
+          avatar_url: person.avatar_url ?? undefined,
+        }))
+      : headerParticipants,
+    [audienceEvent, headerParticipants],
+  );
   const getMessageSenderName = (msg: Message): string => {
     const brandName = friend.eventBrandName?.trim();
     const brandAccountId = friend.eventBrandAccountId?.trim();
@@ -657,9 +715,11 @@ export default function MessageInterface({
     }),
     [t],
   );
-  const headerAvatarKind: "single" | "stack" | "cover" = !isGroupChat
+  const headerAvatarKind: "single" | "stack" | "cover" | "brand" = !isGroupChat
     ? "single"
-    : friend.eventCoverMediaUrl
+    : isBrandChannel
+      ? "brand"
+      : friend.eventCoverMediaUrl
       ? "cover"
       : "stack";
   const headerSubtitle: React.ReactNode = isCollabSessionGroupChat
@@ -837,6 +897,8 @@ export default function MessageInterface({
     senderName: string;
     content: string;
     isMe: boolean;
+    /** Issue #4114 Wave 6: the quoted message's event chat (a reply goes there). */
+    conversationId?: string;
   } | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const flatListRef = useRef<FlatList>(null);
@@ -1812,13 +1874,23 @@ export default function MessageInterface({
   // Issue #4114 Wave 3: the blocked / unfriended / deleted banners sit above
   // the floating bottom nav instead of behind it.
   const noticeBannerBottomGap = bottomNavTotalHeight + 12 + ANDROID_NAV_OVERLAP_FIX;
-  const channelLabel = friend.linkedEntityType === "trip" ? "Trip broadcast channel" : "Event broadcast channel";
+  // Issue #4114 Wave 6: translated, and no "broadcast" label on chats guests can post in.
+  const channelBrand = friend.eventBrandName?.trim() || t('chat:theOrganiser');
+  const channelLabel = isBrandChannel
+    ? brandChannel?.brandName || channelBrand
+    : friend.linkedEntityType === "trip" ? t('chat:tripChannel') : t('chat:eventChannel');
   const channelDetail = isBroadcastOnlyConsumerChannel
-    ? `Only ${friend.eventBrandName?.trim() || "the organiser"} can post updates here`
-    : `Updates from ${friend.eventBrandName?.trim() || "the organiser"} and attendees`;
+    ? t('chat:channelDetailHostOnly', { brand: channelBrand })
+    : friend.linkedEntityType === "trip"
+      ? t('chat:channelDetailOpenTrip', { brand: channelBrand })
+      : t('chat:channelDetailOpen', { brand: channelBrand });
   const channelLine = isBroadcastOnlyConsumerChannel
-    ? `${friend.linkedEntityType === "trip" ? "Trip" : "Event"} broadcast · ${friend.eventBrandName?.trim() || "Organiser"} only`
-    : `${friend.linkedEntityType === "trip" ? "Trip" : "Event"} channel · ${friend.eventBrandName?.trim() || "Organiser"} + attendees`;
+    ? friend.linkedEntityType === "trip"
+      ? t('chat:tripChannelHostOnlyLine', { brand: channelBrand })
+      : t('chat:eventChannelHostOnlyLine', { brand: channelBrand })
+    : friend.linkedEntityType === "trip"
+      ? t('chat:tripChannelLine', { brand: channelBrand })
+      : t('chat:eventChannelLine', { brand: channelBrand });
 
   // Issue #4114 Wave 3: every chat's ⋯ opens something. Event and trip chats
   // open their audience; session groups their settings (BoardSettingsDropdown);
@@ -1827,6 +1899,8 @@ export default function MessageInterface({
   const handleHeaderMorePress = () => {
     if (isTripEventGroupChat) {
       setShowMoreOptionsMenu(false);
+      // In a brand channel: the guests of the event you are sending to.
+      setAudienceConversationId(null);
       setShowEventAudienceSheet(true);
       return;
     }
@@ -1871,11 +1945,21 @@ export default function MessageInterface({
   // chat is marked read).
   const [newDividerMessageId, setNewDividerMessageId] = useState<string | null>(null);
   const dividerCapturedForRef = useRef<string | null>(null);
+  // Issue #4114 Wave 6: a brand channel captures it once for the whole channel
+  // (switching the event you send to must not move it).
+  const dividerThreadKey = brandChannel?.id ?? conversationId;
   useEffect(() => {
-    if (!conversationId || dividerCapturedForRef.current === conversationId || visibleMessages.length === 0) return;
-    dividerCapturedForRef.current = conversationId;
+    if (!dividerThreadKey || dividerCapturedForRef.current === dividerThreadKey || visibleMessages.length === 0) return;
+    dividerCapturedForRef.current = dividerThreadKey;
     setNewDividerMessageId(firstUnreadMessageId(visibleMessages));
-  }, [conversationId, visibleMessages]);
+  }, [dividerThreadKey, visibleMessages]);
+
+  // Issue #4114 Wave 6: an event marker above the first message of each run
+  // from a different event (visibleMessages is oldest first).
+  const eventMarkerIds = useMemo(
+    () => (brandChannel ? eventMarkerMessageIds(visibleMessages) : null),
+    [brandChannel, visibleMessages],
+  );
 
   // Rows are prepared once per change to the messages (not per keystroke), so
   // MessageBubble (memoised) gets the same props while you type.
@@ -1964,6 +2048,9 @@ export default function MessageInterface({
         isRead: message.isMe && !message.id.startsWith("temp-") && (message.isRead === true),
         dayLabel,
         showNewDivider: message.id === newDividerMessageId,
+        eventMarker: brandChannel && eventMarkerIds?.has(message.id)
+          ? findBrandChannelEvent(brandChannel, message.conversationId)
+          : null,
       };
     });
     // getMessageSenderName reads only the fields listed here.
@@ -1983,6 +2070,8 @@ export default function MessageInterface({
     t,
     uploadProgress,
     openedViewOnce,
+    brandChannel,
+    eventMarkerIds,
   ]);
   const threadRowsRef = useRef(threadRows);
   threadRowsRef.current = threadRows;
@@ -1995,6 +2084,7 @@ export default function MessageInterface({
       senderName: row.senderName,
       content: row.message.content,
       isMe: row.message.isMe,
+      conversationId: row.message.conversationId,
     });
   }, []);
 
@@ -2144,7 +2234,23 @@ export default function MessageInterface({
 
   // The list's renderItem — stable (it changes only when a timestamp is
   // revealed or a handler's real inputs change), so typing never re-renders it.
+  // Issue #4114 Wave 6: one event's guest list (marker, picker row or ⋯).
+  const openAudienceFor = useCallback((eventConversationId: string | null) => {
+    setAudienceConversationId(eventConversationId);
+    setShowEventAudienceSheet(true);
+  }, []);
+
   const renderThreadRow = useCallback(({ item }: ListRenderItemInfo<ThreadRow>): React.ReactElement => {
+    // Inverted list: a marker rendered after the bubble shows above it.
+    const markerEvent = item.eventMarker;
+    const eventMarker = markerEvent ? (
+      <BrandChannelEventMarker
+        event={markerEvent}
+        now={Date.now()}
+        locale={i18n.language}
+        onPress={() => openAudienceFor(markerEvent.conversationId)}
+      />
+    ) : null;
     const daySeparator = item.dayLabel ? (
       <View style={styles.daySeparator}>
         <View style={styles.daySeparatorLine} />
@@ -2182,6 +2288,7 @@ export default function MessageInterface({
                 void handleDeclineDmCollab(dmCollabPayload.session_id);
               }}
             />
+            {eventMarker}
             {newDivider}
             {daySeparator}
           </>
@@ -2197,6 +2304,7 @@ export default function MessageInterface({
             showTimestamp={false}
             isRead={false}
           />
+          {eventMarker}
           {newDivider}
           {daySeparator}
         </>
@@ -2249,6 +2357,7 @@ export default function MessageInterface({
           </TouchableOpacity>
         </DoubleTapHeart>
       </SwipeableMessage>
+      {eventMarker}
       {newDivider}
       {daySeparator}
       </>
@@ -2271,6 +2380,8 @@ export default function MessageInterface({
     onRetryMessage,
     onToggleReaction,
     onViewProfile,
+    openAudienceFor,
+    i18n.language,
     revealedTimestampId,
     startReply,
     t,
@@ -2292,6 +2403,7 @@ export default function MessageInterface({
       groupInfo: showGroupInfo,
       moreMenu: showMoreOptionsMenu,
       eventAudience: showEventAudienceSheet,
+      sendTarget: showSendTargetSheet,
       collabDeck: showCollabDeckSheet,
       collabMatches: showCollabMatchesSheet,
       collabPlans: showCollabPlansSheet,
@@ -2311,6 +2423,7 @@ export default function MessageInterface({
       groupInfo: () => setShowGroupInfo(false),
       moreMenu: () => setShowMoreOptionsMenu(false),
       eventAudience: () => setShowEventAudienceSheet(false),
+      sendTarget: () => setShowSendTargetSheet(false),
       collabDeck: () => setShowCollabDeckSheet(false),
       collabMatches: () => setShowCollabMatchesSheet(false),
       collabPlans: () => setShowCollabPlansSheet(false),
@@ -2324,15 +2437,53 @@ export default function MessageInterface({
     onViewProfile?.(participantId);
   };
 
+  // ── Issue #4114 Wave 6: brand channel navigation ─────────────
+  // The brand page is pushed on the app's stack (as ConsumerEventDetailScreen
+  // does); its Back pops it and this chat, still mounted underneath, is where
+  // it was.
+  const openBrandPage = () => {
+    if (!brandSlug) return;
+    HapticFeedback.light();
+    router.push(`/b/${brandSlug}` as never);
+  };
+  const openEventOverlay = (eventConversationId: string | null) => {
+    setEventOverlayConversationId(eventConversationId);
+    setShowGroupEventSheet(true);
+  };
+  const brandNow = Date.now();
+  const nextUp = brandChannel ? nextUpEvent(brandChannel.events, brandNow) : null;
+  const showSendChip = brandChannel ? showSendTargetChip(brandChannel.events, brandNow) : false;
+  // D10: the chip names where THIS message goes — the quoted message's event
+  // while replying (the picker is then locked), otherwise your choice.
+  const sendTargetEvent = brandChannel
+    ? findBrandChannelEvent(
+        brandChannel,
+        resolveSendTarget({
+          events: brandChannel.events,
+          chosenConversationId: conversationId,
+          replyToConversationId: replyingTo?.conversationId ?? null,
+          now: brandNow,
+        }),
+      )
+    : null;
+  const overlayEvent = brandChannel && eventOverlayConversationId
+    ? findBrandChannelEvent(brandChannel, eventOverlayConversationId)
+    : null;
+  const overlayCard: BusinessEventCard | null =
+    (overlayEvent?.publicCard as BusinessEventCard | null | undefined) ?? friend.eventPublicCard ?? null;
+  const overlayIsTrip = overlayEvent ? overlayEvent.linkedEntityType === "trip" : friend.linkedEntityType === "trip";
+
   return (
     <View style={styles.container}>
       {/* Issue #4114 Wave 3 (D9): one header for every chat. 62pt with nothing
           in the strip, 108pt with matches or plans (chatHeaderModel). */}
       <ChatHeader
         topInset={safeInsets.top}
-        title={headerTitle}
+        title={brandChannel ? brandChannel.brandName || headerTitle : headerTitle}
         subtitle={
-          isGroupChat ? headerSubtitle : isDmCollabActive ? (
+          brandChannel
+            ? t('chat:brandChannelSubtitle', { count: brandChannel.events.length })
+            : isGroupChat ? headerSubtitle : isDmCollabActive ? (
             // Issue #4114 Wave 5 (D12): "Collaborating · Active now".
             <View style={styles.dmCollabSubtitle} testID="chat-header-collaborating">
               <Text style={styles.dmCollabSubtitleText} numberOfLines={1}>
@@ -2356,16 +2507,23 @@ export default function MessageInterface({
         onBack={onBack}
         backLabel={t('chat:a11yBack')}
         avatarKind={headerAvatarKind}
-        avatarUrl={isGroupChat ? friend.eventCoverMediaUrl ?? null : friend.avatar ?? null}
+        avatarUrl={brandChannel ? brandChannel.logoUrl : isGroupChat ? friend.eventCoverMediaUrl ?? null : friend.avatar ?? null}
         participants={headerParticipants}
         participantCount={headerParticipantCount}
         isOnline={!isGroupChat && isOtherOnline}
         collaborating={isCollabChat}
-        onIdentityPress={handleHeaderIdentityPress}
+        onIdentityPress={brandChannel ? (brandSlug ? openBrandPage : undefined) : handleHeaderIdentityPress}
         identityA11yLabel={
-          isGroupChat
+          brandChannel
+            ? t('chat:a11yOpenBrandPage', { name: brandChannel.brandName })
+            : isGroupChat
             ? t('chat:a11yOpenChatInfo', { name: headerTitle })
             : t('chat:a11yViewProfile', { name: headerTitle })
+        }
+        secondaryAction={
+          brandChannel && brandSlug
+            ? { icon: 'storefront', a11yLabel: t('chat:a11yOpenBrandPage', { name: brandChannel.brandName }), onPress: openBrandPage }
+            : null
         }
         primaryAction={
           isCollabChat
@@ -2397,12 +2555,29 @@ export default function MessageInterface({
         locale={i18n.language}
       />
 
-      {isTripEventGroupChat ? (
+      {brandChannel ? (
+        // Issue #4114 Wave 6: "Next up" — today's countdown banner pointed at
+        // the soonest upcoming event of the brand. Tap opens that event's page;
+        // "+N more" opens the brand page. Nothing when no event is upcoming.
+        nextUp?.eventId ? (
+          <View style={styles.eventChannelHeaderStack}>
+            <TripCountdownBanner
+              eventId={nextUp.eventId}
+              onPress={nextUp.publicCard ? () => openEventOverlay(nextUp.conversationId) : undefined}
+              nextUp={{
+                dateLabel: formatBrandEventDate(nextUp.startAt, i18n.language),
+                moreCount: brandChannel.events.length - 1,
+                onMorePress: brandSlug ? openBrandPage : undefined,
+              }}
+            />
+          </View>
+        ) : null
+      ) : isTripEventGroupChat ? (
         <View style={styles.eventChannelHeaderStack}>
           {friend.eventId ? (
             <TripCountdownBanner
               eventId={friend.eventId}
-              onPress={friend.eventPublicCard ? () => setShowGroupEventSheet(true) : undefined}
+              onPress={friend.eventPublicCard ? () => openEventOverlay(null) : undefined}
               stackedWithChannel
             />
           ) : null}
@@ -2631,7 +2806,7 @@ export default function MessageInterface({
         <View style={[styles.broadcastComposerNotice, { bottom: broadcastComposerNoticeBottom }]}>
           <Icon name="lock-closed" size={16} color="rgba(255, 255, 255, 0.82)" />
           <Text style={styles.broadcastComposerNoticeText}>
-            {`Broadcast-only: ${friend.eventBrandName?.trim() || "the organiser"} is posting updates here.`}
+            {t('chat:hostOnlyComposerNotice', { brand: channelBrand })}
           </Text>
         </View>
       )}
@@ -2678,6 +2853,16 @@ export default function MessageInterface({
             onSend={handleSendPickedMedia}
           />
         )}
+        {/* Issue #4114 Wave 6 (D10): "Sending to {event}" — only with two or
+            more upcoming events; while replying it names the quoted
+            message's event and is locked. */}
+        {brandChannel && showSendChip && sendTargetEvent ? (
+          <BrandChannelSendChip
+            title={sendTargetEvent.title}
+            disabled={Boolean(replyingTo)}
+            onPress={() => setShowSendTargetSheet(true)}
+          />
+        ) : null}
         {/* Reply Preview Bar — Issue #4114 Wave 3: dark */}
         {replyingTo && (
           <View style={styles.replyPreviewWrap}>
@@ -2873,18 +3058,18 @@ export default function MessageInterface({
           ConsumerTripDetailScreen (self-fetches by brand+trip slug; seed=null);
           event → Leg-2 ConsumerEventDetailScreen (BusinessEventCard seed). Both
           mount their own BaseBottomSheet → no EBES. I-PROPOSED-1138-EBES-DELETED. */}
-      {showGroupEventSheet && friend.eventPublicCard ? (
-        friend.linkedEntityType === "trip" ? (
+      {showGroupEventSheet && overlayCard ? (
+        overlayIsTrip ? (
           <ConsumerTripDetailScreen
-            brandSlug={friend.eventPublicCard.brandSlug}
-            tripSlug={friend.eventPublicCard.eventSlug}
+            brandSlug={overlayCard.brandSlug}
+            tripSlug={overlayCard.eventSlug}
             seed={null}
             onBack={() => setShowGroupEventSheet(false)}
             tabBarAware={false}
           />
         ) : (
           <ConsumerEventDetailScreen
-            seed={friend.eventPublicCard}
+            seed={overlayCard}
             onBack={() => setShowGroupEventSheet(false)}
             tabBarAware={false}
           />
@@ -2905,29 +3090,46 @@ export default function MessageInterface({
         theme="dark"
         scrollMode="scroll"
         backgroundStyle={styles.eventAudienceSheetBackground}
-        accessibilityLabel={eventAudienceTitle}
+        accessibilityLabel={audienceTitle}
         header={
           <View style={styles.eventAudienceSheetHeader}>
             <View style={styles.eventAudienceIconShell}>
               <Icon
-                name={friend.linkedEntityType === "trip" ? "map" : "people"}
+                name={audienceIsTrip ? "map" : "people"}
                 size={18}
                 color="#ffffff"
               />
             </View>
             <View style={styles.eventAudienceHeaderCopy}>
-              <Text style={styles.eventAudienceTitle}>{eventAudienceTitle}</Text>
-              <Text style={styles.eventAudienceSubtitle}>
-                {eventAudienceSubtitle} · {friend.linkedEntityType === "trip" ? "Trip broadcast" : "Event broadcast"}
+              <Text style={styles.eventAudienceTitle}>{audienceTitle}</Text>
+              <Text style={styles.eventAudienceSubtitle} numberOfLines={1}>
+                {audienceEvent
+                  ? `${audienceSubtitle} · ${audienceEvent.title}`
+                  : `${audienceSubtitle} · ${audienceIsTrip ? t('chat:tripChannel') : t('chat:eventChannel')}`}
               </Text>
             </View>
+            {audienceEvent?.publicCard ? (
+              <TouchableOpacity
+                onPress={() => {
+                  setShowEventAudienceSheet(false);
+                  openEventOverlay(audienceEvent.conversationId);
+                }}
+                style={styles.eventAudienceViewEvent}
+                accessibilityRole="button"
+                accessibilityLabel={t('chat:audienceViewEventA11y', { title: audienceEvent.title })}
+              >
+                <Text style={styles.eventAudienceViewEventText}>
+                  {audienceIsTrip ? t('chat:audienceViewTrip') : t('chat:audienceViewEvent')}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         }
         scrollProps={{ contentContainerStyle: styles.eventAudienceListContent }}
       >
         <View style={styles.eventAudienceListInner}>
-            {headerParticipants.length > 0 ? (
-              headerParticipants.map((participant) => {
+            {audienceParticipants.length > 0 ? (
+              audienceParticipants.map((participant) => {
                 const participantName = getHeaderParticipantName(participant);
                 const canOpenProfile = Boolean(onViewProfile && participant.id);
                 return (
@@ -2938,7 +3140,7 @@ export default function MessageInterface({
                     disabled={!canOpenProfile}
                     onPress={() => handleOpenAudienceProfile(participant.id)}
                     accessibilityRole={canOpenProfile ? "button" : "text"}
-                    accessibilityLabel={`View ${participantName} profile`}
+                    accessibilityLabel={t('chat:a11yViewProfile', { name: participantName })}
                   >
                     {participant.avatar_url ? (
                       <ImageWithFallback
@@ -2957,7 +3159,7 @@ export default function MessageInterface({
                         {participantName}
                       </Text>
                       <Text style={styles.eventAudienceRole} numberOfLines={1}>
-                        {friend.linkedEntityType === "trip" ? "Traveller" : "Attendee"}
+                        {audienceIsTrip ? t('chat:audienceRoleTraveller') : t('chat:audienceRoleAttendee')}
                       </Text>
                     </View>
                     {canOpenProfile ? (
@@ -2968,14 +3170,38 @@ export default function MessageInterface({
               })
             ) : (
               <View style={styles.eventAudienceEmpty}>
-                <Text style={styles.eventAudienceEmptyTitle}>No {eventAudienceTitle.toLowerCase()} yet</Text>
+                <Text style={styles.eventAudienceEmptyTitle}>
+                  {audienceIsTrip ? t('chat:audienceEmptyTravellers') : t('chat:audienceEmptyAttendees')}
+                </Text>
                 <Text style={styles.eventAudienceEmptyText}>
-                  People who join this {friend.linkedEntityType === "trip" ? "trip" : "event"} will appear here.
+                  {audienceIsTrip ? t('chat:audienceEmptyTripBody') : t('chat:audienceEmptyEventBody')}
                 </Text>
               </View>
             )}
         </View>
       </BaseBottomSheet>
+
+      {/* Issue #4114 Wave 6 (D10): where your message goes, when you hold
+          tickets to two or more upcoming events of this brand. */}
+      {brandChannel && showSendChip ? (
+        <BrandChannelSendSheet
+          visible={showSendTargetSheet}
+          onClose={() => setShowSendTargetSheet(false)}
+          events={brandChannel.events}
+          selectedConversationId={sendTargetEvent?.conversationId ?? conversationId}
+          now={brandNow}
+          locale={i18n.language}
+          onSelect={(eventConversationId) => {
+            HapticFeedback.light();
+            onSelectBrandChannelTarget?.(eventConversationId);
+            setShowSendTargetSheet(false);
+          }}
+          onOpenGuests={(eventConversationId) => {
+            setShowSendTargetSheet(false);
+            openAudienceFor(eventConversationId);
+          }}
+        />
+      ) : null}
 
       {/* [ORCH-0696 F-13 lock-in] Shape 2a Modal hack deleted post-bottom-sheet
           conversion verified by operator live-fire on iOS + Android (2026-04-29).
@@ -3540,6 +3766,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#f97316",
+  },
+  eventAudienceViewEvent: {
+    minHeight: 32,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.10)",
+  },
+  eventAudienceViewEventText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   eventAudienceHeaderCopy: {
     flex: 1,

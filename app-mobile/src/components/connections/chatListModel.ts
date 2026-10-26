@@ -55,6 +55,10 @@ export interface ChatListConversationLike {
   live_session_status?: string | null;
   __pendingInvite?: unknown;
   __pendingCollabChat?: unknown;
+  /** Issue #4114 Wave 6: a folded brand channel row (brandChannelModel). */
+  __brandChannel?: unknown;
+  /** #4111 enquiry threads (D11): a private row of their own, never folded. */
+  isEnquiry?: boolean;
 }
 
 export interface ChatListFriendLike {
@@ -77,11 +81,17 @@ export const CHAT_FILTERS: readonly ChatFilter[] = ["all", "unread", "groups", "
  *  - direct_collab: a circle with the orange deck badge (a 1:1 chat whose
  *    collab the friend has joined: live_session_status past pending);
  *  - group: two stacked circles plus the deck badge (every group is a collab);
- *  - event: a rounded-square cover (event and trip chats).
+ *  - event: a rounded-square cover (event and trip chats; a brand team
+ *    member's per-event chats);
+ *  - brand_channel: the brand's rounded-square logo (Wave 6: a guest's event
+ *    and trip chats of one brand, folded into one row);
+ *  - enquiry: #4111's private enquiry thread (D11), kept as its own row.
  */
-export type ChatKind = "direct" | "direct_collab" | "group" | "event";
+export type ChatKind = "direct" | "direct_collab" | "group" | "event" | "brand_channel" | "enquiry";
 
 export function chatKind(conversation: ChatListConversationLike): ChatKind {
+  if (conversation.__brandChannel) return "brand_channel";
+  if (conversation.isEnquiry) return "enquiry";
   if (conversation.type === "group") {
     if (conversation.linked_entity_type === "event" || conversation.linked_entity_type === "trip") {
       return "event";
@@ -118,12 +128,17 @@ export function matchesChatFilter(conversation: ChatListConversationLike, filter
     case "groups":
       return chatKind(conversation) === "group";
     case "events":
-      return chatKind(conversation) === "event";
+      return isEventLikeKind(chatKind(conversation));
     default: {
       const exhaustive: never = filter;
       return exhaustive;
     }
   }
+}
+
+/** Event chats and brand channels both belong to the Events filter and search section. */
+export function isEventLikeKind(kind: ChatKind): boolean {
+  return kind === "event" || kind === "brand_channel";
 }
 
 function activityTime(conversation: ChatListConversationLike): number {
@@ -308,8 +323,8 @@ export function buildBrowseItems<C extends ChatListConversationLike, F>(args: {
 
 /**
  * Search mode: Chats (name and loaded text, as before), Friends you have not
- * chatted with yet, and event chats — each its own section, empty sections
- * left out.
+ * chatted with yet, and event chats and brand channels — each its own
+ * section, empty sections left out.
  */
 export function buildSearchItems<C extends ChatListConversationLike, F extends ChatListFriendLike>(args: {
   matchedChats: readonly C[];
@@ -318,8 +333,8 @@ export function buildSearchItems<C extends ChatListConversationLike, F extends C
   currentUserId: string;
   query: string;
 }): ChatListItemModel<C, F>[] {
-  const chats = sortChatList(args.matchedChats.filter((conversation) => chatKind(conversation) !== "event"));
-  const events = sortChatList(args.matchedChats.filter((conversation) => chatKind(conversation) === "event"));
+  const chats = sortChatList(args.matchedChats.filter((conversation) => !isEventLikeKind(chatKind(conversation))));
+  const events = sortChatList(args.matchedChats.filter((conversation) => isEventLikeKind(chatKind(conversation))));
   const friends = friendsWithoutChat(args.friends, args.allConversations, args.currentUserId)
     .filter((friend) => friendMatches(friend, args.query));
   const items: ChatListItemModel<C, F>[] = [];

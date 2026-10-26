@@ -58,7 +58,6 @@
   "preview_pending_collab": "En az bir kişinin kabul etmesi bekleniyor",
   "preview_group_people": "{{count}} kişi birlikte plan yapıyor",
   "preview_collab_ready": "İş birliği alanı hazır",
-  "preview_event_ready": "Etkinlik sohbeti hazır",
   "pinned_a11y": "Sabitlendi",
   "unread_a11y": "{{count}} okunmamış",
   "marked_unread_a11y": "Okunmadı olarak işaretlendi",
@@ -187,5 +186,6 @@
   "af_this_friend": "bu arkadaş",
   "af_limit_cta": "Mingla+'yı gör",
   "af_send_failed": "Gönderilemedi. Tekrar dene.",
-  "chat_menu_paired_view": "Doğum günü, tatiller ve kaydedilenler"
+  "chat_menu_paired_view": "Doğum günü, tatiller ve kaydedilenler",
+  "preview_no_messages": "Henüz mesaj yok"
 }

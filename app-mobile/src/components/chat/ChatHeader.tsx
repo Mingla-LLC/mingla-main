@@ -52,8 +52,11 @@ export interface ChatHeaderProps {
   subtitle?: React.ReactNode;
   onBack: () => void;
   backLabel: string;
-  /** `single`: one person. `stack`: a group (2 avatars + count). `cover`: an event/trip cover. */
-  avatarKind: "single" | "stack" | "cover";
+  /**
+   * `single`: one person. `stack`: a group (2 avatars + count). `cover`: an
+   * event/trip cover. `brand`: a brand channel's logo as a rounded square (Wave 6).
+   */
+  avatarKind: "single" | "stack" | "cover" | "brand";
   avatarUrl?: string | null;
   participants?: readonly ChatHeaderParticipant[];
   participantCount?: number;
@@ -63,6 +66,8 @@ export interface ChatHeaderProps {
   onIdentityPress?: () => void;
   identityA11yLabel: string;
   primaryAction?: { label: string; a11yLabel: string; onPress: () => void } | null;
+  /** Issue #4114 Wave 6: an icon button before the options button (the brand channel's shop button). */
+  secondaryAction?: { icon: string; a11yLabel: string; onPress: () => void } | null;
   onMorePress?: () => void;
   moreA11yLabel?: string;
   strip?: CollabHeaderStripModel | null;
@@ -94,13 +99,15 @@ function Avatar({
   name,
   size,
   ringed,
+  square,
 }: {
   uri?: string | null;
   name: string;
   size: number;
   ringed?: boolean;
+  square?: boolean;
 }): React.ReactElement {
-  const shape = { width: size, height: size, borderRadius: size / 2 };
+  const shape = { width: size, height: size, borderRadius: square ? M.brandAvatarRadius : size / 2 };
   return (
     <View style={[styles.avatarShell, shape, ringed && styles.avatarRing]}>
       {uri ? (
@@ -137,6 +144,7 @@ export function ChatHeader({
   onIdentityPress,
   identityA11yLabel,
   primaryAction,
+  secondaryAction,
   onMorePress,
   moreA11yLabel,
   strip,
@@ -227,7 +235,7 @@ export function ChatHeader({
             </View>
           ) : (
             <View>
-              <Avatar uri={avatarUrl} name={title} size={M.avatar} ringed={collaborating} />
+              <Avatar uri={avatarUrl} name={title} size={M.avatar} ringed={collaborating} square={avatarKind === "brand"} />
               {avatarKind === "single" && isOnline ? <View style={styles.onlineDot} /> : null}
             </View>
           )}
@@ -255,6 +263,19 @@ export function ChatHeader({
             testID="chat-header-primary"
           >
             <Text style={styles.primaryButtonText}>{primaryAction.label}</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {secondaryAction ? (
+          <TouchableOpacity
+            onPress={secondaryAction.onPress}
+            style={styles.moreButton}
+            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+            accessibilityRole="button"
+            accessibilityLabel={secondaryAction.a11yLabel}
+            testID="chat-header-secondary"
+          >
+            <Icon name={secondaryAction.icon} size={20} color={chatTokens.textSecondary} />
           </TouchableOpacity>
         ) : null}
 

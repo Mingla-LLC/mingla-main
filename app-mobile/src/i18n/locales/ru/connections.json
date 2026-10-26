@@ -58,7 +58,6 @@
   "preview_pending_collab": "Ждём, пока хотя бы один человек примет приглашение",
   "preview_group_people": "Планируют вместе: {{count}}",
   "preview_collab_ready": "Пространство для совместной работы готово",
-  "preview_event_ready": "Чат события готов",
   "pinned_a11y": "Закреплён",
   "unread_a11y": "Непрочитанных: {{count}}",
   "marked_unread_a11y": "Отмечен как непрочитанный",
@@ -187,5 +186,6 @@
   "af_this_friend": "этого друга",
   "af_limit_cta": "Посмотреть Mingla+",
   "af_send_failed": "Не удалось отправить. Попробуйте снова.",
-  "chat_menu_paired_view": "День рождения, праздники и сохранённое"
+  "chat_menu_paired_view": "День рождения, праздники и сохранённое",
+  "preview_no_messages": "Пока нет сообщений"
 }
