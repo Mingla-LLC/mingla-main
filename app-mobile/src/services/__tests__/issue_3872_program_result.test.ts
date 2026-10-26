@@ -1,3 +1,4 @@
+// @ts-nocheck — node --experimental-strip-types needs the .ts import extension.
 // #3872 walkthrough build — a server `{ ok: false, error }` answer is a
 // failure. Before the build, `gig_interest_send` returning
 // `{ ok:false, error:'note_not_anonymous' }` resolved normally and the app

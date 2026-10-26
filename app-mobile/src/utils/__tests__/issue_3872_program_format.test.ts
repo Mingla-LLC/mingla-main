@@ -1,3 +1,4 @@
+// @ts-nocheck — node --experimental-strip-types needs the .ts import extension.
 // #3872 walkthrough build — the one formatter every Creator and Local screen
 // uses. Runs under `node --experimental-strip-types --test` (no jest in this app).
 //
