@@ -65,18 +65,22 @@ export function personActionFor(card) {
 /** Community, Roadmap with the drafted card open, or null when the card links none. */
 export function roadmapDraftHref(card) {
   const link = (card?.links || []).find((l) => l?.kind === "roadmap_card" && typeof l.id === "string" && l.id);
-  return link ? `#/community-support?tab=roadmap&card=${encodeURIComponent(link.id)}` : null;
+  return link ? `#/community?tab=roadmap&card=${encodeURIComponent(link.id)}` : null;
 }
 
-/** True only for a Community & Support address on its Roadmap tab. */
+// #4130 Wave 6: Roadmap is a tab of the Community page. An old
+// #/community-support link still counts (App rewrites it to #/community).
+const ROADMAP_PAGES = new Set(["#/community", "#/community-support"]);
+
+/** True only for a Community address on its Roadmap tab. */
 export function isRoadmapHash(hash) {
   const [path, query = ""] = String(hash || "").split("?");
-  return path === "#/community-support" && new URLSearchParams(query).get("tab") === "roadmap";
+  return ROADMAP_PAGES.has(path) && new URLSearchParams(query).get("tab") === "roadmap";
 }
 
 /**
  * The roadmap card a Community, Roadmap address asks to open, or null. Only
- * #/community-support with tab=roadmap counts: the Work board and To review
+ * #/community (or the old #/community-support) with tab=roadmap counts: the Work board and To review
  * also carry ?card= (a work card), and leaving Roadmap for them must not
  * look like a missing roadmap card.
  */
