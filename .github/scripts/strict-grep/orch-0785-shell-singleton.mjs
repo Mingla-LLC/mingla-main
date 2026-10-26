@@ -41,10 +41,6 @@ const ALLOWLIST_DIRS = [
   // public-follow-confirm serves the confirm / success HTML for signed-out
   // web follow-by-email (#3682 Wave 2.5). Browser landing, not an email body.
   path.join("supabase", "functions", "public-follow-confirm"),
-  // public-brand-subscribe-confirm serves the "Get news from {Brand}?" confirm
-  // / done page for signed-out brand newsletter double opt-in (#4111). Browser
-  // landing, not an email body.
-  path.join("supabase", "functions", "public-brand-subscribe-confirm"),
 ];
 
 const failures = [];

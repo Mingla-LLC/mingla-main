@@ -45,8 +45,6 @@ const EXPECTED_DELIVERY_RUNTIME_CLOSURE = [
   ["notify-dispatch", true],
   ["offering-invite-dispatch", true],
   ["payout-release-sweep", false],
-  // #4111 — double opt-in confirmation SMS goes through smsAdapter.
-  ["public-brand-subscribe", false],
   ["rsvp-contribution-refund", true],
   ["rsvp-notify", true],
   ["send-pair-request", true],
@@ -227,7 +225,7 @@ function closureViolations(repoRoot) {
   const expectedNames = EXPECTED_DELIVERY_RUNTIME_CLOSURE.map(([name]) => name);
   const result = deriveDeliveryRuntimeClosure(trackedProductionFunctionFiles(repoRoot));
   const failures = compareClosure(result, expectedNames);
-  if (result.derived.length !== 19 || expectedNames.length !== 19) {
+  if (result.derived.length !== 18 || expectedNames.length !== 18) {
     failures.push(
       `runtime_closure:locked_count_mismatch:derived_${result.derived.length}:expected_${expectedNames.length}`,
     );
@@ -528,7 +526,7 @@ export function violations(files) {
   ) failures.push("manifest: Paystack payment field metadata invalid");
 
   const runbook = files.runbook ?? "";
-  for (const token of ["schema v3", "bundle-only", "all 19", "schema v2"]) {
+  for (const token of ["schema v3", "bundle-only", "all 18", "schema v2"]) {
     requireToken(runbook, token, "#1903 value-blind rollout runbook", failures);
   }
 
@@ -545,15 +543,6 @@ export function violations(files) {
     if (currentFunction && jwt) jwtByFunction.set(currentFunction, jwt[1] === "true");
   }
   for (const [functionName, expectedJwt] of EXPECTED_DELIVERY_RUNTIME_CLOSURE) {
-    // #4111 — a function without a config.toml block declares its gateway
-    // posture in its own function-policy.json; read it there before defaulting.
-    if (!jwtByFunction.has(functionName)) {
-      const policyPath = path.join(root, "supabase/functions", functionName, "function-policy.json");
-      if (fs.existsSync(policyPath)) {
-        const policy = JSON.parse(fs.readFileSync(policyPath, "utf8"));
-        if (typeof policy.verify_jwt === "boolean") jwtByFunction.set(functionName, policy.verify_jwt);
-      }
-    }
     const actualJwt = jwtByFunction.get(functionName) ?? true;
     if (actualJwt !== expectedJwt) {
       failures.push(`rollout JWT inventory mismatch: ${functionName}`);
