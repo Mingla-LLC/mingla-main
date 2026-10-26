@@ -342,12 +342,14 @@ const PHASE3_TRANSITION_RECEIPTS = Object.freeze([
   // the always-on lane; the main-health pregate job is kept byte-for-byte, and
   // the #2909 wiring gate is the proof that it is still live. The bulk deletion
   // makes T-12's generic regex sweep flag ~138 literals that merely matched the
-  // deleted prose; none pins the removed job.
+  // deleted prose; none pins the removed job. That transition is on main; this
+  // receipt now records the next one: the workflow `name:` becomes "Pre-merge
+  // main health" so PRs stop showing the retired gate's name.
   Object.freeze({
     workflow: ["tests-append-only", "yml"].join("."),
     issue: "#3643",
-    beforeSha256: "5ae5d2959382ed35994032afcbe96c86d9d799c8d7b3156931b633602ec6e633",
-    afterSha256: "a69c4667462ef550c4e1b185546823bdbd1349c9d6ba7c22b9f72995cb69655f",
+    beforeSha256: "a69c4667462ef550c4e1b185546823bdbd1349c9d6ba7c22b9f72995cb69655f",
+    afterSha256: "279540ded95c92aff7f2f0f99115b4bf3e277f9563a99ca467c3600b6b14bfee",
     proofOwner: ".github/scripts/strict-grep/issue-2909-main-health-wiring.mjs",
   }),
   // #3643 (2026-10-26, Seth-approved PR 1 of the redundant-checks cleanup): these
