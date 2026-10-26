@@ -53,7 +53,11 @@ Deno.test("W4 one upload service: private bucket, stored path, real MIME type, c
   assert(/'Content-Type': item\.mimeType/.test(service), "the request carries the asset's MIME type");
   assert(/manipulateAsync\(/.test(service) && /SaveFormat\.JPEG/.test(service), "photos are resized and re-encoded");
   assert(/return \{ path, mimeType: item\.mimeType/.test(service), "the result is the path, not a URL");
-  assert(/cancelAsync\(\)/.test(service), "uploads can be cancelled");
+  // #4114 rework: the cancel bookkeeping lives in utils/chatMedia.ts
+  // (ChatUploadCancelRegistry, behaviour-tested in issue_4114_upload_cancel).
+  assert(/uploads\.cancel\(clientId\)/.test(service) && /uploads\.start\(clientId, task\)/.test(service), "uploads can be cancelled");
+  const media = stripComments(await read("utils/chatMedia.ts"));
+  assert(/await active\.task\.cancelAsync\(\)/.test(media), "a running upload's task is cancelled");
   assert(/createSignedUrl\(path, seconds\)/.test(service), "display links are signed");
   assert(/functions\.invoke<[\s\S]*?>\('open-view-once'/.test(service), "view once opens through the edge function");
 });
