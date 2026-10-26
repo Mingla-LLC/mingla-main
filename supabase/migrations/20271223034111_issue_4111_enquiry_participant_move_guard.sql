@@ -18,9 +18,9 @@
 
 BEGIN;
 
--- One SECURITY DEFINER predicate (granted to every client role, so the policy
--- never fails with a privilege error for anon): the row is not in an enquiry
--- conversation, or the user can read that enquiry.
+-- One SECURITY DEFINER predicate for signed-in roles (the policy applies TO
+-- authenticated; anon has no participant rows of its own to move): the row is
+-- not in an enquiry conversation, or the user can read that enquiry.
 CREATE OR REPLACE FUNCTION public.issue_4111_participant_row_allowed(p_conversation_id uuid, p_user_id uuid)
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER
@@ -31,12 +31,12 @@ AS $function$
     WHERE c.id = p_conversation_id AND c.linked_entity_type = 'brand_enquiry'
   ) OR public.issue_4111_enquiry_can_read(p_conversation_id, p_user_id);
 $function$;
-REVOKE ALL ON FUNCTION public.issue_4111_participant_row_allowed(uuid, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.issue_4111_participant_row_allowed(uuid, uuid) TO anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.issue_4111_participant_row_allowed(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.issue_4111_participant_row_allowed(uuid, uuid) TO authenticated, service_role;
 
 DROP POLICY IF EXISTS conversation_participants_brand_enquiry_update_guard ON public.conversation_participants;
 CREATE POLICY conversation_participants_brand_enquiry_update_guard ON public.conversation_participants
-  AS RESTRICTIVE FOR UPDATE TO public
+  AS RESTRICTIVE FOR UPDATE TO authenticated
   USING (public.issue_4111_participant_row_allowed(conversation_id, auth.uid()))
   WITH CHECK (public.issue_4111_participant_row_allowed(conversation_id, auth.uid()));
 
