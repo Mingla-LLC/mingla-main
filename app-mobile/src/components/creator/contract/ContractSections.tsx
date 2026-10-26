@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { GigProposal, GigTerms, GigWorkspace } from '../../../services/creatorGigsService';
 import { chooseAndUploadCreatorMedia, isPickerCancel } from '../../../services/creatorMediaService';
 import { programErrorText } from '../../../services/programResult';
-import { deliverablesLabel, formatDateRange, formatDateTime, formatMoney, formatShortDate, parseDay, platformLabel, toDayString, usageLabel } from '../../../utils/programFormat';
+import { deliverablesLabel, formatDateRange, formatDateTime, formatMoney, formatShortDate, parseDay, platformLabel, salesShareText, shootPickRange, usageLabel, videoDueText } from '../../../utils/programFormat';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramField, ProgramNotice, ProgramPill, ProgramRow, ProgramSheet, programStyles as s } from '../../programs/ProgramUi';
 import { CalendarGrid, CheckRow, Chip, StarsInput, TimeChips } from '../../programs/ProgramPickers';
 import { playOwnVideo } from '../../programs/VideoTile';
@@ -75,12 +75,18 @@ export function TermsCard({ terms, gig }: { terms: GigTerms; gig: GigWorkspace['
     <ProgramRow title="Fee" value={formatMoney(terms.fee_minor, terms.currency)} chevron={false} />
     {window ? <ProgramRow title="Shoot" value={formatDateRange(window.start, window.end)} chevron={false} />
       : terms.shoot_date ? <ProgramRow title="Shoot" value={formatShortDate(terms.shoot_date)} chevron={false} /> : null}
-    <ProgramRow title="Post by" value={formatShortDate(terms.post_by ?? gig.post_by)} chevron={false} />
+    <ProgramRow title="Video due" value={termsVideoDue(terms, gig)} chevron={false} />
     <ProgramRow title="Deliverables" value={deliverablesLabel(terms.deliverables)} chevron={false} />
     <ProgramRow title="Fixes included" value="2 technical" chevron={false} />
-    {terms.sales_share_bps ? <ProgramRow title="Plus" value={`${Math.round(terms.sales_share_bps / 100)}% of sales from your link`} chevron={false} /> : null}
+    {salesShareText(terms.sales_share_bps) ? <ProgramRow title="Plus" value={salesShareText(terms.sales_share_bps)!} chevron={false} /> : null}
     <ProgramRow title="Host may reuse" value={usageLabel(terms.usage_days)} chevron={false} isLast />
   </ProgramCard>;
+}
+
+/** The stored due time, unless the terms moved the day (then that day alone). */
+function termsVideoDue(terms: GigTerms, gig: GigWorkspace['gig']): string {
+  const moved = terms.post_by && gig.post_by && terms.post_by !== gig.post_by;
+  return moved ? videoDueText(null, terms.post_by) : videoDueText(gig.video_due_at ?? null, terms.post_by ?? gig.post_by);
 }
 
 export function TermsHistory({ terms }: { terms: GigTerms[] }): React.ReactElement | null {
@@ -89,7 +95,7 @@ export function TermsHistory({ terms }: { terms: GigTerms[] }): React.ReactEleme
     <Text style={s.label}>Terms history</Text>
     <ProgramCard>
       {terms.slice().reverse().map((t, i) => <ProgramRow key={t.version} title={t.version === 1 ? 'Original terms' : `Updated terms${t.created_at ? ` · ${formatShortDate(t.created_at)}` : ''}`}
-        subtitle={`Post by ${formatShortDate(t.post_by)} · ${deliverablesLabel(t.deliverables)}`} value={formatMoney(t.fee_minor, t.currency)} chevron={false} isLast={i === terms.length - 1} />)}
+        subtitle={`Video due ${formatShortDate(t.post_by)} · ${deliverablesLabel(t.deliverables)}`} value={formatMoney(t.fee_minor, t.currency)} chevron={false} isLast={i === terms.length - 1} />)}
     </ProgramCard>
   </>;
 }
@@ -97,7 +103,7 @@ export function TermsHistory({ terms }: { terms: GigTerms[] }): React.ReactEleme
 /** A change the host proposed (accept / decline) or yours that's waiting. */
 export function ProposalCard({ proposal, currency, busy, onRespond }: { proposal: GigProposal; currency: string; busy: boolean; onRespond: (accept: boolean) => void }): React.ReactElement {
   const lines = Object.entries(proposal.changes).map(([key, value]) => {
-    if (key === 'post_by') return `Post by ${formatShortDate(String(value))}`;
+    if (key === 'post_by') return `Video due ${formatShortDate(String(value))}`;
     if (key === 'shoot_date') return `Shoot on ${formatShortDate(String(value))}`;
     if (key === 'usage_days') return `Host may reuse for ${usageLabel(Number(value))}`;
     if (key === 'fee_minor') return `Fee ${formatMoney(Number(value), currency)}`;
@@ -139,11 +145,17 @@ export function ShootSheet({ visible, onClose, window, initialAt, busy, error, o
   visible: boolean; onClose: () => void; window: { start: string; end: string } | null; initialAt: string | null; busy: boolean; error: string | null;
   onSend: (iso: string, note: string) => void;
 }): React.ReactElement {
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the window object is rebuilt each render; its days are what matter.
+  const range = useMemo(() => shootPickRange(window, initialAt), [window?.start, window?.end, initialAt]);
   const initial = parseDay(initialAt);
-  const [day, setDay] = useState<string | null>(initial ? toDayString(initial) : window?.start ?? null);
+  const [day, setDay] = useState<string | null>(range.initialDay);
   const [time, setTime] = useState<string | null>(initial ? `${String(initial.getHours()).padStart(2, '0')}:${String(initial.getMinutes()).padStart(2, '0')}` : '19:00');
   const [note, setNote] = useState('');
-  useEffect(() => { if (visible && !day && window) setDay(window.start); }, [visible, day, window]);
+  // Opening the sheet (or the window arriving) starts on a day that can be picked.
+  useEffect(() => {
+    if (!visible) return;
+    setDay((current) => (current && current >= range.minDate && (!range.maxDate || current <= range.maxDate) ? current : range.initialDay));
+  }, [visible, range.minDate, range.maxDate, range.initialDay]);
   const at = useMemo(() => {
     if (!day || !time) return null;
     const d = parseDay(day)!;
@@ -151,12 +163,15 @@ export function ShootSheet({ visible, onClose, window, initialAt, busy, error, o
     return new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m);
   }, [day, time]);
   return <ProgramSheet visible={visible} onClose={onClose} title="Pick a time" snapPoints={['90%']} busy={busy}
-    footer={<ProgramButton label={at ? `Send ${formatDateTime(at)}` : 'Pick a day and time'} busy={busy} disabled={!at} onPress={() => at && onSend(at.toISOString(), note)} />}>
+    footer={<View style={styles.footerStack}>
+      {error ? <ProgramNotice tone="error" text={error} /> : null}
+      <ProgramButton label={at ? `Send ${formatDateTime(at)}` : 'Pick a day and time'} busy={busy} disabled={!at} onPress={() => at && onSend(at.toISOString(), note)} />
+    </View>}>
     {window ? <Text style={s.copy}>Shoot window {formatDateRange(window.start, window.end)}</Text> : null}
-    <CalendarGrid start={day} onPick={setDay} minDate={window?.start ?? toDayString(new Date())} maxDate={window?.end ?? null} />
+    {/* Remount on a new range so the month shown is the window's first month. */}
+    <CalendarGrid key={`${range.minDate}:${range.maxDate ?? ''}`} start={day} onPick={setDay} minDate={range.minDate} maxDate={range.maxDate} />
     <TimeChips value={time} onChange={setTime} options={['12:00', '15:00', '17:00', '18:00', '19:00', '20:00', '21:00']} />
     <ProgramField inSheet label="Arrival note for the host (optional)" value={note} onChangeText={setNote} placeholder="e.g. Bringing one friend for B-roll" maxLength={500} multiline counter={{ max: 500 }} />
-    {error ? <ProgramNotice tone="error" text={error} /> : null}
   </ProgramSheet>;
 }
 
@@ -368,6 +383,7 @@ const styles = StyleSheet.create({
   lineDone: { backgroundColor: C.accent },
   trackText: { flex: 1, paddingBottom: 12, gap: 2 },
   two: { flexDirection: 'row', gap: 10 },
+  footerStack: { gap: 8 },
   event: { paddingVertical: 10, gap: 2 },
   eventBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
   part: { gap: 8, paddingTop: 6 },

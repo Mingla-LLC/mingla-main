@@ -8,11 +8,13 @@ import { creatorProgramService } from '../../../src/services/creatorProgramServi
 import { creatorGigsService } from '../../../src/services/creatorGigsService';
 import { ProgramActionError, programErrorText } from '../../../src/services/programResult';
 import {
-  currencySymbol, deliverablesLabel, formatDateRange, formatInfo, formatMoney, formatName, formatShortDate, payUpToText,
-  moneyInputValue, parseMoneyInput, usageLabel,
+  currencySymbol, deliverablesLabel, formatDateRange, formatInfo, formatMoney, formatName, interestPricePrefill, overPayUpToNote, payUpToText,
+  moneyInputValue, parseMoneyInput, salesShareText, usageLabel, videoDueText,
 } from '../../../src/utils/programFormat';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoading, ProgramNotice, ProgramRow, ProgramScreen, ProgramSheet, programStyles as s } from '../../../src/components/programs/ProgramUi';
 import { VideoTile, playPublicVideo } from '../../../src/components/programs/VideoTile';
+import { JOIN_IN_FLIGHT } from '../../../src/components/programs/programRefresh';
+import { useRefreshOnFocus } from '../../../src/components/programs/useProgramRefresh';
 import { Icon } from '../../../src/components/ui/Icon';
 
 type FormatRow = { key: string; name: string; one_line: string; structure: Array<{ key: string; from: number; to: number }>; example_asset_ids: string[] };
@@ -46,6 +48,8 @@ export default function CreatorGigScreen(): React.ReactElement {
   const [error, setError] = useState<ProgramActionError | null>(null);
   const [saving, setSaving] = useState(false);
   const [sent, setSent] = useState(false);
+  // Reopened (from a link or a notification) or back from the background: read it again.
+  useRefreshOnFocus(() => { void queryClient.invalidateQueries({ queryKey: ['creator'] }, JOIN_IN_FLIGHT); });
 
   const g = gig.data;
   const packages = (setup.data?.packages ?? []).filter((p) => p.active);
@@ -63,7 +67,8 @@ export default function CreatorGigScreen(): React.ReactElement {
   };
 
   const openSheet = (): void => {
-    setPrice(pkg ? moneyInputValue(pkg.price_minor, pkg.currency) : '');
+    // The saved rate, or what the gig pays when the rate is higher.
+    setPrice(pkg && g ? moneyInputValue(interestPricePrefill(pkg.price_minor, pkg.currency, g), pkg.currency) : '');
     setError(null); setSheetOpen(true);
   };
 
@@ -94,6 +99,7 @@ export default function CreatorGigScreen(): React.ReactElement {
   const noteError = error?.code === 'note_not_anonymous' ? error.message : null;
   const priceError = error?.field === 'price' || error?.code === 'invalid_price' ? error.message : null;
   const generalError = error && !noteError && !priceError ? error : null;
+  const overPayNote = pkg && !priceError ? overPayUpToNote(parseMoneyInput(price, pkg.currency), pkg.currency, g) : null;
 
   const footer = alreadySent
     ? <ProgramButton label="Interest sent" icon="checkmark" disabled onPress={() => undefined} />
@@ -125,12 +131,12 @@ export default function CreatorGigScreen(): React.ReactElement {
 
     <ProgramCard>
       <ProgramRow title="Shoot" value={formatDateRange(g.shoot_window.start, g.shoot_window.end)} chevron={false} />
-      <ProgramRow title="Post by" value={formatShortDate(g.post_by)} chevron={false} />
+      <ProgramRow title="Video due" value={videoDueText(g.video_due_at, g.post_by)} chevron={false} />
       <ProgramRow title="Deliverables" value={deliverablesLabel(g.deliverables)} chevron={false} />
       <ProgramRow title="Host may reuse" value={usageLabel(g.usage_days)} chevron={false} />
       <ProgramRow title="Where" value={g.city_name} chevron={false} />
       {pay ? <ProgramRow title="Pay" chevron={false} right={<Text style={s.strong}>{pay}</Text>} /> : null}
-      {g.sales_share_bps ? <ProgramRow title="Plus" value={`${Math.round(g.sales_share_bps / 100)}% of sales from your link`} chevron={false} /> : null}
+      {salesShareText(g.sales_share_bps) ? <ProgramRow title="Plus" value={salesShareText(g.sales_share_bps)!} chevron={false} /> : null}
       <ProgramRow title="Spots left" value={String(g.slots_left)} chevron={false} isLast />
     </ProgramCard>
     {!verified ? <ProgramNotice text="Browse now. Sending interest unlocks when setup is done." /> : !pkg ? <ProgramNotice tone="warning" text="Set a rate for this format first, then send interest." /> : null}
@@ -138,9 +144,10 @@ export default function CreatorGigScreen(): React.ReactElement {
     <ProgramSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} title="Your price for this gig" snapPoints={['72%']} busy={busy}
       footer={<ProgramButton label="Send interest" busy={busy} disabled={!price.trim()} onPress={() => void send()} />}>
       {pkg ? <>
-        <ProgramField inSheet label="Price · your saved rate for this format" prefix={currencySymbol(pkg.currency)} suffix={pkg.currency} value={price}
+        <ProgramField inSheet label="Your price" prefix={currencySymbol(pkg.currency)} suffix={pkg.currency} value={price}
           onChangeText={(v) => { setPrice(v.replace(/[^0-9.,]/g, '')); if (error?.field === 'price' || error?.code === 'invalid_price') setError(null); }}
           keyboardType="decimal-pad" error={priceError} hint={`Your saved rate is ${formatMoney(pkg.price_minor, pkg.currency)}.`} />
+        {overPayNote ? <Text style={s.small}>{overPayNote}</Text> : null}
         <ProgramField inSheet label="One-line pitch (optional)" value={note} onChangeText={(v) => { setNote(v); if (noteError) setError(null); }} multiline
           counter={{ max: 280 }} maxLength={280} placeholder="Why you’re a good fit" error={noteError} />
         <Text style={s.small}>Notes can’t include contact details, links or handles until you’re hired.</Text>

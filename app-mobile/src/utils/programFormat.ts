@@ -323,6 +323,64 @@ export function payUpToText(gig: { pay_up_to_minor?: number | null; currency?: s
   return `Pays up to ${formatMoney(minor, gig.currency)}`;
 }
 
+/** "10% of sales" (short enough for one row value). Null without a share. */
+export function salesShareText(bps: number | null | undefined): string | null {
+  if (typeof bps !== 'number' || !Number.isFinite(bps) || bps <= 0) return null;
+  return `${Math.round(bps / 100)}% of sales`;
+}
+
+/**
+ * The price an interest sheet opens with: the creator's saved rate, or the
+ * gig's ceiling when the rate is higher (only when both are in one currency).
+ */
+export function interestPricePrefill(rateMinor: number, rateCurrency: string, gig: { pay_up_to_minor?: number | null; currency?: string | null }): number {
+  const cap = gig.pay_up_to_minor;
+  if (typeof cap !== 'number' || !Number.isFinite(cap) || cap <= 0) return rateMinor;
+  if ((gig.currency ?? rateCurrency).toUpperCase() !== rateCurrency.toUpperCase()) return rateMinor;
+  return Math.min(rateMinor, cap);
+}
+
+/** A calm note when the price typed is above what the gig pays; null otherwise. */
+export function overPayUpToNote(priceMinor: number | null, priceCurrency: string, gig: { pay_up_to_minor?: number | null; currency?: string | null }): string | null {
+  const cap = gig.pay_up_to_minor;
+  if (priceMinor === null || typeof cap !== 'number' || !Number.isFinite(cap) || cap <= 0) return null;
+  const currency = gig.currency ?? priceCurrency;
+  if (currency.toUpperCase() !== priceCurrency.toUpperCase() || priceMinor <= cap) return null;
+  return `This gig pays up to ${formatMoney(cap, currency)}. Hosts can still offer you a different fee.`;
+}
+
+// ── Video due + shoot days ─────────────────────────────────────────────────
+
+/**
+ * "Nov 20, 7:00 PM" from the stored due time (device locale and clock), or the
+ * post-by day alone ("Nov 20") when no time is stored.
+ */
+export function videoDueText(videoDueAt: string | null | undefined, postBy: string | null | undefined, now: Date = new Date(), locale?: string): string {
+  const due = typeof videoDueAt === 'string' && videoDueAt.length > 10 ? parseDay(videoDueAt) : null;
+  if (due) return `${formatShortDate(due, now, locale)}, ${formatTime(due, locale)}`;
+  return formatShortDate(postBy ?? null, now, locale);
+}
+
+/**
+ * Which days the creator may pick for the shoot: inside the host's window and
+ * never before today. The calendar opens on the picked day, else the first day
+ * that can be picked (the window's first month).
+ */
+export function shootPickRange(window: { start?: string | null; end?: string | null } | null | undefined, pickedAt: string | null | undefined, now: Date = new Date()): {
+  minDate: string; maxDate: string | null; initialDay: string | null;
+} {
+  const today = toDayString(now);
+  const start = window?.start && /^\d{4}-\d{2}-\d{2}$/.test(window.start) ? window.start : null;
+  const end = window?.end && /^\d{4}-\d{2}-\d{2}$/.test(window.end) ? window.end : null;
+  const minDate = start && start > today ? start : today;
+  const maxDate = end;
+  if (maxDate && maxDate < minDate) return { minDate, maxDate, initialDay: null };
+  const picked = parseDay(pickedAt);
+  const pickedDay = picked ? toDayString(picked) : null;
+  const initialDay = pickedDay && pickedDay >= minDate && (!maxDate || pickedDay <= maxDate) ? pickedDay : minDate;
+  return { minDate, maxDate, initialDay };
+}
+
 // ── Contract words (creator view) ──────────────────────────────────────────
 
 export type ContractWordsInput = { deadlineAt?: string | null; fixRoundsUsed?: number | null; now?: Date };

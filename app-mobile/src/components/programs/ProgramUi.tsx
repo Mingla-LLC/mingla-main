@@ -160,7 +160,7 @@ export function ProgramRow({ title, subtitle, value, icon, done, subtitleTone = 
       <Text style={styles.rowTitle} numberOfLines={2}>{title}</Text>
       {subtitle ? <Text style={[styles.rowSubtitle, { color: subtitleColor }]} numberOfLines={3}>{subtitle}</Text> : null}
     </View>
-    {value ? <Text style={styles.rowValue} numberOfLines={1}>{value}</Text> : null}
+    {value ? <Text style={styles.rowValue} numberOfLines={2}>{value}</Text> : null}
     {right ?? null}
     {(chevron ?? Boolean(onPress)) ? <Icon name="chevron-forward" size={16} color={C.faint} /> : null}
   </View>;
@@ -363,7 +363,7 @@ export const programStyles = StyleSheet.create({
   rowText: { flex: 1, gap: 2 },
   rowTitle: { color: C.text, fontSize: 15, fontWeight: '700' },
   rowSubtitle: { fontSize: 13, lineHeight: 18 },
-  rowValue: { color: C.text, fontSize: 15, fontWeight: '800', maxWidth: '40%' },
+  rowValue: { color: C.text, fontSize: 15, fontWeight: '800', maxWidth: '40%', textAlign: 'right' },
   check: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: C.faint, alignItems: 'center', justifyContent: 'center' },
   checkDone: { backgroundColor: C.accent, borderColor: C.accent },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
