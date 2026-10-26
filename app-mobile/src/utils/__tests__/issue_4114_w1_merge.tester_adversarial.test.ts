@@ -16,12 +16,10 @@
 //   * the list never holds two rows for one server id or one client id after a
 //     long random interleaving (invariant I-4114-ONE-MESSAGE-PER-CLIENT-ID).
 //
-// KNOWN DEFECT (tester finding T-W1-1, ignored until fixed): a paged refresh
-// whose oldest row shares its created_at with a loaded row the page cut off
-// drops that loaded row, because the window check is `time < oldest` (a tie
-// is treated as inside the window). Un-ignore when mergeMessages treats the
-// oldest instant of an incomplete snapshot as outside the window.
-// [TRANSITIONAL] exit: the ignore flag goes when T-W1-1 is fixed on #4114.
+// Tester finding T-W1-1 (fixed in the #4114 rework): a paged refresh whose
+// oldest row shares its created_at with a loaded row the page cut off must keep
+// that loaded row; the oldest instant of an incomplete snapshot is its edge,
+// not inside the window.
 //
 // FAILS-ON-REVERT: delete the `byClientId` lookup in mergeMessages.upsert and
 // the identical-text case keeps two copies of one send; make `resolve` let a
@@ -185,8 +183,7 @@ Deno.test("#4114 W1 adversarial: a long random interleaving never yields two row
 });
 
 Deno.test({
-  name: "#4114 W1 adversarial [KNOWN DEFECT T-W1-1]: a paged refresh with a created_at tie at its oldest edge keeps the cut-off row",
-  ignore: true,
+  name: "#4114 W1 adversarial [T-W1-1]: a paged refresh with a created_at tie at its oldest edge keeps the cut-off row",
   fn: () => {
     // Loaded: x and y share one instant. The newest-page read (limit reached,
     // incomplete) returns y and newer rows, and cuts x off at the tie.

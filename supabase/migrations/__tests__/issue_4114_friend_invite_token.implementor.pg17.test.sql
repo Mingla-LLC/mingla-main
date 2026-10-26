@@ -16,7 +16,13 @@
 --         (the existing reveal trigger), so one Accept flow can pair.
 --   I-07  a claimer who is already friends with the inviter gets a VISIBLE
 --         pair request and no friend request.
---   I-08  only authenticated may execute it; anon may not.
+--   I-08  only authenticated may execute it; anon may not; its search_path is
+--         pinned to public, pg_temp (I-08b).
+--   I-09  a friendship that was removed (friends.deleted_at set) is not
+--         "already friends": the claim creates the friend request.
+--   I-10  inviting the same number again after the invite was converted or
+--         cancelled (the send-pair-request upsert) issues a new token; the old
+--         token no longer claims anything.
 --
 -- FAILS-ON-REVERT (replay the chain without 20271230024114): I-01 fails on its
 -- first check (no token column), and claim_friend_invite does not exist.
@@ -273,6 +279,109 @@ BEGIN
   END IF;
 END $i07$;
 
-SELECT 'issue #4114 friend invite token: I-01..I-08 PASS' AS result;
+-- I-09 a removed friendship is not a friendship.
+DO $i09_fixture$
+DECLARE
+  v_id uuid := gen_random_uuid();
+  v_inviter uuid := (SELECT id FROM t4114i_ids WHERE tag = 'inviter');
+BEGIN
+  INSERT INTO auth.users(id, email) VALUES (v_id, 't4114i-expal-' || v_id || '@example.test');
+  INSERT INTO public.profiles(id, email) VALUES (v_id, 't4114i-expal-' || v_id || '@example.test')
+    ON CONFLICT (id) DO NOTHING;
+  INSERT INTO t4114i_ids VALUES ('expal', v_id);
+  INSERT INTO public.friends(user_id, friend_user_id, status, deleted_at)
+    VALUES (v_inviter, v_id, 'accepted', now()), (v_id, v_inviter, 'accepted', now());
+  INSERT INTO public.pending_pair_invites(inviter_id, phone_e164, status)
+    VALUES (v_inviter, '+12015550177', 'pending');
+  INSERT INTO t4114i_tokens
+    SELECT 'expal', token FROM public.pending_pair_invites
+     WHERE inviter_id = v_inviter AND phone_e164 = '+12015550177';
+END $i09_fixture$;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', (SELECT id::text FROM t4114i_ids WHERE tag = 'expal'), true);
+SELECT set_config('request.jwt.claims',
+  json_build_object('sub', (SELECT id FROM t4114i_ids WHERE tag = 'expal'), 'role', 'authenticated')::text, true);
+CREATE TEMP TABLE t4114i_expal ON COMMIT DROP AS
+  SELECT public.claim_friend_invite((SELECT token FROM t4114i_tokens WHERE tag = 'expal')) AS result;
+RESET ROLE;
+
+DO $i09$
+DECLARE
+  v_result jsonb := (SELECT result FROM t4114i_expal);
+BEGIN
+  IF (v_result->>'success')::boolean IS DISTINCT FROM true OR (v_result->>'already_friends')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'I-09: a removed friendship must not count as already friends (%)', v_result;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.friend_requests
+                  WHERE sender_id = (SELECT id FROM t4114i_ids WHERE tag = 'inviter')
+                    AND receiver_id = (SELECT id FROM t4114i_ids WHERE tag = 'expal')
+                    AND status = 'pending') THEN
+    RAISE EXCEPTION 'I-09: the claim must create the friend request';
+  END IF;
+END $i09$;
+
+-- I-10 a revived invite gets a new token (the send-pair-request upsert shape).
+DO $i10$
+DECLARE
+  v_inviter uuid := (SELECT id FROM t4114i_ids WHERE tag = 'inviter');
+  v_new_main text;
+  v_new_second text;
+  v_still_pending text;
+BEGIN
+  -- 'main' was converted by the invitee (I-02); 'second' was cancelled (I-05).
+  INSERT INTO public.pending_pair_invites(inviter_id, phone_e164, status)
+    VALUES (v_inviter, '+2348035554412', 'pending'), (v_inviter, '+447700900123', 'pending')
+    ON CONFLICT (inviter_id, phone_e164) DO UPDATE SET status = EXCLUDED.status;
+  SELECT token INTO v_new_main FROM public.pending_pair_invites WHERE inviter_id = v_inviter AND phone_e164 = '+2348035554412';
+  SELECT token INTO v_new_second FROM public.pending_pair_invites WHERE inviter_id = v_inviter AND phone_e164 = '+447700900123';
+  IF v_new_main = (SELECT token FROM t4114i_tokens WHERE tag = 'main')
+     OR v_new_second = (SELECT token FROM t4114i_tokens WHERE tag = 'second') THEN
+    RAISE EXCEPTION 'I-10: a converted or cancelled invite sent again must get a new token';
+  END IF;
+  IF v_new_main !~ '^[0-9a-f]{64}$' OR v_new_second !~ '^[0-9a-f]{64}$' THEN
+    RAISE EXCEPTION 'I-10: the new token keeps the 64-hex shape (% / %)', v_new_main, v_new_second;
+  END IF;
+  -- A still-pending invite sent again keeps its token (nothing to revive).
+  INSERT INTO public.pending_pair_invites(inviter_id, phone_e164, status)
+    VALUES (v_inviter, '+12015550166', 'pending');
+  SELECT token INTO v_still_pending FROM public.pending_pair_invites WHERE inviter_id = v_inviter AND phone_e164 = '+12015550166';
+  INSERT INTO public.pending_pair_invites(inviter_id, phone_e164, status)
+    VALUES (v_inviter, '+12015550166', 'pending')
+    ON CONFLICT (inviter_id, phone_e164) DO UPDATE SET status = EXCLUDED.status;
+  IF (SELECT token FROM public.pending_pair_invites WHERE inviter_id = v_inviter AND phone_e164 = '+12015550166')
+     IS DISTINCT FROM v_still_pending THEN
+    RAISE EXCEPTION 'I-10: only a converted or cancelled invite gets a new token';
+  END IF;
+END $i10$;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', (SELECT id::text FROM t4114i_ids WHERE tag = 'other'), true);
+SELECT set_config('request.jwt.claims',
+  json_build_object('sub', (SELECT id FROM t4114i_ids WHERE tag = 'other'), 'role', 'authenticated')::text, true);
+CREATE TEMP TABLE t4114i_old_link ON COMMIT DROP AS
+  SELECT public.claim_friend_invite((SELECT token FROM t4114i_tokens WHERE tag = 'main')) AS result;
+RESET ROLE;
+
+DO $i10_old_link$
+BEGIN
+  IF (SELECT result->>'error' FROM t4114i_old_link) IS DISTINCT FROM 'invalid_token' THEN
+    RAISE EXCEPTION 'I-10: the old link must not claim the revived invite (%)', (SELECT result FROM t4114i_old_link);
+  END IF;
+END $i10_old_link$;
+
+-- I-08b the definer function pins pg_temp last, so a caller's temp objects
+-- can never shadow what it reads.
+DO $i08b$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_proc
+                  WHERE oid = 'public.claim_friend_invite(text)'::regprocedure
+                    AND 'search_path=public, pg_temp' = ANY(proconfig)) THEN
+    RAISE EXCEPTION 'I-08b: claim_friend_invite must set search_path = public, pg_temp (got %)',
+      (SELECT proconfig FROM pg_proc WHERE oid = 'public.claim_friend_invite(text)'::regprocedure);
+  END IF;
+END $i08b$;
+
+SELECT 'issue #4114 friend invite token: I-01..I-10 PASS' AS result;
 
 ROLLBACK;

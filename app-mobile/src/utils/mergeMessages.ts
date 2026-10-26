@@ -151,7 +151,12 @@ export function mergeMessages<T extends MergeableMessage>(
       if (!entry.alive || isLocalMessage(entry.message)) continue;
       const time = timeOf(entry.message);
       if (Number.isNaN(time) || Number.isNaN(newest) || Number.isNaN(oldest)) continue;
-      if (time < oldest || time > newest) continue;
+      // An incomplete page (limit reached) is cut at its oldest instant. The
+      // server orders by created_at only, so rows sharing that instant may
+      // have been cut off; they sit on the boundary and are never judged
+      // missing (tester T-W1-1). A complete snapshot has no lower edge.
+      if (time > newest) continue;
+      if (options.snapshot.complete ? time < oldest : time <= oldest) continue;
       const inSnapshot = snapshotIds.has(entry.message.id) ||
         (!!entry.message.clientId && snapshotClientIds.has(entry.message.clientId));
       if (!inSnapshot) {

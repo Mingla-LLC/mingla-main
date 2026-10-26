@@ -17,6 +17,9 @@
 --     claimed again (already_claimed); a cancelled invite cannot be claimed.
 --   * The inviter cannot claim their own invite; a block either way refuses.
 --   * SECURITY DEFINER with a pinned search_path; only `authenticated` may run it.
+--   * Inviting the same number again after the invite was converted or
+--     cancelled (send-pair-request upserts the row back to 'pending') issues a
+--     NEW token, so an old link can never claim the revived invite.
 --
 -- Re-runnable: ADD COLUMN IF NOT EXISTS, guarded constraint, CREATE OR REPLACE.
 
@@ -39,11 +42,33 @@ END $constraint$;
 COMMENT ON COLUMN public.pending_pair_invites.token IS
   'Issue #4114: random invite token carried by the invite SMS OneLink (deep_link_sub1); claimed by claim_friend_invite.';
 
+-- A converted or cancelled invite that is sent again gets a fresh token (the
+-- old link stays dead). Covers every writer, including send-pair-request's
+-- upsert on (inviter_id, phone_e164).
+CREATE OR REPLACE FUNCTION public.issue_4114_reissue_friend_invite_token()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  IF NEW.status = 'pending' AND OLD.status IN ('converted', 'cancelled') THEN
+    NEW.token := replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4114_reissue_friend_invite_token() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS issue_4114_reissue_friend_invite_token ON public.pending_pair_invites;
+CREATE TRIGGER issue_4114_reissue_friend_invite_token
+  BEFORE UPDATE OF status ON public.pending_pair_invites
+  FOR EACH ROW EXECUTE FUNCTION public.issue_4114_reissue_friend_invite_token();
+
 CREATE OR REPLACE FUNCTION public.claim_friend_invite(p_token text)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'public'
+ SET search_path = public, pg_temp
 AS $function$
 DECLARE
   v_uid uuid := auth.uid();
@@ -111,6 +136,7 @@ BEGIN
   SELECT EXISTS (
     SELECT 1 FROM public.friends
      WHERE status = 'accepted'
+       AND deleted_at IS NULL
        AND ((user_id = v_invite.inviter_id AND friend_user_id = v_uid)
          OR (user_id = v_uid AND friend_user_id = v_invite.inviter_id))
   ) INTO v_already_friends;

@@ -72,5 +72,8 @@ export function buildSessionInviteOneLink(input: { referralCode?: string | null 
 /** The friend invite SMS body, from the one approved template. */
 export function buildFriendInviteSms(senderName: string, link: string): string {
   const name = senderName.trim() || "A friend";
-  return FRIEND_INVITE_SMS_TEMPLATE.replace("{name}", name).replace("{link}", link);
+  // One pass with a replacer function: the name and link go in literally (a
+  // `$&` or `{link}` in a display name is just text), and nothing inserted is
+  // scanned again.
+  return FRIEND_INVITE_SMS_TEMPLATE.replace(/\{name\}|\{link\}/g, (token) => (token === "{name}" ? name : link));
 }

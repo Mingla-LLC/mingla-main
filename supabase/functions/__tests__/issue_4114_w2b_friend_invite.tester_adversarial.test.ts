@@ -89,19 +89,21 @@ Deno.test("#4114 W2b adversarial: the SMS body carries the link exactly once and
   assert(!/mingla\.app/i.test(tricky), "never the dead domain");
 });
 
-// KNOWN DEFECT T-W2b-1 (P3): buildFriendInviteSms passes the display name as a
-// String.replace replacement string, so `$&`, `$'` or a literal `{link}` in a
-// name rewrites the template. [TRANSITIONAL] exit: un-ignore when the name is
-// inserted with a replacer function (or split/join) on #4114.
+// Tester finding T-W2b-1 (fixed in the #4114 rework): `$&`, `$'` or a literal
+// `{link}` in a display name must never rewrite the SMS template.
 Deno.test({
-  name: "#4114 W2b adversarial [KNOWN DEFECT T-W2b-1]: a display name can never rewrite the SMS template",
-  ignore: true,
+  name: "#4114 W2b adversarial [T-W2b-1]: a display name can never rewrite the SMS template",
   fn: () => {
     const link = buildFriendInviteOneLink({ token: GOOD_TOKEN });
     for (const name of ["{link} Tomi", "$& Tomi", "$' Tomi", "$` Tomi"]) {
       const body = buildFriendInviteSms(name, link);
       assert(body.startsWith(`${name} added you as a friend on Mingla.`), `name ${JSON.stringify(name)} is inserted literally`);
-      assert(body.endsWith(link) && !body.includes("{link}"), `name ${JSON.stringify(name)}: the link ends the text`);
+      // The name itself may legitimately contain "{link}" (it is inserted
+      // literally, asserted above), so the placeholder check reads the text
+      // after the name: the template's own placeholders are all filled.
+      assert(body.endsWith(link) && !body.slice(name.length).includes("{link}") && !body.includes("{name}"),
+        `name ${JSON.stringify(name)}: the link ends the text`);
+      assertEquals(body.split(link).length - 1, 1, `name ${JSON.stringify(name)}: the link appears exactly once`);
     }
   },
 });
