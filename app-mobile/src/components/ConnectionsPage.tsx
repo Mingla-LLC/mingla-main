@@ -4719,6 +4719,7 @@ function ConnectionsPageRefactored({
         selectedCode={addFriendCountry.code}
         onSelect={handleAddFriendCountrySelect}
         onClose={() => setAddFriendPickerOpen(false)}
+        tone="dark"
       />
 
       {/* Issue #4114 Wave 2b — the one Add a friend sheet. Same ORCH-1371

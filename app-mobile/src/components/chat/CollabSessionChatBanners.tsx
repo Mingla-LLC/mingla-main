@@ -26,6 +26,7 @@ import type { ExpansionTarget } from "../../types/expansion";
 // used inside expansionTargetFromSavedPayload for places/curated.
 import { expansionTargetFromSavedPayload } from "../../utils/expansionTargetFromSavedPayload";
 import { groupPlans } from "./chatHeaderModel";
+import { chatTokens } from "../../constants/chatTokens";
 
 interface Props {
   sessionId: string;
@@ -172,6 +173,7 @@ function CompactCollabBottomSheet({
   snapPoints,
   scroll = false,
   scrollContentContainerStyle,
+  tone = "light",
   children,
 }: {
   visible: boolean;
@@ -181,35 +183,41 @@ function CompactCollabBottomSheet({
   snapPoints: string[];
   scroll?: boolean;
   scrollContentContainerStyle?: object;
+  /** Issue #4114 QA run 2: the Plans sheet inside the dark chat is dark. */
+  tone?: "light" | "dark";
   children: React.ReactNode;
 }) {
+  const dark = tone === "dark";
   const header = (
-    <View style={styles.compactSheetHeader}>
-      <Text style={styles.compactSheetTitle} numberOfLines={1}>
+    <View style={[styles.compactSheetHeader, dark && styles.compactSheetHeaderDark]}>
+      <Text style={[styles.compactSheetTitle, dark && styles.compactSheetTitleDark]} numberOfLines={1}>
         {title}
       </Text>
       <TouchableOpacity
         onPress={onClose}
-        style={styles.compactSheetCloseButton}
+        style={[styles.compactSheetCloseButton, dark && styles.compactSheetCloseButtonDark]}
         accessibilityRole="button"
         accessibilityLabel={closeAccessibilityLabel}
       >
-        <Icon name="close-outline" size={22} color="#6b7280" />
+        <Icon name="close-outline" size={22} color={dark ? chatTokens.textSecondary : "#6b7280"} />
       </TouchableOpacity>
     </View>
   );
+  const sheetTheme = dark ? "dark" : "light";
+  const backgroundStyle = dark ? styles.compactSheetBackgroundDark : styles.compactSheetBackground;
+  const handleStyle = dark ? styles.compactSheetHandleDark : styles.compactSheetHandle;
 
   if (scroll) {
     return (
       <BaseBottomSheet
         visible={visible}
         onClose={onClose}
-        theme="light"
+        theme={sheetTheme}
         wrapInRNModal
         snapPoints={snapPoints}
         backdropOpacity={0.48}
-        backgroundStyle={styles.compactSheetBackground}
-        handleStyle={styles.compactSheetHandle}
+        backgroundStyle={backgroundStyle}
+        handleStyle={handleStyle}
         bodyContainerStyle={styles.compactSheetContent}
         accessibilityLabel={title}
         scrollMode="scroll"
@@ -228,12 +236,12 @@ function CompactCollabBottomSheet({
     <BaseBottomSheet
       visible={visible}
       onClose={onClose}
-      theme="light"
+      theme={sheetTheme}
       wrapInRNModal
       snapPoints={snapPoints}
       backdropOpacity={0.48}
-      backgroundStyle={styles.compactSheetBackground}
-      handleStyle={styles.compactSheetHandle}
+      backgroundStyle={backgroundStyle}
+      handleStyle={handleStyle}
       bodyContainerStyle={styles.compactSheetContent}
       accessibilityLabel={title}
       scrollMode="view"
@@ -309,11 +317,12 @@ export function ScheduleSheet({
         title={t("chat:plansTitle")}
         closeAccessibilityLabel={t("chat:plansClose")}
         snapPoints={PLANS_SHEET_SNAP_POINTS}
+        tone="dark"
         scroll={hasRows}
         scrollContentContainerStyle={styles.verticalListContent}
       >
         {isLoading ? (
-          <ActivityIndicator style={styles.loading} color="#eb7825" />
+          <ActivityIndicator style={styles.loading} color={chatTokens.accent} />
         ) : isError ? (
           <Pressable
             onPress={refetch}
@@ -347,7 +356,7 @@ export function ScheduleSheet({
               accessibilityLabel={`Open ${cardTitle(item.cardData)} scheduled for ${formatScheduledAt(item.scheduledAt)}`}
             >
               <View style={styles.scheduleIcon}>
-                <Icon name="lock-closed" size={15} color="#92400e" />
+                <Icon name="lock-closed" size={15} color={chatTokens.accent} />
               </View>
               <View style={styles.rowText}>
                 <Text style={styles.cardTitle} numberOfLines={1}>
@@ -360,7 +369,7 @@ export function ScheduleSheet({
                   {setByLabel(item)}
                 </Text>
               </View>
-              <Icon name="chevron-forward" size={18} color="#9ca3af" />
+              <Icon name="chevron-forward" size={18} color={chatTokens.textMuted} />
             </TouchableOpacity>
           ))}
           </View>
@@ -488,15 +497,16 @@ const styles = StyleSheet.create({
     paddingVertical: 28,
     alignItems: "center",
   },
-  emptyText: { color: "#6b7280", fontSize: 14, textAlign: "center" },
+  // Issue #4114 QA run 2: the Plans sheet content is on the dark chat surface.
+  emptyText: { color: chatTokens.textSecondary, fontSize: 14, textAlign: "center" },
   verticalListContent: { paddingHorizontal: 14, paddingBottom: 12, gap: 8 },
   scheduleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#fde68a",
-    backgroundColor: "#fffbeb",
+    borderColor: chatTokens.hairline,
+    backgroundColor: chatTokens.surfaceRaised,
     borderRadius: 8,
     padding: 12,
   },
@@ -504,15 +514,15 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#fde68a",
+    backgroundColor: chatTokens.accentSoft,
     alignItems: "center",
     justifyContent: "center",
   },
   rowText: { flex: 1, minWidth: 0 },
-  cardTitle: { color: "#111827", fontSize: 14, fontWeight: "700" },
-  cardMeta: { color: "#6b7280", fontSize: 12, marginTop: 2 },
+  cardTitle: { color: chatTokens.textPrimary, fontSize: 14, fontWeight: "700" },
+  cardMeta: { color: chatTokens.textSecondary, fontSize: 12, marginTop: 2 },
   planGroupHeading: {
-    color: "#6b7280",
+    color: chatTokens.textSoft,
     fontSize: 12,
     fontWeight: "700",
     textTransform: "uppercase",
@@ -520,7 +530,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 4,
   },
-  planPastMeta: { color: "#9ca3af" },
+  planPastMeta: { color: chatTokens.textSoft },
   compactSheetBackground: {
     backgroundColor: "#ffffff",
     borderTopLeftRadius: 24,
@@ -529,6 +539,24 @@ const styles = StyleSheet.create({
   compactSheetHandle: {
     backgroundColor: "rgba(17,24,39,0.24)",
     width: 44,
+  },
+  compactSheetBackgroundDark: {
+    backgroundColor: chatTokens.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  compactSheetHandleDark: {
+    backgroundColor: "rgba(255,255,255,0.24)",
+    width: 44,
+  },
+  compactSheetHeaderDark: {
+    borderBottomColor: chatTokens.hairline,
+  },
+  compactSheetTitleDark: {
+    color: chatTokens.textPrimary,
+  },
+  compactSheetCloseButtonDark: {
+    backgroundColor: chatTokens.strip,
   },
   compactSheetContent: {
     flex: 1,
