@@ -700,13 +700,14 @@ function MessageBubbleImpl({
       </View>
 
       {/* Issue #4114 Wave 3: reactions, one pill per emoji with its count;
-          yours is highlighted and tapping a pill toggles your reaction. */}
+          yours shows its count in the accent colour and tapping a pill toggles your reaction. */}
       {reactions && reactions.length > 0 ? (
         <View style={[styles.reactionRow, isMe ? styles.reactionRowRight : styles.reactionRowLeft]}>
           {reactions.map((reaction) => (
             <TouchableOpacity
               key={reaction.emoji}
-              style={[styles.reactionPill, reaction.mine && styles.reactionPillMine]}
+              style={styles.reactionPill}
+              hitSlop={REACTION_PILL_HIT_SLOP}
               onPress={onReactionPress ? () => onReactionPress(message.id, reaction.emoji) : undefined}
               disabled={!onReactionPress}
               accessibilityRole="button"
@@ -715,7 +716,9 @@ function MessageBubbleImpl({
               testID={`reaction-pill-${reaction.emoji}`}
             >
               <Text style={styles.reactionEmoji}>{reaction.emoji}</Text>
-              {reaction.count > 1 ? <Text style={styles.reactionCount}>{reaction.count}</Text> : null}
+              {reaction.count > 1 || reaction.mine ? (
+                <Text style={[styles.reactionCount, reaction.mine && styles.reactionCountMine]}>{reaction.count}</Text>
+              ) : null}
             </TouchableOpacity>
           ))}
         </View>
@@ -877,12 +880,16 @@ function getSystemTokenLabel(token: CollabSystemToken): string {
  */
 export const MessageBubble = memo(MessageBubbleImpl);
 
+/** 24pt pill + 10pt above/below and 6pt each side = a 44pt hit area. */
+const REACTION_PILL_HIT_SLOP = { top: 10, bottom: 10, left: 6, right: 6 } as const;
+
 const styles = StyleSheet.create({
   reactionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 4,
-    marginTop: -4,
+    // Sits just under the bubble; an overlap left a visible seam once the pill lost its outline.
+    marginTop: 2,
     marginBottom: 4,
     paddingHorizontal: 18,
   },
@@ -901,13 +908,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
+    // Solid neutral fill, no outline and no shadow: distinct from the light
+    // received bubble, the orange sent bubble and the dark screen.
     backgroundColor: chatTokens.surfaceRaised,
-    borderWidth: 1,
-    borderColor: chatTokens.hairline,
-  },
-  reactionPillMine: {
-    backgroundColor: chatTokens.accentSoft,
-    borderColor: chatTokens.accent,
   },
   reactionEmoji: {
     fontSize: 13,
@@ -916,6 +919,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: chatTokens.textSecondary,
+  },
+  // Your reaction shows only through its count colour; no orange fill or ring.
+  reactionCountMine: {
+    color: chatTokens.accent,
+    fontWeight: '700',
   },
   spacingGroupEnd: {
     marginBottom: 6,
