@@ -47,9 +47,10 @@ test("#3872 ProgramScreen hides the native header and always renders ProgramHead
 
 test("#3872 ProgramHeader falls back when there is no history", () => {
   const ui = read("src/components/programs/ProgramUi.tsx");
-  assert.match(ui, /router\.canGoBack\(\)/);
-  assert.match(ui, /router\.replace\(/);
+  assert.match(ui, /programBackNav\(pathname, router\.canGoBack\(\)\)/);
   assert.match(ui, /accessibilityLabel="Back"/);
+  const nav = read("src/components/programs/programNav.ts");
+  assert.match(nav, /router\.replace\(/);
 });
 
 test("#3872 ProgramUi is built on the app's own glass components", () => {

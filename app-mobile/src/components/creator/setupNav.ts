@@ -1,6 +1,7 @@
 import type { useRouter } from 'expo-router';
 import type { QueryClient } from '@tanstack/react-query';
 import { creatorProgramService, setupChecks, type CreatorSetupStatus } from '../../services/creatorProgramService';
+import { nextSetupNav, runProgramNav } from '../programs/programNav';
 
 export const SETUP_STEPS = ['profile', 'rates', 'showcase', 'socials', 'payout', 'agreement'] as const;
 export type SetupStep = (typeof SETUP_STEPS)[number];
@@ -23,13 +24,13 @@ export function firstOpenStep(status: CreatorSetupStatus | null | undefined, aft
 }
 
 /**
- * After a step saves: refresh the checklist and move straight to the next open
- * step, or back to the checklist when everything is done.
+ * After a step saves: refresh the checklist and push the next open step, or
+ * dismiss back to the checklist when everything is done. Never `replace`: that
+ * dropped the checklist from history, so Back landed on the Profile tab (W5.3).
  */
 export async function goToNextStep(router: ReturnType<typeof useRouter>, queryClient: QueryClient, current: SetupStep): Promise<void> {
   const status = await queryClient.fetchQuery({ queryKey: SETUP_STATUS_KEY, queryFn: () => creatorProgramService.status(), staleTime: 0 });
   void queryClient.invalidateQueries({ queryKey: ['creator'] });
   const next = firstOpenStep(status, current);
-  if (next) router.replace(`/creator/setup/${next}` as never);
-  else router.replace('/creator/setup' as never);
+  runProgramNav(router, nextSetupNav(next));
 }

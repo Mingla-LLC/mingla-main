@@ -377,6 +377,61 @@ export function creatorOwnsNextStep(state: string | null | undefined): boolean {
 
 export const CLOSED_CONTRACT_STATES = ['completed', 'declined', 'expired', 'cancelled', 'resolved_release', 'resolved_partial', 'resolved_refund'] as const;
 
+// ── Contract status card (creator) ─────────────────────────────────────────
+
+const RELEASED_STATES = ['released', 'day30'];
+
+/** "due Nov 25" from "Due Nov 25": lower-case the first word only, keep the month capitalised. */
+function lowerFirst(text: string): string {
+  return text ? text.charAt(0).toLowerCase() + text.slice(1) : text;
+}
+
+/**
+ * The small line on top of the contract's status card.
+ * Working states: "Next · due Nov 25" (W3.1: the month stays "Nov", never "nov").
+ * After release the creator has no Next; the card shows "Day-30 check · Nov 25" (W3.2).
+ */
+export function contractCardLabel(state: string | null | undefined, deadlineAt: string | null | undefined, now: Date = new Date(), locale?: string): string {
+  if (RELEASED_STATES.includes(state ?? '')) {
+    const day = formatShortDate(deadlineAt, now, locale);
+    return day ? `Day-30 check · ${day}` : 'Day-30 check';
+  }
+  if (state === 'completed') return 'Done';
+  if ((state ?? '').startsWith('resolved_')) return 'Dispute settled';
+  const due = formatDue(deadlineAt, now, locale);
+  return due ? `Next · ${lowerFirst(due)}` : 'Next';
+}
+
+/** Contract `money_state` from `gig_contract_workspace`. */
+export type ContractMoneyState = 'on_the_way' | 'ready' | 'paid' | 'refunded' | 'partially_refunded';
+
+/**
+ * What happened to the creator's fee once the gig is released (W3.3), from the
+ * server's `money_state`. Never says Paid before the server says paid, and says
+ * nothing ('') while `money_state` is null (no money captured yet).
+ */
+export function contractMoneyLine(moneyState: string | null | undefined, paidAt?: string | null, now: Date = new Date(), locale?: string): string {
+  switch (moneyState) {
+    case 'paid': {
+      const day = formatShortDate(paidAt, now, locale);
+      return day ? `Paid to your bank on ${day}` : 'Paid to your bank';
+    }
+    case 'ready': return 'Released and on its way to your bank';
+    case 'refunded': return 'The host was refunded';
+    case 'partially_refunded': return 'Part of the fee was refunded to the host';
+    case 'on_the_way': return 'On its way to your bank';
+    default: return '';
+  }
+}
+
+/** The status card's body text after release: the money line plus the 30-day reminder. */
+export function releasedCardText(state: string | null | undefined, moneyState: string | null | undefined, paidAt?: string | null, now: Date = new Date(), locale?: string): string {
+  const line = contractMoneyLine(moneyState, paidAt, now, locale);
+  const money = line ? `${line}.` : '';
+  const reminder = RELEASED_STATES.includes(state ?? '') ? 'Keep the posts live for 30 days.' : '';
+  return [money, reminder].filter(Boolean).join(' ');
+}
+
 // ── Money states ───────────────────────────────────────────────────────────
 
 export type MoneyState = 'on_the_way' | 'ready' | 'paid';

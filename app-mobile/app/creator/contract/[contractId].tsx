@@ -6,7 +6,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { creatorGigsService } from '../../../src/services/creatorGigsService';
 import { programErrorText } from '../../../src/services/programResult';
 import {
-  creatorStateWords, currencySymbol, formatDue, formatMoney, formatName, formatShortDate, formatTimeLeft, moneyInputValue, parseMoneyInput, toDayString,
+  contractCardLabel, contractMoneyLine, creatorStateWords, currencySymbol, formatMoney, formatName, formatShortDate, formatTimeLeft, moneyInputValue, parseMoneyInput,
+  releasedCardText, toDayString,
 } from '../../../src/utils/programFormat';
 import { ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoading, ProgramNotice, ProgramScreen, ProgramSheet, programStyles as s } from '../../../src/components/programs/ProgramUi';
 import { CalendarGrid } from '../../../src/components/programs/ProgramPickers';
@@ -134,6 +135,11 @@ export default function CreatorContractScreen(): React.ReactElement {
   const canChangeTerms = ['accepted', 'shoot_planned', 'script_drafting', 'script_sent'].includes(state);
   const canCancel = canChangeTerms;
   const canDispute = ['fix_requested', 'posting', 'posts_failed', 'delivered'].includes(state);
+  // After release the creator has nothing to do: the card reports the money and the 30-day check.
+  const released = ['released', 'day30', 'completed', 'resolved_release'].includes(state);
+  const cardText = state === 'completed' ? [releasedCardText(state, w.money_state, w.money_paid_at), next.text].filter(Boolean).join(' ')
+    : released ? releasedCardText(state, w.money_state, w.money_paid_at)
+    : state === 'accepted' && window ? next.text.replace('the shoot window', formatShootWindow(window)) : next.text;
 
   const onNextCta = (): void => {
     if (state === 'accepted') setSheet('shoot');
@@ -151,9 +157,9 @@ export default function CreatorContractScreen(): React.ReactElement {
     <BrandCard workspace={w} />
 
     <ProgramCard tone="highlight">
-      <Text style={s.accentText}>Next{due ? ` · ${formatDue(due).toLowerCase()}` : ''}</Text>
-      <Text style={s.title}>{next.title}</Text>
-      <Text style={s.copy}>{state === 'accepted' && window ? next.text.replace('the shoot window', formatShootWindow(window)) : next.text}</Text>
+      <Text style={s.accentText}>{contractCardLabel(state, due)}</Text>
+      <Text style={s.title}>{released && w.money_state === 'paid' ? 'Paid' : next.title}</Text>
+      <Text style={s.copy}>{cardText}</Text>
       {hostProposedShoot && plan?.shoot_at ? <View style={styles.two}>
         <ProgramButton label="Pick another" variant="secondary" style={s.flex} disabled={busy !== null} onPress={() => setSheet('shoot')} />
         <ProgramButton label={`Confirm ${formatShortDate(plan.shoot_at)}`} style={s.flex} busy={busy === 'shoot'}
@@ -184,7 +190,7 @@ export default function CreatorContractScreen(): React.ReactElement {
       onOffer={(bps) => void act('dispute', () => creatorGigsService.offerDispute(w.dispute!.id, bps))} /> : null}
     {state === 'completed' ? <RatingCard workspace={w} busy={busy === 'rate'} error={errors.rate ?? null} onRate={(stars) => void act('rate', () => creatorGigsService.rate(contractId, stars))} /> : null}
 
-    <Tracker state={state} terms={terms} acceptedAt={acceptedEvent?.at ?? null} releaseHint="48 hours after your posts are checked" />
+    <Tracker state={state} terms={terms} acceptedAt={acceptedEvent?.at ?? null} releaseHint={(released && contractMoneyLine(w.money_state, w.money_paid_at)) || '48 hours after your posts are checked'} />
     {terms ? <TermsCard terms={terms} gig={w.gig} /> : null}
     <TermsHistory terms={w.terms} />
 
