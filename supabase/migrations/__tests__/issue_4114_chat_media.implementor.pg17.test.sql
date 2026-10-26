@@ -12,7 +12,7 @@
 --         sign or download it); only its sender can.
 --   I-04  storage writes: a participant may upload into its own conversation's
 --         folder; a non-participant and a malformed name are refused; only the
---         sender of the referencing message may delete.
+--         uploader may delete.
 --   I-05  message_media_views: a recipient reads only their own rows, the sender
 --         reads every row for their message, and no client can insert.
 --   I-06  cleanup lists exactly: view once opened by every recipient ('opened'),
@@ -26,6 +26,8 @@
 -- (no view_once column). Deleting the view-once exclusions from
 -- issue_4114_can_read_chat_attachment (the once/ branch and the belt-and-braces
 -- check; either one alone still protects) fails I-03: the recipient reads it.
+-- The uploader-keyed and brand-team cases live in
+-- issue_4114_chat_media_ownership.implementor.pg17.test.sql.
 --
 -- Run after the full migration chain on PostgreSQL 17. Everything rolls back.
 
@@ -104,8 +106,10 @@ BEGIN
   INSERT INTO t4114m_ids SELECT 'msg_' || n.tag, m.id FROM public.messages m JOIN t4114m_names n ON n.name = m.file_url;
 
   -- Storage objects for the reads and the orphan sweep.
-  INSERT INTO storage.objects(bucket_id, name, created_at)
-    SELECT 'message-attachments', name,
+  -- Every object is uploaded by the sender (the Storage API sets `owner` from
+  -- the uploading user's token).
+  INSERT INTO storage.objects(bucket_id, name, owner, created_at)
+    SELECT 'message-attachments', name, v_sender,
       CASE WHEN tag = 'orphan_old' THEN now() - interval '3 days' ELSE now() END
     FROM t4114m_names;
 
@@ -231,10 +235,10 @@ BEGIN
      OR public.issue_4114_can_write_chat_attachment(v_conv || '/' || gen_random_uuid() || '.JPG', v_friend) THEN
     RAISE EXCEPTION 'I-04: malformed names must be refused';
   END IF;
-  IF NOT public.issue_4114_can_delete_chat_attachment((SELECT name FROM t4114m_names WHERE tag = 'normal'), v_sender) THEN
+  IF NOT public.issue_4114_can_delete_chat_attachment((SELECT name FROM t4114m_names WHERE tag = 'normal'), v_sender, v_sender) THEN
     RAISE EXCEPTION 'I-04: the sender may delete their attachment';
   END IF;
-  IF public.issue_4114_can_delete_chat_attachment((SELECT name FROM t4114m_names WHERE tag = 'normal'), v_friend) THEN
+  IF public.issue_4114_can_delete_chat_attachment((SELECT name FROM t4114m_names WHERE tag = 'normal'), v_sender, v_friend) THEN
     RAISE EXCEPTION 'I-04: a recipient must not delete the sender''s attachment';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects'

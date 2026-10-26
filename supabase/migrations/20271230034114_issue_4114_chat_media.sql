@@ -13,12 +13,19 @@
 --       - view-once objects are readable ONLY by their sender, so a recipient can
 --         never list, download or sign one; the recipient's one open goes
 --         through the `open-view-once` edge function (service role);
---       - delete is limited to the sender of the message that references the
---         object (the `messages` bucket lets any participant delete anything).
+--       - access is keyed on the uploader (`storage.objects.owner`): only the
+--         uploader may delete an object, and only the uploader may read a
+--         `once/` object (the `messages` bucket lets any participant delete
+--         anything);
+--       - brand team members of an event chat (they read its messages through
+--         messages_brand_team_member_read without being participants) may read
+--         the attachments of its live, non-view-once messages.
 --   * `messages.view_once` (default false) and `messages.view_once_purged_at`.
---     A trigger refuses a view-once message that is not a photo or video stored
---     in its conversation's `once/` folder, so a view-once item can never sit in
---     a recipient-readable path.
+--     A trigger keeps message paths consistent: a view-once message must be a
+--     photo or video stored in its conversation's `once/` folder, an ordinary
+--     message can never point into a `once/` folder, a stored path must sit in
+--     the message's own conversation folder, and a path another sender's
+--     message already points at cannot be reused.
 --   * `message_media_views(message_id, user_id, viewed_at)`: one row per person
 --     per view-once message. Clients can read (their own rows, and every row of
 --     the messages they sent) but never write; only the edge function inserts.
@@ -102,12 +109,20 @@ CREATE INDEX IF NOT EXISTS messages_file_url_idx
   ON public.messages (file_url)
   WHERE file_url IS NOT NULL;
 
--- 3. A view-once message must be a photo or video in its own once/ folder.
+-- 3. Message paths. A view-once message must be a photo or video in its own
+--    once/ folder; an ordinary message never points into a once/ folder; a
+--    stored path (the private-bucket shape) must sit in the message's own
+--    conversation folder and must not already belong to another sender's
+--    message. SECURITY DEFINER so the reuse check sees every message, not only
+--    the rows the writer can read.
 CREATE OR REPLACE FUNCTION public.issue_4114_enforce_view_once_shape()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $function$
+DECLARE
+  v_path_conversation uuid;
 BEGIN
   IF NEW.view_once IS TRUE THEN
     IF NEW.message_type IS DISTINCT FROM 'image' AND NEW.message_type IS DISTINCT FROM 'video' THEN
@@ -117,14 +132,34 @@ BEGIN
        OR left(NEW.file_url, length(NEW.conversation_id::text) + 6) <> NEW.conversation_id::text || '/once/' THEN
       RAISE EXCEPTION 'view_once_requires_once_folder' USING ERRCODE = '23514';
     END IF;
+  ELSIF NEW.file_url IS NOT NULL AND split_part(NEW.file_url, '/', 2) = 'once' THEN
+    RAISE EXCEPTION 'once_folder_requires_view_once' USING ERRCODE = '23514';
+  END IF;
+
+  IF NEW.file_url IS NOT NULL THEN
+    v_path_conversation := public.issue_4114_chat_attachment_conversation(NEW.file_url);
+    IF v_path_conversation IS NOT NULL THEN
+      IF v_path_conversation IS DISTINCT FROM NEW.conversation_id THEN
+        RAISE EXCEPTION 'attachment_path_outside_conversation' USING ERRCODE = '23514';
+      END IF;
+      IF EXISTS (
+        SELECT 1 FROM public.messages m
+        WHERE m.file_url = NEW.file_url
+          AND m.id IS DISTINCT FROM NEW.id
+          AND m.sender_id IS DISTINCT FROM NEW.sender_id
+      ) THEN
+        RAISE EXCEPTION 'attachment_path_in_use' USING ERRCODE = '23514';
+      END IF;
+    END IF;
   END IF;
   RETURN NEW;
 END;
 $function$;
+REVOKE ALL ON FUNCTION public.issue_4114_enforce_view_once_shape() FROM PUBLIC, anon, authenticated;
 
 DROP TRIGGER IF EXISTS issue_4114_view_once_shape ON public.messages;
 CREATE TRIGGER issue_4114_view_once_shape
-  BEFORE INSERT OR UPDATE OF view_once, file_url, message_type ON public.messages
+  BEFORE INSERT OR UPDATE OF view_once, file_url, message_type, conversation_id, sender_id ON public.messages
   FOR EACH ROW EXECUTE FUNCTION public.issue_4114_enforce_view_once_shape();
 
 -- 4. Who opened which view-once message.
@@ -171,7 +206,23 @@ CREATE POLICY message_media_views_sender_read ON public.message_media_views
   USING (public.issue_4114_is_message_sender(message_id, auth.uid()));
 
 -- 5. Storage access helpers. The name is validated before any uuid cast, so a
---    malformed name is refused instead of raising.
+--    malformed name is refused instead of raising. Read and delete are keyed
+--    on the uploader (`storage.objects.owner`, set by the Storage API from the
+--    uploading user's token), never on what a message row claims.
+
+-- Earlier drafts of this file keyed read/delete on (name, user). Drop those
+-- policies and signatures first so a re-run lands on the uploader-keyed shape.
+DO $drop_old$
+BEGIN
+  IF to_regclass('storage.objects') IS NOT NULL THEN
+    EXECUTE 'DROP POLICY IF EXISTS message_attachments_select ON storage.objects';
+    EXECUTE 'DROP POLICY IF EXISTS message_attachments_delete ON storage.objects';
+  END IF;
+END
+$drop_old$;
+DROP FUNCTION IF EXISTS public.issue_4114_can_read_chat_attachment(text, uuid);
+DROP FUNCTION IF EXISTS public.issue_4114_can_delete_chat_attachment(text, uuid);
+
 CREATE OR REPLACE FUNCTION public.issue_4114_chat_attachment_conversation(p_name text)
 RETURNS uuid
 LANGUAGE plpgsql
@@ -208,7 +259,37 @@ $function$;
 REVOKE ALL ON FUNCTION public.issue_4114_can_write_chat_attachment(text, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.issue_4114_can_write_chat_attachment(text, uuid) TO authenticated, service_role;
 
-CREATE OR REPLACE FUNCTION public.issue_4114_can_read_chat_attachment(p_name text, p_user_id uuid)
+-- Brand team members of an event chat: the same predicate as the
+-- messages_brand_team_member_read policy (20260710000000_orch_0897), for one
+-- conversation and one user.
+CREATE OR REPLACE FUNCTION public.issue_4114_is_event_chat_team_member(p_conversation_id uuid, p_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+  SELECT p_user_id IS NOT NULL AND p_conversation_id IS NOT NULL AND EXISTS (
+    SELECT 1
+    FROM public.conversations c
+    WHERE c.id = p_conversation_id
+      AND c.linked_entity_type IN ('trip', 'event')
+      AND c.event_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM public.brand_team_members btm
+        JOIN public.events e ON e.brand_id = btm.brand_id
+        WHERE e.id = c.event_id
+          AND btm.user_id = p_user_id
+          AND btm.accepted_at IS NOT NULL
+          AND btm.removed_at IS NULL
+      )
+  );
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4114_is_event_chat_team_member(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.issue_4114_is_event_chat_team_member(uuid, uuid) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.issue_4114_can_read_chat_attachment(p_name text, p_owner uuid, p_user_id uuid)
 RETURNS boolean
 LANGUAGE plpgsql
 STABLE
@@ -217,61 +298,77 @@ SET search_path = public, pg_temp
 AS $function$
 DECLARE
   v_conversation uuid := public.issue_4114_chat_attachment_conversation(p_name);
+  v_once boolean;
 BEGIN
   IF p_user_id IS NULL OR v_conversation IS NULL THEN
     RETURN false;
   END IF;
-  IF NOT public.is_message_conversation_participant(v_conversation, p_user_id) THEN
-    RETURN false;
-  END IF;
-  -- View once: only the sender of the referencing message may read it.
-  IF split_part(p_name, '/', 2) = 'once' THEN
-    RETURN EXISTS (
+  v_once := split_part(p_name, '/', 2) = 'once';
+
+  IF public.is_message_conversation_participant(v_conversation, p_user_id) THEN
+    -- The uploader reads their own object, view once included.
+    IF p_owner IS NOT NULL AND p_owner = p_user_id THEN
+      RETURN true;
+    END IF;
+    -- View once: nobody but the uploader reads it from storage; a recipient's
+    -- one open goes through the open-view-once edge function.
+    IF v_once THEN
+      RETURN false;
+    END IF;
+    -- Belt and braces: an object a view-once message points at is never
+    -- readable by anyone but its uploader.
+    RETURN NOT EXISTS (
       SELECT 1 FROM public.messages m
       WHERE m.file_url = p_name
-        AND m.conversation_id = v_conversation
-        AND m.sender_id = p_user_id
+        AND m.view_once
     );
   END IF;
-  -- Belt and braces: an object some view-once message points at is never
-  -- readable by anyone but that message's sender.
-  RETURN NOT EXISTS (
-    SELECT 1 FROM public.messages m
-    WHERE m.file_url = p_name
-      AND m.view_once
-      AND m.sender_id IS DISTINCT FROM p_user_id
-  );
-END;
-$function$;
-REVOKE ALL ON FUNCTION public.issue_4114_can_read_chat_attachment(text, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.issue_4114_can_read_chat_attachment(text, uuid) TO authenticated, service_role;
 
-CREATE OR REPLACE FUNCTION public.issue_4114_can_delete_chat_attachment(p_name text, p_user_id uuid)
-RETURNS boolean
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $function$
-DECLARE
-  v_conversation uuid := public.issue_4114_chat_attachment_conversation(p_name);
-BEGIN
-  IF p_user_id IS NULL OR v_conversation IS NULL THEN
+  -- Brand team of an event chat: never once/, and only the attachment of a
+  -- live, ordinary message in that chat (what the team can already read).
+  IF v_once THEN
     RETURN false;
   END IF;
-  IF NOT public.is_message_conversation_participant(v_conversation, p_user_id) THEN
+  IF NOT public.issue_4114_is_event_chat_team_member(v_conversation, p_user_id) THEN
     RETURN false;
   END IF;
   RETURN EXISTS (
     SELECT 1 FROM public.messages m
     WHERE m.file_url = p_name
       AND m.conversation_id = v_conversation
-      AND m.sender_id = p_user_id
+      AND m.deleted_at IS NULL
+      AND NOT m.view_once
+  ) AND NOT EXISTS (
+    SELECT 1 FROM public.messages m
+    WHERE m.file_url = p_name
+      AND m.view_once
   );
 END;
 $function$;
-REVOKE ALL ON FUNCTION public.issue_4114_can_delete_chat_attachment(text, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.issue_4114_can_delete_chat_attachment(text, uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.issue_4114_can_read_chat_attachment(text, uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.issue_4114_can_read_chat_attachment(text, uuid, uuid) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.issue_4114_can_delete_chat_attachment(p_name text, p_owner uuid, p_user_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_conversation uuid := public.issue_4114_chat_attachment_conversation(p_name);
+BEGIN
+  IF p_user_id IS NULL OR p_owner IS NULL OR v_conversation IS NULL THEN
+    RETURN false;
+  END IF;
+  IF p_owner <> p_user_id THEN
+    RETURN false;
+  END IF;
+  RETURN public.is_message_conversation_participant(v_conversation, p_user_id);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4114_can_delete_chat_attachment(text, uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.issue_4114_can_delete_chat_attachment(text, uuid, uuid) TO authenticated, service_role;
 
 DO $policies$
 BEGIN
@@ -296,7 +393,7 @@ BEGIN
       FOR SELECT TO authenticated
       USING (
         bucket_id = 'message-attachments'
-        AND public.issue_4114_can_read_chat_attachment(name, auth.uid())
+        AND public.issue_4114_can_read_chat_attachment(name, owner, auth.uid())
       )
   $p$;
 
@@ -306,7 +403,7 @@ BEGIN
       FOR DELETE TO authenticated
       USING (
         bucket_id = 'message-attachments'
-        AND public.issue_4114_can_delete_chat_attachment(name, auth.uid())
+        AND public.issue_4114_can_delete_chat_attachment(name, owner, auth.uid())
       )
   $p$;
 END
