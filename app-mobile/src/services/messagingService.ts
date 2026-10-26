@@ -174,6 +174,34 @@ export interface TrimmedCuratedStop {
   travelTimeFromPreviousStopMin?: number | null;
 }
 
+/**
+ * Issue #4114 Wave 7: the media columns of a send, each only when it has a
+ * value (so text sends never name them). Dimensions and length are rounded to
+ * whole numbers and dropped when out of range.
+ */
+export function mediaFactsForInsert(options: {
+  thumbPath?: string | null;
+  durationMs?: number | null;
+  width?: number | null;
+  height?: number | null;
+  albumId?: string | null;
+}): Record<string, string | number> {
+  const facts: Record<string, string | number> = {};
+  const whole = (value: number | null | undefined, max: number): number | null =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max ? Math.round(value) : null;
+  if (options.thumbPath) facts.thumb_path = options.thumbPath;
+  const duration = whole(options.durationMs, 3_600_000);
+  if (duration !== null) facts.media_duration_ms = duration;
+  const width = whole(options.width, 20_000);
+  const height = whole(options.height, 20_000);
+  if (width && height) {
+    facts.media_width = width;
+    facts.media_height = height;
+  }
+  if (options.albumId) facts.media_album_id = options.albumId;
+  return facts;
+}
+
 export interface DirectMessage {
   id: string;
   conversation_id: string;
@@ -213,6 +241,16 @@ export interface DirectMessage {
   view_once?: boolean;
   /** Issue #4114 Wave 4: the view-once file was deleted (everyone opened it, or 14 days passed). */
   view_once_purged_at?: string | null;
+  /** Issue #4114 Wave 7: the 480px thumbnail's storage path (ordinary photos and videos). */
+  thumb_path?: string | null;
+  /** Issue #4114 Wave 7: a video's length, and the media's dimensions for the card shape. */
+  media_duration_ms?: number | null;
+  media_width?: number | null;
+  media_height?: number | null;
+  /** Issue #4114 Wave 7: photos sent together share this id (drawn as one album). */
+  media_album_id?: string | null;
+  /** Issue #4114 Wave 7 (D18): the video's full file was deleted after 90 days; the thumbnail stays. */
+  media_expired_at?: string | null;
   /**
    * Issue #4114 Wave 4: who opened this view-once message — your own row as a
    * recipient, every row as its sender (RLS). Absent on realtime rows.
@@ -1188,7 +1226,15 @@ export class MessagingService {
     mentions: MentionEntry[] = [],
     cardTags: CardTagEntry[] = [],
     clientId?: string,
-    options: { viewOnce?: boolean } = {},
+    options: {
+      viewOnce?: boolean;
+      /** Issue #4114 Wave 7: thumbnail path, media facts and album id (only sent when present). */
+      thumbPath?: string | null;
+      durationMs?: number | null;
+      width?: number | null;
+      height?: number | null;
+      albumId?: string | null;
+    } = {},
   ): Promise<{ message: DirectMessage | null; error: string | null }> {
     try {
       const validatedMentions = this.validateMentionEntries(mentions);
@@ -1211,6 +1257,7 @@ export class MessagingService {
           ...(clientId ? { client_id: clientId } : {}),
           // Issue #4114 Wave 4: only sent when true, so ordinary sends never name the column.
           ...(options.viewOnce === true ? { view_once: true } : {}),
+          ...mediaFactsForInsert(options),
         })
         .select()
         .single();

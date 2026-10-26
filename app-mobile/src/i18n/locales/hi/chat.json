@@ -292,5 +292,9 @@
   "sendToWent_one": "{{count}} गए",
   "sendToWent_other": "{{count}} गए",
   "sendToTravelled_one": "{{count}} ने यात्रा की",
-  "sendToTravelled_other": "{{count}} ने यात्रा की"
+  "sendToTravelled_other": "{{count}} ने यात्रा की",
+  "mediaDailyLimit": "आपने आज की फ़ोटो और वीडियो की सीमा पूरी कर ली है।",
+  "videoNoLongerAvailable": "वीडियो अब उपलब्ध नहीं है",
+  "a11yAlbum": "फ़ोटो एल्बम ({{count}})",
+  "a11yAlbumPhoto": "{{count}} में से फ़ोटो {{index}}"
 }

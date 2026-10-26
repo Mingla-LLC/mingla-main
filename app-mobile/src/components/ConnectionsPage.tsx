@@ -1887,6 +1887,13 @@ function ConnectionsPageRefactored({
       viewOnce: msg.view_once === true ? true : undefined,
       viewOncePurged: msg.view_once_purged_at ? true : undefined,
       mediaViews: msg.media_views,
+      // Issue #4114 Wave 7: the thumbnail, the card's shape, the album and D18 expiry.
+      thumbPath: msg.thumb_path ?? undefined,
+      mediaDurationMs: typeof msg.media_duration_ms === "number" ? msg.media_duration_ms : undefined,
+      mediaWidth: typeof msg.media_width === "number" ? msg.media_width : undefined,
+      mediaHeight: typeof msg.media_height === "number" ? msg.media_height : undefined,
+      mediaAlbumId: msg.media_album_id ?? undefined,
+      mediaExpired: msg.media_expired_at ? true : undefined,
     }),
     []
   );
@@ -3135,6 +3142,9 @@ function ConnectionsPageRefactored({
             fileUrl: uploaded.path,
             fileName: prepared.fileName,
             fileSize: uploaded.fileSize !== null ? String(uploaded.fileSize) : undefined,
+            thumbPath: uploaded.thumbPath ?? undefined,
+            mediaWidth: uploaded.width ?? pending.mediaWidth,
+            mediaHeight: uploaded.height ?? pending.mediaHeight,
           };
           writeConversationMessages(conversationId, [current]);
         } catch (uploadError) {
@@ -3153,7 +3163,9 @@ function ConnectionsPageRefactored({
                 ? t("chat:mediaTypeNotSupported")
                 : code === "refused_size"
                   ? t("chat:mediaTooLarge")
-                  : t("chat:mediaUploadFailed"),
+                  : code === "daily_limit"
+                    ? t("chat:mediaDailyLimit")
+                    : t("chat:mediaUploadFailed"),
             type: "error",
           });
           return;
@@ -3179,7 +3191,14 @@ function ConnectionsPageRefactored({
           mentionEntries,
           current.cardTags ?? [],
           clientId,
-          { viewOnce: current.viewOnce === true },
+          {
+            viewOnce: current.viewOnce === true,
+            thumbPath: current.thumbPath ?? null,
+            durationMs: current.mediaDurationMs ?? null,
+            width: current.mediaWidth ?? null,
+            height: current.mediaHeight ?? null,
+            albumId: current.mediaAlbumId ?? null,
+          },
         );
 
       if (sendError || !sentMessage) {
@@ -3538,6 +3557,11 @@ function ConnectionsPageRefactored({
         marketingCampaignId: null,
       });
     }
+    // Issue #4114 Wave 7: two or more ordinary photos sent together share an
+    // album id (one nullable column; each photo stays its own message, so
+    // retry, unsend and old apps keep working per photo).
+    const albumPhotos = viewOnce ? 0 : items.filter((item) => item.kind === "image").length;
+    const albumId = albumPhotos >= 2 ? createClientMessageId() : undefined;
     items.forEach((item, index) => {
       const clientId = createClientMessageId();
       const first = index === 0;
@@ -3559,6 +3583,10 @@ function ConnectionsPageRefactored({
         marketingCampaignId: null,
         viewOnce: viewOnce && item.kind !== "file" ? true : undefined,
         localMedia: item,
+        mediaDurationMs: item.kind === "video" && typeof item.durationMs === "number" ? item.durationMs : undefined,
+        mediaWidth: item.width ?? undefined,
+        mediaHeight: item.height ?? undefined,
+        mediaAlbumId: item.kind === "image" ? albumId : undefined,
       });
     });
 

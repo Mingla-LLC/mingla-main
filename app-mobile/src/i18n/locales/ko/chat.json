@@ -278,5 +278,9 @@
   "brandChannelSubtitle_other": "내 이벤트 {{count}}개 · 탭해서 브랜드 페이지",
   "sendToGoing_other": "{{count}}명 참석 예정",
   "sendToWent_other": "{{count}}명 참석",
-  "sendToTravelled_other": "{{count}}명 여행"
+  "sendToTravelled_other": "{{count}}명 여행",
+  "mediaDailyLimit": "오늘 사진 및 동영상 한도에 도달했어요.",
+  "videoNoLongerAvailable": "더 이상 볼 수 없는 동영상입니다",
+  "a11yAlbum": "사진 앨범 ({{count}})",
+  "a11yAlbumPhoto": "사진 {{count}}장 중 {{index}}번째"
 }

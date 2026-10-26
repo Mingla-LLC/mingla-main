@@ -292,5 +292,9 @@
   "sendToWent_one": "{{count}} জন গিয়েছিলেন",
   "sendToWent_other": "{{count}} জন গিয়েছিলেন",
   "sendToTravelled_one": "{{count}} জন ভ্রমণ করেছেন",
-  "sendToTravelled_other": "{{count}} জন ভ্রমণ করেছেন"
+  "sendToTravelled_other": "{{count}} জন ভ্রমণ করেছেন",
+  "mediaDailyLimit": "আজকের ছবি ও ভিডিওর সীমায় পৌঁছে গেছেন।",
+  "videoNoLongerAvailable": "ভিডিওটি আর পাওয়া যাচ্ছে না",
+  "a11yAlbum": "ছবির অ্যালবাম ({{count}})",
+  "a11yAlbumPhoto": "{{count}}টির মধ্যে {{index}} নম্বর ছবি"
 }

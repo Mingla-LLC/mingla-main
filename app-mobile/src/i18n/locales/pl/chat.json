@@ -320,5 +320,9 @@
   "sendToTravelled_few": "{{count}} pojechało",
   "sendToTravelled_many": "{{count}} pojechało",
   "sendToTravelled_one": "{{count}} pojechało",
-  "sendToTravelled_other": "{{count}} pojechało"
+  "sendToTravelled_other": "{{count}} pojechało",
+  "mediaDailyLimit": "Osiągnięto dzisiejszy limit zdjęć i filmów.",
+  "videoNoLongerAvailable": "Film nie jest już dostępny",
+  "a11yAlbum": "Album zdjęć ({{count}})",
+  "a11yAlbumPhoto": "Zdjęcie {{index}} z {{count}}"
 }

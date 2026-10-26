@@ -278,5 +278,9 @@
   "brandChannelSubtitle_other": "{{count}} sự kiện của bạn · chạm để xem thương hiệu",
   "sendToGoing_other": "{{count}} người sẽ đến",
   "sendToWent_other": "{{count}} người đã đến",
-  "sendToTravelled_other": "{{count}} người đã đi"
+  "sendToTravelled_other": "{{count}} người đã đi",
+  "mediaDailyLimit": "Bạn đã đạt giới hạn ảnh và video của hôm nay.",
+  "videoNoLongerAvailable": "Video không còn khả dụng",
+  "a11yAlbum": "Album ảnh ({{count}})",
+  "a11yAlbumPhoto": "Ảnh {{index}} trên {{count}}"
 }

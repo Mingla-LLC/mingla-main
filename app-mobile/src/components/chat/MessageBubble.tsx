@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
 import { View, Text, StyleSheet, Dimensions, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import { PlaceCuratedChatCard } from './PlaceCuratedChatCard';
@@ -12,8 +13,17 @@ import { isContentShareCardPayload, type CardPayload, type CardTagEntry, type Le
 import type { CollabDeadEndBannerPayload } from '../../services/collabDeadEndBannerService';
 import { selectCompactPreviewFacts, shareKindLabel, statusLabel, validateNativeContentCardDescriptorV1 } from '@mingla/sharing';
 import type { ReactionSummary } from '../../utils/threadModel';
-import { chatTokens } from '../../constants/chatTokens';
-import type { ViewOnceState } from '../../utils/chatMedia';
+import { chatTokens, receivedBubbleTokens } from '../../constants/chatTokens';
+import { isChatStoragePath, type ViewOnceState } from '../../utils/chatMedia';
+import {
+  ALBUM_TILE_GAP,
+  MEDIA_CARD_RADIUS,
+  PLAY_BUTTON_SIZE,
+  albumCardSize,
+  albumTiles,
+  formatMediaDuration,
+  mediaCardSize,
+} from '../../utils/chatMediaLayout';
 import { useChatMediaUrl } from './useChatMediaUrl';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -51,6 +61,26 @@ interface MessageData {
   uploadProgress?: number;
   /** Issue #4114 Wave 4: group chats word the sender's view-once status as "Opened by N". */
   isGroupChat?: boolean;
+  /** Issue #4114 Wave 7: the 480px thumbnail the bubble shows (full media loads on tap). */
+  thumbPath?: string;
+  /** Issue #4114 Wave 7: the media's own size (the card keeps its shape, clamped 3:4..16:9). */
+  mediaWidth?: number;
+  mediaHeight?: number;
+  /** Issue #4114 Wave 7: a video's length, shown on the card. */
+  durationMs?: number;
+  /** Issue #4114 Wave 7 (D18): the video's full file was removed after 90 days. */
+  mediaExpired?: boolean;
+  /** Issue #4114 Wave 7: the photos of an album, oldest first (2 or more). */
+  album?: ChatAlbumItem[];
+}
+
+/** Issue #4114 Wave 7: one photo of an album. */
+export interface ChatAlbumItem {
+  id: string;
+  fileUrl?: string;
+  thumbPath?: string;
+  localUri?: string;
+  uploadProgress?: number;
 }
 
 interface ReplyToData {
@@ -85,16 +115,30 @@ interface MessageBubbleProps {
   onReactionPress?: (messageId: string, emoji: string) => void;
   /** Issue #4114 Wave 4: cancel a media send while it uploads. */
   onCancelUpload?: () => void;
+  /** Issue #4114 Wave 7: space under / above this row (media cards get 14pt). */
+  bottomGap?: number;
+  topGap?: number;
+  /** Issue #4114 Wave 7: an album tile was tapped (opens the lightbox at that photo). */
+  onAlbumTilePress?: (index: number) => void;
 }
 
 /**
- * Issue #4114 Wave 4: a chat photo. Stored paths resolve to a short-lived
- * signed link (cached); older public links and the sender's local file show as
- * they are. Loading and a tap-to-retry error state are drawn.
+ * Issue #4114 Wave 7: the picture a media card shows: its thumbnail when it has
+ * one, otherwise (older messages, the sender's own local photo) the file as
+ * before. expo-image keeps it on disk under its storage path, so scrolling
+ * back, or a fresh signed link, never downloads it again.
  */
-function ChatMediaPhoto({ fileUrl, style }: { fileUrl: string | undefined; style: object }): React.ReactElement {
+function ChatMediaThumb({
+  source,
+  style,
+  dimmed,
+}: {
+  source: string | undefined;
+  style: object;
+  dimmed?: boolean;
+}): React.ReactElement {
   const { t } = useTranslation(['chat']);
-  const { url, status, retry } = useChatMediaUrl(fileUrl);
+  const { url, status, retry } = useChatMediaUrl(source);
   if (status === 'error') {
     return (
       <TouchableOpacity
@@ -114,7 +158,128 @@ function ChatMediaPhoto({ fileUrl, style }: { fileUrl: string | undefined; style
       </View>
     );
   }
-  return <Image source={{ uri: url }} style={style} resizeMode="cover" accessibilityIgnoresInvertColors />;
+  return (
+    <ExpoImage
+      source={isChatStoragePath(source) ? { uri: url, cacheKey: source } : { uri: url }}
+      style={[style, dimmed && styles.mediaDimmed]}
+      contentFit="cover"
+      cachePolicy="memory-disk"
+      transition={120}
+      accessibilityIgnoresInvertColors
+    />
+  );
+}
+
+function formatTimeOnly(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * Issue #4114 Wave 7: the media inside a card. A photo shows its thumbnail; a
+ * video shows its first frame, a 50pt play button and its length (or, once its
+ * file was removed after 90 days, "Video no longer available"); an album shows
+ * up to 4 tiles in a 2×2 grid with "+N" on the 4th. The time sits on the image.
+ */
+function MediaCardBody({
+  message,
+  cardWidth,
+  cardHeight,
+  onCancelUpload,
+  onAlbumTilePress,
+}: {
+  message: MessageData;
+  cardWidth: number;
+  cardHeight: number;
+  onCancelUpload?: () => void;
+  onAlbumTilePress?: (index: number) => void;
+}): React.ReactElement {
+  const { t } = useTranslation(['chat']);
+  const time = formatTimeOnly(message.timestamp);
+  const album = message.album && message.album.length > 1 ? message.album : null;
+  const frame = { width: cardWidth, height: cardHeight };
+
+  let media: React.ReactElement;
+  if (album) {
+    const tileSize = (cardWidth - ALBUM_TILE_GAP) / 2;
+    media = (
+      <View style={[styles.albumGrid, frame]} testID="chat-media-album">
+        {albumTiles(album.length).map((tile) => {
+          const item = album[tile.index];
+          return (
+            <TouchableOpacity
+              key={item.id}
+              activeOpacity={0.85}
+              onPress={onAlbumTilePress ? () => onAlbumTilePress(tile.index) : undefined}
+              disabled={!onAlbumTilePress}
+              accessibilityRole="imagebutton"
+              accessibilityLabel={t('chat:a11yAlbumPhoto', { index: tile.index + 1, count: album.length })}
+              style={{ width: tileSize, height: tileSize }}
+            >
+              <ChatMediaThumb
+                source={item.localUri ?? item.thumbPath ?? item.fileUrl}
+                style={{ width: tileSize, height: tileSize }}
+              />
+              {tile.overflow > 0 ? (
+                <View style={styles.albumOverflow} pointerEvents="none">
+                  <Text style={styles.albumOverflowText}>{`+${tile.overflow}`}</Text>
+                </View>
+              ) : null}
+              {item.uploadProgress !== undefined ? (
+                <View style={styles.albumUploading} pointerEvents="none">
+                  <ActivityIndicator size="small" color={chatTokens.textPrimary} />
+                </View>
+              ) : null}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  } else if (message.type === 'video') {
+    const duration = formatMediaDuration(message.durationMs);
+    const poster = message.thumbPath;
+    media = (
+      <View style={[frame, styles.videoFrame]}>
+        {poster ? (
+          <ChatMediaThumb source={poster} style={frame} dimmed={message.mediaExpired} />
+        ) : null}
+        {message.mediaExpired ? (
+          <View style={styles.videoExpired} pointerEvents="none">
+            <Icon name="videocam" size={22} color={chatTokens.textSecondary} />
+            <Text style={styles.videoExpiredText}>{t('chat:videoNoLongerAvailable')}</Text>
+          </View>
+        ) : (
+          <View style={styles.playButton} pointerEvents="none" testID="chat-media-play">
+            <Icon name="play" size={24} color="#FFFFFF" />
+          </View>
+        )}
+        {duration && !message.mediaExpired ? (
+          <View style={[styles.mediaPill, styles.mediaPillLeft]} pointerEvents="none">
+            <Text style={styles.mediaPillText}>{duration}</Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  } else {
+    media = (
+      <ChatMediaThumb source={message.localUri ?? message.thumbPath ?? message.fileUrl} style={frame} />
+    );
+  }
+
+  return (
+    <View style={frame}>
+      {media}
+      {time ? (
+        <View style={[styles.mediaPill, styles.mediaPillRight]} pointerEvents="none">
+          <Text style={styles.mediaPillText}>{time}</Text>
+        </View>
+      ) : null}
+      {!album && message.uploadProgress !== undefined ? (
+        <UploadOverlay progress={message.uploadProgress} onCancel={onCancelUpload} />
+      ) : null}
+    </View>
+  );
 }
 
 /** Issue #4114 Wave 4: the progress + cancel layer over a media send that is uploading. */
@@ -213,7 +378,7 @@ function ViewOnceBubble({
         <Icon
           name={spent ? 'checkmark-done' : kind === 'video' ? 'play' : 'eye'}
           size={16}
-          color={spent ? chatTokens.textMuted : isMe ? 'white' : chatTokens.accent}
+          color={spent ? chatTokens.textMuted : isMe ? 'white' : receivedBubbleTokens.icon}
         />
       </View>
       <View style={styles.viewOnceText}>
@@ -298,7 +463,7 @@ function renderContentWithMentions(
         <MentionChip
           key={`m-${mention.userId}-${index}`}
           name={mention.displayName || 'unknown'}
-          variant={isMe ? 'sent' : 'received'}
+          variant={isMe ? 'sent' : 'receivedDark'}
           onPress={onMentionTap ? () => onMentionTap(mention.userId) : undefined}
         />
       );
@@ -342,7 +507,7 @@ function renderContentWithMentions(
       <MentionChip
         key={`m-${match.index}`}
         name={mentionName}
-        variant={isMe ? 'sent' : 'received'}
+        variant={isMe ? 'sent' : 'receivedDark'}
       />
     );
     lastIndex = match.index + match[0].length;
@@ -423,6 +588,9 @@ function MessageBubbleImpl({
   reactions,
   onReactionPress,
   onCancelUpload,
+  bottomGap,
+  topGap,
+  onAlbumTilePress,
 }: MessageBubbleProps) {
   const { t } = useTranslation(['chat', 'common']);
 
@@ -452,9 +620,23 @@ function MessageBubbleImpl({
   const isGroupEnd = groupPosition === 'last' || groupPosition === 'solo';
   const isDelivered = !message.id.startsWith('temp-');
   const isFailed = message.failed === true;
+  // Issue #4114 Wave 7: ordinary photos and videos sit in their own 20pt card
+  // (up to 72% wide, the media's shape clamped 3:4..16:9); view once stays a
+  // small private bubble.
+  const isMediaCard = (message.type === 'image' || message.type === 'video') && !message.viewOnce;
+  const cardSize = !isMediaCard
+    ? null
+    : message.album && message.album.length > 1
+      ? albumCardSize(SCREEN_WIDTH, message.album.length)
+      : mediaCardSize({ screenWidth: SCREEN_WIDTH, mediaWidth: message.mediaWidth, mediaHeight: message.mediaHeight });
+  const caption = isMediaCard && message.content && message.content !== message.fileName ? message.content : '';
+  const spacing = [
+    bottomGap !== undefined ? { marginBottom: bottomGap } : isGroupEnd ? styles.spacingGroupEnd : styles.spacingGroupContinue,
+    topGap ? { marginTop: topGap } : null,
+  ];
 
   return (
-    <View style={isGroupEnd ? styles.spacingGroupEnd : styles.spacingGroupContinue}>
+    <View style={spacing}>
       {/* Timestamp pill */}
       {showTimestamp && (
         <View style={styles.timestampContainer}>
@@ -479,34 +661,38 @@ function MessageBubbleImpl({
           style={[
             styles.bubble,
             isMe ? styles.bubbleSent : styles.bubbleReceived,
-            borderRadius,
+            cardSize ? [styles.mediaCard, { width: cardSize.width }] : borderRadius,
             isFailed && styles.bubbleFailed,
             !isDelivered && !isFailed && styles.bubbleSending,
           ]}
+          testID={cardSize ? 'chat-media-card' : undefined}
         >
-          {showSenderName ? (
-            <Text
-              style={[
-                styles.senderName,
-                isMe ? styles.senderNameSent : styles.senderNameReceived,
-              ]}
-              numberOfLines={1}
-            >
-              {message.senderName?.trim() || t('chat:unknownSender')}
-            </Text>
-          ) : null}
+          {showSenderName || replyTo ? (
+            <View style={cardSize ? styles.mediaCardHeader : null}>
+              {showSenderName ? (
+                <Text
+                  style={[
+                    styles.senderName,
+                    isMe ? styles.senderNameSent : styles.senderNameReceived,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {message.senderName?.trim() || t('chat:unknownSender')}
+                </Text>
+              ) : null}
 
-          {/* Reply quote block (Wave 2 will wire data; renders when replyTo prop is provided) */}
-          {replyTo && (
-            <ReplyQuoteBlock
-              senderName={replyTo.senderName}
-              previewText={replyTo.content}
-              imageUrl={replyTo.imageUrl}
-              variant={isMe ? 'sent' : 'received'}
-              isDeleted={replyTo.isDeleted}
-              onPress={replyTo.messageId && onScrollToMessage ? () => onScrollToMessage(replyTo.messageId!) : undefined}
-            />
-          )}
+              {replyTo && (
+                <ReplyQuoteBlock
+                  senderName={replyTo.senderName}
+                  previewText={replyTo.content}
+                  imageUrl={replyTo.imageUrl}
+                  variant={isMe ? 'sent' : 'received'}
+                  isDeleted={replyTo.isDeleted}
+                  onPress={replyTo.messageId && onScrollToMessage ? () => onScrollToMessage(replyTo.messageId!) : undefined}
+                />
+              )}
+            </View>
+          ) : null}
 
           {message.type === 'text' && (
             <>
@@ -539,49 +725,40 @@ function MessageBubbleImpl({
             />
           ) : null}
 
-          {message.type === 'image' && !message.viewOnce && (message.localUri || message.fileUrl) && (
-            <View style={styles.mediaContainer}>
-              {message.content && message.content !== message.fileName && (
-                <Text style={[styles.messageText, isMe ? styles.textSent : styles.textReceived, styles.mediaCaption]}>
-                  {message.content}
-                </Text>
-              )}
-              <View>
-                <ChatMediaPhoto
-                  fileUrl={message.localUri ?? message.fileUrl}
-                  style={[styles.mediaImage, borderRadius]}
-                />
-                {message.uploadProgress !== undefined ? (
-                  <UploadOverlay progress={message.uploadProgress} onCancel={onCancelUpload} />
-                ) : null}
-              </View>
+          {/* Issue #4114 Wave 7: photo, video and album cards; the caption sits
+              inside the card under the image. */}
+          {cardSize ? (
+            <View
+              accessible
+              accessibilityRole={message.album ? 'none' : message.type === 'video' && !message.mediaExpired ? 'button' : 'image'}
+              accessibilityLabel={
+                message.album
+                  ? t('chat:a11yAlbum', { count: message.album.length })
+                  : message.type === 'video'
+                    ? message.mediaExpired
+                      ? t('chat:videoNoLongerAvailable')
+                      : t('chat:a11yPlayVideo')
+                    : t('chat:photo')
+              }
+            >
+              <MediaCardBody
+                message={message}
+                cardWidth={cardSize.width}
+                cardHeight={cardSize.height}
+                onCancelUpload={onCancelUpload}
+                onAlbumTilePress={onAlbumTilePress}
+              />
             </View>
-          )}
-
-          {message.type === 'video' && !message.viewOnce && (
-            <View style={styles.mediaContainer}>
-              {message.content && message.content !== message.fileName && (
-                <Text style={[styles.messageText, isMe ? styles.textSent : styles.textReceived, styles.mediaCaption]}>
-                  {message.content}
-                </Text>
-              )}
-              <View
-                style={[styles.videoPlaceholder, borderRadius]}
-                accessibilityRole="button"
-                accessibilityLabel={t('chat:a11yPlayVideo')}
-              >
-                <Icon name="play-circle" size={40} color={isMe ? 'white' : colors.primary[500]} />
-                <Text style={styles.videoLabel}>{t('chat:video')}</Text>
-                {message.uploadProgress !== undefined ? (
-                  <UploadOverlay progress={message.uploadProgress} onCancel={onCancelUpload} />
-                ) : null}
-              </View>
-            </View>
-          )}
+          ) : null}
+          {cardSize && caption ? (
+            <Text style={[styles.messageText, isMe ? styles.textSent : styles.textReceived, styles.mediaCardCaption]}>
+              {caption}
+            </Text>
+          ) : null}
 
           {message.type === 'file' && (
             <View style={styles.fileContainer}>
-              <Icon name="document-text" size={16} color={isMe ? 'white' : colors.primary[500]} />
+              <Icon name="document-text" size={16} color={isMe ? 'white' : receivedBubbleTokens.icon} />
               <View style={styles.fileInfo}>
                 <Text style={[styles.fileName, isMe ? styles.textSent : styles.textReceived]} numberOfLines={1}>
                   {message.fileName || t('chat:document')}
@@ -599,7 +776,7 @@ function MessageBubbleImpl({
                   accessibilityRole="button"
                   accessibilityLabel={t('chat:a11yCancelUpload')}
                 >
-                  <Icon name="close" size={14} color={isMe ? 'white' : colors.text.tertiary} />
+                  <Icon name="close" size={14} color={isMe ? 'white' : receivedBubbleTokens.textSecondary} />
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -966,8 +1143,9 @@ const styles = StyleSheet.create({
   bubbleSent: {
     backgroundColor: colors.chat.bubbleSent,
   },
+  // Issue #4114 Wave 7: received bubbles are a dark surface with white text.
   bubbleReceived: {
-    backgroundColor: colors.chat.bubbleReceived,
+    backgroundColor: receivedBubbleTokens.bubble,
   },
   bubbleFailed: {
     borderWidth: 1,
@@ -990,13 +1168,13 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.78)',
   },
   senderNameReceived: {
-    color: colors.text.tertiary,
+    color: receivedBubbleTokens.senderName,
   },
   textSent: {
     color: colors.text.inverse,
   },
   textReceived: {
-    color: colors.text.primary,
+    color: receivedBubbleTokens.text,
   },
   contentWithMentions: {
     flexDirection: 'row',
@@ -1004,26 +1182,94 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 2,
   },
-  mediaContainer: {
-    gap: 4,
+  // Issue #4114 Wave 7: media cards.
+  mediaCard: {
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    borderRadius: MEDIA_CARD_RADIUS,
+    overflow: 'hidden',
   },
-  mediaCaption: {
-    marginBottom: 4,
+  mediaCardHeader: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 4,
   },
-  mediaImage: {
-    width: 240,
-    height: 200,
-    margin: -9, // near edge-to-edge (12px padding - 3px desired)
-    marginTop: 0,
+  mediaCardCaption: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 10,
   },
-  videoPlaceholder: {
-    width: 240,
-    height: 160,
-    backgroundColor: 'rgba(0,0,0,0.1)',
+  mediaDimmed: {
+    opacity: 0.35,
+  },
+  mediaPill: {
+    position: 'absolute',
+    bottom: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  },
+  mediaPillLeft: {
+    left: 8,
+  },
+  mediaPillRight: {
+    right: 8,
+  },
+  mediaPillText: {
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: fontWeights.semibold,
+    color: '#FFFFFF',
+  },
+  videoFrame: {
+    backgroundColor: '#0B0D10',
     alignItems: 'center',
     justifyContent: 'center',
-    margin: -9,
-    marginTop: 0,
+  },
+  playButton: {
+    position: 'absolute',
+    width: PLAY_BUTTON_SIZE,
+    height: PLAY_BUTTON_SIZE,
+    borderRadius: PLAY_BUTTON_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 3,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  },
+  videoExpired: {
+    position: 'absolute',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+  },
+  videoExpiredText: {
+    fontSize: 13,
+    fontWeight: fontWeights.medium,
+    color: chatTokens.textSecondary,
+    textAlign: 'center',
+  },
+  albumGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: ALBUM_TILE_GAP,
+  },
+  albumOverflow: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  albumOverflowText: {
+    fontSize: 22,
+    fontWeight: fontWeights.bold,
+    color: '#FFFFFF',
+  },
+  albumUploading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
   },
   fileContainer: {
     flexDirection: 'row',
@@ -1046,7 +1292,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
   },
   fileSizeReceived: {
-    color: colors.text.tertiary,
+    color: receivedBubbleTokens.textSecondary,
   },
   // Issue #4114 Wave 4: media states, upload progress and view once.
   mediaPending: {
@@ -1054,16 +1300,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  videoLabel: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: fontWeights.medium,
-    color: 'rgba(255,255,255,0.72)',
-  },
   uploadOverlay: {
     ...StyleSheet.absoluteFillObject,
-    margin: -9,
-    marginTop: 0,
     justifyContent: 'flex-end',
     padding: 10,
     backgroundColor: 'rgba(0,0,0,0.35)',

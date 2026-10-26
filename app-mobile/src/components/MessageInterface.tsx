@@ -94,6 +94,7 @@ import { MentionPopover } from "./board/MentionPopover";
 import { CardTagPopover } from "./board/CardTagPopover";
 import type { Participant } from "./board/ParticipantAvatars";
 import { groupMessages } from "../utils/messageGrouping";
+import { bubbleBottomGap, bubbleTopGap, groupAlbums, type BubbleKind } from "../utils/chatMediaLayout";
 import {
   aggregateReactions,
   dayLabelKind,
@@ -229,6 +230,18 @@ interface Message {
   viewOncePurged?: boolean;
   mediaViews?: Array<{ user_id: string; viewed_at: string }>;
   localMedia?: PickedChatMedia;
+  /** Issue #4114 Wave 7: thumbnail path, media facts, album id, and a 90-day-old video's removed file. */
+  thumbPath?: string;
+  mediaDurationMs?: number;
+  mediaWidth?: number;
+  mediaHeight?: number;
+  mediaAlbumId?: string;
+  mediaExpired?: boolean;
+  /**
+   * Issue #4114 Wave 7, thread only (never stored): the photos of an album,
+   * oldest first, on the album's first message.
+   */
+  albumItems?: Message[];
 }
 
 /** Issue #4114 Wave 3: one prepared row of the thread (built once per message change). */
@@ -253,9 +266,30 @@ interface ThreadRow {
   showNewDivider: boolean;
   /** Issue #4114 Wave 6: brand channel — this message starts a run from this event. */
   eventMarker: BrandChannelEvent | null;
+  /** Issue #4114 Wave 7: space under and above the row (media cards get 14pt). */
+  bottomGap: number;
+  topGap: number;
 }
 
 const EMPTY_EMOJIS: string[] = [];
+
+/**
+ * Issue #4114 Wave 7: the picker's video export, iPhone only. 1280×720 H.264
+ * from the library (videoExportPreset) and the camera (videoQuality).
+ */
+export const CHAT_VIDEO_EXPORT: Pick<ImagePicker.ImagePickerOptions, "videoExportPreset" | "videoQuality"> =
+  Platform.OS === "ios"
+    ? {
+        videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
+        videoQuality: ImagePicker.UIImagePickerControllerQualityType.IFrame1280x720,
+      }
+    : {};
+
+/** Issue #4114 Wave 7: a photo or video card (view once stays a small private bubble). */
+function bubbleKindOf(message: Message | undefined): BubbleKind | null {
+  if (!message) return null;
+  return (message.type === "image" || message.type === "video") && !message.viewOnce ? "media" : "plain";
+}
 const threadRowKey = (row: ThreadRow): string => row.key;
 
 interface Friend {
@@ -582,7 +616,12 @@ export default function MessageInterface({
   const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [showMediaSheet, setShowMediaSheet] = useState(false);
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  // Issue #4114 Wave 7: an album opens the lightbox on all its photos at the tapped one.
+  const [lightbox, setLightbox] = useState<{ urls: string[]; index: number } | null>(null);
+  const lightboxUrl = lightbox ? lightbox.urls[lightbox.index] ?? null : null;
+  const setLightboxUrl = useCallback((url: string | null) => {
+    setLightbox(url ? { urls: [url], index: 0 } : null);
+  }, []);
   const [isMuteBusy, setIsMuteBusy] = useState(false);
   const [showCollabDeckSheet, setShowCollabDeckSheet] = useState(false);
   const [showCollabMatchesSheet, setShowCollabMatchesSheet] = useState(false);
@@ -971,11 +1010,22 @@ export default function MessageInterface({
   // Issue #4114 Wave 3: unsent messages are hidden (kept in the store so the
   // merge never resurrects them from an older copy).
   const visibleMessages = useMemo(() => messages.filter((message) => !message.unsent), [messages]);
-  const groupedMessages = useMemo(() => {
-    if (!visibleMessages.length) return [];
-    const grouped = groupMessages(visibleMessages);
-    return [...grouped].reverse();
+  // Issue #4114 Wave 7: consecutive photos of one album become one thread row
+  // (the first photo, carrying the rest in albumItems).
+  const threadMessages = useMemo<Message[]>(() => {
+    const runs = groupAlbums(
+      visibleMessages.map((message) => ({ ...message, albumId: message.mediaAlbumId })),
+    );
+    return runs.map((run) => {
+      const items = run.map(({ albumId: _albumId, ...rest }) => rest as Message);
+      return items.length > 1 ? { ...items[0], albumItems: items } : items[0];
+    });
   }, [visibleMessages]);
+  const groupedMessages = useMemo(() => {
+    if (!threadMessages.length) return [];
+    const grouped = groupMessages(threadMessages);
+    return [...grouped].reverse();
+  }, [threadMessages]);
 
   // ── Presence-derived state for header ─────────────────────
   // presenceParticipants is Record<userId, { isOnline, lastSeenAt }>
@@ -1151,6 +1201,9 @@ export default function MessageInterface({
         // Full quality: the upload service resizes and compresses photos itself.
         quality: 1,
         videoMaxDuration: 60,
+        // Issue #4114 Wave 7: iPhone exports videos at 720p H.264 (about 4–8 MB
+        // for 30 s instead of 30–60 MB). Android ignores it and keeps the 25 MB cap.
+        ...CHAT_VIDEO_EXPORT,
       });
       if (result.canceled || !result.assets?.length) return;
       addPickedMedia(result.assets.map(assetToPicked));
@@ -1175,6 +1228,7 @@ export default function MessageInterface({
         allowsEditing: false,
         quality: 1,
         videoMaxDuration: 60,
+        ...CHAT_VIDEO_EXPORT,
       });
       if (result.canceled || !result.assets?.length) return;
       addPickedMedia(result.assets.map(assetToPicked));
@@ -1243,6 +1297,27 @@ export default function MessageInterface({
       setLightboxUrl(url);
     } catch (error) {
       console.error("Error opening photo:", error);
+      showNotification(t('chat:mediaLoadFailed'), '', 'error');
+    }
+  };
+
+  /**
+   * Issue #4114 Wave 7: an album's photos in the lightbox, opened at the tapped
+   * one. Full files load here, never in the thread (which shows thumbnails).
+   */
+  const handleOpenAlbum = async (items: Message[], index: number) => {
+    try {
+      const urls = await Promise.all(
+        items.map((item) =>
+          resolveChatMediaUrl(item.id.startsWith("temp-") ? item.localMedia?.uri ?? item.fileUrl : item.fileUrl),
+        ),
+      );
+      const ready = urls.map((url, position) => ({ url, position })).filter((entry): entry is { url: string; position: number } => !!entry.url);
+      if (ready.length === 0) throw new Error("no_media_url");
+      const start = Math.max(0, ready.findIndex((entry) => entry.position === index));
+      setLightbox({ urls: ready.map((entry) => entry.url), index: start });
+    } catch (error) {
+      console.error("Error opening album:", error);
       showNotification(t('chat:mediaLoadFailed'), '', 'error');
     }
   };
@@ -1984,6 +2059,22 @@ export default function MessageInterface({
             : new Date(message.timestamp).toLocaleDateString(i18n.language, { weekday: 'long', month: 'short', day: 'numeric' });
       const reactions = aggregateReactions(message.reactions, currentUserId);
       const ref = message.replyToId ? messageMap.get(message.replyToId) : undefined;
+      // Issue #4114 Wave 7: the list is inverted (newest first), so the row
+      // drawn below this one is index - 1 and the row above is index + 1.
+      const rowKind = bubbleKindOf(message) ?? "plain";
+      const below = index > 0 ? groupedMessages[index - 1].message : undefined;
+      const above = nextItem?.message;
+      const isLocal = (candidate: Message) => candidate.id.startsWith("temp-");
+      const mediaOf = (candidate: Message) => ({
+        id: candidate.id,
+        fileUrl: candidate.fileUrl,
+        thumbPath: candidate.thumbPath,
+        localUri: isLocal(candidate) ? candidate.localMedia?.uri : undefined,
+        uploadProgress:
+          isLocal(candidate) && !candidate.failed && candidate.clientId && uploadProgress
+            ? uploadProgress[candidate.clientId]
+            : undefined,
+      });
       return {
         key: message.clientId ?? message.id,
         message,
@@ -2024,7 +2115,21 @@ export default function MessageInterface({
                 })
               : undefined,
           isGroupChat,
+          // Issue #4114 Wave 7: thumbnail first, the card's shape, the video's
+          // length, a 90-day-old video's removed file, and an album's photos.
+          thumbPath: message.thumbPath,
+          mediaWidth: message.mediaWidth,
+          mediaHeight: message.mediaHeight,
+          durationMs: message.mediaDurationMs,
+          mediaExpired: message.mediaExpired === true,
+          album: message.albumItems && message.albumItems.length > 1 ? message.albumItems.map(mediaOf) : undefined,
         },
+        bottomGap: bubbleBottomGap({
+          kind: rowKind,
+          nextKind: bubbleKindOf(below),
+          groupEnd: item.groupPosition === 'last' || item.groupPosition === 'solo',
+        }),
+        topGap: bubbleTopGap({ kind: rowKind, previousKind: bubbleKindOf(above) }),
         showSenderName: shouldShowSenderName({
           isGroupChat,
           isMe: message.isMe,
@@ -2108,11 +2213,21 @@ export default function MessageInterface({
 
   // Issue #4114 Wave 4: a tap opens the media (lightbox, player, document, or
   // the one look at a view-once item); any other bubble toggles its time.
-  const mediaHandlersRef = useRef({ handleOpenImage, handleOpenVideo, handleViewDocument, handleOpenViewOnce });
-  mediaHandlersRef.current = { handleOpenImage, handleOpenVideo, handleViewDocument, handleOpenViewOnce };
-  const handleBubblePress = useCallback((row: ThreadRow) => {
+  const mediaHandlersRef = useRef({ handleOpenImage, handleOpenAlbum, handleOpenVideo, handleViewDocument, handleOpenViewOnce });
+  mediaHandlersRef.current = { handleOpenImage, handleOpenAlbum, handleOpenVideo, handleViewDocument, handleOpenViewOnce };
+  const handleBubblePress = useCallback((row: ThreadRow, albumIndex?: number) => {
     const message = row.message;
     const local = message.id.startsWith("temp-");
+    // Issue #4114 Wave 7: an album opens the lightbox on all its photos at the tapped one.
+    if (message.albumItems && message.albumItems.length > 1) {
+      void mediaHandlersRef.current.handleOpenAlbum(message.albumItems, albumIndex ?? 0);
+      return;
+    }
+    // Issue #4114 Wave 7 (D18): a 90-day-old video's file is gone; the card says so.
+    if (message.type === "video" && message.mediaExpired) {
+      setRevealedTimestampId((prev) => (prev === message.id ? null : message.id));
+      return;
+    }
     if ((message.type === "image" || message.type === "video") && message.viewOnce) {
       // Only a recipient opens it, once; the sender can never reopen it.
       if (!local && !message.isMe) void mediaHandlersRef.current.handleOpenViewOnce(message);
@@ -2154,7 +2269,10 @@ export default function MessageInterface({
 
   // Reply quotes jump to the original when it is loaded.
   const handleScrollToMessage = useCallback((messageId: string) => {
-    const index = threadRowsRef.current.findIndex((row) => row.message.id === messageId);
+    // Issue #4114 Wave 7: a reply to one photo of an album jumps to the album.
+    const index = threadRowsRef.current.findIndex(
+      (row) => row.message.id === messageId || row.message.albumItems?.some((item) => item.id === messageId) === true,
+    );
     if (index < 0) {
       showNotification(t('chat:replyOriginalNotLoaded'), '', 'info');
       return;
@@ -2363,6 +2481,9 @@ export default function MessageInterface({
                   ? () => onCancelUpload(item.message.id)
                   : undefined
               }
+              bottomGap={item.bottomGap}
+              topGap={item.topGap}
+              onAlbumTilePress={item.bubble.album ? (index: number) => handleBubblePress(item, index) : undefined}
             />
           </TouchableOpacity>
         </DoubleTapHeart>
@@ -2771,10 +2892,10 @@ export default function MessageInterface({
           ImageLightbox, videos in the expo-video player, and a view-once item
           in its one-time viewer (no save, no share). */}
       <ImageLightbox
-        images={lightboxUrl ? [lightboxUrl] : []}
-        initialIndex={0}
-        visible={!!lightboxUrl}
-        onClose={() => setLightboxUrl(null)}
+        images={lightbox?.urls ?? []}
+        initialIndex={lightbox?.index ?? 0}
+        visible={!!lightbox}
+        onClose={() => setLightbox(null)}
       />
       <ChatVideoPlayerModal url={videoUrl} onClose={() => setVideoUrl(null)} />
       <ChatVideoPlayerModal url={viewOnceVideoUrl} onClose={() => setViewOnceVideoUrl(null)} viewOnce />

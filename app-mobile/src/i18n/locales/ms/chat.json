@@ -278,5 +278,9 @@
   "brandChannelSubtitle_other": "{{count}} acara anda · ketik untuk halaman jenama",
   "sendToGoing_other": "{{count}} hadir",
   "sendToWent_other": "{{count}} telah hadir",
-  "sendToTravelled_other": "{{count}} telah mengembara"
+  "sendToTravelled_other": "{{count}} telah mengembara",
+  "mediaDailyLimit": "Anda telah mencapai had foto dan video hari ini.",
+  "videoNoLongerAvailable": "Video tidak lagi tersedia",
+  "a11yAlbum": "Album foto ({{count}})",
+  "a11yAlbumPhoto": "Foto {{index}} daripada {{count}}"
 }

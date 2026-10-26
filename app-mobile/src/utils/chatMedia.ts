@@ -12,7 +12,14 @@
  *     object PATH (`<conversationId>/<clientId>.<ext>`, view once under
  *     `<conversationId>/once/`), never a URL. Messages sent before Wave 4 hold
  *     a public https URL and keep rendering as they are.
- *   * Signed URLs are short-lived and cached until shortly before they expire.
+ *   * Signed URLs are cached until shortly before they expire. Ordinary chat
+ *     media links last 7 days (Wave 7) so the image cache keeps them usable;
+ *     view once never uses them (its one link comes from open-view-once).
+ *   * Wave 7 thumbnails: every ordinary photo and video also gets a 480px JPEG
+ *     at `<conversationId>/<clientId>_thumb.jpg`; bubbles show it and the full
+ *     file loads only when tapped. View once never makes one.
+ *   * Wave 7 allowance (D17): 200 MB per person per day, enforced by storage;
+ *     a refusal says "You've reached today's limit for photos and videos".
  *
  * MINGLA-INVARIANT: I-4114-CHAT-MEDIA-PRIVATE-PATH | issue #4114 | New chat attachments are uploaded to the private message-attachments bucket and the message stores the object path; no new message stores a public URL.
  */
@@ -23,8 +30,18 @@ export const MAX_VIDEO_SECONDS = 60;
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 export const PHOTO_MAX_EDGE = 1600;
 export const PHOTO_JPEG_QUALITY = 0.8;
-/** Thread media links; the view-once link is the edge function's 60 seconds. */
-export const SIGNED_URL_SECONDS = 60 * 60;
+/**
+ * Thread media links (Wave 7: 7 days, so cached thumbnails stay usable); the
+ * view-once link is the edge function's 60 seconds and never uses this.
+ */
+export const SIGNED_URL_SECONDS = 7 * 24 * 60 * 60;
+/** Wave 7: the bubble thumbnail's longer edge, and its JPEG quality (about 40–60 KB). */
+export const THUMB_MAX_EDGE = 480;
+export const THUMB_JPEG_QUALITY = 0.7;
+/** Wave 7 (D17): chat photos and videos one person may upload per 24 hours. */
+export const DAILY_CHAT_MEDIA_BYTES = 200 * 1024 * 1024;
+/** Wave 7: the storage error text of the daily allowance trigger. */
+export const DAILY_LIMIT_ERROR = 'chat_media_daily_limit';
 /** Ask for a fresh link this long before the cached one expires. */
 export const SIGNED_URL_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
@@ -169,6 +186,38 @@ export function buildChatAttachmentPath(
   return `${conversationId.toLowerCase()}/${viewOnce ? 'once/' : ''}${clientId.toLowerCase()}.${ext}`;
 }
 
+/**
+ * Wave 7: the thumbnail sibling of an ordinary attachment,
+ * `<conversationId>/<clientId>_thumb.jpg` (never under once/).
+ */
+export function buildChatThumbPath(conversationId: string, clientId: string): string {
+  if (!UUID.test(conversationId) || !UUID.test(clientId)) {
+    throw new Error('chat_media_bad_path_ids');
+  }
+  return `${conversationId.toLowerCase()}/${clientId.toLowerCase()}_thumb.jpg`;
+}
+
+/** Wave 7: resize to fit THUMB_MAX_EDGE on the longer side; null when already small enough. */
+export function thumbResize(
+  width: number | null | undefined,
+  height: number | null | undefined,
+): { width: number } | { height: number } | null {
+  if (!width || !height || width <= 0 || height <= 0) return { width: THUMB_MAX_EDGE };
+  if (Math.max(width, height) <= THUMB_MAX_EDGE) return null;
+  return width >= height ? { width: THUMB_MAX_EDGE } : { height: THUMB_MAX_EDGE };
+}
+
+/** Wave 7: a thumbnail is made for ordinary photos and videos only, never view once or files. */
+export function shouldMakeThumbnail(kind: ChatMediaKind, viewOnce: boolean): boolean {
+  return !viewOnce && (kind === 'image' || kind === 'video');
+}
+
+/** Wave 7: would this upload take the person past today's allowance? */
+export function wouldExceedDailyLimit(usedBytes: number, nextBytes: number | null | undefined): boolean {
+  const next = typeof nextBytes === 'number' && Number.isFinite(nextBytes) ? Math.max(0, nextBytes) : 0;
+  return usedBytes >= DAILY_CHAT_MEDIA_BYTES || usedBytes + next > DAILY_CHAT_MEDIA_BYTES;
+}
+
 /** A message `file_url` that is an object path in the private bucket (Wave 4+). */
 export function isChatStoragePath(fileUrl: string | null | undefined): fileUrl is string {
   return !!fileUrl && !/^[a-z][a-z0-9+.-]*:/i.test(fileUrl) && /^[0-9a-f-]{36}\//i.test(fileUrl);
@@ -179,12 +228,20 @@ export function isDirectMediaUrl(fileUrl: string | null | undefined): fileUrl is
   return !!fileUrl && /^(https?|file|content|ph|assets-library):/i.test(fileUrl);
 }
 
-export type UploadOutcome = 'uploaded' | 'already_uploaded' | 'refused_type' | 'refused_size' | 'failed';
+export type UploadOutcome =
+  | 'uploaded'
+  | 'already_uploaded'
+  | 'refused_type'
+  | 'refused_size'
+  | 'daily_limit'
+  | 'failed';
 
 /** Classifies a Storage upload response. A retry of an upload that already landed is a success. */
 export function classifyUploadResponse(status: number, body: string): UploadOutcome {
   if (status >= 200 && status < 300) return 'uploaded';
   const text = body.toLowerCase();
+  // Wave 7: the allowance trigger's own text, whatever status Storage wraps it in.
+  if (text.includes(DAILY_LIMIT_ERROR)) return 'daily_limit';
   if (status === 409 || text.includes('already exists') || text.includes('duplicate')) return 'already_uploaded';
   if (status === 413 || text.includes('maximum allowed size') || text.includes('payload too large')) return 'refused_size';
   if (status === 415 || text.includes('mime type') || text.includes('invalid_mime_type')) return 'refused_type';

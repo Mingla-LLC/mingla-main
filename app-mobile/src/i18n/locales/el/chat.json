@@ -292,5 +292,9 @@
   "sendToWent_one": "{{count}} πήγε",
   "sendToWent_other": "{{count}} πήγαν",
   "sendToTravelled_one": "{{count}} ταξίδεψε",
-  "sendToTravelled_other": "{{count}} ταξίδεψαν"
+  "sendToTravelled_other": "{{count}} ταξίδεψαν",
+  "mediaDailyLimit": "Έφτασες το σημερινό όριο για φωτογραφίες και βίντεο.",
+  "videoNoLongerAvailable": "Το βίντεο δεν είναι πλέον διαθέσιμο",
+  "a11yAlbum": "Άλμπουμ φωτογραφιών ({{count}})",
+  "a11yAlbumPhoto": "Φωτογραφία {{index}} από {{count}}"
 }

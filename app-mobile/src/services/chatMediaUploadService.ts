@@ -14,15 +14,30 @@
  *                      a pre-Wave-4 public URL is returned as it is.
  *   openViewOnceMedia  the recipient's one open, through the open-view-once
  *                      edge function (recipients cannot read view-once objects).
+ *   Wave 7:            a 480px JPEG thumbnail next to every ordinary photo and
+ *                      video (`<conversationId>/<clientId>_thumb.jpg`; videos
+ *                      take a frame through expo-video's generateThumbnailsAsync),
+ *                      never for view once; the 200 MB daily allowance is
+ *                      checked before an upload and explains a refusal.
  *
  * Every native module used here (expo-image-manipulator, expo-file-system) is
  * already in the shipped 1.1.x binary; nothing new is added, so this is OTA-safe.
  */
 import * as ImageManipulator from 'expo-image-manipulator';
+import { createVideoPlayer, type VideoPlayer } from 'expo-video';
+import {
+  isVideoPlayerReleasedForReload,
+  registerVideoPlayerForReload,
+} from '@mingla/offering-rendering/videoPlayerReloadRelease';
 import { supabase, supabaseUrl, getSupabaseFunctionHeaders } from './supabase';
 import {
   CHAT_MEDIA_BUCKET,
   PHOTO_JPEG_QUALITY,
+  THUMB_JPEG_QUALITY,
+  buildChatThumbPath,
+  shouldMakeThumbnail,
+  thumbResize,
+  wouldExceedDailyLimit,
   ChatUploadCancelRegistry,
   SignedUrlCache,
   buildChatAttachmentPath,
@@ -55,6 +70,7 @@ export type ChatMediaUploadErrorCode =
   | 'not_signed_in'
   | 'refused_type'
   | 'refused_size'
+  | 'daily_limit'
   | 'network'
   | 'failed';
 
@@ -133,6 +149,108 @@ export interface UploadedChatMedia {
   path: string;
   mimeType: string;
   fileSize: number | null;
+  /** Wave 7: the thumbnail's object path (`messages.thumb_path`), or null when none was made. */
+  thumbPath: string | null;
+  /** Wave 7: the media's own dimensions (photos after resizing), for the card's shape. */
+  width: number | null;
+  height: number | null;
+}
+
+/** A local 480px JPEG and its size. */
+export interface LocalThumbnail {
+  uri: string;
+  width: number;
+  height: number;
+}
+
+const VIDEO_READY_TIMEOUT_MS = 6000;
+
+/** Waits until a player has loaded its source (or failed / timed out). */
+function waitForPlayerReady(player: VideoPlayer): Promise<void> {
+  if (player.status === 'readyToPlay') return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      subscription.remove();
+      reject(new Error('video_thumbnail_timeout'));
+    }, VIDEO_READY_TIMEOUT_MS);
+    const subscription = player.addListener('statusChange', ({ status, error }) => {
+      if (status === 'readyToPlay') {
+        clearTimeout(timer);
+        subscription.remove();
+        resolve();
+      } else if (status === 'error') {
+        clearTimeout(timer);
+        subscription.remove();
+        reject(new Error(error?.message ?? 'video_thumbnail_load_failed'));
+      }
+    });
+  });
+}
+
+/**
+ * Wave 7: the first frame of a local video as a 480px JPEG. A player is
+ * created from the local file with no view mounted, registered for the #2107
+ * restart release while it lives, and always released afterwards.
+ */
+export async function makeVideoThumbnail(uri: string): Promise<LocalThumbnail> {
+  const player = createVideoPlayer(uri);
+  const unregister = registerVideoPlayerForReload(player);
+  try {
+    player.muted = true;
+    await waitForPlayerReady(player);
+    if (isVideoPlayerReleasedForReload(player)) throw new Error('video_thumbnail_released');
+    const [frame] = await player.generateThumbnailsAsync([0], { maxWidth: 480, maxHeight: 480 });
+    if (!frame) throw new Error('video_thumbnail_empty');
+    const context = ImageManipulator.ImageManipulator.manipulate(frame);
+    const resize = thumbResize(frame.width, frame.height);
+    if (resize) context.resize(resize);
+    const rendered = await context.renderAsync();
+    const saved = await rendered.saveAsync({ compress: THUMB_JPEG_QUALITY, format: ImageManipulator.SaveFormat.JPEG });
+    return { uri: saved.uri, width: saved.width, height: saved.height };
+  } finally {
+    unregister();
+    if (!isVideoPlayerReleasedForReload(player)) {
+      try {
+        player.release();
+      } catch (error) {
+        console.warn('[chatMediaUpload] video thumbnail player release failed', error);
+      }
+    }
+  }
+}
+
+/** Wave 7: a 480px JPEG of a (prepared) photo. */
+export async function makePhotoThumbnail(item: PreparedChatMedia): Promise<LocalThumbnail> {
+  const resize = thumbResize(item.width, item.height);
+  const result = await ImageManipulator.manipulateAsync(
+    item.uri,
+    resize ? [{ resize }] : [],
+    { compress: THUMB_JPEG_QUALITY, format: ImageManipulator.SaveFormat.JPEG },
+  );
+  return { uri: result.uri, width: result.width, height: result.height };
+}
+
+/** Wave 7: the thumbnail for an ordinary photo or video (null for view once and files). */
+export async function makeChatThumbnail(item: PreparedChatMedia, viewOnce: boolean): Promise<LocalThumbnail | null> {
+  if (!shouldMakeThumbnail(item.kind, viewOnce)) return null;
+  return item.kind === 'video' ? await makeVideoThumbnail(item.uri) : await makePhotoThumbnail(item);
+}
+
+/**
+ * Wave 7 (D17): what the signed-in person uploaded in the last 24 hours. Null
+ * when it cannot be read (storage still enforces the allowance).
+ */
+export async function readChatMediaQuota(): Promise<{ usedBytes: number; limitBytes: number } | null> {
+  const { data, error } = await supabase.rpc('issue_4114_chat_media_quota');
+  if (error) {
+    console.warn('[chatMediaUpload] allowance read failed', { code: error.code });
+    return null;
+  }
+  const row = (Array.isArray(data) ? data[0] : data) as { used_bytes?: number | string; limit_bytes?: number | string } | null;
+  if (!row) return null;
+  const usedBytes = Number(row.used_bytes);
+  const limitBytes = Number(row.limit_bytes);
+  return Number.isFinite(usedBytes) && Number.isFinite(limitBytes) ? { usedBytes, limitBytes } : null;
 }
 
 export async function uploadChatMedia(args: UploadChatMediaArgs): Promise<UploadedChatMedia> {
@@ -158,6 +276,10 @@ export async function uploadChatMedia(args: UploadChatMediaArgs): Promise<Upload
   const size = info.exists && typeof info.size === 'number' ? info.size : item.fileSize;
   if (!isWithinUploadLimit(size)) throw new ChatMediaUploadError('refused_size');
   if (uploads.takeCancelledBeforeStart(clientId)) throw new ChatMediaUploadError('cancelled');
+
+  // Wave 7 (D17): refuse before any bytes move when this would pass today's allowance.
+  const quota = await readChatMediaQuota();
+  if (quota && wouldExceedDailyLimit(quota.usedBytes, size)) throw new ChatMediaUploadError('daily_limit');
 
   const objectUrl = `${supabaseUrl}/storage/v1/object/${CHAT_MEDIA_BUCKET}/${path}`;
   const task = FileSystem.createUploadTask(
@@ -194,13 +316,68 @@ export async function uploadChatMedia(args: UploadChatMediaArgs): Promise<Upload
   if (entry.cancelled || !response) throw new ChatMediaUploadError('cancelled');
 
   if (outcome === 'uploaded' || outcome === 'already_uploaded') {
+    const thumbPath = await uploadChatThumbnail({ conversationId, clientId, item, viewOnce, accessToken, FileSystem });
     onProgress?.(1);
-    return { path, mimeType: item.mimeType, fileSize: typeof size === 'number' ? size : null };
+    return {
+      path,
+      mimeType: item.mimeType,
+      fileSize: typeof size === 'number' ? size : null,
+      thumbPath,
+      width: item.width,
+      height: item.height,
+    };
   }
   console.warn('[chatMediaUpload] upload refused', { status: response.status, outcome });
   if (outcome === 'refused_type') throw new ChatMediaUploadError('refused_type');
   if (outcome === 'refused_size') throw new ChatMediaUploadError('refused_size');
+  if (outcome === 'daily_limit') throw new ChatMediaUploadError('daily_limit');
+  // Storage may wrap the allowance refusal in a generic error: ask the allowance.
+  const after = await readChatMediaQuota();
+  if (after && wouldExceedDailyLimit(after.usedBytes, size)) throw new ChatMediaUploadError('daily_limit');
   throw new ChatMediaUploadError('failed', `upload_status_${response.status}`);
+}
+
+/**
+ * Wave 7: makes and uploads the thumbnail of an ordinary photo or video. A
+ * thumbnail that cannot be made or stored is logged and the message is sent
+ * without one (it then shows the full file, as messages always have).
+ */
+async function uploadChatThumbnail(args: {
+  conversationId: string;
+  clientId: string;
+  item: PreparedChatMedia;
+  viewOnce: boolean;
+  accessToken: string;
+  FileSystem: typeof import('expo-file-system/legacy');
+}): Promise<string | null> {
+  const { conversationId, clientId, item, viewOnce, accessToken, FileSystem } = args;
+  if (!shouldMakeThumbnail(item.kind, viewOnce)) return null;
+  try {
+    const thumb = await makeChatThumbnail(item, viewOnce);
+    if (!thumb) return null;
+    const thumbPath = buildChatThumbPath(conversationId, clientId);
+    const result = await FileSystem.uploadAsync(
+      `${supabaseUrl}/storage/v1/object/${CHAT_MEDIA_BUCKET}/${thumbPath}`,
+      thumb.uri,
+      {
+        httpMethod: 'POST',
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        headers: {
+          ...getSupabaseFunctionHeaders(accessToken),
+          'Content-Type': 'image/jpeg',
+          'x-upsert': 'false',
+          'cache-control': '604800',
+        },
+      },
+    );
+    const outcome = classifyUploadResponse(result.status, result.body ?? '');
+    if (outcome === 'uploaded' || outcome === 'already_uploaded') return thumbPath;
+    console.warn('[chatMediaUpload] thumbnail refused; sending without one', { status: result.status, outcome });
+    return null;
+  } catch (error) {
+    console.warn('[chatMediaUpload] thumbnail failed; sending without one', error);
+    return null;
+  }
 }
 
 const signedUrls = new SignedUrlCache(async (path, seconds) => {

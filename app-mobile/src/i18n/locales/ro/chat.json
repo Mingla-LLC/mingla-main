@@ -306,5 +306,9 @@
   "sendToWent_other": "{{count}} au fost",
   "sendToTravelled_few": "{{count}} au călătorit",
   "sendToTravelled_one": "{{count}} a călătorit",
-  "sendToTravelled_other": "{{count}} au călătorit"
+  "sendToTravelled_other": "{{count}} au călătorit",
+  "mediaDailyLimit": "Ai atins limita de azi pentru fotografii și videoclipuri.",
+  "videoNoLongerAvailable": "Videoclipul nu mai este disponibil",
+  "a11yAlbum": "Album foto ({{count}})",
+  "a11yAlbumPhoto": "Fotografia {{index}} din {{count}}"
 }

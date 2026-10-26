@@ -89,6 +89,16 @@ export interface Message {
     width?: number | null;
     height?: number | null;
   };
+  /** Issue #4114 Wave 7: the 480px thumbnail's storage path (ordinary photos and videos). */
+  thumbPath?: string;
+  /** Issue #4114 Wave 7: a video's length and the media's size (the card's shape). */
+  mediaDurationMs?: number;
+  mediaWidth?: number;
+  mediaHeight?: number;
+  /** Issue #4114 Wave 7: photos sent together share this id. */
+  mediaAlbumId?: string;
+  /** Issue #4114 Wave 7 (D18): the video's full file was removed after 90 days. */
+  mediaExpired?: boolean;
 }
 
 export interface Conversation {

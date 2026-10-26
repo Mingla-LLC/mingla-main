@@ -52,7 +52,8 @@ Deno.test("W4 one upload service: private bucket, stored path, real MIME type, c
   assert(/buildChatAttachmentPath\(/.test(service), "the path comes from buildChatAttachmentPath");
   assert(/'Content-Type': item\.mimeType/.test(service), "the request carries the asset's MIME type");
   assert(/manipulateAsync\(/.test(service) && /SaveFormat\.JPEG/.test(service), "photos are resized and re-encoded");
-  assert(/return \{ path, mimeType: item\.mimeType/.test(service), "the result is the path, not a URL");
+  // Wave 7: the result also carries the thumbnail path and the media's size.
+  assert(/return \{\s*path,\s*mimeType: item\.mimeType/.test(service), "the result is the path, not a URL");
   // #4114 rework: the cancel bookkeeping lives in utils/chatMedia.ts
   // (ChatUploadCancelRegistry, behaviour-tested in issue_4114_upload_cancel).
   assert(/uploads\.cancel\(clientId\)/.test(service) && /uploads\.start\(clientId, task\)/.test(service), "uploads can be cancelled");
@@ -75,7 +76,8 @@ Deno.test("W4 ConnectionsPage: the first message uses the service; no storage ca
   assert(deliver.indexOf("uploadChatMedia(") < deliver.indexOf("messagingService.sendMessage("),
     "the upload finishes before the insert");
   assert(/fileUrl: uploaded\.path/.test(deliver), "the message stores the storage path");
-  assert(/messagingService\.sendMessage\([\s\S]*clientId,\s*\{ viewOnce: current\.viewOnce === true \},\s*\)/.test(deliver),
+  // Wave 7: the options also carry the thumbnail, media facts and album id.
+  assert(/messagingService\.sendMessage\([\s\S]*clientId,\s*\{\s*viewOnce: current\.viewOnce === true,/.test(deliver),
     "the send passes the client id and the view-once flag");
 
   const ensure = functionBody(page, /const ensureChatConversation = async \(/);
@@ -105,9 +107,10 @@ Deno.test("W4 MessageInterface: real document picker, lightbox, video player, no
   const add = functionBody(chat, /const addPickedMedia = \(/);
   assert(/validateChatMedia\(item\)/.test(add), "every pick is validated before it can be sent");
 
-  assert(/<ImageLightbox\b/.test(chat) && /visible=\{!!lightboxUrl\}/.test(chat), "photos open in the shared ImageLightbox");
+  // Wave 7: the lightbox holds every photo of an album (one photo for a single image).
+  assert(/<ImageLightbox\b/.test(chat) && /visible=\{!!lightbox\}/.test(chat), "photos open in the shared ImageLightbox");
   assert(/<ChatVideoPlayerModal url=\{videoUrl\}/.test(chat), "videos open in the in-app player");
-  const press = functionBody(chat, /const handleBubblePress = useCallback\(\(row: ThreadRow\) =>/);
+  const press = functionBody(chat, /const handleBubblePress = useCallback\(\(row: ThreadRow, albumIndex\?: number\) =>/);
   assert(/handleOpenImage\(/.test(press) && /handleOpenVideo\(/.test(press) && /handleOpenViewOnce\(/.test(press),
     "tapping a photo, video or view-once bubble opens it");
   const openImage = functionBody(chat, /const handleOpenImage = async \(/);
@@ -120,9 +123,10 @@ Deno.test("W4 MessageInterface: real document picker, lightbox, video player, no
 
 Deno.test("W4 bubbles: view once draws no preview; media resolve stored paths", async () => {
   const bubble = stripComments(await read("components/chat/MessageBubble.tsx"));
-  assert(/message\.type === 'image' && !message\.viewOnce/.test(bubble), "a view-once photo never renders its image");
-  assert(/message\.type === 'video' && !message\.viewOnce/.test(bubble), "a view-once video never renders a tile");
-  assert(/useChatMediaUrl\(fileUrl\)/.test(bubble), "photos resolve stored paths to signed links");
+  // Wave 7: photos and videos share one media card, drawn only when not view once.
+  assert(/const isMediaCard = \(message\.type === 'image' \|\| message\.type === 'video'\) && !message\.viewOnce;/.test(bubble),
+    "a view-once photo or video never renders its image or a tile");
+  assert(/useChatMediaUrl\(source\)/.test(bubble), "photos resolve stored paths to signed links");
   const service = stripComments(await read("services/messagingService.ts"));
   assert(/options\.viewOnce === true \? \{ view_once: true \} : \{\}/.test(service), "view_once is only sent when true");
   assert(/item\.view_once !== true/.test(service), "view-once items stay out of the shared media grid");

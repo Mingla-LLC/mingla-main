@@ -292,5 +292,9 @@
   "sendToWent_one": "{{count}} war dabei",
   "sendToWent_other": "{{count}} waren dabei",
   "sendToTravelled_one": "{{count}} gereist",
-  "sendToTravelled_other": "{{count}} gereist"
+  "sendToTravelled_other": "{{count}} gereist",
+  "mediaDailyLimit": "Du hast das heutige Limit für Fotos und Videos erreicht.",
+  "videoNoLongerAvailable": "Video nicht mehr verfügbar",
+  "a11yAlbum": "Fotoalbum ({{count}})",
+  "a11yAlbumPhoto": "Foto {{index}} von {{count}}"
 }

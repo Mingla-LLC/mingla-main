@@ -348,5 +348,9 @@
   "sendToTravelled_one": "{{count}} سافر",
   "sendToTravelled_two": "{{count}} سافروا",
   "sendToTravelled_zero": "{{count}} سافروا",
-  "sendToTravelled_other": "{{count}} سافروا"
+  "sendToTravelled_other": "{{count}} سافروا",
+  "mediaDailyLimit": "وصلت إلى حد اليوم للصور ومقاطع الفيديو.",
+  "videoNoLongerAvailable": "لم يعد الفيديو متاحًا",
+  "a11yAlbum": "ألبوم صور ({{count}})",
+  "a11yAlbumPhoto": "الصورة {{index}} من {{count}}"
 }

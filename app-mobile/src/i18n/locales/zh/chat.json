@@ -278,5 +278,9 @@
   "brandChannelSubtitle_other": "你的{{count}}个活动 · 轻点查看品牌页面",
   "sendToGoing_other": "{{count}}人会去",
   "sendToWent_other": "{{count}}人去过",
-  "sendToTravelled_other": "{{count}}人同行"
+  "sendToTravelled_other": "{{count}}人同行",
+  "mediaDailyLimit": "你已达到今天的照片和视频上限。",
+  "videoNoLongerAvailable": "视频已不可用",
+  "a11yAlbum": "相册（{{count}}）",
+  "a11yAlbumPhoto": "第 {{index}} 张，共 {{count}} 张"
 }

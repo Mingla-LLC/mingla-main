@@ -278,5 +278,9 @@
   "brandChannelSubtitle_other": "あなたのイベント{{count}}件 · タップでブランドページ",
   "sendToGoing_other": "{{count}}人が参加予定",
   "sendToWent_other": "{{count}}人が参加",
-  "sendToTravelled_other": "{{count}}人が旅行"
+  "sendToTravelled_other": "{{count}}人が旅行",
+  "mediaDailyLimit": "今日の写真と動画の上限に達しました。",
+  "videoNoLongerAvailable": "この動画は利用できなくなりました",
+  "a11yAlbum": "写真アルバム（{{count}}）",
+  "a11yAlbumPhoto": "{{count}}枚中{{index}}枚目の写真"
 }

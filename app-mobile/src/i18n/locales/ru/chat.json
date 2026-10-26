@@ -320,5 +320,9 @@
   "sendToTravelled_few": "Ездили: {{count}}",
   "sendToTravelled_many": "Ездили: {{count}}",
   "sendToTravelled_one": "Ездили: {{count}}",
-  "sendToTravelled_other": "Ездили: {{count}}"
+  "sendToTravelled_other": "Ездили: {{count}}",
+  "mediaDailyLimit": "Вы достигли сегодняшнего лимита на фото и видео.",
+  "videoNoLongerAvailable": "Видео больше недоступно",
+  "a11yAlbum": "Фотоальбом ({{count}})",
+  "a11yAlbumPhoto": "Фото {{index}} из {{count}}"
 }

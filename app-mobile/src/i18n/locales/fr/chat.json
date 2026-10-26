@@ -306,5 +306,9 @@
   "sendToWent_other": "{{count}} y sont allés",
   "sendToTravelled_many": "{{count}} ont voyagé",
   "sendToTravelled_one": "{{count}} a voyagé",
-  "sendToTravelled_other": "{{count}} ont voyagé"
+  "sendToTravelled_other": "{{count}} ont voyagé",
+  "mediaDailyLimit": "Tu as atteint la limite du jour pour les photos et vidéos.",
+  "videoNoLongerAvailable": "Vidéo plus disponible",
+  "a11yAlbum": "Album photo ({{count}})",
+  "a11yAlbumPhoto": "Photo {{index}} sur {{count}}"
 }

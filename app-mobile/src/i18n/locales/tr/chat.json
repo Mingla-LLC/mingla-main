@@ -292,5 +292,9 @@
   "sendToWent_one": "{{count}} kişi gitti",
   "sendToWent_other": "{{count}} kişi gitti",
   "sendToTravelled_one": "{{count}} kişi gezdi",
-  "sendToTravelled_other": "{{count}} kişi gezdi"
+  "sendToTravelled_other": "{{count}} kişi gezdi",
+  "mediaDailyLimit": "Bugünkü fotoğraf ve video sınırına ulaştın.",
+  "videoNoLongerAvailable": "Video artık kullanılamıyor",
+  "a11yAlbum": "Fotoğraf albümü ({{count}})",
+  "a11yAlbumPhoto": "Fotoğraf {{index}}/{{count}}"
 }

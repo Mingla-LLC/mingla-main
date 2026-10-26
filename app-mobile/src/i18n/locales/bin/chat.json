@@ -292,5 +292,9 @@
   "sendToWent_one": "{{count}} went",
   "sendToWent_other": "{{count}} went",
   "sendToTravelled_one": "{{count}} travelled",
-  "sendToTravelled_other": "{{count}} travelled"
+  "sendToTravelled_other": "{{count}} travelled",
+  "mediaDailyLimit": "You've reached today's limit for photos and videos.",
+  "videoNoLongerAvailable": "Video no longer available",
+  "a11yAlbum": "Photo album ({{count}})",
+  "a11yAlbumPhoto": "Photo {{index}} of {{count}}"
 }

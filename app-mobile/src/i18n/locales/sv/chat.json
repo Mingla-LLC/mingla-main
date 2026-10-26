@@ -292,5 +292,9 @@
   "sendToWent_one": "{{count}} var där",
   "sendToWent_other": "{{count}} var där",
   "sendToTravelled_one": "{{count}} reste",
-  "sendToTravelled_other": "{{count}} reste"
+  "sendToTravelled_other": "{{count}} reste",
+  "mediaDailyLimit": "Du har nått dagens gräns för bilder och videor.",
+  "videoNoLongerAvailable": "Videon är inte längre tillgänglig",
+  "a11yAlbum": "Fotoalbum ({{count}})",
+  "a11yAlbumPhoto": "Bild {{index}} av {{count}}"
 }

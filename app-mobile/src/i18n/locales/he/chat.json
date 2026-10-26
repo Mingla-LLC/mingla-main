@@ -306,5 +306,9 @@
   "sendToWent_other": "{{count}} הגיעו",
   "sendToTravelled_one": "{{count}} טייל",
   "sendToTravelled_two": "{{count}} טיילו",
-  "sendToTravelled_other": "{{count}} טיילו"
+  "sendToTravelled_other": "{{count}} טיילו",
+  "mediaDailyLimit": "הגעת למגבלה היומית לתמונות ולסרטונים.",
+  "videoNoLongerAvailable": "הסרטון כבר לא זמין",
+  "a11yAlbum": "אלבום תמונות ({{count}})",
+  "a11yAlbumPhoto": "תמונה {{index}} מתוך {{count}}"
 }

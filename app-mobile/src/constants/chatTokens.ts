@@ -30,3 +30,23 @@ export const chatTokens = {
   online: "#10B981",
   scrim: "rgba(0, 0, 0, 0.5)",
 } as const;
+
+/**
+ * Issue #4114 Wave 7: received bubbles are a dark surface with white text.
+ * Every text colour here passes WCAG AA (4.5:1) on `bubble`; the regression
+ * test computes the ratios. Sent bubbles keep the orange design-system fill.
+ */
+export const receivedBubbleTokens = {
+  bubble: "#1D2026",
+  text: "#FFFFFF",
+  textSecondary: "rgba(255, 255, 255, 0.72)",
+  senderName: "#C9CDD4",
+  mentionBg: "#4A2F1C",
+  mentionText: "#FFD9BD",
+  quoteBg: "rgba(255, 255, 255, 0.08)",
+  quoteBar: "#EB7825",
+  quoteName: "#FFFFFF",
+  quoteText: "rgba(255, 255, 255, 0.72)",
+  quoteDeleted: "#A3A9B2",
+  icon: "#FFB27A",
+} as const;
