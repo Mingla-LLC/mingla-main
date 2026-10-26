@@ -2975,7 +2975,7 @@ function AppContent() {
     () => ({
       home: t('navigation:tabs.explore'),
       discover: t('navigation:tabs.discover'),
-      connections: t('navigation:tabs.friends'),
+      connections: t('navigation:tabs.chats'),
       likes: t('navigation:tabs.likes'),
       profile: t('navigation:tabs.profile'),
     }),
