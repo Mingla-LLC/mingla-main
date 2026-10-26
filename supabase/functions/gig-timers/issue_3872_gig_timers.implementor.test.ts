@@ -45,3 +45,22 @@ Deno.test("#3872 timers are paused during disputes and before deadline", () => {
 Deno.test("#3872 timer replays use state and deadline in the dedupe key", () => {
   assertEquals(timerDedupeKey("c", "delivered", due), `c:delivered:${due}`);
 });
+Deno.test("#3872 a missed upload deadline cancels with a full refund (QA #13)", () => {
+  const decision = gigTimerDecision({
+    state: "script_locked",
+    deadlineAt: due,
+    now,
+  });
+  assertEquals(decision?.refundBranch, "upload_missed");
+});
+Deno.test("#3872 timers retire unpaid offers and pay out lower counters", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./index.ts", import.meta.url),
+  );
+  if (!source.includes('"gig_pending_offer_sweep"')) {
+    throw new Error("pending sweep missing");
+  }
+  if (!source.includes('branch: "counter_lower"')) {
+    throw new Error("counter refunds missing");
+  }
+});

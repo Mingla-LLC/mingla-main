@@ -9,7 +9,10 @@ import {
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import {
   gigPaystackInitialize,
+  type GigQuote,
   gigStripeIntent,
+  gigTopupPaystackInitialize,
+  gigTopupStripeIntent,
   quoteGig,
 } from "../_shared/gigMoney.ts";
 
@@ -83,6 +86,14 @@ serve(async (req: Request) => {
         detail: prepareError?.message,
       }, prepareError?.code === "42501" ? 403 : 409);
     }
+    // Validation failures (gig_full, interest_not_open, already_offered...)
+    // come back as {ok:false}; never start a payment for them.
+    if (prepared.ok === false) {
+      return json({
+        error: String(prepared.error),
+        field: prepared.field ?? null,
+      }, 409);
+    }
     quote = quoteGig(Number(prepared.fee_minor), String(prepared.currency));
     const contractId = String(prepared.contract_id);
     const termsVersion = Number(prepared.terms_version);
@@ -134,6 +145,83 @@ serve(async (req: Request) => {
       return json({ error: "provider_start_failed" }, 502);
     }
   }
+  if (action === "topup") {
+    // A host accepted a higher counter-offer: charge only the difference on
+    // the same rail. Same response shapes as "start".
+    const contractId = String(body.contract_id ?? "");
+    const termsVersion = Number(body.terms_version);
+    if (!uuid.test(contractId) || !Number.isInteger(termsVersion)) {
+      return json({ error: "validation_error" }, 400);
+    }
+    const { data: prepared, error: prepareError } = await userDb.rpc(
+      "gig_topup_prepare",
+      { p_contract_id: contractId, p_terms_version: termsVersion },
+    );
+    if (prepareError || !prepared) {
+      return json(
+        { error: "topup_prepare_failed" },
+        prepareError?.code === "42501" ? 403 : 409,
+      );
+    }
+    if (prepared.ok === false) {
+      return json({ error: String(prepared.error) }, 409);
+    }
+    const quote: GigQuote = {
+      feeMinor: Number(prepared.fee_minor),
+      bookingFeeMinor: Number(prepared.booking_fee_minor),
+      totalMinor: Number(prepared.total_minor),
+      currency: String(prepared.currency),
+    };
+    if (!Number.isSafeInteger(quote.totalMinor) || quote.totalMinor <= 0) {
+      return json({ error: "topup_amount_invalid" }, 409);
+    }
+    const rail = String(prepared.rail);
+    try {
+      if (rail === "paystack") {
+        const initialized = await paystackInitializeTransaction(
+          gigTopupPaystackInitialize({
+            contractId,
+            termsVersion,
+            quote,
+            email: user.email ?? `gig+${user.id.slice(0, 8)}@usemingla.com`,
+            callbackUrl: typeof body.return_url === "string"
+              ? body.return_url
+              : null,
+          }),
+        );
+        return json({
+          ok: true,
+          kind: "requires_checkout_redirect",
+          contract_id: contractId,
+          terms_version: termsVersion,
+          rail,
+          url: initialized.authorization_url,
+          provider_ref: initialized.reference,
+          quote,
+        });
+      }
+      const intent = await stripeTicketCheckout().paymentIntents.create(
+        gigTopupStripeIntent({ contractId, termsVersion, quote }),
+        { idempotencyKey: `gig_topup:${contractId}:${termsVersion}` },
+      );
+      if (!intent.client_secret) {
+        return json({ error: "client_secret_missing" }, 502);
+      }
+      return json({
+        ok: true,
+        kind: "requires_payment_sheet",
+        contract_id: contractId,
+        terms_version: termsVersion,
+        rail,
+        client_secret: intent.client_secret,
+        provider_ref: intent.id,
+        quote,
+      });
+    } catch (error) {
+      console.error("[gig-hire] topup start failed", error);
+      return json({ error: "provider_start_failed" }, 502);
+    }
+  }
   if (action === "confirm") {
     const contractId = String(body.contract_id ?? "");
     const termsVersion = Number(body.terms_version);
@@ -143,15 +231,18 @@ serve(async (req: Request) => {
       !uuid.test(contractId) || !Number.isInteger(termsVersion) || !providerRef
     ) return json({ error: "validation_error" }, 400);
     try {
+      let kind = "gig_hold";
       if (rail === "paystack") {
         const verified = await paystackVerifyTransaction(providerRef);
+        const metadata = verified.metadata as
+          | Record<string, unknown>
+          | undefined;
         if (
           String(verified.status) !== "success" ||
-          String(
-              (verified.metadata as Record<string, unknown> | undefined)
-                ?.contract_id ?? "",
-            ) !== contractId
+          String(metadata?.contract_id ?? "") !== contractId ||
+          String(metadata?.terms_version ?? "") !== String(termsVersion)
         ) return json({ error: "payment_not_proven" }, 409);
+        kind = String(metadata?.mingla_kind ?? "gig_hold");
       } else {
         const pi = await stripeTicketCheckout().paymentIntents.retrieve(
           providerRef,
@@ -160,12 +251,20 @@ serve(async (req: Request) => {
           pi.status !== "succeeded" || pi.metadata.contract_id !== contractId ||
           pi.metadata.terms_version !== String(termsVersion)
         ) return json({ error: "payment_not_proven" }, 409);
+        kind = String(pi.metadata.mingla_kind ?? "gig_hold");
       }
-      const { data, error } = await serviceDb.rpc("gig_hold_mark_captured", {
-        p_contract_id: contractId,
-        p_terms_version: termsVersion,
-        p_provider_ref: providerRef,
-      });
+      // The provider's own metadata says whether this was the offer hold or
+      // a counter-offer top-up; both recorders are replay-safe.
+      const { data, error } = await serviceDb.rpc(
+        kind === "gig_topup"
+          ? "gig_topup_mark_captured"
+          : "gig_hold_mark_captured",
+        {
+          p_contract_id: contractId,
+          p_terms_version: termsVersion,
+          p_provider_ref: providerRef,
+        },
+      );
       if (error) throw error;
       return json({ ok: true, hold: data });
     } catch (error) {

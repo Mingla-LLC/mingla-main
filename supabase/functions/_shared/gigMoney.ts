@@ -68,6 +68,8 @@ export function gigPaystackInitialize(
 }
 
 export type RefundBranch =
+  | "upload_missed"
+  | "counter_lower"
   | "host_before_accept"
   | "host_after_accept_before_lock"
   | "creator_after_accept"
@@ -105,6 +107,7 @@ export function gigRefund(
   }
   if (
     [
+      "upload_missed",
       "host_before_accept",
       "creator_after_accept",
       "creator_decline",
@@ -129,5 +132,61 @@ export function gigStripeRelease(
     transfer_group: `gig_${input.contractId}`,
     source_transaction: input.sourceTransaction,
     metadata: { mingla_kind: "gig_fee", contract_id: input.contractId },
+  };
+}
+
+/**
+ * Split an amount across captured provider payments in order (the base hold
+ * first, then counter-offer top-ups). Each part never exceeds what that
+ * payment still holds; anything left over means the ledger is short.
+ */
+export function allocateAcrossSources<T extends { availableMinor: number }>(
+  amountMinor: number,
+  sources: T[],
+): Array<{ source: T; amountMinor: number }> {
+  if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) {
+    throw new Error("amount_invalid");
+  }
+  let left = amountMinor;
+  const parts: Array<{ source: T; amountMinor: number }> = [];
+  for (const source of sources) {
+    if (left <= 0) break;
+    const part = Math.min(left, Math.max(0, source.availableMinor));
+    if (part > 0) {
+      parts.push({ source, amountMinor: part });
+      left -= part;
+    }
+  }
+  if (left > 0) throw new Error("sources_insufficient");
+  return parts;
+}
+
+/** A counter-offer top-up charge on the hold's rail, same response shape. */
+export function gigTopupStripeIntent(
+  input: { contractId: string; termsVersion: number; quote: GigQuote },
+) {
+  const intent = gigStripeIntent(input);
+  return {
+    ...intent,
+    metadata: { ...intent.metadata, mingla_kind: "gig_topup" },
+  };
+}
+
+export function gigTopupPaystackInitialize(
+  input: {
+    contractId: string;
+    termsVersion: number;
+    quote: GigQuote;
+    email: string;
+    callbackUrl?: string | null;
+  },
+) {
+  const init = gigPaystackInitialize(input);
+  return {
+    ...init,
+    reference: `gtop_${
+      input.contractId.replaceAll("-", "")
+    }_v${input.termsVersion}`,
+    metadata: { ...init.metadata, mingla_kind: "gig_topup" },
   };
 }

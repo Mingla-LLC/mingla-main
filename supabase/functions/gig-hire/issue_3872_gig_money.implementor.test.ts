@@ -107,3 +107,74 @@ Deno.test("#3872 invalid money and partial refund inputs fail closed", () => {
     })
   );
 });
+
+// #3872 walkthrough: counter-offer top-ups and multi-payment refunds/releases.
+import {
+  allocateAcrossSources,
+  gigTopupPaystackInitialize,
+  gigTopupStripeIntent,
+} from "../_shared/gigMoney.ts";
+
+Deno.test("#3872 money is split across the base hold then top-ups, never over a source", () => {
+  const parts = allocateAcrossSources(46000, [
+    { id: "base", availableMinor: 34500 },
+    { id: "t1", availableMinor: 11500 },
+  ]);
+  assertEquals(parts.map((p) => [p.source.id, p.amountMinor]), [
+    ["base", 34500],
+    ["t1", 11500],
+  ]);
+  assertEquals(
+    allocateAcrossSources(20000, [{ id: "base", availableMinor: 34500 }])
+      .map((p) => p.amountMinor),
+    [20000],
+  );
+  assertThrows(() =>
+    allocateAcrossSources(50000, [{ id: "base", availableMinor: 34500 }])
+  );
+});
+Deno.test("#3872 top-up charges are tagged so confirm records the right hold", () => {
+  const quote = {
+    feeMinor: 10000,
+    bookingFeeMinor: 1500,
+    totalMinor: 11500,
+    currency: "USD",
+  };
+  assertEquals(
+    gigTopupStripeIntent({ contractId: "c", termsVersion: 2, quote }).metadata
+      .mingla_kind,
+    "gig_topup",
+  );
+  const paystack = gigTopupPaystackInitialize({
+    contractId: "a-b",
+    termsVersion: 2,
+    quote: { ...quote, currency: "NGN" },
+    email: "host@example.com",
+  });
+  assertEquals(paystack.reference, "gtop_ab_v2");
+  assertEquals(paystack.metadata.mingla_kind, "gig_topup");
+});
+Deno.test("#3872 a missed upload is a full host refund", () => {
+  assertEquals(
+    gigRefund({
+      branch: "upload_missed",
+      feeMinor: 10000,
+      bookingFeeMinor: 1500,
+    }),
+    { hostRefundMinor: 11500, creatorFeeMinor: 0 },
+  );
+});
+Deno.test("#3872 gig-hire never starts a payment for an {ok:false} offer and supports top-ups", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./index.ts", import.meta.url),
+  );
+  if (!source.includes("prepared.ok === false")) {
+    throw new Error("ok:false ignored");
+  }
+  if (!source.includes('"gig_topup_prepare"')) {
+    throw new Error("topup action missing");
+  }
+  if (!source.includes('"gig_topup_mark_captured"')) {
+    throw new Error("topup confirm missing");
+  }
+});
