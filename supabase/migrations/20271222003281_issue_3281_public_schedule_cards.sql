@@ -228,7 +228,8 @@ AS $function$
     )
 $function$;
 
--- Admin list: append schedule keys (sort still on master).
+-- Admin list: display + sort by next occurrence; full schedule helper only
+-- on the page rows (count / filter / rank stay free of schedule enrichment).
 CREATE OR REPLACE FUNCTION public.admin_list_offerings(
   p_search          text        DEFAULT NULL,
   p_event_type      text        DEFAULT NULL,
@@ -269,6 +270,14 @@ BEGIN
       e.city, e.currency, e.published_at, e.deleted_at, e.created_at,
       m.start_at AS master_start_at,
       m.end_at   AS master_end_at,
+      -- Lightweight next-start for sort/display alignment only (no schedule_line).
+      (
+        SELECT d.start_at
+          FROM public.event_dates d
+         WHERE d.event_id = e.id AND d.end_at > now()
+         ORDER BY d.start_at, d.id
+         LIMIT 1
+      ) AS next_start_at_sort,
       b.name     AS brand_name,
       CASE
         WHEN e.status = 'cancelled' THEN 'cancelled'
@@ -279,8 +288,7 @@ BEGIN
          AND now() <  m.start_at + interval '24 hours' THEN 'live'
         WHEN now() <  m.start_at - interval '4 hours' THEN 'upcoming'
         ELSE 'past'
-      END AS lifecycle_bucket,
-      public.issue_3281_event_schedule(e.id) AS schedule
+      END AS lifecycle_bucket
     FROM public.events e
     LEFT JOIN public.event_dates m ON m.event_id = e.id AND m.is_master
     LEFT JOIN public.brands b ON b.id = e.brand_id
@@ -306,8 +314,10 @@ BEGIN
   ranked AS (
     SELECT f.*, row_number() OVER (
       ORDER BY
-        (CASE WHEN v_sort = 'start_at'   AND v_dir = 'asc'  THEN master_start_at END) ASC  NULLS LAST,
-        (CASE WHEN v_sort = 'start_at'   AND v_dir = 'desc' THEN master_start_at END) DESC NULLS LAST,
+        (CASE WHEN v_sort = 'start_at'   AND v_dir = 'asc'
+          THEN COALESCE(next_start_at_sort, master_start_at) END) ASC  NULLS LAST,
+        (CASE WHEN v_sort = 'start_at'   AND v_dir = 'desc'
+          THEN COALESCE(next_start_at_sort, master_start_at) END) DESC NULLS LAST,
         (CASE WHEN v_sort = 'created_at' AND v_dir = 'asc'  THEN created_at END)      ASC  NULLS LAST,
         (CASE WHEN v_sort = 'created_at' AND v_dir = 'desc' THEN created_at END)      DESC NULLS LAST,
         (CASE WHEN v_sort = 'title'      AND v_dir = 'asc'  THEN title END)           ASC  NULLS LAST,
@@ -317,56 +327,62 @@ BEGIN
         created_at DESC, id
     ) AS rn
     FROM filtered f
+  ),
+  page AS (
+    SELECT
+      r.*,
+      public.issue_3281_event_schedule(r.id) AS schedule
+    FROM ranked r
+    WHERE r.rn > v_offset AND r.rn <= v_offset + v_limit
   )
   SELECT
     (SELECT count(*) FROM filtered),
     COALESCE(jsonb_agg(
       jsonb_build_object(
-        'id',               r.id,
-        'event_type',       r.event_type,
-        'title',            r.title,
-        'slug',             r.slug,
-        'status',           r.status,
-        'visibility',       r.visibility,
-        'lifecycle_bucket', r.lifecycle_bucket,
-        'brand_id',         r.brand_id,
-        'brand_name',       r.brand_name,
-        'city',             r.city,
-        'currency',         r.currency,
-        'master_start_at',  r.master_start_at,
-        'master_end_at',    r.master_end_at,
-        'next_start_at',    (r.schedule->>'nextStartAt')::timestamptz,
-        'next_end_at',      (r.schedule->>'nextEndAt')::timestamptz,
-        'upcoming_count',   COALESCE((r.schedule->>'upcomingCount')::integer, 0),
-        'schedule_line',    r.schedule->>'scheduleLine',
-        'published_at',     r.published_at,
-        'deleted_at',       r.deleted_at,
-        'created_at',       r.created_at,
+        'id',               p.id,
+        'event_type',       p.event_type,
+        'title',            p.title,
+        'slug',             p.slug,
+        'status',           p.status,
+        'visibility',       p.visibility,
+        'lifecycle_bucket', p.lifecycle_bucket,
+        'brand_id',         p.brand_id,
+        'brand_name',       p.brand_name,
+        'city',             p.city,
+        'currency',         p.currency,
+        'master_start_at',  p.master_start_at,
+        'master_end_at',    p.master_end_at,
+        'next_start_at',    (p.schedule->>'nextStartAt')::timestamptz,
+        'next_end_at',      (p.schedule->>'nextEndAt')::timestamptz,
+        'upcoming_count',   COALESCE((p.schedule->>'upcomingCount')::integer, 0),
+        'schedule_line',    p.schedule->>'scheduleLine',
+        'published_at',     p.published_at,
+        'deleted_at',       p.deleted_at,
+        'created_at',       p.created_at,
         'attendee_count', (
           SELECT count(*) FROM public.tickets tk
           JOIN public.orders o ON o.id = tk.order_id
-          WHERE tk.event_id = r.id AND o.payment_status = 'paid'
+          WHERE tk.event_id = p.id AND o.payment_status = 'paid'
         ),
         'rsvp_going_count', (
           SELECT count(*) FROM public.event_rsvps rv
-          WHERE rv.event_id = r.id AND rv.rsvp_status = 'going' AND rv.approval_status = 'approved'
+          WHERE rv.event_id = p.id AND rv.rsvp_status = 'going' AND rv.approval_status = 'approved'
         ),
-        'child_summary', CASE r.event_type
+        'child_summary', CASE p.event_type
           WHEN 'trip' THEN jsonb_build_object('trip_day_count',
-            (SELECT count(*) FROM public.trip_days td WHERE td.event_id = r.id))
+            (SELECT count(*) FROM public.trip_days td WHERE td.event_id = p.id))
           WHEN 'experience' THEN jsonb_build_object('stop_count',
-            (SELECT count(*) FROM public.experience_stops es WHERE es.event_id = r.id))
+            (SELECT count(*) FROM public.experience_stops es WHERE es.event_id = p.id))
           WHEN 'rsvp' THEN jsonb_build_object('rsvp_total',
-            (SELECT count(*) FROM public.event_rsvps rv WHERE rv.event_id = r.id))
+            (SELECT count(*) FROM public.event_rsvps rv WHERE rv.event_id = p.id))
           ELSE jsonb_build_object('ticket_type_count',
-            (SELECT count(*) FROM public.ticket_types tt WHERE tt.event_id = r.id AND tt.deleted_at IS NULL))
+            (SELECT count(*) FROM public.ticket_types tt WHERE tt.event_id = p.id AND tt.deleted_at IS NULL))
         END
       )
-      ORDER BY r.rn
+      ORDER BY p.rn
     ), '[]'::jsonb)
   INTO v_total, v_rows
-  FROM ranked r
-  WHERE r.rn > v_offset AND r.rn <= v_offset + v_limit;
+  FROM page p;
 
   RETURN jsonb_build_object('rows', v_rows, 'total', COALESCE(v_total, 0));
 END;

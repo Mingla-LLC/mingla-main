@@ -955,7 +955,8 @@ export async function loadAuthoritativeContentShare(
   const { data: row, error: rowError } = await brandQuery.maybeSingle();
   if (rowError) throw new Error("db_error");
   if (!row || row.deleted_at) throw new Error("gone");
-  const { data: offerings, error: offeringsError } = await db.from("business_public_events_view").select("title,event_type,brand_slug,slug,master_start_at").eq("brand_slug", row.slug).gte("master_start_at", new Date().toISOString()).order("master_start_at", { ascending: true }).limit(8);
+  // issue #3281 — Upcoming list uses next occurrence, not the (possibly past) master.
+  const { data: offerings, error: offeringsError } = await db.from("business_public_events_view").select("title,event_type,brand_slug,slug,master_start_at,next_start_at,schedule_line").eq("brand_slug", row.slug).gte("next_start_at", new Date().toISOString()).order("next_start_at", { ascending: true }).limit(8);
   if (offeringsError) throw new Error("db_error");
   const { count, error: countError } = await db.from("events").select("id", { count: "exact", head: true }).eq("brand_id", row.id)
     .in("visibility", ["public", "discover"]).not("published_at", "is", null).is("deleted_at", null).in("status", ["scheduled", "live"]);

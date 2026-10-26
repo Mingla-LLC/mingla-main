@@ -17,6 +17,13 @@ Deno.test("PR7 migration schedules public view, discover, and admin readers", ()
   assert(text.includes("CREATE OR REPLACE VIEW public.business_public_events_view"));
   assert(text.includes("discover_v2_event_base"));
   assert(text.includes("admin_list_offerings"));
+
+  assert(text.includes("COALESCE(next_start_at_sort, master_start_at)"));
+  assert(text.includes("page AS"));
+  // Full schedule helper must not run on the filtered catalog CTE.
+  assert(!/filtered AS \([\s\S]*issue_3281_event_schedule/.test(text));
+  assert(/page AS \([\s\S]*issue_3281_event_schedule/.test(text));
+
   assert(text.includes("admin_get_offering"));
   assert(text.includes("cancel_refund_run_status"));
   assert(text.includes("cancel_refund_object_count"));

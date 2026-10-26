@@ -20,3 +20,12 @@ Deno.test("contentShare maps a label per occurrence for the share page", () => {
   assert(text.includes("label:"));
   assertEquals(text.includes("localSchedule(date.start_at"), true);
 });
+
+Deno.test("brand Upcoming list orders by next_start_at (not master)", () => {
+  const text = Deno.readTextFileSync(SRC);
+  // Past-master / future-next offerings must stay visible and ordered by next.
+  assert(text.includes('gte("next_start_at"'));
+  assert(text.includes('order("next_start_at"'));
+  assert(!/business_public_events_view"\)\.select\([^)]*\)\.eq\("brand_slug"[^;]*gte\("master_start_at"/.test(text));
+});
+
