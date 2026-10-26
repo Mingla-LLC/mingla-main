@@ -13,6 +13,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // CTIA opt-out exposure, not merely a routing one. The adapter fixes all three:
 // approved sender only, STOP footer appended, StatusCallback wired.
 import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
+import { buildSessionInviteOneLink } from "../_shared/friendInviteLink.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -237,7 +238,7 @@ export const handler = async (req: Request): Promise<Response> => {
     // Get inviter display name
     const { data: inviterProfile } = await supabaseAdmin
       .from("profiles")
-      .select("display_name, username")
+      .select("display_name, username, referral_code")
       .eq("id", inviterId)
       .single();
 
@@ -258,7 +259,12 @@ export const handler = async (req: Request): Promise<Response> => {
     // #1529); messagingServiceSid is omitted, which is precisely what retires
     // the raw-`From` fallback — omission selects the approved transactional
     // toll-free and there is no longer any code path to anything else.
-    const smsBody = `${inviterName} invited you to Mingla! Plan experiences together. Download now: https://mingla.app/invite`;
+    // Issue #4114: the link is the go.usemingla.com Explorer OneLink (the old
+    // link pointed at a domain with no DNS records, so it opened nothing).
+    const inviteLink = buildSessionInviteOneLink({
+      referralCode: inviterProfile?.referral_code ?? null,
+    });
+    const smsBody = `${inviterName} invited you to Mingla! Plan experiences together. Download now: ${inviteLink}`;
 
     const result = await smsAdapter.send({
       to: phone_e164,
