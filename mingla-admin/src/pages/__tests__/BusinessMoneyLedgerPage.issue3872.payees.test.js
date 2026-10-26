@@ -13,7 +13,9 @@ test("#3872 admin money ledger exposes the payee ledger through read RPCs", () =
   assert.match(readService, /admin_list_payee_ledger/);
   assert.match(page, /id: "payees", label: "Payees"/);
   assert.match(page, /fetchPage=\{listPayeeLedger\}/);
-  assert.match(page, /Referral payees/);
+  // [TEST-MOD-APPROVED #3872] walkthrough W4: the tab covers every payee kind, so it is titled "Payees".
+  assert.match(page, /title="Payees"/);
+  assert.doesNotMatch(page, /Referral payees/);
   assert.match(page, /Risk held/);
   assert.match(page, /Below payout floor/);
 });
@@ -31,4 +33,19 @@ test("#3872 admin can only hold or clear through the audited write seam", () => 
   assert.match(page, /Hold payee payouts/);
   assert.match(page, /Clear payee payout hold/);
   assert.doesNotMatch(readService, /supabase\.from\(/);
+});
+
+test("#3872 W4 every payee kind shows, with a Kind column and filter, and the rail as the payee's bank", () => {
+  assert.match(page, /key: "payee_kind", label: "Kind"/);
+  assert.match(page, /\{ key: "kind", label: "Kind", options: \[/);
+  for (const [value, label] of [["referral", "Referral"], ["gig_fee", "Gig fee"], ["local_month", "Local"]]) {
+    assert.match(page, new RegExp(`value: "${value}", label: "${label}"`));
+  }
+  assert.match(page, /railWord\(v, row\.currency\)/);
+  assert.match(page, /value: "stripe", label: "Bank \(US\)"/);
+  assert.match(page, /value: "paystack", label: "Bank \(NG\)"/);
+  assert.doesNotMatch(page, /label: "Stripe" \}|label: "Paystack" \}/);
+  assert.match(readService, /p_kind_filter: kind/);
+  assert.match(page, /row\.member_id \? \(/, "risk holds only on referral rows, which have a member");
+  assert.doesNotMatch(page.slice(page.indexOf("function payeeColumns"), page.indexOf("const PAYEE_CSV")), /replaceAll\("_"/);
 });

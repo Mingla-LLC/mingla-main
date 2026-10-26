@@ -75,7 +75,11 @@ import { GuidePage } from "./pages/GuidePage";
 import { ContentCalendarPage } from "./pages/ContentCalendarPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { DataRoomPage } from "./pages/DataRoomPage";
-import { GigQueuePage } from "./pages/GigQueuePage";
+// Issue #3872 — the Programs group: Creators, Gigs, Mingla Locals, Disputes.
+import { ProgramCreatorsPage } from "./pages/ProgramCreatorsPage";
+import { ProgramGigsPage } from "./pages/ProgramGigsPage";
+import { ProgramLocalsPage } from "./pages/ProgramLocalsPage";
+import { ProgramDisputesPage } from "./pages/ProgramDisputesPage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -141,7 +145,11 @@ const PAGES = {
   hosts: HostsPage,
   "team-dashboard": TeamDashboardPage,
   creators: CreatorsPage,
-  "gig-queue": GigQueuePage,
+  // Issue #3872: the Programs group (#/gig-queue rewrites to Disputes below).
+  "program-creators": ProgramCreatorsPage,
+  "program-gigs": ProgramGigsPage,
+  "program-locals": ProgramLocalsPage,
+  "program-disputes": ProgramDisputesPage,
   drafts: DraftsPage,
   "work-board": WorkBoardPage,
   "agent-log": AgentLogPage,
@@ -183,6 +191,12 @@ function canonicalizeLegacyCommunityHashes() {
   // honest" effect never writes #/agent-log back over the redirect.
   if (page === "agent-log") {
     window.history.replaceState(null, "", AGENT_LOG_REDIRECT);
+    return;
+  }
+  // Issue #3872 — the old one-page "Creator gigs" queue was split into the
+  // Programs group; its bookmarks open Disputes, which it mostly held.
+  if (page === "gig-queue") {
+    window.history.replaceState(null, "", "#/program-disputes");
   }
 }
 
@@ -199,7 +213,7 @@ function getTabFromHash() {
 // Legacy #/support and #/email count as named (they rewrite to community-support).
 function addressNamesPage() {
   const page = requestedPageId();
-  if (page === "support" || page === "email") return true;
+  if (page === "support" || page === "email" || page === "gig-queue") return true;
   return Object.hasOwn(PAGES, page);
 }
 

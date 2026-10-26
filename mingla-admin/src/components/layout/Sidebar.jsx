@@ -44,6 +44,9 @@ import {
   FolderLock,
   SquareKanban,
   Scale,
+  BadgeCheck,
+  Clapperboard,
+  MapPin,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -103,6 +106,9 @@ const ICON_MAP = {
   HeartPulse,
   Hourglass,
   Scale,
+  BadgeCheck,
+  Clapperboard,
+  MapPin,
   Settings,
   Bot,
   FileText,

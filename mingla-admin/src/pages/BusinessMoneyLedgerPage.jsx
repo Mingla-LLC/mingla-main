@@ -25,6 +25,7 @@ import { timeAgo, formatDateTime } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { formatMoneyMinor } from "../lib/moneyFormat";
+import { payeeKindWord, payeeStatusWord, payoutStatusWord, railWord } from "../lib/creatorPrograms";
 
 // ── Money formatter (cents + currency → string; never throws — I-1152 lesson) ──
 
@@ -279,8 +280,10 @@ function payeeColumns(onHoldChange) {
         </div>
       ),
     },
-    { key: "brand_name", label: "Brand", render: brandCell },
-    { key: "rail", label: "Rail", render: (v) => <Badge variant="default">{v || "—"}</Badge> },
+    // #3872: every payee kind; the rail reads as the payee's bank, never a provider name.
+    { key: "payee_kind", label: "Kind", render: (v) => <Badge variant={v === "gig_fee" ? "brand" : v === "local_month" ? "info" : "default"}>{payeeKindWord(v)}</Badge> },
+    { key: "brand_name", label: "Brand", render: (v, row) => (row.payee_kind === "local_month" && !v ? "Mingla" : brandCell(v)) },
+    { key: "rail", label: "Rail", render: (v, row) => <Badge variant="default">{railWord(v, row.currency)}</Badge> },
     { key: "gross_minor", label: "Gross reward", render: (v, row) => formatMoney(v, row.currency) },
     { key: "mingla_fee_minor", label: "Mingla fee", render: (v, row) => formatMoney(v, row.currency) },
     { key: "net_minor", label: "Payee reward", render: (v, row) => <span className="font-medium">{formatMoney(v, row.currency)}</span> },
@@ -302,10 +305,10 @@ function payeeColumns(onHoldChange) {
       label: "Status",
       render: (v, row) => (
         <div className="flex flex-col items-start gap-1">
-          <Badge variant={v === "paid" ? "success" : v === "reversed" ? "default" : "warning"} dot>
-            {(v || "—").replaceAll("_", " ")}
+          <Badge variant={v === "paid" ? "success" : v === "reversed" ? "default" : v === "releasable" ? "info" : "warning"} dot>
+            {payeeStatusWord(v)}
           </Badge>
-          {row.payout_status ? <span className="text-xs text-[var(--color-text-tertiary)]">Payout: {row.payout_status.replaceAll("_", " ")}</span> : null}
+          {row.payout_status ? <span className="text-xs text-[var(--color-text-tertiary)]">Payout: {payoutStatusWord(row.payout_status)}</span> : null}
         </div>
       ),
     },
@@ -314,7 +317,8 @@ function payeeColumns(onHoldChange) {
       label: "Payout account",
       render: (_v, row) => {
         const status = row.rail === "paystack" ? row.paystack_status : row.stripe_status;
-        return <Badge variant={["active", "verified"].includes(status) ? "success" : "warning"} dot>{(status || "not connected").replaceAll("_", " ")}</Badge>;
+        const connected = ["active", "verified"].includes(status);
+        return <Badge variant={connected ? "success" : "warning"} dot>{connected ? "Connected" : status ? "Needs attention" : "Not connected"}</Badge>;
       },
     },
     {
@@ -324,9 +328,12 @@ function payeeColumns(onHoldChange) {
         <div className="flex min-w-36 flex-col items-start gap-1.5">
           <Badge variant={held ? "error" : "success"} dot>{held ? "Held" : "Clear"}</Badge>
           {held && row.risk_reason ? <span className="max-w-48 text-xs text-[var(--color-text-tertiary)]">{row.risk_reason}</span> : null}
-          <Button size="sm" variant={held ? "secondary" : "danger"} onClick={() => onHoldChange(row)}>
-            {held ? "Clear hold" : "Hold payouts"}
-          </Button>
+          {/* Risk holds are per referral member; gig fees and Local months have none. */}
+          {row.member_id ? (
+            <Button size="sm" variant={held ? "secondary" : "danger"} onClick={() => onHoldChange(row)}>
+              {held ? "Clear hold" : "Hold payouts"}
+            </Button>
+          ) : null}
         </div>
       ),
     },
@@ -336,6 +343,7 @@ function payeeColumns(onHoldChange) {
 const PAYEE_CSV = {
   columns: [
     { key: "display_name", label: "Payee" }, { key: "email_norm", label: "Email" },
+    { key: "payee_kind", label: "Kind" },
     { key: "brand_name", label: "Brand" }, { key: "rail", label: "Rail" },
     { key: "currency", label: "Currency" }, { key: "gross_minor", label: "Gross reward minor" },
     { key: "mingla_fee_minor", label: "Mingla fee minor" }, { key: "net_minor", label: "Payee reward minor" },
@@ -733,26 +741,31 @@ export function BusinessMoneyLedgerPage() {
     listView = (
       <EntityListView
         key={`payees-${payeeRefreshKey}`}
-        title="Referral payees"
+        title="Payees"
         columns={payeeColumns(setSelectedPayee)}
         fetchPage={listPayeeLedger}
         searchPlaceholder="Search payee, brand, order or share id"
         filters={[
+          { key: "kind", label: "Kind", options: [
+            { value: "referral", label: "Referral" },
+            { value: "gig_fee", label: "Gig fee" },
+            { value: "local_month", label: "Local" },
+          ] },
           { key: "status", label: "Status", options: [
             { value: "held", label: "Risk held" },
-            { value: "held_until_event", label: "Held until event" },
+            { value: "held_until_event", label: "On the way" },
             { value: "releasable", label: "Ready" },
             { value: "accumulating", label: "Below payout floor" },
             { value: "paid", label: "Paid" },
             { value: "reversed", label: "Reversed" },
           ] },
           { key: "rail", label: "Rail", options: [
-            { value: "stripe", label: "Stripe" },
-            { value: "paystack", label: "Paystack" },
+            { value: "stripe", label: "Bank (US)" },
+            { value: "paystack", label: "Bank (NG)" },
           ] },
         ]}
         csv={PAYEE_CSV}
-        emptyMessage="No referral payee ledger entries yet."
+        emptyMessage="No payee ledger entries yet."
         emptyIcon={Landmark}
       />
     );
@@ -794,7 +807,7 @@ export function BusinessMoneyLedgerPage() {
         description={activeTab === "payouts"
           ? "Every sale's payout from the release ledger, across Stripe and Paystack. Each sale is due about 24 hours after payment."
           : activeTab === "payees"
-          ? "Referral rewards, recoveries, payout readiness and risk holds. Provider transfer fees come out of the payee's reward; they are not charged to the buyer or host."
+          ? "Everyone Mingla pays: referral rewards, gig fees and Local months, with recoveries, payout readiness and risk holds. Provider transfer fees come out of the payee's reward; they are not charged to the buyer or host."
           : "Refunds, disputes, payouts, platform-fee revenue, and provider-evidence Stay reconciliation across every brand."}
         tabs={<Tabs tabs={TABS} activeTab={activeTab} onChange={changeTab} />}
       />

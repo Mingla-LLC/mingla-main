@@ -145,7 +145,6 @@ export const NAV_GROUPS = [
     items: [
       { id: "hosts",                     label: "Hosts",              icon: "Handshake" },
       { id: "creators",                  label: "Creators",           icon: "Sparkles" },
-      { id: "gig-queue",                 label: "Creator gigs",       icon: "Scale" },
       // #3980 (D-11): Needs you, Work and Calendar sit together; the Agent
       // log is a tab on Work (#/agent-log still opens it there).
       { id: "drafts",                    label: "Needs you",          icon: "FileText" },
@@ -165,6 +164,17 @@ export const NAV_GROUPS = [
       { id: "business-venues",           label: "Venues",             icon: "Store" },
       { id: "business-offerings",        label: "Offerings",          icon: "CalendarDays" },
       { id: "claims",                    label: "Venue claims",       icon: "ClipboardList" },
+    ],
+  },
+  // Issue #3872: the Creator Program's working pages. #/gig-queue (the old
+  // single "Creator gigs" page) opens Disputes.
+  {
+    label: "Programs",
+    items: [
+      { id: "program-creators",          label: "Creators",           icon: "BadgeCheck" },
+      { id: "program-gigs",              label: "Gigs",               icon: "Clapperboard" },
+      { id: "program-locals",            label: "Mingla Locals",      icon: "MapPin" },
+      { id: "program-disputes",          label: "Disputes",           icon: "Scale" },
     ],
   },
   {

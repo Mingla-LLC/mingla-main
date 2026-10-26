@@ -65,8 +65,8 @@ const emailsOf = (list: Array<{ email: string }>) => list.map((p) => p.email);
 Deno.test("#3980 W3 D-11: the Pipeline menu is Needs you, Work and Calendar together; the Agent log is a tab on Work", () => {
   const pipeline = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Pipeline");
   assertEquals(pipeline?.items.map((i: { id: string; label: string }) => `${i.id}:${i.label}`), [
-    // [TEST-MOD-APPROVED #3872] Creator gigs is the reviewed operations queue added to Pipeline; prior ordering stays intact.
-    "hosts:Hosts", "creators:Creators", "gig-queue:Creator gigs", "drafts:Needs you", "work-board:Work", "content-calendar:Calendar",
+    // [TEST-MOD-APPROVED #3872] walkthrough W4: Creator gigs left Pipeline for the Programs group.
+    "hosts:Hosts", "creators:Creators", "drafts:Needs you", "work-board:Work", "content-calendar:Calendar",
     "beta-leads:Beta Leads", "tool-leads:Tool Leads", "team-dashboard:Team dashboard",
   ]);
   // The page id stays, open to the pipelines, and lands on the tab.

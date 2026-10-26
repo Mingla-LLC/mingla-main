@@ -62,6 +62,8 @@ const MENU = [
   // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work.
   ["Pipeline", ["hosts", "creators", "drafts", "work-board", "content-calendar", "beta-leads", "tool-leads", "team-dashboard"]],
   ["Business", ["business-people", "business-brands", "brand-sites", "business-venues", "business-offerings", "claims"]],
+  // [TEST-MOD-APPROVED #3872] walkthrough W4: the Creator Program's Programs group (Creators, Gigs, Mingla Locals, Disputes).
+  ["Programs", ["program-creators", "program-gigs", "program-locals", "program-disputes"]],
   ["Money", ["business-payments", "business-orders", "business-money-ledger", "refund-operations", "subscriptions", "pricing"]],
   ["Explorer app", ["users", "placepool", "launch-cities", "signals", "deck-tuner", "place-intelligence-trial"]],
   ["Growth", ["ad-engine"]],
@@ -79,6 +81,8 @@ const LABELS = {
   "beta-leads": "Beta Leads", "tool-leads": "Tool Leads", "content-calendar": "Calendar", "team-dashboard": "Team dashboard",
   "business-people": "People", "business-brands": "Brands", "brand-sites": "Brand Sites",
   "business-venues": "Venues", "business-offerings": "Offerings", claims: "Venue claims",
+  // [TEST-MOD-APPROVED #3872] walkthrough W4: the Programs group.
+  "program-creators": "Creators", "program-gigs": "Gigs", "program-locals": "Mingla Locals", "program-disputes": "Disputes",
   "business-payments": "Payments", "business-orders": "Orders", "business-money-ledger": "Money ledger",
   "refund-operations": "Refund operations", subscriptions: "Subscriptions", pricing: "Pricing",
   users: "Users", placepool: "Place Pool", "launch-cities": "Launch Cities", signals: "Signal Library",
@@ -108,10 +112,11 @@ const throwingStorage = {
   setItem() { throw new Error("storage is blocked"); },
 };
 
-describe("#3802 S-1: the menu is eight groups, in the approved order", () => {
+describe("#3802 S-1: the menu is nine groups, in the approved order", () => {
   it("group labels, in order", () => {
     assert.deepEqual(NAV_GROUPS.map((g) => g.label), MENU.map(([label]) => label));
-    assert.equal(NAV_GROUPS.length, 8);
+    // [TEST-MOD-APPROVED #3872] walkthrough W4: + Programs.
+    assert.equal(NAV_GROUPS.length, 9);
   });
   it("each group holds exactly its pages, in order", () => {
     for (const [i, [label, ids]] of MENU.entries()) {
@@ -139,7 +144,8 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     // [TEST-MOD-APPROVED #2879] Queue health added beside API health (+1).
     // [TEST-MOD-APPROVED #3980] Work board and Agent log (+2).
     // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work. (-1)
-    assert.equal(ids.length, 39);
+    // [TEST-MOD-APPROVED #3872] walkthrough W4: + the four Programs pages (Creators, Gigs, Mingla Locals, Disputes).
+    assert.equal(ids.length, 43);
   });
   it("the menu plus governed Ads deep links are the app's pages (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -400,6 +406,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     "WorkBoardPage.jsx", "AgentLogPage.jsx",
     "GuidePage.jsx", "LaunchCitiesPage.jsx", "NotificationsPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
     "PlaceIntelligenceTrialPage.jsx", "PlacePoolManagementPage.jsx", "PricingPage.jsx", "QueueHealthPage.jsx", "RefundOperationsPage.jsx",
+    // [TEST-MOD-APPROVED #3872] walkthrough W4: the four Programs pages draw the one header.
+    "ProgramCreatorsPage.jsx", "ProgramGigsPage.jsx", "ProgramLocalsPage.jsx", "ProgramDisputesPage.jsx",
     "RoleHomePage.jsx", "SettingsPage.jsx", "SignalLibraryPage.jsx", "StripeModePage.jsx", "SubscriptionManagementPage.jsx",
     "SupportDeskPage.jsx", "TeamDashboardPage.jsx", "ToolLeadsPage.jsx", "UserManagementPage.jsx", "VenuesConsolePage.jsx",
   ];
@@ -434,7 +442,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     assert.deepEqual([...MIGRATED, ...FOLLOW_UP].sort(), all);
     // [TEST-MOD-APPROVED #2879] Queue health page (+1 over #3720 Wave 6's 41).
     // [TEST-MOD-APPROVED #3980] Work board and Agent log pages (+2).
-    assert.equal(MIGRATED.length, 44);
+    // [TEST-MOD-APPROVED #3872] walkthrough W4: + the four Programs pages.
+    assert.equal(MIGRATED.length, 48);
     assert.equal(FOLLOW_UP.length, 0);
   });
 
@@ -572,7 +581,8 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
   it("every state of every migrated page draws the page header", () => {
     // [TEST-MOD-APPROVED #2879] Queue health page (+1 over #3720 Wave 6's 41).
     // [TEST-MOD-APPROVED #3980] Work board and Agent log pages (+2).
-    assert.equal(MIGRATED.length, 44);
+    // [TEST-MOD-APPROVED #3872] walkthrough W4: + the four Programs pages.
+    assert.equal(MIGRATED.length, 48);
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);
       assert.equal(
