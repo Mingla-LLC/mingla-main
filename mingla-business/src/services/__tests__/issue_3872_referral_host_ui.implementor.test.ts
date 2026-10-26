@@ -20,12 +20,17 @@ describe("#3872 B4 Host referral operations", () => {
     expect(editor).toContain("Buyer cash share");
     expect(editor).toContain("Buyer voucher");
     expect(editor).toContain("Invited promoter perk");
-    expect(home).toContain("Active offers");
-    expect(home).toContain("Attributed orders");
+    // #3872 walkthrough redesign (approved K-hub): 2×2 stats that scroll
+    // away, a segmented control, leaderboard inside Promoters, invite sheet.
+    expect(home).toContain("Sold via referrals");
+    expect(home).toContain("People earning");
     expect(home).toContain("Leaderboard");
-    expect(home).toContain("View details");
+    expect(home).toContain("View details for");
     expect(home).toContain("Invite resent");
     expect(home).toContain("TimelineRow");
+    expect(home).toContain("Invite promoters");
+    expect(home).not.toMatch(/horizontal\s*\n?\s*showsHorizontalScrollIndicator/);
+    expect(editor).not.toContain("Harmattan");
   });
 
   it("shows tracking link QR controls and per-link results", () => {
@@ -34,9 +39,8 @@ describe("#3872 B4 Host referral operations", () => {
 
     expect(home).toContain("Show QR");
     expect(home).toContain("react-native-qrcode-svg");
-    expect(home).toContain('label="Visits"');
-    expect(home).toContain('label="Orders"');
-    expect(home).toContain('label="Revenue"');
+    expect(home).toContain("clicks ·");
+    expect(home).toContain("autoCorrect={false}");
     expect(service).toContain('supabase.rpc("brand_tracking_links"');
   });
 

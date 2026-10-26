@@ -1,16 +1,10 @@
 import React, { Suspense } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLocalSearchParams } from "expo-router";
 
-import { Icon } from "../../../src/components/ui/Icon";
-import {
-  canvas,
-  spacing,
-  text as textTokens,
-} from "../../../src/constants/designSystem";
+import { ProgramLoading } from "../../../src/components/programs/ProgramKit";
 import { useBrand } from "../../../src/hooks/useBrands";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { currencyCodeOrNull } from "../../../src/utils/currency";
 
 const LazyReferralHome = React.lazy(async () => {
   const mod =
@@ -18,56 +12,30 @@ const LazyReferralHome = React.lazy(async () => {
   return { default: mod.ReferralHomeView };
 });
 
+const TABS = new Set(["offers", "promoters", "links", "results"]);
+
+// #3872 — the workspace renders its own title bar and scrolls as one page, so
+// nothing stays pinned over the content on a phone.
 export default function ReferralsRoute(): React.ReactElement {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ id: string | string[] }>();
+  const params = useLocalSearchParams<{ id: string | string[]; tab?: string | string[] }>();
   const brandId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const rawTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
   const { rank } = useCurrentBrandRole(brandId ?? null);
   const { data: brand } = useBrand(brandId ?? null);
+  const currency =
+    currencyCodeOrNull(brand?.pricingCurrency) ??
+    currencyCodeOrNull(brand?.defaultCurrency) ??
+    "USD";
+  if (!brandId) return <ProgramLoading />;
   return (
-    <View style={[styles.page, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={() =>
-            router.canGoBack()
-              ? router.back()
-              : router.replace("/(tabs)/account" as never)
-          }
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          style={styles.back}
-        >
-          <Icon name="chevL" size={22} color={textTokens.primary} />
-        </Pressable>
-        <Text style={styles.title}>Referrals</Text>
-      </View>
-      {brandId ? (
-        <Suspense fallback={null}>
-          <LazyReferralHome
-            brandId={brandId}
-            rank={rank}
-            currency={brand?.pricingCurrency ?? brand?.defaultCurrency ?? "USD"}
-          />
-        </Suspense>
-      ) : null}
-    </View>
+    <Suspense fallback={<ProgramLoading />}>
+      <LazyReferralHome
+        brandId={brandId}
+        rank={rank}
+        currency={currency}
+        fallback={`/brand/${brandId}`}
+        initialTab={rawTab && TABS.has(rawTab) ? (rawTab as "offers" | "promoters" | "links" | "results") : "offers"}
+      />
+    </Suspense>
   );
 }
-
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: canvas.profile },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
-  },
-  back: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  title: { color: textTokens.primary, fontSize: 20, fontWeight: "800" },
-});

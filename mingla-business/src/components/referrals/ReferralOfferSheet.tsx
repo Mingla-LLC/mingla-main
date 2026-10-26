@@ -372,7 +372,7 @@ export const ReferralOfferSheet: React.FC<ReferralOfferSheetProps> = ({
                 value={name}
                 onChangeText={setName}
                 style={styles.input}
-                placeholder="Harmattan street team"
+                placeholder="e.g. Launch week promoters"
                 placeholderTextColor={textTokens.tertiary}
                 maxLength={60}
               />
