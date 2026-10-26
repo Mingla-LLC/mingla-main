@@ -21,6 +21,24 @@ DECLARE
   v_tz text;
   v_chip text;
 BEGIN
+  -- Fail closed for non-public / blocked events so anon EXECUTE cannot probe
+  -- private schedules by event id (same ordinary-read gate as the public view).
+  IF NOT EXISTS (
+    SELECT 1
+      FROM public.events e
+     WHERE e.id = p_event_id
+       AND e.deleted_at IS NULL
+       AND e.visibility = 'public'
+       AND NOT public.issue_1931_event_ordinary_read_blocked(e.id)
+  ) THEN
+    RETURN jsonb_build_object(
+      'nextStartAt', NULL,
+      'nextEndAt', NULL,
+      'upcomingCount', 0,
+      'scheduleLine', NULL
+    );
+  END IF;
+
   SELECT NULLIF(btrim(e.timezone), '') INTO v_tz
     FROM public.events e
    WHERE e.id = p_event_id;
