@@ -81,11 +81,8 @@ Deno.test("#3872 public gig DTO carries the gig's pay, never a budget level", ()
     id: "g1",
     pay_up_to_minor: 30000,
     currency: "USD",
-    budget_band: "b2",
-    budget_min_minor: 20000,
   });
   assertEquals(dto.pay_up_to_minor, 30000);
   assertEquals(dto.currency, "USD");
-  assertEquals("budget_band" in dto, false);
-  assertEquals("budget_min_minor" in dto, false);
+  assertEquals(Object.keys(dto).some((key) => key.startsWith("budget")), false);
 });

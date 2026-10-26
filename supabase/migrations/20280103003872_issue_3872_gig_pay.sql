@@ -154,10 +154,16 @@ BEGIN
   v_usage:=coalesce(nullif(p_payload->>'usage_days',''),'90')::integer;
   IF v_usage NOT IN (30,90,365) THEN RETURN jsonb_build_object('ok',false,'error','usage_invalid','field','usage_days'); END IF;
   -- The host names the most each creator can be paid, in minor units.
-  IF coalesce(p_payload->>'pay_up_to_minor','')!~'^[0-9]{1,15}$' OR (p_payload->>'pay_up_to_minor')::bigint<=0 THEN
+  -- Closing or cancelling a gig saved before pay existed keeps it as stored.
+  IF nullif(p_payload->>'pay_up_to_minor','') IS NULL AND v_existing.id IS NOT NULL
+     AND v_existing.pay_up_to_minor IS NULL
+     AND coalesce(nullif(p_payload->>'status',''),'') IN ('closed','cancelled') THEN
+    v_pay:=NULL;
+  ELSIF coalesce(p_payload->>'pay_up_to_minor','')!~'^[0-9]{1,15}$' OR (p_payload->>'pay_up_to_minor')::bigint<=0 THEN
     RETURN jsonb_build_object('ok',false,'error','pay_required','field','pay_up_to_minor');
+  ELSE
+    v_pay:=(p_payload->>'pay_up_to_minor')::bigint;
   END IF;
-  v_pay:=(p_payload->>'pay_up_to_minor')::bigint;
   v_currency:=upper(btrim(coalesce(p_payload->>'currency','')));
   IF v_currency!~'^[A-Z]{3}$' THEN RETURN jsonb_build_object('ok',false,'error','currency_invalid','field','currency'); END IF;
   IF v_existing.id IS NOT NULL AND v_existing.currency<>v_currency THEN RETURN jsonb_build_object('ok',false,'error','currency_immutable','field','currency'); END IF;

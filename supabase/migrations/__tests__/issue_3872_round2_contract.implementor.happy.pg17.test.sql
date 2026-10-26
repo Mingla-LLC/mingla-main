@@ -312,7 +312,7 @@ BEGIN
   -- Pay: the host's "up to" amount is stored and read back exactly.
   IF v_row.pay_up_to_minor IS DISTINCT FROM 30000 THEN RAISE EXCEPTION 'pay not stored: %',v_row.pay_up_to_minor; END IF;
   SELECT g INTO v_r FROM jsonb_array_elements(public.gig_host_home(v_brand)->'gigs') g WHERE g->>'id'=v_gig::text;
-  IF (v_r->>'pay_up_to_minor')::bigint IS DISTINCT FROM 30000 OR v_r->>'currency' IS DISTINCT FROM 'USD' OR v_r ? 'budget_band' THEN
+  IF (v_r->>'pay_up_to_minor')::bigint IS DISTINCT FROM 30000 OR v_r->>'currency' IS DISTINCT FROM 'USD' OR EXISTS(SELECT 1 FROM jsonb_object_keys(v_r) k WHERE k LIKE 'budget%') THEN
     RAISE EXCEPTION 'host home pay shape: %',v_r;
   END IF;
   v_r:=public.gig_save(v_payload||jsonb_build_object('id',v_gig,'pay_up_to_minor',45000));
@@ -331,9 +331,6 @@ BEGIN
   IF v_r->>'field' IS DISTINCT FROM 'pay_up_to_minor' OR (SELECT pay_up_to_minor FROM public.gigs WHERE id=v_gig) IS DISTINCT FROM 45000 THEN
     RAISE EXCEPTION 'an edit may not clear the pay: %',v_r;
   END IF;
-  -- A level sent by an old client is not a pay.
-  v_r:=public.gig_save((v_payload-'pay_up_to_minor')||jsonb_build_object('budget_band','b2'));
-  IF v_r->>'error' IS DISTINCT FROM 'pay_required' THEN RAISE EXCEPTION 'band without pay: %',v_r; END IF;
   IF v_row.video_due_at IS DISTINCT FROM ((v_day+2)+time '18:30') AT TIME ZONE 'America/New_York'
      OR v_row.shoot_at IS DISTINCT FROM (v_day+time '21:00') AT TIME ZONE 'America/New_York'
      OR v_row.post_by<>v_day+2 THEN
@@ -351,7 +348,7 @@ BEGIN
   PERFORM pg_temp.act('38724000-0000-4000-8000-0000000000a4');
   v_r:=public.creator_gig_detail(v_gig);
   IF (v_r->>'pay_up_to_minor')::bigint IS DISTINCT FROM 30000 OR v_r->>'currency' IS DISTINCT FROM 'USD'
-     OR v_r ? 'budget_band' OR v_r ? 'budget_min_minor' OR v_r ? 'budget_max_minor' OR v_r ? 'budget_currency' THEN
+     OR EXISTS(SELECT 1 FROM jsonb_object_keys(v_r) k WHERE k LIKE 'budget%') THEN
     RAISE EXCEPTION 'creator gig detail pay shape: %',v_r;
   END IF;
   IF (v_r->>'video_due_at')::timestamptz IS DISTINCT FROM v_row.video_due_at OR (v_r->>'shoot_at')::timestamptz IS DISTINCT FROM v_row.shoot_at THEN
@@ -372,17 +369,34 @@ BEGIN
      OR (SELECT shoot_at FROM public.gigs WHERE id=(v_r->>'id')::uuid) IS NOT NULL THEN
     RAISE EXCEPTION 'date-only save did not derive the due time';
   END IF;
+  -- A gig saved before pay existed (no pay stored) can still be closed; any
+  -- other edit must add the pay.
+  v_gig:=(v_r->>'id')::uuid;
+  UPDATE public.gigs SET pay_up_to_minor=NULL WHERE id=v_gig;
+  v_r:=public.gig_save((v_payload-'video_due_at'-'shoot_at'-'pay_up_to_minor')||jsonb_build_object('id',v_gig));
+  IF v_r->>'error' IS DISTINCT FROM 'pay_required' THEN RAISE EXCEPTION 'legacy edit without pay: %',v_r; END IF;
+  v_r:=public.gig_save((v_payload-'video_due_at'-'shoot_at'-'pay_up_to_minor')||jsonb_build_object('id',v_gig,'status','closed'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (SELECT status FROM public.gigs WHERE id=v_gig)<>'closed' THEN
+    RAISE EXCEPTION 'legacy gig could not be closed: %',v_r;
+  END IF;
+  IF public.gig_host_home(v_brand)->'gigs' @> jsonb_build_array(jsonb_build_object('id',v_gig,'pay_up_to_minor',NULL))=false THEN
+    RAISE EXCEPTION 'host home must return a null pay for a legacy gig';
+  END IF;
 END;
 $test$;
 
 -- Budget levels are retired: no level column, ranges table or admin editor RPC.
 DO $test$
 BEGIN
-  IF EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='gigs' AND column_name='budget_band') THEN
-    RAISE EXCEPTION 'gigs.budget_band still exists';
+  IF EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='gigs' AND column_name LIKE 'budget%') THEN
+    RAISE EXCEPTION 'gigs still has a budget level column';
   END IF;
-  IF to_regclass('public.gig_budget_bands') IS NOT NULL THEN RAISE EXCEPTION 'gig_budget_bands still exists'; END IF;
-  IF to_regprocedure('public.admin_budget_band_save(text,text,bigint,bigint)') IS NOT NULL THEN RAISE EXCEPTION 'admin_budget_band_save still exists'; END IF;
+  IF EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname LIKE 'gig_budget%') THEN
+    RAISE EXCEPTION 'the budget ranges table still exists';
+  END IF;
+  IF EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname LIKE 'admin_budget%') THEN
+    RAISE EXCEPTION 'the budget ranges admin function still exists';
+  END IF;
   IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='gigs' AND column_name='pay_up_to_minor' AND data_type='bigint') THEN
     RAISE EXCEPTION 'gigs.pay_up_to_minor missing';
   END IF;

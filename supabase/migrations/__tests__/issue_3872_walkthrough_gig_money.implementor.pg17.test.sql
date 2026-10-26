@@ -251,7 +251,7 @@ BEGIN
   v_r:=public.creator_gig_board(NULL,NULL);
   SELECT e INTO v_hold FROM jsonb_array_elements(v_r) e WHERE e->>'id'='38723000-0000-4000-8000-0000000000f2';
   IF v_hold IS NULL OR (v_hold->>'pay_up_to_minor')::bigint IS DISTINCT FROM 30000 OR (v_hold->>'saved')::boolean IS DISTINCT FROM true
-     OR v_hold->>'currency' IS DISTINCT FROM 'USD' OR v_hold ? 'budget_band' OR v_hold ? 'budget_min_minor' OR v_hold ? 'budget_currency' THEN
+     OR v_hold->>'currency' IS DISTINCT FROM 'USD' OR EXISTS(SELECT 1 FROM jsonb_object_keys(v_hold) k WHERE k LIKE 'budget%') THEN
     RAISE EXCEPTION 'board shape: %',v_r;
   END IF;
   IF jsonb_array_length(public.creator_saved_gigs())<>1 THEN RAISE EXCEPTION 'saved gigs missing'; END IF;
