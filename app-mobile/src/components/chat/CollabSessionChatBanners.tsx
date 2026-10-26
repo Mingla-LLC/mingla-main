@@ -244,17 +244,53 @@ function CompactCollabBottomSheet({
   );
 }
 
+/** The two fields a plan's card opens from (a Plans row, or a plan row in the thread). */
+export interface CollabPlanCardSource {
+  savedCardId: string;
+  cardData: Record<string, unknown> | null;
+}
+
+export interface CollabPlanCard {
+  modalTarget: ExpansionTarget | null;
+  setModalTarget: (target: ExpansionTarget | null) => void;
+  openPlan: (item: CollabPlanCardSource) => void;
+}
+
+/**
+ * Issue #4114: one plan-card state for the chat. The Plans sheet, the header
+ * strip's plan cell and the plan rows in the thread all open a plan through
+ * `openPlan`, and the ONE ExpandedCardModal the Plans sheet renders shows it,
+ * so Book, Share and the #1672 / #3281 dismiss rule are identical everywhere.
+ */
+export function useCollabPlanCard(): CollabPlanCard {
+  const [modalTarget, setModalTarget] = useState<ExpansionTarget | null>(null);
+  const openPlan = useCallback((item: CollabPlanCardSource) => {
+    setModalTarget(expansionTargetFromSavedPayload({
+      ...item.cardData,
+      sourceScope: 'collaboration',
+      sourceRecordId: item.savedCardId,
+      savedCardId: item.savedCardId,
+    }));
+  }, []);
+  return { modalTarget, setModalTarget, openPlan };
+}
+
 export function ScheduleSheet({
   visible,
   onClose,
   sessionId,
   currentUserId,
   accountPreferences,
-}: SheetProps & { accountPreferences?: Props["accountPreferences"] }) {
+  planCard,
+}: SheetProps & {
+  accountPreferences?: Props["accountPreferences"];
+  /** Issue #4114: the chat's plan-card state (`useCollabPlanCard`), shared with the strip and the thread. */
+  planCard: CollabPlanCard;
+}) {
   const { t } = useTranslation(["chat"]);
   const { rows, isLoading, isError, refetch } =
     useSessionScheduledCards(sessionId);
-  const [modalTarget, setModalTarget] = useState<ExpansionTarget | null>(null);
+  const { modalTarget, setModalTarget, openPlan } = planCard;
 
   const hasRows = !isLoading && !isError && rows.length > 0;
   // Issue #4114 Wave 3 (D9): a collab can set any number of plans. Upcoming
@@ -306,14 +342,7 @@ export function ScheduleSheet({
             <TouchableOpacity
               key={item.savedCardId}
               style={styles.scheduleRow}
-              onPress={() =>
-                setModalTarget(expansionTargetFromSavedPayload({
-                  ...item.cardData,
-                  sourceScope: 'collaboration',
-                  sourceRecordId: item.savedCardId,
-                  savedCardId: item.savedCardId,
-                }))
-              }
+              onPress={() => openPlan(item)}
               accessibilityRole="button"
               accessibilityLabel={`Open ${cardTitle(item.cardData)} scheduled for ${formatScheduledAt(item.scheduledAt)}`}
             >

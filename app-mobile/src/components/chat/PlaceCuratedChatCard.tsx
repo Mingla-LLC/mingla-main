@@ -5,11 +5,13 @@ import { colors, fontWeights } from '../../constants/designSystem';
 import { receivedBubbleTokens } from '../../constants/chatTokens';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-type Props = { title: string; category?: string | null; image?: string | null; stopCount?: number; senderNote?: string; lockedAt?: string; isMe: boolean; hint: string; onPress: () => void };
+type Props = { title: string; category?: string | null; image?: string | null; stopCount?: number; senderNote?: string; lockedAt?: string; isMe: boolean; hint: string; onPress: () => void; accessibilityLabel?: string };
 
 /** Exact extraction of the accepted legacy place/curated chat bubble. */
-export function PlaceCuratedChatCard({ title, category, image, stopCount, senderNote, lockedAt, isMe, hint, onPress }: Props) {
-  return <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.cardBubbleContainer}>
+export function PlaceCuratedChatCard({ title, category, image, stopCount, senderNote, lockedAt, isMe, hint, onPress, accessibilityLabel }: Props) {
+  // Issue #4114: one labelled button (a locked-in plan says so and opens its card).
+  return <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.cardBubbleContainer}
+    accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? title}>
     {senderNote ? <View style={styles.senderNote}><Text style={[styles.senderNoteText,isMe?styles.textSent:styles.textReceived]}>{senderNote}</Text></View> : null}
     {lockedAt ? <View style={styles.cardBubbleLockedBanner}><Icon name="lock-closed" size={12} color="#fff" /><Text style={styles.cardBubbleLockedBannerText} numberOfLines={1}>
       {`Locked in · ${new Date(lockedAt).toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}`}

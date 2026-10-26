@@ -25,6 +25,7 @@ import { ImageWithFallback } from "../figma/ImageWithFallback";
 import { chatTokens } from "../../constants/chatTokens";
 import {
   CHAT_HEADER_METRICS as M,
+  planStripTap,
   type CollabHeaderStripModel,
 } from "./chatHeaderModel";
 
@@ -44,6 +45,8 @@ export interface ChatHeaderStripLabels {
   moreCount: (count: number) => string;
   openMatches: string;
   openPlans: string;
+  /** Issue #4114: the plan cell opens that plan's card. */
+  openPlan: (title: string, time: string) => string;
 }
 
 export interface ChatHeaderProps {
@@ -73,11 +76,19 @@ export interface ChatHeaderProps {
   strip?: CollabHeaderStripModel | null;
   stripLabels?: ChatHeaderStripLabels;
   onStripPress?: (view: "matches" | "plans") => void;
+  /**
+   * Issue #4114: tapping the plan (date tile and name) opens that plan's card.
+   * "+N more" still goes to the Plans sheet through `onStripPress("plans")`.
+   */
+  onPlanPress?: (savedCardId: string) => void;
   locale?: string;
 }
 
 const STRIP_OPEN_HEIGHT = M.stripGap + M.strip;
 const STRIP_MOTION_MS = 240;
+// Issue #4114: "+N more" is its own target. The strip is 40pt tall, so 2pt
+// above and below makes the touch area 44pt; it is at least 44pt wide.
+const PLAN_MORE_HIT_SLOP = { top: 2, bottom: 2, left: 0, right: 4 };
 
 function initials(name: string): string {
   return (
@@ -150,6 +161,7 @@ export function ChatHeader({
   strip,
   stripLabels,
   onStripPress,
+  onPlanPress,
   locale,
 }: ChatHeaderProps): React.ReactElement {
   const stripVisible = Boolean(strip?.visible && stripLabels);
@@ -342,29 +354,50 @@ export function ChatHeader({
               const plan = strip.plan;
               const tile = formatPlanTile(plan.scheduledAt, locale);
               const muted = plan.state === "past";
+              const handlePlanPart = (part: "plan" | "more") => {
+                const tap = planStripTap(plan, part);
+                if (tap.kind === "card" && onPlanPress) onPlanPress(tap.savedCardId);
+                else onStripPress?.("plans");
+              };
               return (
-                <TouchableOpacity
-                  style={styles.cell}
-                  onPress={() => onStripPress?.("plans")}
-                  activeOpacity={0.72}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${stripLabels.openPlans}. ${muted ? `${stripLabels.lastPlan}, ` : ""}${plan.title} ${tile.time}`}
-                  testID="chat-header-plan"
-                >
-                  <View style={[styles.calendarTile, muted && styles.calendarTileMuted]}>
-                    <Text style={[styles.calendarWeekday, muted && styles.mutedText]}>{tile.weekday}</Text>
-                    <Text style={[styles.calendarDay, muted && styles.mutedText]}>{tile.day}</Text>
-                  </View>
-                  <View style={styles.cellCopy}>
-                    <Text style={[styles.cellTitle, muted && styles.mutedText]} numberOfLines={1}>
-                      {plan.loading ? stripLabels.plansLoading : muted ? `${stripLabels.lastPlan} · ${tile.time}` : tile.time}
-                    </Text>
-                    <Text style={[styles.cellMeta, muted && styles.mutedText]} numberOfLines={1}>
-                      {plan.title}
-                      {plan.moreCount > 0 ? ` · ${stripLabels.moreCount(plan.moreCount)}` : ""}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
+                <View style={styles.planCell}>
+                  <TouchableOpacity
+                    style={styles.cell}
+                    onPress={() => handlePlanPart("plan")}
+                    activeOpacity={0.72}
+                    accessibilityRole="button"
+                    accessibilityLabel={stripLabels.openPlan(muted ? `${stripLabels.lastPlan}, ${plan.title}` : plan.title, tile.time)}
+                    testID="chat-header-plan"
+                  >
+                    <View style={[styles.calendarTile, muted && styles.calendarTileMuted]}>
+                      <Text style={[styles.calendarWeekday, muted && styles.mutedText]}>{tile.weekday}</Text>
+                      <Text style={[styles.calendarDay, muted && styles.mutedText]}>{tile.day}</Text>
+                    </View>
+                    <View style={styles.cellCopy}>
+                      <Text style={[styles.cellTitle, muted && styles.mutedText]} numberOfLines={1}>
+                        {plan.loading ? stripLabels.plansLoading : muted ? `${stripLabels.lastPlan} · ${tile.time}` : tile.time}
+                      </Text>
+                      <Text style={[styles.cellMeta, muted && styles.mutedText]} numberOfLines={1}>
+                        {plan.title}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  {plan.moreCount > 0 ? (
+                    <TouchableOpacity
+                      style={styles.planMore}
+                      onPress={() => handlePlanPart("more")}
+                      activeOpacity={0.72}
+                      hitSlop={PLAN_MORE_HIT_SLOP}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${stripLabels.openPlans}, ${stripLabels.moreCount(plan.moreCount)}`}
+                      testID="chat-header-plan-more"
+                    >
+                      <Text style={styles.planMoreText} numberOfLines={1}>
+                        {stripLabels.moreCount(plan.moreCount)}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               );
             })() : null}
           </View>
@@ -506,6 +539,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 10,
     gap: 8,
+  },
+  planCell: {
+    flex: 1,
+    minWidth: 44,
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  planMore: {
+    minWidth: 44,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  planMoreText: {
+    fontSize: 11.5,
+    fontWeight: "600",
+    color: chatTokens.accent,
   },
   cellDivider: {
     width: StyleSheet.hairlineWidth,

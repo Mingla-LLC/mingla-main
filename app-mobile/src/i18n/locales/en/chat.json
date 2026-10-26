@@ -109,6 +109,8 @@
   "a11yOpenChatInfo": "Open {{name}} info",
   "a11yOpenMatches": "Open matches",
   "a11yOpenPlans": "Open plans",
+  "a11yOpenPlan": "Open plan: {{title}}, {{time}}",
+  "a11yOpenPlanRow": "Open plan. {{text}}",
   "a11yOpenSharedCard": "Open {{title}}",
   "a11yReactWith": "React with {{emoji}}",
   "a11yScrollToLatest": "Jump to the latest message",

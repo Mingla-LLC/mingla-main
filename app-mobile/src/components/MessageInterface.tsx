@@ -52,11 +52,19 @@ import { getDisplayName } from "../utils/getDisplayName";
 import {
   SavedToSessionCardsSheet,
   ScheduleSheet,
+  useCollabPlanCard,
   useSessionSavedCardsForSheet,
 } from "./chat/CollabSessionChatBanners";
 import { CollabDeckSheet } from "./connections/CollabDeckSheet";
 import { ChatHeader, type ChatHeaderStripLabels } from "./chat/ChatHeader";
-import { buildCollabHeaderStrip, headerAvatarStack, matchKey, memberFirstNames } from "./chat/chatHeaderModel";
+import {
+  buildCollabHeaderStrip,
+  headerAvatarStack,
+  matchKey,
+  memberFirstNames,
+  planSavedCardIdFromPayload,
+  resolvePlanCard,
+} from "./chat/chatHeaderModel";
 import { useSeenSessionMatches } from "../hooks/useSeenSessionMatches";
 import { useDmCollabSession } from "../hooks/useDmCollabSession";
 import { DmCollabCard } from "./chat/DmCollabCard";
@@ -660,6 +668,24 @@ export default function MessageInterface({
     currentUserId,
   });
   const scheduledCardsQuery = useSessionScheduledCards(collabSessionId);
+  // Issue #4114: every place a plan shows (the Plans sheet, the header strip's
+  // plan cell, the plan rows in the thread) opens that plan's card through the
+  // one plan-card state; the Plans sheet renders its one ExpandedCardModal.
+  const collabPlanCard = useCollabPlanCard();
+  const { openPlan: openCollabPlan } = collabPlanCard;
+  const openCollabPlanCard = useCallback(
+    (savedCardId: string, fallbackCardData?: Record<string, unknown> | null): boolean => {
+      if (!isCollabChat || !collabSessionId) return false;
+      const source = resolvePlanCard(scheduledCardsQuery.rows, savedCardId, fallbackCardData);
+      if (!source) return false;
+      openCollabPlan(source);
+      return true;
+    },
+    [collabSessionId, isCollabChat, openCollabPlan, scheduledCardsQuery.rows],
+  );
+  // Stable for the thread's renderItem and bubble handlers.
+  const openCollabPlanCardRef = useRef(openCollabPlanCard);
+  openCollabPlanCardRef.current = openCollabPlanCard;
   const { session: collabSession, isAdmin: isCollabSessionAdmin } = useBoardSession(
     collabSessionId ?? undefined,
   );
@@ -757,6 +783,7 @@ export default function MessageInterface({
       moreCount: (count: number) => t('chat:moreCount', { count }),
       openMatches: t('chat:a11yOpenMatches'),
       openPlans: t('chat:a11yOpenPlans'),
+      openPlan: (title: string, time: string) => t('chat:a11yOpenPlan', { title, time }),
     }),
     [t],
   );
@@ -826,6 +853,10 @@ export default function MessageInterface({
       router.push(`/s/${payload.shareCode}` as never);
       return;
     }
+    // Issue #4114: a locked-in plan in a collab chat opens the same card as the
+    // Plans sheet (collaboration scope, its saved card), not a solo copy.
+    const planCardId = planSavedCardIdFromPayload(payload);
+    if (planCardId && openCollabPlanCardRef.current(planCardId, payload as unknown as Record<string, unknown>)) return;
     // ORCH-0685: typed conversion replaces unsafe `any` cast (Constitution #12 fix).
     setExpandedCardFromChat(cardPayloadToExpandedCardData(payload));
     setShowExpandedCardFromChat(true);
@@ -2040,6 +2071,13 @@ export default function MessageInterface({
     handleOpenCollabDeckView(view);
   };
 
+  // Issue #4114: the strip's plan (date tile and name) opens that plan's card;
+  // "+N more" stays on handleCollabStripPress("plans") (the Plans sheet).
+  const handleCollabPlanPress = (savedCardId: string) => {
+    HapticFeedback.medium();
+    if (!openCollabPlanCard(savedCardId)) setShowCollabPlansSheet(true);
+  };
+
   const handleOpenCollabDeckView = (view: CollabChatHeaderActionId) => {
     HapticFeedback.medium();
     if (view === "matches") {
@@ -2284,6 +2322,9 @@ export default function MessageInterface({
       void mediaHandlersRef.current.handleViewDocument(message.fileUrl);
       return;
     }
+    // Issue #4114: an older "Plan locked in" / "Scheduled for" row opens its plan's card.
+    const planCardId = planSavedCardIdFromPayload(message.cardPayload);
+    if (planCardId && openCollabPlanCardRef.current(planCardId)) return;
     setRevealedTimestampId((prev) => (prev === message.id ? null : message.id));
   }, []);
 
@@ -2461,11 +2502,16 @@ export default function MessageInterface({
           </>
         );
       }
+      // Issue #4114: a plan system row ("Scheduled for ...") opens that plan's card.
+      const systemPlanCardId = isCollabChat ? planSavedCardIdFromPayload(item.message.cardPayload) : null;
       return (
         <>
           <MessageBubble
             message={item.bubble}
             onSystemTokenPress={handleSystemTokenPress}
+            onPlanRowPress={systemPlanCardId ? () => {
+              openCollabPlanCardRef.current(systemPlanCardId);
+            } : undefined}
             isMe={item.message.isMe}
             groupPosition={item.groupPosition}
             showTimestamp={false}
@@ -2546,6 +2592,7 @@ export default function MessageInterface({
     handleJoinDmCollab,
     handleScrollToMessage,
     handleSystemTokenPress,
+    isCollabChat,
     onCancelUpload,
     onRetryMessage,
     onToggleReaction,
@@ -2722,6 +2769,7 @@ export default function MessageInterface({
         strip={collabHeaderStrip}
         stripLabels={collabHeaderStripLabels}
         onStripPress={handleCollabStripPress}
+        onPlanPress={handleCollabPlanPress}
         locale={i18n.language}
       />
 
@@ -3442,6 +3490,7 @@ export default function MessageInterface({
             sessionId={collabSessionId}
             currentUserId={currentUserId}
             accountPreferences={accountPreferences}
+            planCard={collabPlanCard}
           />
         </>
       ) : null}

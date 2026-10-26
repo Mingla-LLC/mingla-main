@@ -72,6 +72,8 @@ export interface PlanCellModel {
   /** Other upcoming plans after the one shown ("+N more"). Always 0 for `past`. */
   moreCount: number;
   loading: boolean;
+  /** The saved card of the plan shown, so tapping it opens that plan's card. */
+  savedCardId: string;
 }
 
 export interface CollabHeaderStripModel {
@@ -192,10 +194,55 @@ export function buildCollabHeaderStrip(input: {
       scheduledAt: shown?.scheduledAt ?? "",
       moreCount: upcoming.length > 0 ? upcoming.length - 1 : 0,
       loading: input.plansLoading && input.plans.length === 0,
+      savedCardId: shown?.savedCardId ?? "",
     };
   }
 
   return { visible: matches !== null || plan !== null, matches, plan };
+}
+
+/**
+ * Issue #4114: what a tap on the strip's plan cell does. The plan itself (date
+ * tile and name) opens THAT plan's card; "+N more" opens the Plans sheet.
+ */
+export type PlanStripTap = { kind: "card"; savedCardId: string } | { kind: "sheet" };
+
+export function planStripTap(plan: Pick<PlanCellModel, "savedCardId"> | null, part: "plan" | "more"): PlanStripTap {
+  if (part === "plan" && plan?.savedCardId) return { kind: "card", savedCardId: plan.savedCardId };
+  return { kind: "sheet" };
+}
+
+/**
+ * Issue #4114: the saved card a plan row in the thread points at. Covers the
+ * lock-and-schedule card message (`lockInEvent`, flat payload with
+ * `savedCardId`) and the older ORCH-0908 rows ("Plan locked in" /
+ * "Scheduled for", `event` + `saved_card_id`). Anything else is not a plan.
+ */
+export function planSavedCardIdFromPayload(payload: unknown): string | null {
+  const p = asRecord(payload);
+  if (!p) return null;
+  const isPlan =
+    p.lockInEvent === "card_locked_and_scheduled" ||
+    p.event === "card_locked_and_scheduled" ||
+    p.event === "card_locked" ||
+    p.event === "plan_scheduled";
+  if (!isPlan) return null;
+  return firstString(p.savedCardId, p.saved_card_id);
+}
+
+/**
+ * Issue #4114: the plan to open for a saved card id. The Plans list row wins
+ * (the exact data the Plans sheet opens); a card message's own payload is the
+ * fallback while the list has not loaded it. Null when there is nothing to show.
+ */
+export function resolvePlanCard<T extends Pick<HeaderPlanInput, "savedCardId" | "cardData">>(
+  rows: readonly T[],
+  savedCardId: string,
+  fallbackCardData?: Record<string, unknown> | null,
+): { savedCardId: string; cardData: Record<string, unknown> } | null {
+  const row = rows.find((candidate) => candidate.savedCardId === savedCardId);
+  const cardData = row?.cardData ?? fallbackCardData ?? null;
+  return cardData ? { savedCardId, cardData } : null;
 }
 
 /** "Tomi, Kemi, Dayo and you": the members' first names for the title row. */

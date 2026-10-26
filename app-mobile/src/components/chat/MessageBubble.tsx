@@ -100,6 +100,8 @@ interface MessageBubbleProps {
   replyTo?: ReplyToData;
   onScrollToMessage?: (messageId: string) => void;
   onCardBubbleTap?: (payload: CardPayload, messageId: string) => void;  // ORCH-0667
+  /** Issue #4114: a plan system row ("Scheduled for ...") opens that plan's card. */
+  onPlanRowPress?: () => void;
   onMentionTap?: (userId: string) => void;
   onCardTagTap?: (cardTag: CardTagEntry) => void;
   onSystemTokenPress?: (token: CollabSystemToken) => void;
@@ -586,6 +588,7 @@ function MessageBubbleImpl({
   replyTo,
   onScrollToMessage,
   onCardBubbleTap,
+  onPlanRowPress,
   onMentionTap,
   onCardTagTap,
   onSystemTokenPress,
@@ -612,6 +615,23 @@ function MessageBubbleImpl({
       return (
         <View style={chatSystemRowStyles.systemPayloadRow} accessible={false}>
           {renderCollabDeadEndBanner(message.systemPayload, onSystemTokenPress)}
+        </View>
+      );
+    }
+    if (onPlanRowPress) {
+      // A plan row carries no tokens; the whole row is the one button.
+      return (
+        <View style={chatSystemRowStyles.row} accessible={false}>
+          <TouchableOpacity
+            onPress={onPlanRowPress}
+            activeOpacity={0.72}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('chat:a11yOpenPlanRow', { text: message.content })}
+            testID="chat-plan-system-row"
+          >
+            {renderSystemBannerContent(message.content, onSystemTokenPress)}
+          </TouchableOpacity>
         </View>
       );
     }
@@ -861,8 +881,12 @@ function MessageBubbleImpl({
             // PlaceCuratedChatCard owns the legacy cardBubbleIntentChip and its
             // arrow-forward affordance; this boundary supplies its effective
             // first-stop image and stop count without duplicating the design.
+            const lockedAt = cp.lockInEvent === 'card_locked_and_scheduled' ? cp.scheduledAt : undefined;
             return <PlaceCuratedChatCard title={cp.title} category={cp.category} image={effectiveImage}
-              stopCount={intentStopCount || undefined} lockedAt={cp.lockInEvent === 'card_locked_and_scheduled' ? cp.scheduledAt : undefined}
+              stopCount={intentStopCount || undefined} lockedAt={lockedAt}
+              accessibilityLabel={lockedAt
+                ? t('chat:a11yOpenPlan', { title: cp.title, time: new Date(lockedAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) })
+                : undefined}
               isMe={isMe} hint={t('chat:cardBubbleTapHint')} onPress={() => onCardBubbleTap?.(payload, message.id)} />;
           })()}
 
