@@ -272,6 +272,9 @@ async function layout(page: Page) {
       html: document.documentElement.getBoundingClientRect().height,
       body: document.body.getBoundingClientRect().height,
       root: root ? root.getBoundingClientRect().height : -1,
+      // #2331 — the privacy bar's live height (0 while hidden).
+      inset: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--mingla-privacy-inset')) || 0,
+      barShown: document.querySelector('[data-testid="privacy-bar"]') !== null,
       scrollers,
     }
   })
@@ -334,27 +337,45 @@ test.describe('#3214 public page handoff to the Expo app', () => {
     expect(harness.beacons[0]).toMatchObject({ path: '/b/issue3214-host' })
   })
 
+  // #2331 I-PRIVACY-BAR-NEVER-OCCLUDES: with the privacy bar shown, the app
+  // root ends at the bar's top edge (viewport minus the measured inset); with
+  // a saved choice the bar is hidden and the root fills the viewport.
   for (const target of KINDS) {
-    test(`${target.kind}: takeover fills the viewport and swaps the plain page's styles for the app's`, async ({ page }) => {
-      test.setTimeout(60_000)
-      const harness = await openPublicPage(page, target)
-      await expectTakenOver(page)
-      await expect.poll(async () => (await layout(page)).root).toBe(640)
-      const measured = await layout(page)
-      expect(measured.html).toBe(measured.viewport)
-      expect(measured.body).toBe(measured.viewport)
-      await page.waitForTimeout(1500)
-      await attachScreenshot(page, `issue3214-${target.kind}`)
-      await expectAppStylesSwapped(page)
-      await expectAppNotCrashed(page)
-      // #3214 CSP: nothing the booted app did on this page kind was refused.
-      expect(await cspViolations(page)).toEqual([])
-      expect(harness.cspConsole).toEqual([])
-      expect(harness.pageErrors.filter((message) => /Requiring unknown module/.test(message))).toEqual([])
-      await expect(page.getByText(FAILURE_COPY)).toHaveCount(0)
-      // No stored grant, so the boot outcome is never sent.
-      expect(harness.beacons).toEqual([])
-    })
+    for (const state of ['bar shown', 'saved choice'] as const) {
+      test(`${target.kind}: takeover fills the viewport above the privacy bar (${state}) and swaps the plain page's styles for the app's`, async ({ page }) => {
+        test.setTimeout(60_000)
+        const harness = await openPublicPage(page, target, { consent: state === 'saved choice' })
+        await expectTakenOver(page)
+        if (state === 'bar shown') {
+          await expect(page.getByTestId('privacy-bar')).toBeVisible()
+          await expect.poll(async () => (await layout(page)).inset).toBeGreaterThan(0)
+          await expect.poll(async () => {
+            const measured = await layout(page)
+            return Math.round(measured.root + measured.inset)
+          }).toBe(640)
+        } else {
+          await expect.poll(async () => (await layout(page)).root).toBe(640)
+          const measured = await layout(page)
+          expect(measured.barShown).toBe(false)
+          expect(measured.inset).toBe(0)
+        }
+        const measured = await layout(page)
+        expect(measured.html).toBe(measured.viewport)
+        expect(measured.body).toBe(measured.viewport)
+        await page.waitForTimeout(1500)
+        await attachScreenshot(page, `issue3214-${target.kind}-${state.replace(' ', '-')}`)
+        await expectAppStylesSwapped(page)
+        await expectAppNotCrashed(page)
+        // #3214 CSP: nothing the booted app did on this page kind was refused.
+        expect(await cspViolations(page)).toEqual([])
+        expect(harness.cspConsole).toEqual([])
+        expect(harness.pageErrors.filter((message) => /Requiring unknown module/.test(message))).toEqual([])
+        await expect(page.getByText(FAILURE_COPY)).toHaveCount(0)
+        // Analytics is on in both states (no choice, or a carried-over grant),
+        // so the boot outcome is reported exactly once.
+        await expect.poll(() => harness.beacons.map((beacon) => `${beacon.outcome}:${beacon.reason}`)).toEqual(['success:mounted'])
+      })
+    }
   }
 
   test('a chunk that fails to load shows the failure message and leaves the plain page intact and scrollable', async ({ page }) => {

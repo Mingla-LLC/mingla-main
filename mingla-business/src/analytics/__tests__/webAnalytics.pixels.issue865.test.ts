@@ -1,10 +1,12 @@
 /**
  * ISSUE-865 WP-C + #3697 — browser ad pixels, arrival mode and opt-out.
+ * [TEST-MOD-APPROVED #2331] no region mode: ads are on unless the visitor
+ * turned them off; Global Privacy Control starts them off.
  *
  * Runtime battery (jest / ts-jest, node env with a hand-rolled fake DOM). Covers:
  *   • the pixel loaders NO-OP when the pixel id is absent,
- *   • default arrival mode boots pixels before a choice, while the retained
- *     per-region opt_in mode still blocks until OK,
+ *   • pixels boot before a choice in every country; GPC keeps them off until
+ *     the visitor saves ads on,
  *   • the DEDUP CONTRACT — fireAdPurchase fires the Meta Pixel with the shared
  *     event_id as `eventID` (== the server CAPI event_id) — SC-15,
  *   • a simulated pixel-LOAD FAILURE does NOT throw / break the flow (fail-open).
@@ -25,7 +27,7 @@ interface FakeEl {
 interface HarnessOpts {
   extra: Record<string, string | undefined>;
   createElementThrows?: boolean;
-  consentMode?: "on_arrival" | "opt_in";
+  gpc?: boolean;
 }
 
 interface FbqSpy {
@@ -94,15 +96,13 @@ function loadHarness(opts: HarnessOpts): {
       },
     },
     location: { search: "", href: "https://usemingla.com/e/brand/event" },
-    ...(opts.consentMode
-      ? { __minglaAdPixelConsentMode: opts.consentMode }
-      : {}),
+    navigator: opts.gpc ? { globalPrivacyControl: true } : {},
   };
 
   (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(() =>
     Promise.resolve({
       ok: true,
-      json: () => Promise.resolve({ ad_pixel_consent_mode: "on_arrival" }),
+      json: () => Promise.resolve({}),
     })
   );
 
@@ -165,25 +165,23 @@ test("DEFAULT ON_ARRIVAL — pixel loads and can fire before a banner choice", a
   expect(queued.some((args) => args[0] === "track" && args[1] === "Purchase")).toBe(true);
 });
 
-test("REGION OPT_IN — pixel waits for OK without requiring a rebuild", async () => {
-  const { wa, injected, getFbq } = loadHarness({
-    extra: META_EXTRA,
-    consentMode: "opt_in",
-  });
+test("GLOBAL PRIVACY CONTROL — pixel stays off until the visitor saves ads on", async () => {
+  const { wa, injected, getFbq } = loadHarness({ extra: META_EXTRA, gpc: true });
   await wa.initWebAnalytics();
   expect(wa.adPixelsReady()).toBe(false);
   expect(getFbq()).toBeUndefined();
   expect(injected).toHaveLength(0);
-  await wa.grantConsent();
+  expect(wa.getPrivacySnapshot()).toMatchObject({ saved: false, ads: false, gpc: true });
+  await wa.savePrivacyChoice({ analytics: true, ads: true });
   expect(wa.adPixelsReady()).toBe(true);
   expect(getFbq()).toBeDefined();
 });
 
-test("grantConsent BOOTSTRAPS the Meta pixel; fireAdPurchase fires with the shared event_id (SC-15)", async () => {
+test("OK keeps the Meta pixel live; fireAdPurchase fires with the shared event_id (SC-15)", async () => {
   const { wa, injected, getFbq } = loadHarness({ extra: META_EXTRA });
   await wa.initWebAnalytics();
 
-  await wa.grantConsent();
+  await wa.savePrivacyChoice({ analytics: true, ads: true });
 
   // Now the pixel is live: stub created + script injected + init + PageView.
   expect(wa.adPixelsReady()).toBe(true);
@@ -213,12 +211,12 @@ test("grantConsent BOOTSTRAPS the Meta pixel; fireAdPurchase fires with the shar
   expect(purchase?.[3]).toEqual({ eventID: "order-xyz" }); // == server CAPI event_id
 });
 
-test("NO-OP when the pixel id is absent — grantConsent loads no Meta pixel", async () => {
+test("NO-OP when the pixel id is absent — no Meta pixel loads", async () => {
   const { wa, injected, getFbq } = loadHarness({
     extra: { EXPO_PUBLIC_SUPABASE_URL: "https://x.supabase.co", EXPO_PUBLIC_SUPABASE_ANON_KEY: "anon" },
   });
   await wa.initWebAnalytics();
-  await wa.grantConsent();
+  await wa.savePrivacyChoice({ analytics: true, ads: true });
 
   // No id → no fbq stub, no injected script; firing is a silent no-op.
   expect(getFbq()).toBeUndefined();
@@ -230,21 +228,25 @@ test("a simulated pixel-LOAD FAILURE does NOT throw / break the flow (fail-open)
   const { wa } = loadHarness({ extra: META_EXTRA, createElementThrows: true });
   await wa.initWebAnalytics();
 
-  // Script injection throws (CSP/adblock) — grantConsent must absorb it silently.
-  await expect(wa.grantConsent()).resolves.toBeUndefined();
+  // Script injection throws (CSP/adblock) — saving a choice must absorb it silently.
+  await expect(
+    wa.savePrivacyChoice({ analytics: true, ads: true }),
+  ).resolves.toBeUndefined();
   // And the checkout Purchase fire that follows must not throw either.
   expect(() => wa.fireAdPurchase("order-xyz", { value: 20, currency: "GBP" })).not.toThrow();
   expect(() => wa.fireAdPageView()).not.toThrow();
 });
 
-test("OPT OUT stops pixels immediately and marks server sharing suppressed", async () => {
+test("ADS OFF stops pixels immediately and marks server sharing suppressed", async () => {
   const { wa, injected, getFbq } = loadHarness({ extra: META_EXTRA });
   await wa.initWebAnalytics();
   expect(wa.adPixelsReady()).toBe(true);
   expect(getFbq()).toBeDefined();
   expect(injected).not.toHaveLength(0);
 
-  expect(() => wa.denyConsent()).not.toThrow();
+  await expect(
+    wa.savePrivacyChoice({ analytics: true, ads: false }),
+  ).resolves.toBeUndefined();
   expect(wa.adPixelsReady()).toBe(false);
   expect(getFbq()).toBeUndefined();
   expect(injected).toHaveLength(0);

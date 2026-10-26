@@ -166,8 +166,6 @@ interface WebRetryAriaHost {
   setAttribute: (name: string, value: string) => void;
 }
 
-const PUBLIC_VENUE_CONSENT_SAFE_DESKTOP_MIN_WIDTH = 1280;
-
 // ═══════════════════════════════════════════════════════════════════════════
 // The read model — ONE shape, both apps
 // ═══════════════════════════════════════════════════════════════════════════
@@ -245,13 +243,6 @@ export type PublicVenueStayState =
   | "ready"
   | "unavailable"
   | "error";
-
-export type PublicVenueWebConsentState =
-  | "unknown"
-  | "unresolved"
-  | "granted"
-  | "denied"
-  | "not_applicable";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Host capabilities
@@ -414,8 +405,6 @@ export function resolvePublicVenueMenuPresentation(
 
 export interface PublicVenueScreenProps {
   venue: PublicVenueViewModel;
-  /** Buyer-web-only composition signal; native hosts remain not applicable. */
-  webConsentState?: PublicVenueWebConsentState;
   /** Business public-web #1615 identity overlay; absent preserves consumer/native hosts. */
   useDirectionCIdentity?: boolean;
   discoveryPrice: PublicVenueDiscoveryPriceView | null;
@@ -1017,7 +1006,6 @@ const RESERVATION_READY: Record<
 
 export const PublicVenueScreen = ({
   venue,
-  webConsentState = "not_applicable",
   useDirectionCIdentity = false,
   discoveryPrice,
   menu,
@@ -1368,15 +1356,10 @@ export const PublicVenueScreen = ({
   const showReserveCta =
     canOpenReservationSheet &&
     normalizedReservationUiState.activeTab !== "reservations";
-  // #2769 — unresolved browser consent is a real persistent bottom action.
-  // Under the design-proven safe desktop width, only one persistent action may
-  // occupy that edge. This is semantic absence (not opacity/pointer-events),
-  // and native remains byte-for-byte outside the condition.
-  const consentActionMayCollide =
-    Platform.OS === "web" &&
-    (webConsentState === "unknown" || webConsentState === "unresolved") &&
-    viewportWidth < PUBLIC_VENUE_CONSENT_SAFE_DESKTOP_MIN_WIDTH;
-  const showPersistentReserveCta = showReserveCta && !consentActionMayCollide;
+  // #2331 — the buyer-web privacy bar no longer competes for this edge: the
+  // app root ends above it (I-PRIVACY-BAR-NEVER-OCCLUDES), so the reserve bar
+  // always shows.
+  const showPersistentReserveCta = showReserveCta;
 
   // ── #1562 §6.5 the venue's own clock, resolved ONCE ──────────────────────
   //
@@ -1959,9 +1942,7 @@ export const PublicVenueScreen = ({
     ) : null;
 
   const reserveBarClearance =
-    consentActionMayCollide
-      ? 0
-      : showPersistentReserveCta && !isDesktop
+    showPersistentReserveCta && !isDesktop
       ? Platform.OS === "web"
         ? 0
         : 52 + 16 + insets.bottom + 8

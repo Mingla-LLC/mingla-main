@@ -48,15 +48,17 @@ const escapeJsonForHtml = (value) => JSON.stringify(value)
 // OUTCOME. Every failure path calls showBootstrapFailure(): a chunk that fails to
 // load, an uncaught error or rejection whose source is an injected chunk before
 // takeover, or no takeover within BOOT_MOUNT_DEADLINE_MS. Success and failure
-// (with a reason) are sent to /api/public-boot-outcome only under the same
-// consent grant the app itself reads (preboot choice first, then the stored
-// record); anything unreadable counts as no grant.
+// (with a reason) are sent to /api/public-boot-outcome while analytics is on
+// for this visitor — the same reading the app makes (#2331: on unless the
+// visitor turned it off; a same-document choice first, then the stored record).
 //
 // DEADLINE. The clock starts at the last chunk's `load` event (a classic script's
 // `load` fires after it has executed), so download time, the only part that
 // depends on the visitor's network, is never inside it. A slow download delays
 // the clock instead of racing it. See #3214 for the measurements behind 20 s.
 const BOOT_MOUNT_DEADLINE_MS = 20000;
+
+const { privacyReaderSource } = require("./publicPrivacyRuntime");
 
 // Content-agnostic browser transport for one already-prepared canonical URL.
 // The returned script owns only DOM feedback, browser sharing/copying, and the
@@ -143,16 +145,10 @@ const browserRuntimeScript = (canonicalUrl) => `(function(){
   function restoreServerShell(){
     if(serverShell&&bootRoot&&serverShellGone()&&!appTreePresent())bootRoot.appendChild(serverShell);
   }
-  function bootConsentGranted(){
-    try{
-      var preboot=window.__minglaPrebootConsentChoice;
-      if(preboot==="granted"||preboot==="denied")return preboot==="granted";
-      var stored=JSON.parse(window.localStorage.getItem("mingla_consent_v1")||"null");
-      return !!stored&&stored.choice==="granted";
-    }catch(error){return false;}
-  }
+  ${privacyReaderSource()}
+  function bootAnalyticsOn(){return __minglaPrivacyOn("analytics");}
   function reportBootOutcome(outcome,reason){
-    if(typeof navigator==="undefined"||typeof navigator.sendBeacon!=="function"||!bootConsentGranted())return;
+    if(typeof navigator==="undefined"||typeof navigator.sendBeacon!=="function"||!bootAnalyticsOn())return;
     try{
       navigator.sendBeacon("/api/public-boot-outcome",JSON.stringify({outcome:outcome,reason:reason,elapsed_ms:Math.max(0,Date.now()-bootStartedAt),path:canonicalPath,load_id:bootLoadId}));
     }catch(error){

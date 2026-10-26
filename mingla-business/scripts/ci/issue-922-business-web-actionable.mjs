@@ -98,8 +98,11 @@ function validateEntry(source, entry) {
   invariant(entry.includes('function protect(work){try{work()}catch(_error){boot()}}'), "eligible bootstrap failures must replay the full app");
   invariant(entry.includes('window.location.replace("/auth?next="+encodeURIComponent("/accept-brand-invitation?token="+token))'), "sign-in resume contract drifted");
   invariant(entry.includes('/^sb-.+-auth-token$/.test(key)'), "Supabase-session fallback detector is missing");
-  invariant(entry.includes('key==="mingla_consent_v1"'), "returning-consent fallback detector is missing");
-  invariant(entry.includes('window.__minglaPrebootConsentChoice=choice'), "ephemeral consent handoff is missing");
+  invariant(entry.includes('key==="mingla_consent_v1"'), "returning-consent (v1) fallback detector is missing");
+  // #2331 — a saved v2 choice also skips the shell, and the shell's own bar
+  // hands its saved choice to the app before boot.
+  invariant(entry.includes('key==="mingla_privacy_v2"'), "returning-privacy (v2) fallback detector is missing");
+  invariant(entry.includes("window.__minglaPrebootPrivacy=c"), "same-document privacy handoff is missing");
   invariant(entry.includes('node.async=false'), "fallback scripts are not forced into ordered execution");
 }
 
@@ -114,18 +117,21 @@ function validateOwnerPins() {
       "scripts/inject-attendance-claim-bootstrap.mjs",
       "scripts/inject-mobile-blur-css.mjs",
       "scripts/build-invite-critical-entry.mjs",
+      "server/publicPrivacyRuntime.js",
     ].map((path) => [path, readFileSync(join(packageRoot, path), "utf8")]),
   );
   for (const copy of ["You're invited", "Sign in to accept this invitation. We'll bring you right back.", 'label="Sign in"']) {
     invariant(files["app/accept-brand-invitation.tsx"].includes(copy), `invitation owner drift: ${copy}`);
   }
-  for (const pin of ["Ad privacy", "OK", "Opt out of ad tracking", "Privacy policy", "https://usemingla.com/privacy-policy"]) {
-    invariant(files["src/analytics/ConsentBanner.web.tsx"].includes(pin), `consent owner drift: ${pin}`);
+  // #2331 — the shell's bar comes from server/publicPrivacyRuntime.js; the
+  // React owner must carry the same words.
+  for (const pin of ["Mingla uses cookies for analytics and ads.", "Cookies for analytics and ads.", "OK", "Options", "Turn off all", "Privacy policy", "https://usemingla.com/privacy-policy"]) {
+    invariant(files["src/analytics/ConsentBanner.web.tsx"].includes(pin), `privacy bar owner drift: ${pin}`);
   }
   const analytics = files["src/analytics/webAnalytics.web.ts"];
-  invariant(analytics.indexOf("__minglaPrebootConsentChoice") < analytics.indexOf("window.localStorage.getItem(CONSENT_STORAGE_KEY)"), "ephemeral consent must be read before storage");
-  invariant(!analytics.includes("delete window.__minglaPrebootConsentChoice"), "page-lifetime consent handoff must survive multiple readers");
-  invariant(analytics.includes('JSON.stringify({ choice, ts: Date.now() })'), "canonical consent storage shape drifted");
+  invariant(analytics.indexOf("window.__minglaPrebootPrivacy;") < analytics.indexOf("readPersistedChoice();"), "same-document privacy must be read before storage");
+  invariant(!analytics.includes("delete window.__minglaPrebootPrivacy"), "page-lifetime privacy handoff must survive multiple readers");
+  invariant(analytics.includes('PRIVACY_STORAGE_KEY = "mingla_privacy_v2"'), "canonical privacy storage key drifted");
   invariant(files["src/components/ui/Button.tsx"].includes("sm: 36, md: 44, lg: 52"), "button height owner drifted");
   invariant(files["src/components/ui/Button.tsx"].includes("outlineWidth: 2"), "button focus owner drifted");
   for (const token of ['warm: "#eb7825"', 'discover: "#0c0e12"', "profileBase: \"rgba(255, 255, 255, 0.04)\""]) {
@@ -145,6 +151,7 @@ function validateWorkflow() {
     "mingla-business/scripts/inject-attendance-claim-bootstrap.mjs",
     "mingla-business/scripts/inject-mobile-blur-css.mjs",
     "mingla-business/scripts/build-invite-critical-entry.mjs",
+    "mingla-business/server/publicPrivacyRuntime.js",
     "mingla-business/scripts/ci/issue-922-business-web-actionable.mjs",
     "mingla-business/vercel.json",
   ]) invariant(workflow.includes(`- "${owner}"`), `workflow does not watch owner: ${owner}`);
@@ -185,7 +192,7 @@ function selfTest() {
   const attrs = ["runtime", "common", "index"].map((name) => `<script src="/_expo/static/js/web/${name}.js" defer></script>`);
   const metadata = JSON.stringify(attrs.map(scriptAttributes));
   const source = `<div id="root"></div>${attrs.join("")}`;
-  const entry = `<div id="root"></div><script id="issue-922-critical-entry">var scripts=${metadata};var loaded=false;function protect(work){try{work()}catch(_error){boot()}}requestAnimationFrame(function(){requestAnimationFrame(function(){});});window.location.replace("/auth?next="+encodeURIComponent("/accept-brand-invitation?token="+token));/^sb-.+-auth-token$/.test(key);key==="mingla_consent_v1";window.__minglaPrebootConsentChoice=choice;node.async=false;</script>`;
+  const entry = `<div id="root"></div><script id="issue-922-critical-entry">var scripts=${metadata};var loaded=false;function protect(work){try{work()}catch(_error){boot()}}requestAnimationFrame(function(){requestAnimationFrame(function(){});});window.location.replace("/auth?next="+encodeURIComponent("/accept-brand-invitation?token="+token));/^sb-.+-auth-token$/.test(key);key==="mingla_consent_v1";key==="mingla_privacy_v2";window.__minglaPrebootPrivacy=c;node.async=false;</script>`;
   validateEntry(source, entry);
   let caughtOrder = false;
   try {

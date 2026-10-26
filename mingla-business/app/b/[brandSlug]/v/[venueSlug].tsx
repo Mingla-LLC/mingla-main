@@ -85,7 +85,6 @@ import {
   captureWeb,
 } from "../../../../src/analytics/webAnalytics";
 import { captureBuyerWebPublicPageViewed } from "../../../../src/analytics/publicParityWebAdapter";
-import { useWebConsentState } from "../../../../src/analytics/useWebConsentState";
 import {
   usePublicBrandBySlug,
   usePublicVenueBySlug,
@@ -190,7 +189,6 @@ const toVenueViewModel = (venue: PublicVenue): PublicVenueViewModel => ({
 export default function PublicVenueRoute(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const webConsentState = useWebConsentState();
   const [shareModalVisible, setShareModalVisible] = React.useState(false);
   const [messageOpener, setMessageOpener] = React.useState<{ open: () => void } | null>(null);
   // Mount the (lazy) message controller only after the page's first commit, so
@@ -636,7 +634,6 @@ export default function PublicVenueRoute(): React.ReactElement {
   return (
     <PublicVenueScreen
       venue={venueViewModel}
-      webConsentState={webConsentState}
       discoveryPrice={discoveryPriceQuery.data ?? null}
       menu={menuGroups}
       menuLifecycle={{

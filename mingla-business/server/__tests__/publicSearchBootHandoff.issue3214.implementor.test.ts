@@ -149,7 +149,11 @@ const mount = ({ consent = JSON.stringify({ choice: "granted", ts: 1 }), preboot
   };
   const windowListeners = new Map<string, Listener[]>();
   const windowHarness = {
-    __minglaPrebootConsentChoice: preboot,
+    // [TEST-MOD-APPROVED #2331] the same-document choice is the v2 object.
+    __minglaPrebootPrivacy:
+      preboot === undefined
+        ? undefined
+        : { analytics: preboot === "granted", ads: preboot === "granted", ts: 1 },
     localStorage: { getItem: (key: string) => (key === "mingla_consent_v1" ? consent : null) },
     addEventListener(name: string, listener: Listener) {
       windowListeners.set(name, [...(windowListeners.get(name) ?? []), listener]);
@@ -397,17 +401,27 @@ describe("#3214 a boot failure is visible and measured, never silent", () => {
   });
 });
 
-describe("#3214 the boot-outcome beacon honours the app's consent reading", () => {
+// [TEST-MOD-APPROVED #2331] I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF: the beacon
+// is first-party analytics, on unless this visitor turned analytics off.
+describe("#3214 the boot-outcome beacon honours the app's privacy reading", () => {
   it.each([
-    ["no stored choice", { consent: null }],
-    ["a stored denial", { consent: JSON.stringify({ choice: "denied", ts: 1 }) }],
-    ["an unreadable record", { consent: "not-json" }],
-    ["a preboot denial over a stored grant", { preboot: "denied" }],
+    ["a stored (carried-over v1) denial", { consent: JSON.stringify({ choice: "denied", ts: 1 }) }],
+    ["a preboot turn-off over a stored grant", { preboot: "denied" }],
   ])("sends nothing with %s", async (_case, options) => {
     const page = mount(options);
     await settle();
     page.takeOver();
     expect(page.beacons).toEqual([]);
+  });
+
+  it.each([
+    ["no stored choice", { consent: null }],
+    ["an unreadable record (not a turn-off)", { consent: "not-json" }],
+  ])("sends the outcome with %s", async (_case, options) => {
+    const page = mount(options);
+    await settle();
+    page.takeOver();
+    expect(page.beacons).toHaveLength(1);
   });
 
   it("sends a bounded, entity-free payload with a preboot grant", async () => {

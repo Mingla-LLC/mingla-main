@@ -1,10 +1,18 @@
-const mockReadStoredConsent = jest.fn<"granted" | "denied" | null, []>();
+// [TEST-MOD-APPROVED #2331] analytics is on unless the visitor turned it off:
+// the journey starts on arrival, and a turned-off visitor starts it only when
+// they turn analytics back on (a privacy-store notification, not a click).
+const mockIsAnalyticsOn = jest.fn<boolean, []>();
 const mockReadReferrerHost = jest.fn<string | null, []>(() => null);
 const mockInvoke = jest.fn();
+const mockPrivacySubscribers = new Set<() => void>();
 
 jest.mock("../../analytics/webAnalytics", () => ({
-  readStoredConsent: mockReadStoredConsent,
+  isAnalyticsOn: mockIsAnalyticsOn,
   readReferrerHost: mockReadReferrerHost,
+  subscribePrivacy: (subscriber: () => void) => {
+    mockPrivacySubscribers.add(subscriber);
+    return () => mockPrivacySubscribers.delete(subscriber);
+  },
 }));
 jest.mock("../supabase", () => ({
   supabase: { functions: { invoke: mockInvoke } },
@@ -27,7 +35,8 @@ describe("#1421 buyer-only consent settlement", () => {
   let listeners: Map<string, () => void>;
 
   beforeEach(() => {
-    mockReadStoredConsent.mockReset().mockReturnValue(null);
+    mockIsAnalyticsOn.mockReset().mockReturnValue(false);
+    mockPrivacySubscribers.clear();
     mockReadReferrerHost.mockReset().mockReturnValue(null);
     mockInvoke.mockReset().mockResolvedValue({
       data: { accepted: true, journeyToken: "opaque-token" },
@@ -69,12 +78,23 @@ describe("#1421 buyer-only consent settlement", () => {
     expect(settle).toHaveBeenCalledTimes(1);
   });
 
-  it("creates exactly one current-venue page journey after consent, never before", async () => {
+  it("starts the journey on arrival while analytics is on", async () => {
+    mockIsAnalyticsOn.mockReturnValue(true);
+    const stop = settleVenueOrganicJourneyOnConsent(scope);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockPrivacySubscribers.size).toBe(0);
+    stop();
+  });
+
+  it("creates exactly one current-venue page journey once analytics is turned back on, never while off", async () => {
     const stop = settleVenueOrganicJourneyOnConsent(scope);
     expect(mockInvoke).not.toHaveBeenCalled();
+    expect(listeners.size).toBe(0);
 
-    mockReadStoredConsent.mockReturnValue("granted");
-    listeners.get("click")?.();
+    mockIsAnalyticsOn.mockReturnValue(true);
+    for (const subscriber of [...mockPrivacySubscribers]) subscriber();
     await Promise.resolve();
     await Promise.resolve();
     expect(mockInvoke).toHaveBeenCalledTimes(1);
@@ -88,9 +108,10 @@ describe("#1421 buyer-only consent settlement", () => {
       }),
     });
 
-    listeners.get("click")?.();
+    for (const subscriber of [...mockPrivacySubscribers]) subscriber();
     await Promise.resolve();
     expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockPrivacySubscribers.size).toBe(0);
     stop();
   });
 });

@@ -201,7 +201,18 @@ test("the real route consumes the exported handoff once and every bounded restor
 
   const route = read(path.join(BUSINESS_ROOT, "app/attendance/claim.tsx"));
   assert.equal(count(route, "consumeAttendanceClaimFragment(window, raw)"), 1, "the route must consume the handoff exactly once");
-  assert.ok(route.includes("attendanceAppUrlFromFragment(capturedRaw)"), "the parser must receive the consumed fragment");
+  // #4107 (toward #4063): the parser receives exactly the fragment the single
+  // consume call handed off — never the raw hash re-read from location.
+  assert.equal(
+    count(route, "const fragmentHandoff = consumeAttendanceClaimFragment(window, raw);"),
+    1,
+    "the handoff must come from the one consume call",
+  );
+  assert.ok(
+    route.includes("attendanceClaimFromFragment(fragmentHandoff.fragment)"),
+    "the parser must receive the consumed fragment",
+  );
+  assert.equal(count(route, "attendanceClaimFromFragment("), 1, "exactly one parse, of the consumed fragment");
   assert.match(
     route,
     /if \(Platform\.OS !== "web" \|\| !parsed\) return;\s*scheduleFinalUrlRestoreRef\.current\?\.\(\);/,

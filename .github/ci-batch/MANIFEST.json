@@ -20283,7 +20283,7 @@
       "providerWorkflow": ".github/workflows/issue-905-links-consent-suppression-tests.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
-        "sourceSha256": "21f3f0c680f2614ad17b5cef4363b47478de99956396b48353541b1d7b2f9732",
+        "sourceSha256": "fcdf1729a0b9e709961bca3bfc27c0bdabc99d7b99925b9673f0dc4d36b45dd0",
         "triggers": [
           "pull_request",
           "push"
@@ -20292,7 +20292,8 @@
           ".github/workflows/issue-905-links-consent-suppression-tests.yml",
           "mingla-marketing/components/marketing/__tests__/consent-banner-links-suppression*.test.ts",
           "mingla-marketing/components/marketing/consent-banner.tsx",
-          "mingla-marketing/lib/consent-banner-visibility.ts"
+          "mingla-marketing/components/marketing/links-experience.tsx",
+          "mingla-marketing/components/marketing/posthog-provider.tsx"
         ],
         "jobKeys": [
           "marketing"
@@ -20324,7 +20325,7 @@
       "providerWorkflow": ".github/workflows/issue-922-business-web-actionable.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
-        "sourceSha256": "9f0ca1d5cf384d44bfa83345ad507c556b469c38c8440a072eb2958bb7063f7a",
+        "sourceSha256": "d86a09de4df2d6067247066e82f1573ea1cd3c9a8a8fce4b0c290c7b371c1f1e",
         "triggers": [
           "pull_request",
           "push",
@@ -20344,6 +20345,7 @@
           "mingla-business/scripts/ci/issue-922-business-web-actionable.mjs",
           "mingla-business/scripts/inject-attendance-claim-bootstrap.mjs",
           "mingla-business/scripts/inject-mobile-blur-css.mjs",
+          "mingla-business/server/publicPrivacyRuntime.js",
           "mingla-business/src/analytics/ConsentBanner.web.tsx",
           "mingla-business/src/analytics/webAnalytics.web.ts",
           "mingla-business/src/components/ui/Button.tsx",

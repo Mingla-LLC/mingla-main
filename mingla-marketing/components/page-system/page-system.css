@@ -455,6 +455,8 @@
 .ps-footer p { color: var(--page-text-muted); }
 .ps-footer nav { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 12px 22px; }
 .ps-footer a { min-height: 44px; display: inline-flex; align-items: center; color: var(--page-ink); font-weight: 800; }
+/* #2331 — "Your privacy choices" reads as one more footer link. */
+.ps-footer .ps-footer-privacy { min-height: 44px; display: inline-flex; align-items: center; padding: 0; border: 0; background: none; color: var(--page-ink); font: inherit; font-weight: 800; text-decoration: underline; cursor: pointer; }
 
 .ps-review-dock {
   position: relative;

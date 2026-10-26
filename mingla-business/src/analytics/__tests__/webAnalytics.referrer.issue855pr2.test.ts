@@ -99,15 +99,12 @@ afterEach(() => {
 });
 
 // ═══ P1 — a social/search/organic visit (no ad signal) now RECORDS a touch ════
+// [TEST-MOD-APPROVED #2331] analytics is on from the first page, so the
+// referrer host is readable before any tap; a turn-off makes it dark.
 test("P1 a NON-AD referrer visit records a touch forwarding the referrer HOST only (no PII)", async () => {
   const h = loadHarness("", "https://l.instagram.com/p/xyz?u=someone%40example.com");
   await h.wa.initWebAnalytics();
-  expect(h.wa.readReferrerHost()).toBeNull();
-  h.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
-  expect(h.fetchCalls.some((c) => c.url.includes("/attribution-capture"))).toBe(false);
-  expect(h.wa.getStoredClickAttribution().clickId).toBeNull();
-
-  await h.wa.grantConsent();
+  expect(h.wa.readReferrerHost()).toBe("l.instagram.com");
   h.fetchCalls.length = 0;
   h.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
 
@@ -135,17 +132,19 @@ test("P2 a bare visit (no ad param, no utm, no referrer) posts NOTHING (byte-ide
   h.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
   expect(h.fetchCalls.some((c) => c.url.includes("/attribution-capture"))).toBe(false);
 
-  await h.wa.grantConsent();
+  await h.wa.savePrivacyChoice({ analytics: true, ads: true });
   h.fetchCalls.length = 0;
   h.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
   expect(h.fetchCalls.some((c) => c.url.includes("/attribution-capture"))).toBe(false);
 });
 
 // ═══ P3 — readReferrerHost strips everything but the host ══════════════════════
-test("P3 readReferrerHost returns the host only after grant; null before grant and for empty referrer", async () => {
+test("P3 readReferrerHost returns the host only while analytics is on; null after a turn-off and for empty referrer", async () => {
   const h = loadHarness("", "https://www.Google.com/search?q=secret#frag");
+  expect(h.wa.readReferrerHost()).toBe("google.com");
+  await h.wa.savePrivacyChoice({ analytics: false, ads: true });
   expect(h.wa.readReferrerHost()).toBeNull();
-  await h.wa.grantConsent();
+  await h.wa.savePrivacyChoice({ analytics: true, ads: true });
   expect(h.wa.readReferrerHost()).toBe("google.com");
 
   // Empty referrer → null (a direct visit).
@@ -166,7 +165,7 @@ test("P4 the ad click_id is preserved when a later internal (Mingla-referrer) to
   const adClick = h.wa.getStoredClickAttribution().clickId;
   expect(adClick).toBe("srv-click-1");
 
-  await h.wa.grantConsent();
+  await h.wa.savePrivacyChoice({ analytics: true, ads: true });
   // Existing click → consent stamp only (no second touch).
   h.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
   await flush();

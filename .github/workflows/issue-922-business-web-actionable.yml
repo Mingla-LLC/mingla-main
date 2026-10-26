@@ -12,6 +12,7 @@ on:
       - "mingla-business/scripts/inject-attendance-claim-bootstrap.mjs"
       - "mingla-business/scripts/inject-mobile-blur-css.mjs"
       - "mingla-business/scripts/build-invite-critical-entry.mjs"
+      - "mingla-business/server/publicPrivacyRuntime.js"
       - "mingla-business/scripts/ci/issue-2979-attendance-export-pipeline.tester.test.mjs"
       - "mingla-business/scripts/ci/issue-922-business-web-actionable.mjs"
       - "mingla-business/__tests__/issue922BusinessWebActionable.happy.test.ts"

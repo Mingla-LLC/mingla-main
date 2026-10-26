@@ -1,14 +1,23 @@
+// #2331 rewrite of the #2771 real-network boundary (file kept, rewritten in
+// place). The retired opt-in rule ("nothing until Accept") is replaced by
+// I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF: analytics and ads are each ON unless
+// this visitor turned it off, on both surfaces. What this proves, on the real
+// Business/Buyer export and the real Marketing build, by watching the network:
+//   - arrival loads analytics (and, on Business, the ad pixels) and the
+//     privacy bar's switches both read on;
+//   - turning analytics off stops PostHog/GA and stays off after a reload;
+//   - Turn off all silences every vendor, across a reload;
+//   - /links shows the bar.
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 
 const BUSINESS = 'http://127.0.0.1:43172'
 const MARKETING = 'http://127.0.0.1:43171'
-const CONSENT_KEY = 'mingla_consent_v1'
+const PRIVACY_KEY = 'mingla_privacy_v2'
 
 const ANALYTICS_REQUEST = /posthog|us\.i\.posthog\.com|us-assets\.i\.posthog\.com|googletagmanager\.com|google-analytics\.com|doubleclick/i
 const AD_REQUEST = /connect\.facebook\.net|analytics\.tiktok\.com|sc-static\.net|redditstatic\.com|attribution-capture/i
 const STRIPE_MODE_REQUEST = /\/functions\/v1\/stripe-mode(?:[/?#]|$)/
 const ANALYTICS_STORAGE = /^(ph_|_ga|_gcl)/i
-const AD_STORAGE = /^(_fbp|_fbc|_ttp|_scid|rdt_|mingla_ad_click_v1)/i
 
 interface TrackingRequests {
   analytics: string[]
@@ -19,11 +28,8 @@ async function observe(page: Page): Promise<TrackingRequests> {
   const requests: TrackingRequests = { analytics: [], ads: [] }
   await page.route('**/*', async (route) => {
     const url = route.request().url()
-    // [TEST-MOD-APPROVED #3988] This analytics oracle must not inherit the
-    // live backend's Stripe mode. CI exports a pk_test_ fixture; a successful
-    // live stripe-mode response makes the unrelated boot handshake replace
-    // the consent UI with the fatal boundary. The adversarial #2771 oracle
-    // already aborts this same transport, which is fail-soft by contract.
+    // This analytics oracle must not inherit the live backend's Stripe mode
+    // (#3988): the boot handshake is fail-soft when this transport aborts.
     if (STRIPE_MODE_REQUEST.test(url)) {
       await route.abort()
       return
@@ -39,109 +45,96 @@ async function observe(page: Page): Promise<TrackingRequests> {
   return requests
 }
 
-async function trackingStorage(
-  context: BrowserContext,
-  page: Page,
-  pattern: RegExp,
-): Promise<string[]> {
+async function trackingStorage(context: BrowserContext, page: Page, pattern: RegExp): Promise<string[]> {
   const cookies = (await context.cookies()).map((cookie) => cookie.name)
-  const storage = await page.evaluate(() => [
-    ...Object.keys(window.localStorage),
-    ...Object.keys(window.sessionStorage),
-  ])
+  const storage = await page.evaluate(() => [...Object.keys(window.localStorage), ...Object.keys(window.sessionStorage)])
   return [...cookies, ...storage].filter((key) => pattern.test(key))
 }
 
-async function trackingScripts(page: Page, pattern: RegExp): Promise<string[]> {
-  return page.locator('script[src]').evaluateAll((nodes, pattern) => {
-    const forbidden = new RegExp(pattern, 'i')
-    return nodes
-      .map((node) => (node as HTMLScriptElement).src)
-      .filter((src) => forbidden.test(src))
-  }, pattern.source)
+async function storedChoice(page: Page): Promise<{ analytics: boolean; ads: boolean } | null> {
+  return page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? 'null'), PRIVACY_KEY)
 }
 
-test.describe('#2771 actual network and storage boundary', () => {
-  for (const surface of [
-    { name: 'Business/Buyer', url: BUSINESS, accept: 'OK', reject: 'Opt out of ad tracking', arrivalAds: true, waitsForNetworkIdle: false },
-    { name: 'Marketing', url: MARKETING, accept: 'Accept all', reject: 'Reject', arrivalAds: false, waitsForNetworkIdle: true },
-  ]) {
-    test(`${surface.name}: arrival policy preserves the analytics boundary`, async ({ browser }) => {
-      const pendingContext = await browser.newContext()
-      const pendingPage = await pendingContext.newPage()
-      const pendingRequests = await observe(pendingPage)
-      await pendingPage.goto(surface.url, { waitUntil: 'domcontentloaded' })
-      if (surface.waitsForNetworkIdle) await pendingPage.waitForLoadState('networkidle')
-      await expect(pendingPage.getByRole('button', { name: surface.reject, exact: true })).toBeVisible()
-      expect(pendingRequests.analytics).toEqual([])
-      expect(await trackingScripts(pendingPage, ANALYTICS_REQUEST)).toEqual([])
-      expect(await trackingStorage(pendingContext, pendingPage, ANALYTICS_STORAGE)).toEqual([])
-      if (surface.arrivalAds) {
-        await expect.poll(() => pendingRequests.ads.length).toBeGreaterThan(0)
-      } else {
-        expect(pendingRequests.ads).toEqual([])
-        expect(await trackingScripts(pendingPage, AD_REQUEST)).toEqual([])
-        expect(await trackingStorage(pendingContext, pendingPage, AD_STORAGE)).toEqual([])
-      }
-      await pendingContext.close()
+async function openChoices(page: Page): Promise<void> {
+  await page.getByTestId('privacy-bar-options').click()
+  await expect(page.getByTestId('privacy-panel')).toBeVisible()
+}
+
+const SURFACES = [
+  { name: 'Business/Buyer', url: BUSINESS, arrivalAds: true, waitsForNetworkIdle: false },
+  { name: 'Marketing', url: MARKETING, arrivalAds: false, waitsForNetworkIdle: true },
+] as const
+
+test.describe('#2771 → #2331 actual network and storage boundary (on unless turned off)', () => {
+  for (const surface of SURFACES) {
+    test(`${surface.name}: arrival starts analytics with both switches on`, async ({ browser }) => {
+      const context = await browser.newContext()
+      const page = await context.newPage()
+      const requests = await observe(page)
+      await page.goto(surface.url, { waitUntil: 'domcontentloaded' })
+      if (surface.waitsForNetworkIdle) await page.waitForLoadState('networkidle')
+      await expect(page.getByTestId('privacy-bar')).toBeVisible()
+      await expect.poll(() => requests.analytics.length).toBeGreaterThan(0)
+      if (surface.arrivalAds) await expect.poll(() => requests.ads.length).toBeGreaterThan(0)
+      await openChoices(page)
+      await expect(page.getByTestId('privacy-switch-analytics')).toBeChecked()
+      await expect(page.getByTestId('privacy-switch-ads')).toBeChecked()
+      expect(await storedChoice(page)).toBeNull()
+      await context.close()
     })
 
-    test(`${surface.name}: Reject stays dark and persists after reload`, async ({ browser }) => {
-      const rejectContext = await browser.newContext()
-      const rejectPage = await rejectContext.newPage()
-      const rejectRequests = await observe(rejectPage)
-      await rejectPage.goto(surface.url, { waitUntil: 'domcontentloaded' })
-      if (surface.waitsForNetworkIdle) await rejectPage.waitForLoadState('networkidle')
-      if (surface.arrivalAds) await expect.poll(() => rejectRequests.ads.length).toBeGreaterThan(0)
-      const arrivalRequestCount = rejectRequests.ads.length
-      const rejectButton = rejectPage.getByRole('button', { name: surface.reject, exact: true })
-      await expect(rejectButton).toBeVisible()
-      await rejectButton.dispatchEvent('click')
-      await expect.poll(() => rejectPage.evaluate((key) => window.localStorage.getItem(key), CONSENT_KEY)).toContain('denied')
-      await rejectPage.reload({ waitUntil: 'domcontentloaded' })
-      await rejectPage.waitForTimeout(500)
-      expect(rejectRequests.analytics).toEqual([])
-      expect(rejectRequests.ads).toHaveLength(arrivalRequestCount)
-      expect(await trackingScripts(rejectPage, ANALYTICS_REQUEST)).toEqual([])
-      expect(await trackingStorage(rejectContext, rejectPage, ANALYTICS_STORAGE)).toEqual([])
-      expect(await trackingStorage(rejectContext, rejectPage, AD_STORAGE)).toEqual([])
-      await rejectContext.close()
+    test(`${surface.name}: turning analytics off stops it and it stays off after a reload`, async ({ browser }) => {
+      const context = await browser.newContext()
+      const page = await context.newPage()
+      const requests = await observe(page)
+      await page.goto(surface.url, { waitUntil: 'domcontentloaded' })
+      if (surface.waitsForNetworkIdle) await page.waitForLoadState('networkidle')
+      await expect.poll(() => requests.analytics.length).toBeGreaterThan(0)
+      await openChoices(page)
+      await page.getByTestId('privacy-switch-analytics').uncheck()
+      await page.getByTestId('privacy-bar-save').click()
+      await expect(page.getByTestId('privacy-toast')).toHaveText('Analytics is off')
+      await expect.poll(() => storedChoice(page)).toMatchObject({ analytics: false, ads: true })
+      const analyticsBeforeReload = requests.analytics.length
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      if (surface.waitsForNetworkIdle) await page.waitForLoadState('networkidle')
+      await page.waitForTimeout(1_500)
+      expect(requests.analytics.slice(analyticsBeforeReload)).toEqual([])
+      expect(await trackingStorage(context, page, ANALYTICS_STORAGE)).toEqual([])
+      await expect(page.getByTestId('privacy-bar')).toHaveCount(0)
+      expect(await storedChoice(page)).toMatchObject({ analytics: false, ads: true })
+      await context.close()
     })
 
-    test(`${surface.name}: Accept begins analytics after stored grant`, async ({ browser }) => {
-      const acceptContext = await browser.newContext()
-      const acceptPage = await acceptContext.newPage()
-      const acceptedRequests = await observe(acceptPage)
-      await acceptPage.goto(surface.url, { waitUntil: 'domcontentloaded' })
-      if (surface.waitsForNetworkIdle) await acceptPage.waitForLoadState('networkidle')
-      const acceptButton = acceptPage.getByRole('button', { name: surface.accept, exact: true })
-      await expect(acceptButton).toBeVisible()
-      await acceptButton.dispatchEvent('click')
-      await expect.poll(() => acceptedRequests.analytics.length).toBeGreaterThan(0)
-      const stored = await acceptPage.evaluate((key) => window.localStorage.getItem(key), CONSENT_KEY)
-      expect(stored).toContain('granted')
-      await acceptContext.close()
+    test(`${surface.name}: Turn off all silences every vendor across a reload`, async ({ browser }) => {
+      const context = await browser.newContext()
+      const page = await context.newPage()
+      const requests = await observe(page)
+      await page.goto(surface.url, { waitUntil: 'domcontentloaded' })
+      if (surface.waitsForNetworkIdle) await page.waitForLoadState('networkidle')
+      await expect.poll(() => requests.analytics.length).toBeGreaterThan(0)
+      await openChoices(page)
+      await page.getByTestId('privacy-bar-off-all').click()
+      await expect(page.getByTestId('privacy-toast')).toHaveText('Analytics and ads are off')
+      await expect.poll(() => storedChoice(page)).toMatchObject({ analytics: false, ads: false })
+      const marker = { analytics: requests.analytics.length, ads: requests.ads.length }
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      if (surface.waitsForNetworkIdle) await page.waitForLoadState('networkidle')
+      await page.waitForTimeout(1_500)
+      expect(requests.analytics.slice(marker.analytics)).toEqual([])
+      expect(requests.ads.slice(marker.ads)).toEqual([])
+      await context.close()
     })
   }
 
-  test('Marketing /links pending and unreadable storage remain banner-free and analytics-dark', async ({ browser }) => {
+  test('Marketing /links shows the privacy bar and starts analytics on arrival', async ({ browser }) => {
     const context = await browser.newContext()
-    await context.addInitScript(() => {
-      const original = Storage.prototype.getItem
-      Storage.prototype.getItem = function guardedGetItem(key: string): string | null {
-        if (key === 'mingla_consent_v1') throw new Error('storage unavailable')
-        return original.call(this, key)
-      }
-    })
     const page = await context.newPage()
-    const forbidden = await observe(page)
+    const requests = await observe(page)
     await page.goto(`${MARKETING}/links`, { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('dialog', { name: 'Cookie consent' })).toHaveCount(0)
-    expect(forbidden).toEqual({ analytics: [], ads: [] })
-    expect(await trackingScripts(page, ANALYTICS_REQUEST)).toEqual([])
-    expect(await trackingScripts(page, AD_REQUEST)).toEqual([])
-    expect(await trackingStorage(context, page, ANALYTICS_STORAGE)).toEqual([])
-    expect(await trackingStorage(context, page, AD_STORAGE)).toEqual([])
+    await expect(page.getByTestId('privacy-bar')).toBeVisible()
+    await expect.poll(() => requests.analytics.length).toBeGreaterThan(0)
+    expect(requests.ads).toEqual([])
     await context.close()
   })
 })

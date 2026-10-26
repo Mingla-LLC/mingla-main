@@ -111,9 +111,12 @@ function sourceContract() {
     /page_location: pageLocation/,
     /page_referrer: ''/,
     /if \(!isCityHubPathname\(window\.location\.pathname\)\) posthog\.capture\('\$pageview'\)/,
-    /if \(isCityHubPathname\(window\.location\.pathname\)\) return/,
+    /if \(isCityHubPathname\(pathname\)\) return\s*const audience =/,
     /transport: 'XHR'/,
   ]) assert.match(provider, contract)
+  // #2331 retired the grant step (on unless turned off), and with it the
+  // `consent_granted` event city hubs used to suppress: nothing replaces it.
+  assert.doesNotMatch(provider, /consent_granted|captureMarketingConsentGrantOnce/)
   assert.match(layout, /<PostHogProvider>\s*<GoogleAnalytics gaId=\{GA4_MEASUREMENT_ID\} \/>\s*<\/PostHogProvider>/)
   assert.match(actions, /subscribeMarketingConsent\(capture\)/)
   for (const event of CITY_EVENTS) assert.match(`${actions}\n${read('lib/city-hub-analytics.ts')}`, new RegExp(`['"]${event}['"]`))
@@ -468,22 +471,17 @@ async function runtimeContract() {
       url: `http://127.0.0.1:${serverPort}${pathWithCanaries}`,
       referrer: `http://127.0.0.1:${serverPort}/?referrer=never-referrer`,
     })
-    await waitFor(() => page.evaluate("document.readyState === 'complete' && Boolean(document.querySelector('[aria-label=\"Cookie consent\"]'))"), 'city consent UI did not become ready')
-    await new Promise((resolve) => setTimeout(resolve, 300))
-    assert.deepEqual(packets, [], 'city analytics network must remain completely dark before consent')
-
-    await page.evaluate(`(() => {
-      const button = [...document.querySelectorAll('button')].find((candidate) => candidate.textContent.trim() === 'Accept all');
-      if (!button) throw new Error('Accept all button missing');
-      button.click();
-    })()`)
-    await waitFor(() => packets.some((packet) => packet.vendor === 'ga'), 'post-consent GA event did not reach the mock collector')
+    // #2331 I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF: analytics is on for a first
+    // visit (the privacy bar shows, nothing waits for a tap); the city event and
+    // canary allowlists below still bound exactly what may leave.
+    await waitFor(() => page.evaluate("document.readyState === 'complete' && Boolean(document.querySelector('[data-testid=\"privacy-bar\"]'))"), 'city privacy bar did not become ready')
+    await waitFor(() => packets.some((packet) => packet.vendor === 'ga'), 'first-visit GA event did not reach the mock collector')
     await new Promise((resolve) => setTimeout(resolve, 300))
     if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
       await waitFor(
         () => page.evaluate(`window.__minglaAnalyticsBodies?.some((entry) =>
           entry.url.includes('us.i.posthog.com') && entry.body.includes('city_hub_view'))`),
-        `post-consent PostHog event did not reach the mock collector: ${JSON.stringify(packets)}`,
+        `first-visit PostHog event did not reach the mock collector: ${JSON.stringify(packets)}`,
       )
     }
     const recordedBodies = await page.evaluate('window.__minglaAnalyticsBodies ?? []')
@@ -551,7 +549,27 @@ async function runtimeContract() {
         assert(eventPackets.some((packet) => packet.vendor === 'posthog' && packet.parsed.event === event), `PostHog missing ${event}`)
       }
     }
-    process.stdout.write(`PASS #2983 city analytics privacy (${packets.length} mocked vendor requests; pre-consent dark; post-consent city event and canary allowlists clean)\n`)
+    // Turning analytics off goes dark at once: no city action reaches either
+    // vendor afterwards.
+    await page.evaluate(`(() => {
+      document.querySelector('[data-testid="privacy-bar-options"]').click();
+    })()`)
+    await waitFor(() => page.evaluate("Boolean(document.querySelector('[data-testid=\"privacy-switch-analytics\"]'))"), 'privacy switches did not open')
+    await page.evaluate(`(() => {
+      const analytics = document.querySelector('[data-testid="privacy-switch-analytics"]');
+      if (analytics.checked) analytics.click();
+      document.querySelector('[data-testid="privacy-bar-save"]').click();
+    })()`)
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    const beforeOff = packets.length
+    await page.evaluate(`(() => {
+      const explorer = document.querySelector('.city-hero-actions button, .city-hero-actions a');
+      explorer?.addEventListener('click', (event) => event.preventDefault(), { once: true });
+      explorer?.click();
+    })()`)
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+    assert.deepEqual(packets.slice(beforeOff), [], 'city analytics must go dark after the visitor turns analytics off')
+    process.stdout.write(`PASS #2983 city analytics privacy (${packets.length} mocked vendor requests; first visit on; city event and canary allowlists clean; dark after turn-off)\n`)
   } finally {
     page?.close()
     chrome.kill('SIGTERM')
