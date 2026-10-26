@@ -228,13 +228,6 @@ export function ToggleRow({ value, onToggle, label, hint }: { value: boolean; on
   </Pressable>;
 }
 
-/** Four-step level for a budget with no configured money range. */
-export function LevelDots({ level }: { level: number }): React.ReactElement {
-  return <View style={styles.dots} accessibilityLabel={`Budget level ${level} of 4`}>
-    {[1, 2, 3, 4].map((n) => <View key={n} style={[styles.dot, n <= level && styles.dotOn]} />)}
-  </View>;
-}
-
 const styles = StyleSheet.create({
   search: { marginBottom: 0 },
   choice: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, paddingHorizontal: 12, borderRadius: 12 },
@@ -264,7 +257,4 @@ const styles = StyleSheet.create({
   trackOn: { backgroundColor: C.accent },
   thumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#ffffff' },
   thumbOn: { transform: [{ translateX: 18 }] },
-  dots: { flexDirection: 'row', gap: 4, alignItems: 'center' },
-  dot: { width: 14, height: 6, borderRadius: 3, backgroundColor: 'rgba(255, 255, 255, 0.16)' },
-  dotOn: { backgroundColor: C.accent },
 });

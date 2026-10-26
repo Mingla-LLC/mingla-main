@@ -2,7 +2,7 @@
  * #3872 — one formatter for every Creator and Local screen.
  *
  * Copy rule: people never see raw values. No minor units ("USD 30000"), no ISO
- * dates ("2026-12-05"), no status keys ("script_sent"), no budget codes ("b2"),
+ * dates ("2026-12-05"), no status keys ("script_sent"),
  * no follower-band keys ("10k_50k"). Every screen formats through here.
  *
  * Pure on purpose (no imports): it runs under `node --experimental-strip-types`
@@ -314,22 +314,13 @@ export function usageLabel(days: number | null | undefined): string {
   return `${days} days`;
 }
 
-// ── Budget ─────────────────────────────────────────────────────────────────
+// ── Pay ────────────────────────────────────────────────────────────────────
 
-export type BudgetDisplay = { kind: 'range'; text: string } | { kind: 'level'; level: number; text: string };
-
-/**
- * Real money range when Admin configured one for the gig's currency, else a
- * 4-step level ("b2" → level 2 of 4). The raw band key never reaches the screen.
- */
-export function budgetDisplay(gig: { budget_band?: string | null; budget_min_minor?: number | null; budget_max_minor?: number | null; budget_currency?: string | null }): BudgetDisplay {
-  const { budget_min_minor: min, budget_max_minor: max, budget_currency: currency } = gig;
-  if (typeof min === 'number' && typeof max === 'number' && currency) {
-    return { kind: 'range', text: min === max ? formatMoney(min, currency) : `${formatMoney(min, currency)}–${formatMoney(max, currency)}` };
-  }
-  const match = /^b([1-4])$/i.exec(gig.budget_band ?? '');
-  const level = match ? Number(match[1]) : 1;
-  return { kind: 'level', level, text: ['Starter budget', 'Mid budget', 'High budget', 'Top budget'][level - 1] };
+/** "Pays up to $300" in the gig's own currency, or null when no pay was stored. */
+export function payUpToText(gig: { pay_up_to_minor?: number | null; currency?: string | null }): string | null {
+  const minor = gig.pay_up_to_minor;
+  if (typeof minor !== 'number' || !Number.isFinite(minor) || minor <= 0) return null;
+  return `Pays up to ${formatMoney(minor, gig.currency)}`;
 }
 
 // ── Contract words (creator view) ──────────────────────────────────────────

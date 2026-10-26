@@ -5,9 +5,10 @@ export type PublicGig = {
   id: string; title_public: string; brief_public: string; format_key: string;
   deliverables: Array<{ platform: string; kind: string; count: number }>;
   city_name: string; category: string; shoot_window: { start: string; end: string };
-  post_by: string; usage_days: number; budget_band: string; sales_share_bps: number | null; slots_left: number;
+  post_by: string; usage_days: number; sales_share_bps: number | null; slots_left: number;
   saved?: boolean;
-  budget_min_minor?: number | null; budget_max_minor?: number | null; budget_currency?: string | null;
+  /** The most the host pays each creator, in the gig's currency (null on gigs saved before pay existed). */
+  pay_up_to_minor?: number | null; currency?: string | null;
 };
 
 export type CreatorHomeContract = {
