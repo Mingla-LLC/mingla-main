@@ -1,23 +1,18 @@
 name: Tests Append-Only
 
-# Codified by ORCH-0840 [Regression-test enforcement + append-only CI].
-# Test files are append-only. Existing test files cannot be modified
-# (with deletions) or deleted/renamed without an explicit override token
-# in a PR-range commit that TOUCHES that file (per-file whole-range
-# attribution, #1058) — see `.github/scripts/test-append-only-check.js`
-# for the exact rules and grammar. A token only authorizes the file(s) its
-# commit touched; it is honored wherever that commit sits in the PR range,
-# not only on the tip.
+# This workflow now hosts ONE job: the main-health pregate ("Pre-merge: main is
+# green", issue #2909), which refuses to certify a merge onto a red `main` and
+# runs the Merge Certifier regression test.
 #
-# Override tokens (in a PR-range commit that touches the file), citing this work's
-# canonical GitHub ISSUE number — `#` plus one or more decimal digits, first digit
-# 1-9, with no leading zero or suffix. A bare number is rejected:
-#   [TEST-MOD-APPROVED #ISSUE]    — modifications with deleted lines
-#   [TEST-RENAME-APPROVED #ISSUE] — renames
-# The legacy lineage forms [TEST-MOD-APPROVED ORCH-NNNN] / META-ORCH-NNNN (optional
-# -A suffix) are accepted PERMANENTLY — they are embedded in historical commit
-# bodies and history replay must keep working (#1495).
-# Deletions cannot be overridden.
+# The test append-only gate this file was originally created for (ORCH-0840,
+# job "Test files: append-only", plus its self-test and the ORCH-1383
+# MANIFEST.json ratchet step) was RETIRED toward #3643 on 2026-10-26 by
+# engineering and product (Taofeek and Seth): existing test files may now be
+# edited or deleted in ordinary pull requests. The file path and `name:` are
+# kept unchanged on purpose: scripts/ci/main-health.mjs and the #2909 wiring
+# gate find the pregate by this workflow name, and the trigger below has no
+# positive `paths:` filter, which the pregate relies on to start on every
+# pull request.
 
 on:
   pull_request:
@@ -44,104 +39,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 jobs:
-  append-only-check:
-    if: ${{ github.event.pull_request.draft != true }}
-    name: "Test files: append-only"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout (full history, real PR head SHA on pull_request events)
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          # On pull_request events GitHub Actions defaults to a synthetic
-          # merge commit (refs/pull/N/merge) whose body is GitHub-generated
-          # ("Merge xxx into yyy") — that loses any [TEST-MOD-APPROVED …] /
-          # [TEST-RENAME-APPROVED …] override token the
-          # author placed in their real HEAD commit. Pin to the PR head SHA
-          # so `git log -1 --pretty=%B` returns the author's commit body.
-          # For push events `pull_request.head.sha` is empty and this is a
-          # no-op — checkout falls back to the default ref.
-          ref: ${{ github.event.pull_request.head.sha }}
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Run append-only check
-        run: node .github/scripts/test-append-only-check.js
-
-      # issue #1058 — regression guard for the gate itself. Exercises the
-      # two-arm git-scenario self-test (T1 false-red fixed, T2 false-green
-      # closed) plus the token-grammar regex cases. A regression test no
-      # workflow runs is worthless — this wires it into CI.
-      - name: Append-only gate self-test (regression guard)
-        run: node .github/scripts/test-append-only-check.js --self-test
-
-      # ORCH-1383 — MANIFEST.json ratchet (I-PROPOSED-1383-NO-SILENT-SHRINK).
-      #
-      # This lives HERE, in a DIFFERENT workflow from the parity gate it protects, on
-      # purpose. meta-1383-manifest-parity.mjs enforces that every gate is registered;
-      # run-batch.mjs's R4 proves the parity gate itself ran. But R4 is satisfied if you
-      # delete the parity gate from BOTH the manifest AND the runner. That circularity is
-      # closed only by an external guard — this one. Disabling the parity gate does not
-      # disable its guard.
-      #
-      # Shrinking gates[], lowering selfTestWiredFloor, or raising unenforcedCap requires
-      # an explicit [GATE-REMOVAL: <reason>] token in the latest commit body. You cannot
-      # quietly shrink the gate registry.
-      - name: ORCH-1383 — MANIFEST.json append-only ratchet
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          cat > /tmp/manifest-ratchet.mjs <<'RATCHET'
-          import { execFileSync } from "node:child_process";
-          import fs from "node:fs";
-
-          const PATH = ".github/scripts/strict-grep/MANIFEST.json";
-          const TOKEN = /\[GATE-REMOVAL:[^\]]+\]/;
-          const git = (a) => execFileSync("git", a, { encoding: "utf8", maxBuffer: 64e6 });
-
-          const base = process.env.BASE_SHA?.trim() || (() => {
-            try { return git(["rev-parse", "HEAD~1"]).trim(); } catch { return ""; }
-          })();
-          if (!base) { console.log("ORCH-1383 ratchet: no base ref to compare against — skipping."); process.exit(0); }
-
-          let before;
-          try { before = JSON.parse(git(["show", `${base}:${PATH}`])); }
-          catch { console.log("ORCH-1383 ratchet: MANIFEST.json absent at base — first landing, nothing to ratchet."); process.exit(0); }
-
-          if (!fs.existsSync(PATH)) {
-            console.error(`ORCH-1383 ratchet FAIL — ${PATH} existed at base and is now DELETED.`);
-            console.error("Deleting the gate registry is exactly the silent-shrink this ratchet exists to block.");
-            process.exit(1);
-          }
-          const after = JSON.parse(fs.readFileSync(PATH, "utf8"));
-
-          const body = git(["log", "-1", "--pretty=%B"]);
-          const violations = [];
-          const beforeScripts = new Set(before.gates.map((g) => g.script));
-          const afterScripts = new Set(after.gates.map((g) => g.script));
-          const removed = [...beforeScripts].filter((s) => !afterScripts.has(s));
-
-          if (removed.length) violations.push(`gates[] SHRANK — ${removed.length} entr(ies) removed:\n    ` + removed.join("\n    "));
-          if (after.selfTestWiredFloor < before.selfTestWiredFloor)
-            violations.push(`selfTestWiredFloor LOWERED ${before.selfTestWiredFloor} -> ${after.selfTestWiredFloor}. Self-test coverage may only ratchet UP.`);
-          if (after.unenforcedCap > before.unenforcedCap)
-            violations.push(`unenforcedCap RAISED ${before.unenforcedCap} -> ${after.unenforcedCap}. The dark-gate count may only shrink — wire the gate instead of parking it.`);
-
-          if (!violations.length) { console.log("ORCH-1383 ratchet: PASS — registry did not shrink."); process.exit(0); }
-          if (TOKEN.test(body)) {
-            console.log("ORCH-1383 ratchet: ALLOWED by [GATE-REMOVAL: ...] token in the commit body.");
-            for (const v of violations) console.log("  - " + v);
-            process.exit(0);
-          }
-          console.error("ORCH-1383 ratchet FAIL — the gate registry shrank with no [GATE-REMOVAL: <reason>] token.\n");
-          for (const v of violations) console.error("  - " + v);
-          console.error("\nAdd [GATE-REMOVAL: <why this gate is genuinely gone>] to the latest commit body,");
-          console.error("or restore the entries. A gate must never leave the registry silently.");
-          process.exit(1);
-          RATCHET
-          node /tmp/manifest-ratchet.mjs
-
   # issue #2909 — the pre-merge gate learns to check `main`.
   #
   # On 2026-09-01 `main` was red for roughly two hours across three commits and
@@ -163,8 +60,8 @@ jobs:
   # scope for #2909.
   #
   # `permissions:` is JOB-level on purpose. This workflow declares no
-  # workflow-level `permissions:` key, so the sibling job inherits the
-  # repository default; adding one at workflow level would move its token too.
+  # workflow-level `permissions:` key; keep it that way so any job added here
+  # later does not silently inherit this job's token scope.
   main-health-pregate:
     # issue #2881 — every job of a draft-gated workflow carries the draft
     # condition, this one included. Opting out would leave one job running on
