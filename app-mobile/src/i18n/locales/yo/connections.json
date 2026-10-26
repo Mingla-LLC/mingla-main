@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ Friend + pair request · waiting",
   "fs_sent_pair": "★ Pair request · waiting",
   "fs_sent_invite": "Invited by text · not on Mingla yet",
+  "fs_sent_invite_not_texted": "Invite not texted",
   "fs_cancel": "Cancel",
   "fs_cancel_request_title": "Cancel this request?",
   "fs_cancel_request_body": "{{name}} won't see it any more.",

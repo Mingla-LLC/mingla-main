@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ Lời mời kết bạn + ghép đôi · đang chờ",
   "fs_sent_pair": "★ Lời mời ghép đôi · đang chờ",
   "fs_sent_invite": "Đã mời qua SMS · chưa dùng Mingla",
+  "fs_sent_invite_not_texted": "Chưa gửi được lời mời qua SMS",
   "fs_cancel": "Hủy",
   "fs_cancel_request_title": "Hủy lời mời này?",
   "fs_cancel_request_body": "{{name}} sẽ không thấy nữa.",

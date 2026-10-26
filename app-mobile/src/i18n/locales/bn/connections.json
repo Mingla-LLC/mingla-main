@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ বন্ধু + জোড়ার অনুরোধ · অপেক্ষমাণ",
   "fs_sent_pair": "★ জোড়ার অনুরোধ · অপেক্ষমাণ",
   "fs_sent_invite": "SMS-এ আমন্ত্রিত · এখনও Mingla-তে নেই",
+  "fs_sent_invite_not_texted": "আমন্ত্রণ SMS-এ যায়নি",
   "fs_cancel": "বাতিল",
   "fs_cancel_request_title": "এই অনুরোধ বাতিল করবেন?",
   "fs_cancel_request_body": "{{name}} আর এটি দেখবে না।",

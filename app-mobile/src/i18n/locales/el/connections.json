@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ Αίτημα φιλίας + ζεύγους · αναμονή",
   "fs_sent_pair": "★ Αίτημα ζεύγους · αναμονή",
   "fs_sent_invite": "Πρόσκληση με SMS · όχι ακόμη στο Mingla",
+  "fs_sent_invite_not_texted": "Η πρόσκληση δεν στάλθηκε με SMS",
   "fs_cancel": "Ακύρωση",
   "fs_cancel_request_title": "Ακύρωση αιτήματος;",
   "fs_cancel_request_body": "{{name}} δεν θα το βλέπει πια.",

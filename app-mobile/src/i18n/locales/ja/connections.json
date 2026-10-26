@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ 友達＋ペアのリクエスト · 待機中",
   "fs_sent_pair": "★ ペアリクエスト · 待機中",
   "fs_sent_invite": "SMSで招待済み · まだMinglaにいません",
+  "fs_sent_invite_not_texted": "招待SMSは送信されていません",
   "fs_cancel": "キャンセル",
   "fs_cancel_request_title": "このリクエストを取り消しますか？",
   "fs_cancel_request_body": "{{name}}には表示されなくなります。",

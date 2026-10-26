@@ -56,7 +56,7 @@ import {
 } from "./chat/CollabSessionChatBanners";
 import { CollabDeckSheet } from "./connections/CollabDeckSheet";
 import { ChatHeader, type ChatHeaderStripLabels } from "./chat/ChatHeader";
-import { buildCollabHeaderStrip, matchKey, memberFirstNames } from "./chat/chatHeaderModel";
+import { buildCollabHeaderStrip, headerAvatarStack, matchKey, memberFirstNames } from "./chat/chatHeaderModel";
 import { useSeenSessionMatches } from "../hooks/useSeenSessionMatches";
 import { useDmCollabSession } from "../hooks/useDmCollabSession";
 import { DmCollabCard } from "./chat/DmCollabCard";
@@ -540,6 +540,11 @@ export default function MessageInterface({
   const headerTitle = cleanName(friend.name);
   const headerParticipants = useMemo(() => friend.participants ?? [], [friend.participants]);
   const headerParticipantCount = friend.participantCount ?? headerParticipants.length;
+  // Issue #4114 QA (P3): the avatar stack shows the other members, never you.
+  const headerStack = useMemo(
+    () => headerAvatarStack(headerParticipants, headerParticipantCount, currentUserId),
+    [currentUserId, headerParticipantCount, headerParticipants],
+  );
   const isTripChat = friend.linkedEntityType === "trip";
   const eventAudienceTitle = isTripChat ? t('chat:audienceTravellers') : t('chat:audienceAttendees');
   const eventAudienceSubtitle = isTripChat
@@ -2673,8 +2678,8 @@ export default function MessageInterface({
         backLabel={t('chat:a11yBack')}
         avatarKind={headerAvatarKind}
         avatarUrl={brandChannel ? brandChannel.logoUrl : isGroupChat ? friend.eventCoverMediaUrl ?? null : friend.avatar ?? null}
-        participants={headerParticipants}
-        participantCount={headerParticipantCount}
+        participants={headerStack.participants}
+        participantCount={headerStack.participantCount}
         isOnline={!isGroupChat && isOtherOnline}
         collaborating={isCollabChat}
         onIdentityPress={brandChannel ? (brandSlug ? openBrandPage : undefined) : handleHeaderIdentityPress}
@@ -3443,6 +3448,7 @@ export default function MessageInterface({
 
       <BoardSettingsDropdown
         visible={Boolean(isGroupChat && showMoreOptionsMenu && friend.sessionId)}
+        theme="dark"
         onClose={() => setShowMoreOptionsMenu(false)}
         sessionId={friend.sessionId ?? ""}
         sessionName={headerTitle}

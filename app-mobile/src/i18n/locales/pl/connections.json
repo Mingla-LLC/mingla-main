@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ Zaproszenie + prośba o parę · czeka",
   "fs_sent_pair": "★ Prośba o parę · czeka",
   "fs_sent_invite": "Zaproszono SMS-em · jeszcze nie w Mingla",
+  "fs_sent_invite_not_texted": "Zaproszenie nie wysłane SMS-em",
   "fs_cancel": "Anuluj",
   "fs_cancel_request_title": "Anulować tę prośbę?",
   "fs_cancel_request_body": "{{name}} nie będzie jej już widzieć.",

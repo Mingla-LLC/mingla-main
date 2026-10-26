@@ -508,6 +508,17 @@ export const handler = async (req: Request): Promise<Response> => {
         // Don't fail the request if SMS fails.
       }
 
+      // Issue #4114 QA: keep the outcome on the invite, so the Requests tab
+      // can say "Invite not texted · Share" later. Best effort: a failed write
+      // is logged and never fails the request.
+      const { error: smsStatusError } = await adminClient
+        .from("pending_pair_invites")
+        .update({ sms_status: smsStatus })
+        .eq("id", invite.id);
+      if (smsStatusError) {
+        console.error("[send-pair-request] recording the invite text outcome failed:", smsStatusError.message);
+      }
+
       return jsonResponse({
         tier: 3,
         inviteId: invite.id,

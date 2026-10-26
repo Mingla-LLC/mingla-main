@@ -135,7 +135,7 @@ export function GroupInfoSheet({
         </TouchableOpacity>
 
         <View style={styles.row}>
-          <Icon name="volume-mute-outline" size={20} color={chatTokens.textSecondary} style={styles.rowIcon} />
+          <Icon name="notifications-off" size={20} color={chatTokens.textSecondary} style={styles.rowIcon} />
           <Text style={styles.rowText}>{t("chat:menuMute")}</Text>
           <Switch
             value={muted}

@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ Freund- + Paaranfrage · wartet",
   "fs_sent_pair": "★ Paaranfrage · wartet",
   "fs_sent_invite": "Per SMS eingeladen · noch nicht bei Mingla",
+  "fs_sent_invite_not_texted": "Einladung nicht per SMS gesendet",
   "fs_cancel": "Abbrechen",
   "fs_cancel_request_title": "Diese Anfrage zurückziehen?",
   "fs_cancel_request_body": "{{name}} sieht sie dann nicht mehr.",

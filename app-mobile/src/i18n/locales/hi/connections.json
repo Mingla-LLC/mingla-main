@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ दोस्ती + जोड़ी अनुरोध · प्रतीक्षा में",
   "fs_sent_pair": "★ जोड़ी अनुरोध · प्रतीक्षा में",
   "fs_sent_invite": "SMS से आमंत्रित · अभी Mingla पर नहीं",
+  "fs_sent_invite_not_texted": "आमंत्रण SMS से नहीं गया",
   "fs_cancel": "रद्द करें",
   "fs_cancel_request_title": "यह अनुरोध रद्द करें?",
   "fs_cancel_request_body": "{{name}} इसे अब नहीं देखेंगे।",

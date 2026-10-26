@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ בקשת חברות + צימוד · ממתין",
   "fs_sent_pair": "★ בקשת צימוד · ממתין",
   "fs_sent_invite": "הוזמן ב-SMS · עדיין לא ב-Mingla",
+  "fs_sent_invite_not_texted": "ההזמנה לא נשלחה ב-SMS",
   "fs_cancel": "ביטול",
   "fs_cancel_request_title": "לבטל את הבקשה?",
   "fs_cancel_request_body": "{{name}} לא יראה אותה יותר.",

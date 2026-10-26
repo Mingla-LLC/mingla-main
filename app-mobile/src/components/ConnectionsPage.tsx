@@ -24,7 +24,7 @@ import { Icon } from "./ui/Icon";
 import { useFriends, Friend as UseFriend } from "../hooks/useFriends";
 import { useAppStore } from "../store/appStore";
 import { messagingService, DirectMessage, MentionEntry, CardTagEntry, MESSAGE_PAGE_SIZE } from "../services/messagingService";
-import { toggleReactionRows } from "../utils/threadModel";
+import { sendFailureFeedback, toggleReactionRows } from "../utils/threadModel";
 import {
   mergeMessages,
   isLocalMessage,
@@ -34,6 +34,7 @@ import {
   type MergeMessagesOptions,
 } from "../utils/mergeMessages";
 import { applyChatLiveChange, type ChatLiveChange } from "../utils/chatLiveModel";
+import { openAfterKeyboardHides } from "../utils/openAfterKeyboard";
 import {
   conversationChannelKey,
   releaseConversationSubscription,
@@ -3214,17 +3215,19 @@ function ConnectionsPageRefactored({
           console.error("[ConnectionsPage] Media upload failed:", uploadError);
           markFailed();
           const code = uploadError instanceof ChatMediaUploadError ? uploadError.code : "failed";
-          showToast({
-            message:
-              code === "refused_type"
-                ? t("chat:mediaTypeNotSupported")
-                : code === "refused_size"
-                  ? t("chat:mediaTooLarge")
-                  : code === "daily_limit"
-                    ? t("chat:mediaDailyLimit")
-                    : t("chat:mediaUploadFailed"),
-            type: "error",
-          });
+          // Issue #4114 QA (P3): a retryable upload failure shows only the
+          // bubble's "Tap to retry"; a refusal that a retry cannot fix toasts.
+          if (code === "refused_type" || code === "refused_size" || code === "daily_limit") {
+            showToast({
+              message:
+                code === "refused_type"
+                  ? t("chat:mediaTypeNotSupported")
+                  : code === "refused_size"
+                    ? t("chat:mediaTooLarge")
+                    : t("chat:mediaDailyLimit"),
+              type: "error",
+            });
+          }
           return;
         }
         clearUploadProgress(clientId);
@@ -3264,20 +3267,10 @@ function ConnectionsPageRefactored({
         // Mark optimistic message as failed (not removed — user sees tap-to-retry)
         markFailed();
 
-        if (
-          sendError?.includes("Cannot") ||
-          sendError?.includes("blocked") ||
-          sendError?.includes("policy")
-        ) {
-          Alert.alert(
-            t('connections:message_not_sent'),
-            t('connections:message_blocked_alt')
-          );
-        } else {
-          Alert.alert(
-            t('connections:message_not_sent'),
-            t('connections:message_failed')
-          );
+        // Issue #4114 QA (P3): the bubble's "Tap to retry" is the only
+        // feedback for a retryable failure; a refused send gets a toast.
+        if (sendFailureFeedback(sendError) === "toast_not_allowed") {
+          showToast({ message: t('connections:message_blocked_alt'), type: "error" });
         }
         return;
       }
@@ -4737,7 +4730,7 @@ function ConnectionsPageRefactored({
         selectedCountry={addFriendCountry}
         phoneNumber={addFriendPhone}
         onPhoneNumberChange={setAddFriendPhone}
-        onOpenCountryPicker={() => setAddFriendPickerOpen(true)}
+        onOpenCountryPicker={() => openAfterKeyboardHides(Keyboard, () => setAddFriendPickerOpen(true))}
         pendingUserIds={pendingPairUserIds}
         pairingAtLimit={pairTile.atLimit}
         onMessageFriend={(friendUserId) => {

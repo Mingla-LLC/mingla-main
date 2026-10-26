@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ Demande d'ami + appairage · en attente",
   "fs_sent_pair": "★ Demande d'appairage · en attente",
   "fs_sent_invite": "Invité par SMS · pas encore sur Mingla",
+  "fs_sent_invite_not_texted": "Invitation non envoyée par SMS",
   "fs_cancel": "Annuler",
   "fs_cancel_request_title": "Annuler cette demande ?",
   "fs_cancel_request_body": "{{name}} ne la verra plus.",

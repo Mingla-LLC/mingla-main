@@ -18,6 +18,8 @@ import { notifyMemberLeft, notifySessionDeleted } from "../../services/boardNoti
 import { colors } from "../../constants/colors";
 // ORCH-0520: inline phone invite + accordion friend picker
 import { PhoneInput } from "../onboarding/PhoneInput";
+import type { PhoneInputTheme } from "@mingla/phone-input";
+import { chatTokens } from "../../constants/chatTokens";
 import { getCountryByCode } from "../../constants/countries";
 import { inviteByPhone } from "../../services/sessionInviteService";
 import { setSessionMute } from "../../services/sessionMuteService";
@@ -73,6 +75,8 @@ interface BoardSettingsDropdownProps {
   onSessionDeleted?: () => void;
   onSessionNameUpdated?: (newName: string) => void;
   onParticipantsChange?: () => void;
+  /** Issue #4114 QA: "dark" on the dark chat screen; SessionViewModal keeps light. */
+  theme?: "light" | "dark";
 }
 
 export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
@@ -89,8 +93,12 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   onSessionDeleted,
   onSessionNameUpdated,
   onParticipantsChange,
+  theme = "light",
 }) => {
   const { t } = useTranslation(["board", "common"]);
+  const dark = theme === "dark";
+  const st = dark ? darkStyles : styles;
+  const pal = dark ? DARK_PALETTE : LIGHT_PALETTE;
   const insets = useSafeAreaInsets();
   const [editSessionName, setEditSessionName] = useState(sessionName);
   const [savingName, setSavingName] = useState(false);
@@ -641,6 +649,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
       onClose={onClose}
       snapPoints={SNAP_POINTS as unknown as string[]}
       wrapInRNModal
+      theme={dark ? "dark" : "light"}
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
@@ -652,12 +661,12 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
             ORCH-0520 v2: title+pencil wrapped in a tight self-sized row with a
             solid orange underline (cross-platform reliable); spacer pushes bell
             to the far right so the pencil hugs the title. */
-        <View style={styles.headerRow}>
+        <View style={st.headerRow}>
                 {canManageSession ? (
-                  <View style={styles.titleAndPencil}>
+                  <View style={st.titleAndPencil}>
                     <BottomSheetTextInput
                       ref={nameInputRef}
-                      style={styles.titleInput}
+                      style={st.titleInput}
                       value={editSessionName}
                       onChangeText={setEditSessionName}
                       onBlur={handleSaveName}
@@ -671,30 +680,30 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                     <Icon
                       name="pencil"
                       size={14}
-                      color="#9CA3AF"
-                      style={styles.pencilIcon}
+                      color={pal.textMuted}
+                      style={st.pencilIcon}
                     />
                     {savingName && (
                       <ActivityIndicator
                         size="small"
                         color="#eb7825"
-                        style={styles.savingIndicator}
+                        style={st.savingIndicator}
                       />
                     )}
                   </View>
                 ) : (
-                  <Text style={styles.titleStatic} numberOfLines={1}>
+                  <Text style={st.titleStatic} numberOfLines={1}>
                     {sessionName}
                   </Text>
                 )}
 
                 {/* Spacer pushes the bell to the far right while the title+pencil
                     stay anchored on the left, hugging the text. */}
-                <View style={styles.headerSpacer} />
+                <View style={st.headerSpacer} />
 
                 {/* Mute bell — visible to all participants, server-truth state */}
                 <TouchableOpacity
-                  style={styles.bellButton}
+                  style={st.bellButton}
                   onPress={handleToggleMute}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   accessibilityRole="button"
@@ -708,14 +717,14 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                   <Icon
                     name={currentUserIsMuted ? "notifications-off" : "notifications"}
                     size={22}
-                    color={currentUserIsMuted ? "#9CA3AF" : "#374151"}
+                    color={currentUserIsMuted ? pal.textMuted : pal.icon}
                   />
                 </TouchableOpacity>
         </View>
       }
       scrollProps={{
-        style: styles.sheetScroll,
-        contentContainerStyle: styles.sheetScrollContent,
+        style: st.sheetScroll,
+        contentContainerStyle: st.sheetScrollContent,
         showsVerticalScrollIndicator: false,
         keyboardShouldPersistTaps: "handled",
       }}
@@ -723,27 +732,27 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
         /* ORCH-0520 v2: Leave & Delete fixed footer — outside the scroll body.
             Prevents action buttons from shifting when the friend accordion
             expands. Safe-area-aware bottom padding. */
-        <View style={[styles.actionButtonsRow, { paddingBottom: Math.max(12, insets.bottom) }]}>
+        <View style={[st.actionButtonsRow, { paddingBottom: Math.max(12, insets.bottom) }]}>
           <TouchableOpacity
-            style={styles.leaveButton}
+            style={st.leaveButton}
             onPress={handleLeaveBoard}
             activeOpacity={0.8}
             disabled={exitingBoard}
           >
-            <Icon name="log-out" size={16} color="#EF4444" />
-            <Text style={styles.leaveButtonText}>
+            <Icon name="log-out" size={16} color={pal.danger} />
+            <Text style={st.leaveButtonText}>
               {exitingBoard ? "Leaving..." : "Leave"}
             </Text>
           </TouchableOpacity>
           {canManageSession && (
             <TouchableOpacity
-              style={styles.deleteButton}
+              style={st.deleteButton}
               onPress={handleDeleteSessionWithConfirmation}
               activeOpacity={0.8}
               disabled={deletingSession}
             >
               <Icon name="trash-outline" size={16} color="white" />
-              <Text style={styles.deleteButtonText}>
+              <Text style={st.deleteButtonText}>
                 {deletingSession ? "Deleting..." : "Delete"}
               </Text>
             </TouchableOpacity>
@@ -753,8 +762,8 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
     >
                 {/* ORCH-0520: Invite section — creators + admins only */}
                 {canManageSession && (
-                  <View style={styles.inviteSection}>
-                    <Text style={styles.sectionLabel}>
+                  <View style={st.inviteSection}>
+                    <Text style={st.sectionLabel}>
                       {t("board:boardSettingsDropdown.inviteByPhone")}
                     </Text>
                     <PhoneInput
@@ -764,21 +773,22 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                       onChangeCountry={setInviteCountryCode}
                       error={inviteError}
                       disabled={inviting}
+                      theme={dark ? DARK_PHONE_THEME : undefined}
                     />
 
                     {/* ORCH-0520 v2: live lookup result (mirrors AddFriendView pattern) */}
                     {isInvitePhoneValid && (lookupDebouncing || phoneLookupLoading) && (
-                      <View style={styles.lookupRow}>
+                      <View style={st.lookupRow}>
                         <ActivityIndicator size="small" color="#eb7825" />
-                        <Text style={styles.lookupTextMuted}>
+                        <Text style={st.lookupTextMuted}>
                           {t("board:boardSettingsDropdown.checkingNumber")}
                         </Text>
                       </View>
                     )}
                     {lookupResolved && lookupFound && (
-                      <View style={styles.lookupRow}>
-                        <Icon name="checkmark-circle" size={14} color="#22c55e" />
-                        <Text style={styles.lookupTextGreen}>
+                      <View style={st.lookupRow}>
+                        <Icon name="checkmark-circle" size={14} color={pal.success} />
+                        <Text style={st.lookupTextGreen}>
                           {t("social:isOnMingla", {
                             name: getDisplayName(phoneLookupResult?.user, "User"),
                           })}
@@ -786,9 +796,9 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                       </View>
                     )}
                     {lookupResolved && !lookupFound && (
-                      <View style={styles.lookupRow}>
-                        <Icon name="person-add-outline" size={14} color="#6b7280" />
-                        <Text style={styles.lookupTextMuted}>
+                      <View style={st.lookupRow}>
+                        <Icon name="person-add-outline" size={14} color={pal.textSoft} />
+                        <Text style={st.lookupTextMuted}>
                           {t("social:notOnMinglaYet")}
                         </Text>
                       </View>
@@ -796,9 +806,9 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
 
                     <TouchableOpacity
                       style={[
-                        styles.inviteButton,
+                        st.inviteButton,
                         (!isInvitePhoneValid || inviting || lookupDebouncing || phoneLookupLoading) &&
-                          styles.inviteButtonDisabled,
+                          st.inviteButtonDisabled,
                       ]}
                       onPress={handlePhoneInvite}
                       disabled={
@@ -810,7 +820,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                       {inviting ? (
                         <ActivityIndicator size="small" color="white" />
                       ) : (
-                        <View style={styles.inviteButtonContent}>
+                        <View style={st.inviteButtonContent}>
                           <Icon
                             name={
                               lookupResolved && lookupFound
@@ -822,7 +832,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                             size={16}
                             color="white"
                           />
-                          <Text style={styles.inviteButtonText}>
+                          <Text style={st.inviteButtonText}>
                             {lookupResolved && lookupFound
                               ? t("board:boardSettingsDropdown.inviteUser", {
                                   name: getDisplayName(phoneLookupResult?.user, "User"),
@@ -837,20 +847,20 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
 
                     {/* Collapsible friend-picker accordion */}
                     <TouchableOpacity
-                      style={styles.friendAccordionHeader}
+                      style={st.friendAccordionHeader}
                       onPress={() => setFriendListExpanded((v) => !v)}
                       accessibilityRole="button"
                       accessibilityState={{ expanded: friendListExpanded }}
                       accessibilityLabel={t("board:boardSettingsDropdown.inviteFromFriends")}
                     >
-                      <Icon name="users" size={18} color="#6B7280" />
-                      <Text style={styles.friendAccordionTitle}>
+                      <Icon name="users" size={18} color={pal.textSoft} />
+                      <Text style={st.friendAccordionTitle}>
                         {t("board:boardSettingsDropdown.inviteFromFriends")}
                       </Text>
                       <Icon
                         name={friendListExpanded ? "chevron-up" : "chevron-down"}
                         size={18}
-                        color="#9CA3AF"
+                        color={pal.textMuted}
                       />
                     </TouchableOpacity>
 
@@ -859,6 +869,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                         sessionId={sessionId}
                         sessionName={sessionName}
                         existingParticipantIds={participants.map((p) => p.user_id)}
+                        theme={theme}
                         onInvitesSent={() => {
                           onParticipantsChange?.();
                           setFriendListExpanded(false);
@@ -869,11 +880,11 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                 )}
 
                 {/* Divider */}
-                <View style={styles.menuDivider} />
+                <View style={st.menuDivider} />
 
                 {/* Members Section */}
-                <View style={styles.membersSection}>
-                  <Text style={styles.membersSectionTitle}>
+                <View style={st.membersSection}>
+                  <Text style={st.membersSectionTitle}>
                     Members ({participants.length + pendingInvites.length})
                   </Text>
                   {participants.map((participant) => {
@@ -890,35 +901,35 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                     return (
                       <View
                         key={participant.user_id || participant.id}
-                        style={styles.memberRow}
+                        style={st.memberRow}
                       >
-                        <View style={styles.memberLeft}>
-                          <View style={styles.memberAvatar}>
-                            <Text style={styles.memberAvatarText}>
+                        <View style={st.memberLeft}>
+                          <View style={st.memberAvatar}>
+                            <Text style={st.memberAvatarText}>
                               {originalName.charAt(0).toUpperCase()}
                             </Text>
                           </View>
-                          <View style={styles.memberInfo}>
-                            <View style={styles.memberNameRow}>
-                              <Text style={styles.memberName}>
+                          <View style={st.memberInfo}>
+                            <View style={st.memberNameRow}>
+                              <Text style={st.memberName}>
                                 {truncateString(displayName, 15)}
                               </Text>
                               {isCreator && (
-                                <View style={styles.creatorBadge}>
+                                <View style={st.creatorBadge}>
                                   <Icon name="crown-outline" size={10} color="white" />
-                                  <Text style={styles.badgeText}>Creator</Text>
+                                  <Text style={st.badgeText}>Creator</Text>
                                 </View>
                               )}
                               {!isCreator && isParticipantAdmin && (
-                                <View style={styles.adminBadge}>
+                                <View style={st.adminBadge}>
                                   <Icon name="shield" size={9} color="white" />
-                                  <Text style={styles.badgeText}>Admin</Text>
+                                  <Text style={st.badgeText}>Admin</Text>
                                 </View>
                               )}
                               {isPendingParticipant && (
-                                <View style={styles.pendingBadge}>
-                                  <Icon name="time-outline" size={10} color="#92400e" />
-                                  <Text style={styles.pendingBadgeText}>Pending</Text>
+                                <View style={st.pendingBadge}>
+                                  <Icon name="time-outline" size={10} color={pal.pendingText} />
+                                  <Text style={st.pendingBadgeText}>Pending</Text>
                                 </View>
                               )}
                             </View>
@@ -927,12 +938,12 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
 
                         {/* Action buttons — admin can manage non-creator, non-self */}
                         {isUserAdmin && !isCreator && !isCurrentUser && (
-                          <View style={styles.memberActions}>
+                          <View style={st.memberActions}>
                             {!isPendingParticipant ? (
                               <TouchableOpacity
                                 style={[
-                                  styles.memberActionBtn,
-                                  isParticipantAdmin && styles.memberActionBtnActive,
+                                  st.memberActionBtn,
+                                  isParticipantAdmin && st.memberActionBtnActive,
                                 ]}
                                 onPress={() =>
                                   handleToggleAdmin(
@@ -945,12 +956,12 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                                 <Icon
                                   name="shield"
                                   size={16}
-                                  color={isParticipantAdmin ? "#eb7825" : "#9CA3AF"}
+                                  color={isParticipantAdmin ? "#eb7825" : pal.textMuted}
                                 />
                               </TouchableOpacity>
                             ) : null}
                             <TouchableOpacity
-                              style={styles.memberActionBtn}
+                              style={st.memberActionBtn}
                               onPress={() =>
                                 isPendingParticipant
                                   ? handleRevokePendingInvite({
@@ -966,7 +977,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                               <Icon
                                 name={isPendingParticipant ? "close" : "user-minus"}
                                 size={16}
-                                color="#EF4444"
+                                color={pal.danger}
                               />
                             </TouchableOpacity>
                           </View>
@@ -975,24 +986,24 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                     );
                   })}
                   {loadingPendingInvites ? (
-                    <ActivityIndicator style={styles.pendingInvitesLoading} size="small" color="#eb7825" />
+                    <ActivityIndicator style={st.pendingInvitesLoading} size="small" color="#eb7825" />
                   ) : null}
                   {pendingInvites.map((invite) => (
-                    <View key={`${invite.kind}-${invite.id}`} style={styles.memberRow}>
-                      <View style={styles.memberLeft}>
-                        <View style={[styles.memberAvatar, styles.pendingInviteAvatar]}>
-                          <Text style={styles.memberAvatarText}>
+                    <View key={`${invite.kind}-${invite.id}`} style={st.memberRow}>
+                      <View style={st.memberLeft}>
+                        <View style={[st.memberAvatar, st.pendingInviteAvatar]}>
+                          <Text style={st.memberAvatarText}>
                             {(invite.name || "?").charAt(0).toUpperCase()}
                           </Text>
                         </View>
-                        <View style={styles.memberInfo}>
-                          <View style={styles.memberNameRow}>
-                            <Text style={styles.memberName}>
+                        <View style={st.memberInfo}>
+                          <View style={st.memberNameRow}>
+                            <Text style={st.memberName}>
                               {truncateString(invite.name, 18)}
                             </Text>
-                            <View style={styles.pendingBadge}>
-                              <Icon name="time-outline" size={10} color="#92400e" />
-                              <Text style={styles.pendingBadgeText}>
+                            <View style={st.pendingBadge}>
+                              <Icon name="time-outline" size={10} color={pal.pendingText} />
+                              <Text style={st.pendingBadgeText}>
                                 {invite.kind === "cold" ? "SMS pending" : "Pending"}
                               </Text>
                             </View>
@@ -1000,11 +1011,11 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                         </View>
                       </View>
                       {isUserAdmin ? (
-                        <View style={styles.memberActions}>
+                        <View style={st.memberActions}>
                           <TouchableOpacity
                             style={[
-                              styles.memberActionBtn,
-                              revokingInviteId === invite.id ? styles.memberActionBtnDisabled : null,
+                              st.memberActionBtn,
+                              revokingInviteId === invite.id ? st.memberActionBtnDisabled : null,
                             ]}
                             disabled={revokingInviteId === invite.id}
                             onPress={() => handleRevokePendingInvite(invite)}
@@ -1012,9 +1023,9 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                             accessibilityLabel={`Revoke invite for ${invite.name}`}
                           >
                             {revokingInviteId === invite.id ? (
-                              <ActivityIndicator size="small" color="#EF4444" />
+                              <ActivityIndicator size="small" color={pal.danger} />
                             ) : (
-                              <Icon name="close" size={16} color="#EF4444" />
+                              <Icon name="close" size={16} color={pal.danger} />
                             )}
                           </TouchableOpacity>
                         </View>
@@ -1028,7 +1039,87 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+// Issue #4114 QA (P3): the session group's settings sheet sits on the dark
+// chat screen, so it has a dark palette on the chat tokens. The light palette
+// keeps every colour it had for SessionViewModal.
+interface SettingsPalette {
+  textPrimary: string;
+  textBody: string;
+  textMuted: string;
+  textSoft: string;
+  divider: string;
+  rowBg: string;
+  adminBadgeBg: string;
+  pendingBg: string;
+  pendingText: string;
+  actionBtnBg: string;
+  actionBtnActiveBg: string;
+  pendingAvatarBg: string;
+  footerBg: string;
+  danger: string;
+  disabledBg: string;
+  success: string;
+  icon: string;
+}
+
+const LIGHT_PALETTE: SettingsPalette = {
+  textPrimary: "#111827",
+  textBody: "#374151",
+  textMuted: "#9CA3AF",
+  textSoft: "#6b7280",
+  divider: "#E5E7EB",
+  rowBg: "#F9FAFB",
+  adminBadgeBg: "#6B7280",
+  pendingBg: "#FEF3C7",
+  pendingText: "#92400e",
+  actionBtnBg: "#F3F4F6",
+  actionBtnActiveBg: "#FEF3C7",
+  pendingAvatarBg: "#9CA3AF",
+  footerBg: "white",
+  danger: "#EF4444",
+  disabledBg: "#D1D5DB",
+  success: "#22c55e",
+  icon: "#374151",
+};
+
+const DARK_PALETTE: SettingsPalette = {
+  textPrimary: chatTokens.textPrimary,
+  textBody: chatTokens.textSecondary,
+  textMuted: chatTokens.textSoft,
+  textSoft: chatTokens.textSoft,
+  divider: chatTokens.hairline,
+  rowBg: chatTokens.surfaceRaised,
+  adminBadgeBg: chatTokens.hairline,
+  pendingBg: chatTokens.warningSoft,
+  pendingText: chatTokens.warning,
+  actionBtnBg: chatTokens.strip,
+  actionBtnActiveBg: chatTokens.accentSoft,
+  pendingAvatarBg: chatTokens.textMuted,
+  footerBg: "transparent",
+  danger: chatTokens.danger,
+  disabledBg: chatTokens.hairline,
+  success: chatTokens.success,
+  icon: chatTokens.textSecondary,
+};
+
+/** The dark phone field inside the dark sheet. */
+const DARK_PHONE_THEME: PhoneInputTheme = {
+  backgroundPrimary: chatTokens.surfaceRaised,
+  textPrimary: chatTokens.textPrimary,
+  textTertiary: chatTokens.textSoft,
+  borderDefault: chatTokens.hairline,
+  borderFocused: chatTokens.accent,
+  borderError: chatTokens.danger,
+  searchBackground: chatTokens.strip,
+  rowPressedBackground: chatTokens.strip,
+  divider: chatTokens.hairline,
+  accessoryBackground: chatTokens.surface,
+  accessoryBorder: chatTokens.hairline,
+  accent: chatTokens.accent,
+  errorText: chatTokens.danger,
+};
+
+const makeStyles = (p: SettingsPalette) => StyleSheet.create({
   // --- Bottom sheet body ---
   sheetScroll: {
     paddingHorizontal: 4,
@@ -1051,12 +1142,12 @@ const styles = StyleSheet.create({
   },
   menuItemText: {
     fontSize: 15,
-    color: "#374151",
+    color: p.textBody,
     fontWeight: "400",
   },
   menuDivider: {
     height: 1,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: p.divider,
     marginVertical: 6,
     marginHorizontal: 20,
   },
@@ -1069,7 +1160,7 @@ const styles = StyleSheet.create({
   membersSectionTitle: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#9CA3AF",
+    color: p.textMuted,
     textTransform: "uppercase",
     letterSpacing: 0.5,
     marginBottom: 10,
@@ -1081,7 +1172,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 10,
     paddingHorizontal: 8,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: p.rowBg,
     borderRadius: 10,
     marginBottom: 6,
   },
@@ -1115,7 +1206,7 @@ const styles = StyleSheet.create({
   memberName: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#111827",
+    color: p.textPrimary,
   },
   creatorBadge: {
     flexDirection: "row",
@@ -1130,7 +1221,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    backgroundColor: "#6B7280",
+    backgroundColor: p.adminBadgeBg,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 10,
@@ -1139,7 +1230,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    backgroundColor: "#FEF3C7",
+    backgroundColor: p.pendingBg,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 10,
@@ -1147,7 +1238,7 @@ const styles = StyleSheet.create({
   pendingBadgeText: {
     fontSize: 10,
     fontWeight: "600",
-    color: "#92400e",
+    color: p.pendingText,
   },
   badgeText: {
     fontSize: 10,
@@ -1161,16 +1252,16 @@ const styles = StyleSheet.create({
   memberActionBtn: {
     padding: 7,
     borderRadius: 8,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: p.actionBtnBg,
   },
   memberActionBtnActive: {
-    backgroundColor: "#FEF3C7",
+    backgroundColor: p.actionBtnActiveBg,
   },
   memberActionBtnDisabled: {
     opacity: 0.55,
   },
   pendingInviteAvatar: {
-    backgroundColor: "#9CA3AF",
+    backgroundColor: p.pendingAvatarBg,
   },
   pendingInvitesLoading: {
     paddingVertical: 8,
@@ -1183,8 +1274,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-    backgroundColor: "white",
+    borderTopColor: p.divider,
+    backgroundColor: p.footerBg,
   },
   leaveButton: {
     flex: 1,
@@ -1195,13 +1286,13 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: "#EF4444",
-    backgroundColor: "white",
+    borderColor: p.danger,
+    backgroundColor: p.footerBg,
   },
   leaveButtonText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#EF4444",
+    color: p.danger,
   },
   deleteButton: {
     flex: 1,
@@ -1211,7 +1302,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 13,
     borderRadius: 12,
-    backgroundColor: "#EF4444",
+    backgroundColor: p.danger,
   },
   deleteButtonText: {
     fontSize: 14,
@@ -1241,7 +1332,7 @@ const styles = StyleSheet.create({
   titleInput: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#111827",
+    color: p.textPrimary,
     paddingVertical: 6,
     paddingHorizontal: 0,
     minWidth: 80,
@@ -1255,7 +1346,7 @@ const styles = StyleSheet.create({
   titleStatic: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#111827",
+    color: p.textPrimary,
     paddingVertical: 6,
     maxWidth: "75%",
   },
@@ -1280,7 +1371,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#9CA3AF",
+    color: p.textMuted,
     textTransform: "uppercase",
     letterSpacing: 0.5,
     marginBottom: 2,
@@ -1294,7 +1385,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   inviteButtonDisabled: {
-    backgroundColor: "#D1D5DB",
+    backgroundColor: p.disabledBg,
   },
   // ORCH-0520 v2: icon + label pairing inside the button (warm/cold/default states)
   inviteButtonContent: {
@@ -1318,12 +1409,12 @@ const styles = StyleSheet.create({
   },
   lookupTextGreen: {
     fontSize: 13,
-    color: "#22c55e",
+    color: p.success,
     fontWeight: "500",
   },
   lookupTextMuted: {
     fontSize: 13,
-    color: "#6b7280",
+    color: p.textSoft,
   },
   friendAccordionHeader: {
     flexDirection: "row",
@@ -1332,15 +1423,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     gap: 12,
     borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
+    borderTopColor: p.divider,
     marginTop: 8,
   },
   friendAccordionTitle: {
     flex: 1,
     fontSize: 15,
     fontWeight: "500",
-    color: "#374151",
+    color: p.textBody,
   },
 });
+
+const styles = makeStyles(LIGHT_PALETTE);
+const darkStyles = makeStyles(DARK_PALETTE);
 
 export default BoardSettingsDropdown;

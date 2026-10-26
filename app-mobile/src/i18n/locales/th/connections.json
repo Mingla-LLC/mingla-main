@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ คำขอเป็นเพื่อน + จับคู่ · รออยู่",
   "fs_sent_pair": "★ คำขอจับคู่ · รออยู่",
   "fs_sent_invite": "เชิญทาง SMS แล้ว · ยังไม่อยู่ใน Mingla",
+  "fs_sent_invite_not_texted": "ยังไม่ได้ส่งคำเชิญทาง SMS",
   "fs_cancel": "ยกเลิก",
   "fs_cancel_request_title": "ยกเลิกคำขอนี้ไหม",
   "fs_cancel_request_body": "{{name}} จะไม่เห็นอีก",

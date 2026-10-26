@@ -63,6 +63,7 @@ export interface PairingPillLike {
   pairRequestId: string | null;
   pendingInviteId: string | null;
   createdAt: string;
+  inviteSmsFailed?: boolean;
 }
 
 export interface LegacyPhoneInviteLike {
@@ -198,6 +199,8 @@ export type SentRow =
       legacyInviteId: string | null;
       phoneE164: string;
       createdAt: string;
+      /** Issue #4114 QA: the invite text did not go out — offer Share instead of "Invited by text". */
+      smsFailed: boolean;
     };
 
 const SENT_PAIR_STATES = new Set(["pending_active", "greyed_waiting_friend", "greyed_waiting_pair"]);
@@ -249,6 +252,7 @@ export function buildSentRows(input: {
         legacyInviteId: null,
         phoneE164: pill.displayName,
         createdAt: pill.createdAt,
+        smsFailed: pill.inviteSmsFailed === true,
       });
     }
   }
@@ -262,6 +266,7 @@ export function buildSentRows(input: {
       legacyInviteId: invite.id,
       phoneE164: invite.phoneE164,
       createdAt: invite.createdAt,
+      smsFailed: false,
     });
   }
 

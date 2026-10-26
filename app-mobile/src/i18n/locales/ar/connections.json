@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ طلب صداقة + اقتران · بانتظار الرد",
   "fs_sent_pair": "★ طلب اقتران · بانتظار الرد",
   "fs_sent_invite": "تمت الدعوة برسالة نصية · ليس على Mingla بعد",
+  "fs_sent_invite_not_texted": "لم تُرسل الدعوة برسالة نصية",
   "fs_cancel": "إلغاء",
   "fs_cancel_request_title": "إلغاء هذا الطلب؟",
   "fs_cancel_request_body": "لن يراه {{name}} بعد الآن.",

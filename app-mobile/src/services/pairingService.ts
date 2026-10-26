@@ -26,6 +26,8 @@ export interface PairingPill {
   pairRequestId: string | null;
   pendingInviteId: string | null;
   createdAt: string;
+  /** Issue #4114 QA: a Tier 3 invite whose text did not go out (pending_pair_invites.sms_status). */
+  inviteSmsFailed?: boolean;
 }
 
 export interface PairRequest {
@@ -263,13 +265,9 @@ export async function fetchPairingPills(userId: string): Promise<PairingPill[]> 
   // 3. Query pending_pair_invites (Tier 3 pre-signup)
   const { data: pendingInvites, error: invitesError } = await supabase
     .from("pending_pair_invites")
-    .select(`
-      id,
-      inviter_id,
-      phone_e164,
-      status,
-      created_at
-    `)
+    // Issue #4114 QA: `*` so the row carries sms_status (20271230084114) and an
+    // app that reaches a database without it yet still lists the invite.
+    .select("*")
     .eq("inviter_id", userId)
     .eq("status", "pending");
 
@@ -294,6 +292,7 @@ export async function fetchPairingPills(userId: string): Promise<PairingPill[]> 
         pairRequestId: null,
         pendingInviteId: invite.id,
         createdAt: invite.created_at,
+        inviteSmsFailed: (invite as { sms_status?: string | null }).sms_status === "failed",
       });
     }
   }

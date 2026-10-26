@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ Vriend- + koppelverzoek · wacht",
   "fs_sent_pair": "★ Koppelverzoek · wacht",
   "fs_sent_invite": "Per sms uitgenodigd · nog niet op Mingla",
+  "fs_sent_invite_not_texted": "Uitnodiging niet per sms verstuurd",
   "fs_cancel": "Annuleren",
   "fs_cancel_request_title": "Dit verzoek annuleren?",
   "fs_cancel_request_body": "{{name}} ziet het dan niet meer.",

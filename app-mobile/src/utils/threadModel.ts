@@ -225,3 +225,16 @@ export function idsStillUnread(messageIds: readonly string[], readIds: Iterable<
 
 /** Upsert batch size for marking a whole chat read. */
 export const MARK_READ_CHUNK = 500;
+
+/**
+ * Issue #4114 QA (P3): a failed send used to show an alert AND the bubble's
+ * "Tap to retry". A retryable failure now shows only the inline retry; a send
+ * the server refused for good (blocked, not allowed) gets a toast, since
+ * retrying it cannot work.
+ */
+export type SendFailureFeedback = "inline_retry" | "toast_not_allowed";
+
+export function sendFailureFeedback(sendError: string | null | undefined): SendFailureFeedback {
+  const text = sendError ?? "";
+  return /Cannot|blocked|policy/.test(text) ? "toast_not_allowed" : "inline_retry";
+}

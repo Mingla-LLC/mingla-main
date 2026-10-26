@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ Permintaan rakan + pasangan · menunggu",
   "fs_sent_pair": "★ Permintaan pasangan · menunggu",
   "fs_sent_invite": "Dijemput melalui SMS · belum di Mingla",
+  "fs_sent_invite_not_texted": "Jemputan tidak dihantar melalui SMS",
   "fs_cancel": "Batal",
   "fs_cancel_request_title": "Batalkan permintaan ini?",
   "fs_cancel_request_body": "{{name}} tidak akan melihatnya lagi.",

@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ Arkadaşlık + eşleşme isteği · bekliyor",
   "fs_sent_pair": "★ Eşleşme isteği · bekliyor",
   "fs_sent_invite": "SMS ile davet edildi · henüz Mingla'da değil",
+  "fs_sent_invite_not_texted": "Davet SMS ile gönderilemedi",
   "fs_cancel": "İptal",
   "fs_cancel_request_title": "Bu istek iptal edilsin mi?",
   "fs_cancel_request_body": "{{name}} artık görmeyecek.",

@@ -82,7 +82,7 @@ const ITEMS: Record<FriendMenuItemId, Omit<FriendMenuItem, "id">> = {
   media: { labelKey: "chat:menuMedia", icon: "images-outline", tone: "default" },
   shareCard: { labelKey: "chat:menuShareCard", icon: "bookmark-outline", tone: "default" },
   addToSession: { labelKey: "chat:menuAddToSession", icon: "people-outline", tone: "default" },
-  mute: { labelKey: "chat:menuMute", icon: "volume-mute-outline", tone: "default" },
+  mute: { labelKey: "chat:menuMute", icon: "notifications-off", tone: "default" },
   pairedView: { labelKey: "connections:chat_menu_paired_view", icon: "gift-outline", tone: "default" },
   sendPair: { labelKey: "chat:menuSendPair", icon: "star-outline", tone: "default" },
   pairPending: { labelKey: "chat:menuPairPending", icon: "star-outline", tone: "disabled" },
@@ -131,7 +131,7 @@ export function buildFriendMenu(ctx: FriendMenuContext): FriendMenuItem[] {
   return FRIEND_MENU_ORDER.filter((id) => included(id, ctx)).map((id) => {
     const item = { id, ...ITEMS[id] };
     if (id === "mute" && ctx.isMuted) {
-      return { ...item, labelKey: "chat:menuUnmute", icon: "volume-high-outline" };
+      return { ...item, labelKey: "chat:menuUnmute", icon: "notifications-outline" };
     }
     return item;
   });

@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ 친구 + 페어 요청 · 대기 중",
   "fs_sent_pair": "★ 페어 요청 · 대기 중",
   "fs_sent_invite": "문자로 초대함 · 아직 Mingla 미가입",
+  "fs_sent_invite_not_texted": "초대 문자가 전송되지 않음",
   "fs_cancel": "취소",
   "fs_cancel_request_title": "이 요청을 취소할까요?",
   "fs_cancel_request_body": "{{name}}님에게 더 이상 보이지 않아요.",

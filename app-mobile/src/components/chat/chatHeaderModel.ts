@@ -155,8 +155,12 @@ export function buildCollabHeaderStrip(input: {
   now: number;
   untitled: string;
 }): CollabHeaderStripModel {
-  const showMatches = input.actionIds.includes("matches");
-  const showPlans = input.actionIds.includes("plans");
+  // Issue #4114 QA (P3): a cell appears only once it has data. A first read
+  // with nothing yet used to flash "Loading matches / plans" and then vanish
+  // when the collab had none; now the strip stays hidden until there is
+  // something to show.
+  const showMatches = input.actionIds.includes("matches") && input.matches.length > 0;
+  const showPlans = input.actionIds.includes("plans") && input.plans.length > 0;
 
   let matches: MatchesCellModel | null = null;
   if (showMatches) {
@@ -205,4 +209,20 @@ export function memberFirstNames(
     .filter((name): name is string => !!name);
   if (firsts.length === 0) return youLabel;
   return joiner(firsts.join(", "), youLabel);
+}
+
+/**
+ * Issue #4114 QA (P3): the group avatar stack in the thread header shows the
+ * OTHER members (the chat list was fixed in 3671b7910; the header still put
+ * your own initials first). Drops you from the stack and from the "+N" count.
+ */
+export function headerAvatarStack<T extends { id: string }>(
+  participants: readonly T[],
+  participantCount: number | undefined,
+  currentUserId: string | null | undefined,
+): { participants: T[]; participantCount: number } {
+  const others = currentUserId ? participants.filter((participant) => participant.id !== currentUserId) : [...participants];
+  const total = participantCount ?? participants.length;
+  const removedSelf = others.length < participants.length ? 1 : 0;
+  return { participants: others, participantCount: Math.max(others.length, total - removedSelf) };
 }

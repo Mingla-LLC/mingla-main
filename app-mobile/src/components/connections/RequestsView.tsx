@@ -8,7 +8,7 @@
  * built and never shown). Every Cancel asks once.
  */
 import React, { useCallback } from "react";
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { glass } from "../../constants/designSystem";
 import { COUNTRIES } from "../../constants/countries";
@@ -54,6 +54,19 @@ export function RequestsView({
 }: RequestsViewProps): React.ReactElement {
   const { t } = useTranslation(["connections", "common"]);
   const timeAgo = useTimeAgo();
+
+  // Issue #4114 QA: the share sheet for an invite whose text did not go out
+  // (same message and link as Add a friend's "Share an invite").
+  const shareInvite = useCallback(async (): Promise<void> => {
+    try {
+      // SHARE-NON-CONTENT:invite
+      await Share.share({
+        message: t("connections:af_share_message", { link: "https://go.usemingla.com/w36m" }),
+      });
+    } catch (error: unknown) {
+      console.warn("[RequestsView] share failed:", error);
+    }
+  }, [t]);
 
   const confirmCancel = useCallback(
     (row: SentRow) => {
@@ -146,7 +159,24 @@ export function RequestsView({
               </View>
               <View style={styles.rowText}>
                 <Text style={styles.rowTitle} numberOfLines={1}>{masked}</Text>
-                <Text style={styles.rowSub} numberOfLines={1}>{t("connections:fs_sent_invite")}</Text>
+                {row.smsFailed ? (
+                  // Issue #4114 QA: the text never went out — say so and offer Share.
+                  <View style={styles.notTextedLine}>
+                    <Text style={[styles.rowSub, styles.notTexted]} numberOfLines={1}>
+                      {t("connections:fs_sent_invite_not_texted")} ·{" "}
+                    </Text>
+                    <Pressable
+                      onPress={() => void shareInvite()}
+                      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${t("connections:af_share")} ${masked}`}
+                    >
+                      <Text style={[styles.rowSub, styles.shareLink]}>{t("connections:af_share")}</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Text style={styles.rowSub} numberOfLines={1}>{t("connections:fs_sent_invite")}</Text>
+                )}
               </View>
               <CancelButton busy={busy} label={`${t("connections:fs_cancel")} ${masked}`} onPress={() => confirmCancel(row)} />
             </View>
@@ -228,6 +258,18 @@ const styles = StyleSheet.create({
   },
   gold: {
     color: fs.goldLabel,
+  },
+  notTextedLine: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  notTexted: {
+    color: ink.dim,
+    flexShrink: 1,
+  },
+  shareLink: {
+    color: ink.accent,
+    fontWeight: "600",
   },
   button: {
     minHeight: 32,

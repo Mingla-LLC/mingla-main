@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/__tests__/issue_4114_qa_polish.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4114-qa-polish-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

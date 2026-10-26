@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ Запит у друзі + пару · очікує",
   "fs_sent_pair": "★ Запит пари · очікує",
   "fs_sent_invite": "Запрошено через SMS · ще не в Mingla",
+  "fs_sent_invite_not_texted": "Запрошення не надіслано через SMS",
   "fs_cancel": "Скасувати",
   "fs_cancel_request_title": "Скасувати цей запит?",
   "fs_cancel_request_body": "{{name}} більше його не побачить.",

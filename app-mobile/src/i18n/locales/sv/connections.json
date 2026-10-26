@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ Vän- + parförfrågan · väntar",
   "fs_sent_pair": "★ Parförfrågan · väntar",
   "fs_sent_invite": "Inbjuden via sms · inte på Mingla än",
+  "fs_sent_invite_not_texted": "Inbjudan skickades inte via sms",
   "fs_cancel": "Avbryt",
   "fs_cancel_request_title": "Avbryta förfrågan?",
   "fs_cancel_request_body": "{{name}} ser den inte längre.",

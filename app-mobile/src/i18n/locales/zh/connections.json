@@ -134,6 +134,7 @@
   "fs_sent_friend_pair": "★ 好友 + 配对请求 · 等待中",
   "fs_sent_pair": "★ 配对请求 · 等待中",
   "fs_sent_invite": "已短信邀请 · 尚未加入 Mingla",
+  "fs_sent_invite_not_texted": "邀请短信未发送",
   "fs_cancel": "取消",
   "fs_cancel_request_title": "取消这个请求？",
   "fs_cancel_request_body": "{{name}}将不再看到它。",
