@@ -126,6 +126,8 @@
   "audienceAttendees": "Attendees",
   "audienceTravellers": "Travellers",
   "copied": "Copied",
+  "linkCopied": "Link copied",
+  "linkCopyFailed": "Couldn't copy the link",
   "groupInfo": "Group info",
   "groupMembers": "Members",
   "lastPlan": "Last plan",

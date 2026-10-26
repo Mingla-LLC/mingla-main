@@ -43,6 +43,8 @@ export const receivedBubbleTokens = {
   senderName: "#C9CDD4",
   mentionBg: "#4A2F1C",
   mentionText: "#FFD9BD",
+  /** Issue #4114 QA run 2: links in a received bubble (AA on `bubble`). */
+  link: "#9CCBFF",
   quoteBg: "rgba(255, 255, 255, 0.08)",
   quoteBar: "#EB7825",
   quoteName: "#FFFFFF",

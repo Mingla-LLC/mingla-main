@@ -83,7 +83,7 @@ function ItemThumb({ item }: { item: PickedChatMedia }): React.ReactElement {
   if (item.kind === "video") return <VideoThumb uri={item.uri} />;
   return (
     <View style={[styles.thumbImage, styles.thumbIcon]}>
-      <Icon name={item.kind === "video" ? "videocam" : "document-text"} size={20} color={chatTokens.textSecondary} />
+      <Icon name="document-text" size={20} color={chatTokens.textSecondary} />
     </View>
   );
 }

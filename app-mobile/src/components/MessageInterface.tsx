@@ -80,6 +80,8 @@ import { ChatActionList } from "./chat/ChatActionList";
 import { GroupInfoSheet } from "./chat/GroupInfoSheet";
 import { ChatMediaSheet } from "./chat/ChatMediaSheet";
 import { ChatAttachSheet } from "./chat/ChatAttachSheet";
+import InAppBrowserModal from "./InAppBrowserModal";
+import { copyAddressText } from "../utils/copyAddressText";
 import { ChatVideoPlayerModal } from "./chat/ChatVideoPlayerModal";
 import { ViewOncePhotoViewer } from "./chat/ViewOncePhotoViewer";
 import { ImageLightbox } from "./ImageLightbox";
@@ -636,6 +638,8 @@ export default function MessageInterface({
   // look at a view-once item) and the view-once items opened on this phone.
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [viewOncePhotoUrl, setViewOncePhotoUrl] = useState<string | null>(null);
+  // Issue #4114 QA run 2: a link tapped in a text bubble opens here.
+  const [linkBrowserUrl, setLinkBrowserUrl] = useState<string | null>(null);
   const [viewOnceVideoUrl, setViewOnceVideoUrl] = useState<string | null>(null);
   const [openedViewOnce, setOpenedViewOnce] = useState<Record<string, true>>({});
   const openingViewOnceRef = useRef<string | null>(null);
@@ -1520,6 +1524,28 @@ export default function MessageInterface({
   const dismissNotification = (id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
+
+  // Issue #4114 QA run 2: links in text bubbles open in the in-app browser and
+  // copy on long-press; only this chat's people are styled as mentions.
+  const mentionCandidates = useMemo(
+    () => (participantsQuery.data ?? []).map((participant) => ({
+      userId: participant.userId,
+      displayName: participant.displayName,
+    })),
+    [participantsQuery.data],
+  );
+  const handleLinkPress = useCallback((url: string) => {
+    setLinkBrowserUrl(url);
+  }, []);
+  const handleLinkLongPress = useCallback((url: string) => {
+    HapticFeedback.light();
+    copyAddressText(url)
+      .then(() => showNotification(t('chat:linkCopied'), '', 'info'))
+      .catch((error: unknown) => {
+        console.warn('[MessageInterface] copy link failed', error);
+        showNotification(t('chat:linkCopyFailed'), '', 'error');
+      });
+  }, [showNotification, t]);
 
   // ORCH-0685 cycle-3: brand-aligned notification rendering. Shared between
   // the always-mounted panel and the chat-shared-card overlay panel so both
@@ -2602,6 +2628,9 @@ export default function MessageInterface({
               bottomGap={item.bottomGap}
               topGap={item.topGap}
               onAlbumTilePress={item.bubble.album ? (index: number) => handleBubblePress(item, index) : undefined}
+              mentionCandidates={mentionCandidates}
+              onLinkPress={handleLinkPress}
+              onLinkLongPress={handleLinkLongPress}
             />
           </TouchableOpacity>
         </DoubleTapHeart>
@@ -2620,6 +2649,9 @@ export default function MessageInterface({
     handleBubblePress,
     handleCardBubbleTap,
     handleCardTagTap,
+    handleLinkLongPress,
+    handleLinkPress,
+    mentionCandidates,
     handleDeclineDmCollab,
     handleDoubleTapHeart,
     handleJoinDmCollab,
@@ -3023,6 +3055,12 @@ export default function MessageInterface({
         onClose={() => { viewOnceRetryRef.current = null; setViewOnceVideoUrl(null); }}
         onLoadError={() => { void handleViewOnceLoadError(); }}
         viewOnce
+      />
+      <InAppBrowserModal
+        visible={linkBrowserUrl !== null}
+        url={linkBrowserUrl ?? ''}
+        title={linkBrowserUrl ?? ''}
+        onClose={() => setLinkBrowserUrl(null)}
       />
       <ViewOncePhotoViewer
         url={viewOncePhotoUrl}

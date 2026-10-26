@@ -25,6 +25,11 @@ import {
   mediaCardSize,
 } from '../../utils/chatMediaLayout';
 import { useChatMediaUrl } from './useChatMediaUrl';
+import {
+  tokenizeMessageText,
+  type MentionCandidate,
+  type MessageTextToken,
+} from '../../utils/messageTextTokens';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -124,7 +129,15 @@ interface MessageBubbleProps {
   topGap?: number;
   /** Issue #4114 Wave 7: an album tile was tapped (opens the lightbox at that photo). */
   onAlbumTilePress?: (index: number) => void;
+  /** Issue #4114 QA run 2: this chat's people; only their "@Name" is styled as a mention. */
+  mentionCandidates?: readonly MentionCandidate[];
+  /** Issue #4114 QA run 2: a link in the text was tapped (opens the in-app browser). */
+  onLinkPress?: (url: string) => void;
+  /** Issue #4114 QA run 2: a link was long-pressed (copies it). */
+  onLinkLongPress?: (url: string) => void;
 }
+
+const NO_MENTION_CANDIDATES: readonly MentionCandidate[] = [];
 
 /**
  * Issue #4114 Wave 7: the picture a media card shows: its thumbnail when it has
@@ -433,109 +446,81 @@ function isStructuredMention(entry: MentionEntry | string): entry is MentionEntr
   return typeof entry !== 'string';
 }
 
+interface MessageTextHandlers {
+  onMentionTap?: (userId: string) => void;
+  onLinkPress?: (url: string) => void;
+  onLinkLongPress?: (url: string) => void;
+}
+
 /**
- * Render message content with @mention chips.
- * Returns a View (flex-wrap) when mentions present, plain Text otherwise.
+ * Issue #4114 QA run 2: a text bubble's content, split by tokenizeMessageText
+ * into plain text, links and mentions. Links are styled with the bubble's link
+ * token, open in the in-app browser and copy on long-press. A mention is only
+ * styled when it maps to a real participant (or carries composer offsets);
+ * other "@" text stays plain. Returns a View (flex-wrap) when a mention chip is
+ * present, a single Text otherwise.
  */
-function renderContentWithMentions(
+function renderMessageText(
   content: string,
   mentions: Array<MentionEntry | string> | undefined,
   isMe: boolean,
-  onMentionTap?: (userId: string) => void,
+  candidates: readonly MentionCandidate[],
+  handlers: MessageTextHandlers,
 ): React.ReactElement {
-  const mentionEntries = Array.isArray(mentions) ? mentions : [];
-  const structuredMentions = mentionEntries
-    .filter(isStructuredMention)
-    .filter((mention) =>
-      Number.isInteger(mention.startOffset) &&
-      Number.isInteger(mention.endOffset) &&
-      mention.startOffset >= 0 &&
-      mention.endOffset > mention.startOffset &&
-      mention.startOffset < content.length,
-    )
-    .sort((a, b) => a.startOffset - b.startOffset);
+  const structured = (Array.isArray(mentions) ? mentions : []).filter(isStructuredMention);
+  const tokens = tokenizeMessageText(content, structured, [...candidates]);
+  const textStyle = [styles.messageText, isMe ? styles.textSent : styles.textReceived];
+  const linkStyle = isMe ? styles.linkSent : styles.linkReceived;
 
-  if (structuredMentions.length > 0) {
-    const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
-
-    structuredMentions.forEach((mention, index) => {
-      const start = Math.max(mention.startOffset, lastIndex);
-      const end = Math.min(mention.endOffset, content.length);
-      if (start > lastIndex) {
-        parts.push(
-          <Text key={`t-${lastIndex}`} style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
-            {content.slice(lastIndex, start)}
-          </Text>
-        );
-      }
-      parts.push(
-        <MentionChip
-          key={`m-${mention.userId}-${index}`}
-          name={mention.displayName || 'unknown'}
-          variant={isMe ? 'sent' : 'receivedDark'}
-          onPress={onMentionTap ? () => onMentionTap(mention.userId) : undefined}
-        />
-      );
-      lastIndex = end;
-    });
-
-    if (lastIndex < content.length) {
-      parts.push(
-        <Text key={`t-${lastIndex}`} style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
-          {content.slice(lastIndex)}
+  const renderInline = (token: MessageTextToken, key: string): React.ReactNode => {
+    if (token.type === 'link') {
+      return (
+        <Text
+          key={key}
+          style={linkStyle}
+          accessibilityRole="link"
+          suppressHighlighting={false}
+          onPress={handlers.onLinkPress ? () => handlers.onLinkPress?.(token.url) : undefined}
+          onLongPress={handlers.onLinkLongPress ? () => handlers.onLinkLongPress?.(token.url) : undefined}
+        >
+          {token.text}
         </Text>
       );
     }
+    return token.text;
+  };
 
-    return <View style={styles.contentWithMentions}>{parts}</View>;
+  if (!tokens.some((token) => token.type === 'mention')) {
+    return <Text style={textStyle}>{tokens.map((token, index) => renderInline(token, `i-${index}`))}</Text>;
   }
 
-  if (!/@[\w]/.test(content)) {
-    return (
-      <Text style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
-        {content}
-      </Text>
-    );
-  }
-
-  const regex = /(@[\w\s]+?)(?=\s@|\s#|$)/g;
+  // Group consecutive text/link tokens into one Text so links flow with it.
   const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(
-        <Text key={`t-${lastIndex}`} style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
-          {content.slice(lastIndex, match.index)}
-        </Text>
-      );
+  let run: React.ReactNode[] = [];
+  const flush = (key: string) => {
+    if (run.length === 0) return;
+    parts.push(<Text key={key} style={textStyle}>{run}</Text>);
+    run = [];
+  };
+  tokens.forEach((token, index) => {
+    if (token.type !== 'mention') {
+      run.push(renderInline(token, `i-${index}`));
+      return;
     }
-    const mentionName = match[0].slice(1).trim();
+    flush(`t-${index}`);
+    const userId = token.userId;
     parts.push(
       <MentionChip
-        key={`m-${match.index}`}
-        name={mentionName}
+        key={`m-${userId ?? 'x'}-${index}`}
+        name={token.displayName || 'unknown'}
         variant={isMe ? 'sent' : 'receivedDark'}
+        onPress={handlers.onMentionTap && userId ? () => handlers.onMentionTap?.(userId) : undefined}
       />
     );
-    lastIndex = match.index + match[0].length;
-  }
+  });
+  flush('t-end');
 
-  if (lastIndex < content.length) {
-    parts.push(
-      <Text key={`t-${lastIndex}`} style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
-        {content.slice(lastIndex)}
-      </Text>
-    );
-  }
-
-  return (
-    <View style={styles.contentWithMentions}>
-      {parts}
-    </View>
-  );
+  return <View style={styles.contentWithMentions}>{parts}</View>;
 }
 
 function formatTimestampForPill(timestamp: string): string {
@@ -602,6 +587,9 @@ function MessageBubbleImpl({
   bottomGap,
   topGap,
   onAlbumTilePress,
+  mentionCandidates,
+  onLinkPress,
+  onLinkLongPress,
 }: MessageBubbleProps) {
   const { t } = useTranslation(['chat', 'common']);
 
@@ -724,7 +712,11 @@ function MessageBubbleImpl({
 
           {message.type === 'text' && (
             <>
-              {renderContentWithMentions(message.content, message.mentions, isMe, onMentionTap)}
+              {renderMessageText(message.content, message.mentions, isMe, mentionCandidates ?? NO_MENTION_CANDIDATES, {
+                onMentionTap,
+                onLinkPress,
+                onLinkLongPress,
+              })}
               {(message.cardTags ?? []).map((cardTag) => (
                 <ChatCardChip
                   key={cardTag.savedCardId}
@@ -1211,6 +1203,16 @@ const styles = StyleSheet.create({
   },
   textReceived: {
     color: receivedBubbleTokens.text,
+  },
+  // Issue #4114 QA run 2: links in text bubbles.
+  linkSent: {
+    color: colors.text.inverse,
+    textDecorationLine: 'underline',
+    fontWeight: '600',
+  },
+  linkReceived: {
+    color: receivedBubbleTokens.link,
+    textDecorationLine: 'underline',
   },
   contentWithMentions: {
     flexDirection: 'row',
