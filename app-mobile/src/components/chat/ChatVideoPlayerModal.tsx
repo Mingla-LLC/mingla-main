@@ -7,7 +7,7 @@
  * (WelcomeVideoBackground imports it statically on the sign-in screen), so
  * this OTA adds no native module.
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Modal, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useVideoPlayer, VideoView } from "expo-video";
@@ -25,9 +25,16 @@ interface ChatVideoPlayerModalProps {
   onClose: () => void;
   /** View once: no loop, and closing ends it for good. */
   viewOnce?: boolean;
+  /** Issue #4114 QA: told once per URL when it fails to load (view once re-signs and retries). */
+  onLoadError?: () => void;
 }
 
-function Player({ url, onClose, viewOnce }: { url: string; onClose: () => void; viewOnce: boolean }): React.ReactElement {
+function Player({ url, onClose, viewOnce, onLoadError }: {
+  url: string;
+  onClose: () => void;
+  viewOnce: boolean;
+  onLoadError?: () => void;
+}): React.ReactElement {
   const { t } = useTranslation(["chat"]);
   const insets = useSafeAreaInsets();
   const player = useVideoPlayer(url, (instance) => {
@@ -35,13 +42,18 @@ function Player({ url, onClose, viewOnce }: { url: string; onClose: () => void; 
     instance.play();
   });
   const [status, setStatus] = useState<string>(player.status);
+  const onLoadErrorRef = useRef(onLoadError);
+  onLoadErrorRef.current = onLoadError;
 
   // #2107: an in-app restart releases this player before reloadAsync. A
   // released player is never touched again.
   useEffect(() => registerVideoPlayerForReload(player), [player]);
 
   useEffect(() => {
-    const subscription = player.addListener("statusChange", ({ status: next }) => setStatus(next));
+    const subscription = player.addListener("statusChange", ({ status: next }) => {
+      setStatus(next);
+      if (next === "error") onLoadErrorRef.current?.();
+    });
     return () => {
       subscription.remove();
       if (isVideoPlayerReleasedForReload(player)) return;
@@ -94,10 +106,10 @@ function Player({ url, onClose, viewOnce }: { url: string; onClose: () => void; 
   );
 }
 
-export function ChatVideoPlayerModal({ url, onClose, viewOnce = false }: ChatVideoPlayerModalProps): React.ReactElement {
+export function ChatVideoPlayerModal({ url, onClose, viewOnce = false, onLoadError }: ChatVideoPlayerModalProps): React.ReactElement {
   return (
     <Modal visible={!!url} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      {url ? <Player url={url} onClose={onClose} viewOnce={viewOnce} /> : null}
+      {url ? <Player key={url} url={url} onClose={onClose} viewOnce={viewOnce} onLoadError={onLoadError} /> : null}
     </Modal>
   );
 }

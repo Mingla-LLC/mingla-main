@@ -9,6 +9,9 @@
 //   * a signed-in recipient: POST { message_id } → one 60-second signed URL,
 //     after recording their view. A second open (any device) is refused with
 //     409 already_opened; the sender is refused with 403 (they cannot reopen it).
+//     QA fix: a load can fail after the URL was handed out, so the same
+//     recipient may be re-signed for VIEW_ONCE_REOPEN_GRACE_SECONDS after their
+//     FIRST open (viewed_at stays the first open); after that, 409 as before.
 //     Recipients cannot read view-once objects from storage directly (the
 //     message_attachments_select policy), so this is the only way in.
 //   * the hourly pg_cron job: POST { action: "sweep" } with the service-role
@@ -17,12 +20,14 @@
 //
 // The handler only depends on the narrow interface below (no supabase-js types),
 // so the Deno test drives it with fakes.
-// MINGLA-INVARIANT: I-4114-VIEW-ONCE-SERVER-ENFORCED | issue #4114 | A view-once item is handed out at most once per recipient, never to its sender, and only as a short-lived signed URL recorded in message_media_views before it is returned.
+// MINGLA-INVARIANT: I-4114-VIEW-ONCE-SERVER-ENFORCED | issue #4114 | A view-once item is handed out to a recipient only within VIEW_ONCE_REOPEN_GRACE_SECONDS of their first recorded open, never to its sender, and only as a short-lived signed URL recorded in message_media_views before it is returned.
 
 import { corsHeaders } from "../_shared/cors.ts";
 
 export const VIEW_ONCE_URL_SECONDS = 60;
 export const SWEEP_BATCH_LIMIT = 200;
+/** How long after the first open the same recipient may be re-signed (a failed load). */
+export const VIEW_ONCE_REOPEN_GRACE_SECONDS = 120;
 const REMOVE_CHUNK = 100;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOWER_UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
@@ -94,7 +99,11 @@ export interface OpenViewOnceDeps {
    * is `uploaderId`. Otherwise `{ data: null, error: OBJECT_NOT_OWNED }`.
    */
   signUrl(path: string, seconds: number, uploaderId: string): Promise<Result<string | null>>;
-  /** Inserts (message_id, user_id); `inserted` is false when the row already existed. */
+  /**
+   * Inserts (message_id, user_id); `inserted` is false when the row already
+   * existed, and then `viewedAt` is that existing row's first-open time (or
+   * null when it could not be read, which refuses the reopen).
+   */
   recordView(messageId: string, userId: string): Promise<Result<{ inserted: boolean; viewedAt: string | null }>>;
   listDue(limit: number): Promise<Result<DueRow[]>>;
   removeObjects(paths: string[]): Promise<{ error: string | null }>;
@@ -105,6 +114,17 @@ export interface OpenViewOnceDeps {
    * sweep closed (after the delete, before anything is reported as done).
    */
   markExpired?(messageIds: string[]): Promise<{ error: string | null }>;
+  /** Clock for the reopen grace window; Date.now when omitted. */
+  now?(): number;
+}
+
+/** True when a recipient's earlier first open is still inside the reopen grace window. */
+export function isWithinReopenGrace(firstViewedAt: string | null, now: number): boolean {
+  if (!firstViewedAt) return false;
+  const first = Date.parse(firstViewedAt);
+  if (!Number.isFinite(first)) return false;
+  const elapsed = now - first;
+  return elapsed >= 0 && elapsed <= VIEW_ONCE_REOPEN_GRACE_SECONDS * 1000;
 }
 
 function json(body: Record<string, unknown>, status = 200): Response {
@@ -205,7 +225,8 @@ export async function openOnce(
   }
 
   // Sign first, record second, return last: the URL never leaves this function
-  // unless this call is the one that recorded the view.
+  // unless this call recorded the view, or this recipient first opened it
+  // inside the reopen grace window.
   const signed = await deps.signUrl(message.file_url, VIEW_ONCE_URL_SECONDS, message.sender_id);
   if (signed.error === OBJECT_NOT_OWNED) {
     return json({ error: "gone", message: "This photo or video has expired." }, 410);
@@ -214,7 +235,8 @@ export async function openOnce(
 
   const recorded = await deps.recordView(message.id, userId);
   if (recorded.error) return json({ error: "view_record_failed" }, 500);
-  if (!recorded.data.inserted) {
+  const now = deps.now ? deps.now() : Date.now();
+  if (!recorded.data.inserted && !isWithinReopenGrace(recorded.data.viewedAt, now)) {
     return json({ error: "already_opened", message: "You've already opened this." }, 409);
   }
 

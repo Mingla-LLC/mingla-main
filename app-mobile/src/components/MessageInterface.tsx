@@ -1379,6 +1379,24 @@ export default function MessageInterface({
     }
   };
 
+  // Issue #4114 QA: a failed load must not use up the only view. The server
+  // re-signs the same recipient for two minutes after the first open, so the
+  // viewer asks for one fresh link, once.
+  const viewOnceRetryRef = useRef<{ messageId: string; retried: boolean } | null>(null);
+  const handleViewOnceLoadError = async () => {
+    const pending = viewOnceRetryRef.current;
+    if (!pending || pending.retried) return;
+    pending.retried = true;
+    const result = await openViewOnceMedia(pending.messageId);
+    if (viewOnceRetryRef.current !== pending) return; // closed or another item opened
+    if (!result.ok) {
+      showNotification(t('chat:viewOnceOpenFailed'), '', 'error');
+      return;
+    }
+    if (result.messageType === "video") setViewOnceVideoUrl(result.url);
+    else setViewOncePhotoUrl(result.url);
+  };
+
   /**
    * The recipient's one open of a view-once item: the server records it and
    * hands back a 60-second link, then the bubble reads "Opened" for good.
@@ -1389,6 +1407,8 @@ export default function MessageInterface({
     try {
       const result = await openViewOnceMedia(message.id);
       if (result.ok) {
+        // Issue #4114 QA: one re-sign is allowed if this link fails to load.
+        viewOnceRetryRef.current = { messageId: message.id, retried: false };
         setOpenedViewOnce((prev) => ({ ...prev, [message.id]: true }));
         if (result.messageType === "video") setViewOnceVideoUrl(result.url);
         else setViewOncePhotoUrl(result.url);
@@ -2912,8 +2932,17 @@ export default function MessageInterface({
         onClose={() => setLightbox(null)}
       />
       <ChatVideoPlayerModal url={videoUrl} onClose={() => setVideoUrl(null)} />
-      <ChatVideoPlayerModal url={viewOnceVideoUrl} onClose={() => setViewOnceVideoUrl(null)} viewOnce />
-      <ViewOncePhotoViewer url={viewOncePhotoUrl} onClose={() => setViewOncePhotoUrl(null)} />
+      <ChatVideoPlayerModal
+        url={viewOnceVideoUrl}
+        onClose={() => { viewOnceRetryRef.current = null; setViewOnceVideoUrl(null); }}
+        onLoadError={() => { void handleViewOnceLoadError(); }}
+        viewOnce
+      />
+      <ViewOncePhotoViewer
+        url={viewOncePhotoUrl}
+        onClose={() => { viewOnceRetryRef.current = null; setViewOncePhotoUrl(null); }}
+        onLoadError={() => { void handleViewOnceLoadError(); }}
+      />
 
       {/* Issue #4114 Wave 3: the no-composer banners are dark and sit above the
           floating bottom nav (they used to render behind it). */}

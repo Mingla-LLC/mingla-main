@@ -49,3 +49,31 @@ Deno.test("QA1 one client id is delivered at most once at a time", async () => {
   assert(/if \(sendsInFlightRef\.current\.has\(clientId\)\) return;/.test(deliver), "in-flight client id refused");
   assert(deliver.indexOf("sendsInFlightRef.current.add(clientId)") > deliver.indexOf("sendsInFlightRef.current.has(clientId)"), "marks in flight");
 });
+
+Deno.test("QA2a a failed view-once load re-signs once, then gives up", async () => {
+  const chat = strip(await read("components/MessageInterface.tsx"));
+  const retry = body(chat, /const handleViewOnceLoadError = async \(\) =>/);
+  assert(/if \(!pending \|\| pending\.retried\) return;/.test(retry), "only one retry");
+  assert(retry.indexOf("pending.retried = true") < retry.indexOf("openViewOnceMedia(pending.messageId)"), "marks the retry before asking");
+  const open = body(chat, /const handleOpenViewOnce = async \(message: Message\) =>/);
+  assert(/viewOnceRetryRef\.current = \{ messageId: message\.id, retried: false \}/.test(open), "a fresh open arms one retry");
+  assert(/<ViewOncePhotoViewer[\s\S]*?onLoadError=\{\(\) => \{ void handleViewOnceLoadError\(\); \}\}/.test(chat), "photo viewer reports load errors");
+  assert(/<ChatVideoPlayerModal\s+url=\{viewOnceVideoUrl\}[\s\S]*?onLoadError=\{\(\) => \{ void handleViewOnceLoadError\(\); \}\}/.test(chat), "video player reports load errors");
+  const photo = strip(await read("components/chat/ViewOncePhotoViewer.tsx"));
+  assert(/onError=\{\(\) => \{[\s\S]*?onLoadError\?\.\(\);/.test(photo), "image onError tells the parent");
+  assert(/useEffect\(\(\) => \{\s*setLoading\(true\);\s*setFailed\(false\);\s*\}, \[url\]\);/.test(photo), "a new url starts over");
+  const video = strip(await read("components/chat/ChatVideoPlayerModal.tsx"));
+  assert(/if \(next === "error"\) onLoadErrorRef\.current\?\.\(\);/.test(video), "video error tells the parent");
+  assert(/<Player key=\{url\}/.test(video), "a new url gets a new player");
+});
+
+Deno.test("QA2b the received view-once bubble uses the dark received tokens", async () => {
+  const bubble = strip(await read("components/chat/MessageBubble.tsx"));
+  const fn = bubble.slice(bubble.indexOf("function ViewOnceBubble("), bubble.indexOf("export type CollabSystemToken"));
+  assert(fn.length > 100, "ViewOnceBubble found");
+  assert(!/viewOnceSpent/.test(bubble), "no extra opacity dims the spent bubble");
+  assert(/!isMe && styles\.viewOnceSubtitleReceived/.test(fn), "received subtitle on tokens");
+  assert(/spent && \(isMe \? styles\.viewOnceMuted : styles\.viewOnceMutedReceived\)/.test(fn), "received spent title on tokens");
+  assert(/viewOnceSubtitleReceived: \{\s*color: receivedBubbleTokens\.textSecondary,/.test(bubble), "subtitle token");
+  assert(/viewOnceMutedReceived: \{\s*color: receivedBubbleTokens\.textSecondary,/.test(bubble), "muted token");
+});

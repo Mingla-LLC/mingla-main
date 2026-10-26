@@ -75,10 +75,23 @@ serve(createOpenViewOnceHandler({
       })
       .select("viewed_at");
     const rows = (data ?? []) as Array<{ viewed_at: string }>;
-    return {
-      data: { inserted: rows.length > 0, viewedAt: rows[0]?.viewed_at ?? null },
-      error: errorText(error),
-    };
+    if (error || rows.length > 0) {
+      return {
+        data: { inserted: rows.length > 0, viewedAt: rows[0]?.viewed_at ?? null },
+        error: errorText(error),
+      };
+    }
+    // Already opened: read the first-open time for the reopen grace window.
+    const existing = await admin
+      .from("message_media_views")
+      .select("viewed_at")
+      .eq("message_id", messageId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    const first = (existing.data as { viewed_at: string } | null)?.viewed_at ?? null;
+    // A failed read refuses the reopen (viewedAt null), never errors the call.
+    if (existing.error) console.error("[open-view-once] first-open read failed", { code: errorText(existing.error) });
+    return { data: { inserted: false, viewedAt: existing.error ? null : first }, error: null };
   },
   async listDue(limit) {
     const { data, error } = await admin.rpc("issue_4114_view_once_media_due", { p_limit: limit });

@@ -373,19 +373,25 @@ function ViewOnceBubble({
     if (uploadProgress !== undefined) subtitle = `${Math.round(Math.max(0, Math.min(1, uploadProgress)) * 100)}%`;
   }
   return (
-    <View style={[styles.viewOnceRow, spent && styles.viewOnceSpent]} testID="chat-view-once-bubble">
-      <View style={[styles.viewOnceIcon, spent && styles.viewOnceIconSpent]}>
+    // Issue #4114 QA (evidence 48): a received bubble uses the Wave 7 dark
+    // received tokens, and "spent" is shown by colour only (no extra opacity),
+    // so "Photo · Opened" keeps AA contrast on the dark bubble.
+    <View style={styles.viewOnceRow} testID="chat-view-once-bubble">
+      <View style={[styles.viewOnceIcon, !isMe && styles.viewOnceIconReceived, spent && styles.viewOnceIconSpent]}>
         <Icon
           name={spent ? 'checkmark-done' : kind === 'video' ? 'play' : 'eye'}
           size={16}
-          color={spent ? chatTokens.textMuted : isMe ? 'white' : receivedBubbleTokens.icon}
+          color={isMe ? 'white' : spent ? receivedBubbleTokens.textSecondary : receivedBubbleTokens.icon}
         />
       </View>
       <View style={styles.viewOnceText}>
-        <Text style={[styles.viewOnceTitle, isMe ? styles.textSent : styles.textReceived, spent && styles.viewOnceMuted]} numberOfLines={1}>
+        <Text
+          style={[styles.viewOnceTitle, isMe ? styles.textSent : styles.textReceived, spent && (isMe ? styles.viewOnceMuted : styles.viewOnceMutedReceived)]}
+          numberOfLines={1}
+        >
           {title}
         </Text>
-        <Text style={[styles.viewOnceSubtitle, spent && styles.viewOnceMuted]} numberOfLines={1}>
+        <Text style={[styles.viewOnceSubtitle, !isMe && styles.viewOnceSubtitleReceived]} numberOfLines={1}>
           {subtitle}
         </Text>
       </View>
@@ -1339,9 +1345,6 @@ const styles = StyleSheet.create({
     minWidth: 180,
     paddingVertical: 2,
   },
-  viewOnceSpent: {
-    opacity: 0.7,
-  },
   viewOnceIcon: {
     width: 32,
     height: 32,
@@ -1351,8 +1354,11 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.6)',
   },
+  viewOnceIconReceived: {
+    borderColor: receivedBubbleTokens.icon,
+  },
   viewOnceIconSpent: {
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: receivedBubbleTokens.quoteBg,
   },
   viewOnceText: {
     flexShrink: 1,
@@ -1366,8 +1372,14 @@ const styles = StyleSheet.create({
     marginTop: 1,
     color: 'rgba(255,255,255,0.6)',
   },
+  viewOnceSubtitleReceived: {
+    color: receivedBubbleTokens.textSecondary,
+  },
   viewOnceMuted: {
-    color: 'rgba(255,255,255,0.45)',
+    color: 'rgba(255,255,255,0.72)',
+  },
+  viewOnceMutedReceived: {
+    color: receivedBubbleTokens.textSecondary,
   },
   failedIcon: {
     position: 'absolute',

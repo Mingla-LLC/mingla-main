@@ -4,7 +4,7 @@
  * recorded the open, and its 60-second link is not kept anywhere).
  * No screenshot notice yet (decision D6: needs expo-screen-capture, a store build).
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Image, Modal, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -14,13 +14,21 @@ import { chatTokens } from "../../constants/chatTokens";
 interface ViewOncePhotoViewerProps {
   url: string | null;
   onClose: () => void;
+  /** Issue #4114 QA: told when the image fails to load (the parent re-signs and retries once). */
+  onLoadError?: () => void;
 }
 
-export function ViewOncePhotoViewer({ url, onClose }: ViewOncePhotoViewerProps): React.ReactElement {
+export function ViewOncePhotoViewer({ url, onClose, onLoadError }: ViewOncePhotoViewerProps): React.ReactElement {
   const { t } = useTranslation(["chat"]);
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+
+  // A retry swaps in a fresh URL while the modal stays open: start over.
+  useEffect(() => {
+    setLoading(true);
+    setFailed(false);
+  }, [url]);
 
   return (
     <Modal
@@ -45,6 +53,7 @@ export function ViewOncePhotoViewer({ url, onClose }: ViewOncePhotoViewerProps):
             onError={() => {
               setLoading(false);
               setFailed(true);
+              onLoadError?.();
             }}
             accessibilityIgnoresInvertColors
           />
