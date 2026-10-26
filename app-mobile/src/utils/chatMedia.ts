@@ -165,6 +165,47 @@ export function isPickerTempFile(uri: string | null | undefined): uri is string 
   return /\/Caches\/ImagePicker\/[^/]+$/.test(uri) || /\/cache\/ImagePicker\/[^/]+$/.test(uri);
 }
 
+/**
+ * Issue #4114 sim run 4 (item 3c): on iPhone, expo-image-picker 17 copies the
+ * original `.mov` into `Caches/ImagePicker/` before it transcodes, and never
+ * deletes it; only the `.mp4` export comes back, so per-uri deletes miss it
+ * (9.9 MB left after a send, 208 MB after a refusal). After each picker step
+ * the folder is swept: every file in it goes unless a still-pending tray item
+ * or an in-flight or failed upload (which needs it for its preview or retry)
+ * holds it.
+ *
+ * `folderUri` is `cacheDirectory + 'ImagePicker/'`; `names` is what the folder
+ * lists; `heldUris` are the uris still in use. Returns the uris to delete,
+ * every one of them a direct child of that folder (never a sub-folder, never
+ * a path that escapes it).
+ */
+export function selectPickerSweepTargets(
+  folderUri: string,
+  names: ReadonlyArray<string>,
+  heldUris: Iterable<string | null | undefined>,
+): string[] {
+  if (!/\/(Caches|cache)\/ImagePicker\/$/.test(folderUri)) return [];
+  const held = new Set<string>();
+  for (const uri of heldUris) {
+    if (!isPickerTempFile(uri)) continue;
+    const name = uri.slice(uri.lastIndexOf('/') + 1);
+    held.add(name);
+    try {
+      held.add(decodeURIComponent(name));
+    } catch {
+      // A malformed escape: the raw name is still held.
+    }
+  }
+  const targets: string[] = [];
+  for (const name of names) {
+    if (!name || name === '.' || name === '..' || name.includes('/') || name.includes('\\')) continue;
+    if (held.has(name)) continue;
+    const uri = folderUri + name;
+    if (isPickerTempFile(uri)) targets.push(uri);
+  }
+  return targets;
+}
+
 /** Size check after preparation (a photo can only shrink; files and videos are unchanged). */
 export function isWithinUploadLimit(bytes: number | null | undefined): boolean {
   return typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= MAX_ATTACHMENT_BYTES;

@@ -64,7 +64,11 @@ import {
   uploadChatMedia,
 } from "../services/chatMediaUploadService";
 import type { PickedChatMedia } from "../utils/chatMedia";
-import { discardPickerTempFiles } from "../services/chatPickerTempFiles";
+import {
+  discardPickerTempFiles,
+  holdPickerTempFiles,
+  releasePickerTempFiles,
+} from "../services/chatPickerTempFiles";
 import { invalidateContentShareRecipients } from "../services/contentShareDeliveryService";
 import type { CollabDeadEndBannerPayload } from "../services/collabDeadEndBannerService";
 import { blockService, BlockReason } from "../services/blockService";
@@ -3212,6 +3216,7 @@ function ConnectionsPageRefactored({
             // Cancelled by the sender: hide the bubble (it never reached the server).
             writeConversationMessages(conversationId, [{ ...pending, failed: true, unsent: true }]);
             // Issue #4114 QA run 3: the cancelled pick's temp copy goes too.
+            releasePickerTempFiles([pending.localMedia.uri]);
             void discardPickerTempFiles([pending.localMedia.uri]);
             return;
           }
@@ -3285,7 +3290,10 @@ function ConnectionsPageRefactored({
       writeConversationMessages(conversationId, [transformMessage(sentMessage, user.id)]);
       // Issue #4114 QA run 3: once the server row replaces the bubble, nothing
       // reads the picker's temp copy (a failed send keeps it for its preview).
-      if (current.localMedia) void discardPickerTempFiles([current.localMedia.uri]);
+      if (current.localMedia) {
+        releasePickerTempFiles([current.localMedia.uri]);
+        void discardPickerTempFiles([current.localMedia.uri]);
+      }
 
       // Update conversation with real message
       setConversations((prev) =>
@@ -3600,12 +3608,26 @@ function ConnectionsPageRefactored({
     viewOnce: boolean,
     replyToId?: string,
   ) => {
-    if (!activeChat || !user?.id || items.length === 0) return;
+    // Issue #4114 sim run 4: an in-flight or failed upload holds its picker
+    // copy (preview and retry) until the send is confirmed or cancelled. Held
+    // before the first await, so the tray's release never leaves a gap.
+    const itemUris = items.map((item) => item.uri);
+    holdPickerTempFiles(itemUris);
+    const dropItems = () => {
+      releasePickerTempFiles(itemUris);
+      void discardPickerTempFiles(itemUris);
+    };
+    if (!activeChat || !user?.id || items.length === 0) {
+      dropItems();
+      return;
+    }
     const brandTarget = brandChannelSendTarget(replyToId);
     const isNewChat = !brandTarget && !currentConversationId;
     const conversationId = brandTarget ?? await ensureChatConversation();
-    if (!conversationId) return;
-    if (isActiveChatBlocked()) return;
+    if (!conversationId || isActiveChatBlocked()) {
+      dropItems();
+      return;
+    }
 
     const text = caption.trim();
     const queue: Message[] = [];

@@ -85,10 +85,10 @@ Deno.test("QA run 3: temp copies are deleted after the send, a cancel, a refusal
   const thread = stripComments(await read("../../components/MessageInterface.tsx"));
   const add = thread.slice(thread.indexOf("const addPickedMedia = "), thread.indexOf("const assetToPicked = "));
   assert(/discarded\.push\(item\)/.test(add) && /discardPickerTempFiles\(discarded\.map\(\(item\) => item\.uri\)\)/.test(add), "a refused pick's copy goes");
-  assert(/onRemoveItem=\{\(index\) => \{\s*void discardPickerTempFiles\(\[pendingMedia\[index\]\?\.uri\]\);/.test(thread), "a tray removal's copy goes");
-  assert(/useEffect\(\(\) => \(\) => \{\s*void discardPickerTempFiles\(pendingMediaRef\.current\.map/.test(thread), "leaving with unsent items drops their copies");
+  assert(/onRemoveItem=\{\(index\) => \{\s*releasePickerTempFiles\(\[pendingMedia\[index\]\?\.uri\]\);\s*void discardPickerTempFiles\(\[pendingMedia\[index\]\?\.uri\]\);/.test(thread), "a tray removal's copy goes");
+  assert(/useEffect\(\(\) => \(\) => \{\s*const trayUris = pendingMediaRef\.current\.map\(\(item\) => item\.uri\);\s*releasePickerTempFiles\(trayUris\);\s*void discardPickerTempFiles\(trayUris\);/.test(thread), "leaving with unsent items drops their copies");
 
   const page = stripComments(await read("../../components/ConnectionsPage.tsx"));
-  assert(/unsent: true \}\]\);\s*void discardPickerTempFiles\(\[pending\.localMedia\.uri\]\);/.test(page), "a cancelled upload's copy goes");
-  assert(/transformMessage\(sentMessage, user\.id\)\]\);\s*if \(current\.localMedia\) void discardPickerTempFiles\(\[current\.localMedia\.uri\]\);/.test(page), "a confirmed send's copy goes");
+  assert(/unsent: true \}\]\);\s*releasePickerTempFiles\(\[pending\.localMedia\.uri\]\);\s*void discardPickerTempFiles\(\[pending\.localMedia\.uri\]\);/.test(page), "a cancelled upload's copy goes");
+  assert(/transformMessage\(sentMessage, user\.id\)\]\);\s*if \(current\.localMedia\) \{\s*releasePickerTempFiles\(\[current\.localMedia\.uri\]\);\s*void discardPickerTempFiles\(\[current\.localMedia\.uri\]\);/.test(page), "a confirmed send's copy goes");
 });

@@ -125,7 +125,12 @@ import { useComposerLayout } from "../hooks/useComposerLayout";
 import { useChatBackHandler } from "../hooks/useChatBackHandler";
 import { useScrollToLatest } from "../hooks/useScrollToLatest";
 import { requestGalleryPermission } from "../utils/mediaLibraryPermission";
-import { discardPickerTempFiles } from "../services/chatPickerTempFiles";
+import {
+  beginPickerSession,
+  discardPickerTempFiles,
+  holdPickerTempFiles,
+  releasePickerTempFiles,
+} from "../services/chatPickerTempFiles";
 import { DirectMessage, messagingService, CardPayload, MentionEntry, CardTagEntry, isContentShareCardPayload, type LegacyCardPayload } from "../services/messagingService";
 import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
 import { prepareContentShare } from "../services/contentShareAdapter";
@@ -638,8 +643,11 @@ export default function MessageInterface({
   // (never sent) deletes their picker temp copies.
   const pendingMediaRef = useRef<PickedChatMedia[]>([]);
   pendingMediaRef.current = pendingMedia;
+  // Sim run 4: tray items hold their copies so the folder sweep keeps them.
   useEffect(() => () => {
-    void discardPickerTempFiles(pendingMediaRef.current.map((item) => item.uri));
+    const trayUris = pendingMediaRef.current.map((item) => item.uri);
+    releasePickerTempFiles(trayUris);
+    void discardPickerTempFiles(trayUris);
   }, []);
   const [attachViewOnce, setAttachViewOnce] = useState(false);
   const [isPickingMedia, setIsPickingMedia] = useState(false);
@@ -1259,6 +1267,8 @@ export default function MessageInterface({
     // tray, so its picker temp copy goes now.
     void discardPickerTempFiles(discarded.map((item) => item.uri));
     if (accepted.length > 0) {
+      // Sim run 4: held before the picker closes, so its sweep keeps them.
+      holdPickerTempFiles(accepted.map((item) => item.uri));
       setPendingMedia((prev) => [...prev, ...accepted].slice(0, MAX_CHAT_MEDIA_ITEMS));
       if (accepted.some((item) => item.kind === "file")) setAttachViewOnce(false);
     }
@@ -1279,6 +1289,7 @@ export default function MessageInterface({
   });
 
   const handlePickLibrary = async () => {
+    let endPickerSession: (() => void) | null = null;
     try {
       const { status } = await requestGalleryPermission();
       if (status !== "granted") {
@@ -1286,6 +1297,8 @@ export default function MessageInterface({
         return;
       }
       setIsPickingMedia(true);
+      // Sim run 4: no folder sweep while the picker writes; closing sweeps it.
+      endPickerSession = beginPickerSession();
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images', 'videos'],
         allowsEditing: false,
@@ -1306,10 +1319,12 @@ export default function MessageInterface({
       Alert.alert(t('social:error'), t('chat:errorSelectFile'));
     } finally {
       setIsPickingMedia(false);
+      endPickerSession?.();
     }
   };
 
   const handlePickCamera = async () => {
+    let endPickerSession: (() => void) | null = null;
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
@@ -1317,6 +1332,8 @@ export default function MessageInterface({
         return;
       }
       setIsPickingMedia(true);
+      // Sim run 4: no folder sweep while the picker writes; closing sweeps it.
+      endPickerSession = beginPickerSession();
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images', 'videos'],
         allowsEditing: false,
@@ -1331,6 +1348,7 @@ export default function MessageInterface({
       Alert.alert(t('social:error'), t('chat:errorSelectFile'));
     } finally {
       setIsPickingMedia(false);
+      endPickerSession?.();
     }
   };
 
@@ -1373,6 +1391,9 @@ export default function MessageInterface({
         const { content } = chatController.serializeForSend();
         clearComposerAfterSend();
         onSendMedia(media, content, viewOnce, replyToId);
+        // Sim run 4: the send now holds these copies (held synchronously in
+        // onSendMedia), so the tray lets go of them.
+        releasePickerTempFiles(media.map((item) => item.uri));
         setPendingMedia([]);
         setAttachViewOnce(false);
         setShowAttachmentMenu(false);
@@ -3173,6 +3194,7 @@ export default function MessageInterface({
             onFile={() => void handlePickFile()}
             onRemoveItem={(index) => {
               // QA run 3: an item taken out of the tray drops its temp copy.
+              releasePickerTempFiles([pendingMedia[index]?.uri]);
               void discardPickerTempFiles([pendingMedia[index]?.uri]);
               setPendingMedia((prev) => prev.filter((_, i) => i !== index));
             }}
