@@ -1,37 +1,564 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { Alert, StyleSheet, Text, View } from "react-native";
-import { Stack, useLocalSearchParams } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { ScrollView } from "../../../../../src/wrappers/SmartScrollView";
+/**
+ * #3872 — host contract (approved P-review / P-shoot / M-hostcontract /
+ * M-review / G-change / D-dispute / P-rate). A step bar, the one thing that
+ * needs the host now (shoot time, script, video, posts, counter-offer,
+ * dispute, rating), then fee and terms, posts and the timeline in host words.
+ */
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
+
 import { Button } from "../../../../../src/components/ui/Button";
-import { GlassCard } from "../../../../../src/components/ui/GlassCard";
+import { DateField } from "../../../../../src/components/ui/DateField";
+import { Icon } from "../../../../../src/components/ui/Icon";
 import { Input } from "../../../../../src/components/ui/Input";
-import { creatorGigsService, type GigWorkspace } from "../../../../../src/services/creatorGigsService";
-import { accent, canvas, spacing, text as textTokens } from "../../../../../src/constants/designSystem";
-import { ProgramBackBar } from "../../../../../src/components/programs/ProgramBackBar";
+import { Sheet } from "../../../../../src/components/ui/Sheet";
+import { FullScreenVideoViewer } from "../../../../../src/components/ui/FullScreenVideoViewer";
+import { HireSheet, type HireSheetMode } from "../../../../../src/components/gigs/HireSheet";
+import {
+  Card,
+  Checkbox,
+  Chip,
+  FieldError,
+  ListGroup,
+  ListRow,
+  Muted,
+  ProgramLoading,
+  ProgramScreen,
+  SectionLabel,
+  SheetBody,
+  StatusTag,
+  StepBar,
+  SummaryLine,
+  programStyles,
+} from "../../../../../src/components/programs/ProgramKit";
+import { useProgramParams } from "../../../../../src/components/programs/useProgramParams";
+import {
+  DISPUTE_REASONS,
+  FIX_CATEGORIES,
+  RATING_TAGS,
+  SHOOT_TIMES,
+  fixCategoryWords,
+  fixesLeft,
+  latestScript,
+  postCheckWords,
+  scriptChecks,
+  sectionLabel,
+  sectionLines,
+  shootInstant,
+} from "../../../../../src/components/programs/contractCopy";
+import {
+  creatorGigsService,
+  openCounter,
+  pendingTopup,
+  type GigWorkspace,
+} from "../../../../../src/services/creatorGigsService";
+import {
+  HOST_CONTRACT_STEPS,
+  actorWords,
+  dueIn,
+  formatName,
+  hostContractStatus,
+  hostContractStep,
+  platformLabel,
+  programErrorMessage,
+  programMoney,
+  shortDate,
+  shortDateTime,
+  timelineWords,
+  toIsoDay,
+} from "../../../../../src/utils/creatorProgramFormat";
+import { accent, radius, spacing, text as textTokens } from "../../../../../src/constants/designSystem";
+
+type SheetKind = null | "script_change" | "fix" | "suggest_time" | "dispute" | "change_dates" | "terms";
+
+const STEP_CAPTION: Record<number, string> = { 1: "Offer", 2: "Shoot", 3: "Script", 4: "Video", 5: "Posts", 6: "Paid" };
 
 export default function HostGigContract(): React.ReactElement {
-  const { contractId } = useLocalSearchParams<{ contractId: string }>(); const [workspace, setWorkspace] = useState<GigWorkspace | null>(null); const [busy, setBusy] = useState(false); const [fixNote, setFixNote] = useState(""); const [refundPercent, setRefundPercent] = useState("50"); const [settlementNote, setSettlementNote] = useState(""); const [changePostBy, setChangePostBy] = useState(""); const [changeNote, setChangeNote] = useState("");
-  const refresh = useCallback(async () => setWorkspace(await creatorGigsService.workspace(contractId)), [contractId]); useEffect(() => { void refresh().catch((e) => Alert.alert("Couldn’t load contract", e instanceof Error ? e.message : String(e))); }, [refresh]);
-  const run = async (action: () => Promise<unknown>, message: string) => { setBusy(true); try { await action(); await refresh(); Alert.alert("Updated", message); } catch (e) { Alert.alert("Couldn’t update", e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
-  const act = async (action: string, message: string) => run(() => creatorGigsService.transition(contractId, workspace!.contract.state, action, fixNote ? { note: fixNote } : {}), message);
-  const decideVideo = async (decision: "approved" | "fix_requested") => { const delivery = workspace?.deliveries.at(-1); if (!delivery) return; setBusy(true); try { await creatorGigsService.decideDelivery(delivery.id, decision, decision === "fix_requested" ? ["video_quality"] : [], fixNote); await refresh(); Alert.alert("Updated", decision === "approved" ? "The creator can post the approved video." : "The creator sees the technical fix request."); } catch (e) { Alert.alert("Couldn’t update", e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
-  if (!workspace) return <SafeAreaView style={styles.safe}><Text style={styles.copy}>Loading contract…</Text></SafeAreaView>;
-  const state = workspace.contract.state;
-  const openOffer = workspace.dispute?.offers.find((offer) => offer.status === "open") ?? null;
-  const openChange = workspace.proposals?.find((proposal) => proposal.status === "open") ?? null;
+  const router = useRouter();
+  const { brandId, params } = useProgramParams("contractId");
+  const contractId = params.contractId ?? "";
+  const [workspace, setWorkspace] = useState<GigWorkspace | null>(null);
+  const [creatorName, setCreatorName] = useState("Creator");
+  const [paymentPending, setPaymentPending] = useState(false);
+  const [gigIdForRetry, setGigIdForRetry] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [sheet, setSheet] = useState<SheetKind>(null);
+  const [note, setNote] = useState("");
+  const [fixPicks, setFixPicks] = useState<string[]>([]);
+  const [checklist, setChecklist] = useState([false, false, false]);
+  const [suggestDay, setSuggestDay] = useState("");
+  const [suggestHour, setSuggestHour] = useState<number | null>(null);
+  const [disputeReason, setDisputeReason] = useState<string>("technical_fixes_exhausted");
+  const [refundPercent, setRefundPercent] = useState("50");
+  const [newPostBy, setNewPostBy] = useState("");
+  const [stars, setStars] = useState(0);
+  const [tags, setTags] = useState<string[]>([]);
+  const [topup, setTopup] = useState<HireSheetMode | null>(null);
+  const [videoUri, setVideoUri] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoadError(null);
+    try {
+      const [next, home] = await Promise.all([
+        creatorGigsService.workspace(contractId),
+        brandId ? creatorGigsService.hostHome(brandId).catch(() => null) : Promise.resolve(null),
+      ]);
+      if (!next) throw new Error("contract_not_found");
+      setWorkspace(next);
+      const summary = home?.contracts.find((row) => row.id === contractId);
+      if (summary) {
+        setCreatorName(summary.creator);
+        setPaymentPending(summary.payment_pending);
+        setGigIdForRetry(summary.gig_id || null);
+      }
+    } catch (refreshError) {
+      setLoadError(programErrorMessage(refreshError, "We couldn't load this gig. Pull to try again."));
+    }
+  }, [brandId, contractId]);
+  useEffect(() => { void refresh(); }, [refresh]);
+  const contractState = workspace?.contract.state ?? "";
+  useEffect(() => { setChecklist([false, false, false]); }, [contractState]);
+
+  const run = async (action: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await action();
+      if (result && typeof result === "object" && (result as { ok?: unknown }).ok === false) {
+        throw new Error(String((result as { error?: unknown }).error ?? "update_failed"));
+      }
+      setSheet(null);
+      setNote("");
+      await refresh();
+      setNotice(done);
+    } catch (runError) {
+      setError(programErrorMessage(runError, "That didn't go through. Try again."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const state = workspace?.contract.state ?? "";
+  const status = hostContractStatus(state);
+  const step = hostContractStep(state);
+  const deadline = workspace?.contract.state_deadline_at ?? null;
+  const script = workspace ? latestScript(workspace) : null;
+  const checks = scriptChecks(script);
+  const delivery = workspace?.deliveries.length ? [...workspace.deliveries].sort((a, b) => b.round - a.round)[0] : null;
+  const left = fixesLeft(workspace?.contract.fix_rounds_used);
+  const terms = workspace?.terms ?? [];
+  const currentTerms = terms.length ? terms[terms.length - 1] : null;
+  const counter = workspace ? openCounter(workspace) : null;
+  const owedTopup = workspace ? pendingTopup(workspace) : null;
+  const openOffer = workspace?.dispute?.offers.find((offer) => offer.status === "open") ?? null;
+  const hostRated = (workspace?.ratings ?? []).some((rating) => rating.rated_by === "host");
+  const plan = workspace?.shoot_plan ?? null;
+  const gig = workspace?.gig;
+  const caption = useMemo(() => {
+    const autoWords = state === "script_sent" ? "approves itself" : state === "delivered" ? "approves itself" : state === "offered" ? "creator answers" : null;
+    return [`Step ${step} of 6 · ${STEP_CAPTION[step]}`, autoWords && deadline ? `${autoWords} ${dueIn(deadline)}` : null].filter(Boolean).join(" · ");
+  }, [state, step, deadline]);
+  const deliveryUrl = delivery
+    ? typeof delivery.playback_url === "string"
+      ? delivery.playback_url
+      : delivery.playback && typeof (delivery.playback as { url?: unknown }).url === "string"
+        ? ((delivery.playback as { url: string }).url)
+        : null
+    : null;
+
+  const respondCounter = async (accept: boolean) => {
+    if (!counter) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await creatorGigsService.counterRespond(counter.id, accept);
+      if (!result.ok) throw new Error(result.error ?? "update_failed");
+      if (accept && result.requires_topup && typeof result.terms_version === "number") {
+        setTopup({ kind: "topup", contractId, termsVersion: result.terms_version, topupMinor: result.topup_minor ?? 0 });
+      } else if (accept && result.refund_minor && currentTerms) {
+        setNotice(`New fee agreed. We'll refund ${programMoney(result.refund_minor, currentTerms.currency)} to you.`);
+      } else {
+        setNotice(accept ? "New fee agreed." : "You kept the original fee.");
+      }
+      await refresh();
+    } catch (counterError) {
+      setError(programErrorMessage(counterError, "We couldn't answer the counter-offer. Try again."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const refundBps = Math.round(Number(refundPercent) * 100);
   const validRefund = Number.isFinite(refundBps) && refundBps >= 0 && refundBps <= 10000;
-  return <SafeAreaView style={styles.safe} edges={["top", "bottom"]}><Stack.Screen options={{ headerShown: false }} /><ProgramBackBar title="Contract" fallback="/(tabs)/home" /><ScrollView contentContainerStyle={styles.content}><Text style={styles.eyebrow}>HOST CONTRACT</Text><Text style={styles.heading}>{String(workspace.gig.title_public)}</Text><GlassCard style={styles.card}><Text style={styles.state}>{state.replaceAll("_", " ")}</Text><Text style={styles.copy}>{workspace.revealed ? "The creator accepted. Private listing and must-tag details are visible to both parties." : "Private details remain hidden until the captured offer is accepted."}</Text></GlassCard>
-    {state === "script_sent" && <GlassCard style={styles.card}><Text style={styles.title}>Script review</Text><Text style={styles.copy}>Approve what was agreed, or request a specific script change. Silence auto-locks after 48 hours.</Text><View style={styles.actions}><Button loading={busy} label="Lock script" onPress={() => void act("lock_script", "The script is locked for production.")} /><Button loading={busy} variant="secondary" label="Request changes" onPress={() => void act("request_script_changes", "The creator can revise the script.")} /></View></GlassCard>}
-    {state === "delivered" && <GlassCard style={styles.card}><Text style={styles.title}>Video review</Text><Text style={styles.copy}>Approve, or choose a technical fix. Creative preference alone is not a valid fix.</Text><Input value={fixNote} onChangeText={setFixNote} placeholder="Technical fix details" multiline /><View style={styles.actions}><Button loading={busy} label="Approve video" onPress={() => void decideVideo("approved")} /><Button loading={busy} variant="secondary" label="Request technical fix" onPress={() => void decideVideo("fix_requested")} /></View></GlassCard>}
-    {state === "posts_submitted" && <GlassCard style={styles.card}><Text style={styles.title}>Post verification</Text><Text style={styles.copy}>Mingla checks this automatically. You confirm only when a provider could not verify a live post; silence counts as pass after 48 hours.</Text><Button loading={busy} label="Confirm posts are live" onPress={() => void act("host_confirm", "The posts are verified.")} /></GlassCard>}
-    {state === "offered" && <GlassCard style={styles.card}><Text style={styles.title}>Funded offer sent</Text><Text style={styles.copy}>The creator has 48 hours. A decline or expiry starts the automatic refund.</Text><Button loading={busy} variant="secondary" label="Cancel and refund" onPress={() => void run(() => creatorGigsService.refund(contractId, "host_before_accept"), "The offer was cancelled and the refund was started.")} /></GlassCard>}
-    {["offered", "accepted", "shoot_planned", "script_drafting", "script_sent"].includes(state) && <GlassCard style={styles.card}><Text style={styles.title}>Terms changes</Text>{openChange ? <><Text style={styles.copy}>{openChange.proposed_by === "creator" ? "The Creator proposed" : "Your proposal"}: {Object.entries(openChange.changes).map(([key, value]) => `${key.replaceAll("_", " ")} → ${String(value)}`).join(" · ")}</Text>{openChange.note ? <Text style={styles.copy}>{openChange.note}</Text> : null}{openChange.proposed_by === "creator" ? <View style={styles.actions}><Button loading={busy} label="Accept updated terms" onPress={() => void run(() => creatorGigsService.respondToChange(openChange.id, true), "A new immutable terms version is active.")} /><Button loading={busy} variant="secondary" label="Decline change" onPress={() => void run(() => creatorGigsService.respondToChange(openChange.id, false), "The existing terms stay active.")} /></View> : <Text style={styles.copy}>Waiting for the Creator until {new Date(openChange.expires_at).toLocaleString()}.</Text>}</> : <><Text style={styles.copy}>Propose a date or non-money term change. The captured Creator fee cannot change here.</Text><Input value={changePostBy} onChangeText={setChangePostBy} placeholder="New post-by date · YYYY-MM-DD" /><Input value={changeNote} onChangeText={setChangeNote} placeholder="Why this change is needed" multiline /><Button loading={busy} variant="secondary" disabled={!/^\d{4}-\d{2}-\d{2}$/.test(changePostBy)} label="Propose date change" onPress={() => void run(() => creatorGigsService.proposeChange(contractId, { post_by: changePostBy }, "dates", changeNote), "The Creator has 48 hours to respond.")} /></>}</GlassCard>}
-    {["accepted", "shoot_planned", "script_drafting", "script_sent"].includes(state) && <GlassCard style={styles.card}><Text style={styles.title}>Cancel before production locks</Text><Text style={styles.copy}>This ends the gig and starts the eligible refund. Provider fees follow the payment provider’s refund rules.</Text><Button loading={busy} variant="secondary" label="Cancel gig and start refund" onPress={() => void run(() => creatorGigsService.refund(contractId, "host_after_accept_before_lock"), "The gig was cancelled and the eligible refund was started.")} /></GlassCard>}
-    {state === "disputed" && workspace.dispute && <GlassCard style={styles.card}><Text style={styles.title}>Settlement</Text><Text style={styles.copy}>{workspace.dispute.statement}</Text>{openOffer ? <View style={styles.offer}><Text style={styles.money}>{(openOffer.refund_bps / 100).toFixed(0)}% refund to you</Text><Text style={styles.copy}>{openOffer.offered_by === "host" ? "Your offer is waiting for the Creator." : "The Creator made this offer and keeps the remainder of the contract fee."}</Text>{openOffer.note ? <Text style={styles.copy}>{openOffer.note}</Text> : null}{openOffer.offered_by === "creator" ? <View style={styles.actions}><Button loading={busy} label="Accept settlement" onPress={() => void run(() => creatorGigsService.respondToDisputeOffer(openOffer.id, true), "The settlement was accepted and payment processing started.")} /><Button loading={busy} variant="secondary" label="Decline" onPress={() => void run(() => creatorGigsService.respondToDisputeOffer(openOffer.id, false), "The offer was declined. You can make a counteroffer.")} /></View> : null}</View> : <Text style={styles.copy}>No open offer. Propose how much of the contract payment should return to you.</Text>}<Input value={refundPercent} onChangeText={setRefundPercent} placeholder="Refund to you, 0–100%" variant="number" /><Input value={settlementNote} onChangeText={setSettlementNote} placeholder="Optional settlement note" multiline /><Button loading={busy} variant="secondary" label={openOffer?.offered_by === "creator" ? "Make counteroffer" : "Propose settlement"} disabled={!validRefund} onPress={() => void run(() => creatorGigsService.offerDispute(workspace.dispute!.id, refundBps, settlementNote), "The Creator can now accept or decline your structured offer.")} /></GlassCard>}
-    <GlassCard style={styles.card}><Text style={styles.title}>Terms history</Text>{workspace.terms.map((term) => <View key={term.version} style={styles.row}><Text style={styles.copy}>Version {term.version}</Text><Text style={styles.money}>{new Intl.NumberFormat(undefined, { style: "currency", currency: term.currency }).format(term.fee_minor / 100)}</Text></View>)}</GlassCard>
-    <GlassCard style={styles.card}><Text style={styles.title}>Shared timeline</Text>{workspace.events.map((event) => <View key={event.id} style={styles.event}><Text style={styles.eventTitle}>{event.kind.replaceAll("_", " ")}</Text><Text style={styles.copy}>{event.actor} · {new Date(event.at).toLocaleString()}</Text></View>)}</GlassCard>
-  </ScrollView></SafeAreaView>;
+  const canChangeTerms = ["offered", "accepted", "shoot_planned", "script_drafting", "script_sent"].includes(state);
+  const canDispute = ["fix_requested", "posting", "posts_failed"].includes(state);
+  const openChange = workspace?.proposals.find((proposal) => proposal.status === "open" && typeof proposal.changes?.fee_minor !== "number") ?? null;
+
+  return (
+    <ProgramScreen
+      title={workspace ? `${creatorName} · ${gig?.title_public ?? ""}` : "Gig"}
+      fallback={`/brand/${brandId}/creators`}
+      refreshing={false}
+      onRefresh={() => void refresh()}
+      overlay={
+        <>
+          {topup && workspace ? (
+            <HireSheet
+              visible
+              onClose={() => setTopup(null)}
+              mode={topup}
+              creatorName={creatorName}
+              currency={currentTerms?.currency ?? "USD"}
+              onPaid={() => { setTopup(null); setNotice("Paid. The new fee is held by Mingla."); void refresh(); }}
+            />
+          ) : null}
+          <FullScreenVideoViewer uri={videoUri} title={`${creatorName}'s video`} onClose={() => setVideoUri(null)} />
+          <Sheet visible={sheet !== null} onClose={() => setSheet(null)} snapPoint="full">
+            {sheet === "script_change" ? (
+              <SheetBody title="Ask for a change">
+                <Muted>{`Say exactly what to change. You can ask ${left === 1 ? "once more" : "twice"}; then the script is final.`}</Muted>
+                <Input value={note} onChangeText={setNote} multiline placeholder="e.g. Mention the rooftop opens at 6 PM" accessibilityLabel="What to change in the script" />
+                <FieldError message={error} />
+                <Button fullWidth label="Send change request" loading={busy} disabled={note.trim().length < 5} onPress={() => void run(() => creatorGigsService.transition(contractId, state, "request_script_changes", { note: note.trim() }), "Change requested. The creator will send a new version.")} />
+              </SheetBody>
+            ) : null}
+            {sheet === "fix" ? (
+              <SheetBody title="Request a fix">
+                <Muted>Fixes are for technical problems only. Taste alone isn't a reason for a fix.</Muted>
+                {FIX_CATEGORIES.map(([key, label]) => (
+                  <Checkbox key={key} label={label} checked={fixPicks.includes(key)} onToggle={() => setFixPicks((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]))} />
+                ))}
+                <Input value={note} onChangeText={setNote} multiline placeholder="What exactly needs fixing" accessibilityLabel="What needs fixing" />
+                <FieldError message={error} />
+                <Button fullWidth label={`Request fix (${left} left)`} loading={busy} disabled={fixPicks.length === 0 || !delivery} onPress={() => { if (delivery) void run(() => creatorGigsService.decideDelivery(delivery.id, "fix_requested", fixPicks, note.trim()), "Fix requested. The creator has the details."); }} />
+              </SheetBody>
+            ) : null}
+            {sheet === "suggest_time" ? (
+              <SheetBody title="Suggest another time">
+                <DateField label="Day" value={suggestDay} onChangeValue={setSuggestDay} accessibilityLabel="Shoot day" min={String(gig?.shoot_window_start ?? toIsoDay(new Date()))} max={typeof gig?.shoot_window_end === "string" ? gig.shoot_window_end : undefined} placeholder="Choose a day" />
+                <View style={styles.chips}>
+                  {SHOOT_TIMES.map(([hour, label]) => <Chip key={hour} label={label} selected={suggestHour === hour} onPress={() => setSuggestHour(hour)} />)}
+                </View>
+                <Input value={note} onChangeText={setNote} multiline placeholder="Arrival note (optional)" accessibilityLabel="Arrival note" />
+                <FieldError message={error} />
+                <Button fullWidth label="Send suggestion" loading={busy} disabled={!suggestDay || suggestHour === null} onPress={() => { if (suggestHour !== null) void run(() => creatorGigsService.planShoot(contractId, shootInstant(suggestDay, suggestHour), note.trim(), false), "Suggestion sent."); }} />
+              </SheetBody>
+            ) : null}
+            {sheet === "dispute" ? (
+              <SheetBody title="Open a dispute">
+                <Muted>Mingla holds the money while you and the creator settle. If you can't agree, Mingla decides.</Muted>
+                {DISPUTE_REASONS.map(([key, label]) => <Chip key={key} label={label} selected={disputeReason === key} onPress={() => setDisputeReason(key)} />)}
+                <Input value={note} onChangeText={setNote} multiline placeholder="What happened (at least 10 characters)" accessibilityLabel="What happened" />
+                <FieldError message={error} />
+                <Button fullWidth variant="destructive" label="Open dispute" loading={busy} disabled={note.trim().length < 10} onPress={() => void run(() => creatorGigsService.openDispute(contractId, disputeReason, note.trim()), "Dispute opened. Make a settlement offer to resolve it quickly.")} />
+              </SheetBody>
+            ) : null}
+            {sheet === "change_dates" ? (
+              <SheetBody title="Change the post-by date">
+                <Muted>{`Currently ${shortDate(String(gig?.post_by ?? ""))}. The fee can't change here.`}</Muted>
+                <DateField label="New post-by date" value={newPostBy} onChangeValue={setNewPostBy} accessibilityLabel="New post-by date" min={toIsoDay(new Date())} placeholder="Choose a date" />
+                <Input value={note} onChangeText={setNote} multiline placeholder="Why it needs to change" accessibilityLabel="Why the date needs to change" />
+                <FieldError message={error} />
+                <Button fullWidth label="Ask the creator" loading={busy} disabled={!newPostBy} onPress={() => void run(() => creatorGigsService.proposeChange(contractId, { post_by: newPostBy }, "dates", note.trim()), "Request sent. The creator has 48 hours to answer.")} />
+              </SheetBody>
+            ) : null}
+            {sheet === "terms" ? (
+              <SheetBody title="Terms history">
+                <ListGroup>
+                  {terms.map((term) => (
+                    <ListRow key={term.version} title={`Version ${term.version}`} subtitle={typeof term.created_at === "string" ? shortDate(term.created_at) : null} right={programMoney(term.fee_minor, term.currency)} chevron={false} />
+                  ))}
+                </ListGroup>
+              </SheetBody>
+            ) : null}
+          </Sheet>
+        </>
+      }
+    >
+      {!workspace && !loadError ? <ProgramLoading /> : null}
+      {loadError ? <Card><Text style={programStyles.body}>{loadError}</Text><Button variant="secondary" label="Try again" onPress={() => void refresh()} /></Card> : null}
+      {workspace ? (
+        <>
+          <StepBar steps={HOST_CONTRACT_STEPS} current={step} caption={caption} />
+          <View style={styles.statusRow}><StatusTag label={status.label} tone={status.tone} /></View>
+          {notice ? <Text style={styles.notice} accessibilityLiveRegion="polite">{notice}</Text> : null}
+          {sheet === null ? <FieldError message={error} /> : null}
+
+          {paymentPending ? (
+            <Card>
+              <Text style={programStyles.title}>Payment not completed</Text>
+              <Muted>{`${creatorName} hasn't received this offer because the payment didn't go through. Nothing was charged.`}</Muted>
+              <Button
+                label="Retry payment"
+                onPress={() =>
+                  router.push(
+                    (gigIdForRetry
+                      ? `/brand/${brandId}/creators/${gigIdForRetry}/interest`
+                      : `/brand/${brandId}/creators`) as never,
+                  )
+                }
+              />
+            </Card>
+          ) : null}
+
+          {owedTopup && currentTerms && !topup ? (
+            <Card>
+              <Text style={programStyles.title}>Pay the difference</Text>
+              <Muted>{`You accepted ${creatorName}'s new fee. Pay ${programMoney(owedTopup.topupMinor, currentTerms.currency)} so the work can start.`}</Muted>
+              <Button
+                label={`Pay ${programMoney(owedTopup.topupMinor, currentTerms.currency)}`}
+                onPress={() =>
+                  setTopup({
+                    kind: "topup",
+                    contractId,
+                    termsVersion: owedTopup.termsVersion,
+                    topupMinor: owedTopup.topupMinor,
+                  })
+                }
+              />
+            </Card>
+          ) : null}
+
+          {/* Counter-offer from the creator */}
+          {counter && currentTerms ? (
+            <Card>
+              <Text style={programStyles.title}>{`${creatorName} asked for ${programMoney(counter.fee_minor, currentTerms.currency)}`}</Text>
+              <Muted>{`Your offer was ${programMoney(currentTerms.fee_minor, currentTerms.currency)}.${counter.fee_minor > currentTerms.fee_minor ? " If you accept, you pay the difference plus the booking fee on it." : " If you accept, we refund the difference."}`}</Muted>
+              {counter.note ? <Text style={styles.quote}>{`"${counter.note}"`}</Text> : null}
+              <View style={programStyles.footerRow}>
+                <Button variant="secondary" label="Keep my offer" loading={busy} style={programStyles.grow} onPress={() => void respondCounter(false)} />
+                <Button label={`Accept ${programMoney(counter.fee_minor, currentTerms.currency)}`} loading={busy} style={programStyles.grow} onPress={() => void respondCounter(true)} />
+              </View>
+            </Card>
+          ) : null}
+
+          {state === "offered" && !counter && !paymentPending ? (
+            <Card>
+              <Text style={programStyles.title}>{`Waiting for ${creatorName}`}</Text>
+              <Muted>{`They have until ${deadline ? shortDateTime(deadline) : "48 hours after your offer"} to answer. If they decline or don't answer, you get a full refund automatically.`}</Muted>
+              <Button variant="secondary" label="Cancel offer and refund" loading={busy} onPress={() => void run(() => creatorGigsService.refund(contractId, "host_before_accept"), "Offer cancelled. Your refund has started.")} />
+            </Card>
+          ) : null}
+
+          {(state === "accepted" || state === "shoot_planned") ? (
+            <Card>
+              <Text style={programStyles.title}>{plan ? (plan.confirmed_at ? "Shoot time agreed" : plan.proposed_by === "creator" ? `${creatorName} wants to film` : "Waiting for the creator to confirm") : `Waiting for ${creatorName} to suggest a time`}</Text>
+              {plan ? (
+                <>
+                  <SummaryLine label="When" value={shortDateTime(plan.shoot_at)} />
+                  {plan.arrival_note ? <SummaryLine label="Note" value={plan.arrival_note} /> : null}
+                </>
+              ) : <Muted>{`Shoot dates: ${shortDate(String(gig?.shoot_window_start ?? ""))} to ${shortDate(String(gig?.shoot_window_end ?? ""))}.`}</Muted>}
+              {plan && !plan.confirmed_at && plan.proposed_by === "creator" ? (
+                <>
+                  <Checkbox label="Guests on camera must agree; we'll put up a sign" checked={checklist[0]} onToggle={() => setChecklist((c) => [!c[0], c[1], c[2]])} />
+                  <Checkbox label="Only music we have rights to (or the creator adds licensed audio)" checked={checklist[1]} onToggle={() => setChecklist((c) => [c[0], !c[1], c[2]])} />
+                  <View style={programStyles.footerRow}>
+                    <Button variant="secondary" label="Suggest another time" style={programStyles.grow} onPress={() => { setNote(""); setSheet("suggest_time"); }} />
+                    <Button label="Approve" loading={busy} style={programStyles.grow} disabled={!checklist[0] || !checklist[1]} onPress={() => void run(() => creatorGigsService.planShoot(contractId, plan.shoot_at, plan.arrival_note ?? "", true), "Shoot time approved.")} />
+                  </View>
+                </>
+              ) : !plan ? (
+                <Button variant="secondary" label="Suggest a time" onPress={() => { setNote(""); setSheet("suggest_time"); }} />
+              ) : plan.confirmed_at && state === "shoot_planned" ? (
+                <Button variant="secondary" label="Ask for the script now" loading={busy} onPress={() => void run(() => creatorGigsService.transition(contractId, state, "start_script"), "The creator can start the script.")} />
+              ) : null}
+            </Card>
+          ) : null}
+
+          {state === "script_drafting" ? (
+            <Card>
+              <Text style={programStyles.title}>{`${creatorName} is writing the script`}</Text>
+              <Muted>You'll review it before filming. It approves itself 48 hours after it arrives.</Muted>
+            </Card>
+          ) : null}
+
+          {script && ["script_sent", "script_locked"].includes(state) ? (
+            <Card>
+              <Text style={programStyles.title}>{`Script v${script.version}${script.locked_at ? " · approved" : ""}`}</Text>
+              {(script.body?.sections ?? []).map((section, index) => (
+                <View key={index} style={styles.section}>
+                  <Text style={styles.sectionLabel}>{sectionLabel(section, index)}</Text>
+                  {sectionLines(section).map((line) => <Text key={line.text} style={programStyles.body}>{line.label ? `${line.label}: ${line.text}` : line.text}</Text>)}
+                </View>
+              ))}
+              <View style={styles.checkRow}>
+                <Icon name={checks.disclosure ? "check" : "flag"} size={14} color={checks.disclosure ? accent.warm : textTokens.tertiary} />
+                <Text style={programStyles.small}>{[checks.disclosure ? "Disclosure included" : "No #ad disclosure found", checks.seconds ? `${checks.seconds}s · ${formatName(gig?.format_key)}` : null].filter(Boolean).join(" · ")}</Text>
+              </View>
+              {state === "script_sent" ? (
+                <View style={programStyles.footerRow}>
+                  <Button variant="secondary" label="Ask for a change" style={programStyles.grow} disabled={left === 0} onPress={() => { setNote(""); setSheet("script_change"); }} />
+                  <Button label="Approve script" loading={busy} style={programStyles.grow} onPress={() => void run(() => creatorGigsService.transition(contractId, state, "lock_script"), "Script approved. The creator can film.")} />
+                </View>
+              ) : <Muted>{`${creatorName} is filming from this script.`}</Muted>}
+              {state === "script_sent" && left === 0 ? <Muted>You've used both change requests. Approve the script or let it approve itself.</Muted> : null}
+            </Card>
+          ) : null}
+
+          {state === "delivered" && delivery ? (
+            <Card>
+              <View style={styles.rowBetween}>
+                <Text style={programStyles.title}>Review the video</Text>
+                <StatusTag label={`${left} fix${left === 1 ? "" : "es"} left`} tone="waiting" />
+              </View>
+              <Pressable
+                onPress={() => { if (deliveryUrl) setVideoUri(deliveryUrl); }}
+                accessibilityRole="button"
+                accessibilityLabel={deliveryUrl ? `Play ${creatorName}'s video` : "Video preview"}
+                style={styles.player}
+              >
+                <Icon name="play" size={32} color={textTokens.primary} />
+                <Text style={styles.playerCaption}>{deliveryUrl ? `Version ${delivery.round + 1} · tap to play` : `Version ${delivery.round + 1} · the preview is still processing`}</Text>
+              </Pressable>
+              <Checkbox label="Matches the approved script" checked={checklist[0]} onToggle={() => setChecklist((c) => [!c[0], c[1], c[2]])} />
+              <Checkbox label="Shows #ad and @usemingla" checked={checklist[1]} onToggle={() => setChecklist((c) => [c[0], !c[1], c[2]])} />
+              <Checkbox label="Vertical, the agreed length" checked={checklist[2]} onToggle={() => setChecklist((c) => [c[0], c[1], !c[2]])} />
+              <Muted>{`Fix requests are for technical problems only (sound, picture, captions). It approves itself ${deadline ? dueIn(deadline) : "after 3 days"}.`}</Muted>
+              <View style={programStyles.footerRow}>
+                <Button variant="secondary" label="Request a fix" style={programStyles.grow} disabled={left === 0} onPress={() => { setNote(""); setFixPicks([]); setSheet("fix"); }} />
+                <Button label="Approve video" loading={busy} style={programStyles.grow} onPress={() => void run(() => creatorGigsService.decideDelivery(delivery.id, "approved"), "Video approved. The creator can post it.")} />
+              </View>
+            </Card>
+          ) : null}
+
+          {state === "fix_requested" && delivery ? (
+            <Card>
+              <Text style={programStyles.title}>Waiting for the fix</Text>
+              <Muted>{[(delivery.fix_categories ?? []).map(fixCategoryWords).join(", "), delivery.fix_note].filter(Boolean).join(" · ") || "The creator has your fix request."}</Muted>
+            </Card>
+          ) : null}
+
+          {["approved", "posting", "posts_failed"].includes(state) ? (
+            <Card>
+              <Text style={programStyles.title}>Waiting for posts</Text>
+              <Muted>{`The creator posts by ${shortDate(String(gig?.post_by ?? ""))} and adds the links here. Mingla checks them automatically.`}</Muted>
+            </Card>
+          ) : null}
+
+          {state === "posts_submitted" ? (
+            <Card>
+              <Text style={programStyles.title}>Checking posts</Text>
+              <Muted>Mingla checks each post automatically. Confirm only if you can see them live; silence counts as a pass after 48 hours.</Muted>
+              <Button label="Confirm posts are live" loading={busy} onPress={() => void run(() => creatorGigsService.transition(contractId, state, "host_confirm"), "Posts confirmed.")} />
+            </Card>
+          ) : null}
+
+          {state === "posts_verified" ? <Card><Text style={programStyles.title}>Posts verified</Text><Muted>Mingla pays the creator within 48 hours.</Muted></Card> : null}
+          {(state === "released" || state === "day30") ? <Card><Text style={programStyles.title}>Paid to the creator</Text><Muted>The posts stay up for 30 days. You can rate the creator when the gig is done.</Muted></Card> : null}
+
+          {state === "completed" && !hostRated ? (
+            <Card>
+              <Text style={programStyles.title}>{`How was working with ${creatorName}?`}</Text>
+              <View style={styles.stars}>
+                {[1, 2, 3, 4, 5].map((value) => (
+                  <Pressable key={value} onPress={() => setStars(value)} accessibilityRole="button" accessibilityLabel={`${value} star${value === 1 ? "" : "s"}`} accessibilityState={{ selected: stars >= value }} hitSlop={6}>
+                    <Icon name="star" size={30} color={stars >= value ? accent.warm : textTokens.quaternary} />
+                  </Pressable>
+                ))}
+              </View>
+              <View style={styles.chips}>
+                {RATING_TAGS.map((tag) => <Chip key={tag} label={tag} selected={tags.includes(tag)} onPress={() => setTags((current) => (current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]))} />)}
+              </View>
+              <Input value={note} onChangeText={setNote} multiline placeholder="Anything else (optional)" accessibilityLabel="Rating note" />
+              <Muted>Ratings show to the creator after you've both rated.</Muted>
+              <Button label="Send rating" loading={busy} disabled={stars === 0} onPress={() => void run(() => creatorGigsService.rate(contractId, stars, tags, note.trim()), "Thanks. Your rating is in.")} />
+            </Card>
+          ) : null}
+          {state === "completed" && hostRated ? <Card><Text style={programStyles.title}>Done</Text><Muted>You've rated this gig.</Muted></Card> : null}
+
+          {state === "disputed" && workspace.dispute ? (
+            <Card>
+              <Text style={programStyles.title}>In dispute</Text>
+              <Muted>{workspace.dispute.statement}</Muted>
+              {openOffer ? (
+                <View style={styles.offer}>
+                  <Text style={programStyles.title}>{`${(openOffer.refund_bps / 100).toFixed(0)}% refund to you`}</Text>
+                  <Muted>{openOffer.offered_by === "host" ? "Your offer is waiting for the creator." : "The creator made this offer and keeps the remainder of the contract fee."}</Muted>
+                  {openOffer.note ? <Text style={styles.quote}>{openOffer.note}</Text> : null}
+                  {openOffer.offered_by === "creator" ? (
+                    <View style={programStyles.footerRow}>
+                      <Button variant="secondary" label="Decline" loading={busy} style={programStyles.grow} onPress={() => void run(() => creatorGigsService.respondToDisputeOffer(openOffer.id, false), "Offer declined. You can make a counteroffer.")} />
+                      <Button label="Accept settlement" loading={busy} style={programStyles.grow} onPress={() => void run(() => creatorGigsService.respondToDisputeOffer(openOffer.id, true), "Settlement accepted. Payment processing has started.")} />
+                    </View>
+                  ) : null}
+                </View>
+              ) : <Muted>No open offer. Propose how much of the fee should come back to you.</Muted>}
+              <Input value={refundPercent} onChangeText={(value) => setRefundPercent(value.replace(/[^0-9]/g, ""))} variant="number" placeholder="Refund to you, 0–100%" accessibilityLabel="Refund to you, percent" />
+              <Input value={note} onChangeText={setNote} multiline placeholder="Note (optional)" accessibilityLabel="Settlement note" />
+              <Button variant="secondary" label={openOffer?.offered_by === "creator" ? "Make counteroffer" : "Propose settlement"} loading={busy} disabled={!validRefund} onPress={() => void run(() => creatorGigsService.offerDispute(workspace.dispute!.id, refundBps, note.trim()), "Offer sent. The creator can accept or decline.")} />
+            </Card>
+          ) : null}
+
+          {["declined", "expired", "cancelled", "resolved_refund", "resolved_partial", "resolved_release"].includes(state) ? (
+            <Card><Text style={programStyles.title}>{status.label}</Text><Muted>{state === "declined" || state === "expired" || state === "cancelled" ? "Your payment is refunded automatically." : "This gig is settled."}</Muted></Card>
+          ) : null}
+
+          <SectionLabel>Deal</SectionLabel>
+          <ListGroup>
+            {currentTerms ? <ListRow title="Fee" right={`${programMoney(currentTerms.fee_minor, currentTerms.currency)} held by Mingla`} chevron={false} /> : null}
+            {currentTerms ? <ListRow title="Terms" right={`Version ${currentTerms.version}`} onPress={() => setSheet("terms")} /> : null}
+            {gig ? <ListRow title="Post by" right={shortDate(String(gig.post_by))} chevron={false} /> : null}
+            {gig?.brief_private ? <ListRow title="Private brief" subtitle={String(gig.brief_private)} chevron={false} /> : null}
+          </ListGroup>
+          {openChange ? (
+            <Card>
+              <Text style={programStyles.title}>{openChange.proposed_by === "creator" ? `${creatorName} asked to change the terms` : "Your change request"}</Text>
+              <Muted>{Object.entries(openChange.changes).map(([key, value]) => (key === "post_by" ? `Post by ${shortDate(String(value))}` : key === "shoot_date" ? `Shoot on ${shortDate(String(value))}` : key === "usage_days" ? `Reuse for ${String(value)} days` : "Other terms")).join(" · ")}</Muted>
+              {openChange.note ? <Text style={styles.quote}>{openChange.note}</Text> : null}
+              {openChange.proposed_by === "creator" ? (
+                <View style={programStyles.footerRow}>
+                  <Button variant="secondary" label="Keep current terms" loading={busy} style={programStyles.grow} onPress={() => void run(() => creatorGigsService.respondToChange(openChange.id, false), "The current terms stay.")} />
+                  <Button label="Accept change" loading={busy} style={programStyles.grow} onPress={() => void run(() => creatorGigsService.respondToChange(openChange.id, true), "Change accepted. New terms are in effect.")} />
+                </View>
+              ) : <Muted>{`Waiting for the creator until ${shortDateTime(openChange.expires_at)}.`}</Muted>}
+            </Card>
+          ) : null}
+          <View style={programStyles.actions}>
+            {canChangeTerms && !openChange ? <Button size="sm" variant="ghost" label="Change the post-by date" onPress={() => { setNote(""); setNewPostBy(""); setSheet("change_dates"); }} /> : null}
+            {["accepted", "shoot_planned", "script_drafting", "script_sent"].includes(state) ? <Button size="sm" variant="ghost" label="Cancel gig and refund" loading={busy} onPress={() => void run(() => creatorGigsService.refund(contractId, "host_after_accept_before_lock"), "Gig cancelled. Your eligible refund has started. Provider fees follow the payment provider’s refund rules.")} /> : null}
+            {canDispute ? <Button size="sm" variant="ghost" label="Open a dispute" onPress={() => { setNote(""); setSheet("dispute"); }} /> : null}
+          </View>
+
+          {workspace.posts.length > 0 ? (
+            <>
+              <SectionLabel>Posts</SectionLabel>
+              <ListGroup>
+                {workspace.posts.map((post) => <ListRow key={post.id} title={platformLabel(post.platform)} subtitle={post.url} right={postCheckWords(post.check_status)} chevron={false} />)}
+              </ListGroup>
+            </>
+          ) : null}
+
+          <SectionLabel>Timeline</SectionLabel>
+          <ListGroup>
+            {[...workspace.events].reverse().map((event) => (
+              <ListRow key={event.id} title={timelineWords(event.kind)} subtitle={`${actorWords(event.actor)} · ${shortDateTime(event.at)}`} chevron={false} />
+            ))}
+          </ListGroup>
+          <Button variant="ghost" size="sm" label="Back to creators" onPress={() => router.replace(`/brand/${brandId}/creators` as never)} />
+        </>
+      ) : null}
+    </ProgramScreen>
+  );
 }
-const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: canvas.profile }, content: { width: "100%", maxWidth: 900, alignSelf: "center", padding: spacing.md, paddingBottom: spacing.xxl, gap: spacing.md }, eyebrow: { color: accent.warm, fontWeight: "900", letterSpacing: 1.3, marginTop: spacing.md }, heading: { color: textTokens.primary, fontSize: 31, fontWeight: "900" }, card: { padding: spacing.lg, gap: spacing.sm }, state: { color: accent.warm, fontSize: 20, fontWeight: "900", textTransform: "capitalize" }, title: { color: textTokens.primary, fontSize: 19, fontWeight: "900" }, copy: { color: textTokens.secondary, lineHeight: 20 }, actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, offer: { gap: spacing.xs, padding: spacing.md, borderWidth: 1, borderColor: accent.warm, borderRadius: 12 }, row: { flexDirection: "row", justifyContent: "space-between" }, money: { color: textTokens.primary, fontWeight: "800" }, event: { borderLeftWidth: 2, borderLeftColor: accent.warm, paddingLeft: spacing.md, paddingVertical: spacing.xs }, eventTitle: { color: textTokens.primary, fontWeight: "800", textTransform: "capitalize" } });
+
+const styles = StyleSheet.create({
+  statusRow: { flexDirection: "row" },
+  notice: { color: accent.warm, fontWeight: "700", fontSize: 14 },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  section: { gap: 2, paddingVertical: spacing.xs },
+  sectionLabel: { color: textTokens.tertiary, fontSize: 12, fontWeight: "700", letterSpacing: 0.4 },
+  checkRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  player: { aspectRatio: 9 / 13, maxHeight: 420, borderRadius: radius.lg, backgroundColor: "#5b3a22", alignItems: "center", justifyContent: "center", gap: spacing.sm },
+  playerCaption: { color: textTokens.primary, fontSize: 13, fontWeight: "600" },
+  stars: { flexDirection: "row", gap: spacing.sm },
+  offer: { gap: spacing.xs, padding: spacing.md, borderWidth: 1, borderColor: accent.border, borderRadius: radius.md },
+  quote: { color: textTokens.secondary, fontStyle: "italic", fontSize: 14, lineHeight: 20 },
+});

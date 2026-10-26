@@ -8,6 +8,7 @@ import {
   briefLintMessage,
   lintPublicBrief,
   minorToWholeText,
+  programErrorMessage,
   type BudgetBandKey,
   type BudgetBandRange,
 } from "../../utils/creatorProgramFormat";
@@ -211,5 +212,10 @@ export function briefServerErrors(result: { error?: string; field?: string; reas
     ? "Pick shoot dates that work for the listing."
     : "Check this and try again.";
   if (field) return { [field]: message };
-  return { form: "We couldn't post this gig. Check the details and try again." };
+  return {
+    form: programErrorMessage(
+      result.error ?? null,
+      "We couldn't post this gig. Check the details and try again.",
+    ),
+  };
 }

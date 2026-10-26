@@ -33,7 +33,7 @@ import {
   contractNeedsHost,
   dateRangeLabel,
   gigStatusLabel,
-  hostContractStatus,
+  hostContractRowStatus,
   needsYouCopy,
   programErrorMessage,
 } from "../../../../src/utils/creatorProgramFormat";
@@ -215,16 +215,26 @@ export default function BrandCreatorsHome(): React.ReactElement {
           {others.length > 0 ? (
             <ListGroup>
               {others.map((contract) => {
-                const status = hostContractStatus(contract.state);
+                const status = hostContractRowStatus(contract);
                 return (
                   <ListRow
                     key={contract.id}
                     title={contract.creator}
-                    subtitle={contract.title}
+                    subtitle={
+                      contract.payment_pending
+                        ? `${contract.title} · Retry payment`
+                        : contract.title
+                    }
                     right={
                       <StatusTag label={status.label} tone={status.tone} />
                     }
-                    onPress={() => openContract(contract.id)}
+                    onPress={() =>
+                      contract.payment_pending
+                        ? router.push(
+                            `/brand/${brandId}/creators/${contract.gig_id}/interest` as never,
+                          )
+                        : openContract(contract.id)
+                    }
                   />
                 );
               })}

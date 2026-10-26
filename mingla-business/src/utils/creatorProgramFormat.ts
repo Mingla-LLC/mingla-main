@@ -558,6 +558,9 @@ const ERROR_WORDS: Record<string, string> = {
   proposal_not_open: "This request is no longer open.",
   delivery_not_found: "We couldn't find this video. Pull to refresh.",
   contract_not_found: "We couldn't find this gig. It may have been cancelled.",
+  creator_gigs_unavailable: "Creator gigs aren't available for this brand yet.",
+  feature_unavailable: "Creator gigs aren't available for this brand yet.",
+  rollout_required: "Creator gigs aren't available for this brand yet.",
   fix_rounds_exhausted:
     "Both fix rounds are used. Approve the video or open a dispute.",
 };
@@ -600,7 +603,10 @@ export function programErrorCode(error: unknown): string | null {
 export function contractNeedsHost(contract: {
   needs_host?: boolean | null;
   state?: string | null;
+  payment_pending?: boolean | null;
 }): boolean {
+  // An unpaid offer is shown as "Payment not completed", never as work.
+  if (contract.payment_pending === true) return false;
   if (contract.needs_host === true) return true;
   if (contract.needs_host === false) return false;
   return (
@@ -649,4 +655,15 @@ export function needsYouCopy(
         cta: "Open",
       };
   }
+}
+
+/** Status for a contract row: unpaid offers read "Payment not completed". */
+export function hostContractRowStatus(contract: {
+  state?: string | null;
+  payment_pending?: boolean | null;
+}): { label: string; tone: HostStatusTone } {
+  if (contract.payment_pending === true) {
+    return { label: "Payment not completed", tone: "problem" };
+  }
+  return hostContractStatus(contract.state);
 }

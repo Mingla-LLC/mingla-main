@@ -24,8 +24,8 @@ const hireSheet = read("src/components/gigs/HireSheet.tsx");
 
 describe("issue #3872 — Creator gig contract journeys", () => {
   test("both sides resolve structured settlement offers through the guarded Edge boundary", () => {
-    expect(serviceSource).toContain('supabase.functions.invoke("gig-dispute-resolve"');
-    expect(serviceSource).toContain('offerDispute: (disputeId: string, refundBps: number');
+    expect(serviceSource).toMatch(/supabase\.functions\.invoke\(\s*"gig-dispute-resolve"/);
+    expect(serviceSource).toMatch(/offerDispute: \(\s*disputeId: string,\s*refundBps: number/);
     expect(host).toContain("Accept settlement");
     expect(host).toContain("Make counteroffer");
     expect(host).toContain("respondToDisputeOffer(openOffer.id, false)");
@@ -42,10 +42,10 @@ describe("issue #3872 — Creator gig contract journeys", () => {
     expect(host).toContain("keeps the remainder of the contract fee");
   });
 
-  test("the Host can fund the quoted fee or send a structured pre-hire counter", () => {
+  test("the Host can fund the quoted fee or offer a different fee before hiring", () => {
     expect(applicants).toContain('label="Counter"');
-    expect(hireSheet).toContain("Send a structured counter");
-    expect(hireSheet).toContain("Secure payment and send counter");
+    expect(hireSheet).toContain("Offer a different fee");
+    expect(hireSheet).toContain("Agree and pay");
     expect(hireSheet).toContain("Mingla booking fee (15%)");
   });
 

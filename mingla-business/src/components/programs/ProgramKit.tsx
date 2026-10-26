@@ -664,3 +664,52 @@ const styles = StyleSheet.create({
   summaryValue: { color: textTokens.primary, fontSize: 15, fontWeight: "600" },
   summaryStrong: { color: textTokens.primary, fontWeight: "800", fontSize: 17 },
 });
+
+/** Six-segment progress bar with a caption ("Step 3 of 6 · Script"). */
+export function StepBar({
+  steps,
+  current,
+  caption,
+}: {
+  steps: readonly string[];
+  current: number;
+  caption?: string;
+}): React.ReactElement {
+  return (
+    <View
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={caption ?? `Step ${current} of ${steps.length}`}
+      accessibilityValue={{ min: 1, max: steps.length, now: current }}
+      style={stepStyles.wrap}
+    >
+      <View style={stepStyles.bar}>
+        {steps.map((step, index) => (
+          <View
+            key={step}
+            style={[
+              stepStyles.segment,
+              index + 1 < current && stepStyles.done,
+              index + 1 === current && stepStyles.current,
+            ]}
+          />
+        ))}
+      </View>
+      {caption ? <Text style={stepStyles.caption}>{caption}</Text> : null}
+    </View>
+  );
+}
+
+const stepStyles = StyleSheet.create({
+  wrap: { gap: spacing.xs },
+  bar: { flexDirection: "row", gap: 4 },
+  segment: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: glass.border.profileElevated,
+  },
+  done: { backgroundColor: accent.border },
+  current: { backgroundColor: accent.warm },
+  caption: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
+});

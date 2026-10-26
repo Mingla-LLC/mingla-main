@@ -59,6 +59,10 @@ export type HostContractSummary = {
   needs_host: boolean;
   title: string;
   creator: string;
+  /** Offer created but the host's payment never completed. */
+  payment_pending: boolean;
+  fee_minor: number | null;
+  currency: string | null;
 };
 
 export type HostHome = { gigs: HostGig[]; contracts: HostContractSummary[] };
@@ -188,6 +192,9 @@ export type GigWorkspace = {
   posts: GigPost[];
   dispute: GigDispute | null;
   ratings: Array<Record<string, unknown> & { rated_by: string; stars: number }>;
+  counters?: unknown;
+  next_action?: string | null;
+  pending_topup?: unknown;
 };
 
 export type GigResult = {
@@ -362,22 +369,87 @@ export function normalizeHostHome(raw: unknown): HostHome {
         needs_host: row.needs_host === true,
         title: str(row.title),
         creator: str(row.creator) || "Creator",
+        payment_pending: row.payment_pending === true,
+        fee_minor: typeof row.fee_minor === "number" ? row.fee_minor : null,
+        currency: typeof row.currency === "string" ? row.currency : null,
       })),
   };
 }
 
-/** The open creator counter-offer on a contract, if any (a fee change proposed by the creator). */
+export type GigCounter = {
+  id: string;
+  fee_minor: number;
+  note: string | null;
+  expires_at: string | null;
+};
+
+/**
+ * The open creator counter-offer on a contract, if any. The server records a
+ * counter as a proposal by the creator carrying `fee_minor` (in `proposals`,
+ * or in a `counters` list when the workspace returns one); the host answers it
+ * with gig_counter_respond(proposal_id).
+ */
 export function openCounter(
-  workspace: Pick<GigWorkspace, "proposals">,
-): GigProposal | null {
-  return (
-    (workspace.proposals ?? []).find(
-      (proposal) =>
-        proposal.status === "open" &&
-        proposal.proposed_by === "creator" &&
-        typeof proposal.changes?.fee_minor === "number",
-    ) ?? null
+  workspace: Pick<GigWorkspace, "proposals"> & { counters?: unknown },
+): GigCounter | null {
+  const fromCounters = Array.isArray(workspace.counters)
+    ? (workspace.counters as Array<Record<string, unknown>>).find(
+        (row) =>
+          row &&
+          typeof row.id === "string" &&
+          (row.status === undefined || row.status === "open") &&
+          typeof row.fee_minor === "number",
+      )
+    : undefined;
+  if (fromCounters) {
+    return {
+      id: fromCounters.id as string,
+      fee_minor: fromCounters.fee_minor as number,
+      note: typeof fromCounters.note === "string" ? fromCounters.note : null,
+      expires_at:
+        typeof fromCounters.expires_at === "string"
+          ? fromCounters.expires_at
+          : null,
+    };
+  }
+  const proposal = (workspace.proposals ?? []).find(
+    (row) =>
+      row.status === "open" &&
+      row.proposed_by === "creator" &&
+      typeof row.changes?.fee_minor === "number",
   );
+  return proposal
+    ? {
+        id: proposal.id,
+        fee_minor: proposal.changes.fee_minor as number,
+        note: proposal.note,
+        expires_at: proposal.expires_at ?? null,
+      }
+    : null;
+}
+
+/** One-hour playback link for a verified creator's public showcase video. */
+export async function showcasePlayback(jobId: string): Promise<string> {
+  const { data, error } = await supabase.functions.invoke<{
+    playback?: { url?: string };
+  }>("creator-media-public", { body: { jobId } });
+  if (error || typeof data?.playback?.url !== "string") {
+    throw new Error("video_unavailable");
+  }
+  return data.playback.url;
+}
+
+/** A top-up the host still owes after accepting a higher counter-offer. */
+export function pendingTopup(
+  workspace: Pick<GigWorkspace, "pending_topup">,
+): { termsVersion: number; topupMinor: number } | null {
+  const raw = workspace.pending_topup;
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const termsVersion = Number(row.terms_version);
+  const topupMinor = Number(row.topup_minor ?? row.amount_minor);
+  if (!Number.isInteger(termsVersion) || !(topupMinor > 0)) return null;
+  return { termsVersion, topupMinor };
 }
 
 export async function fetchCreatorGigsAccess(
@@ -554,10 +626,9 @@ export const creatorGigsService = {
   async refund(
     contractId: string,
     branch: "host_before_accept" | "host_after_accept_before_lock",
-    refundBps?: number,
   ) {
     const { data, error } = await supabase.functions.invoke("gig-refund", {
-      body: { contract_id: contractId, branch, refund_bps: refundBps },
+      body: { contract_id: contractId, branch },
     });
     if (error) throw error;
     return data;

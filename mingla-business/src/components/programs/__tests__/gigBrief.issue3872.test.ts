@@ -111,6 +111,7 @@ describe("gig brief server answers", () => {
   it("never shows a raw code", () => {
     expect(briefServerErrors({ error: "check_violation", field: "post_by" })).toEqual({ postBy: "Check this and try again." });
     expect(briefServerErrors({ error: "something_else" })).toEqual({ form: "We couldn't post this gig. Check the details and try again." });
+    expect(briefServerErrors({ error: "permission_denied" })).toEqual({ form: "You don't have permission to do that for this brand." });
   });
 });
 
