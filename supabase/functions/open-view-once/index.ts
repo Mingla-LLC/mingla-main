@@ -92,4 +92,8 @@ serve(createOpenViewOnceHandler({
     const { error } = await admin.rpc("issue_4114_mark_view_once_purged", { p_message_ids: messageIds });
     return { error: errorText(error) };
   },
+  async markExpired(messageIds) {
+    const { error } = await admin.rpc("issue_4114_mark_media_expired", { p_message_ids: messageIds });
+    return { error: errorText(error) };
+  },
 }));

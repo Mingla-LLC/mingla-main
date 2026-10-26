@@ -1,6 +1,10 @@
 // Issue #4114 Wave 4 — open a view-once photo or video exactly once, and sweep
 // opened, expired, unsent and orphaned chat attachments out of storage.
 //
+// Wave 7 (D18): the sweep also deletes the full file of an ordinary chat video
+// 90 days after it was sent (reason "video_retention"), keeps its thumbnail, and
+// marks the message media_expired_at instead of view_once_purged_at.
+//
 // Two callers:
 //   * a signed-in recipient: POST { message_id } → one 60-second signed URL,
 //     after recording their view. A second open (any device) is refused with
@@ -31,12 +35,21 @@ const LOWER_UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
 export const CANONICAL_ATTACHMENT_PATH = new RegExp(
   `^(${LOWER_UUID})/(once/)?${LOWER_UUID}\\.[a-z0-9]{1,8}$`,
 );
+/** Wave 7: a thumbnail, <conversation_id>/<uuid>_thumb.jpg (never under once/). */
+export const CANONICAL_THUMB_PATH = new RegExp(`^(${LOWER_UUID})/${LOWER_UUID}_thumb\\.jpg$`);
+/** Sweep reasons that mark a message media_expired_at rather than view_once_purged_at. */
+export const MEDIA_EXPIRY_REASONS: ReadonlySet<string> = new Set(["video_retention"]);
 /** Returned by signUrl when the object's uploader is not the expected sender. */
 export const OBJECT_NOT_OWNED = "object_not_owned";
 
 export interface AttachmentPathParts {
   conversationId: string;
   once: boolean;
+}
+
+/** True for a name the sweep may delete: a canonical attachment or thumbnail. */
+export function isSweepablePath(path: unknown): path is string {
+  return typeof path === "string" && (CANONICAL_ATTACHMENT_PATH.test(path) || CANONICAL_THUMB_PATH.test(path));
 }
 
 /** The parts of a canonical attachment path, or null when the path is anything else. */
@@ -86,6 +99,12 @@ export interface OpenViewOnceDeps {
   listDue(limit: number): Promise<Result<DueRow[]>>;
   removeObjects(paths: string[]): Promise<{ error: string | null }>;
   markPurged(messageIds: string[]): Promise<{ error: string | null }>;
+  /**
+   * Wave 7: stamps media_expired_at on videos whose full file was deleted.
+   * Optional only for older test fakes; without it a retention row fails the
+   * sweep closed (after the delete, before anything is reported as done).
+   */
+  markExpired?(messageIds: string[]): Promise<{ error: string | null }>;
 }
 
 function json(body: Record<string, unknown>, status = 200): Response {
@@ -115,8 +134,16 @@ export async function sweep(deps: OpenViewOnceDeps): Promise<Response> {
     return json({ error: "sweep_list_failed" }, 500);
   }
   const rows = due.data ?? [];
-  // Only canonical chat attachment paths are ever handed to the deleter.
-  const paths = [...new Set(rows.map((row) => row.storage_path).filter((path) => parseAttachmentPath(path) !== null))];
+  // Only canonical chat attachment (or orphaned thumbnail) paths are ever handed
+  // to the deleter. A retention row is only ever a video's full file: a
+  // thumbnail is never listed for retention and is refused here if it were.
+  const paths = [...new Set(rows.filter((row) =>
+    MEDIA_EXPIRY_REASONS.has(row.reason)
+      ? parseAttachmentPath(row.storage_path)?.once === false
+      : row.reason === "orphan"
+        ? isSweepablePath(row.storage_path)
+        : parseAttachmentPath(row.storage_path) !== null
+  ).map((row) => row.storage_path))];
   for (let index = 0; index < paths.length; index += REMOVE_CHUNK) {
     const removed = await deps.removeObjects(paths.slice(index, index + REMOVE_CHUNK));
     if (removed.error) {
@@ -124,7 +151,11 @@ export async function sweep(deps: OpenViewOnceDeps): Promise<Response> {
       return json({ error: "sweep_remove_failed" }, 500);
     }
   }
-  const messageIds = [...new Set(rows.map((row) => row.message_id).filter((id): id is string => !!id))];
+  const idsFor = (expiry: boolean) => [...new Set(rows
+    .filter((row) => MEDIA_EXPIRY_REASONS.has(row.reason) === expiry && paths.includes(row.storage_path))
+    .map((row) => row.message_id)
+    .filter((id): id is string => !!id))];
+  const messageIds = idsFor(false);
   if (messageIds.length > 0) {
     const marked = await deps.markPurged(messageIds);
     if (marked.error) {
@@ -132,9 +163,17 @@ export async function sweep(deps: OpenViewOnceDeps): Promise<Response> {
       return json({ error: "sweep_mark_failed" }, 500);
     }
   }
+  const expiredIds = idsFor(true);
+  if (expiredIds.length > 0) {
+    const marked = deps.markExpired ? await deps.markExpired(expiredIds) : { error: "mark_expired_unavailable" };
+    if (marked.error) {
+      console.error("[open-view-once] sweep expiry mark failed", { code: marked.error.slice(0, 80) });
+      return json({ error: "sweep_mark_failed" }, 500);
+    }
+  }
   const byReason: Record<string, number> = {};
   for (const row of rows) byReason[row.reason] = (byReason[row.reason] ?? 0) + 1;
-  return json({ ok: true, removed: paths.length, purged: messageIds.length, by_reason: byReason });
+  return json({ ok: true, removed: paths.length, purged: messageIds.length, expired: expiredIds.length, by_reason: byReason });
 }
 
 export async function openOnce(
