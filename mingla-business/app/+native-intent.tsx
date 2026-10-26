@@ -111,9 +111,8 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "connect-partner-account-management",
   "connect-partner-onboarding",
   "connect-tax-registrations",
-  // [TEST-MOD-APPROVED #3872] Creator, invite, and promoting routes are real
-  // local destinations and must survive owned-link cold starts.
-  "creator",
+  // #3872: invite (join) and promoting routes are real local destinations and
+  // must survive owned-link cold starts. The creator side lives in Explorer.
   "e",
   "event",
   "exp",

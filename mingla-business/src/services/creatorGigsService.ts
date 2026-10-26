@@ -1,22 +1,6 @@
 import { supabase } from "./supabase";
 import { postHogService } from "./postHogService";
 
-export type PublicGig = {
-  id: string;
-  title_public: string;
-  brief_public: string;
-  format_key: string;
-  deliverables: Array<{ platform: string; kind: string; count: number }>;
-  city_name: string;
-  category: string;
-  shoot_window: { start: string; end: string };
-  post_by: string;
-  usage_days: number;
-  budget_band: string;
-  sales_share_bps: number | null;
-  slots_left: number;
-};
-
 export type GigApplicant = {
   interest_id: string;
   creator_id: string;
@@ -84,9 +68,6 @@ export async function fetchCreatorGigsAccess(brandId: string): Promise<boolean> 
 }
 
 export const creatorGigsService = {
-  board: (cityId?: string | null, formatKey?: string | null) => rpc<PublicGig[]>("creator_gig_board", { p_city_id: cityId ?? null, p_format_key: formatKey ?? null }),
-  detail: (gigId: string) => rpc<PublicGig>("creator_gig_detail", { p_gig_id: gigId }),
-  sendInterest: (gigId: string, packageId: string, quotedMinor: number, note?: string) => rpc("gig_interest_send", { p_gig_id: gigId, p_package_id: packageId, p_quoted_minor: quotedMinor, p_note: note ?? null }),
   hostHome: (brandId: string) => rpc<{ gigs: Array<Record<string, unknown>>; contracts: Array<Record<string, unknown>> }>("gig_host_home", { p_brand_id: brandId }),
   saveGig: async (payload: Record<string, unknown>) => {
     const result = await rpc<{ ok: boolean; id?: string; error?: string; reasons?: string[] }>("gig_save", { p_payload: payload });
@@ -101,10 +82,7 @@ export const creatorGigsService = {
   proposeChange: (contractId: string, changes: Record<string, unknown>, reason: string, note?: string) => rpc("gig_change_proposal_save", { p_contract_id: contractId, p_changes: changes, p_reason: reason, p_note: note ?? null }),
   respondToChange: (proposalId: string, accept: boolean) => rpc("gig_change_proposal_respond", { p_proposal_id: proposalId, p_accept: accept }),
   planShoot: (contractId: string, shootAt: string, arrivalNote: string, confirm: boolean) => rpc("gig_shoot_plan_save", { p_contract_id: contractId, p_shoot_at: shootAt, p_arrival_note: arrivalNote, p_confirm: confirm }),
-  saveScript: (contractId: string, body: Record<string, unknown>, source: "ari" | "creator", send: boolean) => rpc("gig_script_save", { p_contract_id: contractId, p_body: body, p_source: source, p_send: send }),
-  submitDelivery: (contractId: string, mediaJobId: string) => rpc("gig_delivery_submit", { p_contract_id: contractId, p_media_job_id: mediaJobId }),
   decideDelivery: (deliveryId: string, decision: "approved" | "fix_requested", categories: string[] = [], note?: string) => rpc("gig_delivery_decide", { p_delivery_id: deliveryId, p_decision: decision, p_fix_categories: categories, p_fix_note: note ?? null }),
-  submitPosts: (contractId: string, posts: Array<{ platform: string; url: string }>) => rpc("gig_posts_submit", { p_contract_id: contractId, p_posts: posts }),
   openDispute: (contractId: string, reason: string, statement: string) => rpc("gig_dispute_open", { p_contract_id: contractId, p_reason: reason, p_statement: statement, p_evidence_media_ids: [] }),
   offerDispute: (disputeId: string, refundBps: number, note?: string) => rpc("gig_dispute_offer", { p_dispute_id: disputeId, p_refund_bps: refundBps, p_note: note ?? null }),
   async respondToDisputeOffer(offerId: string, accept: boolean) {

@@ -18,7 +18,6 @@ const root = process.cwd();
 const read = (relative: string): string => fs.readFileSync(path.join(root, relative), "utf8");
 
 const serviceSource = read("src/services/creatorGigsService.ts");
-const creator = read("app/creator/contract/[contractId].tsx");
 const host = read("app/brand/[id]/creators/contract/[contractId].tsx");
 const applicants = read("app/brand/[id]/creators/[gigId]/interest.tsx");
 const hireSheet = read("src/components/gigs/HireSheet.tsx");
@@ -27,25 +26,18 @@ describe("issue #3872 — Creator gig contract journeys", () => {
   test("both sides resolve structured settlement offers through the guarded Edge boundary", () => {
     expect(serviceSource).toContain('supabase.functions.invoke("gig-dispute-resolve"');
     expect(serviceSource).toContain('offerDispute: (disputeId: string, refundBps: number');
-    expect(creator).toContain("Accept settlement");
-    expect(creator).toContain("Make counteroffer");
     expect(host).toContain("Accept settlement");
     expect(host).toContain("Make counteroffer");
-    expect(creator).toContain("respondToDisputeOffer(openOffer.id, true)");
     expect(host).toContain("respondToDisputeOffer(openOffer.id, false)");
   });
 
   test("pre-lock cancellations use the party-specific reviewed refund branches", () => {
-    expect(creator).toContain('creatorGigsService.refund(contractId, "creator_after_accept")');
     expect(host).toContain('creatorGigsService.refund(contractId, "host_before_accept")');
     expect(host).toContain('creatorGigsService.refund(contractId, "host_after_accept_before_lock")');
-    expect(creator).toContain("provider fees follow the payment provider’s refund rules");
     expect(host).toContain("Provider fees follow the payment provider’s refund rules");
   });
 
   test("the UI labels refund shares from the Host perspective", () => {
-    expect(creator).toContain("% refund to Host");
-    expect(creator).toContain("You receive the remaining contract fee.");
     expect(host).toContain("% refund to you");
     expect(host).toContain("keeps the remainder of the contract fee");
   });
