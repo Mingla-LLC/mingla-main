@@ -301,8 +301,8 @@ BEGIN
       AND (p_visibility IS NULL OR visibility = p_visibility)
       AND (p_lifecycle IS NULL OR lifecycle_bucket = p_lifecycle)
       AND (p_brand_id IS NULL OR brand_id = p_brand_id)
-      AND (p_date_from IS NULL OR master_start_at >= p_date_from)
-      AND (p_date_to IS NULL OR master_start_at <= p_date_to)
+      AND (p_date_from IS NULL OR COALESCE(next_start_at_sort, master_start_at) >= p_date_from)
+      AND (p_date_to IS NULL OR COALESCE(next_start_at_sort, master_start_at) <= p_date_to)
       AND (
         p_search IS NULL OR btrim(p_search) = '' OR
         title      ILIKE '%' || p_search || '%' OR

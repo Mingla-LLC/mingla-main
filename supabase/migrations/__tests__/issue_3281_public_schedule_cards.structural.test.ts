@@ -19,15 +19,24 @@ Deno.test("PR7 migration schedules public view, discover, and admin readers", ()
   assert(text.includes("admin_list_offerings"));
 
   assert(text.includes("COALESCE(next_start_at_sort, master_start_at)"));
+  assert(
+    text.includes(
+      "p_date_from IS NULL OR COALESCE(next_start_at_sort, master_start_at) >= p_date_from",
+    ),
+  );
   assert(text.includes("page AS"));
   // Full schedule helper must not run on the filtered catalog CTE.
-  // Match only the filtered body (non-greedy up to ", page AS") — a file-wide
-  // `filtered AS ([\\s\\S]*issue_3281_event_schedule` false-positives once the
-  // helper appears later in `page AS`.
-  const filteredBody = text.match(/filtered AS \(([\s\S]*?)\)\s*,\s*page AS/);
+  // Bound at `ranked AS` (not `page AS`) — ranked sits between filtered and page.
+  const filteredBody = text.match(/filtered AS \(([\s\S]*?)\)\s*,\s*ranked AS/);
   assert(filteredBody !== null);
   assert(!filteredBody[1].includes("issue_3281_event_schedule"));
+  assert(!/ranked AS \([\s\S]*?issue_3281_event_schedule[\s\S]*?\)\s*,\s*page AS/.test(text));
   assert(/page AS \([\s\S]*issue_3281_event_schedule/.test(text));
+
+  // T-18 parity patch must stay in the migration (fail-fast if DO block is dropped).
+  assert(text.includes("patch_rsvp_schedule"));
+  assert(text.includes("pg_public_rsvp_by_slug"));
+  assert(text.includes("sched.next_start_at"));
 
   assert(text.includes("admin_get_offering"));
   assert(text.includes("cancel_refund_run_status"));
@@ -40,4 +49,19 @@ Deno.test("PR7 migration schedules public view, discover, and admin readers", ()
       .test(text),
   );
   assert(text.includes("FROM PUBLIC, anon, authenticated"));
+});
+
+Deno.test("PR7 #2333 replay drops public views before #2489 re-apply", () => {
+  const workflow = Deno.readTextFileSync(
+    ".github/workflows/issue-2333-online-event-publish.yml",
+  );
+  const dropIdx = workflow.indexOf(
+    "DROP VIEW IF EXISTS public.business_public_events_view",
+  );
+  // Last #2489 path in the replay step must follow the DROP (re-apply, not first-pass).
+  const lastApply = workflow.lastIndexOf(
+    "20270523002489_issue_2489_address_privacy_server_gate.sql",
+  );
+  assert(dropIdx >= 0 && lastApply >= 0 && dropIdx < lastApply);
+  assert(workflow.includes("20271218004073_issue_4073_discover_feed_v2.sql"));
 });
