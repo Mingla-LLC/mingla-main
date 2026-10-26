@@ -113,20 +113,25 @@ Deno.test("#4114 a refresh during a pending send keeps the pending message (and 
   const failedClient = createClientMessageId();
   const failed: Msg = { id: `temp-${failedClient}`, clientId: failedClient, senderId: "me", content: "lost", timestamp: iso(SERVER_NOW - 5_000), isMe: true, failed: true };
   const arrivedAfterSnapshot = confirmed("late", 30_000);
+  // A send from a phone whose clock runs behind: its local time falls INSIDE the
+  // refresh window, where a missing confirmed row would be dropped.
+  const skewedClient = createClientMessageId();
+  const skewedPending: Msg = { id: `temp-${skewedClient}`, clientId: skewedClient, senderId: "me", content: "clock behind", timestamp: iso(SERVER_NOW - 12_000), isMe: true };
 
-  const prev = mergeMessages([], [older, a, deleted, b, failed, pending, arrivedAfterSnapshot]);
+  const prev = mergeMessages([], [older, a, deleted, b, failed, pending, arrivedAfterSnapshot, skewedPending]);
   // The background refresh returns the newest page — written before the send landed.
   const snapshot = [a, { ...b, isRead: true }];
   const list = mergeMessages(prev, snapshot, { snapshot: { complete: false } });
 
   const ids = list.map((m) => m.id);
   assert(ids.includes(pending.id), "pending send must survive the refresh");
+  assert(ids.includes(skewedPending.id), "a pending send inside the refresh window must survive it");
   assert(ids.includes(failed.id), "failed send must survive the refresh (so it can be retried)");
   assert(ids.includes("old-page"), "older loaded pages outside the window are kept");
   assert(ids.includes("late"), "a message newer than the snapshot is kept");
   assert(!ids.includes("deleted-on-server"), "a row the server no longer has inside the window is dropped");
   assertEquals(list.find((m) => m.id === "b")?.isRead, true, "refresh updates rows in place");
-  assertEquals(ids, ["old-page", "a", "b", failed.id, pending.id, "late"], "time order");
+  assertEquals(ids, ["old-page", "a", skewedPending.id, "b", failed.id, pending.id, "late"], "time order");
 });
 
 Deno.test("#4114 a retry with the same client id does not duplicate", () => {
