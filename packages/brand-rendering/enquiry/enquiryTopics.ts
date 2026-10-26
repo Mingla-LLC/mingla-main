@@ -600,12 +600,6 @@ export type EnquirySendOutcome =
 /** Signed-out web can attach only an offering or venue (the server enforces it). */
 export const ANON_CONTEXT_KINDS: ReadonlyArray<EnquiryContextKind> = ["offering", "venue", "none"];
 
-/** "Usually replies within …" — null hides the line. */
-export const replyTimeLabel = (minutes: number | null | undefined): string | null => {
-  if (minutes === null || minutes === undefined || !Number.isFinite(minutes) || minutes <= 0) return null;
-  if (minutes <= 60) return "Usually replies within an hour";
-  const hours = Math.ceil(minutes / 60);
-  if (hours < 24) return `Usually replies within ${hours} hours`;
-  const days = Math.ceil(hours / 24);
-  return days <= 1 ? "Usually replies within a day" : `Usually replies within ${days} days`;
-};
+// "Usually replies within …" lives in its own tiny module so the page foot can
+// use it without pulling this whole builder into a shared chunk.
+export { replyTimeLabel } from "./replyTime";

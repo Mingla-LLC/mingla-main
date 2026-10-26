@@ -19,7 +19,7 @@ import { Check } from "lucide-react-native";
 import type { ResolvedTheme, ThemePalette } from "@mingla/offering-rendering";
 
 import type { EnquiryPhoneFieldArgs, EnquiryPhoneState } from "./BrandMessageSheet";
-import { replyTimeLabel } from "./enquiryTopics";
+import { replyTimeLabel } from "./replyTime";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

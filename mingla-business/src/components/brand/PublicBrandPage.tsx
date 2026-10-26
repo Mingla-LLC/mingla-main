@@ -20,10 +20,7 @@ import {
 } from "@mingla/offering-rendering";
 // #4111 — the page foot and the topic mapping, by DEEP specifier (the sheet
 // itself is loaded lazily inside useBrandMessage).
-import {
-  BrandPageFoot,
-  type BrandPageFootHandle,
-} from "@mingla/brand-rendering/enquiry/BrandPageFoot";
+import type { BrandPageFootHandle } from "@mingla/brand-rendering/enquiry/BrandPageFoot";
 import {
   enquiryOfferingsFromSections,
   enquiryVenueFromSummary,
@@ -66,6 +63,12 @@ import { useStayInLoop } from "../brandContact/useStayInLoop";
 import { ShareModal } from "../ui/ShareModal";
 import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
 import { Toast } from "../ui/Toast";
+
+// #4111 — the page foot sits below the fold; lazy so it never weighs on the
+// shared boot chunk. The ref (focus Email) passes through React.lazy.
+const BrandPageFoot = React.lazy(
+  () => import("@mingla/brand-rendering/enquiry/BrandPageFoot"),
+);
 
 interface PublicBrandPageProps {
   brand: Brand;
@@ -652,6 +655,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         chromeTopOffset={insets.top + 8}
         contentBottomInset={insets.bottom + 24}
         foot={
+          <React.Suspense fallback={null}>
           <BrandPageFoot
             ref={footRef}
             brandName={brand.displayName}
@@ -667,6 +671,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
                 : undefined
             }
           />
+          </React.Suspense>
         }
         callbacks={{
           onClose: handleClose,
