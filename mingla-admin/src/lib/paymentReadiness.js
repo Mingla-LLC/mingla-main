@@ -127,6 +127,27 @@ export function derivePaymentReadiness(row) {
   };
 }
 
+/**
+ * The verdict as one code, '<provider>_<state>' (e.g. "paystack_ready"). The
+ * server's admin_brand_payment_readiness() returns the same code for the
+ * Brands and People boards (migration 20280118004130), so the boards and the
+ * Payments page name a brand the same way.
+ */
+export function readinessCode(verdict) {
+  return verdict ? `${verdict.provider}_${verdict.state}` : null;
+}
+
+/** A server readiness code back to { provider, state }, or null when unknown. */
+export function parseReadinessCode(code) {
+  if (typeof code !== "string") return null;
+  const cut = code.indexOf("_");
+  if (cut < 0) return null;
+  const provider = code.slice(0, cut);
+  const state = code.slice(cut + 1);
+  if (!Object.hasOwn(PROVIDER_LABEL, provider) || !Object.hasOwn(READINESS_LABEL, state)) return null;
+  return { provider, state };
+}
+
 /** Rows with their verdict attached (`readiness`), for lists. */
 export function withReadiness(rows) {
   return (Array.isArray(rows) ? rows : []).map((row) => ({ ...row, readiness: derivePaymentReadiness(row) }));

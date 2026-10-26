@@ -28,6 +28,7 @@ import { VenuesConsolePage } from "./VenuesConsolePage";
 import { ClaimsPage } from "./ClaimsPage";
 import { getBrandsSummary, listBrandsBoard } from "../services/identityReadService";
 import { brandToolFor, feeOverrideLabel, hasFeeOverride, paymentReadiness } from "../lib/peopleSegments";
+import { READINESS_LABEL } from "../lib/paymentReadiness";
 import { formatDate } from "../lib/formatters";
 
 const TOOL_COMPONENTS = { "brand-sites": BrandSitesPage, "business-venues": VenuesConsolePage, claims: ClaimsPage };
@@ -83,8 +84,10 @@ const FILTERS = [
     key: "payments",
     label: "Any payment setup",
     options: [
-      { value: "ready", label: "Ready to get paid" },
-      { value: "needs_bank", label: "Needs a bank" },
+      // #4130 (integration): the Payments page's readiness words (Wave 2a).
+      { value: "ready", label: READINESS_LABEL.ready },
+      { value: "needs_action", label: READINESS_LABEL.needs_action },
+      { value: "no_setup", label: READINESS_LABEL.no_setup },
     ],
   },
   { key: "show", label: "Live brands only", options: [{ value: "all", label: "Include deleted and test" }] },

@@ -5,6 +5,8 @@
 // admin_list_people, admin_list_brands_board, admin_list_offerings_board).
 // This file only names them in plain English.
 
+import { PROVIDER_LABEL, READINESS, READINESS_LABEL, parseReadinessCode } from "./paymentReadiness.js";
+
 /** People tabs, in order. `id` is the address value (#/people?tab=...). */
 export const PEOPLE_TABS = Object.freeze([
   Object.freeze({ id: "explorers", segment: "explorer", label: "Explorers" }),
@@ -63,17 +65,27 @@ export function brandRoleLabel(role) {
   return (typeof role === "string" && Object.hasOwn(ROLE_LABELS, role) && ROLE_LABELS[role]) || "Team member";
 }
 
-// Payment readiness — the server's admin_brand_payment_readiness_w3() decides;
-// this only names it. [TRANSITIONAL] swap for the shared Wave 2a helper's
-// labels at merge — exit when that helper is on main.
-const READINESS = Object.freeze({
-  paystack_ready: Object.freeze({ label: "Paystack ready", short: "Paystack", variant: "success", ready: true }),
-  stripe_ready: Object.freeze({ label: "Stripe ready", short: "Stripe", variant: "success", ready: true }),
-  needs_bank: Object.freeze({ label: "Needs a bank", short: "Needs a bank", variant: "warning", ready: false }),
-});
+// Payment readiness — one owner: Wave 2a's rule (lib/paymentReadiness.js),
+// which the server's admin_brand_payment_readiness() applies for the boards
+// and returns as '<provider>_<state>'. This only names that code, with the
+// Payments page's own words.
+const READINESS_VARIANT = Object.freeze({ ready: "success", needs_action: "warning", no_setup: "default" });
+const PROVIDER_SHORT = Object.freeze({ paystack: "Paystack", stripe: "Stripe" });
 
 export function paymentReadiness(value) {
-  return (typeof value === "string" && Object.hasOwn(READINESS, value) && READINESS[value]) || null;
+  const parsed = parseReadinessCode(value);
+  if (!parsed) return null;
+  const { provider, state } = parsed;
+  const ready = state === READINESS.READY;
+  return {
+    provider,
+    state,
+    ready,
+    variant: READINESS_VARIANT[state],
+    // "Ready · Paystack · NGN", "Needs host action · Stripe · USD".
+    label: `${READINESS_LABEL[state]} · ${PROVIDER_LABEL[provider]}`,
+    short: ready ? PROVIDER_SHORT[provider] : READINESS_LABEL[state],
+  };
 }
 
 /** The best readiness across a host's brands (ready beats not ready). */

@@ -147,6 +147,11 @@ BEGIN
     (v_brand_gone, v_host, 'W3 Deleted Brand', 'w3-gone-' || v_brand_gone, 'USD', now());
   UPDATE public.brands SET stripe_connect_id = 'acct_w3fixture', stripe_charges_enabled = true,
          stripe_payouts_enabled = true WHERE id = v_brand_st;
+  -- #4130 (integration): readiness is Wave 2a's rule, which reads the Stripe
+  -- Connect account row (stripe_connect_accounts), as the Payments page does.
+  INSERT INTO public.stripe_connect_accounts (brand_id, stripe_account_id, charges_enabled,
+    payouts_enabled, country, default_currency)
+  VALUES (v_brand_st, 'acct_w3fixture', true, true, 'US', 'usd');
   INSERT INTO public.brand_paystack_recipients(brand_id, recipient_code, bank_code, account_fingerprint,
                                                account_number_masked, account_name, is_active)
   VALUES (v_brand_ps, 'RCP_w3fixture', '058', 'hmac-sha256:' || repeat('a', 64), '••••1234', 'W3 Host', true);
@@ -267,7 +272,7 @@ BEGIN
   SELECT r INTO v_row FROM jsonb_array_elements(public.admin_list_brands_board('W3 Stripe', false) -> 'rows') r;
   PERFORM pg_temp.w3_assert(v_row ->> 'payment_readiness' = 'stripe_ready', 'C-06 Stripe Connect with payouts means ready');
   SELECT r INTO v_row FROM jsonb_array_elements(public.admin_list_brands_board('W3 No Bank', false) -> 'rows') r;
-  PERFORM pg_temp.w3_assert(v_row ->> 'payment_readiness' = 'needs_bank', 'C-06 no setup needs a bank');
+  PERFORM pg_temp.w3_assert(v_row ->> 'payment_readiness' = 'paystack_no_setup', 'C-06 no setup is not ready (#4130 integration: Wave 2a code)');
   PERFORM pg_temp.w3_assert(
     (public.admin_list_brands_board('W3 Staff Brand', false) ->> 'total')::int = 0,
     'C-06 a staff brand is hidden by default');

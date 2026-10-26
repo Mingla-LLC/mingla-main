@@ -200,16 +200,20 @@ describe("#4130 W3: People words", () => {
     assert.equal(gotAsFarAs({ onboarding_step: 4 }), "Explorer onboarding, step 4");
     assert.equal(gotAsFarAs({ onboarding_step: null }), "Signed in, never started onboarding");
   });
+  // #4130 (integration): readiness codes are Wave 2a's '<provider>_<state>'
+  // (admin_brand_payment_readiness), named with the Payments page's words.
   it("a host's payments: ready beats not ready; Paystack counts as ready", () => {
-    assert.equal(paymentReadiness("paystack_ready").label, "Paystack ready");
-    assert.equal(paymentReadiness("needs_bank").ready, false);
+    assert.equal(paymentReadiness("paystack_ready").label, "Ready · Paystack · NGN");
+    assert.equal(paymentReadiness("paystack_no_setup").ready, false);
+    assert.equal(paymentReadiness("stripe_needs_action").label, "Needs host action · Stripe · USD");
+    assert.equal(paymentReadiness("needs_bank"), null, "the old Wave 3 code is gone");
     assert.equal(paymentReadiness("toString"), null);
-    assert.equal(bestReadiness([{ payment_readiness: "needs_bank" }, { payment_readiness: "paystack_ready" }]).short, "Paystack");
+    assert.equal(bestReadiness([{ payment_readiness: "paystack_no_setup" }, { payment_readiness: "paystack_ready" }]).short, "Paystack");
     assert.equal(bestReadiness([]), null);
     const flat = flattenPersonRow({ brands: [{ name: "Ctrl", role: "brand_owner", payment_readiness: "stripe_ready" }] });
     assert.equal(flat.brand_names, "Ctrl");
     assert.equal(flat.main_role, "Owner");
-    assert.equal(flat.payments_label, "Stripe ready");
+    assert.equal(flat.payments_label, "Ready · Stripe · USD");
   });
 });
 
@@ -273,13 +277,14 @@ describe("#4130 W3: the brand detail asks for columns that exist", () => {
     for (const col of ["lat", "lng", "profile_photo_url"]) assert.match(cols, new RegExp(`[,"]${col},`));
     for (const col of ["latitude", "longitude", "profile_media_url"]) assert.equal(cols.includes(col), false, col);
   });
-  it("payment readiness lives in one swappable server helper", () => {
+  // #4130 (integration): the Wave 3 helper now delegates to Wave 2a's rule.
+  it("payment readiness lives in one server helper, Wave 2a's rule", () => {
     const sql = fs.readFileSync(
-      path.join(REPO, "supabase/migrations/20280113004130_issue_4130_people_brands_offerings.sql"),
+      path.join(REPO, "supabase/migrations/20280118004130_issue_4130_integration.sql"),
       "utf8"
     );
-    assert.match(sql, /CREATE OR REPLACE FUNCTION public\.admin_brand_payment_readiness_w3\(p_brand_id uuid\)/);
-    assert.match(sql, /brand_paystack_recipients r\s+WHERE r\.brand_id = b\.id AND r\.is_active/);
-    assert.match(sql, /stripe_payouts_enabled/);
+    assert.match(sql, /CREATE OR REPLACE FUNCTION public\.admin_brand_payment_readiness_w3\(p_brand_id uuid\)[\s\S]*?SELECT public\.admin_brand_payment_readiness\(p_brand_id\)/);
+    assert.match(sql, /brand_paystack_recipients pr\s+WHERE pr\.brand_id = b\.id AND pr\.is_active/);
+    assert.match(sql, /LEFT JOIN public\.stripe_connect_accounts sca ON sca\.brand_id = b\.id/);
   });
 });
