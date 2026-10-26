@@ -18978,7 +18978,7 @@
       "providerWorkflow": ".github/workflows/issue-2272-web-app-link-landings.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "4a5e55553433be1382fa569b1b90faefdf1f58c86065dccb0a81f85c6499fb2c",
+        "sourceSha256": "d12404da6701e1bcf57af0dce4109e72845942ca935f0bc75e00b6c642c226f0",
         "triggers": [
           "pull_request",
           "push",
@@ -18987,7 +18987,7 @@
         "pathScope": [
           ".github/workflows/issue-2272-web-app-link-landings.yml",
           "app-mobile/app.json",
-          "app-mobile/app/+native-intent.tsx",
+          "app-mobile/app/\\+native-intent.tsx",
           "app-mobile/src/services/boardInviteService.ts",
           "mingla-marketing/app/board/**",
           "mingla-marketing/app/chat/**",
