@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "creator-media-public",
+  "verify_jwt": false,
+  "gateway_reason": "Public profile and Local-review viewers have no required session; the function exposes only a one-hour playback grant after proving the media belongs to a verified public Creator showcase or a published Local review.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [
+      "BUNNY_ACCOUNT_API_KEY",
+      "BUNNY_STREAM_API_KEY",
+      "BUNNY_STREAM_CDN_HOSTNAME",
+      "BUNNY_STREAM_LIBRARY_ID",
+      "CREATOR_BUNNY_ACCOUNT_API_KEY",
+      "CREATOR_BUNNY_STORAGE_CAP_BYTES",
+      "CREATOR_BUNNY_STREAM_API_KEY",
+      "CREATOR_BUNNY_STREAM_CDN_HOSTNAME",
+      "CREATOR_BUNNY_STREAM_LIBRARY_ID",
+      "CREATOR_BUNNY_STREAM_TOKEN_KEY",
+      "CREATOR_BUNNY_STREAM_WEBHOOK_KEY",
+      "CREATOR_BUNNY_TRAFFIC_CAP_BYTES",
+      "SENTRY_DSN",
+      "SENTRY_ENVIRONMENT",
+      "app.qr_token_pepper"
+    ],
+    "required_bundle_fields": {},
+    "required_top_level": []
+  }
+}

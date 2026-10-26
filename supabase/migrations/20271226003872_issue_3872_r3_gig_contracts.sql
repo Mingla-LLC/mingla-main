@@ -402,7 +402,11 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
 DECLARE v_interest public.gig_interest; v_brand uuid;
 BEGIN
   IF p_status NOT IN ('shortlisted','passed') THEN RAISE EXCEPTION 'invalid_interest_status' USING ERRCODE='22023'; END IF;
-  SELECT i,g.brand_id INTO v_interest,v_brand FROM public.gig_interest i JOIN public.gigs g ON g.id=i.gig_id WHERE i.id=p_interest_id FOR UPDATE OF i;
+  SELECT i.* INTO v_interest
+    FROM public.gig_interest i
+   WHERE i.id=p_interest_id
+   FOR UPDATE;
+  SELECT g.brand_id INTO v_brand FROM public.gigs g WHERE g.id=v_interest.gig_id;
   IF NOT FOUND OR NOT public.biz_is_brand_member_for_read(v_brand,auth.uid()) THEN RAISE EXCEPTION 'permission_denied' USING ERRCODE='42501'; END IF;
   UPDATE public.gig_interest SET status=p_status WHERE id=p_interest_id;
   RETURN jsonb_build_object('ok',true,'status',p_status);

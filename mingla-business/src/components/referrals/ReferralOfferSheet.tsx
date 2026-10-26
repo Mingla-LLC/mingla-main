@@ -3,13 +3,13 @@ import {
   Alert,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
   useWindowDimensions,
 } from "react-native";
+import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   accent,
@@ -577,6 +577,7 @@ export const ReferralOfferSheet: React.FC<ReferralOfferSheetProps> = ({
                       return (
                         <Pressable
                           key={`${option.listingKind}:${option.listingId}`}
+                          accessibilityLabel={`Toggle ${option.label}`}
                           onPress={() => toggleListing(option)}
                           style={[styles.listing, checked && styles.selected]}
                           accessibilityRole="checkbox"
@@ -633,6 +634,7 @@ const ChoiceCard: React.FC<{
 }> = ({ title, copy, selected, disabled, onPress }) => (
   <Pressable
     disabled={disabled}
+    accessibilityLabel={`Select ${title}`}
     onPress={onPress}
     accessibilityRole="radio"
     accessibilityState={{ checked: selected, disabled }}

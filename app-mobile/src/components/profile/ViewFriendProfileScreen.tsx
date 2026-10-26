@@ -44,6 +44,8 @@ import { fetchUserLevel } from '../../services/userLevelService';
 import { userLevelKeys } from '../../hooks/queryKeys';
 import * as Haptics from 'expo-haptics';
 import { getCategoryIcon } from '../../utils/categoryUtils';
+import { PublicLocalSection } from './PublicLocalSection';
+import { PublicCreatorSection } from './PublicCreatorSection';
 
 const TIER_LABEL: Record<SubscriptionTier, string> = {
   free: 'Free',
@@ -808,6 +810,9 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
               </View>
             </View>
           )}
+
+          <PublicCreatorSection userId={userId} />
+          <PublicLocalSection userId={userId} />
 
           {isPaired && pairedPill && currentUserId && (
             <View style={styles.pairedSection}>

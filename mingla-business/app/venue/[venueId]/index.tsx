@@ -47,6 +47,7 @@ import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaim
 import { StaySuiteShell } from "../../../src/components/stay/StaySuiteShell";
 import { VenueIdentityBand } from "../../../src/components/venue/VenueIdentityBand";
 import { VenueModulePillRow } from "../../../src/components/venue/VenueModulePillRow";
+import { LocalReviewsManager } from "../../../src/components/venue/LocalReviewsManager";
 import { parseVenueModuleParam } from "../../../src/components/venue/venueModules";
 // #2099 §F3 — EXTENSIONLESS on purpose: Metro resolves `.web` on web and
 // `.native` on iOS/Android, so the correction feature never enters a native
@@ -404,6 +405,12 @@ export default function VenueManagementPage(): React.ReactElement {
           venueId={venueId}
           claimStatus={venue.claimStatus}
         />
+      ) : null}
+
+      {venue.claimStatus === "verified" &&
+      brandId !== null &&
+      venue.placePoolId !== null ? (
+        <LocalReviewsManager brandId={brandId} placePoolId={venue.placePoolId} />
       ) : null}
 
       {!isWideDesktop &&

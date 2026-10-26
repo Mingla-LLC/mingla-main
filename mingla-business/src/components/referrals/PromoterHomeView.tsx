@@ -3,7 +3,6 @@ import {
   Alert,
   RefreshControl,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -21,6 +20,7 @@ import {
 } from "../../constants/designSystem";
 import { formatCurrency } from "../../utils/currency";
 import { fetchPromotingOffers } from "../../services/referralService";
+import { shareBusinessCanonicalFallback } from "../../services/contentShareAdapter";
 import { Button } from "../ui/Button";
 
 export const PromoterHomeView: React.FC = () => {
@@ -78,7 +78,8 @@ export const PromoterHomeView: React.FC = () => {
                   size="sm"
                   label="Share link"
                   onPress={() =>
-                    void Share.share({
+                    void shareBusinessCanonicalFallback({
+                      title: offer.brandName,
                       message: `Take a look at ${offer.brandName}: ${url}`,
                       url,
                     })

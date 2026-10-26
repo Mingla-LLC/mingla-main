@@ -1390,6 +1390,91 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'become-a-mingla-creator',
+    episode: 25,
+    title: 'Become a Mingla Creator and complete paid gigs',
+    blurb:
+      'Verify your Creator profile, choose paid briefs, agree the work, publish it and get paid safely through Mingla.',
+    duration: '0:00',
+    durationIso: 'PT0S',
+    chapter: 'selling',
+    intents: ['Get set up', 'Get paid', 'Market to customers'],
+    surfaces: ['Web', 'iOS', 'Android'],
+    bambooEntryId: null,
+    uploadedAt: '2026-10-26',
+    hasCaptions: false,
+    steps: [
+      {
+        title: 'Set up Creator mode in Mingla Host',
+        body:
+          'Add your public name, city, niches, social proof, agreement, payout details and showcase. Verification protects both sides; private contact details and handles stay hidden before a funded offer is accepted.',
+        links: [{ label: 'Mingla Host', href: 'https://host.usemingla.com' }],
+      },
+      {
+        title: 'Browse briefs and send interest',
+        body:
+          'Filter the Creator Hub by city, format, budget, date or saved gigs. A public brief shows enough to decide without revealing the host. Send a package and quote; this does not charge anyone.',
+      },
+      {
+        title: 'Accept only the exact funded terms',
+        body:
+          'The offer names the work, fee, booking fee, usage period, shoot window and post deadline. You or the host can propose structured changes before capture. Once funded, the creator fee cannot be changed quietly.',
+      },
+      {
+        title: 'Use the shared workspace from shoot to posts',
+        body:
+          'Confirm the shoot plan, write or review the script, upload the video, handle the included fix round and submit public post links. Automatic deadlines and reminders are visible in the same timeline.',
+      },
+      {
+        title: 'Get released or open a dispute',
+        body:
+          'Mingla verifies the required posts before releasing the creator fee. Either side can open a structured dispute, offer a partial outcome and see the final decision. Rate one another only after the contract completes.',
+      },
+    ],
+  },
+  {
+    slug: 'mingla-local-independent-reviews',
+    episode: 26,
+    title: 'Join Mingla Local and publish independent reviews',
+    blurb:
+      'Apply for a city seat, choose an eligible place independently, submit one honest monthly review and track its payout.',
+    duration: '0:00',
+    durationIso: 'PT0S',
+    chapter: 'selling',
+    intents: ['Get set up', 'Get paid', 'Run a venue'],
+    surfaces: ['Web', 'iOS', 'Android'],
+    bambooEntryId: null,
+    uploadedAt: '2026-10-26',
+    hasCaptions: false,
+    steps: [
+      {
+        title: 'Apply only where applications are open',
+        body:
+          'Choose an open city, share public work samples and explain the local perspective you can contribute. The application status stays visible; applying does not reserve a paid action or charge a place.',
+      },
+      {
+        title: 'Choose independently and disclose conflicts',
+        body:
+          'Each monthly seat can choose one eligible place. Recent coverage, paid relationships and personal ties can block a selection. The place cannot buy, choose or approve the review.',
+      },
+      {
+        title: 'Visit as a customer and submit the real experience',
+        body:
+          'Pay normally, record the actual visit date, write a useful 300–2,000 character review, upload one short review video and link the public social post with the required Mingla Local disclosure.',
+      },
+      {
+        title: 'Track review, publication and payment',
+        body:
+          'Independent review can approve the submission or request changes. Published reviews appear on the Local’s profile and the place card. Approved months pay through the verified provider account; provider transfer fees are absorbed by the recipient.',
+      },
+      {
+        title: 'Places may reply once',
+        body:
+          'A verified claimed place can post one public reply from Mingla Host and edit it for 24 hours. It cannot remove, rewrite or pre-approve the Local review.',
+      },
+    ],
+  },
 
 ]
 

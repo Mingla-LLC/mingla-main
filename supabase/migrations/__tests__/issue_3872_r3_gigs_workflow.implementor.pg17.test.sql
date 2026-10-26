@@ -24,8 +24,16 @@ BEGIN
     RAISE EXCEPTION 'workflow authority leaked';
   END IF;
   IF NOT has_function_privilege('authenticated','public.creator_gig_board(uuid,text)','execute')
-     OR NOT has_function_privilege('authenticated','public.gig_delivery_decide(uuid,text,text[],text)','execute') THEN
+     OR NOT has_function_privilege('authenticated','public.gig_delivery_decide(uuid,text,text[],text)','execute')
+     OR NOT has_function_privilege('authenticated','public.gig_creator_home()','execute')
+     OR NOT has_function_privilege('authenticated','public.gig_change_proposal_save(uuid,jsonb,text,text)','execute')
+     OR NOT has_function_privilege('authenticated','public.gig_change_proposal_respond(uuid,boolean)','execute') THEN
     RAISE EXCEPTION 'expected creator or host workflow RPC missing';
+  END IF;
+  IF NOT has_function_privilege('authenticated','public.brand_creator_roster_list(uuid)','execute')
+     OR NOT has_function_privilege('authenticated','public.brand_creator_roster_link_invite(uuid,uuid)','execute')
+     OR has_function_privilege('anon','public.brand_creator_roster_list(uuid)','execute') THEN
+    RAISE EXCEPTION 'creator roster list/invite authority missing';
   END IF;
 
   SELECT pg_get_functiondef('public.gig_transition(uuid,text,text,jsonb)'::regprocedure) INTO v_def;
@@ -37,6 +45,11 @@ BEGIN
   IF position('source_transaction' in pg_get_functiondef('public.gig_release_record(uuid,text)'::regprocedure))>0 THEN
     RAISE EXCEPTION 'provider release details must stay in the edge worker';
   END IF;
+  IF position('fee_minor' in pg_get_functiondef('public.gig_change_proposal_save(uuid,jsonb,text,text)'::regprocedure))=0
+     OR position('p_changes ? ''fee_minor''' in pg_get_functiondef('public.gig_change_proposal_save(uuid,jsonb,text,text)'::regprocedure))=0
+     OR position('UPDATE public.gig_holds SET terms_version' in pg_get_functiondef('public.gig_change_proposal_respond(uuid,boolean)'::regprocedure))=0 THEN
+    RAISE EXCEPTION 'safe structured terms-change workflow missing';
+  END IF;
 
   IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='issue_3872_terms_immutable' AND NOT tgisinternal)
      OR NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='issue_3872_scripts_immutable' AND NOT tgisinternal) THEN
@@ -45,6 +58,21 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='gig_delivery_fix_values')
      OR NOT EXISTS(SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='gig_contracts_active_uq') THEN
     RAISE EXCEPTION 'fix categories or one-active-contract invariant missing';
+  END IF;
+  IF (SELECT count(*) FROM public.notification_categories WHERE key IN (
+      'business.gig.interest','business.gig.accepted','business.gig.declined_refunded',
+      'business.gig.script_ready','business.gig.video_ready','business.gig.posts_live',
+      'business.gig.auto_approved','business.gig.dispute','business.gig.rate',
+      'creator.gig.match','creator.gig.offer','creator.gig.offer_expiring',
+      'creator.gig.script_locked','creator.gig.fix_requested','creator.gig.post_reminder',
+      'creator.gig.posts_failed','creator.gig.released','creator.gig.dispute',
+      'creator.gig.rate','creator.verify.state'))<>20 THEN
+    RAISE EXCEPTION 'creator gig notification registry incomplete';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='issue_3872_gig_interest_notice_trigger' AND NOT tgisinternal)
+     OR NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='issue_3872_gig_event_notice_trigger' AND NOT tgisinternal)
+     OR has_function_privilege('authenticated','public.gig_notification_tick(timestamptz)','execute') THEN
+    RAISE EXCEPTION 'creator gig notification authority incomplete or leaked';
   END IF;
 END;
 $test$;

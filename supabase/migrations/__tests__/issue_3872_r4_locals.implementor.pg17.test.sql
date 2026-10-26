@@ -18,6 +18,20 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='public.local_months'::regclass AND contype='f' AND pg_get_constraintdef(oid) LIKE '%payee_share_id%payee_shares%') THEN RAISE EXCEPTION 'Local payout ledger foreign key missing'; END IF;
   SELECT pg_get_functiondef('public.admin_local_queue()'::regprocedure) INTO v_def;
   IF position('''cities''' in v_def)=0 THEN RAISE EXCEPTION 'Admin city-program creation data missing'; END IF;
+  IF NOT has_function_privilege('authenticated','public.local_landing()','execute') OR NOT has_function_privilege('authenticated','public.local_place_candidates(text)','execute') THEN RAISE EXCEPTION 'Local Explorer entry RPCs missing'; END IF;
+  SELECT pg_get_functiondef('public.local_place_candidates(text)'::regprocedure) INTO v_def;
+  IF position('12 months' in v_def)=0 OR position('180 days' in v_def)=0 OR position('eligible' in v_def)=0 OR position('reason' in v_def)=0 THEN RAISE EXCEPTION 'Local place picker eligibility reasons incomplete'; END IF;
+  IF NOT has_function_privilege('authenticated','public.brand_place_local_reviews(uuid,uuid)','execute')
+     OR has_function_privilege('anon','public.brand_place_local_reviews(uuid,uuid)','execute') THEN RAISE EXCEPTION 'claimed-place Local reply read authority missing'; END IF;
+  SELECT pg_get_functiondef('public.local_place_reply(uuid,uuid,text)'::regprocedure) INTO v_def;
+  IF position('24 hours' in v_def)=0 OR position('claim_status' in v_def)=0 THEN RAISE EXCEPTION 'place reply verification or edit window missing'; END IF;
+  IF (SELECT count(*) FROM public.notification_categories WHERE key IN (
+      'consumer.local.application_update','consumer.local.pick_open','consumer.local.pick_reminder',
+      'consumer.local.submit_reminder','consumer.local.changes_requested','consumer.local.published',
+      'consumer.local.paid','business.local.review_posted'))<>8 THEN RAISE EXCEPTION 'Local notification registry incomplete'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='issue_3872_local_application_notice_trigger' AND NOT tgisinternal)
+     OR NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='issue_3872_local_month_notice_trigger' AND NOT tgisinternal)
+     OR has_function_privilege('authenticated','public.local_timer_tick(timestamptz)','execute') THEN RAISE EXCEPTION 'Local notification authority incomplete or leaked'; END IF;
 END;
 $test$;
 ROLLBACK;

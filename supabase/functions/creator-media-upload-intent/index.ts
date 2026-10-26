@@ -14,6 +14,7 @@ import {
   readCreatorMediaCapacity,
 } from "../_shared/creatorMedia.ts";
 import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
+import { resolveAlertRecipientValue } from "../_shared/secretBundle.ts";
 
 type Purpose = "showcase" | "delivery" | "local_review" | "dispute_evidence";
 type OwnerKind = "creator" | "local";
@@ -253,9 +254,18 @@ export function createCreatorMediaUploadIntentHandler(deps: CreatorMediaDeps) {
   };
 }
 
-const alertRecipients = () =>
-  (Deno.env.get("STRIPE_DISPUTE_ALERT_EMAILS") ?? "seth@usemingla.com")
-    .split(",").map((value) => value.trim()).filter(Boolean);
+const alertRecipients = () => {
+  const value = resolveAlertRecipientValue(
+    "stripe_disputes",
+    "STRIPE_DISPUTE_ALERT_EMAILS",
+  );
+  if (Array.isArray(value)) {
+    const emails = value.map((item) => String(item).trim()).filter(Boolean);
+    if (emails.length > 0) return emails;
+  }
+  return String(value ?? "seth@usemingla.com")
+    .split(",").map((item) => item.trim()).filter(Boolean);
+};
 
 if (import.meta.main) {
   const supabase = serviceClient();

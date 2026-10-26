@@ -4,6 +4,7 @@
 
 import {
   BUNNY_TIMEOUTS_MS,
+  bunnyDeleteVideo,
   fetchWithTimeout,
   mapBunnyStatusFromApiVideo,
   sha256Hex,
@@ -368,20 +369,10 @@ export async function deleteCreatorVideo(
   if (config.libraryId.length === 0 || config.apiKey.length === 0) {
     return { ok: false, reason: "provider_not_configured" };
   }
-  let providerResponse: Response;
-  try {
-    providerResponse = await fetchWithTimeout(
-      `${VIDEO_HOST}/library/${config.libraryId}/videos/${
-        encodeURIComponent(videoId)
-      }`,
-      { method: "DELETE", headers: { AccessKey: config.apiKey } },
-      BUNNY_TIMEOUTS_MS.delete,
-      fetchImpl,
-    );
-  } catch {
-    return { ok: false, reason: "provider_delete_unreadable" };
-  }
-  return providerResponse.ok || providerResponse.status === 404
-    ? { ok: true }
-    : { ok: false, reason: `provider_delete_${providerResponse.status}` };
+  return bunnyDeleteVideo(videoId, {
+    libraryId: config.libraryId,
+    apiKey: config.apiKey,
+    timeoutMs: BUNNY_TIMEOUTS_MS.delete,
+    fetchImpl,
+  });
 }

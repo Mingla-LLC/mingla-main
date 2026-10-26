@@ -20,7 +20,7 @@ const STEPS: Array<{ key: Step; title: string; outcome: string }> = [
   { key: "handles", title: "Prove one social account", outcome: "A short code in your bio confirms the account is yours." },
   { key: "packages", title: "Set your packages", outcome: "Price the Mingla formats you want to make." },
   { key: "showcase", title: "Add a showcase", outcome: "Hosts see a processed sample before they hire you." },
-  { key: "payout", title: "Choose where you are paid", outcome: "Connect Stripe or a verified Paystack bank recipient." },
+  { key: "payout", title: "Choose where you are paid", outcome: "Connect a supported payout account or verify your bank details." },
   { key: "agreement", title: "Review the creator agreement", outcome: "Sign the approved version before taking work." },
 ];
 
@@ -89,7 +89,7 @@ export default function CreatorSetupScreen(): React.ReactElement {
           {STEPS.map((item, index) => {
             const done = !missingFor(item.key, status);
             const selected = item.key === step;
-            return <Pressable key={item.key} onPress={() => setStep(item.key)} style={[styles.stepChip, selected && styles.stepChipSelected]} accessibilityRole="button">
+            return <Pressable key={item.key} accessibilityLabel={`Open setup step ${item.title}`} onPress={() => setStep(item.key)} style={[styles.stepChip, selected && styles.stepChipSelected]} accessibilityRole="button">
               <Text style={[styles.stepNumber, done && styles.stepDone]}>{done ? "✓" : index + 1}</Text>
               <Text style={[styles.stepLabel, selected && styles.stepLabelSelected]}>{item.title}</Text>
             </Pressable>;
@@ -106,13 +106,13 @@ export default function CreatorSetupScreen(): React.ReactElement {
             <Input value={dob} onChangeText={setDob} placeholder="Date of birth — YYYY-MM-DD" accessibilityLabel="Date of birth" />
             <Input value={languages} onChangeText={setLanguages} placeholder="Languages, separated by commas" accessibilityLabel="Languages" />
             <Text style={styles.fieldLabel}>Pick up to five niches</Text>
-            <View style={styles.choiceWrap}>{CREATOR_NICHES.map((item) => <Pressable key={item} onPress={() => setNiches((value) => value.includes(item) ? value.filter((x) => x !== item) : value.length < 5 ? [...value, item] : value)} style={[styles.choice, niches.includes(item) && styles.choiceSelected]}><Text style={styles.choiceText}>{item}</Text></Pressable>)}</View>
+            <View style={styles.choiceWrap}>{CREATOR_NICHES.map((item) => <Pressable key={item} accessibilityLabel={`Toggle ${item} niche`} onPress={() => setNiches((value) => value.includes(item) ? value.filter((x) => x !== item) : value.length < 5 ? [...value, item] : value)} style={[styles.choice, niches.includes(item) && styles.choiceSelected]}><Text style={styles.choiceText}>{item}</Text></Pressable>)}</View>
             <Button fullWidth loading={busy} label="Save profile" onPress={() => void run(() => creatorProgramService.saveProfile({ displayName, bio, dateOfBirth: dob, niches, languages: languages.split(",").map((x) => x.trim()).filter(Boolean), usageAdsOptIn: false }), "Your creator profile is saved.")} disabled={displayName.trim().length < 2 || !/^\d{4}-\d{2}-\d{2}$/.test(dob)} />
           </View>}
 
           {step === "handles" && <View style={styles.form}>
             <Text style={styles.fieldLabel}>Platform</Text>
-            <View style={styles.choiceWrap}>{["instagram","tiktok","youtube","x","snapchat"].map((item) => <Pressable key={item} onPress={() => setPlatform(item)} style={[styles.choice, platform === item && styles.choiceSelected]}><Text style={styles.choiceText}>{item}</Text></Pressable>)}</View>
+            <View style={styles.choiceWrap}>{["instagram","tiktok","youtube","x","snapchat"].map((item) => <Pressable key={item} accessibilityLabel={`Select ${item} account`} onPress={() => setPlatform(item)} style={[styles.choice, platform === item && styles.choiceSelected]}><Text style={styles.choiceText}>{item}</Text></Pressable>)}</View>
             <Input value={handle} onChangeText={setHandle} placeholder="Handle without @" accessibilityLabel="Social handle" />
             {verificationCode && <View style={styles.codeBox}><Text style={styles.code}>{verificationCode}</Text><Text style={styles.codeHelp}>Put this exact code in your public bio, then come back and check it.</Text></View>}
             <Button fullWidth loading={busy} label={verificationCode ? "Save a new code" : "Get verification code"} onPress={() => void run(async () => { const saved = await creatorProgramService.saveHandle({ platform, handle }); setVerificationCode(saved.verify_code); setHandleId(saved.id); }, "Your code is ready for your public bio.")} disabled={handle.trim().length < 1} />
@@ -121,7 +121,7 @@ export default function CreatorSetupScreen(): React.ReactElement {
 
           {step === "packages" && <View style={styles.form}>
             <Text style={styles.fieldLabel}>Format</Text>
-            {CREATOR_FORMATS.map((item) => <Pressable key={item.key} onPress={() => setFormatKey(item.key)} style={[styles.formatCard, formatKey === item.key && styles.formatCardSelected]}><Text style={styles.formatTitle}>{item.name}</Text><Text style={styles.formatHint}>Set your own price and turnaround.</Text></Pressable>)}
+            {CREATOR_FORMATS.map((item) => <Pressable key={item.key} accessibilityLabel={`Select ${item.name} format`} onPress={() => setFormatKey(item.key)} style={[styles.formatCard, formatKey === item.key && styles.formatCardSelected]}><Text style={styles.formatTitle}>{item.name}</Text><Text style={styles.formatHint}>Set your own price and turnaround.</Text></Pressable>)}
             <Input value={price} onChangeText={setPrice} placeholder="Price in minor units (for example 50000)" variant="number" accessibilityLabel="Package price" />
             <Input value={currency} onChangeText={(value) => setCurrency(value.toUpperCase())} placeholder="Currency, for example NGN" accessibilityLabel="Currency" />
             <Input value={turnaround} onChangeText={setTurnaround} placeholder="Turnaround days" variant="number" accessibilityLabel="Turnaround days" />
@@ -129,7 +129,7 @@ export default function CreatorSetupScreen(): React.ReactElement {
           </View>}
 
           {step === "showcase" && <View style={styles.form}><Text style={styles.info}>Upload one vertical video up to 90 seconds and 150 MB. Mingla processes a private review copy; the original is not kept.</Text><Button fullWidth label="Choose showcase video" onPress={() => router.push("/creator/setup/showcase" as never)} /></View>}
-          {step === "payout" && <View style={styles.form}><Text style={styles.info}>Connect Stripe where supported, or verify a Paystack bank recipient. You are paid to your provider account—Mingla does not create a wallet balance.</Text><Button fullWidth label="Set up payouts" onPress={() => router.push("/partner/earnings" as never)} /></View>}
+          {step === "payout" && <View style={styles.form}><Text style={styles.info}>Connect a supported payout account or verify your bank details with our payment partner. Mingla sends earnings to that account and does not hold a wallet balance for you.</Text><Button fullWidth label="Set up payouts" onPress={() => router.push("/partner/earnings" as never)} /></View>}
           {step === "agreement" && <View style={styles.form}><Text style={styles.info}>{agreementVersion ? `Approved agreement version: ${agreementVersion}` : "The agreement is waiting for Seth’s approved legal version. The screen is built, but signing stays safely disabled until that version is configured."}</Text><Button fullWidth loading={busy} label="Sign creator agreement" disabled={!agreementVersion} onPress={() => void run(() => creatorProgramService.signAgreement(agreementVersion), "Your agreement signature is recorded.")} /></View>}
         </GlassCard>
       </ScrollView>

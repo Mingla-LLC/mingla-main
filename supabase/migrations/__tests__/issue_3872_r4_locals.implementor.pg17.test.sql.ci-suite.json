@@ -1,6 +1,9 @@
 {
-  "suite": "migrations",
-  "issue": 3872,
-  "owner": "implementor",
-  "profile": "psql-pg17-post-replay"
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3872_r4_locals.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3872-r4-01-locals",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "postgres", "reset": "suite-owned" }
 }

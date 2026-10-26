@@ -1,8 +1,8 @@
 {
-  "schema_version": 1,
+  "schemaVersion": 1,
+  "kind": "suite",
   "path": "supabase/functions/gig-timers/issue_3872_gig_timers.implementor.test.ts",
-  "runner": "deno",
-  "command": ["deno", "test", "supabase/functions/gig-timers/issue_3872_gig_timers.implementor.test.ts"],
-  "timeout_seconds": 60,
-  "owner": "#3872"
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3872-r3-10-gig-timers",
+  "profile": "deno-2-unit"
 }

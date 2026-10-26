@@ -36,11 +36,12 @@ Deno.test(
   },
 );
 
-Deno.test("#3872 R2 Ari registry uses the canonical referral writers", () => {
+Deno.test("#3872 R2/R3 Ari registry uses canonical referral and script operations", () => {
   const names = [
     "list_referral_offers",
     "create_referral_offer",
     "invite_promoters",
+    "draft_gig_script",
   ] as const;
   for (const name of names) {
     assert(
@@ -57,6 +58,7 @@ Deno.test("#3872 R2 Ari registry uses the canonical referral writers", () => {
     });
   }
   assert(DOMAIN_READ_ONLY.has("list_referral_offers"));
+  assert(DOMAIN_READ_ONLY.has("draft_gig_script"));
   assert(!DOMAIN_READ_ONLY.has("create_referral_offer"));
   assert(!DOMAIN_READ_ONLY.has("invite_promoters"));
 });

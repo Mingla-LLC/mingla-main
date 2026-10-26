@@ -57,6 +57,9 @@ import { LEGAL_URLS } from "../constants/urls";
 import { useTranslation } from 'react-i18next';
 import { useRouter } from "expo-router";
 import { PurchasesCard } from './profile/PurchasesCard';
+import { CreatorProgramsSection } from './profile/CreatorProgramsSection';
+import { PublicCreatorSection } from './profile/PublicCreatorSection';
+import { PublicLocalSection } from './profile/PublicLocalSection';
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -601,6 +604,16 @@ function ProfilePage({
           {/* #3682 Wave 2.6 — Brands you follow (before Account). */}
           <GlassCard variant="base">
             <BrandsYouFollowSection />
+          </GlassCard>
+
+          {user?.id ? <PublicCreatorSection userId={user.id} /> : null}
+          {user?.id ? <PublicLocalSection userId={user.id} /> : null}
+
+          <GlassCard variant="base">
+            <CreatorProgramsSection
+              onOpenCreator={() => router.push('/creator' as never)}
+              onOpenLocal={() => router.push('/local' as never)}
+            />
           </GlassCard>
 
           {/* 5. Account card */}

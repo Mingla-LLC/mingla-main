@@ -56,14 +56,14 @@ export function buildReferralInviteEmail(
   input: InviteContext & { acceptUrl: string; displayName: string },
 ) {
   const name = escapeHtml(input.displayName || "there");
-  const brand = escapeHtml(input.brandName);
+  const brandHtml = escapeHtml(input.brandName);
   const offer = escapeHtml(input.offerName);
   const reward = escapeHtml(input.rewardLine);
   const url = escapeHtml(input.acceptUrl);
   return {
     subject: `${input.brandName} invited you to earn with Mingla`,
     html:
-      `<p>Hi ${name},</p><p><strong>${brand}</strong> invited you to <strong>${offer}</strong>.</p><p>${reward}</p><p><a href="${url}">See and accept your invite</a></p><p>This private link expires in 14 days.</p>`,
+      `<p>Hi ${name},</p><p><strong>${brandHtml}</strong> invited you to <strong>${offer}</strong>.</p><p>${reward}</p><p><a href="${url}">See and accept your invite</a></p><p>This private link expires in 14 days.</p>`,
   };
 }
 
@@ -204,6 +204,7 @@ if (import.meta.main) {
     send: async ({ to, subject, html }) => {
       const key = Deno.env.get("RESEND_API_KEY") ?? "";
       if (!key) return { ok: false, error: "provider_unavailable" };
+      // no-attachment: referral invitations are secure link-only transactional emails.
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {

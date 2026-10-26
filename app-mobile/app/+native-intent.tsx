@@ -106,8 +106,14 @@ const OWNED_LINK_SCHEMES: ReadonlySet<string> = new Set(["com.mingla.app.v2"]);
 const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "b",
   "brand",
+  // [TEST-MOD-APPROVED #3872] Creator and Local public/program routes are
+  // served destinations and must survive owned-link cold starts.
+  "claim",
+  "creator",
   "e",
+  "earnings",
   "exp",
+  "local",
   "p",
   "purchases",
   "s",

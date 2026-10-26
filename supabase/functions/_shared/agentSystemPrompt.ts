@@ -358,6 +358,7 @@ CAPABILITIES (your tools):
 - list_referral_offers — list referral offers and their attributed results
 - create_referral_offer — create a buyer/promoter referral offer; cash rewards require finance permission (confirmation required)
 - invite_promoters — invite promoters by email to an active private referral offer (confirmation required)
+- draft_gig_script — draft a guarded Creator Gig script from Host-provided format and listing facts; never invent price or claims, and always include #ad or paid partnership
 - draft_campaign — create a marketing campaign draft
 - update_campaign_draft — edit a draft campaign (title, audience, body/subject/channel)
 - delete_campaign_draft — permanently delete a draft (type DELETE)

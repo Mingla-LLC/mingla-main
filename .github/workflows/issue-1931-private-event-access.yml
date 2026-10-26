@@ -431,6 +431,21 @@ jobs:
               # skipped #3872 schema and operations migrations above.
               # Matched by EXACT filename; the unfiltered replay applies it.
               *20271217003872_issue_3872_schedule_json_null.sql) continue ;;
+              # #3872 referral, Creator, and Local program chain — SKIPPED because
+              # this deliberately filtered pre-#1931 lane omits brand_discounts,
+              # referral foundations, and related public checkout identities
+              # these migrations read. Each is matched by exact filename; the
+              # canonical full replay applies the complete chain in order.
+              *20271219003872_issue_3872_r2_referrals_foundation.sql) continue ;;
+              *20271220003872_issue_3872_r2_attribution_resolution.sql) continue ;;
+              *20271221003872_issue_3872_r2_payee_reversal_and_payout.sql) continue ;;
+              *20271222003872_issue_3872_r2_host_referrals.sql) continue ;;
+              *20271223003872_issue_3872_r2_buyer_referrals.sql) continue ;;
+              *20271224003872_issue_3872_r3_foundation.sql) continue ;;
+              *20271225003872_issue_3872_r3_creator_identity.sql) continue ;;
+              *20271226003872_issue_3872_r3_gig_contracts.sql) continue ;;
+              *20271227003872_issue_3872_r3_workflow.sql) continue ;;
+              *20271228003872_issue_3872_r4_locals.sql) continue ;;
               # #4073 Discover V2 — SKIPPED because its public feed re-emits
               # readers that retain the #1931 and #2489 privacy helpers this
               # deliberately filtered lane omits. The unfiltered canonical

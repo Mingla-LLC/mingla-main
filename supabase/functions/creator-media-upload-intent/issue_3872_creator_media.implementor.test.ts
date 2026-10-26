@@ -4,6 +4,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   creatorPlaybackUrl,
+  deleteCreatorVideo,
   evaluateCreatorMediaCapacity,
 } from "../_shared/creatorMedia.ts";
 import { selectCreatorMediaReap } from "../creator-media-reaper/index.ts";
@@ -297,4 +298,39 @@ Deno.test("#3872 creator media reaper selects abandoned and retention-expired jo
     "old-upload",
     "expired",
   ]);
+});
+
+Deno.test("#3872 creator cleanup uses the isolated library through the one Bunny delete transport", async () => {
+  const calls: Array<
+    { url: string; method: string; accessKey: string | null }
+  > = [];
+  const fetchImpl = ((input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({
+      url: String(input),
+      method: init?.method ?? "GET",
+      accessKey: new Headers(init?.headers).get("AccessKey"),
+    });
+    return Promise.resolve(new Response(null, { status: 204 }));
+  }) as typeof fetch;
+  const result = await deleteCreatorVideo(
+    "00000000-3872-4000-8000-000000000099",
+    {
+      libraryId: "creator-3872",
+      apiKey: "creator-key",
+      accountApiKey: "account",
+      cdnHostname: "creator.example.test",
+      tokenKey: "token-secret",
+      webhookKey: "webhook-secret",
+      storageCapBytes: 100,
+      trafficCapBytes: 100,
+    },
+    fetchImpl,
+  );
+  assertEquals(result, { ok: true });
+  assertEquals(calls, [{
+    url:
+      "https://video.bunnycdn.com/library/creator-3872/videos/00000000-3872-4000-8000-000000000099",
+    method: "DELETE",
+    accessKey: "creator-key",
+  }]);
 });

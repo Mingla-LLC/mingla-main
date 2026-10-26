@@ -149,6 +149,22 @@ BEGIN
 END;
 $fn$;
 
+CREATE OR REPLACE FUNCTION public.local_landing() RETURNS jsonb
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path=public,pg_temp AS $fn$
+  SELECT jsonb_build_object(
+    'enabled',coalesce((SELECT is_enabled FROM public.feature_flags WHERE flag_key='mingla_locals_enabled'),false),
+    'programs',coalesce((SELECT jsonb_agg(jsonb_build_object('city_id',cp.city_id,'city',c.name,'seats',cp.seats,'monthly_usd_minor',cp.monthly_usd_minor) ORDER BY c.name)
+      FROM public.local_city_programs cp JOIN public.seeding_cities c ON c.id=cp.city_id
+      WHERE cp.is_open AND EXISTS(SELECT 1 FROM public.feature_flags f WHERE f.flag_key='mingla_locals_enabled' AND f.is_enabled)),'[]'::jsonb),
+    'applications',coalesce((SELECT jsonb_agg(jsonb_build_object('id',a.id,'city_id',a.city_id,'city',c.name,'status',a.status,'created_at',a.created_at) ORDER BY a.created_at DESC)
+      FROM public.local_applications a JOIN public.seeding_cities c ON c.id=a.city_id WHERE a.user_id=auth.uid()),'[]'::jsonb),
+    'local',(
+      SELECT jsonb_build_object('id',l.id,'city_id',l.city_id,'city',c.name,'status',l.status,'since',l.seat_started_on)
+      FROM public.locals l JOIN public.seeding_cities c ON c.id=l.city_id WHERE l.user_id=auth.uid()
+    )
+  );
+$fn$;
+
 CREATE OR REPLACE FUNCTION public.local_application_save(p_city_id uuid,p_handles jsonb,p_sample_links jsonb,p_why text) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
 DECLARE v_id uuid:=auth.uid(); v_application uuid;
@@ -181,6 +197,35 @@ BEGIN
     INSERT INTO public.local_events(local_id,actor,kind,data) VALUES(v_local,'admin','local_seated',jsonb_build_object('city_id',v_app.city_id));
   END IF;
   RETURN jsonb_build_object('ok',true,'status',p_status,'local_id',v_local);
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION public.local_place_candidates(p_query text DEFAULT NULL) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path=public,pg_temp AS $fn$
+DECLARE v_actor uuid:=auth.uid(); v_local public.locals; v_month date:=date_trunc('month',current_date)::date;
+BEGIN
+  SELECT * INTO v_local FROM public.locals WHERE user_id=v_actor AND status='active';
+  IF NOT FOUND THEN RAISE EXCEPTION 'active_local_required' USING ERRCODE='42501'; END IF;
+  RETURN coalesce((
+    SELECT jsonb_agg(jsonb_build_object(
+      'id',q.id,'name',q.name,'address',q.address,'primary_type',q.primary_type_display_name,
+      'eligible',q.reason IS NULL,'reason',q.reason
+    ) ORDER BY q.name)
+    FROM (
+      SELECT p.id,p.name,p.address,p.primary_type_display_name,
+        CASE
+          WHEN EXISTS(SELECT 1 FROM public.local_months m JOIN public.locals l ON l.id=m.local_id WHERE m.place_id=p.id AND l.city_id=v_local.city_id AND m.month>=v_month-interval '12 months' AND m.status NOT IN ('void','missed')) THEN 'Reviewed by a Local in the last 12 months'
+          WHEN EXISTS(SELECT 1 FROM public.local_months m WHERE m.local_id=v_local.id AND m.place_id=p.id AND m.status NOT IN ('void','missed')) THEN 'You already reviewed this place'
+          WHEN p.business_author_brand_id IS NOT NULL AND (EXISTS(SELECT 1 FROM public.gig_contracts gc WHERE gc.brand_id=p.business_author_brand_id AND gc.creator_account_id=v_actor AND gc.created_at>=now()-interval '180 days') OR EXISTS(SELECT 1 FROM public.payee_shares ps WHERE ps.brand_id=p.business_author_brand_id AND ps.payee_user_id=v_actor AND ps.created_at>=now()-interval '180 days')) THEN 'Recent paid relationship with this place'
+          ELSE NULL
+        END reason
+      FROM public.place_pool p
+      WHERE p.city_id=v_local.city_id AND p.is_active AND coalesce(p.is_servable,true)
+        AND (nullif(btrim(p_query),'') IS NULL OR p.name ILIKE '%'||btrim(p_query)||'%')
+      ORDER BY p.name
+      LIMIT 40
+    ) q
+  ),'[]'::jsonb);
 END;
 $fn$;
 
@@ -307,6 +352,33 @@ BEGIN
 END;
 $fn$;
 
+CREATE OR REPLACE FUNCTION public.brand_place_local_reviews(p_brand_id uuid,p_place_id uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path=public,pg_temp AS $fn$
+BEGIN
+  IF NOT public.biz_is_brand_member_for_read(p_brand_id,auth.uid()) OR NOT EXISTS(
+    SELECT 1 FROM public.venue_listings
+    WHERE brand_id=p_brand_id AND place_pool_id=p_place_id AND claim_status='verified'
+  ) THEN
+    RAISE EXCEPTION 'permission_denied' USING ERRCODE='42501';
+  END IF;
+  RETURN coalesce((
+    SELECT jsonb_agg(jsonb_build_object(
+      'local_month_id',m.id,
+      'name',coalesce(nullif(btrim(p.display_name),''),nullif(btrim(p.username),''),'Mingla Local'),
+      'rating',r.rating,'title',r.title,'body',r.body,'visited_on',r.visited_on,
+      'reply',r.reply_text,'reply_at',r.reply_at,
+      'reply_editable_until',CASE WHEN r.reply_at IS NULL THEN NULL ELSE r.reply_at+interval '24 hours' END,
+      'published_at',m.published_at
+    ) ORDER BY m.published_at DESC)
+    FROM public.local_months m
+    JOIN public.local_reviews r ON r.local_month_id=m.id
+    JOIN public.locals l ON l.id=m.local_id
+    JOIN public.profiles p ON p.id=l.user_id
+    WHERE m.place_id=p_place_id AND m.status IN ('published','paid')
+  ),'[]'::jsonb);
+END;
+$fn$;
+
 CREATE OR REPLACE FUNCTION public.public_local_profile(p_user_id uuid) RETURNS jsonb
 LANGUAGE sql SECURITY DEFINER STABLE SET search_path=public,pg_temp AS $fn$
   SELECT jsonb_build_object(
@@ -328,6 +400,89 @@ LANGUAGE sql SECURITY DEFINER STABLE SET search_path=public,pg_temp AS $fn$
   ) q;
 $fn$;
 
+INSERT INTO public.notification_categories(
+  key,section,is_transactional,urgency,default_channels,reach_mode,active
+)
+SELECT key,'mingla_local',true,urgency,ARRAY['inapp','push']::text[],'reach_once',true
+FROM (VALUES
+  ('consumer.local.application_update','normal'),
+  ('consumer.local.pick_open','normal'),
+  ('consumer.local.pick_reminder','high'),
+  ('consumer.local.submit_reminder','high'),
+  ('consumer.local.changes_requested','high'),
+  ('consumer.local.published','normal'),
+  ('consumer.local.paid','normal'),
+  ('business.local.review_posted','normal')
+) category(key,urgency)
+ON CONFLICT(key) DO UPDATE SET active=true;
+
+CREATE OR REPLACE FUNCTION public.issue_3872_local_application_notice() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+BEGIN
+  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    INSERT INTO public.notification_outbox(category_key,user_id,payload,idempotency_key,status)
+    VALUES('consumer.local.application_update',NEW.user_id,jsonb_build_object(
+      'title','Mingla Local application updated',
+      'body','Your application is now '||replace(NEW.status,'_',' ')||'.',
+      'application_id',NEW.id,'status',NEW.status,'deep_link','mingla://local'
+    ),'consumer.local.application_update:'||NEW.id::text||':'||NEW.status,'pending')
+    ON CONFLICT(idempotency_key) DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+DROP TRIGGER IF EXISTS issue_3872_local_application_notice_trigger ON public.local_applications;
+CREATE TRIGGER issue_3872_local_application_notice_trigger AFTER UPDATE OF status ON public.local_applications
+FOR EACH ROW EXECUTE FUNCTION public.issue_3872_local_application_notice();
+
+CREATE OR REPLACE FUNCTION public.issue_3872_local_month_notice() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+DECLARE v_local public.locals; v_venue public.venue_listings;
+BEGIN
+  IF NEW.status IS NOT DISTINCT FROM OLD.status THEN RETURN NEW; END IF;
+  SELECT * INTO v_local FROM public.locals WHERE id=NEW.local_id;
+  IF NEW.status='changes_requested' THEN
+    INSERT INTO public.notification_outbox(category_key,user_id,payload,idempotency_key,status)
+    VALUES('consumer.local.changes_requested',v_local.user_id,jsonb_build_object(
+      'title','Local review needs changes','body','Open this month’s review to see the quality checklist and resubmit once.',
+      'local_month_id',NEW.id,'deep_link','mingla://local'
+    ),'consumer.local.changes_requested:'||NEW.id::text||':'||NEW.resubmission_count::text,'pending')
+    ON CONFLICT(idempotency_key) DO NOTHING;
+  ELSIF NEW.status='published' THEN
+    INSERT INTO public.notification_outbox(category_key,user_id,payload,idempotency_key,status)
+    VALUES('consumer.local.published',v_local.user_id,jsonb_build_object(
+      'title','Your Local review is live','body','Your independent review now appears on your profile and the place card.',
+      'local_month_id',NEW.id,'deep_link','mingla://local'
+    ),'consumer.local.published:'||NEW.id::text,'pending')
+    ON CONFLICT(idempotency_key) DO NOTHING;
+    SELECT * INTO v_venue FROM public.venue_listings WHERE place_pool_id=NEW.place_id AND claim_status='verified' LIMIT 1;
+    IF FOUND THEN
+      INSERT INTO public.notification_outbox(category_key,user_id,brand_id,payload,idempotency_key,status)
+      SELECT 'business.local.review_posted',member.user_id,v_venue.brand_id,jsonb_build_object(
+          'title','A Mingla Local review is live','body','An independent Local review was published for your claimed place. You can post one reply.',
+          'local_month_id',NEW.id,'venue_id',v_venue.id,
+          'deep_link','mingla-business://venue/'||v_venue.id::text
+        ),'business.local.review_posted:'||NEW.id::text||':'||member.user_id::text,'pending'
+      FROM public.brand_team_members member
+      WHERE member.brand_id=v_venue.brand_id AND member.accepted_at IS NOT NULL AND member.removed_at IS NULL
+      ON CONFLICT(idempotency_key) DO NOTHING;
+    END IF;
+  ELSIF NEW.status='paid' THEN
+    INSERT INTO public.notification_outbox(category_key,user_id,payload,idempotency_key,status)
+    VALUES('consumer.local.paid',v_local.user_id,jsonb_build_object(
+      'title','Mingla Local payment sent','body','This month’s payment is on its way to your connected payout account.',
+      'local_month_id',NEW.id,'amount_minor',NEW.payout_amount_minor,'currency',NEW.payout_currency,
+      'deep_link','mingla://earnings'
+    ),'consumer.local.paid:'||NEW.id::text,'pending')
+    ON CONFLICT(idempotency_key) DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+DROP TRIGGER IF EXISTS issue_3872_local_month_notice_trigger ON public.local_months;
+CREATE TRIGGER issue_3872_local_month_notice_trigger AFTER UPDATE OF status ON public.local_months
+FOR EACH ROW EXECUTE FUNCTION public.issue_3872_local_month_notice();
+
 CREATE OR REPLACE FUNCTION public.local_home() RETURNS jsonb
 LANGUAGE sql SECURITY DEFINER STABLE SET search_path=public,pg_temp AS $fn$
   SELECT jsonb_build_object('local',jsonb_build_object('id',l.id,'city_id',l.city_id,'city',c.name,'status',l.status,'since',l.seat_started_on),'current_month',(SELECT to_jsonb(m) FROM public.local_months m WHERE m.local_id=l.id AND m.month=date_trunc('month',current_date)::date),'months',coalesce((SELECT jsonb_agg(to_jsonb(m) ORDER BY m.month DESC) FROM public.local_months m WHERE m.local_id=l.id),'[]'::jsonb),'payout',(SELECT jsonb_build_object('stripe_status',a.stripe_status,'paystack_status',a.paystack_status,'currency',coalesce(a.paystack_currency,p.currency)) FROM public.payee_accounts a WHERE a.user_id=l.user_id))
@@ -336,9 +491,42 @@ $fn$;
 
 CREATE OR REPLACE FUNCTION public.local_timer_tick(p_now timestamptz DEFAULT now()) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
-DECLARE v_missed integer:=0; v_rolled integer:=0; v_paid integer:=0;
+DECLARE v_missed integer:=0; v_rolled integer:=0; v_paid integer:=0; v_notices integer:=0; v_total_notices integer:=0;
 BEGIN
   IF auth.uid() IS NOT NULL THEN RAISE EXCEPTION 'service_role_only' USING ERRCODE='42501'; END IF;
+  IF extract(day FROM p_now)=1 THEN
+    INSERT INTO public.notification_outbox(category_key,user_id,payload,idempotency_key,status)
+    SELECT 'consumer.local.pick_open',l.user_id,jsonb_build_object(
+        'title','Choose this month’s Local place','body','Your independent place-pick window is open through the 7th.',
+        'month',date_trunc('month',p_now)::date,'deep_link','mingla://local'
+      ),'consumer.local.pick_open:'||l.id::text||':'||date_trunc('month',p_now)::date::text,'pending'
+    FROM public.locals l WHERE l.status='active'
+    ON CONFLICT(idempotency_key) DO NOTHING;
+    GET DIAGNOSTICS v_notices=ROW_COUNT; v_total_notices:=v_total_notices+v_notices;
+  END IF;
+  IF extract(day FROM p_now)=5 THEN
+    INSERT INTO public.notification_outbox(category_key,user_id,payload,idempotency_key,status)
+    SELECT 'consumer.local.pick_reminder',l.user_id,jsonb_build_object(
+        'title','Three days left to pick a place','body','Choose an eligible place by the 7th to keep this month active.',
+        'month',date_trunc('month',p_now)::date,'deep_link','mingla://local'
+      ),'consumer.local.pick_reminder:'||l.id::text||':'||date_trunc('month',p_now)::date::text,'pending'
+    FROM public.locals l
+    WHERE l.status='active' AND NOT EXISTS(
+      SELECT 1 FROM public.local_months m WHERE m.local_id=l.id AND m.month=date_trunc('month',p_now)::date AND m.place_id IS NOT NULL
+    ) ON CONFLICT(idempotency_key) DO NOTHING;
+    GET DIAGNOSTICS v_notices=ROW_COUNT; v_total_notices:=v_total_notices+v_notices;
+  END IF;
+  IF extract(day FROM p_now)=25 THEN
+    INSERT INTO public.notification_outbox(category_key,user_id,payload,idempotency_key,status)
+    SELECT 'consumer.local.submit_reminder',l.user_id,jsonb_build_object(
+        'title','Finish this month’s Local review','body','Submit your disclosed review before month end. A three-day grace period follows.',
+        'local_month_id',m.id,'deep_link','mingla://local'
+      ),'consumer.local.submit_reminder:'||m.id::text,'pending'
+    FROM public.local_months m JOIN public.locals l ON l.id=m.local_id
+    WHERE m.month=date_trunc('month',p_now)::date AND m.status IN ('confirmed','visited','changes_requested')
+    ON CONFLICT(idempotency_key) DO NOTHING;
+    GET DIAGNOSTICS v_notices=ROW_COUNT; v_total_notices:=v_total_notices+v_notices;
+  END IF;
   INSERT INTO public.local_months(local_id,month,status)
     SELECT l.id,date_trunc('month',p_now)::date,'missed' FROM public.locals l WHERE l.status='active' AND extract(day FROM p_now)>=8
     ON CONFLICT(local_id,month) DO NOTHING;
@@ -348,7 +536,7 @@ BEGIN
   v_missed:=v_missed+v_rolled;
   UPDATE public.local_months m SET status='paid' FROM public.payee_shares s WHERE m.payee_share_id=s.id AND s.status='paid' AND m.status='published';
   GET DIAGNOSTICS v_paid=ROW_COUNT;
-  RETURN jsonb_build_object('ok',true,'missed',v_missed,'paid',v_paid);
+  RETURN jsonb_build_object('ok',true,'missed',v_missed,'paid',v_paid,'notifications',v_total_notices);
 END;
 $fn$;
 
@@ -420,6 +608,29 @@ ALTER TABLE public.payee_shares ADD CONSTRAINT payee_shares_fee_rate CHECK(
   OR (payee_kind='local_month' AND order_kind='local_month' AND brand_id IS NULL AND member_id IS NULL AND mingla_fee_minor=0 AND net_minor=gross_minor)
 );
 
+ALTER TABLE public.business_notification_type_preferences
+  DROP CONSTRAINT IF EXISTS business_notification_type_preferences_type_check;
+ALTER TABLE public.business_notification_type_preferences
+  ADD CONSTRAINT business_notification_type_preferences_type_check CHECK(type IN (
+    'business.order_paid','business.event_sold_out','business.low_inventory',
+    'business.refund_processed','business.dispute_opened','business.dispute_action_needed',
+    'business.payout_paid','business.payout_failed','business.payout_waiting_for_bank',
+    'business.payouts_paused','business.payouts_resumed','business.account_status_changed',
+    'business.new_review','business.claim_decision','business.team_member_joined',
+    'business.discount_limit_80','business.discount_ended','business.discount_needs_attention',
+    'business.referral.sale','business.referral.budget_80','business.referral.budget_reached',
+    'business.referral.member_joined','business.referral.flagged',
+    'creator.referral.invite','creator.referral.sale','creator.referral.tier_up',
+    'creator.referral.paid','creator.referral.payout_failed','creator.referral.reversed',
+    'business.gig.interest','business.gig.accepted','business.gig.declined_refunded',
+    'business.gig.script_ready','business.gig.video_ready','business.gig.posts_live',
+    'business.gig.auto_approved','business.gig.dispute','business.gig.rate',
+    'creator.gig.match','creator.gig.offer','creator.gig.offer_expiring','creator.gig.script_locked',
+    'creator.gig.fix_requested','creator.gig.post_reminder','creator.gig.posts_failed',
+    'creator.gig.released','creator.gig.dispute','creator.gig.rate','creator.verify.state',
+    'business.local.review_posted'
+  ));
+
 CREATE OR REPLACE FUNCTION public.issue_3872_payee_share_guard() RETURNS trigger
 LANGUAGE plpgsql SET search_path=public,pg_temp AS $fn$
 DECLARE v_member public.referral_members%ROWTYPE; v_attribution public.order_attributions%ROWTYPE; v_contract public.gig_contracts%ROWTYPE; v_month public.local_months%ROWTYPE; v_local public.locals%ROWTYPE;
@@ -474,10 +685,12 @@ CREATE POLICY local_months_service_all ON public.local_months FOR ALL TO service
 CREATE POLICY local_reviews_service_all ON public.local_reviews FOR ALL TO service_role USING(true) WITH CHECK(true);
 CREATE POLICY local_events_service_all ON public.local_events FOR ALL TO service_role USING(true) WITH CHECK(true);
 
-REVOKE ALL ON FUNCTION public.issue_3872_local_seat_guard(),public.local_city_program_save(uuid,integer,boolean,bigint),public.local_application_save(uuid,jsonb,jsonb,text),public.local_application_decide(uuid,text,text),public.local_pick_place(uuid,boolean),public.local_mark_visited(uuid,date,uuid),public.local_review_submit(uuid,integer,text,text,date,text,uuid[],text,boolean),public.local_social_check_record(uuid,text,jsonb),public.local_review_decide(uuid,text,text[]),public.local_month_void(uuid,text),public.local_place_reply(uuid,uuid,text),public.public_local_profile(uuid),public.public_place_local_reviews(uuid),public.local_home(),public.local_timer_tick(timestamptz),public.local_payout_prepare(uuid),public.local_payout_record(uuid,text,text,bigint,uuid),public.admin_local_queue() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.local_city_program_save(uuid,integer,boolean,bigint),public.local_application_save(uuid,jsonb,jsonb,text),public.local_application_decide(uuid,text,text),public.local_pick_place(uuid,boolean),public.local_mark_visited(uuid,date,uuid),public.local_review_submit(uuid,integer,text,text,date,text,uuid[],text,boolean),public.local_review_decide(uuid,text,text[]),public.local_month_void(uuid,text),public.local_place_reply(uuid,uuid,text),public.local_home(),public.admin_local_queue() TO authenticated;
+REVOKE ALL ON FUNCTION public.issue_3872_local_seat_guard(),public.local_city_program_save(uuid,integer,boolean,bigint),public.local_landing(),public.local_application_save(uuid,jsonb,jsonb,text),public.local_application_decide(uuid,text,text),public.local_place_candidates(text),public.local_pick_place(uuid,boolean),public.local_mark_visited(uuid,date,uuid),public.local_review_submit(uuid,integer,text,text,date,text,uuid[],text,boolean),public.local_social_check_record(uuid,text,jsonb),public.local_review_decide(uuid,text,text[]),public.local_month_void(uuid,text),public.local_place_reply(uuid,uuid,text),public.brand_place_local_reviews(uuid,uuid),public.public_local_profile(uuid),public.public_place_local_reviews(uuid),public.local_home(),public.local_timer_tick(timestamptz),public.local_payout_prepare(uuid),public.local_payout_record(uuid,text,text,bigint,uuid),public.admin_local_queue() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.local_city_program_save(uuid,integer,boolean,bigint),public.local_landing(),public.local_application_save(uuid,jsonb,jsonb,text),public.local_application_decide(uuid,text,text),public.local_place_candidates(text),public.local_pick_place(uuid,boolean),public.local_mark_visited(uuid,date,uuid),public.local_review_submit(uuid,integer,text,text,date,text,uuid[],text,boolean),public.local_review_decide(uuid,text,text[]),public.local_month_void(uuid,text),public.local_place_reply(uuid,uuid,text),public.brand_place_local_reviews(uuid,uuid),public.local_home(),public.admin_local_queue() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.public_local_profile(uuid),public.public_place_local_reviews(uuid) TO anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.local_social_check_record(uuid,text,jsonb),public.local_timer_tick(timestamptz),public.local_payout_prepare(uuid),public.local_payout_record(uuid,text,text,bigint,uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.issue_3872_local_application_notice(),public.issue_3872_local_month_notice() FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3872_local_application_notice(),public.issue_3872_local_month_notice() TO service_role;
 
 COMMENT ON FUNCTION public.public_local_profile(uuid) IS '#3872 public allow-list: user_id, name, avatar_url, city, local_since and published review DTOs only.';
 COMMENT ON FUNCTION public.public_place_local_reviews(uuid) IS '#3872 public allow-list: two newest published Local reviews and one place reply; never applications, evidence receipts, payout or moderation data.';

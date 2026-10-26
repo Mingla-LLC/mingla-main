@@ -144,6 +144,85 @@ LANGUAGE sql SECURITY DEFINER STABLE SET search_path=public,pg_temp AS $fn$
   SELECT CASE WHEN c.creator_account_id=p_actor THEN 'creator' WHEN public.biz_is_brand_member_for_read(c.brand_id,p_actor) THEN 'host' ELSE NULL END FROM public.gig_contracts c WHERE c.id=p_contract_id;
 $fn$;
 
+CREATE OR REPLACE FUNCTION public.gig_change_proposal_save(
+  p_contract_id uuid,p_changes jsonb,p_reason text,p_note text DEFAULT NULL
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+DECLARE v_actor uuid:=auth.uid(); v_party text; v_contract public.gig_contracts; v_proposal public.gig_change_proposals;
+BEGIN
+  v_party:=public.issue_3872_contract_party(p_contract_id,v_actor);
+  IF v_party IS NULL THEN RAISE EXCEPTION 'permission_denied' USING ERRCODE='42501'; END IF;
+  SELECT * INTO v_contract FROM public.gig_contracts WHERE id=p_contract_id FOR UPDATE;
+  IF v_contract.state NOT IN ('offered','accepted','shoot_planned','script_drafting','script_sent') THEN
+    RAISE EXCEPTION 'terms_change_window_closed' USING ERRCODE='55000';
+  END IF;
+  IF jsonb_typeof(p_changes)<>'object' OR p_changes='{}'::jsonb
+     OR p_changes ? 'fee_minor'
+     OR p_changes - ARRAY['shoot_date','post_by','deliverables','usage_days','sales_share_bps','shoot_passes'] <> '{}'::jsonb THEN
+    RAISE EXCEPTION 'terms_change_invalid' USING ERRCODE='22023';
+  END IF;
+  IF p_reason NOT IN ('dates','deliverables','usage','share','passes','other')
+     OR char_length(coalesce(p_note,''))>300 THEN
+    RAISE EXCEPTION 'terms_change_reason_invalid' USING ERRCODE='22023';
+  END IF;
+  UPDATE public.gig_change_proposals SET status='expired'
+   WHERE contract_id=p_contract_id AND status='open' AND expires_at<=now();
+  IF EXISTS(SELECT 1 FROM public.gig_change_proposals WHERE contract_id=p_contract_id AND status='open') THEN
+    RAISE EXCEPTION 'terms_change_already_open' USING ERRCODE='55000';
+  END IF;
+  INSERT INTO public.gig_change_proposals(contract_id,from_version,proposed_by,changes,reason,note)
+  VALUES(p_contract_id,v_contract.current_terms_version,v_party,p_changes,p_reason,nullif(btrim(p_note),''))
+  RETURNING * INTO v_proposal;
+  INSERT INTO public.gig_events(contract_id,actor,kind,data)
+  VALUES(p_contract_id,v_party,'terms_change_proposed',jsonb_build_object('proposal_id',v_proposal.id,'from_version',v_proposal.from_version,'reason',v_proposal.reason,'changes',v_proposal.changes));
+  RETURN to_jsonb(v_proposal);
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION public.gig_change_proposal_respond(
+  p_proposal_id uuid,p_accept boolean
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+DECLARE v_actor uuid:=auth.uid(); v_party text; v_contract public.gig_contracts; v_proposal public.gig_change_proposals; v_terms public.gig_terms_versions; v_next integer;
+BEGIN
+  SELECT * INTO v_proposal FROM public.gig_change_proposals WHERE id=p_proposal_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'terms_change_not_found' USING ERRCODE='P0002'; END IF;
+  SELECT * INTO v_contract FROM public.gig_contracts WHERE id=v_proposal.contract_id FOR UPDATE;
+  v_party:=public.issue_3872_contract_party(v_contract.id,v_actor);
+  IF v_party IS NULL OR v_party=v_proposal.proposed_by THEN RAISE EXCEPTION 'terms_change_other_party_required' USING ERRCODE='42501'; END IF;
+  IF v_proposal.status<>'open' OR v_proposal.expires_at<=now() OR v_proposal.from_version<>v_contract.current_terms_version THEN
+    RAISE EXCEPTION 'terms_change_stale' USING ERRCODE='40001';
+  END IF;
+  IF NOT p_accept THEN
+    UPDATE public.gig_change_proposals SET status='declined' WHERE id=v_proposal.id;
+    INSERT INTO public.gig_events(contract_id,actor,kind,data) VALUES(v_contract.id,v_party,'terms_change_declined',jsonb_build_object('proposal_id',v_proposal.id));
+    RETURN jsonb_build_object('ok',true,'status','declined');
+  END IF;
+  SELECT * INTO v_terms FROM public.gig_terms_versions WHERE contract_id=v_contract.id AND version=v_contract.current_terms_version;
+  v_next:=v_contract.current_terms_version+1;
+  INSERT INTO public.gig_terms_versions(
+    contract_id,version,fee_minor,booking_fee_minor,currency,format_key,deliverables,
+    shoot_date,post_by,usage_days,sales_share_bps,shoot_passes,proposed_by,accepted_at
+  ) VALUES(
+    v_contract.id,v_next,v_terms.fee_minor,v_terms.booking_fee_minor,v_terms.currency,v_terms.format_key,
+    coalesce(v_proposal.changes->'deliverables',v_terms.deliverables),
+    coalesce((v_proposal.changes->>'shoot_date')::date,v_terms.shoot_date),
+    coalesce((v_proposal.changes->>'post_by')::date,v_terms.post_by),
+    coalesce((v_proposal.changes->>'usage_days')::integer,v_terms.usage_days),
+    CASE WHEN v_proposal.changes ? 'sales_share_bps' THEN nullif(v_proposal.changes->>'sales_share_bps','')::integer ELSE v_terms.sales_share_bps END,
+    coalesce((v_proposal.changes->>'shoot_passes')::integer,v_terms.shoot_passes),
+    v_proposal.proposed_by,now()
+  );
+  UPDATE public.gig_holds SET terms_version=v_next
+   WHERE contract_id=v_contract.id AND terms_version=v_contract.current_terms_version;
+  UPDATE public.gig_contracts SET current_terms_version=v_next WHERE id=v_contract.id;
+  UPDATE public.gig_change_proposals SET status='accepted' WHERE id=v_proposal.id;
+  INSERT INTO public.gig_events(contract_id,actor,kind,data)
+  VALUES(v_contract.id,v_party,'terms_change_accepted',jsonb_build_object('proposal_id',v_proposal.id,'version',v_next));
+  RETURN jsonb_build_object('ok',true,'status','accepted','version',v_next);
+END;
+$fn$;
+
 CREATE OR REPLACE FUNCTION public.gig_shoot_plan_save(p_contract_id uuid,p_shoot_at timestamptz,p_arrival_note text,p_confirm boolean DEFAULT false) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
 DECLARE v_actor uuid:=auth.uid(); v_party text; v_count integer; v_plan public.gig_shoot_plans; v_gig public.gigs;
@@ -395,6 +474,7 @@ BEGIN
     'contract',to_jsonb(v),'party',v_party,'revealed',v_revealed,
     'gig',jsonb_build_object('id',g.id,'title_public',g.title_public,'brief_public',g.brief_public,'brief_private',CASE WHEN v_revealed THEN g.brief_private END,'brand_id',CASE WHEN v_revealed THEN g.brand_id END,'listing_kind',CASE WHEN v_revealed THEN g.listing_kind END,'listing_id',CASE WHEN v_revealed THEN g.listing_id END,'must_tag',CASE WHEN v_revealed THEN g.must_tag END,'format_key',g.format_key,'post_by',g.post_by),
     'terms',coalesce((SELECT jsonb_agg(to_jsonb(t) ORDER BY version) FROM public.gig_terms_versions t WHERE t.contract_id=v.id),'[]'::jsonb),
+    'proposals',coalesce((SELECT jsonb_agg(to_jsonb(p) ORDER BY created_at,id) FROM public.gig_change_proposals p WHERE p.contract_id=v.id),'[]'::jsonb),
     'events',coalesce((SELECT jsonb_agg(to_jsonb(e) ORDER BY at,id) FROM public.gig_events e WHERE e.contract_id=v.id),'[]'::jsonb),
     'hold',(SELECT to_jsonb(h)-'provider_ref'-'idempotency_key' FROM public.gig_holds h WHERE h.contract_id=v.id AND h.terms_version=v.current_terms_version),
     'shoot_plan',(SELECT to_jsonb(s) FROM public.gig_shoot_plans s WHERE s.contract_id=v.id),
@@ -430,6 +510,29 @@ BEGIN
   END IF;
   RETURN jsonb_build_object('ok',true,'revealed',v_both);
 END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION public.gig_creator_home() RETURNS jsonb
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path=public,pg_temp AS $fn$
+  SELECT jsonb_build_object(
+    'contracts',coalesce((
+      SELECT jsonb_agg(jsonb_build_object(
+        'id',c.id,'state',c.state,'deadline_at',c.state_deadline_at,'title',g.title_public,
+        'format_key',g.format_key,'city',sc.name,'post_by',g.post_by,
+        'fee_minor',tv.fee_minor,'currency',tv.currency,'updated_at',c.updated_at
+      ) ORDER BY c.updated_at DESC)
+      FROM public.gig_contracts c
+      JOIN public.gigs g ON g.id=c.gig_id
+      JOIN public.seeding_cities sc ON sc.id=g.city_id
+      LEFT JOIN public.gig_terms_versions tv ON tv.contract_id=c.id AND tv.version=c.current_terms_version
+      WHERE c.creator_account_id=auth.uid()
+    ),'[]'::jsonb),
+    'interests',coalesce((
+      SELECT jsonb_agg(jsonb_build_object('id',i.id,'gig_id',i.gig_id,'title',g.title_public,'status',i.status,'quote_minor',i.quoted_minor,'currency',cp.currency,'created_at',i.created_at) ORDER BY i.created_at DESC)
+      FROM public.gig_interest i JOIN public.gigs g ON g.id=i.gig_id JOIN public.creator_packages cp ON cp.id=i.package_id
+      WHERE i.creator_account_id=auth.uid() AND i.status IN ('sent','shortlisted')
+    ),'[]'::jsonb)
+  );
 $fn$;
 
 CREATE OR REPLACE FUNCTION public.gig_ratings_public(p_creator_account_id uuid) RETURNS jsonb
@@ -470,6 +573,252 @@ BEGIN
 END;
 $fn$;
 
+CREATE OR REPLACE FUNCTION public.brand_creator_roster_list(p_brand_id uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path=public,pg_temp AS $fn$
+BEGIN
+  IF NOT public.biz_is_brand_member_for_read(p_brand_id,auth.uid()) THEN RAISE EXCEPTION 'permission_denied' USING ERRCODE='42501'; END IF;
+  RETURN coalesce((
+    SELECT jsonb_agg(jsonb_build_object(
+      'id',r.id,'name',r.name,'platform',r.platform,'handle',r.handle,'email',r.email_norm,
+      'notes',r.notes,'status',r.status,'linked_creator_account_id',r.linked_creator_account_id,
+      'referral_member_id',r.referral_member_id,'link_slug',m.link_slug,'offer_name',o.name,
+      'sales_count',(SELECT count(*) FROM public.order_attributions a WHERE a.member_id=m.id AND a.rejected_reason IS NULL),
+      'revenue_minor',(SELECT coalesce(sum(a.eligible_minor),0) FROM public.order_attributions a WHERE a.member_id=m.id AND a.rejected_reason IS NULL),
+      'currency',o.currency,'created_at',r.created_at,'updated_at',r.updated_at
+    ) ORDER BY r.updated_at DESC,r.id)
+    FROM public.brand_creator_roster r
+    LEFT JOIN public.referral_members m ON m.id=r.referral_member_id
+    LEFT JOIN public.referral_offers o ON o.id=m.offer_id
+    WHERE r.brand_id=p_brand_id AND r.status<>'archived'
+  ),'[]'::jsonb);
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION public.brand_creator_roster_link_invite(p_roster_id uuid,p_member_id uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+DECLARE v_roster public.brand_creator_roster; v_member public.referral_members;
+BEGIN
+  SELECT * INTO v_roster FROM public.brand_creator_roster WHERE id=p_roster_id FOR UPDATE;
+  IF NOT FOUND OR NOT public.biz_is_brand_member_for_read(v_roster.brand_id,auth.uid()) THEN RAISE EXCEPTION 'permission_denied' USING ERRCODE='42501'; END IF;
+  SELECT * INTO v_member FROM public.referral_members WHERE id=p_member_id AND brand_id=v_roster.brand_id;
+  IF NOT FOUND OR v_roster.email_norm IS NULL OR v_member.email_norm IS DISTINCT FROM v_roster.email_norm THEN RAISE EXCEPTION 'roster_invite_mismatch' USING ERRCODE='22023'; END IF;
+  UPDATE public.brand_creator_roster SET referral_member_id=v_member.id,status=CASE WHEN v_member.status='active' THEN 'joined' ELSE 'invited' END WHERE id=v_roster.id;
+  RETURN jsonb_build_object('ok',true,'id',v_roster.id,'member_id',v_member.id,'status',CASE WHEN v_member.status='active' THEN 'joined' ELSE 'invited' END);
+END;
+$fn$;
+
+-- Creator-gig notifications use the governed outbox. Copy and deep links live
+-- in each payload so the generic dispatcher never has to infer contract state.
+INSERT INTO public.notification_categories(
+  key,section,is_transactional,urgency,default_channels,reach_mode,active
+)
+SELECT key,'creator_gigs',true,urgency,ARRAY['inapp','push']::text[],'reach_once',true
+FROM (VALUES
+  ('business.gig.interest','normal'),
+  ('business.gig.accepted','normal'),
+  ('business.gig.declined_refunded','high'),
+  ('business.gig.script_ready','normal'),
+  ('business.gig.video_ready','normal'),
+  ('business.gig.posts_live','normal'),
+  ('business.gig.auto_approved','normal'),
+  ('business.gig.dispute','high'),
+  ('business.gig.rate','normal'),
+  ('creator.gig.match','normal'),
+  ('creator.gig.offer','high'),
+  ('creator.gig.offer_expiring','high'),
+  ('creator.gig.script_locked','normal'),
+  ('creator.gig.fix_requested','high'),
+  ('creator.gig.post_reminder','high'),
+  ('creator.gig.posts_failed','high'),
+  ('creator.gig.released','normal'),
+  ('creator.gig.dispute','high'),
+  ('creator.gig.rate','normal'),
+  ('creator.verify.state','normal')
+) category(key,urgency)
+ON CONFLICT(key) DO UPDATE SET active=true;
+
+CREATE OR REPLACE FUNCTION public.issue_3872_enqueue_gig_notice(
+  p_contract_id uuid,p_type text,p_target text,p_marker text,p_title text,p_body text,p_payload jsonb DEFAULT '{}'::jsonb
+) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+DECLARE v_contract public.gig_contracts; v_gig public.gigs;
+BEGIN
+  SELECT * INTO v_contract FROM public.gig_contracts WHERE id=p_contract_id;
+  IF NOT FOUND OR p_target NOT IN ('host','creator') THEN RETURN; END IF;
+  SELECT * INTO v_gig FROM public.gigs WHERE id=v_contract.gig_id;
+  IF p_target='creator' THEN
+    INSERT INTO public.notification_outbox(category_key,user_id,brand_id,payload,idempotency_key,status)
+    VALUES(p_type,v_contract.creator_account_id,v_contract.brand_id,
+      coalesce(p_payload,'{}'::jsonb)||jsonb_build_object(
+        'title',p_title,'body',p_body,'contract_id',v_contract.id,'gig_id',v_gig.id,
+        'deep_link','mingla-business://creator/contract/'||v_contract.id::text
+      ),p_type||':'||p_marker||':'||v_contract.creator_account_id::text,'pending')
+    ON CONFLICT(idempotency_key) DO NOTHING;
+  ELSE
+    INSERT INTO public.notification_outbox(category_key,user_id,brand_id,payload,idempotency_key,status)
+    SELECT p_type,member.user_id,v_contract.brand_id,
+      coalesce(p_payload,'{}'::jsonb)||jsonb_build_object(
+        'title',p_title,'body',p_body,'contract_id',v_contract.id,'gig_id',v_gig.id,
+        'deep_link','mingla-business://brand/'||v_contract.brand_id::text||'/creators/contract/'||v_contract.id::text
+      ),p_type||':'||p_marker||':'||member.user_id::text,'pending'
+    FROM public.brand_team_members member
+    WHERE member.brand_id=v_contract.brand_id AND member.accepted_at IS NOT NULL AND member.removed_at IS NULL
+    ON CONFLICT(idempotency_key) DO NOTHING;
+  END IF;
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION public.issue_3872_gig_interest_notice() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+DECLARE v_gig public.gigs; v_creator text;
+BEGIN
+  SELECT * INTO v_gig FROM public.gigs WHERE id=NEW.gig_id;
+  SELECT display_name INTO v_creator FROM public.creator_profiles WHERE creator_account_id=NEW.creator_account_id;
+  INSERT INTO public.notification_outbox(category_key,user_id,brand_id,payload,idempotency_key,status)
+  SELECT 'business.gig.interest',member.user_id,v_gig.brand_id,jsonb_build_object(
+      'title','A creator is interested','body',coalesce(v_creator,'A verified creator')||' sent a quote for '||v_gig.title_public||'.',
+      'gig_id',v_gig.id,'interest_id',NEW.id,
+      'deep_link','mingla-business://brand/'||v_gig.brand_id::text||'/creators/'||v_gig.id::text||'/interest'
+    ),'business.gig.interest:'||NEW.id::text||':'||member.user_id::text,'pending'
+  FROM public.brand_team_members member
+  WHERE member.brand_id=v_gig.brand_id AND member.accepted_at IS NOT NULL AND member.removed_at IS NULL
+  ON CONFLICT(idempotency_key) DO NOTHING;
+  RETURN NEW;
+END;
+$fn$;
+DROP TRIGGER IF EXISTS issue_3872_gig_interest_notice_trigger ON public.gig_interest;
+CREATE TRIGGER issue_3872_gig_interest_notice_trigger AFTER INSERT ON public.gig_interest
+FOR EACH ROW EXECUTE FUNCTION public.issue_3872_gig_interest_notice();
+
+CREATE OR REPLACE FUNCTION public.issue_3872_gig_event_notice() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+DECLARE v_marker text:=NEW.id::text;
+BEGIN
+  IF NEW.kind='offer_created' THEN
+    PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'creator.gig.offer','creator',v_marker,'You have a creator offer','A host sent terms. Review and respond within 48 hours.');
+  ELSIF NEW.kind='accept' THEN
+    PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'business.gig.accepted','host',v_marker,'Creator offer accepted','The creator accepted the terms. Plan the shoot next.');
+  ELSIF NEW.kind='refund_recorded' AND NEW.data->>'branch' IN ('creator_decline','declined_or_expired') THEN
+    PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'business.gig.declined_refunded','host',v_marker,'Creator offer closed','The offer was declined or expired and the eligible refund was recorded.');
+  ELSIF NEW.kind='script_sent' THEN
+    PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'business.gig.script_ready','host',v_marker,'Creator script ready','Review the creator’s script. It will auto-lock after the review window.');
+  ELSIF NEW.kind IN ('lock_script','auto_lock') THEN
+    PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'creator.gig.script_locked','creator',v_marker,'Script locked','The agreed script is locked. Only sound and picture corrections remain.');
+    IF NEW.kind='auto_lock' THEN
+      PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'business.gig.auto_approved','host',v_marker,'Script auto-approved','The review window ended and the script was locked automatically.',jsonb_build_object('stage','script'));
+    END IF;
+  ELSIF NEW.kind='delivery_submitted' THEN
+    PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'business.gig.video_ready','host',v_marker,'Creator video ready','Review the submitted video before its auto-approval deadline.');
+  ELSIF NEW.kind='request_fix' THEN
+    PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'creator.gig.fix_requested','creator',v_marker,'Technical fix requested','The host requested an allowed sound or picture correction.');
+  ELSIF NEW.kind='auto_approve' THEN
+    PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'business.gig.auto_approved','host',v_marker,'Video auto-approved','The review window ended and the creator video was approved automatically.',jsonb_build_object('stage','video'));
+  ELSIF NEW.kind IN ('posts_passed','host_confirm','auto_confirm') THEN
+    PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'business.gig.posts_live','host',v_marker,'Creator posts verified','The agreed posts are live and passed verification.');
+  ELSIF NEW.kind='posts_failed' THEN
+    PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'creator.gig.posts_failed','creator',v_marker,'Post check needs a fix','One or more agreed post checks failed. Open the contract to see the exact reason.');
+  ELSIF NEW.kind IN ('release','gig_release_recorded') THEN
+    PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'creator.gig.released','creator',v_marker,'Creator fee released','Your gig fee is now in the shared payout ledger.');
+  ELSIF NEW.kind LIKE 'dispute_%' THEN
+    PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'business.gig.dispute','host',v_marker,'Gig dispute updated','The shared dispute timeline has a new update.');
+    PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'creator.gig.dispute','creator',v_marker,'Gig dispute updated','The shared dispute timeline has a new update.');
+  ELSIF NEW.kind='complete' THEN
+    PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'business.gig.rate','host',v_marker,'Rate this creator','The day-30 check is complete. Share private feedback now.');
+    PERFORM public.issue_3872_enqueue_gig_notice(NEW.contract_id,'creator.gig.rate','creator',v_marker,'Rate this host','The day-30 check is complete. Share private feedback now.');
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+DROP TRIGGER IF EXISTS issue_3872_gig_event_notice_trigger ON public.gig_events;
+CREATE TRIGGER issue_3872_gig_event_notice_trigger AFTER INSERT ON public.gig_events
+FOR EACH ROW EXECUTE FUNCTION public.issue_3872_gig_event_notice();
+
+CREATE OR REPLACE FUNCTION public.issue_3872_creator_verification_notice() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+BEGIN
+  IF NEW.verification IS DISTINCT FROM OLD.verification THEN
+    INSERT INTO public.notification_outbox(category_key,user_id,payload,idempotency_key,status)
+    VALUES('creator.verify.state',NEW.creator_account_id,jsonb_build_object(
+      'title','Creator verification updated',
+      'body','Your Creator verification is now '||replace(NEW.verification,'_',' ')||'.',
+      'verification',NEW.verification,'reasons_count',cardinality(NEW.verification_reasons),
+      'deep_link','mingla-business://creator/setup'
+    ),'creator.verify.state:'||NEW.creator_account_id::text||':'||NEW.verification||':'||NEW.updated_at::text,'pending')
+    ON CONFLICT(idempotency_key) DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+DROP TRIGGER IF EXISTS issue_3872_creator_verification_notice_trigger ON public.creator_profiles;
+CREATE TRIGGER issue_3872_creator_verification_notice_trigger AFTER UPDATE OF verification ON public.creator_profiles
+FOR EACH ROW EXECUTE FUNCTION public.issue_3872_creator_verification_notice();
+
+CREATE OR REPLACE FUNCTION public.gig_notification_tick(p_now timestamptz DEFAULT now()) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+DECLARE v_matches integer:=0; v_expiring integer:=0; v_posts integer:=0;
+BEGIN
+  IF auth.uid() IS NOT NULL THEN RAISE EXCEPTION 'service_role_only' USING ERRCODE='42501'; END IF;
+  INSERT INTO public.notification_outbox(category_key,user_id,payload,idempotency_key,status)
+  SELECT 'creator.gig.match',profile.creator_account_id,jsonb_build_object(
+      'title','New creator gigs near you','body','New private-safe briefs match your city. Open Creator to review them.',
+      'deep_link','mingla-business://creator/hub'
+    ),'creator.gig.match:'||profile.creator_account_id::text||':'||p_now::date::text,'pending'
+  FROM public.creator_profiles profile
+  WHERE profile.mode_enabled AND profile.verification='verified' AND EXISTS(
+    SELECT 1 FROM public.gigs gig
+    WHERE gig.city_id=profile.home_city_id AND gig.status='open'
+      AND public.issue_3872_creator_gigs_on(gig.brand_id)
+  ) ON CONFLICT(idempotency_key) DO NOTHING;
+  GET DIAGNOSTICS v_matches=ROW_COUNT;
+
+  INSERT INTO public.notification_outbox(category_key,user_id,brand_id,payload,idempotency_key,status)
+  SELECT 'creator.gig.offer_expiring',contract.creator_account_id,contract.brand_id,jsonb_build_object(
+      'title','Creator offer expires soon','body','Review this offer before its 48-hour response window closes.',
+      'contract_id',contract.id,'deadline_at',contract.state_deadline_at,
+      'deep_link','mingla-business://creator/contract/'||contract.id::text
+    ),'creator.gig.offer_expiring:'||contract.id::text||':'||contract.state_deadline_at::text,'pending'
+  FROM public.gig_contracts contract
+  WHERE contract.state='offered' AND contract.state_deadline_at>p_now AND contract.state_deadline_at<=p_now+interval '12 hours'
+  ON CONFLICT(idempotency_key) DO NOTHING;
+  GET DIAGNOSTICS v_expiring=ROW_COUNT;
+
+  INSERT INTO public.notification_outbox(category_key,user_id,brand_id,payload,idempotency_key,status)
+  SELECT 'creator.gig.post_reminder',contract.creator_account_id,contract.brand_id,jsonb_build_object(
+      'title','Creator post deadline is close','body','Submit every agreed post link before the post-by date.',
+      'contract_id',contract.id,'post_by',terms.post_by,
+      'deep_link','mingla-business://creator/contract/'||contract.id::text
+    ),'creator.gig.post_reminder:'||contract.id::text||':'||terms.post_by::text,'pending'
+  FROM public.gig_contracts contract
+  JOIN public.gig_terms_versions terms ON terms.contract_id=contract.id AND terms.version=contract.current_terms_version
+  WHERE contract.state IN ('posting','posts_failed') AND terms.post_by BETWEEN p_now::date AND p_now::date+1
+  ON CONFLICT(idempotency_key) DO NOTHING;
+  GET DIAGNOSTICS v_posts=ROW_COUNT;
+  RETURN jsonb_build_object('ok',true,'matches',v_matches,'offer_expiring',v_expiring,'post_reminders',v_posts);
+END;
+$fn$;
+
+ALTER TABLE public.business_notification_type_preferences
+  DROP CONSTRAINT IF EXISTS business_notification_type_preferences_type_check;
+ALTER TABLE public.business_notification_type_preferences
+  ADD CONSTRAINT business_notification_type_preferences_type_check CHECK(type IN (
+    'business.order_paid','business.event_sold_out','business.low_inventory',
+    'business.refund_processed','business.dispute_opened','business.dispute_action_needed',
+    'business.payout_paid','business.payout_failed','business.payout_waiting_for_bank',
+    'business.payouts_paused','business.payouts_resumed','business.account_status_changed',
+    'business.new_review','business.claim_decision','business.team_member_joined',
+    'business.discount_limit_80','business.discount_ended','business.discount_needs_attention',
+    'business.referral.sale','business.referral.budget_80','business.referral.budget_reached',
+    'business.referral.member_joined','business.referral.flagged',
+    'creator.referral.invite','creator.referral.sale','creator.referral.tier_up',
+    'creator.referral.paid','creator.referral.payout_failed','creator.referral.reversed',
+    'business.gig.interest','business.gig.accepted','business.gig.declined_refunded',
+    'business.gig.script_ready','business.gig.video_ready','business.gig.posts_live',
+    'business.gig.auto_approved','business.gig.dispute','business.gig.rate',
+    'creator.gig.match','creator.gig.offer','creator.gig.offer_expiring','creator.gig.script_locked',
+    'creator.gig.fix_requested','creator.gig.post_reminder','creator.gig.posts_failed',
+    'creator.gig.released','creator.gig.dispute','creator.gig.rate','creator.verify.state'
+  ));
+
 DO $acl$
 DECLARE v_table text;
 BEGIN
@@ -502,6 +851,8 @@ CREATE POLICY roster_service_all ON public.brand_creator_roster FOR ALL TO servi
 
 REVOKE ALL ON FUNCTION public.issue_3872_contract_party(uuid,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.issue_3872_contract_party(uuid,uuid) TO authenticated,service_role;
+REVOKE ALL ON FUNCTION public.gig_change_proposal_save(uuid,jsonb,text,text) FROM PUBLIC,anon; GRANT EXECUTE ON FUNCTION public.gig_change_proposal_save(uuid,jsonb,text,text) TO authenticated,service_role;
+REVOKE ALL ON FUNCTION public.gig_change_proposal_respond(uuid,boolean) FROM PUBLIC,anon; GRANT EXECUTE ON FUNCTION public.gig_change_proposal_respond(uuid,boolean) TO authenticated,service_role;
 REVOKE ALL ON FUNCTION public.gig_shoot_plan_save(uuid,timestamptz,text,boolean) FROM PUBLIC,anon; GRANT EXECUTE ON FUNCTION public.gig_shoot_plan_save(uuid,timestamptz,text,boolean) TO authenticated,service_role;
 REVOKE ALL ON FUNCTION public.gig_script_save(uuid,jsonb,text,boolean) FROM PUBLIC,anon; GRANT EXECUTE ON FUNCTION public.gig_script_save(uuid,jsonb,text,boolean) TO authenticated,service_role;
 REVOKE ALL ON FUNCTION public.gig_delivery_submit(uuid,uuid) FROM PUBLIC,anon; GRANT EXECUTE ON FUNCTION public.gig_delivery_submit(uuid,uuid) TO authenticated,service_role;
@@ -516,9 +867,15 @@ REVOKE ALL ON FUNCTION public.gig_release_record(uuid,text) FROM PUBLIC,anon,aut
 REVOKE ALL ON FUNCTION public.gig_refund_record(uuid,text,bigint,bigint,text) FROM PUBLIC,anon,authenticated; GRANT EXECUTE ON FUNCTION public.gig_refund_record(uuid,text,bigint,bigint,text) TO service_role;
 REVOKE ALL ON FUNCTION public.gig_post_check_record(uuid,text,jsonb) FROM PUBLIC,anon,authenticated; GRANT EXECUTE ON FUNCTION public.gig_post_check_record(uuid,text,jsonb) TO service_role;
 REVOKE ALL ON FUNCTION public.gig_rating_submit(uuid,integer,text[],text) FROM PUBLIC,anon; GRANT EXECUTE ON FUNCTION public.gig_rating_submit(uuid,integer,text[],text) TO authenticated,service_role;
+REVOKE ALL ON FUNCTION public.gig_creator_home() FROM PUBLIC,anon; GRANT EXECUTE ON FUNCTION public.gig_creator_home() TO authenticated,service_role;
 REVOKE ALL ON FUNCTION public.gig_ratings_public(uuid) FROM PUBLIC; GRANT EXECUTE ON FUNCTION public.gig_ratings_public(uuid) TO anon,authenticated,service_role;
 REVOKE ALL ON FUNCTION public.admin_gig_queue() FROM PUBLIC,anon; GRANT EXECUTE ON FUNCTION public.admin_gig_queue() TO authenticated,service_role;
 REVOKE ALL ON FUNCTION public.brand_creator_roster_save(uuid,jsonb) FROM PUBLIC,anon; GRANT EXECUTE ON FUNCTION public.brand_creator_roster_save(uuid,jsonb) TO authenticated,service_role;
+REVOKE ALL ON FUNCTION public.brand_creator_roster_list(uuid) FROM PUBLIC,anon; GRANT EXECUTE ON FUNCTION public.brand_creator_roster_list(uuid) TO authenticated,service_role;
+REVOKE ALL ON FUNCTION public.brand_creator_roster_link_invite(uuid,uuid) FROM PUBLIC,anon; GRANT EXECUTE ON FUNCTION public.brand_creator_roster_link_invite(uuid,uuid) TO authenticated,service_role;
+REVOKE ALL ON FUNCTION public.issue_3872_enqueue_gig_notice(uuid,text,text,text,text,text,jsonb),public.issue_3872_gig_interest_notice(),public.issue_3872_gig_event_notice(),public.issue_3872_creator_verification_notice() FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3872_enqueue_gig_notice(uuid,text,text,text,text,text,jsonb),public.issue_3872_gig_interest_notice(),public.issue_3872_gig_event_notice(),public.issue_3872_creator_verification_notice() TO service_role;
+REVOKE ALL ON FUNCTION public.gig_notification_tick(timestamptz) FROM PUBLIC,anon,authenticated; GRANT EXECUTE ON FUNCTION public.gig_notification_tick(timestamptz) TO service_role;
 REVOKE ALL ON FUNCTION public.issue_3872_script_guard() FROM PUBLIC,anon,authenticated;
 
 COMMIT;

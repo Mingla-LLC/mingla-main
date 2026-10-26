@@ -1,6 +1,8 @@
 {
-  "suite": "deno2",
-  "issue": 3872,
-  "owner": "implementor",
-  "command": "deno test --allow-read supabase/functions/local-payout/issue_3872_local_payout.implementor.test.ts"
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/local-payout/issue_3872_local_payout.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3872-r4-02-local-payout",
+  "profile": "deno-2-unit"
 }

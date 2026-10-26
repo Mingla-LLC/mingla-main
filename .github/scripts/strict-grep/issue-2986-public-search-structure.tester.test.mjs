@@ -180,7 +180,9 @@ function expectRejected(config, code) {
 test("the real route tree has one complete unconditional robots owner per private leaf", () => {
   const leaves = discoverRouteLeaves();
   const privateFamilies = new Set(leaves.filter(isPrivateRoute).filter((p) => p !== "/").map((p) => p.split("/")[1]));
-  assert.equal(privateFamilies.size, 41, "current private family inventory must be explicit and non-vacuous");
+  // [TEST-MOD-APPROVED #3872] Creator, referral-join, and promoter workspaces
+  // are private route families with exact noindex/nofollow owners (+3 → 44).
+  assert.equal(privateFamilies.size, 44, "current private family inventory must be explicit and non-vacuous");
   assert.deepEqual(inspectPartition(readRealConfig(), leaves), []);
 });
 

@@ -3,6 +3,13 @@ import path from "node:path";
 
 import { describe, expect, it } from "@jest/globals";
 
+const mockInvoke = jest.fn();
+jest.mock("../../src/services/supabase", () => ({
+  supabase: { functions: { invoke: mockInvoke } },
+}));
+
+import { writeReferralOffer } from "../../src/services/referralService";
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { renderContentShareHtml } = require("../socialPreview") as {
   renderContentShareHtml: (
@@ -73,5 +80,44 @@ describe("#3872 B5 buyer referral web", () => {
   it("keeps the two help registries byte-identical", () => {
     expect(readFileSync(path.join(repoRoot, "packages/help-content/index.ts"), "utf8"))
       .toBe(readFileSync(path.join(repoRoot, "mingla-marketing/content/help/registry.ts"), "utf8"));
+  });
+
+  it("sends a buyer offer through the reviewed referral boundary", async () => {
+    mockInvoke.mockResolvedValueOnce({
+      data: {
+        offer: {
+          id: "offer-1",
+          brand_id: "brand-1",
+          name: "Friends save",
+          audience: "buyers",
+          scope_kind: "brand",
+          reward_kind: "cash",
+          share_bps: 500,
+          currency: "USD",
+          starts_at: "2026-10-26T00:00:00.000Z",
+          status: "active",
+          version: 1,
+        },
+      },
+      error: null,
+    });
+    const offer = await writeReferralOffer("create", {
+      brandId: "brand-1",
+      name: "Friends save",
+      audience: "buyers",
+      scopeKind: "brand",
+      rewardKind: "cash",
+      shareBps: 500,
+      currency: "USD",
+      startsAt: "2026-10-26T00:00:00.000Z",
+      status: "active",
+      listings: [],
+      tiers: [],
+    });
+    expect(offer.brandId).toBe("brand-1");
+    expect(offer.shareBps).toBe(500);
+    expect(mockInvoke).toHaveBeenCalledWith("referral-offer-upsert", {
+      body: expect.objectContaining({ action: "create" }),
+    });
   });
 });

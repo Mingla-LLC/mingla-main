@@ -47,6 +47,8 @@ Deno.test("#3980 the Pipeline menu: To review, Work board, Agent log, Calendar, 
     [
       "hosts:Hosts:Handshake",
       "creators:Creators:Sparkles",
+      // [TEST-MOD-APPROVED #3872] Creator gigs is the reviewed operations queue added to Pipeline; prior ordering stays intact.
+      "gig-queue:Creator gigs:Scale",
       // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar together; the Agent log is a tab on Work.
       "drafts:Needs you:FileText",
       "work-board:Work:SquareKanban",

@@ -74,6 +74,8 @@ const MUST_NOT_MATCH: string[] = [
   "/accept-brand-invitation-evil",
   "/accept-scanner-invitationX",
   "/accept-scanner", // shorter lookalike — not a real route
+  "/joiner",
+  "/join-referral",
 
   // --- TRAVERSAL / substring-in-the-middle (a loose `includes` would match) ---
   "/x/connect-onboarding", // SPEC SC-3 named case
@@ -108,6 +110,7 @@ const MUST_MATCH: string[] = [
   "/accept-brand-invitation/", // trailing slash
   "/accept-brand-invitation/success", // real sub-route
   "/accept-scanner-invitation/", // trailing slash
+  "/join/referral/test-token",
   "/stripe-onboarding-return", // @deprecated but live
 ];
 

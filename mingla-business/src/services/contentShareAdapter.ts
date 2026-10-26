@@ -1,5 +1,6 @@
+// SHARE-SEMANTIC-ROLE:content-adapter
 import { buildSharePortraitUrl, buildShortShareUrl, checkContentShareReadiness, checkContentShareReadinessDetailed, contentShareRequestFromPublicUrl, createContentShareSingleFlight, deriveCanonicalShare, selectCompactPreviewFacts, shareKindLabel, statusLabel, type ShareDestination, type ShareEntityKind, type ShareFactsV1, type ShareMediaIdentity } from '@mingla/sharing';
-import { Platform } from 'react-native';
+import { Platform, Share } from 'react-native';
 import { supabase } from './supabase';
 import { postHogService } from './postHogService';
 import { logAppsFlyerEvent } from './appsFlyerService';
@@ -65,6 +66,20 @@ export function isAllowedBusinessShareIntent(value:string):boolean{
     return ['https:','mailto:','sms:','whatsapp:','twitter:'].includes(parsed.protocol)
       && !parsed.username && !parsed.password;
   } catch { return false }
+}
+
+/**
+ * The one native fallback transport for Business surfaces that already hold a
+ * public, canonical URL. Keeping it beside prepared-content sharing prevents
+ * roster and promoter screens from quietly inventing their own platform rules.
+ */
+export async function shareBusinessCanonicalFallback(input:{title:string;url:string;message:string}):Promise<void>{
+  const body=input.message.split(input.url).join('').trim();
+  const message=body.length>0?`${body}\n${input.url}`:input.url;
+  // SHARE-CONTENT-CALL:adapter
+  if(Platform.OS==='android'){await Share.share({title:input.title,message:input.message.includes(input.url)?input.message:message});return}
+  // SHARE-CONTENT-CALL:adapter
+  await Share.share({title:input.title,message,url:input.url});
 }
 
 /**

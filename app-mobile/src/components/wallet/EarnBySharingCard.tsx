@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from "react";
-import { Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { shareCanonicalFallback } from "../../services/contentShareAdapter";
 import { fetchBuyerReferralLink } from "../../services/referralEarningsService";
 import { mixpanelService } from "../../services/mixpanelService";
 
@@ -36,7 +37,7 @@ export const EarnBySharingCard: React.FC<EarnBySharingCardProps> = ({
         : link.rewardKind === "perk"
           ? link.perkText ?? "Unlock a host perk when friends book."
           : "Earn a future-order voucher when an eligible friend books.";
-      await Share.share({
+      await shareCanonicalFallback({
         title,
         message: `${title}\n${reward}\n${link.url}`,
         url: link.url,

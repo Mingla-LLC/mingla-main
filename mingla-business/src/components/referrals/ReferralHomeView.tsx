@@ -4,13 +4,13 @@ import {
   ActivityIndicator,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
   useWindowDimensions,
 } from "react-native";
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import * as Clipboard from "expo-clipboard";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -242,6 +242,7 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
         {TABS.map(([value, label]) => (
           <Pressable
             key={value}
+            accessibilityLabel={`Open ${label} referral tab`}
             onPress={() => setTab(value)}
             accessibilityRole="tab"
             accessibilityState={{ selected: tab === value }}
@@ -522,6 +523,7 @@ const Promoters: React.FC<{
           {offers.map((offer) => (
             <Pressable
               key={offer.id}
+              accessibilityLabel={`Select referral offer ${offer.name}`}
               onPress={() => onSelectOffer(offer.id)}
               style={[styles.chip, selectedOffer === offer.id && styles.chipOn]}
             >

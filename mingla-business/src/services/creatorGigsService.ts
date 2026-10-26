@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { postHogService } from "./postHogService";
 
 export type PublicGig = {
   id: string;
@@ -32,6 +33,13 @@ export type GigApplicant = {
   status: string;
 };
 
+export type CreatorRosterRow = {
+  id: string; name: string; platform: string | null; handle: string | null; email: string | null;
+  notes: string | null; status: string; linked_creator_account_id: string | null;
+  referral_member_id: string | null; link_slug: string | null; offer_name: string | null;
+  sales_count: number; revenue_minor: number; currency: string | null; updated_at: string;
+};
+
 export type GigDisputeOffer = {
   id: string;
   offered_by: "host" | "creator";
@@ -59,6 +67,7 @@ export type GigWorkspace = {
   revealed: boolean;
   gig: Record<string, unknown> & { title_public: string; brief_public: string; format_key: string; post_by: string };
   terms: Array<Record<string, unknown> & { version: number; fee_minor: number; booking_fee_minor: number; currency: string }>;
+  proposals: Array<{ id: string; from_version: number; proposed_by: "host" | "creator"; changes: Record<string, unknown>; reason: string; note: string | null; status: string; expires_at: string }>;
   events: Array<{ id: string; at: string; actor: string; kind: string; data: Record<string, unknown> }>;
   hold: Record<string, unknown> | null;
   shoot_plan: Record<string, unknown> | null;
@@ -80,12 +89,18 @@ export const creatorGigsService = {
   detail: (gigId: string) => rpc<PublicGig>("creator_gig_detail", { p_gig_id: gigId }),
   sendInterest: (gigId: string, packageId: string, quotedMinor: number, note?: string) => rpc("gig_interest_send", { p_gig_id: gigId, p_package_id: packageId, p_quoted_minor: quotedMinor, p_note: note ?? null }),
   hostHome: (brandId: string) => rpc<{ gigs: Array<Record<string, unknown>>; contracts: Array<Record<string, unknown>> }>("gig_host_home", { p_brand_id: brandId }),
-  saveGig: (payload: Record<string, unknown>) => rpc<{ ok: boolean; id?: string; error?: string; reasons?: string[] }>("gig_save", { p_payload: payload }),
+  saveGig: async (payload: Record<string, unknown>) => {
+    const result = await rpc<{ ok: boolean; id?: string; error?: string; reasons?: string[] }>("gig_save", { p_payload: payload });
+    if (result.ok) postHogService.capture("gig_created", { format: typeof payload.format_key === "string" ? payload.format_key : "unknown" });
+    return result;
+  },
   applicants: (gigId: string) => rpc<GigApplicant[]>("gig_applicants", { p_gig_id: gigId }),
   prehireProfile: (creatorId: string) => rpc<Record<string, unknown>>("prehire_creator_profile", { p_creator_account_id: creatorId }),
   decideInterest: (interestId: string, status: "shortlisted" | "passed") => rpc("gig_interest_decide", { p_interest_id: interestId, p_status: status }),
   workspace: (contractId: string) => rpc<GigWorkspace>("gig_contract_workspace", { p_contract_id: contractId }),
   transition: (contractId: string, expectedState: string, action: string, payload: Record<string, unknown> = {}) => rpc("gig_transition", { p_contract_id: contractId, p_expected_state: expectedState, p_action: action, p_payload: payload }),
+  proposeChange: (contractId: string, changes: Record<string, unknown>, reason: string, note?: string) => rpc("gig_change_proposal_save", { p_contract_id: contractId, p_changes: changes, p_reason: reason, p_note: note ?? null }),
+  respondToChange: (proposalId: string, accept: boolean) => rpc("gig_change_proposal_respond", { p_proposal_id: proposalId, p_accept: accept }),
   planShoot: (contractId: string, shootAt: string, arrivalNote: string, confirm: boolean) => rpc("gig_shoot_plan_save", { p_contract_id: contractId, p_shoot_at: shootAt, p_arrival_note: arrivalNote, p_confirm: confirm }),
   saveScript: (contractId: string, body: Record<string, unknown>, source: "ari" | "creator", send: boolean) => rpc("gig_script_save", { p_contract_id: contractId, p_body: body, p_source: source, p_send: send }),
   submitDelivery: (contractId: string, mediaJobId: string) => rpc("gig_delivery_submit", { p_contract_id: contractId, p_media_job_id: mediaJobId }),
@@ -100,6 +115,8 @@ export const creatorGigsService = {
   },
   rate: (contractId: string, stars: number, tags: string[], note?: string) => rpc("gig_rating_submit", { p_contract_id: contractId, p_stars: stars, p_tags: tags, p_note: note ?? null }),
   saveRoster: (brandId: string, payload: Record<string, unknown>) => rpc("brand_creator_roster_save", { p_brand_id: brandId, p_payload: payload }),
+  listRoster: (brandId: string) => rpc<CreatorRosterRow[]>("brand_creator_roster_list", { p_brand_id: brandId }),
+  linkRosterInvite: (rosterId: string, memberId: string) => rpc("brand_creator_roster_link_invite", { p_roster_id: rosterId, p_member_id: memberId }),
   async refund(contractId: string, branch: "host_before_accept" | "host_after_accept_before_lock" | "creator_after_accept" | "creator_decline" | "declined_or_expired" | "resolved_partial" | "resolved_refund", refundBps?: number) {
     const { data, error } = await supabase.functions.invoke("gig-refund", { body: { contract_id: contractId, branch, refund_bps: refundBps } });
     if (error) throw error;
@@ -108,6 +125,8 @@ export const creatorGigsService = {
   async hire(input: { interestId: string; feeMinor: number; returnUrl?: string; terms?: Record<string, unknown>; idempotencyKey: string }) {
     const { data, error } = await supabase.functions.invoke("gig-hire", { body: { action: "start", interest_id: input.interestId, fee_minor: input.feeMinor, return_url: input.returnUrl ?? null, terms: input.terms ?? {}, idempotency_key: input.idempotencyKey } });
     if (error) throw error;
+    const result = data as { rail?: unknown } | null;
+    postHogService.capture("gig_hired", { rail: typeof result?.rail === "string" ? result.rail : "unknown" });
     return data;
   },
 };

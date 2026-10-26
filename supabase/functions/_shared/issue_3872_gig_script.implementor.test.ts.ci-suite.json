@@ -1,8 +1,8 @@
 {
-  "schema_version": 1,
+  "schemaVersion": 1,
+  "kind": "suite",
   "path": "supabase/functions/_shared/issue_3872_gig_script.implementor.test.ts",
-  "runner": "deno",
-  "command": ["deno", "test", "--allow-env", "supabase/functions/_shared/issue_3872_gig_script.implementor.test.ts"],
-  "timeout_seconds": 60,
-  "owner": "#3872"
+  "lane": "stripe-deno",
+  "orderKey": "issue-3872-r3-04-gig-script",
+  "profile": "deno-1.46-stripe"
 }

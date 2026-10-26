@@ -1,8 +1,8 @@
 {
-  "schema_version": 1,
+  "schemaVersion": 1,
+  "kind": "suite",
   "path": "supabase/functions/gig-hire/issue_3872_gig_money.implementor.test.ts",
-  "runner": "deno",
-  "command": ["deno", "test", "--allow-env", "supabase/functions/gig-hire/issue_3872_gig_money.implementor.test.ts"],
-  "timeout_seconds": 60,
-  "owner": "#3872"
+  "lane": "stripe-deno",
+  "orderKey": "issue-3872-r3-05-gig-money",
+  "profile": "deno-1.46-stripe"
 }

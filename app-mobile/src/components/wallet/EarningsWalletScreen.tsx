@@ -4,7 +4,6 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -12,6 +11,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { fetchEarningsSummary } from "../../services/referralEarningsService";
+import { shareCanonicalFallback } from "../../services/contentShareAdapter";
 import { mixpanelService } from "../../services/mixpanelService";
 import { PayoutAccountSheet } from "./PayoutAccountSheet";
 
@@ -102,7 +102,11 @@ export const EarningsWalletScreen: React.FC = () => {
                   <Text style={styles.meta}>{link.offerName}</Text>
                 </View>
                 <Pressable onPress={() => {
-                  void Share.share({ message: `${link.brandName}\n${link.url}`, url: link.url });
+                  void shareCanonicalFallback({
+                    title: link.brandName,
+                    message: `${link.brandName}\n${link.url}`,
+                    url: link.url,
+                  });
                   mixpanelService.track("referral_link_shared", { listing_kind: "wallet", surface: "explorer_wallet" });
                 }} style={styles.secondary}><Text style={styles.secondaryText}>Share</Text></Pressable>
               </View>

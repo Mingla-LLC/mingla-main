@@ -111,6 +111,9 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "connect-partner-account-management",
   "connect-partner-onboarding",
   "connect-tax-registrations",
+  // [TEST-MOD-APPROVED #3872] Creator, invite, and promoting routes are real
+  // local destinations and must survive owned-link cold starts.
+  "creator",
   "e",
   "event",
   "exp",
@@ -119,6 +122,7 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "home",
   "hub",
   "insights",
+  "join",
   "marketing",
   "messages",
   "notifications",
@@ -126,6 +130,7 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "partner",
   "pending-brand-invite",
   "people",
+  "promoting",
   "recent",
   "refund",
   "reserve",

@@ -115,6 +115,8 @@ export const BUNNY_TIMEOUTS_MS = Object.freeze({
 export type BunnyCallOptions = {
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
+  libraryId?: string;
+  apiKey?: string;
 };
 
 export async function fetchWithTimeout(
@@ -432,8 +434,8 @@ export async function bunnyDeleteVideo(
   guid: string,
   options: BunnyCallOptions = {},
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const libraryId = bunnyLibraryId();
-  const apiKey = bunnyApiKey();
+  const libraryId = options.libraryId?.trim() || bunnyLibraryId();
+  const apiKey = options.apiKey?.trim() || bunnyApiKey();
   if (libraryId.length === 0 || apiKey.length === 0) {
     return { ok: false, reason: "bunny_not_configured" };
   }

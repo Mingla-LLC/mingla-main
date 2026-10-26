@@ -147,6 +147,10 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   // hold switch; seen in production but previously unlabelled.
   "paystack.recipient_created",
   "paystack.recipient_deactivated",
+  // #3872 — generic payee connection lifecycle used by Creator/Local earnings.
+  "payee_paystack.disconnected",
+  "payee_paystack.recipient_created",
+  "payee_stripe.onboard_initiated",
   "payout_hold.paystack_provider_select_flipped",
   "payout_hold.paystack_provider_select_skipped_already_stamped",
   // ORCH-1331 [partner Paystack payout rail] — partner recipient lifecycle
@@ -318,6 +322,27 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
         detail: "An earlier Nigerian bank account was retired, usually because the brand saved a new one.",
         category: "ops",
         iconHint: "shield",
+      };
+    case "payee_paystack.disconnected":
+      return {
+        title: "Nigerian earnings account disconnected",
+        detail: "The payee disconnected their Nigerian bank; earnings wait until they reconnect it.",
+        category: "payouts_refunds",
+        iconHint: "flag",
+      };
+    case "payee_paystack.recipient_created":
+      return {
+        title: "Nigerian earnings account connected",
+        detail: "The payee's Nigerian bank was verified and is ready to receive eligible earnings.",
+        category: "payouts_refunds",
+        iconHint: "shield",
+      };
+    case "payee_stripe.onboard_initiated":
+      return {
+        title: "Started earnings account setup",
+        detail: "The payee opened the secure setup flow for receiving eligible earnings.",
+        category: "payouts_refunds",
+        iconHint: "bank",
       };
     case "payout_hold.paystack_provider_select_flipped":
       return {

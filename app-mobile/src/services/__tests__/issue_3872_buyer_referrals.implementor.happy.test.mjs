@@ -22,11 +22,11 @@ test("#3872 B5 Explorer exposes one wallet without balance or withdrawal languag
 test("#3872 B5 personal earning links appear on listing, success and ticket surfaces", () => {
   const event = read("src/screens/Event/ConsumerEventDetailScreen.tsx");
   const cart = read("src/components/expandedCard/TicketCartSheet.tsx");
-  const ticket = read("src/components/activity/TicketPdfSheet.tsx");
+  const ticket = read("app/purchases/[kind]/[id].tsx");
   const card = read("src/components/wallet/EarnBySharingCard.tsx");
   assert.match(event, /<EarnBySharingCard[\s\S]*listingKind="event"/);
   assert.match(cart, /successFooter/);
-  assert.match(ticket, /<EarnBySharingCard/);
+  assert.match(ticket, /<EarnBySharingCard[\s\S]*listingKind="event"/);
   assert.match(card, /fetchBuyerReferralLink/);
   assert.match(card, /referral_link_shared/);
   assert.match(card, /This experience does not have an earning offer right now/);

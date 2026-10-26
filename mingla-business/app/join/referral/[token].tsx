@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -36,7 +36,14 @@ export default function ReferralInviteRoute(): React.ReactElement {
     }
   };
   return (
-    <View style={[styles.page, { paddingTop: insets.top }]}>
+    <ScrollView
+      style={styles.page}
+      contentContainerStyle={[
+        styles.pageContent,
+        { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.lg },
+      ]}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.card}>
         <Text style={styles.title}>
           {state === "done" ? "You’re on the team" : "Accept promoter invite"}
@@ -71,14 +78,18 @@ export default function ReferralInviteRoute(): React.ReactElement {
           />
         )}
       </View>
-    </View>
+    </ScrollView>
   );
 }
 const styles = StyleSheet.create({
   page: {
     flex: 1,
     backgroundColor: canvas.profile,
+  },
+  pageContent: {
+    flexGrow: 1,
     justifyContent: "center",
+    alignItems: "center",
     padding: spacing.lg,
   },
   card: {

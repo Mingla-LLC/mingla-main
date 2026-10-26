@@ -21,6 +21,10 @@ serve(async (req: Request) => {
     { auth: { persistSession: false } },
   );
   const now = new Date();
+  const { data: notificationTick, error: notificationError } = await db.rpc(
+    "gig_notification_tick",
+    { p_now: now.toISOString() },
+  );
   const { data, error } = await db.from("gig_contracts").select(
     "id,state,state_deadline_at",
   ).not("state_deadline_at", "is", null).lte(
@@ -91,5 +95,11 @@ serve(async (req: Request) => {
       dedupe,
     });
   }
-  return json({ ok: true, scanned: data?.length ?? 0, outcomes });
+  return json({
+    ok: true,
+    scanned: data?.length ?? 0,
+    outcomes,
+    notifications: notificationTick ?? null,
+    notificationError: notificationError?.message ?? null,
+  });
 });

@@ -1,12 +1,23 @@
 import fs from "node:fs";
 import path from "node:path";
 
+const mockInvoke = jest.fn();
+const mockCapture = jest.fn();
+jest.mock("../supabase", () => ({
+  supabase: { rpc: jest.fn(), functions: { invoke: mockInvoke } },
+}));
+jest.mock("../postHogService", () => ({
+  postHogService: { capture: mockCapture },
+}));
+
+import { creatorGigsService } from "../creatorGigsService";
+
 // [TEST-MOD-APPROVED #3872] Source contracts keep the Creator and Host gig
 // journeys wired to the reviewed RPC and Edge boundaries on every platform.
 const root = process.cwd();
 const read = (relative: string): string => fs.readFileSync(path.join(root, relative), "utf8");
 
-const service = read("src/services/creatorGigsService.ts");
+const serviceSource = read("src/services/creatorGigsService.ts");
 const creator = read("app/creator/contract/[contractId].tsx");
 const host = read("app/brand/[id]/creators/contract/[contractId].tsx");
 const applicants = read("app/brand/[id]/creators/[gigId]/interest.tsx");
@@ -14,8 +25,8 @@ const hireSheet = read("src/components/gigs/HireSheet.tsx");
 
 describe("issue #3872 — Creator gig contract journeys", () => {
   test("both sides resolve structured settlement offers through the guarded Edge boundary", () => {
-    expect(service).toContain('supabase.functions.invoke("gig-dispute-resolve"');
-    expect(service).toContain('offerDispute: (disputeId: string, refundBps: number');
+    expect(serviceSource).toContain('supabase.functions.invoke("gig-dispute-resolve"');
+    expect(serviceSource).toContain('offerDispute: (disputeId: string, refundBps: number');
     expect(creator).toContain("Accept settlement");
     expect(creator).toContain("Make counteroffer");
     expect(host).toContain("Accept settlement");
@@ -44,5 +55,15 @@ describe("issue #3872 — Creator gig contract journeys", () => {
     expect(hireSheet).toContain("Send a structured counter");
     expect(hireSheet).toContain("Secure payment and send counter");
     expect(hireSheet).toContain("Mingla booking fee (15%)");
+  });
+
+  test("settlement acceptance executes the guarded resolution boundary", async () => {
+    mockInvoke.mockResolvedValueOnce({ data: { status: "accepted" }, error: null });
+    await expect(
+      creatorGigsService.respondToDisputeOffer("offer-1", true),
+    ).resolves.toEqual({ status: "accepted" });
+    expect(mockInvoke).toHaveBeenCalledWith("gig-dispute-resolve", {
+      body: { offer_id: "offer-1", accept: true },
+    });
   });
 });

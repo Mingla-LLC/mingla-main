@@ -290,6 +290,7 @@ export async function fetchReferralListingOptions(
 ): Promise<ReferralListingOption[]> {
   const [events, venues] = await Promise.all([
     supabase
+      // orch-strict-grep-allow events-type-filter — the referral offer picker intentionally includes every public offering kind and filters with an explicit .in
       .from("events")
       .select("id,title,event_type")
       .eq("brand_id", brandId)
