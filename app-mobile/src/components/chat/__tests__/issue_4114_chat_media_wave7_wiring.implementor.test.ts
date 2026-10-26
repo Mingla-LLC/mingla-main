@@ -91,7 +91,8 @@ Deno.test("#4114 W7: every element inside a received bubble uses the dark tokens
   assert(/senderNameReceived: \{\s*color: receivedBubbleTokens\.senderName,/.test(bubble), "sender name");
   assert(/fileSizeReceived: \{\s*color: receivedBubbleTokens\.textSecondary,/.test(bubble), "file size");
   assert(!bubble.includes("colors.chat.bubbleReceived"), "no light received surface left");
-  assert((bubble.match(/variant=\{isMe \? 'sent' : 'receivedDark'\}/g) ?? []).length === 2, "both mention paths use the dark chip");
+  // QA run 2: the two mention paths became one tokenizer-driven renderer (renderMessageText).
+  assert((bubble.match(/variant=\{isMe \? 'sent' : 'receivedDark'\}/g) ?? []).length === 1, "the one mention path uses the dark chip");
   assert(/chipReceivedDark: \{\s*backgroundColor: receivedBubbleTokens\.mentionBg,/.test(mention), "dark mention chip");
   assert(/containerReceived: \{\s*backgroundColor: receivedBubbleTokens\.quoteBg,/.test(quote), "reply quote surface");
   assert(/senderNameReceived: \{\s*color: receivedBubbleTokens\.quoteName,/.test(quote), "reply quote name");

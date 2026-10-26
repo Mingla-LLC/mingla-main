@@ -116,7 +116,8 @@ Deno.test("#4114 thread UI: failed bubbles retry, older history loads on scroll 
   assert(/onEndReached=\{hasOlderMessages && !isLoadingOlderMessages \? onLoadOlderMessages : undefined\}/.test(thread),
     "inverted list loads older messages at its end (the visual top)");
   assert(/ListFooterComponent=\{\s*isLoadingOlderMessages/.test(thread), "spinner while older messages load");
-  assert(/onRetry=\{item\.message\.failed && onRetryMessage/.test(thread), "failed bubbles get a retry handler");
+  // QA run 2: a daily-limit failure (failedReason) is not retryable; every other failed bubble is.
+  assert(/onRetry=\{item\.message\.failed && !item\.message\.failedReason && onRetryMessage/.test(thread), "failed bubbles get a retry handler");
   const bubble = stripComments(await read("components/chat/MessageBubble.tsx"));
   assert(/onPress=\{onRetry\}/.test(bubble) && /chat:failedTapToRetry/.test(bubble), "failed status is a tap-to-retry button");
 });
