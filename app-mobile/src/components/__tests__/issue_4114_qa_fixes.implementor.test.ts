@@ -111,3 +111,20 @@ Deno.test("QA3 a pending 1:1 collab is watched until the friend's join activates
     "and re-reads the header's session");
   assert(/supabase\.removeChannel\(channel\)/.test(hook), "and lets the channel go");
 });
+
+Deno.test("QA5 opening a chat reads the whole chat, and an older page is read too", async () => {
+  const { idsStillUnread } = await import("../../utils/threadModel.ts");
+  const ids = idsStillUnread(["a", "b", "c", "b", ""], ["a"]);
+  assert(JSON.stringify(ids) === '["b","c"]', `only unread ids, once: ${JSON.stringify(ids)}`);
+  const service = strip(await read("services/messagingService.ts"));
+  const mark = body(service, /async markConversationRead\(conversationId: string, userId: string\): Promise<\{ error: string \| null \}>/);
+  assert(/\.eq\('conversation_id', conversationId\)\s*\.neq\('sender_id', userId\)/.test(mark), "every message from others in the chat");
+  assert(/idsStillUnread\(ids, readIds\)/.test(mark) && /\.from\('message_reads'\)\s*\.upsert\(/.test(mark), "upserts the missing reads");
+  const page = strip(await read("components/ConnectionsPage.tsx"));
+  const onOpen = body(page, /const markConversationAsRead = useCallback\(/);
+  assert(/messagingService\.markConversationRead\(conversationId, userId\)/.test(onOpen), "open marks the whole chat");
+  assert(!/messagingService\.markAsRead\(unreadIds/.test(onOpen), "not only the loaded page");
+  const older = body(page, /const handleLoadOlderMessages = async \(\) =>/);
+  assert(/if \(transformed\.some\(\(m\) => !m\.isMe && m\.unread\)\)/.test(older) &&
+    /markConversationAsRead\(conversationId, user\.id, transformed\)/.test(older), "an older page with unread rows is read");
+});

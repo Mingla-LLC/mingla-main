@@ -2767,9 +2767,13 @@ function ConnectionsPageRefactored({
         .filter((msg) => !msg.isMe && msg.unread)
         .map((msg) => msg.id);
 
-      // 2. Mark as read in the database
-      if (unreadIds.length > 0) {
-        messagingService.markAsRead(unreadIds, userId).catch(console.error);
+      // 2. Mark as read in the database. Issue #4114 QA: the WHOLE chat, not
+      //    only the loaded page — unread rows older than the first page kept
+      //    the badge alive (it came back after loading older messages).
+      const hadUnread = unreadIds.length > 0 ||
+        (conversationsForOpenDmRef.current.find((conv) => conv.id === conversationId)?.unread_count ?? 0) > 0;
+      if (hadUnread) {
+        void messagingService.markConversationRead(conversationId, userId);
       }
 
       // 3. Zero out unread_count in local conversations state so the badge
@@ -3430,6 +3434,18 @@ function ConnectionsPageRefactored({
         for (const [memberId, list] of byConversation) writeConversationMessages(memberId, list);
       } else {
         writeConversationMessages(conversationId, transformed);
+      }
+      // Issue #4114 QA: an older page can hold messages still unread (the chat
+      // was opened with more unread than one page); read them now so the badge
+      // and the list stay cleared.
+      if (transformed.some((m) => !m.isMe && m.unread)) {
+        if (channel) {
+          for (const memberId of new Set(page.map((raw) => raw.conversation_id))) {
+            markConversationAsRead(memberId, user.id, transformed.filter((_m, index) => page[index].conversation_id === memberId));
+          }
+        } else {
+          markConversationAsRead(conversationId, user.id, transformed);
+        }
       }
       setOlderPaging({ conversationId, hasMore: hasMore && gotNew, loading: false });
     } catch (e) {

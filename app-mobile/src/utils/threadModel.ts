@@ -204,3 +204,24 @@ export function resolveChatBack(open: Partial<Record<ChatBackLayer, boolean>>): 
   }
   return "leaveThread";
 }
+
+/**
+ * Issue #4114 QA: opening a chat marks EVERY unread message in it read, not
+ * just the newest loaded page, so a chat with more unread than one page does
+ * not keep its badge (it reappeared after loading older messages). The ids
+ * from others that have no read row yet, in order, de-duplicated.
+ */
+export function idsStillUnread(messageIds: readonly string[], readIds: Iterable<string>): string[] {
+  const read = new Set(readIds);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const id of messageIds) {
+    if (!id || read.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+/** Upsert batch size for marking a whole chat read. */
+export const MARK_READ_CHUNK = 500;

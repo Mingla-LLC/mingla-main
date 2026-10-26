@@ -5,6 +5,7 @@ import { getDisplayName } from '../utils/getDisplayName';
 import type { MediaViewRow } from '../utils/chatMedia';
 import { conversationChannelKey, conversationRealtimeFilter } from '../utils/conversationSubscription';
 import type { ChatLiveChange } from '../utils/chatLiveModel';
+import { idsStillUnread, MARK_READ_CHUNK } from '../utils/threadModel';
 import type { NativeContentCardDescriptorV1, PublicShareDetails, ShareDestination, ShareEntityKind, ShareFactsV1, ShareMediaIdentity } from '@mingla/sharing';
 
 /**
@@ -1745,6 +1746,55 @@ export class MessagingService {
     } catch (error: any) {
       console.error('Error marking as read:', error);
       return { error: error.message };
+    }
+  }
+
+  /**
+   * Issue #4114 QA: marks every message from others in this chat read (not
+   * only the loaded page), so the Chats badge clears for a chat with more
+   * unread than one page. Reads the chat's message ids and this person's read
+   * rows, then upserts the missing reads in chunks.
+   */
+  async markConversationRead(conversationId: string, userId: string): Promise<{ error: string | null }> {
+    try {
+      const { data: rows, error: idsError } = await supabase
+        .from('messages')
+        .select('id')
+        .eq('conversation_id', conversationId)
+        .neq('sender_id', userId)
+        .is('deleted_at', null);
+      if (idsError) throw idsError;
+      const ids = (rows ?? []).map((row: { id: string }) => row.id);
+      if (ids.length === 0) return { error: null };
+      const readIds: string[] = [];
+      for (let index = 0; index < ids.length; index += MARK_READ_CHUNK) {
+        const { data: reads, error: readsError } = await supabase
+          .from('message_reads')
+          .select('message_id')
+          .eq('user_id', userId)
+          .in('message_id', ids.slice(index, index + MARK_READ_CHUNK));
+        if (readsError) throw readsError;
+        for (const read of reads ?? []) readIds.push((read as { message_id: string }).message_id);
+      }
+      const unread = idsStillUnread(ids, readIds);
+      for (let index = 0; index < unread.length; index += MARK_READ_CHUNK) {
+        const chunk = unread.slice(index, index + MARK_READ_CHUNK);
+        const { error } = await supabase
+          .from('message_reads')
+          .upsert(chunk.map((messageId) => ({ message_id: messageId, user_id: userId })), { onConflict: 'message_id,user_id' });
+        if (error) throw error;
+      }
+      const { error: participantError } = await supabase
+        .from('conversation_participants')
+        .update({ last_read_at: new Date().toISOString() })
+        .eq('conversation_id', conversationId)
+        .eq('user_id', userId);
+      if (participantError) throw participantError;
+      return { error: null };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : (error as { message?: string })?.message ?? 'mark_read_failed';
+      console.error('[messagingService] marking the chat read failed:', message);
+      return { error: message };
     }
   }
 
