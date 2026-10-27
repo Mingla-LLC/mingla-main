@@ -38,7 +38,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // [TEST-MOD-APPROVED #3643] Re-sealed once for the terminal 48-suite Phase 3E fold.
 // #3643: re-sealed after retaining #1403/#1421's complete pre-fold routing.
 // #3643: isolate the foundation migration fixture and retire the stale discovery rewind.
-export const BOOTSTRAP_SHA256 = "04992a9c65bd2a981334065ed79126f27f4841be3d710d49eded467d8e21a42f";
+// #3643: keep the retained attendance TypeScript tests on Node 22.
+export const BOOTSTRAP_SHA256 = "d7a86a07d72f9ad2cbc34bb78a483556783ad12dc141f9a1c366864652bf7227";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

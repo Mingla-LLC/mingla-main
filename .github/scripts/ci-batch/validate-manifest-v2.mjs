@@ -222,7 +222,7 @@ export const SUITES_FOLDED_IN_POSTGRES_WAVE = Object.freeze([
   Object.freeze({ suite: "issue-2323-free-order-claim-and-cta-tests", issue: 2323, class: "postgres17-node20-noinstall", steps: 6 }),
   Object.freeze({ suite: "issue-2333-online-event-publish", issue: 2333, class: "postgres17-node20-noinstall", steps: 6 }),
   Object.freeze({ suite: "issue-2353-format-truth-and-edit-grant", issue: 2353, class: "postgres17-node20-noinstall", steps: 8 }),
-  Object.freeze({ suite: "issue-871-attendance-entitlement-tests", issue: 871, class: "postgres17-deno2-node20-noinstall", steps: 15 }),
+  Object.freeze({ suite: "issue-871-attendance-entitlement-tests", issue: 871, class: "postgres17-deno2-node22-noinstall", steps: 15 }),
   Object.freeze({ suite: "issue-1020-discover-geo-fallback-tests", issue: 1020, class: "postgres17-deno146-node20-noinstall", steps: 3 }),
   Object.freeze({ suite: "issue-1175-paystack-refunds-tests", issue: 1175, class: "postgres17-deno2-node20-noinstall", steps: 5 }),
   Object.freeze({ suite: "issue-1179-cancel-refund-fanout-tests", issue: 1179, class: "postgres17-deno2-node20-noinstall", steps: 4 }),
@@ -273,7 +273,7 @@ export function phase3dContractDigest(manifest) {
 }
 // [TEST-MOD-APPROVED #3643] Final 48-suite Phase 3E command/runtime/routing seal.
 // #3643: include the two insights lanes' pre-fold live-provider routing scopes.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "f2e8d77ebf33acd4595d7b23d347b4bcbbce65a9899bdf76874c0db371e3ac03";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "ebaedee0a2fb2f16722a22ecf707c6d9dd390bb198674b9d14e81cf38ef7d7fb";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

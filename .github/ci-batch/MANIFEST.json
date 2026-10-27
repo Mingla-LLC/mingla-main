@@ -26489,7 +26489,7 @@
     },
     {
       "id": "issue-871-attendance-entitlement-tests",
-      "class": "postgres17-deno2-node20-noinstall",
+      "class": "postgres17-deno2-node22-noinstall",
       "origin": ".github/workflows/issue-871-attendance-entitlement-tests.yml",
       "originPaths": [
         ".github/ci-batch/MANIFEST.json",
@@ -26775,13 +26775,13 @@
       "ownerIssue": "#871",
       "runtime": {
         "name": "node+deno",
-        "nodeVersion": "20",
+        "nodeVersion": "22",
         "deno": {
           "version": "v2.x",
           "action": "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"
         }
       },
-      "setupProfile": "postgres17-deno2-node20-noinstall",
+      "setupProfile": "postgres17-deno2-node22-noinstall",
       "cwd": ".",
       "envNames": [],
       "isolation": "clean-worktree",
@@ -26833,7 +26833,7 @@
         "supabase/migrations/__tests__/issue_3524_no_consent_row_is_attendance_only.tester.adversarial.test.sql"
       ],
       "externalReferenceFiles": [],
-      "requiredContext": "CI batch: postgres17-deno2-node20-noinstall",
+      "requiredContext": "CI batch: postgres17-deno2-node22-noinstall",
       "timingSeconds": {
         "p50": null,
         "p95": null,
@@ -52085,5 +52085,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3",
-  "phase3eContractSha256": "f2e8d77ebf33acd4595d7b23d347b4bcbbce65a9899bdf76874c0db371e3ac03"
+  "phase3eContractSha256": "ebaedee0a2fb2f16722a22ecf707c6d9dd390bb198674b9d14e81cf38ef7d7fb"
 }

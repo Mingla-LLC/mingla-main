@@ -55,6 +55,10 @@ test("#3643 Phase 3E maps every routed suite to one unique deterministic templat
     assert.equal(suite.lifecycle, "batched-historical");
     assert.equal(fs.existsSync(path.join(ROOT, suite.origin)), false);
     assert.ok(suite.steps.every((step) => step.invocation.argv[1] === step.run && step.originJob));
+    if (suite.steps.some((step) => step.run.includes("--experimental-strip-types"))) {
+      assert.ok(Number(suite.runtime.nodeVersion || suite.runtime.version) >= 22,
+        `${suite.id}: retained TypeScript stripping commands require Node 22 or later`);
+    }
   }
   for (const klass of new Set(suites.map((suite) => suite.class))) {
     assert.deepEqual(

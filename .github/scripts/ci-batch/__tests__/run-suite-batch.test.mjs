@@ -91,10 +91,10 @@ test("#2438 primary routing freezes 55 established suites and counts additive lo
     // [#3643] The two Phase 3D hosts carry twenty folded suites, and the
     // fourteen Phase 3E Postgres hosts carry the forty-eight Postgres suites.
     "deno146-node20-noinstall":15, "deno2x-node22-noinstall":5,
-    "postgres17-deno2-node20-noinstall":20, "postgres17-deno2714-node20-noinstall":3,
+    "postgres17-deno2-node20-noinstall":19, "postgres17-deno2714-node20-noinstall":3,
     "postgres17-deno146-node22-noinstall":2, "postgres17-deno295-node20-cli2982":1,
     "postgres17-node20-noinstall":9, "postgres17-deno295-node20-noinstall":1,
-    "postgres17-deno295-node20-pre1857":1, "postgres17-deno2-node22-noinstall":4,
+    "postgres17-deno295-node20-pre1857":1, "postgres17-deno2-node22-noinstall":5,
     "postgres17-deno2-node22-foundation2060":1,
     "postgres17-deno2-node22-pre1931":1, "postgres17-deno146-node20-dualdb":1,
     "postgres17-deno146-node20-noinstall":2, "postgres17-deno2-node20-pre2117":1,

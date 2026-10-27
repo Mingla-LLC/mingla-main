@@ -160,7 +160,8 @@ function runtimeFor(document) {
   const denoVersions = [...new Set(setupSteps.filter((step) => String(step.uses || "").startsWith("denoland/setup-deno@"))
     .map((step) => String(step.with?.["deno-version"] || "v2.x")))];
   if (nodeVersions.length > 1 || denoVersions.length > 1) throw new Error(`workflow runtime split is not batchable: node=${nodeVersions} deno=${denoVersions}`);
-  const node = nodeVersions[0] || "20";
+  const stripsTypes = setupSteps.some((step) => step.run?.includes("--experimental-strip-types"));
+  const node = nodeVersions[0] || (stripsTypes ? "22" : "20");
   const deno = denoVersions[0] || null;
   if (!deno) return { runtime: { name: "node", version: node }, tag: `postgres17-node${node}-noinstall`, primaryDeno: "" };
   if (!DENO_ACTIONS[deno]) throw new Error(`unreviewed Deno selector ${deno}`);
