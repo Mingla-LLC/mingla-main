@@ -1393,7 +1393,7 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
   {
     slug: 'become-a-mingla-creator',
     episode: 25,
-    title: 'Become a Mingla Creator and complete paid gigs',
+    title: 'Become a Creator and complete paid gigs',
     blurb:
       'Verify your Creator profile, choose paid briefs, agree the work, publish it and get paid safely through Mingla.',
     duration: '0:00',
@@ -1436,7 +1436,7 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
   {
     slug: 'mingla-local-independent-reviews',
     episode: 26,
-    title: 'Join Mingla Local and publish independent reviews',
+    title: 'Join Local and publish independent reviews',
     blurb:
       'Apply for a city seat, choose an eligible place independently, submit one honest monthly review and track its payout.',
     duration: '0:00',
