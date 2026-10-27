@@ -159,9 +159,14 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //       `PRIMARY KEY (message_id, user_id)` from
   //       `20271230034114_issue_4114_chat_media.sql`.
   //
+  // [TEST-MOD-APPROVED #3872] Creator Program payees: `payee-account-stripe-link`
+  // and `payee-account-paystack-recipient` upsert `payee_accounts` on
+  // `user_id`, the table's non-partial PRIMARY KEY from
+  // `20271219003872_issue_3872_r2_referrals_foundation.sql`; census +2 (101).
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 99);
+  assert.equal(sites.length, 101);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&

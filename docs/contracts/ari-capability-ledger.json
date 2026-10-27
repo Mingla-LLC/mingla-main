@@ -2407,7 +2407,7 @@
       "surfaces": ["business_ios", "business_android", "business_web"],
       "provenance": { "phase": "post_1986", "introduced_by": "issue_3872_r3" },
       "owners": {
-        "ui": ["mingla-business/app/creator/contract/[contractId].tsx"],
+        "ui": ["mingla-business/app/brand/[id]/creators/contract/[contractId].tsx"],
         "source": [{
           "path": "supabase/functions/_shared/agentDomainTools.ts",
           "symbol": "const draftGigScript"
