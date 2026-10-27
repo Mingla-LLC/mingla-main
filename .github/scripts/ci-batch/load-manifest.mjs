@@ -37,7 +37,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // The four sourceSha256-only patches are deleted and that patch op is refused.
 // [TEST-MOD-APPROVED #3643] Re-sealed once for the terminal 48-suite Phase 3E fold.
 // #3643: re-sealed after retaining #1403/#1421's complete pre-fold routing.
-export const BOOTSTRAP_SHA256 = "6fa7f6312189b13f67c6ed4891527a5781334b0068c132fb92ed0a22ee7eee4f";
+// #3643: isolate the foundation migration fixture and retire the stale discovery rewind.
+export const BOOTSTRAP_SHA256 = "04992a9c65bd2a981334065ed79126f27f4841be3d710d49eded467d8e21a42f";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -70,6 +70,7 @@ test("#3643 Phase 3E maps every routed suite to one unique deterministic templat
   assert.deepEqual(customReplayIds, [
     "issue-1857-phone-country-authority-tests",
     "issue-1931-private-event-access",
+    "issue-2060-ari-reliability",
     "issue-2117-offering-visibility-gate-tests",
   ]);
   for (const suite of suites.filter((item) => item.templateReplay)) {

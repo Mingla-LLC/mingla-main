@@ -74,7 +74,9 @@ const OMIT_STEPS = Object.freeze({
   "issue-2160-multiday-multiselect-tests": ["Wait for PostgreSQL 17 bootstrap to complete", "Apply migrations in timestamp order"],
   "issue-2217-confirmation-app-cta-tests": ["Wait for PostgreSQL 17 bootstrap to complete", "Apply migrations in timestamp order"],
   "issue-2323-free-order-claim-and-cta-tests": ["Wait for PostgreSQL 17 bootstrap to complete", "Apply migrations in timestamp order"],
-  "issue-2333-online-event-publish": ["Wait for postgres", "Apply migrations in timestamp order"],
+  // Current behavior is proved against the full replay. Rewinding a curated
+  // historical definition list predates the discovery feed's newer owner.
+  "issue-2333-online-event-publish": ["Wait for postgres", "Apply migrations in timestamp order", "#2333 replay safety — second apply leaves definitions and grants identical"],
   "issue-2353-format-truth-and-edit-grant": ["Canonical migration replay (whole chain, timestamp order)"],
   "issue-871-attendance-entitlement-tests": ["Wait for PostgreSQL 17", "Apply full migration history"],
 });
@@ -116,6 +118,7 @@ const SPECIAL_CLASSES = Object.freeze({
   "issue-1857-phone-country-authority-tests": "postgres17-deno295-node20-pre1857",
   "issue-1931-private-event-access": "postgres17-deno2-node22-pre1931",
   "issue-1985-ari-task-state": "postgres17-deno146-node20-dualdb",
+  "issue-2060-ari-reliability": "postgres17-deno2-node22-foundation2060",
   "issue-2117-offering-visibility-gate-tests": "postgres17-deno2-node20-pre2117",
 });
 
@@ -301,6 +304,12 @@ for (const id of WAVE) {
   const missingOmissions = [...omitted].filter((name) => !seenOmitted.has(name));
   if (missingOmissions.length) throw new Error(`${id}: reviewed omission drifted (${missingOmissions.join(", ")})`);
   if (CUSTOM_TEMPLATE_STEPS[id] && !templateReplay) throw new Error(`${id}: custom template replay step drifted`);
+  // This suite installs and reapplies its foundation on the pristine image.
+  // Later migrations deliberately make those certification rows immutable.
+  if (id === "issue-2060-ari-reliability") templateReplay = {
+    name: "Certification foundation migration replay", cwd: ".", originJob: "reliability-certification-pg17",
+    run: "psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20270504002060_issue_2060_ari_certification_foundation.sql\n",
+  };
   if (!selected.length) throw new Error(`${id}: selected zero retained commands`);
   const steps = selected.map((item, index) => {
     const commandId = `assert:${id}:${String(index + 1).padStart(2, "0")}`;

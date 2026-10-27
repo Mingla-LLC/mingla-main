@@ -982,6 +982,29 @@
       "classes": [
         "postgres17-node22-noinstall"
       ]
+    },
+    "postgres17-deno2-node22-foundation2060": {
+      "runtime": {
+        "name": "node+deno",
+        "nodeVersion": "22",
+        "deno": {
+          "version": "v2.x",
+          "action": "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"
+        }
+      },
+      "install": {
+        "cwd": "mingla-business",
+        "invocation": {
+          "kind": "argv",
+          "command": "npm",
+          "argv": [
+            "ci"
+          ]
+        }
+      },
+      "classes": [
+        "postgres17-deno2-node22-foundation2060"
+      ]
     }
   },
   "classes": [
@@ -1009,6 +1032,7 @@
     "postgres17-deno295-node20-noinstall",
     "postgres17-deno295-node20-pre1857",
     "postgres17-deno2-node22-noinstall",
+    "postgres17-deno2-node22-foundation2060",
     "postgres17-deno2-node22-pre1931",
     "postgres17-deno146-node20-dualdb",
     "postgres17-deno146-node20-noinstall",
@@ -22293,7 +22317,7 @@
     },
     {
       "id": "issue-2060-ari-reliability",
-      "class": "postgres17-deno2-node22-noinstall",
+      "class": "postgres17-deno2-node22-foundation2060",
       "origin": ".github/workflows/issue-2060-ari-reliability.yml",
       "originPaths": [
         ".github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs",
@@ -22443,7 +22467,7 @@
           "action": "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"
         }
       },
-      "setupProfile": "postgres17-deno2-node22-noinstall",
+      "setupProfile": "postgres17-deno2-node22-foundation2060",
       "cwd": ".",
       "envNames": [],
       "isolation": "clean-worktree",
@@ -22476,7 +22500,7 @@
         "supabase/migrations/__tests__/issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql"
       ],
       "externalReferenceFiles": [],
-      "requiredContext": "CI batch: postgres17-deno2-node22-noinstall",
+      "requiredContext": "CI batch: postgres17-deno2-node22-foundation2060",
       "timingSeconds": {
         "p50": null,
         "p95": null,
@@ -22488,7 +22512,13 @@
       "exceptionRationale": "Raw shell retained to preserve every exact legacy workflow assertion command; Phase 3E replaces only PostgreSQL readiness and the shared full-history migration replay.",
       "timeoutSeconds": 720,
       "migrationWave": "phase3e-postgres-fold-wave",
-      "databaseName": "suite_i_2060_ari_reliability_77963f41f8"
+      "databaseName": "suite_i_2060_ari_reliability_77963f41f8",
+      "templateReplay": {
+        "name": "Certification foundation migration replay",
+        "cwd": ".",
+        "originJob": "reliability-certification-pg17",
+        "run": "psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20270504002060_issue_2060_ari_certification_foundation.sql\n"
+      }
     },
     {
       "id": "issue-2063-ari-brand-management",
@@ -26198,22 +26228,6 @@
           "originJob": "issue-2333-postgres-contract"
         },
         {
-          "name": "issue-2333-postgres-contract: #2333 replay safety — second apply leaves definitions and grants identical",
-          "cwd": ".",
-          "run": "set -euo pipefail\nsnapshot() {\n  psql -h localhost -U postgres -d postgres -At -v ON_ERROR_STOP=1 -c \"\n    SELECT string_agg(x, E'\\n' ORDER BY x) FROM (\n      SELECT p.oid::regprocedure::text || '|' || md5(p.prosrc) || '|'\n             || p.prosecdef::text || '|'\n             || COALESCE(array_to_string(p.proconfig, ','), '') || '|'\n             || COALESCE(p.proacl::text, '') AS x\n      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace\n      WHERE n.nspname = 'public'\n        AND p.proname IN ('business_publish_event_draft','business_patch_event_taxonomy','pg_discover_business_events')\n    ) s;\"\n}\nbefore=\"$(snapshot)\"\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270427002333_issue_2333_publish_online_city_optional.sql\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270427002334_issue_2333_patch_taxonomy_online_city_optional.sql\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270427002335_issue_2333_discover_online_carveout.sql\n# Issue #2620 — THIS FILE IS PART OF THE RE-APPLY SET, AND IT MUST BE LAST.\n#\n# `20270523002489_issue_2489_address_privacy_server_gate.sql` re-emits\n# `pg_discover_business_events` — one of the three objects snapshotted\n# above — to add the address-privacy gate to it. On a full replay #2489\n# therefore lands AFTER #2333's carve-out and owns the final definition.\n#\n# So re-applying #2333's three files alone rewinds that object to its\n# pre-#2489 form and REVERTS THE GATE, and `before` (gated) stops\n# matching `after` (un-gated). The step was right to go red: it caught a\n# real regression on the first occasion it ever could. The fix is to end\n# the re-apply in the true final state, not to relax what is asserted.\n#\n# SAY IT PLAINLY: any future migration that re-emits one of the three\n# snapshotted objects must be added here too, after #2333's files and in\n# timestamp order — AND NOTHING ENFORCES THAT. This list is maintained by\n# hand and will go stale silently the next time it happens.\n#\n# The durable fix belongs to this lane's owner, not to a passing change:\n# assert \"the gate survives the replay\" instead of \"nothing changed at\n# all\", and the list stops needing to be updated. Noted, deliberately not\n# implemented here — it is #2333's semantics to change.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270523002489_issue_2489_address_privacy_server_gate.sql\n# Issue #3288 re-emits `business_publish_event_draft` (an absent gallery key\n# keeps the stored photos) and owns its final definition on a full replay,\n# so the re-apply set must end with it, per the instruction above.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql\n# Issue #3313 (20270702003313) also re-emits `business_publish_event_draft`,\n# but it is NOT re-applied here: every later file below re-emits the same\n# function, so it never owns the final definition, and its own closing\n# probe reads `issue_1930_ticket_checkout_create_session_base::regproc`,\n# which is ambiguous once #3281 (20271109003281 and later) adds overloads\n# of that function. Re-applying it on a fully migrated database therefore\n# fails before the snapshot is compared (found on PR #4011).\n# Issue #3439 is the latest publish owner (applied-cover reconciliation).\n# Replay it last so the exact definition and ACL comparison stays valid.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270708003439_draft_autosave_keeps_pin_and_applied_cover.sql\n# Issue #3645 re-emits `business_publish_event_draft` once more (a paid\n# publish requires the current Organiser Terms) and owns its final\n# definition on a full replay, so the re-apply set must end with it. It\n# was not appended when it merged (6 October, PR #3749), which left this\n# step red for every later change in this lane's path scope; found on\n# PR #3805. This step replays the repository chain on a throwaway\n# database: the held production apply of that migration is unrelated.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270731003645_issue_3645_organiser_terms_paid_publish_rpc.sql\n# Issue #3827 re-emits `business_patch_event_taxonomy` (a live edit keeps\n# an event's location label and its structured location as one value) and\n# owns its final definition on a full replay, so the re-apply set must\n# end with it: re-applying #2333's 20270427002334 alone rewinds that\n# function to the body that drops the venue. The same migration is also\n# the latest owner of `business_update_live_event`,\n# `business_update_live_event_atomic` and `biz_update_live_rsvp`; those\n# three are not in the snapshot above, so this entry is here for the\n# taxonomy function only.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270828003827_issue_3827_live_edit_location_one_owner.sql\n# Issue #3645 re-emits `business_publish_event_draft` again (it asks the\n# shared currency source instead of carrying its own list) and now owns\n# its final definition on a full replay, so the re-apply set must end\n# with it: re-applying 20270731003645 alone rewinds the function to the\n# body with the hand-written list. This file refuses to run when a\n# function it depends on is missing, which a full replay always has.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270830003645_issue_3645_offering_functions_use_shared_currency_source.sql\n# Issue #3281's many-dates foundation re-emits `business_publish_event_draft`\n# once more and now owns its final definition on a full replay, so the\n# re-apply set must end with it (found on PR #4011).\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20271124003281_issue_3281_many_dates_foundation.sql\nafter=\"$(snapshot)\"\ntest \"$before\" = \"$after\"\necho \"OK — replay is definition- and grant-equivalent.\"\n",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "set -euo pipefail\nsnapshot() {\n  psql -h localhost -U postgres -d postgres -At -v ON_ERROR_STOP=1 -c \"\n    SELECT string_agg(x, E'\\n' ORDER BY x) FROM (\n      SELECT p.oid::regprocedure::text || '|' || md5(p.prosrc) || '|'\n             || p.prosecdef::text || '|'\n             || COALESCE(array_to_string(p.proconfig, ','), '') || '|'\n             || COALESCE(p.proacl::text, '') AS x\n      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace\n      WHERE n.nspname = 'public'\n        AND p.proname IN ('business_publish_event_draft','business_patch_event_taxonomy','pg_discover_business_events')\n    ) s;\"\n}\nbefore=\"$(snapshot)\"\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270427002333_issue_2333_publish_online_city_optional.sql\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270427002334_issue_2333_patch_taxonomy_online_city_optional.sql\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270427002335_issue_2333_discover_online_carveout.sql\n# Issue #2620 — THIS FILE IS PART OF THE RE-APPLY SET, AND IT MUST BE LAST.\n#\n# `20270523002489_issue_2489_address_privacy_server_gate.sql` re-emits\n# `pg_discover_business_events` — one of the three objects snapshotted\n# above — to add the address-privacy gate to it. On a full replay #2489\n# therefore lands AFTER #2333's carve-out and owns the final definition.\n#\n# So re-applying #2333's three files alone rewinds that object to its\n# pre-#2489 form and REVERTS THE GATE, and `before` (gated) stops\n# matching `after` (un-gated). The step was right to go red: it caught a\n# real regression on the first occasion it ever could. The fix is to end\n# the re-apply in the true final state, not to relax what is asserted.\n#\n# SAY IT PLAINLY: any future migration that re-emits one of the three\n# snapshotted objects must be added here too, after #2333's files and in\n# timestamp order — AND NOTHING ENFORCES THAT. This list is maintained by\n# hand and will go stale silently the next time it happens.\n#\n# The durable fix belongs to this lane's owner, not to a passing change:\n# assert \"the gate survives the replay\" instead of \"nothing changed at\n# all\", and the list stops needing to be updated. Noted, deliberately not\n# implemented here — it is #2333's semantics to change.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270523002489_issue_2489_address_privacy_server_gate.sql\n# Issue #3288 re-emits `business_publish_event_draft` (an absent gallery key\n# keeps the stored photos) and owns its final definition on a full replay,\n# so the re-apply set must end with it, per the instruction above.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql\n# Issue #3313 (20270702003313) also re-emits `business_publish_event_draft`,\n# but it is NOT re-applied here: every later file below re-emits the same\n# function, so it never owns the final definition, and its own closing\n# probe reads `issue_1930_ticket_checkout_create_session_base::regproc`,\n# which is ambiguous once #3281 (20271109003281 and later) adds overloads\n# of that function. Re-applying it on a fully migrated database therefore\n# fails before the snapshot is compared (found on PR #4011).\n# Issue #3439 is the latest publish owner (applied-cover reconciliation).\n# Replay it last so the exact definition and ACL comparison stays valid.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270708003439_draft_autosave_keeps_pin_and_applied_cover.sql\n# Issue #3645 re-emits `business_publish_event_draft` once more (a paid\n# publish requires the current Organiser Terms) and owns its final\n# definition on a full replay, so the re-apply set must end with it. It\n# was not appended when it merged (6 October, PR #3749), which left this\n# step red for every later change in this lane's path scope; found on\n# PR #3805. This step replays the repository chain on a throwaway\n# database: the held production apply of that migration is unrelated.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270731003645_issue_3645_organiser_terms_paid_publish_rpc.sql\n# Issue #3827 re-emits `business_patch_event_taxonomy` (a live edit keeps\n# an event's location label and its structured location as one value) and\n# owns its final definition on a full replay, so the re-apply set must\n# end with it: re-applying #2333's 20270427002334 alone rewinds that\n# function to the body that drops the venue. The same migration is also\n# the latest owner of `business_update_live_event`,\n# `business_update_live_event_atomic` and `biz_update_live_rsvp`; those\n# three are not in the snapshot above, so this entry is here for the\n# taxonomy function only.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270828003827_issue_3827_live_edit_location_one_owner.sql\n# Issue #3645 re-emits `business_publish_event_draft` again (it asks the\n# shared currency source instead of carrying its own list) and now owns\n# its final definition on a full replay, so the re-apply set must end\n# with it: re-applying 20270731003645 alone rewinds the function to the\n# body with the hand-written list. This file refuses to run when a\n# function it depends on is missing, which a full replay always has.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270830003645_issue_3645_offering_functions_use_shared_currency_source.sql\n# Issue #3281's many-dates foundation re-emits `business_publish_event_draft`\n# once more and now owns its final definition on a full replay, so the\n# re-apply set must end with it (found on PR #4011).\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20271124003281_issue_3281_many_dates_foundation.sql\nafter=\"$(snapshot)\"\ntest \"$before\" = \"$after\"\necho \"OK — replay is definition- and grant-equivalent.\"\n"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow assertion command byte-for-byte.",
-          "commandId": "assert:issue-2333-online-event-publish:04",
-          "originJob": "issue-2333-postgres-contract"
-        },
-        {
           "name": "issue-2333-client-contract: #2333 true-revert strict gate",
           "cwd": ".",
           "run": "node .github/scripts/strict-grep/issue-2333-online-event-publish.mjs\nnode .github/scripts/strict-grep/issue-2333-online-event-publish.mjs --self-test\n",
@@ -26226,7 +26240,7 @@
             ]
           },
           "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow assertion command byte-for-byte.",
-          "commandId": "assert:issue-2333-online-event-publish:05",
+          "commandId": "assert:issue-2333-online-event-publish:04",
           "originJob": "issue-2333-client-contract"
         },
         {
@@ -26242,7 +26256,7 @@
             ]
           },
           "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow assertion command byte-for-byte.",
-          "commandId": "assert:issue-2333-online-event-publish:06",
+          "commandId": "assert:issue-2333-online-event-publish:05",
           "originJob": "issue-2333-client-contract"
         },
         {
@@ -26258,7 +26272,7 @@
             ]
           },
           "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow assertion command byte-for-byte.",
-          "commandId": "assert:issue-2333-online-event-publish:07",
+          "commandId": "assert:issue-2333-online-event-publish:06",
           "originJob": "issue-2333-client-contract"
         }
       ],
@@ -26278,16 +26292,6 @@
         "mingla-business/src/components/event/__tests__/issue2333UnmappedPublishGuard.test.tsx",
         "mingla-business/src/utils/__tests__/issue2333OnlineGuards.tester.adversarial.test.ts",
         "mingla-business/src/utils/__tests__/issue2333OnlinePublishGuards.happy.test.ts",
-        "supabase/migrations/20270427002333_issue_2333_publish_online_city_optional.sql",
-        "supabase/migrations/20270427002334_issue_2333_patch_taxonomy_online_city_optional.sql",
-        "supabase/migrations/20270427002335_issue_2333_discover_online_carveout.sql",
-        "supabase/migrations/20270523002489_issue_2489_address_privacy_server_gate.sql",
-        "supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql",
-        "supabase/migrations/20270708003439_draft_autosave_keeps_pin_and_applied_cover.sql",
-        "supabase/migrations/20270731003645_issue_3645_organiser_terms_paid_publish_rpc.sql",
-        "supabase/migrations/20270828003827_issue_3827_live_edit_location_one_owner.sql",
-        "supabase/migrations/20270830003645_issue_3645_offering_functions_use_shared_currency_source.sql",
-        "supabase/migrations/20271124003281_issue_3281_many_dates_foundation.sql",
         "supabase/migrations/__tests__/issue_2333_discover_online_carveout.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_2333_online_publish_city_optional.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_2333_online_publish_hybrid_boundary.tester.pg17.test.sql"
@@ -39346,8 +39350,8 @@
     },
     "phase3e-postgres-fold-wave": {
       "suiteCount": 48,
-      "outerCommandCount": 388,
-      "hostCount": 13,
+      "outerCommandCount": 387,
+      "hostCount": 14,
       "migrationReplayCountPerHost": 1,
       "lifecycle": "batched-historical"
     }
@@ -39392,6 +39396,7 @@
     "postgres17-deno295-node20-noinstall",
     "postgres17-deno295-node20-pre1857",
     "postgres17-deno2-node22-noinstall",
+    "postgres17-deno2-node22-foundation2060",
     "postgres17-deno2-node22-pre1931",
     "postgres17-deno146-node20-dualdb",
     "postgres17-deno146-node20-noinstall",
@@ -41242,8 +41247,8 @@
   ],
   "commandCapabilities": {
     "schemaVersion": 1,
-    "expectedCommands": 722,
-    "registrySha256": "793a179e3fdb250c3266b7ea7b95dca2890c553ba0aa1e998740a6cd641e01c0",
+    "expectedCommands": 721,
+    "registrySha256": "c9eb8e628de718d76da16b3a10e291b6eced9f7643f650b8e162572eddc1339e",
     "commands": [
       {
         "id": "assert:issue-1282-google-bespoke-copy-tests:01",
@@ -49486,20 +49491,6 @@
         "executable": "bash",
         "argv": [
           "-c",
-          "set -euo pipefail\nsnapshot() {\n  psql -h localhost -U postgres -d postgres -At -v ON_ERROR_STOP=1 -c \"\n    SELECT string_agg(x, E'\\n' ORDER BY x) FROM (\n      SELECT p.oid::regprocedure::text || '|' || md5(p.prosrc) || '|'\n             || p.prosecdef::text || '|'\n             || COALESCE(array_to_string(p.proconfig, ','), '') || '|'\n             || COALESCE(p.proacl::text, '') AS x\n      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace\n      WHERE n.nspname = 'public'\n        AND p.proname IN ('business_publish_event_draft','business_patch_event_taxonomy','pg_discover_business_events')\n    ) s;\"\n}\nbefore=\"$(snapshot)\"\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270427002333_issue_2333_publish_online_city_optional.sql\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270427002334_issue_2333_patch_taxonomy_online_city_optional.sql\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270427002335_issue_2333_discover_online_carveout.sql\n# Issue #2620 — THIS FILE IS PART OF THE RE-APPLY SET, AND IT MUST BE LAST.\n#\n# `20270523002489_issue_2489_address_privacy_server_gate.sql` re-emits\n# `pg_discover_business_events` — one of the three objects snapshotted\n# above — to add the address-privacy gate to it. On a full replay #2489\n# therefore lands AFTER #2333's carve-out and owns the final definition.\n#\n# So re-applying #2333's three files alone rewinds that object to its\n# pre-#2489 form and REVERTS THE GATE, and `before` (gated) stops\n# matching `after` (un-gated). The step was right to go red: it caught a\n# real regression on the first occasion it ever could. The fix is to end\n# the re-apply in the true final state, not to relax what is asserted.\n#\n# SAY IT PLAINLY: any future migration that re-emits one of the three\n# snapshotted objects must be added here too, after #2333's files and in\n# timestamp order — AND NOTHING ENFORCES THAT. This list is maintained by\n# hand and will go stale silently the next time it happens.\n#\n# The durable fix belongs to this lane's owner, not to a passing change:\n# assert \"the gate survives the replay\" instead of \"nothing changed at\n# all\", and the list stops needing to be updated. Noted, deliberately not\n# implemented here — it is #2333's semantics to change.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270523002489_issue_2489_address_privacy_server_gate.sql\n# Issue #3288 re-emits `business_publish_event_draft` (an absent gallery key\n# keeps the stored photos) and owns its final definition on a full replay,\n# so the re-apply set must end with it, per the instruction above.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql\n# Issue #3313 (20270702003313) also re-emits `business_publish_event_draft`,\n# but it is NOT re-applied here: every later file below re-emits the same\n# function, so it never owns the final definition, and its own closing\n# probe reads `issue_1930_ticket_checkout_create_session_base::regproc`,\n# which is ambiguous once #3281 (20271109003281 and later) adds overloads\n# of that function. Re-applying it on a fully migrated database therefore\n# fails before the snapshot is compared (found on PR #4011).\n# Issue #3439 is the latest publish owner (applied-cover reconciliation).\n# Replay it last so the exact definition and ACL comparison stays valid.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270708003439_draft_autosave_keeps_pin_and_applied_cover.sql\n# Issue #3645 re-emits `business_publish_event_draft` once more (a paid\n# publish requires the current Organiser Terms) and owns its final\n# definition on a full replay, so the re-apply set must end with it. It\n# was not appended when it merged (6 October, PR #3749), which left this\n# step red for every later change in this lane's path scope; found on\n# PR #3805. This step replays the repository chain on a throwaway\n# database: the held production apply of that migration is unrelated.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270731003645_issue_3645_organiser_terms_paid_publish_rpc.sql\n# Issue #3827 re-emits `business_patch_event_taxonomy` (a live edit keeps\n# an event's location label and its structured location as one value) and\n# owns its final definition on a full replay, so the re-apply set must\n# end with it: re-applying #2333's 20270427002334 alone rewinds that\n# function to the body that drops the venue. The same migration is also\n# the latest owner of `business_update_live_event`,\n# `business_update_live_event_atomic` and `biz_update_live_rsvp`; those\n# three are not in the snapshot above, so this entry is here for the\n# taxonomy function only.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270828003827_issue_3827_live_edit_location_one_owner.sql\n# Issue #3645 re-emits `business_publish_event_draft` again (it asks the\n# shared currency source instead of carrying its own list) and now owns\n# its final definition on a full replay, so the re-apply set must end\n# with it: re-applying 20270731003645 alone rewinds the function to the\n# body with the hand-written list. This file refuses to run when a\n# function it depends on is missing, which a full replay always has.\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20270830003645_issue_3645_offering_functions_use_shared_currency_source.sql\n# Issue #3281's many-dates foundation re-emits `business_publish_event_draft`\n# once more and now owns its final definition on a full replay, so the\n# re-apply set must end with it (found on PR #4011).\npsql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\\n  -f supabase/migrations/20271124003281_issue_3281_many_dates_foundation.sql\nafter=\"$(snapshot)\"\ntest \"$before\" = \"$after\"\necho \"OK — replay is definition- and grant-equivalent.\"\n"
-        ],
-        "env": null,
-        "compound": false,
-        "payloadSha256": "281a4400751403f1426733353041740826aa51192d9047ad39291c841c0a6a68"
-      },
-      {
-        "id": "assert:issue-2333-online-event-publish:05",
-        "suiteId": "issue-2333-online-event-publish",
-        "stepIndex": 4,
-        "cwd": ".",
-        "executable": "bash",
-        "argv": [
-          "-c",
           "node .github/scripts/strict-grep/issue-2333-online-event-publish.mjs\nnode .github/scripts/strict-grep/issue-2333-online-event-publish.mjs --self-test\n"
         ],
         "env": null,
@@ -49507,9 +49498,9 @@
         "payloadSha256": "bb19e1929f355e4f3663f3fddc81582f207dbc71d633b39baa3364d8d62d755d"
       },
       {
-        "id": "assert:issue-2333-online-event-publish:06",
+        "id": "assert:issue-2333-online-event-publish:05",
         "suiteId": "issue-2333-online-event-publish",
-        "stepIndex": 5,
+        "stepIndex": 4,
         "cwd": "app-mobile",
         "executable": "bash",
         "argv": [
@@ -49521,9 +49512,9 @@
         "payloadSha256": "c1b3a1feb16516c1fb46f23494c80ef7c6d39780046cf25e7628b8fb22612a2b"
       },
       {
-        "id": "assert:issue-2333-online-event-publish:07",
+        "id": "assert:issue-2333-online-event-publish:06",
         "suiteId": "issue-2333-online-event-publish",
-        "stepIndex": 6,
+        "stepIndex": 5,
         "cwd": "mingla-business",
         "executable": "bash",
         "argv": [
@@ -52094,5 +52085,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3",
-  "phase3eContractSha256": "e09da3d63a6574a79491004842b1da2c8c823f2199f85d10699cb2fe7a8cc12f"
+  "phase3eContractSha256": "f2e8d77ebf33acd4595d7b23d347b4bcbbce65a9899bdf76874c0db371e3ac03"
 }

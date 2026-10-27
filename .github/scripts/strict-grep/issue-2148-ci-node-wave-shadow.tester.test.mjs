@@ -499,7 +499,7 @@ test("typed setup, runtime, timeout, dispatch, and trust boundaries are exact", 
   assert.equal(jobs.batch.strategy, true);
   // [#3643] Fourteen sealed hosts plus the Phase 3D/3E primary hosts and the
   // fifteen PostgreSQL host classes that now own the folded suites.
-  assert.equal(jobs.batch.matrix.length, 29);
+  assert.equal(jobs.batch.matrix.length, 30);
   assert.equal(jobs.dispatch.if, "github.event_name == 'workflow_dispatch' && inputs.suite == 'issue-2300-orch-artifact-reap'");
   assert.equal(jobs.dispatch.strategy, false);
   assert.equal(jobs.dispatch.timeout, 25);

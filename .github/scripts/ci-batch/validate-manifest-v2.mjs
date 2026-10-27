@@ -181,6 +181,7 @@ export const PHASE3E_HOSTS = Object.freeze([
   Object.freeze({ class: "postgres17-deno295-node20-noinstall", hostTimeoutMinutes: 180, primaryDeno: "v2.9.5", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.9.5","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},"classes":["postgres17-deno295-node20-noinstall"]}) }),
   Object.freeze({ class: "postgres17-deno295-node20-pre1857", hostTimeoutMinutes: 180, primaryDeno: "v2.9.5", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.9.5","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},"classes":["postgres17-deno295-node20-pre1857"]}) }),
   Object.freeze({ class: "postgres17-deno2-node22-noinstall", hostTimeoutMinutes: 180, primaryDeno: "v2.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"22","deno":{"version":"v2.x","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"installs":[{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},{"cwd":"app-mobile","invocation":{"kind":"argv","command":"npm","argv":["ci"]}}],"classes":["postgres17-deno2-node22-noinstall"],"toolExposures":[{"id":"tool:postgres17-deno2-node22-noinstall:jest-29.7.0","providerCwd":"mingla-business","consumerCwd":"app-mobile","packageName":"jest","executableName":"jest","version":"29.7.0","providerPackage":"mingla-business/node_modules/jest/package.json","providerExecutable":"mingla-business/node_modules/jest/bin/jest.js","consumerPackageLink":"app-mobile/node_modules/jest","consumerPackageLinkTarget":"../../mingla-business/node_modules/jest","consumerBinLink":"app-mobile/node_modules/.bin/jest","consumerBinLinkTarget":"../jest/bin/jest.js","authorityLock":"mingla-business/package-lock.json","authorityKey":"node_modules/jest"}]}) }),
+  Object.freeze({ class: "postgres17-deno2-node22-foundation2060", hostTimeoutMinutes: 180, primaryDeno: "v2.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"22","deno":{"version":"v2.x","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},"classes":["postgres17-deno2-node22-foundation2060"]}) }),
   Object.freeze({ class: "postgres17-deno2-node22-pre1931", hostTimeoutMinutes: 120, primaryDeno: "v2.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"22","deno":{"version":"v2.x","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":null,"classes":["postgres17-deno2-node22-pre1931"]}) }),
   Object.freeze({ class: "postgres17-deno146-node20-dualdb", hostTimeoutMinutes: 180, primaryDeno: "1.46.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"1.46.x","action":"denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"}},"install":{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci","--ignore-scripts"]}},"classes":["postgres17-deno146-node20-dualdb"]}) }),
   Object.freeze({ class: "postgres17-deno146-node20-noinstall", hostTimeoutMinutes: 180, primaryDeno: "1.46.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"1.46.x","action":"denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"}},"install":null,"classes":["postgres17-deno146-node20-noinstall"]}) }),
@@ -211,7 +212,7 @@ export const SUITES_FOLDED_IN_POSTGRES_WAVE = Object.freeze([
   Object.freeze({ suite: "issue-1995-contact-book-blast", issue: 1995, class: "postgres17-deno2-node20-noinstall", steps: 28 }),
   Object.freeze({ suite: "issue-2009-published-event-visibility", issue: 2009, class: "postgres17-deno146-node20-noinstall", steps: 19 }),
   Object.freeze({ suite: "issue-2015-app-network-bindings", issue: 2015, class: "postgres17-deno2-node20-noinstall", steps: 9 }),
-  Object.freeze({ suite: "issue-2060-ari-reliability", issue: 2060, class: "postgres17-deno2-node22-noinstall", steps: 6 }),
+  Object.freeze({ suite: "issue-2060-ari-reliability", issue: 2060, class: "postgres17-deno2-node22-foundation2060", steps: 6 }),
   Object.freeze({ suite: "issue-2063-ari-brand-management", issue: 2063, class: "postgres17-deno146-node22-noinstall", steps: 6 }),
   Object.freeze({ suite: "issue-2117-offering-visibility-gate-tests", issue: 2117, class: "postgres17-deno2-node20-pre2117", steps: 14 }),
   Object.freeze({ suite: "issue-2150-free-resubmit-idempotent-tests", issue: 2150, class: "postgres17-deno2-node20-noinstall", steps: 10 }),
@@ -219,7 +220,7 @@ export const SUITES_FOLDED_IN_POSTGRES_WAVE = Object.freeze([
   Object.freeze({ suite: "issue-2217-confirmation-app-cta-tests", issue: 2217, class: "postgres17-deno2-node20-noinstall", steps: 8 }),
   Object.freeze({ suite: "issue-2267-marketing-tenancy", issue: 2267, class: "postgres17-node20-noinstall", steps: 3 }),
   Object.freeze({ suite: "issue-2323-free-order-claim-and-cta-tests", issue: 2323, class: "postgres17-node20-noinstall", steps: 6 }),
-  Object.freeze({ suite: "issue-2333-online-event-publish", issue: 2333, class: "postgres17-node20-noinstall", steps: 7 }),
+  Object.freeze({ suite: "issue-2333-online-event-publish", issue: 2333, class: "postgres17-node20-noinstall", steps: 6 }),
   Object.freeze({ suite: "issue-2353-format-truth-and-edit-grant", issue: 2353, class: "postgres17-node20-noinstall", steps: 8 }),
   Object.freeze({ suite: "issue-871-attendance-entitlement-tests", issue: 871, class: "postgres17-deno2-node20-noinstall", steps: 15 }),
   Object.freeze({ suite: "issue-1020-discover-geo-fallback-tests", issue: 1020, class: "postgres17-deno146-node20-noinstall", steps: 3 }),
@@ -272,7 +273,7 @@ export function phase3dContractDigest(manifest) {
 }
 // [TEST-MOD-APPROVED #3643] Final 48-suite Phase 3E command/runtime/routing seal.
 // #3643: include the two insights lanes' pre-fold live-provider routing scopes.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "e09da3d63a6574a79491004842b1da2c8c823f2199f85d10699cb2fe7a8cc12f";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "f2e8d77ebf33acd4595d7b23d347b4bcbbce65a9899bdf76874c0db371e3ac03";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -2922,6 +2923,7 @@ function validateRegistryInTrackedFilesScope(
   const customTemplateIds = new Set([
     "issue-1857-phone-country-authority-tests",
     "issue-1931-private-event-access",
+    "issue-2060-ari-reliability",
     "issue-2117-offering-visibility-gate-tests",
   ]);
   for (const suite of phase3eSuites) {
@@ -2949,7 +2951,7 @@ function validateRegistryInTrackedFilesScope(
         || (hasTemplateReplay && (typeof suite.templateReplay?.run !== "string" || !suite.templateReplay.run
           || typeof suite.templateReplay?.originJob !== "string" || !suite.templateReplay.originJob
           || phase3eSuites.filter((candidate) => candidate.class === suite.class).length !== 1))) {
-      fail(errors, `${suite.id}: custom migration replay ownership must equal the three reviewed dedicated-host suites`);
+      fail(errors, `${suite.id}: custom migration replay ownership must equal the reviewed dedicated-host suites`);
     }
     const dualDatabase = suite.id === "issue-1985-ari-task-state";
     const expectedVaultless = postgresAdditionalDatabaseName(suite.id, "vaultless");

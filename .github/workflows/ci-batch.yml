@@ -399,6 +399,19 @@ jobs:
             tertiaryNode: ""
             tertiaryDeno: ""
             tertiaryOrder: ""
+          - class: postgres17-deno2-node22-foundation2060
+            node: "22"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 180
+            primaryDeno: "v2.x"
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
           - class: postgres17-deno2-node22-pre1931
             node: "22"
             cache: ""
