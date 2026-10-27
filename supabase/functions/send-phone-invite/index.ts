@@ -13,6 +13,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // CTIA opt-out exposure, not merely a routing one. The adapter fixes all three:
 // approved sender only, STOP footer appended, StatusCallback wired.
 import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
+import { buildSessionInviteOneLink } from "../_shared/friendInviteLink.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -174,6 +175,9 @@ export const handler = async (req: Request): Promise<Response> => {
             success: true,
             inviteId: existingInvite.id,
             status: "already_invited",
+            // Issue #4114 QA run 2: no text goes out for a repeat invite.
+            smsStatus: "failed",
+            smsProviderStatus: "already_invited",
           }),
           {
             status: 200,
@@ -226,6 +230,9 @@ export const handler = async (req: Request): Promise<Response> => {
           success: true,
           inviteId: existingInvite.id,
           status: "already_invited",
+          // Issue #4114 QA run 2: no text goes out for a repeat invite.
+          smsStatus: "failed",
+          smsProviderStatus: "already_invited",
         }),
         {
           status: 200,
@@ -237,7 +244,7 @@ export const handler = async (req: Request): Promise<Response> => {
     // Get inviter display name
     const { data: inviterProfile } = await supabaseAdmin
       .from("profiles")
-      .select("display_name, username")
+      .select("display_name, username, referral_code")
       .eq("id", inviterId)
       .single();
 
@@ -258,7 +265,12 @@ export const handler = async (req: Request): Promise<Response> => {
     // #1529); messagingServiceSid is omitted, which is precisely what retires
     // the raw-`From` fallback — omission selects the approved transactional
     // toll-free and there is no longer any code path to anything else.
-    const smsBody = `${inviterName} invited you to Mingla! Plan experiences together. Download now: https://mingla.app/invite`;
+    // Issue #4114: the link is the go.usemingla.com Explorer OneLink (the old
+    // link pointed at a domain with no DNS records, so it opened nothing).
+    const inviteLink = buildSessionInviteOneLink({
+      referralCode: inviterProfile?.referral_code ?? null,
+    });
+    const smsBody = `${inviterName} invited you to Mingla! Plan experiences together. Download now: ${inviteLink}`;
 
     const result = await smsAdapter.send({
       to: phone_e164,
@@ -300,8 +312,20 @@ export const handler = async (req: Request): Promise<Response> => {
       ? "deferred"
       : "send_failed";
 
+    // Issue #4114 QA run 2: the same SMS outcome shape send-pair-request
+    // returns since Wave 2b, so the app says "texted" only when it was, and
+    // otherwise offers Share with this link.
+    const smsStatus: "sent" | "failed" = result.status === "sent" ? "sent" : "failed";
+
     return new Response(
-      JSON.stringify({ success: true, inviteId, status: reportedStatus }),
+      JSON.stringify({
+        success: true,
+        inviteId,
+        status: reportedStatus,
+        smsStatus,
+        smsProviderStatus: reportedStatus,
+        inviteLink,
+      }),
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

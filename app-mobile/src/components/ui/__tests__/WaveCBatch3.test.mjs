@@ -176,8 +176,11 @@ function run() {
     assert.match(c, /EVENT_AUDIENCE_SNAP/, "MI-4: event-audience snap const must exist");
     assert.match(c, /eventAudienceSheetBackground/, "MI-4: bespoke dark canvas must come from backgroundStyle (eventAudienceSheetBackground)");
 
-    // The EXCLUDED modals must still be RN <Modal> (image preview + file spinner).
-    assert.ok((c.match(/<Modal\b/g) || []).length >= 2, "MI-5: the EXCLUDED image-preview + file-spinner RN <Modal>s must remain untouched");
+    // The EXCLUDED modals must stay full-screen modals, not sheets.
+    // [TEST-MOD-APPROVED #4114] Wave 4 deleted the file spinner (a fake 500 ms
+    // timer) and moved the image preview into the shared ImageLightbox and the
+    // chat video / view-once viewers, each its own raw-<Modal> component.
+    assert.ok(/<ImageLightbox\b/.test(c) && /<ChatVideoPlayerModal\b/.test(c), "MI-5: the media viewers stay full-screen modals (ImageLightbox + ChatVideoPlayerModal)");
   }
 
   // ════════════════════════════════════════════════════════════════════════

@@ -2655,6 +2655,37 @@ function AppContent() {
           handleIncomingClaimCode(dest.code);
           return;
 
+        case 'friend_invite': {
+          // Issue #4114 — a friend's text invite. Hold the token the way
+          // follow_invite does (it survives install + onboarding), keep the
+          // inviter's referral code the way `referral` does. Signed out: the
+          // onboarding phone step claims it (claim_friend_invite) and the
+          // friends step shows the inviter. Signed in: claim now and open the
+          // friends sheet on Requests.
+          if (dest.referralCode) {
+            persistValidatedReferralCode(dest.referralCode).catch((e) =>
+              console.warn('[OneLink] Failed to persist referral code:', e),
+            );
+          }
+          void (async () => {
+            try {
+              const { setPendingFriendInvite, claimPendingFriendInvite } = await import(
+                "../src/services/pendingFriendInvite"
+              );
+              await setPendingFriendInvite(dest.token);
+              if (!userIdRef.current) return;
+              const claim = await claimPendingFriendInvite();
+              if (claim.status === "error") {
+                console.warn('[OneLink] friend_invite claim failed:', claim.message);
+              }
+              handleDeepLinkRef.current('mingla://connections?tab=requests');
+            } catch (e) {
+              console.warn('[OneLink] friend_invite handling failed:', e);
+            }
+          })();
+          return;
+        }
+
         case 'follow_invite': {
           // #3682 Wave 2.5 — hold token; signed-in attach peeks first (O6).
           void (async () => {
@@ -2932,7 +2963,10 @@ function AppContent() {
     setCurrentPage("connections");
   }, [setPendingOpenDmUserId, setCurrentPage]);
 
-  const handleViewFriendProfile = useCallback((friendUserId: string) => {
+  // Issue #4114 (D13): "paired" opens the profile at birthday, holidays and saves.
+  const [friendProfileFocus, setFriendProfileFocus] = useState<'paired' | null>(null);
+  const handleViewFriendProfile = useCallback((friendUserId: string, options?: { focus?: 'paired' }) => {
+    setFriendProfileFocus(options?.focus ?? null);
     setViewingFriendProfileId(friendUserId);
   }, [setViewingFriendProfileId]);
 
@@ -3010,7 +3044,7 @@ function AppContent() {
     () => ({
       home: t('navigation:tabs.explore'),
       discover: t('navigation:tabs.discover'),
-      connections: t('navigation:tabs.friends'),
+      connections: t('navigation:tabs.chats'),
       likes: t('navigation:tabs.likes'),
       profile: t('navigation:tabs.profile'),
     }),
@@ -3280,12 +3314,15 @@ function AppContent() {
                           />
                         ) : viewingFriendProfileId ? (
                           <ViewFriendProfileScreen
+                            key={`${viewingFriendProfileId}:${friendProfileFocus ?? ''}`}
                             userId={viewingFriendProfileId}
+                            initialFocus={friendProfileFocus ?? undefined}
                             // #1669: replaces the screen's hard-coded
                             // USD/Imperial on its ExpandedCardModal mount.
                             accountPreferences={accountPreferencesMemo}
-                            onBack={() => setViewingFriendProfileId(null)}
+                            onBack={() => { setFriendProfileFocus(null); setViewingFriendProfileId(null); }}
                             onMessage={(userId) => {
+                              setFriendProfileFocus(null);
                               setViewingFriendProfileId(null);
                               setPendingOpenDmUserId(userId);
                               setCurrentPage("connections");

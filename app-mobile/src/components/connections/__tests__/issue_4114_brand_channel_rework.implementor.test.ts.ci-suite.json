@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/connections/__tests__/issue_4114_brand_channel_rework.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4114-brand-channel-rework-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

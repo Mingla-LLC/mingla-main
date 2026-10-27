@@ -1,5 +1,6 @@
-import React from 'react';
-import { View, Text, StyleSheet, Dimensions, Image, TouchableOpacity } from 'react-native';
+import React, { memo } from 'react';
+import { View, Text, StyleSheet, Dimensions, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import { PlaceCuratedChatCard } from './PlaceCuratedChatCard';
@@ -11,6 +12,24 @@ import { CollabLocationChips } from '../collab/CollabLocationChips';
 import { isContentShareCardPayload, type CardPayload, type CardTagEntry, type LegacyCardPayload, type MentionEntry } from '../../services/messagingService';
 import type { CollabDeadEndBannerPayload } from '../../services/collabDeadEndBannerService';
 import { selectCompactPreviewFacts, shareKindLabel, statusLabel, validateNativeContentCardDescriptorV1 } from '@mingla/sharing';
+import type { ReactionSummary } from '../../utils/threadModel';
+import { chatTokens, receivedBubbleTokens } from '../../constants/chatTokens';
+import { isChatStoragePath, type ViewOnceState } from '../../utils/chatMedia';
+import {
+  ALBUM_TILE_GAP,
+  MEDIA_CARD_RADIUS,
+  PLAY_BUTTON_SIZE,
+  albumCardSize,
+  albumTiles,
+  formatMediaDuration,
+  mediaCardSize,
+} from '../../utils/chatMediaLayout';
+import { useChatMediaUrl } from './useChatMediaUrl';
+import {
+  tokenizeMessageText,
+  type MentionCandidate,
+  type MessageTextToken,
+} from '../../utils/messageTextTokens';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -29,6 +48,8 @@ interface MessageData {
   marketingCampaignId?: string | null;
   isMe: boolean;
   failed?: boolean;
+  /** Issue #4114 QA run 2: a failed send that a retry cannot fix (today's media limit). */
+  failedReason?: 'daily_limit';
   // ORCH-0898: set true when the upstream message has sender_id === null (e.g., ORCH-0899
   // "Plan another outing" round-start announcements). Renders as a centered muted system
   // row with no chrome (no reactions, no replies, no swipe actions). The data-transform
@@ -39,6 +60,34 @@ interface MessageData {
   // prefs button FROM DATA instead of parsing prose. Populated by the data
   // transform when card_payload?.kind === 'collab_dead_end'.
   systemPayload?: CollabDeadEndBannerPayload;
+  /** Issue #4114 Wave 4: this phone's own picked file while the send is local. */
+  localUri?: string;
+  /** Issue #4114 Wave 4: set for a view-once photo or video (who sees what). */
+  viewOnce?: ViewOnceState;
+  /** Issue #4114 Wave 4: 0..1 while the media uploads. */
+  uploadProgress?: number;
+  /** Issue #4114 Wave 4: group chats word the sender's view-once status as "Opened by N". */
+  isGroupChat?: boolean;
+  /** Issue #4114 Wave 7: the 480px thumbnail the bubble shows (full media loads on tap). */
+  thumbPath?: string;
+  /** Issue #4114 Wave 7: the media's own size (the card keeps its shape, clamped 3:4..16:9). */
+  mediaWidth?: number;
+  mediaHeight?: number;
+  /** Issue #4114 Wave 7: a video's length, shown on the card. */
+  durationMs?: number;
+  /** Issue #4114 Wave 7 (D18): the video's full file was removed after 90 days. */
+  mediaExpired?: boolean;
+  /** Issue #4114 Wave 7: the photos of an album, oldest first (2 or more). */
+  album?: ChatAlbumItem[];
+}
+
+/** Issue #4114 Wave 7: one photo of an album. */
+export interface ChatAlbumItem {
+  id: string;
+  fileUrl?: string;
+  thumbPath?: string;
+  localUri?: string;
+  uploadProgress?: number;
 }
 
 interface ReplyToData {
@@ -58,9 +107,323 @@ interface MessageBubbleProps {
   replyTo?: ReplyToData;
   onScrollToMessage?: (messageId: string) => void;
   onCardBubbleTap?: (payload: CardPayload, messageId: string) => void;  // ORCH-0667
+  /** Issue #4114: a plan system row ("Scheduled for ...") opens that plan's card. */
+  onPlanRowPress?: () => void;
   onMentionTap?: (userId: string) => void;
   onCardTagTap?: (cardTag: CardTagEntry) => void;
   onSystemTokenPress?: (token: CollabSystemToken) => void;
+  /** Issue #4114: present on a failed send — tapping the status resends it (same client id). */
+  onRetry?: () => void;
+  /**
+   * Issue #4114 Wave 3: groups only, first bubble of a block, never your own
+   * (threadModel.shouldShowSenderName). Defaults to hidden.
+   */
+  showSenderName?: boolean;
+  /** Issue #4114 Wave 3: reaction pills under the bubble (aggregated by emoji). */
+  reactions?: readonly ReactionSummary[];
+  onReactionPress?: (messageId: string, emoji: string) => void;
+  /** Issue #4114 Wave 4: cancel a media send while it uploads. */
+  onCancelUpload?: () => void;
+  /** Issue #4114 Wave 7: space under / above this row (media cards get 14pt). */
+  bottomGap?: number;
+  topGap?: number;
+  /** Issue #4114 Wave 7: an album tile was tapped (opens the lightbox at that photo). */
+  onAlbumTilePress?: (index: number) => void;
+  /** Issue #4114 QA run 2: this chat's people; only their "@Name" is styled as a mention. */
+  mentionCandidates?: readonly MentionCandidate[];
+  /** Issue #4114 QA run 2: a link in the text was tapped (opens the in-app browser). */
+  onLinkPress?: (url: string) => void;
+  /** Issue #4114 QA run 2: a link was long-pressed (copies it). */
+  onLinkLongPress?: (url: string) => void;
+}
+
+const NO_MENTION_CANDIDATES: readonly MentionCandidate[] = [];
+
+/**
+ * Issue #4114 Wave 7: the picture a media card shows: its thumbnail when it has
+ * one, otherwise (older messages, the sender's own local photo) the file as
+ * before. expo-image keeps it on disk under its storage path, so scrolling
+ * back, or a fresh signed link, never downloads it again.
+ */
+function ChatMediaThumb({
+  source,
+  style,
+  dimmed,
+}: {
+  source: string | undefined;
+  style: object;
+  dimmed?: boolean;
+}): React.ReactElement {
+  const { t } = useTranslation(['chat']);
+  const { url, status, retry } = useChatMediaUrl(source);
+  if (status === 'error') {
+    return (
+      <TouchableOpacity
+        style={[style, styles.mediaPending]}
+        onPress={retry}
+        accessibilityRole="button"
+        accessibilityLabel={t('chat:mediaLoadFailed')}
+      >
+        <Icon name="refresh" size={22} color={chatTokens.textSecondary} />
+      </TouchableOpacity>
+    );
+  }
+  if (!url) {
+    return (
+      <View style={[style, styles.mediaPending]}>
+        <ActivityIndicator size="small" color={chatTokens.textSecondary} />
+      </View>
+    );
+  }
+  return (
+    <ExpoImage
+      source={isChatStoragePath(source) ? { uri: url, cacheKey: source } : { uri: url }}
+      style={[style, dimmed && styles.mediaDimmed]}
+      contentFit="cover"
+      cachePolicy="memory-disk"
+      transition={120}
+      accessibilityIgnoresInvertColors
+    />
+  );
+}
+
+function formatTimeOnly(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * Issue #4114 Wave 7: the media inside a card. A photo shows its thumbnail; a
+ * video shows its first frame, a 50pt play button and its length (or, once its
+ * file was removed after 90 days, "Video no longer available"); an album shows
+ * up to 4 tiles in a 2×2 grid with "+N" on the 4th. The time sits on the image.
+ */
+function MediaCardBody({
+  message,
+  cardWidth,
+  cardHeight,
+  onCancelUpload,
+  onAlbumTilePress,
+}: {
+  message: MessageData;
+  cardWidth: number;
+  cardHeight: number;
+  onCancelUpload?: () => void;
+  onAlbumTilePress?: (index: number) => void;
+}): React.ReactElement {
+  const { t } = useTranslation(['chat']);
+  const time = formatTimeOnly(message.timestamp);
+  const album = message.album && message.album.length > 1 ? message.album : null;
+  const frame = { width: cardWidth, height: cardHeight };
+
+  let media: React.ReactElement;
+  if (album) {
+    const tileSize = (cardWidth - ALBUM_TILE_GAP) / 2;
+    media = (
+      <View style={[styles.albumGrid, frame]} testID="chat-media-album">
+        {albumTiles(album.length).map((tile) => {
+          const item = album[tile.index];
+          return (
+            <TouchableOpacity
+              key={item.id}
+              activeOpacity={0.85}
+              onPress={onAlbumTilePress ? () => onAlbumTilePress(tile.index) : undefined}
+              disabled={!onAlbumTilePress}
+              accessibilityRole="imagebutton"
+              accessibilityLabel={t('chat:a11yAlbumPhoto', { index: tile.index + 1, count: album.length })}
+              style={{ width: tileSize, height: tileSize }}
+            >
+              <ChatMediaThumb
+                source={item.localUri ?? item.thumbPath ?? item.fileUrl}
+                style={{ width: tileSize, height: tileSize }}
+              />
+              {tile.overflow > 0 ? (
+                <View style={styles.albumOverflow} pointerEvents="none">
+                  <Text style={styles.albumOverflowText}>{`+${tile.overflow}`}</Text>
+                </View>
+              ) : null}
+              {item.uploadProgress !== undefined ? (
+                <View style={styles.albumUploading} pointerEvents="none">
+                  <ActivityIndicator size="small" color={chatTokens.textPrimary} />
+                </View>
+              ) : null}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  } else if (message.type === 'video') {
+    const duration = formatMediaDuration(message.durationMs);
+    const poster = message.thumbPath;
+    media = (
+      <View style={[frame, styles.videoFrame]}>
+        {poster ? (
+          <ChatMediaThumb source={poster} style={frame} dimmed={message.mediaExpired} />
+        ) : null}
+        {message.mediaExpired ? (
+          <View style={styles.videoExpired} pointerEvents="none">
+            <Icon name="videocam" size={22} color={chatTokens.textSecondary} />
+            <Text style={styles.videoExpiredText}>{t('chat:videoNoLongerAvailable')}</Text>
+          </View>
+        ) : (
+          <View style={styles.playButton} pointerEvents="none" testID="chat-media-play">
+            <Icon name="play" size={24} color="#FFFFFF" />
+          </View>
+        )}
+        {duration && !message.mediaExpired ? (
+          <View style={[styles.mediaPill, styles.mediaPillLeft]} pointerEvents="none">
+            <Text style={styles.mediaPillText}>{duration}</Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  } else {
+    media = (
+      <ChatMediaThumb source={message.localUri ?? message.thumbPath ?? message.fileUrl} style={frame} />
+    );
+  }
+
+  return (
+    <View style={frame}>
+      {media}
+      {time ? (
+        <View style={[styles.mediaPill, styles.mediaPillRight]} pointerEvents="none">
+          <Text style={styles.mediaPillText}>{time}</Text>
+        </View>
+      ) : null}
+      {!album && message.uploadProgress !== undefined ? (
+        <UploadOverlay progress={message.uploadProgress} onCancel={onCancelUpload} />
+      ) : null}
+    </View>
+  );
+}
+
+/** Issue #4114 Wave 4: the progress + cancel layer over a media send that is uploading. */
+function UploadOverlay({ progress, onCancel }: { progress: number; onCancel?: () => void }): React.ReactElement {
+  const { t } = useTranslation(['chat']);
+  const percent = Math.round(Math.max(0, Math.min(1, progress)) * 100);
+  return (
+    <View style={styles.uploadOverlay}>
+      <View style={styles.uploadPill}>
+        <ActivityIndicator size="small" color={chatTokens.textPrimary} />
+        <Text style={styles.uploadText} accessibilityLiveRegion="polite">
+          {`${percent}%`}
+        </Text>
+        {onCancel ? (
+          <TouchableOpacity
+            onPress={onCancel}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('chat:a11yCancelUpload')}
+            testID="chat-upload-cancel"
+          >
+            <Icon name="close" size={14} color={chatTokens.textPrimary} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      <View style={styles.uploadTrack}>
+        <View style={[styles.uploadFill, { width: `${percent}%` }]} />
+      </View>
+    </View>
+  );
+}
+
+function formatFileSizeLabel(size: string | undefined): string {
+  const bytes = size ? Number(size) : NaN;
+  if (!Number.isFinite(bytes) || bytes <= 0) return '';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatOpenedTime(iso: string | null): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * Issue #4114 Wave 4: a view-once bubble. No preview before opening.
+ * Recipient: "Tap to view once", then "Opened" (greyed, can't reopen) or "Expired".
+ * Sender: "Opened 9:40" in a 1:1, "Opened by N" in a group, "Not opened yet".
+ */
+function ViewOnceBubble({
+  state,
+  kind,
+  isGroup,
+  isMe,
+  uploadProgress,
+  onCancelUpload,
+}: {
+  state: ViewOnceState;
+  kind: 'image' | 'video';
+  isGroup: boolean;
+  isMe: boolean;
+  uploadProgress?: number;
+  onCancelUpload?: () => void;
+}): React.ReactElement {
+  const { t } = useTranslation(['chat']);
+  const kindLabel = kind === 'video' ? t('chat:video') : t('chat:photo');
+  let title: string;
+  let subtitle: string;
+  let spent = false;
+  if (state.role === 'recipient') {
+    if (state.status === 'unopened') {
+      title = t('chat:viewOnceTapToView');
+      subtitle = kindLabel;
+    } else {
+      spent = true;
+      title = kindLabel;
+      subtitle = state.status === 'opened' ? t('chat:viewOnceOpened') : t('chat:viewOnceExpired');
+    }
+  } else {
+    title = kindLabel;
+    if (state.status === 'not_opened') {
+      subtitle = t('chat:viewOnceNotOpened');
+    } else if (isGroup) {
+      subtitle = t('chat:viewOnceOpenedBy', { count: state.openedCount });
+    } else {
+      const time = formatOpenedTime(state.openedAt);
+      subtitle = time ? t('chat:viewOnceOpenedAt', { time }) : t('chat:viewOnceOpened');
+    }
+    if (uploadProgress !== undefined) subtitle = `${Math.round(Math.max(0, Math.min(1, uploadProgress)) * 100)}%`;
+  }
+  return (
+    // Issue #4114 QA (evidence 48): a received bubble uses the Wave 7 dark
+    // received tokens, and "spent" is shown by colour only (no extra opacity),
+    // so "Photo · Opened" keeps AA contrast on the dark bubble.
+    <View style={styles.viewOnceRow} testID="chat-view-once-bubble">
+      <View style={[styles.viewOnceIcon, !isMe && styles.viewOnceIconReceived, spent && styles.viewOnceIconSpent]}>
+        <Icon
+          name={spent ? 'checkmark-done' : kind === 'video' ? 'play' : 'eye'}
+          size={16}
+          color={isMe ? 'white' : spent ? receivedBubbleTokens.textSecondary : receivedBubbleTokens.icon}
+        />
+      </View>
+      <View style={styles.viewOnceText}>
+        <Text
+          style={[styles.viewOnceTitle, isMe ? styles.textSent : styles.textReceived, spent && (isMe ? styles.viewOnceMuted : styles.viewOnceMutedReceived)]}
+          numberOfLines={1}
+        >
+          {title}
+        </Text>
+        <Text style={[styles.viewOnceSubtitle, !isMe && styles.viewOnceSubtitleReceived]} numberOfLines={1}>
+          {subtitle}
+        </Text>
+      </View>
+      {uploadProgress !== undefined && onCancelUpload ? (
+        <TouchableOpacity
+          onPress={onCancelUpload}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('chat:a11yCancelUpload')}
+        >
+          <Icon name="close" size={14} color="white" />
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
 }
 
 export type CollabSystemToken =
@@ -83,109 +446,81 @@ function isStructuredMention(entry: MentionEntry | string): entry is MentionEntr
   return typeof entry !== 'string';
 }
 
+interface MessageTextHandlers {
+  onMentionTap?: (userId: string) => void;
+  onLinkPress?: (url: string) => void;
+  onLinkLongPress?: (url: string) => void;
+}
+
 /**
- * Render message content with @mention chips.
- * Returns a View (flex-wrap) when mentions present, plain Text otherwise.
+ * Issue #4114 QA run 2: a text bubble's content, split by tokenizeMessageText
+ * into plain text, links and mentions. Links are styled with the bubble's link
+ * token, open in the in-app browser and copy on long-press. A mention is only
+ * styled when it maps to a real participant (or carries composer offsets);
+ * other "@" text stays plain. Returns a View (flex-wrap) when a mention chip is
+ * present, a single Text otherwise.
  */
-function renderContentWithMentions(
+function renderMessageText(
   content: string,
   mentions: Array<MentionEntry | string> | undefined,
   isMe: boolean,
-  onMentionTap?: (userId: string) => void,
+  candidates: readonly MentionCandidate[],
+  handlers: MessageTextHandlers,
 ): React.ReactElement {
-  const mentionEntries = Array.isArray(mentions) ? mentions : [];
-  const structuredMentions = mentionEntries
-    .filter(isStructuredMention)
-    .filter((mention) =>
-      Number.isInteger(mention.startOffset) &&
-      Number.isInteger(mention.endOffset) &&
-      mention.startOffset >= 0 &&
-      mention.endOffset > mention.startOffset &&
-      mention.startOffset < content.length,
-    )
-    .sort((a, b) => a.startOffset - b.startOffset);
+  const structured = (Array.isArray(mentions) ? mentions : []).filter(isStructuredMention);
+  const tokens = tokenizeMessageText(content, structured, [...candidates]);
+  const textStyle = [styles.messageText, isMe ? styles.textSent : styles.textReceived];
+  const linkStyle = isMe ? styles.linkSent : styles.linkReceived;
 
-  if (structuredMentions.length > 0) {
-    const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
-
-    structuredMentions.forEach((mention, index) => {
-      const start = Math.max(mention.startOffset, lastIndex);
-      const end = Math.min(mention.endOffset, content.length);
-      if (start > lastIndex) {
-        parts.push(
-          <Text key={`t-${lastIndex}`} style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
-            {content.slice(lastIndex, start)}
-          </Text>
-        );
-      }
-      parts.push(
-        <MentionChip
-          key={`m-${mention.userId}-${index}`}
-          name={mention.displayName || 'unknown'}
-          variant={isMe ? 'sent' : 'received'}
-          onPress={onMentionTap ? () => onMentionTap(mention.userId) : undefined}
-        />
-      );
-      lastIndex = end;
-    });
-
-    if (lastIndex < content.length) {
-      parts.push(
-        <Text key={`t-${lastIndex}`} style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
-          {content.slice(lastIndex)}
+  const renderInline = (token: MessageTextToken, key: string): React.ReactNode => {
+    if (token.type === 'link') {
+      return (
+        <Text
+          key={key}
+          style={linkStyle}
+          accessibilityRole="link"
+          suppressHighlighting={false}
+          onPress={handlers.onLinkPress ? () => handlers.onLinkPress?.(token.url) : undefined}
+          onLongPress={handlers.onLinkLongPress ? () => handlers.onLinkLongPress?.(token.url) : undefined}
+        >
+          {token.text}
         </Text>
       );
     }
+    return token.text;
+  };
 
-    return <View style={styles.contentWithMentions}>{parts}</View>;
+  if (!tokens.some((token) => token.type === 'mention')) {
+    return <Text style={textStyle}>{tokens.map((token, index) => renderInline(token, `i-${index}`))}</Text>;
   }
 
-  if (!/@[\w]/.test(content)) {
-    return (
-      <Text style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
-        {content}
-      </Text>
-    );
-  }
-
-  const regex = /(@[\w\s]+?)(?=\s@|\s#|$)/g;
+  // Group consecutive text/link tokens into one Text so links flow with it.
   const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(
-        <Text key={`t-${lastIndex}`} style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
-          {content.slice(lastIndex, match.index)}
-        </Text>
-      );
+  let run: React.ReactNode[] = [];
+  const flush = (key: string) => {
+    if (run.length === 0) return;
+    parts.push(<Text key={key} style={textStyle}>{run}</Text>);
+    run = [];
+  };
+  tokens.forEach((token, index) => {
+    if (token.type !== 'mention') {
+      run.push(renderInline(token, `i-${index}`));
+      return;
     }
-    const mentionName = match[0].slice(1).trim();
+    flush(`t-${index}`);
+    const userId = token.userId;
     parts.push(
       <MentionChip
-        key={`m-${match.index}`}
-        name={mentionName}
-        variant={isMe ? 'sent' : 'received'}
+        key={`m-${userId ?? 'x'}-${index}`}
+        name={token.displayName || 'unknown'}
+        variant={isMe ? 'sent' : 'receivedDark'}
+        onPress={handlers.onMentionTap && userId ? () => handlers.onMentionTap?.(userId) : undefined}
       />
     );
-    lastIndex = match.index + match[0].length;
-  }
+  });
+  flush('t-end');
 
-  if (lastIndex < content.length) {
-    parts.push(
-      <Text key={`t-${lastIndex}`} style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
-        {content.slice(lastIndex)}
-      </Text>
-    );
-  }
-
-  return (
-    <View style={styles.contentWithMentions}>
-      {parts}
-    </View>
-  );
+  return <View style={styles.contentWithMentions}>{parts}</View>;
 }
 
 function formatTimestampForPill(timestamp: string): string {
@@ -231,7 +566,7 @@ const BORDER_RADIUS = {
   },
 } as const;
 
-export function MessageBubble({
+function MessageBubbleImpl({
   message,
   isMe,
   groupPosition,
@@ -240,9 +575,21 @@ export function MessageBubble({
   replyTo,
   onScrollToMessage,
   onCardBubbleTap,
+  onPlanRowPress,
   onMentionTap,
   onCardTagTap,
   onSystemTokenPress,
+  onRetry,
+  showSenderName = false,
+  reactions,
+  onReactionPress,
+  onCancelUpload,
+  bottomGap,
+  topGap,
+  onAlbumTilePress,
+  mentionCandidates,
+  onLinkPress,
+  onLinkLongPress,
 }: MessageBubbleProps) {
   const { t } = useTranslation(['chat', 'common']);
 
@@ -261,6 +608,23 @@ export function MessageBubble({
         </View>
       );
     }
+    if (onPlanRowPress) {
+      // A plan row carries no tokens; the whole row is the one button.
+      return (
+        <View style={chatSystemRowStyles.row} accessible={false}>
+          <TouchableOpacity
+            onPress={onPlanRowPress}
+            activeOpacity={0.72}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('chat:a11yOpenPlanRow', { text: message.content })}
+            testID="chat-plan-system-row"
+          >
+            {renderSystemBannerContent(message.content, onSystemTokenPress)}
+          </TouchableOpacity>
+        </View>
+      );
+    }
     return (
       <View style={chatSystemRowStyles.row} accessible={false}>
         {renderSystemBannerContent(message.content, onSystemTokenPress)}
@@ -272,9 +636,23 @@ export function MessageBubble({
   const isGroupEnd = groupPosition === 'last' || groupPosition === 'solo';
   const isDelivered = !message.id.startsWith('temp-');
   const isFailed = message.failed === true;
+  // Issue #4114 Wave 7: ordinary photos and videos sit in their own 20pt card
+  // (up to 72% wide, the media's shape clamped 3:4..16:9); view once stays a
+  // small private bubble.
+  const isMediaCard = (message.type === 'image' || message.type === 'video') && !message.viewOnce;
+  const cardSize = !isMediaCard
+    ? null
+    : message.album && message.album.length > 1
+      ? albumCardSize(SCREEN_WIDTH, message.album.length)
+      : mediaCardSize({ screenWidth: SCREEN_WIDTH, mediaWidth: message.mediaWidth, mediaHeight: message.mediaHeight });
+  const caption = isMediaCard && message.content && message.content !== message.fileName ? message.content : '';
+  const spacing = [
+    bottomGap !== undefined ? { marginBottom: bottomGap } : isGroupEnd ? styles.spacingGroupEnd : styles.spacingGroupContinue,
+    topGap ? { marginTop: topGap } : null,
+  ];
 
   return (
-    <View style={isGroupEnd ? styles.spacingGroupEnd : styles.spacingGroupContinue}>
+    <View style={spacing}>
       {/* Timestamp pill */}
       {showTimestamp && (
         <View style={styles.timestampContainer}>
@@ -299,36 +677,46 @@ export function MessageBubble({
           style={[
             styles.bubble,
             isMe ? styles.bubbleSent : styles.bubbleReceived,
-            borderRadius,
+            cardSize ? [styles.mediaCard, { width: cardSize.width }] : borderRadius,
             isFailed && styles.bubbleFailed,
             !isDelivered && !isFailed && styles.bubbleSending,
           ]}
+          testID={cardSize ? 'chat-media-card' : undefined}
         >
-          <Text
-            style={[
-              styles.senderName,
-              isMe ? styles.senderNameSent : styles.senderNameReceived,
-            ]}
-            numberOfLines={1}
-          >
-            {message.senderName?.trim() || (isMe ? 'You' : 'Unknown')}
-          </Text>
+          {showSenderName || replyTo ? (
+            <View style={cardSize ? styles.mediaCardHeader : null}>
+              {showSenderName ? (
+                <Text
+                  style={[
+                    styles.senderName,
+                    isMe ? styles.senderNameSent : styles.senderNameReceived,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {message.senderName?.trim() || t('chat:unknownSender')}
+                </Text>
+              ) : null}
 
-          {/* Reply quote block (Wave 2 will wire data; renders when replyTo prop is provided) */}
-          {replyTo && (
-            <ReplyQuoteBlock
-              senderName={replyTo.senderName}
-              previewText={replyTo.content}
-              imageUrl={replyTo.imageUrl}
-              variant={isMe ? 'sent' : 'received'}
-              isDeleted={replyTo.isDeleted}
-              onPress={replyTo.messageId && onScrollToMessage ? () => onScrollToMessage(replyTo.messageId!) : undefined}
-            />
-          )}
+              {replyTo && (
+                <ReplyQuoteBlock
+                  senderName={replyTo.senderName}
+                  previewText={replyTo.content}
+                  imageUrl={replyTo.imageUrl}
+                  variant={isMe ? 'sent' : 'received'}
+                  isDeleted={replyTo.isDeleted}
+                  onPress={replyTo.messageId && onScrollToMessage ? () => onScrollToMessage(replyTo.messageId!) : undefined}
+                />
+              )}
+            </View>
+          ) : null}
 
           {message.type === 'text' && (
             <>
-              {renderContentWithMentions(message.content, message.mentions, isMe, onMentionTap)}
+              {renderMessageText(message.content, message.mentions, isMe, mentionCandidates ?? NO_MENTION_CANDIDATES, {
+                onMentionTap,
+                onLinkPress,
+                onLinkLongPress,
+              })}
               {(message.cardTags ?? []).map((cardTag) => (
                 <ChatCardChip
                   key={cardTag.savedCardId}
@@ -345,45 +733,72 @@ export function MessageBubble({
             </>
           )}
 
-          {message.type === 'image' && message.fileUrl && (
-            <View style={styles.mediaContainer}>
-              {message.content && message.content !== message.fileName && (
-                <Text style={[styles.messageText, isMe ? styles.textSent : styles.textReceived, styles.mediaCaption]}>
-                  {message.content}
-                </Text>
-              )}
-              <Image
-                source={{ uri: message.fileUrl }}
-                style={[styles.mediaImage, borderRadius]}
-                resizeMode="cover"
+          {/* Issue #4114 Wave 4: view once draws no preview at all. */}
+          {(message.type === 'image' || message.type === 'video') && message.viewOnce ? (
+            <ViewOnceBubble
+              state={message.viewOnce}
+              kind={message.type}
+              isGroup={message.isGroupChat === true}
+              isMe={isMe}
+              uploadProgress={message.uploadProgress}
+              onCancelUpload={onCancelUpload}
+            />
+          ) : null}
+
+          {/* Issue #4114 Wave 7: photo, video and album cards; the caption sits
+              inside the card under the image. */}
+          {cardSize ? (
+            <View
+              accessible
+              accessibilityRole={message.album ? 'none' : message.type === 'video' && !message.mediaExpired ? 'button' : 'image'}
+              accessibilityLabel={
+                message.album
+                  ? t('chat:a11yAlbum', { count: message.album.length })
+                  : message.type === 'video'
+                    ? message.mediaExpired
+                      ? t('chat:videoNoLongerAvailable')
+                      : t('chat:a11yPlayVideo')
+                    : t('chat:photo')
+              }
+            >
+              <MediaCardBody
+                message={message}
+                cardWidth={cardSize.width}
+                cardHeight={cardSize.height}
+                onCancelUpload={onCancelUpload}
+                onAlbumTilePress={onAlbumTilePress}
               />
             </View>
-          )}
-
-          {message.type === 'video' && (
-            <View style={styles.mediaContainer}>
-              {message.content && message.content !== message.fileName && (
-                <Text style={[styles.messageText, isMe ? styles.textSent : styles.textReceived, styles.mediaCaption]}>
-                  {message.content}
-                </Text>
-              )}
-              <View style={[styles.videoPlaceholder, borderRadius]}>
-                <Icon name="play-circle" size={40} color={isMe ? 'white' : colors.primary[500]} />
-              </View>
-            </View>
-          )}
+          ) : null}
+          {cardSize && caption ? (
+            <Text style={[styles.messageText, isMe ? styles.textSent : styles.textReceived, styles.mediaCardCaption]}>
+              {caption}
+            </Text>
+          ) : null}
 
           {message.type === 'file' && (
             <View style={styles.fileContainer}>
-              <Icon name="document-text" size={16} color={isMe ? 'white' : colors.primary[500]} />
+              <Icon name="document-text" size={16} color={isMe ? 'white' : receivedBubbleTokens.icon} />
               <View style={styles.fileInfo}>
                 <Text style={[styles.fileName, isMe ? styles.textSent : styles.textReceived]} numberOfLines={1}>
                   {message.fileName || t('chat:document')}
                 </Text>
-                <Text style={[styles.fileSize, isMe ? { color: 'rgba(255,255,255,0.7)' } : { color: colors.text.tertiary }]}>
-                  {message.fileSize || t('chat:unknownSize')}
+                <Text style={[styles.fileSize, isMe ? styles.fileSizeSent : styles.fileSizeReceived]}>
+                  {message.uploadProgress !== undefined
+                    ? `${Math.round(message.uploadProgress * 100)}%`
+                    : formatFileSizeLabel(message.fileSize) || t('chat:unknownSize')}
                 </Text>
               </View>
+              {message.uploadProgress !== undefined && onCancelUpload ? (
+                <TouchableOpacity
+                  onPress={onCancelUpload}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('chat:a11yCancelUpload')}
+                >
+                  <Icon name="close" size={14} color={isMe ? 'white' : receivedBubbleTokens.textSecondary} />
+                </TouchableOpacity>
+              ) : null}
             </View>
           )}
 
@@ -460,8 +875,12 @@ export function MessageBubble({
             // PlaceCuratedChatCard owns the legacy cardBubbleIntentChip and its
             // arrow-forward affordance; this boundary supplies its effective
             // first-stop image and stop count without duplicating the design.
+            const lockedAt = cp.lockInEvent === 'card_locked_and_scheduled' ? cp.scheduledAt : undefined;
             return <PlaceCuratedChatCard title={cp.title} category={cp.category} image={effectiveImage}
-              stopCount={intentStopCount || undefined} lockedAt={cp.lockInEvent === 'card_locked_and_scheduled' ? cp.scheduledAt : undefined}
+              stopCount={intentStopCount || undefined} lockedAt={lockedAt}
+              accessibilityLabel={lockedAt
+                ? t('chat:a11yOpenPlan', { title: cp.title, time: new Date(lockedAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) })
+                : undefined}
               isMe={isMe} hint={t('chat:cardBubbleTapHint')} onPress={() => onCardBubbleTap?.(payload, message.id)} />;
           })()}
 
@@ -481,12 +900,59 @@ export function MessageBubble({
         </View>
       </View>
 
-      {/* Read receipt — only on last sent message in group */}
-      {isMe && (groupPosition === 'solo' || groupPosition === 'last') && (
-        <View style={styles.readReceiptContainer}>
-          {isFailed ? (
+      {/* Issue #4114 Wave 3: reactions, one pill per emoji with its count;
+          yours shows its count in the accent colour and tapping a pill toggles your reaction. */}
+      {reactions && reactions.length > 0 ? (
+        <View style={[styles.reactionRow, isMe ? styles.reactionRowRight : styles.reactionRowLeft]}>
+          {reactions.map((reaction) => (
+            <TouchableOpacity
+              key={reaction.emoji}
+              style={styles.reactionPill}
+              hitSlop={REACTION_PILL_HIT_SLOP}
+              onPress={onReactionPress ? () => onReactionPress(message.id, reaction.emoji) : undefined}
+              disabled={!onReactionPress}
+              accessibilityRole="button"
+              accessibilityLabel={t('chat:a11yReaction', { emoji: reaction.emoji, count: reaction.count })}
+              accessibilityState={{ selected: reaction.mine }}
+              testID={`reaction-pill-${reaction.emoji}`}
+            >
+              <Text style={styles.reactionEmoji}>{reaction.emoji}</Text>
+              {reaction.count > 1 || reaction.mine ? (
+                <Text style={[styles.reactionCount, reaction.mine && styles.reactionCountMine]}>{reaction.count}</Text>
+              ) : null}
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+
+      {/* Issue #4114: every failed send says so and offers tap-to-retry,
+          wherever it sits in its group. */}
+      {isMe && isFailed && (
+        message.failedReason === 'daily_limit' ? (
+          <View style={styles.readReceiptContainer} accessible accessibilityLabel={t('chat:failedDailyLimit')}>
+            <Text style={styles.failedText}>{t('chat:failedDailyLimit')}</Text>
+          </View>
+        ) : onRetry ? (
+          <TouchableOpacity
+            style={styles.readReceiptContainer}
+            onPress={onRetry}
+            accessibilityRole="button"
+            accessibilityLabel={t('chat:failedTapToRetry')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.failedText}>{t('chat:failedTapToRetry')}</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.readReceiptContainer}>
             <Text style={styles.failedText}>{t('chat:failed')}</Text>
-          ) : !isDelivered ? (
+          </View>
+        )
+      )}
+
+      {/* Read receipt — only on last sent message in group */}
+      {isMe && !isFailed && (groupPosition === 'solo' || groupPosition === 'last') && (
+        <View style={styles.readReceiptContainer}>
+          {!isDelivered ? (
             <Icon name="checkmark" size={12} color={colors.gray[400]} />
           ) : isRead ? (
             <Icon name="checkmark-done" size={12} color={colors.primary[500]} />
@@ -612,7 +1078,58 @@ function getSystemTokenLabel(token: CollabSystemToken): string {
   return token.type === 'open-prefs-self' ? `Open your ${section}` : `Open ${section}`;
 }
 
+/**
+ * Issue #4114 Wave 3: memoised, so a keystroke in the composer (which re-renders
+ * the chat screen) does not re-render every visible bubble. MessageInterface
+ * passes stable callbacks and a stable renderItem for this to hold.
+ */
+export const MessageBubble = memo(MessageBubbleImpl);
+
+/** 24pt pill + 10pt above/below and 6pt each side = a 44pt hit area. */
+const REACTION_PILL_HIT_SLOP = { top: 10, bottom: 10, left: 6, right: 6 } as const;
+
 const styles = StyleSheet.create({
+  reactionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    // Sits just under the bubble; an overlap left a visible seam once the pill lost its outline.
+    marginTop: 2,
+    marginBottom: 4,
+    paddingHorizontal: 18,
+  },
+  reactionRowRight: {
+    justifyContent: 'flex-end',
+  },
+  reactionRowLeft: {
+    justifyContent: 'flex-start',
+  },
+  reactionPill: {
+    minHeight: 24,
+    minWidth: 32,
+    paddingHorizontal: 7,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    // Solid neutral fill, no outline and no shadow: distinct from the light
+    // received bubble, the orange sent bubble and the dark screen.
+    backgroundColor: chatTokens.surfaceRaised,
+  },
+  reactionEmoji: {
+    fontSize: 13,
+  },
+  reactionCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: chatTokens.textSecondary,
+  },
+  // Your reaction shows only through its count colour; no orange fill or ring.
+  reactionCountMine: {
+    color: chatTokens.accent,
+    fontWeight: '700',
+  },
   spacingGroupEnd: {
     marginBottom: 6,
   },
@@ -654,8 +1171,9 @@ const styles = StyleSheet.create({
   bubbleSent: {
     backgroundColor: colors.chat.bubbleSent,
   },
+  // Issue #4114 Wave 7: received bubbles are a dark surface with white text.
   bubbleReceived: {
-    backgroundColor: colors.chat.bubbleReceived,
+    backgroundColor: receivedBubbleTokens.bubble,
   },
   bubbleFailed: {
     borderWidth: 1,
@@ -678,13 +1196,23 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.78)',
   },
   senderNameReceived: {
-    color: colors.text.tertiary,
+    color: receivedBubbleTokens.senderName,
   },
   textSent: {
     color: colors.text.inverse,
   },
   textReceived: {
-    color: colors.text.primary,
+    color: receivedBubbleTokens.text,
+  },
+  // Issue #4114 QA run 2: links in text bubbles.
+  linkSent: {
+    color: colors.text.inverse,
+    textDecorationLine: 'underline',
+    fontWeight: '600',
+  },
+  linkReceived: {
+    color: receivedBubbleTokens.link,
+    textDecorationLine: 'underline',
   },
   contentWithMentions: {
     flexDirection: 'row',
@@ -692,26 +1220,94 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 2,
   },
-  mediaContainer: {
-    gap: 4,
+  // Issue #4114 Wave 7: media cards.
+  mediaCard: {
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    borderRadius: MEDIA_CARD_RADIUS,
+    overflow: 'hidden',
   },
-  mediaCaption: {
-    marginBottom: 4,
+  mediaCardHeader: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 4,
   },
-  mediaImage: {
-    width: 240,
-    height: 200,
-    margin: -9, // near edge-to-edge (12px padding - 3px desired)
-    marginTop: 0,
+  mediaCardCaption: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 10,
   },
-  videoPlaceholder: {
-    width: 240,
-    height: 160,
-    backgroundColor: 'rgba(0,0,0,0.1)',
+  mediaDimmed: {
+    opacity: 0.35,
+  },
+  mediaPill: {
+    position: 'absolute',
+    bottom: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  },
+  mediaPillLeft: {
+    left: 8,
+  },
+  mediaPillRight: {
+    right: 8,
+  },
+  mediaPillText: {
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: fontWeights.semibold,
+    color: '#FFFFFF',
+  },
+  videoFrame: {
+    backgroundColor: '#0B0D10',
     alignItems: 'center',
     justifyContent: 'center',
-    margin: -9,
-    marginTop: 0,
+  },
+  playButton: {
+    position: 'absolute',
+    width: PLAY_BUTTON_SIZE,
+    height: PLAY_BUTTON_SIZE,
+    borderRadius: PLAY_BUTTON_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 3,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  },
+  videoExpired: {
+    position: 'absolute',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+  },
+  videoExpiredText: {
+    fontSize: 13,
+    fontWeight: fontWeights.medium,
+    color: chatTokens.textSecondary,
+    textAlign: 'center',
+  },
+  albumGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: ALBUM_TILE_GAP,
+  },
+  albumOverflow: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  albumOverflowText: {
+    fontSize: 22,
+    fontWeight: fontWeights.bold,
+    color: '#FFFFFF',
+  },
+  albumUploading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
   },
   fileContainer: {
     flexDirection: 'row',
@@ -729,6 +1325,93 @@ const styles = StyleSheet.create({
   fileSize: {
     fontSize: 12,
     marginTop: 1,
+  },
+  fileSizeSent: {
+    color: 'rgba(255,255,255,0.7)',
+  },
+  fileSizeReceived: {
+    color: receivedBubbleTokens.textSecondary,
+  },
+  // Issue #4114 Wave 4: media states, upload progress and view once.
+  mediaPending: {
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
+    padding: 10,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  uploadPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  uploadText: {
+    fontSize: 12,
+    fontWeight: fontWeights.medium,
+    color: '#FFFFFF',
+  },
+  uploadTrack: {
+    marginTop: 8,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    overflow: 'hidden',
+  },
+  uploadFill: {
+    height: 3,
+    backgroundColor: chatTokens.accent,
+  },
+  viewOnceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 180,
+    paddingVertical: 2,
+  },
+  viewOnceIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.6)',
+  },
+  viewOnceIconReceived: {
+    borderColor: receivedBubbleTokens.icon,
+  },
+  viewOnceIconSpent: {
+    borderColor: receivedBubbleTokens.quoteBg,
+  },
+  viewOnceText: {
+    flexShrink: 1,
+  },
+  viewOnceTitle: {
+    fontSize: 15,
+    fontWeight: fontWeights.semibold,
+  },
+  viewOnceSubtitle: {
+    fontSize: 12,
+    marginTop: 1,
+    color: 'rgba(255,255,255,0.6)',
+  },
+  viewOnceSubtitleReceived: {
+    color: receivedBubbleTokens.textSecondary,
+  },
+  viewOnceMuted: {
+    color: 'rgba(255,255,255,0.72)',
+  },
+  viewOnceMutedReceived: {
+    color: receivedBubbleTokens.textSecondary,
   },
   failedIcon: {
     position: 'absolute',

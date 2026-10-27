@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/chat/__tests__/issue_4114_qa_dark_plans_and_picker.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4114-qa-dark-plans-and-picker-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

@@ -178,7 +178,14 @@
     "alert_decline_error": "Impossible de refuser la demande d'association. Réessayez.",
     "alert_generic_error": "Impossible de traiter la demande. Réessayez.",
     "share_message": "Salut ! Rejoins-moi sur Mingla et trouvons ensemble des expériences incroyables. https://usemingla.com",
-    "fallback_user": "Utilisateur"
+    "fallback_user": "Utilisateur",
+    "invite_card_title": "Vos proches sont déjà là",
+    "invite_card_body": "{{name}} vous a invité sur Mingla. Acceptez pour être amis et voir vos anniversaires, projets et enregistrés.",
+    "invite_card_sub": "★ Ami + appairage · vous a invité par SMS",
+    "invite_card_accept": "Accepter",
+    "invite_card_not_now": "Pas maintenant",
+    "invite_card_done": "Vous êtes ami et appairé avec {{name}}",
+    "invite_card_friends_only": "Vous êtes ami avec {{name}}"
   },
   "collaborations": {
     "headline": "Organisez-le ensemble",

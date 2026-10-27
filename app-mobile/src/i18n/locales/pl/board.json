@@ -40,6 +40,7 @@
     "takeAStroll": "Spacer"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "Nie udało się wysłać SMS-a na {{phone}}. Udostępnij zamiast tego link z zaproszeniem.",
     "adminPrivileges": "Administrator Privileges",
     "manageBoard": "Mężczyznaage Board",
     "renameBoard": "Rename Board",

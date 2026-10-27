@@ -81,10 +81,24 @@ export function useChatInputController(args: {
   cardTagSource: ChatCardTagCandidate[];
   initialText?: string;
 }) {
-  const [text, setText] = useState(args.initialText ?? "");
-  const [chipRanges, setChipRanges] = useState<ChipRange[]>([]);
+  const [text, setTextState] = useState(args.initialText ?? "");
+  const [chipRanges, setChipRangesState] = useState<ChipRange[]>([]);
   const [activePopover, setActivePopover] = useState<ActiveChatPopover | null>(null);
   const selectionRef = useRef({ start: 0, end: 0 });
+  // Issue #4114 (run 2, evidence 01g): the latest text and chips, written
+  // synchronously on every change. Send reads these, never the render copy,
+  // and each change is computed against them so back-to-back native events
+  // that land before a re-render are not measured against stale text.
+  const textRef = useRef(args.initialText ?? "");
+  const chipRangesRef = useRef<ChipRange[]>([]);
+  const setText = useCallback((nextText: string) => {
+    textRef.current = nextText;
+    setTextState(nextText);
+  }, []);
+  const setChipRanges = useCallback((next: ChipRange[]) => {
+    chipRangesRef.current = next;
+    setChipRangesState(next);
+  }, []);
 
   const closePopover = useCallback(() => setActivePopover(null), []);
 
@@ -95,7 +109,9 @@ export function useChatInputController(args: {
 
   const onChangeText = useCallback(
     (nextText: string) => {
-      const atomicDelete = removeChipAtDeletion(text, nextText, chipRanges);
+      const previousText = textRef.current;
+      const ranges = chipRangesRef.current;
+      const atomicDelete = removeChipAtDeletion(previousText, nextText, ranges);
       if (atomicDelete) {
         setText(atomicDelete.text);
         setChipRanges(atomicDelete.ranges);
@@ -103,9 +119,9 @@ export function useChatInputController(args: {
         return;
       }
 
-      const delta = nextText.length - text.length;
+      const delta = nextText.length - previousText.length;
       const cursor = selectionRef.current.start;
-      const adjustedRanges = chipRanges.map((range) => {
+      const adjustedRanges = ranges.map((range) => {
         if (cursor <= range.start) {
           return { ...range, start: range.start + delta, end: range.end + delta };
         }
@@ -119,7 +135,7 @@ export function useChatInputController(args: {
       setChipRanges(adjustedRanges);
       updateActivePopover(nextText);
     },
-    [chipRanges, text, updateActivePopover],
+    [setChipRanges, setText, updateActivePopover],
   );
 
   const onSelectionChange = useCallback(
@@ -130,11 +146,12 @@ export function useChatInputController(args: {
   );
 
   const removeChip = useCallback((chip: ChipRange) => {
-    const nextText = `${text.slice(0, chip.start)}${text.slice(chip.end)}`;
+    const current = textRef.current;
+    const nextText = `${current.slice(0, chip.start)}${current.slice(chip.end)}`;
     const delta = chip.end - chip.start;
     setText(nextText);
-    setChipRanges((prev) =>
-      prev
+    setChipRanges(
+      chipRangesRef.current
         .filter((range) => range !== chip)
         .map((range) =>
           range.start >= chip.end
@@ -143,26 +160,27 @@ export function useChatInputController(args: {
         ),
     );
     updateActivePopover(nextText);
-  }, [text, updateActivePopover]);
+  }, [setChipRanges, setText, updateActivePopover]);
 
   const onKeyPress = useCallback(
     (event: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
       if (event.nativeEvent.key !== "Backspace") return;
       const cursor = selectionRef.current.start;
-      const chip = chipRanges.find((range) => range.end === cursor);
+      const chip = chipRangesRef.current.find((range) => range.end === cursor);
       if (chip) removeChip(chip);
     },
-    [chipRanges, removeChip],
+    [removeChip],
   );
 
   const replaceTriggerWithChip = useCallback(
     (popover: ActiveChatPopover, type: ChipRange["type"], refId: string, displayLabel: string) => {
       const token = `${triggerFor(type)}${displayLabel}`;
-      const nextText = `${text.slice(0, popover.triggerIndex)}${token}${text.slice(popover.triggerIndex + popover.searchText.length + 1)}`;
+      const current = textRef.current;
+      const nextText = `${current.slice(0, popover.triggerIndex)}${token}${current.slice(popover.triggerIndex + popover.searchText.length + 1)}`;
       const start = popover.triggerIndex;
       const end = start + token.length;
       const delta = token.length - (popover.searchText.length + 1);
-      const shiftedRanges = chipRanges.map((range) =>
+      const shiftedRanges = chipRangesRef.current.map((range) =>
         range.start > popover.triggerIndex
           ? { ...range, start: range.start + delta, end: range.end + delta }
           : range,
@@ -172,7 +190,7 @@ export function useChatInputController(args: {
       setActivePopover(null);
       selectionRef.current = { start: end, end };
     },
-    [chipRanges, text],
+    [setChipRanges, setText],
   );
 
   const onSelectMention = useCallback(
@@ -232,7 +250,8 @@ export function useChatInputController(args: {
     mentions: MentionEntry[];
     cardTags: CardTagEntry[];
   } => {
-    const mentions = chipRanges
+    const ranges = chipRangesRef.current;
+    const mentions = ranges
       .filter((range) => range.type === "mention")
       .map((range) => ({
         userId: range.refId,
@@ -241,7 +260,7 @@ export function useChatInputController(args: {
         endOffset: range.end,
       }));
 
-    const cardTags = chipRanges
+    const cardTags = ranges
       .filter((range) => range.type === "card")
       .map((range) => {
         const card = args.cardTagSource.find((candidate) => candidate.savedCardId === range.refId);
@@ -251,21 +270,24 @@ export function useChatInputController(args: {
       })
       .filter((entry): entry is CardTagEntry => entry !== null);
 
-    return { content: text.trim(), mentions, cardTags };
-  }, [args.cardTagSource, chipRanges, text]);
+    return { content: textRef.current.trim(), mentions, cardTags };
+  }, [args.cardTagSource]);
+
+  /** The latest composer text, including changes not yet rendered. */
+  const readText = useCallback((): string => textRef.current, []);
 
   const reset = useCallback(() => {
     setText("");
     setChipRanges([]);
     setActivePopover(null);
     selectionRef.current = { start: 0, end: 0 };
-  }, []);
+  }, [setChipRanges, setText]);
 
   const setDraftText = useCallback((nextText: string) => {
     setText(nextText);
     setChipRanges([]);
     updateActivePopover(nextText);
-  }, [updateActivePopover]);
+  }, [setChipRanges, setText, updateActivePopover]);
 
   return {
     text,
@@ -280,6 +302,7 @@ export function useChatInputController(args: {
     onSelectCardTag,
     closePopover,
     serializeForSend,
+    readText,
     reset,
     setDraftText,
   };
