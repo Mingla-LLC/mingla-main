@@ -86,7 +86,8 @@ test("#1950 page gates the mount instead of hiding the panel and preserves traff
   assert.equal((pageSource.match(/<AppDownloadReadinessPanel \/>/g) ?? []).length, 1);
   assert.doesNotMatch(pageSource, /display:\s*["']none["'][\s\S]{0,160}AppDownloadReadinessPanel/);
   assert.match(pageSource, /Campaign work/);
-  assert.match(pageSource, /Channel preflight/);
+  // #4130: Wave 4b renamed "Channel preflight" to "Check the ad platforms"; the preflight card must still render.
+  assert.match(pageSource, /title="Check the ad platforms"/);
   assert.doesNotMatch(pageSource, /createCampaign|campaignAction|budget_usd/);
 });
 
@@ -156,5 +157,6 @@ test("#1950 OFF rollback makes zero readiness calls in the next fresh session", 
   assert.equal(enabled, false);
   assert.deepEqual(interceptor.calls.map(({ route }) => route), ["admin_get_feature_flags"]);
   assert.match(pageSource, /<AdConnectionsPanel \/>/);
-  assert.match(pageSource, /Governed campaign operations/);
+  // #4130: Wave 4b renamed the "Governed campaign operations" heading to plain words; the section is pinned by its id.
+  assert.match(pageSource, /id="governed-campaign-operations-heading"/);
 });
