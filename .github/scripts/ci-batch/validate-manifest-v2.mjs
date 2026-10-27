@@ -488,6 +488,17 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
 // historical record; live discovery and MANIFEST.json retain the full record.
 export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
   Object.freeze({
+    // [#3643] The folded-workflow evidence helper reads the live batch
+    // provider to reconstruct checkout-history proof when a terminal wrapper
+    // is absent. It is an additive consumer of the existing ci-batch provider;
+    // subtract it before recomputing the frozen provider seal.
+    issue: 3643,
+    workflow: "ci-batch.yml",
+    referenceFiles: Object.freeze([
+      ".github/scripts/ci-batch/workflow-source.mjs",
+    ]),
+  }),
+  Object.freeze({
     issue: 1777,
     workflow: "issue-1774-people-page-tests.yml",
     referenceFiles: Object.freeze([
@@ -601,6 +612,15 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
 ]);
 const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL_NAMES = new Set(
   PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL.map((item) => item.workflow),
+);
+// [#3643] `ci-batch.yml` is the one existing provider whose validator source
+// was already part of the frozen reference inventory. The new workflow-source
+// consumer is an additive delta on that record; suppressing every ci-batch
+// literal in this file would erase the older validator reference as well.
+// Keep the generic self-declaration exemption for the other partial-reference
+// records, while retaining this provider's pre-existing consumer evidence.
+const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL_SELF_NAMES = new Set(
+  [...PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL_NAMES].filter((name) => name !== "ci-batch.yml"),
 );
 
 export function normalizeProviderReferenceFilesForSeal(
@@ -1946,7 +1966,7 @@ export function discoverWorkflowProviders(root = DEFAULT_ROOT) {
       if (relative === ".github/scripts/ci-batch/validate-manifest-v2.mjs"
         && (PHASE3B_WRAPPER_SET.has(name) || PHASE3C_WRAPPER_SET.has(name)
           || PROVIDERS_ADDED_SINCE_SEAL_NAMES.has(name)
-          || PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL_NAMES.has(name))) continue;
+          || PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL_SELF_NAMES.has(name))) continue;
       if (!workflowNames.has(name)) continue;
       if (!references.has(name)) references.set(name, []);
       references.get(name).push(relative);

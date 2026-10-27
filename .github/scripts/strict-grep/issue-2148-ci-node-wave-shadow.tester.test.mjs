@@ -21,6 +21,17 @@ const MANIFEST_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 const BATCH_PATH = path.join(ROOT, ".github/workflows/ci-batch.yml");
 const digest = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const byteDigest = (value) => crypto.createHash("sha256").update(value).digest("hex");
+const isBatchedHistoricalWorkflow = (relative, root = ROOT) => {
+  if (!relative.startsWith(".github/workflows/")) return false;
+  try {
+    const value = JSON.parse(fs.readFileSync(path.join(root, ".github/ci-batch/MANIFEST.json"), "utf8"));
+    const name = path.basename(relative);
+    return (value.legacyOrigins || []).some((origin) =>
+      `${origin.stem}.${origin.extension}` === name && origin.disposition === "batched-historical");
+  } catch {
+    return false;
+  }
+};
 const fileDigest = (relative, root = ROOT) => {
   const absolute = path.join(root, relative);
   const source = fs.existsSync(absolute) ? fs.readFileSync(absolute, "utf8") : readWorkflowSource(root, relative);
@@ -437,6 +448,10 @@ function assertWrapperLifecycle(value, readSource, markedWorkflowNames) {
 function assertCanonicalReferenceLocks(root = ROOT) {
   for (const [relative, expected] of Object.entries(REFERENCE_SHA256)) {
     const absolute = path.join(root, relative);
+    // #3643 intentionally removes terminal workflow wrappers. Their old
+    // digest remains in this historical authority table, but there is no live
+    // file to hash after the suite moves into the consolidated batch.
+    if (!fs.existsSync(absolute) && isBatchedHistoricalWorkflow(relative, root)) continue;
     const source = fs.existsSync(absolute) ? fs.readFileSync(absolute, "utf8") : readWorkflowSource(root, relative);
     assert.equal(typeof source, "string", relative);
     assert.equal(byteDigest(source), expected, `${relative}: coupled reference bytes changed`);
@@ -588,7 +603,7 @@ test("canonical locks remain enforceable in a depth-one checkout with no histori
   const required = [
     ".github/ci-batch/MANIFEST.json",
     ".github/scripts/strict-grep/MANIFEST.json",
-    ...Object.keys(REFERENCE_SHA256),
+    ...Object.keys(REFERENCE_SHA256).filter((relative) => !isBatchedHistoricalWorkflow(relative, ROOT)),
   ];
   try {
     for (const relative of new Set(required)) {
@@ -608,6 +623,7 @@ test("canonical locks remain enforceable in a depth-one checkout with no histori
 
     const value = JSON.parse(fs.readFileSync(path.join(shallow, ".github/ci-batch/MANIFEST.json"), "utf8"));
     const workflowDirectory = path.join(shallow, ".github/workflows");
+    fs.mkdirSync(workflowDirectory, { recursive: true });
     const markedWorkflowNames = fs.readdirSync(workflowDirectory).filter((name) =>
       fs.readFileSync(path.join(workflowDirectory, name), "utf8").split("\n").includes(MARKER));
     assertWrapperLifecycle(value, (name) => {
