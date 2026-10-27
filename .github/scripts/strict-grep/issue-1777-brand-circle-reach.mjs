@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import fs from "node:fs";import os from "node:os";import path from "node:path";import { fileURLToPath } from "node:url";// MINGLA-INVARIANT: I-PROPOSED-1777-CIRCLE-FRESHNESS-FAILS-CLOSED | issue #1777 | Brand Circle reads and sends fail closed unless live truth matches the ready materialized generation.
+import fs from "node:fs";import os from "node:os";import path from "node:path";import { fileURLToPath } from "node:url";
+// MINGLA-INVARIANT: I-PROPOSED-1777-CIRCLE-FRESHNESS-FAILS-CLOSED | issue #1777 | Brand Circle reads and sends fail closed unless live truth matches the ready materialized generation.
 // MINGLA-INVARIANT: I-PROPOSED-1777-CIRCLE-CONSENT-AND-BLOCKS | issue #1777 | Brand Circle membership requires current consent and excludes blocks, exits, ineligible identities, and Book ownership.
 // MINGLA-INVARIANT: I-876-CIRCLE-NO-CONTACT-FIELDS | issue #1777 | Brand Circle materialization exposes only opaque identity and approved public presentation fields, never contact data.
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../../..");

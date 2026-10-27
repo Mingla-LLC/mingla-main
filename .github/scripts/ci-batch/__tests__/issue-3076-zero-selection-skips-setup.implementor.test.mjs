@@ -117,12 +117,12 @@ function previewAgainst(klass, changedPath) {
 }
 
 test("#3076-1 a class whose diff invalidates nothing publishes an explicit refusal to set up", () => {
-  // A path no suite in the registry claims. Derived by exhaustion, not assumed:
-  // the assertion below would be vacuous if some suite did claim it.
+  // Prove this host is idle. Other hosts can legitimately own suites that
+  // run on every PR, including changes outside their path inventory.
   const inert = "issue-3076-claimed-by-no-suite/marker.txt";
-  const exhaustive = selectSuites(MANIFEST, MANIFEST.suites,
+  const exhaustive = selectSuites(MANIFEST, expectedPrimarySuites(MANIFEST, PHASE3C_HOST),
     { eventName: "pull_request", mode: "routed", changedPaths: [inert] });
-  assert.deepEqual(exhaustive.selectedSuiteIds, [], "the inert probe path must be claimed by no suite");
+  assert.deepEqual(exhaustive.selectedSuiteIds, [], "the probe must select no suite on this host");
 
   const outputs = previewAgainst(PHASE3C_HOST, inert);
   assert.equal(outputs[PRIMARY_OUTPUT], false, "a zero-selection class must publish an explicit false");
