@@ -964,6 +964,9 @@ jobs:
       - name: "Issue #4130 — integration: Brands and Payments agree on payment readiness, Competitor watch in Settings for who could open Tool leads, failed announcement pushes on the Dashboard for admins, the Event runway table and its two actions"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_4130_integration.implementor.test.js
+      - name: "Issue #4130 — tester adversarial: Work weeks and months in five time zones and across clock changes, every failed Dashboard read gets Retry, a missing rate never becomes 0 USD, limit end dates at year end, a refused person action has no browser fallback, Payments and boards agree on eight edge brands, Data room and Support/Community access per role"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue_4130_admin_polish.tester.adversarial.test.js
       - name: "#3720 Slice B — email segments + single log writer (admin node:test)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_3720_email_segments.implementor.happy.test.js
