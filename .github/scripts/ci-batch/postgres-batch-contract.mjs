@@ -10,6 +10,13 @@ export function isPostgresBatchSuite(suite) {
   return suite?.migrationWave === POSTGRES_WAVE && typeof suite?.databaseName === "string";
 }
 
+export function isUnfilteredPostgresSuite(manifest, suite) {
+  if (!isPostgresBatchSuite(suite)) return false;
+  const origin = manifest.legacyOrigins?.find((entry) =>
+    `.github/workflows/${entry.stem}.${entry.extension}` === suite.origin);
+  return origin?.workflowMetadata?.pathScope?.length === 0 && !origin.routing;
+}
+
 export function postgresDatabaseName(suiteId) {
   const readable = suiteId.replace(/^issue-/, "i_").replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "").toLowerCase();
   const suffix = crypto.createHash("sha256").update(suiteId).digest("hex").slice(0, 10);
