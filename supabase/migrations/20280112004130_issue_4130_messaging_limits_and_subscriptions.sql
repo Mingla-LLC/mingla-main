@@ -575,7 +575,11 @@ $function$;
 REVOKE ALL ON FUNCTION public.subscription_tier_without_global(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.subscription_tier_without_global(uuid) TO service_role;
 
-CREATE OR REPLACE FUNCTION public.admin_subscription_overview()
+-- p_show_internal: the tiles leave out staff and test accounts exactly when
+-- the list does (public.admin_account_is_internal, the one rule);
+-- `internal_hidden` says how many were left out.
+DROP FUNCTION IF EXISTS public.admin_subscription_overview();
+CREATE OR REPLACE FUNCTION public.admin_subscription_overview(p_show_internal boolean DEFAULT false)
 RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
@@ -589,10 +593,14 @@ BEGIN
     RAISE EXCEPTION 'not_authorized';
   END IF;
 
-  WITH people AS (
-    SELECT p.id, r.tier, r.source
+  WITH everyone AS (
+    SELECT p.id, public.admin_account_is_internal(p.id) AS internal
     FROM public.profiles p
-    CROSS JOIN LATERAL public.subscription_tier_without_global(p.id) r
+  ), people AS (
+    SELECT e.id, r.tier, r.source
+    FROM everyone e
+    CROSS JOIN LATERAL public.subscription_tier_without_global(e.id) r
+    WHERE COALESCE(p_show_internal, false) OR NOT e.internal
   )
   SELECT jsonb_build_object(
     'total', (SELECT count(*) FROM people),
@@ -603,15 +611,19 @@ BEGIN
     'admin_given', (SELECT count(*) FROM people WHERE source = 'admin'),
     'expiring_3d', (
       SELECT count(*) FROM public.admin_subscription_overrides o
+      JOIN people pe ON pe.id = o.user_id
       WHERE o.revoked_at IS NULL AND o.starts_at <= now()
-        AND o.expires_at > now() AND o.expires_at <= now() + interval '3 days')
+        AND o.expires_at > now() AND o.expires_at <= now() + interval '3 days'),
+    'internal_hidden', CASE WHEN COALESCE(p_show_internal, false) THEN 0
+                            ELSE (SELECT count(*) FROM everyone WHERE internal) END,
+    'show_internal', COALESCE(p_show_internal, false)
   ) INTO v_out;
   RETURN v_out;
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.admin_subscription_overview() FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.admin_subscription_overview() TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.admin_subscription_overview(boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_subscription_overview(boolean) TO authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION public.admin_subscription_overrides_expiring(p_within_days integer DEFAULT 3)
 RETURNS jsonb
@@ -835,5 +847,42 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.admin_set_global_plus(boolean, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_set_global_plus(boolean, text) TO authenticated;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 6. Global Plus has one write path.
+-- ───────────────────────────────────────────────────────────────────────────
+-- The app_config RLS policies let any admin insert, update or delete a row
+-- straight from the browser, with no reason and no audit. For the
+-- global_plus_access row that is refused for every API role (anon,
+-- authenticated, service_role): the only way to change it is
+-- admin_set_global_plus above, which runs as the function owner. Every other
+-- app_config key is untouched. Not SECURITY DEFINER on purpose: current_user
+-- must be the caller's role.
+CREATE OR REPLACE FUNCTION public.issue_4130_guard_global_plus_config()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  IF current_user IN ('anon', 'authenticated', 'service_role')
+     AND ((TG_OP IN ('UPDATE', 'DELETE') AND OLD.config_key = 'global_plus_access')
+       OR (TG_OP IN ('INSERT', 'UPDATE') AND NEW.config_key = 'global_plus_access')) THEN
+    RAISE EXCEPTION 'global_plus_use_admin_set_global_plus'
+      USING ERRCODE = '42501',
+            HINT = 'Change Global Plus on the Subscriptions page (admin_set_global_plus), with a reason.';
+  END IF;
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4130_guard_global_plus_config() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS issue_4130_guard_global_plus_config ON public.app_config;
+CREATE TRIGGER issue_4130_guard_global_plus_config
+  BEFORE INSERT OR UPDATE OR DELETE ON public.app_config
+  FOR EACH ROW EXECUTE FUNCTION public.issue_4130_guard_global_plus_config();
 
 COMMIT;

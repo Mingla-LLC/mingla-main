@@ -162,17 +162,18 @@ export function lastMonthNew(months) {
   return out;
 }
 
+/**
+ * #4130: a month on a chart or in a table, "Oct 2026" — never "Oct 26",
+ * which reads as a day.
+ */
 export function monthLabel(month) {
   if (!month || typeof month !== "string") return "";
   const [y, m] = month.split("-").map(Number);
   if (!y || !m) return month;
-  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString("en-GB", { month: "short", year: "2-digit", timeZone: "UTC" });
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
 }
 
-/**
- * #4130: a month in a sentence, unambiguous ("October 2026", never "Oct 26",
- * which reads as a day). Chart ticks keep the short monthLabel.
- */
+/** #4130: a month in a sentence, "October 2026". */
 export function monthName(month) {
   if (!month || typeof month !== "string") return "";
   const [y, m] = month.split("-").map(Number);

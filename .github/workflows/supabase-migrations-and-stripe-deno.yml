@@ -343,6 +343,12 @@ on:
       # #4130 rework (tester FAIL findings): the suite and the files it reads
       # that are not already listed here.
       - "mingla-admin/src/__tests__/issue_4130_rework.implementor.test.js"
+      # #4130 final rework (retest findings): the suite and the files it reads
+      # that are not already listed here.
+      - "mingla-admin/src/__tests__/issue_4130_final_rework.implementor.test.js"
+      - "mingla-admin/src/components/ui/Input.jsx"
+      - "mingla-admin/src/lib/moneyFormat.js"
+      - "mingla-admin/src/components/pricing/MessagingLimitsPanel.jsx"
       - "mingla-admin/src/lib/opsModel.js"
       - "mingla-admin/src/lib/dashboardToday.js"
       - "mingla-admin/src/lib/systemPages.js"
@@ -740,6 +746,12 @@ on:
       # #4130 rework (tester FAIL findings): the suite and the files it reads
       # that are not already listed here.
       - "mingla-admin/src/__tests__/issue_4130_rework.implementor.test.js"
+      # #4130 final rework (retest findings): the suite and the files it reads
+      # that are not already listed here.
+      - "mingla-admin/src/__tests__/issue_4130_final_rework.implementor.test.js"
+      - "mingla-admin/src/components/ui/Input.jsx"
+      - "mingla-admin/src/lib/moneyFormat.js"
+      - "mingla-admin/src/components/pricing/MessagingLimitsPanel.jsx"
       - "mingla-admin/src/lib/opsModel.js"
       - "mingla-admin/src/lib/dashboardToday.js"
       - "mingla-admin/src/lib/systemPages.js"
@@ -1024,6 +1036,9 @@ jobs:
       - name: "Issue #4130 — rework: precise staff/test email rule, one Waiting on a person count, failed reads shown as failed, audited Global Plus, mixed pricing, plain words, brand-level staff/test decision, Careers its own page"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_4130_rework.implementor.test.js
+      - name: "Issue #4130 — final rework: Global Plus read-only in Settings and refused as a direct write, Subscriptions tiles follow the staff/test toggle, Competitor watch and Ads errors in plain words, months as Oct 2026, minus signs between currencies, reason labels tied to their boxes"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue_4130_final_rework.implementor.test.js
       - name: "#3720 Slice B — email segments + single log writer (admin node:test)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_3720_email_segments.implementor.happy.test.js

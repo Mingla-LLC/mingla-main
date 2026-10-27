@@ -17,7 +17,7 @@ import { logAdminAction } from "../lib/auditLog";
 import { PageHeader } from "../components/ui/PageHeader";
 import { useOnline } from "../hooks/useCrmPipeline";
 import { useHashTab } from "../hooks/useHashTab";
-import { COMPETITOR_WATCH_FROM, RESTART_WORD, SETTINGS_SECTIONS, appConfigRow, canRestartTour, sectionFor } from "../lib/systemPages";
+import { COMPETITOR_WATCH_FROM, RESTART_WORD, SETTINGS_SECTIONS, appConfigLock, appConfigRow, canRestartTour, sectionFor } from "../lib/systemPages";
 import { fetchTrialRunHistory, restartTourForEveryone, systemErrorWords } from "../services/systemPagesService";
 import { TeamAutomationSettings } from "../components/ops/TeamSettingsPanels";
 import { RunHistoryGroups } from "../components/placeIntelligenceTrial/RunHistoryGroups";
@@ -99,6 +99,7 @@ function AppConfigView() {
 
   const handleCreate = async () => {
     if (!newConfig.key.trim()) { addToast({ variant: "error", title: "Key is required" }); return; }
+    if (appConfigLock(newConfig.key.trim())) { addToast({ variant: "error", title: "This setting changes on its own page", description: appConfigLock(newConfig.key.trim()).label }); return; }
     const { error } = await supabase.from("app_config").insert({
       config_key: newConfig.key.trim(),
       config_value: newConfig.value,
@@ -113,6 +114,7 @@ function AppConfigView() {
   };
 
   const handleSaveEdit = async () => {
+    if (appConfigLock(editing?.key)) { setEditing(null); return; }
     const oldVal = configs.find((c) => c.id === editing.id)?.value;
     const { error } = await supabase.from("app_config").update({ config_value: editing.value }).eq("id", editing.id);
     if (error) { addToast({ variant: "error", title: "Couldn't save the setting", description: error.message }); return; }
@@ -123,6 +125,7 @@ function AppConfigView() {
   };
 
   const handleDelete = async (cfg) => {
+    if (appConfigLock(cfg?.key)) { setConfirmDelete(null); return; }
     const { error } = await supabase.from("app_config").delete().eq("id", cfg.id);
     if (error) { addToast({ variant: "error", title: "Couldn't delete the setting", description: error.message }); return; }
     addToast({ variant: "success", title: "Setting deleted" });
@@ -161,8 +164,17 @@ function AppConfigView() {
                 <p className="text-xs text-[var(--color-text-tertiary)] truncate">{cfg.value}</p>
               </div>
               <Badge variant="default">{cfg.value_type || "string"}</Badge>
-              <Button variant="ghost" size="sm" icon={Edit3} onClick={() => setEditing({ ...cfg })} />
-              <Button variant="ghost" size="sm" icon={Trash2} onClick={() => setConfirmDelete(cfg)} />
+              {/* #4130: Global Plus is read-only here; it changes on Subscriptions, with a reason, on the server's audited path. */}
+              {appConfigLock(cfg.key) ? (
+                <a href={appConfigLock(cfg.key).href} className="text-sm font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline">
+                  {appConfigLock(cfg.key).label}
+                </a>
+              ) : (
+                <>
+                  <Button variant="ghost" size="sm" icon={Edit3} onClick={() => setEditing({ ...cfg })} aria-label={`Edit ${cfg.key}`} />
+                  <Button variant="ghost" size="sm" icon={Trash2} onClick={() => setConfirmDelete(cfg)} aria-label={`Delete ${cfg.key}`} />
+                </>
+              )}
             </div>
           ))}
         </div>

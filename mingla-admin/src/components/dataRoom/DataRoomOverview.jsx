@@ -10,7 +10,7 @@ import {
 } from "recharts";
 import { SectionCard } from "../ui/Card";
 import { Badge } from "../ui/Badge";
-import { formatMoneyMinor } from "../../lib/moneyFormat";
+import { formatMoneyMinor, joinMoneyAmounts } from "../../lib/moneyFormat";
 import {
   SEGMENTS, cumulativeMonths, lastMonthNew, monthLabel, monthName, countChange, funnelVerdicts,
   verdictRulesText, verdictSentence, weeklyMoney, moneyCurrencies, last30,
@@ -97,7 +97,7 @@ function Headlines({ overview, retention, money }) {
       <Tile
         label="Mingla profit, last 30 days"
         value={profitUsd == null ? (profit.length ? "not converted" : formatMoneyMinor(0, "USD")) : formatMoneyMinor(profitUsd, "USD")}
-        note={profit.length ? profit.map((p) => formatMoneyMinor(p.cents, p.currency)).join(" + ") + " · see Mingla money" : "see Mingla money"}
+        note={profit.length ? joinMoneyAmounts(profit) + " · see Mingla money" : "see Mingla money"}
       />
     </div>
   );

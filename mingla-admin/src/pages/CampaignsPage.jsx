@@ -65,6 +65,7 @@ import {
 } from "../lib/adSpendCap";
 import { loadFeatureFlags } from "../lib/featureFlags";
 import { PageHeader } from "../components/ui/PageHeader";
+import { adsErrorWords } from "../lib/systemPages";
 import { filterAndSortCampaigns } from "../lib/adCampaignWorkspace";
 import { CampaignRow } from "../components/ad-engine/CampaignRow";
 import { campaignScheduleInZone } from "../lib/adCampaignRow";
@@ -310,7 +311,7 @@ export function CampaignsPage({ embedded = false }) {
       addToast({
         variant: "error",
         title: "Campaign list failed",
-        description: error.message,
+        description: adsErrorWords(error.message, "The campaign list could not load."),
       });
       setCampaigns([]);
     } else {
@@ -319,18 +320,17 @@ export function CampaignsPage({ embedded = false }) {
     const reviewParsed = reviewResult.error ? await parseEdgeError(reviewResult.error) : null;
     const recoveryParsed = recoveryResult.error ? await parseEdgeError(recoveryResult.error) : null;
     setLoadErrors({
-      campaigns: error ? String(error.message || "The campaign list could not load.") : null,
-      review: reviewResult.error ? String(reviewParsed?.message ?? "The review queue could not load.") : null,
-      recovery: recoveryResult.error ? String(recoveryParsed?.message ?? "The recovery queue could not load.") : null,
+      // #4130: never supabase-js's "Edge Function returned a non-2xx status code".
+      campaigns: error ? adsErrorWords(error.message, "The campaign list could not load.") : null,
+      review: reviewResult.error ? adsErrorWords(reviewParsed?.message, "The review queue could not load.") : null,
+      recovery: recoveryResult.error ? adsErrorWords(recoveryParsed?.message, "The recovery queue could not load.") : null,
     });
     if (reviewResult.error) {
       const parsed = reviewParsed;
       addToast({
         variant: "error",
         title: "Host review queue failed",
-        description: String(
-          parsed?.message ?? "The review queue could not load.",
-        ),
+        description: adsErrorWords(parsed?.message, "The review queue could not load."),
       });
       setReviewQueue([]);
     } else {
@@ -341,9 +341,7 @@ export function CampaignsPage({ embedded = false }) {
       addToast({
         variant: "error",
         title: "Mingla plan recovery failed",
-        description: String(
-          parsed?.message ?? "The recovery queue could not load.",
-        ),
+        description: adsErrorWords(parsed?.message, "The recovery queue could not load."),
       });
       setRecoveryQueue([]);
     } else {

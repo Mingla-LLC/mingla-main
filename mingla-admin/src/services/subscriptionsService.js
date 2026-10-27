@@ -38,9 +38,13 @@ export async function listAllSubscriptions(query) {
   );
 }
 
-/** Counts: people, real Mingla+ and free, paid, given by an admin, ending in 3 days, Global Plus. */
-export async function getSubscriptionOverview() {
-  const { data, error } = await supabase.rpc("admin_subscription_overview");
+/**
+ * Counts: people, real Mingla+ and free, paid, given by an admin, ending in 3 days, Global Plus.
+ * #4130: staff and test accounts are left out unless showInternal, exactly as
+ * the list; internal_hidden says how many.
+ */
+export async function getSubscriptionOverview({ showInternal = false } = {}) {
+  const { data, error } = await supabase.rpc("admin_subscription_overview", { p_show_internal: showInternal === true });
   if (error) throw new Error(error.message || "subscription_overview_failed");
   return data ?? null;
 }

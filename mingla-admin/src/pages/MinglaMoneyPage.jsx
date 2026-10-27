@@ -19,7 +19,7 @@ import { Badge } from "../components/ui/Badge";
 import { Skeleton } from "../components/ui/Skeleton";
 import { LoadError } from "../components/ui/LoadError";
 import { getMinglaMoneySummary } from "../services/adminMoneyService";
-import { formatMoneyMinor } from "../lib/moneyFormat";
+import { formatMoneyMinor, joinMoneyAmounts } from "../lib/moneyFormat";
 import { formatDate } from "../lib/formatters";
 import {
   PERIODS,
@@ -70,11 +70,15 @@ function Tile({ label, value, note, tone }) {
   );
 }
 
+// #4130: "₦150.00 − $0.01", never "₦150.00 + -$0.01" (lib/moneyFormat.js).
 function nativeParts(row, currencies, sign = 1) {
-  return currencies
+  const parts = currencies
     .filter((c) => row.byCurrency[c]?.cents)
-    .map((c) => signed(row.byCurrency[c].cents, c, sign))
-    .join(" + ") || formatMoneyMinor(0, currencies[0] || "USD");
+    .map((c) => {
+      const cents = row.byCurrency[c].cents;
+      return { cents: sign < 0 ? -Math.abs(cents) : cents, currency: c };
+    });
+  return joinMoneyAmounts(parts) || formatMoneyMinor(0, currencies[0] || "USD");
 }
 
 /** A per-currency table with a "Total in USD" column. */

@@ -11,7 +11,12 @@
 --      the table is closed to anon and authenticated;
 --   7. the subscriptions list hides staff and test accounts unless asked for;
 --   8. Global Plus switches only through admin_set_global_plus: admin-only,
---      reason required, audited, and an error when nothing changed.
+--      reason required, audited, and an error when nothing changed;
+--   9. the subscription tiles leave out staff and test accounts when the list
+--      does, and say how many;
+--  10. a direct app_config write to global_plus_access is refused for every
+--      API role (insert, update, rename, delete), while every other key keeps
+--      the admin RLS behaviour it had.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -58,6 +63,35 @@ BEGIN
   PERFORM set_config('request.jwt.claim.email', '', true);
   PERFORM set_config('request.jwt.claim.role', '', true);
   RETURN COALESCE(v_answer, 'NULL');
+EXCEPTION WHEN OTHERS THEN
+  RESET ROLE;
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.email', '', true);
+  PERFORM set_config('request.jwt.claim.role', '', true);
+  RETURN 'ERR:' || SQLSTATE || ':' || SQLERRM;
+END;
+$$;
+
+-- Run one SQL statement as a role and persona; returns OK:<rows> or ERR:<code>:<message>.
+CREATE FUNCTION pg_temp.t4130b_exec(p_role text, p_who text, p_sql text) RETURNS text
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_id uuid;
+  v_email text;
+  v_rows bigint;
+BEGIN
+  SELECT id, email INTO STRICT v_id, v_email FROM t4130b_people WHERE who = p_who;
+  EXECUTE format('SET LOCAL ROLE %I', p_role);
+  PERFORM set_config('request.jwt.claim.sub', v_id::text, true);
+  PERFORM set_config('request.jwt.claim.email', v_email, true);
+  PERFORM set_config('request.jwt.claim.role', p_role, true);
+  EXECUTE p_sql;
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  RESET ROLE;
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.email', '', true);
+  PERFORM set_config('request.jwt.claim.role', '', true);
+  RETURN 'OK:' || v_rows;
 EXCEPTION WHEN OTHERS THEN
   RESET ROLE;
   PERFORM set_config('request.jwt.claim.sub', '', true);
@@ -120,7 +154,7 @@ BEGIN
      OR has_function_privilege('anon', 'public.admin_set_messaging_limit_defaults(integer,integer,integer,integer,text)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.admin_list_subscriptions_v2(text,text,text,boolean,integer,integer,boolean)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.admin_set_global_plus(boolean,text)', 'EXECUTE')
-     OR has_function_privilege('anon', 'public.admin_subscription_overview()', 'EXECUTE') THEN
+     OR has_function_privilege('anon', 'public.admin_subscription_overview(boolean)', 'EXECUTE') THEN
     RAISE EXCEPTION 'admin RPC executable by anon';
   END IF;
   IF (SELECT count(*) FROM public.brand_messaging_limits WHERE brand_id IS NULL) <> 1 THEN
@@ -422,6 +456,32 @@ BEGIN
     RAISE EXCEPTION 'overview wrong: %', t;
   END IF;
 
+  -- 9. The tiles leave out staff and test accounts exactly when the list does.
+  DECLARE
+    v_hidden jsonb := pg_temp.t4130b_as('admin', 'public.admin_subscription_overview(false)')::jsonb;
+    v_shown jsonb := pg_temp.t4130b_as('admin', 'public.admin_subscription_overview(true)')::jsonb;
+    v_people int := (SELECT count(*) FROM public.profiles);
+    v_internal int := (SELECT count(*) FROM public.profiles p WHERE public.admin_account_is_internal(p.id));
+  BEGIN
+    IF v_internal < 1 THEN RAISE EXCEPTION 'fixture: the staff account is not internal'; END IF;
+    IF (v_hidden->>'total')::int <> v_people - v_internal
+       OR (v_hidden->>'internal_hidden')::int <> v_internal
+       OR (v_hidden->>'show_internal')::boolean THEN
+      RAISE EXCEPTION 'tiles count staff/test while the list hides them: % (people %, internal %)', v_hidden, v_people, v_internal;
+    END IF;
+    IF (v_shown->>'total')::int <> v_people OR (v_shown->>'internal_hidden')::int <> 0 THEN
+      RAISE EXCEPTION 'tiles with staff/test shown are wrong: %', v_shown;
+    END IF;
+    IF (v_hidden->>'real_plus')::int + (v_hidden->>'real_free')::int <> (v_hidden->>'total')::int THEN
+      RAISE EXCEPTION 'tile tiers do not add up to the people counted: %', v_hidden;
+    END IF;
+    -- The list and the tiles agree on how many were left out.
+    IF (pg_temp.t4130b_as('admin', 'public.admin_list_subscriptions_v2(NULL, NULL, ''joined'', true, 1, 0)')::jsonb->>'internal_hidden')::int
+       <> (v_hidden->>'internal_hidden')::int THEN
+      RAISE EXCEPTION 'list and tiles disagree on staff/test left out';
+    END IF;
+  END;
+
   -- 8. Global Plus (on here): no reason, no change; the same state is an
   -- error, not a silent success; a real switch is audited.
   t := pg_temp.t4130b_as('admin', 'public.admin_set_global_plus(false, ''  '')');
@@ -440,5 +500,58 @@ BEGIN
   t := pg_temp.t4130b_as('admin', 'public.admin_set_global_plus(true, ''Missing row'')');
   IF t NOT LIKE 'ERR:%global_plus_setting_missing%' THEN RAISE EXCEPTION 'missing Global Plus row not refused: %', t; END IF;
 END $subs$;
+
+-- ── 10. Global Plus has one write path ────────────────────────────────────
+DO $direct$
+DECLARE
+  t text;
+  r text;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'public.app_config'::regclass
+                  AND tgname = 'issue_4130_guard_global_plus_config' AND NOT tgisinternal) THEN
+    RAISE EXCEPTION 'app_config has no Global Plus guard trigger';
+  END IF;
+  -- The suite above removed the row; put it back as the database owner.
+  INSERT INTO public.app_config (config_key, config_value, value_type) VALUES ('global_plus_access', 'false', 'boolean');
+  INSERT INTO public.app_config (config_key, config_value, value_type) VALUES ('issue4130b_probe', 'one', 'string');
+
+  FOREACH r IN ARRAY ARRAY['authenticated', 'service_role'] LOOP
+    t := pg_temp.t4130b_exec(r, 'admin', $q$UPDATE public.app_config SET config_value = 'true' WHERE config_key = 'global_plus_access'$q$);
+    IF t NOT LIKE 'ERR:42501:global_plus_use_admin_set_global_plus%' THEN
+      RAISE EXCEPTION '% could update global_plus_access directly: %', r, t;
+    END IF;
+    t := pg_temp.t4130b_exec(r, 'admin', $q$DELETE FROM public.app_config WHERE config_key = 'global_plus_access'$q$);
+    IF t NOT LIKE 'ERR:42501:%' THEN RAISE EXCEPTION '% could delete global_plus_access: %', r, t; END IF;
+    t := pg_temp.t4130b_exec(r, 'admin', $q$UPDATE public.app_config SET config_key = 'global_plus_access' WHERE config_key = 'issue4130b_probe'$q$);
+    IF t NOT LIKE 'ERR:42501:%' THEN RAISE EXCEPTION '% could rename a key to global_plus_access: %', r, t; END IF;
+  END LOOP;
+  IF (SELECT config_value FROM public.app_config WHERE config_key = 'global_plus_access') <> 'false' THEN
+    RAISE EXCEPTION 'a refused write changed Global Plus';
+  END IF;
+  DELETE FROM public.app_config WHERE config_key = 'global_plus_access';
+  t := pg_temp.t4130b_exec('authenticated', 'admin', $q$INSERT INTO public.app_config (config_key, config_value, value_type) VALUES ('global_plus_access', 'true', 'boolean')$q$);
+  IF t NOT LIKE 'ERR:42501:%' THEN RAISE EXCEPTION 'admin could insert global_plus_access: %', t; END IF;
+  INSERT INTO public.app_config (config_key, config_value, value_type) VALUES ('global_plus_access', 'false', 'boolean');
+
+  -- Every other key keeps working for an admin, as before.
+  t := pg_temp.t4130b_exec('authenticated', 'admin', $q$UPDATE public.app_config SET config_value = 'two' WHERE config_key = 'issue4130b_probe'$q$);
+  IF t <> 'OK:1' OR (SELECT config_value FROM public.app_config WHERE config_key = 'issue4130b_probe') <> 'two' THEN
+    RAISE EXCEPTION 'admin can no longer edit an ordinary key: %', t;
+  END IF;
+  t := pg_temp.t4130b_exec('authenticated', 'admin', $q$INSERT INTO public.app_config (config_key, config_value, value_type) VALUES ('issue4130b_probe_two', 'x', 'string')$q$);
+  IF t <> 'OK:1' THEN RAISE EXCEPTION 'admin can no longer add an ordinary key: %', t; END IF;
+  t := pg_temp.t4130b_exec('authenticated', 'admin', $q$DELETE FROM public.app_config WHERE config_key IN ('issue4130b_probe', 'issue4130b_probe_two')$q$);
+  IF t <> 'OK:2' THEN RAISE EXCEPTION 'admin can no longer delete an ordinary key: %', t; END IF;
+  -- A non-admin still changes nothing (RLS as before).
+  INSERT INTO public.app_config (config_key, config_value, value_type) VALUES ('issue4130b_probe', 'one', 'string');
+  t := pg_temp.t4130b_exec('authenticated', 'host', $q$UPDATE public.app_config SET config_value = 'two' WHERE config_key = 'issue4130b_probe'$q$);
+  IF t <> 'OK:0' THEN RAISE EXCEPTION 'non-admin wrote app_config: %', t; END IF;
+
+  -- The audited RPC is still the way, and it works with the guard in place.
+  t := pg_temp.t4130b_as('admin', 'public.admin_set_global_plus(true, ''Promo week'')');
+  IF t LIKE 'ERR:%' OR (SELECT config_value FROM public.app_config WHERE config_key = 'global_plus_access') <> 'true' THEN
+    RAISE EXCEPTION 'admin_set_global_plus blocked by the guard: %', t;
+  END IF;
+END $direct$;
 
 ROLLBACK;

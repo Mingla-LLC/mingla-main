@@ -37,6 +37,7 @@ import {
   getsNowLabel,
   globalPlusConfirmCopy,
   internalToggleLabel,
+  tilesScopeNote,
   hasNextPage,
   pageRangeLabel,
   personName,
@@ -149,7 +150,7 @@ export function SubscriptionManagementPage() {
     setOverviewLoading(true);
     setOverviewError(null);
     try {
-      const data = await getSubscriptionOverview();
+      const data = await getSubscriptionOverview({ showInternal });
       if (mountedRef.current) setOverview(data);
     } catch (err) {
       if (mountedRef.current) {
@@ -159,7 +160,7 @@ export function SubscriptionManagementPage() {
     } finally {
       if (mountedRef.current) setOverviewLoading(false);
     }
-  }, []);
+  }, [showInternal]);
 
   const fetchExpiring = useCallback(async () => {
     setExpiringError(null);
@@ -467,6 +468,11 @@ export function SubscriptionManagementPage() {
               />
             </>
           )}
+          {overview && tilesScopeNote(overview) ? (
+            <p className="text-xs text-[var(--color-text-tertiary)] sm:col-span-2 lg:col-span-4" data-testid="subscriptions-tiles-scope">
+              {tilesScopeNote(overview)}
+            </p>
+          ) : null}
         </div>
       )}
 

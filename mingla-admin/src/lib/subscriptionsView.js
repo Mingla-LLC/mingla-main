@@ -108,6 +108,18 @@ export function subscriptionErrorMessage(error) {
  * #4130: the staff-and-test toggle. Hidden by default; the label says how
  * many the list left out.
  */
+/**
+ * #4130: the line under the tiles, so the counts say who they leave out
+ * (the same staff/test rule and the same toggle as the list).
+ */
+export function tilesScopeNote(overview) {
+  if (!overview) return "";
+  if (overview.show_internal === true) return "Counts include staff and test accounts.";
+  const n = Number(overview.internal_hidden);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return `Counts leave out ${n.toLocaleString("en-US")} staff and test account${n === 1 ? "" : "s"}, as the list does.`;
+}
+
 export function internalToggleLabel(showing, hidden) {
   if (showing) return "Hide staff and test";
   const n = Number(hidden);

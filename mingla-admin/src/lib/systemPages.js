@@ -410,6 +410,47 @@ export function appConfigRow(row) {
   };
 }
 
+/**
+ * #4130: app_config keys Settings shows but never writes. Global Plus changes
+ * only through admin_set_global_plus on Subscriptions (reason + audit); the
+ * server refuses a direct table write to it as well.
+ */
+export const READ_ONLY_APP_CONFIG = Object.freeze({
+  global_plus_access: Object.freeze({ href: "#/subscriptions", label: "Change it in Subscriptions" }),
+});
+export const appConfigLock = (key) =>
+  Object.prototype.hasOwnProperty.call(READ_ONLY_APP_CONFIG, key) ? READ_ONLY_APP_CONFIG[key] : null;
+
+// #4130: why a Competitor watch source or check stopped, in plain words.
+const SAFE_REASON_WORDS = Object.freeze({
+  rollout_disabled: "Not switched on yet",
+  meta_not_ready: "Waiting for Instagram access from Meta",
+  link_only: "Can only be linked, not checked",
+  provider_disabled: "This source is paused",
+  rate_limited: "The site asked us to slow down",
+  unreachable: "Couldn't reach the site",
+  model_usage_missing: "The check ran but its cost wasn't recorded",
+  output_budget_exceeded: "The check ran over its size limit",
+  insufficient_source_facts: "Not enough on the page to compare",
+  provider_error: "The source returned an error",
+});
+export function safeReasonWords(code) {
+  if (code == null || code === "") return "";
+  const key = String(code);
+  if (Object.prototype.hasOwnProperty.call(SAFE_REASON_WORDS, key)) return SAFE_REASON_WORDS[key];
+  const words = key.replaceAll("_", " ").trim();
+  return words ? words[0].toUpperCase() + words.slice(1) : "";
+}
+
+// #4130: the Ads pages never show supabase-js's generic edge error.
+export const ADS_SERVICE_DOWN = "The ads service didn't answer. Try again in a minute.";
+export function adsErrorWords(message, emptyFallback = ADS_SERVICE_DOWN) {
+  const text = typeof message === "string" ? message.trim() : "";
+  if (!text) return emptyFallback;
+  if (/non-2xx status code/i.test(text) || /^Failed to send a request to the Edge Function/i.test(text)) return ADS_SERVICE_DOWN;
+  return text;
+}
+
 // #4130: Competitor watch in plain words. The values stay the server's.
 export const OPS_STATE_WORDS = Object.freeze({
   due: "Waiting to run", leased: "Running now", retry_wait: "Will try again", succeeded: "Checked",
