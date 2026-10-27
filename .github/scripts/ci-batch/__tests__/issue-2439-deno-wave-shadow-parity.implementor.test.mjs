@@ -26,7 +26,7 @@ import {
   PROVIDERS_ADDED_SINCE_SEAL,
   trackedFilesCalls, trackedFilesProcessInvocations,
   validateRegistry, withTrackedFilesScope, PHASE3C_SHADOW_MARKER, PHASE3C_WRAPPER_NAMES,
-  SUITES_ADDED_SINCE_SEAL,
+  SUITES_ADDED_SINCE_SEAL, SUITES_FOLDED_SINCE_SEAL, PHASE3D_HOSTS, PHASE3D_WAVE,
 } from "../validate-manifest-v2.mjs";
 import { executesLeaves, absentFileIsFailure, evaluateTypedPredicate, expectedPrimarySuites, retryIsHonoured, sleepBounded, minimalChildEnvironment } from "../run-suite-batch.mjs";
 import { reconcilePhase3bReports, selectionDocument } from "../select-phase3b-suites.mjs";
@@ -38,6 +38,10 @@ import { loadEffectiveManifest } from "../load-manifest.mjs";
 // post-seal set, never re-typed. See SUITES_ADDED_SINCE_SEAL.
 const ADDED_SUITES = SUITES_ADDED_SINCE_SEAL.length;
 const ADDED_STEPS = SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
+// [#3643] Phase 3D folds existing origins into the batch on its own declared
+// hosts: it adds suites, commands and classes, never origins.
+const FOLDED_SUITES = SUITES_FOLDED_SINCE_SEAL.length;
+const FOLDED_STEPS = SUITES_FOLDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
 
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -666,8 +670,14 @@ test("#2439 SC-11 lifecycle is atomic, dispositions are honest, and providers tr
     // measured total is the frozen 60, plus what is declared as added, minus what
     // the registry records as consolidated. Every term is derived.
     const consolidatedProviders = manifest.workflowProviders.filter((item) => item.transition === "consolidated-provider");
-    assert.equal(providers.length, 60 + PROVIDERS_ADDED_SINCE_SEAL.length - consolidatedProviders.length,
-      "terminal provider discovery must MEASURE 60 plus the declared additions minus the consolidated records, not inherit 67");
+    // [#3643] Phase 3D deletes four more provider-holding wrappers; the registry
+    // carries those records as batched providers, so they leave discovery too.
+    const phase3dOrigins = new Set(manifest.legacyOrigins.filter((origin) => origin.migrationWave === PHASE3D_WAVE)
+      .map((origin) => `${origin.stem}.${origin.extension}`));
+    const phase3dProviders = manifest.workflowProviders.filter((item) => phase3dOrigins.has(item.workflow));
+    assert.ok(phase3dProviders.every((item) => item.transition === "batched-provider"));
+    assert.equal(providers.length, 60 + PROVIDERS_ADDED_SINCE_SEAL.length - consolidatedProviders.length - phase3dProviders.length,
+      "terminal provider discovery must MEASURE 60 plus the declared additions minus the consolidated and Phase 3D records, not inherit 67");
     // The seven that left discovery are exactly the seven the registry now
     // carries as batched providers, so nothing was lost — only relocated.
     assert.equal(manifest.workflowProviders.filter((item) => candidateNames.includes(item.workflow)
@@ -676,15 +686,18 @@ test("#2439 SC-11 lifecycle is atomic, dispositions are honest, and providers tr
 });
 
 test("#2439 SC-11.4 registry totals are counted on the merged tree, never typed", () => {
-  assert.equal(manifest.suites.length, 84 + ADDED_SUITES);
-  assert.equal(manifest.expectedSuites, 84 + ADDED_SUITES);
-  assert.equal(manifest.expectedExecutableSuites, 84 + ADDED_SUITES);
-  assert.equal(manifest.suites.reduce((sum, suite) => sum + suite.steps.length, 0), 240 + ADDED_STEPS);
-  assert.equal(manifest.commandCapabilities.commands.length, 240 + ADDED_STEPS);
-  assert.equal(manifest.commandCapabilities.expectedCommands, 240 + ADDED_STEPS);
+  assert.equal(manifest.suites.length, 84 + ADDED_SUITES + FOLDED_SUITES);
+  assert.equal(manifest.expectedSuites, 84 + ADDED_SUITES + FOLDED_SUITES);
+  assert.equal(manifest.expectedExecutableSuites, 84 + ADDED_SUITES + FOLDED_SUITES);
+  assert.equal(manifest.suites.reduce((sum, suite) => sum + suite.steps.length, 0), 240 + ADDED_STEPS + FOLDED_STEPS);
+  assert.equal(manifest.commandCapabilities.commands.length, 240 + ADDED_STEPS + FOLDED_STEPS);
+  assert.equal(manifest.commandCapabilities.expectedCommands, 240 + ADDED_STEPS + FOLDED_STEPS);
   assert.equal(manifest.phase3cLeafCapabilities.expectedLeaves, 54);
-  assert.equal(manifest.executionClasses.length, 29);
-  assert.equal(manifest.classes.length, 14, "Phase 3C adds NO new GitHub Actions job");
+  // Phase 3C itself adds no class or job; Phase 3D adds exactly its declared hosts.
+  assert.equal(manifest.executionClasses.length, 29 + PHASE3D_HOSTS.length);
+  assert.equal(manifest.classes.length, 14 + PHASE3D_HOSTS.length, "Phase 3C adds NO new GitHub Actions job");
+  assert.equal(manifest.suites.filter((suite) => PHASE3D_HOSTS.some((host) => host.class === suite.class)
+    && suite.migrationWave !== PHASE3D_WAVE).length, 0, "no Phase 3C or earlier suite moved onto a Phase 3D host");
   assert.ok([...new Set(suites.map((suite) => suite.executionClass))].length <= 7, "at most 7 new execution classes");
   assert.deepEqual(manifest.migrationWaves[WAVE], {
     suiteCount: 17, outerCommandCount: 46, maximumLeafCount: 54,

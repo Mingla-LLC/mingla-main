@@ -87,9 +87,11 @@ test("#2438 primary routing freezes 55 established suites and counts additive lo
   assert.deepEqual(establishedVector, { "admin-node20-install":2, "app-node22-install":6, "business-node20-1":2, "business-node20-2":3,
     "business-node20-3":5, "business-node20-4":5, "business-node22-ignore-scripts":3, "cross-root-node22-ignore-scripts":1,
     "node20-19-noinstall":1, "node20-noinstall":14 + SUITES_ADDED_SINCE_SEAL.length, "node22-noinstall":10, "ota-app-node20-19-install":1,
-    "ota-business-node20-19-install":1, "root-node20-yaml-no-save":1 });
+    "ota-business-node20-19-install":1, "root-node20-yaml-no-save":1,
+    // [#3643] The two Phase 3D hosts carry the twenty folded suites, 15 + 5.
+    "deno146-node20-noinstall":15, "deno2x-node22-noinstall":5 });
   assert.equal(expectedPrimarySuites(manifest, null).length,
-    55 + SUITES_ADDED_SINCE_SEAL.length + Object.values(localByClass).reduce((sum, count) => sum + count, 0));
+    55 + SUITES_ADDED_SINCE_SEAL.length + 20 + Object.values(localByClass).reduce((sum, count) => sum + count, 0));
   assert.equal(expectedPrimarySuites(manifest, null).some((suite) => phase3b.has(suite.id)), false);
 });
 
@@ -228,5 +230,65 @@ test("executable suite origins obey the lifecycle-specific duplicate-provider co
         `${suite.id} restored a historical wrapper after batch cutover at ${suite.origin}`,
       );
     }
+  }
+});
+
+// [#3643] Phase 3D. A folded suite is a whole former WORKFLOW whose jobs ran
+// independently, so a failing step must not hide the steps after it, the suite
+// must still be red, and the reason must name the FIRST failing step. A Phase 1
+// / 3A primary suite (one former job) keeps breaking at its first failure. The
+// reviewed env reaches only a Phase 3D step that declares it.
+test("#3643 a Phase 3D suite runs every step after a failure; a sealed primary suite still breaks", async () => {
+  const { runSuiteV2, capabilityPayloadDigest, capabilityRegistryDigest } = await import("../run-suite-batch.mjs");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "phase3d-continue-"));
+  execFileSync("git", ["init", "-q"], { cwd: root });
+  fs.writeFileSync(path.join(root, "proof.test.mjs"), "// proof\n");
+  execFileSync("git", ["add", "."], { cwd: root });
+  execFileSync("git", ["-c", "user.email=ci@example.invalid", "-c", "user.name=CI", "commit", "-qm", "fixture"], { cwd: root });
+  const build = (id, migrationWave) => ({
+    id, class: "deno2x-node22-noinstall", setupProfile: "deno2x-node22-noinstall", timeoutSeconds: 30,
+    expectedFiles: ["proof.test.mjs"], generatedPaths: [], ...(migrationWave ? { migrationWave } : {}),
+    steps: [
+      ["job-a: fails", "exit 3", null],
+      ["job-b: reads its reviewed literal", 'test "$ISSUE_2240_LIVE" = 1', { ISSUE_2240_LIVE: "1" }],
+      ["job-c: passes", "true", null],
+    ].map(([name, run, env], index) => ({ name, cwd: ".", run, commandId: `assert:${id}:0${index + 1}`,
+      invocation: { kind: "raw-shell", command: "bash", argv: ["-c", run] }, ...(env ? { env } : {}) })),
+  });
+  const registryFor = (suites) => {
+    const commands = suites.flatMap((item) => item.steps.map((step, stepIndex) => {
+      const capability = { id: step.commandId, suiteId: item.id, stepIndex, cwd: ".", executable: "bash", argv: [...step.invocation.argv] };
+      return { ...capability, payloadSha256: capabilityPayloadDigest(capability) };
+    }));
+    return { schemaVersion: 1, expectedCommands: commands.length, registrySha256: capabilityRegistryDigest(commands), commands };
+  };
+  try {
+    const folded = build("phase3d-proof", "phase3d-fold-wave");
+    const sealed = build("sealed-primary-proof", null);
+    const options = (suites) => ({ root, profile: { install: null }, commandCapabilities: registryFor(suites),
+      workspaceFactory: () => ({ root, cleanup() {} }) });
+    const foldedResult = await runSuiteV2(folded, options([folded]));
+    assert.equal(foldedResult.status, "failed");
+    assert.equal(foldedResult.ok, false);
+    assert.equal(foldedResult.executed, 3, "every step of a folded workflow must run after a failure");
+    assert.equal(foldedResult.code, 3);
+    assert.match(foldedResult.reason, /^assert:phase3d-proof:01 \(job-a: fails\)/, "the reason must name the first failing step");
+    const sealedResult = await runSuiteV2(sealed, options([sealed]));
+    assert.equal(sealedResult.status, "failed");
+    assert.equal(sealedResult.executed, 1, "a sealed primary suite still stops at its first failing step");
+    // Fixing step 1 turns the folded suite green only because the env reached step 2.
+    const passing = build("phase3d-pass", "phase3d-fold-wave");
+    passing.steps[0].run = "true"; passing.steps[0].invocation.argv = ["-c", "true"];
+    const passingResult = await runSuiteV2(passing, options([passing]));
+    assert.equal(passingResult.status, "passed", passingResult.reason || "");
+    assert.equal(passingResult.executed, 3);
+    // The same env on a sealed primary suite is refused, not forwarded.
+    const sealedEnv = build("sealed-env-proof", null);
+    sealedEnv.steps[0].run = "true"; sealedEnv.steps[0].invocation.argv = ["-c", "true"];
+    const sealedEnvResult = await runSuiteV2(sealedEnv, options([sealedEnv]));
+    assert.equal(sealedEnvResult.status, "failed");
+    assert.match(sealedEnvResult.reason, /undeclared child environment capability: ISSUE_2240_LIVE/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });

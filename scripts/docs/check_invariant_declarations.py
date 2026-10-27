@@ -32,6 +32,11 @@ DECLARATION_RE = re.compile(
     r"(?P<rule>[^|\r\n]+)$"
 )
 WORKFLOW_LITERAL_RE = re.compile(r"\.github/workflows/[A-Za-z0-9_./-]+\.ya?ml\b")
+# The ci-batch registry is the one non-workflow file whose job is to name
+# workflows: every origin row records its provider and trigger paths. Folding a
+# lane into the batch necessarily adds those names (#3643), so it is exempt here.
+# Every other file still may not add a workflow-path literal.
+WORKFLOW_REGISTRY_SURFACES = frozenset({".github/ci-batch/MANIFEST.json"})
 LIFECYCLE_RE = re.compile(r"\b(?:DRAFT|ACTIVE|RETIRED)\b", re.IGNORECASE)
 
 POLICY_REF_SURFACES = frozenset(
@@ -494,7 +499,7 @@ def check_new_workflow_literals(git: GitTree, base: str, head: str) -> None:
         if path
     ]
     for path in changed:
-        if path.startswith(".github/workflows/"):
+        if path.startswith(".github/workflows/") or path in WORKFLOW_REGISTRY_SURFACES:
             continue
         before = text_blob(git, base, path, required=False) or ""
         after = text_blob(git, head, path, required=False) or ""

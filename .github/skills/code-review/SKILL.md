@@ -145,9 +145,11 @@ even when the hunk itself looks local:
   path that unblocks refunds, payouts, or holds, require regression that
   pins the gate, audited call, confirm phrase, and success reload — not
   only the read RPC that feeds the banner.
-- **CI workflow/MANIFEST seals** — editing a workflow or its `pathScope`
-  requires rebanking `workflowMetadata.sourceSha256` (and matching inventory)
-  in the same commit; stale seals fail class-A strict-grep closed.
+- **CI workflow/MANIFEST inventory** — a live workflow is registered by its
+  properties (triggers, `pathScope`, jobs, timeouts, runners, runtimes, setup
+  actions, trust boundary). Changing one of those requires the matching
+  `workflowMetadata` edit in the same commit; a comment or step-body edit needs
+  none. Stale inventory fails class-A strict-grep closed.
 - **Subtract before add** — replacement must remove the stale path, not leave
   two live ones.
 

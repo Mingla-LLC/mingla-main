@@ -56,11 +56,6 @@ jobs:
           cache: npm
           cache-dependency-path: mingla-business/package-lock.json
       - run: npm ci
-      - name: Prove native HEIC and exact upload-size behavior
-        run: >
-          npx jest
-          src/services/__tests__/venueGalleryUpload.issue1459.test.ts
-          --runInBand
       - name: Lint the changed client boundary
         run: >
           npx eslint

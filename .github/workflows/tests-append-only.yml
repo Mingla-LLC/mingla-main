@@ -1,4 +1,4 @@
-name: Tests Append-Only
+name: Pre-merge main health
 
 # This workflow now hosts ONE job: the main-health pregate ("Pre-merge: main is
 # green", issue #2909), which refuses to certify a merge onto a red `main` and
@@ -8,11 +8,12 @@ name: Tests Append-Only
 # job "Test files: append-only", plus its self-test and the ORCH-1383
 # MANIFEST.json ratchet step) was RETIRED toward #3643 on 2026-10-26 by
 # engineering and product (Taofeek and Seth): existing test files may now be
-# edited or deleted in ordinary pull requests. The file path and `name:` are
-# kept unchanged on purpose: scripts/ci/main-health.mjs and the #2909 wiring
-# gate find the pregate by this workflow name, and the trigger below has no
-# positive `paths:` filter, which the pregate relies on to start on every
-# pull request.
+# edited or deleted in ordinary pull requests. The file path is kept
+# unchanged on purpose: the trigger below has no positive `paths:` filter,
+# which the pregate relies on to start on every pull request. The `name:` was
+# renamed from "Tests Append-Only" toward #3643 so PRs stop showing a retired
+# gate's name; the #2909 wiring gate finds the pregate by this name
+# (PREGATE_HOST_NAME).
 
 on:
   pull_request:

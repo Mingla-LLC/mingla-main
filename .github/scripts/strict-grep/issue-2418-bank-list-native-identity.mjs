@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(
@@ -18,8 +19,35 @@ const FILES = {
   component:
     "mingla-business/src/components/brand/BrandPaystackOnboardView.tsx",
   registry: "docs/QUERY_KEY_REGISTRY.md",
-  workflow: ".github/workflows/issue-2418-bank-list-native-identity.yml",
 };
+
+// [#3643] The #2418 lane's own workflow was folded into the CI batch: its exact
+// gate and Deno commands are now the batch suite below, so THAT is what CI runs
+// and what this gate reads. Its four Host jest proofs were already dropped from
+// the lane because the required `mingla-business jest (full suite)` check runs
+// them with the stock config; for those the wiring proof is that the stock
+// config collects each file (it exists, matches testMatch, and no ignore pattern
+// drops it).
+const SUITE_ID = "issue-2418-bank-list-native-identity";
+const JEST_CONFIG = createRequire(import.meta.url)(path.join(ROOT, "mingla-business/jest.config.cjs"));
+
+function batchCommands() {
+  const registry = JSON.parse(read(".github/ci-batch/MANIFEST.json"));
+  const suites = (registry.suites || []).filter((suite) => suite.id === SUITE_ID);
+  if (suites.length !== 1 || suites[0].lifecycle !== "batched-historical") return "";
+  return suites[0].steps.map((step) => step.invocation?.argv?.[1] ?? "").join("\n");
+}
+
+/** Whether the stock mingla-business jest config collects one test file. */
+function stockJestCollects(config, relative) {
+  const absolute = path.join(ROOT, "mingla-business", relative).split(path.sep).join("/");
+  if (!fs.existsSync(absolute)) return false;
+  const glob = (pattern) => new RegExp(`^${pattern.split("**/").map((part) => part.split("*")
+    .map((piece) => piece.replace(/[.+^${}()|[\]\\]/g, "\\$&")).join("[^/]*")).join("(?:.*/)?")}$`);
+  const matched = (config.testMatch || []).some((pattern) => glob(pattern).test(relative));
+  const ignored = (config.testPathIgnorePatterns || []).some((pattern) => new RegExp(pattern).test(absolute));
+  return matched && !ignored;
+}
 
 const PROTECTED_FUNCTIONS = [
   "brand-paystack-onboard",
@@ -44,10 +72,11 @@ function loadSources() {
       `supabase/functions/${functionName}/index.ts`,
     );
   }
+  sources.ciCommands = batchCommands();
   return sources;
 }
 
-function validate(sources) {
+function validate(sources, jestConfig = JEST_CONFIG) {
   const failures = [];
   const requireText = (key, needle, label) => {
     if (!sources[key].includes(needle)) failures.push(label);
@@ -227,27 +256,29 @@ function validate(sources) {
   );
 
   for (const test of TESTS) {
-    requireText("workflow", test, `workflow must explicitly execute ${test}`);
+    if (!stockJestCollects(jestConfig, test)) {
+      failures.push(`the required full jest suite must collect ${test}`);
+    }
   }
   requireText(
-    "workflow",
+    "ciCommands",
     "issue-2418-bank-list-native-identity.mjs --self-test",
-    "workflow must execute the guard self-test",
+    `batch suite ${SUITE_ID} must execute the guard self-test`,
   );
   requireText(
-    "workflow",
+    "ciCommands",
     "ISSUE_2418_SIMULATE_IDENTITY_REVERT=1",
-    "workflow must prove the release fallback can go red",
+    `batch suite ${SUITE_ID} must prove the release fallback can go red`,
   );
   requireText(
-    "workflow",
+    "ciCommands",
     "ISSUE_2418_SIMULATE_BANK_ERROR_REVERT=1",
-    "workflow must prove the truthful error branch can go red",
+    `batch suite ${SUITE_ID} must prove the truthful error branch can go red`,
   );
   requireText(
-    "workflow",
+    "ciCommands",
     "ISSUE_2418_SIMULATE_AUTH_REVERT=1",
-    "workflow must prove the auth-ready fold can go red",
+    `batch suite ${SUITE_ID} must prove the auth-ready fold can go red`,
   );
   return failures;
 }
@@ -356,6 +387,17 @@ if (process.argv.includes("--self-test")) {
   for (const [label, mutated] of mutations) {
     if (validate(mutated).length === 0) {
       throw new Error(`self-test failed: ${label} mutation passed`);
+    }
+  }
+  // [#3643] The CI-wiring proofs bite: a batch suite that dropped the self-test,
+  // and a stock jest config that ignored any one Host proof, are both rejected.
+  if (validate({ ...sources, ciCommands: sources.ciCommands.replaceAll(" --self-test", "") }).length === 0) {
+    throw new Error("self-test failed: dropped batch self-test mutation passed");
+  }
+  for (const test of TESTS) {
+    const ignoring = { ...JEST_CONFIG, testPathIgnorePatterns: [...(JEST_CONFIG.testPathIgnorePatterns || []), path.posix.basename(test).replaceAll(".", "\\.")] };
+    if (validate(sources, ignoring).length === 0) {
+      throw new Error(`self-test failed: stock jest ignoring ${test} passed`);
     }
   }
   console.log("#2418 bank-list/native-identity strict gate self-test: PASS");

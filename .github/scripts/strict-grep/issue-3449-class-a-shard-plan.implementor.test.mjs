@@ -105,9 +105,10 @@ const EXPECTED_PLAN = Object.freeze({
   // [TEST-MOD-APPROVED #3872] Re-derived after merging the discount gates
   // with the exact-main catalog additions using the live plan command.
   // [TEST-MOD-APPROVED #4063] Re-derived after the six claim/message gates.
-  executions: 1053,
-  loadsSeconds: [169.5, 169.5, 169.4],
-  counts: [347, 358, 348],
+  // #3643: re-derived after the new workflow-properties regression test.
+  executions: 1054,
+  loadsSeconds: [169.5, 169.5, 169.5],
+  counts: [347, 358, 349],
 });
 
 const tempDir = (label) =>

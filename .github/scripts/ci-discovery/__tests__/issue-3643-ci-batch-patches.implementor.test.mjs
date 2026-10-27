@@ -142,18 +142,27 @@ function syntheticFixture(label, { duplicateLegacy = false } = {}) {
   return { root, bootstrap, manifestPath, expectedSha, legacy, suite, legacyPatch, suitePatch, patch, load };
 }
 
-test("bootstrap patches preserve row identity, order and counts for both allowed patch shapes", () => {
+// [#3643 Wave 4] Live workflow rows no longer carry a byte fingerprint (the
+// validator checks their properties), so the `/workflowMetadata/sourceSha256`
+// patch op has nothing to re-bank and is refused by name. The provenance
+// append-unique ops remain the allowed patch shape.
+test("bootstrap patches preserve row identity, order and counts for the allowed patch shape", () => {
   const fixture = syntheticFixture("positive");
-  fixture.patch("legacy", fixture.legacyPatch());
   fixture.patch("suite", fixture.suitePatch());
   const effective = fixture.load();
   assert.equal(effective.legacyOrigins.length, 1);
   assert.equal(effective.suites.length, 1);
   assert.equal(effective.legacyOrigins[0].stem, fixture.legacy.stem);
-  assert.equal(effective.legacyOrigins[0].workflowMetadata.sourceSha256, fixture.legacyPatch().operations[0].value);
+  assert.deepEqual(effective.legacyOrigins[0], fixture.legacy);
   assert.deepEqual(effective.suites[0].originPaths, ["owned.txt", "appended.txt"]);
   assert.equal(effective.suites[0].id, fixture.suite.id);
   assert.deepEqual(JSON.parse(fs.readFileSync(fixture.manifestPath, "utf8")), fixture.bootstrap);
+});
+
+test("a byte-fingerprint patch on a live workflow row is refused by name", () => {
+  const fixture = syntheticFixture("retired-source-digest");
+  fixture.patch("legacy", fixture.legacyPatch());
+  assert.throws(() => fixture.load(), /source_digest_patch_retired/);
 });
 test("validator, runner, selector and router consume one effective registry view", () => {
   const root = temporary("production-consumers");
@@ -223,22 +232,17 @@ test("validator, runner, selector and router consume one effective registry view
 
 test("consumer fixtures retain production patches and the files their CAS checks inspect", () => {
   const production = syntheticFixture("production-patch-source");
-  production.patch("production", production.legacyPatch());
+  production.patch("production", production.suitePatch());
   const consumerRoot = temporary("seeded-production-consumer");
   const targets = seedProductionPatches(consumerRoot, production.root);
-  assert.deepEqual([...targets], [
-    `legacyOrigins:stem=${production.legacy.stem}:extension=${production.legacy.extension}`,
-  ]);
+  assert.deepEqual([...targets], [`suites:id=${production.suite.id}`]);
   const effective = loadEffectiveManifest({
     root: consumerRoot,
     manifestPath: production.manifestPath,
     expectedSha: production.expectedSha,
     discover: true,
   });
-  assert.equal(
-    effective.legacyOrigins[0].workflowMetadata.sourceSha256,
-    production.legacyPatch().operations[0].value,
-  );
+  assert.deepEqual(effective.suites[0].originPaths, ["owned.txt", "appended.txt"]);
 });
 
 test("bootstrap patch declarations fail closed for every forbidden or stale shape", async (t) => {
@@ -272,8 +276,9 @@ test("bootstrap patch declarations fail closed for every forbidden or stale shap
   await expectFailure("stale-base-row", ({ declaration }) => {
     declaration.target.baseRowSha256 = "0".repeat(64);
   }, /stale_base_row/);
-  await expectFailure("wrong-expected", ({ declaration }) => {
-    declaration.operations[0].expected = "1".repeat(64);
+  await expectFailure("wrong-expected", ({ fixture, declaration }) => {
+    Object.assign(declaration, fixture.suitePatch());
+    declaration.operations[0].expected = ["not-the-current-paths.txt"];
   }, /patch_cas_mismatch/);
   await expectFailure("unknown-pointer", ({ declaration }) => {
     declaration.operations[0].path = "/rationale";
@@ -288,14 +293,17 @@ test("bootstrap patch declarations fail closed for every forbidden or stale shap
     declaration.operations[0] = { op: "remove", path: "/workflowMetadata", expected: {}, value: null };
   }, /row_mutation_forbidden/);
   await expectFailure("duplicate-target-descriptors", ({ fixture, declaration }) => {
+    Object.assign(declaration, fixture.suitePatch());
     fixture.patch("primary", declaration);
     fixture.patch("secondary", structuredClone(declaration));
   }, /duplicate_patch_target/);
-  await expectFailure("duplicate-operation-path", ({ declaration }) => {
+  await expectFailure("duplicate-operation-path", ({ fixture, declaration }) => {
+    Object.assign(declaration, fixture.suitePatch());
     declaration.operations.push(structuredClone(declaration.operations[0]));
   }, /duplicate_patch_path/);
-  await expectFailure("no-op", ({ declaration }) => {
-    declaration.operations[0].value = declaration.operations[0].expected;
+  await expectFailure("no-op", ({ fixture, declaration }) => {
+    Object.assign(declaration, fixture.suitePatch());
+    declaration.operations[0].value = "owned.txt";
   }, /patch_noop/);
   await expectFailure("suite-provenance-replacement", ({ fixture, declaration }) => {
     Object.assign(declaration, fixture.suitePatch());
@@ -306,9 +314,7 @@ test("bootstrap patch declarations fail closed for every forbidden or stale shap
     Object.assign(declaration, fixture.suitePatch());
     declaration.operations[0].value = "missing.txt";
   }, /appended_path_missing/);
-  await expectFailure("source-digest-mismatch", ({ declaration }) => {
-    declaration.operations[0].value = "2".repeat(64);
-  }, /source_digest_mismatch/);
+  await expectFailure("retired-source-digest-op", () => {}, /source_digest_patch_retired/);
   await expectFailure("unrelated-operation-field", ({ declaration }) => {
     declaration.operations[0].unrelated = true;
   }, /malformed_patch_operation/);

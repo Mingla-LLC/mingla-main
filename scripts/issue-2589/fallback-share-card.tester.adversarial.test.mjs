@@ -435,12 +435,13 @@ test('A8 CI collects THIS suite, the 200-origin sealed baseline ratchets exactly
     'appending one undeclared provenance origin must fail the exact-count contract',
   );
 
-  // 3. The manifest's content hash of the provider workflow is CURRENT.
-  //    `validate-manifest-v2` fails closed on drift, so editing the workflow
-  //    without re-banking this is a red required gate. Re-derived, never copied.
+  // 3. [#3643 Wave 4] The provider workflow is registered by its PROPERTIES.
+  //    `validate-manifest-v2` compares them with the YAML and fails closed on
+  //    drift; a live row carries no byte fingerprint to re-bank.
   const origin = manifest.legacyOrigins.find((item) => `${item.stem}.${item.extension}` === WORKFLOW_NAME);
   assert.ok(origin, 'provider workflow is not a registered origin');
-  assert.equal(origin.workflowMetadata.sourceSha256, crypto.createHash('sha256').update(workflowSource).digest('hex'), 'the registered workflow hash no longer matches the workflow on disk');
+  assert.equal(Object.hasOwn(origin.workflowMetadata, 'sourceSha256'), false, 'a live workflow row must not carry a byte fingerprint');
+  assert.ok(workflowSource.length > 0, 'the provider workflow must exist on disk');
 
   // 4. The registered path scope re-runs this suite when the code it guards moves.
   const globs = origin.workflowMetadata.pathScope;

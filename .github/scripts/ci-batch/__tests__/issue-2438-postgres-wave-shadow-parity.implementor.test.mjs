@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { discoverLiveOrigins, discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, normalizeProviderReferenceFilesForSeal, PACKAGE_AUTHORITY_DIGESTS, providerDiscoveryAccounting, PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL, PROVIDERS_ADDED_SINCE_SEAL, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope, SUITES_ADDED_SINCE_SEAL,
+import { discoverLiveOrigins, discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, normalizeProviderReferenceFilesForSeal, PACKAGE_AUTHORITY_DIGESTS, providerDiscoveryAccounting, PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL, PROVIDERS_ADDED_SINCE_SEAL, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope, SUITES_ADDED_SINCE_SEAL, SUITES_FOLDED_SINCE_SEAL, PHASE3D_HOSTS,
 } from "../validate-manifest-v2.mjs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
@@ -17,6 +17,10 @@ import { BOOTSTRAP_SHA256, loadEffectiveManifest } from "../load-manifest.mjs";
 // post-seal set, never re-typed. See SUITES_ADDED_SINCE_SEAL.
 const ADDED_SUITES = SUITES_ADDED_SINCE_SEAL.length;
 const ADDED_STEPS = SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
+// [#3643] Phase 3D folds existing origins into the batch: it adds suites,
+// commands and its declared host classes, never origins.
+const FOLDED_SUITES = SUITES_FOLDED_SINCE_SEAL.length;
+const FOLDED_STEPS = SUITES_FOLDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
 
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
@@ -226,7 +230,7 @@ function assertWave(value) {
   // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
   // validator subtracts from the frozen provider seal. Subject and strength unchanged;
   // the number simply stops being typed in a second place where it can disagree.
-  assert.equal(value.legacyOrigins.length, 200 + ADDED_SUITES); assert.equal(value.suites.length, 84 + ADDED_SUITES); assert.equal(value.commandCapabilities.commands.length, 240 + ADDED_STEPS); assert.equal(value.workflowProviders.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
+  assert.equal(value.legacyOrigins.length, 200 + ADDED_SUITES); assert.equal(value.suites.length, 84 + ADDED_SUITES + FOLDED_SUITES); assert.equal(value.commandCapabilities.commands.length, 240 + ADDED_STEPS + FOLDED_STEPS); assert.equal(value.workflowProviders.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   assert.equal(suites.length, 12); assert.equal(suites.flatMap((suite) => suite.steps).length, 36);
   // [TEST-MOD-APPROVED #2438 · SC-21] Terminal, and atomic on all three carriers of
   // the lifecycle: the suites, the wave header, and the legacy-origin dispositions.
@@ -272,7 +276,7 @@ function assertWave(value) {
   // the number simply stops being typed in a second place where it can disagree.
   assert.equal(retained.length + batched.length + consolidated.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   assert.equal(value.phase3bLeafCapabilities.leaves.length, 40); assert.equal(value.phase3bLeafCapabilities.currentExecutedLeaves, 40); assert.equal(value.phase3bLeafCapabilities.currentAbsentLeaves, 0);
-  assert.equal(new Set(suites.map((suite) => suite.executionClass)).size, 9); assert.equal(new Set(suites.map((suite) => suite.hostClass)).size, 9); assert.equal(value.classes.length, 14); assert.equal(value.executionClasses.length, 29);
+  assert.equal(new Set(suites.map((suite) => suite.executionClass)).size, 9); assert.equal(new Set(suites.map((suite) => suite.hostClass)).size, 9); assert.equal(value.classes.length, 14 + PHASE3D_HOSTS.length); assert.equal(value.executionClasses.length, 29 + PHASE3D_HOSTS.length);
   assert.equal(digest(value.commandCapabilities.commands.slice(0,51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
   assert.equal(digest(value.commandCapabilities.commands.slice(51,158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
   assert.equal(digest(value.commandCapabilities.commands.slice(158, 194)), "df9f09e2454fa05f7d74ae96517657a8582aff4c3ad742c6f2ab657cef179bc1");
@@ -872,7 +876,7 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     // terminal-clone proof overlays those reviewed workflow changes alongside
     // the registry patches so it exercises the proposed state, not HEAD's old
     // inventories. validateRegistry below still rejects either workflow when
-    // its bytes disagree with the corresponding sourceSha256 authority.
+    // its triggers, paths, jobs or actions disagree with the registry.
     for (const filename of [
       "issue-1931-private-event-access.yml",
       "issue-2117-offering-visibility-gate-tests.yml",
@@ -899,10 +903,16 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     ].join("\n");
     assert.equal(onlinePublishSource.split(currentMainReplayStep).length, 2,
       "the merge-touched #3288 replay step must have one exact current-main owner");
+    // [#3643 Wave 4] A live workflow is registered by its properties, not its
+    // bytes: dropping the #3288 replay STEP is a step-body edit and needs no
+    // registry change. Renaming one of its jobs is a property edit and stays RED.
     fs.writeFileSync(path.join(temp, onlinePublishWorkflow), onlinePublishSource.replace(currentMainReplayStep, ""));
+    assert.deepEqual(validateRegistry(terminal, { root: temp }), [],
+      "a step-body edit to a live workflow must not need a registry change");
+    fs.writeFileSync(path.join(temp, onlinePublishWorkflow), onlinePublishSource.replace(/^  issue-2333-client-contract:$/m, "  issue-2333-client-contract-renamed:"));
     assert.match(validateRegistry(terminal, { root: temp }).join("\n"),
       /issue-2333-online-event-publish\.yml: runtime\/setup\/trust\/trigger inventory drifted/,
-      "reverting the current-main #2333 workflow while retaining its registry authority must be RED");
+      "a job-key change to the #2333 workflow while retaining its registry authority must be RED");
     fs.writeFileSync(path.join(temp, onlinePublishWorkflow), onlinePublishSource);
     assert.deepEqual(validateRegistry(terminal, { root: temp }), [], "restoring the current workflow must restore PASS");
     for (const relative of GUARDS) assert.equal(guard(relative), 0, `${relative} must pass at terminal`);
