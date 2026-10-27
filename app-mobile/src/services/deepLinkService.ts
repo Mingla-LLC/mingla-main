@@ -68,7 +68,9 @@ export type Destination =
       page: 'home' | 'discover' | 'connections' | 'likes' | 'saved' | 'profile';
       params?: Record<string, string>;
     }
-  | { kind: 'paywall' };
+  | { kind: 'paywall' }
+  // #3872 — Creator / Local / Earnings program screens are expo-router routes.
+  | { kind: 'route'; path: string };
 
 export interface NavigationHandlers {
   setCurrentPage: (page: string) => void;
@@ -79,6 +81,26 @@ export interface NavigationHandlers {
   setDeepLinkParams?: (params: Record<string, string>) => void;
   openRouterPath?: (path: string) => void;
   handleClaimCode?: (code: string) => void;
+}
+
+const PROGRAM_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * #3872 — `creator`, `creator/setup[/step]`, `creator/status`, `creator/gig/{id}`,
+ * `creator/contract/{id}`, `local`, `earnings` → the expo-router path, or null.
+ */
+export function programRoutePath(segments: string[]): string | null {
+  const [root, second, third] = segments;
+  if (root === 'local' || root === 'earnings') return segments.length === 1 ? `/${root}` : null;
+  if (root !== 'creator') return null;
+  if (!second) return '/creator';
+  if (second === 'status' && !third) return '/creator/status';
+  if (second === 'setup') {
+    if (!third) return '/creator/setup';
+    return ['profile', 'rates', 'showcase', 'socials', 'payout', 'agreement'].includes(third) ? `/creator/setup/${third}` : null;
+  }
+  if ((second === 'gig' || second === 'contract') && third && PROGRAM_UUID.test(third) && segments.length === 3) return `/creator/${second}/${third}`;
+  return null;
 }
 
 // ── Parser ───────────────────────────────────────────────────────────────────
@@ -211,6 +233,15 @@ export function parseDeepLink(url: string): Destination | null {
           door: params.door === '1',
           ...(params.ticket ? { ticketId: params.ticket } : {}),
         };
+      }
+
+      // #3872 — creator notifications deep-link to `mingla://creator/...`
+      // (and Local / Earnings). Only known shapes pass; ids must be UUIDs.
+      case 'creator':
+      case 'local':
+      case 'earnings': {
+        const route = programRoutePath(pathSegments);
+        return route ? { kind: 'route', path: route } : null;
       }
 
       case 'c': {
@@ -487,6 +518,10 @@ export function executeDeepLink(
 
     case 'paywall':
       handlers.setShowPaywall?.(true);
+      break;
+
+    case 'route':
+      handlers.openRouterPath?.(dest.path);
       break;
 
     default: {

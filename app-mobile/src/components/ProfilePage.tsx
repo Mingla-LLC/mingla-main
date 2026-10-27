@@ -55,8 +55,9 @@ import BetaFeedbackButton from "./BetaFeedbackButton";
 import InAppBrowserModal from "./InAppBrowserModal";
 import { LEGAL_URLS } from "../constants/urls";
 import { useTranslation } from 'react-i18next';
-import { useRouter } from 'expo-router';
+import { useRouter } from "expo-router";
 import { PurchasesCard } from './profile/PurchasesCard';
+import { CreatorProgramsSection } from './profile/CreatorProgramsSection';
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -603,9 +604,25 @@ function ProfilePage({
             <BrandsYouFollowSection />
           </GlassCard>
 
+          <GlassCard variant="base">
+            <CreatorProgramsSection
+              userId={user?.id ?? null}
+              onOpenCreator={() => router.push('/creator' as never)}
+              onOpenLocal={() => router.push('/local' as never)}
+              onOpenEarnings={() => router.push('/earnings' as never)}
+            />
+          </GlassCard>
+
           {/* 5. Account card */}
           <GlassCard variant="base">
             <Text style={styles.cardTitle}>{t('profile:page.account_section')}</Text>
+            <SettingsRow
+              icon="gift-outline"
+              label="Earnings"
+              description="Gig fees, referral rewards, Local pay and your payout account"
+              showChevron
+              onPress={() => router.push("/earnings" as never)}
+            />
             <SettingsRow
               icon="credit-card"
               label={t('profile:page.billing_label')}

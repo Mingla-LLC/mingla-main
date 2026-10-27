@@ -115,6 +115,9 @@ export const BUNNY_TIMEOUTS_MS = Object.freeze({
 export type BunnyCallOptions = {
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
+  libraryId?: string;
+  apiKey?: string;
+  observeApiCall?: typeof recordApiCall;
 };
 
 export async function fetchWithTimeout(
@@ -124,7 +127,7 @@ export async function fetchWithTimeout(
   fetchImpl: typeof fetch = fetch,
 ): Promise<Response> {
   const controller = new AbortController();
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       controller.abort();
@@ -432,8 +435,8 @@ export async function bunnyDeleteVideo(
   guid: string,
   options: BunnyCallOptions = {},
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const libraryId = bunnyLibraryId();
-  const apiKey = bunnyApiKey();
+  const libraryId = options.libraryId?.trim() || bunnyLibraryId();
+  const apiKey = options.apiKey?.trim() || bunnyApiKey();
   if (libraryId.length === 0 || apiKey.length === 0) {
     return { ok: false, reason: "bunny_not_configured" };
   }
@@ -456,7 +459,7 @@ export async function bunnyDeleteVideo(
   } catch (error) {
     return { ok: false, reason: networkReason("bunny_delete_network", error) };
   }
-  void recordApiCall(
+  void (options.observeApiCall ?? recordApiCall)(
     "bunny",
     response.ok,
     Date.now() - startedAt,

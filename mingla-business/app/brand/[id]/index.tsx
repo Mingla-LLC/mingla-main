@@ -178,6 +178,7 @@ export default function BrandProfileRoute(): React.ReactElement {
     router.push(`/brand/${brandId}/discounts` as never);
   };
 
+
   // Cycle 13a (SPEC §4.14): brand-admin+ menu row → audit log viewer.
   const handleOpenAuditLog = (brandId: string): void => {
     router.push(`/brand/${brandId}/audit-log` as never);
@@ -198,13 +199,14 @@ export default function BrandProfileRoute(): React.ReactElement {
     router.push(`/brand/${brandId}/blasts` as never);
   };
 
-  // toward #3697 Wave 7 — brand Ads row → Blast → Ads credit.
-  // Account can open `/brand/{id}` without switching the active brand; Ads
-  // scopes the wallet through `useCurrentBrand()`, so set the pointer first.
+  // #3872 round 2 — the one Promote row (campaigns, ads, creators,
+  // referrals) opens Blast. Account can open `/brand/{id}` without switching
+  // the active brand; Blast scopes everything through `useCurrentBrand()`, so
+  // set the pointer first (the pattern the old Ads row used, #3697 Wave 7).
   const setCurrentBrandId = useCurrentBrandStore((s) => s.setCurrentBrandId);
-  const handleOpenAds = (brandId: string): void => {
+  const handleOpenPromote = (brandId: string): void => {
     setCurrentBrandId(brandId);
-    router.push("/(tabs)/marketing/ads" as never);
+    router.push("/(tabs)/marketing" as never);
   };
 
   // Cycle 7 FX1 — retired BrandProfileView TRANSITIONAL Toasts.
@@ -280,7 +282,7 @@ export default function BrandProfileRoute(): React.ReactElement {
         onAuditLog={handleOpenAuditLog}
         onWebsite={handleOpenWebsite}
         onBlasts={handleOpenBlasts}
-        onAds={handleOpenAds}
+        onPromote={handleOpenPromote}
         onViewPublic={handleViewPublic}
         onCreateEvent={handleCreateEvent}
         onOpenEvent={handleOpenEvent}

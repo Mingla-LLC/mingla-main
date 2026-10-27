@@ -1,3 +1,4 @@
+// SHARE-SEMANTIC-ROLE:content-adapter
 import { buildSharePortraitUrl, buildShortShareUrl, checkContentShareReadiness, checkContentShareReadinessDetailed, contentShareRequestFromPublicUrl, createContentShareSingleFlight, deriveCanonicalShare, selectCompactPreviewFacts, shareKindLabel, statusLabel, type ShareDestination, type ShareEntityKind, type ShareFactsV1, type ShareMediaIdentity } from '@mingla/sharing';
 import { Platform } from 'react-native';
 import { supabase } from './supabase';

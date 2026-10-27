@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "local-timers",
+  "verify_jwt": false,
+  "gateway_reason": "The daily Local lifecycle worker authenticates a scheduled service caller before invoking the service-only timer authority.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": ["CRON_SECRET"],
+    "required_bundle_fields": {},
+    "required_top_level": []
+  }
+}

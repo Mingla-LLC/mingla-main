@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/issue_3872_gig_dto.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3872-r3-03-gig-dto",
+  "profile": "deno-1.46-stripe"
+}

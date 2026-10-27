@@ -21,7 +21,8 @@ function read(rel: string): string {
 
 describe("issue #3697 Wave 7 Ads credit Host surface", () => {
   it("registers Ads in MarketingSubNav and routes to /(tabs)/marketing/ads", () => {
-    const nav = read("src/components/marketing/MarketingSubNav.tsx");
+    // #3872 round 2: the tab list moved to a pure module the sub-nav renders.
+    const nav = read("src/components/marketing/marketingSubNavTabs.ts");
     expect(nav).toContain('id: "ads"');
     expect(nav).toContain('label: "Ads"');
     expect(nav).toContain('path: "/(tabs)/marketing/ads"');
@@ -52,13 +53,17 @@ describe("issue #3697 Wave 7 Ads credit Host surface", () => {
     expect(svc).toContain('action: "apply_withdraw"');
   });
 
-  it("brand Ads navigation sets currentBrandId before the tab route", () => {
+  // #3872 round 2: the brand page's Referrals, Creators and Ads rows became
+  // one Promote row that opens Blast (Ads is a Blast tab). The pointer rule
+  // this test guards is unchanged: set the current brand before the tab route.
+  it("brand Promote navigation sets currentBrandId before the Blast route", () => {
     const profile = read("src/components/brand/BrandProfileView.tsx");
-    expect(profile).toContain("onAds");
-    expect(profile).toContain('label: "Ads"');
+    expect(profile).toContain("onPromote");
+    expect(profile).toContain(">Promote<");
     const brandRoute = read("app/brand/[id]/index.tsx");
-    expect(brandRoute).toContain("setCurrentBrandId(brandId)");
-    expect(brandRoute).toContain("/(tabs)/marketing/ads");
+    expect(brandRoute).toMatch(
+      /setCurrentBrandId\(brandId\);\s*router\.push\("\/\(tabs\)\/marketing"/,
+    );
   });
 
   it("wallet hook folds isAuthReady into enabled (ORCH-1004)", () => {

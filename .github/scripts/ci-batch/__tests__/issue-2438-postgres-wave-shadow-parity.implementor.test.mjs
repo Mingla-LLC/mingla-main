@@ -46,6 +46,40 @@ const overlayPackageAuthorities = (targetRoot) => {
     fs.copyFileSync(path.join(ROOT, relative), path.join(targetRoot, relative));
   }
 };
+// [TEST-MOD-APPROVED #3872] The terminal clone also executes guards that compile
+// the repository-wide CI-discovery plan. A branch can legitimately migrate local
+// descriptor schema before it commits the product tree, so copying only the
+// loader would combine proposed loader bytes with stale HEAD declarations and
+// fail before the guard under test runs. Mirror the complete declaration set as
+// one authority: first remove clone-era declarations, then overlay the working
+// tree's suite/exclusion descriptors. The discovery compiler still validates
+// every declaration and referenced suite normally.
+const overlayCiDiscoveryDeclarations = (targetRoot) => {
+  const suffixes = [".ci-suite.json", ".ci-exclude.json"];
+  const walk = (root, relative = "") => {
+    const absolute = path.join(root, relative);
+    if (!fs.existsSync(absolute)) return [];
+    return fs.readdirSync(absolute, { withFileTypes: true }).flatMap((entry) => {
+      if (entry.name === ".git" || entry.name === "node_modules") return [];
+      const child = path.join(relative, entry.name);
+      return entry.isDirectory() ? walk(root, child) : [child];
+    });
+  };
+  const declarations = (root) => walk(root).filter((relative) =>
+    suffixes.some((suffix) => relative.endsWith(suffix)));
+  for (const relative of declarations(targetRoot)) fs.rmSync(path.join(targetRoot, relative));
+  for (const relative of declarations(ROOT)) {
+    const destination = path.join(targetRoot, relative);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.copyFileSync(path.join(ROOT, relative), destination);
+    const declaration = JSON.parse(fs.readFileSync(path.join(ROOT, relative), "utf8"));
+    if (typeof declaration.path === "string" && fs.existsSync(path.join(ROOT, declaration.path))) {
+      const suiteDestination = path.join(targetRoot, declaration.path);
+      fs.mkdirSync(path.dirname(suiteDestination), { recursive: true });
+      fs.copyFileSync(path.join(ROOT, declaration.path), suiteDestination);
+    }
+  }
+};
 const WRAPPERS = {
   "issue-1022-theme-control-tests.yml":"f4d461a534e2d0a0273e9ea60957605a4f6e9f832229f74cf9f695445ff655df",
   "issue-1461-venue-current-brand-race-tests.yml":"30bff6582d3d775133eb9c1ffc997b8985f24fc6985fec7585a2ba0f1ce88785",
@@ -802,7 +836,12 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
   const wrapperPath = (name) => path.join(temp, ".github/workflows", name);
   const guard = (relative) => {
     try { execFileSync("node", [relative], { cwd: temp, stdio: "pipe" }); return 0; }
-    catch (error) { return error.status ?? 1; }
+    catch (error) {
+      const stdout = Buffer.isBuffer(error.stdout) ? error.stdout.toString("utf8") : String(error.stdout ?? "");
+      const stderr = Buffer.isBuffer(error.stderr) ? error.stderr.toString("utf8") : String(error.stderr ?? "");
+      process.stderr.write(`[SC-21 guard failure] ${relative}\n${stdout}${stderr}`);
+      return error.status ?? 1;
+    }
   };
   const GUARDS = [
     ".github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs",
@@ -819,6 +858,7 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     fs.cpSync(path.join(ROOT, ".github/scripts"), path.join(temp, ".github/scripts"), { recursive: true });
     fs.cpSync(path.join(ROOT, ".github/ci-batch"), path.join(temp, ".github/ci-batch"), { recursive: true });
     overlayPackageAuthorities(temp);
+    overlayCiDiscoveryDeclarations(temp);
     // [TEST-MOD-APPROVED #3176] The prior reconstruction was correct while every
     // workflow byte named by the overlaid registry also lived at HEAD. Current
     // main changed #2333's replay inventory and its derived sourceSha256 together;

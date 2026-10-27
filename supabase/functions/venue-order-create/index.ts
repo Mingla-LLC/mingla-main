@@ -52,6 +52,11 @@ import {
 } from "../_shared/discountEngine.ts";
 import { withDiscounts } from "../_shared/orderMoneyTruth.ts";
 import {
+  applicationFeeWithReferralShare,
+  type ReferrerResolution,
+  resolveReferrerFromSupabase,
+} from "../_shared/attribution.ts";
+import {
   applyVenueDiscountQuote,
   computeVenueOrderMoney,
   priceCart,
@@ -204,6 +209,19 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
   }
   const quoteDigest = typeof body.quoteDigest === "string"
     ? body.quoteDigest
+    : null;
+  if (
+    body.visitorKey !== undefined && body.visitorKey !== null &&
+    (typeof body.visitorKey !== "string" ||
+      !/^[0-9a-f]{64}$/i.test(body.visitorKey))
+  ) {
+    return jsonResponse(
+      { error: "invalid_request", detail: "visitor_key_invalid" },
+      400,
+    );
+  }
+  const visitorKey = typeof body.visitorKey === "string"
+    ? body.visitorKey.toLowerCase()
     : null;
 
   // ── P-20 — a price in the request body is a VALIDATION ERROR, not a hint. ──
@@ -522,9 +540,37 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
   let pricedDiscount = priceDiscountedQuote(discountQuote);
   let { discountedCart, money, notices, pricingBreakdown } = pricedDiscount;
 
+  const resolveVenueReferral = async (): Promise<ReferrerResolution> =>
+    await resolveReferrerFromSupabase(supabase, {
+      brandId: ctx.brandId,
+      listingKind: "venue",
+      listingId: ctx.servingVenueId,
+      orderKind: "venue_order",
+      buyer: {
+        userId,
+        emailNorm: buyerEmail || null,
+        phoneE164: buyerPhoneE164,
+      },
+      // Referral member codes and R1 discount codes deliberately share one
+      // brand-scoped namespace and therefore one buyer input.
+      typedCode: discountCode,
+      visitorKey,
+      eligibleMinor: discountedCart.netSubtotalCents,
+      brandRail: routing.provider,
+      currency: settlementCurrency,
+      nowIso: new Date().toISOString(),
+    });
+
   // ── mode:"preview" — the cart's totals come from the SERVER. No row, no
   //    provider call, nothing charged. ───────────────────────────────────────
   if (mode === "preview") {
+    let referralAttribution: ReferrerResolution;
+    try {
+      referralAttribution = await resolveVenueReferral();
+    } catch (error) {
+      console.error("[venue-order-create] referral quote failed", error);
+      return fail("internal_error");
+    }
     return jsonResponse({
       kind: "preview",
       currency: settlementCurrency,
@@ -564,6 +610,7 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       notices,
       quoteDigest: discountQuote.digest,
       pricingBreakdown,
+      referralAttribution,
       lines: discountedCart.lines,
     });
   }
@@ -764,6 +811,21 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     }
   }
 
+  let referralAttribution: ReferrerResolution;
+  try {
+    // Create always re-resolves after discount reservation. The immutable row
+    // below freezes exactly the decision whose share enters the provider fee.
+    referralAttribution = await resolveVenueReferral();
+  } catch (error) {
+    console.error("[venue-order-create] referral create failed", error);
+    await releaseDiscountUses();
+    return fail("internal_error");
+  }
+  const applicationFeeAmountCents = applicationFeeWithReferralShare(
+    money.minglaFeeCents + money.platformServiceFeeCents,
+    referralAttribution,
+  );
+
   // ── The sitting. Minted only when the guest did not continue one. ────────
   let sessionId: string;
   if (session !== null) {
@@ -862,6 +924,7 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     tax_amount_cents: money.taxAmountCents,
     total_cents: money.totalCents,
     pricing_breakdown: pricingBreakdown,
+    referral_attribution_snapshot: referralAttribution,
     provider: routing.provider,
     stripe_account_id: routing.provider === "stripe" ? stripeAccountId : null,
     // A zero-total order is complete on arrival: nothing to charge, so nothing
@@ -963,7 +1026,7 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         ...venueOrderSplitFields(
           isCutover,
           paystackSubaccount,
-          money.minglaFeeCents + money.platformServiceFeeCents,
+          applicationFeeAmountCents,
         ),
       });
       const { data: persistedOrder, error: metadataReadError } = await supabase
@@ -1130,8 +1193,6 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     // function of the fee basis, which cannot contain a tip. Under direct
     // charges the connected account receives everything else, so the TIP LANDS
     // IN THE VENUE'S BALANCE UNTOUCHED, by arithmetic rather than by policy.
-    const applicationFeeAmountCents = money.minglaFeeCents +
-      money.platformServiceFeeCents;
     if (applicationFeeAmountCents > 0) {
       piBody.application_fee_amount = applicationFeeAmountCents;
     }

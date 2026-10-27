@@ -43,6 +43,10 @@ import {
   Bell,
   FolderLock,
   SquareKanban,
+  Scale,
+  BadgeCheck,
+  Clapperboard,
+  MapPin,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -101,6 +105,10 @@ const ICON_MAP = {
   Wallet,
   HeartPulse,
   Hourglass,
+  Scale,
+  BadgeCheck,
+  Clapperboard,
+  MapPin,
   Settings,
   Bot,
   FileText,

@@ -166,6 +166,17 @@ export const NAV_GROUPS = [
       { id: "claims",                    label: "Venue claims",       icon: "ClipboardList" },
     ],
   },
+  // Issue #3872: the Creator Program's working pages. #/gig-queue (the old
+  // single "Creator gigs" page) opens Disputes.
+  {
+    label: "Programs",
+    items: [
+      { id: "program-creators",          label: "Creators",           icon: "BadgeCheck" },
+      { id: "program-gigs",              label: "Gigs",               icon: "Clapperboard" },
+      { id: "program-locals",            label: "Mingla Locals",      icon: "MapPin" },
+      { id: "program-disputes",          label: "Disputes",           icon: "Scale" },
+    ],
+  },
   {
     label: "Money",
     items: [
