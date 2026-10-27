@@ -32,7 +32,7 @@ const WORKFLOW_DIR = path.join(REPO_ROOT, ".github", "workflows");
 // Assembled from fragments, never written as a literal — see the header.
 const WORKFLOW_EXTENSIONS = [["y", "ml"].join(""), ["ya", "ml"].join("")];
 
-export const PREGATE_HOST_NAME = "Tests Append-Only";
+export const PREGATE_HOST_NAME = "Pre-merge main health";
 export const ALERT_HOST_NAME = "Strict Grep Gates (Mingla Host)";
 export const PREGATE_JOB = "main-health-pregate";
 export const ALERT_JOB = "main-red-alert";

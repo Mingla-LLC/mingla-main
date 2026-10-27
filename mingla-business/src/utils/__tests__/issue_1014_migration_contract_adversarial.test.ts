@@ -2,11 +2,10 @@
  * issue #1014 — TESTER ADVERSARIAL suite: migration-contract tripwires the
  * implementor's Deno pinning test does NOT carry.
  *
- * Runs under the mingla-business jest job of
- * .github/workflows/issue-1014-free-publish-currency-tests.yml (the workflow's
- * Deno job pins ONLY the implementor's exact test file — a new Deno test file
- * would NOT auto-register, so these DB-contract tripwires live in jest, which
- * auto-picks-up every issue_1014_* suite).
+ * Runs in the required mingla-business full jest suite (#3643). The #1014 Deno
+ * lane, now a CI batch suite, pins ONLY the implementor's exact test file — a
+ * new Deno test file would NOT auto-register, so these DB-contract tripwires
+ * live in jest, which picks up every issue_1014_* suite.
  *
  * Angles (all verified live on the full 344-migration chain in the tester's
  * container run; these pins keep them from silently regressing):

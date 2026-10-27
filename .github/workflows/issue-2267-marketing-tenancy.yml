@@ -92,10 +92,3 @@ jobs:
         run: node .github/scripts/strict-grep/i-2267-composer-editorstyle-literal-only.mjs
       - run: npm ci
         working-directory: mingla-business
-      - run: npx jest src/services/marketing/__tests__/issue2267LinkHrefEmission.happy.test.ts --runInBand
-        working-directory: mingla-business
-      # The Stage A round-trip contract this change had to preserve. Running it
-      # here means a future escape change that breaks byte-identity fails in the
-      # same lane that asked for the escape.
-      - run: npx jest src/services/marketing/__tests__/tenTapTokenBridge.test.ts src/services/marketing/__tests__/tenTapTokenBridge.sizeAttr.test.ts --runInBand
-        working-directory: mingla-business

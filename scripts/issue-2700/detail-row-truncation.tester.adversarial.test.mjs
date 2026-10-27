@@ -713,8 +713,10 @@ test('A9b the provider digest comes from the validator itself, and the seal coun
 
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.github/ci-batch/MANIFEST.json'), 'utf8'));
   const origin = manifest.legacyOrigins.find((item) => `${item.stem}.${item.extension}` === WORKFLOW_NAME);
-  assert.equal(origin.workflowMetadata.sourceSha256, inspected.sourceSha256,
-    'the manifest digest for the provider workflow is stale — re-bank it, do not edit this test');
+  // [#3643 Wave 4] A live row is registered by its properties, not its bytes.
+  const { sourceSha256: _bytes, ...inspectedProperties } = inspected;
+  assert.deepEqual(origin.workflowMetadata, inspectedProperties,
+    'the manifest property inventory for the provider workflow is stale');
   assert.deepEqual([...origin.workflowMetadata.triggers].sort(), [...inspected.triggers].sort(), 'the manifest triggers are stale');
   assert.deepEqual([...origin.workflowMetadata.pathScope].sort(), [...inspected.pathScope].sort(), 'the manifest path scope is stale');
 

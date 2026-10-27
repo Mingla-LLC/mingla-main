@@ -157,8 +157,12 @@ function selfTest(loadBase) {
   assertRed("stale reference", loadBase, (m) => { m.workflowProviders[0].referenceFiles[0] = "definitely/missing-reference.mjs"; }, /stale reference file|inventory drifted/, discovery);
   assertRed("live plus batched duplicate provider", loadBase, (m) => { m.suites[0].origin = `.github/workflows/${discovery.liveOrigins[0]}`; }, /origin is live and batched/, discovery);
   assertRed("runtime setup trust and path inventory drift", loadBase, (m) => {
-    const live = m.legacyOrigins.find((item) => item.disposition !== "batched-active");
-    live.workflowMetadata.sourceSha256 = "0".repeat(64);
+    // [#3643] The attack targets a LIVE origin's metadata. Phase 3D made the old
+    // first match (a folded, now batched-historical row) terminal, so select by
+    // the live dispositions explicitly rather than by position.
+    const live = m.legacyOrigins.find((item) => !["batched-active", "batched-historical", "consolidated-provider"].includes(item.disposition));
+    // [#3643 Wave 4] Live rows are checked by property: drift one.
+    live.workflowMetadata.jobKeys = [...live.workflowMetadata.jobKeys, "invented-job"];
   }, /runtime\/setup\/trust\/trigger inventory drifted/, discovery);
   assertRed("nondeterministic commit stamp", loadBase, (m) => { m.generatedAtCommit = "deadbeef"; }, /generatedAtCommit is forbidden/, discovery);
 }

@@ -258,7 +258,8 @@ function getContext() {
   // (6) activity types on every non-exempt lane, and on the ruleset-required lanes
   const exempt = new Map(ALWAYS_ON.map((entry) => [entry.path, entry]));
   const gated = names.filter((name) => !exempt.has(name));
-  assert.ok(gated.length >= 100, `the #2881 draft-gated set must stay populated, found ${gated.length}`);
+  // [#3643] Phase 3D deleted twenty gated per-issue lanes (115 -> 95 gated).
+  assert.ok(gated.length >= 95, `the #2881 draft-gated set must stay populated, found ${gated.length}`);
   const typesTree = { ...sources };
   for (const name of gated) {
     const inline = countLines(sources[name], /^ {4}types: \[[^\]\n]*\]\n/);

@@ -55,6 +55,15 @@ export interface TripCommandOptions {
    */
   expectedUpdatedAt?: string;
   /**
+   * Issue #3801 — the revision the editor loaded, held across saves. When set
+   * (and `expectedUpdatedAt` is not), every command sends `revision.current`
+   * as its compare-and-swap revision, and a successful draft-graph command
+   * writes the revision the server returned back into it, so the next save
+   * carries it. A save from an editor whose copy is out of date is refused
+   * (`trip_revision_conflict`) instead of silently overwriting newer data.
+   */
+  revision?: TripRevisionCursor;
+  /**
    * `publishTrip` runs TWO canonical commands — it commits the wizard's pending
    * graph, then publishes from stored state — so it needs a second stable id.
    * A receipt binds actor + command + arguments, so reusing one id across two
@@ -66,6 +75,27 @@ export interface TripCommandOptions {
     selectionRevision: number;
     selectionConfirmed: true;
   };
+}
+
+/** Issue #3801 — the trip revision an editor holds; see `TripCommandOptions.revision`. */
+export interface TripRevisionCursor {
+  current: string | null;
+}
+
+/**
+ * Issue #3801 — adopt the revision a canonical trip command returned
+ * (`biz_get_trip_draft_graph` carries `revision`). Returns true when it was
+ * adopted; false when the result carries none, so the caller can re-read.
+ */
+export function adoptTripRevision(
+  cursor: TripRevisionCursor | undefined,
+  result: unknown,
+): boolean {
+  if (cursor === undefined) return false;
+  const revision = (result as { revision?: unknown } | null)?.revision;
+  if (typeof revision !== "string" || revision.length === 0) return false;
+  cursor.current = revision;
+  return true;
 }
 
 export function newTripOperationId(): string {
@@ -122,7 +152,11 @@ async function resolveRevision(
   eventId: string,
   options?: TripCommandOptions,
 ): Promise<string> {
-  return options?.expectedUpdatedAt ?? (await readTripRevision(eventId));
+  return (
+    options?.expectedUpdatedAt ??
+    options?.revision?.current ??
+    (await readTripRevision(eventId))
+  );
 }
 
 /**
@@ -143,6 +177,14 @@ export async function applyTripDraftGraph(
   if (error) throw error;
   if (data === null) {
     throw new Error("applyTripDraftGraph: RPC returned null");
+  }
+  // Issue #3801 — the editor's next save carries the revision this one made.
+  // A result without one (never expected) is re-read rather than guessed.
+  if (
+    options?.revision !== undefined &&
+    !adoptTripRevision(options.revision, data)
+  ) {
+    options.revision.current = await readTripRevision(eventId);
   }
   return data as Record<string, unknown>;
 }
@@ -1565,6 +1607,7 @@ export async function publishTrip(
       await applyTripDraftGraph(eventId, { event: eventPatch }, {
         operationId: options?.saveOperationId ?? newTripOperationId(),
         expectedUpdatedAt: options?.expectedUpdatedAt,
+        revision: options?.revision,
       });
     } catch (error) {
       // From the wizard's point of view this IS publish failing, so it must
@@ -1579,7 +1622,10 @@ export async function publishTrip(
 
   const { data, error } = await supabase.rpc("biz_publish_trip_command", {
     p_event_id: eventId,
-    p_expected_updated_at: await readTripRevision(eventId),
+    // Issue #3801 — publish what the editor holds: the revision it loaded, as
+    // moved by its own pre-save above. Without a held revision, read it now.
+    p_expected_updated_at:
+      options?.revision?.current ?? (await readTripRevision(eventId)),
     p_operation_id: options?.operationId ?? newTripOperationId(),
     ...(options?.invites !== undefined
       ? {

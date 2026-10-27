@@ -183,7 +183,7 @@ test("#3076-4 the routing line still prints its denominator on a zero, and the r
   }
 });
 
-test("#3076-5 exactly the three paid-for setup steps are gated, on an explicit false and nothing else", () => {
+test("#3076-5 exactly the paid-for setup steps are gated, on an explicit false and nothing else", () => {
   const route = stepNamed("Print the routed suite selection with its denominator");
   assert.equal(route.id, "route", "the routing step must publish under the id the gates read");
 
@@ -206,10 +206,21 @@ test("#3076-5 exactly the three paid-for setup steps are gated, on an explicit f
   assert.ok(setupNode.condition.includes("runSecondary"), "Node setup must consider the Phase 3B wave");
   assert.ok(setupNode.condition.startsWith("always()"), "Node setup must still run after an earlier failure");
 
+  // [#3643] Phase 3D's two primary Deno selectors are paid-for setup too: they
+  // install a runtime only the two Phase 3D hosts need, so they ride the SAME
+  // explicit-false primary gate, and only on the rows that set primaryDeno.
+  const denoSelectors = ["Select immutable primary Deno 1.46 runtime", "Select immutable primary Deno v2 runtime"].map(stepNamed);
+  for (const step of denoSelectors) {
+    assert.match(step.condition, new RegExp(`steps\\.route\\.outputs\\.${PRIMARY_OUTPUT} != 'false'`),
+      `${step.name}: must be gated fail-open on the primary decision`);
+    assert.match(step.condition, /matrix\.primaryDeno == '/, `${step.name}: must keep its Phase 3D host condition`);
+    assert.ok(step.condition.startsWith("always()"), `${step.name}: must still run after an earlier failure`);
+  }
+
   // Nothing else in the job reads the routing decision.
   const gated = batchSteps().filter((step) =>
     step.condition.includes(PRIMARY_OUTPUT) || step.condition.includes(PHASE3C_OUTPUT));
-  assert.equal(gated.length, 3, "exactly three steps may be gated on the routing decision");
+  assert.equal(gated.length, 5, "exactly the three setup steps and the two Phase 3D Deno selectors may be gated on the routing decision");
 
   // Polarity, stated as an assertion rather than left to review: no gate may be
   // written as a positive test, which would skip on a MISSING signal.

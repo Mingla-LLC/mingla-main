@@ -68,12 +68,6 @@ jobs:
         run: node --test scripts/ci/issue-2979-attendance-export-pipeline.tester.test.mjs
       - name: Structural, drift, route, and size guard
         run: ISSUE_922_REQUIRE_ADVERSARIAL=1 node scripts/ci/issue-922-business-web-actionable.mjs
-      - name: Happy and independent adversarial unit tests
-        run: >
-          npx jest
-          __tests__/issue922BusinessWebActionable.happy.test.ts
-          __tests__/issue922BusinessWebActionable.adversarial.test.ts
-          --runInBand
       - name: Samsung A72 browser regression proofs
         run: npx playwright test --config playwright.issue922.config.ts
       - name: ORCH-1083 eager-bundle invariant

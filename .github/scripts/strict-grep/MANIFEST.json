@@ -141,6 +141,17 @@
       "jobKeys": []
     },
     {
+      "script": ".github/scripts/ci-batch/__tests__/issue-3643-workflow-properties-not-bytes.implementor.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
       "script": ".github/scripts/strict-grep/__tests__/i-1272-identity-admin-read.test.mjs",
       "kind": "file",
       "enforcement": "fixture",
@@ -4650,7 +4661,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-2198-paystack-return-verify.mjs",
       "kind": "file",
-      "enforcement": "external:issue-2198-paystack-return-verify-tests.yml",
+      "enforcement": "ci-batch:issue-2198-paystack-return-verify-tests",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -4839,7 +4850,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-2418-bank-list-native-identity.mjs",
       "kind": "file",
-      "enforcement": "external:issue-2418-bank-list-native-identity.yml",
+      "enforcement": "ci-batch:issue-2418-bank-list-native-identity",
       "invocation": "node",
       "modes": [
         "self-test",

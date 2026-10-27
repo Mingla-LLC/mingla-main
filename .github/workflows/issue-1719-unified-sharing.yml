@@ -69,8 +69,6 @@ jobs:
       - run: node --experimental-strip-types --test scripts/issue-1719/historical-saved-curated-rehydration.implementor.happy.test.mjs
       - run: node --experimental-strip-types --test scripts/issue-1719/historical-saved-curated-rehydration.tester.adversarial.test.mjs
       - run: node --experimental-strip-types --test scripts/issue-1719/source-card-fidelity.tester.adversarial.test.mjs
-      - run: npx jest src/components/ui/__tests__/issue_1719_share_same_turn.happy.test.tsx --runInBand
-        working-directory: mingla-business
       - run: node --experimental-strip-types --test scripts/issue-1719/unified-sharing.tester.adversarial.test.mjs
       - run: node --test scripts/issue-1719/unified-sharing.amendment.tester.adversarial.test.mjs
       - run: node --test packages/sharing/__tests__/issue_1615_sharing_contract.happy.test.mjs packages/sharing/__tests__/issue_1615_media_identity.happy.test.mjs
@@ -113,15 +111,6 @@ jobs:
         run: >-
           deno test --allow-env --allow-read --allow-net --no-check
           supabase/functions/event-cover-video-source-uploaded/index.issue2967.test.ts
-      - name: "#2967/#2974 client acknowledgement bound + no-spinner-on-4xx"
-        run: >-
-          npx jest
-          src/hooks/__tests__/useEventCoverVideoUpload.ackDeadline.issue2967.test.ts
-          src/hooks/__tests__/useEventCoverVideoUpload.test.ts
-          src/components/ui/__tests__/coverPickerDiscardAffordance.issue2974.test.ts
-          src/components/event/__tests__/coverStepDraftPromotion.issue2974.test.ts
-          --runInBand
-        working-directory: mingla-business
       # #3040 — the umbrella. Same lane, same reason as #2967 above: the CI
       # origin registry is locked at 200 origins (I-2148-CI-TOPOLOGY-BOUNDED)
       # and this workflow already path-scopes both
@@ -131,12 +120,6 @@ jobs:
           deno test --allow-env --allow-read --allow-net --no-check
           supabase/functions/event-cover-video-source-uploaded/
           supabase/functions/event-cover-video-reaper/__tests__/issue_3040_abandoned_source_upload.test.ts
-      - name: "#3040 client invariants — truthful copy, bounded watch, reachable retry"
-        run: >-
-          npx jest
-          src/components/event/__tests__/coverVideoDeterministic.issue3040.test.ts
-          --runInBand
-        working-directory: mingla-business
 
   postgres-17-adversarial:
     if: ${{ github.event.pull_request.draft != true }}

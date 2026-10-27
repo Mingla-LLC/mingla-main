@@ -128,13 +128,6 @@ jobs:
       - name: Stay manager UX render proofs
         run: npx jest --config jest.issue1532.render.cjs --runInBand
 
-      # The contract half, run explicitly here too so a failure is attributable
-      # to #1532 rather than buried in the whole-suite run.
-      - name: Layout + dismissal contracts
-        run: >-
-          npx jest --runInBand
-          src/components/stay/__tests__/stayLayoutContracts.issue1532.test.ts
-
       # #1484 and #1501 must stay green: #1532 re-scales the spacing they pinned
       # and moves the editor into a Sheet, so their measures are the regression
       # surface most likely to move.

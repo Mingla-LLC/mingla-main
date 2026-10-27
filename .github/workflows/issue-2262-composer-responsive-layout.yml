@@ -121,12 +121,6 @@ jobs:
         working-directory: mingla-business
         run: npx jest --config jest.issue2262.web.render.cjs --runInBand
 
-      # ─── T3: the CSS ownership contract, off the real exported stylesheet.
-      - name: "T3 — the editable owns its box"
-        shell: bash
-        working-directory: mingla-business
-        run: npx jest --runInBand src/components/marketing/ComposerV2/__tests__/composerEditableFillsBox.issue2262.test.ts
-
       # ─── T6: the two ORCH-1100 blocks this issue retired are gone, and
       # everything else in that file still passes untouched.
       # The pin here is on the CONTRACTS, not on a total.

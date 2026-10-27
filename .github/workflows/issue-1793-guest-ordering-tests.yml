@@ -122,45 +122,6 @@ jobs:
           TZ: Pacific/Auckland
         run: npx jest --config jest.issue1793.cfg.cjs --runInBand
 
-  guest-ordering-buyer-web:
-    if: ${{ github.event.pull_request.draft != true }}
-    name: "Buyer web: anon, the sitting, the redirect, the return leg"
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: mingla-business
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: mingla-business/package-lock.json
-      - run: npm ci
-      # The sibling ordering suites run beside it: this PR touches the venue
-      # page, the public menu service and the shared money contract that the
-      # Orders queue and the waiter pad also read.
-      - name: Prove the guest rail, and that the venue-side suites still hold
-        run: >
-          npx jest
-          src/components/venueOrdering/__tests__/buyerVenueOrdering.issue1793.test.ts
-          src/components/venueOrdering/__tests__/paymentRetry.issue1793.test.ts
-          src/components/venueOrdering/__tests__/venueOrderReviewMoneyGate.issue1793.adversarial.test.tsx
-          src/components/venueOrdering/__tests__/publicVenueMenuSuspense.issue2735.happy.test.tsx
-          src/components/venueOrdering/__tests__/publicVenueMenuSuspense.issue2735.adversarial.test.tsx
-          src/components/venueOrdering/__tests__/publicVenueMenuRequestTruth.issue2755.happy.test.ts
-          src/components/venueOrdering/__tests__/publicVenueMenuRequestTruth.issue2755.render.happy.test.tsx
-          src/components/venueOrdering/__tests__/publicVenueMenuRequestTruth.issue2755.adversarial.test.tsx
-          src/components/venueOrdering/__tests__/publicVenueMenuRequestTruth.issue2755.webFocus.adversarial.test.tsx
-          src/components/venueOrdering/__tests__/publicVenueMenuRequestTruth.issue2755.webDom.adversarial.test.tsx
-          src/components/venue/__tests__/consumerPublicVenueMenuSuspense.issue2735.happy.test.tsx
-          src/components/venue/__tests__/consumerPublicVenueMenuSuspense.issue2735.adversarial.test.tsx
-          src/components/venue/__tests__/venueOrders.issue1791.test.ts
-          src/components/venue/__tests__/venueOrderPad.issue1792.test.ts
-          src/components/venue/__tests__/qrSpots.issue1789.test.ts
-          --runInBand
-
   guest-ordering-structure:
     if: ${{ github.event.pull_request.draft != true }}
     name: "Structure: the gate's own self-test (GOOD + BAD per rule)"
