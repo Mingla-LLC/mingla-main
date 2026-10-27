@@ -62,7 +62,12 @@ const PHASE3C_OUTPUT = "runPhase3cSetup";
 
 // A class that hosts Phase 3C work, taken from the registry rather than typed,
 // so this file cannot outlive the host it names.
-const PHASE3C_HOST = MANIFEST.classes.find((klass) => phase3cOwnedForHost(MANIFEST, klass).length > 0);
+const IDLE_PROBE = "issue-3076-claimed-by-no-suite/marker.txt";
+const PHASE3C_HOST = MANIFEST.classes.find((klass) =>
+  phase3cOwnedForHost(MANIFEST, klass).length > 0
+  && selectSuites(MANIFEST, expectedPrimarySuites(MANIFEST, klass),
+    { eventName: "pull_request", mode: "routed", changedPaths: [IDLE_PROBE] }).selectedSuiteIds.length === 0);
+assert.ok(PHASE3C_HOST, "the zero-selection proof needs a real idle host");
 
 /** The step blocks of the `batch` job, split on their own list markers. */
 function batchSteps() {
@@ -119,7 +124,7 @@ function previewAgainst(klass, changedPath) {
 test("#3076-1 a class whose diff invalidates nothing publishes an explicit refusal to set up", () => {
   // Prove this host is idle. Other hosts can legitimately own suites that
   // run on every PR, including changes outside their path inventory.
-  const inert = "issue-3076-claimed-by-no-suite/marker.txt";
+  const inert = IDLE_PROBE;
   const exhaustive = selectSuites(MANIFEST, expectedPrimarySuites(MANIFEST, PHASE3C_HOST),
     { eventName: "pull_request", mode: "routed", changedPaths: [inert] });
   assert.deepEqual(exhaustive.selectedSuiteIds, [], "the probe must select no suite on this host");
