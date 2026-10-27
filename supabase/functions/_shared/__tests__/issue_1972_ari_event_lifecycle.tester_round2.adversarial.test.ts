@@ -7,9 +7,15 @@ const coverAttestation = await read(
 const liveEditor = await read(
   "../../../../mingla-business/src/components/event/EditPublishedScreen.tsx",
 );
-const registry = JSON.parse(await read("../../../../.github/ci-batch/MANIFEST.json"));
-const suite = registry.suites.find((suite: { id: string }) => suite.id === "issue-1972-ari-event-lifecycle");
-if (suite?.migrationWave !== "phase3e-postgres-fold-wave") throw new Error("missing folded #1972 suite");
+const registry = JSON.parse(
+  await read("../../../../.github/ci-batch/MANIFEST.json"),
+);
+const suite = registry.suites.find((suite: { id: string }) =>
+  suite.id === "issue-1972-ari-event-lifecycle"
+);
+if (suite?.migrationWave !== "phase3e-postgres-fold-wave") {
+  throw new Error("missing folded #1972 suite");
+}
 
 Deno.test("#1972 provider cover metadata is never copied from caller-authored fields", () => {
   for (
