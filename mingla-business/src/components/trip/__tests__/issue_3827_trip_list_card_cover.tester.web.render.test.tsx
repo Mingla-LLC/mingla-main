@@ -105,7 +105,7 @@ const mounted: Renderer[] = [];
 const render = async (t: Trip): Promise<Renderer> => {
   let tree!: Renderer;
   await TestRenderer.act(async () => {
-    tree = TestRenderer.create(<TripListCard trip={t} onPress={() => undefined} />);
+    tree = TestRenderer.create(<TripListCard trip={t} onOpen={() => undefined} />);
   });
   await TestRenderer.act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
