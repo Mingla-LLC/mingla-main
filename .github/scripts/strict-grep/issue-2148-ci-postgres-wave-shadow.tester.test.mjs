@@ -194,10 +194,10 @@ test("canonical cost fixture and workflow topology remain exact", () => {
   assert.deepEqual(rows.find((row)=>row.pr===2201), {pr:2201,baseSha:"4414436a9617b075e2065118f5821458248058d2",headSha:"9a3c551798a3aae58fa4de5de3e1511647f5fa21",mergeBaseSha:"4414436a9617b075e2065118f5821458248058d2",pathSource:"git-diff-z-v1",pathCount:11362,pathSha256:"51764c43bad76f056f343f9bb851597e378e23b005680d10b7e4b5fc1a7c135b",matchedOrigins:[]});
   const histogram = Object.fromEntries([0,1,2,3,4,5].map((n)=>[n,rows.filter((row)=>row.matchedOrigins.length===n).length])); assert.deepEqual(histogram,{0:25,1:41,2:20,3:9,4:4,5:1});
   const workflow = read(".github/workflows/ci-batch.yml");
-  // [#3643] Phase 3D appends two Deno hosts and Phase 3E appends thirteen
+  // [#3643] Phase 3D appends two Deno hosts and Phase 3E appends fourteen
   // exact runtime/setup profiles for all forty-eight PostgreSQL suites.
-  assert.equal((workflow.match(/^\s+- class:/gm)||[]).length,29); assert.equal((workflow.match(/^\s+secondaryClass: phase3b-/gm)||[]).length,9);
-  assert.deepEqual([...workflow.matchAll(/hostTimeoutMinutes:\s*(\d+)/g)].map((m)=>Number(m[1])), [50,45,40,45,45,55,55,50,60,62,55,55,105,55,45,35,180,180,180,180,180,180,180,180,120,180,180,120,180]);
+  assert.equal((workflow.match(/^\s+- class:/gm)||[]).length,30); assert.equal((workflow.match(/^\s+secondaryClass: phase3b-/gm)||[]).length,9);
+  assert.deepEqual([...workflow.matchAll(/hostTimeoutMinutes:\s*(\d+)/g)].map((m)=>Number(m[1])), [50,45,40,45,45,55,55,50,60,62,55,55,105,55,45,35,180,180,180,180,180,180,180,180,180,120,180,180,120,180]);
   for (const pin of ["actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683","denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d","denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"]) assert.match(workflow,new RegExp(pin));
   // [TEST-MOD-APPROVED #2851] The old whole-source target-token ban conflated
   // the approved concurrency operand with a trigger. Semantic events keep the
