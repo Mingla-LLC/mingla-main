@@ -2,6 +2,10 @@ import { supabase } from './supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { blockService } from './blockService';
 import { getDisplayName } from '../utils/getDisplayName';
+import type { MediaViewRow } from '../utils/chatMedia';
+import { conversationChannelKey, conversationRealtimeFilter } from '../utils/conversationSubscription';
+import type { ChatLiveChange } from '../utils/chatLiveModel';
+import { idsStillUnread, MARK_READ_CHUNK } from '../utils/threadModel';
 import type { NativeContentCardDescriptorV1, PublicShareDetails, ShareDestination, ShareEntityKind, ShareFactsV1, ShareMediaIdentity } from '@mingla/sharing';
 
 /**
@@ -172,6 +176,34 @@ export interface TrimmedCuratedStop {
   travelTimeFromPreviousStopMin?: number | null;
 }
 
+/**
+ * Issue #4114 Wave 7: the media columns of a send, each only when it has a
+ * value (so text sends never name them). Dimensions and length are rounded to
+ * whole numbers and dropped when out of range.
+ */
+export function mediaFactsForInsert(options: {
+  thumbPath?: string | null;
+  durationMs?: number | null;
+  width?: number | null;
+  height?: number | null;
+  albumId?: string | null;
+}): Record<string, string | number> {
+  const facts: Record<string, string | number> = {};
+  const whole = (value: number | null | undefined, max: number): number | null =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max ? Math.round(value) : null;
+  if (options.thumbPath) facts.thumb_path = options.thumbPath;
+  const duration = whole(options.durationMs, 3_600_000);
+  if (duration !== null) facts.media_duration_ms = duration;
+  const width = whole(options.width, 20_000);
+  const height = whole(options.height, 20_000);
+  if (width && height) {
+    facts.media_width = width;
+    facts.media_height = height;
+  }
+  if (options.albumId) facts.media_album_id = options.albumId;
+  return facts;
+}
+
 export interface DirectMessage {
   id: string;
   conversation_id: string;
@@ -186,12 +218,57 @@ export interface DirectMessage {
   card_tags?: CardTagEntry[];
   reply_to_id?: string | null;
   marketing_campaign_id?: string | null;
+  /**
+   * Issue #4114: id minted by the sending phone before the insert and reused on
+   * every retry. The app merges the insert response, the realtime echo and every
+   * refresh by `client_id || id`, so one send shows once. NULL for legacy rows and
+   * server-written rows (system banners, blasts, RPC inserts).
+   */
+  client_id?: string | null;
   created_at: string;
   updated_at?: string;
   deleted_at?: string | null;
   sender_name?: string;
   is_read?: boolean;
   isSystem?: boolean;
+  /**
+   * Issue #4114 Wave 3: every reaction on this message, read in ONE batched
+   * query per page (never per message). Absent on realtime rows.
+   */
+  reactions?: MessageReactionRow[];
+  /**
+   * Issue #4114 Wave 4: a photo or video each recipient may open once (through
+   * the open-view-once edge function). `file_url` holds its storage path.
+   */
+  view_once?: boolean;
+  /** Issue #4114 Wave 4: the view-once file was deleted (everyone opened it, or 14 days passed). */
+  view_once_purged_at?: string | null;
+  /** Issue #4114 Wave 7: the 480px thumbnail's storage path (ordinary photos and videos). */
+  thumb_path?: string | null;
+  /** Issue #4114 Wave 7: a video's length, and the media's dimensions for the card shape. */
+  media_duration_ms?: number | null;
+  media_width?: number | null;
+  media_height?: number | null;
+  /** Issue #4114 Wave 7: photos sent together share this id (drawn as one album). */
+  media_album_id?: string | null;
+  /** Issue #4114 Wave 7 (D18): the video's full file was deleted after 90 days; the thumbnail stays. */
+  media_expired_at?: string | null;
+  /**
+   * Issue #4114 Wave 4: who opened this view-once message — your own row as a
+   * recipient, every row as its sender (RLS). Absent on realtime rows.
+   */
+  media_views?: MediaViewRow[];
+}
+
+/** Issue #4114 Wave 4: one row of `message_media_views`. */
+export type { MediaViewRow };
+
+/** Issue #4114 Wave 3: one row of `direct_message_reactions`. */
+export interface MessageReactionRow {
+  /** Issue #4114 QA: the row id, so a live DELETE (id only) can be matched. */
+  id?: string;
+  user_id: string;
+  emoji: string;
 }
 
 export interface MentionEntry {
@@ -458,6 +535,12 @@ export interface Conversation {
   last_message?: DirectMessage;
   unread_count?: number;
 }
+
+/** Issue #4114: one page of chat history (newest page first, then older pages on scroll up). */
+export const MESSAGE_PAGE_SIZE = 50;
+
+/** Issue #4114: the partial unique index on (conversation_id, client_id) WHERE client_id IS NOT NULL. */
+export const MESSAGE_CLIENT_ID_UNIQUE_INDEX = 'messages_unique_client_id_per_conversation';
 
 export class MessagingService {
   private channels: Map<string, RealtimeChannel> = new Map();
@@ -806,9 +889,33 @@ export class MessagingService {
       if (conversationsResult.error) throw conversationsResult.error;
       if (unreadResult.error) throw unreadResult.error;
 
+      // Issue #4114: the access RPC also carries this member's private pin and
+      // mark-unread state (conversation_participant_lifecycle), so the list gets
+      // them with no extra round trip.
+      type AccessRow = {
+        conversation_id: string;
+        archived_at: string | null;
+        pinned_at?: string | null;
+        marked_unread_at?: string | null;
+        live_session_id?: string | null;
+        live_session_status?: string | null;
+      };
+      const accessRows = (accessResult.data ?? []) as AccessRow[];
       const accessByConversation = new Map(
-        ((accessResult.data ?? []) as Array<{ conversation_id: string; archived_at: string | null }>)
-          .map((row) => [row.conversation_id, row.archived_at]),
+        accessRows.map((row) => [row.conversation_id, row.archived_at]),
+      );
+      const listStateByConversation = new Map(
+        accessRows.map((row) => [
+          row.conversation_id,
+          {
+            pinned_at: row.pinned_at ?? null,
+            marked_unread_at: row.marked_unread_at ?? null,
+            // Issue #4114 Wave 5: the chat's live collab, from the same RPC
+            // (no extra list query).
+            live_session_id: row.live_session_id ?? null,
+            live_session_status: row.live_session_status ?? null,
+          },
+        ]),
       );
 
       const unreadByConv = new Map<string, number>();
@@ -880,7 +987,17 @@ export class MessagingService {
           last_message: lastMessage,
           unread_count: unreadByConv.get(conv.id) || 0,
           archived_at: accessByConversation.get(conv.id) ?? null,
-        } as Conversation & { archived_at: string | null });
+          pinned_at: listStateByConversation.get(conv.id)?.pinned_at ?? null,
+          marked_unread_at: listStateByConversation.get(conv.id)?.marked_unread_at ?? null,
+          live_session_id: listStateByConversation.get(conv.id)?.live_session_id ?? null,
+          live_session_status: listStateByConversation.get(conv.id)?.live_session_status ?? null,
+        } as Conversation & {
+          archived_at: string | null;
+          pinned_at: string | null;
+          marked_unread_at: string | null;
+          live_session_id: string | null;
+          live_session_status: string | null;
+        });
       }
 
       return { conversations, error: null };
@@ -893,14 +1010,35 @@ export class MessagingService {
   /**
    * Get messages for a conversation
    */
-  async getMessages(conversationId: string, userId: string, limit: number = 50): Promise<{ messages: DirectMessage[]; error: string | null }> {
+  /**
+   * Get one page of messages for a conversation, oldest first.
+   *
+   * Issue #4114: `before` pages backwards from a created_at cursor (the oldest
+   * timestamp already on screen). The cursor is INCLUSIVE (`lte`) so messages
+   * that share the boundary timestamp are never skipped; the caller's
+   * `mergeMessages` drops the repeats by id. `hasMore` is true when the page came
+   * back full, i.e. there may be older messages to load.
+   *
+   * Issue #4114 Wave 6: a brand channel passes all of its event chats' ids and
+   * gets ONE page across them (`.in('conversation_id', ids)`, same cursor);
+   * each row keeps its own conversation_id.
+   */
+  async getMessages(
+    conversationId: string | readonly string[],
+    userId: string,
+    limit: number = MESSAGE_PAGE_SIZE,
+    before?: string,
+  ): Promise<{ messages: DirectMessage[]; error: string | null; hasMore: boolean }> {
     try {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .is('deleted_at', null)
+      const ids = typeof conversationId === 'string' ? [conversationId] : Array.from(new Set(conversationId));
+      if (ids.length === 0) return { messages: [], error: null, hasMore: false };
+      const base = supabase.from('messages').select('*');
+      let query = (ids.length === 1 ? base.eq('conversation_id', ids[0]) : base.in('conversation_id', ids))
+        .is('deleted_at', null);
+      if (before) query = query.lte('created_at', before);
+      const { data, error } = await query
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .limit(limit);
 
       if (error) throw error;
@@ -909,11 +1047,143 @@ export class MessagingService {
       const enrichedMessages = await Promise.all(
         (data || []).map(msg => this.enrichMessage(msg, userId))
       );
+      // Issue #4114 Wave 3: one reactions read for the whole page.
+      const reactionsByMessage = await this.getReactionsForMessages(enrichedMessages.map((msg) => msg.id));
+      // Issue #4114 Wave 4: one read of who opened the page's view-once messages.
+      const viewsByMessage = await this.getMediaViewsForMessages(
+        enrichedMessages.filter((msg) => msg.view_once === true).map((msg) => msg.id),
+      );
+      const withReactions = enrichedMessages.map((msg) => ({
+        ...msg,
+        reactions: reactionsByMessage.get(msg.id) ?? [],
+        ...(msg.view_once === true ? { media_views: viewsByMessage.get(msg.id) ?? [] } : {}),
+      }));
 
-      return { messages: enrichedMessages.reverse(), error: null };
+      return { messages: withReactions.reverse(), error: null, hasMore: (data?.length ?? 0) >= limit };
     } catch (error: any) {
       console.error('Error getting messages:', error);
-      return { messages: [], error: error.message };
+      return { messages: [], error: error.message, hasMore: false };
+    }
+  }
+
+  /**
+   * Issue #4114 Wave 3: every reaction on a page of messages in one query
+   * (`.in('message_id', ids)`). A read failure returns an empty map and logs;
+   * the messages still render, just without their pills, until the next read.
+   */
+  async getReactionsForMessages(messageIds: string[]): Promise<Map<string, MessageReactionRow[]>> {
+    const byMessage = new Map<string, MessageReactionRow[]>();
+    const ids = messageIds.filter((id) => !!id && !id.startsWith('temp-'));
+    if (ids.length === 0) return byMessage;
+    const { data, error } = await supabase
+      .from('direct_message_reactions')
+      .select('id, message_id, user_id, emoji, created_at')
+      .in('message_id', ids)
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.warn('[messagingService] reactions read failed; pills hidden until the next read', error);
+      return byMessage;
+    }
+    for (const row of (data ?? []) as Array<{ id: string; message_id: string; user_id: string; emoji: string }>) {
+      const list = byMessage.get(row.message_id) ?? [];
+      list.push({ id: row.id, user_id: row.user_id, emoji: row.emoji });
+      byMessage.set(row.message_id, list);
+    }
+    return byMessage;
+  }
+
+  /**
+   * Issue #4114 Wave 4: who opened a page of view-once messages, in one query.
+   * RLS returns your own rows and, for messages you sent, everyone's. A read
+   * failure logs and returns an empty map (the bubble shows "not opened yet"
+   * until the next read; the server still refuses a second open).
+   */
+  async getMediaViewsForMessages(messageIds: string[]): Promise<Map<string, MediaViewRow[]>> {
+    const byMessage = new Map<string, MediaViewRow[]>();
+    const ids = messageIds.filter((id) => !!id && !id.startsWith('temp-'));
+    if (ids.length === 0) return byMessage;
+    const { data, error } = await supabase
+      .from('message_media_views')
+      .select('message_id, user_id, viewed_at')
+      .in('message_id', ids);
+    if (error) {
+      console.warn('[messagingService] view-once opens read failed', error);
+      return byMessage;
+    }
+    for (const row of (data ?? []) as Array<{ message_id: string; user_id: string; viewed_at: string }>) {
+      const list = byMessage.get(row.message_id) ?? [];
+      list.push({ user_id: row.user_id, viewed_at: row.viewed_at });
+      byMessage.set(row.message_id, list);
+    }
+    return byMessage;
+  }
+
+  /**
+   * Issue #4114 Wave 3: unsend one of your own messages. A soft delete
+   * (`deleted_at`), which every read already filters; the realtime UPDATE tells
+   * the other side to drop it. RLS only lets the sender update their own row.
+   * Editing is not offered: the table has no edited marker, so an edit would
+   * change the text with no sign it was changed.
+   */
+  async unsendMessage(messageId: string, senderId: string): Promise<{ error: string | null }> {
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', messageId)
+        .eq('sender_id', senderId);
+      if (error) throw error;
+      return { error: null };
+    } catch (error: any) {
+      console.error('Error unsending message:', error);
+      return { error: error?.message ?? 'unsend_failed' };
+    }
+  }
+
+  /**
+   * Issue #4114 Wave 3: photos, videos and cards shared in one chat, newest
+   * first, for the chat's "Photos, videos and cards" sheet.
+   */
+  async getConversationMedia(
+    conversationId: string,
+    limit: number = 60,
+  ): Promise<{ items: DirectMessage[]; error: string | null }> {
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .in('message_type', ['image', 'video', 'card'])
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      // Issue #4114 Wave 4: view-once items never appear in the shared media grid.
+      const items = ((data ?? []) as DirectMessage[]).filter((item) => item.view_once !== true);
+      return { items, error: null };
+    } catch (error: any) {
+      console.error('Error loading chat media:', error);
+      return { items: [], error: error?.message ?? 'media_failed' };
+    }
+  }
+
+  /**
+   * Issue #4114 Wave 3: mute or unmute one group chat for this member
+   * (`conversation_participants.notifications_muted`, which notify-message
+   * honours). RLS limits the update to the member's own row.
+   */
+  async setConversationMuted(conversationId: string, userId: string, muted: boolean): Promise<{ error: string | null }> {
+    try {
+      const { error } = await supabase
+        .from('conversation_participants')
+        .update({ notifications_muted: muted })
+        .eq('conversation_id', conversationId)
+        .eq('user_id', userId);
+      if (error) throw error;
+      return { error: null };
+    } catch (error: any) {
+      console.error('Error updating chat mute:', error);
+      return { error: error?.message ?? 'mute_failed' };
     }
   }
 
@@ -958,14 +1228,24 @@ export class MessagingService {
     fileSize?: number,
     replyToId?: string,
     mentions: MentionEntry[] = [],
-    cardTags: CardTagEntry[] = []
+    cardTags: CardTagEntry[] = [],
+    clientId?: string,
+    options: {
+      viewOnce?: boolean;
+      /** Issue #4114 Wave 7: thumbnail path, media facts and album id (only sent when present). */
+      thumbPath?: string | null;
+      durationMs?: number | null;
+      width?: number | null;
+      height?: number | null;
+      albumId?: string | null;
+    } = {},
   ): Promise<{ message: DirectMessage | null; error: string | null }> {
     try {
       const validatedMentions = this.validateMentionEntries(mentions);
       const validatedCardTags = this.validateCardTagEntries(cardTags);
 
       // Note: Server-side RLS will also enforce block check, but this provides faster feedback
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('messages')
         .insert({
           conversation_id: conversationId,
@@ -978,9 +1258,35 @@ export class MessagingService {
           mentions: validatedMentions,
           card_tags: validatedCardTags,
           ...(replyToId ? { reply_to_id: replyToId } : {}),
+          ...(clientId ? { client_id: clientId } : {}),
+          // Issue #4114 Wave 4: only sent when true, so ordinary sends never name the column.
+          ...(options.viewOnce === true ? { view_once: true } : {}),
+          ...mediaFactsForInsert(options),
         })
         .select()
         .single();
+
+      // Issue #4114: idempotent send. A retry reuses the same client_id; if the
+      // first attempt already landed (its response was lost), the partial unique
+      // index refuses the second insert with 23505 and we return the row that is
+      // already there instead of inserting a copy. PostgREST upsert cannot target
+      // a partial index, so the conflict is caught and the row selected here.
+      if (error && clientId && error.code === '23505') {
+        const existing = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .eq('client_id', clientId)
+          .eq('sender_id', senderId)
+          .maybeSingle();
+        if (existing.error) throw existing.error;
+        if (!existing.data) {
+          // The index refused the insert but the row is not ours or not readable.
+          throw new Error('Message was refused as a duplicate but the original could not be found');
+        }
+        data = existing.data;
+        error = null;
+      }
 
       if (error) {
         // RLS violation (42501): either a block (DM context) OR broadcast-only enforcement
@@ -998,6 +1304,10 @@ export class MessagingService {
       // Send notifications to recipients (non-blocking). Mentioned recipients get the
       // higher-priority mention notification only; everyone else receives the normal
       // message notification. This prevents duplicate push rows for one message.
+      // A retry that found its first attempt already stored (23505 above) still
+      // notifies: the first attempt may have died before its push went out. Every
+      // push carries the message id and notify-message keys DM pushes on it, so
+      // a retry never sends a second push for the same message.
       this.sendPartitionedMessageNotifications(
         conversationId,
         senderId,
@@ -1102,22 +1412,48 @@ export class MessagingService {
         .maybeSingle();
 
       if (error) throw error;
-      if (!conv) {
+      let resolved = conv;
+      if (!resolved) {
+        // Issue #4114 Wave 5: a collab started from a 1:1 chat has no group
+        // chat; it talks in that 1:1 chat (collaboration_sessions.conversation_id),
+        // mirroring the server's resolve_session_conversation.
+        const { data: link, error: linkError } = await supabase
+          .from('collaboration_sessions')
+          .select('conversation_id')
+          .eq('id', sessionId)
+          .maybeSingle();
+        if (linkError) throw linkError;
+        const dmConversationId = (link as { conversation_id: string | null } | null)?.conversation_id ?? null;
+        if (dmConversationId) {
+          const { data: dm, error: dmError } = await supabase
+            .from('conversations')
+            .select(`
+              id, type, name, session_id, linked_entity_type, created_by, created_at, updated_at, last_message_at,
+              participants:conversation_participants(id, conversation_id, user_id, joined_at, last_read_at)
+            `)
+            .eq('id', dmConversationId)
+            .maybeSingle();
+          if (dmError) throw dmError;
+          resolved = dm;
+        }
+      }
+      if (!resolved) {
         return { conversation: null, error: 'Group conversation not found for this session' };
       }
+      const conv2 = resolved;
 
       return {
         conversation: {
-          id: conv.id,
-          type: conv.type as 'direct' | 'group',
-          name: conv.name ?? null,
-          session_id: conv.session_id ?? null,
-          linked_entity_type: conv.linked_entity_type as 'direct' | 'session' | 'trip' | 'event' | undefined,
-          created_by: conv.created_by,
-          created_at: conv.created_at,
-          updated_at: conv.updated_at,
-          last_message_at: conv.last_message_at ?? undefined,
-          participants: (conv.participants as any[]) || [],
+          id: conv2.id,
+          type: conv2.type as 'direct' | 'group',
+          name: conv2.name ?? null,
+          session_id: conv2.session_id ?? null,
+          linked_entity_type: conv2.linked_entity_type as 'direct' | 'session' | 'trip' | 'event' | undefined,
+          created_by: conv2.created_by,
+          created_at: conv2.created_at,
+          updated_at: conv2.updated_at,
+          last_message_at: conv2.last_message_at ?? undefined,
+          participants: (conv2.participants as any[]) || [],
         },
         error: null,
       };
@@ -1255,6 +1591,34 @@ export class MessagingService {
   }
 
   /**
+   * Issue #4114: this member's private list state for one chat — pin, unpin,
+   * mark unread, mark read. The server refuses a 4th pin with
+   * `pin_limit_reached`; that code is returned as the error so the caller can
+   * explain it.
+   */
+  async setConversationListState(
+    conversationId: string,
+    action: 'pin' | 'unpin' | 'mark_unread' | 'mark_read',
+  ): Promise<{ error: string | null; pinLimitReached: boolean }> {
+    try {
+      const { error } = await supabase.rpc('set_conversation_list_state', {
+        p_conversation_id: conversationId,
+        p_action: action,
+      });
+      if (error) {
+        if (error.message?.includes('pin_limit_reached')) {
+          return { error: 'pin_limit_reached', pinLimitReached: true };
+        }
+        throw error;
+      }
+      return { error: null, pinLimitReached: false };
+    } catch (error: any) {
+      console.error('Error updating conversation list state:', error);
+      return { error: error?.message ?? 'unknown_error', pinLimitReached: false };
+    }
+  }
+
+  /**
    * ORCH-0667: Send a card-type message containing a snapshot of the saved card.
    * Mirrors sendMessage but with message_type='card' and card_payload populated.
    * The `content` field carries forward-safe text so old-build clients (pre-fix)
@@ -1386,22 +1750,84 @@ export class MessagingService {
   }
 
   /**
+   * Issue #4114 QA: marks every message from others in this chat read (not
+   * only the loaded page), so the Chats badge clears for a chat with more
+   * unread than one page. Reads the chat's message ids and this person's read
+   * rows, then upserts the missing reads in chunks.
+   */
+  async markConversationRead(conversationId: string, userId: string): Promise<{ error: string | null }> {
+    try {
+      const { data: rows, error: idsError } = await supabase
+        .from('messages')
+        .select('id')
+        .eq('conversation_id', conversationId)
+        .neq('sender_id', userId)
+        .is('deleted_at', null);
+      if (idsError) throw idsError;
+      const ids = (rows ?? []).map((row: { id: string }) => row.id);
+      if (ids.length === 0) return { error: null };
+      const readIds: string[] = [];
+      for (let index = 0; index < ids.length; index += MARK_READ_CHUNK) {
+        const { data: reads, error: readsError } = await supabase
+          .from('message_reads')
+          .select('message_id')
+          .eq('user_id', userId)
+          .in('message_id', ids.slice(index, index + MARK_READ_CHUNK));
+        if (readsError) throw readsError;
+        for (const read of reads ?? []) readIds.push((read as { message_id: string }).message_id);
+      }
+      const unread = idsStillUnread(ids, readIds);
+      for (let index = 0; index < unread.length; index += MARK_READ_CHUNK) {
+        const chunk = unread.slice(index, index + MARK_READ_CHUNK);
+        const { error } = await supabase
+          .from('message_reads')
+          .upsert(chunk.map((messageId) => ({ message_id: messageId, user_id: userId })), { onConflict: 'message_id,user_id' });
+        if (error) throw error;
+      }
+      const { error: participantError } = await supabase
+        .from('conversation_participants')
+        .update({ last_read_at: new Date().toISOString() })
+        .eq('conversation_id', conversationId)
+        .eq('user_id', userId);
+      if (participantError) throw participantError;
+      return { error: null };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : (error as { message?: string })?.message ?? 'mark_read_failed';
+      console.error('[messagingService] marking the chat read failed:', message);
+      return { error: message };
+    }
+  }
+
+  /**
    * Subscribe to real-time messages for a conversation
    */
   subscribeToConversation(
-    conversationId: string,
+    conversationId: string | readonly string[],
     userId: string,
     callbacks: {
       onMessage?: (message: DirectMessage) => void;
       onMessageUpdated?: (message: DirectMessage) => void;
       onMessageDeleted?: (messageId: string) => void;
+      /**
+       * Issue #4114 QA: a reaction added or removed, or a view-once item
+       * opened. These tables have no conversation_id, so they are not
+       * filtered here: RLS limits inserts to chats you are in (reactions) or
+       * items you sent or opened (views); a delete carries only the row id and
+       * is matched against the chat's own reaction ids by the caller.
+       */
+      onLiveChange?: (change: ChatLiveChange) => void;
     }
   ): RealtimeChannel {
-    const channelName = `conversation:${conversationId}`;
+    // Issue #4114 Wave 6: one channel for one chat, or for all of a brand
+    // channel's event chats (filter `conversation_id=in.(…)`). The channel is
+    // released with unsubscribeFromConversation(conversationChannelKey(ids)).
+    const channelKey = conversationChannelKey(conversationId);
+    const filter = conversationRealtimeFilter(conversationId);
+    const channelName = `conversation:${channelKey}`;
 
     // Unsubscribe if already subscribed
     if (this.channels.has(channelName)) {
-      this.unsubscribeFromConversation(conversationId);
+      this.unsubscribeFromConversation(channelKey);
     }
 
     const channel = supabase
@@ -1412,7 +1838,7 @@ export class MessagingService {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
+          filter,
         },
         async (payload) => {
           const enrichedMessage = await this.enrichMessageRealtime(payload.new as any);
@@ -1425,7 +1851,7 @@ export class MessagingService {
           event: 'UPDATE',
           schema: 'public',
           table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
+          filter,
         },
         async (payload) => {
           const enrichedMessage = await this.enrichMessageRealtime(payload.new as any);
@@ -1438,15 +1864,56 @@ export class MessagingService {
           event: 'DELETE',
           schema: 'public',
           table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
+          filter,
         },
         (payload) => {
           callbacks.onMessageDeleted?.(payload.old.id);
         }
-      )
+      );
+
+    if (callbacks.onLiveChange) {
+      const onLiveChange = callbacks.onLiveChange;
+      channel
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'direct_message_reactions' },
+          (payload) => {
+            const row = payload.new as { id?: string; message_id?: string; user_id?: string; emoji?: string };
+            if (!row.id || !row.message_id || !row.user_id || !row.emoji) return;
+            onLiveChange({
+              kind: 'reaction_insert',
+              messageId: row.message_id,
+              row: { id: row.id, user_id: row.user_id, emoji: row.emoji },
+            });
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'DELETE', schema: 'public', table: 'direct_message_reactions' },
+          (payload) => {
+            const id = (payload.old as { id?: string } | null)?.id;
+            if (id) onLiveChange({ kind: 'reaction_delete', reactionId: id });
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'message_media_views' },
+          (payload) => {
+            const row = payload.new as { message_id?: string; user_id?: string; viewed_at?: string };
+            if (!row.message_id || !row.user_id || !row.viewed_at) return;
+            onLiveChange({
+              kind: 'media_view',
+              messageId: row.message_id,
+              row: { user_id: row.user_id, viewed_at: row.viewed_at },
+            });
+          }
+        );
+    }
+
+    channel
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          console.log(`Subscribed to conversation: ${conversationId}`);
+          console.log(`Subscribed to conversation: ${channelKey}`);
         }
       });
 
@@ -1631,6 +2098,7 @@ export class MessagingService {
             senderId,
             conversationId,
             recipientId,
+            messageId: message.id,
             messagePreview,
           },
         }).catch((err) =>

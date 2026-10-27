@@ -16,6 +16,7 @@
     "adventurous": "Phiêu lưu", "firstDate": "Buổi hẹn đầu", "romantic": "Lãng mạn", "groupFun": "Vui nhóm", "picnicDates": "Hẹn hò dã ngoại", "takeAStroll": "Đi dạo"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "Chúng tôi không thể nhắn tin tới {{phone}}. Hãy chia sẻ liên kết mời cho họ.",
     "adminPrivileges": "Quyền quản trị", "manageBoard": "Quản lý bảng", "renameBoard": "Đổi tên bảng",
     "inviteParticipants": "Mời người tham gia", "turnOffNotifications": "Tắt thông báo", "turnOnNotifications": "Bật thông báo",
     "leaveBoard": "Rời bảng", "leaving": "Đang rời...", "deleteBoard": "Xóa bảng",

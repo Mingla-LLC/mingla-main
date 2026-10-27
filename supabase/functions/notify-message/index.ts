@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { unifiedMessageIdempotencyKey } from "./messageKeys.ts";
 
 // Loose type alias for the Supabase admin client passed into helper functions. The strict
 // generic-defaulted SupabaseClient<unknown, never, ...> from ReturnType<typeof createClient>
@@ -117,6 +118,7 @@ async function handleUnifiedMessage(
   senderName: string,
   conversationId: string,
   messagePreview: string | undefined,
+  messageId?: string,
 ): Promise<{ notified: number }> {
   // Fetch conversation metadata (single query — includes type, name, linked_entity_type, session_id, event_id).
   const { data: conv, error: convErr } = await adminClient
@@ -154,15 +156,19 @@ async function handleUnifiedMessage(
   }
 
   // Idempotency key: collapse messages within the same 5-minute bucket for groups (mirrors
-  // legacy board_message behavior). Direct DMs get unique per-message keys (mirrors legacy
-  // direct_message behavior).
+  // legacy board_message behavior). Direct DMs key on the message id when the caller sends
+  // one (#4114: a send retry re-notifies and must not push twice); see messageKeys.ts.
   const messageTimestamp = Date.now();
-  const fiveBucket = Math.floor(messageTimestamp / (5 * 60 * 1000));
 
   const dispatches = recipients.map((r: { user_id: string; notifications_muted: boolean }) => {
-    const idempotencyKey = isGroup
-      ? `group_msg:${conversationId}:${fiveBucket}:${r.user_id}`
-      : `dm:${senderId}:${conversationId}:${messageTimestamp}`;
+    const idempotencyKey = unifiedMessageIdempotencyKey({
+      isGroup,
+      conversationId,
+      senderId,
+      recipientId: r.user_id,
+      messageId,
+      nowMs: messageTimestamp,
+    });
 
     const pushOverrides: Record<string, unknown> = {
       androidChannelId: "messages",
@@ -336,7 +342,7 @@ serve(async (req) => {
 
     // ORCH-0898 canonical: unified message type.
     if (type === "message") {
-      const { conversationId, messagePreview } = body;
+      const { conversationId, messagePreview, messageId } = body;
       if (!conversationId) {
         return jsonResponse({ error: "conversationId required for message" }, 400);
       }
@@ -348,6 +354,7 @@ serve(async (req) => {
         senderName,
         conversationId,
         messagePreview,
+        messageId,
       );
       return jsonResponse({ success: true, notified });
     }
@@ -383,7 +390,7 @@ serve(async (req) => {
 
     if (type === "direct_message") {
       console.warn("[notify-message] DEPRECATED type=direct_message — migrate to type=message (ORCH-0898). Routing through unified handler.");
-      const { conversationId, messagePreview } = body;
+      const { conversationId, messagePreview, messageId } = body;
       if (!conversationId) {
         return jsonResponse({ error: "conversationId required for direct_message (deprecated)" }, 400);
       }
@@ -395,6 +402,7 @@ serve(async (req) => {
         senderName,
         conversationId,
         messagePreview,
+        messageId,
       );
       return jsonResponse({ success: true, notified });
     }

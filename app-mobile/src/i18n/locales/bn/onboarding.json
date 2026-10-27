@@ -178,7 +178,14 @@
     "alert_decline_error": "জুটি অনুরোধ প্রত্যাখ্যান করা যায়নি। আবার চেষ্টা করুন।",
     "alert_generic_error": "অনুরোধ প্রক্রিয়া করা যায়নি। আবার চেষ্টা করুন।",
     "share_message": "হ্যালো! Mingla-তে আমার সাথে যোগ দিন এবং একসাথে দারুণ অভিজ্ঞতা খুঁজি। https://usemingla.com",
-    "fallback_user": "ব্যবহারকারী"
+    "fallback_user": "ব্যবহারকারী",
+    "invite_card_title": "আপনার মানুষেরা ইতিমধ্যে এখানে",
+    "invite_card_body": "{{name}} আপনাকে Mingla-তে আমন্ত্রণ জানিয়েছে। বন্ধু হতে এবং একে অপরের জন্মদিন, পরিকল্পনা ও সংরক্ষিত দেখতে গ্রহণ করুন।",
+    "invite_card_sub": "★ বন্ধু + জোড়া · আপনাকে SMS-এ আমন্ত্রণ জানিয়েছে",
+    "invite_card_accept": "গ্রহণ করুন",
+    "invite_card_not_now": "এখন নয়",
+    "invite_card_done": "আপনি {{name}}-এর বন্ধু ও জোড়া",
+    "invite_card_friends_only": "আপনি {{name}}-এর বন্ধু"
   },
   "collaborations": {
     "headline": "একসাথে পরিকল্পনা করুন",

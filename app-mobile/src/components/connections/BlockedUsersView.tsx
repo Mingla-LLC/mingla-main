@@ -1,171 +1,143 @@
+/**
+ * Issue #4114 Wave 2b — Blocked, opened from the "Blocked N ›" row at the
+ * bottom of the friends sheet's Friends tab. Dark, like the rest of the sheet
+ * (the old light empty state was 65% white on white, so it was invisible).
+ */
 import React from "react";
-import {
-  Text,
-  View,
-  TouchableOpacity,
-  FlatList,
-  ActivityIndicator,
-  Alert,
-  StyleSheet,
-} from "react-native";
-import { useTranslation } from 'react-i18next';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
 import { Icon } from "../ui/Icon";
 import { BlockedUser } from "../../hooks/useFriends";
+import { glass } from "../../constants/designSystem";
+import { ChatAvatar } from "./ChatAvatar";
+
+const ink = glass.discover.chatList;
+const fs = glass.discover.friendsSheet;
 
 interface BlockedUsersViewProps {
   blockedUsers: BlockedUser[];
   loading: boolean;
   onUnblock: (blockedUserId: string) => void;
+  onBack: () => void;
 }
 
-function getInitials(name: string): string {
-  if (!name) return "?";
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .substring(0, 2);
-}
+export function BlockedUsersView({ blockedUsers, loading, onUnblock, onBack }: BlockedUsersViewProps): React.ReactElement {
+  const { t } = useTranslation(["social", "connections", "common"]);
 
-export function BlockedUsersView({
-  blockedUsers,
-  loading,
-  onUnblock,
-}: BlockedUsersViewProps) {
-  const { t } = useTranslation(['social', 'common']);
   const handleUnblock = (user: BlockedUser) => {
-    const displayName = user.name || user.username || "this user";
-    Alert.alert(
-      t('social:unblockTitle', { name: displayName }),
-      t('social:unblockMessage'),
-      [
-        { text: t('social:cancel'), style: "cancel" },
-        {
-          text: t('social:unblock'),
-          style: "destructive",
-          onPress: () => onUnblock(user.id),
-        },
-      ]
-    );
-  };
-
-  if (loading) {
-    return (
-      <View style={styles.loadingState}>
-        <ActivityIndicator size="small" color="#eb7825" />
-      </View>
-    );
-  }
-
-  if (blockedUsers.length === 0) {
-    return (
-      <View style={styles.emptyState}>
-        <Icon name="ban-outline" size={32} color="#d1d5db" />
-        <Text style={styles.emptyText}>{t('social:noBlockedUsers')}</Text>
-      </View>
-    );
-  }
-
-  const renderBlockedUser = ({ item }: { item: BlockedUser }) => {
-    const displayName = item.name || item.username || "Unknown";
-    return (
-      <View style={styles.userRow}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{getInitials(displayName)}</Text>
-        </View>
-        <View style={styles.userInfo}>
-          <Text style={styles.userName} numberOfLines={1}>
-            {displayName}
-          </Text>
-        </View>
-        <TouchableOpacity
-          onPress={() => handleUnblock(item)}
-          style={styles.unblockButton}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.unblockText}>{t('social:unblock')}</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    const displayName = user.name || user.username || t("social:thisUser", { defaultValue: "this user" });
+    Alert.alert(t("social:unblockTitle", { name: displayName }), t("social:unblockMessage"), [
+      { text: t("social:cancel"), style: "cancel" },
+      { text: t("social:unblock"), style: "destructive", onPress: () => onUnblock(user.id) },
+    ]);
   };
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={blockedUsers}
-        keyExtractor={(item) => item.id}
-        renderItem={renderBlockedUser}
-        scrollEnabled={false}
-      />
+      <Pressable
+        onPress={onBack}
+        accessibilityRole="button"
+        accessibilityLabel={t("connections:fs_back_a11y")}
+        style={styles.backRow}
+        hitSlop={6}
+      >
+        <Icon name="chevron-back" size={18} color={ink.dim} />
+        <Text style={styles.backText}>{t("connections:fs_blocked_title")}</Text>
+      </Pressable>
+
+      {loading && blockedUsers.length === 0 ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator color={ink.accent} />
+        </View>
+      ) : blockedUsers.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Icon name="ban-outline" size={28} color={ink.faint} />
+          <Text style={styles.emptyText}>{t("connections:fs_empty_blocked")}</Text>
+        </View>
+      ) : (
+        blockedUsers.map((item) => {
+          const displayName = item.name || item.username || "Unknown";
+          return (
+            <View key={item.id} style={styles.userRow}>
+              <ChatAvatar people={[{ id: item.id, name: displayName, avatarUrl: item.avatar_url }]} shape="circle" label={displayName} size={44} />
+              <View style={styles.userInfo}>
+                <Text style={styles.userName} numberOfLines={1}>{displayName}</Text>
+                {item.username ? <Text style={styles.userUsername} numberOfLines={1}>@{item.username}</Text> : null}
+              </View>
+              <Pressable
+                onPress={() => handleUnblock(item)}
+                accessibilityRole="button"
+                accessibilityLabel={`${t("social:unblock")} ${displayName}`}
+                style={styles.unblockButton}
+              >
+                <Text style={styles.unblockText}>{t("social:unblock")}</Text>
+              </Pressable>
+            </View>
+          );
+        })
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#f9fafb",
-    borderRadius: 12,
-    marginHorizontal: 16,
+    paddingHorizontal: 14,
+    paddingBottom: 32,
   },
-  loadingState: {
-    paddingVertical: 24,
+  backRow: {
+    flexDirection: "row",
     alignItems: "center",
-    marginHorizontal: 16,
+    gap: 4,
+    paddingVertical: 10,
+    paddingHorizontal: 2,
+  },
+  backText: {
+    color: ink.ink,
+    fontSize: 15,
+    fontWeight: "600",
   },
   emptyState: {
     paddingVertical: 24,
     alignItems: "center",
-    marginHorizontal: 16,
+    gap: 8,
   },
   emptyText: {
     fontSize: 14,
-    color: "rgba(255, 255, 255, 0.65)",
-    marginTop: 8,
+    color: ink.dim,
   },
   userRow: {
+    minHeight: 60,
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#6366f1",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-  avatarText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600",
+    gap: 12,
+    paddingHorizontal: 4,
   },
   userInfo: {
     flex: 1,
     minWidth: 0,
-    marginRight: 8,
   },
   userName: {
-    fontSize: 15,
+    fontSize: 15.5,
     fontWeight: "600",
-    color: "#111827",
+    color: ink.ink,
   },
   userUsername: {
-    fontSize: 13,
-    color: "#9ca3af",
+    fontSize: 12.5,
+    color: ink.faint,
     marginTop: 1,
   },
   unblockButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    minHeight: 32,
+    paddingHorizontal: 13,
+    borderRadius: 16,
+    backgroundColor: fs.ghostButtonBg,
+    alignItems: "center",
+    justifyContent: "center",
   },
   unblockText: {
-    color: "#ef4444",
-    fontSize: 14,
-    fontWeight: "600",
+    color: ink.destructive,
+    fontSize: 13,
+    fontWeight: "700",
   },
 });

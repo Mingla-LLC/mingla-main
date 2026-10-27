@@ -482,7 +482,7 @@ BEGIN
       'person:17720100-0000-4000-8000-000000000030','approve',
       '17720100-0000-4000-8000-000000000073');
     RAISE EXCEPTION 'legacy RSVP wrapper accepted a stale status';
-  EXCEPTION WHEN serialization_failure THEN
+  EXCEPTION WHEN sqlstate 'PT409' THEN
     IF SQLERRM NOT LIKE '%guest_roster_status_changed%' THEN RAISE; END IF;
   END;
 END

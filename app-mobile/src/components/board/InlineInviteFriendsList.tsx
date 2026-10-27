@@ -23,6 +23,7 @@ import {
   Image,
 } from "react-native";
 import { Icon } from "../ui/Icon";
+import { chatTokens } from "../../constants/chatTokens";
 import { getDisplayName } from "../../utils/getDisplayName";
 import { supabase } from "../../services/supabase";
 import { useTranslation } from "react-i18next";
@@ -41,6 +42,8 @@ interface InlineInviteFriendsListProps {
   sessionName: string;
   existingParticipantIds: string[];
   onInvitesSent?: () => void;
+  /** Issue #4114 QA: "dark" inside the dark chat's group settings. */
+  theme?: "light" | "dark";
 }
 
 export const InlineInviteFriendsList: React.FC<InlineInviteFriendsListProps> = ({
@@ -48,7 +51,10 @@ export const InlineInviteFriendsList: React.FC<InlineInviteFriendsListProps> = (
   sessionName,
   existingParticipantIds,
   onInvitesSent,
+  theme = "light",
 }) => {
+  const st = theme === "dark" ? darkStyles : styles;
+  const pal = theme === "dark" ? DARK_PALETTE : LIGHT_PALETTE;
   const { user } = useAppStore();
   const { t } = useTranslation(["board", "common"]);
 
@@ -191,14 +197,14 @@ export const InlineInviteFriendsList: React.FC<InlineInviteFriendsListProps> = (
   };
 
   return (
-    <View style={styles.container}>
+    <View style={st.container}>
       {/* Search */}
-      <View style={styles.searchContainer}>
-        <Icon name="search" size={16} color="#9ca3af" style={styles.searchIcon} />
+      <View style={st.searchContainer}>
+        <Icon name="search" size={16} color={pal.textMuted} style={st.searchIcon} />
         <TextInput
-          style={styles.searchInput}
+          style={st.searchInput}
           placeholder={t("board:inlineInviteFriendsList.searchPlaceholder")}
-          placeholderTextColor="#9ca3af"
+          placeholderTextColor={pal.textMuted}
           value={searchQuery}
           onChangeText={setSearchQuery}
           autoCapitalize="none"
@@ -210,29 +216,29 @@ export const InlineInviteFriendsList: React.FC<InlineInviteFriendsListProps> = (
             accessibilityRole="button"
             accessibilityLabel="Clear search"
           >
-            <Icon name="close-circle" size={18} color="#9ca3af" />
+            <Icon name="close-circle" size={18} color={pal.textMuted} />
           </TouchableOpacity>
         )}
       </View>
 
       {/* Friends list */}
-      <View style={styles.friendsList}>
+      <View style={st.friendsList}>
         {loadingFriends ? (
-          <View style={styles.loadingContainer}>
+          <View style={st.loadingContainer}>
             <ActivityIndicator size="small" color="#eb7825" />
-            <Text style={styles.loadingText}>Loading friends...</Text>
+            <Text style={st.loadingText}>Loading friends...</Text>
           </View>
         ) : displayList.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Icon name="users" size={28} color="#9ca3af" />
-            <Text style={styles.emptyStateTitle}>
+          <View style={st.emptyState}>
+            <Icon name="users" size={28} color={pal.textMuted} />
+            <Text style={st.emptyStateTitle}>
               {searchQuery
                 ? t("board:inlineInviteFriendsList.noUsersFound")
                 : availableFriends.length === 0
                 ? t("board:inlineInviteFriendsList.allFriendsInBoard")
                 : t("board:inlineInviteFriendsList.noFriendsAvailable")}
             </Text>
-            <Text style={styles.emptyStateText}>
+            <Text style={st.emptyStateText}>
               {searchQuery
                 ? t("board:inlineInviteFriendsList.tryDifferentName")
                 : t("board:inlineInviteFriendsList.addMoreFriends")}
@@ -240,7 +246,7 @@ export const InlineInviteFriendsList: React.FC<InlineInviteFriendsListProps> = (
           </View>
         ) : (
           <ScrollView
-            style={styles.friendsScroll}
+            style={st.friendsScroll}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
@@ -249,25 +255,25 @@ export const InlineInviteFriendsList: React.FC<InlineInviteFriendsListProps> = (
               return (
                 <TouchableOpacity
                   key={friend.id}
-                  style={[styles.friendItem, isSelected && styles.friendItemSelected]}
+                  style={[st.friendItem, isSelected && st.friendItemSelected]}
                   onPress={() => toggleFriendSelection(friend)}
                   activeOpacity={0.7}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: isSelected }}
                   accessibilityLabel={friend.name}
                 >
-                  <View style={styles.friendAvatar}>
+                  <View style={st.friendAvatar}>
                     {friend.avatar ? (
-                      <Image source={{ uri: friend.avatar }} style={styles.friendAvatarImage} />
+                      <Image source={{ uri: friend.avatar }} style={st.friendAvatarImage} />
                     ) : (
-                      <Text style={styles.friendAvatarText}>{getInitials(friend.name)}</Text>
+                      <Text style={st.friendAvatarText}>{getInitials(friend.name)}</Text>
                     )}
                   </View>
-                  <View style={styles.friendInfo}>
-                    <Text style={styles.friendName}>{friend.name}</Text>
+                  <View style={st.friendInfo}>
+                    <Text style={st.friendName}>{friend.name}</Text>
                   </View>
                   {isSelected && (
-                    <View style={styles.friendCheckmark}>
+                    <View style={st.friendCheckmark}>
                       <Icon name="checkmark" size={14} color="#FFFFFF" />
                     </View>
                   )}
@@ -281,7 +287,7 @@ export const InlineInviteFriendsList: React.FC<InlineInviteFriendsListProps> = (
       {/* Send button */}
       {selectedFriends.length > 0 && (
         <TouchableOpacity
-          style={[styles.sendButton, sending && styles.sendButtonDisabled]}
+          style={[st.sendButton, sending && st.sendButtonDisabled]}
           onPress={handleSendInvites}
           disabled={sending}
           accessibilityRole="button"
@@ -292,7 +298,7 @@ export const InlineInviteFriendsList: React.FC<InlineInviteFriendsListProps> = (
           ) : (
             <>
               <Icon name="send" size={16} color="white" />
-              <Text style={styles.sendButtonText}>
+              <Text style={st.sendButtonText}>
                 {t("board:inlineInviteFriendsList.sendInvites", { count: selectedFriends.length })}
               </Text>
             </>
@@ -303,7 +309,47 @@ export const InlineInviteFriendsList: React.FC<InlineInviteFriendsListProps> = (
   );
 };
 
-const styles = StyleSheet.create({
+// Issue #4114 QA (P3): dark inside the dark group settings sheet, on the chat tokens.
+interface InvitePalette {
+  searchBg: string;
+  textPrimary: string;
+  textBody: string;
+  textSoft: string;
+  textMuted: string;
+  itemBg: string;
+  itemBorder: string;
+  selectedBg: string;
+  selectedBorder: string;
+  disabledBg: string;
+}
+
+const LIGHT_PALETTE: InvitePalette = {
+  searchBg: "#f3f4f6",
+  textPrimary: "#111827",
+  textBody: "#374151",
+  textSoft: "#6b7280",
+  textMuted: "#9ca3af",
+  itemBg: "white",
+  itemBorder: "#f3f4f6",
+  selectedBg: "#fff7ed",
+  selectedBorder: "#eb782533",
+  disabledBg: "#d1d5db",
+};
+
+const DARK_PALETTE: InvitePalette = {
+  searchBg: chatTokens.strip,
+  textPrimary: chatTokens.textPrimary,
+  textBody: chatTokens.textSecondary,
+  textSoft: chatTokens.textSoft,
+  textMuted: chatTokens.textSoft,
+  itemBg: chatTokens.surfaceRaised,
+  itemBorder: chatTokens.hairline,
+  selectedBg: chatTokens.accentSoft,
+  selectedBorder: chatTokens.accent,
+  disabledBg: chatTokens.hairline,
+};
+
+const makeStyles = (p: InvitePalette) => StyleSheet.create({
   container: {
     paddingVertical: 8,
     gap: 10,
@@ -311,7 +357,7 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f3f4f6",
+    backgroundColor: p.searchBg,
     borderRadius: 10,
     paddingHorizontal: 12,
     height: 40,
@@ -322,7 +368,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 15,
-    color: "#111827",
+    color: p.textPrimary,
     paddingVertical: 0,
   },
   friendsList: {
@@ -338,7 +384,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 14,
-    color: "#6b7280",
+    color: p.textSoft,
   },
   emptyState: {
     alignItems: "center",
@@ -348,29 +394,29 @@ const styles = StyleSheet.create({
   emptyStateTitle: {
     fontSize: 14,
     fontWeight: "500",
-    color: "#374151",
+    color: p.textBody,
     textAlign: "center",
   },
   emptyStateText: {
     fontSize: 12,
-    color: "#9ca3af",
+    color: p.textMuted,
     textAlign: "center",
     paddingHorizontal: 16,
   },
   friendItem: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "white",
+    backgroundColor: p.itemBg,
     borderRadius: 10,
     padding: 10,
     gap: 10,
     marginBottom: 6,
     borderWidth: 1,
-    borderColor: "#f3f4f6",
+    borderColor: p.itemBorder,
   },
   friendItemSelected: {
-    backgroundColor: "#fff7ed",
-    borderColor: "#eb782533",
+    backgroundColor: p.selectedBg,
+    borderColor: p.selectedBorder,
   },
   friendAvatar: {
     width: 36,
@@ -396,7 +442,7 @@ const styles = StyleSheet.create({
   friendName: {
     fontSize: 14,
     fontWeight: "500",
-    color: "#111827",
+    color: p.textPrimary,
   },
   friendCheckmark: {
     width: 22,
@@ -416,7 +462,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   sendButtonDisabled: {
-    backgroundColor: "#d1d5db",
+    backgroundColor: p.disabledBg,
   },
   sendButtonText: {
     fontSize: 14,
@@ -424,5 +470,8 @@ const styles = StyleSheet.create({
     color: "white",
   },
 });
+
+const styles = makeStyles(LIGHT_PALETTE);
+const darkStyles = makeStyles(DARK_PALETTE);
 
 export default InlineInviteFriendsList;

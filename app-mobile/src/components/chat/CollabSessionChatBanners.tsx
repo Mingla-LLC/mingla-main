@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useReducer, useRef } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
@@ -24,6 +25,15 @@ import type { ExpansionTarget } from "../../types/expansion";
 // ORCH-1054 [matches-expanded-card-parity]: canonical deck-parity mapper still
 // used inside expansionTargetFromSavedPayload for places/curated.
 import { expansionTargetFromSavedPayload } from "../../utils/expansionTargetFromSavedPayload";
+import { groupPlans } from "./chatHeaderModel";
+import { chatTokens } from "../../constants/chatTokens";
+import {
+  initialSheetCardState,
+  sheetCardReducer,
+  SHEET_DISMISS_WATCHDOG_MS,
+  type SheetCardEvent,
+  type SheetCardState,
+} from "./sheetCardHandoff";
 
 interface Props {
   sessionId: string;
@@ -69,11 +79,23 @@ function cardTitle(
   return typeof title === "string" && title.trim() ? title : "Untitled card";
 }
 
-export function useSessionSavedCardsForSheet(sessionId: string | null | undefined): {
+export function useSessionSavedCardsForSheet(
+  sessionId: string | null | undefined,
+  options?: {
+    /**
+     * Issue #4114 Wave 3 (D9): told when a match lands, so the chat header can
+     * open its strip and fire a light haptic. Rides the existing board-session
+     * callback set; no new subscription or query.
+     */
+    onMatchPromoted?: () => void;
+  },
+): {
   savedCards: SavedSessionCard[];
   isLoading: boolean;
 } {
   const queryClient = useQueryClient();
+  const onMatchPromotedRef = useRef(options?.onMatchPromoted);
+  onMatchPromotedRef.current = options?.onMatchPromoted;
 
   const query = useQuery<SavedSessionCard[]>({
     queryKey: ["savedCards", sessionId],
@@ -108,6 +130,7 @@ export function useSessionSavedCardsForSheet(sessionId: string | null | undefine
       onCardSaved: invalidateSavedCards,
       onCardLocked: invalidateSavedCards,
       onMatchPromoted: () => {
+        onMatchPromotedRef.current?.();
         if (matchPromotedRefetchTimer) return;
         matchPromotedRefetchTimer = setTimeout(() => {
           matchPromotedRefetchTimer = null;
@@ -157,6 +180,8 @@ function CompactCollabBottomSheet({
   snapPoints,
   scroll = false,
   scrollContentContainerStyle,
+  tone = "light",
+  onNativeDismiss,
   children,
 }: {
   visible: boolean;
@@ -166,35 +191,44 @@ function CompactCollabBottomSheet({
   snapPoints: string[];
   scroll?: boolean;
   scrollContentContainerStyle?: object;
+  /** Issue #4114 QA run 2: the Plans sheet inside the dark chat is dark. */
+  tone?: "light" | "dark";
+  /** Issue #4114 run 3: the sheet's native window has gone (frees the slot for its card). */
+  onNativeDismiss?: () => void;
   children: React.ReactNode;
 }) {
+  const dark = tone === "dark";
   const header = (
-    <View style={styles.compactSheetHeader}>
-      <Text style={styles.compactSheetTitle} numberOfLines={1}>
+    <View style={[styles.compactSheetHeader, dark && styles.compactSheetHeaderDark]}>
+      <Text style={[styles.compactSheetTitle, dark && styles.compactSheetTitleDark]} numberOfLines={1}>
         {title}
       </Text>
       <TouchableOpacity
         onPress={onClose}
-        style={styles.compactSheetCloseButton}
+        style={[styles.compactSheetCloseButton, dark && styles.compactSheetCloseButtonDark]}
         accessibilityRole="button"
         accessibilityLabel={closeAccessibilityLabel}
       >
-        <Icon name="close-outline" size={22} color="#6b7280" />
+        <Icon name="close-outline" size={22} color={dark ? chatTokens.textSecondary : "#6b7280"} />
       </TouchableOpacity>
     </View>
   );
+  const sheetTheme = dark ? "dark" : "light";
+  const backgroundStyle = dark ? styles.compactSheetBackgroundDark : styles.compactSheetBackground;
+  const handleStyle = dark ? styles.compactSheetHandleDark : styles.compactSheetHandle;
 
   if (scroll) {
     return (
       <BaseBottomSheet
         visible={visible}
         onClose={onClose}
-        theme="light"
+        theme={sheetTheme}
         wrapInRNModal
+        onNativeDismiss={onNativeDismiss}
         snapPoints={snapPoints}
         backdropOpacity={0.48}
-        backgroundStyle={styles.compactSheetBackground}
-        handleStyle={styles.compactSheetHandle}
+        backgroundStyle={backgroundStyle}
+        handleStyle={handleStyle}
         bodyContainerStyle={styles.compactSheetContent}
         accessibilityLabel={title}
         scrollMode="scroll"
@@ -213,12 +247,13 @@ function CompactCollabBottomSheet({
     <BaseBottomSheet
       visible={visible}
       onClose={onClose}
-      theme="light"
+      theme={sheetTheme}
       wrapInRNModal
+      onNativeDismiss={onNativeDismiss}
       snapPoints={snapPoints}
       backdropOpacity={0.48}
-      backgroundStyle={styles.compactSheetBackground}
-      handleStyle={styles.compactSheetHandle}
+      backgroundStyle={backgroundStyle}
+      handleStyle={handleStyle}
       bodyContainerStyle={styles.compactSheetContent}
       accessibilityLabel={title}
       scrollMode="view"
@@ -229,64 +264,183 @@ function CompactCollabBottomSheet({
   );
 }
 
+/** The two fields a plan's card opens from (a Plans row, or a plan row in the thread). */
+export interface CollabPlanCardSource {
+  savedCardId: string;
+  cardData: Record<string, unknown> | null;
+}
+
+export interface SheetCard<T> {
+  /** The card on screen; ExpandedCardModal is `visible={!!modalTarget}`. */
+  modalTarget: T | null;
+  /** Open with no sheet up (header strip, thread). */
+  open: (target: T) => void;
+  /** Open from a sheet row: the caller closes the sheet; the card shows once it has dismissed. */
+  openFromSheet: (target: T) => void;
+  /** Wire to the sheet's onNativeDismiss. */
+  onSheetDismissed: () => void;
+  /** The card closed. Clears every bit of card state so the next open presents. */
+  close: () => void;
+}
+
+/**
+ * Issue #4114 QA run 3: the sheet-to-card handoff (see `sheetCardHandoff.ts`).
+ * iOS refuses a card presented over its still-open sheet, so a sheet row holds
+ * the card until the sheet's native window dismisses; an open while a card is
+ * still set clears it and re-presents next frame.
+ */
+export function useSheetCard<T>(): SheetCard<T> {
+  const [state, dispatch] = useReducer(
+    (current: SheetCardState<T>, event: SheetCardEvent<T>) => sheetCardReducer(current, event),
+    undefined,
+    () => initialSheetCardState<T>(),
+  );
+
+  useEffect(() => {
+    if (state.waitFor === "frame") {
+      const frame = requestAnimationFrame(() => dispatch({ type: "frame" }));
+      return () => cancelAnimationFrame(frame);
+    }
+    if (state.waitFor === "sheetDismissed") {
+      // If the native dismiss never arrives, show the card rather than leave a dead tap.
+      const watchdog = setTimeout(() => dispatch({ type: "sheetDismissed" }), SHEET_DISMISS_WATCHDOG_MS);
+      return () => clearTimeout(watchdog);
+    }
+    return undefined;
+  }, [state.waitFor]);
+
+  const open = useCallback((target: T) => dispatch({ type: "open", target }), []);
+  const openFromSheet = useCallback((target: T) => dispatch({ type: "openFromSheet", target }), []);
+  const onSheetDismissed = useCallback(() => dispatch({ type: "sheetDismissed" }), []);
+  const close = useCallback(() => dispatch({ type: "close" }), []);
+  return { modalTarget: state.shown, open, openFromSheet, onSheetDismissed, close };
+}
+
+export interface CollabPlanCard {
+  modalTarget: ExpansionTarget | null;
+  /** Header strip and thread: no sheet is up. */
+  openPlan: (item: CollabPlanCardSource) => void;
+  /** A Plans sheet row: the sheet closes, then the card shows. */
+  openPlanFromSheet: (item: CollabPlanCardSource) => void;
+  onSheetDismissed: () => void;
+  closePlan: () => void;
+}
+
+function planTarget(item: CollabPlanCardSource): ExpansionTarget | null {
+  return expansionTargetFromSavedPayload({
+    ...item.cardData,
+    sourceScope: 'collaboration',
+    sourceRecordId: item.savedCardId,
+    savedCardId: item.savedCardId,
+  });
+}
+
+/**
+ * Issue #4114: one plan-card state for the chat. The Plans sheet, the header
+ * strip's plan cell and the plan rows in the thread all open a plan through
+ * it, and the ONE ExpandedCardModal the Plans sheet renders shows it, so Book,
+ * Share and the #1672 / #3281 dismiss rule are identical everywhere.
+ */
+export function useCollabPlanCard(): CollabPlanCard {
+  const card = useSheetCard<ExpansionTarget>();
+  const { open, openFromSheet } = card;
+  const openPlan = useCallback((item: CollabPlanCardSource) => {
+    const target = planTarget(item);
+    if (target) open(target);
+  }, [open]);
+  const openPlanFromSheet = useCallback((item: CollabPlanCardSource) => {
+    const target = planTarget(item);
+    if (target) openFromSheet(target);
+  }, [openFromSheet]);
+  return {
+    modalTarget: card.modalTarget,
+    openPlan,
+    openPlanFromSheet,
+    onSheetDismissed: card.onSheetDismissed,
+    closePlan: card.close,
+  };
+}
+
 export function ScheduleSheet({
   visible,
   onClose,
   sessionId,
+  currentUserId,
   accountPreferences,
-}: SheetProps & { accountPreferences?: Props["accountPreferences"] }) {
+  planCard,
+}: SheetProps & {
+  accountPreferences?: Props["accountPreferences"];
+  /** Issue #4114: the chat's plan-card state (`useCollabPlanCard`), shared with the strip and the thread. */
+  planCard: CollabPlanCard;
+}) {
+  const { t } = useTranslation(["chat"]);
   const { rows, isLoading, isError, refetch } =
     useSessionScheduledCards(sessionId);
-  const [modalTarget, setModalTarget] = useState<ExpansionTarget | null>(null);
+  const { modalTarget, openPlanFromSheet, onSheetDismissed, closePlan } = planCard;
 
   const hasRows = !isLoading && !isError && rows.length > 0;
+  // Issue #4114 Wave 3 (D9): a collab can set any number of plans. Upcoming
+  // soonest first, then Past, each saying who set it.
+  const planGroups = React.useMemo(() => groupPlans(rows, Date.now()), [rows]);
+  const setByLabel = (item: SessionScheduledCardRow): string =>
+    item.lockedBy && item.lockedBy === currentUserId
+      ? t("chat:planSetByYou")
+      : t("chat:planSetBy", { name: item.lockedByDisplayName || t("chat:planSetBySomeone") });
 
   return (
     <>
       <CompactCollabBottomSheet
         visible={visible}
         onClose={onClose}
-        title="Plans"
-        closeAccessibilityLabel="Close plans"
+        title={t("chat:plansTitle")}
+        closeAccessibilityLabel={t("chat:plansClose")}
         snapPoints={PLANS_SHEET_SNAP_POINTS}
+        tone="dark"
+        onNativeDismiss={onSheetDismissed}
         scroll={hasRows}
         scrollContentContainerStyle={styles.verticalListContent}
       >
         {isLoading ? (
-          <ActivityIndicator style={styles.loading} color="#eb7825" />
+          <ActivityIndicator style={styles.loading} color={chatTokens.accent} />
         ) : isError ? (
           <Pressable
             onPress={refetch}
             style={styles.emptyState}
             accessibilityRole="button"
-            accessibilityLabel="Retry loading plans"
+            accessibilityLabel={t("chat:plansRetryA11y")}
           >
             <Text style={styles.emptyText}>
-              Could not load plans. Tap to retry.
+              {t("chat:plansLoadFailed")}
             </Text>
           </Pressable>
         ) : rows.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No locked-in plans yet.</Text>
+            <Text style={styles.emptyText}>{t("chat:plansEmpty")}</Text>
           </View>
         ) : (
-          rows.map((item: SessionScheduledCardRow) => (
+          ([
+            ["upcoming", planGroups.upcoming],
+            ["past", planGroups.past],
+          ] as const).map(([group, groupRows]) => groupRows.length === 0 ? null : (
+          <View key={group} testID={`plans-group-${group}`}>
+          <Text style={styles.planGroupHeading} accessibilityRole="header">
+            {group === "upcoming" ? t("chat:plansUpcoming") : t("chat:plansPast")}
+          </Text>
+          {groupRows.map((item: SessionScheduledCardRow) => (
             <TouchableOpacity
               key={item.savedCardId}
               style={styles.scheduleRow}
-              onPress={() =>
-                setModalTarget(expansionTargetFromSavedPayload({
-                  ...item.cardData,
-                  sourceScope: 'collaboration',
-                  sourceRecordId: item.savedCardId,
-                  savedCardId: item.savedCardId,
-                }))
-              }
+              onPress={() => {
+                // Issue #4114 run 3: iOS refuses the card over this sheet, so
+                // close the sheet; the card shows once it has dismissed.
+                openPlanFromSheet(item);
+                onClose();
+              }}
               accessibilityRole="button"
               accessibilityLabel={`Open ${cardTitle(item.cardData)} scheduled for ${formatScheduledAt(item.scheduledAt)}`}
             >
               <View style={styles.scheduleIcon}>
-                <Icon name="lock-closed" size={15} color="#92400e" />
+                <Icon name="lock-closed" size={15} color={chatTokens.accent} />
               </View>
               <View style={styles.rowText}>
                 <Text style={styles.cardTitle} numberOfLines={1}>
@@ -295,12 +449,14 @@ export function ScheduleSheet({
                 <Text style={styles.cardMeta} numberOfLines={1}>
                   {formatScheduledAt(item.scheduledAt)}
                 </Text>
-                <Text style={styles.cardMeta} numberOfLines={1}>
-                  Locked in by {item.lockedByDisplayName || "someone"}
+                <Text style={[styles.cardMeta, group === "past" && styles.planPastMeta]} numberOfLines={1}>
+                  {setByLabel(item)}
                 </Text>
               </View>
-              <Icon name="chevron-forward" size={18} color="#9ca3af" />
+              <Icon name="chevron-forward" size={18} color={chatTokens.textMuted} />
             </TouchableOpacity>
+          ))}
+          </View>
           ))
         )}
       </CompactCollabBottomSheet>
@@ -309,7 +465,7 @@ export function ScheduleSheet({
         target={modalTarget}
         onClose={() => {
           const dismissOwnerSheet = modalTarget?.kind === "businessEvent";
-          setModalTarget(null);
+          closePlan();
           // #1672 / #3281 1d — experience Book navigates via /exp and calls
           // onClose; leave the Plans wrapInRNModal up and Book is unreachable.
           if (dismissOwnerSheet) onClose();
@@ -343,7 +499,9 @@ export function SavedToSessionCardsSheet({
   accountPreferences?: Props["accountPreferences"];
   isAdmin: boolean;
 }) {
-  const [modalTarget, setModalTarget] = useState<ExpansionTarget | null>(null);
+  // Issue #4114 run 3: same sheet-to-card handoff as Plans (iOS refuses the
+  // details card over this sheet's RN Modal).
+  const { modalTarget, openFromSheet, onSheetDismissed, close: closeDetails } = useSheetCard<ExpansionTarget>();
   // ORCH-1049 [collab Matches sheet bottom bleed]: the Matches sheet renders
   // CompactCollabBottomSheet in scrollMode="view", whose body is a consumer-owned
   // flexed BottomSheetView — the BaseBottomSheet primitive only injects its
@@ -367,8 +525,10 @@ export function SavedToSessionCardsSheet({
       sourceRecordId: card.saved_card_id || card.id,
       savedCardId: card.saved_card_id || card.id,
     });
-    if (target) setModalTarget(target);
-  }, []);
+    if (!target) return;
+    openFromSheet(target);
+    onClose();
+  }, [onClose, openFromSheet]);
 
   return (
     <>
@@ -378,6 +538,8 @@ export function SavedToSessionCardsSheet({
         title="Matches"
         closeAccessibilityLabel="Close matches"
         snapPoints={MATCHES_SHEET_SNAP_POINTS}
+        tone="dark"
+        onNativeDismiss={onSheetDismissed}
       >
         <View
           style={[
@@ -394,6 +556,7 @@ export function SavedToSessionCardsSheet({
             loading={savedCardsLoading}
             accountPreferences={accountPreferences}
             isAdmin={isAdmin}
+            tone="dark"
           />
         </View>
       </CompactCollabBottomSheet>
@@ -402,7 +565,7 @@ export function SavedToSessionCardsSheet({
         target={modalTarget}
         onClose={() => {
           const dismissOwnerSheet = modalTarget?.kind === "businessEvent";
-          setModalTarget(null);
+          closeDetails();
           // #1672 / #3281 1d — same as Plans: experience Book must dismiss Matches.
           if (dismissOwnerSheet) onClose();
         }}
@@ -425,15 +588,16 @@ const styles = StyleSheet.create({
     paddingVertical: 28,
     alignItems: "center",
   },
-  emptyText: { color: "#6b7280", fontSize: 14, textAlign: "center" },
+  // Issue #4114 QA run 2: the Plans sheet content is on the dark chat surface.
+  emptyText: { color: chatTokens.textSecondary, fontSize: 14, textAlign: "center" },
   verticalListContent: { paddingHorizontal: 14, paddingBottom: 12, gap: 8 },
   scheduleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#fde68a",
-    backgroundColor: "#fffbeb",
+    borderColor: chatTokens.hairline,
+    backgroundColor: chatTokens.surfaceRaised,
     borderRadius: 8,
     padding: 12,
   },
@@ -441,13 +605,23 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#fde68a",
+    backgroundColor: chatTokens.accentSoft,
     alignItems: "center",
     justifyContent: "center",
   },
   rowText: { flex: 1, minWidth: 0 },
-  cardTitle: { color: "#111827", fontSize: 14, fontWeight: "700" },
-  cardMeta: { color: "#6b7280", fontSize: 12, marginTop: 2 },
+  cardTitle: { color: chatTokens.textPrimary, fontSize: 14, fontWeight: "700" },
+  cardMeta: { color: chatTokens.textSecondary, fontSize: 12, marginTop: 2 },
+  planGroupHeading: {
+    color: chatTokens.textSoft,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  planPastMeta: { color: chatTokens.textSoft },
   compactSheetBackground: {
     backgroundColor: "#ffffff",
     borderTopLeftRadius: 24,
@@ -456,6 +630,24 @@ const styles = StyleSheet.create({
   compactSheetHandle: {
     backgroundColor: "rgba(17,24,39,0.24)",
     width: 44,
+  },
+  compactSheetBackgroundDark: {
+    backgroundColor: chatTokens.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  compactSheetHandleDark: {
+    backgroundColor: "rgba(255,255,255,0.24)",
+    width: 44,
+  },
+  compactSheetHeaderDark: {
+    borderBottomColor: chatTokens.hairline,
+  },
+  compactSheetTitleDark: {
+    color: chatTokens.textPrimary,
+  },
+  compactSheetCloseButtonDark: {
+    backgroundColor: chatTokens.strip,
   },
   compactSheetContent: {
     flex: 1,

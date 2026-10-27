@@ -40,6 +40,7 @@
     "takeAStroll": "Take a Stroll"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "Не удалось отправить SMS на {{phone}}. Вместо этого поделитесь ссылкой-приглашением.",
     "adminPrivileges": "Adмин Privileges",
     "manageBoard": "Мужчинаage Board",
     "renameBoard": "Rename Board",

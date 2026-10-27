@@ -9,7 +9,8 @@
  * `app/index.tsx`). There is NO second inline payload→nav mapping anywhere.
  *
  * Payload contract (SPEC §B.1):
- *   deep_link_value ∈ {brand, event, trip, experience, referral, internal, follow_invite}
+ *   deep_link_value ∈ {brand, event, trip, experience, referral, internal, follow_invite,
+ *                      friend_invite}
  *   deep_link_sub1  = primary slug (brandSlug for entities; referral_code for
  *                     `referral`; a `mingla://` path for `internal`)
  *   deep_link_sub2  = secondary slug (eventSlug/tripSlug/experienceSlug)
@@ -49,12 +50,18 @@ export type OneLinkDestination =
   /** #3682 Wave 2.5 — web follow-by-email invite (token in deep_link_sub1). */
   | { kind: 'follow_invite'; token: string }
   | { kind: 'claim'; code: string }
+  /**
+   * Issue #4114 — a friend's text invite (send-pair-request Tier 3). The invite
+   * token rides in deep_link_sub1; the inviter's referral code in af_sub1.
+   */
+  | { kind: 'friend_invite'; token: string; referralCode?: string }
   | null;
 
 const OPAQUE_SHARE_ID_RE = /^[a-f0-9]{36}$/;
 const CONTENT_SHARE_CODE_RE = /^[0-9A-Za-z]{16}$/;
 const REFERRAL_CODE_RE = /^[0-9A-Za-z][0-9A-Za-z-]{0,63}$/;
 const CLAIM_CODE_RE = /^[0-9A-Za-z]{10}$/;
+const FRIEND_INVITE_TOKEN_RE = /^[0-9a-f]{32,64}$/;
 export const isOpaqueShareId = (value: unknown): value is string =>
   typeof value === 'string' && OPAQUE_SHARE_ID_RE.test(value);
 export const isContentShareCode = (value: unknown): value is string =>
@@ -139,6 +146,16 @@ export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDes
         // #3682 Wave 2.5 — invite token only; email/brand resolve via edge.
         if (!sub1) return null;
         return { kind: 'follow_invite', token: sub1 };
+
+      case 'friend_invite': {
+        // Issue #4114 — never a half-formed invite: the token must be the
+        // server's random hex token (pending_pair_invites.token).
+        const token = sub1.toLowerCase();
+        if (!FRIEND_INVITE_TOKEN_RE.test(token)) return null;
+        return referralCode
+          ? { kind: 'friend_invite', token, referralCode }
+          : { kind: 'friend_invite', token };
+      }
 
       case 'claim':
         if (!CLAIM_CODE_RE.test(sub1)) return null;

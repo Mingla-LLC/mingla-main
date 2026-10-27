@@ -115,9 +115,12 @@ check(
     /savedCardToExpandedCardData\(payload\)/.test(expansionHelper) &&
     /isBrandExperiencePayload\(payload\)/.test(expansionHelper) &&
     (banners.match(/expansionTargetFromSavedPayload\(/g) ?? []).length >= 2 &&
-    /setModalTarget\(expansionTargetFromSavedPayload\(\{[\s\S]*?\.\.\.item\.cardData,[\s\S]*?sourceRecordId: item\.savedCardId,[\s\S]*?savedCardId: item\.savedCardId,[\s\S]*?\}\)\)/.test(
+    // [TEST-MOD-APPROVED #4114] the Plans open path is the shared planTarget
+    // helper (header strip, thread rows and the Plans sheet all use it).
+    /function planTarget\(item: CollabPlanCardSource\): ExpansionTarget \| null \{\s*return expansionTargetFromSavedPayload\(\{[\s\S]*?\.\.\.item\.cardData,[\s\S]*?sourceRecordId: item\.savedCardId,[\s\S]*?savedCardId: item\.savedCardId,[\s\S]*?\}\);/.test(
       banners,
     ) &&
+    (banners.match(/const target = planTarget\(item\);/g) ?? []).length >= 2 &&
     /expansionTargetFromSavedPayload\(\s*\{[\s\S]*?\.\.\.\(card\.card_data \|\| card\.experience_data \|\| \{\}\),[\s\S]*?sourceRecordId: card\.saved_card_id \|\| card\.id,[\s\S]*?savedCardId: card\.saved_card_id \|\| card\.id,[\s\S]*?\}\s*\)/.test(
       banners,
     ),

@@ -83,16 +83,17 @@ export const COACH_STEPS: CoachStep[] = [
     id: 6,
     tab: 'connections',
     title: 'Your people',
-    description: 'Friends, requests, blocks — everything social lives here.',
+    description: 'Friends, requests and blocks live here.',
     buttonLabel: 'Got it',
   },
   {
-    // ORCH-1035 NEW: the + button opens the FriendsActionChooser — pair a friend
-    // AND start a shared group chat (the chooser does exactly both).
+    // Issue #4114: step 7 points at the ✎ pencil in the Chats header, which opens
+    // New message (a 1:1 chat, a new group, or add a friend). Copy only; the
+    // step count and order are unchanged.
     id: 7,
     tab: 'connections',
-    title: 'Pair up, plan together',
-    description: 'Tap + to pair with a friend and start a shared group chat.',
+    title: 'Start a chat',
+    description: 'Tap ✎ to start a chat or a group.',
     buttonLabel: 'Got it',
   },
   {

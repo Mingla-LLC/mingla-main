@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchPairingPills,
   fetchIncomingPairRequests,
+  fetchIncomingHiddenPairRequests,
   sendPairRequest,
   cancelPairRequest,
   cancelPairInvite,
@@ -10,6 +11,7 @@ import {
   declinePairRequest,
 } from "../services/pairingService";
 import type {
+  HiddenIncomingPairRequest,
   PairingPill,
   PairRequest,
   SendPairRequestResponse,
@@ -30,6 +32,9 @@ export const pairingKeys = {
   pills: (userId: string) => ["pairings", "pills", userId] as const,
   incomingRequests: (userId: string) =>
     ["pairings", "incoming", userId] as const,
+  // Issue #4114: hidden pair requests riding on incoming friend requests.
+  incomingHidden: (userId: string) =>
+    ["pairings", "incoming-hidden", userId] as const,
 };
 
 // ── Queries ─────────────────────────────────────────────────────────────────
@@ -53,6 +58,16 @@ export function useIncomingPairRequests(userId: string | undefined) {
     enabled: !!userId,
     staleTime: 60 * 1000, // 1 minute
     refetchInterval: 5 * 60 * 1000, // ORCH-0404: Polling fallback — same safety net as pills.
+  });
+}
+
+/** Issue #4114: hidden pair requests to me, for the combined Requests row. */
+export function useIncomingHiddenPairRequests(userId: string | undefined) {
+  return useQuery<HiddenIncomingPairRequest[]>({
+    queryKey: pairingKeys.incomingHidden(userId ?? ""),
+    queryFn: () => fetchIncomingHiddenPairRequests(userId!),
+    enabled: !!userId,
+    staleTime: 60 * 1000,
   });
 }
 

@@ -72,7 +72,7 @@ const TAB_ORDER: BottomNavPage[] = ['home', 'discover', 'connections', 'likes', 
 const ICON_MAP: Record<BottomNavPage, IconName> = {
   home: 'compass-outline',       // swipe deck (keep existing "explore" iconography semantic)
   discover: 'map-outline',
-  connections: 'people-outline',
+  connections: 'chatbubbles-outline',
   likes: 'heart-outline',
   profile: 'person-outline',
 };

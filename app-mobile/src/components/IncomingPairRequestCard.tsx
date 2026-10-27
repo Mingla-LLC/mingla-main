@@ -35,6 +35,8 @@ interface IncomingPairRequestCardProps {
   onAccept: () => void;
   onDecline: () => void;
   onClose: () => void;
+  /** Issue #4114: the paywall opens on every pair-limit hit, this card included. */
+  onPairingLimitReached?: () => void;
 }
 
 function getInitialsColor(name: string): string {
@@ -60,6 +62,7 @@ export default function IncomingPairRequestCard({
   onAccept,
   onDecline,
   onClose,
+  onPairingLimitReached,
 }: IncomingPairRequestCardProps) {
   const { t } = useTranslation(['social', 'common']);
 
@@ -100,8 +103,13 @@ export default function IncomingPairRequestCard({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowSuccess(true);
       successTimerRef.current = setTimeout(() => onAccept(), 800);
-    } catch {
+    } catch (err) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      // Issue #4114 / ORCH-1239: a free account past its pairing gets Mingla+,
+      // not a generic "couldn't accept".
+      if (err instanceof Error && err.message === "pairing_limit_reached") {
+        onPairingLimitReached?.();
+      }
     }
   };
 

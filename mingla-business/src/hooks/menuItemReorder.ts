@@ -305,7 +305,9 @@ export function classifyMenuItemReorderError(
   if (isPermissionDeniedError(normalized)) {
     return new MenuItemReorderError("permission", code);
   }
-  if (code === "40001") {
+  // #4134: the server answers a stale reorder with PT409 (one HTTP 409).
+  // 40001 stays accepted so a database still on the old code reads the same.
+  if (code === "PT409" || code === "40001") {
     return new MenuItemReorderError("conflict", code);
   }
   if (isLikelyOfflineError(normalized)) {

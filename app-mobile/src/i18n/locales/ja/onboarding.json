@@ -178,7 +178,14 @@
     "alert_decline_error": "ペアリクエストを辞退できませんでした。もう一度お試しください。",
     "alert_generic_error": "リクエストを処理できませんでした。もう一度お試しください。",
     "share_message": "やあ！Minglaで一緒に素敵な体験を見つけよう。https://usemingla.com",
-    "fallback_user": "ユーザー"
+    "fallback_user": "ユーザー",
+    "invite_card_title": "あなたの仲間はもうここにいます",
+    "invite_card_body": "{{name}}があなたをMinglaに招待しました。承認すると友達になり、お互いの誕生日・予定・保存が見られます。",
+    "invite_card_sub": "★ 友達＋ペア · SMSであなたを招待",
+    "invite_card_accept": "承認",
+    "invite_card_not_now": "今はしない",
+    "invite_card_done": "{{name}}と友達になりペアになりました",
+    "invite_card_friends_only": "{{name}}と友達になりました"
   },
   "collaborations": {
     "headline": "みんなで計画しよう",

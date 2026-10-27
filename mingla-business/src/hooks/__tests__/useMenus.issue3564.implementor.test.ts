@@ -244,6 +244,8 @@ describe("#3564 atomic menu-item reorder hook", () => {
   test("transport failures expose only typed safe categories", () => {
     expect(classifyMenuItemReorderError({ code: "42501", message: "secret" }))
       .toMatchObject({ category: "permission", code: "42501" });
+    expect(classifyMenuItemReorderError({ code: "PT409", message: "secret" }))
+      .toMatchObject({ category: "conflict", code: "PT409" });
     expect(classifyMenuItemReorderError({ code: "40001", message: "secret" }))
       .toMatchObject({ category: "conflict", code: "40001" });
     expect(classifyMenuItemReorderError({ message: "Failed to fetch" }))
@@ -300,7 +302,7 @@ describe("#3564 atomic menu-item reorder hook", () => {
     }
     mockRpc.mockResolvedValueOnce({
       data: null,
-      error: { code: "40001", message: "conflict" },
+      error: { code: "PT409", message: "menu_item_reorder_conflict" },
     });
     const consoleError = jest
       .spyOn(console, "error")
