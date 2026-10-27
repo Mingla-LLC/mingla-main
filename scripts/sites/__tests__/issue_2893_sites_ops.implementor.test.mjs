@@ -18,7 +18,7 @@ import { applySitesCmsMigrations } from "../apply-sites-cms-migrations.mjs";
 import {
   assertReferenceIntegrity,
   buildReferenceMap,
-  deactivatePilotForBackupFailure,
+  alertForBackupFailure,
   recordBackupEvidence,
 } from "../backup-sites-cms.mjs";
 import {
@@ -789,10 +789,13 @@ test("#2893 Core backup readiness is recorded only after exact private readback"
   }
 });
 
-test("#2893 managed-backup failure invokes only the signed pilot deactivation contract", async () => {
+// #2829 converted: a managed-backup failure used to sign a deactivation of the
+// single pilot. That switch is gone; the failure now records a recovery alert
+// that names no host and takes no site offline.
+test("#2893 managed-backup failure records only a signed recovery alert", async () => {
   let posted;
   const operationIds = [];
-  const deactivationEnv = {
+  const alertEnv = {
     SITES_PILOT_SITE_ID: SITE_ID,
     GITHUB_REPOSITORY: "Mingla-LLC/mingla-main",
     GITHUB_RUN_ID: "2893001",
@@ -800,59 +803,48 @@ test("#2893 managed-backup failure invokes only the signed pilot deactivation co
     MINGLA_CMS_TO_CORE_CURRENT_KID: "cms-key-v1",
     MINGLA_CMS_TO_CORE_CURRENT_KEY_B64: Buffer.alloc(32, 9).toString("base64"),
   };
-  const deactivated = await deactivatePilotForBackupFailure({
-    env: deactivationEnv,
+  const receipt = {
+    state: "stale",
+    previous_state: "fresh",
+    observed_at: NOW.toISOString(),
+    accepted_at: NOW.toISOString(),
+    sites_affected: 0,
+  };
+  const fetchImpl = async (url, init) => {
+    posted = { url: String(url), body: JSON.parse(init.body) };
+    operationIds.push(JSON.parse(Buffer.from(
+      init.headers["x-mingla-sites-envelope"],
+      "base64",
+    ).toString("utf8")).operation_id);
+    return Response.json({ ok: true, data: receipt });
+  };
+  const alerted = await alertForBackupFailure({
+    env: alertEnv,
     error: { code: "DATABASE_BACKUP_STALE" },
     now: NOW,
-    fetchImpl: async (url, init) => {
-      posted = { url: String(url), body: JSON.parse(init.body) };
-      operationIds.push(JSON.parse(Buffer.from(
-        init.headers["x-mingla-sites-envelope"],
-        "base64",
-      ).toString("utf8")).operation_id);
-      return Response.json({
-        ok: true,
-        data: {
-          site_id: SITE_ID,
-          hostname: "gogi.sites.usemingla.com",
-          status: "disabled",
-          deactivated_at: NOW.toISOString(),
-          last_good_preserved: true,
-        },
-      });
-    },
+    fetchImpl,
   });
-  assert.equal(deactivated, true);
-  assert.match(posted.url, new RegExp(`/sites/${SITE_ID}/pilot-deactivation$`));
-  assert.deepEqual(posted.body, {
-    schema_version: 1,
-    hostname: "gogi.sites.usemingla.com",
-    reason_code: "BACKUP_READINESS_FAILED",
-  });
-  await deactivatePilotForBackupFailure({
-    env: deactivationEnv,
+  assert.equal(alerted, true);
+  assert.match(posted.url, new RegExp(`/sites/${SITE_ID}/recovery-state$`));
+  assert.deepEqual(Object.keys(posted.body).sort(), ["observed_at", "schema_version", "state"]);
+  assert.equal(posted.body.state, "stale");
+  assert.equal(JSON.stringify(posted.body).includes("hostname"), false);
+  await alertForBackupFailure({
+    env: alertEnv,
     error: { code: "DATABASE_BACKUP_STALE" },
     now: NOW,
-    fetchImpl: async (_url, init) => {
-      operationIds.push(JSON.parse(Buffer.from(
-        init.headers["x-mingla-sites-envelope"],
-        "base64",
-      ).toString("utf8")).operation_id);
-      return Response.json({
-        ok: true,
-        data: {
-          site_id: SITE_ID,
-          hostname: "gogi.sites.usemingla.com",
-          status: "disabled",
-          deactivated_at: NOW.toISOString(),
-          last_good_preserved: true,
-        },
-      });
-    },
+    fetchImpl,
   });
   assert.equal(operationIds.length, 2);
   assert.equal(operationIds[0], operationIds[1]);
-  assert.equal(await deactivatePilotForBackupFailure({
+  // A receipt claiming any site was affected is refused.
+  await assert.rejects(alertForBackupFailure({
+    env: alertEnv,
+    error: { code: "DATABASE_BACKUP_STALE" },
+    now: NOW,
+    fetchImpl: async () => Response.json({ ok: true, data: { ...receipt, sites_affected: 1 } }),
+  }));
+  assert.equal(await alertForBackupFailure({
     error: { code: "DATABASE_BACKUP_API_FAILED" },
   }), false);
 });
@@ -1088,7 +1080,8 @@ test("#2893 bootstrap is value-blind and reconciles exact private bucket policy"
     true,
   );
   assert.equal(
-    sql.includes(String.raw`(master|320|640|960|1440|1920)\.webp$`),
+    // #2829 W6 — approved file videos (master.mp4) join the renditions; W7b adds the picture crops.
+    sql.includes(String.raw`((master|320|640|960|1440|1920|c400|c768|w1600)\.webp|master\.mp4)$`),
     true,
   );
   assert.equal(
@@ -1096,7 +1089,7 @@ test("#2893 bootstrap is value-blind and reconciles exact private bucket policy"
     false,
   );
   assert.equal(
-    sql.includes(String.raw`(master|320|640|960|1440|1920)\\.webp$`),
+    sql.includes(String.raw`((master|320|640|960|1440|1920|c400|c768|w1600)\\.webp|master\\.mp4)$`),
     false,
   );
   assert.match(sql, /sites_runtime_reader_path_semantics_valid/);

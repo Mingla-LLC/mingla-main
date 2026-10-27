@@ -12,6 +12,7 @@ import { AlertCard, SectionCard } from "../components/ui/Card";
 import { Skeleton } from "../components/ui/Skeleton";
 import { formatDateTime } from "../lib/formatters";
 import {
+  recheckBrandSiteDomain,
   getBrandSiteDetail,
   listBrandSites,
   runBrandSiteAction,
@@ -46,6 +47,14 @@ const ACTIONS = {
     description: "Restore access to the existing last successful publication. No new content is published.",
     confirmLabel: "Resume site",
     confirmPhrase: "RESUME",
+  },
+  // #2829 W8 — the brand's own domain is broken: the Mingla address becomes
+  // the main address again (the domain keeps redirecting to it).
+  set_primary_host: {
+    title: "Fall back to Mingla address",
+    description: "Make the site's Mingla address its main address again. The brand's own domain keeps redirecting there. No content changes.",
+    confirmLabel: "Fall back",
+    confirmPhrase: "FALLBACK",
   },
   revoke_editor_sessions: {
     title: "Revoke editing sessions",
@@ -183,6 +192,7 @@ function BrandSitesList({ onSelect }) {
 function BrandSiteDetail({ siteId, onBack }) {
   const [state, setState] = useState({ loading: true, error: null, data: null });
   const [action, setAction] = useState(null);
+  const [recheck, setRecheck] = useState({ hostId: null, error: null });
   const load = useCallback(async () => {
     setState((current) => ({ ...current, loading: true, error: null }));
     try { setState({ loading: false, error: null, data: await getBrandSiteDetail(siteId) }); }
@@ -199,6 +209,11 @@ function BrandSiteDetail({ siteId, onBack }) {
   const config = action ? ACTIONS[action] : null;
   const ambiguousReceipt = receipts.find((receipt) => receipt.status === "ambiguous") ?? null;
   const canReconcile = ambiguousReceipt !== null;
+  // #2829 W8 — offered only while the brand's own domain is the main address.
+  const customPrimary = hosts.some((host) => host.kind === "custom_domain" && host.is_primary);
+  const fallbackHost = customPrimary
+    ? hosts.find((host) => host.kind === "mingla_subdomain" && host.status === "active")?.hostname ?? null
+    : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -231,8 +246,42 @@ function BrandSiteDetail({ siteId, onBack }) {
         </div>
       </SectionCard>
 
-      <SectionCard title="Permanent addresses" subtitle={`${hosts.length} registered`} noPadding>
-        {hosts.length ? <div className="divide-y divide-[var(--gray-200)]">{hosts.map((host) => <div key={host.hostname} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3"><span className="font-mono text-sm">{host.hostname}</span><div><Badge variant={host.status === "active" ? "success" : "default"}>{host.status}</Badge>{host.is_primary ? <Badge className="ml-1" variant="outline">Primary</Badge> : null}</div></div>)}</div> : <EmptyRows>No permanent address is registered.</EmptyRows>}
+      <SectionCard title="Addresses" subtitle={`${hosts.length} registered`} noPadding>
+        {recheck.error ? <div className="px-5 pt-3"><AlertCard variant="error" title="Recheck failed">{recheck.error}</AlertCard></div> : null}
+        {hosts.length ? <div className="divide-y divide-[var(--gray-200)]">{hosts.map((host) => (
+          <div key={host.host_id || host.hostname} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3" data-testid={`admin-host-${host.hostname}`}>
+            <div className="flex flex-col gap-1">
+              <span className="font-mono text-sm">{host.hostname}</span>
+              <span className="text-xs text-[var(--color-text-tertiary)]">
+                {host.kind === "custom_domain" ? "Brand's own domain" : "Mingla address"}
+                {host.kind === "custom_domain" ? ` · DNS ${host.dns_state} · certificate ${host.tls_state}` : ""}
+                {host.misconfigured_since ? ` · misconfigured since ${formatDateTime(host.misconfigured_since)}` : ""}
+                {host.redirect_until && host.status === "detaching" ? ` · redirects until ${formatDateTime(host.redirect_until)}` : ""}
+                {host.tls_expires_at ? ` · certificate expires ${formatDateTime(host.tls_expires_at)}` : ""}
+                {host.mx_missing ? " · email records disappeared" : ""}
+                {host.last_checked_at ? ` · checked ${formatDateTime(host.last_checked_at)}` : ""}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={host.status === "active" && host.dns_state !== "misconfigured" ? "success" : host.dns_state === "misconfigured" ? "error" : "default"}>{host.status}</Badge>
+              {host.is_primary ? <Badge variant="outline">Primary</Badge> : null}
+              {host.kind === "custom_domain" && host.host_id && host.status !== "retired" ? (
+                <Button size="sm" variant="secondary" icon={RefreshCw} loading={recheck.hostId === host.host_id} disabled={Boolean(recheck.hostId)}
+                  onClick={async () => {
+                    setRecheck({ hostId: host.host_id, error: null });
+                    try { await recheckBrandSiteDomain(siteId, host.host_id); setRecheck({ hostId: null, error: null }); await load(); }
+                    catch (error) { setRecheck({ hostId: null, error: error.message }); }
+                  }}>Recheck</Button>
+              ) : null}
+            </div>
+          </div>
+        ))}</div> : <EmptyRows>No address is registered.</EmptyRows>}
+        {fallbackHost ? (
+          <div className="px-5 py-3">
+            <Button variant="secondary" onClick={() => setAction("set_primary_host")}>Fall back to Mingla address</Button>
+            <p className="mt-2 text-xs text-[var(--color-text-tertiary)]">The site&apos;s main address is the brand&apos;s own domain. Falling back makes {fallbackHost} the main address; the domain keeps redirecting to it.</p>
+          </div>
+        ) : null}
       </SectionCard>
 
       <SectionCard title="Publication history" subtitle={`${publications.length} recent`} noPadding>
@@ -258,6 +307,7 @@ function BrandSiteDetail({ siteId, onBack }) {
             action,
             reason,
             action === "reconcile" ? ambiguousReceipt?.operation_id ?? null : null,
+            action === "set_primary_host" ? fallbackHost : null,
           );
           await load();
         }}

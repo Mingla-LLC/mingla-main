@@ -15,19 +15,19 @@ import {
 import { stripeTicketCheckout } from "../stripe.ts";
 import { writeAudit } from "../audit.ts";
 import { applicationFeeWithReferralShare } from "../attribution.ts";
+import {
+  MAX_RETRY_ATTEMPTS,
+  nextRetryAtAfterFailure,
+} from "./installmentRetrySchedule.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
 // #3645 flat 4.5% platform cut (take-rate + service fee); installments inherit.
 export const MINGLA_APPLICATION_FEE_RATE = 0.045 as const;
-export const MAX_RETRY_ATTEMPTS = 3 as const;
-
-// Retry cadence (per SPEC §3.2.1 + Open Polish §9): Day-3 then Day-7 then at-risk.
-const RETRY_INTERVAL_HOURS_BY_RETRY_COUNT = {
-  1: 72,
-  2: 168,
-} as const;
+// #3645: retry dates are anchored to due_at (+3d, +7d, at risk on the third);
+// the shared rule lives in installmentRetrySchedule.ts. Re-exported for callers.
+export { MAX_RETRY_ATTEMPTS };
 
 export type InstallmentRow = {
   id: string;
@@ -83,14 +83,6 @@ export type CreateInstallmentPIInput = {
   stripeAccount?: StripeAccount;
   dryRun?: boolean;
 };
-
-function nextRetryAtFor(retryCount: number): string | null {
-  const hours = RETRY_INTERVAL_HOURS_BY_RETRY_COUNT[
-    retryCount as keyof typeof RETRY_INTERVAL_HOURS_BY_RETRY_COUNT
-  ];
-  if (hours === undefined) return null;
-  return new Date(Date.now() + hours * 3600 * 1000).toISOString();
-}
 
 function serviceClient(): SupabaseClient {
   if (SUPABASE_URL === undefined || SUPABASE_SERVICE_ROLE_KEY === undefined) {
@@ -509,7 +501,9 @@ export async function createInstallmentPI(
     }`.slice(0, 500);
     const nextRetryCount = installment.retry_count + 1;
     const willBeAtRisk = nextRetryCount >= MAX_RETRY_ATTEMPTS;
-    const nextRetryAt = willBeAtRisk ? null : nextRetryAtFor(nextRetryCount);
+    const nextRetryAt = willBeAtRisk
+      ? null
+      : nextRetryAtAfterFailure(installment.due_at, nextRetryCount);
 
     await supabase
       .from("order_installments")

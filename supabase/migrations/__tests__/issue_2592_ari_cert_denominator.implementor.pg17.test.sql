@@ -30,6 +30,8 @@
 -- list_discounts/create_discount/close_discount (prior pin 145).
 -- [TEST-MOD-APPROVED #3872] 152 after the Discounts, Referrals and Creator Gig
 -- tools in 20271229003872_issue_3872_ari_cert_capability_census (prior pin 148).
+-- #2829 W9b 164 after the website designer tools in
+-- 20271229082829_issue_2829_ari_cert_capability_census (prior pin 152).
 --
 -- All fixtures roll back.
 -- =====================================================================================
@@ -40,7 +42,7 @@ BEGIN;
 
 DO $test$
 DECLARE
-  c_ledger_denominator constant integer := 152;
+  c_ledger_denominator constant integer := 164;
   v_requirement_rows integer;
   v_finalizer_denominator integer;
   v_reported_count integer;

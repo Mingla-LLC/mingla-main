@@ -17,6 +17,11 @@ import {
   type TripRefundPolicyShape,
 } from "@mingla/offering-rendering";
 
+import {
+  toTripOfferingGuide,
+  type TripOfferingGuide,
+} from "@mingla/offering-rendering/tripGuide";
+
 import type { Trip, TripPricingTier } from "../../services/tripsService";
 import type { TripPreviewBrand } from "./TripPreview";
 
@@ -77,7 +82,11 @@ export function buildTripOfferingData(
   // bar DISPLAY + SUM this (WYSIWYP) instead of the bare base. Absent → the body
   // falls back to priceCents (free tiers / RPC miss). NEVER recompute fees here.
   allInByTicketType?: Map<string, number> | null,
-): TripOfferingData {
+  // Issue #2829 W4 — the trip's guide as `pg_public_trip_guide` returned it
+  // (or undefined/null when there is none / it has not loaded). The shared
+  // body adds the guide sections only when there is something to show.
+  guideRaw?: unknown,
+): TripOfferingData & { guide: TripOfferingGuide | null } {
   const bt = trip.businessTrip;
   const tier = trip.pricingTiers[0];
   const duration = deriveTripDuration(bt.startAt, bt.endAt);
@@ -168,6 +177,7 @@ export function buildTripOfferingData(
     destinationLng: bt.destinationLng,
     bookable,
     bookingsClosed: trip.bookingsClosed === true,
+    guide: toTripOfferingGuide(guideRaw ?? null, capacity),
   };
 }
 

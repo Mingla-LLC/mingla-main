@@ -27,6 +27,7 @@ export type {
   CheckoutReviewDetail,
   DiscountCodeReason,
   DiscountReasonCopyInput,
+  InstallmentChargeSchedule,
   TicketCheckoutReview,
   TicketQuote,
   TicketQuoteCodeOutcome,
@@ -34,6 +35,8 @@ export type {
   TicketQuoteLine,
   TicketQuoteNotice,
 } from "./discountQuote";
+export { decodeInstallmentChargeSchedule } from "./discountQuote";
+export { installmentReassuranceText } from "./installmentReassurance";
 
 // issue #868 [cover-gallery] — the beneath-cover ordered card row over the full
 // [cover] ++ gallery hero sequence (card 0 = cover). Injected by ParallaxCoverShell.

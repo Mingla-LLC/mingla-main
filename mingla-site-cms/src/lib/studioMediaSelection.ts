@@ -29,7 +29,7 @@ export interface StudioMediaTarget {
 interface PageLike {
   id: string | number;
   title?: unknown;
-  role?: unknown;
+  slug?: unknown;
   revision?: unknown;
   blocks?: unknown;
 }
@@ -59,8 +59,10 @@ export function studioMediaTargets(pages: PageLike[]): StudioMediaTarget[] {
   const targets: StudioMediaTarget[] = [];
   for (const page of pages) {
     const pageId = String(page.id);
-    const pageTitle = String(page.title || page.role || "Page");
-    const pageRole = String(page.role || "");
+    const pageTitle = String(page.title || "Page");
+    // #2829 W2 — pages have no fixed role any more; the slug names the page
+    // ("home" for the page with none), which is what this label carried.
+    const pageRole = typeof page.slug === "string" && page.slug ? page.slug : "home";
     const expectedRevision = String(page.revision || "");
     const blocks = Array.isArray(page.blocks) ? page.blocks : [];
     blocks.forEach((raw, blockIndex) => {
@@ -202,10 +204,3 @@ export function applyStudioMediaSelection(
   return blocks;
 }
 
-export function referencedStudioMediaIds(pages: PageLike[]): Set<string> {
-  const ids = new Set<string>();
-  for (const target of studioMediaTargets(pages)) {
-    if (target.currentMediaId) ids.add(target.currentMediaId);
-  }
-  return ids;
-}

@@ -143,9 +143,12 @@ export async function sendSiteEvent(
   eventName: string,
   fields: Record<string, string | undefined> = {},
 ): Promise<void> {
-  if (!analyticsAllowed()) return;
+  // #2829 W10 — a preview (the team's or a shared link) is never counted.
+  if (!analyticsAllowed() || context.publicationId.startsWith("preview-")) return;
   await fetch("/api/events", {
     method: "POST",
+    // An outbound or Book click navigates away; the event still arrives.
+    keepalive: true,
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       event_name: eventName,

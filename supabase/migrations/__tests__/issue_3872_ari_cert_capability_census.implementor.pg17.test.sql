@@ -3,9 +3,14 @@
 BEGIN;
 
 -- Reapplication must be convergent: the requirement insert and finalizer rewrite
--- may encounter the already-upgraded 152 state but no third state is accepted.
-\ir ../20271229003872_issue_3872_ari_cert_capability_census.sql
-\ir ../20271229003872_issue_3872_ari_cert_capability_census.sql
+-- may encounter the already-upgraded state but no third state is accepted.
+-- #2829 W9b: the tip census is now 20271229082829_issue_2829_ari_cert_capability_census.sql
+-- (152 -> 164, on top of this #3872 census); after a full replay the chain is at
+-- the tip, so the convergence proof re-applies the TIP census (re-applying this
+-- older file on the 164 tip is refused by its own preflight, by design). The
+-- #3872 rows and modes below must still be present, unchanged.
+\ir ../20271229082829_issue_2829_ari_cert_capability_census.sql
+\ir ../20271229082829_issue_2829_ari_cert_capability_census.sql
 
 DO $test$
 DECLARE
@@ -13,8 +18,8 @@ DECLARE
   v_wrong text;
   v_acl text;
 BEGIN
-  IF (SELECT count(*) FROM public.ari_cert_capability_requirements) <> 152 THEN
-    RAISE EXCEPTION 'issue_3872_ari_cert_census_not_152';
+  IF (SELECT count(*) FROM public.ari_cert_capability_requirements) <> 164 THEN
+    RAISE EXCEPTION 'issue_3872_ari_cert_census_not_164';
   END IF;
 
   SELECT string_agg(expected.capability_id || ':' || coalesce(actual.evidence_mode, '<missing>'), ', ' ORDER BY expected.capability_id)
@@ -32,10 +37,12 @@ BEGIN
     RAISE EXCEPTION 'issue_3872_ari_cert_wrong_modes:%', v_wrong;
   END IF;
 
-  IF (length(v_definition) - length(replace(v_definition, 'v_capability_count <> 152', '')))
-       / length('v_capability_count <> 152') <> 1
-     OR (length(v_definition) - length(replace(v_definition, '''capability_count'', 152', '')))
-       / length('''capability_count'', 152') <> 1
+  IF (length(v_definition) - length(replace(v_definition, 'v_capability_count <> 164', '')))
+       / length('v_capability_count <> 164') <> 1
+     OR (length(v_definition) - length(replace(v_definition, '''capability_count'', 164', '')))
+       / length('''capability_count'', 164') <> 1
+     OR v_definition LIKE '%v_capability_count <> 152%'
+     OR v_definition LIKE '%''capability_count'', 152%'
      OR v_definition LIKE '%v_capability_count <> 148%'
      OR v_definition LIKE '%''capability_count'', 148%' THEN
     RAISE EXCEPTION 'issue_3872_ari_cert_finalizer_denominator_not_exact';
@@ -52,8 +59,8 @@ BEGIN
     RAISE EXCEPTION 'issue_3872_ari_cert_finalizer_acl:%', v_acl;
   END IF;
 
-  IF obj_description('public.ari_cert_begin_run(text,jsonb,text,jsonb,jsonb)'::regprocedure, 'pg_proc') NOT LIKE '%152-row%'
-     OR obj_description('public.ari_cert_finalize_run(uuid)'::regprocedure, 'pg_proc') NOT LIKE '%152-capability%' THEN
+  IF obj_description('public.ari_cert_begin_run(text,jsonb,text,jsonb,jsonb)'::regprocedure, 'pg_proc') NOT LIKE '%164-row%'
+     OR obj_description('public.ari_cert_finalize_run(uuid)'::regprocedure, 'pg_proc') NOT LIKE '%164-capability%' THEN
     RAISE EXCEPTION 'issue_3872_ari_cert_comments_not_current';
   END IF;
 END;

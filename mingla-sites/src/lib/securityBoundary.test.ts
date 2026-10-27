@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { hasGrantedAnalyticsConsent } from "./consent";
 import { signedCorePost } from "./coreGateway";
 
-const PILOT_SITE_ID = "00000000-0000-4000-8000-000000000001";
+const RESOLVED_SITE_ID = "00000000-0000-4000-8000-000000000001";
 const FOREIGN_SITE_ID = "00000000-0000-4000-8000-000000000099";
 
 beforeAll(() => {
@@ -19,7 +19,6 @@ beforeAll(() => {
     MINGLA_RUNTIME_TO_CORE_CURRENT_KID: "runtime-key-1",
     MINGLA_RUNTIME_TO_CORE_CURRENT_KEY_B64:
       "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
-    SITES_PILOT_SITE_ID: PILOT_SITE_ID,
     SITES_CANDIDATE_PROBE_SECRET:
       "Q0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0M=",
   });
@@ -30,18 +29,22 @@ afterEach(() => {
 });
 
 describe("public runtime signing boundary", () => {
+  // #2829 — converted: the binding is the site Core resolved for THIS
+  // request's host (a request-scoped object), not a single global site id.
   it("rejects a foreign site before issuing any Core request", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
+    const resolved = { site_id: RESOLVED_SITE_ID };
 
-    await expect(
-      signedCorePost({
-        edgeFunction: "brand-site-attribution",
-        path: `/internal/v1/sites/${FOREIGN_SITE_ID}/analytics-events`,
-        siteId: FOREIGN_SITE_ID,
-        body: { action: "event", site_id: FOREIGN_SITE_ID },
-      }),
-    ).rejects.toThrow("SITE_SCOPE_MISMATCH");
+    for (const attempt of [
+      { path: `/internal/v1/sites/${FOREIGN_SITE_ID}/analytics-events`, body: { action: "event", site_id: FOREIGN_SITE_ID } },
+      { path: `/internal/v1/sites/${RESOLVED_SITE_ID}/analytics-events`, body: { action: "event", site_id: FOREIGN_SITE_ID } },
+      { path: `/internal/v1/sites/${FOREIGN_SITE_ID}/analytics-events`, body: { action: "event", site_id: RESOLVED_SITE_ID } },
+    ]) {
+      await expect(
+        signedCorePost({ edgeFunction: "brand-site-attribution", site: resolved, ...attempt }),
+      ).rejects.toThrow("SITE_SCOPE_MISMATCH");
+    }
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

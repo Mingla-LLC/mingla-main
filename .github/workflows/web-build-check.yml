@@ -290,3 +290,49 @@ jobs:
           node ../.github/scripts/npm-audit-ceiling.mjs --self-test
           node ../.github/scripts/npm-audit-ceiling.mjs --allowlist ../.github/npm-audit-allowlist.json
           node -e 'const p=require("./package.json"); const names=Object.keys({...p.dependencies,...p.devDependencies}); const forbidden=names.filter((name)=>/(payload|postgres|s3|sharp|lexical|graphql)/i.test(name)); if(forbidden.length) { console.error(forbidden.join("\n")); process.exit(1) }'
+
+  # [WORKFLOW-MOD-APPROVED #2829] Sites design goldens (W7b; W7c moved them to
+  # their own job): the neutral voyage fixture and the gogi atelier fixture are
+  # rendered and compared with the committed goldens under the section 7
+  # thresholds, inside the pinned Playwright image so the browser and fonts
+  # never drift. The goldens were made from arm64 renders, so this job runs on
+  # the arm64 runner (free for public repositories); an x64 render of the same
+  # page differs in font rasterisation.
+  mingla-sites-goldens:
+    if: ${{ github.event.pull_request.draft != true }}
+    name: "mingla-sites: design goldens (arm64)"
+    runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        working-directory: mingla-sites
+    env:
+      SITES_CORE_BASE_URL: https://core.invalid
+      SITES_CMS_PROJECT_REF: abcdefghijklmnopqrst
+      SITES_STORAGE_SUPABASE_URL: https://abcdefghijklmnopqrst.supabase.co
+      SITES_STORAGE_SUPABASE_ANON_KEY: fixture-anon-key
+      SITES_STORAGE_READER_EMAIL: sites-reader@example.invalid
+      SITES_STORAGE_READER_PASSWORD: fixture-reader-password
+      SITES_PUBLICATION_ARTIFACT_BUCKET: sites-publication-artifacts
+      SITES_MEDIA_APPROVED_BUCKET: sites-media-approved
+      SITES_ALLOWED_HOST_SUFFIX: sites.usemingla.com
+      MINGLA_RUNTIME_TO_CORE_CURRENT_KID: runtime-core-current
+      MINGLA_RUNTIME_TO_CORE_CURRENT_KEY_B64: RUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUU=
+      SITES_PILOT_SITE_ID: 00000000-0000-4000-8000-000000000001
+      SITES_CANDIDATE_PROBE_SECRET: RkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkY=
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-sites/package-lock.json
+      - run: npm ci
+      - name: Sites design goldens
+        run: |
+          npm run goldens:render
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" \
+            -v /tmp/mingla-sites-goldens-html:/tmp/mingla-sites-goldens-html \
+            -w "$GITHUB_WORKSPACE/mingla-sites" \
+            mcr.microsoft.com/playwright:v1.64.0-noble node e2e/goldens/goldens.mjs

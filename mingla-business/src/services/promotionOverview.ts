@@ -118,22 +118,63 @@ export function promotionListingLabel(listing: PromotionListing): string {
   return day ? `${listing.title} · ${day}` : listing.title;
 }
 
-/** The three numbers at the top of Overview. Spend is never green. */
+/**
+ * The three numbers at the top of Overview. Spend is never green. A zero
+ * reads quiet (`tone: "muted"`) so an all-zero strip does not shout.
+ */
 export function promotionStrip(overview: PromotionOverview): Array<{
   value: string;
   label: string;
+  tone?: "muted";
 }> {
+  const cell = (value: string, label: string, amount: number) =>
+    amount === 0 ? { value, label, tone: "muted" as const } : { value, label };
   return [
-    {
-      value: programMoneyShort(overview.soldMinor, overview.currency),
-      label: "Sold via promotion",
-    },
-    { value: overview.clicks.toLocaleString("en-US"), label: "Link clicks" },
-    {
-      value: programMoneyShort(overview.spentMinor, overview.currency),
-      label: "Spent",
-    },
+    cell(
+      programMoneyShort(overview.soldMinor, overview.currency),
+      "Sold via promotion",
+      overview.soldMinor,
+    ),
+    cell(overview.clicks.toLocaleString("en-US"), "Link clicks", overview.clicks),
+    cell(
+      programMoneyShort(overview.spentMinor, overview.currency),
+      "Spent",
+      overview.spentMinor,
+    ),
   ];
+}
+
+/** True when every number in the strip is zero (the strip shows a guide line). */
+export function promotionStripAllZero(overview: PromotionOverview): boolean {
+  return (
+    overview.soldMinor === 0 && overview.clicks === 0 && overview.spentMinor === 0
+  );
+}
+
+/** The whole-brand scope's one name, everywhere it appears (#3872, NAMING.md). */
+export const WHOLE_BRAND_LABEL = "Whole brand";
+
+/** "Promotion across the brand" / "Promotion for this event|venue". */
+export function promotionSectionLabel(
+  listing: Pick<PromotionListing, "kind"> | null,
+): string {
+  if (!listing) return "Promotion across the brand";
+  return `Promotion for this ${listing.kind === "venue" ? "venue" : "event"}`;
+}
+
+/** Sheet option subtitle: "Event · Nov 9" or "Venue". */
+export function promotionListingSubtitle(listing: PromotionListing): string {
+  if (listing.kind === "venue") return "Venue";
+  const day = listing.startsAt ? shortDate(listing.startsAt) : "";
+  return day ? `Event · ${day}` : "Event";
+}
+
+/** The notice when a deep-linked listing is no longer published. */
+export function promotionFallbackNotice(
+  kind: PromotionListingKind | null,
+): string {
+  const noun = kind === "venue" ? "venue" : kind === "event" ? "event" : "listing";
+  return `That ${noun} isn't published any more, so you're seeing the whole brand.`;
 }
 
 /** One-line subtitles for the four ways to promote. */
@@ -156,9 +197,13 @@ export function promotionRowWords(overview: PromotionOverview): {
           ]
             .filter(Boolean)
             .join(" · ");
+  const adsInvite =
+    overview.listing === null
+      ? "Boost what you're selling with ads"
+      : `Boost this ${overview.listing.kind === "venue" ? "venue" : "event"} with ads`;
   const ads =
     overview.ads === null
-      ? "Boost this listing with ads"
+      ? adsInvite
       : overview.ads.needsSetup
         ? "Finish payout setup to run ads"
         : overview.ads.live > 0

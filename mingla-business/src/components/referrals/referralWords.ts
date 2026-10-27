@@ -21,7 +21,7 @@ export function offerPill(offer: Pick<ReferralOffer, "status">): {
   }
 }
 
-/** "10% cash · 3 promoters", "10% back as a voucher · all listings", "Ended Sep 30". */
+/** "10% cash · 3 promoters", "10% back as a voucher · whole brand", "Ended Sep 30". */
 export function offerSummary(
   offer: Pick<
     ReferralOffer,
@@ -59,7 +59,7 @@ export function offerSummary(
   const who =
     offer.audience === "buyers"
       ? offer.scopeKind === "brand"
-        ? "all listings"
+        ? "whole brand"
         : `${offer.listings.length} listing${offer.listings.length === 1 ? "" : "s"}`
       : `${offer.memberCount} promoter${offer.memberCount === 1 ? "" : "s"}`;
   const audience =
@@ -73,7 +73,7 @@ export function offerSummary(
 
 /**
  * #3872 round 2 — the one-line offer row ("Promoter team · 1 promoter",
- * "Every buyer · all listings"). The reward stays in the offer sheet.
+ * "Every buyer · whole brand"). The reward stays in the offer sheet.
  */
 export function offerRowSummary(
   offer: Pick<
@@ -92,7 +92,7 @@ export function offerRowSummary(
   const who =
     offer.audience === "buyers"
       ? offer.scopeKind === "brand"
-        ? "all listings"
+        ? "whole brand"
         : `${offer.listings.length} listing${offer.listings.length === 1 ? "" : "s"}`
       : `${offer.memberCount} promoter${offer.memberCount === 1 ? "" : "s"}`;
   return `${audience} · ${who}`;

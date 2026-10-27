@@ -6,7 +6,7 @@ import {
   tenantWrite,
 } from "../lib/access";
 import { safeText, safeUrl } from "../lib/validation";
-import { singletonPerTenant } from "../lib/tenantIntegrity";
+import { bindRequestTenant, singletonPerTenant } from "../lib/tenantIntegrity";
 
 export const Footer: CollectionConfig = {
   slug: "footer",
@@ -24,7 +24,7 @@ export const Footer: CollectionConfig = {
   versions: { drafts: { autosave: false }, maxPerDoc: 50 },
   hooks: {
     beforeOperation: [enforceLiveStudioWrite],
-    beforeChange: [singletonPerTenant("footer")],
+    beforeChange: [singletonPerTenant("footer"), bindRequestTenant],
   },
   fields: [
     {
@@ -70,6 +70,95 @@ export const Footer: CollectionConfig = {
           maxLength: 2048,
           validate: safeUrl,
         },
+      ],
+    },
+    /*
+     * #2829 W2 — the richer footer the travel designs use (W3/W7 render it).
+     * "Powered by Mingla" is not a field: every site shows it (A1.1).
+     */
+    {
+      name: "tagline_lines",
+      type: "array",
+      maxRows: 3,
+      fields: [
+        {
+          name: "text",
+          type: "text",
+          required: true,
+          maxLength: 80,
+          validate: (value: unknown) => safeText(value, 80),
+        },
+      ],
+    },
+    {
+      name: "location",
+      type: "text",
+      maxLength: 120,
+      validate: (value: unknown) => (value == null || value === "" ? true : safeText(value, 120)),
+    },
+    { name: "email", type: "email" },
+    {
+      name: "columns",
+      type: "array",
+      maxRows: 4,
+      fields: [
+        {
+          name: "heading",
+          type: "text",
+          required: true,
+          maxLength: 40,
+          validate: (value: unknown) => safeText(value, 40),
+        },
+        {
+          name: "links",
+          type: "array",
+          maxRows: 8,
+          fields: [
+            {
+              name: "label",
+              type: "text",
+              required: true,
+              maxLength: 80,
+              validate: (value: unknown) => safeText(value, 80),
+            },
+            { name: "href", type: "text", required: true, maxLength: 2048, validate: safeUrl },
+          ],
+        },
+      ],
+    },
+    {
+      name: "socials",
+      type: "array",
+      maxRows: 8,
+      fields: [
+        {
+          name: "network",
+          type: "select",
+          required: true,
+          options: ["instagram", "tiktok", "facebook", "x", "youtube", "linkedin", "threads", "whatsapp"]
+            .map((value) => ({ label: value === "x" ? "X" : value[0]!.toUpperCase() + value.slice(1), value })),
+        },
+        { name: "url", type: "text", required: true, maxLength: 2048, validate: safeUrl },
+      ],
+    },
+    {
+      name: "copyright",
+      type: "text",
+      maxLength: 160,
+      admin: { description: "You can use {year} and {site_name}." },
+      validate: (value: unknown) => (value == null || value === "" ? true : safeText(value, 160)),
+    },
+    {
+      name: "built_by",
+      type: "group",
+      fields: [
+        {
+          name: "label",
+          type: "text",
+          maxLength: 80,
+          validate: (value: unknown) => (value == null || value === "" ? true : safeText(value, 80)),
+        },
+        { name: "url", type: "text", maxLength: 2048, validate: safeUrl },
       ],
     },
   ],

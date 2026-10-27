@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3645_paystack_plan_model.implementor.happy.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3645-pi-01-paystack-plan-model",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

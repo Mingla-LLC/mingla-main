@@ -10,6 +10,7 @@ import {
   formatSenderHeader,
 } from "../_shared/email/index.ts";
 import { renderInstallmentReminderEmail } from "../_shared/email/installmentReminderEmail.ts";
+import { sendInstallmentPayLink } from "../_shared/installments/installmentPayLinks.ts";
 
 interface SendReminderBody {
   orderId?: unknown;
@@ -90,6 +91,7 @@ async function sendPush(input: {
   userId: string | null;
   brandId: string;
   orderId: string;
+  reminderId: string;
   title: string;
   body: string;
 }): Promise<DeliveryState> {
@@ -113,11 +115,15 @@ async function sendPush(input: {
         brandId: input.brandId,
         relatedId: input.orderId,
         relatedType: "order",
-        idempotencyKey: `installment_reminder:${input.orderId}:${Date.now()}`,
+        idempotencyKey:
+          `installment_reminder:${input.orderId}:${input.reminderId}`,
       }),
     });
     if (!res.ok) return "failed";
-    const payload = await res.json().catch(() => ({})) as Record<string, unknown>;
+    const payload = await res.json().catch(() => ({})) as Record<
+      string,
+      unknown
+    >;
     return payload.pushSent === true ? "sent" : "skipped";
   } catch (err) {
     console.warn(
@@ -169,14 +175,19 @@ serve(async (req: Request) => {
     }
     if (reason === "forbidden") {
       return jsonResponse(
-        { ok: false, error: "Not authorised to send reminders for this brand." },
+        {
+          ok: false,
+          error: "Not authorised to send reminders for this brand.",
+        },
         403,
       );
     }
     return jsonResponse({ ok: false, error: reason }, 409);
   }
 
-  const reminderId = typeof rpc.reminder_id === "string" ? rpc.reminder_id : null;
+  const reminderId = typeof rpc.reminder_id === "string"
+    ? rpc.reminder_id
+    : null;
   const brandId = typeof rpc.brand_id === "string" ? rpc.brand_id : null;
   if (reminderId === null || brandId === null) {
     return jsonResponse({ ok: false, error: "reminder_context_missing" }, 500);
@@ -185,7 +196,9 @@ serve(async (req: Request) => {
   const admin = serviceClient();
   const { data: order } = await admin
     .from("orders")
-    .select("id, event_id, buyer_name, buyer_email, buyer_user_id, total_cents, currency")
+    .select(
+      "id, event_id, buyer_name, buyer_email, buyer_user_id, total_cents, currency",
+    )
     .eq("id", body.orderId)
     .maybeSingle();
   if (order === null) {
@@ -213,7 +226,9 @@ serve(async (req: Request) => {
     .maybeSingle();
   const { data: nextInstallment } = await admin
     .from("order_installments")
-    .select("id, amount_cents, currency, due_at")
+    .select(
+      "id, amount_cents, currency, due_at, collection_method, buyer_action",
+    )
     .eq("order_id", body.orderId)
     .in("status", ["scheduled", "failed"])
     .order("due_at", { ascending: true })
@@ -228,10 +243,37 @@ serve(async (req: Request) => {
     "your trip";
   const brandName = (brand as { name?: string } | null)?.name ?? "Mingla";
   const inst = nextInstallment as {
+    id?: string;
     amount_cents?: number;
     currency?: string;
     due_at?: string;
+    collection_method?: string;
+    buyer_action?: string | null;
   } | null;
+
+  if (
+    typeof inst?.id === "string" &&
+    (inst.collection_method === "pay_link" ||
+      inst.buyer_action === "approval_required")
+  ) {
+    const sent = await sendInstallmentPayLink(admin, {
+      installmentId: inst.id,
+      purpose: inst.buyer_action === "approval_required" ? "approve" : "pay",
+    });
+    const email: DeliveryState = sent.ok && sent.emailSent ? "sent" : "failed";
+    const push: DeliveryState = sent.ok && sent.pushSent ? "sent" : "skipped";
+    await admin.from("manual_buyer_reminders")
+      .update({ delivery_results: { email, push } })
+      .eq("id", reminderId);
+    if (!sent.ok) return jsonResponse({ ok: false, error: sent.reason }, 409);
+    return jsonResponse({
+      ok: true,
+      deliveredVia: [
+        ...(sent.emailSent ? ["email" as const] : []),
+        ...(sent.pushSent ? ["push" as const] : []),
+      ],
+    });
+  }
   const amount = formatMoney(
     inst?.amount_cents ?? orderRow.total_cents,
     inst?.currency ?? orderRow.currency,
@@ -265,6 +307,7 @@ serve(async (req: Request) => {
     userId: orderRow.buyer_user_id,
     brandId,
     orderId: body.orderId,
+    reminderId,
     title: "Installment reminder",
     body: `${amount} for ${eventTitle} is due ${dueAt}.`,
   });

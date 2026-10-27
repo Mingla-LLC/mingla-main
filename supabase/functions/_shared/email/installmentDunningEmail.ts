@@ -47,6 +47,12 @@ export interface InstallmentDunningInput {
     shortId: string;
   };
   supportEmail?: string;
+  /**
+   * Issue #3645 (Paystack rows): a secure pay / approve link. When present the
+   * email's button pays or approves the instalment; when absent (Stripe) the
+   * email is unchanged.
+   */
+  action?: { url: string; label: string } | null;
 }
 
 interface InstallmentDunningResult {
@@ -131,7 +137,12 @@ export function renderInstallmentDunningEmail(
     ? "Your booking is at risk"
     : `Payment ${input.installment.ordinal} needs attention`;
 
-  const intro = isAtRisk
+  const action = input.action ?? null;
+  const intro = action !== null
+    ? (isAtRisk
+      ? `We still haven't received <strong>${amount}</strong> for payment ${input.installment.ordinal} of <strong>${safeTripTitle}</strong>, so your spot is now flagged as at risk. ${safeBrandName} has been notified. You can still pay with the secure link below.`
+      : `We haven't received <strong>${amount}</strong> for payment ${input.installment.ordinal} of <strong>${safeTripTitle}</strong>. You can pay now with the secure link below; otherwise we'll remind you again on ${formatRetryDate(input.installment.nextRetryAt)}.`)
+    : isAtRisk
     ? `We tried to charge your card 3 times and weren't able to. Your spot on <strong>${safeTripTitle}</strong> is now flagged as at risk. ${escapeHtml(input.brand.name)} has been notified and may contact you. Please reach out to keep your booking.`
     : `${friendlyError} We weren't able to charge <strong>${amount}</strong> for installment ${input.installment.ordinal} of <strong>${safeTripTitle}</strong>. We'll automatically try again on ${formatRetryDate(input.installment.nextRetryAt)}, but you can contact ${safeBrandName} to update your payment method sooner.`;
 
@@ -146,7 +157,10 @@ export function renderInstallmentDunningEmail(
       <p style="font-size:14px;color:#666;margin:0 0 6px;">Installment ${input.installment.ordinal} · Order ${escapeHtml(input.order.shortId)}</p>
       <p style="font-size:18px;font-weight:600;margin:0;">${amount}</p>
     </div>
-    <a href="mailto:${escapeHtml(contactEmail)}?subject=${mailtoSubject}" style="display:inline-block;background:#1a1a1a;color:#ffffff;text-decoration:none;padding:14px 24px;border-radius:8px;font-weight:500;">Contact ${safeBrandName}</a>
+    ${action !== null
+      ? `<a href="${escapeHtml(action.url)}" style="display:inline-block;background:#1a1a1a;color:#ffffff;text-decoration:none;padding:14px 24px;border-radius:8px;font-weight:500;">${escapeHtml(action.label)}</a>
+    <p style="font-size:14px;line-height:1.5;margin:16px 0 0;color:#444;">Questions? <a href="mailto:${escapeHtml(contactEmail)}?subject=${mailtoSubject}" style="color:#444;">Contact ${safeBrandName}</a>.</p>`
+      : `<a href="mailto:${escapeHtml(contactEmail)}?subject=${mailtoSubject}" style="display:inline-block;background:#1a1a1a;color:#ffffff;text-decoration:none;padding:14px 24px;border-radius:8px;font-weight:500;">Contact ${safeBrandName}</a>`}
     <p style="font-size:13px;color:#888;line-height:1.5;margin:32px 0 0;">You received this because you booked ${safeTripTitle} on Mingla. Questions about Mingla? Email <a href="mailto:${DEFAULT_SUPPORT_EMAIL}" style="color:#888;">${DEFAULT_SUPPORT_EMAIL}</a>.</p>
   </div>
 </body>
@@ -157,7 +171,9 @@ export function renderInstallmentDunningEmail(
     "",
     `Hi ${input.recipient.name ?? "there"},`,
     "",
-    isAtRisk
+    action !== null
+      ? `We haven't received ${amount} for payment ${input.installment.ordinal} of ${input.trip.title}.${isAtRisk ? " Your spot is now flagged as at risk." : ""} Pay securely: ${action.url}`
+      : isAtRisk
       ? `We tried to charge your card 3 times and weren't able to. Your spot on ${input.trip.title} is now flagged as at risk. ${input.brand.name} has been notified.`
       : `${friendlyError} We weren't able to charge ${amount} for installment ${input.installment.ordinal} of ${input.trip.title}. We'll automatically try again on ${formatRetryDate(input.installment.nextRetryAt)}.`,
     "",

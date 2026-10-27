@@ -19,8 +19,6 @@ import { join, resolve } from "node:path";
 
 import {
   CmsSeedClient,
-  GOGI_BRAND_ID,
-  GOGI_CONFIGURED_BY,
   GOGI_SOURCE,
   SeedError,
   validateStudioSession,
@@ -178,8 +176,6 @@ export function validateUploadOptions(raw) {
   if (![options.siteId, options.brandId, options.tenantId, options.configuredBy].every((id) => UUID.test(id))) {
     fail("INVALID_ID");
   }
-  if (options.brandId !== GOGI_BRAND_ID) fail("WRONG_GOGI_BRAND");
-  if (options.configuredBy !== GOGI_CONFIGURED_BY) fail("WRONG_CONFIGURED_BY");
   if (options.source !== GOGI_SOURCE) fail("UNSUPPORTED_SOURCE");
   return options;
 }

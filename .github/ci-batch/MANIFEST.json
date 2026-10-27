@@ -26093,7 +26093,8 @@
       "transition": "retained-live-provider",
       "providerWorkflow": ".github/workflows/web-build-check.yml",
       "referenceFiles": [
-        "mingla-business/src/wrappers/__tests__/KeyboardRoot.adversarial.test.tsx"
+        "mingla-business/src/wrappers/__tests__/KeyboardRoot.adversarial.test.tsx",
+        "scripts/sites/__tests__/issue_2829_goldens_arm64_job.test.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     }

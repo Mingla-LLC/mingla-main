@@ -30,6 +30,14 @@ const publishedEditorSource = readFileSync(
   join(COMPONENT_ROOT, "EditPublishedTripScreen.tsx"),
   "utf8",
 );
+const capabilityHookSource = readFileSync(
+  join(COMPONENT_ROOT, "..", "..", "hooks", "useTripInstallmentCapability.ts"),
+  "utf8",
+);
+const capabilityServiceSource = readFileSync(
+  join(COMPONENT_ROOT, "..", "..", "services", "tripInstallmentCapabilityService.ts"),
+  "utf8",
+);
 const editRouteSource = readFileSync(
   join(APP_ROOT, "trip", "[id]", "edit.tsx"),
   "utf8",
@@ -91,11 +99,17 @@ describe("#3859 unsupported trip installment capability", () => {
     );
   });
 
-  test("published editing gets the effective current-brand capability", () => {
-    expect(editRouteSource).toContain("currentBrand.id === trip.brandId");
-    expect(editRouteSource).toContain("paymentProvider={");
-    expect(publishedEditorSource).toContain(
-      "tripInstallmentsSupported(paymentProvider)",
+  test("authoring uses the server capability RPC and fails closed", () => {
+    expect(capabilityServiceSource).toContain(
+      '"biz_trip_installments_supported_for_brand"',
     );
+    expect(capabilityServiceSource).toContain("return data === true");
+    expect(capabilityHookSource).toContain("catch {");
+    expect(capabilityHookSource).toContain("return false");
+    expect(wizardSource).toContain("useTripInstallmentCapability(trip.brandId)");
+    expect(publishedEditorSource).toContain(
+      "useTripInstallmentCapability(trip.brandId)",
+    );
+    expect(editRouteSource).toContain("currentBrand.id === trip.brandId");
   });
 });

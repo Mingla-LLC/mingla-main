@@ -39,20 +39,23 @@ describe("#2830 one page per route", () => {
   it("navigation uses real paths, never anchors", () => {
     expect(renderer).not.toContain("`/#${page.role}`");
     expect(renderer).not.toContain('href={page.role === "home" ? "/" : `/#');
-    expect(renderer).toContain("hrefForPage(navPage)");
+    // #2829 W2 — the menu is the site navigation (tree) or the published
+    // pages in menu order (earlier artifacts), every href a real path.
+    expect(renderer).toContain("const navItems = siteNavigation(artifact);");
+    expect(renderer).toContain("href: item.href");
   });
 
   it("marks the current page for assistive technology", () => {
     // The header nav became a disclosure component so phones have a way to
     // reach any page at all. The marking survives the move: the renderer still
     // computes which page is current, and SiteNav is what stamps aria-current.
-    expect(renderer).toContain("current: navPage.role === current.role");
+    expect(renderer).toContain("current: item.href === currentHref");
     expect(siteNav).toContain('aria-current={link.current ? "page" : undefined}');
   });
 
   it("the header navigation can be opened on a phone", () => {
     // It used to be display:none with no control anywhere to reveal it.
-    const styles = read("src/app/styles.css");
+    const styles = read("public/designs/legacy-v1.css");
     expect(siteNav).toContain("aria-expanded={open}");
     expect(siteNav).toContain("aria-controls={panelId}");
     expect(styles).toContain(".nav-burger");

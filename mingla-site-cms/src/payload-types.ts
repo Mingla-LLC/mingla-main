@@ -74,8 +74,15 @@ export interface Config {
     navigation: Navigation;
     footer: Footer;
     'site-settings': SiteSetting;
+    destinations: Destination;
+    categories: Category;
+    stories: Story;
+    testimonials: Testimonial;
     'publication-jobs': PublicationJob;
     'gateway-nonces': GatewayNonce;
+    'font-assets': FontAsset;
+    'work-log': WorkLog;
+    'design-check-runs': DesignCheckRun;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -90,8 +97,15 @@ export interface Config {
     navigation: NavigationSelect<false> | NavigationSelect<true>;
     footer: FooterSelect<false> | FooterSelect<true>;
     'site-settings': SiteSettingsSelect<false> | SiteSettingsSelect<true>;
+    destinations: DestinationsSelect<false> | DestinationsSelect<true>;
+    categories: CategoriesSelect<false> | CategoriesSelect<true>;
+    stories: StoriesSelect<false> | StoriesSelect<true>;
+    testimonials: TestimonialsSelect<false> | TestimonialsSelect<true>;
     'publication-jobs': PublicationJobsSelect<false> | PublicationJobsSelect<true>;
     'gateway-nonces': GatewayNoncesSelect<false> | GatewayNoncesSelect<true>;
+    'font-assets': FontAssetsSelect<false> | FontAssetsSelect<true>;
+    'work-log': WorkLogSelect<false> | WorkLogSelect<true>;
+    'design-check-runs': DesignCheckRunsSelect<false> | DesignCheckRunsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -158,6 +172,7 @@ export interface Tenant {
   core_site_id: string;
   core_brand_id: string;
   status: 'provisioning' | 'active' | 'suspended';
+  primary_hostname?: string | null;
   renderer_key: string;
   renderer_version: number;
   updatedAt: string;
@@ -170,19 +185,50 @@ export interface Tenant {
 export interface Page {
   id: string;
   tenant?: (string | null) | Tenant;
-  role: 'home' | 'about' | 'menu' | 'gallery' | 'contact';
-  slug: string;
   title: string;
+  /**
+   * The page's address, for example our-story. Leave empty only for your home page.
+   */
+  slug?: string | null;
+  /**
+   * Put this page under another page (up to three levels deep).
+   */
+  parent?: (string | null) | Page;
+  kind: 'standard' | 'collection_index';
+  collection_kind?: ('trips' | 'events' | 'experiences' | 'destinations' | 'stories') | null;
+  /**
+   * What this page is for, so it can show an honest empty state until it has content.
+   */
+  planned_offering?: ('trips' | 'events' | 'experiences') | null;
   enabled?: boolean | null;
-  nav_label: string;
-  nav_order: number;
   revision: number;
   blocks?:
     | (
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
             heading: string;
+            /**
+             * Optional. Up to three lines, each set on its own line by designs that do that.
+             */
+            heading_lines?:
+              | {
+                  text: string;
+                  id?: string | null;
+                }[]
+              | null;
             subheading?: string | null;
+            /**
+             * Shows the date-and-place search when your site has a trips page.
+             */
+            show_search?: boolean | null;
             media: string | Media;
+            /**
+             * Optional. Plays silently behind the heading. The image above is still required — it shows first, and it is what people who ask for reduced motion see.
+             */
+            video?: (string | null) | Media;
             ctas?:
               | {
                   label: string;
@@ -190,11 +236,19 @@ export interface Page {
                   id?: string | null;
                 }[]
               | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'cover-bottom-search') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'hero';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
             heading?: string | null;
             content: {
               root: {
@@ -211,11 +265,20 @@ export interface Page {
               };
               [k: string]: unknown;
             };
+            width?: ('narrow' | 'full') | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'prose') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'rich_text';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
             media: string | Media;
             /**
              * Describe meaningful images. Leave empty only when the image is decorative.
@@ -224,46 +287,267 @@ export interface Page {
             heading?: string | null;
             caption?: string | null;
             alignment: 'left' | 'right';
+            /**
+             * Optional. A round crop suits a portrait or a single dish; leave it empty for the usual rectangle.
+             */
+            media_shape?: ('rectangle' | 'circle') | null;
+            /**
+             * Optional. A short badge printed on the picture, for example “24/7”. Leave it empty and no badge is shown.
+             */
+            badge_figure?: string | null;
+            /**
+             * Optional. The line under the badge’s big one, for example “ALWAYS ON”. Shown only when the big line is filled in.
+             */
+            badge_label?: string | null;
+            /**
+             * Optional. A line worth pulling out, printed large against a gold bar inside this section.
+             */
+            quote?: string | null;
+            /**
+             * Optional — for example “gögi, on Instagram”. Leave it empty and the quote stands on its own.
+             */
+            quote_attribution?: string | null;
+            /**
+             * Optional. The words on the button at the foot of this section — for example “More about us”. Leave both this and the link empty and no button is shown.
+             */
+            cta_label?: string | null;
+            cta_href?: string | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'split-panel' | 'panel-caption') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'media_feature';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
             heading: string;
             body?: string | null;
             label: string;
             href: string;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'dark-panel-glow') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'cta';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
             heading?: string | null;
-            offering_ids: {
-              offering_id: string;
-              id?: string | null;
-            }[];
+            /**
+             * Choose this to show your offerings live from Mingla. Leave it empty to show only the offerings listed below, as before.
+             */
+            mode?: ('upcoming' | 'past' | 'all') | null;
+            kind?: ('all' | 'trip' | 'event' | 'experience') | null;
+            /**
+             * Optional. Leave empty to show them all.
+             */
+            limit?: number | null;
+            show_filters?: boolean | null;
+            /**
+             * Optional. Printed when no offering matches, in your words.
+             */
+            empty_text?: string | null;
+            intro?: string | null;
+            /**
+             * Optional. The words on the button beside the heading — for example “See all trips”. Leave both this and the link empty and no button is shown.
+             */
+            cta_label?: string | null;
+            cta_href?: string | null;
+            /**
+             * Optional, for example “Get in touch”.
+             */
+            empty_cta_label?: string | null;
+            empty_cta_href?: string | null;
+            /**
+             * With “Which dates” chosen: optional, shows only these offerings in this order. Without it: the fixed list (up to 12).
+             */
+            offering_ids?:
+              | {
+                  offering_id: string;
+                  id?: string | null;
+                }[]
+              | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'photo-card') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'offering_grid';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
             heading: string;
             body?: string | null;
-            reservation_target_id: string;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'neutral') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'venue_reservation';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
             heading?: string | null;
             label: string;
             href: string;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'neutral') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'menu_link';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            /**
+             * Optional line above the menu, for example service times. Items and prices come from your Mingla menu.
+             */
+            note?: string | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'neutral') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'menu_board';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            /**
+             * Optional line under the heading, for example the range of prices. The dishes themselves come from your Mingla menu.
+             */
+            note?: string | null;
+            /**
+             * Optional. Leave it empty to show every section of your Mingla menu here — which is usually the whole menu, and probably not what a taster is for.
+             */
+            section_limit?: number | null;
+            /**
+             * Optional. Leave it empty to show every item in the sections above.
+             */
+            item_limit?: number | null;
+            /**
+             * Optional. Up to four square photographs shown beside the dishes.
+             */
+            images?:
+              | {
+                  media: string | Media;
+                  /**
+                   * Describe meaningful images. Leave empty only when the image is decorative.
+                   */
+                  alt?: string | null;
+                  id?: string | null;
+                }[]
+              | null;
+            /**
+             * Optional. The words on the button under the dishes — for example “Full menu & ordering”. Leave both this and the link empty and no button is shown.
+             */
+            cta_label?: string | null;
+            cta_href?: string | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'neutral') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'menu_preview';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            /**
+             * Optional, and only used on the FIRST of several videos placed one after another — they are shown together as a grid, and this is the heading printed above that grid. Leave it empty and the grid is printed with no heading.
+             */
+            group_heading?: string | null;
+            /**
+             * Optional, and only used on the FIRST of several videos in a row. The words on the button printed under the grid — for example “Follow @yourhandle”.
+             */
+            group_cta_label?: string | null;
+            group_cta_href?: string | null;
+            heading?: string | null;
+            caption?: string | null;
+            video: string | Media;
+            poster: string | Media;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'brand-film') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'video_feature';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            caption?: string | null;
+            /**
+             * Optional. Show only the first few of the people below, with a button to the page that has all of them. Leave it empty to show everybody.
+             */
+            preview_count?: number | null;
+            /**
+             * Optional. The words on the button under the grid of people — for example “All of them”. Leave both this and the link empty and no button is shown.
+             */
+            cta_label?: string | null;
+            cta_href?: string | null;
+            members?:
+              | {
+                  name: string;
+                  /**
+                   * Optional. Printed above the name, in your accent colour — for example “Kitchen” or “Bar”.
+                   */
+                  role?: string | null;
+                  media?: (string | null) | Media;
+                  /**
+                   * Describe meaningful images. Leave empty only when the image is decorative.
+                   */
+                  alt?: string | null;
+                  id?: string | null;
+                }[]
+              | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'voyage') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'team';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
             heading?: string | null;
             images: {
               media: string | Media;
@@ -273,14 +557,30 @@ export interface Page {
               alt?: string | null;
               id?: string | null;
             }[];
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'voyage') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'gallery';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
             heading?: string | null;
             address: string;
             map_url?: string | null;
+            /**
+             * Tick this ONLY if this place never closes. It is what allows your site to show a live “open now” line with the local time; without it, nothing about being open is claimed.
+             */
+            always_open?: boolean | null;
+            /**
+             * The timezone this place is in, as a region and city — for example Africa/Lagos or Europe/London. Needed for the live local time; without it no time is shown.
+             */
+            timezone?: string | null;
             hours?:
               | {
                   day: string;
@@ -288,12 +588,37 @@ export interface Page {
                   id?: string | null;
                 }[]
               | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'neutral') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'hours_location';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
             heading?: string | null;
+            from_collection?: boolean | null;
+            intro?: string | null;
+            /**
+             * Leave empty to show every confirmed review, newest first.
+             */
+            testimonial_ids?:
+              | {
+                  testimonial: string | Testimonial;
+                  id?: string | null;
+                }[]
+              | null;
+            limit?: number | null;
+            /**
+             * Optional. The words on the button under the reviews — for example “Read more reviews”. Leave both this and the link empty and no button is shown.
+             */
+            cta_label?: string | null;
+            cta_href?: string | null;
             items?:
               | {
                   name: string;
@@ -301,11 +626,19 @@ export interface Page {
                   id?: string | null;
                 }[]
               | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'quote-wall') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'testimonials';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
             heading?: string | null;
             items?:
               | {
@@ -314,26 +647,360 @@ export interface Page {
                   id?: string | null;
                 }[]
               | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'accordion-columns') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'faq';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
             heading: string;
             body?: string | null;
             label: string;
             href: string;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'neutral') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'contact_handoff';
           }
         | {
+            /**
+             * A strip of short lines that scrolls sideways across the page, each separated by a dot, repeating for as long as it is on screen. Two lines at least — for example “24/7 food house”, “Come as you are”. Visitors who have asked their device to reduce motion see them standing still.
+             */
+            phrases: {
+              text: string;
+              id?: string | null;
+            }[];
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'neutral') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'marquee';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            /**
+             * Optional. One line under the heading, before the figures.
+             */
+            body?: string | null;
+            /**
+             * A row of short figures with a line under each. Up to six.
+             */
+            items: {
+              /**
+               * The large line — a number, a time, or a few words. For example “Open 24 hours”.
+               */
+              figure: string;
+              /**
+               * Optional. The smaller line printed under the figure.
+               */
+              label?: string | null;
+              /**
+               * Optional. A sentence under the figure, for example “Seven days a week, all year.”
+               */
+              body?: string | null;
+              /**
+               * Optional. A small drawing above the figure, in your accent colour.
+               */
+              icon?: ('clock' | 'bowl' | 'music' | 'card' | 'pin' | 'phone') | null;
+              /**
+               * Optional. Rings this card in your accent colour so it stands out from the others.
+               */
+              highlight?: boolean | null;
+              id?: string | null;
+            }[];
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'voyage') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'stats';
+          }
+        | {
+            /**
+             * A line worth pulling out of the surrounding writing. It is printed large, against a gold bar down its left edge.
+             */
+            quote: string;
+            /**
+             * Optional — for example “<your brand>, on Instagram”. Leave it empty and the quote stands on its own.
+             */
+            attribution?: string | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'voyage') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'pull_quote';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            /**
+             * Optional. What to tell someone who is on their way — the landmark to look for, which side of the street you are on.
+             */
+            body?: string | null;
+            /**
+             * The first of the two numbers your maps app shows when you drop a pin on your door. Between -90 and 90.
+             */
+            latitude: number;
+            /**
+             * The second of the two numbers. Between -180 and 180.
+             */
+            longitude: number;
+            /**
+             * Read out to anyone using a screen reader, and printed on the panel before the map loads. Say plainly what is being pointed at — the street, or the exact address if you are sure of it.
+             */
+            place_label: string;
+            directions_url?: string | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'voyage') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'map_embed';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            intro?: string | null;
+            /**
+             * Leave empty to show every destination.
+             */
+            destinations?:
+              | {
+                  destination: string | Destination;
+                  id?: string | null;
+                }[]
+              | null;
+            /**
+             * Optional. The words on the button under the destinations — for example “See all destinations”. Leave both this and the link empty and no button is shown.
+             */
+            cta_label?: string | null;
+            cta_href?: string | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('neutral' | 'badge-tile') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'destination_grid';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            intro?: string | null;
+            category?: (string | null) | Category;
+            limit?: number | null;
+            /**
+             * Optional. The words on the button under the stories — for example “Read all stories”. Leave both this and the link empty and no button is shown.
+             */
+            cta_label?: string | null;
+            cta_href?: string | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('neutral' | 'card') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'story_grid';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading: string;
+            intro?: string | null;
+            kind?: ('trip' | 'event' | 'experience' | 'all') | null;
+            /**
+             * Optional. Leave empty to list every trip that has ended.
+             */
+            offering_ids?:
+              | {
+                  offering_id: string;
+                  id?: string | null;
+                }[]
+              | null;
+            /**
+             * Optional. Group departures of the same trip under one name; each is still listed.
+             */
+            series?:
+              | {
+                  label: string;
+                  offering_ids?:
+                    | {
+                        offering_id: string;
+                        id?: string | null;
+                      }[]
+                    | null;
+                  id?: string | null;
+                }[]
+              | null;
+            /**
+             * Optional. These rows link to their Mingla trip page.
+             */
+            linked_offering_ids?:
+              | {
+                  offering_id: string;
+                  id?: string | null;
+                }[]
+              | null;
+            /**
+             * Optional. The words on the button under the list — for example “Plan your next trip”. Leave both this and the link empty and no button is shown.
+             */
+            cta_label?: string | null;
+            cta_href?: string | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('neutral' | 'ledger') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'offering_history';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            intro?: string | null;
+            show_phone?: boolean | null;
+            /**
+             * Shown inside the empty name box, for example “Your name”. Leave empty for none.
+             */
+            name_placeholder?: string | null;
+            /**
+             * Shown inside the empty email box. Leave empty for none.
+             */
+            email_placeholder?: string | null;
+            /**
+             * For example “Tell us about your trip”. Leave empty for “Message”.
+             */
+            message_label?: string | null;
+            message_placeholder?: string | null;
+            submit_label: string;
+            /**
+             * Shown after a message is sent. Leave empty for “Thanks, your message is with <your name>.”
+             */
+            success_text?: string | null;
+            fallback_email?: string | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('neutral' | 'panel') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'contact_form';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading: string;
+            body?: string | null;
+            placeholder?: string | null;
+            button_label: string;
+            small_print?: string | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('neutral' | 'card') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'newsletter_signup';
+          }
+        | {
+            heading: string;
+            /**
+             * Optional. A new line here starts a new line on the page.
+             */
+            subheading?: string | null;
+            /**
+             * Optional. Without one, the title sits on a dark panel.
+             */
+            media?: (string | null) | Media;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('neutral' | 'cover-center') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'page_header';
+          }
+        | {
+            heading?: string | null;
+            intro?: string | null;
+            cards: {
+              title: string;
+              body: string;
+              icon?: ('travel_explore' | 'festival' | 'diversity_1' | 'event_available') | null;
+              id?: string | null;
+            }[];
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('neutral' | 'tile-bar' | 'statement') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'feature_cards';
+          }
+        | {
+            heading?: string | null;
+            body?: string | null;
+            email?: string | null;
+            location?: string | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('neutral' | 'tiles') | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'contact_details';
+          }
+        | {
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'voyage') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'divider';
           }
         | {
             size: 'small' | 'medium' | 'large';
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('atelier' | 'voyage') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'spacer';
@@ -343,6 +1010,8 @@ export interface Page {
   seo?: {
     title?: string | null;
     description?: string | null;
+    image?: (string | null) | Media;
+    noindex?: boolean | null;
   };
   updatedAt: string;
   createdAt: string;
@@ -361,6 +1030,11 @@ export interface Media {
   detected_mime?: string | null;
   bytes?: number | null;
   checksum?: string | null;
+  duration_ms?: number | null;
+  kind?: ('image' | 'file_video' | 'stream_video') | null;
+  stream_video_id?: string | null;
+  stream_url?: string | null;
+  stream_host?: string | null;
   quarantine_key?: string | null;
   approved_master_key?: string | null;
   rendition_manifest?:
@@ -382,6 +1056,8 @@ export interface Media {
         | 'CHECKSUM_MISMATCH'
         | 'METADATA_RETAINED'
         | 'PROCESSING_FAILED'
+        | 'VIDEO_NOT_FASTSTART'
+        | 'VIDEO_CODEC'
       )
     | null;
   created_by?: string | null;
@@ -389,6 +1065,7 @@ export interface Media {
   recovery_until?: string | null;
   tombstoned_at?: string | null;
   prefix?: string | null;
+  _objectKey?: string | null;
   updatedAt: string;
   createdAt: string;
   url?: string | null;
@@ -403,13 +1080,196 @@ export interface Media {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "testimonials".
+ */
+export interface Testimonial {
+  id: string;
+  tenant?: (string | null) | Tenant;
+  /**
+   * Copy it exactly, typos included. Do not shorten it or join two reviews.
+   */
+  quote: string;
+  /**
+   * Exactly as they are shown where they left the review.
+   */
+  reviewer: string;
+  review_date: string;
+  /**
+   * Which trip they were on, if you know.
+   */
+  trip_name?: string | null;
+  related_offering?: string | null;
+  /**
+   * For your records only, never shown — for example “WeTravel profile, copied March 2026”.
+   */
+  source_note: string;
+  /**
+   * Reviews are published only once confirmed. Only a brand admin or the owner can confirm.
+   */
+  confirmed_real?: boolean | null;
+  confirmed_by?: string | null;
+  confirmed_at?: string | null;
+  /**
+   * Untick to keep this out of your next publish without deleting it.
+   */
+  enabled?: boolean | null;
+  sort_order?: number | null;
+  updated_by?: string | null;
+  /**
+   * Ari drafted this from the owner's own words or material.
+   */
+  drafted_by?: 'ari' | null;
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "destinations".
+ */
+export interface Destination {
+  id: string;
+  tenant?: (string | null) | Tenant;
+  title: string;
+  /**
+   * Where this destination's page lives, under your destinations address — for example bali.
+   */
+  slug: string;
+  country?: string | null;
+  featured_image?: (string | null) | Media;
+  tagline?: string | null;
+  summary?: string | null;
+  facts?: {
+    language?: string | null;
+    currency?: string | null;
+    religion?: string | null;
+    timezone?: string | null;
+  };
+  story_heading?: string | null;
+  body?: {
+    root: {
+      type: string;
+      children: {
+        type: any;
+        version: number;
+        [k: string]: unknown;
+      }[];
+      direction: ('ltr' | 'rtl') | null;
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
+      indent: number;
+      version: number;
+    };
+    [k: string]: unknown;
+  } | null;
+  seasons?:
+    | {
+        heading: string;
+        body?: string | null;
+        activities?:
+          | {
+              text: string;
+              id?: string | null;
+            }[]
+          | null;
+        image?: (string | null) | Media;
+        id?: string | null;
+      }[]
+    | null;
+  did_you_know?:
+    | {
+        text: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Mingla trips to list on this page. A trip that is no longer public simply stops showing.
+   */
+  related_offerings?:
+    | {
+        offering_id: string;
+        id?: string | null;
+      }[]
+    | null;
+  gallery?:
+    | {
+        media: string | Media;
+        alt?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  seo?: {
+    title?: string | null;
+    description?: string | null;
+    noindex?: boolean | null;
+  };
+  /**
+   * Untick to keep this out of your next publish without deleting it.
+   */
+  enabled?: boolean | null;
+  sort_order?: number | null;
+  updated_by?: string | null;
+  /**
+   * Ari drafted this from the owner's own words or material.
+   */
+  drafted_by?: 'ari' | null;
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "categories".
+ */
+export interface Category {
+  id: string;
+  tenant?: (string | null) | Tenant;
+  title: string;
+  /**
+   * A short address word for this category.
+   */
+  slug: string;
+  sort_order?: number | null;
+  updated_by?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "navigation".
  */
 export interface Navigation {
   id: string;
   tenant?: (string | null) | Tenant;
   label?: string | null;
-  pages?: (string | Page)[] | null;
+  items?:
+    | {
+        label: string;
+        target_type: 'page' | 'url';
+        page?: (string | null) | Page;
+        url?: string | null;
+        children?:
+          | {
+              label: string;
+              target_type: 'page' | 'url';
+              page?: (string | null) | Page;
+              url?: string | null;
+              id?: string | null;
+            }[]
+          | null;
+        id?: string | null;
+      }[]
+    | null;
+  header_cta?: {
+    label?: string | null;
+    target_type?: ('page' | 'url') | null;
+    page?: (string | null) | Page;
+    url?: string | null;
+  };
+  /**
+   * Text shown in the header when you have no logo.
+   */
+  wordmark?: string | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -432,6 +1292,42 @@ export interface Footer {
         id?: string | null;
       }[]
     | null;
+  tagline_lines?:
+    | {
+        text: string;
+        id?: string | null;
+      }[]
+    | null;
+  location?: string | null;
+  email?: string | null;
+  columns?:
+    | {
+        heading: string;
+        links?:
+          | {
+              label: string;
+              href: string;
+              id?: string | null;
+            }[]
+          | null;
+        id?: string | null;
+      }[]
+    | null;
+  socials?:
+    | {
+        network: 'instagram' | 'tiktok' | 'facebook' | 'x' | 'youtube' | 'linkedin' | 'threads' | 'whatsapp';
+        url: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * You can use {year} and {site_name}.
+   */
+  copyright?: string | null;
+  built_by?: {
+    label?: string | null;
+    url?: string | null;
+  };
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -446,16 +1342,140 @@ export interface SiteSetting {
   display_name: string;
   short_description?: string | null;
   logo?: (string | null) | Media;
-  background_color?: string | null;
-  foreground_color?: string | null;
-  accent_color?: string | null;
-  typography?: ('modern-sans' | 'editorial-serif') | null;
-  canonical_url: string;
+  /**
+   * Switching design keeps all your content.
+   */
+  design?: ('atelier' | 'voyage') | null;
+  tokens?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  fonts?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  radius?: ('design' | 'sharp' | 'soft' | 'round') | null;
+  button_shape?: ('design' | 'pill' | 'rounded' | 'square') | null;
+  /**
+   * Visitors who ask their device for reduced motion always get none.
+   */
+  motion?: ('design' | 'calm' | 'lively' | 'none') | null;
+  hidden_offering_ids?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * Your website's address. Mingla sets it for you.
+   */
+  canonical_url?: string | null;
   seo_title?: string | null;
   seo_description?: string | null;
   social_image?: (string | null) | Media;
+  /**
+   * Where each kind of detail page lives, for example trips/<name>.
+   */
+  routes?: {
+    /**
+     * Default "trips".
+     */
+    trips?: string | null;
+    /**
+     * Default "events".
+     */
+    events?: string | null;
+    /**
+     * Default "experiences".
+     */
+    experiences?: string | null;
+    /**
+     * Default "destinations".
+     */
+    destinations?: string | null;
+    /**
+     * Default "stories". Leave empty to put stories at the site root.
+     */
+    stories?: string | null;
+  };
+  language?: string | null;
+  timezone?: string | null;
+  /**
+   * Send an old address to a new one, for example /destinations to /stamped-destinations.
+   */
+  redirects?:
+    | {
+        from: string;
+        to: string;
+        status: '308' | '301';
+        id?: string | null;
+      }[]
+    | null;
   analytics_consent_mode?: 'optional' | null;
   renderer_key?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "stories".
+ */
+export interface Story {
+  id: string;
+  tenant?: (string | null) | Tenant;
+  title: string;
+  /**
+   * Where this story lives on your site — for example our-first-trip.
+   */
+  slug: string;
+  published_at: string;
+  category?: (string | null) | Category;
+  featured_image?: (string | null) | Media;
+  excerpt?: string | null;
+  content: {
+    root: {
+      type: string;
+      children: {
+        type: any;
+        version: number;
+        [k: string]: unknown;
+      }[];
+      direction: ('ltr' | 'rtl') | null;
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
+      indent: number;
+      version: number;
+    };
+    [k: string]: unknown;
+  };
+  seo?: {
+    title?: string | null;
+    description?: string | null;
+    noindex?: boolean | null;
+  };
+  /**
+   * Untick to keep this out of your next publish without deleting it.
+   */
+  enabled?: boolean | null;
+  sort_order?: number | null;
+  updated_by?: string | null;
+  /**
+   * Ari drafted this from the owner's own words or material.
+   */
+  drafted_by?: 'ari' | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -498,6 +1518,72 @@ export interface GatewayNonce {
   site_id: string;
   operation_id: string;
   expires_at: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "font-assets".
+ */
+export interface FontAsset {
+  id: string;
+  request_key: string;
+  family: string;
+  weight: number;
+  style: 'normal' | 'italic';
+  unicode_range: string;
+  digest: string;
+  bytes: number;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Every change Ari made to your website, why, and what it was based on. Never shown to visitors.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "work-log".
+ */
+export interface WorkLog {
+  id: string;
+  tenant?: (string | null) | Tenant;
+  part: 'plan' | 'draft' | 'composition' | 'variant' | 'tokens' | 'copy' | 'imagery' | 'collection' | 'trip_guide';
+  decision: string;
+  cites:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  actor: 'ari' | 'user';
+  actor_user_id?: string | null;
+  tool?: string | null;
+  target?: string | null;
+  revision?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "design-check-runs".
+ */
+export interface DesignCheckRun {
+  id: string;
+  tenant?: (string | null) | Tenant;
+  draft_digest: string;
+  results:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  warning_count: number;
+  run_by: 'ari' | 'user';
   updatedAt: string;
   createdAt: string;
 }
@@ -554,12 +1640,40 @@ export interface PayloadLockedDocument {
         value: string | SiteSetting;
       } | null)
     | ({
+        relationTo: 'destinations';
+        value: string | Destination;
+      } | null)
+    | ({
+        relationTo: 'categories';
+        value: string | Category;
+      } | null)
+    | ({
+        relationTo: 'stories';
+        value: string | Story;
+      } | null)
+    | ({
+        relationTo: 'testimonials';
+        value: string | Testimonial;
+      } | null)
+    | ({
         relationTo: 'publication-jobs';
         value: string | PublicationJob;
       } | null)
     | ({
         relationTo: 'gateway-nonces';
         value: string | GatewayNonce;
+      } | null)
+    | ({
+        relationTo: 'font-assets';
+        value: string | FontAsset;
+      } | null)
+    | ({
+        relationTo: 'work-log';
+        value: string | WorkLog;
+      } | null)
+    | ({
+        relationTo: 'design-check-runs';
+        value: string | DesignCheckRun;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -627,6 +1741,7 @@ export interface TenantsSelect<T extends boolean = true> {
   core_site_id?: T;
   core_brand_id?: T;
   status?: T;
+  primary_hostname?: T;
   renderer_key?: T;
   renderer_version?: T;
   updatedAt?: T;
@@ -638,12 +1753,13 @@ export interface TenantsSelect<T extends boolean = true> {
  */
 export interface PagesSelect<T extends boolean = true> {
   tenant?: T;
-  role?: T;
-  slug?: T;
   title?: T;
+  slug?: T;
+  parent?: T;
+  kind?: T;
+  collection_kind?: T;
+  planned_offering?: T;
   enabled?: T;
-  nav_label?: T;
-  nav_order?: T;
   revision?: T;
   blocks?:
     | T
@@ -651,9 +1767,18 @@ export interface PagesSelect<T extends boolean = true> {
         hero?:
           | T
           | {
+              eyebrow?: T;
               heading?: T;
+              heading_lines?:
+                | T
+                | {
+                    text?: T;
+                    id?: T;
+                  };
               subheading?: T;
+              show_search?: T;
               media?: T;
+              video?: T;
               ctas?:
                 | T
                 | {
@@ -661,72 +1786,171 @@ export interface PagesSelect<T extends boolean = true> {
                     href?: T;
                     id?: T;
                   };
+              variant?: T;
               id?: T;
               blockName?: T;
             };
         rich_text?:
           | T
           | {
+              eyebrow?: T;
               heading?: T;
               content?: T;
+              width?: T;
+              variant?: T;
               id?: T;
               blockName?: T;
             };
         media_feature?:
           | T
           | {
+              eyebrow?: T;
               media?: T;
               alt?: T;
               heading?: T;
               caption?: T;
               alignment?: T;
+              media_shape?: T;
+              badge_figure?: T;
+              badge_label?: T;
+              quote?: T;
+              quote_attribution?: T;
+              cta_label?: T;
+              cta_href?: T;
+              variant?: T;
               id?: T;
               blockName?: T;
             };
         cta?:
           | T
           | {
+              eyebrow?: T;
               heading?: T;
               body?: T;
               label?: T;
               href?: T;
+              variant?: T;
               id?: T;
               blockName?: T;
             };
         offering_grid?:
           | T
           | {
+              eyebrow?: T;
               heading?: T;
+              mode?: T;
+              kind?: T;
+              limit?: T;
+              show_filters?: T;
+              empty_text?: T;
+              intro?: T;
+              cta_label?: T;
+              cta_href?: T;
+              empty_cta_label?: T;
+              empty_cta_href?: T;
               offering_ids?:
                 | T
                 | {
                     offering_id?: T;
                     id?: T;
                   };
+              variant?: T;
               id?: T;
               blockName?: T;
             };
         venue_reservation?:
           | T
           | {
+              eyebrow?: T;
               heading?: T;
               body?: T;
-              reservation_target_id?: T;
+              variant?: T;
               id?: T;
               blockName?: T;
             };
         menu_link?:
           | T
           | {
+              eyebrow?: T;
               heading?: T;
               label?: T;
               href?: T;
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        menu_board?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              note?: T;
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        menu_preview?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              note?: T;
+              section_limit?: T;
+              item_limit?: T;
+              images?:
+                | T
+                | {
+                    media?: T;
+                    alt?: T;
+                    id?: T;
+                  };
+              cta_label?: T;
+              cta_href?: T;
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        video_feature?:
+          | T
+          | {
+              eyebrow?: T;
+              group_heading?: T;
+              group_cta_label?: T;
+              group_cta_href?: T;
+              heading?: T;
+              caption?: T;
+              video?: T;
+              poster?: T;
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        team?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              caption?: T;
+              preview_count?: T;
+              cta_label?: T;
+              cta_href?: T;
+              members?:
+                | T
+                | {
+                    name?: T;
+                    role?: T;
+                    media?: T;
+                    alt?: T;
+                    id?: T;
+                  };
+              variant?: T;
               id?: T;
               blockName?: T;
             };
         gallery?:
           | T
           | {
+              eyebrow?: T;
               heading?: T;
               images?:
                 | T
@@ -735,15 +1959,19 @@ export interface PagesSelect<T extends boolean = true> {
                     alt?: T;
                     id?: T;
                   };
+              variant?: T;
               id?: T;
               blockName?: T;
             };
         hours_location?:
           | T
           | {
+              eyebrow?: T;
               heading?: T;
               address?: T;
               map_url?: T;
+              always_open?: T;
+              timezone?: T;
               hours?:
                 | T
                 | {
@@ -751,13 +1979,26 @@ export interface PagesSelect<T extends boolean = true> {
                     value?: T;
                     id?: T;
                   };
+              variant?: T;
               id?: T;
               blockName?: T;
             };
         testimonials?:
           | T
           | {
+              eyebrow?: T;
               heading?: T;
+              from_collection?: T;
+              intro?: T;
+              testimonial_ids?:
+                | T
+                | {
+                    testimonial?: T;
+                    id?: T;
+                  };
+              limit?: T;
+              cta_label?: T;
+              cta_href?: T;
               items?:
                 | T
                 | {
@@ -765,12 +2006,14 @@ export interface PagesSelect<T extends boolean = true> {
                     quote?: T;
                     id?: T;
                   };
+              variant?: T;
               id?: T;
               blockName?: T;
             };
         faq?:
           | T
           | {
+              eyebrow?: T;
               heading?: T;
               items?:
                 | T
@@ -779,22 +2022,220 @@ export interface PagesSelect<T extends boolean = true> {
                     answer?: T;
                     id?: T;
                   };
+              variant?: T;
               id?: T;
               blockName?: T;
             };
         contact_handoff?:
           | T
           | {
+              eyebrow?: T;
               heading?: T;
               body?: T;
               label?: T;
               href?: T;
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        marquee?:
+          | T
+          | {
+              phrases?:
+                | T
+                | {
+                    text?: T;
+                    id?: T;
+                  };
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        stats?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              body?: T;
+              items?:
+                | T
+                | {
+                    figure?: T;
+                    label?: T;
+                    body?: T;
+                    icon?: T;
+                    highlight?: T;
+                    id?: T;
+                  };
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        pull_quote?:
+          | T
+          | {
+              quote?: T;
+              attribution?: T;
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        map_embed?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              body?: T;
+              latitude?: T;
+              longitude?: T;
+              place_label?: T;
+              directions_url?: T;
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        destination_grid?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              intro?: T;
+              destinations?:
+                | T
+                | {
+                    destination?: T;
+                    id?: T;
+                  };
+              cta_label?: T;
+              cta_href?: T;
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        story_grid?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              intro?: T;
+              category?: T;
+              limit?: T;
+              cta_label?: T;
+              cta_href?: T;
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        offering_history?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              intro?: T;
+              kind?: T;
+              offering_ids?:
+                | T
+                | {
+                    offering_id?: T;
+                    id?: T;
+                  };
+              series?:
+                | T
+                | {
+                    label?: T;
+                    offering_ids?:
+                      | T
+                      | {
+                          offering_id?: T;
+                          id?: T;
+                        };
+                    id?: T;
+                  };
+              linked_offering_ids?:
+                | T
+                | {
+                    offering_id?: T;
+                    id?: T;
+                  };
+              cta_label?: T;
+              cta_href?: T;
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        contact_form?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              intro?: T;
+              show_phone?: T;
+              name_placeholder?: T;
+              email_placeholder?: T;
+              message_label?: T;
+              message_placeholder?: T;
+              submit_label?: T;
+              success_text?: T;
+              fallback_email?: T;
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        newsletter_signup?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              body?: T;
+              placeholder?: T;
+              button_label?: T;
+              small_print?: T;
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        page_header?:
+          | T
+          | {
+              heading?: T;
+              subheading?: T;
+              media?: T;
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        feature_cards?:
+          | T
+          | {
+              heading?: T;
+              intro?: T;
+              cards?:
+                | T
+                | {
+                    title?: T;
+                    body?: T;
+                    icon?: T;
+                    id?: T;
+                  };
+              variant?: T;
+              id?: T;
+              blockName?: T;
+            };
+        contact_details?:
+          | T
+          | {
+              heading?: T;
+              body?: T;
+              email?: T;
+              location?: T;
+              variant?: T;
               id?: T;
               blockName?: T;
             };
         divider?:
           | T
           | {
+              variant?: T;
               id?: T;
               blockName?: T;
             };
@@ -802,6 +2243,7 @@ export interface PagesSelect<T extends boolean = true> {
           | T
           | {
               size?: T;
+              variant?: T;
               id?: T;
               blockName?: T;
             };
@@ -811,6 +2253,8 @@ export interface PagesSelect<T extends boolean = true> {
     | {
         title?: T;
         description?: T;
+        image?: T;
+        noindex?: T;
       };
   updatedAt?: T;
   createdAt?: T;
@@ -828,6 +2272,11 @@ export interface MediaSelect<T extends boolean = true> {
   detected_mime?: T;
   bytes?: T;
   checksum?: T;
+  duration_ms?: T;
+  kind?: T;
+  stream_video_id?: T;
+  stream_url?: T;
+  stream_host?: T;
   quarantine_key?: T;
   approved_master_key?: T;
   rendition_manifest?: T;
@@ -837,6 +2286,7 @@ export interface MediaSelect<T extends boolean = true> {
   recovery_until?: T;
   tombstoned_at?: T;
   prefix?: T;
+  _objectKey?: T;
   updatedAt?: T;
   createdAt?: T;
   url?: T;
@@ -856,7 +2306,33 @@ export interface MediaSelect<T extends boolean = true> {
 export interface NavigationSelect<T extends boolean = true> {
   tenant?: T;
   label?: T;
-  pages?: T;
+  items?:
+    | T
+    | {
+        label?: T;
+        target_type?: T;
+        page?: T;
+        url?: T;
+        children?:
+          | T
+          | {
+              label?: T;
+              target_type?: T;
+              page?: T;
+              url?: T;
+              id?: T;
+            };
+        id?: T;
+      };
+  header_cta?:
+    | T
+    | {
+        label?: T;
+        target_type?: T;
+        page?: T;
+        url?: T;
+      };
+  wordmark?: T;
   updatedAt?: T;
   createdAt?: T;
   _status?: T;
@@ -878,6 +2354,41 @@ export interface FooterSelect<T extends boolean = true> {
         href?: T;
         id?: T;
       };
+  tagline_lines?:
+    | T
+    | {
+        text?: T;
+        id?: T;
+      };
+  location?: T;
+  email?: T;
+  columns?:
+    | T
+    | {
+        heading?: T;
+        links?:
+          | T
+          | {
+              label?: T;
+              href?: T;
+              id?: T;
+            };
+        id?: T;
+      };
+  socials?:
+    | T
+    | {
+        network?: T;
+        url?: T;
+        id?: T;
+      };
+  copyright?: T;
+  built_by?:
+    | T
+    | {
+        label?: T;
+        url?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
   _status?: T;
@@ -891,16 +2402,173 @@ export interface SiteSettingsSelect<T extends boolean = true> {
   display_name?: T;
   short_description?: T;
   logo?: T;
-  background_color?: T;
-  foreground_color?: T;
-  accent_color?: T;
-  typography?: T;
+  design?: T;
+  tokens?: T;
+  fonts?: T;
+  radius?: T;
+  button_shape?: T;
+  motion?: T;
+  hidden_offering_ids?: T;
   canonical_url?: T;
   seo_title?: T;
   seo_description?: T;
   social_image?: T;
+  routes?:
+    | T
+    | {
+        trips?: T;
+        events?: T;
+        experiences?: T;
+        destinations?: T;
+        stories?: T;
+      };
+  language?: T;
+  timezone?: T;
+  redirects?:
+    | T
+    | {
+        from?: T;
+        to?: T;
+        status?: T;
+        id?: T;
+      };
   analytics_consent_mode?: T;
   renderer_key?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  _status?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "destinations_select".
+ */
+export interface DestinationsSelect<T extends boolean = true> {
+  tenant?: T;
+  title?: T;
+  slug?: T;
+  country?: T;
+  featured_image?: T;
+  tagline?: T;
+  summary?: T;
+  facts?:
+    | T
+    | {
+        language?: T;
+        currency?: T;
+        religion?: T;
+        timezone?: T;
+      };
+  story_heading?: T;
+  body?: T;
+  seasons?:
+    | T
+    | {
+        heading?: T;
+        body?: T;
+        activities?:
+          | T
+          | {
+              text?: T;
+              id?: T;
+            };
+        image?: T;
+        id?: T;
+      };
+  did_you_know?:
+    | T
+    | {
+        text?: T;
+        id?: T;
+      };
+  related_offerings?:
+    | T
+    | {
+        offering_id?: T;
+        id?: T;
+      };
+  gallery?:
+    | T
+    | {
+        media?: T;
+        alt?: T;
+        id?: T;
+      };
+  seo?:
+    | T
+    | {
+        title?: T;
+        description?: T;
+        noindex?: T;
+      };
+  enabled?: T;
+  sort_order?: T;
+  updated_by?: T;
+  drafted_by?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  _status?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "categories_select".
+ */
+export interface CategoriesSelect<T extends boolean = true> {
+  tenant?: T;
+  title?: T;
+  slug?: T;
+  sort_order?: T;
+  updated_by?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  _status?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "stories_select".
+ */
+export interface StoriesSelect<T extends boolean = true> {
+  tenant?: T;
+  title?: T;
+  slug?: T;
+  published_at?: T;
+  category?: T;
+  featured_image?: T;
+  excerpt?: T;
+  content?: T;
+  seo?:
+    | T
+    | {
+        title?: T;
+        description?: T;
+        noindex?: T;
+      };
+  enabled?: T;
+  sort_order?: T;
+  updated_by?: T;
+  drafted_by?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  _status?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "testimonials_select".
+ */
+export interface TestimonialsSelect<T extends boolean = true> {
+  tenant?: T;
+  quote?: T;
+  reviewer?: T;
+  review_date?: T;
+  trip_name?: T;
+  related_offering?: T;
+  source_note?: T;
+  confirmed_real?: T;
+  confirmed_by?: T;
+  confirmed_at?: T;
+  enabled?: T;
+  sort_order?: T;
+  updated_by?: T;
+  drafted_by?: T;
   updatedAt?: T;
   createdAt?: T;
   _status?: T;
@@ -933,6 +2601,51 @@ export interface GatewayNoncesSelect<T extends boolean = true> {
   site_id?: T;
   operation_id?: T;
   expires_at?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "font-assets_select".
+ */
+export interface FontAssetsSelect<T extends boolean = true> {
+  request_key?: T;
+  family?: T;
+  weight?: T;
+  style?: T;
+  unicode_range?: T;
+  digest?: T;
+  bytes?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "work-log_select".
+ */
+export interface WorkLogSelect<T extends boolean = true> {
+  tenant?: T;
+  part?: T;
+  decision?: T;
+  cites?: T;
+  actor?: T;
+  actor_user_id?: T;
+  tool?: T;
+  target?: T;
+  revision?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "design-check-runs_select".
+ */
+export interface DesignCheckRunsSelect<T extends boolean = true> {
+  tenant?: T;
+  draft_digest?: T;
+  results?: T;
+  warning_count?: T;
+  run_by?: T;
   updatedAt?: T;
   createdAt?: T;
 }

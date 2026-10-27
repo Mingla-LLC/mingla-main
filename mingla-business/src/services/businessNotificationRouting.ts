@@ -28,6 +28,9 @@
  *
  * Issue #3386 adds the venue Settings sub:
  *   mingla-business://venue/{venueId}/settings  venue_details_change_decision
+ *
+ * #2829 W9r adds the Website sub:
+ *   mingla-business://brand/{brandId}/website/{section}  site_admin_requested
  */
 
 import { useRouter } from "expo-router";
@@ -63,6 +66,20 @@ function currentBrandId(): string | null {
 const ACCOUNT_FALLBACK = "/(tabs)/account";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+/**
+ * #2829 W9r — the Website sections a brand admin can be asked to act on
+ * (`business.site_admin_requested`). Kept literal here: this module is on the
+ * boot path, so it must not import the Website section's own modules.
+ */
+const WEBSITE_SECTIONS = new Set([
+  "pages", "design", "destinations", "stories", "reviews", "past",
+  "publish", "addresses", "plan", "settings",
+]);
+function websiteTarget(brandId: string, section: unknown): BusinessNavTarget {
+  return typeof section === "string" && WEBSITE_SECTIONS.has(section)
+    ? `/brand/${brandId}/website/${section}`
+    : `/brand/${brandId}/website`;
+}
 /** #4111 — the three team-side customer enquiry categories. */
 const BRAND_ENQUIRY_PUSH_TYPES = new Set([
   "business.brand_enquiry_new",
@@ -98,6 +115,9 @@ export function parseBusinessDeepLink(
       if (!brandId) return null;
       if (sub === "team") return `/brand/${brandId}/team`;
       if (sub === "listing") return `/brand/${brandId}/listing`;
+      // #2829 W9r — mingla-business://brand/{id}/website[/{section}]
+      // (business.site_admin_requested). An unknown section opens Overview.
+      if (sub === "website") return websiteTarget(brandId, rest[2]?.split("?", 1)[0]);
       if (sub === "discounts") {
         return `/brand/${brandId}/discounts${query ? `?${query}` : ""}`;
       }
@@ -218,6 +238,10 @@ export function resolveBusinessNavTarget(
   }
 
   switch (type) {
+    case "business.installment_failed":
+    case "business.installment_at_risk":
+      return eventId ? `/trip/${eventId}/money` : paymentsTarget;
+
     case "business.order_paid":
     case "business.event_sold_out":
     case "business.low_inventory":
@@ -243,6 +267,13 @@ export function resolveBusinessNavTarget(
 
     case "business.team_member_joined":
       return brandId ? `/brand/${brandId}/team` : ACCOUNT_FALLBACK;
+
+    // #2829 W9r — a marketing manager asked a brand admin to publish, confirm a
+    // review, change an address… A push without its deep link still opens the
+    // Website section (at the asked-about section when the payload names it).
+    case "business.site_admin_requested":
+    case "business.site_plan_reminder":
+      return brandId ? websiteTarget(brandId, data.section) : ACCOUNT_FALLBACK;
 
     case "business.community_announcement": {
       const announcementId = (data.announcementId ?? data.announcement_id) as

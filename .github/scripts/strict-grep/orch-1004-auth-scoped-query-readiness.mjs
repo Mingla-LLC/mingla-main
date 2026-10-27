@@ -50,6 +50,12 @@ const hooksDir = path.join(root, "mingla-business/src/hooks");
 // ── Auth-scoped hook files (relative to mingla-business/src/hooks). Each MUST
 //    fold isAuthReady into its query `enabled`. (SPEC ORCH-1004 Part 1.)
 const AUTH_SCOPED_HOOK_FILES = [
+  // #2829 W4 — the trip guide editor read (biz_get_trip_guide, auth.uid()
+  // rank check). Folds isAuthReady into enabled.
+  "useTripGuide.ts",
+  // #2829 W9a — the Home to-do's website plan row (brand_site_plan_get,
+  // auth.uid() rank check). Folds isAuthReady into enabled.
+  "useWebsiteTodo.ts",
   // #4111 — brand_enquiry_my_plans reads auth.uid(); folds isAuthReady.
   "useMyBrandPlans.ts",
   // #3988 — brand-group media/list metadata RPCs are membership-gated.
@@ -298,6 +304,7 @@ const PUBLIC_HOOK_ALLOWLIST = [
   ["usePublicEvents.ts", "anon-readable events via security-definer public views (buyer-web feed)"],
   ["usePublicTripBySlug.ts", "anon-readable published trips via trip-sidecar anon RLS (buyer-web)"],
   ["usePublicTripById.ts", "anon-readable published trips by id (buyer-web)"],
+  ["usePublicTripGuide.ts", "anon-readable trip guide of public trips via security-definer pg_public_trip_guide (#2829, buyer-web)"],
   ["useBrand.ts", "brands has a 'Public can read non-deleted brands' anon RLS policy; useBrand single-by-id is the public brand shell"],
   ["useIntakeSchema.ts", "trip_intake_schemas has trip_intake_schemas_anon_select for published trips; the buyer checkout-trip intake pages read it anonymously (dual-use)"],
   // ── ORCH-1202 — newly-discovered genuinely-public/anon-safe hooks.

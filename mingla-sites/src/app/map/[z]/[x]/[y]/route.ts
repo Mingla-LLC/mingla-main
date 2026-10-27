@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
-import { loadPublication, normalizePublicHost } from "../../../../../lib/publication";
+import { loadPublication, requestHost } from "../../../../../lib/publication";
 import {
   MAP_TILE_SOURCE,
   isTileCoordinate,
@@ -44,10 +44,7 @@ export async function GET(
     const row = parseTileSegment(y);
     if (!isTileCoordinate(zoom, column, row)) throw new Error();
     const incoming = await headers();
-    const host = normalizePublicHost(
-      incoming.get("x-forwarded-host") || incoming.get("host"),
-    );
-    const { artifact } = await loadPublication(host);
+    const { artifact } = await loadPublication(requestHost(incoming));
     /*
      * Every square this site's own maps need, and no other. Re-derived rather
      * than trusted from the request, so the allowed set cannot drift from what

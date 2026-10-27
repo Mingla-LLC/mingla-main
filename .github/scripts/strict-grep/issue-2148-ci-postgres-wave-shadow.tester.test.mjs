@@ -151,6 +151,12 @@ const PARTIAL_REFERENCE_DELTAS = [{
     "mingla-business/src/hooks/__tests__/useMenus.issue3564.implementor.test.ts",
     "mingla-business/src/hooks/__tests__/useMenus.issue3564.tester.adversarial.test.ts",
   ],
+}, {
+  // #2829 W11 — independently mirror the validator's reviewed #2829 W7c delta:
+  // the Sites goldens test names web-build-check.yml to pin its arm64 job. The
+  // frozen c0813… provider seal stays unchanged; removal or widening stays RED.
+  workflow: "web-build-check.yml",
+  referenceFiles: ["scripts/sites/__tests__/issue_2829_goldens_arm64_job.test.mjs"],
 }];
 const independentlyNormalizePartialReferences = (discovered, declarations = PARTIAL_REFERENCE_DELTAS) => {
   const normalized = structuredClone(discovered);

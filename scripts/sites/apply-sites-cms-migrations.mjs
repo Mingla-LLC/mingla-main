@@ -6,6 +6,11 @@ import { fileURLToPath } from "node:url";
 
 import { bootstrapSitesCms } from "./bootstrap-sites-cms.mjs";
 import { fail, requiredEnv, safeCliFailure } from "./lib/sites-ops.mjs";
+import {
+  localDatabaseUrl,
+  localStorageEndpoint,
+  sitesLocalMode,
+} from "./lib/local-mode.mjs";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const ANSI_CONTROL_SEQUENCE = new RegExp(
@@ -13,7 +18,24 @@ const ANSI_CONTROL_SEQUENCE = new RegExp(
   "g",
 );
 
+// #2829 — local mode: the migrator connects to the local Sites CMS stack on
+// loopback only, with the same role and password-match rule as production.
+function localMigratorUrl(env) {
+  const endpoint = localStorageEndpoint(requiredEnv(env, "SUPABASE_S3_ENDPOINT"));
+  const raw = localDatabaseUrl(requiredEnv(env, "SITES_CMS_MIGRATOR_DATABASE_URL"), {
+    user: "sites_cms_migrator",
+    storagePort: endpoint.port,
+    code: "INVALID_MIGRATOR_DATABASE_URL",
+  });
+  if (
+    decodeURIComponent(new URL(raw).password) !==
+    requiredEnv(env, "SITES_CMS_MIGRATOR_PASSWORD")
+  ) fail("MIGRATOR_CREDENTIAL_MISMATCH");
+  return raw;
+}
+
 function migratorUrl(env) {
+  if (sitesLocalMode(env)) return localMigratorUrl(env);
   const projectRef = requiredEnv(env, "SITES_CMS_PROJECT_REF");
   if (!/^[a-z0-9]{20}$/.test(projectRef)) fail("INVALID_PROJECT_REF");
   const raw = requiredEnv(env, "SITES_CMS_MIGRATOR_DATABASE_URL");

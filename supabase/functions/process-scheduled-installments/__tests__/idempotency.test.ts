@@ -36,12 +36,18 @@ const HELPER_SOURCE = await Deno.readTextFile(
 const WEBHOOK_HANDLER_SOURCE = await Deno.readTextFile(
   new URL("../../_shared/installmentWebhookHandlers.ts", import.meta.url),
 );
+const RETRY_SOURCE = await Deno.readTextFile(
+  new URL(
+    "../../_shared/installments/installmentRetrySchedule.ts",
+    import.meta.url,
+  ),
+);
 
-Deno.test("ORCH-0914 cron: delegates per-installment PI creation to shared helper", () => {
-  assertStringIncludes(CRON_SOURCE, "createInstallmentPI({");
+Deno.test("#3645 cron: delegates every due row to the provider-neutral owner", () => {
+  assertStringIncludes(CRON_SOURCE, "deps.charge({");
   assertStringIncludes(
     CRON_SOURCE,
-    "../_shared/installments/createInstallmentPI.ts",
+    "../_shared/installments/chargeInstallment.ts",
   );
 });
 
@@ -67,7 +73,7 @@ Deno.test("ORCH-0869 cron: PI create carries 4 metadata keys for webhook discrim
 
 Deno.test("ORCH-0869 cron: at-risk flag flips at retry_count >= MAX_RETRY_ATTEMPTS (per SPEC AC #9)", () => {
   assertMatch(
-    HELPER_SOURCE,
+    RETRY_SOURCE,
     /MAX_RETRY_ATTEMPTS\s*=\s*3/,
     "MAX_RETRY_ATTEMPTS = 3 per brief AC #9.",
   );
@@ -135,14 +141,14 @@ Deno.test("ORCH-0869 cron: application_fee_amount per #3645 flat 4.5% rate", () 
 
 Deno.test("ORCH-0869 cron: retry cadence Day-3 then Day-7 (per SPEC §3.2.1)", () => {
   assertMatch(
-    HELPER_SOURCE,
-    /1:\s*72/,
-    "retry_count 1 → 72 hours = Day-3 retry per SPEC.",
+    RETRY_SOURCE,
+    /1:\s*3/,
+    "retry_count 1 → due date + 3 days per SPEC.",
   );
   assertMatch(
-    HELPER_SOURCE,
-    /2:\s*168/,
-    "retry_count 2 → 168 hours = Day-7 retry per SPEC.",
+    RETRY_SOURCE,
+    /2:\s*7/,
+    "retry_count 2 → due date + 7 days per SPEC.",
   );
 });
 
@@ -151,7 +157,7 @@ Deno.test("ORCH-0869 cron: rejects calls without service-role auth header", () =
   // Bearer token. pg_cron + manual debugging both send this header.
   assertStringIncludes(
     CRON_SOURCE,
-    "if (authHeader !== expected)",
+    'if ((req.headers.get("authorization") ?? "") !== `Bearer ${key}`)',
     "Cron edge function must service-role-auth gate the entry point.",
   );
   assertStringIncludes(CRON_SOURCE, `error: "unauthorized"`);
@@ -181,7 +187,7 @@ Deno.test("ORCH-0869 webhook handlers: success writer is predicate-bound (idempo
 
 Deno.test("ORCH-0869 webhook handlers: at_risk flag flips at MAX_RETRY_ATTEMPTS", () => {
   assertMatch(
-    WEBHOOK_HANDLER_SOURCE,
+    RETRY_SOURCE,
     /MAX_RETRY_ATTEMPTS\s*=\s*3/,
     "Webhook handler must mirror cron's at-risk threshold.",
   );
@@ -208,9 +214,13 @@ Deno.test("#3645 createInstallmentPI: fail-closed claim RPC before Stripe I/O", 
   );
   // Fail-closed order: first claim call appears before the live PI create call
   // (ignore the file-header mention of paymentIntents.create).
-  const claimIdx = HELPER_SOURCE.indexOf('"claim_order_installment_for_charge"');
+  const claimIdx = HELPER_SOURCE.indexOf(
+    '"claim_order_installment_for_charge"',
+  );
   const stripeIdx = HELPER_SOURCE.indexOf("await stripe.paymentIntents.create");
-  const confirmIdx = HELPER_SOURCE.indexOf("await stripe.paymentIntents.confirm");
+  const confirmIdx = HELPER_SOURCE.indexOf(
+    "await stripe.paymentIntents.confirm",
+  );
   assert(
     claimIdx >= 0 && stripeIdx > claimIdx,
     "claim_order_installment_for_charge must run before stripe.paymentIntents.create",

@@ -6,8 +6,6 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
-  GOGI_BRAND_ID,
-  GOGI_CONFIGURED_BY,
   GOGI_SEED_COPY,
   GOGI_SOURCE,
   SeedError,
@@ -19,6 +17,11 @@ import {
   validateOptions,
   validateStudioSession,
 } from "../seed-gogi-pilot.mjs";
+
+// #2829 — the seed no longer exports a brand or operator id; tests name their
+// own fixture ids (the seed takes them as required inputs).
+const GOGI_BRAND_ID = "733bc470-45e1-4684-8896-acd7e26074ff";
+const GOGI_CONFIGURED_BY = "1f3d2ddf-b741-4e2f-8884-d7222a660c7e";
 
 const SITE_ID = "00000000-0000-4000-8000-000000000101";
 const TENANT_ID = "00000000-0000-4000-8000-000000000102";
@@ -151,13 +154,13 @@ function expectCode(expected, callback) {
   assert.throws(callback, (error) => error instanceof SeedError && error.code === expected);
 }
 
-test("rejects a different brand or configured-by identity", () => {
-  expectCode("WRONG_GOGI_BRAND", () =>
-    validateOptions(options({ brandId: "00000000-0000-4000-8000-000000000199" })),
-  );
-  expectCode("WRONG_CONFIGURED_BY", () =>
-    validateOptions(options({ configuredBy: "00000000-0000-4000-8000-000000000198" })),
-  );
+// #2829 converted: the seed used to refuse any brand/operator other than two
+// literal ids. Those are now required inputs with no default in code; what
+// still holds is that they must be present and well-formed.
+test("requires a well-formed brand and configured-by identity", () => {
+  expectCode("MISSING_BRAND_ID", () => validateOptions(options({ brandId: undefined })));
+  expectCode("MISSING_CONFIGURED_BY", () => validateOptions(options({ configuredBy: undefined })));
+  expectCode("INVALID_ID", () => validateOptions(options({ brandId: "not-a-uuid" })));
 });
 
 test("rejects an unsupported source authority", () => {

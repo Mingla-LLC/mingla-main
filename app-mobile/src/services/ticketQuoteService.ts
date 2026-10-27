@@ -1,4 +1,8 @@
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
+import {
+  decodeInstallmentChargeSchedule,
+  installmentPlanBuyerTotal,
+} from "@mingla/offering-rendering/discountQuote";
 
 import { supabase } from "./supabase";
 import { extractFunctionError } from "../utils/edgeFunctionError";
@@ -11,11 +15,11 @@ export interface TicketQuoteInput {
     phone: string;
     marketingOptIn?: boolean;
   };
-  lines: Array<{
+  lines: {
     ticketTypeId: string;
     quantity: number;
     paymentPlanChoice: "full" | "installments";
-  }>;
+  }[];
   eventDateId?: string | null;
   eventDateIds?: readonly string[] | null;
   bookedStartAt?: string | null;
@@ -24,15 +28,15 @@ export interface TicketQuoteInput {
   discountCode?: string | null;
 }
 
-const quoteBuyer = (buyer: TicketQuoteInput["buyer"]): TicketQuoteInput["buyer"] => ({
+const quoteBuyer = (
+  buyer: TicketQuoteInput["buyer"],
+): TicketQuoteInput["buyer"] => ({
   ...buyer,
   name: buyer.name.trim().length >= 2 ? buyer.name : "Mingla guest",
   email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyer.email)
     ? buyer.email
     : "quote@usemingla.invalid",
-  phone: /^\+[1-9]\d{7,14}$/.test(buyer.phone)
-    ? buyer.phone
-    : "+12025550123",
+  phone: /^\+[1-9]\d{7,14}$/.test(buyer.phone) ? buyer.phone : "+12025550123",
 });
 
 /** #3872 — Explorer renders this server quote and performs no money arithmetic. */
@@ -69,5 +73,18 @@ export const quoteTicketCheckout = async (
     throw new Error(await extractFunctionError(error, "quote_failed"));
   }
   if (!data || data.kind !== "quote") throw new Error("quote_failed");
-  return data;
+  const schedule = decodeInstallmentChargeSchedule(
+    data.installmentChargeSchedule,
+  );
+  const planTotalBuyerCents = installmentPlanBuyerTotal(
+    data.buyerTotalCents,
+    schedule,
+  );
+  return {
+    ...data,
+    ...(schedule === undefined
+      ? { installmentChargeSchedule: undefined }
+      : { installmentChargeSchedule: schedule }),
+    planTotalBuyerCents,
+  };
 };

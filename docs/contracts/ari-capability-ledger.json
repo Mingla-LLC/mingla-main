@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-09-11T00:00:00Z",
-    "registered_tool_count": 140,
-    "capability_count": 152,
+    "registered_tool_count": 152,
+    "capability_count": 164,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 139,
+      "registered_unverified": 151,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -7024,7 +7024,7 @@
     {
       "id": "ari.sites.propose_content",
       "domain": "sites",
-      "outcome": "Propose a revision-bound structured Website page update",
+      "outcome": "Propose a revision-bound whole-site Website composition (blocks, layouts, pages, menu)",
       "safety": "write",
       "required_role": "owner_or_marketing_manager",
       "confirmation": "standard",
@@ -7044,34 +7044,35 @@
         "source": [
           {
             "path": "supabase/functions/_shared/agentSiteTools.ts",
-            "symbol": "const proposeContent"
+            "symbol": "const proposeSiteComposition"
           }
         ]
       },
-      "ari_tool": "propose_site_content_update",
+      "ari_tool": "propose_site_composition",
       "status": "registered_unverified",
       "evidence": [
         {
           "tier": "regression",
-          "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32",
-          "reference": "issue_2830_sites_foundation_happy.test.ts: closed content proposal schema",
+          "sha": "da534081a7a6707f4495d7879885f787d3d045a1",
+          "reference": "issue_2829_ari_designer_tools.test.ts: confirmed designer proposal with citation and revision check",
           "guard_role": "implementor"
         }
       ],
       "owning_issues": [
         2830,
+        2829,
         2000
       ],
       "blockers": [
         "No exact-revision runtime evidence on all required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-30"
+      "verified_at": "2026-10-26"
     },
     {
       "id": "ari.sites.propose_settings",
       "domain": "sites",
-      "outcome": "Propose a revision-bound bounded Website settings update",
+      "outcome": "Propose a revision-bound Website look (design, exact colours, shape, motion, fonts)",
       "safety": "write",
       "required_role": "owner_or_marketing_manager",
       "confirmation": "standard",
@@ -7091,34 +7092,35 @@
         "source": [
           {
             "path": "supabase/functions/_shared/agentSiteTools.ts",
-            "symbol": "const proposeSettings"
+            "symbol": "const proposeSiteTokens"
           }
         ]
       },
-      "ari_tool": "propose_site_settings_update",
+      "ari_tool": "propose_site_tokens",
       "status": "registered_unverified",
       "evidence": [
         {
           "tier": "regression",
-          "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32",
-          "reference": "issue_2830_sites_foundation_happy.test.ts: closed settings proposal schema",
+          "sha": "da534081a7a6707f4495d7879885f787d3d045a1",
+          "reference": "issue_2829_ari_designer_tools.test.ts: confirmed designer proposal with citation and revision check",
           "guard_role": "implementor"
         }
       ],
       "owning_issues": [
         2830,
+        2829,
         2000
       ],
       "blockers": [
         "No exact-revision runtime evidence on all required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-30"
+      "verified_at": "2026-10-26"
     },
     {
       "id": "ari.sites.attach_media",
       "domain": "sites",
-      "outcome": "Attach approved processed media to a typed Website block",
+      "outcome": "Propose approved photos and videos for Website picture spots",
       "safety": "write",
       "required_role": "owner_or_marketing_manager",
       "confirmation": "standard",
@@ -7138,29 +7140,30 @@
         "source": [
           {
             "path": "supabase/functions/_shared/agentSiteTools.ts",
-            "symbol": "const attachMedia"
+            "symbol": "const proposeSiteImagery"
           }
         ]
       },
-      "ari_tool": "attach_approved_site_media",
+      "ari_tool": "propose_site_imagery",
       "status": "registered_unverified",
       "evidence": [
         {
           "tier": "regression",
-          "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32",
-          "reference": "issue_2830_sites_foundation_happy.test.ts: READY media attachment contract",
+          "sha": "da534081a7a6707f4495d7879885f787d3d045a1",
+          "reference": "issue_2829_ari_designer_tools.test.ts: confirmed designer proposal with citation and revision check",
           "guard_role": "implementor"
         }
       ],
       "owning_issues": [
         2830,
+        2829,
         2000
       ],
       "blockers": [
         "No exact-revision runtime evidence on all required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-30"
+      "verified_at": "2026-10-26"
     },
     {
       "id": "ari.sites.validate_draft",
@@ -7261,7 +7264,7 @@
       "domain": "sites",
       "outcome": "Publish one exact validated Website revision",
       "safety": "write",
-      "required_role": "owner_or_marketing_manager",
+      "required_role": "owner_or_admin",
       "confirmation": "standard",
       "surfaces": [
         "business_ios",
@@ -7295,6 +7298,7 @@
       ],
       "owning_issues": [
         2830,
+        2829,
         2000
       ],
       "blockers": [
@@ -7402,7 +7406,7 @@
       "domain": "sites",
       "outcome": "Republish an immutable historical Website revision as a new version",
       "safety": "write",
-      "required_role": "owner_or_marketing_manager",
+      "required_role": "owner_or_admin",
       "confirmation": "standard",
       "surfaces": [
         "business_ios",
@@ -7436,6 +7440,7 @@
       ],
       "owning_issues": [
         2830,
+        2829,
         2000
       ],
       "blockers": [
@@ -7443,6 +7448,570 @@
       ],
       "confidence": "high",
       "verified_at": "2026-08-30"
+    },
+    {
+      "id": "ari.sites.read_plan",
+      "domain": "sites",
+      "outcome": "Read the brand's website plan and its server-computed parts",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2829"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const getSitePlan"
+          }
+        ]
+      },
+      "ari_tool": "get_site_plan",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "da534081a7a6707f4495d7879885f787d3d045a1",
+          "reference": "issue_2829_ari_designer_tools.test.ts: get_site_plan",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2829,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-26"
+    },
+    {
+      "id": "ari.sites.list_designs",
+      "domain": "sites",
+      "outcome": "List the website designs with their swatches and font slots",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2829"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const listSiteDesigns"
+          }
+        ]
+      },
+      "ari_tool": "list_site_designs",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "da534081a7a6707f4495d7879885f787d3d045a1",
+          "reference": "issue_2829_ari_designer_tools.test.ts: list_site_designs",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2829,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-26"
+    },
+    {
+      "id": "ari.sites.read_block_catalog",
+      "domain": "sites",
+      "outcome": "Read the generated website block catalogue and design layouts",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2829"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const getBlockCatalog"
+          }
+        ]
+      },
+      "ari_tool": "get_block_catalog",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "da534081a7a6707f4495d7879885f787d3d045a1",
+          "reference": "issue_2829_ari_designer_tools.test.ts: get_block_catalog",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2829,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-26"
+    },
+    {
+      "id": "ari.sites.read_tokens",
+      "domain": "sites",
+      "outcome": "Read the website look with readability warnings",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2829"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const getSiteTokens"
+          }
+        ]
+      },
+      "ari_tool": "get_site_tokens",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "da534081a7a6707f4495d7879885f787d3d045a1",
+          "reference": "issue_2829_ari_designer_tools.test.ts: get_site_tokens",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2829,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-26"
+    },
+    {
+      "id": "ari.sites.run_design_checks",
+      "domain": "sites",
+      "outcome": "Run the six website design checks on the draft",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2829"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const runSiteDesignChecks"
+          }
+        ]
+      },
+      "ari_tool": "run_site_design_checks",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "da534081a7a6707f4495d7879885f787d3d045a1",
+          "reference": "issue_2829_ari_designer_tools.test.ts: run_site_design_checks",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2829,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-26"
+    },
+    {
+      "id": "ari.sites.save_plan_answers",
+      "domain": "sites",
+      "outcome": "Save the owner's website plan answers against the plan revision",
+      "safety": "write",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2829"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const saveSitePlanAnswers"
+          }
+        ]
+      },
+      "ari_tool": "save_site_plan_answers",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "da534081a7a6707f4495d7879885f787d3d045a1",
+          "reference": "issue_2829_ari_designer_tools.test.ts: save_site_plan_answers",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2829,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-26"
+    },
+    {
+      "id": "ari.sites.create_draft",
+      "domain": "sites",
+      "outcome": "Create a website draft from the approved plan",
+      "safety": "write",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2829"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const createSiteDraft"
+          }
+        ]
+      },
+      "ari_tool": "create_site_draft",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "da534081a7a6707f4495d7879885f787d3d045a1",
+          "reference": "issue_2829_ari_designer_tools.test.ts: create_site_draft",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2829,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-26"
+    },
+    {
+      "id": "ari.sites.propose_variant",
+      "domain": "sites",
+      "outcome": "Propose a different design layout for one website block",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2829"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const proposeBlockVariant"
+          }
+        ]
+      },
+      "ari_tool": "propose_block_variant",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "da534081a7a6707f4495d7879885f787d3d045a1",
+          "reference": "issue_2829_ari_designer_tools.test.ts: propose_block_variant",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2829,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-26"
+    },
+    {
+      "id": "ari.sites.propose_copy",
+      "domain": "sites",
+      "outcome": "Propose website copy refused when a claim is not backed by Mingla",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2829"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const proposeSiteCopy"
+          }
+        ]
+      },
+      "ari_tool": "propose_site_copy",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "da534081a7a6707f4495d7879885f787d3d045a1",
+          "reference": "issue_2829_ari_designer_tools.test.ts: propose_site_copy",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2829,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-26"
+    },
+    {
+      "id": "ari.sites.propose_collection_entry",
+      "domain": "sites",
+      "outcome": "Propose a website destination, story or review from owner material",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2829"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const proposeSiteCollectionEntry"
+          }
+        ]
+      },
+      "ari_tool": "propose_site_collection_entry",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "da534081a7a6707f4495d7879885f787d3d045a1",
+          "reference": "issue_2829_ari_designer_tools.test.ts: propose_site_collection_entry",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2829,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-26"
+    },
+    {
+      "id": "ari.sites.confirm_review",
+      "domain": "sites",
+      "outcome": "Confirm a website review is real on the owner's confirm card",
+      "safety": "write",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2829"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const confirmSiteReview"
+          }
+        ]
+      },
+      "ari_tool": "confirm_site_review",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "da534081a7a6707f4495d7879885f787d3d045a1",
+          "reference": "issue_2829_ari_designer_tools.test.ts: confirm_site_review",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2829,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-26"
+    },
+    {
+      "id": "ari.sites.propose_trip_guide",
+      "domain": "sites",
+      "outcome": "Propose a trip guide shown on every trip surface",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2829"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const proposeTripGuideUpdate"
+          }
+        ]
+      },
+      "ari_tool": "propose_trip_guide_update",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "da534081a7a6707f4495d7879885f787d3d045a1",
+          "reference": "issue_2829_ari_designer_tools.test.ts: propose_trip_guide_update",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2829,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-26"
     }
   ]
 }

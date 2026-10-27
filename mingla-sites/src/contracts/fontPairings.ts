@@ -1,3 +1,4 @@
+// TEMPORARY(#2829): v1 rollback renderer — remove once every site has a v2 last-good publication.
 /**
  * #2830 — the type choices a brand can make.
  *

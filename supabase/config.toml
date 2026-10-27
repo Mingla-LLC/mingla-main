@@ -137,6 +137,10 @@ verify_jwt = false
 [functions.ticket-checkout-status]
 verify_jwt = false
 
+# #3645 — anonymous buyers authenticate with a one-time hashed pay-link token.
+[functions.installment-pay-link]
+verify_jwt = false
+
 # ORCH-0852 — synchronous buyer-owned confirmation path. Anon-tolerant;
 # access gated by buyerStatusToken hash match (NOT Supabase JWT). Verifies
 # Stripe PaymentIntent status directly and idempotently invokes

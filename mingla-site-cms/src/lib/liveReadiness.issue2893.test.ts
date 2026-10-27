@@ -249,11 +249,18 @@ describe("#2893 production CMS launch configuration", () => {
     ).toThrow("CMS database and object storage must use the same project.");
   });
 
+  // #2829 — the public runtime origin is no longer pinned to one brand's
+  // host: any https origin is accepted (each site's host comes from Core),
+  // and a non-https one is still refused.
+  it("accepts any https public runtime origin and refuses plain http", () => {
+    expect(() => loadCmsConfig(validEnvironment({ SITES_PUBLIC_RUNTIME_ORIGIN: "https://runtime.sites.usemingla.com" }))).not.toThrow();
+    expect(() => loadCmsConfig(validEnvironment({ SITES_PUBLIC_RUNTIME_ORIGIN: "http://runtime.sites.usemingla.com" }))).toThrow();
+  });
+
   it("pins production origins and all four private bucket identities", () => {
     for (const overrides of [
       { SITES_CORE_BASE_URL: "https://other.supabase.co" },
       { SITES_CMS_ORIGIN: "https://mingla-site-cms.vercel.app" },
-      { SITES_PUBLIC_RUNTIME_ORIGIN: "https://mingla-sites.vercel.app" },
       { SITES_MEDIA_QUARANTINE_BUCKET: "quarantine" },
       { SITES_MEDIA_APPROVED_BUCKET: "approved" },
       { SITES_PUBLICATION_ARTIFACT_BUCKET: "artifacts" },
@@ -272,8 +279,12 @@ describe("#2893 production CMS launch configuration", () => {
       "src/app/(frontend)/mingla/exchange/page.tsx",
       "src/app/(frontend)/mingla/session-expired/page.tsx",
       "src/app/(frontend)/preview/page.tsx",
+      "src/lib/config.ts",
     ].map((path) => readFileSync(path, "utf8")).join("\n");
     expect(relevantSources).not.toContain("business.usemingla.com");
-    expect(relevantSources).toContain("MINGLA_BUSINESS_ORIGIN");
+    // #2829 W9f — the returns read cmsConfig().businessOrigin, which production
+    // pins to MINGLA_BUSINESS_ORIGIN (local mode: the local Business web).
+    expect(readFileSync("src/lib/config.ts", "utf8")).toContain("businessOrigin: MINGLA_BUSINESS_ORIGIN,");
+    expect(readFileSync("src/lib/session.ts", "utf8")).toContain("${cmsConfig().businessOrigin}/brand/");
   });
 });

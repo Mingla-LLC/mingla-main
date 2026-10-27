@@ -1,0 +1,377 @@
+/**
+ * #2829 AD-1 — the design registry: which designs exist, their explicit token
+ * and font defaults, and which layout (variant) of each block type they draw.
+ *
+ * A design is code Mingla owns (components + one versioned stylesheet in the
+ * runtime). Its key is a neutral word, never a brand's name, and never shown
+ * to a visitor. The `label` is for Studio only.
+ *
+ * `atelier` is the restaurant look gögi's site has today, rebuilt on tokens:
+ * its defaults are exactly the values the original stylesheet hard-coded, so
+ * a v1 site upgraded to v2 under atelier renders the same page.
+ *
+ * `voyage` (#2829 W7) is a bright travel look: one sans family for display
+ * and body, a handwritten accent face, pill buttons with a two-bar wipe,
+ * full-viewport photographic covers and padded cards. Its defaults are
+ * exactly the values the original travel stylesheet used, so a site on
+ * voyage with nothing changed renders that look pixel for pixel; every
+ * colour is a token, so any brand can restyle it.
+ */
+import type { DesignTokenDefaults, RampRole, SingleColorRole } from "./tokens.ts";
+import type { FontSlotKey, FontSlots } from "./fontSlots.ts";
+import type { RampStep } from "./colorRamp.ts";
+import { BLOCK_TYPES, type BlockType } from "./blocks.ts";
+
+export type DesignKey = "atelier" | "voyage";
+export const DESIGN_KEYS: readonly DesignKey[] = ["atelier", "voyage"];
+
+/**
+ * #2829 A8 — which colour roles and font slots a design actually draws. The
+ * look editors (Studio and the Business "Your look" screen) show only these,
+ * so an owner never sees a control that changes nothing. Stored values for
+ * roles a design does not draw are kept (switching back shows them again).
+ * A runtime test pins this list to the design's stylesheet exactly.
+ */
+export type DesignUses = {
+  colors: {
+    single: readonly SingleColorRole[];
+    ramps: Readonly<Partial<Record<RampRole, readonly RampStep[]>>>;
+  };
+  font_slots: readonly FontSlotKey[];
+};
+
+export type DesignDefinition = {
+  key: DesignKey;
+  version: number;
+  /** Studio-only name. Never rendered on a site. */
+  label: string;
+  /** Studio-only one-line description. */
+  description: string;
+  tokens: DesignTokenDefaults;
+  fonts: FontSlots;
+  /** The variants this design draws per block type; the first is the default. */
+  variants: Readonly<Record<BlockType, readonly string[]>>;
+  /** Page templates this design provides (collection detail pages draw with the neutral templates). */
+  templates: readonly string[];
+  /** The colour roles and font slots this design draws (A8). */
+  uses: DesignUses;
+};
+
+/**
+ * #2829 W5 — block types no design draws in its own way yet: every design
+ * offers their design-neutral layout (AD-4), drawn by the runtime's neutral
+ * components from the design's own tokens. A design that later draws one of
+ * them adds its variant in front of `neutral`.
+ */
+export const NEUTRAL_BLOCK_TYPES: readonly BlockType[] = [
+  "destination_grid",
+  "story_grid",
+  "offering_history",
+  "contact_form",
+  "newsletter_signup",
+  // #2829 W7 — the travel designs' page header, cards and contact tiles.
+  "page_header",
+  "feature_cards",
+  "contact_details",
+];
+
+/** Every block type drawn by atelier, in one layout each (AD-4). */
+const ATELIER_VARIANTS: Record<BlockType, readonly string[]> = (() => {
+  const variants = {} as Record<BlockType, readonly string[]>;
+  for (const type of BLOCK_TYPES) variants[type] = NEUTRAL_BLOCK_TYPES.includes(type) ? ["neutral"] : ["atelier"];
+  return variants;
+})();
+
+/**
+ * #2829 W7 (AD-4) — the layouts voyage draws. The restaurant-only types
+ * (menus, reservations, hours, ticker, contact button) take the
+ * design-neutral layout drawn from voyage's tokens.
+ */
+export const VOYAGE_VARIANTS: Readonly<Record<BlockType, readonly string[]>> = {
+  hero: ["cover-bottom-search"],
+  page_header: ["cover-center"],
+  feature_cards: ["tile-bar", "statement"],
+  offering_grid: ["photo-card"],
+  offering_history: ["ledger"],
+  testimonials: ["quote-wall"],
+  destination_grid: ["badge-tile"],
+  story_grid: ["card"],
+  media_feature: ["split-panel", "panel-caption"],
+  rich_text: ["prose"],
+  faq: ["accordion-columns"],
+  cta: ["dark-panel-glow"],
+  newsletter_signup: ["card"],
+  video_feature: ["brand-film"],
+  contact_form: ["panel"],
+  contact_details: ["tiles"],
+  gallery: ["voyage"],
+  divider: ["voyage"],
+  spacer: ["voyage"],
+  stats: ["voyage"],
+  team: ["voyage"],
+  pull_quote: ["voyage"],
+  map_embed: ["voyage"],
+  menu_board: ["neutral"],
+  menu_preview: ["neutral"],
+  menu_link: ["neutral"],
+  venue_reservation: ["neutral"],
+  hours_location: ["neutral"],
+  marquee: ["neutral"],
+  contact_handoff: ["neutral"],
+};
+
+export const ATELIER: DesignDefinition = {
+  key: "atelier",
+  version: 1,
+  label: "Atelier",
+  description: "Dark, editorial and close-set: condensed headlines over a warm accent.",
+  tokens: {
+    colors: {
+      canvas: "#101013",
+      surface: "#17171a",
+      surface_sunken: "#1c1c1e",
+      surface_deep: "#09090b",
+      surface_inverse: "#f0eee9",
+      ink_strong: "#f0eee9",
+      ink_body: "#f0eee9",
+      ink_prose: "#f0eee9",
+      ink_quiet: "#a7a39a",
+      ink_on_dark_body: "#f0eee9",
+      ink_on_photo_body: "#ffffff",
+      ink_on_photo_quiet: "#f0eee9",
+      accent_ink: "#101013",
+      highlight_on_dark: "#dcb877",
+      action: "#cda052",
+      accent: {
+        seed: "#cda052",
+        ramp: {
+          50: "#fbf8f4",
+          100: "#f6f0e4",
+          200: "#dcb877",
+          300: "#dfb262",
+          400: "#cda052",
+          500: "#b48637",
+          600: "#936e2f",
+          700: "#725627",
+          800: "#5a4420",
+          900: "#3d2f17",
+          950: "#1b1508",
+        },
+      },
+      neutral: {
+        seed: "#a7a39a",
+        ramp: {
+          50: "#f8f8f7",
+          100: "#eeeeec",
+          200: "#dedcd9",
+          300: "#c6c3be",
+          400: "#a7a39a",
+          500: "#948f84",
+          600: "#7d786d",
+          700: "#67635b",
+          800: "#514e48",
+          900: "#3b3935",
+          950: "#262422",
+        },
+      },
+      highlight: {
+        seed: "#cda052",
+        ramp: { 50: "#fbf8f4", 200: "#dcb877", 600: "#cda052", 700: "#5a4420" },
+      },
+      paper: {
+        seed: "#f0eee9",
+        ramp: { 50: "#f9f8f6", 100: "#f0eee9", 200: "#e2ded5", 400: "#b7ad95" },
+      },
+      danger: { seed: "#ff9d8a", ramp: { 50: "#2a1210", 600: "#ff9d8a" } },
+      success: { seed: "#6fbf73", ramp: { 50: "#122a14", 600: "#6fbf73" } },
+      scrim_rgb: "8 6 4",
+      shadow_rgb: "0 0 0",
+    },
+    heading_case: "uppercase",
+  },
+  fonts: {
+    display: { family: "Oswald", source: "google", weights: [400, 600], italic: false },
+    body: { family: "Plus Jakarta Sans", source: "google", weights: [400, 600, 800], italic: false },
+    accent: null,
+  },
+  variants: ATELIER_VARIANTS,
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/atelier/1.css reads.
+  // Atelier draws no "Headings" colour (ink_strong), no "Second accent"
+  // (highlight) and no accent script font.
+  uses: {
+    colors: {
+      single: ["canvas", "surface", "surface_sunken", "surface_deep", "ink_body", "ink_quiet", "accent_ink"],
+      ramps: { accent: [200, 300, 400, 950], danger: [600] },
+    },
+    font_slots: ["display", "body"],
+  },
+};
+
+const VOYAGE_FONT_WEIGHTS = [400, 500, 600, 700, 800] as const;
+
+export const VOYAGE: DesignDefinition = {
+  key: "voyage",
+  version: 1,
+  label: "Voyage",
+  description: "Bright and photographic: full-screen covers, padded cards, pill buttons and a handwritten accent.",
+  tokens: {
+    colors: {
+      canvas: "#ffffff",
+      surface: "#ffffff",
+      surface_sunken: "#eef6fb",
+      surface_deep: "#141c26",
+      surface_inverse: "#131c26",
+      ink_strong: "#131c26",
+      ink_body: "#4f5e71",
+      ink_prose: "#3f4d5d",
+      ink_quiet: "#5d6b7b",
+      ink_on_dark_body: "#c3ccd5",
+      ink_on_photo_body: "#e9edf1",
+      ink_on_photo_quiet: "#dde4ea",
+      accent_ink: "#0b1219",
+      highlight_on_dark: "#ffe4c6",
+      // Voyage draws links from the accent ramp (accent 900), not `action`.
+      action: "#124e70",
+      accent: {
+        seed: "#89cff0",
+        ramp: {
+          50: "#eaf6fd",
+          100: "#e2f3fc",
+          200: "#c6e8fa",
+          300: "#aadcf6",
+          400: "#89cff0",
+          500: "#59b8e6",
+          600: "#2f93c9",
+          700: "#1d6f9c",
+          800: "#175f88",
+          900: "#124e70",
+          950: "#0d3a53",
+        },
+      },
+      neutral: {
+        seed: "#4f5e71",
+        ramp: {
+          50: "#f2f6f8",
+          100: "#e8eef2",
+          200: "#c3ccd5",
+          300: "#8794a3",
+          400: "#5d6b7b",
+          500: "#4f5e71",
+          600: "#3f4d5d",
+          700: "#2f3a47",
+          800: "#1f2b38",
+          900: "#131c26",
+          950: "#0b1219",
+        },
+      },
+      highlight: {
+        seed: "#ad5207",
+        ramp: { 50: "#fdf4ec", 200: "#f2d9c0", 600: "#ad5207", 700: "#8c4206" },
+      },
+      paper: {
+        seed: "#eef6fb",
+        ramp: { 50: "#eef6fb", 100: "#dee8ed", 200: "#c6d5dd", 400: "#69818c" },
+      },
+      danger: { seed: "#b3261e", ramp: { 50: "#fdeceb", 600: "#b3261e" } },
+      success: { seed: "#146c43", ramp: { 50: "#e9f4ee", 600: "#146c43" } },
+      scrim_rgb: "11 18 25",
+      shadow_rgb: "0 0 0",
+    },
+    heading_case: "none",
+  },
+  fonts: {
+    display: { family: "Plus Jakarta Sans", source: "google", weights: [...VOYAGE_FONT_WEIGHTS], italic: false },
+    body: { family: "Plus Jakarta Sans", source: "google", weights: [...VOYAGE_FONT_WEIGHTS], italic: false },
+    accent: { family: "Just Another Hand", source: "google", weights: [400], italic: false },
+  },
+  variants: VOYAGE_VARIANTS,
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/voyage/1.css reads.
+  uses: {
+    colors: {
+      single: [
+        "canvas", "surface", "surface_sunken", "surface_deep", "surface_inverse",
+        "ink_strong", "ink_body", "ink_prose", "ink_quiet", "ink_on_dark_body",
+        "ink_on_photo_body", "ink_on_photo_quiet", "accent_ink", "highlight_on_dark",
+      ],
+      ramps: {
+        accent: [50, 100, 200, 300, 400, 500, 600, 800, 900, 950],
+        neutral: [200, 400, 600, 700, 800, 900, 950],
+        highlight: [50, 200, 600, 700],
+        paper: [50, 100, 200, 400],
+        danger: [50, 600],
+        success: [50, 600],
+      },
+    },
+    font_slots: ["display", "body", "accent"],
+  },
+};
+
+/** One of the primary swatches the look editors show (spec §W3), in order. */
+export type PrimarySwatch = { label: string; role: SingleColorRole | RampRole; step?: RampStep };
+
+export const PRIMARY_SWATCHES: readonly PrimarySwatch[] = [
+  { label: "Background", role: "canvas" },
+  { label: "Text", role: "ink_body" },
+  { label: "Headings", role: "ink_strong" },
+  { label: "Accent", role: "accent", step: 400 },
+  { label: "Accent label", role: "accent_ink" },
+  { label: "Second accent", role: "highlight", step: 600 },
+  { label: "Dark panels", role: "surface_deep" },
+  { label: "Tinted bands", role: "surface_sunken" },
+];
+
+/**
+ * Whether a design draws a colour role (a ramp role with `step`: that step;
+ * without: any step of it).
+ */
+export function designDrawsColor(
+  design: DesignDefinition,
+  role: SingleColorRole | RampRole,
+  step?: RampStep,
+): boolean {
+  if ((design.uses.colors.single as readonly string[]).includes(role)) return step === undefined;
+  const steps = design.uses.colors.ramps[role as RampRole];
+  if (!steps) return false;
+  return step === undefined ? steps.length > 0 : steps.includes(step);
+}
+
+/** The primary swatches this design draws, in the editor's order. */
+export function designSwatches(design: DesignDefinition): PrimarySwatch[] {
+  return PRIMARY_SWATCHES.filter((swatch) => designDrawsColor(design, swatch.role, swatch.step));
+}
+
+/** The font slots this design draws, in slot order. */
+export function designFontSlots(design: DesignDefinition): FontSlotKey[] {
+  return (["display", "body", "accent"] as const).filter((slot) => design.uses.font_slots.includes(slot));
+}
+
+export const DESIGNS: Readonly<Record<DesignKey, DesignDefinition>> = { atelier: ATELIER, voyage: VOYAGE };
+
+export function isDesignKey(value: unknown): value is DesignKey {
+  return typeof value === "string" && (DESIGN_KEYS as readonly string[]).includes(value);
+}
+
+export function designFor(key: unknown): DesignDefinition | null {
+  return isDesignKey(key) ? DESIGNS[key] : null;
+}
+
+/** The design's default variant for a block type (its first). */
+export function defaultVariant(design: DesignDefinition, type: BlockType): string {
+  return design.variants[type][0]!;
+}
+
+/**
+ * Switching design keeps every block's content; each block's variant becomes
+ * the new design's default for that type unless the new design also draws the
+ * old variant.
+ */
+export function variantAfterDesignSwitch(
+  to: DesignDefinition,
+  type: BlockType,
+  current: string | null | undefined,
+): string {
+  const offered = to.variants[type];
+  return current && offered.includes(current) ? current : offered[0]!;
+}

@@ -65,7 +65,8 @@ const artifact = {
       enabled: true,
       nav_label: "Home",
       nav_order: 0,
-      blocks: [],
+      // #2829 — the contract now refuses an empty home page (#3164 residual).
+      blocks: [{ type: "divider" }],
     },
   ],
   navigation: { page_roles: ["home", "menu"] },

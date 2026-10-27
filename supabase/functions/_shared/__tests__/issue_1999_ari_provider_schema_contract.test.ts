@@ -95,7 +95,7 @@ function actualRegistry(): GeminiToolDef[] {
   }));
 }
 
-Deno.test("#1999 happy: all 140 actual Ari tools compile for Gemini typed parameters", () => {
+Deno.test("#1999 happy: all 152 actual Ari tools compile for Gemini typed parameters", () => {
   // [TEST-MOD-APPROVED #1975+#1978+#1979] Stay + venue listing + venue manage tools; 77→80.
   // [TEST-MOD-APPROVED #1971] Five trip tools; 85→86. Only the registry-size
   // baseline moves — every schema-compilation assertion is unchanged and now
@@ -114,10 +114,11 @@ Deno.test("#1999 happy: all 140 actual Ari tools compile for Gemini typed parame
   // [TEST-MOD-APPROVED #3697] Host Ads propose/approve/pause/end/report; 128→133.
   // [TEST-MOD-APPROVED #3872] Discounts, R2 referrals, and R3 guarded gig
   // script drafting; 133→140.
+  // #2829 W9b Ari as the website designer: 24 website declarations replace 12; 140→152.
   const tools = actualRegistry();
   assertEquals(
     tools.length,
-    140,
+    152,
     "registry baseline changed; provider coverage must be reviewed",
   );
 

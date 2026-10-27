@@ -73,17 +73,32 @@ Deno.test("#2830 slot-88 parser rejects unknown fields and duplicate material", 
   assert(failed, "duplicate material did not fail closed");
 });
 
-Deno.test("#2830 Ari registry exposes exactly the approved twelve tools", () => {
+// #2829 W9b — the closed registry is now the website designer's: still an
+// exact list, schemas generated from site-contracts and closed (the old
+// hand-written page/settings change objects were replaced by typed proposals).
+Deno.test("#2830 Ari registry exposes exactly the approved website tools", () => {
   const names = SITE_AGENT_TOOLS.map((tool) => tool.name);
   assert(
     JSON.stringify(names) === JSON.stringify([
       "get_brand_site",
+      "get_site_plan",
+      "list_site_designs",
+      "get_block_catalog",
+      "get_site_tokens",
+      "run_site_design_checks",
       "list_site_pages",
       "get_site_page",
-      "propose_site_content_update",
-      "propose_site_settings_update",
-      "attach_approved_site_media",
       "validate_site_draft",
+      "save_site_plan_answers",
+      "create_site_draft",
+      "propose_site_composition",
+      "propose_block_variant",
+      "propose_site_tokens",
+      "propose_site_copy",
+      "propose_site_imagery",
+      "propose_site_collection_entry",
+      "confirm_site_review",
+      "propose_trip_guide_update",
       "create_site_preview",
       "publish_site",
       "get_site_operation_status",
@@ -92,39 +107,17 @@ Deno.test("#2830 Ari registry exposes exactly the approved twelve tools", () => 
     ]),
     "Ari Website tool registry drifted",
   );
-  assert(SITE_AGENT_READ_ONLY.size === 6, "Ari read-only set drifted");
-  const contentTool = SITE_AGENT_TOOLS.find((tool) =>
-    tool.name === "propose_site_content_update"
-  );
-  const contentProperties = contentTool?.parameters.properties as
-    | Record<string, Record<string, unknown>>
-    | undefined;
-  const changes = contentProperties?.changes as
-    | { properties?: Record<string, unknown>; additionalProperties?: boolean }
-    | undefined;
-  assert(
-    changes?.additionalProperties === false,
-    "page changes are not closed",
-  );
-  assert(
-    Object.keys(changes.properties || {}).sort().join(",") ===
-      "blocks,enabled,nav_label,nav_order,seo,title",
-    "Ari page changes do not expose the approved fields",
-  );
-  const settingsTool = SITE_AGENT_TOOLS.find((tool) =>
-    tool.name === "propose_site_settings_update"
-  );
-  const settingsProperties = settingsTool?.parameters.properties as
-    | Record<string, Record<string, unknown>>
-    | undefined;
-  const settingsChanges = settingsProperties?.changes as
-    | { properties?: Record<string, unknown>; additionalProperties?: boolean }
-    | undefined;
-  assert(
-    settingsChanges?.additionalProperties === false &&
-      Object.keys(settingsChanges.properties || {}).length === 10,
-    "Ari settings changes are not exact and usable",
-  );
+  assert(SITE_AGENT_READ_ONLY.size === 11, "Ari read-only set drifted");
+  for (const tool of SITE_AGENT_TOOLS) {
+    assert(
+      (tool.parameters as { additionalProperties?: unknown }).additionalProperties === false,
+      `${tool.name} parameters are not closed`,
+    );
+  }
+  const tokens = SITE_AGENT_TOOLS.find((tool) => tool.name === "propose_site_tokens");
+  const tokenProperties = tokens?.parameters.properties as Record<string, { additionalProperties?: unknown; properties?: Record<string, unknown> }> | undefined;
+  assert(tokenProperties?.tokens?.additionalProperties === false, "Ari token proposal is not closed");
+  assert(!JSON.stringify(SITE_AGENT_TOOLS.map((tool) => tool.parameters)).includes('"typography"'), "the retired typography enum is back");
 });
 
 Deno.test("#2830 slot-88 import closure stays exact and value-blind", async () => {

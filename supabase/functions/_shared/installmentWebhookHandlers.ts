@@ -25,6 +25,11 @@
 // @ts-ignore — Deno ESM import
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { writeAudit } from "./audit.ts";
+// #3645: one retry rule for both rails (due_at + 3d, + 7d, at risk on the third).
+import {
+  MAX_RETRY_ATTEMPTS,
+  nextRetryAtAfterFailure,
+} from "./installments/installmentRetrySchedule.ts";
 // The one reader of a PaymentIntent's charge id. The router imports this
 // module too; the cycle is safe because both sides only export function
 // declarations and neither calls the other while the module loads.
@@ -34,13 +39,6 @@ type StripeWebhookEvent = {
   type: string;
   data: { object: Record<string, unknown> };
 };
-
-const MAX_RETRY_ATTEMPTS = 3 as const;
-
-const RETRY_INTERVAL_HOURS_BY_RETRY_COUNT = {
-  1: 72,   // 3 days
-  2: 168,  // 7 days
-} as const;
 
 function objectString(obj: Record<string, unknown>, key: string): string | null {
   const v = obj[key];
@@ -54,13 +52,6 @@ function objectMetadata(obj: Record<string, unknown>): Record<string, unknown> {
     : {};
 }
 
-function nextRetryAtFor(retryCount: number): string | null {
-  const hours = RETRY_INTERVAL_HOURS_BY_RETRY_COUNT[
-    retryCount as keyof typeof RETRY_INTERVAL_HOURS_BY_RETRY_COUNT
-  ];
-  if (hours === undefined) return null;
-  return new Date(Date.now() + hours * 3600 * 1000).toISOString();
-}
 
 /**
  * Returns true if the event's PaymentIntent metadata carries an
@@ -238,6 +229,16 @@ export async function handleInstallmentPaymentSucceeded(
   // Check if this was the LAST installment for the order → fire "fully paid" confirmation.
   // Simple check: count remaining scheduled/failed installments for the order.
   const orderId = String((updated as Record<string, unknown>).order_id);
+
+  // #3645 (Q-2, both rails): an at-risk booking clears once nothing of the
+  // order is failed. Throw so the inbox retries if the clear cannot be written.
+  const { error: clearError } = await supabase.rpc(
+    "issue_3645_clear_at_risk_if_settled",
+    { p_order_id: orderId },
+  );
+  if (clearError !== null) {
+    throw new Error(`issue_3645_clear_at_risk_if_settled failed: ${clearError.message}`);
+  }
   const { count: remainingCount, error: countError } = await supabase
     .from("order_installments")
     .select("id", { count: "exact", head: true })
@@ -299,7 +300,7 @@ export async function handleInstallmentPaymentFailed(
   // that case the webhook's job is to confirm + ensure dunning fires.
   const { data: existing, error: fetchError } = await supabase
     .from("order_installments")
-    .select("id, order_id, ordinal, retry_count, status")
+    .select("id, order_id, ordinal, retry_count, status, due_at")
     .eq("id", installmentId)
     .maybeSingle();
   if (fetchError !== null) {
@@ -320,7 +321,9 @@ export async function handleInstallmentPaymentFailed(
   const shouldIncrement = currentStatus === "scheduled";
   const nextRetryCount = shouldIncrement ? currentRetryCount + 1 : currentRetryCount;
   const willBeAtRisk = nextRetryCount >= MAX_RETRY_ATTEMPTS;
-  const nextRetryAt = willBeAtRisk ? null : nextRetryAtFor(nextRetryCount);
+  const nextRetryAt = willBeAtRisk
+    ? null
+    : nextRetryAtAfterFailure(String(existingRow.due_at), nextRetryCount);
 
   await supabase
     .from("order_installments")

@@ -552,8 +552,8 @@ export const ReferralOfferSheet: React.FC<ReferralOfferSheetProps> = ({
                   [
                     {
                       value: "brand",
-                      title: "Every listing",
-                      copy: "Apply this offer across the brand.",
+                      title: "Whole brand",
+                      copy: "Works on everything this brand sells.",
                     },
                     {
                       value: "listings",

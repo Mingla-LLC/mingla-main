@@ -1,0 +1,14 @@
+{
+  "brand_id": "00000000-0000-4000-8000-000000000000",
+  "trips": [
+    { "import_key": "fixture:coast-2024", "title": "Coast Week", "start_date": "2024-06-20", "end_date": "2024-06-27", "timezone": "Europe/Tirane", "location": "Harbour Coast", "source_note": "Invented local fixture (#2829 W5)" },
+    { "import_key": "fixture:ski-riverton", "title": "Mountain Ski Weekend (Riverton)", "start_date": "2025-01-14", "timezone": "America/New_York", "location": "Mountain Town, NC", "series": "Mountain ski series", "source_note": "Invented local fixture (#2829 W5)" },
+    { "import_key": "fixture:ski-lakeside", "title": "Mountain Ski Weekend (Lakeside)", "start_date": "2025-01-21", "timezone": "America/New_York", "location": "Mountain Town, NC", "series": "Mountain ski series", "source_note": "Invented local fixture (#2829 W5)" },
+    { "import_key": "fixture:valley-2023", "title": "Valley Walk", "start_date": "2023-09-02", "end_date": "2023-09-05", "timezone": "Europe/London", "location": "Pine Valley", "source_note": "Invented local fixture (#2829 W5)" }
+  ],
+  "reviews": [
+    { "quote": "Best expierence, would go agian.", "reviewer": "Fixture R", "review_date": "2024-07-02", "trip_import_key": "fixture:coast-2024", "source_note": "Invented local fixture (#2829 W5)", "confirmed_real": true },
+    { "quote": "Calm and kind hosts.", "reviewer": "Fixture S", "review_date": "2025-01-30", "trip_name": "Ski weekend", "source_note": "Invented local fixture (#2829 W5)", "confirmed_real": true },
+    { "quote": "Not yet confirmed praise.", "reviewer": "Fixture T", "review_date": "2025-02-01", "source_note": "Invented local fixture (#2829 W5)", "confirmed_real": false }
+  ]
+}

@@ -1,10 +1,15 @@
+import { createStreamUploadIntent, refreshStreamVideo, streamVideoCapability } from "../lib/streamVideo";
 import type { Endpoint, PayloadRequest } from "payload";
+import { ARI_DESIGNER_ACTIONS, ARI_REFUSAL_CODES, AriRefusal, assertFirstPublishChecked, loadDraftState, parseAriEvidence, runAriDesignerAction } from "../lib/ariSiteActions";
+import { searchCatalogFonts, type FontCategory } from "../contracts/generated/fontCatalog.ts";
 import {
   buildPublicationArtifact,
   buildRollbackPublicationArtifact,
   publicationDraftDigest,
   probePublicationCandidate,
+  V1_RENDERER_KEY,
 } from "../lib/artifactBuilder";
+import { buildExportEntries, buildZip, EXPORT_LINK_TTL_SECONDS, exportObjectKey } from "../lib/siteExport";
 import {
   callCore,
   readCorePublicationSource,
@@ -19,15 +24,14 @@ import {
   runRetentionSweep,
   tombstoneMedia,
 } from "../lib/mediaPipeline";
-import { readObject } from "../lib/objectStore";
+import { presignedGet, readObject, writeObject } from "../lib/objectStore";
 import {
   applyStudioMediaSelection,
-  referencedStudioMediaIds,
   studioMediaTargets,
 } from "../lib/studioMediaSelection";
 import { base64url } from "../lib/crypto";
 import { cmsConfig } from "../lib/config";
-import { MINGLA_BUSINESS_ORIGIN } from "../lib/origins";
+import { businessPreviewFrameAncestor } from "../lib/origins";
 import { sitesJsonResponse } from "../lib/http";
 import {
   emitCmsObservation,
@@ -38,6 +42,7 @@ import {
   decodePreviewGrant,
   encodeSession,
   encodePreviewGrant,
+  isSitesRendererKey,
   sessionFromHeaders,
   studioReturnLocation,
   studioReturnLocationFromContext,
@@ -50,6 +55,17 @@ import {
   studioMediaGrantRequest,
 } from "../lib/studioRequestAuth";
 import { ensureStudioUserShadow } from "../lib/studioUserShadow";
+import { findAllTenantPages } from "../lib/tenantPages";
+import { tenantMediaInUse } from "../lib/mediaHolders";
+import { findTenantContent } from "../lib/siteContent";
+import {
+  ariPageSummaries,
+  assertNoPathCollision,
+  isHomePage,
+  tenantPagePaths,
+} from "../lib/pageTree";
+import { previewPagePath } from "../lib/previewPath";
+import { reportPreviewBuilt } from "../lib/previewBuiltReport";
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
   return sitesJsonResponse(data, status, headers);
@@ -63,6 +79,11 @@ async function objectBody(
   return value as Record<string, unknown>;
 }
 function safeFailure(error: unknown, returnUrl?: string) {
+  // #2829 W2 — Studio's field-level refusals (e.g. the page tree) are a
+  // validation failure to every caller that is not Studio's own form.
+  if (error instanceof Error && error.name === "ValidationError") {
+    error = new Error("VALIDATION_FAILED");
+  }
   const code =
     error instanceof Error &&
     [
@@ -75,6 +96,16 @@ function safeFailure(error: unknown, returnUrl?: string) {
       "MEDIA_PROCESSING",
       "PUBLISH_FAILED_LAST_GOOD_PRESERVED",
       "IDEMPOTENCY_CONFLICT",
+      // #2829 — a named refusal, never a truncated site.
+      "PAGE_LIMIT_EXCEEDED",
+      "PATH_COLLISION",
+      // #2829 W9b — a first publish waits until the design checks have run.
+      "DESIGN_CHECKS_REQUIRED",
+      // #2829 W6 — stream video is off (Bunny not configured): use file video.
+      "STREAM_VIDEO_UNAVAILABLE",
+      // #2829 W11 (A11) — media removal refused: where it is still used.
+      "MEDIA_IN_USE_DRAFT",
+      "MEDIA_IN_USE_LIVE",
     ].includes(error.message)
       ? error.message
       : "SERVICE_TEMPORARILY_UNAVAILABLE";
@@ -94,8 +125,13 @@ function safeFailure(error: unknown, returnUrl?: string) {
              * whoever hit it looking for a problem with their picture. A
              * rejection that names no requirement is a dead end.
              */
-            ? "That file could not be accepted. Images must be JPEG, PNG or WebP, and video must be MP4, under 20MB."
-            : "Website tools are temporarily unavailable.",
+            ? "That file could not be accepted. Images must be JPEG, PNG or WebP under 20 MB; video must be MP4 (H.264, fast start) up to 50 MB."
+            // #2829 W11 (A11) — say where removed media is still used.
+            : code === "MEDIA_IN_USE_DRAFT"
+              ? "This is still used in your draft website. Take it off the page or entry that uses it, then remove it."
+              : code === "MEDIA_IN_USE_LIVE"
+                ? "Your live website (or a version you can restore) still shows this. Publish a version without it, then remove it."
+                : "Website tools are temporarily unavailable.",
         retryable: [
           "MEDIA_PROCESSING",
           "SERVICE_TEMPORARILY_UNAVAILABLE",
@@ -174,6 +210,9 @@ async function exchange(req: PayloadRequest): Promise<Response> {
       ),
       nonce: crypto.randomUUID(),
       return_surface: body.return_surface,
+      primary_hostname: typeof result.primary_hostname === "string"
+        ? result.primary_hostname
+        : null,
     });
     const csrf = base64url(crypto.getRandomValues(new Uint8Array(32)));
     const headers = new Headers();
@@ -238,10 +277,21 @@ async function provisionOrReconcile(req: PayloadRequest): Promise<Response> {
       body.kind !== "provision" ||
       body.site_id !== envelope.site_id ||
       !/^[0-9a-f-]{36}$/i.test(brandId) ||
-      body.renderer_key !== "restaurant-website-v1" ||
-      body.renderer_version !== 1
+      !isSitesRendererKey(body.renderer_key) ||
+      body.renderer_version !== 1 ||
+      // #2829 — Core names the brand and the site's address; nothing about a
+      // particular brand is assumed here.
+      typeof body.display_name !== "string" ||
+      body.display_name.trim().length < 1 ||
+      body.display_name.length > 120 ||
+      typeof body.primary_hostname !== "string" ||
+      !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/
+        .test(body.primary_hostname)
     )
       throw new Error("VALIDATION_FAILED");
+    const displayName = body.display_name.trim();
+    const primaryHostname = body.primary_hostname;
+    const rendererKey = body.renderer_key;
     let tenant = (
       await req.payload.find({
         collection: "tenants",
@@ -253,40 +303,63 @@ async function provisionOrReconcile(req: PayloadRequest): Promise<Response> {
     ).docs[0];
     if (tenant && tenant.core_brand_id !== brandId)
       throw new Error("TENANT_MISMATCH");
+    if (tenant && !tenant.primary_hostname) {
+      tenant = await req.payload.update({
+        collection: "tenants",
+        id: tenant.id,
+        overrideAccess: true,
+        data: { primary_hostname: primaryHostname },
+      });
+    }
     if (!tenant) {
       tenant = await req.payload.create({
         collection: "tenants",
         overrideAccess: true,
         data: {
-          name: "Gogi Restaurant",
+          name: displayName,
           core_site_id: envelope.site_id,
           core_brand_id: brandId,
           status: "active",
-          renderer_key: "restaurant-website-v1",
+          primary_hostname: primaryHostname,
+          renderer_key: rendererKey,
           renderer_version: 1,
         },
       });
+    }
+    // #2829 — a tenant whose first documents were never written (a provision
+    // that failed half way) gets them on the next provision call, instead of
+    // being stuck with an empty Studio that can never publish.
+    const existingHome = (await findAllTenantPages(req, tenant.id, {
+      overrideAccess: true,
+    }))[0];
+    if (!existingHome) {
       const tenantId = tenant.id;
+      // #2829 — the first documents of a NEW tenant are written by Core's
+      // signed provisioning call, which carries no Studio user. Marked as
+      // server-side (Local API) work so the multi-tenant plugin's
+      // "user may assign this tenant" check — which every userless REST
+      // request fails — does not refuse them; the signed envelope and the
+      // tenant lookup above are the authority here.
       const provisioningRequest = {
         ...req,
+        payloadAPI: "local",
         context: {
           ...req.context,
           minglaSignedCore: true,
           minglaInternalTenantId: String(tenantId),
         },
       } as PayloadRequest;
-      await req.payload.create({
+      // #2829 W2 — the home page is the page with no slug and no parent.
+      const homePage = await req.payload.create({
         collection: "pages",
         overrideAccess: true,
         req: provisioningRequest,
         data: {
           tenant: tenantId,
-          role: "home",
-          slug: "/",
+          slug: "",
           title: "Home",
+          kind: "standard",
           enabled: true,
-          nav_label: "Home",
-          nav_order: 0,
           revision: 1,
           blocks: [],
         },
@@ -296,7 +369,11 @@ async function provisionOrReconcile(req: PayloadRequest): Promise<Response> {
         collection: "navigation",
         overrideAccess: true,
         req: provisioningRequest,
-        data: { tenant: tenantId, label: "Main navigation", pages: [] },
+        data: {
+          tenant: tenantId,
+          label: "Main navigation",
+          items: [{ label: "Home", target_type: "page", page: homePage.id }],
+        },
         draft: true,
       });
       await req.payload.create({
@@ -312,10 +389,9 @@ async function provisionOrReconcile(req: PayloadRequest): Promise<Response> {
         req: provisioningRequest,
         data: {
           tenant: tenantId,
-          display_name: "Gogi Restaurant",
-          canonical_url: "https://gogi.sites.usemingla.com",
+          display_name: displayName,
           analytics_consent_mode: "optional",
-          renderer_key: "restaurant-website-v1",
+          renderer_key: rendererKey,
         },
         draft: true,
       });
@@ -330,6 +406,14 @@ async function provisionOrReconcile(req: PayloadRequest): Promise<Response> {
   } catch (error) {
     return safeFailure(error);
   }
+}
+
+/** #2829 W8 — a hostname Core signed into a publish, or null. */
+export function primaryHostnameFromCore(value: unknown): string | null {
+  return typeof value === "string" && value.length >= 4 && value.length <= 253 &&
+    /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(value)
+    ? value
+    : null;
 }
 
 async function publish(req: PayloadRequest): Promise<Response> {
@@ -359,7 +443,7 @@ async function publish(req: PayloadRequest): Promise<Response> {
       body.authorization?.status !== "authorized"
     )
       throw new Error("FORBIDDEN");
-    const tenant = (
+    let tenant = (
       await req.payload.find({
         collection: "tenants",
         overrideAccess: true,
@@ -369,6 +453,19 @@ async function publish(req: PayloadRequest): Promise<Response> {
       })
     ).docs[0];
     if (!tenant) throw new Error("NOT_FOUND");
+    // #2829 W8 — Core signs the site's CURRENT main address into every
+    // publish (a brand's own domain, or the Mingla subdomain again after a
+    // disconnect). The tenant's copy follows it before the artifact is built,
+    // so the canonical is the address the runtime serves as primary.
+    const corePrimary = primaryHostnameFromCore(body.primary_hostname);
+    if (corePrimary && corePrimary !== tenant.primary_hostname) {
+      tenant = await req.payload.update({
+        collection: "tenants",
+        id: tenant.id,
+        overrideAccess: true,
+        data: { primary_hostname: corePrimary },
+      });
+    }
     const publicationId = String(body.authorization.publication_id || "");
     const revisionId = String(
       body.authorization.revision_id || body.expected_revision || "",
@@ -422,12 +519,32 @@ async function publish(req: PayloadRequest): Promise<Response> {
         },
       }));
     jobId = job.id;
+    /*
+     * #2829 W9b (L4) — a site's FIRST publish needs the six design checks run
+     * on exactly this draft (their results are warnings; running them is the
+     * requirement). Nothing goes live and the owner is told to run them.
+     * Later publishes and restores never wait on them.
+     */
+    if (!rollbackSourcePublicationId) await assertFirstPublishChecked(req, String(tenant.id), sourceDigest);
     const canReuse =
       typeof job.artifact_key === "string" &&
       typeof job.artifact_digest === "string" &&
       /^[0-9a-f]{64}$/.test(job.artifact_digest);
+    // #2829 W3 — the generation and font warnings travel with the job, so a
+    // retried publish reports exactly what the first attempt wrote.
+    const recorded = (job.validation_result ?? {}) as Record<string, unknown>;
     const built = canReuse
-      ? { artifactKey: job.artifact_key!, artifactDigest: job.artifact_digest! }
+      ? {
+          artifactKey: job.artifact_key!,
+          artifactDigest: job.artifact_digest!,
+          generation: (recorded.generation ?? {
+            artifact_schema_version: 1,
+            renderer_key: "restaurant-website-v1",
+            design_key: null,
+            design_version: null,
+          }) as { artifact_schema_version: 1 | 2; renderer_key: "restaurant-website-v1" | "sites-v2"; design_key: string | null; design_version: number | null },
+          fontWarnings: (Array.isArray(recorded.font_warnings) ? recorded.font_warnings : []) as unknown[],
+        }
       : await (async () => {
           await req.payload.update({
             collection: "publication-jobs",
@@ -470,9 +587,11 @@ async function publish(req: PayloadRequest): Promise<Response> {
               artifact_key: materialized.artifactKey,
               artifact_digest: materialized.artifactDigest,
               validation_result: {
-                schema_version: 1,
+                schema_version: materialized.generation.artifact_schema_version,
                 renderer_version: 1,
                 exact_revision: true,
+                generation: materialized.generation,
+                font_warnings: materialized.fontWarnings,
               },
             },
           });
@@ -485,6 +604,9 @@ async function publish(req: PayloadRequest): Promise<Response> {
       artifactKey: built.artifactKey,
       artifactDigest: built.artifactDigest,
       rendererVersion: 1,
+      artifactSchemaVersion: built.generation.artifact_schema_version,
+      rendererKey: built.generation.renderer_key,
+      primaryHostname: String(tenant.primary_hostname ?? ""),
     });
     const result = await callCore(
       `/internal/v1/sites/${envelope.site_id}/publication-results`,
@@ -497,6 +619,12 @@ async function publish(req: PayloadRequest): Promise<Response> {
         artifact_key: built.artifactKey,
         artifact_digest: built.artifactDigest,
         probe_summary: probe,
+        // #2829 W3 — what was written, for Core to record (and the owner to see).
+        artifact_schema_version: built.generation.artifact_schema_version,
+        renderer_key: built.generation.renderer_key,
+        design_key: built.generation.design_key,
+        design_version: built.generation.design_version,
+        font_warnings: built.fontWarnings.length ? built.fontWarnings : null,
       },
     );
     await req.payload.update({
@@ -516,6 +644,9 @@ async function publish(req: PayloadRequest): Promise<Response> {
         "VALIDATION_FAILED",
         "PROBE_FAILED",
         "ARTIFACT_DIGEST_MISMATCH",
+        "PAGE_LIMIT_EXCEEDED",
+        "PATH_COLLISION",
+        "DESIGN_CHECKS_REQUIRED",
       ].includes(error.message);
     let failureRecorded = false;
     if (definitiveFailure && callbackContext) {
@@ -524,7 +655,15 @@ async function publish(req: PayloadRequest): Promise<Response> {
           `/internal/v1/sites/${callbackContext.siteId}/publication-failures`,
           callbackContext.siteId,
           callbackContext.operationId,
-          { publication_id: callbackContext.publicationId },
+          {
+            publication_id: callbackContext.publicationId,
+            // #2829 W2 — a refusal the owner can fix names itself, so the
+            // Business app can say what to change instead of "try again".
+            ...(error instanceof Error &&
+              ["PATH_COLLISION", "PAGE_LIMIT_EXCEEDED", "DESIGN_CHECKS_REQUIRED"].includes(error.message)
+              ? { failure_code: error.message }
+              : {}),
+          },
         );
         failureRecorded = true;
       } catch {
@@ -568,6 +707,9 @@ async function publish(req: PayloadRequest): Promise<Response> {
                 "VALIDATION_FAILED",
                 "PROBE_FAILED",
                 "ARTIFACT_DIGEST_MISMATCH",
+                "PAGE_LIMIT_EXCEEDED",
+                "PATH_COLLISION",
+                "DESIGN_CHECKS_REQUIRED",
               ].includes(error.message)
                 ? error.message
                 : "SERVICE_TEMPORARILY_UNAVAILABLE",
@@ -613,6 +755,44 @@ async function uploadGrant(req: PayloadRequest): Promise<Response> {
         bytes: Number(body.bytes),
       }),
     });
+  } catch (error) {
+    return safeFailure(error);
+  }
+}
+/*
+ * #2829 W6 (AD-9) — stream video (Bunny through Core). Off unless Core has
+ * Bunny configured; Studio then uses the standard file upload above.
+ */
+async function streamCapability(req: PayloadRequest): Promise<Response> {
+  try {
+    const { request } = await requireAuthenticatedStudioRequest(req);
+    return json({ ok: true, data: await streamVideoCapability(request) });
+  } catch (error) {
+    return safeFailure(error);
+  }
+}
+async function streamIntent(req: PayloadRequest): Promise<Response> {
+  try {
+    assertMutationRequest(req.headers);
+    const { request } = await requireAuthenticatedStudioRequest(req);
+    const body = await objectBody(req);
+    return json({
+      ok: true,
+      data: await createStreamUploadIntent(request, {
+        filename: String(body.filename || "video"),
+        content_type: String(body.content_type || ""),
+        bytes: Number(body.bytes),
+      }),
+    });
+  } catch (error) {
+    return safeFailure(error);
+  }
+}
+async function streamStatus(req: PayloadRequest): Promise<Response> {
+  try {
+    const { request } = await requireAuthenticatedStudioRequest(req);
+    const id = new URL(req.url || "http://local").pathname.split("/").at(-2)!;
+    return json({ ok: true, data: await refreshStreamVideo(request, id) });
   } catch (error) {
     return safeFailure(error);
   }
@@ -684,17 +864,9 @@ async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
     }
     const mediaScoped = studioMediaGrantRequest(request);
     const tenantWhere = { tenant: { equals: session.tenant_id } };
-    const [pages, media, settings] = await Promise.all([
-      req.payload.find({
-        collection: "pages",
-        overrideAccess: false,
-        req: request,
-        draft: true,
-        depth: 0,
-        limit: 5,
-        sort: "nav_order",
-        where: tenantWhere,
-      }),
+    const [pages, media] = await Promise.all([
+      findAllTenantPages(request, session.tenant_id)
+        .then((docs) => ({ docs })),
       req.payload.find({
         collection: "media",
         overrideAccess: false,
@@ -705,26 +877,11 @@ async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
         sort: "-updatedAt",
         where: tenantWhere,
       }),
-      req.payload.find({
-        collection: "site-settings",
-        overrideAccess: false,
-        req: request,
-        draft: true,
-        depth: 0,
-        limit: 1,
-        where: tenantWhere,
-      }),
     ]);
-    const referenced = referencedStudioMediaIds(pages.docs);
-    const setting = settings.docs[0];
-    for (const value of [setting?.logo, setting?.social_image]) {
-      const id = value && typeof value === "object" && "id" in value
-        ? String(value.id)
-        : typeof value === "string" || typeof value === "number"
-          ? String(value)
-          : null;
-      if (id) referenced.add(id);
-    }
+    // #2829 W11 (A11) — "in use" is the same full scan removal checks
+    // (every page, content entry, setting, navigation and footer field), so
+    // the library never offers to remove something the server refuses.
+    const referenced = await tenantMediaInUse(request, session.tenant_id);
     return json({
       ok: true,
       data: {
@@ -1022,7 +1179,8 @@ async function mintPreview(req: PayloadRequest): Promise<Response> {
       tenant_id: String(tenant.id),
       source_revision: sourceRevision,
       source_digest: sourceDigest,
-      renderer_key: "restaurant-website-v1",
+      // #2829 — the builder produces v1 artifacts until the W3 renderer.
+      renderer_key: V1_RENDERER_KEY,
       renderer_version: 1,
       issued_at: issuedAt,
       expires_at: issuedAt + 1800,
@@ -1030,6 +1188,23 @@ async function mintPreview(req: PayloadRequest): Promise<Response> {
       return_surface: body.return_surface,
     });
     const expiresAt = new Date((issuedAt + 1800) * 1000).toISOString();
+    // #2829 W2 — every page can be previewed: the owner picks one from this
+    // list and the preview opens at that page's address (`&path=`).
+    const previewPages = await (async () => {
+      const scopedPreview = signedCoreRequest(req, {
+        siteId: envelope.site_id,
+        brandId,
+        tenantId: String(tenant.id),
+        userId,
+        rank: 20,
+      });
+      const docs = await findAllTenantPages(scopedPreview, tenant.id);
+      const paths = tenantPagePaths(docs);
+      return docs
+        .filter((page) => page.enabled === true || isHomePage(page))
+        .map((page) => ({ path: paths.get(String(page.id)) ?? "", title: String(page.title ?? "") }))
+        .sort((left, right) => left.path.localeCompare(right.path));
+    })();
     await callCore(
       `/internal/v1/sites/${envelope.site_id}/preview-results`,
       envelope.site_id,
@@ -1043,6 +1218,7 @@ async function mintPreview(req: PayloadRequest): Promise<Response> {
         source_revision: sourceRevision,
         expires_at: expiresAt,
         preview_url: `${cmsConfig().cmsOrigin}/preview?token=${encodeURIComponent(previewToken)}`,
+        pages: previewPages,
       },
     });
   } catch (error) {
@@ -1066,11 +1242,9 @@ async function studioPreview(req: PayloadRequest): Promise<Response> {
       throw new Error("FORBIDDEN");
     }
     const tenantWhere = { tenant: { equals: session.tenant_id } };
-    const [pages, settings, navigation, footer, media] = await Promise.all([
-      req.payload.find({
-        collection: "pages", overrideAccess: false, req: request, draft: true,
-        depth: 0, limit: 5, where: tenantWhere, sort: "nav_order",
-      }),
+    const [pages, settings, navigation, footer, media, content] = await Promise.all([
+      findAllTenantPages(request, session.tenant_id)
+        .then((docs) => ({ docs })),
       req.payload.find({
         collection: "site-settings", overrideAccess: false, req: request,
         draft: true, depth: 0, limit: 1, where: tenantWhere,
@@ -1089,9 +1263,11 @@ async function studioPreview(req: PayloadRequest): Promise<Response> {
         limit: 500, sort: "id",
         where: { and: [tenantWhere, { state: { equals: "READY" } }] },
       }),
+      // #2829 W5 — the content collections the publish will freeze.
+      findTenantContent(request, session.tenant_id),
     ]);
     const home = pages.docs.find(
-      (page) => page.role === "home" && page.enabled === true,
+      (page) => isHomePage(page) && page.enabled === true,
     );
     if (!home || !settings.docs[0]) throw new Error("VALIDATION_FAILED");
     const digest = await publicationDraftDigest({
@@ -1100,6 +1276,7 @@ async function studioPreview(req: PayloadRequest): Promise<Response> {
       navigation: navigation.docs[0] ?? null,
       footer: footer.docs[0] ?? null,
       media: media.docs,
+      content,
     });
     const issuedAt = Math.floor(Date.now() / 1000);
     const token = await encodePreviewGrant({
@@ -1112,7 +1289,8 @@ async function studioPreview(req: PayloadRequest): Promise<Response> {
       tenant_id: session.tenant_id,
       source_revision: String(home.revision),
       source_digest: digest,
-      renderer_key: "restaurant-website-v1",
+      // #2829 — the builder produces v1 artifacts until the W3 renderer.
+      renderer_key: V1_RENDERER_KEY,
       renderer_version: 1,
       issued_at: issuedAt,
       expires_at: issuedAt + 1800,
@@ -1135,57 +1313,16 @@ const ARI_ACTIONS = new Set([
   "get_brand_site",
   "list_site_pages",
   "get_site_page",
-  "propose_site_content_update",
+  // #2829 W3 — the Business "Website design" screen saves the look here
+  // (owner token values and fonts; Ari proposes through propose_site_tokens).
   "propose_site_settings_update",
-  "attach_approved_site_media",
   "validate_site_draft",
+  // #2829 W3 — the Business "Your look" screen and Ari search the Google
+  // Fonts catalogue here, so neither bundles the ~160 KB catalogue.
+  "search_fonts",
+  // #2829 W9b — Ari as the website designer (lib/ariSiteActions.ts).
+  ...ARI_DESIGNER_ACTIONS,
 ]);
-
-function plainTextToLexical(value: string): Record<string, unknown> {
-  return {
-    root: {
-      type: "root",
-      format: "",
-      indent: 0,
-      version: 1,
-      direction: "ltr",
-      children: [
-        {
-          type: "paragraph",
-          format: "",
-          indent: 0,
-          version: 1,
-          direction: "ltr",
-          textFormat: 0,
-          textStyle: "",
-          children: [
-            {
-              type: "text",
-              detail: 0,
-              format: 0,
-              mode: "normal",
-              style: "",
-              text: value,
-              version: 1,
-            },
-          ],
-        },
-      ],
-    },
-  };
-}
-
-function normalizeAriBlocks(value: unknown): unknown {
-  if (!Array.isArray(value)) return value;
-  return value.map((raw) => {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
-    const block = raw as Record<string, unknown>;
-    if (block.blockType !== "rich_text" || typeof block.content !== "string") {
-      return block;
-    }
-    return { ...block, content: plainTextToLexical(block.content) };
-  });
-}
 
 async function ari(req: PayloadRequest): Promise<Response> {
   let raw = "";
@@ -1200,6 +1337,8 @@ async function ari(req: PayloadRequest): Promise<Response> {
       "user_id",
       "rank",
       "args",
+      // #2829 W9b — the Mingla facts Core signed in (offerings, brand words).
+      "evidence",
     ]);
     if (Object.keys(body).some((key) => !allowedOuter.has(key))) {
       throw new Error("VALIDATION_FAILED");
@@ -1231,6 +1370,35 @@ async function ari(req: PayloadRequest): Promise<Response> {
     });
     const tenantWhere = { tenant: { equals: tenant.id } };
 
+    if (ARI_DESIGNER_ACTIONS.has(action)) {
+      try {
+        const data = await runAriDesignerAction(action, args, {
+          req,
+          scoped,
+          tenantId: String(tenant.id),
+          siteId: envelope.site_id,
+          brandId,
+          userId,
+          rank,
+          evidence: parseAriEvidence(body.evidence, brandId),
+        });
+        return json({ ok: true, data });
+      } catch (error) {
+        if (error instanceof AriRefusal && ARI_REFUSAL_CODES.has(error.message)) {
+          return json(
+            { ok: false, error: { code: error.message, ...error.extra } },
+            error.message === "FORBIDDEN" ? 403 : error.message === "NOT_FOUND" || error.message === "PAGE_NOT_FOUND" ? 404 : 409,
+          );
+        }
+        // Content refusals (QUOTE_REQUIRED, …) carry their own codes.
+        if (error instanceof Error && ARI_REFUSAL_CODES.has(error.message)) {
+          const extra = (error as Error & { extra?: Record<string, unknown> }).extra ?? {};
+          return json({ ok: false, error: { code: error.message, ...extra } }, 409);
+        }
+        throw error;
+      }
+    }
+
     if (action === "get_brand_site") {
       const [settings, pages] = await Promise.all([
         req.payload.find({
@@ -1242,124 +1410,60 @@ async function ari(req: PayloadRequest): Promise<Response> {
           limit: 1,
           where: tenantWhere,
         }),
-        req.payload.find({
-          collection: "pages",
-          req: scoped,
-          overrideAccess: false,
-          draft: true,
-          depth: 0,
-          limit: 5,
-          sort: "nav_order",
-          where: tenantWhere,
-        }),
+        findAllTenantPages(scoped, tenant.id)
+          .then((docs) => ({ docs })),
       ]);
       return json({
         ok: true,
         data: {
           site_id: envelope.site_id,
-          renderer: "Restaurant Website v1",
+          renderer: "sites-v2",
           status: tenant.status,
           settings: settings.docs[0] ?? null,
-          pages: pages.docs.map((page) => ({
-            id: page.id,
-            role: page.role,
-            title: page.title,
-            enabled: page.enabled,
-            revision: page.revision,
-            updatedAt: page.updatedAt,
-          })),
+          pages: ariPageSummaries(pages.docs),
         },
       });
     }
-    if (action === "list_site_pages") {
-      const pages = await req.payload.find({
-        collection: "pages",
-        req: scoped,
-        overrideAccess: false,
-        draft: true,
-        depth: 0,
-        limit: 5,
-        sort: "nav_order",
-        where: tenantWhere,
-      });
+    if (action === "search_fonts") {
+      const query = typeof args.query === "string" ? args.query.slice(0, 64) : "";
+      const category = typeof args.category === "string" &&
+          ["sans-serif", "serif", "display", "handwriting", "monospace"].includes(args.category)
+        ? (args.category as FontCategory)
+        : undefined;
       return json({
         ok: true,
-        data: pages.docs.map((page) => ({
-          id: page.id,
-          role: page.role,
-          title: page.title,
-          enabled: page.enabled,
-          revision: page.revision,
-          updatedAt: page.updatedAt,
+        data: searchCatalogFonts(query, { category, limit: 30 }).map((font) => ({
+          family: font.family,
+          category: font.category,
+          weights: font.weights,
         })),
       });
     }
-    const pageRole = String(args.page_role || "");
-    const page = pageRole
-      ? (
-          await req.payload.find({
-            collection: "pages",
-            req: scoped,
-            overrideAccess: false,
-            draft: true,
-            depth: 0,
-            limit: 1,
-            where: { and: [tenantWhere, { role: { equals: pageRole } }] },
-          })
-        ).docs[0]
-      : null;
+    if (action === "list_site_pages") {
+      const pages = await findAllTenantPages(scoped, tenant.id);
+      return json({ ok: true, data: ariPageSummaries(pages) });
+    }
+    /*
+     * #2829 W2 — a page is addressed by its path (`page_path`: "" is home,
+     * "resources/faqs"). Ari's current tools still send a fixed `page_role`;
+     * that is read as the top-level page of the same name (home → ""), which
+     * is exactly where the W2 data migration put every role page.
+     */
+    const wantedPath = typeof args.page_path === "string"
+      ? args.page_path
+      : typeof args.page_role === "string" && args.page_role
+        ? (args.page_role === "home" ? "" : args.page_role)
+        : null;
+    const page = wantedPath === null
+      ? null
+      : await (async () => {
+          const all = await findAllTenantPages(scoped, tenant.id);
+          const paths = tenantPagePaths(all);
+          return all.find((candidate) => paths.get(String(candidate.id)) === wantedPath) ?? null;
+        })();
     if (action === "get_site_page") {
       if (!page) throw new Error("NOT_FOUND");
       return json({ ok: true, data: page });
-    }
-    if (action === "propose_site_content_update") {
-      if (!page || String(args.expected_revision) !== String(page.revision))
-        throw new Error("REVISION_CONFLICT");
-      const changes =
-        args.changes &&
-        typeof args.changes === "object" &&
-        !Array.isArray(args.changes)
-          ? (args.changes as Record<string, unknown>)
-          : {};
-      const allowed = new Set([
-        "title",
-        "enabled",
-        "nav_label",
-        "nav_order",
-        "blocks",
-        "seo",
-      ]);
-      if (
-        !Object.keys(changes).length ||
-        Object.keys(changes).some((key) => !allowed.has(key))
-      )
-        throw new Error("VALIDATION_FAILED");
-      const updated = await req.payload.update({
-        collection: "pages",
-        id: page.id,
-        req: scoped,
-        overrideAccess: false,
-        draft: true,
-        depth: 0,
-        data: {
-          ...changes,
-          ...(Object.prototype.hasOwnProperty.call(changes, "blocks")
-            ? { blocks: normalizeAriBlocks(changes.blocks) }
-            : {}),
-          revision: page.revision,
-        } as never,
-      });
-      return json({
-        ok: true,
-        data: {
-          site_id: envelope.site_id,
-          page_role: updated.role,
-          previous_revision: page.revision,
-          revision: updated.revision,
-          draft_only: true,
-          updatedAt: updated.updatedAt,
-        },
-      });
     }
     if (action === "propose_site_settings_update") {
       const settings = (
@@ -1384,14 +1488,18 @@ async function ari(req: PayloadRequest): Promise<Response> {
         !Array.isArray(args.changes)
           ? (args.changes as Record<string, unknown>)
           : {};
+      // #2829 W3 — the look is design + token values + fonts (validated by
+      // site-contracts on save); colours are stored exactly as sent.
       const allowed = new Set([
         "display_name",
         "short_description",
         "logo",
-        "background_color",
-        "foreground_color",
-        "accent_color",
-        "typography",
+        "design",
+        "tokens",
+        "fonts",
+        "radius",
+        "button_shape",
+        "motion",
         "seo_title",
         "seo_description",
         "social_image",
@@ -1420,123 +1528,19 @@ async function ari(req: PayloadRequest): Promise<Response> {
         },
       });
     }
-    if (action === "attach_approved_site_media") {
-      if (!page || String(args.expected_revision) !== String(page.revision))
-        throw new Error("REVISION_CONFLICT");
-      const mediaId = String(args.media_id || "");
-      const media = await req.payload.findByID({
-        collection: "media",
-        id: mediaId,
-        req: scoped,
-        overrideAccess: false,
-        depth: 0,
-      });
-      if (media.state !== "READY") throw new Error("MEDIA_PROCESSING");
-      const blockIndex = Number(args.block_index);
-      const field = String(args.field || "");
-      const blocks = Array.isArray(page.blocks)
-        ? structuredClone(page.blocks)
-        : [];
-      const block = blocks[blockIndex] as Record<string, unknown> | undefined;
-      if (
-        !Number.isInteger(blockIndex) ||
-        !block ||
-        !["media", "images"].includes(field)
-      )
-        throw new Error("VALIDATION_FAILED");
-      if (
-        field === "media" &&
-        !["hero", "media_feature"].includes(String(block.blockType))
-      )
-        throw new Error("VALIDATION_FAILED");
-      if (field === "images" && block.blockType !== "gallery")
-        throw new Error("VALIDATION_FAILED");
-      if (field === "media") block.media = media.id;
-      else
-        block.images = [
-          ...(Array.isArray(block.images) ? block.images : []),
-          { media: media.id, alt: String(args.alt || "") },
-        ].slice(0, 12);
-      const updated = await req.payload.update({
-        collection: "pages",
-        id: page.id,
-        req: scoped,
-        overrideAccess: false,
-        draft: true,
-        depth: 0,
-        data: { blocks, revision: page.revision },
-      });
-      return json({
-        ok: true,
-        data: {
-          site_id: envelope.site_id,
-          page_role: updated.role,
-          media_id: media.id,
-          previous_revision: page.revision,
-          revision: updated.revision,
-          draft_only: true,
-        },
-      });
-    }
-    const [settings, pages, navigation, footer, media] = await Promise.all([
-      req.payload.find({
-        collection: "site-settings",
-        req: scoped,
-        overrideAccess: false,
-        draft: true,
-        depth: 0,
-        limit: 1,
-        where: tenantWhere,
-      }),
-      req.payload.find({
-        collection: "pages",
-        req: scoped,
-        overrideAccess: false,
-        draft: true,
-        depth: 0,
-        limit: 5,
-        sort: "nav_order",
-        where: tenantWhere,
-      }),
-      req.payload.find({
-        collection: "navigation",
-        req: scoped,
-        overrideAccess: false,
-        draft: true,
-        depth: 0,
-        limit: 1,
-        where: tenantWhere,
-      }),
-      req.payload.find({
-        collection: "footer",
-        req: scoped,
-        overrideAccess: false,
-        draft: true,
-        depth: 0,
-        limit: 1,
-        where: tenantWhere,
-      }),
-      req.payload.find({
-        collection: "media",
-        req: scoped,
-        overrideAccess: false,
-        depth: 0,
-        limit: 500,
-        sort: "id",
-        where: { and: [tenantWhere, { state: { equals: "READY" } }] },
-      }),
-    ]);
-    const home = pages.docs.find(
-      (candidate) => candidate.role === "home" && candidate.enabled === true,
+    // #2829 W9b — the draft is read ONE way (lib/ariSiteActions.ts
+    // loadDraftState), so the digest validate reports, the one design checks
+    // store and the one Publish checks are the same number.
+    const draft = await loadDraftState(req, scoped, String(tenant.id));
+    const home = draft.pages.find(
+      (candidate) => isHomePage(candidate) && candidate.enabled === true,
     );
-    if (!settings.docs[0] || !home) throw new Error("VALIDATION_FAILED");
-    const draftDigest = await publicationDraftDigest({
-      pages: pages.docs,
-      settings: settings.docs[0],
-      navigation: navigation.docs[0] ?? null,
-      footer: footer.docs[0] ?? null,
-      media: media.docs,
-    });
+    if (!draft.settings || !home) throw new Error("VALIDATION_FAILED");
+    // #2829 W2 — refuse a draft two things would answer the same address in,
+    // before anyone presses Publish (the builder refuses it again).
+    assertNoPathCollision(draft.pages as never, draft.settings);
+    const draftDigest = draft.digest;
+    const pages = { totalDocs: draft.pages.length };
     return json({
       ok: true,
       data: {
@@ -1593,17 +1597,9 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
       rank: 20,
     });
     const tenantWhere = { tenant: { equals: grant.tenant_id } };
-    const [pages, settings, navigation, footer, media] = await Promise.all([
-      req.payload.find({
-        collection: "pages",
-        overrideAccess: false,
-        req: scoped,
-        draft: true,
-        depth: 0,
-        limit: 5,
-        where: tenantWhere,
-        sort: "nav_order",
-      }),
+    const [pages, settings, navigation, footer, media, content] = await Promise.all([
+      findAllTenantPages(scoped, grant.tenant_id)
+        .then((docs) => ({ docs })),
       req.payload.find({
         collection: "site-settings",
         overrideAccess: false,
@@ -1640,8 +1636,10 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
         sort: "id",
         where: { and: [tenantWhere, { state: { equals: "READY" } }] },
       }),
+      // #2829 W5 — the content collections the publish will freeze.
+      findTenantContent(scoped, grant.tenant_id),
     ]);
-    const home = pages.docs.find((page) => page.role === "home");
+    const home = pages.docs.find((page) => isHomePage(page));
     if (!home || !settings.docs[0]) throw new Error("NOT_FOUND");
     const currentDigest = await publicationDraftDigest({
       pages: pages.docs,
@@ -1649,6 +1647,7 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
       navigation: navigation.docs[0] ?? null,
       footer: footer.docs[0] ?? null,
       media: media.docs,
+      content,
     });
     if (
       String(home.revision) !== grant.source_revision ||
@@ -1697,11 +1696,26 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
       sourceDigest: grant.source_digest,
       generatedAt: new Date().toISOString(),
     });
-    const target = new URL(
-      "/preview",
-      cmsConfig().publicRuntimeOrigin,
-    );
+    // #2829 W10 — this is now the site's newest preview (private share links show it).
+    await reportPreviewBuilt(grant.site_id, built.artifactKey);
+    // #2829 — a preview is shown on the site's OWN address (the runtime
+    // refuses a preview key for any other host's site). Scheme and port come
+    // from the runtime origin, the host from Core's primary hostname.
+    const target = new URL("/preview", cmsConfig().publicRuntimeOrigin);
+    const previewHost = String(tenant.primary_hostname ?? "");
+    if (!/^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])$/.test(previewHost)) {
+      throw new Error("INVALID_STATE");
+    }
+    target.hostname = previewHost;
     target.searchParams.set("k", built.artifactKey);
+    // #2829 W2 — open the preview at the page the owner chose. Only a shape-
+    // valid page path travels; the runtime resolves it inside the SAME
+    // preview artifact, so it can never reach anything else.
+    const requestedPath = previewPagePath(url.searchParams.get("path"));
+    if (requestedPath) target.searchParams.set("path", requestedPath);
+    // #2829 W9f — forward a Business Vercel preview ancestor (pattern-checked).
+    const frameAncestor = businessPreviewFrameAncestor(url.searchParams.get("fa"));
+    if (frameAncestor) target.searchParams.set("fa", frameAncestor);
     return new Response(null, {
       status: 302,
       headers: {
@@ -1716,7 +1730,136 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
   }
 }
 
+/**
+ * #2829 — "View live site": the signed-in tenant's OWN primary address, from
+ * the signed Core grant in the session. Nothing else is ever a target.
+ */
+async function liveSite(req: PayloadRequest): Promise<Response> {
+  try {
+    const session = await sessionFromHeaders(req.headers);
+    const host = session?.primary_hostname;
+    if (!session || typeof host !== "string") throw new Error("NOT_FOUND");
+    const target = new URL("/", cmsConfig().publicRuntimeOrigin);
+    target.hostname = host;
+    return new Response(null, {
+      status: 302,
+      headers: { location: target.toString(), "cache-control": "no-store, private" },
+    });
+  } catch (error) {
+    return safeFailure(error);
+  }
+}
+
+/**
+ * #2829 — "Download everything" (signed Core→CMS, rank 50 checked in Core).
+ * Writes one zip of every page, block, setting, collection entry, navigation,
+ * footer and the active artifact, with a signed 24-hour link to each approved
+ * media original inside it, and returns a 24-hour link to the zip.
+ */
+async function exportSite(req: PayloadRequest): Promise<Response> {
+  try {
+    const raw = (await req.text?.()) || "";
+    const envelope = await verifyCoreRequest(req, raw, "/api/internal/exports");
+    const body = JSON.parse(raw) as Record<string, unknown>;
+    if (
+      body.kind !== "export" ||
+      body.site_id !== envelope.site_id ||
+      body.operation_id !== envelope.operation_id ||
+      typeof body.brand_id !== "string"
+    ) throw new Error("VALIDATION_FAILED");
+    const tenant = (await req.payload.find({
+      collection: "tenants",
+      overrideAccess: true,
+      where: { core_site_id: { equals: envelope.site_id } },
+      limit: 1,
+      depth: 0,
+    })).docs[0];
+    if (!tenant || tenant.core_brand_id !== body.brand_id) throw new Error("TENANT_MISMATCH");
+    const tenantWhere = { tenant: { equals: tenant.id } };
+    const readAll = async (collection: "pages" | "navigation" | "footer" | "site-settings" | "media") =>
+      (await req.payload.find({
+        collection,
+        overrideAccess: true,
+        where: tenantWhere,
+        limit: 0,
+        pagination: false,
+        depth: 0,
+        draft: collection !== "media",
+        // The master object key is a hidden system field; the export needs it.
+        showHiddenFields: collection === "media",
+      })).docs as unknown as Record<string, unknown>[];
+    const [pages, navigation, footer, settings, media, collections, workLog] = await Promise.all([
+      readAll("pages"), readAll("navigation"), readAll("footer"),
+      readAll("site-settings"), readAll("media"),
+      // #2829 W9f — the content collections too (SC-7: every collection entry).
+      findTenantContent(req, tenant.id, { overrideAccess: true }),
+      // #2829 W9b — "Why it looks like this" travels with the site.
+      req.payload.find({
+        collection: "work-log",
+        overrideAccess: true,
+        where: tenantWhere,
+        pagination: false,
+        depth: 0,
+        sort: "createdAt",
+      }).then((result) => (result.docs as unknown as Record<string, unknown>[]).map((doc) => ({
+        part: doc.part, decision: doc.decision, cites: doc.cites, actor: doc.actor, tool: doc.tool ?? null,
+        target: doc.target ?? null, created_at: doc.createdAt,
+      }))),
+    ]);
+    const config = cmsConfig();
+    const artifactKey = body.active_artifact_key;
+    let activeArtifact: Uint8Array | null = null;
+    if (typeof artifactKey === "string") {
+      if (!/^publications\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f]{64}\.json$/.test(artifactKey) ||
+        !artifactKey.startsWith(`publications/${envelope.site_id}/`)) {
+        throw new Error("TENANT_MISMATCH");
+      }
+      activeArtifact = await readObject(config.artifactBucket, artifactKey);
+    }
+    // #2829 W9f — media originals travel as signed links, never as bytes in
+    // the zip (see buildExportEntries for the 503 this removed).
+    const entries = await buildExportEntries({
+      siteId: envelope.site_id,
+      brandId: String(body.brand_id),
+      tenantName: tenant.name,
+      address: tenant.primary_hostname ?? null,
+      exportedAt: new Date().toISOString(),
+      pages, navigation, footer, settings,
+      collections,
+      workLog,
+      media,
+      activeArtifact,
+      signMediaLink: (key) => presignedGet(config.approvedBucket, key, EXPORT_LINK_TTL_SECONDS),
+    });
+    const zip = buildZip(entries);
+    const key = exportObjectKey(envelope.site_id, envelope.operation_id);
+    await writeObject(config.artifactBucket, key, zip, "application/zip");
+    const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
+    return json({
+      ok: true,
+      data: {
+        download_url: await presignedGet(config.artifactBucket, key, 86_400),
+        expires_at: expiresAt,
+        bytes: zip.byteLength,
+        entries: entries.length,
+      },
+    });
+  } catch (error) {
+    return safeFailure(error);
+  }
+}
+
 export const sitesEndpoints: Endpoint[] = [
+  {
+    path: "/mingla/live-site",
+    method: "get",
+    handler: observeCmsEndpoint("/mingla/live-site", "customer_to_cms", liveSite),
+  },
+  {
+    path: "/internal/exports",
+    method: "post",
+    handler: observeCmsEndpoint("/internal/exports", "core_to_cms", exportSite),
+  },
   {
     path: "/mingla/exchange",
     method: "post",
@@ -1752,6 +1895,21 @@ export const sitesEndpoints: Endpoint[] = [
       "studio_to_cms",
       uploadGrant,
     ),
+  },
+  {
+    path: "/mingla/videos/capability",
+    method: "get",
+    handler: observeCmsEndpoint("/mingla/videos/capability", "studio_to_cms", streamCapability),
+  },
+  {
+    path: "/mingla/videos/stream-intent",
+    method: "post",
+    handler: observeCmsEndpoint("/mingla/videos/stream-intent", "studio_to_cms", streamIntent),
+  },
+  {
+    path: "/mingla/videos/:mediaId/stream-status",
+    method: "get",
+    handler: observeCmsEndpoint("/mingla/videos/{mediaId}/stream-status", "studio_to_cms", streamStatus),
   },
   {
     path: "/mingla/media/:mediaId/complete",

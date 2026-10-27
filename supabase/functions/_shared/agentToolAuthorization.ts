@@ -11,6 +11,7 @@ import type {
 } from "./agentToolHelpers.ts";
 import { isUuid, ToolError } from "./agentToolHelpers.ts";
 import { assertAgentReadBrand } from "./agentTenantScope.ts";
+import { assertSiteToolArgs } from "./agentSiteTools.ts";
 
 type AuthContext = { brandId: string | null; resource: AgentResourceKind };
 
@@ -226,18 +227,34 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   get_operator_snapshot: role("scanner", "optional_brand"),
   // #1984 — same finance floor as brand analytics refunds; event-scoped.
   get_event_order_reconciliation: role("finance_manager", "event"),
+  // #2829 W9b — Ari as the website designer. Reads and draft proposals:
+  // marketing managers and up; the plan, the first draft, confirming a review
+  // is real, publishing and restoring: brand admins and owners (rank 50);
+  // trip guides: event managers and up (rank 40). Core re-checks every rank.
   get_brand_site: role("marketing_manager", "brand"),
+  get_site_plan: role("marketing_manager", "brand"),
+  list_site_designs: role("marketing_manager", "brand"),
+  get_block_catalog: role("marketing_manager", "brand"),
+  get_site_tokens: role("marketing_manager", "brand"),
+  run_site_design_checks: role("marketing_manager", "brand"),
   list_site_pages: role("marketing_manager", "brand"),
   get_site_page: role("marketing_manager", "brand"),
-  propose_site_content_update: role("marketing_manager", "brand"),
-  propose_site_settings_update: role("marketing_manager", "brand"),
-  attach_approved_site_media: role("marketing_manager", "brand"),
   validate_site_draft: role("marketing_manager", "brand"),
+  save_site_plan_answers: role("brand_admin", "brand"),
+  create_site_draft: role("brand_admin", "brand"),
+  propose_site_composition: role("marketing_manager", "brand"),
+  propose_block_variant: role("marketing_manager", "brand"),
+  propose_site_tokens: role("marketing_manager", "brand"),
+  propose_site_copy: role("marketing_manager", "brand"),
+  propose_site_imagery: role("marketing_manager", "brand"),
+  propose_site_collection_entry: role("marketing_manager", "brand"),
+  confirm_site_review: role("brand_admin", "brand"),
+  propose_trip_guide_update: role("event_manager", "brand"),
   create_site_preview: role("marketing_manager", "brand"),
-  publish_site: role("marketing_manager", "brand"),
+  publish_site: role("brand_admin", "brand"),
   get_site_operation_status: role("marketing_manager", "brand"),
   list_site_versions: role("marketing_manager", "brand"),
-  rollback_site: role("marketing_manager", "brand"),
+  rollback_site: role("brand_admin", "brand"),
 });
 
 function unavailable(): never {
@@ -728,6 +745,9 @@ function validateBeforeAuthorization(
   if (!args || typeof args !== "object" || Array.isArray(args)) {
     throw new ToolError("INVALID_ARGS", "Tool arguments must be an object");
   }
+  // #2829 W9b — Sites proposals are checked against the block catalogue,
+  // their citations and (reviews) the owner's pasted text before a card shows.
+  assertSiteToolArgs(tool.name, args);
   for (const key of schema.required ?? []) {
     if (args[key] === undefined || args[key] === null || args[key] === "") {
       const values = schema.properties?.[key]?.enum;

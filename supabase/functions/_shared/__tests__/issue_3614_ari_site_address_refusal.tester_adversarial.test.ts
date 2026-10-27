@@ -159,10 +159,11 @@ function tool(name: string) {
 const PROPOSAL: Json = {
   brand_id: BRAND_ID,
   site_id: PAGE_ID,
-  page_role: "about",
+  page_path: "about",
   expected_revision: "5",
-  change_summary: "Update SEO description on the About page",
-  changes: { seo: { description: "Open 24 hours in Lagos." } },
+  edits: [{ block_index: 0, field: "heading", value: "Open all day in Lagos." }],
+  why: "The owner described the hours this way.",
+  cites: [{ kind: "owner_words", quote: "Open all day in Lagos." }],
 };
 
 async function captureToolError(
@@ -205,7 +206,7 @@ function silenceTelemetry<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 function propose(client: ToolClient): Promise<unknown> {
-  return tool("propose_site_content_update").executor(
+  return tool("propose_site_copy").executor(
     PROPOSAL,
     client,
     USER_ID,

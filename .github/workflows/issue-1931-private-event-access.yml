@@ -491,6 +491,12 @@ jobs:
               # canonical replay covers it in true filename order.
               # Matched by EXACT filename, never an issue-number infix.
               *20271219014063_issue_4063_ticket_send_to_friend.sql) continue ;;
+              # #2829 W4 Sites offerings feed + trip guides — SKIPPED because
+              # its public guide reader calls issue_1931_event_ordinary_read_blocked,
+              # created only by the #1931 migration this filtered chain omits. The
+              # unfiltered canonical replay covers it in true filename order.
+              # Matched by EXACT filename, never an issue-number infix.
+              *20271228002829_issue_2829_trip_guides_and_offerings_feed.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null
           done

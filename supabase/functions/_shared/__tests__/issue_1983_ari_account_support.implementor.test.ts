@@ -381,7 +381,7 @@ Deno.test("#1983 implementor: update_ari_prefs patch keys", async () => {
 });
 
 Deno.test("#1983 implementor: PROMPT_VERSION v22 advertises prefs + business deletion", () => {
-  assertEquals(PROMPT_VERSION, "v23"); // [TEST-MOD-APPROVED #3697] prompt bumped for Host Ads video launch
+  assertEquals(PROMPT_VERSION, "v25"); // #2829 W11 completes the website journey entrances
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assert(prompt.includes("push or in_app") || prompt.includes("push|in_app"));
   assert(prompt.includes("business.*"));

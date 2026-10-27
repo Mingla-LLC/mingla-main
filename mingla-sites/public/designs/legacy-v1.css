@@ -1,0 +1,2754 @@
+/* TEMPORARY(#2829): v1 rollback stylesheet (moved from src/app/styles.css) — remove once every site has a v2 last-good publication. */
+
+/* ── #2830 self-hosted webfonts ───────────────────────────────────────────
+   Served from this site's own origin. The runtime CSP is `default-src 'self'`
+   with no font host, so a Google Fonts stylesheet fails silently and falls
+   back — which is what was happening. Relaxing the CSP was the alternative and
+   is worse: a third-party request on every customer's site, on a product whose
+   analytics are consent-gated.
+
+   `font-display: swap` on purpose: text is readable in the fallback face
+   immediately and reflows once, rather than a restaurant's headline being
+   invisible while 20KB arrives on a Lagos connection. */
+@font-face {
+  font-family: "Oswald";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/oswald-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Oswald";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/oswald-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "Oswald";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/oswald-600-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Oswald";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/oswald-600-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "Playfair Display";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/playfair-display-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Playfair Display";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/playfair-display-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "Playfair Display";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/playfair-display-700-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Playfair Display";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/playfair-display-700-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-600-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-600-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-800-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-800-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+:root {
+  /*
+   * #2830 — DEFAULTS, not law. These were gogi's palette hardcoded into the
+   * shared runtime, which meant every brand published through Mingla Sites
+   * rendered in one customer's colours. `SiteTheme` now overrides them per
+   * site from `site_settings.colors`; what remains here is the fallback for a
+   * brand that has set none.
+   */
+  --ink: #101013;
+  --panel: #17171a;
+  --panel-raised: #1c1c1e;
+  --gold: #cda052;
+  --gold-hover: #dfb262;
+  --ivory: #f0eee9;
+  --muted: #a7a39a;
+  --line: color-mix(in srgb, var(--gold) 30%, transparent);
+
+  /*
+   * Condensed uppercase display over a humanist body — the register gogi's own
+   * site uses. It names real families rather than loading webfonts: the
+   * runtime's CSP is `default-src 'self'` with no font host, so a Google Fonts
+   * link would silently fail and fall back anyway. Self-hosting the exact
+   * faces is the honest fix and is not done here.
+   */
+  --display: "Oswald", "Arial Narrow", "Helvetica Neue Condensed",
+    "Liberation Sans Narrow", system-ui, sans-serif;
+  --body: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --display-case: uppercase;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /*
+   * #3149 — the site chrome, MEASURED on the brand's own site.
+   *
+   * The header is transparent over the hero at 85px and settles to an opaque
+   * 72px once the page has moved. Both are tokens because three separate
+   * rules have to agree on them — the header itself, the clearance an inner
+   * page needs to sit below it, and the anchor scroll-margin — and a header
+   * height that disagrees with its own offset is an overlap nobody sees in a
+   * diff.
+   */
+  --header-height: 85px;
+  --header-height-stuck: 72px;
+
+  /*
+   * #3149 — one radius for section imagery, as the reference has (its `--r`).
+   * Gallery pictures rendered with square corners against a design where
+   * every photograph is rounded.
+   */
+  --radius-media: 14px;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--ink);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  overflow-x: hidden;
+  background: var(--ink);
+  color: var(--ivory);
+  font-family: var(--body);
+  font-size: 100%;
+  line-height: 1.55;
+}
+
+a {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  text-underline-offset: 4px;
+}
+
+:where(a, button, summary) {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--gold-hover);
+  outline-offset: 3px;
+}
+
+.skip {
+  position: fixed;
+  left: 1rem;
+  top: -100px;
+  z-index: 100;
+  padding: 0.8rem 1rem;
+  color: var(--ink);
+  background: var(--ivory);
+  border: 2px solid var(--gold);
+}
+
+.skip:focus {
+  top: 1rem;
+}
+
+/*
+ * #3149 — fixed, and transparent until the page moves.
+ *
+ * It was `position: sticky`, permanently opaque and permanently hairlined, so
+ * it sat as a solid bar ON TOP of a hero built to run a full viewport: the
+ * hero started 72px down the page and lost the top 72px of the brand's own
+ * photograph to a bar that had nothing to be legible against yet. The
+ * reference is fixed, transparent over the hero, and fades an opaque panel in
+ * on scroll.
+ *
+ * THE PANEL LIVES ON ::before, NOT ON THE HEADER. `backdrop-filter` makes an
+ * element the containing block for its `position: fixed` descendants, so a
+ * blur on the header itself would re-root anything fixed inside it — the
+ * reference carries the same note, for the same reason, after the same bug.
+ * A pseudo-element has no descendants, so nothing can be captured by it.
+ */
+.site-header {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 10;
+  /* ::before paints at z-index -1; isolate so it can never fall behind the
+     page instead of behind the header's own contents. */
+  isolation: isolate;
+  height: var(--header-height);
+  display: grid;
+  /*
+   * #2830 — brand | nav | cart | action. It was three columns while the header
+   * carries four children, so the order CTA wrapped onto a second row and the
+   * header grew a line it should not have.
+   */
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: clamp(1rem, 3vw, 3rem);
+  padding: 0 max(20px, calc((100vw - 1200px) / 2));
+  background: transparent;
+  transition: height 0.32s var(--ease);
+}
+
+.site-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  /*
+   * #3149 -- the panel is the brand's OWN surface at the reference's 92%, not
+   * a fixed near-black. A brand that overrides `--ink` to something lighter
+   * got a header panel darker than every surface beneath it.
+   *
+   * The plain rgba BELOW-then-ABOVE order is load-bearing: an engine without
+   * `color-mix()` drops the second declaration and keeps the first, so it
+   * still gets the measured #101013 at 0.92 rather than no background at all.
+   */
+  background: rgba(16, 16, 19, 0.92);
+  background: color-mix(in srgb, var(--ink) 92%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  /* The hairline belongs to the panel, not to the header. Over the hero there
+     is nothing for it to divide, and the reference draws none there. */
+  border-bottom: 1px solid rgba(240, 238, 233, 0.14);
+  opacity: 0;
+  transition: opacity 0.32s var(--ease);
+}
+
+/* Added by `HeaderScrollState` past 40px of scroll — the reference's own
+   threshold. */
+.site-header.stuck {
+  height: var(--header-height-stuck);
+}
+
+.site-header.stuck::before {
+  opacity: 1;
+}
+
+/*
+ * An open disclosure panel is opaque. A transparent header above it would
+ * leave the brand and the burger floating on the photograph while the menu
+ * directly beneath them is solid, which reads as a rendering fault. The header
+ * comes with the panel.
+ */
+.site-header:has(.nav-panel.open)::before {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-header,
+  .site-header::before {
+    transition: none;
+  }
+}
+
+.brand {
+  color: var(--ivory);
+  /* #2830 — was a hardcoded stack. It out-specified the brand's chosen face,
+     so a font picked in Studio changed nothing here. */
+  font-family: var(--display);
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  /*
+   * #2830 — the brand's name, as the brand wrote it.
+   *
+   * This forced uppercase, so "gogi" — a name that is deliberately lowercase,
+   * and is set lowercase everywhere they use it — was shouted as GOGI in their
+   * own header. A wordmark is not a heading; upper-casing one is a factual
+   * change to somebody's name.
+   */
+  white-space: nowrap;
+}
+
+/*
+ * #3149 wave 5 — the brand's own wordmark, when it has uploaded one.
+ *
+ * BOTH dimensions are declared, deliberately. This <img> carries `width` and
+ * `height` attributes from the media manifest, and those are presentational
+ * hints the UA maps to real declarations — the same mechanism that rendered a
+ * 640px-tall menu photo in a 251px column earlier in this wave. Setting only a
+ * height would leave the attribute's width to win and squash the mark. `width:
+ * auto` against a fixed height is what makes the attributes do their proper job
+ * instead: they supply the intrinsic ratio the width is computed from.
+ *
+ * The reference sets its header mark 34px tall; it scales down on narrow
+ * screens so a long wordmark cannot push the navigation off the row.
+ */
+.brand-wordmark {
+  display: block;
+  height: clamp(24px, 2.4vw, 34px);
+  width: auto;
+  max-width: min(100%, 12rem);
+  object-fit: contain;
+}
+
+/*
+ * #2830 — the header navigation is a disclosure on phones.
+ *
+ * `display: contents` keeps the panel out of the layout entirely on desktop, so
+ * the inner nav sits in the header grid exactly as it did before this became a
+ * disclosure. Nothing about the desktop header moved.
+ */
+.nav-panel {
+  display: contents;
+}
+
+.nav-burger {
+  display: none;
+}
+
+.site-header nav {
+  display: flex;
+  justify-content: center;
+  gap: clamp(0.9rem, 2vw, 2rem);
+  overflow-x: auto;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.site-header nav a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/*
+ * #2829 W2 — dropdown children under a menu item. Hidden until the item is
+ * hovered or holds keyboard focus on wide screens; always listed (indented)
+ * in the phone panel below.
+ */
+.nav-group {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.nav-children {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 12rem;
+  margin: 0;
+  padding: 8px 0;
+  list-style: none;
+  background: var(--ink, #101013);
+  border: 1px solid rgba(240, 238, 233, 0.14);
+  z-index: 30;
+}
+
+.nav-group:hover .nav-children,
+.nav-group:focus-within .nav-children {
+  display: block;
+}
+
+.site-header nav .nav-children a {
+  width: 100%;
+  padding: 0 16px;
+}
+
+.burger-bars {
+  display: block;
+  position: relative;
+  width: 20px;
+  height: 14px;
+}
+
+.burger-bars span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: currentColor;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.burger-bars span:nth-child(1) { top: 0; }
+.burger-bars span:nth-child(2) { top: 6px; }
+.burger-bars span:nth-child(3) { top: 12px; }
+
+.burger-bars.open span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+.burger-bars.open span:nth-child(2) { opacity: 0; }
+.burger-bars.open span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .burger-bars span { transition: none; }
+}
+
+.header-cart {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ivory);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/*
+ * #3149 wave 5 — THE COUNT BADGE, SCOPED TO THE BUTTON IT BELONGS TO.
+ *
+ * `.cart-count` was declared twice in this stylesheet for two different
+ * components: this corner badge on the 44px header button, and the inline pill
+ * inside the menu page's `.cart-btn`. Neither rule was scoped, so a visitor got
+ * the UNION of both and both components were wrong:
+ *
+ *   - the header badge took the pill's 24px box, its dark fill and its 0.8rem
+ *     type, so a 24px disc sat over the middle of a 20px shopping bag and
+ *     covered 56% of it. Only a corner of the glyph was visible.
+ *   - the pill took this rule's `position: absolute; top; right`, which tore it
+ *     out of the button's flow and pinned it to the button's top-right corner
+ *     instead of sitting after the words "Your order".
+ *
+ * Both rules are scoped to their own component now, so neither can reach the
+ * other again.
+ *
+ * The anchor is the second half of the fix. A 44px button with a centred 20px
+ * glyph leaves 12px of margin, and no badge big enough to read a digit fits in
+ * 12px — so the badge is hung on the button's corner rather than tucked inside
+ * it. `top: -4px` puts its BOTTOM edge exactly on the glyph's top edge, which
+ * is what makes the overlap zero, and zero for a two- or three-character count
+ * as well: the badge grows leftwards from `right`, and a box that never
+ * descends past the glyph's top cannot intersect it at any width.
+ */
+.header-cart .cart-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+}
+
+.header-action {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 18px;
+  color: var(--ink);
+  background: var(--gold);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.header-action:hover {
+  background: var(--gold-hover);
+}
+
+/*
+ * #3149 — an anchor jump has always scrolled, so the header it lands under is
+ * the SHRUNKEN one. Token, not a literal, so it cannot drift from the height
+ * it is compensating for.
+ */
+.page-content {
+  scroll-margin-top: var(--header-height-stuck);
+}
+
+/*
+ * #3149 — the fixed header is out of flow, and three page shapes reach this
+ * renderer:
+ *
+ *   hero first      the hero WANTS to run under the transparent header — it is
+ *                   a full viewport and the header is meant to sit on the
+ *                   photograph. No offset.
+ *   no hero at all  `.page-header` renders first and carries its own clearance
+ *                   in its top padding, so its backdrop still reaches the top
+ *                   of the screen and shows through the transparent header.
+ *   hero further    everything before the hero would start underneath the
+ *   down the page   header, so main is pushed down by exactly its height.
+ *
+ * Only the third case gets this class, and the renderer — which is the only
+ * thing that knows the block order — decides.
+ */
+main.header-offset {
+  padding-top: var(--header-height);
+}
+
+.hero {
+  /*
+   * #2830 — a full viewport, as gogi's own site does. Measured on theirs at
+   * 1043x847: the hero is exactly the viewport height, not a band inside it.
+   */
+  min-height: 100svh;
+  display: grid;
+  align-items: end;
+  padding: clamp(5rem, 11vw, 9rem) max(20px, calc((100vw - 1200px) / 2));
+  color: var(--ivory);
+  background: var(--panel) center / cover no-repeat;
+}
+
+.hero > div {
+  width: min(100%, 820px);
+}
+
+.hero h1,
+.hero h2,
+main h2,
+.tile h3,
+.footer strong {
+  /* #2830 — same fix, and this one carried the headings. `.hero h1`, `main h2`
+     and `.tile h3` are more specific than any bare `h1, h2, h3` rule, so the
+     hardcoded stack won on every heading on the site and the whole font choice
+     was invisible. Caught by MEASURING the rendered width against Oswald's,
+     not by reading the file: the declared list and the used face are different
+     things and only one of them is visible. */
+  font-family: var(--display);
+  font-stretch: condensed;
+  text-wrap: balance;
+}
+
+.hero h1,
+.hero h2 {
+  margin: 0.35rem 0 1.25rem;
+  /*
+   * #2830 — measured against the reference: 73px at a 1043px viewport, which
+   * is 7vw. It was 10vw, so the headline ran ~40% larger than the design it is
+   * meant to match and crowded everything under it.
+   */
+  font-size: clamp(2.75rem, 7vw, 5.6rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+.hero p:not(.eyebrow) {
+  max-width: 620px;
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  color: rgba(240, 238, 233, 0.88);
+}
+
+.eyebrow {
+  margin: 0 0 0.75rem;
+  color: var(--gold);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.hero-actions,
+.consent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+}
+
+/*
+ * #2830 — measured from gogi's own buttons: fully rounded, 700 weight,
+ * 13px uppercase with wide tracking, and generous padding. The square 48px
+ * box read as a form control next to theirs.
+ */
+.button {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 1.05rem 2.1rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button { transition: none; }
+}
+
+.button.accent,
+.accent {
+  color: var(--ink);
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+.button.accent:hover {
+  background: var(--gold-hover);
+}
+
+.button.ghost {
+  color: var(--ivory);
+  /* Theirs is a hairline at 0.22, not a solid outline. */
+  border-color: rgba(240, 238, 233, 0.22);
+  background: transparent;
+}
+
+.button.ghost:hover {
+  border-color: rgba(240, 238, 233, 0.5);
+}
+
+/*
+ * #2830 — the second line of the headline in the brand's accent, which is what
+ * makes their hero read as designed rather than typeset. It uses --accent, so
+ * every brand gets its own colour, not gogi's.
+ */
+.hero h1 .accent-line,
+.hero h2 .accent-line {
+  color: var(--gold);
+  display: block;
+}
+
+/* The scroll cue at the foot of the hero. */
+.hero-scroll {
+  position: absolute;
+  left: 50%;
+  bottom: 1.4rem;
+  transform: translateX(-50%);
+  z-index: 2;
+  font-size: 0.66rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+/* The header CTA, matching the hero's primary button at a smaller scale. */
+.header-action {
+  border-radius: 999px;
+  font-size: 0.78rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+/* #2830 — the current page is marked, as on theirs. */
+.site-header nav a[aria-current="page"] {
+  color: var(--ivory);
+  box-shadow: inset 0 -2px 0 var(--gold);
+}
+
+.fact-rail {
+  width: min(100%, 1200px);
+  margin: 0 auto;
+  padding: 0 max(20px, 4vw);
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.fact-rail dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.fact-rail dl > div {
+  min-width: 0;
+  padding: 24px clamp(16px, 3vw, 36px);
+  border-right: 1px solid var(--line);
+}
+
+.fact-rail dl > div:last-child {
+  border-right: 0;
+}
+
+.fact-rail dt {
+  margin-bottom: 8px;
+  color: var(--gold);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.fact-rail dd {
+  margin: 0;
+  color: var(--ivory);
+  font-size: clamp(0.9rem, 1.5vw, 1.05rem);
+}
+
+/*
+ * #3149 wave 5 — THE SECTION IS FULL-BLEED; ITS CONTENT IS WHAT IS CAPPED.
+ *
+ * This capped the SECTION BOX at 1200px, so a section's own background — the
+ * hero photograph, the dark bands, the video — stopped at 1200px and left bare
+ * page down both sides: 120px each at a 1440 viewport, 360px at 1920. The site
+ * read as cut off, which is exactly what it was.
+ *
+ * The reference does the opposite and it is worth stating precisely, because it
+ * is the shape being matched: every one of its sections is x=0 and the full
+ * viewport wide with no padding, and a `.wrap` INSIDE each one is
+ * `min(100% - 40px, 1200px)`, centred. Background edge to edge, content in a
+ * column.
+ *
+ * Ours has no `.wrap` element and does not need one — the same geometry comes
+ * from padding on the section itself, so no markup changes and no other rule
+ * has to learn a new box. The third term is what centres the content: once the
+ * box is the full width, `(100% - 1200px) / 2` IS the gutter that leaves a
+ * 1200px column in the middle. It only wins past ~1440, so every narrower
+ * viewport keeps the gutter it has today.
+ *
+ * NOT a `max-width` on the section, and not `width: min(...)` again: both cap
+ * the box, and the box is the thing that has to reach the edges.
+ */
+.page-content > section {
+  width: 100%;
+  margin: 0 auto;
+  padding-block: clamp(5rem, 9vw, 9rem);
+  padding-inline: max(20px, 4vw, calc((100% - 1200px) / 2));
+}
+
+main h2 {
+  margin: 0.5rem 0 1.75rem;
+  /*
+   * #2830 -- measured against the reference: 45.89px at a 1043px viewport,
+   * which is 4.4vw, with line-height 1.05 and letter-spacing OPENED slightly.
+   * It was 7vw -- the hero's own scale -- so every section heading rendered
+   * the same size as the page's h1 and nothing read as subordinate to it.
+   */
+  font-size: clamp(1.9rem, 4.4vw, 3.25rem);
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.editorial-prose {
+  max-width: 900px !important;
+}
+
+/* #3149 -- :not(.eyebrow) for the same reason `.feature p` carries it: an
+   eyebrow IS a <p>, so this rule (0,1,1) outranks `.eyebrow` (0,1,0) and would
+   grey out the gold. `rich_text` now carries the brand's own eyebrow. */
+.prose p:not(.eyebrow) {
+  max-width: 760px;
+  color: var(--muted);
+  /* #2830 — third instance of the same bug: a hardcoded face that ignored the
+     brand's choice. A brand picking "Modern sans" still got Georgia here. */
+  font-family: var(--body);
+  font-size: clamp(1.08rem, 2vw, 1.35rem);
+  line-height: 1.75;
+}
+
+.feature {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: clamp(2.5rem, 7vw, 7rem);
+  align-items: center;
+}
+
+.editorial-feature:nth-of-type(even) .editorial-media {
+  order: 2;
+}
+
+.feature img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  filter: saturate(0.9) contrast(1.05);
+  /* #3149 — same radius as every other piece of section imagery. */
+  border-radius: var(--radius-media);
+}
+
+.feature p:not(.eyebrow),
+.tile p:not(.eyebrow) {
+  /*
+   * #2830 -- :not(.eyebrow) because an eyebrow IS a <p>, so this rule (0,1,1)
+   * outranked `.eyebrow` (0,1,0) and quietly greyed out the gold inside every
+   * feature and tile. Nobody chose that.
+   */
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.tile {
+  min-height: 260px;
+  padding: clamp(1.5rem, 3vw, 2.5rem);
+  background: var(--panel);
+}
+
+.tile h3 {
+  margin: 0 0 1rem;
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.tile a {
+  color: var(--gold-hover);
+  font-weight: 750;
+}
+
+.tile footer {
+  margin-top: 1rem;
+  color: var(--muted);
+}
+
+/*
+ * #3149 wave 5 — four `!important`s lived here and all of them are gone.
+ *
+ * They were not a style choice: this section had to reach the page edges, the
+ * base `.page-content > section` rule capped it at 1200px, and `!important` was
+ * the only way past. That the one section anybody explicitly wanted full-bleed
+ * needed four overrides to get there is the clearest evidence the cap was on
+ * the wrong box. Now that the base rule is full-bleed and centres its content
+ * by padding, `.cta` inherits precisely what it was forcing.
+ */
+.cta {
+  text-align: center;
+  background: var(--panel-raised);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+/* #3149 -- as above. `cta`, `venue_reservation` and `contact_handoff` all
+   render inside `.cta`, and all three can now carry an eyebrow. Left
+   unexcluded this rule would also centre it and give it a 2rem gap. */
+.cta p:not(.eyebrow) {
+  width: min(100%, 620px);
+  margin: 0 auto 2rem;
+  color: var(--muted);
+}
+
+.gallery {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(220px, 34vw);
+  gap: 8px;
+}
+
+.gallery > * {
+  min-width: 0;
+}
+
+.gallery img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* #3149 — square corners against a reference where every photograph in a
+     section is rounded. */
+  border-radius: var(--radius-media);
+}
+
+.gallery img:first-child {
+  grid-row: span 2;
+}
+
+.hours p {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0;
+  padding: 0.8rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+details {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+summary {
+  min-height: 44px;
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.spacer.small {
+  height: 2rem;
+}
+
+.spacer.medium {
+  height: 4rem;
+}
+
+.spacer.large {
+  height: 7rem;
+}
+
+.footer {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 32px;
+  padding: clamp(4rem, 8vw, 7rem) max(20px, calc((100vw - 1200px) / 2));
+  color: var(--ivory);
+  background: #09090b;
+  border-top: 1px solid var(--line);
+}
+
+.footer strong {
+  font-size: clamp(2rem, 4vw, 4rem);
+  /*
+   * #2830 -- no text-transform. This is the brand's NAME. The header stopped
+   * upper-casing it and the footer went on shouting "GOGI" at the bottom of
+   * every page, contradicting the header on the same screen.
+   */
+}
+
+.footer > nav,
+.footer > div:last-of-type {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.footer a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.consent {
+  position: fixed;
+  z-index: 20;
+  right: 1rem;
+  bottom: 1rem;
+  left: 1rem;
+  width: min(calc(100% - 2rem), 900px);
+  margin: auto;
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--ivory);
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+}
+
+.consent p {
+  margin: 0.25rem 0;
+}
+
+.consent button,
+.consent-link {
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  color: var(--ivory);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.not-found {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.not-found > div {
+  max-width: 560px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 767px) {
+  /*
+   * #3149 — a phone gets ONE header height, not two. 85px of chrome is a
+   * seventh of the screen, and the disclosure panel is pinned to the header's
+   * foot, so a header that changed height would leave the open menu detached
+   * from it. Overriding the TOKENS rather than `height` keeps `.page-header`,
+   * the anchor scroll-margin and `.nav-panel { top }` in step with it.
+   */
+  :root {
+    --header-height: 64px;
+    --header-height-stuck: 64px;
+  }
+
+  .site-header {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    gap: 8px;
+    padding: 0 12px;
+  }
+
+  /* No room for an order CTA beside a burger and a bag on a phone. The menu
+     page and the bag both reach ordering, so the CTA steps aside rather than
+     wrapping the header onto a second line. */
+  .site-header .header-action {
+    display: none;
+  }
+
+  /*
+   * Was `display: none` with no control anywhere to reveal it, so a phone could
+   * reach no page but the one it landed on.
+   */
+  .nav-burger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin-right: -8px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ivory);
+    cursor: pointer;
+  }
+
+  .nav-panel {
+    display: block;
+    position: absolute;
+    /* #3149 — the panel hangs off the header's foot; read the height rather
+       than restate it, or a header resize silently detaches the menu. */
+    top: var(--header-height);
+    left: 0;
+    right: 0;
+    max-height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    /*
+     * Fully opaque, not near-opaque. At 0.98 the page behind stays legible
+     * through the panel and reads as a rendering fault rather than a menu.
+     */
+    background: var(--ink, #101013);
+    border-bottom: 1px solid rgba(240, 238, 233, 0.14);
+    transition: max-height 0.22s ease, visibility 0s linear 0.22s;
+  }
+
+  .nav-panel.open {
+    max-height: 70svh;
+    overflow-y: auto;
+    visibility: visible;
+    transition: max-height 0.24s ease, visibility 0s;
+  }
+
+  .site-header nav {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 8px 0 12px;
+    overflow-x: visible;
+  }
+
+  .site-header nav a {
+    min-height: 52px;
+    padding: 0 20px;
+    font-size: 0.95rem;
+  }
+
+  .nav-group {
+    display: block;
+  }
+
+  .nav-children {
+    display: block;
+    position: static;
+    transform: none;
+    min-width: 0;
+    padding: 0 0 4px;
+    border: 0;
+    background: none;
+  }
+
+  .site-header nav .nav-children a {
+    padding-left: 40px;
+    font-size: 0.88rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nav-panel { transition: none; }
+  }
+
+  .page-content {
+    scroll-margin-top: var(--header-height-stuck);
+  }
+
+  .hero {
+    min-height: max(560px, 76svh);
+    padding: 5rem 20px 4rem;
+  }
+
+  .hero h1,
+  .hero h2 {
+    font-size: clamp(3.4rem, 18vw, 5.6rem);
+  }
+
+  .fact-rail {
+    padding: 0 20px;
+  }
+
+  .fact-rail dl {
+    grid-template-columns: 1fr;
+  }
+
+  .fact-rail dl > div {
+    padding: 18px 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .fact-rail dl > div:last-child {
+    border-bottom: 0;
+  }
+
+  .feature,
+  .footer {
+    grid-template-columns: 1fr;
+  }
+
+  .editorial-feature:nth-of-type(even) .editorial-media {
+    order: initial;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(180px, 55vw);
+  }
+
+  .gallery img:first-child {
+    grid-column: span 2;
+    grid-row: auto;
+  }
+
+  .consent {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .consent-actions > * {
+    flex: 1;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1024px) {
+  .site-header {
+    padding: 0 24px;
+  }
+
+  .hero,
+  .page-content > section,
+  .footer {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1440px) {
+  /*
+   * #3149 wave 5 — `.page-content > section` was in this list and is not any
+   * more. These two cap an INNER element, which is right and is left alone; the
+   * section is the outer box and capping it is what stopped every background at
+   * 1200px. Its content is held to 1200 by padding instead, at every width,
+   * which is also why this rule was redundant: the base rule's
+   * `width: min(100%, 1200px)` was already capping the box below 1440.
+   */
+  .hero > div,
+  .fact-rail {
+    max-width: 1200px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* #2830 — the private-preview banner. Sticky and always visible: a preview
+   that scrolls its own "not live" warning off screen is how someone publishes
+   by accident. Only the /preview route renders this element. */
+.preview-banner {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  margin: 0;
+  padding: 10px 16px;
+  text-align: center;
+  font-weight: 700;
+  color: #1b1508;
+  background: #dcb877;
+}
+
+/* #2830 — the menu board. Dotted-leader rows, the same device gogi's own
+   printed menu uses, so the page reads as theirs rather than as a table. */
+.menu-board { display: grid; gap: 2.5rem; }
+.menu-note { color: var(--muted, rgba(255,255,255,.66)); margin: 0; }
+.menu-section { display: grid; gap: 1rem; }
+.menu-section-note { margin: 0; color: var(--muted, rgba(255,255,255,.66)); }
+.menu-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; }
+.menu-row { display: grid; gap: 0.25rem; }
+.menu-row-head { display: flex; align-items: baseline; gap: 0.75rem; }
+.menu-item-name { font-weight: 600; }
+/* The leader is decorative and aria-hidden: a screen reader hears
+   "Coconut rice, 8,500 naira", never a run of dots. */
+.menu-leader {
+  flex: 1 1 auto;
+  min-width: 1.5rem;
+  align-self: flex-end;
+  margin-bottom: 0.3em;
+  border-bottom: 1px dotted currentColor;
+  opacity: 0.4;
+}
+.menu-price { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.menu-item-note { margin: 0; font-size: 0.9em; opacity: 0.75; max-width: 60ch; }
+@media (max-width: 520px) {
+  .menu-row-head { flex-wrap: wrap; }
+  .menu-leader { min-width: 1rem; }
+}
+
+/* #2830 — the ordering menu. Filters, search, a plus per item and a drawer,
+   matching what gogi's own menu page already does. */
+.menu-toolbar { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: center;
+  justify-content: space-between; margin-bottom: 1.75rem; }
+.filters { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.filter { font: inherit; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em;
+  padding: 0.4rem 0.9rem; border-radius: 999px; cursor: pointer;
+  border: 1px solid currentColor; background: transparent; color: inherit; opacity: 0.7; }
+/*
+ * #2830 -- the selected chip used `background: currentColor` with
+ * `color: var(--accent)`, and painted its label dark through `> *`. The label
+ * is a bare text node with no element to match, so the text stayed accent-
+ * coloured ON an accent-coloured pill: gold on gold. The selected filter was
+ * INVISIBLE on every menu on every site. Set both colours outright.
+ */
+.filter[aria-pressed="true"] {
+  opacity: 1;
+  background: var(--accent, #cda052);
+  border-color: var(--accent, #cda052);
+  color: #101013;
+}
+.menu-search input { font: inherit; font-size: 0.85rem; padding: 0.45rem 0.8rem;
+  border-radius: 999px; border: 1px solid currentColor; background: transparent;
+  color: inherit; min-width: 12rem; }
+.menu-qty { display: inline-flex; align-items: center; gap: 0.4rem; margin-left: 0.5rem; }
+.menu-qty button { font: inherit; font-size: 1rem; line-height: 1; width: 2rem; height: 2rem;
+  min-width: 44px; min-height: 44px; border-radius: 999px; cursor: pointer;
+  border: 1px solid currentColor; background: transparent; color: inherit; }
+.menu-qty output { font-variant-numeric: tabular-nums; min-width: 1.25rem; text-align: center; }
+.menu-empty { opacity: 0.7; }
+.cart-btn { position: sticky; bottom: 1rem; margin-top: 2rem; font: inherit; font-weight: 700;
+  display: inline-flex; align-items: center; gap: 0.6rem; padding: 0.8rem 1.4rem;
+  border-radius: 999px; border: 0; cursor: pointer; min-height: 44px;
+  background: var(--accent, #cda052); color: #101013; }
+/* #3149 wave 5 — the INLINE pill inside the menu page's cart button, scoped so
+   it stops overriding the header's corner badge (see `.header-cart
+   .cart-count`). It is a flow item after "Your order" and takes no position. */
+.cart-btn .cart-count { display: inline-grid; place-items: center; min-width: 1.5rem; height: 1.5rem;
+  border-radius: 999px; background: #101013; color: #f0eee9; font-size: 0.8rem; }
+.cart-drawer { position: fixed; inset: auto 0 0 0; z-index: 60; max-height: 80vh; overflow: auto;
+  padding: 1rem 1.25rem 1.5rem; border-top: 1px solid rgba(240,238,233,.2);
+  background: #17171a; color: #f0eee9; }
+@media (min-width: 720px) { .cart-drawer { inset: 0 0 0 auto; width: min(28rem, 100%); border-top: 0;
+  border-left: 1px solid rgba(240,238,233,.2); max-height: none; } }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  margin-bottom: 1rem; }
+.drawer-head button { font: inherit; background: transparent; border: 0; color: inherit;
+  cursor: pointer; min-height: 44px; }
+.drawer-line { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.5rem 0; border-bottom: 1px solid rgba(240,238,233,.12); }
+.drawer-line button { font: inherit; min-width: 44px; min-height: 44px; border-radius: 999px;
+  border: 1px solid currentColor; background: transparent; color: inherit; cursor: pointer; }
+.drawer-warn { margin: 0.75rem 0 0; font-weight: 600; }
+.drawer-foot { margin-top: 1.25rem; }
+.totals { display: flex; justify-content: space-between; font-weight: 700; font-size: 1.1rem; }
+.drawer-note { margin: 0.4rem 0 0; font-size: 0.8rem; opacity: 0.7; }
+
+/* ── #2830 visual parity ──────────────────────────────────────────────────
+   The register gogi's own site uses: condensed uppercase display set tight,
+   an eyebrow-then-rule section rhythm, and a full-bleed hero. Every value
+   here reads a custom property, so a brand with a different palette gets its
+   own look rather than gogi's. */
+/*
+ * #2830 — `.brand` no longer takes the heading case. A wordmark is not a
+ * heading: "gogi" is deliberately lowercase and was being shouted as GOGI in
+ * the brand's own header. Upper-casing a name is a change to the name.
+ */
+h1, h2, h3 {
+  font-family: var(--display);
+  /* a serif or a humanist sans set in caps reads as shouting; the pairing
+     decides, not the stylesheet */
+  text-transform: var(--display-case);
+  letter-spacing: -0.02em;
+  line-height: 0.94;
+  text-wrap: balance;
+}
+h1 { font-size: clamp(2.75rem, 8vw, 6rem); margin: 0 0 1rem; }
+h2 { font-size: clamp(2rem, 5vw, 3.75rem); margin: 0 0 1rem; }
+h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
+/*
+ * #2830 -- an inner page's header band. It replaces a bare .page-title that
+ * was a direct child of <main> with no container padding, so on the menu page
+ * the word "MENU" ran off the left edge of the screen at every width.
+ *
+ * Measured against the reference: 57.365px at 1043 wide (5.5vw), line-height
+ * 1.05, weight 600, centred; crumbs 0.18em tracking.
+ */
+.page-header {
+  position: relative;
+  isolation: isolate;
+  /*
+   * #3149 — the band runs to the top of the screen, under the transparent
+   * header, exactly as the hero does. Its TITLE must still clear the header,
+   * so the header's own height is added to the top padding rather than the
+   * band being pushed down and leaving a bare strip above it. Without this the
+   * 4rem floor put "MENU" 21px behind the header.
+   */
+  padding:
+    calc(var(--header-height) + clamp(2.5rem, 7vh, 4.5rem))
+    max(20px, 4vw)
+    clamp(2.5rem, 6vh, 4rem);
+  text-align: center;
+  background-size: cover;
+  background-position: center;
+}
+
+.page-header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(to top, rgba(8, 6, 4, 0.92), rgba(8, 6, 4, 0.62));
+}
+
+.page-header > div {
+  width: min(100%, 1200px);
+  margin: 0 auto;
+}
+
+.page-header h1 {
+  margin: 0;
+  font-size: clamp(2.1rem, 5.5vw, 4.2rem);
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.crumbs {
+  display: flex;
+  justify-content: center;
+  /*
+   * #3149 wave 5 — WITHOUT THIS THE CRUMBS DO NOT SHARE A LINE.
+   *
+   * The row defaulted to `align-items: normal`, i.e. stretch, so all three
+   * children were given the row's full 44px height. The `<a>` is itself a
+   * centred flex box (it carries the 44px tap target), so its text centred in
+   * that height — but the "/" and the current page are plain blocks, so theirs
+   * sat at the TOP of theirs. "Home" rendered 12.9px lower than "/ Menu" on
+   * what is meant to be one line.
+   */
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.9rem;
+  font-size: 0.74rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.crumbs a {
+  color: inherit;
+}
+
+.eyebrow {
+  font-family: var(--body);
+  font-size: 0.72rem;
+  font-weight: 700;
+  /* #2830 -- 3.23px on 11.52px against the reference, which is 0.28em. */
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin: 0 0 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+/* the rule that follows an eyebrow — the section rhythm, not decoration */
+.eyebrow::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--line);
+}
+
+.hero {
+  position: relative;
+  /* Full viewport, as the reference does. NOTE: an earlier `.hero` block sets
+     this too; this later one wins, so both must agree or the edit is invisible. */
+  min-height: 100svh;
+  display: grid;
+  align-items: end;
+  padding: clamp(2rem, 8vw, 6rem) max(20px, calc((100% - 1200px) / 2));
+  background-size: cover;
+  background-position: center;
+  background-color: var(--panel);
+}
+.hero > div { position: relative; max-width: 60ch; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.5rem; }
+/* Measured from the reference: 700 weight, ~13px uppercase with wide tracking,
+   16.8/33.6 padding, fully rounded. This block OVERRIDES the earlier `.button`,
+   so the two must stay in step. */
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem;
+  font-weight: 700; font-size: 0.82rem; min-height: 48px;
+  letter-spacing: 0.09em; text-transform: uppercase;
+  padding: 1.05rem 2.1rem; border-radius: 999px; text-decoration: none;
+}
+.button.accent { background: var(--gold); color: var(--ink); }
+.button.ghost { border: 1px solid rgba(240, 238, 233, 0.22); color: var(--ivory); background: transparent; }
+
+/* #2830 — scroll reveal. Opt-in per element, off entirely under
+   prefers-reduced-motion, and NEVER hides content when JavaScript does not
+   run: the initial state is visible and the observer only animates. */
+.reveal { opacity: 1; }
+.js-reveal .reveal { opacity: 0; transform: translateY(26px);
+  transition: opacity .7s var(--ease), transform .7s var(--ease); }
+.js-reveal .reveal.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .js-reveal .reveal { opacity: 1; transform: none; transition: none; }
+  html { scroll-behavior: auto; }
+}
+
+/* #2830 — the hero video sits UNDER the copy and OVER the poster. The poster
+   is the section's background image and is always painted, so the heading is
+   legible before a byte of video arrives and stays legible if none does. */
+.hero-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+}
+/*
+ * #2830 — ONE scrim, not two.
+ *
+ * The same 0.82 gradient was applied inline on the section AND again here, so
+ * it compounded to roughly 0.97 and buried the photography the brand chose.
+ * Their own site plays the video at full strength and darkens only enough to
+ * hold the text.
+ *
+ * Bottom-weighted rather than left-weighted: the copy sits at the bottom, and
+ * a left-to-right wash dims the image while doing least for the words on it.
+ */
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(to top, rgba(8, 6, 4, 0.86) 0%, rgba(8, 6, 4, 0.45) 42%, rgba(8, 6, 4, 0.12) 78%);
+  pointer-events: none;
+}
+.hero > div { z-index: 2; }
+
+/* #2830 — reels and the team. gogi's own site runs both; the reels ARE the
+   content, because the captions are their words and the footage is their room. */
+.video-feature { display: grid; gap: 1rem; }
+.video-caption { max-width: 62ch; color: var(--muted); margin: 0; }
+.reel-poster, .reel-video {
+  width: 100%; aspect-ratio: 9 / 16; max-height: 70vh; border-radius: 14px;
+  background: var(--panel) center / cover no-repeat; border: 1px solid var(--line);
+  display: block;
+}
+/*
+ * #2830 -- these are vertical phone films. The desktop override used to flip
+ * them to 16/9, which CROPPED portrait footage into a landscape letterbox and
+ * cut the top and bottom off every reel. They stay portrait and are held to a
+ * card's width instead, which is how the reference shows them.
+ */
+@media (min-width: 720px) {
+  .reel-poster, .reel-video { max-width: 26rem; }
+}
+.reel-poster { position: relative; cursor: pointer; padding: 0; }
+.reel-play {
+  position: absolute; inset: 50% auto auto 50%; translate: -50% -50%;
+  display: grid; place-items: center; width: 72px; height: 72px; border-radius: 999px;
+  background: var(--gold); color: var(--ink); font-size: 26px; line-height: 1;
+}
+.team-grid {
+  list-style: none; margin: 1.5rem 0 0; padding: 0;
+  display: grid; gap: 1.25rem;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+}
+.team-grid li { display: grid; gap: 0.4rem; justify-items: start; }
+/* #3149 — was 12px beside a 14px gallery and 14px reels, which is a difference
+   you see and cannot name. The reference rounds team portraits with the same
+   token as everything else. */
+.team-grid img {
+  width: 100%;
+  /*
+   * #3149 wave 5 — WITHOUT THIS `aspect-ratio` DOES NOTHING.
+   *
+   * The renderer emits `<img width="480" height="480">`. Those attributes are
+   * presentational hints the UA maps to real `width`/`height` declarations,
+   * and a used height of 480px beats an aspect ratio every time: the portrait
+   * rendered 164x480 in a 164px column, so ten of them stacked a 1089px-tall
+   * grid of letterboxed faces. `height: auto` hands the height back to
+   * `aspect-ratio` and the portrait is square again.
+   *
+   * The attributes STAY: they are what reserves the box before the file
+   * arrives, which is the whole point of writing them.
+   */
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--radius-media);
+}
+.team-initial {
+  display: grid; place-items: center; width: 100%; aspect-ratio: 1; border-radius: var(--radius-media);
+  background: var(--panel-raised); color: var(--gold);
+  font-family: var(--display); font-size: 2.5rem;
+}
+.team-grid strong { font-weight: 600; }
+.team-grid span:not(.team-initial) { color: var(--muted); font-size: 0.85rem; }
+
+/*
+ * #2830 -- inside the hero the rail is a hairline over the photograph, not the
+ * panel-coloured band it is elsewhere. Same markup, same meaning, so a site
+ * whose home page has no hero still gets the band.
+ */
+.hero .fact-rail {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  margin: clamp(1.5rem, 4vh, 3rem) 0 0;
+  padding: 0;
+  background: none;
+  border-bottom: 0;
+  border-top: 1px solid rgba(240, 238, 233, 0.18);
+}
+
+.hero .fact-rail dl > div {
+  padding: clamp(0.9rem, 2vh, 1.4rem) clamp(0.75rem, 2vw, 2rem) 0 0;
+  border-right: 0;
+}
+
+.hero .fact-rail dd {
+  font-size: clamp(0.95rem, 1.4vw, 1.15rem);
+  font-weight: 600;
+}
+
+/*
+ * #2830 -- the primary hero action carries an arrow, as theirs does. Content,
+ * not markup, so it never reaches the accessible name: a screen reader still
+ * announces "See the menu", not "See the menu right arrow".
+ */
+.hero-actions .button.accent::after {
+  content: "\2192";
+  margin-left: 0.6rem;
+}
+
+/*
+ * #2830 -- a menu section's heading, matching the reference: a small condensed
+ * caps label with the rule running out from it to the full width.
+ */
+.menu-order .menu-section + .menu-section {
+  margin-top: clamp(2rem, 4vh, 3rem);
+}
+
+.menu-order .menu-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.menu-order .menu-section h3::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--line);
+}
+
+/*
+ * #2830 -- the reel grid, matching the reference: portrait cards laid out
+ * four-across on a wide screen and collapsing to two on a phone, each with its
+ * label under the film.
+ */
+/*
+ * #3149 wave 5 -- THE SECTION IS NO LONGER THE GRID.
+ *
+ * It was, and it held the heading, the films and the button as siblings. The
+ * track list is `auto-fit`, which collapses tracks nothing occupies -- except
+ * that the heading and the button each carried `grid-column: 1 / -1`, so they
+ * occupied EVERY track and there was never an empty one to collapse. Three
+ * films were laid out in four 253px columns with a conspicuous hole on the
+ * right, and the more the run was trimmed the wider the hole got.
+ *
+ * Deleting those spans was not the fix: without them the heading takes the
+ * first film's track and the films shuffle along by one, which is the bug the
+ * spans were added to stop. Both are true at once because the heading was a
+ * grid item AT ALL. So it is not one any more.
+ *
+ * The section is now a column of three things -- heading, films, button -- and
+ * only the FILMS are a grid. `auto-fit` finally sees a container holding
+ * nothing but cards, so the track count follows the film count: three films,
+ * three columns. Flex rather than block for the outer box so the gap that used
+ * to separate these rows still does, and so the heading's own `h2` margin
+ * cannot collapse out through the section edge and change the spacing.
+ *
+ * `.reel-grid` STAYS on the section: `.reel-grid .reel-card`, `.reel-poster`,
+ * `.reel-video`, `figcaption` and `.reel-play` are all descendant selectors and
+ * keep matching straight through the new wrapper.
+ */
+.reel-grid {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.75rem, 2vw, 1.5rem);
+}
+
+.reel-grid-films {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: clamp(0.75rem, 2vw, 1.5rem);
+}
+
+.reel-grid .reel-card {
+  margin: 0;
+  display: grid;
+  gap: 0.7rem;
+}
+
+/* Inside the grid the column already sets the width, so the single-reel cap
+   must not also apply or the cards stop filling their tracks. */
+.reel-grid .reel-poster,
+.reel-grid .reel-video {
+  max-width: none;
+  max-height: none;
+}
+
+.reel-grid figcaption {
+  font-family: var(--display);
+  font-size: 0.82rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ivory);
+}
+
+.reel-grid .reel-play {
+  width: 54px;
+  height: 54px;
+}
+
+/*
+ * #2830 -- a short gallery is a STRIP, not a mosaic.
+ *
+ * `.gallery` is a deliberate editorial layout: a tall first image beside two
+ * columns of smaller ones. That reads well at twelve photos and badly at four,
+ * where it renders one big picture and three offcuts -- which is what gogi's
+ * "What people order" row looked like on the live site. Four dishes want four
+ * equal cards, as on the site this matches.
+ */
+.gallery-strip {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  grid-auto-rows: auto;
+}
+
+.gallery-strip img {
+  aspect-ratio: 1;
+  height: auto;
+}
+
+/* The mosaic's tall first cell must not survive into the strip. */
+.gallery-strip img:first-child {
+  grid-row: auto;
+}
+
+/* ── #3149 wave 3 ─────────────────────────────────────────────────────────
+   Four shapes the reference has and this stylesheet had no rules for, plus
+   the gallery's new anchor and the panel a photograph opens into.
+
+   Everything here is at the END of the file ON PURPOSE. `.hero`, `.button`
+   and `.gallery` are each declared twice in this stylesheet and the later
+   block wins, so a rule written next to its relatives would have been
+   overridden by an earlier-looking one further down. Anything that has to
+   beat an existing declaration is written here and measured, not read. */
+
+/*
+ * The ticker under the hero. Full-bleed by construction: it is a direct child
+ * of `.page-content`, which `.page-content > section` never constrains, so it
+ * runs edge to edge as the reference's does.
+ */
+.marquee {
+  border-block: 1px solid var(--line);
+  background: var(--panel);
+  padding: 1.1rem 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/*
+ * `width: max-content` matters. A flex track that is only as wide as its box
+ * would compress both runs to fit, and translating half of a compressed track
+ * does not land on the start of the second copy — the loop visibly jumps.
+ */
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee-slide 34s linear infinite;
+  will-change: transform;
+}
+
+.marquee-run {
+  display: flex;
+  align-items: center;
+}
+
+.marquee-phrase {
+  display: inline-flex;
+  align-items: center;
+  gap: 3rem;
+  padding-inline-end: 3rem;
+  font-family: var(--display);
+  font-size: 1.05rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* The separator. Decorative, so it is generated rather than written into the
+   copy — a brand types phrases, never punctuation between them. */
+.marquee-phrase::after {
+  content: "\00b7";
+  color: var(--gold);
+  font-size: 1.6rem;
+  line-height: 0;
+}
+
+@keyframes marquee-slide {
+  from { transform: translateX(0); }
+  /* Exactly half: the two runs are identical, so half a revolution puts the
+     second copy where the first started and the seam is invisible. */
+  to { transform: translateX(-50%); }
+}
+
+/*
+ * A row of figures. `.cards` on the reference — same auto-fit track, same
+ * panel, same hairline.
+ */
+.stats-lead {
+  color: var(--muted);
+  margin: 0 0 2rem;
+  max-width: 62ch;
+}
+
+.stats-row {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  margin: 0;
+}
+
+.stats-row > div {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-media);
+  padding: 2.4rem 1.9rem;
+}
+
+.stats-row dt {
+  font-family: var(--display);
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  line-height: 1.1;
+  text-transform: var(--display-case);
+  color: var(--gold);
+}
+
+.stats-row dd {
+  margin: 0.7rem 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+/*
+ * The pulled quotation. The gold bar down its left edge is the whole point of
+ * the shape, and it is a border rather than a pseudo-element so it grows with
+ * the quote.
+ */
+.pull-quote {
+  /* Longhands, not the `border-left` shorthand. A shorthand whose colour is a
+     custom property is stored verbatim and never split, which leaves
+     `border-left-color` reading as the inherited text colour to anything that
+     inspects the computed value — including the suite that guards this bar. */
+  border-left-style: solid;
+  border-left-width: 2px;
+  border-left-color: var(--gold);
+  padding-left: 1.5rem;
+  margin: 0 auto;
+  width: min(100%, 900px);
+}
+
+.page-content > .pull-quote {
+  padding-block: clamp(1rem, 3vw, 2.5rem);
+  padding-inline-end: max(20px, 4vw);
+  margin-inline: max(20px, 4vw);
+  width: auto;
+}
+
+.pull-quote blockquote {
+  margin: 0;
+}
+
+.pull-quote blockquote p {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(1.15rem, 2vw, 1.5rem);
+  line-height: 1.4;
+  color: var(--ivory);
+}
+
+.pull-quote figcaption {
+  margin-top: 0.7rem;
+  font-family: var(--body);
+  font-size: 0.74rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/*
+ * The map. Nothing here is loaded from anywhere until the visitor presses the
+ * control — the panel is the default state, not a placeholder for a failure.
+ */
+.map-body {
+  color: var(--muted);
+  max-width: 62ch;
+}
+
+.map-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-media);
+  background: var(--panel);
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  display: grid;
+  justify-items: start;
+  gap: 0.9rem;
+}
+
+.map-panel-place {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.1rem;
+  letter-spacing: 0.08em;
+  text-transform: var(--display-case);
+  color: var(--ivory);
+}
+
+.map-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  max-width: 48ch;
+}
+
+.map-frame {
+  display: grid;
+  gap: 1rem;
+  justify-items: start;
+}
+
+.map-frame iframe {
+  width: 100%;
+  height: 330px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-media);
+  display: block;
+}
+
+.map-directions {
+  margin-top: 1rem;
+  display: inline-flex;
+}
+
+/*
+ * #3149 — the gallery photograph is now an ANCHOR, and the anchor is the grid
+ * item. The two `img` rules above it survive untouched because they are pinned
+ * by the visual-contract suite, but they no longer describe a grid item: an
+ * `img` inside an `a` is not one, so `grid-row` on it does nothing at all. The
+ * mosaic's tall first cell has to be restated here, on the element that is.
+ */
+.gallery-item {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  line-height: 0;
+}
+
+.gallery > a:first-child {
+  grid-row: span 2;
+}
+
+.gallery-strip .gallery-item {
+  height: auto;
+}
+
+.gallery-strip > a:first-child {
+  grid-row: auto;
+}
+
+/*
+ * The panel a photograph opens into. Fixed to the viewport rather than to the
+ * section, so the page behind it cannot scroll into view around the edges.
+ */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: max(20px, 3vw);
+  background: rgba(8, 6, 4, 0.88);
+  animation: lightbox-in 160ms var(--ease);
+}
+
+.lightbox-panel {
+  position: relative;
+  display: grid;
+  gap: 1rem;
+  justify-items: center;
+  max-width: min(100%, 1100px);
+}
+
+.lightbox-panel img {
+  max-width: 100%;
+  /* Room for the close control above and the steps below on a short screen. */
+  max-height: 72svh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--radius-media);
+}
+
+.lightbox-close {
+  justify-self: end;
+  font: inherit;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--ivory);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.lightbox-steps {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.lightbox-count {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.lightbox-alt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+  max-width: 62ch;
+}
+
+@keyframes lightbox-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 767px) {
+  /*
+   * The phone mosaic gives the first photograph the full width instead of a
+   * double-height cell. Restated on the anchor for the same reason as above,
+   * and AFTER the desktop rule so it wins where both match.
+   */
+  .gallery > a:first-child {
+    grid-column: span 2;
+    grid-row: auto;
+  }
+
+  .marquee-phrase {
+    font-size: 0.9rem;
+    gap: 2rem;
+    padding-inline-end: 2rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /*
+   * #3149 — REDUCED MOTION MEANS THE STRIP STOPS, NOT THAT IT DISAPPEARS.
+   *
+   * The blanket rule earlier in this file forces `animation-duration: 0.01ms`
+   * and one iteration with `!important`, which STOPS the loop but leaves the
+   * track wherever the animation put it. `animation: none` removes the
+   * animation outright and `transform: none` puts the track back at its
+   * start — without both, a reduced-motion visitor gets the strip parked
+   * half-way through, showing the duplicated copy.
+   *
+   * The duplicate exists only to make the loop seamless, so with no loop it
+   * is removed and the phrases print once, wrapping instead of scrolling.
+   */
+  .marquee {
+    white-space: normal;
+    overflow: visible;
+  }
+
+  .marquee-track {
+    animation: none;
+    transform: none;
+    width: auto;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .marquee-run {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .marquee-run + .marquee-run {
+    display: none;
+  }
+
+  .lightbox {
+    animation: none;
+  }
+}
+
+/* ── #3149 wave 4 ─────────────────────────────────────────────────────────
+   The map that paints, the live pill, the story composite, the menu taster,
+   the cards with drawings on them, and the film that runs full width.
+
+   At the END of the file for the reason the wave 3 block gives above it:
+   `.hero`, `.button` and `.gallery` are each declared twice in this stylesheet
+   and the LATER declaration wins, so anything that has to beat an
+   earlier-looking rule is written here — and measured rather than read. Three
+   rules below exist purely to win a specificity fight that is invisible in the
+   source, and each says so. */
+
+/*
+ * THE MAP, DRAWN. A clipped box with a fixed-size plane of 256px squares
+ * centred inside it, so the point the plane was planned around lands exactly
+ * at the middle of the box whatever width the column happens to be. The pin is
+ * therefore drawn at 50%/50% and never positioned per tile.
+ *
+ * The plane is deliberately NOT stretched to the box: a raster tile scaled up
+ * is a blurred street name, and a map whose street names cannot be read is a
+ * decorative grey rectangle.
+ */
+.map-static {
+  position: relative;
+  width: 100%;
+  /* `.map-panel` lays its children out with `justify-items: start`, which
+     would otherwise shrink this to its content — and its content is absolutely
+     positioned, so that is nothing at all. */
+  justify-self: stretch;
+  height: clamp(13.75rem, 30vw, 20.625rem);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-media);
+  /* What shows through where a square has not arrived, or past the edge of the
+     world at the poles. Never a broken-image icon over an address. */
+  background: var(--panel-raised);
+}
+
+.map-static-plane {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  display: block;
+}
+
+.map-static-plane img {
+  position: absolute;
+  display: block;
+  width: 256px;
+  height: 256px;
+  max-width: none;
+}
+
+.map-static-pin {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  background: var(--gold);
+  box-shadow:
+    0 0 0 0.28rem color-mix(in srgb, var(--gold) 32%, transparent),
+    0 2px 10px rgba(0, 0, 0, 0.55);
+}
+
+/*
+ * THE LIVE PILL. Printed only where the block declares an always-open venue
+ * AND names a timezone — see `hours_location` in the contract and `LocalClock`
+ * in the runtime. Nothing here decides whether anywhere is open.
+ */
+.open-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 0 1.4rem;
+  padding: 0.45rem 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 55%, transparent);
+  font-family: var(--display);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--ivory);
+}
+
+/*
+ * `.hero p:not(.eyebrow)` is (0,2,1) and sets a 1.25rem body size and a 620px
+ * cap — it would blow the pill up to the size of the hero's own subheading.
+ * These two match its specificity and win on order.
+ */
+.hero p.open-pill,
+.page-header p.open-pill {
+  max-width: none;
+  font-size: 0.76rem;
+  color: var(--ivory);
+}
+
+.page-header p.open-pill {
+  margin: 0 auto 1.1rem;
+}
+
+.open-pill-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--gold);
+  animation: open-pill-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes open-pill-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.local-clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--gold);
+}
+
+.hours-live {
+  margin: 0.9rem 0 0;
+  border-top: 1px solid var(--line);
+  padding-top: 0.9rem;
+}
+
+.hours-now {
+  font-family: var(--display);
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/*
+ * THE STORY COMPOSITE. A circular crop with a badge on it, the quotation
+ * inline instead of banished to its own band, and a button onward.
+ */
+.editorial-media-circle {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+/*
+ * Ties `.feature img` on specificity (0,1,1) and wins by being written later,
+ * which is the whole reason this block sits at the end of the file. The crop
+ * is the point of the shape: a 14px radius on a square photograph is not a
+ * circle, and this rule losing would be invisible in the source.
+ */
+.editorial-media-circle img {
+  width: min(100%, 26rem);
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 999px;
+}
+
+.media-badge {
+  position: absolute;
+  right: 4%;
+  bottom: 6%;
+  display: grid;
+  justify-items: center;
+  gap: 0.1rem;
+  width: 6.6rem;
+  height: 6.6rem;
+  place-content: center;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--ink);
+  text-align: center;
+}
+
+.media-badge strong {
+  font-family: var(--display);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.media-badge span {
+  font-family: var(--body);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.feature-quote {
+  margin-top: 1.6rem;
+  width: auto;
+}
+
+.feature-cta {
+  margin-top: 1.6rem;
+}
+
+/*
+ * THE MENU TASTER. Real sections with real prices beside the photographs, and
+ * a button to the rest — the items are Mingla's own rows, shown short.
+ */
+.menu-preview-split {
+  display: grid;
+  gap: clamp(1.5rem, 4vw, 3rem);
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .menu-preview-split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.menu-preview-list {
+  display: grid;
+  gap: 2rem;
+  align-content: start;
+}
+
+.menu-preview-list .menu-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0 0 0.75rem;
+  font-family: var(--display);
+  font-size: 0.95rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.menu-preview-list .menu-section h3::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--line);
+}
+
+.menu-preview-cta {
+  justify-self: start;
+}
+
+.menu-preview-photos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.menu-preview-photos img {
+  width: 100%;
+  /*
+   * #3149 wave 5 — the same defect as `.team-grid img`, one section down.
+   *
+   * `<img width="640" height="640">` made every dish 251x640 inside a 251px
+   * column, so the photo half of the menu split stood 1296px tall beside a
+   * 458px list — 838px of the section was one column of stretched food.
+   */
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--radius-media);
+}
+
+/*
+ * THE CARDS. A drawing, a title, a sentence — and one of them ringed in gold
+ * when the brand says that is the one to look at.
+ */
+.stat-icon {
+  /* `display: block` and nothing else: the card's own layout is untouched, so
+     a figure that names no icon renders exactly the bytes it rendered
+     before. */
+  display: block;
+  color: var(--gold);
+  margin-bottom: 1.1rem;
+}
+
+.stat-body {
+  margin: 0.7rem 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+/*
+ * Two classes, (0,2,0), against `.stats-row > div` at (0,1,1) — so the ring
+ * wins on specificity and not merely on being written later. That matters:
+ * the gold border IS the signal, and a card that silently lost it would look
+ * exactly like a card that was never meant to have one.
+ */
+.stats-row > .stat-highlight {
+  border-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 9%, var(--panel));
+}
+
+/*
+ * THE FILM, FULL WIDTH, WITH ITS WORDS ON IT.
+ *
+ * Both children occupy the SAME grid cell, and the copy is emitted second so
+ * it stacks on top. It takes no pointer events, which makes the whole frame
+ * the play control rather than only the round button in the middle of it.
+ */
+.video-feature {
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+.video-feature > * {
+  grid-area: 1 / 1;
+}
+
+/* (0,2,0), beating `.reel-poster, .reel-video` (0,1,0): a single film is a
+   band across the page here, not the portrait phone card a reel grid holds. */
+.video-feature .reel-poster,
+.video-feature .reel-video {
+  width: 100%;
+  max-width: none;
+  aspect-ratio: auto;
+  height: clamp(20rem, 58vh, 36rem);
+  max-height: none;
+  object-fit: cover;
+  border-radius: var(--radius-media);
+}
+
+.video-feature .reel-poster::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-media);
+  background:
+    linear-gradient(to top, rgba(8, 6, 4, 0.82) 0%, rgba(8, 6, 4, 0.3) 55%, rgba(8, 6, 4, 0.12) 100%);
+}
+
+/* The round control sits ABOVE the words rather than behind them, which is
+   the order the reference stacks them in. */
+.video-feature .reel-play {
+  z-index: 2;
+  inset-block-start: calc(50% - 7rem);
+}
+
+.video-feature-copy {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  justify-items: center;
+  width: min(100%, 46ch);
+  padding: 0 1.5rem;
+  margin-top: 3.5rem;
+  text-align: center;
+  /* The film underneath is the button. Without this the copy would swallow
+     every click that landed on a word. */
+  pointer-events: none;
+}
+
+.video-feature-copy h2 {
+  margin: 0 0 0.75rem;
+  max-width: 16ch;
+}
+
+.video-feature-copy .video-caption {
+  margin: 0;
+  color: rgba(240, 238, 233, 0.86);
+}
+
+/*
+ * ONE button under a run of films, and one under the team grid.
+ *
+ * #3149 wave 5 -- this used to span every column for the same reason the
+ * heading did, and it is dropped for the same reason: the button is a sibling
+ * of the films grid now, not an item inside it, so there is no column for it to
+ * span. `.team-cta` below never had one — the team section is ordinary flow
+ * and only its `ul` is a grid — so it is untouched.
+ */
+.reel-grid-cta {
+  display: flex;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.team-cta {
+  margin-top: 2rem;
+}
+
+/*
+ * THE ROLE, ABOVE THE NAME, IN GOLD. `.team-grid span:not(.team-initial)` is
+ * (0,2,1) and greys this out; matching its specificity and winning on order is
+ * the only way the label reads as a label rather than as a second name.
+ */
+.team-grid span.team-role {
+  order: -1;
+  font-family: var(--display);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+/*
+ * The portrait is first in the source and must stay first on the page. `order`
+ * applies to grid items exactly as it does to flex ones, so the card's
+ * existing `display: grid` and its 0.4rem gap are left alone — a team block
+ * with no roles set renders precisely what it rendered before, because both of
+ * these rules need an element that only a role produces.
+ */
+.team-grid li img,
+.team-grid li .team-initial {
+  order: -2;
+}
+
+@media (max-width: 767px) {
+  .video-feature .reel-play {
+    inset-block-start: calc(50% - 5.5rem);
+  }
+
+  .video-feature-copy {
+    margin-top: 2.5rem;
+  }
+
+  .media-badge {
+    width: 5.2rem;
+    height: 5.2rem;
+  }
+
+  .media-badge strong {
+    font-size: 1.15rem;
+  }
+}
+
+/*
+ * #3149 wave 4 — THE FOOTER, rebuilt to the reference's four columns.
+ *
+ * At the end of the file for the reason the two blocks above it are: `.footer`
+ * is declared earlier with `grid-template-columns: 2fr 1fr 1fr` and a 44px
+ * `min-height` on its anchors, and those have to be beaten rather than edited
+ * in place — the earlier block is pinned by the visual-contract suite.
+ */
+.footer {
+  display: block;
+  padding-block-end: 0;
+}
+
+.footer-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr));
+  gap: clamp(2rem, 4vw, 3.5rem);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .footer-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .footer-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.footer-brand {
+  display: grid;
+  justify-items: start;
+  gap: 1rem;
+  max-width: 34ch;
+}
+
+/*
+ * (0,2,0), beating the earlier `.footer strong` (0,1,1): in a four-column
+ * footer the brand's name is a column heading, not a 4rem billboard that
+ * pushes the other three columns off a phone.
+ */
+.footer .footer-brand strong {
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  line-height: 1;
+}
+
+.footer-wordmark {
+  max-width: min(100%, 12rem);
+  height: auto;
+}
+
+.footer-brand p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.footer-social {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  gap: 0.7rem;
+}
+
+.footer .social-button {
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  min-width: 2.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--ivory);
+  background: color-mix(in srgb, var(--gold) 8%, transparent);
+  transition: background 160ms var(--ease), color 160ms var(--ease);
+}
+
+.footer .social-button:hover {
+  background: var(--gold);
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer .social-button { transition: none; }
+}
+
+.footer-columns h2 {
+  margin: 0 0 0.9rem;
+  font-family: var(--display);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.footer-columns nav {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+
+/*
+ * (0,2,1) against the earlier `.footer a` (0,1,1). A 44px target is right for
+ * a lone link and wrong for a stacked column of six, where it becomes a list
+ * with a finger-width of empty space between every row.
+ */
+.footer .footer-columns a {
+  min-height: 2.1rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.footer .footer-columns a:hover {
+  color: var(--ivory);
+}
+
+.footer-find p {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+  max-width: 24ch;
+}
+
+/* The hours are the one line in this column that is a claim rather than a
+   detail, and the reference prints it in the accent. */
+.footer-hours {
+  color: var(--gold);
+}
+
+.footer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-top: clamp(2.5rem, 5vw, 4rem);
+  padding-block: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.footer-bar p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.footer .footer-credit {
+  color: var(--muted);
+  font-size: 0.82rem;
+  min-height: 2.1rem;
+}
+
+.footer .footer-credit:hover {
+  color: var(--gold);
+}
+
+/* ── #3149 the cart's ending ──────────────────────────────────────────────
+   The drawer used to stop at the total. These are the three fields Mingla's
+   venue-order rail requires of a counter-pickup order and the control that
+   hands the basket over. Appended as NEW selectors rather than folded into
+   the drawer block above, so nothing already declared there moves. */
+.checkout-fields { display: grid; gap: 0.75rem; margin-top: 1.1rem; }
+.checkout-field { display: grid; gap: 0.3rem; }
+.checkout-field label { font-size: 0.78rem; letter-spacing: 0.08em;
+  text-transform: uppercase; opacity: 0.75; }
+.checkout-field input { font: inherit; font-size: 0.95rem; padding: 0.6rem 0.8rem;
+  min-height: 44px; border-radius: 0.4rem; border: 1px solid rgba(240,238,233,.32);
+  background: rgba(240,238,233,.06); color: inherit; }
+.checkout-field input:focus-visible { outline: 2px solid var(--accent, #cda052);
+  outline-offset: 1px; }
+.checkout-field input[aria-invalid="true"] { border-color: #ff9d8a; }
+.checkout-error { margin: 0; font-size: 0.8rem; color: #ff9d8a; }
+.checkout-btn { font: inherit; font-weight: 700; width: 100%; min-height: 48px;
+  margin-top: 0.35rem; padding: 0.85rem 1.4rem; border: 0; border-radius: 999px;
+  cursor: pointer; background: var(--accent, #cda052); color: #101013; }
+.checkout-btn[disabled] { cursor: default; opacity: 0.6; }
+.checkout-status { margin: 0.6rem 0 0; font-size: 0.85rem; font-weight: 600; }

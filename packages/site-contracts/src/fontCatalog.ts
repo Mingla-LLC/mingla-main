@@ -1,0 +1,63 @@
+/**
+ * #2829 AD-3 — reading the Google Fonts catalogue: find a family, list its
+ * weights, search by name and category.
+ *
+ * Deliberately NOT re-exported from index.ts: the catalogue is ~160 KB of
+ * data and only Studio, the publication builder and Ari's tools need it, so
+ * the Business app and the public runtime never bundle it.
+ */
+import { GOOGLE_FONTS_CATALOG, type GoogleFontRow } from "./googleFontsCatalog.ts";
+
+export type FontCategory = GoogleFontRow[1];
+export type CatalogFont = {
+  family: string;
+  category: FontCategory;
+  weights: readonly number[];
+  italicWeights: readonly number[];
+  subsets: readonly string[];
+};
+
+const BY_FAMILY: ReadonlyMap<string, GoogleFontRow> = new Map(
+  GOOGLE_FONTS_CATALOG.map((row) => [row[0], row]),
+);
+
+function toFont(row: GoogleFontRow): CatalogFont {
+  return { family: row[0], category: row[1], weights: row[2], italicWeights: row[3], subsets: row[4] };
+}
+
+/** The catalogue row for an exact family name, or null when Google has no such family. */
+export function findCatalogFont(family: string): CatalogFont | null {
+  const row = BY_FAMILY.get(family);
+  return row ? toFont(row) : null;
+}
+
+/** Upright weights a family offers, or null when it is not in the catalogue. */
+export function catalogWeights(family: string): readonly number[] | null {
+  return BY_FAMILY.get(family)?.[2] ?? null;
+}
+
+export function catalogSize(): number {
+  return GOOGLE_FONTS_CATALOG.length;
+}
+
+/**
+ * Families matching a query (case-insensitive; names starting with the query
+ * first, then names containing it), optionally within one category.
+ */
+export function searchCatalogFonts(
+  query: string,
+  options: { category?: FontCategory; limit?: number } = {},
+): CatalogFont[] {
+  const needle = query.trim().toLowerCase();
+  const limit = Math.min(Math.max(options.limit ?? 30, 1), 100);
+  const starts: GoogleFontRow[] = [];
+  const contains: GoogleFontRow[] = [];
+  for (const row of GOOGLE_FONTS_CATALOG) {
+    if (options.category && row[1] !== options.category) continue;
+    const name = row[0].toLowerCase();
+    if (!needle || name.startsWith(needle)) starts.push(row);
+    else if (name.includes(needle)) contains.push(row);
+    if (starts.length >= limit) break;
+  }
+  return [...starts, ...contains].slice(0, limit).map(toFont);
+}

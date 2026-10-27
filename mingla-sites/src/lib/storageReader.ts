@@ -13,6 +13,9 @@ type AccessToken = {
   expiresAtMs: number;
 };
 
+/** #2829 W6 — an inclusive byte range to read (video chunks). */
+export type ByteRange = { start: number; end: number };
+
 type ReaderDependencies = {
   fetch: typeof fetch;
   now: () => number;
@@ -51,7 +54,7 @@ function objectUrl(config: ReaderConfig, bucket: string, key: string): string {
 export function createPrivateObjectReader(
   config: ReaderConfig,
   dependencies: ReaderDependencies = { fetch, now: Date.now },
-): (bucket: string, key: string, cache: RequestCache) => Promise<Response> {
+): (bucket: string, key: string, cache: RequestCache, range?: ByteRange) => Promise<Response> {
   let cachedToken: AccessToken | null = null;
   let tokenRequest: Promise<AccessToken> | null = null;
 
@@ -110,25 +113,33 @@ export function createPrivateObjectReader(
     url: string,
     cache: RequestCache,
     token: AccessToken,
+    range?: ByteRange,
   ): Promise<Response> {
     return dependencies.fetch(url, {
       method: "GET",
       headers: {
         apikey: config.storageSupabaseAnonKey,
         authorization: `Bearer ${token.value}`,
+        ...(range ? { range: `bytes=${range.start}-${range.end}` } : {}),
       },
-      cache,
+      // A ranged read is never put in the data cache (its key would not
+      // carry the range); the response it builds is CDN-cached instead.
+      cache: range ? "no-store" : cache,
     });
   }
 
-  return async (bucket, key, cache) => {
+  return async (bucket, key, cache, range) => {
+    if (
+      range &&
+      (!Number.isSafeInteger(range.start) || !Number.isSafeInteger(range.end) || range.start < 0 || range.end < range.start)
+    ) throw new Error("STORAGE_SCOPE_INVALID");
     const url = objectUrl(config, bucket, key);
     const firstToken = await acquireAccessToken();
-    const firstResponse = await objectFetch(url, cache, firstToken);
+    const firstResponse = await objectFetch(url, cache, firstToken, range);
     if (firstResponse.status !== 401) return firstResponse;
     if (cachedToken?.value === firstToken.value) cachedToken = null;
     const replacementToken = await acquireAccessToken();
-    return objectFetch(url, cache, replacementToken);
+    return objectFetch(url, cache, replacementToken, range);
   };
 }
 
@@ -140,7 +151,33 @@ export function readPrivateObject(
   bucket: string,
   key: string,
   cache: RequestCache,
+  range?: ByteRange,
 ): Promise<Response> {
   if (!sharedReader) sharedReader = createPrivateObjectReader(runtimeConfig());
-  return sharedReader(bucket, key, cache);
+  return sharedReader(bucket, key, cache, range);
+}
+
+/**
+ * #2829 W6 — exactly bytes [start, end] of a stored object. A 206 must name
+ * that range; a storage that ignores Range and answers 200 is sliced here, so
+ * the bytes are right either way. Anything else is a storage failure.
+ */
+export async function readPrivateObjectRange(
+  bucket: string,
+  key: string,
+  range: ByteRange,
+  reader: (bucket: string, key: string, cache: RequestCache, range?: ByteRange) => Promise<Response> = readPrivateObject,
+): Promise<Uint8Array> {
+  const response = await reader(bucket, key, "no-store", range);
+  if (response.status === 206) {
+    const named = /^bytes (\d+)-(\d+)\/(\d+|\*)$/.exec(response.headers.get("content-range") ?? "");
+    if (!named || Number(named[1]) !== range.start || Number(named[2]) !== range.end) throw new Error("STORAGE_RANGE_MISMATCH");
+    return new Uint8Array(await response.arrayBuffer());
+  }
+  if (response.status === 200) {
+    const whole = new Uint8Array(await response.arrayBuffer());
+    if (range.end >= whole.byteLength) throw new Error("STORAGE_RANGE_MISMATCH");
+    return whole.subarray(range.start, range.end + 1);
+  }
+  throw new Error("STORAGE_UNAVAILABLE");
 }

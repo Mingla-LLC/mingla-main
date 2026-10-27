@@ -504,6 +504,17 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
       "mingla-business/src/hooks/__tests__/useMenus.issue3564.tester.adversarial.test.ts",
     ]),
   }),
+  Object.freeze({
+    // [#2829 W7c] The Sites design goldens were rendered on arm64, so their
+    // comparison runs in this retained provider's own arm64 job; the test pins
+    // that job's runner and that no x64 job runs the comparison. One reviewed
+    // reference-file delta on an already sealed provider, not a new provider.
+    issue: 2829,
+    workflow: "web-build-check.yml",
+    referenceFiles: Object.freeze([
+      "scripts/sites/__tests__/issue_2829_goldens_arm64_job.test.mjs",
+    ]),
+  }),
 ]);
 const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL_NAMES = new Set(
   PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL.map((item) => item.workflow),

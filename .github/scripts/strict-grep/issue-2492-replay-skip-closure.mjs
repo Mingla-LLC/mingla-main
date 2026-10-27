@@ -1010,11 +1010,11 @@ function selfTest() {
   // Counts only: 39/29 -> 49/29.
   // [TEST-MOD-APPROVED #3872] The Ari census and seven downstream #3872 walkthrough,
   // round 2, gig pay, shoot-window, and due-change migrations add eight exact #1931 skips;
-  // canonical full replay still applies them. Counts only: 49/29 -> 57/29.
+  // canonical full replay still applies them. Counts only: 49/29 -> 57/29; #2829 W11 Sites feed skip 57 -> 58.
   const expectedInventory = {
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
-    "issue-1931-private-event-access.yml": 57,
+    "issue-1931-private-event-access.yml": 58,
     "issue-2117-offering-visibility-gate-tests.yml": 29,
   };
   if (JSON.stringify(inventory) !== JSON.stringify(expectedInventory)) {
@@ -1137,8 +1137,8 @@ function selfTest() {
           "M-5",
           `subject read as "${lane.subjectKind}", expected "basename"`,
         );
-      else if (lane.globs.length !== 57)
-        record("M-5", `${lane.globs.length} globs extracted, expected 57`);
+      else if (lane.globs.length !== 58)
+        record("M-5", `${lane.globs.length} globs extracted, expected 58`);
       else if (out.lanes.length !== 4)
         record(
           "M-5",
@@ -1167,10 +1167,10 @@ function selfTest() {
         (l) => l.workflow === PINNED_LANE,
       );
       if (!lane) record("M-6", "lane vanished");
-      else if (lane.globs.length !== 59)
+      else if (lane.globs.length !== 60)
         record(
           "M-6",
-          `alternation under-read: ${lane.globs.length} globs from ${lane.branchCount} branches, expected 59`,
+          `alternation under-read: ${lane.globs.length} globs from ${lane.branchCount} branches, expected 60`,
         );
     }
   }
@@ -1235,10 +1235,10 @@ function selfTest() {
     ) {
       const out = analyseTrees(tree);
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (lane.branchCount !== 57)
+      if (lane.branchCount !== 58)
         record(
           "M-9",
-          `expected the 3-line branch to stay unread (branchCount 57), got ${lane.branchCount}`,
+          `expected the 3-line branch to stay unread (branchCount 58), got ${lane.branchCount}`,
         );
       else if (!fired(out, "C-4c")) {
         record(
@@ -1269,13 +1269,13 @@ function selfTest() {
     ) {
       const out = analyseTrees(tree);
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (lane.branchCount !== 58)
+      if (lane.branchCount !== 59)
         record(
           "M-10",
-          `two-line branch form not read: branchCount ${lane.branchCount}, expected 58 (R-5)`,
+          `two-line branch form not read: branchCount ${lane.branchCount}, expected 59 (R-5)`,
         );
-      else if (lane.globs.length !== 58)
-        record("M-10", `${lane.globs.length} globs, expected 58`);
+      else if (lane.globs.length !== 59)
+        record("M-10", `${lane.globs.length} globs, expected 59`);
       else if (out.violations.length)
         record(
           "M-10",
@@ -1289,7 +1289,7 @@ function selfTest() {
     process.exit(1);
   }
   console.log(
-    "#2492 self-test PASS (1 good tree with the 57/1/3/29 lane inventory, 10 mutants M-1…M-10 all behaving).",
+    "#2492 self-test PASS (1 good tree with the 58/1/3/29 lane inventory, 10 mutants M-1…M-10 all behaving).",
   );
 }
 

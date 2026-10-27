@@ -38,9 +38,10 @@ import {
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { installmentReassuranceText } from "../../copy/installmentReassurance";
-// #3372 — naira instalments show "₦", not "NGN" (#3341 rule).
-import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
-import { formatCalendarDate } from "../../utils/calendarDate";
+import type { InstallmentChargeSchedule } from "@mingla/offering-rendering/discountQuote";
+import { buildInstallmentScheduleRows } from "./installmentScheduleRows";
+
+export { buildInstallmentScheduleRows } from "./installmentScheduleRows";
 
 export interface InstallmentScheduleDisplaySchedule {
   fullPriceCents: number;
@@ -66,6 +67,10 @@ export interface InstallmentScheduleDisplaySchedule {
 
 export interface InstallmentScheduleDisplayProps {
   schedule: InstallmentScheduleDisplaySchedule | null;
+  /** Server-locked all-in charges for the whole cart. */
+  lockedChargeSchedule?: InstallmentChargeSchedule;
+  depositChargeCents?: number;
+  collection?: "auto_card" | "auto_card_or_pay_link";
   /**
    * "buyer" renders the buyer-facing layout WITH the reassurance copy.
    * "planner" renders the same layout WITHOUT the reassurance copy
@@ -85,72 +90,21 @@ export interface InstallmentScheduleDisplayProps {
   isProjection?: boolean;
 }
 
-function formatCurrency(cents: number, currency: string): string {
-  try {
-    return withCurrencyGlyph(
-      new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency: currency.toUpperCase(),
-      }).format(cents / 100),
-      currency,
-    );
-  } catch {
-    return `${(cents / 100).toFixed(2)} ${currency.toUpperCase()}`;
-  }
-}
-
-function formatDate(iso: string): string {
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso;
-    return new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    }).format(d);
-  } catch {
-    return iso;
-  }
-}
-
-/**
- * Issue #3801 — a `fixed_date` due day is a calendar date and reads the same
- * day everywhere; anything else is a real instant and keeps `formatDate`.
- */
-function formatDueDate(inst: { dueAt: string; dueIsCalendarDate?: boolean }): string {
-  if (inst.dueIsCalendarDate === true) {
-    const label = formatCalendarDate(inst.dueAt);
-    if (label.length > 0) return label;
-  }
-  return formatDate(inst.dueAt);
-}
 
 export const InstallmentScheduleDisplay: React.FC<
   InstallmentScheduleDisplayProps
-> = ({ schedule, variant, isProjection = false }) => {
+> = ({
+  schedule,
+  variant,
+  isProjection = false,
+  lockedChargeSchedule,
+  depositChargeCents,
+  collection = "auto_card",
+}) => {
   const rows = useMemo(() => {
     if (schedule === null) return null;
-    return {
-      deposit: {
-        label: "Deposit today",
-        amount: formatCurrency(schedule.depositCents, schedule.currency),
-      },
-      installments: schedule.installments.map((inst) => ({
-        ordinal: inst.ordinal,
-        label: formatDueDate(inst),
-        amount: formatCurrency(inst.amountCents, schedule.currency),
-      })),
-      total: formatCurrency(schedule.fullPriceCents, schedule.currency),
-      depositFormatted: formatCurrency(
-        schedule.depositCents,
-        schedule.currency,
-      ),
-      remainingFormatted: formatCurrency(
-        schedule.fullPriceCents - schedule.depositCents,
-        schedule.currency,
-      ),
-    };
-  }, [schedule]);
+    return buildInstallmentScheduleRows({ schedule, lockedChargeSchedule, depositChargeCents });
+  }, [depositChargeCents, lockedChargeSchedule, schedule]);
 
   if (rows === null || schedule === null) return null;
 
@@ -208,6 +162,7 @@ export const InstallmentScheduleDisplay: React.FC<
             depositFormatted: rows.depositFormatted,
             remainingFormatted: rows.remainingFormatted,
             isProjection,
+            collection,
           })}
         </Text>
       ) : null}

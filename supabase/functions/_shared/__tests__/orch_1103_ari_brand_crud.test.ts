@@ -111,7 +111,7 @@ Deno.test("ORCH-1103: PROMPT_VERSION bumped (v6 keeps the earlier tools)", () =>
   // [TEST-MOD-APPROVED #1971] issue #1971 bumps v5 → v6 (trip lifecycle rebuilt
   // on the canonical command boundary). ONE assertion is invalidated — the
   // version literal. No brand-tool assertion changes.
-  assertEquals(PROMPT_VERSION, "v23"); // [TEST-MOD-APPROVED #3697] prompt bumped for Host Ads video launch
+  assertEquals(PROMPT_VERSION, "v25"); // #2829 W11 completes the website journey entrances
 });
 
 // ── richer brand context in the prompt (currency / cover / deletable hint) ──

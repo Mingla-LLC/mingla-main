@@ -7,9 +7,15 @@ import {
   presignedQuarantinePut,
   readObject,
   writeObject,
+  listObjects,
 } from "./objectStore";
 import { emitCmsObservation } from "./observability";
+import { sweepOfferingRenditions } from "./offeringCoverRenditions";
+import { readCoreRetentionProjection } from "./gateway";
 import { studioMediaGrantRequest } from "./studioRequestAuth";
+import { tenantMediaInUse } from "./mediaHolders";
+import { chunkDigests, FILE_VIDEO_BRANDS, inspectMp4 } from "./mp4Inspect";
+import { MAX_FILE_VIDEO_BYTES, VIDEO_CHUNK_BYTES } from "../contracts/generated/video.ts";
 
 /*
  * #2830 — video/mp4 belongs here.
@@ -28,7 +34,17 @@ const ACCEPTED = new Set([
   "video/mp4",
 ]);
 const WIDTHS = [320, 640, 960, 1440, 1920] as const;
+/** #2829 W7b — named extra renditions (see the approval step). */
+export const MEDIA_VARIANTS = [
+  { name: "c400", width: 400, height: 300 },
+  { name: "c768", width: 768, height: 576 },
+  { name: "w1600", width: 1600, height: null },
+] as const;
+const VARIANT_NAMES: readonly string[] = MEDIA_VARIANTS.map((variant) => variant.name);
 const MAX_BYTES = 20 * 1024 * 1024;
+// #2829 W6 (AD-9) — a file video may be up to 50 MiB; pictures keep 20 MiB.
+const MAX_VIDEO_BYTES = MAX_FILE_VIDEO_BYTES;
+const maxBytesFor = (mime: string) => (mime === "video/mp4" ? MAX_VIDEO_BYTES : MAX_BYTES);
 
 /**
  * #2830 — the `ftyp` brands a browser will actually play as `video/mp4`.
@@ -38,17 +54,8 @@ const MAX_BYTES = 20 * 1024 * 1024;
  * and some it should not be handed at all. A hero video that silently fails to
  * start is indistinguishable from a broken website.
  */
-const MP4_BRANDS = new Set([
-  "isom",
-  "iso2",
-  "iso5",
-  "iso6",
-  "mp41",
-  "mp42",
-  "avc1",
-  "M4V ",
-  "dash",
-]);
+// #2829 W6 — narrowed to the brands AD-9 names (isom/iso2/mp41/mp42/avc1).
+const MP4_BRANDS = FILE_VIDEO_BRANDS;
 const MAX_PIXELS = 40_000_000;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -63,7 +70,13 @@ type StoredMediaObject = {
 type MediaStorageRecord = {
   approved_master_key?: unknown;
   rendition_manifest?: unknown;
+  kind?: unknown;
 };
+
+/** The stored type of one approved object (a file video's master is MP4). */
+function storedContentType(key: string): string {
+  return key.endsWith(".mp4") ? "video/mp4" : "image/webp";
+}
 
 function storageDescriptor(
   value: unknown,
@@ -97,6 +110,11 @@ export function mediaStorageObjects(
   if (![tenantId, siteId, mediaId].every((id) => UUID.test(id))) {
     throw new Error("VALIDATION_FAILED");
   }
+  // #2829 W11 (A11) — a stream video lives on the stream service, not in
+  // Sites storage: there is nothing here to copy, restore or purge.
+  if (media.kind === "stream_video") return [];
+  // A file video is one MP4 served as stored (no renditions).
+  if (media.kind === "file_video") return fileVideoStorageObjects(media, tenantId, siteId, mediaId);
   if (
     !media.rendition_manifest ||
     typeof media.rendition_manifest !== "object" ||
@@ -149,6 +167,19 @@ export function mediaStorageObjects(
       storageDescriptor(row, `${approvedPrefix}/${targetWidth}.webp`),
     );
   }
+  // #2829 W7b — extra renditions (optional; media approved earlier has none).
+  const variantDescriptors: Array<{ key: string; digest: string; bytes: number }> = [];
+  if (manifest.variants !== undefined) {
+    if (!Array.isArray(manifest.variants)) throw new Error("VALIDATION_FAILED");
+    const seen = new Set<string>();
+    for (const value of manifest.variants) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("VALIDATION_FAILED");
+      const name = (value as Record<string, unknown>).name;
+      if (typeof name !== "string" || !VARIANT_NAMES.includes(name) || seen.has(name)) throw new Error("VALIDATION_FAILED");
+      seen.add(name);
+      variantDescriptors.push(storageDescriptor(value, `${approvedPrefix}/${name}.webp`));
+    }
+  }
   const descriptors = [
     master,
     ...WIDTHS.map((width) => {
@@ -156,6 +187,7 @@ export function mediaStorageObjects(
       if (!rendition) throw new Error("VALIDATION_FAILED");
       return rendition;
     }),
+    ...variantDescriptors,
   ];
   return descriptors.map((descriptor) => ({
     approvedKey: descriptor.key,
@@ -164,6 +196,55 @@ export function mediaStorageObjects(
     digest: descriptor.digest,
     bytes: descriptor.bytes,
   }));
+}
+
+function fileVideoStorageObjects(
+  media: MediaStorageRecord,
+  tenantId: string,
+  siteId: string,
+  mediaId: string,
+): StoredMediaObject[] {
+  const manifest = media.rendition_manifest && typeof media.rendition_manifest === "object" && !Array.isArray(media.rendition_manifest)
+    ? media.rendition_manifest as Record<string, unknown>
+    : null;
+  const masterKey = manifest?.master && typeof manifest.master === "object" ? (manifest.master as Record<string, unknown>).key : undefined;
+  const match = typeof masterKey === "string"
+    ? masterKey.match(new RegExp(`^approved/${siteId}/${mediaId}/([0-9a-f]{64})/master\\.mp4$`, "i"))
+    : null;
+  if (
+    !manifest || manifest.version !== 1 || !match || media.approved_master_key !== masterKey ||
+    !Array.isArray(manifest.renditions) || manifest.renditions.length !== 0
+  ) throw new Error("VALIDATION_FAILED");
+  const master = storageDescriptor(manifest.master, masterKey as string);
+  return [{
+    approvedKey: master.key,
+    recoveryKey: `recovery/${tenantId}/${master.key.slice("approved/".length)}`,
+    digest: master.digest,
+    bytes: master.bytes,
+  }];
+}
+
+/**
+ * #2829 W11 (A11) — does any publication Core protects (the live one, the
+ * last good one and the versions it can roll back to) show this media? Such
+ * media cannot be removed from Studio: removing it would break a version the
+ * owner can put back live. Core unreachable → the removal is refused.
+ */
+async function mediaOnProtectedPublication(siteId: string, mediaId: string): Promise<boolean> {
+  let keys: string[];
+  try {
+    keys = (await readCoreRetentionProjection(siteId, crypto.randomUUID())).protected_artifact_keys;
+  } catch {
+    throw new Error("SERVICE_TEMPORARILY_UNAVAILABLE");
+  }
+  for (const key of keys) {
+    if (!new RegExp(`^publications/${siteId}/[0-9a-f-]{36}/[0-9a-f]{64}\\.json$`, "i").test(key)) {
+      throw new Error("SERVICE_TEMPORARILY_UNAVAILABLE");
+    }
+    const artifact = JSON.parse(new TextDecoder().decode(await readObject(cmsConfig().artifactBucket, key))) as { media?: Array<{ id?: unknown }> };
+    if ((artifact.media ?? []).some((item) => String(item.id) === mediaId)) return true;
+  }
+  return false;
 }
 
 async function verifiedObject(
@@ -274,7 +355,7 @@ export async function createUploadGrant(
     !ACCEPTED.has(input.content_type) ||
     !Number.isInteger(input.bytes) ||
     input.bytes < 1 ||
-    input.bytes > MAX_BYTES
+    input.bytes > maxBytesFor(input.content_type)
   )
     throw new Error("MEDIA_REJECTED");
   const declaredMime = input.content_type as
@@ -319,7 +400,7 @@ export async function createUploadGrant(
       expires_in_seconds: 300,
       upload_url: grant.url,
       required_headers: grant.headers,
-      maximum_bytes: MAX_BYTES,
+      maximum_bytes: maxBytesFor(declaredMime),
     };
   } finally {
     req.context.minglaMediaGrant = previousGrantContext;
@@ -338,7 +419,9 @@ async function reject(
     | "DECODE_FAILED"
     | "CHECKSUM_MISMATCH"
     | "METADATA_RETAINED"
-    | "PROCESSING_FAILED",
+    | "PROCESSING_FAILED"
+    | "VIDEO_NOT_FASTSTART"
+    | "VIDEO_CODEC",
 ) {
   let quarantineRemoved = false;
   try {
@@ -389,13 +472,23 @@ async function processApprovedVideo(
   checksum: string,
   source: Uint8Array,
   quarantineKey: string,
+  inspection: { durationMs: number; width: number; height: number },
 ) {
   await req.payload.update({
     collection: "media",
     id: media.id,
     overrideAccess: false,
     req,
-    data: { state: "PROCESSING", detected_mime: "video/mp4", checksum },
+    data: {
+      state: "PROCESSING",
+      detected_mime: "video/mp4",
+      kind: "file_video",
+      checksum,
+      // #2829 W6 — the length (hero loops are held to 15 s) and frame size.
+      duration_ms: inspection.durationMs,
+      width: inspection.width || null,
+      height: inspection.height || null,
+    },
   });
   const siteId = (req.user as unknown as { siteId: string }).siteId;
   const key =
@@ -412,7 +505,16 @@ async function processApprovedVideo(
       approved_master_key: key,
       rendition_manifest: {
         version: 1,
-        master: { key, digest, bytes: source.byteLength },
+        // #2829 W6 (AD-9) — SHA-256 per 1 MiB chunk, computed at approval
+        // and frozen into each publication, so the runtime verifies a byte
+        // range by reading only the chunks that cover it.
+        master: {
+          key,
+          digest,
+          bytes: source.byteLength,
+          chunk_size: VIDEO_CHUNK_BYTES,
+          chunk_digests: await chunkDigests(source, VIDEO_CHUNK_BYTES),
+        },
         // No widths: a video is served as stored. An empty list is the honest
         // record of that, rather than five fabricated entries pointing at one
         // file.
@@ -461,7 +563,7 @@ async function processUpload(
   if (
     source.byteLength !== observedBytes ||
     source.byteLength !== media.bytes ||
-    source.byteLength > MAX_BYTES
+    source.byteLength > maxBytesFor(String(media.declared_mime))
   )
     return reject(req, media.id, key, "TOO_LARGE");
   if ((await sha256(source)) !== checksum)
@@ -489,7 +591,18 @@ async function processUpload(
    * a black rectangle on a slow connection.
    */
   if (mime === "video/mp4") {
-    return processApprovedVideo(req, media, checksum, source, key);
+    // #2829 W6 — a site video must play inline and seek: H.264 (AAC audio),
+    // fast start (index before data). Refused with a plain reason otherwise.
+    const inspection = inspectMp4(source);
+    if (!inspection.ok) {
+      return reject(
+        req,
+        media.id,
+        key,
+        inspection.reason === "NOT_FASTSTART" ? "VIDEO_NOT_FASTSTART" : inspection.reason === "CODEC" ? "VIDEO_CODEC" : "MIME_MISMATCH",
+      );
+    }
+    return processApprovedVideo(req, media, checksum, source, key, inspection);
   }
   let metadata: Metadata;
   try {
@@ -512,6 +625,7 @@ async function processUpload(
     data: {
       state: "PROCESSING",
       detected_mime: mime,
+      kind: "image",
       width: metadata.width,
       height: metadata.height,
       checksum,
@@ -557,6 +671,35 @@ async function processUpload(
       bytes: output.byteLength,
     });
   }
+  /*
+   * #2829 W7b — the extra renditions a design can offer in `srcset`: 4:3
+   * centre crops (400×300, 768×576) and the picture 1600 wide. Never
+   * enlarged: when the upload is smaller than a rendition in either
+   * direction, that rendition is the upload at its own size, uncropped (and
+   * the page lists each width once).
+   */
+  const variants = [];
+  for (const variant of MEDIA_VARIANTS) {
+    const output = await sharp(source, { limitInputPixels: MAX_PIXELS })
+      .rotate()
+      .resize(variant.height === null
+        ? { width: variant.width, withoutEnlargement: true }
+        : { width: variant.width, height: variant.height, fit: "cover", position: "centre", withoutEnlargement: true })
+      .webp({ quality: 80 })
+      .toBuffer();
+    const outputMeta = await sharp(output).metadata();
+    const variantKey = `${base}/${variant.name}.webp`;
+    const digest = await sha256(output);
+    outputs.push({ key: variantKey, bytes: output, digest });
+    variants.push({
+      name: variant.name,
+      width: outputMeta.width ?? variant.width,
+      height: outputMeta.height ?? variant.height ?? 0,
+      key: variantKey,
+      digest,
+      bytes: output.byteLength,
+    });
+  }
   const renditionManifest = {
     version: 1,
     master: {
@@ -565,6 +708,7 @@ async function processUpload(
       bytes: master.byteLength,
     },
     renditions,
+    ...(variants.length ? { variants } : {}),
   };
 
   // Persist every deterministic approved key before the first write. If a
@@ -725,56 +869,25 @@ export async function tombstoneMedia(req: PayloadRequest, mediaId: string) {
     tenantId !== actor.tenantId
   ) throw new Error("FORBIDDEN");
   if (media.state !== "READY") throw new Error("INVALID_STATE");
-  const pages = await req.payload.find({
-    collection: "pages",
-    overrideAccess: false,
-    req,
-    draft: true,
-    depth: 0,
-    limit: 5,
-    where: { tenant: { equals: tenantId } },
-  });
-  for (const page of pages.docs) {
-    const blocks = Array.isArray(page.blocks) ? page.blocks : [];
-    for (const block of blocks as Array<Record<string, unknown>>) {
-      if (relationshipId(block.media) === mediaId) {
-        throw new Error("INVALID_STATE");
-      }
-      if (
-        Array.isArray(block.images) &&
-        block.images.some(
-          (row) =>
-            relationshipId((row as Record<string, unknown>).media) === mediaId,
-        )
-      ) {
-        throw new Error("INVALID_STATE");
-      }
-    }
+  // #2829 — EVERY page (a capped read let a photo used only on the sixth
+  // page look unused), every content entry, the settings, navigation and
+  // footer, and EVERY media field their schemas declare (a hand list missed
+  // the hero video, a film's video and poster and team portraits, so media
+  // used only there looked unused and retention would delete it).
+  // #2829 W11 (A11) — refused with a reason the owner can act on.
+  if ((await tenantMediaInUse(req, tenantId)).has(mediaId)) {
+    throw new Error("MEDIA_IN_USE_DRAFT");
   }
-  const settings = await req.payload.find({
-    collection: "site-settings",
-    overrideAccess: false,
-    req,
-    draft: true,
-    depth: 0,
-    limit: 1,
-    where: { tenant: { equals: tenantId } },
-  });
-  const setting = settings.docs[0];
-  if (
-    setting &&
-    [setting.logo, setting.social_image].some(
-      (value) => relationshipId(value) === mediaId,
-    )
-  ) {
-    throw new Error("INVALID_STATE");
-  }
+  // Storage layout is validated before anything leaves this process.
   const objects = mediaStorageObjects(
     media,
     tenantId,
     actor.siteId,
     String(media.id),
   );
+  if (await mediaOnProtectedPublication(actor.siteId, String(media.id))) {
+    throw new Error("MEDIA_IN_USE_LIVE");
+  }
   for (const object of objects) {
     const bytes = await verifiedObject(
       cmsConfig().approvedBucket,
@@ -786,7 +899,7 @@ export async function tombstoneMedia(req: PayloadRequest, mediaId: string) {
       cmsConfig().recoveryBucket,
       object.recoveryKey,
       bytes,
-      "image/webp",
+      storedContentType(object.approvedKey),
     );
     await verifiedObject(
       cmsConfig().recoveryBucket,
@@ -859,7 +972,7 @@ export async function restoreTombstonedMedia(
       cmsConfig().approvedBucket,
       object.approvedKey,
       recoveryBytes,
-      "image/webp",
+      storedContentType(object.approvedKey),
     );
     await verifiedObject(
       cmsConfig().approvedBucket,
@@ -1032,19 +1145,44 @@ export async function runRetentionSweep(
     },
   });
   const protectedSet = new Set(protectedArtifactKeys);
+  const keptArtifactKeys = new Set(protectedArtifactKeys);
   let purgedArtifacts = 0;
   for (const [index, job] of jobs.docs.entries()) {
+    if (typeof job.artifact_key !== "string") continue;
     if (
-      typeof job.artifact_key !== "string" ||
       !artifactMayBePurged({
         protectedByCore: protectedSet.has(job.artifact_key),
         completedAt: job.updatedAt,
         newestRank: index + 1,
       })
-    )
+    ) {
+      keptArtifactKeys.add(job.artifact_key);
       continue;
+    }
     await deleteObject(cmsConfig().artifactBucket, job.artifact_key);
     purgedArtifacts += 1;
+  }
+  // #2829 W11 (A14) — offering-cover renditions no kept publication (and no
+  // recent preview) refers to any more; see sweepOfferingRenditions. Spend
+  // cap: storage must not grow with every cover a site ever showed. A failed
+  // listing or read deletes nothing and is reported, never silent; the rest
+  // of the sweep stands.
+  try {
+    const renditions = await sweepOfferingRenditions({
+      siteId,
+      keptArtifactKeys: [...keptArtifactKeys],
+      deps: {
+        list: (prefix) => listObjects(
+          prefix.startsWith("publications/") ? cmsConfig().artifactBucket : cmsConfig().approvedBucket,
+          prefix,
+        ),
+        readArtifact: async (key) => JSON.parse(new TextDecoder().decode(await readObject(cmsConfig().artifactBucket, key))),
+        remove: (key) => deleteObject(cmsConfig().approvedBucket, key),
+      },
+    });
+    emitRenditionSweep(siteId, `scanned:${renditions.scanned}->purged:${renditions.purged}`, null);
+  } catch {
+    emitRenditionSweep(siteId, "scan->skipped", "SERVICE_TEMPORARILY_UNAVAILABLE");
   }
   return {
     protected_artifacts: protectedSet.size,
@@ -1052,4 +1190,23 @@ export async function runRetentionSweep(
     purged_media: purgedMedia,
     purged_artifacts: purgedArtifacts,
   };
+}
+
+function emitRenditionSweep(siteId: string, transition: string, code: string | null): void {
+  emitCmsObservation({
+    event: "mingla_sites_state",
+    metric: code ? "retention.offering_renditions_skipped" : "retention.offering_renditions_swept",
+    request_id: crypto.randomUUID(),
+    operation_id: null,
+    site_id: siteId,
+    publication_id: null,
+    direction: "core_to_cms",
+    route: "/api/internal/retention-sweep",
+    state_transition: transition,
+    latency_ms: 0,
+    retry_count: 0,
+    safe_error_code: code,
+    status_code: null,
+    version: "sites-v1",
+  });
 }

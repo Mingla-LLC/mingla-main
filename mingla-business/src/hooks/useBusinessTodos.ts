@@ -52,6 +52,7 @@ import { useBrandPayoutScreen } from "./useBrandPayoutScreen";
 import { formatCurrency } from "../utils/currency";
 import { useCurrentBrandRole } from "./useCurrentBrandRole";
 import { canViewBrandPayments } from "../utils/brandPaymentsPermission";
+import { useWebsiteTodo } from "./useWebsiteTodo";
 import { useBrandEnquiries } from "./useBrandEnquiries";
 import { brandEnquiryTodos } from "../utils/brandEnquiryWaiting";
 
@@ -319,6 +320,11 @@ export function useBusinessTodos(): BusinessTodo[] {
     return undefined;
   }, [payoutScreen.data]);
 
+  // #2829 W9a — the website plan row (its plan code loads lazily).
+  const website = useWebsiteTodo(
+    currentBrand !== null && !isBrandResolving ? currentBrand.id : null,
+  );
+
   // #4111 D4 — one "Reply to {name}" row per enquiry waiting on the team.
   const enquiries = useBrandEnquiries("open", { enabled: isAuthReady === true });
   const enquiryItems = enquiries.data?.items;
@@ -368,8 +374,10 @@ export function useBusinessTodos(): BusinessTodo[] {
         profile,
         insightsNudges,
         venueOrderCompleteness,
+        website,
       }),
     [
+      website,
       profile,
       pendingInvites,
       enquiryTodos,

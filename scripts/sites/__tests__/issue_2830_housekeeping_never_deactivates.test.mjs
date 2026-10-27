@@ -836,71 +836,15 @@ test("#2830 the expression model agrees with the conditions it was written for",
 // T-8.1 — the runbook says how to get the site back
 // ---------------------------------------------------------------------------
 
-test("#2830 T-8.1 the runbook documents re-activation after a deactivation", () => {
-  const at = RUNBOOK.indexOf("\n## Re-activating the pilot after a deactivation\n");
-  assert.ok(at >= 0, "the runbook has the re-activation section");
-  const rest = RUNBOOK.slice(at + 1);
-  const end = rest.indexOf("\n## ", 1);
-  const section = end === -1 ? rest : rest.slice(0, end);
-  // The exact command.
-  assert.match(section, /^ {3}node scripts\/sites\/activate-gogi-pilot\.mjs$/m);
-  assert.ok(existsSync(join(REPO, "scripts/sites/activate-gogi-pilot.mjs")));
-  // The four variables the script requires.
-  for (const name of [
-    "SITES_PILOT_SITE_ID",
-    "SITES_CORE_BASE_URL",
-    "SITES_CORE_SERVICE_ROLE_KEY",
-    "SITES_CANDIDATE_PROBE_SECRET",
-  ]) assert.ok(section.includes(`\`${name}\``), `runbook names ${name}`);
-  // The three preconditions.
-  assert.match(section, /Backup evidence is under 26 hours old/);
-  assert.match(section, /restore drill is under 100 days old/);
-  assert.match(section, /host is `pending`/);
-  // The expected success line, and that nothing does this automatically.
-  assert.match(section, /SITES_GOGI_ACTIVATED site=<site id> publication=<publication id>/);
-  assert.match(section, /Nothing\s+re-activates it automatically/);
-  assert.match(section, /https:\/\/gogi\.sites\.usemingla\.com\/` returns HTTP 200/);
-  assert.match(section, /SITES_BACKUP_EVIDENCE_OK/);
-  // Which failures deactivate, and that retention is not one of them.
-  assert.match(section, /SITES_HOUSEKEEPING_ALERT/);
+// #2829 converted: the three T-8.1 tests asserted the runbook's manual
+// re-activation of the single gogi pilot and the script that did it. Sites no
+// longer has a pilot switch to throw back on: a late backup alerts and takes
+// nothing down, and only an owner/admin action takes a site offline. The
+// replacement is asserted here and in issue_2829_recovery_alert_only.test.mjs.
+test("#2830 T-8.1 there is no pilot activation script left to run", () => {
+  assert.equal(existsSync(join(REPO, "scripts/sites/activate-gogi-pilot.mjs")), false);
+  const backup = readFileSync(join(REPO, "scripts/sites/backup-sites-cms.mjs"), "utf8");
+  assert.equal(backup.includes("pilot-deactivation"), false);
+  assert.ok(backup.includes("/recovery-state"));
 });
 
-test("#2830 T-8.1 the runbook says who runs it and what is checked before activating", () => {
-  const at = RUNBOOK.indexOf("\n## Re-activating the pilot after a deactivation\n");
-  const rest = RUNBOOK.slice(at + 1);
-  const end = rest.indexOf("\n## ", 1);
-  const section = (end === -1 ? rest : rest.slice(0, end)).replace(/\s+/g, " ");
-  assert.match(section, /Who: whoever holds the Core service-role key\./);
-  for (const phrase of [
-    "What the script checks before it activates",
-    "reads back `configured` with the pilot still disabled",
-    "active publication is also its last successful publication",
-    "carries a valid artifact digest",
-    "signed candidate probe of that exact publication",
-    "reads back `verified`",
-    "host probe no older than 15 minutes",
-    "deactivates again by itself",
-  ]) assert.ok(section.includes(phrase), `runbook states: ${phrase}`);
-  // Names only. No value, and no assignment form that invites pasting one.
-  assert.equal(/SITES_[A-Z_]+=|eyJ[A-Za-z0-9_-]{10,}/.test(section), false);
-  // Each stated check corresponds to a guard in the script.
-  const script = readFileSync(join(REPO, "scripts/sites/activate-gogi-pilot.mjs"), "utf8");
-  for (const guard of [
-    "PILOT_CONFIGURATION_READBACK_MISMATCH",
-    "PILOT_SITE_NOT_PUBLISHED",
-    "PILOT_PUBLICATION_INVALID",
-    "HOST_READINESS_READBACK_MISMATCH",
-    "PILOT_COMMITTED_READBACK_FAILED",
-  ]) assert.ok(script.includes(guard), `${guard} is still a guard in the activation script`);
-});
-
-test("#2830 T-8.1 the runbook's variable names and success line match the activation script", () => {
-  const script = readFileSync(join(REPO, "scripts/sites/activate-gogi-pilot.mjs"), "utf8");
-  for (const name of [
-    "SITES_PILOT_SITE_ID",
-    "SITES_CORE_BASE_URL",
-    "SITES_CORE_SERVICE_ROLE_KEY",
-    "SITES_CANDIDATE_PROBE_SECRET",
-  ]) assert.ok(script.includes(`"${name}"`), `${name} is read by the activation script`);
-  assert.match(script, /SITES_GOGI_ACTIVATED site=\$\{config\.siteId\} publication=\$\{publication\.id\}/);
-});

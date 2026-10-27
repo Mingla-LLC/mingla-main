@@ -7,7 +7,7 @@ const read = (relative: string) =>
 
 describe("#2830 Restaurant Website v1 visual and accessibility contract", () => {
   const renderer = read("src/components/RestaurantV1.tsx");
-  const styles = read("src/app/styles.css");
+  const styles = read("public/designs/legacy-v1.css");
 
   it("pins the sole pilot composition to the approved near-black and warm-gold tokens", () => {
     expect(styles).toContain("--ink: #101013");
@@ -117,8 +117,12 @@ describe("#2830 Restaurant Website v1 visual and accessibility contract", () => 
     expect(renderer).toContain("isCanonicalMinglaHref");
     expect(renderer).toContain("TrackedLink");
     expect(renderer).toContain("ConsentControl");
-    expect(read("src/app/page.tsx")).toContain("alternates: { canonical:");
-    expect(read("src/app/page.tsx")).toContain("openGraph:");
+    // #2829 W2 — every page (home included) is served by the catch-all route.
+    // #2829 W10 — the page's metadata is built by lib/seo.ts (title template,
+    // canonical, Open Graph, Twitter), which the catch-all route calls.
+    expect(read("src/app/[[...path]]/page.tsx")).toContain("buildPageMetadata(");
+    expect(read("src/lib/seo.ts")).toContain("alternates: { canonical }");
+    expect(read("src/lib/seo.ts")).toContain("openGraph:");
     expect(read("src/app/sitemap.ts")).toContain("sitemap");
     expect(read("src/app/robots.ts")).toContain("robots");
   });

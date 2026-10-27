@@ -23,6 +23,11 @@ const ALLOWED_EVENTS = new Set([
   "contact_click",
   "consent_granted",
   "consent_denied",
+  // #2829 W10
+  "book_click",
+  "form_submit_contact",
+  "form_submit_newsletter",
+  "outbound_click",
 ]);
 
 function token(): string {
@@ -131,6 +136,7 @@ async function handleBrandSiteAttributionRequest(
         "referrer_class",
         "consent_policy_version",
         "event_id",
+        "page_path",
       ]);
       if (Object.keys(input).some((key) => !eventKeys.has(key))) {
         return sitesJson(
@@ -243,11 +249,24 @@ async function handleBrandSiteAttributionRequest(
       const tokenDigest = await digest(pepper, rawToken);
       const { data: touch } = await service
         .from("brand_site_attribution_touches")
-        .select("id")
+        .select("id,brand_id,consumed_at")
         .eq("token_digest", tokenDigest)
         .eq("site_id", siteId)
         .maybeSingle();
-      if (!touch) return sitesJson({ ok: true, data: { accepted: false } });
+      if (!touch || touch.consumed_at) {
+        return sitesJson({ ok: true, data: { accepted: false } });
+      }
+      // #3652 — the ORDER end of the binding: only an order of this touch's
+      // brand may spend it. Core re-checks brand, venue and timing inside the
+      // RPC; this refuses before a foreign order id ever reaches it.
+      const { data: order, error: orderError } = await service
+        .from("venue_orders")
+        .select("id,brand_id")
+        .eq("id", orderId)
+        .maybeSingle();
+      if (orderError || !order || order.brand_id !== touch.brand_id) {
+        return sitesJson({ ok: true, data: { accepted: false } });
+      }
       const { error } = await service.rpc("brand_site_consume_attribution", {
         p_token_digest: tokenDigest,
         p_order_id: orderId,

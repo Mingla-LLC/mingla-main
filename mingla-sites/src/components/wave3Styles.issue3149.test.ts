@@ -22,7 +22,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const CSS = fs.readFileSync(
-  path.resolve(process.cwd(), "src/app/styles.css"),
+  path.resolve(process.cwd(), "public/designs/legacy-v1.css"),
   "utf8",
 );
 

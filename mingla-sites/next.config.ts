@@ -1,5 +1,10 @@
 import type { NextConfig } from "next";
 import { API_CSP } from "./src/lib/csp";
+import { assertNoLocalModeOnVercelBuild } from "./src/lib/localMode";
+
+// #2829 — a Vercel build with a local-mode variable fails here, so a mis-set
+// project variable stops the deploy instead of shipping a weakened build.
+assertNoLocalModeOnVercelBuild(process.env);
 
 /*
  * The Content-Security-Policy for every HTML route is built per request in

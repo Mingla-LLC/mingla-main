@@ -34,8 +34,9 @@ describe("#2893 Business Website availability projection", () => {
       path.resolve(__dirname, "../../components/brand/BrandProfileView.tsx"),
       "utf8",
     );
+    // #2829 W9r — the Website section's shell redirects out on Core's answer.
     const route = fs.readFileSync(
-      path.resolve(__dirname, "../../../app/brand/[id]/website.tsx"),
+      path.resolve(__dirname, "../../components/sites/website/WebsiteApp.tsx"),
       "utf8",
     );
     const flags = fs.readFileSync(

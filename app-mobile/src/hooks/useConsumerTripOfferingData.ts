@@ -23,7 +23,54 @@ import {
   type TripRefundPolicyShape,
 } from "@mingla/offering-rendering";
 
-import type { ConsumerTripDetail } from "./useConsumerTripDetail";
+import { useQuery } from "@tanstack/react-query";
+import {
+  toTripOfferingGuide,
+  type TripOfferingGuide,
+} from "@mingla/offering-rendering/tripGuide";
+
+import { supabase } from "../services/supabase";
+import {
+  consumerTripDetailKeys,
+  type ConsumerTripDetail,
+} from "./useConsumerTripDetail";
+
+/**
+ * Issue #2829 W4 — the trip guide (highlights, what to prepare, good to know,
+ * FAQs, group size) the host wrote, read from `pg_public_trip_guide`. Its key
+ * lives under the consumer trip-detail family. A failed read hides the guide
+ * (the trip page never waits on it) and is logged, never swallowed.
+ */
+export const consumerTripGuideKeys = {
+  guide: (tripId: string) =>
+    [...consumerTripDetailKeys.all, "guide", tripId] as const,
+};
+
+export function useConsumerTripGuide(tripId: string | null): unknown {
+  const query = useQuery<unknown, Error>({
+    queryKey:
+      tripId !== null
+        ? consumerTripGuideKeys.guide(tripId)
+        : consumerTripDetailKeys.all,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("pg_public_trip_guide", {
+        p_trip_id: tripId as string,
+      });
+      if (error !== null) {
+        console.warn("[useConsumerTripGuide] guide read failed; the guide is hidden", {
+          tripId,
+          message: error.message,
+        });
+        throw error;
+      }
+      return data ?? null;
+    },
+    enabled: tripId !== null,
+    staleTime: 60_000,
+    retry: 1,
+  });
+  return query.data ?? null;
+}
 
 // META-ORCH-1174 Leg A.3 — "N days · M nights" derives via the SHARED Hermes-safe
 // deriveTripDuration (the RPC's space-separated timestamps broke bare Date.parse
@@ -55,7 +102,9 @@ export interface ConsumerTripTierEnrichment {
 export function buildConsumerTripOfferingData(
   detail: ConsumerTripDetail,
   enrichmentByTier?: Map<string, ConsumerTripTierEnrichment> | null,
-): TripOfferingData {
+  // Issue #2829 W4 — pg_public_trip_guide JSON (null/undefined → no guide).
+  guideRaw?: unknown,
+): TripOfferingData & { guide: TripOfferingGuide | null } {
   const duration = deriveTripDuration(detail.startAt, detail.endAt);
   const isSoldOut = detail.spotsLeft !== null && detail.spotsLeft <= 0;
   const cap = detail.totalCapacity;
@@ -137,6 +186,7 @@ export function buildConsumerTripOfferingData(
     destinationLng: detail.destinationLng,
     bookable: detail.bookable !== false,
     bookingsClosed: detail.bookingsClosed === true,
+    guide: toTripOfferingGuide(guideRaw ?? null, cap),
   };
 }
 

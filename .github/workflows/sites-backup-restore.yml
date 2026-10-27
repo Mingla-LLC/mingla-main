@@ -88,7 +88,6 @@ jobs:
       - run: >-
           node --test
           scripts/sites/__tests__/issue_2893_sites_ops.implementor.test.mjs
-          scripts/sites/__tests__/issue_2893_gogi_activation.test.mjs
           scripts/sites/__tests__/issue_2893_sites_ops.tester.adversarial.test.mjs
           scripts/sites/__tests__/issue_3154_abandoned_upload_grants.tester.adversarial.test.mjs
           scripts/sites/__tests__/issue_2948_backup_window_absent.test.mjs
@@ -100,6 +99,19 @@ jobs:
           scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.test.mjs
           scripts/sites/__tests__/issue_2830_retention_response_contract.test.mjs
           scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.tester.adversarial.test.mjs
+          scripts/sites/__tests__/issue_2829_local_mode_ops.test.mjs
+          scripts/sites/__tests__/issue_2829_local_stack_scripts.test.mjs
+          scripts/sites/__tests__/issue_2829_no_single_tenant_pins.test.mjs
+          scripts/sites/__tests__/issue_2829_recovery_alert_only.test.mjs
+          scripts/sites/__tests__/issue_2829_site_contracts_sync.test.mjs
+          scripts/sites/__tests__/issue_2829_preview_reader_policy.test.mjs
+          scripts/sites/__tests__/issue_2829_google_fonts_catalog.test.mjs
+          scripts/sites/__tests__/issue_2829_font_storage_policy.test.mjs
+          scripts/sites/__tests__/issue_2829_historical_import.test.mjs
+          scripts/sites/__tests__/issue_2829_brand_seed_transform.test.mjs
+          scripts/sites/__tests__/issue_2829_goldens_arm64_job.test.mjs
+          scripts/sites/__tests__/issue_2829_parity_capture_settle.test.mjs
+          scripts/sites/__tests__/issue_2829_edge_host_gateway.test.mjs
 
   backup_restore:
     name: "Private backup and isolated restore"

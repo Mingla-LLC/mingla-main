@@ -15,6 +15,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #2331: re-sealed after the #905 /links and #922 actionability providers
 // gained the privacy-bar owners in their path scope (the /links route
 // suppression module is retired).
+// #2829: re-sealed after the existing web-build-check provider gained its
+// exact goldens-on-arm64 regression consumer (W7c).
 // #4111: re-sealed after the #679 brand-page suite gained the brand page foot
 // render proof and the message-sheet rework proof (issue_4111_*.render.test.tsx).
 // #4111: re-sealed after the #2272 workflow escaped `+` in its +native-intent.tsx
@@ -31,7 +33,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // fingerprint (sourceSha256) and gained their per-job timeouts; the validator
 // now checks those rows by property.
 // The four sourceSha256-only patches are deleted and that patch op is refused.
-export const BOOTSTRAP_SHA256 = "aff419dda6ead6a71967b74e82a81ddc21f0bbb03e6ca4b0c7529e61fc7f9083";
+// #2829: re-sealed after merging origin/main, keeping the W7c reviewed reference
+// (the Sites goldens test names web-build-check.yml to pin its arm64 job).
+export const BOOTSTRAP_SHA256 = "f090686732238f3ee5308b76b62f9c218a2fa19577f83c7c951fc547bd05e553";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -1,0 +1,72 @@
+# #2829 W0 — the LOCAL stand-in for the separate Sites CMS Supabase project.
+#
+# Production keeps Core and the Sites CMS in two different Supabase projects;
+# the local stack mirrors that boundary with a second `supabase start` from
+# this directory (see docs/runbooks/SITES_LOCAL_STACK.md). Only the database,
+# storage and auth are needed: Payload owns schema `sites_cms`, the four
+# private Sites buckets live in storage, and the runtime's storage reader signs
+# in through auth. Everything else is off to save memory.
+#
+# Ports 55421-55429 keep this stack clear of every other local stack on the
+# Mac (Core for #2829 runs on 55321-55329; other chats use the 5432x defaults).
+project_id = "mingla-sites-cms-local"
+
+[api]
+enabled = true
+port = 55421
+# sites_cms is deliberately NOT exposed; bootstrap-sites-cms.sql fails closed
+# if the Data API ever names it.
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 55422
+shadow_port = 55420
+major_version = 17
+
+[db.pooler]
+enabled = false
+port = 55429
+
+[db.seed]
+enabled = false
+
+[realtime]
+enabled = false
+
+[studio]
+enabled = false
+port = 55423
+
+[inbucket]
+enabled = false
+port = 55424
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[storage.s3_protocol]
+enabled = true
+
+[auth]
+enabled = true
+site_url = "http://localhost:3101"
+additional_redirect_urls = []
+jwt_expiry = 3600
+enable_signup = false
+enable_anonymous_sign_ins = false
+
+# Email sign-in stays ON (the seed users and the runtime storage reader sign in
+# with a password); setting [auth.email] enable_signup = false would switch
+# the whole email provider off. Sign-ups are closed by [auth] enable_signup.
+[auth.email]
+enable_confirmations = false
+
+[edge_runtime]
+enabled = false
+
+[analytics]
+enabled = false
+port = 55427

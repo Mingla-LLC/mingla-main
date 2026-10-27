@@ -16,7 +16,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const styles = fs.readFileSync(
-  path.resolve(process.cwd(), "src/app/styles.css"),
+  path.resolve(process.cwd(), "public/designs/legacy-v1.css"),
   "utf8",
 ).replace(/\/\*[\s\S]*?\*\//g, "");
 

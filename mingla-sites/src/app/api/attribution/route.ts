@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { hasGrantedAnalyticsConsent } from "../../../lib/consent";
 import { signedCorePost } from "../../../lib/coreGateway";
+import { loadPublication, requestHost } from "../../../lib/publication";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -38,17 +39,31 @@ export async function POST(request: Request) {
     input.source_kind !== "site" ||
     !/^[A-Za-z0-9_.-]{1,80}$/.test(String(input.source_ref || ""))
   ) return NextResponse.json({ ok: false }, { status: 400 });
+  // #2829 — the site is the one the request's host resolved to; ids in the
+  // body must match it exactly or nothing is signed.
+  let publication: Awaited<ReturnType<typeof loadPublication>>;
+  try {
+    publication = await loadPublication(requestHost(request.headers));
+  } catch {
+    return NextResponse.json({ ok: false }, { status: 404 });
+  }
+  const { artifact, resolution } = publication;
+  if (
+    input.siteId !== artifact.site_id ||
+    input.brandId !== artifact.brand_id ||
+    input.publicationId !== artifact.publication_id
+  ) return NextResponse.json({ ok: false }, { status: 403 });
   const response = await signedCorePost({
     edgeFunction: "brand-site-attribution",
-    path: `/internal/v1/sites/${input.siteId}/attribution`,
-    siteId: String(input.siteId),
+    path: `/internal/v1/sites/${artifact.site_id}/attribution`,
+    site: resolution,
     body: {
       action: "issue",
       consent_granted: true,
       event_name: input.event_name,
-      site_id: input.siteId,
-      brand_id: input.brandId,
-      publication_id: input.publicationId,
+      site_id: artifact.site_id,
+      brand_id: artifact.brand_id,
+      publication_id: artifact.publication_id,
       consent_policy_version: "sites-v1",
       source_kind: "site",
       source_ref: input.source_ref,

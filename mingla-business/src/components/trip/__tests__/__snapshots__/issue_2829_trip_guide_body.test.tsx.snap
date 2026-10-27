@@ -1,0 +1,1447 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`#2829 trip guide on the shared trip body a trip without a guide renders exactly as before: trip without a guide 1`] = `
+<View
+  ref={null}
+>
+  <View
+    ref={null}
+    style={
+      {
+        "marginBottom": 4,
+      }
+    }
+    testID="trip-body-title"
+  >
+    <Text
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 11,
+            "fontWeight": "900",
+            "letterSpacing": 1.6,
+            "marginBottom": 8,
+            "textTransform": "uppercase",
+          },
+          {
+            "color": "#ffffff",
+          },
+        ]
+      }
+    >
+      5 days · 4 nights · Sarandë, Albania
+    </Text>
+    <Text
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 32,
+            "fontWeight": "900",
+            "letterSpacing": -0.5,
+          },
+          {
+            "color": "#ffffff",
+          },
+          {
+            "fontFamily": "Inter_700Bold",
+          },
+        ]
+      }
+    >
+      Albania coast
+    </Text>
+  </View>
+  <View
+    ref={null}
+    testID="trip-body-route-pills"
+  >
+    <View
+      ref={null}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "alignSelf": "stretch",
+            "borderRadius": 16,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "gap": 10,
+            "marginTop": 12,
+            "paddingHorizontal": 14,
+            "paddingVertical": 12,
+            "width": "100%",
+          },
+          {
+            "backgroundColor": "rgba(174,89,28,0.24)",
+            "borderColor": "rgba(174,89,28,0.38)",
+          },
+        ]
+      }
+    >
+      <Icon.Calendar />
+      <Text
+        ellipsizeMode="tail"
+        numberOfLines={1}
+        ref={null}
+        style={
+          [
+            {
+              "flex": 1,
+              "fontSize": 15,
+              "fontWeight": "800",
+              "letterSpacing": -0.2,
+              "minWidth": 0,
+            },
+            {
+              "color": "#ffffff",
+              "fontFamily": "Inter_700Bold",
+            },
+          ]
+        }
+      >
+        Jun 28 – Jul 2, 2026
+      </Text>
+    </View>
+    <View
+      ref={null}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "alignSelf": "stretch",
+            "borderRadius": 16,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "gap": 10,
+            "marginTop": 12,
+            "paddingHorizontal": 14,
+            "paddingVertical": 12,
+            "width": "100%",
+          },
+          {
+            "backgroundColor": "rgba(174,89,28,0.24)",
+            "borderColor": "rgba(174,89,28,0.38)",
+          },
+        ]
+      }
+      testID="trip-body-route-pill"
+    >
+      <Icon.Plane />
+      <Text
+        ellipsizeMode="tail"
+        numberOfLines={1}
+        ref={null}
+        style={
+          [
+            {
+              "flex": 1,
+              "fontSize": 15,
+              "fontWeight": "800",
+              "letterSpacing": -0.2,
+              "minWidth": 0,
+            },
+            {
+              "color": "#ffffff",
+              "fontFamily": "Inter_700Bold",
+            },
+          ]
+        }
+      >
+        From Tirana, Albania → Sarandë, Albania
+      </Text>
+    </View>
+  </View>
+  <View
+    ref={null}
+    style={
+      {
+        "flexDirection": "row",
+        "flexWrap": "wrap",
+        "gap": 6,
+        "marginTop": 12,
+      }
+    }
+    testID="trip-body-meta-pills"
+  >
+    <View
+      ref={null}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "borderRadius": 999,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "gap": 5,
+            "paddingHorizontal": 10,
+            "paddingVertical": 5,
+          },
+          {
+            "backgroundColor": "rgba(174,89,28,0.24)",
+            "borderColor": "rgba(174,89,28,0.38)",
+          },
+        ]
+      }
+    >
+      <Icon.Moon />
+      <Text
+        numberOfLines={1}
+        ref={null}
+        style={
+          [
+            {
+              "fontSize": 12,
+              "fontWeight": "700",
+            },
+            {
+              "color": "#ffffff",
+              "fontFamily": "Inter_700Bold",
+            },
+          ]
+        }
+      >
+        5 days · 4 nights
+      </Text>
+    </View>
+    <View
+      ref={null}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "borderRadius": 999,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "gap": 5,
+            "paddingHorizontal": 10,
+            "paddingVertical": 5,
+          },
+          {
+            "backgroundColor": "rgba(174,89,28,0.24)",
+            "borderColor": "rgba(174,89,28,0.38)",
+          },
+        ]
+      }
+    >
+      <Icon.Users />
+      <Text
+        numberOfLines={1}
+        ref={null}
+        style={
+          [
+            {
+              "fontSize": 12,
+              "fontWeight": "700",
+            },
+            {
+              "color": "#ffffff",
+              "fontFamily": "Inter_700Bold",
+            },
+          ]
+        }
+      >
+        4 seats left · 16 max
+      </Text>
+    </View>
+  </View>
+  <View
+    ref={null}
+    style={
+      {
+        "marginTop": 24,
+      }
+    }
+    testID="trip-body-presented-by"
+  >
+    <View
+      ref={null}
+      style={
+        [
+          {
+            "borderRadius": 16,
+            "overflow": "hidden",
+            "paddingHorizontal": 14,
+            "paddingVertical": 12,
+          },
+          {
+            "backgroundColor": "rgba(255,255,255,0.10)",
+            "borderColor": "rgba(174,89,28,0.38)",
+            "borderWidth": 1,
+          },
+        ]
+      }
+    >
+      <Pressable
+        accessibilityLabel="View Young & Stamped"
+        disabled={true}
+        ref={null}
+        style={
+          {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "gap": 12,
+          }
+        }
+      >
+        <View
+          ref={null}
+          style={
+            [
+              {
+                "backgroundColor": "#1a1c20",
+                "borderRadius": 999,
+                "height": 42,
+                "overflow": "hidden",
+                "width": 42,
+              },
+              {
+                "backgroundColor": "#ae591c",
+              },
+            ]
+          }
+        >
+          <View
+            ref={null}
+            style={
+              {
+                "alignItems": "center",
+                "flex": 1,
+                "justifyContent": "center",
+              }
+            }
+          >
+            <Text
+              ref={null}
+              style={
+                [
+                  {
+                    "fontSize": 18,
+                    "fontWeight": "900",
+                  },
+                  {
+                    "color": "#ffffff",
+                    "fontFamily": "Inter_700Bold",
+                  },
+                ]
+              }
+            >
+              Y
+            </Text>
+          </View>
+        </View>
+        <View
+          ref={null}
+          style={
+            {
+              "flexGrow": 1,
+              "flexShrink": 1,
+            }
+          }
+        >
+          <Text
+            ref={null}
+            style={
+              [
+                {
+                  "fontSize": 10,
+                  "fontWeight": "800",
+                  "letterSpacing": 1.2,
+                  "textTransform": "uppercase",
+                },
+                {
+                  "color": "rgba(255,255,255,0.58)",
+                },
+              ]
+            }
+          >
+            Presented by
+          </Text>
+          <View
+            ref={null}
+            style={
+              {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "gap": 6,
+                "marginTop": 1,
+              }
+            }
+          >
+            <Text
+              ref={null}
+              style={
+                [
+                  {
+                    "fontSize": 15,
+                    "fontWeight": "800",
+                  },
+                  {
+                    "color": "#ffffff",
+                  },
+                  {
+                    "fontFamily": "Inter_700Bold",
+                  },
+                ]
+              }
+            >
+              Young & Stamped
+            </Text>
+          </View>
+          <PresentedByFollowerCount
+            testID="trip-presented-by-follower-count"
+          />
+        </View>
+      </Pressable>
+    </View>
+  </View>
+  <View
+    ref={null}
+    style={
+      {
+        "marginTop": 24,
+      }
+    }
+    testID="trip-body-about"
+  >
+    <Text
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 20,
+            "fontWeight": "900",
+            "letterSpacing": -0.3,
+            "marginBottom": 12,
+          },
+          {
+            "color": "#ffffff",
+          },
+          {
+            "fontFamily": "Inter_700Bold",
+          },
+        ]
+      }
+    >
+      About this trip
+    </Text>
+    <Text
+      ellipsizeMode="tail"
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 16,
+            "lineHeight": 23,
+          },
+          {
+            "color": "rgba(255,255,255,0.78)",
+          },
+        ]
+      }
+    >
+      Eight days along the Albanian Riviera with a small group.
+    </Text>
+  </View>
+  <View
+    ref={null}
+    style={
+      {
+        "marginTop": 24,
+      }
+    }
+    testID="trip-body-itinerary"
+  >
+    <Text
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 20,
+            "fontWeight": "900",
+            "letterSpacing": -0.3,
+            "marginBottom": 12,
+          },
+          {
+            "color": "#ffffff",
+          },
+          {
+            "fontFamily": "Inter_700Bold",
+          },
+        ]
+      }
+    >
+      Day by day
+    </Text>
+    <DayByDay />
+  </View>
+  <View
+    ref={null}
+    style={
+      {
+        "marginTop": 24,
+      }
+    }
+    testID="trip-body-included"
+  >
+    <Text
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 20,
+            "fontWeight": "900",
+            "letterSpacing": -0.3,
+            "marginBottom": 12,
+          },
+          {
+            "color": "#ffffff",
+          },
+          {
+            "fontFamily": "Inter_700Bold",
+          },
+        ]
+      }
+    >
+      What’s included
+    </Text>
+    <ChipGroup />
+  </View>
+  <View
+    ref={null}
+    style={
+      {
+        "marginTop": 24,
+      }
+    }
+    testID="trip-body-excluded"
+  >
+    <Text
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 20,
+            "fontWeight": "900",
+            "letterSpacing": -0.3,
+            "marginBottom": 12,
+          },
+          {
+            "color": "#ffffff",
+          },
+          {
+            "fontFamily": "Inter_700Bold",
+          },
+        ]
+      }
+    >
+      What’s not included
+    </Text>
+    <ChipGroup />
+  </View>
+  <View
+    ref={null}
+    testID="trip-body-cancellation"
+  >
+    <TripRefundLadder />
+  </View>
+  <View
+    ref={null}
+    style={
+      {
+        "marginTop": 24,
+      }
+    }
+    testID="trip-body-pay-box"
+  >
+    <Text
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 20,
+            "fontWeight": "900",
+            "letterSpacing": -0.3,
+            "marginBottom": 12,
+          },
+          {
+            "color": "#ffffff",
+          },
+          {
+            "fontFamily": "Inter_700Bold",
+          },
+        ]
+      }
+    >
+      Choose how you pay
+    </Text>
+    <View
+      ref={null}
+      style={
+        [
+          {
+            "borderRadius": 18,
+            "marginTop": 12,
+            "padding": 14,
+          },
+          {
+            "backgroundColor": "rgba(255,255,255,0.10)",
+            "borderColor": "rgba(174,89,28,0.38)",
+            "borderWidth": 1,
+          },
+        ]
+      }
+      testID="trip-body-select-box"
+    >
+      <View
+        ref={null}
+        style={
+          {
+            "alignItems": "baseline",
+            "flexDirection": "row",
+            "gap": 12,
+            "justifyContent": "space-between",
+          }
+        }
+      >
+        <Text
+          numberOfLines={1}
+          ref={null}
+          style={
+            [
+              {
+                "flexShrink": 1,
+                "fontSize": 15,
+                "fontWeight": "800",
+              },
+              {
+                "color": "#ffffff",
+              },
+              {
+                "fontFamily": "Inter_700Bold",
+              },
+            ]
+          }
+        >
+          Shared room
+        </Text>
+        <Text
+          ref={null}
+          style={
+            [
+              {
+                "fontSize": 22,
+                "fontWeight": "900",
+                "letterSpacing": -0.4,
+              },
+              {
+                "color": "#ffffff",
+              },
+              {
+                "fontVariant": [
+                  "tabular-nums",
+                ],
+              },
+            ]
+          }
+          testID="trip-body-select-total"
+        >
+          $1,800
+        </Text>
+      </View>
+      <Pressable
+        accessibilityLabel="Reserve my spot"
+        accessibilityRole="button"
+        accessibilityState={
+          {
+            "disabled": false,
+          }
+        }
+        disabled={false}
+        onPress={[Function]}
+        ref={null}
+        style={
+          [
+            {
+              "alignItems": "center",
+              "borderRadius": 16,
+              "flexDirection": "row",
+              "justifyContent": "center",
+              "marginTop": 14,
+              "paddingVertical": 16,
+            },
+            {
+              "backgroundColor": "#ae591c",
+            },
+          ]
+        }
+        testID="trip-body-box-proceed"
+      >
+        <Text
+          ref={null}
+          style={
+            [
+              {
+                "fontSize": 16,
+                "fontWeight": "900",
+              },
+              {
+                "color": "#ffffff",
+              },
+              {
+                "fontVariant": [
+                  "tabular-nums",
+                ],
+              },
+            ]
+          }
+        >
+          Reserve · $1,800
+        </Text>
+      </Pressable>
+      <Text
+        ref={null}
+        style={
+          [
+            {
+              "fontSize": 12,
+              "lineHeight": 17,
+              "marginTop": 12,
+              "textAlign": "center",
+            },
+            {
+              "color": "rgba(255,255,255,0.58)",
+            },
+          ]
+        }
+      >
+        All-in price. Taxes and fees included.
+      </Text>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`#2829 trip guide on the shared trip body a trip without a guide renders exactly as before: trip without a guide 2`] = `
+<View
+  ref={null}
+>
+  <View
+    ref={null}
+    style={
+      {
+        "marginBottom": 4,
+      }
+    }
+    testID="trip-body-title"
+  >
+    <Text
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 11,
+            "fontWeight": "900",
+            "letterSpacing": 1.6,
+            "marginBottom": 8,
+            "textTransform": "uppercase",
+          },
+          {
+            "color": "#ffffff",
+          },
+        ]
+      }
+    >
+      5 days · 4 nights · Sarandë, Albania
+    </Text>
+    <Text
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 32,
+            "fontWeight": "900",
+            "letterSpacing": -0.5,
+          },
+          {
+            "color": "#ffffff",
+          },
+          {
+            "fontFamily": "Inter_700Bold",
+          },
+        ]
+      }
+    >
+      Albania coast
+    </Text>
+  </View>
+  <View
+    ref={null}
+    testID="trip-body-route-pills"
+  >
+    <View
+      ref={null}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "alignSelf": "stretch",
+            "borderRadius": 16,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "gap": 10,
+            "marginTop": 12,
+            "paddingHorizontal": 14,
+            "paddingVertical": 12,
+            "width": "100%",
+          },
+          {
+            "backgroundColor": "rgba(174,89,28,0.24)",
+            "borderColor": "rgba(174,89,28,0.38)",
+          },
+        ]
+      }
+    >
+      <Icon.Calendar />
+      <Text
+        ellipsizeMode="tail"
+        numberOfLines={1}
+        ref={null}
+        style={
+          [
+            {
+              "flex": 1,
+              "fontSize": 15,
+              "fontWeight": "800",
+              "letterSpacing": -0.2,
+              "minWidth": 0,
+            },
+            {
+              "color": "#ffffff",
+              "fontFamily": "Inter_700Bold",
+            },
+          ]
+        }
+      >
+        Jun 28 – Jul 2, 2026
+      </Text>
+    </View>
+    <View
+      ref={null}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "alignSelf": "stretch",
+            "borderRadius": 16,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "gap": 10,
+            "marginTop": 12,
+            "paddingHorizontal": 14,
+            "paddingVertical": 12,
+            "width": "100%",
+          },
+          {
+            "backgroundColor": "rgba(174,89,28,0.24)",
+            "borderColor": "rgba(174,89,28,0.38)",
+          },
+        ]
+      }
+      testID="trip-body-route-pill"
+    >
+      <Icon.Plane />
+      <Text
+        ellipsizeMode="tail"
+        numberOfLines={1}
+        ref={null}
+        style={
+          [
+            {
+              "flex": 1,
+              "fontSize": 15,
+              "fontWeight": "800",
+              "letterSpacing": -0.2,
+              "minWidth": 0,
+            },
+            {
+              "color": "#ffffff",
+              "fontFamily": "Inter_700Bold",
+            },
+          ]
+        }
+      >
+        From Tirana, Albania → Sarandë, Albania
+      </Text>
+    </View>
+  </View>
+  <View
+    ref={null}
+    style={
+      {
+        "flexDirection": "row",
+        "flexWrap": "wrap",
+        "gap": 6,
+        "marginTop": 12,
+      }
+    }
+    testID="trip-body-meta-pills"
+  >
+    <View
+      ref={null}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "borderRadius": 999,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "gap": 5,
+            "paddingHorizontal": 10,
+            "paddingVertical": 5,
+          },
+          {
+            "backgroundColor": "rgba(174,89,28,0.24)",
+            "borderColor": "rgba(174,89,28,0.38)",
+          },
+        ]
+      }
+    >
+      <Icon.Moon />
+      <Text
+        numberOfLines={1}
+        ref={null}
+        style={
+          [
+            {
+              "fontSize": 12,
+              "fontWeight": "700",
+            },
+            {
+              "color": "#ffffff",
+              "fontFamily": "Inter_700Bold",
+            },
+          ]
+        }
+      >
+        5 days · 4 nights
+      </Text>
+    </View>
+    <View
+      ref={null}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "borderRadius": 999,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "gap": 5,
+            "paddingHorizontal": 10,
+            "paddingVertical": 5,
+          },
+          {
+            "backgroundColor": "rgba(174,89,28,0.24)",
+            "borderColor": "rgba(174,89,28,0.38)",
+          },
+        ]
+      }
+    >
+      <Icon.Users />
+      <Text
+        numberOfLines={1}
+        ref={null}
+        style={
+          [
+            {
+              "fontSize": 12,
+              "fontWeight": "700",
+            },
+            {
+              "color": "#ffffff",
+              "fontFamily": "Inter_700Bold",
+            },
+          ]
+        }
+      >
+        4 seats left · 16 max
+      </Text>
+    </View>
+  </View>
+  <View
+    ref={null}
+    style={
+      {
+        "marginTop": 24,
+      }
+    }
+    testID="trip-body-presented-by"
+  >
+    <View
+      ref={null}
+      style={
+        [
+          {
+            "borderRadius": 16,
+            "overflow": "hidden",
+            "paddingHorizontal": 14,
+            "paddingVertical": 12,
+          },
+          {
+            "backgroundColor": "rgba(255,255,255,0.10)",
+            "borderColor": "rgba(174,89,28,0.38)",
+            "borderWidth": 1,
+          },
+        ]
+      }
+    >
+      <Pressable
+        accessibilityLabel="View Young & Stamped"
+        disabled={true}
+        ref={null}
+        style={
+          {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "gap": 12,
+          }
+        }
+      >
+        <View
+          ref={null}
+          style={
+            [
+              {
+                "backgroundColor": "#1a1c20",
+                "borderRadius": 999,
+                "height": 42,
+                "overflow": "hidden",
+                "width": 42,
+              },
+              {
+                "backgroundColor": "#ae591c",
+              },
+            ]
+          }
+        >
+          <View
+            ref={null}
+            style={
+              {
+                "alignItems": "center",
+                "flex": 1,
+                "justifyContent": "center",
+              }
+            }
+          >
+            <Text
+              ref={null}
+              style={
+                [
+                  {
+                    "fontSize": 18,
+                    "fontWeight": "900",
+                  },
+                  {
+                    "color": "#ffffff",
+                    "fontFamily": "Inter_700Bold",
+                  },
+                ]
+              }
+            >
+              Y
+            </Text>
+          </View>
+        </View>
+        <View
+          ref={null}
+          style={
+            {
+              "flexGrow": 1,
+              "flexShrink": 1,
+            }
+          }
+        >
+          <Text
+            ref={null}
+            style={
+              [
+                {
+                  "fontSize": 10,
+                  "fontWeight": "800",
+                  "letterSpacing": 1.2,
+                  "textTransform": "uppercase",
+                },
+                {
+                  "color": "rgba(255,255,255,0.58)",
+                },
+              ]
+            }
+          >
+            Presented by
+          </Text>
+          <View
+            ref={null}
+            style={
+              {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "gap": 6,
+                "marginTop": 1,
+              }
+            }
+          >
+            <Text
+              ref={null}
+              style={
+                [
+                  {
+                    "fontSize": 15,
+                    "fontWeight": "800",
+                  },
+                  {
+                    "color": "#ffffff",
+                  },
+                  {
+                    "fontFamily": "Inter_700Bold",
+                  },
+                ]
+              }
+            >
+              Young & Stamped
+            </Text>
+          </View>
+          <PresentedByFollowerCount
+            testID="trip-presented-by-follower-count"
+          />
+        </View>
+      </Pressable>
+    </View>
+  </View>
+  <View
+    ref={null}
+    style={
+      {
+        "marginTop": 24,
+      }
+    }
+    testID="trip-body-about"
+  >
+    <Text
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 20,
+            "fontWeight": "900",
+            "letterSpacing": -0.3,
+            "marginBottom": 12,
+          },
+          {
+            "color": "#ffffff",
+          },
+          {
+            "fontFamily": "Inter_700Bold",
+          },
+        ]
+      }
+    >
+      About this trip
+    </Text>
+    <Text
+      ellipsizeMode="tail"
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 16,
+            "lineHeight": 23,
+          },
+          {
+            "color": "rgba(255,255,255,0.78)",
+          },
+        ]
+      }
+    >
+      Eight days along the Albanian Riviera with a small group.
+    </Text>
+  </View>
+  <View
+    ref={null}
+    style={
+      {
+        "marginTop": 24,
+      }
+    }
+    testID="trip-body-itinerary"
+  >
+    <Text
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 20,
+            "fontWeight": "900",
+            "letterSpacing": -0.3,
+            "marginBottom": 12,
+          },
+          {
+            "color": "#ffffff",
+          },
+          {
+            "fontFamily": "Inter_700Bold",
+          },
+        ]
+      }
+    >
+      Day by day
+    </Text>
+    <DayByDay />
+  </View>
+  <View
+    ref={null}
+    style={
+      {
+        "marginTop": 24,
+      }
+    }
+    testID="trip-body-included"
+  >
+    <Text
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 20,
+            "fontWeight": "900",
+            "letterSpacing": -0.3,
+            "marginBottom": 12,
+          },
+          {
+            "color": "#ffffff",
+          },
+          {
+            "fontFamily": "Inter_700Bold",
+          },
+        ]
+      }
+    >
+      What’s included
+    </Text>
+    <ChipGroup />
+  </View>
+  <View
+    ref={null}
+    style={
+      {
+        "marginTop": 24,
+      }
+    }
+    testID="trip-body-excluded"
+  >
+    <Text
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 20,
+            "fontWeight": "900",
+            "letterSpacing": -0.3,
+            "marginBottom": 12,
+          },
+          {
+            "color": "#ffffff",
+          },
+          {
+            "fontFamily": "Inter_700Bold",
+          },
+        ]
+      }
+    >
+      What’s not included
+    </Text>
+    <ChipGroup />
+  </View>
+  <View
+    ref={null}
+    testID="trip-body-cancellation"
+  >
+    <TripRefundLadder />
+  </View>
+  <View
+    ref={null}
+    style={
+      {
+        "marginTop": 24,
+      }
+    }
+    testID="trip-body-pay-box"
+  >
+    <Text
+      ref={null}
+      style={
+        [
+          {
+            "fontSize": 20,
+            "fontWeight": "900",
+            "letterSpacing": -0.3,
+            "marginBottom": 12,
+          },
+          {
+            "color": "#ffffff",
+          },
+          {
+            "fontFamily": "Inter_700Bold",
+          },
+        ]
+      }
+    >
+      Choose how you pay
+    </Text>
+    <View
+      ref={null}
+      style={
+        [
+          {
+            "borderRadius": 18,
+            "marginTop": 12,
+            "padding": 14,
+          },
+          {
+            "backgroundColor": "rgba(255,255,255,0.10)",
+            "borderColor": "rgba(174,89,28,0.38)",
+            "borderWidth": 1,
+          },
+        ]
+      }
+      testID="trip-body-select-box"
+    >
+      <View
+        ref={null}
+        style={
+          {
+            "alignItems": "baseline",
+            "flexDirection": "row",
+            "gap": 12,
+            "justifyContent": "space-between",
+          }
+        }
+      >
+        <Text
+          numberOfLines={1}
+          ref={null}
+          style={
+            [
+              {
+                "flexShrink": 1,
+                "fontSize": 15,
+                "fontWeight": "800",
+              },
+              {
+                "color": "#ffffff",
+              },
+              {
+                "fontFamily": "Inter_700Bold",
+              },
+            ]
+          }
+        >
+          Shared room
+        </Text>
+        <Text
+          ref={null}
+          style={
+            [
+              {
+                "fontSize": 22,
+                "fontWeight": "900",
+                "letterSpacing": -0.4,
+              },
+              {
+                "color": "#ffffff",
+              },
+              {
+                "fontVariant": [
+                  "tabular-nums",
+                ],
+              },
+            ]
+          }
+          testID="trip-body-select-total"
+        >
+          $1,800
+        </Text>
+      </View>
+      <Pressable
+        accessibilityLabel="Reserve my spot"
+        accessibilityRole="button"
+        accessibilityState={
+          {
+            "disabled": false,
+          }
+        }
+        disabled={false}
+        onPress={[Function]}
+        ref={null}
+        style={
+          [
+            {
+              "alignItems": "center",
+              "borderRadius": 16,
+              "flexDirection": "row",
+              "justifyContent": "center",
+              "marginTop": 14,
+              "paddingVertical": 16,
+            },
+            {
+              "backgroundColor": "#ae591c",
+            },
+          ]
+        }
+        testID="trip-body-box-proceed"
+      >
+        <Text
+          ref={null}
+          style={
+            [
+              {
+                "fontSize": 16,
+                "fontWeight": "900",
+              },
+              {
+                "color": "#ffffff",
+              },
+              {
+                "fontVariant": [
+                  "tabular-nums",
+                ],
+              },
+            ]
+          }
+        >
+          Reserve · $1,800
+        </Text>
+      </Pressable>
+      <Text
+        ref={null}
+        style={
+          [
+            {
+              "fontSize": 12,
+              "lineHeight": 17,
+              "marginTop": 12,
+              "textAlign": "center",
+            },
+            {
+              "color": "rgba(255,255,255,0.58)",
+            },
+          ]
+        }
+      >
+        All-in price. Taxes and fees included.
+      </Text>
+    </View>
+  </View>
+</View>
+`;

@@ -218,7 +218,9 @@ export async function handlePaystackDisputeEvent(
         body: `A ${amountStr} Paystack chargeback needs a response within 16 hours.`,
         data: {
           disputeId: id,
+          // #3645: for an instalment dispute the RPC returns the parent order.
           orderId: outcome?.order_id ?? null,
+          installmentId: outcome?.order_installment_id ?? null,
           amount: amountCents,
           currency,
           evidenceDueBy: responseDueBy,

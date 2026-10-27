@@ -71,6 +71,24 @@ export const Media: CollectionConfig = {
     { name: "width", type: "number", admin: { readOnly: true }, access: systemFieldAccess },
     { name: "height", type: "number", admin: { readOnly: true }, access: systemFieldAccess },
     { name: "checksum", type: "text", admin: { readOnly: true }, access: systemFieldAccess },
+    // #2829 W6 — a video's length in milliseconds (read from its mvhd box).
+    { name: "duration_ms", type: "number", admin: { readOnly: true }, access: systemFieldAccess },
+    /*
+     * #2829 W6 (AD-9) — what kind of media this is. `file_video` is an MP4
+     * stored here and served with byte ranges; `stream_video` lives on the
+     * stream service (Bunny, through Core) and plays from its CDN rendition.
+     * Empty on records made before W6 (read from detected_mime then).
+     */
+    {
+      name: "kind",
+      type: "select",
+      options: ["image", "file_video", "stream_video"],
+      admin: { readOnly: true },
+      access: systemFieldAccess,
+    },
+    { name: "stream_video_id", type: "text", hidden: true, access: systemFieldAccess },
+    { name: "stream_url", type: "text", admin: { readOnly: true }, access: systemFieldAccess },
+    { name: "stream_host", type: "text", hidden: true, access: systemFieldAccess },
     { name: "quarantine_key", type: "text", hidden: true, access: systemFieldAccess },
     { name: "approved_master_key", type: "text", hidden: true, access: systemFieldAccess },
     { name: "rendition_manifest", type: "json", admin: { readOnly: true }, access: systemFieldAccess },
@@ -86,6 +104,9 @@ export const Media: CollectionConfig = {
         "CHECKSUM_MISMATCH",
         "METADATA_RETAINED",
         "PROCESSING_FAILED",
+        // #2829 W6 — a video that cannot play inline or seek.
+        "VIDEO_NOT_FASTSTART",
+        "VIDEO_CODEC",
       ],
       admin: { readOnly: true },
       access: systemFieldAccess,

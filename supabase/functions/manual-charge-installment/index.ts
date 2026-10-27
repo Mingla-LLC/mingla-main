@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { jsonResponse, userClient } from "../_shared/ticketCheckout.ts";
-import { createInstallmentPI } from "../_shared/installments/createInstallmentPI.ts";
+import {
+  jsonResponse,
+  serviceClient,
+  userClient,
+} from "../_shared/ticketCheckout.ts";
+import { chargeInstallment } from "../_shared/installments/chargeInstallment.ts";
 
 interface ManualChargeBody {
   installmentId?: unknown;
@@ -25,7 +29,10 @@ serve(async (req: Request) => {
     return jsonResponse({ ok: false, error: "invalid_json_body" }, 400);
   }
 
-  if (typeof body.installmentId !== "string" || !UUID_REGEX.test(body.installmentId)) {
+  if (
+    typeof body.installmentId !== "string" ||
+    !UUID_REGEX.test(body.installmentId)
+  ) {
     return jsonResponse({ ok: false, error: "invalid_installment_id" }, 400);
   }
 
@@ -51,23 +58,15 @@ serve(async (req: Request) => {
     return jsonResponse({ ok: false, error: reason }, 409);
   }
 
-  const brandId = typeof rpc.brand_id === "string" ? rpc.brand_id : null;
-  if (brandId === null) {
-    return jsonResponse({ ok: false, error: "brand_id_missing" }, 500);
-  }
-
-  const result = await createInstallmentPI({
+  const result = await chargeInstallment({
+    supabase: serviceClient(),
     installmentId: body.installmentId,
-    brandId,
-    override: { atRisk: atRiskOverride },
+    trigger: "manual",
+    atRiskOverride,
   });
-
-  if (!result.ok) {
-    return jsonResponse(
-      { ok: false, error: result.error ?? result.reason ?? "charge_failed" },
-      409,
-    );
-  }
-
-  return jsonResponse({ ok: true, chargeId: result.chargeId });
+  return jsonResponse({
+    ok: true,
+    outcome: result.outcome,
+    ...(result.chargeId ? { chargeId: result.chargeId } : {}),
+  });
 });

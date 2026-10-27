@@ -6,8 +6,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  GOGI_BRAND_ID,
-  GOGI_CONFIGURED_BY,
   GOGI_SOURCE,
   SEED_PAGE_ROLES,
   classifySnapshot,
@@ -16,6 +14,11 @@ import {
   reconcileSeed,
   seedDocuments,
 } from "../seed-gogi-pilot.mjs";
+
+// #2829 — the seed no longer exports a brand or operator id; tests name their
+// own fixture ids (the seed takes them as required inputs).
+const GOGI_BRAND_ID = "733bc470-45e1-4684-8896-acd7e26074ff";
+const GOGI_CONFIGURED_BY = "1f3d2ddf-b741-4e2f-8884-d7222a660c7e";
 
 const SITE_ID = "00000000-0000-4000-8000-000000000201";
 const TENANT_ID = "00000000-0000-4000-8000-000000000202";
