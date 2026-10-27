@@ -1,23 +1,21 @@
 /**
- * #3872 round 2 — the Referrals workspace lives in Blast › Referrals. This
- * route keeps old links (and `?tab=links`) working: it sets the brand and
- * lands there.
+ * #3872 — Old Referrals link (and ?tab=): lands in Blast › Referrals.
+ * Thin route: the screen lives behind the Creator and Referral program's one
+ * lazy owner (src/components/programs/creatorProgramOwner.ts), so program
+ * code stays out of the eager web chunk until a Host opens it.
  */
-// orch-strict-grep-allow safearea-on-fullscreen-routes — redirect only; it renders a spinner for one frame and replaces itself with the Blast tab, which owns the safe area.
-import React from "react";
-import { useLocalSearchParams } from "expo-router";
+// orch-strict-grep-allow safearea-on-fullscreen-routes — thin lazy route; the loaded program screen pads its own safe area (ProgramScreen / BlastRedirect).
+import React, { Suspense } from "react";
 
-import { BlastRedirect } from "../../../src/components/marketing/BlastRedirect";
-import { blastHubHref } from "../../../src/components/marketing/marketingSubNavTabs";
+const Screen = React.lazy(async () => {
+  const mod = await import("../../../src/components/programs/creatorProgramOwner");
+  return { default: mod.BrandReferralsRedirect };
+});
 
 export default function BrandReferralsRedirect(): React.ReactElement {
-  const params = useLocalSearchParams<{
-    id?: string | string[];
-    tab?: string | string[];
-  }>();
-  const brandId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const tab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
   return (
-    <BlastRedirect brandId={brandId} href={blastHubHref("referrals", tab)} />
+    <Suspense fallback={null}>
+      <Screen />
+    </Suspense>
   );
 }

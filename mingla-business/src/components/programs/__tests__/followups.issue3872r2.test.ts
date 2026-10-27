@@ -45,10 +45,10 @@ describe("video due date and time on gig and contract", () => {
   });
 
   it("is shown on the gig summary and the contract deal list", () => {
-    expect(read("app/brand/[id]/creators/[gigId]/interest.tsx")).toContain(
+    expect(read("src/components/creators/screens/GigApplicantsScreen.tsx")).toContain(
       "videoDueWords(gig.video_due_at, gig.post_by)",
     );
-    const contract = read("app/brand/[id]/creators/contract/[contractId].tsx");
+    const contract = read("src/components/creators/screens/HostGigContractScreen.tsx");
     expect(contract).toMatch(
       // #3872 due change: the contract shows the agreed (current terms) due.
       /title="Video needed by"[\s\S]{0,60}agreedVideoDueWords\(agreedDue\)/,
@@ -63,7 +63,7 @@ describe("results period", () => {
     expect(resultsSince("7d", now)).toBe(new Date("2026-10-19T12:00:00Z").toISOString());
     expect(resultsSince("30d", now)).toBe(new Date("2026-09-26T12:00:00Z").toISOString());
     expect(read("src/services/creatorGigsService.ts")).toContain("p_since: since ?? null");
-    const page = read("app/brand/[id]/creators/results.tsx");
+    const page = read("src/components/creators/screens/CreatorResultsScreen.tsx");
     expect(page).toMatch(/\["7d", "7 days"\][\s\S]*\["30d", "30 days"\][\s\S]*\["all", "All"\]/);
     expect(page).toContain("resultsSince(period)");
   });

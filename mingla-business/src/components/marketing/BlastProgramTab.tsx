@@ -3,7 +3,7 @@
  * brand. Same gates as the old brand-page rows: rank 20+ and the brand's
  * pilot access. Loading and refusal are plain states, never a crash.
  */
-import React, { Suspense } from "react";
+import React from "react";
 import { useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
@@ -14,16 +14,18 @@ import {
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { currencyCodeOrNull } from "../../utils/currency";
-import type { ReferralTab } from "../referrals/ReferralHomeView";
+import { CreatorsHomeView } from "../creators/CreatorsHomeView";
+import {
+  ReferralHomeView,
+  type ReferralTab,
+} from "../referrals/ReferralHomeView";
+import { fetchCreatorGigsAccess } from "../../services/creatorGigsService";
+import { fetchReferralAccess } from "../../services/referralService";
 
-const LazyCreatorsHome = React.lazy(async () => {
-  const mod = await import("../creators/CreatorsHomeView");
-  return { default: mod.CreatorsHomeView };
-});
-const LazyReferralHome = React.lazy(async () => {
-  const mod = await import("../referrals/ReferralHomeView");
-  return { default: mod.ReferralHomeView };
-});
+// The tab itself is reached only through the program's lazy owner
+// (programs/creatorProgramOwner.ts), so the homes and services are static
+// here: a second import() boundary inside the program would split it into
+// two chunks and hoist what they share into the eager web chunk.
 
 const REFERRAL_TABS: ReadonlySet<string> = new Set([
   "offers",
@@ -45,18 +47,10 @@ export function BlastProgramTab({
   const access = useQuery({
     queryKey: ["blast-program-access", program, brandId],
     enabled: brandId !== null && role.rank >= 20,
-    queryFn: async (): Promise<boolean> => {
-      if (program === "creators") {
-        const { fetchCreatorGigsAccess } = await import(
-          "../../services/creatorGigsService"
-        );
-        return fetchCreatorGigsAccess(brandId as string);
-      }
-      const { fetchReferralAccess } = await import(
-        "../../services/referralService"
-      );
-      return fetchReferralAccess(brandId as string);
-    },
+    queryFn: async (): Promise<boolean> =>
+      program === "creators"
+        ? fetchCreatorGigsAccess(brandId as string)
+        : fetchReferralAccess(brandId as string),
   });
 
   if (brandId === null) {
@@ -95,11 +89,11 @@ export function BlastProgramTab({
     currencyCodeOrNull(brand?.defaultCurrency) ??
     "USD";
   return (
-    <Suspense fallback={<ProgramLoading />}>
+    <>
       {program === "creators" ? (
-        <LazyCreatorsHome key={brandId} brandId={brandId} />
+        <CreatorsHomeView key={brandId} brandId={brandId} />
       ) : (
-        <LazyReferralHome
+        <ReferralHomeView
           key={brandId}
           embedded
           brandId={brandId}
@@ -113,6 +107,6 @@ export function BlastProgramTab({
           }
         />
       )}
-    </Suspense>
+    </>
   );
 }

@@ -20,9 +20,9 @@ const read = (relative: string): string =>
 
 const serviceSource = read("src/services/creatorGigsService.ts");
 // Whitespace-normalised so formatting never breaks these copy contracts.
-const host = read("app/brand/[id]/creators/contract/[contractId].tsx").replace(/\s+/g, " ").replace(/\( /g, "(").replace(/,? \)/g, ")");
-const applicants = read("app/brand/[id]/creators/[gigId]/interest.tsx");
-const prehire = read("app/brand/[id]/creators/profile/[creatorId].tsx");
+const host = read("src/components/creators/screens/HostGigContractScreen.tsx").replace(/\s+/g, " ").replace(/\( /g, "(").replace(/,? \)/g, ")");
+const applicants = read("src/components/creators/screens/GigApplicantsScreen.tsx");
+const prehire = read("src/components/creators/screens/PrehireCreatorProfileScreen.tsx");
 const hireSheet = read("src/components/gigs/HireSheet.tsx");
 
 describe("issue #3872 — Creator gig contract journeys", () => {

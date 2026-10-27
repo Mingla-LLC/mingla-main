@@ -1,28 +1,21 @@
 /**
- * #3872 round 2 — the separate Promote screen is retired. Promotion for a
- * listing lives in Blast › Overview with that listing picked; this route
- * keeps old links (`?kind=event&listingId=…`) working.
+ * #3872 — Old Promote link (?kind=event&listingId=…): lands in Blast › Overview.
+ * Thin route: the screen lives behind the Creator and Referral program's one
+ * lazy owner (src/components/programs/creatorProgramOwner.ts), so program
+ * code stays out of the eager web chunk until a Host opens it.
  */
-// orch-strict-grep-allow safearea-on-fullscreen-routes — redirect only; it renders a spinner for one frame and replaces itself with the Blast tab, which owns the safe area.
-import React from "react";
-import { useLocalSearchParams } from "expo-router";
+// orch-strict-grep-allow safearea-on-fullscreen-routes — thin lazy route; the loaded program screen pads its own safe area (ProgramScreen / BlastRedirect).
+import React, { Suspense } from "react";
 
-import { BlastRedirect } from "../../../src/components/marketing/BlastRedirect";
-import { blastOverviewHref } from "../../../src/services/promotionOverview";
-
-const one = (value: string | string[] | undefined): string | undefined =>
-  Array.isArray(value) ? value[0] : value;
+const Screen = React.lazy(async () => {
+  const mod = await import("../../../src/components/programs/creatorProgramOwner");
+  return { default: mod.PromoteRedirect };
+});
 
 export default function PromoteRedirect(): React.ReactElement {
-  const params = useLocalSearchParams<{
-    id?: string | string[];
-    kind?: string | string[];
-    listingKind?: string | string[];
-    listingId?: string | string[];
-  }>();
-  const href = blastOverviewHref({
-    kind: one(params.kind) ?? one(params.listingKind),
-    id: one(params.listingId),
-  });
-  return <BlastRedirect brandId={one(params.id)} href={href} />;
+  return (
+    <Suspense fallback={null}>
+      <Screen />
+    </Suspense>
+  );
 }

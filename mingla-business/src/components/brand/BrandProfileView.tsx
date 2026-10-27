@@ -83,7 +83,7 @@ import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
-import { StatStrip } from "../programs/ProgramKit";
+import { StatStrip } from "../programs/StatStrip";
 import { useBrandFollowerSummary } from "../../hooks/useBrandFollowerSummary";
 import { brandStatStripItems } from "./brandStatStrip";
 import { OfferingListCard } from "../offering/OfferingListCard";

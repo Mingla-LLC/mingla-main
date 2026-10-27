@@ -78,11 +78,6 @@ import {
   eventGridTiles,
   type EventGridTileKey,
 } from "../../../src/components/event/eventGridTiles";
-import {
-  blastOverviewHref,
-  promoteTileStatus,
-  type PromotionOverview,
-} from "../../../src/services/promotionOverview";
 import { useCurrentBrandStore } from "../../../src/store/currentBrandStore";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import { useEventDoorSales } from "../../../src/hooks/useEventDoorSales";
@@ -175,9 +170,11 @@ export default function EventDetailScreen(): React.ReactElement {
       return;
     }
     let active = true;
+    // One lazy owner for all program code (see creatorProgramOwner.ts).
+    const program = import("../../../src/components/programs/creatorProgramOwner");
     void Promise.all([
-      import("../../../src/services/creatorGigsService").then((mod) => mod.fetchCreatorGigsAccess(promoteBrandId)).catch(() => false),
-      import("../../../src/services/referralService").then((mod) => mod.fetchReferralAccess(promoteBrandId)).catch(() => false),
+      program.then((mod) => mod.fetchCreatorGigsAccess(promoteBrandId)).catch(() => false),
+      program.then((mod) => mod.fetchReferralAccess(promoteBrandId)).catch(() => false),
     ]).then(([creators, referrals]) => {
       if (active) setPromoteEnabled(creators || referrals);
     });
@@ -188,27 +185,28 @@ export default function EventDetailScreen(): React.ReactElement {
 
   // #3872 round 2 — the Promote tile shows what is running for this event
   // ("1 gig · 2 interested"), read from brand_promotion_overview.
-  const [promoteOverview, setPromoteOverview] =
-    useState<PromotionOverview | null>(null);
+  // The tile words come from the program's `promoteTileStatus`; "Get it
+  // seen" is what it says for no overview (loading, failed or none).
+  const [promoteStatus, setPromoteStatus] = useState("Get it seen");
   const promoteListingId = routeEvent.event?.id ?? null;
   useEffect(() => {
     if (!promoteEnabled || promoteBrandId === null || promoteListingId === null) {
-      setPromoteOverview(null);
+      setPromoteStatus("Get it seen");
       return;
     }
     let active = true;
-    void import("../../../src/services/promotionOverviewService")
-      .then((mod) =>
-        mod.fetchPromotionOverview(promoteBrandId, {
-          kind: "event",
-          id: promoteListingId,
-        }),
-      )
-      .then((overview) => {
-        if (active) setPromoteOverview(overview);
+    void import("../../../src/components/programs/creatorProgramOwner")
+      .then(async (mod) => {
+        const overview = await mod
+          .fetchPromotionOverview(promoteBrandId, {
+            kind: "event",
+            id: promoteListingId,
+          })
+          .catch(() => null);
+        if (active) setPromoteStatus(mod.promoteTileStatus(overview));
       })
       .catch(() => {
-        if (active) setPromoteOverview(null);
+        if (active) setPromoteStatus("Get it seen");
       });
     return () => {
       active = false;
@@ -221,8 +219,12 @@ export default function EventDetailScreen(): React.ReactElement {
   const handleGetSeen = useCallback((): void => {
     if (promoteBrandId === null || promoteListingId === null) return;
     setCurrentBrandId(promoteBrandId);
-    router.push(
-      blastOverviewHref({ kind: "event", id: promoteListingId }) as never,
+    void import("../../../src/components/programs/creatorProgramOwner").then(
+      (mod) => {
+        router.push(
+          mod.blastOverviewHref({ kind: "event", id: promoteListingId }) as never,
+        );
+      },
     );
   }, [promoteBrandId, promoteListingId, router, setCurrentBrandId]);
 
@@ -1027,7 +1029,7 @@ export default function EventDetailScreen(): React.ReactElement {
                     key={key}
                     icon="megaphone"
                     label="Promote"
-                    sub={promoteTileStatus(promoteOverview)}
+                    sub={promoteStatus}
                     accessibilityLabel={`Promote ${event.name}`}
                     onPress={handleGetSeen}
                   />

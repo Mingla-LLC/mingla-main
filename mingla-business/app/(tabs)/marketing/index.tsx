@@ -12,7 +12,7 @@
  * attribution (Phase F) + Resend webhook ingest (separate ORCH).
  */
 
-import React, { useCallback, useMemo } from "react";
+import React, { Suspense, useCallback, useMemo } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -23,7 +23,6 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { BlastPromotionOverview } from "../../../src/components/marketing/BlastPromotionOverview";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { Icon } from "../../../src/components/ui/Icon";
 import { OverviewMetricCard } from "../../../src/components/marketing/OverviewMetricCard";
@@ -39,6 +38,14 @@ import {
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import { useMarketingOverview } from "../../../src/hooks/marketing/useMarketingOverview";
 import { useStickyFooterOffset } from "../../../src/hooks/useStickyFooterOffset";
+
+// #3872 round 2 — the promotion section loads through the Creator and
+// Referral program's one lazy owner, so program code stays out of the
+// eager web chunk; the campaign funnel below never waits on it.
+const BlastPromotionOverview = React.lazy(async () => {
+  const mod = await import("../../../src/components/programs/creatorProgramOwner");
+  return { default: mod.BlastPromotionOverview };
+});
 
 export default function MarketingOverviewRoute(): React.ReactElement {
   const router = useRouter();
@@ -76,11 +83,13 @@ export default function MarketingOverviewRoute(): React.ReactElement {
   // campaign funnel in every branch so it never waits on email metrics.
   const promotion =
     currentBrand?.id ? (
-      <BlastPromotionOverview
-        brandId={currentBrand.id}
-        initialListing={initialListing}
-        onNewCampaign={handleNewCampaign}
-      />
+      <Suspense fallback={null}>
+        <BlastPromotionOverview
+          brandId={currentBrand.id}
+          initialListing={initialListing}
+          onNewCampaign={handleNewCampaign}
+        />
+      </Suspense>
     ) : null;
 
   const handleOpenCampaign = useCallback(

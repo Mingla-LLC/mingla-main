@@ -35,7 +35,7 @@ describe("contract money words", () => {
     expect(contractFeeWords(30000, "USD", null)).toBe("$300");
     expect(contractMoneyState("held")).toBeNull();
     expect(contractMoneyState(null)).toBeNull();
-    expect(read("app/brand/[id]/creators/contract/[contractId].tsx")).not.toContain(
+    expect(read("src/components/creators/screens/HostGigContractScreen.tsx")).not.toContain(
       "held by Mingla`",
     );
   });
@@ -153,7 +153,7 @@ describe("gig page: hired creators only under Hired", () => {
   });
 
   it("moves Close gig into the ⋯ menu with Edit", () => {
-    const page = read("app/brand/[id]/creators/[gigId]/interest.tsx");
+    const page = read("src/components/creators/screens/GigApplicantsScreen.tsx");
     expect(page).toContain('accessibilityLabel="Gig options"');
     expect(page).toMatch(/<SheetBody title="Gig options">[\s\S]*label="Edit gig"[\s\S]*label="Close gig"/);
   });
