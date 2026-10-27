@@ -62,8 +62,15 @@ function extractProducer() {
       "async function prepareContentShare(kind, identity, channel = 'generic', messageContext = {}) {",
     )
     .replace("await supabase.functions.invoke<CreatedShare>('shared-card', {", "await supabase.functions.invoke('shared-card', {")
-    .replace("return { contract: 'content_share_v1' as const, data };", "return { contract: 'content_share_v1', data };");
-  assert.doesNotMatch(js, /: (?:number|unknown|ShareEntityKind|ContentShareIdentity)\b|<CreatedShare>|as const/, "a type annotation survived the strip");
+    .replace("return { contract: 'content_share_v1' as const, data };", "return { contract: 'content_share_v1', data };")
+    // #3872 — the buyer referral link rewrite sits between the failure mapping
+    // and the producer; its types are stripped like the rest.
+    .replace(
+      "export function applyBuyerReferralLink(\n  prepared: PreparedContentShare,\n  referralUrl: string,\n): PreparedContentShare {",
+      "function applyBuyerReferralLink(prepared, referralUrl) {",
+    )
+    .replace("const result: PreparedContentShare = {", "const result = {");
+  assert.doesNotMatch(js, /: (?:number|unknown|string|ShareEntityKind|ContentShareIdentity|PreparedContentShare)\b|<CreatedShare>|as const|^export /m, "a type annotation survived the strip");
   return `${js}\nreturn prepareContentShare;`;
 }
 
@@ -89,6 +96,9 @@ function buildProducer(invokeResult) {
     createSharedCard: trap("createSharedCard"),
     prepareLegacyPublicFields: trap("prepareLegacyPublicFields"),
     isLegacyRollbackEligible: trap("isLegacyRollbackEligible"),
+    // #3872 — buyer referral lookup; these identities carry no eventId, so it
+    // must not be reached. A call is recorded like a legacy reach.
+    fetchBuyerReferralLink: async (...args) => { trapped.push({ name: "fetchBuyerReferralLink", args }); return null; },
   };
   const names = Object.keys(scope);
   // eslint-disable-next-line no-new-func -- the adapter's own source, read from disk
