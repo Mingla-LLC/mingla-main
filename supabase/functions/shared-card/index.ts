@@ -96,15 +96,12 @@ serve(async (req) => {
       // defense-in-depth circuit breaker, so no public share can exhaust a
       // per-share bucket and deny that link to every other viewer.
       const hash = await actorHash(serviceKey, "trusted-vercel-share-proxy");
-      const { data: allowed, error: limitError } = await db.rpc(
-        "consume_shared_card_rate_limit",
-        {
-          p_actor_hash: hash,
-          p_action: "read",
-          p_limit: 6000,
-          p_window_seconds: 60,
-        },
-      );
+      const { data: allowed, error: limitError } = await db.rpc("consume_shared_card_rate_limit", {
+        p_actor_hash: hash,
+        p_action: "read",
+        p_limit: 6000,
+        p_window_seconds: 60,
+      });
       if (limitError) throw limitError;
       if (!allowed) return json({ error: "rate_limited" }, 429);
       if (shortCode) {
