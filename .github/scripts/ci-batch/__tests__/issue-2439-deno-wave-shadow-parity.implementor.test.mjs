@@ -688,8 +688,8 @@ test("#2439 SC-11 lifecycle is atomic, dispositions are honest, and providers tr
     const phase3eProviders = manifest.workflowProviders.filter((item) => phase3eOrigins.has(item.workflow));
     assert.ok(phase3dProviders.every((item) => item.transition === "batched-provider"));
     assert.ok(phase3eProviders.every((item) => item.transition === "batched-provider"));
-    assert.equal(providers.length, 60 + PROVIDERS_ADDED_SINCE_SEAL.length - consolidatedProviders.length - phase3dProviders.length - phase3eProviders.length,
-      "terminal provider discovery must subtract every deleted wrapper's carried provider record");
+    assert.deepEqual(providers.map(item => item.workflow).sort(), manifest.workflowProviders
+      .filter(item => item.transition === "retained-live-provider").map(item => item.workflow).sort());
     // The seven that left discovery are exactly the seven the registry now
     // carries as batched providers, so nothing was lost — only relocated.
     assert.equal(manifest.workflowProviders.filter((item) => candidateNames.includes(item.workflow)

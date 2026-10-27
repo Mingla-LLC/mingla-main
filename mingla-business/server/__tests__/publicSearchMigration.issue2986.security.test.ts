@@ -8,12 +8,7 @@ const repoRoot = path.resolve(__dirname, "../../..");
 const migrationPath = path.join(repoRoot, "supabase/migrations/20270614002986_issue_2986_public_search_documents.sql");
 const migration = readFileSync(migrationPath, "utf8");
 const allowlist = readFileSync(path.join(repoRoot, "supabase/security/anon_executable_definer_allowlist.txt"), "utf8");
-const registry = JSON.parse(readFileSync(path.join(repoRoot, ".github/ci-batch/MANIFEST.json"), "utf8")) as {
-  suites: Array<{ id: string; migrationWave: string; steps: Array<{ run: string }> }>;
-};
-const suite = registry.suites.find((suite) => suite.id === "issue-2117-offering-visibility-gate-tests");
-if (suite?.migrationWave !== "phase3e-postgres-fold-wave") throw new Error("missing folded #2117 suite");
-const workflow = suite.steps.map((step) => step.run).join("\n");
+const workflow = readFileSync(path.join(repoRoot, ".github/workflows/issue-2117-offering-visibility-gate-tests.yml"), "utf8");
 const fullSchemaWorkflow = readFileSync(path.join(repoRoot, ".github/workflows/supabase-migrations-and-stripe-deno.yml"), "utf8");
 const migrationPlan = JSON.parse(execFileSync(process.execPath, [
   path.join(repoRoot, ".github/scripts/ci-discovery/list.mjs"), "--lane", "migrations", "--json",
@@ -149,7 +144,7 @@ describe("#2986 exact intended-public amendment is closed and self-defending", (
   });
 
   it("runs the fail-on-forged self-test and preserves the live ORCH-1392 gate", () => {
-    expect(workflow.match(/^bash scripts\/ci\/security_definer_anon_gate\.sh$/gm)).toHaveLength(1);
+    expect(workflow.match(/run: bash scripts\/ci\/security_definer_anon_gate\.sh/g)).toHaveLength(1);
     expect(workflow).toContain("node scripts/ci/issue_2986_allowlist_delta_gate.mjs --self-test");
     expect(workflow).toContain('node scripts/ci/issue_2986_allowlist_delta_gate.mjs --base-sha "$BASE_SHA"');
     expect(execFileSync(process.execPath, [path.join(repoRoot, "scripts/ci/issue_2986_allowlist_delta_gate.mjs"), "--self-test"], { encoding: "utf8" })).toContain("PASS");

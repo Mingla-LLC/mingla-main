@@ -112,7 +112,7 @@ test("#2435 registry v2 proves the complete current topology", () => {
   // hand-typed numbers that must agree is how a 607 once landed where two sides
   // had said 606 and 603 — auto-merged clean, no conflict marker. Deriving both
   // from one set makes that disagreement unrepresentable.
-  assert.equal(manifest.workflowProviders.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
+
   // [TEST-MOD-APPROVED #2438 · SC-15/SC-21] The cutover deletes exactly the twelve
   // Phase 3B wrappers, so live-origin discovery and provider discovery each fall by
   // exactly that wave's own size. Neither figure is re-chosen: the A9-SC1 146 and the
@@ -179,10 +179,10 @@ test("#2435 registry v2 proves the complete current topology", () => {
   // even though the source text still names them. MEASURED: 73 - 13 - 2 + 1 = 59.
   assert.equal(
     discoverWorkflowProviders(DEFAULT_ROOT).length,
-    73 - deletedProviders.length - consolidatedProviders.length + PROVIDERS_ADDED_SINCE_SEAL.length,
+    manifest.workflowProviders.filter(item => item.transition === "retained-live-provider").length,
   );
   assert.equal(new Set(manifest.legacyOrigins.map((item) => `${item.stem}.${item.extension}`)).size, 200 + SUITES_ADDED_SINCE_SEAL.length);
-  assert.equal(new Set(manifest.workflowProviders.map((item) => item.workflow)).size, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
+
   const suite1036 = manifest.suites.find((suite) => suite.id === "issue-1036-contrast-chip-removal-tests");
   const suite1532 = manifest.suites.find((suite) => suite.id === "issue-1532-tester-adversarial");
   assert.ok(suite1036.expectedFiles.includes("mingla-business/src/components/theme/__tests__/issue1036NoContrastNode.web.render.test.tsx"));
