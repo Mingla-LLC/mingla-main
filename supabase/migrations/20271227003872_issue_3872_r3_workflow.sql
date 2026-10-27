@@ -191,7 +191,7 @@ BEGIN
   v_party:=public.issue_3872_contract_party(v_contract.id,v_actor);
   IF v_party IS NULL OR v_party=v_proposal.proposed_by THEN RAISE EXCEPTION 'terms_change_other_party_required' USING ERRCODE='42501'; END IF;
   IF v_proposal.status<>'open' OR v_proposal.expires_at<=now() OR v_proposal.from_version<>v_contract.current_terms_version THEN
-    RAISE EXCEPTION 'terms_change_stale' USING ERRCODE='40001';
+    RAISE EXCEPTION 'terms_change_stale' USING ERRCODE='PT409';
   END IF;
   IF NOT p_accept THEN
     UPDATE public.gig_change_proposals SET status='declined' WHERE id=v_proposal.id;

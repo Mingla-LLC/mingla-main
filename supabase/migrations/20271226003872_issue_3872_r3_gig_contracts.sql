@@ -254,7 +254,7 @@ DECLARE v_actor uuid:=auth.uid(); v public.gig_contracts; v_is_host boolean; v_i
 BEGIN
   SELECT * INTO v FROM public.gig_contracts WHERE id=p_contract_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'contract_not_found' USING ERRCODE='P0002'; END IF;
-  IF v.state<>p_expected_state THEN RAISE EXCEPTION 'stale_contract_state:%',v.state USING ERRCODE='40001'; END IF;
+  IF v.state<>p_expected_state THEN RAISE EXCEPTION 'stale_contract_state:%',v.state USING ERRCODE='PT409'; END IF;
   v_is_host:=v_actor IS NOT NULL AND public.biz_is_brand_member_for_read(v.brand_id,v_actor);
   v_is_creator:=v_actor=v.creator_account_id;
   v_is_admin:=v_actor IS NOT NULL AND public.is_admin_user();

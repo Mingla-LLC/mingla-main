@@ -682,7 +682,7 @@ DECLARE
 BEGIN
   SELECT * INTO v FROM public.gig_contracts WHERE id=p_contract_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'contract_not_found' USING ERRCODE='P0002'; END IF;
-  IF v.state<>p_expected_state THEN RAISE EXCEPTION 'stale_contract_state:%',v.state USING ERRCODE='40001'; END IF;
+  IF v.state<>p_expected_state THEN RAISE EXCEPTION 'stale_contract_state:%',v.state USING ERRCODE='PT409'; END IF;
   v_party:=public.issue_3872_contract_party(v.id,v_actor);
   v_is_host:=coalesce(v_party='host',false);
   v_is_creator:=coalesce(v_party='creator',false);
