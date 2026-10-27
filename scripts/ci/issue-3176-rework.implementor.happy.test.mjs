@@ -115,7 +115,7 @@ async function runtimeContract() {
     for (const pathname of CITY_PATHS) {
       const response = await request(port, pathname)
       assert.equal(response.status, 200, `${pathname} must be 200 in the final release build`)
-      assert.equal((response.body.match(/class="ps-catalogue-card"/g) ?? []).length, 50, `${pathname} must render top 50 overall`)
+      assert.equal((response.body.match(/data-city-place-card/g) ?? []).length, 50, `#4137: ${pathname} must render top 50 overall`)
       assert(!response.body.includes('Choose your Mingla path in '), `${pathname} leaked historical audience fork into the release build`)
     }
   } finally {

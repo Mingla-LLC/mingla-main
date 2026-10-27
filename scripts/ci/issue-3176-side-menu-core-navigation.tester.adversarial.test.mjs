@@ -23,8 +23,9 @@ function verify(
   }
   assert.match(corePages, /CORE_PAGE_RELEASE_LIFECYCLE = allCityHubsSearchReady\(\) \? 'search_ready' : 'public_noindex'/, 'core promotion must fail closed with the ten-city cohort')
   assert.doesNotMatch(menu, /coreReady\s*\?|allCityHubsSearchReady\(\).*Cities|allCoreTrustPagesSearchReady/, 'navigation visibility must not be coupled back to publication readiness')
-  assert.match(menu, /const menuButtonClass = 'cut-btn[^']*min-h-14[^']*w-full[^']*justify-start/, 'the shared menu must give every destination one full-width moulded button owner')
-  assert.match(menu, /supportingDestinations\.map\([\s\S]*menuButtonClass[\s\S]*cut-btn-brand[\s\S]*cut-btn-light/, 'Cities, Going out, About and Free tools must receive the same selected/unselected treatment as the audience links')
+  assert.match(menu, /const menuButtonClass = 'cut-btn[^']*min-h-12[^']*w-full[^']*justify-start/, 'the shared menu must give every destination one full-width moulded button owner')
+  assert.match(menu, /const rowClass = [\s\S]*menuButtonClass[\s\S]*cut-btn-brand[\s\S]*cut-btn-light/, '#4137: rows receive brand/light')
+  assert.match(menu, /const chipClass = [\s\S]*?cut-btn-brand[^']*cut-menu-chip[\s\S]*?cut-btn-light[^']*cut-menu-chip/, '#4137: chips receive cut-menu-chip plus brand when current')
 
   const requiredFooterRoutes = ['/', '/going-out', '/cities', '/host', '/tools', '/help', '/about']
   for (const [name, footer] of [['Cutout footer', cutoutFooter], ['marketing/tools footer', marketingFooter]]) {
@@ -47,8 +48,8 @@ function verify(
 verify()
 if (SELF_TEST) {
   const coupled = read('mingla-marketing/components/cutout/audience-menu-content.tsx').replace(
-    "{ href: '/about', label: 'About', Icon: Info },",
-    "...(coreReady ? [{ href: '/about', label: 'About', Icon: Info }] : []),",
+    "{ href: '/about', label: 'About' },",
+    "...(coreReady ? [{ href: '/about', label: 'About' }] : []),",
   )
   assert.throws(() => verify(coupled), /publication readiness|remain reachable/, 're-coupling About visibility to indexing must prove RED')
   const unstyled = read('mingla-marketing/components/cutout/audience-menu-content.tsx').replace("const menuButtonClass = 'cut-btn", "const menuButtonClass = 'flex")
