@@ -44,11 +44,6 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 // provide the canonical production value via expo-constants extra (the exact
 // pattern used by src/constants/__tests__/publicUrls.test.ts).
 // ---------------------------------------------------------------------------
-// #3872 — the venue page lazy-loads Local reviews from the Creator and
-// Referral program's owner; this suite is not about that panel.
-jest.mock("../../programs/creatorProgramOwner", () => ({
-  LocalReviewsManager: () => null,
-}));
 jest.mock("expo-constants", () => ({
   __esModule: true,
   default: {

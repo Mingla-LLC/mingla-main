@@ -477,6 +477,7 @@ export function Segmented<T extends string>({
             key={key}
             onPress={() => onChange(key)}
             accessibilityRole="tab"
+            accessibilityLabel={label}
             accessibilityState={{ selected: on }}
             style={[styles.segment, on && styles.segmentOn]}
           >

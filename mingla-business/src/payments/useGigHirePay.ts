@@ -6,6 +6,7 @@
 import { Linking } from "react-native";
 
 import type { GigHireStart } from "../services/gigHireService";
+import { openExternal } from "../services/guestFunnelLink";
 import type { GigHirePayOutcome } from "./gigHirePay";
 
 export type { GigHirePayOutcome };
@@ -22,7 +23,9 @@ export function useGigHirePay(): (
       };
     }
     if (typeof window !== "undefined" && typeof window.open === "function") {
-      window.open(start.url, "_blank", "noopener");
+      // The package's one external-open owner (ORCH-1381): bare open, opener
+      // severed, same-tab fallback only when the popup is blocked.
+      openExternal(start.url, window);
       return { outcome: "redirected" };
     }
     try {
