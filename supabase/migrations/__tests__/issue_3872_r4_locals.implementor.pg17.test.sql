@@ -1,4 +1,4 @@
--- MINGLA-INVARIANT: I-3872-LOCAL-SEATS | issue #3872 | Active Locals never exceed the locked city-program seat count; issue_3872_local_seat_guard and the pg17 contract test enforce it.
+-- MINGLA-INVARIANT: I-3872-LOCAL-SEATS | issue #3872 | Seated Locals never exceed the locked city-program seat count; issue_3872_local_seat_guard and the pg17 contract test enforce it.
 -- MINGLA-INVARIANT: I-3872-LOCAL-NOT-PAID-BY-PLACE | issue #3872 | A Local cannot pick a place tied to their own history or paid relationship, and every approved month is funded by Mingla through the shared payee ledger with no brand owner.
 -- MINGLA-INVARIANT: I-3872-LOCAL-PUBLIC-DTO | issue #3872 | Public Local reads expose only the named profile and review allow-lists; applications, payout amounts, evidence and moderation notes remain private.
 -- MINGLA-INVARIANT: I-3872-LOCAL-PENDING-VENUE-FENCE | issue #3872 | A Local month is a reviewed place dependency and remains disallowed while a pending venue identity is corrected; the #2099 schema pin is advanced only over that fail-closed lane.
