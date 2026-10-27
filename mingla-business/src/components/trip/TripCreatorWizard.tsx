@@ -73,14 +73,34 @@ import {
   useCreateTripPricingTier,
   useRemoveTripPricingTier,
   usePublishTrip,
+  // Issue #3801 — reload from the server after a revision conflict.
+  useTripWizardServerSync,
 } from "../../hooks/useTrips";
 // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 autosave hooks.
 import {
   useUpdateBookingDeadline,
   useUpdateRefundPolicy,
 } from "../../hooks/useRefundPolicy";
-import type { Trip, TripPublishValidationError } from "../../services/tripsService";
-import { setTripPricingSwitches } from "../../services/tripsService";
+import type {
+  Trip,
+  TripPublishValidationError,
+  TripRevisionCursor,
+} from "../../services/tripsService";
+import {
+  readTripRevision,
+  setTripPricingSwitches,
+} from "../../services/tripsService";
+// Issue #3801 / #4134 — one save at a time per trip, with a deadline, and an
+// honest stop when the trip changed somewhere else.
+import {
+  TRIP_REVISION_CONFLICT_MESSAGE,
+  TRIP_SAVE_TIMEOUT_MESSAGE,
+  createTripSaveQueue,
+  isTripRevisionConflict,
+  isTripSaveTimeout,
+  isRevisionAtLeast,
+  type TripSaveQueue,
+} from "../../utils/tripSaveQueue";
 // ORCH-1339 — guest-privacy leaf-write RPC (never the big trip edit RPCs).
 import { setEventGuestPrivacy } from "../../services/businessEvents";
 import {
@@ -261,6 +281,8 @@ const STEP_COUNT = 8;
 // constraint name or developer wording is never shown.
 const TRIP_STEP_SAVE_FAILED_MESSAGE =
   "We couldn't save this step. Check your connection and try again.";
+// Issue #3801 — publish commits the draft and then publishes: two commands.
+const TRIP_PUBLISH_TIMEOUT_MS = 60_000;
 const TRIP_DISCARD_FAILED_MESSAGE =
   "We couldn't discard this trip. Check your connection and try again.";
 
@@ -317,6 +339,75 @@ export function tripToStep1Draft(trip: Trip): Step1Draft {
     coverGallery: trip.coverGallery ?? [],
     // #1022 — seed from the trip's persisted theme override columns.
     themeOverrides: normalizeThemeOverrides(trip.themeOverrides),
+  };
+}
+
+/**
+ * Issue #3801 — which cover fields a Step-1 save (or Publish) may send.
+ *
+ * A save is a patch: a field it leaves out keeps what the server stores. The
+ * wizard sends the cover only when the host changed it in this session (it
+ * differs from the cover the session last knew the server to hold), and never
+ * while one of the host's cover videos is still uploading or processing. The
+ * server applies that video to the trip on its own when it is ready, often
+ * after the cover sheet closed; a save from this session must never put the
+ * old (or an empty) cover back over it. The extra photos (the gallery) are
+ * not touched by a video apply, so they are sent whenever the host changed
+ * them.
+ */
+export interface TripCoverBaseline {
+  coverMediaUrl: string | null;
+  coverMediaType: Step1Draft["coverMediaType"];
+  coverMediaPosterUrl: string | null;
+  galleryKey: string;
+}
+
+export function tripCoverBaselineOf(draft: Step1Draft): TripCoverBaseline {
+  return {
+    coverMediaUrl: draft.coverMediaUrl ?? null,
+    coverMediaType: draft.coverMediaType ?? null,
+    coverMediaPosterUrl: draft.coverMediaPosterUrl ?? null,
+    galleryKey: JSON.stringify(draft.coverGallery ?? []),
+  };
+}
+
+export interface TripCoverSaveDecision {
+  /** Send cover_media_url / _type / _poster_url. */
+  sendCover: boolean;
+  /** Send cover_media_gallery. */
+  sendGallery: boolean;
+}
+
+export function decideTripCoverSave(
+  draft: Step1Draft,
+  baseline: TripCoverBaseline,
+  coverVideoInFlight: boolean,
+): TripCoverSaveDecision {
+  const now = tripCoverBaselineOf(draft);
+  const coverChanged =
+    now.coverMediaUrl !== baseline.coverMediaUrl ||
+    now.coverMediaType !== baseline.coverMediaType ||
+    now.coverMediaPosterUrl !== baseline.coverMediaPosterUrl;
+  return {
+    sendCover: coverChanged && !coverVideoInFlight,
+    sendGallery: now.galleryKey !== baseline.galleryKey,
+  };
+}
+
+/** Issue #3801 — after a save lands, what it sent is what the server holds. */
+export function advanceCoverBaseline(
+  baseline: TripCoverBaseline,
+  sent: Step1Draft,
+  decision: TripCoverSaveDecision,
+): TripCoverBaseline {
+  const next = tripCoverBaselineOf(sent);
+  return {
+    coverMediaUrl: decision.sendCover ? next.coverMediaUrl : baseline.coverMediaUrl,
+    coverMediaType: decision.sendCover ? next.coverMediaType : baseline.coverMediaType,
+    coverMediaPosterUrl: decision.sendCover
+      ? next.coverMediaPosterUrl
+      : baseline.coverMediaPosterUrl,
+    galleryKey: decision.sendGallery ? next.galleryKey : baseline.galleryKey,
   };
 }
 
@@ -627,7 +718,54 @@ export function isTripWizardPristine(
   return true;
 }
 
-export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
+/**
+ * Issue #3801 — the wizard as mounted by `/trip/[id]/edit` (reached from Home
+ * Recent and from Hub alike). It owns one thing: starting the editing session
+ * over from the server. After a revision conflict the host taps Reload; the
+ * trip and its traveler questions are read again, ignoring any cached copy,
+ * and once the route's trip carries that revision the session below is
+ * mounted afresh, so every step's draft, the held revision and the save queue
+ * are seeded from what is stored now. The host stays on the step they were on.
+ */
+export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = (props) => {
+  const { reloadTrip } = useTripWizardServerSync();
+  const [generation, setGeneration] = useState<number>(0);
+  const [resumeStep, setResumeStep] = useState<number | undefined>(undefined);
+  const [awaitingRevision, setAwaitingRevision] = useState<string | null>(null);
+  const tripId = props.trip.id;
+  const tripRevision = props.trip.updatedAt;
+  useEffect(() => {
+    // The route's trip has caught up with what the reload read (or moved on
+    // since): start the session over from it.
+    if (awaitingRevision !== null && isRevisionAtLeast(tripRevision, awaitingRevision)) {
+      setAwaitingRevision(null);
+      setGeneration((value) => value + 1);
+    }
+  }, [awaitingRevision, tripRevision]);
+  const handleReloadFromServer = useCallback(
+    async (currentStep: number): Promise<void> => {
+      const fresh = await reloadTrip(tripId);
+      setResumeStep(currentStep);
+      setAwaitingRevision(fresh.updatedAt);
+    },
+    [reloadTrip, tripId],
+  );
+  return (
+    <TripCreatorWizardSession
+      key={generation}
+      {...props}
+      initialStep={resumeStep ?? props.initialStep}
+      onReloadFromServer={handleReloadFromServer}
+    />
+  );
+};
+
+interface TripCreatorWizardSessionProps extends TripCreatorWizardProps {
+  /** Issue #3801 — read the trip again and start this session over from it. */
+  onReloadFromServer: (currentStep: number) => Promise<void>;
+}
+
+const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
   trip,
   brand,
   isCreateMode = false,
@@ -635,6 +773,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   onPublished,
   onExit,
   initialStep,
+  onReloadFromServer,
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -673,6 +812,23 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   const [publishError, setPublishError] = useState<PublishErrorState | null>(null);
   const [isAutosaving, setIsAutosaving] = useState<boolean>(false);
   const [autosaveError, setAutosaveError] = useState<boolean>(false);
+  // Issue #3801 / #4134 — every save this session makes to the trip runs
+  // through ONE queue: never two at once, each with a deadline.
+  const saveQueueRef = useRef<TripSaveQueue | null>(null);
+  if (saveQueueRef.current === null) saveQueueRef.current = createTripSaveQueue();
+  const saveQueue = saveQueueRef.current;
+  // Issue #3801 — the revision this session's drafts were seeded from. Every
+  // save sends it and adopts the revision the server returns, so an editor
+  // whose copy is out of date is refused instead of overwriting newer data.
+  const revisionRef = useRef<TripRevisionCursor>({ current: trip.updatedAt });
+  const revision = revisionRef.current;
+  // Issue #3801 — the trip changed somewhere else. Nothing saves (or retries)
+  // until the host reloads.
+  const [revisionConflict, setRevisionConflict] = useState<boolean>(false);
+  const [isReloading, setIsReloading] = useState<boolean>(false);
+  // Issue #3801 — Close after a conflict says it once; a second Close leaves.
+  const closeWarnedOfConflictRef = useRef<boolean>(false);
+  const { markTripChanged } = useTripWizardServerSync();
   const [autosaveSavedAt, setAutosaveSavedAt] = useState<string | null>(null);
 
   // ORCH-0874: discard ConfirmDialog state (create-mode-dirty close).
@@ -721,6 +877,16 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     const newlyCleared = clearedIds.filter((id) => !acknowledged.has(id));
     if (newlyCleared.length === 0) return;
     for (const id of newlyCleared) acknowledged.add(id);
+    // Issue #3801 — the server cleared these prices and the form takes that
+    // change on below, so the session holds the revision it came with (only
+    // ever forward: never back past a save this session already made).
+    if (
+      !saveQueue.isBusy() &&
+      !saveQueue.isConflicted() &&
+      isRevisionAtLeast(trip.updatedAt, revision.current)
+    ) {
+      revision.current = trip.updatedAt;
+    }
     setStep4Draft((s) => ({
       ...s,
       packages: s.packages.map((p) =>
@@ -730,7 +896,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       ),
     }));
     showToast("Your brand's currency changed. Enter your package prices again.");
-  }, [trip.pricingTiers, showToast]);
+  }, [trip.pricingTiers, trip.updatedAt, showToast, saveQueue, revision]);
   const dismissToast = useCallback((): void => {
     setToast((p) => ({ ...p, visible: false }));
   }, []);
@@ -1145,6 +1311,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         seenIds.add(pkg.ticketTypeId);
         await updatePricingMutation.mutateAsync({
           eventId: trip.id,
+          revision,
           patch: {
             ticketTypeId: pkg.ticketTypeId,
             tierName,
@@ -1162,6 +1329,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       } else {
         const created = await createTierMutation.mutateAsync({
           eventId: trip.id,
+          revision,
           patch: {
             tierName,
             priceCents,
@@ -1181,6 +1349,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         await removeTierMutation.mutateAsync({
           eventId: trip.id,
           ticketTypeId: knownId,
+          revision,
         });
       }
     }
@@ -1200,6 +1369,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   }, [
     step4Draft.packages,
     trip.id,
+    revision,
     updatePricingMutation,
     createTierMutation,
     removeTierMutation,
@@ -1212,10 +1382,60 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     setStep1Draft((s) => ({ ...s, themeOverrides: next }));
   }, []);
 
+  // Issue #3801 — a direct `events` write (theme, pricing switches, refund
+  // policy, booking deadline, guest privacy) moves the revision but cannot
+  // return it. Read it once, still inside the save queue, so the next command
+  // sends the revision this session made; and mark the cached trip stale so a
+  // session opened later seeds from it.
+  const adoptServerRevision = useCallback(async (): Promise<void> => {
+    revision.current = await readTripRevision(trip.id);
+    markTripChanged(trip.id);
+  }, [revision, trip.id, markTripChanged]);
+
+  // Issue #3801 — the server keeps a DRAFT's revision through its own cover
+  // video apply (migration 20271231303801), so a save after the apply carries
+  // the revision this session holds and is accepted; nothing is re-read here.
+  // Issue #3801 — the cover this session last knew the server to hold (seeded
+  // from the trip, moved by every save that sent the cover), and whether one of
+  // the host's cover videos is still uploading or processing. See
+  // `decideTripCoverSave`.
+  const coverBaselineRef = useRef<TripCoverBaseline>(
+    tripCoverBaselineOf(tripToStep1Draft(trip)),
+  );
+  const coverVideoInFlightRef = useRef<boolean>(false);
+  const lastReportedCoverProcessingRef = useRef<boolean>(false);
+  const handleCoverVideoProcessingChange = useCallback(
+    (isProcessing: boolean): void => {
+      // A video starting to upload (false -> true) holds the cover back. The
+      // picker reports nothing once its sheet closes, so the hold outlives
+      // the sheet; it ends when the picker reports the video finished, failed
+      // or was cancelled, or when the host picks or removes a cover.
+      if (isProcessing && !lastReportedCoverProcessingRef.current) {
+        coverVideoInFlightRef.current = true;
+      }
+      if (!isProcessing) coverVideoInFlightRef.current = false;
+      lastReportedCoverProcessingRef.current = isProcessing;
+    },
+    [],
+  );
+  const handleStep1Change = useCallback((patch: Partial<Step1Draft>): void => {
+    if ("coverMediaUrl" in patch || "coverMediaType" in patch) {
+      // The host picked, replaced or removed the cover: that is the cover now.
+      coverVideoInFlightRef.current = false;
+    }
+    setStep1Draft((s) => ({ ...s, ...patch }));
+  }, []);
+
   const autosaveStep1 = useCallback(async (): Promise<void> => {
+    const coverSave = decideTripCoverSave(
+      step1Draft,
+      coverBaselineRef.current,
+      coverVideoInFlightRef.current,
+    );
     await updateBasicsMutation.mutateAsync({
       eventId: trip.id,
       brandId: trip.brandId,
+      revision,
       patch: {
         title: step1Draft.title.trim(),
         businessTrip: {
@@ -1237,13 +1457,26 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         // ORCH-0876 — cover fields persist alongside basics. CoverPicker
         // emits patches synchronously into draft state; this writes them
         // to the events row on Continue / Back / Close (edit mode).
-        coverMediaUrl: step1Draft.coverMediaUrl,
-        coverMediaType: step1Draft.coverMediaType,
+        // Issue #3801 — only when the host changed them in this session, and
+        // never while a cover video is processing (`decideTripCoverSave`).
+        ...(coverSave.sendCover
+          ? {
+              coverMediaUrl: step1Draft.coverMediaUrl,
+              coverMediaType: step1Draft.coverMediaType,
+            }
+          : {}),
         // issue #868 [cover-gallery] — persist the ADDITIONAL photos via
         // updateTripBasics (§G.5, writes cover_media_gallery independently).
-        coverGallery: step1Draft.coverGallery ?? [],
+        ...(coverSave.sendGallery
+          ? { coverGallery: step1Draft.coverGallery ?? [] }
+          : {}),
       },
     });
+    coverBaselineRef.current = advanceCoverBaseline(
+      coverBaselineRef.current,
+      step1Draft,
+      coverSave,
+    );
     // #1022 — the theme override columns are written SEPARATELY and strictly
     // AFTER updateBasicsMutation resolves. updateTripBasics read-modify-writes
     // the whole `theme` JSONB across two round-trips; sequencing after it means
@@ -1254,6 +1487,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       offeringId: trip.id,
       themeOverrides: normalizeThemeOverrides(step1Draft.themeOverrides),
     });
+    await adoptServerRevision();
     // META-ORCH-1174 Leg B2 — persist the package set on Step 1 → Step 2 too,
     // so the primary package's price/capacity stays in sync with Step 1's
     // capacity seed (the historic Step-1 pricing write, now N-package-safe).
@@ -1262,13 +1496,16 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     step1Draft,
     trip.id,
     trip.brandId,
+    revision,
     updateBasicsMutation,
+    adoptServerRevision,
     persistPackages,
   ]);
 
   const autosaveStep2 = useCallback(async (): Promise<void> => {
     await upsertDaysMutation.mutateAsync({
       eventId: trip.id,
+      revision,
       days: daysDraft.map((d) => ({
         ordinal: d.ordinal,
         title: d.title.trim(),
@@ -1277,18 +1514,19 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         media: d.media ?? [],
       })),
     });
-  }, [daysDraft, trip.id, upsertDaysMutation]);
+  }, [daysDraft, trip.id, revision, upsertDaysMutation]);
 
   const autosaveStep3 = useCallback(async (): Promise<void> => {
     await upsertInclusionsMutation.mutateAsync({
       eventId: trip.id,
+      revision,
       items: inclusionsDraft.map((i) => ({
         kind: i.kind,
         item: i.item.trim(),
         ordinal: i.ordinal,
       })),
     });
-  }, [inclusionsDraft, trip.id, upsertInclusionsMutation]);
+  }, [inclusionsDraft, trip.id, revision, upsertInclusionsMutation]);
 
   const autosaveStep4 = useCallback(async (): Promise<void> => {
     // META-ORCH-1174 Leg B2 — persist ALL packages (create new / update
@@ -1300,29 +1538,29 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     // and the server would reject the change anyway.
     if (trip.ticketsSoldCount === 0) {
       await setTripPricingSwitches(trip.id, step4Draft.pricingSwitches);
+      await adoptServerRevision();
     }
   }, [
     persistPackages,
+    adoptServerRevision,
     step4Draft.pricingSwitches,
     trip.id,
     trip.ticketsSoldCount,
   ]);
 
   // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 autosave.
-  // Writes refund_policy + booking_deadline via two parallel mutations.
-  // Both target the events table; either may throw and propagate to
-  // autosaveCurrentStep's catch.
+  // Writes refund_policy + booking_deadline. Both target the events table;
+  // either may throw and propagate to autosaveCurrentStep's catch.
+  // Issue #3801 — one write at a time to the trip, never in parallel.
   const autosaveStep5 = useCallback(async (): Promise<void> => {
-    await Promise.all([
-      updateRefundPolicyMutation.mutateAsync({
-        eventId: trip.id,
-        policy: step5Draft.refundPolicy,
-      }),
-      updateBookingDeadlineMutation.mutateAsync({
-        eventId: trip.id,
-        deadlineIso: step5Draft.bookingDeadline,
-      }),
-    ]);
+    await updateRefundPolicyMutation.mutateAsync({
+      eventId: trip.id,
+      policy: step5Draft.refundPolicy,
+    });
+    await updateBookingDeadlineMutation.mutateAsync({
+      eventId: trip.id,
+      deadlineIso: step5Draft.bookingDeadline,
+    });
     // ORCH-1339 — persist the two guest-privacy display gates via the
     // leaf-write RPC (the server draft events row exists). NON-BLOCKING: a
     // display-pref failure never blocks step navigation or publish — toast and
@@ -1336,10 +1574,12 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
           : "Couldn't save guest privacy — check Settings after publishing.",
       );
     }
+    await adoptServerRevision();
   }, [
     trip,
     step5Draft,
     trip.id,
+    adoptServerRevision,
     updateRefundPolicyMutation,
     updateBookingDeadlineMutation,
     showToast,
@@ -1352,41 +1592,95 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   // trip_intake_schemas table via RLS policy `trip_intake_schemas_planner_
   // all`; published-trip RPC path is reserved for EditPublishedTripScreen
   // accordion (Phase 4 surface, NOT this wizard).
+  // Issue #3801 / #4134 — the packages are saved ONE AFTER ANOTHER. They used
+  // to go out together in a Promise.all carrying the same revision: the first
+  // committed, the second was refused with trip_revision_conflict, and that
+  // package's questions were lost. Each package leaves the dirty set only once
+  // its own save has landed, so a failure part-way resends only what is left.
   const autosaveStep6 = useCallback(async (): Promise<void> => {
     const dirty = Array.from(dirtyTierIdsRef.current);
-    if (dirty.length === 0) return;
-    await Promise.all(
-      dirty.map((ticketTypeId) => {
-        const schema = step6Draft.get(ticketTypeId) ?? null;
-        return upsertIntakeSchemaMutation.mutateAsync({
-          eventId: trip.id,
-          ticketTypeId,
-          schema,
-          skipStatusProbe: true,
-        });
-      }),
-    );
-    dirtyTierIdsRef.current = new Set();
-  }, [step6Draft, trip.id, upsertIntakeSchemaMutation]);
+    for (const ticketTypeId of dirty) {
+      const schema = step6Draft.get(ticketTypeId) ?? null;
+      await upsertIntakeSchemaMutation.mutateAsync({
+        eventId: trip.id,
+        ticketTypeId,
+        schema,
+        skipStatusProbe: true,
+        revision,
+      });
+      const remaining = new Set(dirtyTierIdsRef.current);
+      remaining.delete(ticketTypeId);
+      dirtyTierIdsRef.current = remaining;
+    }
+  }, [step6Draft, trip.id, revision, upsertIntakeSchemaMutation]);
 
+  // Issue #3801 — the trip changed somewhere else: say so plainly, once per
+  // refusal, and stop. Nothing is retried; Reload starts over from the server.
+  const surfaceRevisionConflict = useCallback((): void => {
+    setRevisionConflict(true);
+    setAutosaveError(false);
+    showToast(TRIP_REVISION_CONFLICT_MESSAGE);
+  }, [showToast]);
+
+  // Issue #3801 — a press that lands while a save is on the wire waits for it
+  // (showing "Saving…", bounded by the same deadline) and starts nothing new.
+  // Resolves true when that save landed cleanly.
+  const waitForSaveInFlight = useCallback(async (): Promise<boolean> => {
+    setIsAutosaving(true);
+    let settled = true;
+    try {
+      await saveQueue.waitForIdle();
+    } catch {
+      settled = false;
+      setAutosaveError(true);
+      showToast(TRIP_SAVE_TIMEOUT_MESSAGE);
+    } finally {
+      setIsAutosaving(false);
+    }
+    if (saveQueue.isConflicted()) {
+      surfaceRevisionConflict();
+      return false;
+    }
+    return settled;
+  }, [saveQueue, showToast, surfaceRevisionConflict]);
+
+  // Issue #3801 / #4134 — the ONLY way this wizard saves a step. The save runs
+  // in the session's queue (one at a time, with a deadline), so "Saving…"
+  // always ends and a second save can never overlap the first.
   const autosaveCurrentStep = useCallback(async (): Promise<void> => {
     setIsAutosaving(true);
     setAutosaveError(false);
     try {
-      if (step === 1) await autosaveStep1();
-      else if (step === 2) await autosaveStep2();
-      else if (step === 3) await autosaveStep3();
-      else if (step === 4) await autosaveStep4();
-      else if (step === 5) await autosaveStep5();
-      else if (step === 6) await autosaveStep6();
+      await saveQueue.run(async () => {
+        try {
+          if (step === 1) await autosaveStep1();
+          else if (step === 2) await autosaveStep2();
+          else if (step === 3) await autosaveStep3();
+          else if (step === 4) await autosaveStep4();
+          else if (step === 5) await autosaveStep5();
+          else if (step === 6) await autosaveStep6();
+        } catch (e) {
+          // Issue #3645 — refused because the server cleared a package's price
+          // (brand currency change). The form re-seeds that package from the
+          // re-read trip, so the session takes the server's revision with it.
+          if (readRpcFailureMessage(e) === "price_reentry_required") {
+            revision.current = await readTripRevision(trip.id);
+          }
+          throw e;
+        }
+      });
       setAutosaveSavedAt(new Date().toISOString());
     } catch (e) {
-      setAutosaveError(true);
+      if (isTripRevisionConflict(e)) setRevisionConflict(true);
+      else setAutosaveError(true);
       throw e;
     } finally {
       setIsAutosaving(false);
     }
   }, [
+    saveQueue,
+    revision,
+    trip.id,
     step,
     autosaveStep1,
     autosaveStep2,
@@ -1408,6 +1702,16 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       if (inviteNavigation?.phase === "error") inviteNavigation.retry();
       if (inviteNavigation?.phase !== "ready") return;
     }
+    // Issue #3801 — a second press while a save is on the wire is the same
+    // intent as the first. It never starts another save; the first decides.
+    if (saveQueue.isBusy()) {
+      await waitForSaveInFlight();
+      return;
+    }
+    if (saveQueue.isConflicted()) {
+      surfaceRevisionConflict();
+      return;
+    }
     try {
       await autosaveCurrentStep();
       setPublishError(null);
@@ -1423,6 +1727,17 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       // locked copy + the payments-onboard route (mirroring
       // handleConfirmPublish); only unrecognized errors keep the connection
       // toast.
+      // Issue #3801 — the trip changed somewhere else: stay on the step and
+      // offer Reload. Never "check your connection", never a retry.
+      if (isTripRevisionConflict(e)) {
+        surfaceRevisionConflict();
+        return;
+      }
+      // Issue #3801 — the save did not answer in time. Say so, on the step.
+      if (isTripSaveTimeout(e)) {
+        showToast(TRIP_SAVE_TIMEOUT_MESSAGE);
+        return;
+      }
       const autosaveErrCode = readRpcFailureMessage(e);
       // Issue #3645 — a package price cleared by a brand currency change was
       // about to be saved with the OLD number (this form was open across the
@@ -1455,7 +1770,16 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
       });
     }
-  }, [autosaveCurrentStep, step, inviteEnabled, inviteNavigation, showToast]);
+  }, [
+    autosaveCurrentStep,
+    step,
+    inviteEnabled,
+    inviteNavigation,
+    showToast,
+    saveQueue,
+    surfaceRevisionConflict,
+    waitForSaveInFlight,
+  ]);
 
   // ORCH-0876 — Back autosaves before stepping back, mirroring event wizard
   // semantics so unsaved Step N edits aren't lost when the operator returns
@@ -1475,11 +1799,32 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         return s > 1 ? ((s - 1) as StepIndex) : s;
       });
     };
+    // Issue #3801 — same rule as Continue: a press during a save starts no
+    // second save, and a conflict is said, not swallowed by stepping back.
+    if (saveQueue.isBusy()) {
+      await waitForSaveInFlight();
+      return;
+    }
+    if (saveQueue.isConflicted()) {
+      surfaceRevisionConflict();
+      return;
+    }
     try {
       await autosaveCurrentStep();
       goBack();
       setPublishError(null);
     } catch (e) {
+      // Issue #3801 — the trip changed somewhere else. Stay and say so: going
+      // back would only invite more edits that cannot be saved.
+      if (isTripRevisionConflict(e)) {
+        surfaceRevisionConflict();
+        return;
+      }
+      if (isTripSaveTimeout(e)) {
+        showToast(TRIP_SAVE_TIMEOUT_MESSAGE);
+        goBack();
+        return;
+      }
       // issue #1014 (rework F-1) — same money-setup guard mapping as
       // handleNext's catch: locked copy + payments-onboard route first;
       // only unrecognized errors keep the connection toast.
@@ -1515,7 +1860,16 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
       });
     }
-  }, [autosaveCurrentStep, step, inviteEnabled, inviteNavigation?.phase, showToast]);
+  }, [
+    autosaveCurrentStep,
+    step,
+    inviteEnabled,
+    inviteNavigation?.phase,
+    showToast,
+    saveQueue,
+    surfaceRevisionConflict,
+    waitForSaveInFlight,
+  ]);
 
   // ----- ORCH-0874 handleClose (chrome X) — branches on isCreateMode + pristine -----
   const handleClose = useCallback((): void => {
@@ -1556,11 +1910,41 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       // chrome X. Autosave failure does NOT block exit (the persistent
       // autosave-error banner already surfaced); the user already chose
       // to leave.
+      // Issue #3801 / #4134 — with two exceptions:
+      //   - a save already on the wire is waited for, never joined by a
+      //     second one (X during Continue used to start a parallel save);
+      //   - a revision conflict is said, not swallowed. The host stays and is
+      //     offered Reload. Once told, a second X leaves without saving.
+      if (saveQueue.isConflicted()) {
+        if (closeWarnedOfConflictRef.current) {
+          onExit();
+        } else {
+          closeWarnedOfConflictRef.current = true;
+          surfaceRevisionConflict();
+        }
+        return;
+      }
       void (async (): Promise<void> => {
+        if (saveQueue.isBusy()) {
+          await waitForSaveInFlight();
+          if (saveQueue.isConflicted()) {
+            closeWarnedOfConflictRef.current = true;
+            return;
+          }
+          // A save that failed or did not answer in time has been said;
+          // leaving is still what the host chose.
+          onExit();
+          return;
+        }
         try {
           await autosaveCurrentStep();
-        } catch {
-          // Silent — banner already flagged the failure; exit anyway.
+        } catch (e) {
+          if (isTripRevisionConflict(e)) {
+            closeWarnedOfConflictRef.current = true;
+            surfaceRevisionConflict();
+            return;
+          }
+          // Otherwise silent — banner already flagged the failure; exit anyway.
         }
         onExit();
       })();
@@ -1575,6 +1959,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     trip,
     onDiscardTrip,
     onExit,
+    saveQueue,
+    surfaceRevisionConflict,
+    waitForSaveInFlight,
     autosaveCurrentStep,
   ]);
 
@@ -1718,53 +2105,82 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   }, [handlePublishTap]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
+    // Issue #3801 — publish commits the Step-1 draft first, so it is a save
+    // like any other: never alongside another, never after a conflict.
+    if (saveQueue.isBusy()) {
+      await waitForSaveInFlight();
+      return;
+    }
+    if (saveQueue.isConflicted()) {
+      setPublishConfirmVisible(false);
+      setInvitePublishConfirmVisible(false);
+      surfaceRevisionConflict();
+      return;
+    }
     setPublishError(null);
     try {
-      const published = await publishMutation.mutateAsync({
-        eventId: trip.id,
-        brandId: trip.brandId,
-        invites: invitePlan && invitePlan.selectedCount > 0
-          ? {
-              selectionRevision: invitePlan.selectionRevision,
-              selectionConfirmed: true,
-            }
-          : undefined,
-        draftPayload: {
-          title: step1Draft.title.trim(),
-          cover_media_url: step1Draft.coverMediaUrl,
-          cover_media_poster_url:
-            step1Draft.coverMediaPosterUrl ??
-            (step1Draft.coverMediaType === "image" ? step1Draft.coverMediaUrl : null),
-          cover_media_type: step1Draft.coverMediaType,
-          cover_media_gallery: step1Draft.coverGallery ?? [],
-          theme: {
-            business_trip: {
-              startAt: step1Draft.startAt,
-              endAt: step1Draft.endAt,
-              destinationPlaceId: step1Draft.destinationPlaceId,
-              destinationLocationText: step1Draft.destinationLocationText,
-              destinationLat: step1Draft.destinationLat,
-              destinationLng: step1Draft.destinationLng,
-              destinationCity: step1Draft.destinationCity,
-              destinationCountryCode: step1Draft.destinationCountryCode,
-              departurePlaceId: step1Draft.departurePlaceId,
-              departureLocationText: step1Draft.departureLocationText,
-              departureLat: step1Draft.departureLat,
-              departureLng: step1Draft.departureLng,
-              departureCity: step1Draft.departureCity,
-              departureCountryCode: step1Draft.departureCountryCode,
-              // Issue #1363 — precision rides theme.business_trip.* (JSON; no
-              // column). The publish RPC preserves unknown business_trip keys, so
-              // this persists with no RPC change.
-              destinationCoordinatePrecision:
-                step1Draft.destinationCoordinatePrecision ?? null,
-              departureCoordinatePrecision:
-                step1Draft.departureCoordinatePrecision ?? null,
+      const publishCoverSave = decideTripCoverSave(
+        step1Draft,
+        coverBaselineRef.current,
+        coverVideoInFlightRef.current,
+      );
+      const published = await saveQueue.run(async () => {
+        return publishMutation.mutateAsync({
+          eventId: trip.id,
+          brandId: trip.brandId,
+          revision,
+          invites: invitePlan && invitePlan.selectedCount > 0
+            ? {
+                selectionRevision: invitePlan.selectionRevision,
+                selectionConfirmed: true,
+              }
+            : undefined,
+          draftPayload: {
+            title: step1Draft.title.trim(),
+            // Issue #3801 — the cover rides only when the host changed it in
+            // this session and no cover video is processing; a key left out
+            // keeps what the server stores (`decideTripCoverSave`).
+            ...(publishCoverSave.sendCover
+              ? {
+                  cover_media_url: step1Draft.coverMediaUrl,
+                  cover_media_poster_url:
+                    step1Draft.coverMediaPosterUrl ??
+                    (step1Draft.coverMediaType === "image" ? step1Draft.coverMediaUrl : null),
+                  cover_media_type: step1Draft.coverMediaType,
+                }
+              : {}),
+            ...(publishCoverSave.sendGallery
+              ? { cover_media_gallery: step1Draft.coverGallery ?? [] }
+              : {}),
+            theme: {
+              business_trip: {
+                startAt: step1Draft.startAt,
+                endAt: step1Draft.endAt,
+                destinationPlaceId: step1Draft.destinationPlaceId,
+                destinationLocationText: step1Draft.destinationLocationText,
+                destinationLat: step1Draft.destinationLat,
+                destinationLng: step1Draft.destinationLng,
+                destinationCity: step1Draft.destinationCity,
+                destinationCountryCode: step1Draft.destinationCountryCode,
+                departurePlaceId: step1Draft.departurePlaceId,
+                departureLocationText: step1Draft.departureLocationText,
+                departureLat: step1Draft.departureLat,
+                departureLng: step1Draft.departureLng,
+                departureCity: step1Draft.departureCity,
+                departureCountryCode: step1Draft.departureCountryCode,
+                // Issue #1363 — precision rides theme.business_trip.* (JSON; no
+                // column). The publish RPC preserves unknown business_trip keys, so
+                // this persists with no RPC change.
+                destinationCoordinatePrecision:
+                  step1Draft.destinationCoordinatePrecision ?? null,
+                departureCoordinatePrecision:
+                  step1Draft.departureCoordinatePrecision ?? null,
+              },
             },
+            timezone: trip.timezone,
           },
-          timezone: trip.timezone,
-        },
-      });
+        });
+      }, TRIP_PUBLISH_TIMEOUT_MS);
       // ORCH-1339 — re-assert the guest-privacy toggles on publish success
       // (leaf write; belt-and-suspenders with the Step-5 autosave). NON-BLOCKING:
       // display prefs never block publish (SPEC §4.7).
@@ -1783,6 +2199,18 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     } catch (e) {
       const err = e as TripPublishValidationError;
       setPublishConfirmVisible(false);
+      // Issue #3801 — the trip changed somewhere else since this session
+      // loaded it: offer Reload instead of a publish error code.
+      if (isTripRevisionConflict(e)) {
+        setInvitePublishConfirmVisible(false);
+        surfaceRevisionConflict();
+        return;
+      }
+      if (isTripSaveTimeout(e)) {
+        setInvitePublishConfirmVisible(false);
+        showToast(TRIP_SAVE_TIMEOUT_MESSAGE);
+        return;
+      }
       // #3645 — the server asks for the Organiser Terms. Offer the acceptance
       // sheet and resume this publish once accepted. Handled before the error
       // banner, which would otherwise print the server's code.
@@ -1806,7 +2234,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       }
     }
   }, [publishMutation, router, step1Draft, step5Draft, trip.id, trip.brandId, trip.timezone, onPublished, showToast, invitePlan, bankSetupRoute,
-    acceptTermsAfterServerRefusal]);
+    acceptTermsAfterServerRefusal, saveQueue, revision, surfaceRevisionConflict,
+    waitForSaveInFlight]);
 
   // Suppress autosave-error toast surfacing via setPublishError; show via
   // the persistent banner in Step 5. Show toast for discard errors only.
@@ -1858,12 +2287,28 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     : STEP_SUBTITLES[step];
 
   // Autosave state copy for subtitle row.
+  // Issue #3801 — honest: nothing retries on its own, so the header never
+  // claims a retry. A failed save waits for the host's next Continue, Back or
+  // Close; a conflict waits for Reload.
   const autosaveStateText = useMemo<string>(() => {
-    if (autosaveError) return "Unsaved changes — retrying";
+    if (revisionConflict) return "Not saved — this trip changed somewhere else";
     if (isAutosaving) return "Saving…";
+    if (autosaveError) return "Not saved — your changes are kept here";
     if (autosaveSavedAt !== null) return "Saved";
     return "";
-  }, [autosaveError, isAutosaving, autosaveSavedAt]);
+  }, [revisionConflict, autosaveError, isAutosaving, autosaveSavedAt]);
+
+  const handleReload = useCallback(async (): Promise<void> => {
+    if (isReloading) return;
+    setIsReloading(true);
+    try {
+      // Unmounts this session when it lands; nothing below runs after that.
+      await onReloadFromServer(step);
+    } catch {
+      setIsReloading(false);
+      showToast("We couldn't reload this trip. Check your connection and try again.");
+    }
+  }, [isReloading, onReloadFromServer, step, showToast]);
 
   // Publish dialog description: destination + dates if available.
   const publishDialogDescription = useMemo<string>(() => {
@@ -2022,6 +2467,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                 icon="close"
                 size={36}
                 onPress={handleClose}
+                // Issue #3801 — no Close while a save is on the wire.
+                disabled={submitting}
                 accessibilityLabel="Close wizard"
               />
             }
@@ -2033,6 +2480,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
             icon="close"
             size={36}
             onPress={handleClose}
+            // Issue #3801 — no Close while a save is on the wire.
+            disabled={submitting}
             accessibilityLabel="Close wizard"
           />
           <View style={styles.stepperWrap}>
@@ -2058,7 +2507,10 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         <Text style={styles.mobileStepSub}>{stepSubtitle}</Text>
         {autosaveStateText.length > 0 ? (
           <Text
-            style={[styles.saveState, autosaveError && styles.saveStateError]}
+            style={[
+              styles.saveState,
+              (autosaveError || revisionConflict) && styles.saveStateError,
+            ]}
           >
             {autosaveStateText}
           </Text>
@@ -2085,16 +2537,40 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.stepBodyWrap}>
+          {revisionConflict ? (
+            <View
+              style={styles.conflictBanner}
+              accessibilityRole="alert"
+              testID="trip-wizard-revision-conflict"
+            >
+              <Text style={styles.conflictText}>
+                {TRIP_REVISION_CONFLICT_MESSAGE}
+              </Text>
+              <Button
+                label={isReloading ? "Reloading…" : "Reload"}
+                variant="secondary"
+                size="sm"
+                onPress={() => {
+                  void handleReload();
+                }}
+                loading={isReloading}
+                disabled={isReloading}
+                accessibilityLabel="Reload the latest version of this trip"
+                testID="trip-wizard-reload"
+              />
+            </View>
+          ) : null}
           {step === 1 ? (
             <TripCreatorStep1Basics
               draft={step1Draft}
-              onChange={(patch) => setStep1Draft((s) => ({ ...s, ...patch }))}
+              onChange={handleStep1Change}
               disabled={submitting}
               brandId={trip.brandId}
               tripEventId={trip.id}
               onShowToast={showToast}
               showAddressErrors={showStep1AddressErrors}
               timeZone={trip.timezone ?? null}
+              onCoverVideoProcessingChange={handleCoverVideoProcessingChange}
             />
           ) : null}
           {step === 2 ? (
@@ -2599,6 +3075,20 @@ const styles = StyleSheet.create({
   },
   saveStateError: {
     color: semantic.error,
+  },
+  conflictBanner: {
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: semantic.error,
+    backgroundColor: semantic.errorTint,
+  },
+  conflictText: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: semantic.errorText,
   },
   body: {
     paddingHorizontal: spacing.md + 8,

@@ -435,12 +435,23 @@ const BOUNDARY: Record<string, () => unknown> = {
     useCreateTripPricingTier: () => mutation,
     useRemoveTripPricingTier: () => mutation,
     usePublishTrip: () => mutation,
+    // Issue #3801 — the reload-after-conflict path (not exercised here).
+    useTripWizardServerSync: () => ({
+      reloadTrip: () => Promise.reject(new Error("reload_not_expected")),
+      markTripChanged: (): void => undefined,
+    }),
   }),
   useRefundPolicy: () => ({
     useUpdateBookingDeadline: () => mutation,
     useUpdateRefundPolicy: () => mutation,
   }),
-  tripsService: () => ({ setTripPricingSwitches: asyncNoop }),
+  // Issue #3801 — the session re-reads the revision after a direct write.
+  tripsService: () => ({
+    setTripPricingSwitches: asyncNoop,
+    readTripRevision: async () => "revision-3801",
+  }),
+  // Issue #3801 — REAL: the one-save-at-a-time queue is pure.
+  tripSaveQueue: () => jest.requireActual("../../utils/tripSaveQueue"),
   businessEvents: () => ({ setEventGuestPrivacy: asyncNoop }),
   // issue #3827 — the two settings steps load lazily; same inert step leaves.
   lazySettingsSteps: () => ({ CreatorStep6SettingsLazy: leaf("CreatorStep6Settings"), RsvpStep5SetupLazy: leaf("RsvpStep5Setup") }),

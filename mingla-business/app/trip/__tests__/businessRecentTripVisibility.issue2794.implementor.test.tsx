@@ -31,6 +31,9 @@ const mockTripQuery = {
     coverMediaType: "image",
   },
   isLoading: false,
+  // Issue #3801 — the route mounts an editor only from a read that finished
+  // after it opened.
+  isFetchedAfterMount: true,
   isError: false,
   error: null,
 };
@@ -68,6 +71,7 @@ jest.mock("../../../src/hooks/useTrips", () => ({
       : {
           data: null,
           isLoading: false,
+          isFetchedAfterMount: true,
           isError: false,
           error: null,
         },
