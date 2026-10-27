@@ -116,7 +116,8 @@ Deno.test("#3980 W4 P3-B: link and add-card rows start ticked; a row whose perso
 });
 
 Deno.test("#3980 W4 P3-B: the Team dashboard panel is the owner's, previews first and confirms the ticked brands once", () => {
-  const page = code("pages/TeamDashboardPage.jsx");
+  // #4130: the brands panel moved from the Team dashboard to components/ops/TeamSettingsPanels.jsx (Settings renders it).
+  const page = code("components/ops/TeamSettingsPanels.jsx");
   assertMatch(page, /function BrandCardsBackfill\(\{ online \}\)/);
   assertMatch(page, /const canEdit = !!settingsRead\.data\?\.can_edit;/);
   assertMatch(page, /if \(!canEdit\) return null;/);
@@ -133,7 +134,8 @@ Deno.test("#3980 W4 P3-B: the Team dashboard panel is the owner's, previews firs
 
 Deno.test("#3980 W4 L: both panels fit a phone: two columns only from lg, wrapping rows, lists scroll inside their box", () => {
   const panel = code("components/community/RoadmapPanel.jsx");
-  const page = code("pages/TeamDashboardPage.jsx");
+  // #4130: the brands panel moved from the Team dashboard to components/ops/TeamSettingsPanels.jsx (Settings renders it).
+  const page = code("components/ops/TeamSettingsPanels.jsx");
   assertMatch(panel, /grid min-w-0 grid-cols-1 gap-4 border-t[^"]* lg:grid-cols-2/);
   assertMatch(page, /grid min-w-0 grid-cols-1 gap-4 px-4 py-3 sm:px-5 lg:grid-cols-\[minmax\(0,2fr\)_minmax\(0,3fr\)\]/);
   for (const [name, src] of [["RoadmapPanel", panel], ["TeamDashboardPage", page]]) {

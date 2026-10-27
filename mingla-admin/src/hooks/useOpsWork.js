@@ -64,11 +64,15 @@ export function useOpsPoll(load, { key = "", intervalMs = 30_000, enabled = true
   };
 }
 
-/** The Work board list, refreshed every 30 seconds while visible. */
-export function useOpsWork({ who = "all", week = null } = {}) {
+/**
+ * The Work board list, refreshed every 30 seconds while visible. #4130: the
+ * person chips filter it on the server by `owner`, and the search box by `q`.
+ */
+export function useOpsWork({ who = "all", week = null, owner = null, q = "" } = {}) {
   const { access } = useAuth();
-  const query = { who, today: todayIso(), ...(week ? { week } : {}) };
-  return useOpsPoll(() => ops.listWork(query), { key: `${access?.email || ""}|${who}|${week || ""}`, intervalMs: 30_000 });
+  const search = String(q || "").trim();
+  const query = { who, today: todayIso(), ...(week ? { week } : {}), ...(owner ? { owner } : {}), ...(search ? { q: search } : {}) };
+  return useOpsPoll(() => ops.listWork(query), { key: `${access?.email || ""}|${who}|${week || ""}|${owner || ""}|${search}`, intervalMs: 30_000 });
 }
 
 /** Wave 3 — the Team dashboard's runway, sprint and host-owner numbers (owner and admins). */

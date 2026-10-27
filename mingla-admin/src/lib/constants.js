@@ -62,19 +62,6 @@ export const TABLES = [
   "email_templates",
 ];
 
-// ORCH-0640 ch08: STAT_CARDS stripped of "Cards" (card_pool archived).
-// Added "Signal Scores" + "Engagement 7d" (new place-level metrics).
-export const STAT_CARDS = [
-  { label: "Users", table: "profiles", icon: "Users" },
-  { label: "Places", table: "place_pool", icon: "Globe" },
-  { label: "Signal Scores", table: "place_scores", icon: "Activity" },
-  { label: "Engagement (7d)", table: "engagement_metrics", icon: "TrendingUp" },
-  { label: "Collab Sessions", table: "collaboration_sessions", icon: "Handshake" },
-  { label: "Boards", table: "boards", icon: "LayoutDashboard" },
-  { label: "Reviews", table: "place_reviews", icon: "Star" },
-  { label: "Feedback", table: "app_feedback", icon: "MessageSquare" },
-];
-
 export const SEED_SCRIPTS = [
   {
     label: "Seed Demo Profiles",
@@ -111,14 +98,15 @@ export const SEED_SCRIPTS = [
 //   - Who may open what is NOT decided here: lib/access.js owns it, per page
 //     id, and prepends the role Home group. Moving an item between groups
 //     never changes who sees it.
-//   - A group with a label can be folded in the menu; the first group has no
-//     label and is always shown.
+//   - A group with a label can be folded in the menu. Since #4130 every menu
+//     group is named; only the role Home group (lib/access.js) has no label.
 //   - `icon` is a key of ICON_MAP in components/layout/Sidebar.jsx. One icon
 //     per item, no two items share one, and a name that is not registered
 //     there fails src/__tests__/admin_shell_issue3802.implementor.happy.test.js
 //     (there is no fallback icon).
-//   - Slots held for pages the other #3802 waves add: Pipeline (after creators,
-//     and after tool-leads), Company (after careers), System (after agent).
+//   - #4130: Hosts and creators is the one page still holding older pages
+//     as tabs (lib/adminRoutes.js PAGE_HUB_TABS, pages/HostsAndCreatorsHub.jsx);
+//     every other merged page is a real page.
 //
 // History: ORCH-1008 pruned six pages and ORCH-1014 two more; ORCH-1271..1274
 // added the Business console; ISSUE-862 / #3697 the ads pages; ISSUE-3534
@@ -128,75 +116,71 @@ export const SEED_SCRIPTS = [
 // and Agent log, with Drafts to send relabelled To review and Content
 // calendar relabelled Calendar (page ids unchanged); the #3980 synced program
 // relabelled To review Needs you and Work board Work, and folded the Agent log
-// into Work as a tab.
+// into Work as a tab. #4130 Wave 0 cut the menu from 40 entries to 26 pages
+// in nine groups (Home first); the retired ids redirect to the page that now
+// holds them (lib/adminRoutes.js), My agent and Guide moved to the header.
+// #4130 + #3872: the Creator Program pages (Creators, Gigs, Mingla Locals,
+// Disputes) sit under Hosts and creators in Outreach: 31 entries.
 
 export const NAV_GROUPS = [
   {
-    label: null,
+    label: "Home",
     items: [
       { id: "overview",                  label: "Dashboard",          icon: "LayoutDashboard" },
-      // #3720 Slice F — Support + Email fold into one Community & Support console.
-      { id: "community-support",         label: "Community & Support", icon: "LifeBuoy" },
+      // #4130: the Work entry carries the count of your own cards waiting on
+      // you (Needs you was retired into Work's first column).
+      { id: "work-board",                label: "Work",               icon: "SquareKanban" },
       { id: "notifications",             label: "Notifications",      icon: "Bell" },
     ],
   },
   {
-    label: "Pipeline",
+    label: "Outreach",
     items: [
-      { id: "hosts",                     label: "Hosts",              icon: "Handshake" },
-      { id: "creators",                  label: "Creators",           icon: "Sparkles" },
-      // #3980 (D-11): Needs you, Work and Calendar sit together; the Agent
-      // log is a tab on Work (#/agent-log still opens it there).
-      { id: "drafts",                    label: "Needs you",          icon: "FileText" },
-      { id: "work-board",                label: "Work",               icon: "SquareKanban" },
+      { id: "outreach",                  label: "Hosts and creators", icon: "Handshake" },
+      // #4130 + #3872: the Creator Program's working pages sit right under
+      // Hosts and creators, each its own page, with the access it shipped
+      // with (lib/access.js default). #/gig-queue opens Disputes.
+      { id: "program-creators",          label: "Creators",           icon: "BadgeCheck" },
+      { id: "program-gigs",              label: "Gigs",               icon: "Clapperboard" },
+      { id: "program-locals",            label: "Mingla Locals",      icon: "MapPin" },
+      { id: "program-disputes",          label: "Disputes",           icon: "Scale" },
+      { id: "inbound",                   label: "Inbound leads",      icon: "Inbox" },
       { id: "content-calendar",          label: "Calendar",           icon: "CalendarClock" },
-      { id: "beta-leads",                label: "Beta Leads",         icon: "Inbox" },
-      { id: "tool-leads",                label: "Tool Leads",         icon: "Wrench" },
       { id: "team-dashboard",            label: "Team dashboard",     icon: "BarChart3" },
+    ],
+  },
+  {
+    label: "Support",
+    items: [
+      // #4130 Wave 6: two pages, split from the Community & Support console.
+      { id: "support",                   label: "Support",            icon: "LifeBuoy" },
+      { id: "community",                 label: "Community",          icon: "MessagesSquare" },
     ],
   },
   {
     label: "Business",
     items: [
-      { id: "business-people",           label: "People",             icon: "Users" },
-      { id: "business-brands",           label: "Brands",             icon: "Building2" },
-      { id: "brand-sites",               label: "Brand Sites",        icon: "Globe" },
-      { id: "business-venues",           label: "Venues",             icon: "Store" },
+      { id: "people",                    label: "People",             icon: "Users" },
+      { id: "brands",                    label: "Brands",             icon: "Building2" },
       { id: "business-offerings",        label: "Offerings",          icon: "CalendarDays" },
-      { id: "claims",                    label: "Venue claims",       icon: "ClipboardList" },
-    ],
-  },
-  // Issue #3872: the Creator Program's working pages. #/gig-queue (the old
-  // single "Creator gigs" page) opens Disputes.
-  {
-    label: "Programs",
-    items: [
-      { id: "program-creators",          label: "Creators",           icon: "BadgeCheck" },
-      { id: "program-gigs",              label: "Gigs",               icon: "Clapperboard" },
-      { id: "program-locals",            label: "Mingla Locals",      icon: "MapPin" },
-      { id: "program-disputes",          label: "Disputes",           icon: "Scale" },
     ],
   },
   {
     label: "Money",
     items: [
+      { id: "mingla-money",              label: "Mingla money",       icon: "Wallet" },
       { id: "business-payments",         label: "Payments",           icon: "CreditCard" },
       { id: "business-orders",           label: "Orders",             icon: "Receipt" },
       { id: "business-money-ledger",     label: "Money ledger",       icon: "Landmark" },
       { id: "refund-operations",         label: "Refund operations",  icon: "RotateCcw" },
       { id: "subscriptions",             label: "Subscriptions",      icon: "Repeat" },
-      { id: "pricing",                   label: "Pricing",            icon: "Percent" },
+      { id: "pricing",                   label: "Pricing and limits", icon: "Percent" },
     ],
   },
   {
     label: "Explorer app",
     items: [
-      { id: "users",                     label: "Users",              icon: "CircleUser" },
-      { id: "placepool",                 label: "Place Pool",         icon: "Map" },
-      { id: "launch-cities",             label: "Launch Cities",      icon: "Rocket" },
-      { id: "signals",                   label: "Signal Library",     icon: "Activity" },
-      { id: "deck-tuner",                label: "Deck tuner",         icon: "SlidersHorizontal" },
-      { id: "place-intelligence-trial",  label: "Intelligence Trial", icon: "Microscope" },
+      { id: "placepool",                 label: "Place pool",         icon: "Map" },
     ],
   },
   {
@@ -216,14 +200,19 @@ export const NAV_GROUPS = [
   {
     label: "System",
     items: [
-      { id: "stripe-mode",               label: "Stripe mode",        icon: "Wallet" },
-      { id: "api-health",                label: "API health",         icon: "HeartPulse" },
-      { id: "queue-health",              label: "Queue health",       icon: "Hourglass" },
+      { id: "platform-health",           label: "Platform health",    icon: "HeartPulse" },
+      { id: "feature-flags",             label: "Feature flags",      icon: "Flag" },
       { id: "settings",                  label: "Settings",           icon: "Settings" },
-      { id: "agent",                     label: "My agent",           icon: "Bot" },
-      { id: "guide",                     label: "Guide",              icon: "BookOpen" },
     ],
   },
+];
+
+// #4130: pages that are not in the menu but have a place in the header (My
+// agent in the profile menu, Guide behind the ? help button). They keep
+// their routes and their titles, and search still finds them.
+export const HEADER_PAGE_ITEMS = [
+  { id: "agent", label: "My agent" },
+  { id: "guide", label: "Guide" },
 ];
 
 // Backward-compatible flat list (used by AppShell.currentTitle)

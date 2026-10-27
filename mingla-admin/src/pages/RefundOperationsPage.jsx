@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import {
   actOnSourceRefund,
   appendCapturedQueuePage,
@@ -8,8 +9,19 @@ import {
   recoverSourceRefundAttention,
   SESSION_EXPIRED_MESSAGE,
 } from "../services/refundOperationsService";
+import {
+  exceptionDetail,
+  queueRowModel,
+  refundQueueErrorMessage,
+  validateActionReason,
+} from "../lib/refundOperationsView";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/ui/PageHeader";
+import { SectionCard } from "../components/ui/Card";
+import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
+import { Textarea } from "../components/ui/Input";
+import { formatDateTime } from "../lib/formatters";
 
 function money(cents, currency) {
   try {
@@ -24,6 +36,10 @@ export function RefundOperationsPage() {
   const { signOut } = useAuth();
   const [view, setView] = useState(null);
   const [selected, setSelected] = useState(null);
+  // #4130: an exception row opens its captured details (no server detail call).
+  const [selectedException, setSelectedException] = useState(null);
+  const [opening, setOpening] = useState(null);
+  const [openError, setOpenError] = useState("");
   const [error, setError] = useState("");
   // Issue #3512 — an expired session is not a queue failure. invokeWithRefresh
   // has already refreshed and retried once by the time we see this, so the only
@@ -31,6 +47,12 @@ export function RefundOperationsPage() {
   const [sessionExpired, setSessionExpired] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState("");
+  const [checkedAt, setCheckedAt] = useState(null);
+  // #4130: the reason for an action is typed here, not in a browser pop-up.
+  const [actionReason, setActionReason] = useState("");
+  const [actionReasonError, setActionReasonError] = useState("");
+  const [actionError, setActionError] = useState("");
   const [recoveryAction, setRecoveryAction] = useState("");
   const [recoveryChannel, setRecoveryChannel] = useState("");
   const [recoveryDeliveryId, setRecoveryDeliveryId] = useState("");
@@ -40,64 +62,106 @@ export function RefundOperationsPage() {
 
   const load = useCallback(async () => {
     setError("");
+    setMoreError("");
     setSessionExpired(false);
     try {
       setView(await listSourceRefundOperations());
+      setCheckedAt(new Date());
     } catch (caught) {
       if (isSessionExpiredError(caught)) {
         setSessionExpired(true);
         setError(SESSION_EXPIRED_MESSAGE);
         return;
       }
-      const message = caught instanceof Error ? caught.message : "";
-      setError(
-        message.includes("snapshot_expired")
-          ? "This queue view expired. Refresh to load the latest refund operations."
-          : "Couldn’t load refund operations. Try again.",
-      );
+      setError(refundQueueErrorMessage(caught, "load"));
     }
   }, []);
   useEffect(() => {
     void load();
   }, [load]);
   const loadMore = async () => {
-    if (!view?.nextCursor) return;
+    if (!view?.nextCursor || loadingMore) return;
     setLoadingMore(true);
+    setMoreError("");
     try {
       const page = await listSourceRefundOperations({
         filters: {},
         cursor: view.nextCursor,
       });
-      setView((current) => appendCapturedQueuePage(current, page));
+      // #4130: join the pages here, inside the try, so a page that does not
+      // fit the captured queue is an error on screen — never a throw inside
+      // a state update that takes the page down.
+      const current = view;
+      const next = appendCapturedQueuePage(current, page);
+      setView(next);
     } catch (caught) {
       if (isSessionExpiredError(caught)) {
         setSessionExpired(true);
         setError(SESSION_EXPIRED_MESSAGE);
         return;
       }
-      const message = caught instanceof Error ? caught.message : "";
-      if (message.includes("snapshot_expired")) {
-        setError(
-          "This queue view expired. Refresh to load the latest refund operations.",
-        );
-      }
+      setMoreError(refundQueueErrorMessage(caught, "more"));
     } finally {
       setLoadingMore(false);
     }
   };
 
+  const resetPanel = () => {
+    setActionReason("");
+    setActionReasonError("");
+    setActionError("");
+    setRecoveryNotice("");
+    setRecoveryAction("");
+    setRecoveryChannel("");
+    setRecoveryDeliveryId("");
+    setRecoveryContact("");
+    setRecoveryReason("");
+  };
+
   const select = async (item) => {
-    if (item.itemKind !== "refund_operation") return;
-    setSelected(await getSourceRefundOperation(item.itemId));
+    setOpenError("");
+    resetPanel();
+    if (item.itemKind !== "refund_operation") {
+      setSelected(null);
+      setSelectedException(exceptionDetail(item));
+      return;
+    }
+    setSelectedException(null);
+    setOpening(item.itemId);
+    try {
+      const detail = await getSourceRefundOperation(item.itemId);
+      if (!detail) {
+        setSelected(null);
+        setOpenError("This refund is no longer in the queue. Refresh to see the latest.");
+        return;
+      }
+      setSelected(detail);
+    } catch (caught) {
+      // #4130: opening a row used to have no catch; a failure showed nothing.
+      if (isSessionExpiredError(caught)) {
+        setSessionExpired(true);
+        setError(SESSION_EXPIRED_MESSAGE);
+        return;
+      }
+      setSelected(null);
+      setOpenError(refundQueueErrorMessage(caught, "open"));
+    } finally {
+      setOpening(null);
+    }
   };
   const act = async (action) => {
     const refundId = selected?.summary?.refund_id;
     if (!refundId) return;
-    const reason = window.prompt("Reason (required)");
-    if (!reason) return;
+    const problem = validateActionReason(actionReason);
+    if (problem) {
+      setActionReasonError(problem);
+      return;
+    }
     setBusy(true);
+    setActionError("");
     try {
-      await actOnSourceRefund({ refundId, action, reason });
+      await actOnSourceRefund({ refundId, action, reason: actionReason.trim() });
+      setActionReason("");
       setSelected(await getSourceRefundOperation(refundId));
       await load();
     } catch (caught) {
@@ -108,9 +172,7 @@ export function RefundOperationsPage() {
         setSessionExpired(true);
         setError(SESSION_EXPIRED_MESSAGE);
       } else {
-        setError(
-          "That refund action could not be applied. Refresh the queue and try again.",
-        );
+        setActionError(refundQueueErrorMessage(caught, "action"));
       }
     } finally {
       setBusy(false);
@@ -151,7 +213,7 @@ export function RefundOperationsPage() {
         setSessionExpired(true);
         setError(SESSION_EXPIRED_MESSAGE);
       } else {
-        setError(
+        setActionError(
           "Recovery action could not be applied. Refresh and verify the current delivery state.",
         );
       }
@@ -211,11 +273,13 @@ export function RefundOperationsPage() {
     ]
     : [];
 
+  const items = view?.items ?? [];
+
   if (!view && !error) {
     return (
       <div className="space-y-6">
         <PageHeader title="Refund operations" />
-        <p>Loading refund operations…</p>
+        <p className="text-sm text-[var(--color-text-secondary)]">Loading refund operations…</p>
       </div>
     );
   }
@@ -223,90 +287,160 @@ export function RefundOperationsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Refund operations"
-        description={`Queue captured at ${view?.snapshot_created_at
+        description={`Refunds that need a person: stuck, failed or waiting on the provider. Queue captured at ${view?.snapshot_created_at
           ? new Date(view.snapshot_created_at).toLocaleTimeString()
           : "—"}`}
+        actions={
+          <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void load()}>
+            Refresh
+          </Button>
+        }
       />
       {error && (
-        <div role="alert" className="rounded border border-red-300 p-4">
+        <div role="alert" className="rounded-lg border border-[var(--color-error-200,#fecaca)] bg-[var(--color-error-50)] p-4 text-sm text-[var(--color-text-primary)]">
           {error}{" "}
           {sessionExpired
             ? (
-              <button onClick={() => void signOut()}>
+              <Button variant="secondary" size="sm" onClick={() => void signOut()}>
                 Sign in again
-              </button>
+              </Button>
             )
-            : <button onClick={load}>Refresh queue</button>}
+            : (
+              <Button variant="secondary" size="sm" onClick={() => void load()}>
+                Refresh queue
+              </Button>
+            )}
         </div>
       )}
-      {!error && view?.items?.length === 0 && (
-        <p>No refund operations need review.</p>
+      {!error && view && items.length === 0 && (
+        <SectionCard>
+          <div className="flex flex-wrap items-center gap-3" role="status">
+            <Badge variant="success">All clear</Badge>
+            <span className="text-sm text-[var(--color-text-primary)]">
+              No refunds need attention. Refunds that get stuck, fail or wait on the provider will appear here.
+            </span>
+            {checkedAt && (
+              <span className="ml-auto text-xs text-[var(--color-text-tertiary)]">
+                Checked {formatDateTime(checkedAt.toISOString())}
+              </span>
+            )}
+          </div>
+        </SectionCard>
       )}
-      <div className="overflow-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr>
-              <th>Operation</th>
-              <th>Source</th>
-              <th>Amount</th>
-              <th>Provider</th>
-              <th>Buyer</th>
-              <th>Fee</th>
-              <th>Financial</th>
-              <th>Ops</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(view?.items ?? []).map((item) => {
-              const row = item.safeSummary;
-              return (
-                <tr
-                  key={`${item.itemKind}:${item.itemId}`}
-                  onClick={() => void select(item)}
-                  className="cursor-pointer border-t"
-                >
-                  <td>{row.operationId ?? row.exceptionId}</td>
-                  <td>{row.sourceType ?? "Provider event exception"}</td>
-                  <td>
-                    {row.currency ? money(row.amountCents, row.currency) : "—"}
-                  </td>
-                  <td>{row.provider}</td>
-                  <td>{row.buyerState ?? row.matchStatus}</td>
-                  <td>{row.feeState ?? "—"}</td>
-                  <td>{row.financialState ?? "—"}</td>
-                  <td>{row.opsStatus ?? "Needs review"}</td>
+      {items.length > 0 && (
+        <SectionCard noPadding>
+          <div className="overflow-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-[var(--color-text-tertiary)]">
+                  <th className="px-4 py-2">Operation</th>
+                  <th className="px-4 py-2">Source</th>
+                  <th className="px-4 py-2 text-right">Amount</th>
+                  <th className="px-4 py-2">Provider</th>
+                  <th className="px-4 py-2">Buyer</th>
+                  <th className="px-4 py-2">Fee</th>
+                  <th className="px-4 py-2">Financial</th>
+                  <th className="px-4 py-2">Ops</th>
+                  <th className="px-4 py-2"><span className="sr-only">Open</span></th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {items.map((item) => {
+                  const row = queueRowModel(item);
+                  return (
+                    <tr
+                      key={row.key}
+                      onClick={() => void select(item)}
+                      className="cursor-pointer border-t border-[var(--gray-200)] hover:bg-[var(--gray-50)]"
+                    >
+                      <td className="px-4 py-2 font-mono text-xs">{row.id}</td>
+                      <td className="px-4 py-2">{row.source}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">
+                        {row.currency ? money(row.amountCents, row.currency) : "—"}
+                      </td>
+                      <td className="px-4 py-2">{row.provider ?? "—"}</td>
+                      <td className="px-4 py-2">{row.buyer ?? "—"}</td>
+                      <td className="px-4 py-2">{row.fee ?? "—"}</td>
+                      <td className="px-4 py-2">{row.financial ?? "—"}</td>
+                      <td className="px-4 py-2">{row.ops}</td>
+                      <td className="px-4 py-2 text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          loading={opening === item.itemId}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void select(item);
+                          }}
+                        >
+                          Open
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      )}
+      {moreError && (
+        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--color-error-200,#fecaca)] bg-[var(--color-error-50)] p-3 text-sm">
+          {moreError}
+          <Button variant="secondary" size="sm" onClick={() => void load()}>
+            Refresh queue
+          </Button>
+        </div>
+      )}
       {view?.nextCursor && (
-        <button
+        <Button
+          variant="secondary"
+          size="sm"
           disabled={loadingMore}
           onClick={() => void loadMore()}
         >
           {loadingMore ? "Loading…" : "Load more"}
-        </button>
+        </Button>
+      )}
+      {openError && (
+        <div role="alert" className="rounded-lg border border-[var(--color-error-200,#fecaca)] bg-[var(--color-error-50)] p-3 text-sm">
+          {openError}
+        </div>
+      )}
+      {selectedException && (
+        <SectionCard title={selectedException.title}>
+          <div className="space-y-3 text-sm">
+            <p className="text-[var(--color-text-primary)]">{selectedException.explanation}</p>
+            <dl className="grid gap-2 sm:grid-cols-2">
+              {selectedException.fields.map(([label, value]) => (
+                <div key={label}>
+                  <dt className="text-[var(--color-text-tertiary)]">{label}</dt>
+                  <dd className="break-all">{value ?? "—"}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="text-[var(--color-text-secondary)]">{selectedException.nextStep}</p>
+          </div>
+        </SectionCard>
       )}
       {selected && (
-        <aside className="rounded border p-5 space-y-3">
-          <h2 className="font-semibold">Live details</h2>
+        <SectionCard title="Live details">
+          <div className="space-y-4">
           <dl className="grid gap-2 text-sm sm:grid-cols-2">
             {summaryFields.map(([label, value]) => (
               <div key={label}>
-                <dt className="text-gray-500">{label}</dt>
-                <dd>{value ?? "—"}</dd>
+                <dt className="text-[var(--color-text-tertiary)]">{label}</dt>
+                <dd className="break-all">{value ?? "—"}</dd>
               </div>
             ))}
           </dl>
           <h3 className="font-medium">Attention deliveries</h3>
           {currentDeliveries.length === 0
-            ? <p className="text-sm text-gray-500">No current delivery rows.</p>
+            ? <p className="text-sm text-[var(--color-text-tertiary)]">No current delivery rows.</p>
             : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr>
+                  <tr className="text-left text-xs text-[var(--color-text-tertiary)]">
                     <th>Channel</th>
                     <th>Status</th>
                     <th>Attempts</th>
@@ -327,29 +461,49 @@ export function RefundOperationsPage() {
                 </tbody>
               </table>
             )}
+          {actionError && (
+            <div role="alert" className="rounded-lg border border-[var(--color-error-200,#fecaca)] bg-[var(--color-error-50)] p-3 text-sm">
+              {actionError}
+            </div>
+          )}
           {selected.summary?.buyer_state !== "processed" && (
             <>
+              <Textarea
+                label="Reason (saved on the refund)"
+                value={actionReason}
+                onChange={(event) => {
+                  setActionReason(event.target.value);
+                  setActionReasonError("");
+                }}
+                error={actionReasonError}
+                placeholder="Why you are reconciling, escalating or resolving"
+                rows={3}
+              />
               <div className="flex flex-wrap gap-2">
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   disabled={busy}
                   onClick={() => void act("reconcile_provider")}
                 >
                   Reconcile provider
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
                   disabled={busy}
                   onClick={() => void act("escalate")}
                 >
                   Escalate
-                </button>
-                <button disabled={busy} onClick={() => void act("resolve_ops")}>
+                </Button>
+                <Button variant="primary" size="sm" disabled={busy} onClick={() => void act("resolve_ops")}>
                   Resolve Ops
-                </button>
+                </Button>
               </div>
               {selected.summary?.buyer_state === "needs_attention" && (
-                <section className="space-y-2 rounded border p-3">
+                <section className="space-y-2 rounded-lg border border-[var(--gray-200)] p-3 text-sm">
                   <h3 className="font-medium">Attention recovery</h3>
-                  <label>
+                  <label className="flex flex-col gap-1">
                     Action
                     <select
                       value={recoveryAction}
@@ -380,7 +534,7 @@ export function RefundOperationsPage() {
                   </label>
                   {recoveryAction === "correct_attention_contact" && (
                     <>
-                      <label>
+                      <label className="flex flex-col gap-1">
                         Channel
                         <select
                           value={recoveryChannel}
@@ -395,7 +549,7 @@ export function RefundOperationsPage() {
                           ))}
                         </select>
                       </label>
-                      <label>
+                      <label className="flex flex-col gap-1">
                         Corrected contact
                         <input
                           value={recoveryContact}
@@ -406,7 +560,7 @@ export function RefundOperationsPage() {
                     </>
                   )}
                   {recoveryAction === "reclaim_confirmed_unsent" && (
-                    <label>
+                    <label className="flex flex-col gap-1">
                       Ambiguous delivery
                       <select
                         value={recoveryDeliveryId}
@@ -433,7 +587,7 @@ export function RefundOperationsPage() {
                     </label>
                   )}
                   {recoveryAction && (
-                    <label>
+                    <label className="flex flex-col gap-1">
                       Approved reason
                       <select
                         value={recoveryReason}
@@ -448,7 +602,9 @@ export function RefundOperationsPage() {
                     </label>
                   )}
                   {recoveryAction && (
-                    <button
+                    <Button
+                      variant="primary"
+                      size="sm"
                       disabled={busy || !recoveryReason ||
                         (recoveryAction === "correct_attention_contact" &&
                           (!recoveryChannel || !recoveryContact)) ||
@@ -457,14 +613,15 @@ export function RefundOperationsPage() {
                       onClick={() => void recoverAttention()}
                     >
                       Apply recovery
-                    </button>
+                    </Button>
                   )}
                   {recoveryNotice && <p role="status">{recoveryNotice}</p>}
                 </section>
               )}
             </>
           )}
-        </aside>
+          </div>
+        </SectionCard>
       )}
     </div>
   );

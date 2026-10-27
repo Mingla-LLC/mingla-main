@@ -9,8 +9,13 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 test("Admin expiry never silently splices queue snapshots", () => {
+  // #4130: the page's error words moved to lib/refundOperationsView.js; the
+  // page and its words are read together.
   const page = fs.readFileSync(
     path.resolve(here, "../pages/RefundOperationsPage.jsx"),
+    "utf8",
+  ) + fs.readFileSync(
+    path.resolve(here, "../lib/refundOperationsView.js"),
     "utf8",
   );
   const service = fs.readFileSync(

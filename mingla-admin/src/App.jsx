@@ -13,49 +13,41 @@ import { Button } from "./components/ui/Button";
 import { useToast } from "./context/ToastContext";
 import { NAV_ITEMS } from "./lib/constants";
 import { pageTitle, resolveRoute } from "./lib/access";
+// Issue #4130 (Wave 0) — retired page ids and where they now live.
+import { isRetiredPageId, redirectHash } from "./lib/adminRoutes";
+// #4130 Wave 4a: Hosts and creators and Inbound leads are built pages now.
+import { OutreachPage } from "./pages/HostsAndCreatorsHub";
+import { InboundLeadsPage } from "./pages/InboundLeadsPage";
+// #4130 (Wave 4b): the System and Explorer app pages, built as designed.
+import { PlacePoolPage } from "./pages/PlacePoolPage";
+import { PlatformHealthPage } from "./pages/PlatformHealthPage";
+import { FeatureFlagsPage } from "./pages/FeatureFlagsPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { AdminPage } from "./pages/AdminPage";
 import { INVITE_ROUTE, parseInviteHash } from "./lib/inviteLink";
 // Issue #3802 — the home page of the two non-admin team roles (#/home).
 import { RoleHomePage } from "./pages/RoleHomePage";
 import { TeamDashboardPage } from "./pages/TeamDashboardPage";
 import { OverviewPage } from "./pages/OverviewPage";
-import { AdminPage } from "./pages/AdminPage";
-import { PlacePoolManagementPage } from "./pages/PlacePoolManagementPage";
-import { UserManagementPage } from "./pages/UserManagementPage";
-import { SettingsPage } from "./pages/SettingsPage";
 import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
-import { SignalLibraryPage } from "./pages/SignalLibraryPage";
-import { PlaceIntelligenceTrialPage } from "./pages/PlaceIntelligenceTrialPage";
-import { ClaimsPage } from "./pages/ClaimsPage";
-import { DeckScoreTunerPage } from "./pages/DeckScoreTunerPage";
 import { PricingPage } from "./pages/PricingPage";
-import { LaunchCitiesPage } from "./pages/LaunchCitiesPage";
-import { BetaLeadsPage } from "./pages/BetaLeadsPage";
-// ISSUE-1354 — Tool Leads: all free-tool submissions + report detail (#/tool-leads).
-import { ToolLeadsPage } from "./pages/ToolLeadsPage";
-import { StripeModePage } from "./pages/StripeModePage";
-// #3720 Slice F — unified Community & Support console (replaces Support + Email nav).
-import { CommunitySupportPage } from "./pages/CommunitySupportPage";
-// ORCH-1201 — Admin API-Health hub (board of external-service health + alerts).
-import { ApiHealthPage } from "./pages/ApiHealthPage";
-// #2879 / #2947 — waiting-room queue-health gauges (hash route #/queue-health).
-import { QueueHealthPage } from "./pages/QueueHealthPage";
-// META-ORCH-1222 — Careers: applications list+detail + role CRUD (hash #/careers).
-import { CareersPage } from "./pages/CareersPage";
-// ORCH-1272 — Business identity console (READ-ONLY): People (#/business-people)
-// + Brands (#/business-brands). Replaces the ORCH-1271 scaffolding placeholder.
-import { PeopleConsolePage } from "./pages/PeopleConsolePage";
-import { BrandsConsolePage } from "./pages/BrandsConsolePage";
-import { BrandSitesPage } from "./pages/BrandSitesPage";
+// #4130 Wave 6 — the #3720 Community & Support console, split into two pages.
+import { CommunityPage, SupportPage } from "./pages/CommunitySupportPage";
 // ORCH-1273 — Business offerings console (READ-ONLY): Offerings
-// (#/business-offerings) + Venues (#/business-venues). Detail views deep-link via
-// ?offeringId= / ?venueId= within the same tab (matches the 1272 pattern).
+// (#/business-offerings). Detail views deep-link via ?offeringId=. Venues now
+// open inside Brands (#4130).
 import { OfferingsConsolePage } from "./pages/OfferingsConsolePage";
-import { VenuesConsolePage } from "./pages/VenuesConsolePage";
+// #4130 (Wave 3) — People (Users + business People) and Brands (Brand Sites,
+// Venues and Venue claims inside each brand).
+import { PeoplePage } from "./pages/PeoplePage";
+import { BrandsPage } from "./pages/BrandsPage";
 // ORCH-1274 — Business Money console (READ-ONLY): Payments (#/business-payments),
 // Orders (#/business-orders), Money ledger (#/business-money-ledger).
 import { BusinessPaymentsPage } from "./pages/BusinessPaymentsPage";
 import { BusinessOrdersPage } from "./pages/BusinessOrdersPage";
 import { BusinessMoneyLedgerPage } from "./pages/BusinessMoneyLedgerPage";
+// #4130 Wave 2a — Mingla money: revenue, profit and host money per currency.
+import { MinglaMoneyPage } from "./pages/MinglaMoneyPage";
 // ISSUE-862 WP1 — Full Rooms Ad Engine (Meta channel + 4 fail-close stubs;
 // hash route #/ad-engine). Minimal functional surface; #864 owns the builder.
 import { AdEnginePage } from "./pages/AdEnginePage";
@@ -64,9 +56,6 @@ import { AdEnginePage } from "./pages/AdEnginePage";
 import { CampaignBuilderPage } from "./pages/CampaignBuilderPage";
 import { CampaignsPage } from "./pages/CampaignsPage";
 import { RefundOperationsPage } from "./pages/RefundOperationsPage";
-// Issue #3802 (Wave 1) — the team's Hosts and Creators boards (#/hosts, #/creators).
-import { HostsPage, CreatorsPage } from "./pages/PipelinePage";
-import { DraftsPage } from "./pages/DraftsPage";
 import { WorkBoardPage } from "./pages/WorkBoardPage";
 import { AGENT_LOG_REDIRECT, AgentLogPage } from "./pages/AgentLogPage";
 // Issue #3802 (Wave 4) — connect your own agent (#/agent).
@@ -75,7 +64,9 @@ import { GuidePage } from "./pages/GuidePage";
 import { ContentCalendarPage } from "./pages/ContentCalendarPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { DataRoomPage } from "./pages/DataRoomPage";
-// Issue #3872 — the Programs group: Creators, Gigs, Mingla Locals, Disputes.
+import { CareersPage } from "./pages/CareersPage";
+// Issue #3872 — the Creator Program pages: Creators, Gigs, Mingla Locals,
+// Disputes. #4130 + #3872: listed under Hosts and creators in Outreach.
 import { ProgramCreatorsPage } from "./pages/ProgramCreatorsPage";
 import { ProgramGigsPage } from "./pages/ProgramGigsPage";
 import { ProgramLocalsPage } from "./pages/ProgramLocalsPage";
@@ -91,72 +82,68 @@ import { ProgramDisputesPage } from "./pages/ProgramDisputesPage";
 
 const PAGES = {
   home: RoleHomePage,
+  // ── Home ── #4130 Wave 0: the menu order (lib/constants.js NAV_GROUPS).
   overview: OverviewPage,
-  users: UserManagementPage,
-  subscriptions: SubscriptionManagementPage,
-  placepool: PlacePoolManagementPage,
-  "launch-cities": LaunchCitiesPage,
-  "beta-leads": BetaLeadsPage,
-  // ISSUE-1354: all free-tool submissions + report detail (hash route #/tool-leads).
-  "tool-leads": ToolLeadsPage,
-  claims: ClaimsPage,
-  // #3720 Slice F — #/community-support (legacy #/support and #/email rewrite below).
-  "community-support": CommunitySupportPage,
+  // Issue #3980: everyone who works the pipelines. Needs you (#/drafts) was
+  // retired into Work's first column (#4130); Wave 1 opens its draft editor
+  // from the card.
+  "work-board": WorkBoardPage,
   notifications: NotificationsPage,
-  // ORCH-0671: 'photos' route deleted — getTabFromHash falls back to 'overview' via PAGES[hash] guard.
-  pricing: PricingPage,
-  admin: AdminPage,
-  settings: SettingsPage,
-  signals: SignalLibraryPage,
-  // ORCH-1066: deck score tuner (hash route #/deck-tuner).
-  "deck-tuner": DeckScoreTunerPage,
-  "place-intelligence-trial": PlaceIntelligenceTrialPage,
-  // ORCH-1056: unified Stripe mode dashboard (hash route #/stripe-mode).
-  "stripe-mode": StripeModePage,
-  // ORCH-1201: API-health hub (hash route #/api-health).
-  "api-health": ApiHealthPage,
-  // #2879 / #2947: waiting-room queue-health gauges (hash route #/queue-health).
-  "queue-health": QueueHealthPage,
-  // META-ORCH-1222: careers applications + role manager (hash route #/careers).
-  careers: CareersPage,
-  "data-room": DataRoomPage,
-  // ORCH-1272: Business identity console (READ-ONLY) — People + Brands
-  // (hash routes #/business-people, #/business-brands).
-  "business-people": PeopleConsolePage,
-  "business-brands": BrandsConsolePage,
-  "brand-sites": BrandSitesPage,
-  // ORCH-1273: Business offerings console (READ-ONLY) — Offerings + Venues
-  // (hash routes #/business-offerings, #/business-venues).
+  // ── Outreach ── #4130: Hosts and creators (two tabs) and Inbound leads.
+  outreach: OutreachPage,
+  // Issue #3872: the Creator Program pages (#4130 + #3872: under Hosts and
+  // creators). #/gig-queue redirects to Disputes (lib/adminRoutes.js).
+  "program-creators": ProgramCreatorsPage,
+  "program-gigs": ProgramGigsPage,
+  "program-locals": ProgramLocalsPage,
+  "program-disputes": ProgramDisputesPage,
+  inbound: InboundLeadsPage,
+  "content-calendar": ContentCalendarPage,
+  "team-dashboard": TeamDashboardPage,
+  // ── Support ── #4130 Wave 6: the old Community & Support console is two
+  // pages; #/community-support redirects by tab (lib/adminRoutes.js).
+  support: SupportPage,
+  community: CommunityPage,
+  // ── Business ── #4130 Wave 3: People replaces Users + People; Brands holds
+  // Brand Sites, Venues and Venue claims inside each brand.
+  people: PeoplePage,
+  brands: BrandsPage,
+  // ORCH-1273: Business offerings console (READ-ONLY).
   "business-offerings": OfferingsConsolePage,
-  "business-venues": VenuesConsolePage,
-  // ORCH-1274: Business Money console (READ-ONLY) — Payments + Orders + Money
-  // ledger (hash routes #/business-payments, #/business-orders, #/business-money-ledger).
+  // ── Money ── ORCH-1274 Business Money console; #4130 Mingla money (Wave 2a).
+  "mingla-money": MinglaMoneyPage,
   "business-payments": BusinessPaymentsPage,
   "business-orders": BusinessOrdersPage,
   "business-money-ledger": BusinessMoneyLedgerPage,
-  // ISSUE-862 WP1: Full Rooms Ad Engine (hash route #/ad-engine).
+  "refund-operations": RefundOperationsPage,
+  subscriptions: SubscriptionManagementPage,
+  pricing: PricingPage,
+  // ── Explorer app ── #4130: Launch Cities, Signal Library and Deck tuner
+  // folded into Place pool (Cities, Pipeline, a place's score override).
+  placepool: PlacePoolPage,
+  // ── Growth ── ISSUE-862 WP1: Full Rooms Ad Engine (hash route #/ad-engine).
   "ad-engine": AdEnginePage,
   // ISSUE-864 WP4: Campaign Builder wizard + campaign surface (launch lives
   // on #/campaigns, never in the builder — I-PROPOSED-864-CREATE-PAUSED).
   "campaign-builder": CampaignBuilderPage,
   campaigns: CampaignsPage,
-  "refund-operations": RefundOperationsPage,
-  // Issue #3802 (Wave 1): opened by the `crm` area, not by admin_console.
-  hosts: HostsPage,
-  "team-dashboard": TeamDashboardPage,
-  creators: CreatorsPage,
-  // Issue #3872: the Programs group (#/gig-queue rewrites to Disputes below).
-  "program-creators": ProgramCreatorsPage,
-  "program-gigs": ProgramGigsPage,
-  "program-locals": ProgramLocalsPage,
-  "program-disputes": ProgramDisputesPage,
-  drafts: DraftsPage,
-  "work-board": WorkBoardPage,
+  // ── Company ── #4130 (Seth): Team and roles (owner only), Careers (its own
+  // page again, the access it always had), Data room.
+  admin: AdminPage,
+  careers: CareersPage,
+  "data-room": DataRoomPage,
+  // ── System ── #4130: Stripe mode, API health, Queue health in one page;
+  // Intelligence Trial history is a section of Settings; Feature flags have
+  // their own page (Wave 4b).
+  "platform-health": PlatformHealthPage,
+  "feature-flags": FeatureFlagsPage,
+  settings: SettingsPage,
+  // Issue #3980: #/agent-log stays a page that opens Work > Agent activity.
   "agent-log": AgentLogPage,
-  // Issue #3802 (Wave 4): opened by the `crm` area, like the boards.
+  // Issue #3802 (Wave 4): opened by the `crm` area. #4130: from the header's
+  // profile menu (My agent) and ? help button (Guide), no longer the menu.
   agent: AgentPage,
   guide: GuidePage,
-  "content-calendar": ContentCalendarPage,
 };
 
 // Issue #3802 — every page id the app knows. Which of them a person may open
@@ -168,18 +155,13 @@ function requestedPageId() {
   return window.location.hash.replace("#/", "").split("?")[0].split("/")[0];
 }
 
-// #3720 Slice F — old Support / Email bookmarks open the matching console tab.
+// Issue #4130 (Wave 0) — an address of a retired page (and #3720's old
+// Email bookmarks and the Community & Support console, Wave 6) is rewritten to the page that now holds it,
+// keeping its query, before any page is chosen (lib/adminRoutes.js).
 function canonicalizeLegacyCommunityHashes() {
   const page = requestedPageId();
-  if (page === "support") {
-    const next = "#/community-support?tab=support";
-    if (window.location.hash !== next) {
-      window.history.replaceState(null, "", next);
-    }
-    return;
-  }
-  if (page === "email") {
-    const next = "#/community-support?tab=email";
+  const next = redirectHash(window.location.hash);
+  if (next) {
     if (window.location.hash !== next) {
       window.history.replaceState(null, "", next);
     }
@@ -193,11 +175,6 @@ function canonicalizeLegacyCommunityHashes() {
     window.history.replaceState(null, "", AGENT_LOG_REDIRECT);
     return;
   }
-  // Issue #3872 — the old one-page "Creator gigs" queue was split into the
-  // Programs group; its bookmarks open Disputes, which it mostly held.
-  if (page === "gig-queue") {
-    window.history.replaceState(null, "", "#/program-disputes");
-  }
 }
 
 // An address that names no page reads as the dashboard, as it always has.
@@ -210,10 +187,11 @@ function getTabFromHash() {
 }
 
 // Did the address name a real page? Only then is a refusal worth a message.
-// Legacy #/support and #/email count as named (they rewrite to community-support).
+// A retired page's address counts as named (it rewrites to its new home).
 function addressNamesPage() {
   const page = requestedPageId();
-  if (page === "support" || page === "email" || page === "gig-queue") return true;
+  // #4130 + #3872: #/gig-queue is a retired id too (it opens Disputes).
+  if (isRetiredPageId(page)) return true;
   return Object.hasOwn(PAGES, page);
 }
 

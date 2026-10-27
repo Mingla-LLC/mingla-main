@@ -229,6 +229,9 @@ export function mapOfferingWriteError(error) {
   if (msg.includes("not_found")) return "That record no longer exists.";
   if (msg.includes("already_cancelled")) return "This offering is already cancelled.";
   if (msg.includes("invalid_visibility")) return "Invalid visibility value.";
+  if (msg.includes("installment_capability_unavailable")) {
+    return "This trip's payment plan can't be offered with this host's payment setup. Hide the trip or remove the plan first.";
+  }
   // #1931 — Admin keeps synchronous Public <-> Hidden, but every transition ENTERING or
   // LEAVING Private is rejected non-mutatingly: those transitions need the two-phase
   // media preparation that only Mingla Business can drive (Amendment 2 §D). Admin UI
@@ -402,4 +405,34 @@ export function setRsvpCapacity(eventId, rsvpCapacity, waitlistEnabled, reason) 
     p_waitlist_enabled: waitlistEnabled,
     p_reason: reason,
   });
+}
+
+// ── Offerings board (#4130 Wave 3) ────────────────────────────────────────────
+
+/** KPI tiles for the Offerings page. Throws on error (the page shows Retry). */
+export async function getOfferingsSummary() {
+  const { data, error } = await supabase.rpc("admin_offerings_summary");
+  if (error) throw new Error(error.message || "Couldn't load the offering counts.");
+  return data || {};
+}
+
+/**
+ * One page of offerings for a view (on_sale | drafts | past | cancelled | all),
+ * with one merged state and sold / going counts. Offerings of deleted or
+ * staff/test brands only when `filters.show === "all"`. `brandId` narrows to one
+ * brand (the brand drawer). EntityListView contract: { rows, total }; throws.
+ */
+export async function listOfferingsBoard(view, { search, sortDir, filters = {}, page = 0, pageSize = 25 }, brandId = null) {
+  const { data, error } = await supabase.rpc("admin_list_offerings_board", {
+    p_view: view,
+    p_search: search && search.trim() ? search.trim() : null,
+    p_event_type: filters.event_type || null,
+    p_brand_id: brandId,
+    p_show_hidden: filters.show === "all",
+    p_sort_dir: sortDir === "asc" || sortDir === "desc" ? sortDir : null,
+    p_limit: pageSize,
+    p_offset: page * pageSize,
+  });
+  if (error) throw new Error(error.message || "Couldn't load offerings.");
+  return { rows: Array.isArray(data?.rows) ? data.rows : [], total: Number(data?.total) || 0 };
 }

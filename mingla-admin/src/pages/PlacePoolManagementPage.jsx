@@ -44,6 +44,8 @@ import {
   buildAdminDiscoveryRangeUpdate,
 } from "../lib/deckCardPreviewRules";
 import { PageHeader } from "../components/ui/PageHeader";
+import { SignalLibraryPage } from "./SignalLibraryPage";
+import { PlaceScoreOverride } from "../components/placePool/PlaceScoreOverride";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -72,12 +74,6 @@ function RecenterMap({ center, zoom }) {
 }
 
 function formatCount(n) { return Number(n || 0).toLocaleString(); }
-
-function pctColor(pct) {
-  if (pct >= 80) return "success";
-  if (pct >= 50) return "warning";
-  return "error";
-}
 
 // ── Country code → emoji flag ────────────────────────────────────────────────
 
@@ -159,209 +155,10 @@ function CityPicker({ cities, scope, onScopeChange }) {
 
 // ── OverviewTab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ scope, onScopeChange, pickerCities }) {
-  const selectedCountry = scope.countryCode;
-  const selectedCity = scope.cityId;
-  const onSelectCountry = (cc) => onScopeChange({ countryCode: cc, cityId: null });
-  const onSelectCity = (cityId) => onScopeChange({ countryCode: scope.countryCode, cityId });
-
-  // Resolve scope to text names for edge function filters
-  const selectedCityObj = pickerCities?.find((c) => c.city_id === scope.cityId);
-  const scopeCityName = selectedCityObj?.city_name || null;
-  const scopeCountryName = selectedCityObj?.country_name || pickerCities?.find((c) => c.country_code === scope.countryCode)?.country_name || null;
-  const { addToast } = useToast();
-  const [data, setData] = useState(null);
-  const [drilldownRows, setDrilldownRows] = useState([]);
-  const [catBreakdown, setCatBreakdown] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const mountedRef = useRef(true);
-
-  const fetchData = useCallback(() => {
-    mountedRef.current = true;
-    setLoading(true);
-    setError(null);
-
-    const params = {};
-    if (selectedCity) params.p_city_id = selectedCity;
-    if (selectedCountry) params.p_country_code = selectedCountry;
-
-    const promises = [
-      supabase.rpc("admin_place_pool_overview", params),
-      supabase.rpc("admin_place_category_breakdown", params),
-    ];
-
-    if (!selectedCity) {
-      if (selectedCountry) {
-        promises.push(supabase.rpc("admin_place_city_overview", { p_country_code: selectedCountry }));
-      } else {
-        promises.push(supabase.rpc("admin_place_country_overview"));
-      }
-    }
-
-    Promise.all(promises).then((results) => {
-      if (!mountedRef.current) return;
-      const [overviewRes, catRes, drillRes] = results;
-      if (overviewRes.error) { setError(overviewRes.error.message); setLoading(false); return; }
-      // DEBUG: log category breakdown response to diagnose empty table
-      if (catRes.error) console.error("[OverviewTab] catBreakdown RPC error:", catRes.error);
-      if (!catRes.data || catRes.data.length === 0) console.warn("[OverviewTab] catBreakdown empty. Full response:", JSON.stringify(catRes));
-      const row = Array.isArray(overviewRes.data) ? overviewRes.data[0] : overviewRes.data;
-      setData(row);
-      setCatBreakdown(catRes.data || []);
-      setDrilldownRows(drillRes?.data || []);
-      setLoading(false);
-    });
-  }, [selectedCountry, selectedCity]);
-
-  useEffect(() => {
-    fetchData();
-    return () => { mountedRef.current = false; };
-  }, [fetchData]);
-
-  // ORCH-0489: user-controlled MV refresh, replaces silently-failing pg_cron.
-  // admin_refresh_place_pool_mv() returns jsonb { success, row_count, duration_ms }.
-  // Expected RPC runtime: 30s–2min on the full 63k-row MV.
-  const handleRefreshStats = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const { data: result, error: rpcError } = await supabase.rpc("admin_refresh_place_pool_mv");
-      if (rpcError) {
-        const isAuthError = /not authorized/i.test(rpcError.message || "");
-        addToast({
-          variant: "error",
-          title: isAuthError ? "Admin access required" : "Couldn't refresh stats",
-          description: isAuthError
-            ? "Only active admin users can refresh stats."
-            : "The refresh didn't complete. It may still be running in the background.",
-        });
-        return;
-      }
-      const rowCount = (result?.row_count ?? 0).toLocaleString();
-      const durationSec = ((result?.duration_ms ?? 0) / 1000).toFixed(1);
-      addToast({
-        variant: "success",
-        title: "Stats refreshed",
-        description: `${rowCount} places in ${durationSec}s`,
-      });
-      fetchData();
-    } finally {
-      if (mountedRef.current) setRefreshing(false);
-    }
-  }, [addToast, fetchData]);
-
-  if (loading) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Loading pool data...</div>;
-  if (error) return <div className="text-sm text-[var(--color-error-700)] bg-[var(--color-error-50)] p-3 rounded-lg">{error}</div>;
-  if (!data) return <div className="text-center py-12 text-[var(--color-text-tertiary)]">No pool data available.</div>;
-
-  const scopeLabel = selectedCity
-    ? "City scope"
-    : selectedCountry ? "Country scope" : "Global pool";
-
-  const servablePct = data.active_places > 0 ? Math.round(((data.is_servable_places || data.is_servable_count || 0) / data.active_places) * 100) : 0;
-
-  const isGlobal = !selectedCountry;
-  const isCountryLevel = !!selectedCountry && !selectedCity;
-
-  // Drill-down columns
-  const countryDrillColumns = [
-    { key: "country_name", label: "Country", sortable: true, render: (_, r) => (
-      <button onClick={() => onSelectCountry(r.country_code)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">
-        {countryFlag(r.country_code)} {r.country_name}
-      </button>
-    )},
-    { key: "is_servable_places", label: "Servable", sortable: true, render: (_, r) => (r.is_servable_places || 0).toLocaleString() },
-    { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.photo_pct || 0)}>{r.photo_pct || 0}%</Badge> },
-    { key: "bounced_pct", label: "Bounced %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.bounced_pct || 0)}>{r.bounced_pct || 0}%</Badge> },
-    { key: "category_coverage", label: "Categories", sortable: true, render: (_, r) => `${r.category_coverage || 0}/13` },
-    { key: "city_count", label: "Cities", sortable: true },
-  ];
-
-  const cityDrillColumns = [
-    { key: "city_name", label: "City", sortable: true, render: (_, r) => (
-      <button onClick={() => onSelectCity(r.city_id)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">{r.city_name}</button>
-    )},
-    { key: "is_servable_places", label: "Servable", sortable: true, render: (_, r) => (r.is_servable_places || 0).toLocaleString() },
-    { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.photo_pct || 0)}>{r.photo_pct || 0}%</Badge> },
-    { key: "bounced_pct", label: "Bounced %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.bounced_pct || 0)}>{r.bounced_pct || 0}%</Badge> },
-    { key: "category_coverage", label: "Categories", sortable: true, render: (_, r) => `${r.category_coverage || 0}/13` },
-    { key: "avg_rating", label: "Avg Rating", sortable: true, render: (_, r) => r.avg_rating ? `★ ${r.avg_rating}` : "—" },
-  ];
-
-  const catColumns = [
-    { key: "category", label: "Category", sortable: true, render: (_, r) => (
-      <div className="flex items-center gap-2">
-        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: CATEGORY_COLORS[r.category] || "#6b7280" }} />
-        {CATEGORY_LABELS[r.category] || r.category || "Uncategorized"}
-      </div>
-    )},
-    { key: "place_count", label: "Servable", sortable: true },
-    { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.photo_pct || 0)}>{r.photo_pct || 0}%</Badge> },
-    { key: "avg_rating", label: "Avg Rating", sortable: true, render: (_, r) => r.avg_rating ? `★ ${r.avg_rating}` : "—" },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm text-[var(--color-text-secondary)]">Showing {scopeLabel}</p>
-        <Button
-          size="sm"
-          variant="secondary"
-          icon={RotateCcw}
-          loading={refreshing}
-          onClick={handleRefreshStats}
-          aria-label="Refresh admin stats now"
-        >
-          {refreshing ? "Refreshing…" : "Refresh stats"}
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard icon={Globe} label="Active Places" value={data.active_places} />
-        <StatCard icon={Camera} label="Photo Coverage" value={`${data.photo_pct}%`}
-          trend={data.photo_pct >= 80 ? "Good" : data.photo_pct >= 50 ? "Fair" : "Low"} trendUp={data.photo_pct >= 80} />
-        <StatCard icon={Eye} label="Bouncer Judged" value={`${servablePct}%`}
-          trend={`${data.bouncer_judged_count} of ${data.active_places}`} trendUp={servablePct >= 50} />
-        <StatCard icon={Clock} label="Not Yet Bounced" value={data.bouncer_pending_count || 0}
-          trend={data.bouncer_pending_count === 0 ? "All judged" : "Needs Bouncer pass"} trendUp={data.bouncer_pending_count === 0} />
-      </div>
-
-      {/* ORCH-0646: Bouncer summary (replaces "AI Validation Summary" — Bouncer is authoritative per ORCH-0640) */}
-      {(data.bouncer_pending_count > 0 || data.bouncer_judged_count > 0) && (
-        <SectionCard title="Bouncer Summary">
-          <div className="grid grid-cols-4 gap-4">
-            <StatCard label="Judged" value={data.bouncer_judged_count} />
-            <StatCard label="Servable" value={data.is_servable_count} />
-            <StatCard label="Excluded" value={data.bouncer_excluded_count} />
-            <StatCard label="Not Yet Bounced" value={data.bouncer_pending_count} />
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Drill-down tables */}
-      {isGlobal && drilldownRows.length > 0 && (
-        <SectionCard title="Country Breakdown" subtitle={`${drilldownRows.length} countries`}>
-          <DataTable columns={countryDrillColumns} rows={drilldownRows} loading={false}
-            emptyMessage="No countries found" emptyIcon={Layers} />
-        </SectionCard>
-      )}
-
-      {isCountryLevel && drilldownRows.length > 0 && (
-        <SectionCard title="City Breakdown" subtitle={`${drilldownRows.length} cities in ${selectedCountry}`}>
-          <DataTable columns={cityDrillColumns} rows={drilldownRows} loading={false}
-            emptyMessage="No cities found" emptyIcon={Layers} />
-        </SectionCard>
-      )}
-
-      {/* Category breakdown */}
-      <SectionCard title="Category Breakdown" subtitle={`${catBreakdown.length} categories`}>
-        <DataTable columns={catColumns} rows={catBreakdown} loading={false}
-          emptyMessage="No category data" emptyIcon={Layers} />
-      </SectionCard>
-    </div>
-  );
-}
+// #4130 (Wave 4b): the Overview tab is gone. Its cards were wrong ("Bouncer
+// Judged" showed the visible share; "Photo Coverage" counted visible places
+// only); Place pool's Overview now shows the server-counted funnel
+// (PlacePoolPage, admin_place_pool_funnel).
 
 // ── Place Detail Modal ──────────────────────────────────────────────────────
 
@@ -919,6 +716,8 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
             </div>
           </div>
         </div>
+        {/* #4130 (Wave 4b): the old Deck tuner, now on the place itself. */}
+        <PlaceScoreOverride place={place} />
       </ModalBody>
       <ModalFooter>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
@@ -3116,7 +2915,27 @@ function ExcludedTab({ scope, onRefresh }) {
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 
-export function PlacePoolManagementPage({ onTabChange }) {
+// #4130 (Wave 4b): Place pool shows this page in three of its tabs, each with
+// only its own tools. Pipeline: seeding, refresh, photos, thumbnails and
+// scoring (the old Signal Library). Browse and map: the list and the map; a
+// place opens with its score override (the old Deck tuner). Excluded: the
+// places Bouncer left out, with the reason.
+const SECTION_TABS = {
+  pipeline: [
+    { id: "seeding", label: "Seeding" },
+    { id: "refresh", label: "Refresh" },
+    { id: "photos", label: "Photos" },
+    { id: "thumbnails", label: "Thumbnails" },
+    { id: "scoring", label: "Bouncer and scoring" },
+  ],
+  browse: [
+    { id: "browse", label: "List" },
+    { id: "map", label: "Map" },
+  ],
+  excluded: [{ id: "excluded", label: "Excluded by Bouncer" }],
+};
+
+export function PlacePoolManagementPage({ section = "browse" }) {
   const mountedRef = useRef(true);
   const { addToast } = useToast();
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
@@ -3126,7 +2945,8 @@ export function PlacePoolManagementPage({ onTabChange }) {
   const [pickerCities, setPickerCities] = useState([]);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState("overview");
+  const tabs = SECTION_TABS[section] || SECTION_TABS.browse;
+  const [activeTab, setActiveTab] = useState(tabs[0].id);
   const [seedingActive, setSeedingActive] = useState(false);
 
   // Seeding state (loaded when a city is selected)
@@ -3197,17 +3017,6 @@ export function PlacePoolManagementPage({ onTabChange }) {
 
   const totalServable = pickerCities.reduce((s, c) => s + (c.is_servable_places || 0), 0);
 
-  const tabs = [
-    { id: "overview", label: "Overview" },
-    { id: "browse", label: "Browse Pool" },
-    { id: "map", label: "Map View" },
-    { id: "seeding", label: "Seeding" },
-    { id: "refresh", label: "Refresh" },
-    { id: "photos", label: "Photos" },
-    { id: "thumbnails", label: "Thumbnails" },
-    { id: "excluded", label: "Bouncer-Excluded" },
-  ];
-
   const handleAddCity = (city) => {
     refresh();
     setScope({ countryCode: city.country_code || null, cityId: city.id });
@@ -3233,7 +3042,7 @@ export function PlacePoolManagementPage({ onTabChange }) {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Place Pool Management"
+        title="Place pool"
         description={`${scopeLabel} · ${totalServable.toLocaleString()} servable places`}
         actions={
           <>
@@ -3269,12 +3078,9 @@ export function PlacePoolManagementPage({ onTabChange }) {
         </div>
       )}
 
-      <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
+      {tabs.length > 1 && <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />}
 
       <div className="mt-4" key={refreshKey}>
-        {activeTab === "overview" && (
-          <OverviewTab scope={scope} onScopeChange={setScope} pickerCities={pickerCities} />
-        )}
         {activeTab === "browse" && (
           <BrowseTab scope={scope} onRefresh={refresh} />
         )}
@@ -3324,6 +3130,7 @@ export function PlacePoolManagementPage({ onTabChange }) {
         {activeTab === "excluded" && (
           <ExcludedTab scope={scope} onRefresh={refresh} />
         )}
+        {activeTab === "scoring" && <SignalLibraryPage />}
       </div>
 
       <AddCityModal open={addCityOpen} onClose={() => setAddCityOpen(false)} onSave={handleAddCity} />

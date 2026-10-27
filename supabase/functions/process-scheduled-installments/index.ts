@@ -4,6 +4,29 @@
  * Pass A reconciles unresolved Paystack attempts, pass B sends the one claimed
  * pre-payment notice, and pass C charges due/retry rows through the shared
  * provider-neutral owner. Errors never expose provider references.
+ *
+ * CONTRACT (per I-PROPOSED-MANUAL-INSTALLMENT-ACTION-VIA-SHARED-HELPER):
+ * - This cron calls the shared `_shared/installments/createInstallmentPI.ts`
+ *   helper, which is the SINGLE OWNER of installment PI creation. No other
+ *   code path may create a PaymentIntent that carries metadata
+ *   `mingla_installment_id`.
+ * - PI metadata MUST include mingla_installment_id, mingla_installment_ordinal,
+ *   mingla_order_id, mingla_brand_id (webhook router discriminates on these).
+ * - Idempotency key MUST include retry_count so each retry attempt is
+ *   independently idempotent (Stripe returns existing PI on duplicate; new PI
+ *   on next retry attempt).
+ * - Customer + PaymentMethod live on the CONNECTED account — Stripe-Account
+ *   header on every API call (no exceptions).
+ * - Application fee = the brand's effective take rate + 3% service fee
+ *   (#3645; #4130 brand overrides apply), via installmentFeeRate.ts.
+ * - At-risk flag flips on retry_count >= 3 + cron halts further retries.
+ * - Dunning email fires on each failure attempt until success or at_risk.
+ *
+ * Refund logic = Tr4 scope, NOT here.
+ *
+ * Invoked by pg_cron schedule 'orch-0869-process-scheduled-installments'
+ * every 6 hours (see migration 20260610000000_tr3_installments.sql). Safe
+ * to invoke twice — Stripe idempotency + DB predicate UPDATE serialise.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";

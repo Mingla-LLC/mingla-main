@@ -3,12 +3,13 @@
 // "Nothing here." when empty. Columns keep at least 220px; when the board is
 // narrower they scroll sideways inside the board box only, never the page.
 import { Avatars } from "./OpsChip";
-import { WORK_COLUMNS, cardReasons, columnCards, dayLabel, groupCards, workStatusLabel } from "../../lib/opsModel";
+import { WORK_COLUMNS, cardReasons, columnCards, dayLabel, groupCards, personReasonLabel, waitingColumnCount, workStatusLabel } from "../../lib/opsModel";
+import { draftItemTitle } from "../../lib/workViews";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
 
-export function WorkColumnCard({ card, selected, onSelect, showStatus = false }) {
+export function WorkColumnCard({ card, selected, onSelect, showStatus = false, draftsReady = 0 }) {
   const reasons = cardReasons(card);
   return (
     <button
@@ -19,6 +20,13 @@ export function WorkColumnCard({ card, selected, onSelect, showStatus = false })
       className={`flex w-full min-w-0 flex-col gap-1.5 rounded-xl border bg-[var(--color-background-primary)] p-2.5 text-left hover:border-[var(--gray-300)] ${selected ? "border-[var(--color-brand-500)] shadow-[inset_0_0_0_1px_var(--color-brand-500)]" : "border-[var(--gray-200)]"} ${FOCUS}`}
     >
       <span className={`text-[13px] font-semibold leading-snug text-[var(--color-text-primary)] ${WORDS}`}>{card.title}</span>
+      {/* #4130: why it waits on a person, and whether its message draft is ready. */}
+      {card.status === "person" && (
+        <span className="flex min-w-0 flex-wrap gap-1">
+          <span className="rounded-full bg-[var(--color-brand-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-brand-700)]">{personReasonLabel(card)}</span>
+          {draftsReady > 0 && <span data-draft-ready="" className="rounded-full bg-[var(--color-info-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-info-700)]">Draft ready</span>}
+        </span>
+      )}
       <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11.5px] text-[var(--color-text-tertiary)]">
         {/* Grouped by Person or Event there are no status columns, so each card says its status. */}
         {showStatus && workStatusLabel(card.status) && <span data-card-status={card.status} className="rounded-full border border-[var(--gray-300)] bg-[var(--gray-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-text-secondary)]">{workStatusLabel(card.status)}</span>}
@@ -40,21 +48,57 @@ export function WorkColumnCard({ card, selected, onSelect, showStatus = false })
   );
 }
 
-export function WorkColumns({ cards = [], selectedId, onSelect, today }) {
+// #4130: a waiting message draft that no open card carries, listed on its own
+// in Waiting on a person. It opens the draft in the drawer.
+export function DraftItem({ draft, selected, onOpen }) {
+  return (
+    <button
+      type="button"
+      data-draft-item={draft.id}
+      aria-current={selected ? "true" : undefined}
+      onClick={() => onOpen(draft)}
+      className={`flex w-full min-w-0 flex-col gap-1.5 rounded-xl border bg-[var(--color-background-primary)] p-2.5 text-left hover:border-[var(--gray-300)] ${selected ? "border-[var(--color-brand-500)] shadow-[inset_0_0_0_1px_var(--color-brand-500)]" : "border-[var(--gray-200)]"} ${FOCUS}`}
+    >
+      <span className={`text-[13px] font-semibold leading-snug text-[var(--color-text-primary)] ${WORDS}`}>{draftItemTitle(draft)}</span>
+      <span className="flex min-w-0 flex-wrap gap-1">
+        <span className="rounded-full bg-[var(--color-brand-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-brand-700)]">Sends a message</span>
+        <span className="rounded-full bg-[var(--color-info-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-info-700)]">Draft ready</span>
+      </span>
+      <span className="text-[11.5px] text-[var(--color-text-tertiary)]">Your draft · written by {draft.created_via === "claude" ? "Claude" : "Codex"}</span>
+    </button>
+  );
+}
+
+export function WorkColumns({ cards = [], selectedId, onSelect, today, drafts = [], draftsByCard = null, selectedDraftId = null, onOpenDraft, allDraftsHref = null }) {
   return (
     <div data-work-columns="" className="min-w-0 overflow-x-auto rounded-xl border border-[var(--gray-200)] bg-[var(--gray-50)] p-2">
       <div className="grid min-w-0 gap-2" style={{ gridAutoFlow: "column", gridAutoColumns: "minmax(220px, 1fr)" }}>
         {WORK_COLUMNS.map((col) => {
           const list = columnCards(cards, col.key, today);
+          const extra = col.key === "person" && onOpenDraft ? drafts : [];
+          // #4130: the column's number counts cards only (one definition with
+          // the Dashboard, the Work menu and the Team dashboard); drafts that
+          // no card carries are listed under it with their own count.
+          const count = col.key === "person" ? waitingColumnCount(list) : list.length;
+          const empty = list.length + extra.length === 0;
           return (
             <section key={col.key} aria-labelledby={`work-col-${col.key}`} className="flex min-w-0 flex-col gap-2">
               <h2 id={`work-col-${col.key}`} className="flex items-center justify-between px-1 pt-1 text-[12.5px] font-semibold text-[var(--color-text-primary)]">
                 <span>{col.label}</span>
-                <span className="rounded-full bg-[var(--color-background-primary)] px-2 py-0.5 text-[11px] tabular-nums text-[var(--color-text-secondary)]">{list.length}</span>
+                <span className="flex items-center gap-1">
+                  <span className="rounded-full bg-[var(--color-background-primary)] px-2 py-0.5 text-[11px] tabular-nums text-[var(--color-text-secondary)]" aria-label={`${count} ${count === 1 ? "card" : "cards"}`}>{count}</span>
+                  {extra.length > 0 && <span className="rounded-full bg-[var(--color-info-50)] px-2 py-0.5 text-[11px] tabular-nums text-[var(--color-info-700)]">+{extra.length} {extra.length === 1 ? "draft" : "drafts"}</span>}
+                </span>
               </h2>
-              {list.length === 0
+              {empty
                 ? <p className="px-1.5 pb-1 text-[12.5px] text-[var(--color-text-tertiary)]">Nothing here.</p>
-                : <ul className="flex min-w-0 flex-col gap-1.5">{list.map((card) => <li key={card.id} className="min-w-0"><WorkColumnCard card={card} selected={card.id === selectedId} onSelect={onSelect} /></li>)}</ul>}
+                : <ul className="flex min-w-0 flex-col gap-1.5">
+                    {list.map((card) => <li key={card.id} className="min-w-0"><WorkColumnCard card={card} selected={card.id === selectedId} onSelect={onSelect} draftsReady={draftsByCard?.get?.(card.id) || 0} /></li>)}
+                    {extra.map((draft) => <li key={`draft-${draft.id}`} className="min-w-0"><DraftItem draft={draft} selected={draft.id === selectedDraftId} onOpen={onOpenDraft} /></li>)}
+                  </ul>}
+              {col.key === "person" && allDraftsHref && (
+                <a href={allDraftsHref} className={`mt-auto rounded-lg px-1.5 py-1 text-[12px] font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>All my message drafts, sent and discarded</a>
+              )}
             </section>
           );
         })}

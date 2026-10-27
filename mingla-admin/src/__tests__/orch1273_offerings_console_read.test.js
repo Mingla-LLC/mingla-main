@@ -216,21 +216,23 @@ describe("ORCH-1273 — nav + routing", () => {
     const biz = NAV_GROUPS.find((g) => g.label === "Business");
     assert.ok(biz, "Business group present");
     assert.ok(biz.items.some((i) => i.id === "business-offerings" && i.icon === "CalendarDays"));
-    assert.ok(biz.items.some((i) => i.id === "business-venues" && i.icon === "Store"));
+    // #4130: Venues is a tab of Brands (#/business-venues redirects there).
     assert.ok(NAV_ITEMS.some((i) => i.id === "business-offerings"));
-    assert.ok(NAV_ITEMS.some((i) => i.id === "business-venues"));
+    assert.ok(!NAV_ITEMS.some((i) => i.id === "business-venues"));
   });
   it("App.jsx routes #/business-offerings + #/business-venues", () => {
     const app = readSrc("App.jsx");
     assert.match(app, /import \{ OfferingsConsolePage \} from "\.\/pages\/OfferingsConsolePage"/);
-    assert.match(app, /import \{ VenuesConsolePage \} from "\.\/pages\/VenuesConsolePage"/);
     assert.match(app, /"business-offerings": OfferingsConsolePage/);
-    assert.match(app, /"business-venues": VenuesConsolePage/);
+    // #4130 (Wave 3): Venues opens inside Brands (#/brands?tab=venues).
+    const brands = readSrc("pages/BrandsPage.jsx");
+    assert.match(brands, /import \{ VenuesConsolePage \} from "\.\/VenuesConsolePage"/);
+    assert.match(brands, /"business-venues": VenuesConsolePage/);
   });
-  it("Sidebar ICON_MAP registers CalendarDays + Store (else silent fallback)", () => {
+  it("Sidebar ICON_MAP registers CalendarDays (else silent fallback)", () => {
     const sb = readSrc("components/layout/Sidebar.jsx");
     assert.match(sb, /const ICON_MAP = \{[\s\S]*?\bCalendarDays\b[\s\S]*?\};/);
-    assert.match(sb, /const ICON_MAP = \{[\s\S]*?\bStore\b[\s\S]*?\};/);
+    // #4130: Venues left the menu, and its Store icon with it.
   });
 });
 

@@ -38,6 +38,17 @@ import {
   validatePctInput,
 } from "../lib/pricing";
 import { PageHeader } from "../components/ui/PageHeader";
+import { Tabs } from "../components/ui/Tabs";
+import { useHashQuery } from "../hooks/useHashQuery";
+import { SaleEarningsCard } from "../components/pricing/SaleEarningsCard";
+import { MessagingLimitsPanel } from "../components/pricing/MessagingLimitsPanel";
+
+// #4130 (Wave 2b): Pricing and limits — Fees (take rate, overrides, what one
+// sale earns) and Messaging limits (email/SMS/push caps per brand).
+const PRICING_TABS = [
+  { id: "fees", label: "Fees" },
+  { id: "limits", label: "Messaging limits" },
+];
 
 // ── helpers ──────────────────────────────────────────────────────────────
 // Resolve an updated_by auth uid to a friendly label (design §8). The seed
@@ -52,6 +63,9 @@ export function PricingPage() {
   const { addToast } = useToast();
   const { session } = useAuth();
   const currentUserId = session?.user?.id ?? null;
+  const [hashSearch, setHashSearch] = useHashQuery("pricing");
+  const activeTab = new URLSearchParams(hashSearch || "").get("tab") === "limits" ? "limits" : "fees";
+  const onTabChange = (id) => setHashSearch(id === "fees" ? "" : `tab=${id}`, { replace: false });
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -426,7 +440,16 @@ export function PricingPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Pricing" description="Set Mingla's take portion. The fixed 3% service portion is added to make the total Mingla fee." />
+      <PageHeader
+        title="Pricing and limits"
+        description="What Mingla charges on each ticket, what it keeps, and how many emails and texts each brand can send."
+        tabs={<Tabs tabs={PRICING_TABS} activeTab={activeTab} onChange={onTabChange} />}
+      />
+
+      {activeTab === "limits" ? (
+        <MessagingLimitsPanel />
+      ) : (
+      <>
 
       {loadError ? (
         <AlertCard
@@ -499,6 +522,11 @@ export function PricingPage() {
         )}
       </SectionCard>
 
+      {/* ── What one sale earns (#4130) ──────────────────────────────── */}
+      <SaleEarningsCard
+        takeBps={validatePctInput(defaultInput) === null ? pctToBps(defaultInput) : defaultBps}
+      />
+
       {/* ── Card B: Per-brand overrides ─────────────────────────────── */}
       <SectionCard
         title="Brand overrides"
@@ -516,7 +544,8 @@ export function PricingPage() {
       >
         <p className="text-sm text-[var(--color-text-secondary)] mb-4">
           Put a specific brand on a custom rate. Brands without an override use
-          the default above.
+          the default above. A brand's rate applies to its ticket sales and to
+          every instalment of a payment plan.
         </p>
         <DataTable
           columns={columns}
@@ -536,6 +565,9 @@ export function PricingPage() {
           }
         />
       </SectionCard>
+
+      </>
+      )}
 
       {/* ── Add / Edit override modal ───────────────────────────────── */}
       <Modal

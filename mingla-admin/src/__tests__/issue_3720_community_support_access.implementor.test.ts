@@ -11,10 +11,8 @@ import {
   COMMUNITY_SUPPORT_AREA,
   SUPPORT_OPERATIONS_AREA,
 } from "../lib/access.js";
-import {
-  communitySupportTabsForAccess,
-  defaultCommunitySupportTab,
-} from "../lib/communitySupportAccess.js";
+import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js";
+import { SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
 
 const read = (relative: string) =>
   Deno.readTextFile(new URL(`../${relative}`, import.meta.url));
@@ -65,7 +63,9 @@ Deno.test("full admins retain all tabs while scoped assignments see only safe ta
       tabs,
     )
       .map((tab: { id: string }) => tab.id),
-    ["support", "availability"],
+    // #4130 Wave 6: Availability is the header switch and Overview was
+    // retired, so no area grants either as a tab any more.
+    ["support"],
   );
   assertEquals(
     communitySupportTabsForAccess(
@@ -73,7 +73,7 @@ Deno.test("full admins retain all tabs while scoped assignments see only safe ta
       tabs,
     )
       .map((tab: { id: string }) => tab.id),
-    ["overview", "moderation"],
+    ["moderation"],
   );
   assertEquals(
     communitySupportTabsForAccess(
@@ -84,10 +84,12 @@ Deno.test("full admins retain all tabs while scoped assignments see only safe ta
       ),
       tabs,
     ).map((tab: { id: string }) => tab.id),
-    ["overview", "moderation", "support", "availability"],
+    ["moderation", "support"],
   );
+  // #4130 Wave 6: a page opens on its first tab the person may see; for
+  // Support staff that is the inbox.
   assertEquals(
-    defaultCommunitySupportTab(access(SUPPORT_OPERATIONS_AREA)),
+    communitySupportTabsForAccess(access(SUPPORT_OPERATIONS_AREA), SUPPORT_PAGE_TABS)[0]?.id,
     "support",
   );
 });
@@ -95,7 +97,8 @@ Deno.test("full admins retain all tabs while scoped assignments see only safe ta
 Deno.test("the page applies scoped tabs and keeps staff-management admin-only", () => {
   assertMatch(
     page,
-    /communitySupportTabsForAccess\(access, COMMUNITY_SUPPORT_TABS\)/,
+    // #4130 Wave 6: each page filters its own tab list.
+    /communitySupportTabsForAccess\(access, pageTabs\)/,
   );
   assertMatch(
     page,

@@ -68,7 +68,8 @@ Deno.test("the core workflow is deterministic and does not embed a model service
 });
 
 Deno.test("support workflow controls reuse the premium shared controls and keep primary actions text-only", () => {
-  assertMatch(page, /<Segmented/);
+  // #4130 Wave 6: the status segments became the inbox filter chips.
+  assertMatch(page, /aria-pressed=\{inboxFilter === option\.id\}/);
   assertMatch(page, /<Select/);
   assertMatch(modals, /Select, TEXTAREA_CLASS/);
   assertNotMatch(page, /icon=\{(?:FilePlus2|Inbox|Sparkles)\}/);

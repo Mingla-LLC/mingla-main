@@ -147,3 +147,10 @@ export const previewBrandCardsPage = (after, limit) =>
 export const countBrandCards = () => call(() => supabase.rpc("ops_brand_cards_count"));
 export const confirmBrandCards = (brandIds, requestKey) =>
   call(() => supabase.rpc("ops_brand_cards_confirm", { p_brand_ids: brandIds, p_request_key: requestKey }));
+
+// Issue #4130 Wave 1 — Work › Today, This week and This month. Read-only;
+// the server checks the caller (the crm area, as the Agent log).
+export const fetchEventsSince = (since, owner) =>
+  call(() => supabase.rpc("ops_events_since", { p_since: since, p_owner: owner || null }));
+export const fetchPeriodSummary = (from, to, owner, tz) =>
+  call(() => supabase.rpc("ops_period_summary", { p_from: from, p_to: to, p_owner: owner || null, p_tz: tz || null }));

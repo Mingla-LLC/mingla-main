@@ -8,6 +8,7 @@
  * cap below spend-to-date and records an append-only amendment.
  */
 
+import { adsErrorWords } from "../../lib/systemPages";
 import { useState } from "react";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { Button } from "../ui/Button";
@@ -82,7 +83,7 @@ export function ChangeBudgetModal({
       });
       close();
     } catch (err) {
-      setError(err?.message || "The budget was not changed.");
+      setError(adsErrorWords(err?.message, "The budget was not changed."));
       setSaving(false);
     }
   };

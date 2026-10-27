@@ -96,9 +96,11 @@ Deno.test("#3980 W2 the Calendar: new title, layer chips, two columns, the panel
   // Month | List | Posts board replace the layers; the legend names the states;
   // the content views keep their address values.
   const page = read("pages/ContentCalendarPage.jsx");
-  assertMatch(page, /<PageHeader title="Calendar" description="Every host’s events, and whether each is live early enough to promote\."/);
+  // #4130: the approved Calendar description (Event runway and Content tabs).
+  assertMatch(page, /<PageHeader title="Calendar" description="Events that need promoting, and the posts we are making\."/);
   assertMatch(page, /<TwoColumn ref=\{eventDetailRef\} detailLabel="Event details" list=\{box\} detail=\{right\} \/>/);
-  assertMatch(page, /<MonthGrid [\s\S]*<Legend [\s\S]*<StateList [\s\S]*<PostsList /);
+  // #4130: the runway list is the Event runway table (RunwayTable), as designed.
+  assertMatch(page, /<MonthGrid [\s\S]*<Legend [\s\S]*<RunwayTable [\s\S]*<PostsList /);
   assertMatch(page, /view: \["calendar", "board", "list"\]/);
   assertMatch(page, /<BoardView items=\{calendar\.items\}/);
   assertMatch(page, /md:hidden">Stage:/);

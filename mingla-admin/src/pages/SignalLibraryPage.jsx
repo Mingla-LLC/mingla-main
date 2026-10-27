@@ -24,6 +24,7 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Spinner } from "../components/ui/Spinner";
 import { PageHeader } from "../components/ui/PageHeader";
+import { stageShare } from "../lib/systemPages";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -572,14 +573,16 @@ function RunScorerButton({ cityId, cityName, signalId, onComplete }) {
 // as the active city below. Color-coded bars make "what still needs work"
 // obvious at a glance.
 
+// #4130 (Wave 4b): the share is capped at 100% (stageShare). "Scored" counts
+// places scored before Bouncer excluded them, which showed as 114%.
 function stageStatus(done, total) {
   if (!total || total === 0) return { pct: 0, tone: 'gray', label: '0' };
-  const pct = Math.round((done / total) * 100);
+  const { pct, label } = stageShare(done, total);
   let tone = 'red';
   if (pct >= 95) tone = 'green';
   else if (pct >= 50) tone = 'yellow';
   else if (pct > 0) tone = 'orange';
-  return { pct, tone, label: `${done.toLocaleString()} / ${total.toLocaleString()} (${pct}%)` };
+  return { pct, tone, label };
 }
 
 function StageCell({ done, total }) {

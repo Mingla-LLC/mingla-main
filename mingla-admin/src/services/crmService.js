@@ -156,6 +156,15 @@ export function fetchTeamSummary(today) {
 }
 
 /**
+ * Issue #4130 — the Team dashboard's numbers for a period and the one before
+ * it (hosts contacted and onboarded, stage moves, beta leads). Owner and
+ * admin only.
+ */
+export function fetchTeamPulse(from, to) {
+  return call(() => supabase.rpc("crm_team_pulse", { p_from: from, p_to: to }));
+}
+
+/**
  * Set, change or remove (monthlyTarget = null) one monthly host target.
  * Owner and admin only. Returns { changed, previous, target }.
  */

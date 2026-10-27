@@ -1427,6 +1427,11 @@ export const SCREEN_FUNCTION_PARITY: Readonly<
   crm_record_log: { tools: ["log_activity", "record_reply"] },
   crm_home_summary: { tools: ["my_day"] },
   crm_team_summary: { tools: ["team_summary"] },
+  // #4130: the Team dashboard's KPI row and pipeline charts.
+  crm_team_pulse: {
+    excluded:
+      "the Team dashboard is for people; an agent reads team numbers with team_summary",
+  },
   crm_beta_leads_list: { tools: ["list_beta_leads"] },
   team_agent_guide: { tools: ["get_started"] },
   team_draft_save: { tools: ["save_drafts"] },

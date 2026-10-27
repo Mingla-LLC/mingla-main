@@ -156,13 +156,17 @@ test("under-48-hour destinations warn without blocking Admin ad creation", () =>
   assert.doesNotMatch(src, /function isAvailable/);
 });
 
-test("Settings feature flags use flag_key / is_enabled — #3706", () => {
-  const src = fs.readFileSync(path.join(ADMIN, "pages/SettingsPage.jsx"), "utf8");
-  assert.match(src, /from\("feature_flags"\)\.select\("\*"\)\.order\("flag_key"\)/);
-  assert.match(src, /insert\(\{\s*\n?\s*flag_key:/);
-  assert.match(src, /is_enabled:\s*!flag\.enabled|is_enabled:\s*newFlag\.enabled|is_enabled:\s*editing\.enabled/);
-  assert.doesNotMatch(src, /from\("feature_flags"\)[\s\S]{0,80}\.order\("key"\)/);
-  assert.doesNotMatch(src, /from\("feature_flags"\)\.insert\(\{\s*key,/);
+// #4130 (Wave 4b): flags moved to their own page and change only through the
+// server (admin_set_feature_flag, reason required), which reads flag_key /
+// is_enabled itself; the page never touches the table.
+test("Feature flags use flag_key / is_enabled — #3706", () => {
+  const page = fs.readFileSync(path.join(ADMIN, "pages/FeatureFlagsPage.jsx"), "utf8");
+  const service = fs.readFileSync(path.join(ADMIN, "services/systemPagesService.js"), "utf8");
+  assert.match(page, /changing\.flag_key/);
+  assert.match(page, /r\.is_enabled|v \? "On" : "Off"/);
+  assert.doesNotMatch(page, /from\("feature_flags"\)/);
+  assert.match(service, /p_flag_key: flagKey, p_enabled: enabled, p_reason: reason/);
+  assert.doesNotMatch(fs.readFileSync(path.join(ADMIN, "pages/SettingsPage.jsx"), "utf8"), /feature_flags/);
 });
 
 test("enable_ads_console is a known flag; migration seeds it", () => {

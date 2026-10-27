@@ -2,7 +2,7 @@
 // connector tool that does it or a person, with its status and result.
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Check, Circle, Trash2, User, X } from "lucide-react";
-import { PLAN_TOOLS } from "../../lib/opsModel";
+import { PLAN_TOOLS, planToolLabel } from "../../lib/opsModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const STATUS = {
@@ -46,7 +46,7 @@ export function PlanSteps({ plan = [], editable, disabled, onChange }) {
                 <st.Icon aria-label={st.label} className={`mt-0.5 h-4 w-4 shrink-0 ${st.cls}`} />
                 <span className="min-w-0 flex-1">
                   <span className="block break-words text-[13px] text-[var(--color-text-primary)]">{s.text}</span>
-                  <span className="block break-all font-mono text-[11.5px] text-[var(--color-text-tertiary)]">{s.tool}</span>
+                  <span className="block break-words text-[11.5px] text-[var(--color-text-tertiary)]">{planToolLabel(s.tool)}</span>
                   {s.result && <span className="block break-words text-[12px] text-[var(--color-text-secondary)]">{s.result}</span>}
                 </span>
                 {editable && (
@@ -69,8 +69,8 @@ export function PlanSteps({ plan = [], editable, disabled, onChange }) {
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Done by</span>
-            <select value={tool} disabled={disabled} onChange={(e) => setTool(e.target.value)} className={`min-h-11 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 font-mono text-[12px] ${FOCUS}`}>
-              {PLAN_TOOLS.map((t) => <option key={t} value={t}>{t}</option>)}
+            <select value={tool} disabled={disabled} onChange={(e) => setTool(e.target.value)} className={`min-h-11 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 text-[12px] ${FOCUS}`}>
+              {PLAN_TOOLS.map((t) => <option key={t} value={t}>{planToolLabel(t)}</option>)}
             </select>
           </label>
           <button type="button" disabled={disabled || text.trim().length < 3} onClick={add} className={`min-h-11 rounded-lg border border-[var(--gray-300)] px-3 text-[13px] font-semibold hover:bg-[var(--gray-50)] disabled:opacity-50 ${FOCUS}`}>Add step</button>

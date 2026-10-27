@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { NAV_GROUPS } from "../../lib/constants.js";
+import { redirectHash } from "../../lib/adminRoutes.js";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -18,17 +19,24 @@ const locals = code("pages/locals/LocalsPanel.jsx");
 const disputes = code("pages/ProgramDisputesPage.jsx");
 const app = code("App.jsx");
 
-test("a Programs menu group holds Creators, Gigs, Mingla Locals and Disputes, each its own page", () => {
-  const group = NAV_GROUPS.find((g) => g.label === "Programs");
-  assert.ok(group, "Programs group");
-  assert.deepEqual(group.items.map((i) => `${i.id}:${i.label}`), [
+// #4130 + #3872: the four pages sit right under Hosts and creators in the
+// Outreach group (no separate Programs group), each still its own page.
+test("Creators, Gigs, Mingla Locals and Disputes sit under Hosts and creators, each its own page", () => {
+  const group = NAV_GROUPS.find((g) => g.label === "Outreach");
+  assert.ok(group, "Outreach group");
+  assert.equal(NAV_GROUPS.some((g) => g.label === "Programs"), false);
+  const ids = group.items.map((i) => `${i.id}:${i.label}`);
+  const at = ids.indexOf("outreach:Hosts and creators");
+  assert.deepEqual(ids.slice(at + 1, at + 5), [
     "program-creators:Creators", "program-gigs:Gigs", "program-locals:Mingla Locals", "program-disputes:Disputes",
   ]);
   for (const [id, page] of [["program-creators", "ProgramCreatorsPage"], ["program-gigs", "ProgramGigsPage"], ["program-locals", "ProgramLocalsPage"], ["program-disputes", "ProgramDisputesPage"]]) {
     assert.match(app, new RegExp(`"${id}": ${page},`));
   }
   assert.equal(NAV_GROUPS.flatMap((g) => g.items).some((i) => i.id === "gig-queue"), false, "the stacked page is gone from the menu");
-  assert.match(app, /page === "gig-queue"[\s\S]{0,200}#\/program-disputes/, "old #/gig-queue links open Disputes");
+  // #4130 + #3872: the old address is a retired id in lib/adminRoutes.js, query kept.
+  assert.equal(redirectHash("#/gig-queue"), "#/program-disputes", "old #/gig-queue links open Disputes");
+  assert.equal(redirectHash("#/gig-queue?gig=g1"), "#/program-disputes?gig=g1");
   assert.equal(fs.existsSync(path.join(root, "pages/GigQueuePage.jsx")), false);
 });
 

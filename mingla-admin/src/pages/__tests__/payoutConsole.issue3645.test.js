@@ -11,9 +11,10 @@ test("#3645 admin payout console is unified, filterable and explains money", () 
   for (const value of [
     "Money ledger · Payouts",
     "Every sale's payout from the release ledger",
-    "Due next 24h",
-    "Late, on us",
-    "Waiting bank",
+    // #4130: the summary cards use the approved design's wording.
+    "Due next 24 hours",
+    "Late on Mingla",
+    "Waiting for host bank",
     "Mingla owes back",
     "filterVariant=\"chips\"",
     "Card processing",

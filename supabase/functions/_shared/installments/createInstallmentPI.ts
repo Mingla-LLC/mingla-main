@@ -19,14 +19,18 @@ import {
   MAX_RETRY_ATTEMPTS,
   nextRetryAtAfterFailure,
 } from "./installmentRetrySchedule.ts";
+import {
+  installmentFeeCents,
+  resolveInstallmentFeeRate,
+} from "./installmentFeeRate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-// #3645 flat 4.5% platform cut (take-rate + service fee); installments inherit.
-export const MINGLA_APPLICATION_FEE_RATE = 0.045 as const;
-// #3645: retry dates are anchored to due_at (+3d, +7d, at risk on the third);
-// the shared rule lives in installmentRetrySchedule.ts. Re-exported for callers.
+// #3645 platform cut (take-rate + service fee); installments inherit the
+// brand's effective rate (#4130: an override applies here too).
+// Retry dates are anchored to due_at (+3d, +7d, at risk on the third); the
+// shared rule lives in installmentRetrySchedule.ts. Re-exported for callers.
 export { MAX_RETRY_ATTEMPTS };
 
 export type InstallmentRow = {
@@ -82,6 +86,8 @@ export type CreateInstallmentPIInput = {
   brand?: BrandRow;
   stripeAccount?: StripeAccount;
   dryRun?: boolean;
+  /** Tests only: a stand-in Stripe client. Production uses stripeTicketCheckout(). */
+  stripe?: ReturnType<typeof stripeTicketCheckout>;
 };
 
 function serviceClient(): SupabaseClient {
@@ -289,9 +295,13 @@ export async function createInstallmentPI(
     return { ok: true, outcome: "collected", reason: "dry_run" };
   }
 
-  const stripe = stripeTicketCheckout();
-  const minglaApplicationFeeAmountCents = Math.round(
-    installment.amount_cents * MINGLA_APPLICATION_FEE_RATE,
+  const stripe = input.stripe ?? stripeTicketCheckout();
+  // #4130 + #3872: the brand's own effective rate sets Mingla's fee; the
+  // referral share is then carved out of it unchanged.
+  const feeRate = await resolveInstallmentFeeRate(supabase, brand.id);
+  const minglaApplicationFeeAmountCents = installmentFeeCents(
+    installment.amount_cents,
+    feeRate,
   );
   const referralShareMinor = Number(installment.referral_share_minor ?? 0);
   if (

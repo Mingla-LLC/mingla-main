@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { copyThenMark, draftValidation, remainingUndoMs } from "../lib/draftModel.js";
 import { AREA, PAGE_AREA_OVERRIDES, canOpenPage } from "../lib/access.js";
 import { NAV_GROUPS } from "../lib/constants.js";
+import { RETIRED_PAGE_REDIRECTS } from "../lib/adminRoutes.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "..");
@@ -119,8 +120,11 @@ describe("#3802 C database contract: private text, immutable original, no sender
 describe("#3802 C admin queue: one caller, one count source, every role with CRM", () => {
   it("has one route after Creators and uses the existing CRM access grant", () => {
     assert.equal(PAGE_AREA_OVERRIDES.drafts, AREA.CRM);
-    const pipeline = NAV_GROUPS.find((group) => group.label === "Pipeline").items;
-    assert.equal(pipeline.findIndex((item) => item.id === "drafts"), pipeline.findIndex((item) => item.id === "creators") + 1);
+    // #4130: Needs you (#/drafts) left the menu and redirects to Work, whose
+    // first column holds the same cards (Wave 1 opens the draft editor from
+    // the card). The access grant is unchanged.
+    assert.equal(NAV_GROUPS.some((group) => group.items.some((item) => item.id === "drafts")), false);
+    assert.deepEqual(RETIRED_PAGE_REDIRECTS.drafts, { page: "work-board" });
     for (const role of ["owner", "admin", "growth", "partner"]) {
       assert.equal(canOpenPage({ role, status: "active", areas: ["crm"] }, "drafts"), true, role);
     }
@@ -147,7 +151,8 @@ describe("#3802 C admin queue: one caller, one count source, every role with CRM
     assert.match(counts, /DRAFT_REFRESH_MS = 30_000/);
     assert.match(queue, /mingla:drafts-changed/);
     assert.match(read("components/layout/AppShell.jsx"), /DraftCountProvider/);
-    assert.match(read("components/layout/Sidebar.jsx"), /item\.id === "drafts"/);
+    // #4130: the menu count sits on Work and counts only your own waiting cards.
+    assert.match(read("components/layout/Sidebar.jsx"), /item\.id === "work-board" \? reviewCount\.cards/);
     assert.match(read("pages/RoleHomePage.jsx"), /label="Drafts waiting"/);
     assert.match(read("components/crm/RecordDrawer.jsx"), /#\/drafts\?record=/);
   });
