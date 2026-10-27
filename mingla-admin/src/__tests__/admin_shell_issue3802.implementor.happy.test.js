@@ -57,7 +57,7 @@ const APP = read("App.jsx");
 // [TEST-MOD-APPROVED #3720] Completion Wave 6 fills the reserved Data room
 // slot and adds the all-role Notifications destination.
 // #4130: Wave 0 — the menu from the approved polish design: nine groups,
-// 26 pages, Home first. Retired ids redirect (lib/adminRoutes.js).
+// 27 pages, Home first. (#4130: Careers is its own page again.) Retired ids redirect (lib/adminRoutes.js).
 const MENU = [
   ["Home", ["overview", "work-board", "notifications"]],
   ["Outreach", ["outreach", "inbound", "content-calendar", "team-dashboard"]],
@@ -66,7 +66,7 @@ const MENU = [
   ["Money", ["mingla-money", "business-payments", "business-orders", "business-money-ledger", "refund-operations", "subscriptions", "pricing"]],
   ["Explorer app", ["placepool"]],
   ["Growth", ["ad-engine"]],
-  ["Company", ["admin", "data-room"]],
+  ["Company", ["admin", "careers", "data-room"]],
   ["System", ["platform-health", "feature-flags", "settings"]],
 ];
 
@@ -80,7 +80,7 @@ const LABELS = {
   "refund-operations": "Refund operations", subscriptions: "Subscriptions", pricing: "Pricing and limits",
   placepool: "Place pool",
   "ad-engine": "Ads",
-  admin: "Team and roles", "data-room": "Data room",
+  admin: "Team and roles", careers: "Careers", "data-room": "Data room",
   "platform-health": "Platform health", "feature-flags": "Feature flags", settings: "Settings",
 };
 
@@ -137,7 +137,7 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     // [TEST-MOD-APPROVED #3980] Work board and Agent log (+2).
     // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work. (-1)
     // #4130: Wave 0 — 40 entries became 26 pages.
-    assert.equal(ids.length, 26);
+    assert.equal(ids.length, 27);
   });
   it("the menu plus governed Ads deep links are the app's pages (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -189,12 +189,12 @@ describe("#3802 S-3: who may open what did not move", () => {
     // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work.
     // #4130: growth and partner see Work, Hosts and creators (their boards),
     // Inbound leads (their Beta leads tab) and Calendar; My agent and Guide
-    // are in the header now. Admin sees Team and roles through its Careers
-    // tab (the union of the pages it replaced, never wider).
+    // are in the header now. #4130 (Seth): Team and roles is the owner's
+    // alone again; an admin sees Careers, its own page, instead.
     assert.deepEqual(ids(growth), ["home", "work-board", "outreach", "inbound", "content-calendar"]);
     assert.deepEqual(ids(partner), ["home", "work-board", "outreach", "inbound", "content-calendar"]);
     assert.deepEqual(ids(owner), NAV_ITEMS.map((i) => i.id));
-    assert.deepEqual(ids(admin), NAV_ITEMS.map((i) => i.id));
+    assert.deepEqual(ids(admin), NAV_ITEMS.map((i) => i.id).filter((id) => id !== "admin"));
     assert.deepEqual(visibleNavGroups(NAV_GROUPS, owner).map((g) => g.label), MENU.map(([label]) => label));
     assert.deepEqual(visibleNavGroups(NAV_GROUPS, growth).map((g) => g.label), [null, "Home", "Outreach"]);
   });
@@ -215,8 +215,8 @@ describe("#3802 S-4: every menu icon resolves", () => {
   it("the registry is found and is not empty", () => {
     assert.ok(block, "Sidebar.jsx must define ICON_MAP");
     assert.ok(importBlock, "Sidebar.jsx must import its icons from lucide-react");
-    // #4130: one icon per menu entry (26) plus the role Home.
-    assert.ok(entries.length >= 27);
+    // #4130: one icon per menu entry (27) plus the role Home.
+    assert.ok(entries.length >= 28);
   });
   it("every icon a menu item names is registered", () => {
     const keys = new Set(entries.map((e) => e.key));

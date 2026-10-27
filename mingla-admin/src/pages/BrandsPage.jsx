@@ -72,7 +72,7 @@ const BASE_COLUMNS = [
       return r ? <Badge variant={r.variant}>{r.label}</Badge> : muted("–");
     },
   },
-  { key: "live_offerings", label: "Live offerings", sortable: true, render: (v) => <span className="tabular-nums">{Number(v || 0).toLocaleString()}</span> },
+  { key: "live_offerings", label: "Live public offerings", sortable: true, render: (v) => <span className="tabular-nums">{Number(v || 0).toLocaleString()}</span> },
   { key: "followers", label: "Followers", sortable: true, render: (v) => <span className="tabular-nums">{Number(v || 0).toLocaleString()}</span> },
   { key: "created_at", label: "Created", sortable: true, render: (v) => formatDate(v) },
 ];
@@ -102,7 +102,7 @@ const CSV = {
     { key: "country_code", label: "Country" },
     { key: "default_currency", label: "Currency" },
     { key: "payment_readiness", label: "Payments" },
-    { key: "live_offerings", label: "Live offerings" },
+    { key: "live_offerings", label: "Live public offerings" },
     { key: "followers", label: "Followers" },
     { key: "take_rate_bps_override", label: "Custom fee (basis points)" },
     { key: "created_at", label: "Created" },

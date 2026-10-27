@@ -7,8 +7,11 @@
 import { supabase } from "../lib/supabase";
 import { fetchAllRows } from "../lib/listAll";
 
-/** One page of people. filter: null | "plus" | "free" | "admin". */
-export async function listSubscriptions({ search = "", filter = null, sort = "joined", desc = true, page = 0, pageSize = 20 } = {}) {
+/**
+ * One page of people. filter: null | "plus" | "free" | "admin". Staff and test
+ * accounts are left out unless showInternal (#4130); internalHidden says how many.
+ */
+export async function listSubscriptions({ search = "", filter = null, sort = "joined", desc = true, page = 0, pageSize = 20, showInternal = false } = {}) {
   const { data, error } = await supabase.rpc("admin_list_subscriptions_v2", {
     p_search: search || null,
     p_filter: filter,
@@ -16,12 +19,14 @@ export async function listSubscriptions({ search = "", filter = null, sort = "jo
     p_desc: desc,
     p_limit: pageSize,
     p_offset: page * pageSize,
+    p_show_internal: showInternal === true,
   });
   if (error) throw new Error(error.message || "subscriptions_load_failed");
   return {
     rows: Array.isArray(data?.rows) ? data.rows : [],
     total: Number.isFinite(data?.total) ? data.total : 0,
     globalPlus: data?.global_plus === true,
+    internalHidden: Number.isFinite(data?.internal_hidden) ? data.internal_hidden : 0,
   };
 }
 
@@ -63,10 +68,14 @@ export async function getGlobalPlus() {
   return data?.config_value === "true";
 }
 
-export async function setGlobalPlus(on) {
-  const { error } = await supabase
-    .from("app_config")
-    .update({ config_value: on ? "true" : "false", updated_at: new Date().toISOString() })
-    .eq("config_key", "global_plus_access");
+/**
+ * #4130: Global Plus switches only through the audited admin RPC. It needs a
+ * reason, writes admin_audit_log, and errors when nothing changed (so the page
+ * never reports a switch that did not happen).
+ */
+export async function setGlobalPlus(on, reason) {
+  const { data, error } = await supabase.rpc("admin_set_global_plus", { p_on: on === true, p_reason: reason ?? null });
   if (error) throw new Error(error.message || "global_plus_save_failed");
+  if (data?.ok !== true) throw new Error("global_plus_save_failed");
+  return data;
 }

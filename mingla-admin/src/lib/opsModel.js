@@ -638,6 +638,58 @@ export const PLAN_TOOLS = [
   "list_work", "my_work", "list_calendar", "runway_report", "set_expected_event",
 ];
 
+/**
+ * #4130: the "Done by" list in plain words. The value saved on the step stays
+ * the tool name (the agent reads it); people see what it does.
+ */
+export const PLAN_TOOL_LABELS = Object.freeze({
+  person: "A person",
+  get_started: "Agent: get started",
+  my_day: "Agent: plan my day",
+  find_records: "Agent: find hosts or creators",
+  get_record: "Agent: open a host or creator",
+  check_names: "Agent: check names for duplicates",
+  find_mingla_link: "Agent: find a Mingla link",
+  check_contactable: "Agent: check we may contact them",
+  list_beta_leads: "Agent: list beta leads",
+  team_summary: "Agent: team summary",
+  add_records: "Agent: add hosts or creators",
+  upsert_record: "Agent: add or update a record",
+  update_records: "Agent: update records",
+  move_stage: "Agent: move to a stage",
+  set_owners: "Agent: set owners",
+  log_activity: "Agent: log a note or message",
+  record_reply: "Agent: log a reply",
+  save_drafts: "Agent: write message drafts",
+  update_draft: "Agent: edit a draft",
+  list_drafts: "Agent: list drafts",
+  withdraw_drafts: "Agent: withdraw drafts",
+  list_content: "Agent: list planned content",
+  add_content: "Agent: plan content",
+  update_content: "Agent: update content",
+  assign_content: "Agent: assign content",
+  comment_content: "Agent: comment on content",
+  move_content: "Agent: move content",
+  read_log: "Agent: read the history",
+  claim: "Agent: claim a record",
+  release: "Agent: release a record",
+  plan_work: "Agent: plan the work",
+  add_work: "Agent: add a card",
+  start_work: "Agent: start a card",
+  update_work: "Agent: post a step",
+  close_work: "Agent: close a card",
+  push_back: "Agent: push a card back",
+  list_work: "Agent: list cards",
+  my_work: "Agent: my cards",
+  list_calendar: "Agent: read the calendar",
+  runway_report: "Agent: event runway report",
+  set_expected_event: "Agent: set an expected event",
+});
+
+export function planToolLabel(tool) {
+  return PLAN_TOOL_LABELS[tool] || (tool ? `Agent: ${String(tool).replaceAll("_", " ")}` : "");
+}
+
 const EVENT_WORDS = {
   added: "added the card",
   updated: "changed the card",
@@ -944,6 +996,33 @@ export const WORK_COLUMNS = [
 /** #3980 W3 rework 2: a card's status in words, for Group by Person or Event. */
 export function workStatusLabel(status) {
   return { person: "Waiting on a person", todo: "To do", doing: "In progress", done: "Done" }[status] || "";
+}
+
+/**
+ * #4130: "Waiting on a person" has one definition everywhere (Dashboard KPI,
+ * Work menu count, Work board column, Team dashboard): an open card whose
+ * status is "person", whatever the reason. A send card counts whether or not
+ * its draft is ready. Drafts listed on their own are not cards.
+ */
+export function isWaitingOnPerson(card) {
+  return !!card && card.status === "person" && !card.archived;
+}
+
+/** The Work board column's count: its cards, never the loose drafts beside them. */
+export function waitingColumnCount(cards) {
+  return (Array.isArray(cards) ? cards : []).filter(isWaitingOnPerson).length;
+}
+
+/**
+ * The server count of your own waiting cards (ops_my_counts
+ * waiting_on_person_mine) as a state: loading, error (a failed read is never
+ * 0) or ready.
+ */
+export function waitingCardsState({ enabled = true, data = null, error = null } = {}) {
+  if (!enabled) return { status: "ready", cards: 0 };
+  if (data == null) return error ? { status: "error", cards: null } : { status: "loading", cards: null };
+  const n = Number(data.waiting_on_person_mine);
+  return Number.isFinite(n) ? { status: "ready", cards: n } : { status: "error", cards: null };
 }
 
 export function columnCards(cards, key, today = todayIso()) {

@@ -36,6 +36,7 @@ import {
   SUBSCRIPTIONS_PAGE_SIZE,
   getsNowLabel,
   globalPlusConfirmCopy,
+  internalToggleLabel,
   hasNextPage,
   pageRangeLabel,
   personName,
@@ -52,7 +53,6 @@ import {
   setGlobalPlus,
 } from "../services/subscriptionsService";
 import { grantOverrideAudited, revokeOverrideAudited } from "../services/adminMoneyActService";
-import { logAdminAction } from "../lib/auditLog";
 
 const SEARCH_DEBOUNCE_MS = 400;
 
@@ -96,6 +96,10 @@ export function SubscriptionManagementPage() {
   const [globalPlusError, setGlobalPlusError] = useState(null);
   const [globalConfirm, setGlobalConfirm] = useState(false);
   const [globalSaving, setGlobalSaving] = useState(false);
+  const [globalReason, setGlobalReason] = useState("");
+  // #4130: staff and test accounts are hidden unless asked for.
+  const [showInternal, setShowInternal] = useState(false);
+  const [internalHidden, setInternalHidden] = useState(0);
 
   // ── person drawer ──────────────────────────────────────────────────────
   const [person, setPerson] = useState(null);
@@ -122,7 +126,8 @@ export function SubscriptionManagementPage() {
     filter,
     sort: SORT_KEYS[sort.key] ?? "joined",
     desc: sort.dir !== "asc",
-  }), [debouncedSearch, filter, sort]);
+    showInternal,
+  }), [debouncedSearch, filter, sort, showInternal]);
 
   const fetchList = useCallback(async () => {
     setListLoading(true);
@@ -132,6 +137,7 @@ export function SubscriptionManagementPage() {
       if (!mountedRef.current) return;
       setRows(result.rows);
       setTotal(result.total);
+      setInternalHidden(result.internalHidden);
     } catch (err) {
       if (mountedRef.current) setListError(err.message || "Couldn't load people.");
     } finally {
@@ -202,13 +208,14 @@ export function SubscriptionManagementPage() {
   });
 
   const confirmGlobalPlus = async () => {
-    if (globalPlusOn === null || !globalCopy.confirmLabel) return;
+    if (globalPlusOn === null || !globalCopy.confirmLabel || !globalReason.trim()) return;
     const next = !globalPlusOn;
     setGlobalSaving(true);
     try {
-      await setGlobalPlus(next);
+      await setGlobalPlus(next, globalReason.trim());
       setGlobalPlusOn(next);
       setGlobalConfirm(false);
+      setGlobalReason("");
       addToast({
         variant: "success",
         title: next ? "Global Plus is on" : "Global Plus is off",
@@ -216,15 +223,11 @@ export function SubscriptionManagementPage() {
           ? "Everyone has Mingla+ features."
           : "People now have their real tier.",
       });
-      logAdminAction(
-        next ? "subscription.global_plus_enabled" : "subscription.global_plus_disabled",
-        "app_config",
-        "global_plus_access",
-        { value: next, people_losing_access: next ? 0 : overview?.real_free ?? null },
-      );
+      // The server wrote admin_audit_log (admin_set_global_plus).
       refreshAll();
     } catch (err) {
       addToast({ variant: "error", title: "Couldn't change Global Plus", description: subscriptionErrorMessage(err) });
+      void fetchGlobalPlus();
     } finally {
       if (mountedRef.current) setGlobalSaving(false);
     }
@@ -494,6 +497,19 @@ export function SubscriptionManagementPage() {
               {f.label}
             </button>
           ))}
+          <button
+            type="button"
+            aria-pressed={showInternal}
+            onClick={() => { setShowInternal((v) => !v); setPage(0); }}
+            className={[
+              "px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer",
+              showInternal
+                ? "bg-[var(--color-brand-500)] text-white"
+                : "bg-[var(--color-background-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-background-tertiary)]",
+            ].join(" ")}
+          >
+            {internalToggleLabel(showInternal, internalHidden)}
+          </button>
         </div>
       </div>
 
@@ -535,13 +551,22 @@ export function SubscriptionManagementPage() {
       <Modal open={globalConfirm} onClose={() => (globalSaving ? null : setGlobalConfirm(false))} title={globalCopy.title} size="sm" destructive={globalPlusOn === true}>
         <ModalBody>
           <AlertCard variant={globalPlusOn ? "warning" : "info"}>{globalCopy.body}</AlertCard>
+          <div className="mt-3">
+            <Input
+              label="Reason (saved with your name)"
+              value={globalReason}
+              onChange={(e) => setGlobalReason(e.target.value)}
+              placeholder="Why you are changing it"
+              disabled={globalSaving}
+            />
+          </div>
         </ModalBody>
         <ModalFooter>
           <Button variant="ghost" disabled={globalSaving} onClick={() => setGlobalConfirm(false)}>
             {globalPlusOn ? "Keep it on" : "Keep it off"}
           </Button>
           {globalCopy.confirmLabel && (
-            <Button variant={globalPlusOn ? "danger" : "primary"} loading={globalSaving} disabled={globalSaving} onClick={() => void confirmGlobalPlus()}>
+            <Button variant={globalPlusOn ? "danger" : "primary"} loading={globalSaving} disabled={globalSaving || !globalReason.trim()} onClick={() => void confirmGlobalPlus()}>
               {globalCopy.confirmLabel}
             </Button>
           )}

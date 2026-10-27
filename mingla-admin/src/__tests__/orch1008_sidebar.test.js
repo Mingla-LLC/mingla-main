@@ -88,6 +88,8 @@ const EXPECTED_IDS = [
   "ad-engine",
   // Company
   "admin",
+  // #4130 (Seth): Careers is its own menu item again.
+  "careers",
   "data-room",
   // System
   "platform-health",

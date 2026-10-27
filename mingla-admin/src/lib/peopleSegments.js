@@ -18,6 +18,25 @@ export const PEOPLE_TABS = Object.freeze([
 
 export const DEFAULT_PEOPLE_TAB = "explorers";
 
+/**
+ * The staff and test email rule. Mirror of the server's
+ * admin_internal_email_rule() (migration 20280113004130); a pg17 suite and a
+ * node test pin the same cases on both sides. A row in admin_internal_accounts
+ * still overrides it on the server.
+ *   - domain usemingla.com, or example.com / .org / .net; or
+ *   - the part before the @ starts with "test", or has "test" as its own token
+ *     between . _ - + or digits. "contest" or "greatest" is a real person.
+ */
+export function isInternalEmail(email) {
+  const value = typeof email === "string" ? email.trim().toLowerCase() : "";
+  const at = value.lastIndexOf("@");
+  if (at < 0) return false;
+  const local = value.slice(0, at);
+  const domain = value.slice(at + 1);
+  if (["usemingla.com", "example.com", "example.org", "example.net"].includes(domain)) return true;
+  return /^test/.test(local) || /(^|[._+0-9-])test($|[._+0-9-])/.test(local);
+}
+
 /** The tab an address asks for, or the default. Never an inherited key. */
 export function peopleTabFor(value) {
   return PEOPLE_TABS.find((tab) => tab.id === value) || PEOPLE_TABS.find((tab) => tab.id === DEFAULT_PEOPLE_TAB);
@@ -174,5 +193,27 @@ export function flattenPersonRow(row) {
     sign_in_label: signInMethodLabel(row?.sign_in_method),
     got_as_far: gotAsFarAs(row),
     internal_reason: row?.internal?.reason || (row?.segment === "internal" ? "Matches the staff and test email rule" : ""),
+  };
+}
+
+/**
+ * #4130: the brand-level staff/test state in words, and the actions offered.
+ * A recorded decision beats the owner account; with none, the owner decides.
+ */
+export function brandInternalView(row, internalNow = row?.internal === true) {
+  const decision = row?.internal_decision && typeof row.internal_decision === "object" ? row.internal_decision : null;
+  const internal = internalNow === true;
+  const why = decision
+    ? `${decision.is_internal ? "Marked as staff or test" : "Marked as a real host"} by ${decision.marked_by}: ${decision.reason}.`
+    : internal
+      ? "Its owner is a staff or test account."
+      : "Its owner is a real account.";
+  return {
+    internal,
+    label: internal ? "Left out of host counts" : "Counted as a real host",
+    why,
+    action: internal ? "real" : "internal",
+    actionLabel: internal ? "Treat as a real host…" : "Treat as staff or test…",
+    canClear: !!decision,
   };
 }

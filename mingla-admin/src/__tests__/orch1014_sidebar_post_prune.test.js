@@ -71,6 +71,8 @@ const EXPECTED_IDS_POST_1014 = [
   "ad-engine",
   // Company
   "admin",
+  // #4130 (Seth): Careers is its own menu item again.
+  "careers",
   "data-room",
   // System
   "platform-health",

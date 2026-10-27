@@ -1,7 +1,7 @@
 // Issue #4130 (Wave 0) — the admin menu, routing and access match the approved
 // polish design, and the shared fixes later waves build on.
 //
-//   W0-1  the menu: nine groups, 26 pages, in the approved order; Needs you,
+//   W0-1  the menu: nine groups, 27 pages, in the approved order; Needs you,
 //         My agent and Guide are not menu entries
 //   W0-2  every retired page id redirects to its new home, keeping its query
 //   W0-3  every redirect lands on a real page and, for a hub, a real tab;
@@ -58,7 +58,8 @@ const MENU = [
   ["Money", ["mingla-money:Mingla money", "business-payments:Payments", "business-orders:Orders", "business-money-ledger:Money ledger", "refund-operations:Refund operations", "subscriptions:Subscriptions", "pricing:Pricing and limits"]],
   ["Explorer app", ["placepool:Place pool"]],
   ["Growth", ["ad-engine:Ads"]],
-  ["Company", ["admin:Team and roles", "data-room:Data room"]],
+  // #4130 (Seth): Careers is its own menu item again, between Team and roles and Data room.
+  ["Company", ["admin:Team and roles", "careers:Careers", "data-room:Data room"]],
   ["System", ["platform-health:Platform health", "feature-flags:Feature flags", "settings:Settings"]],
 ];
 
@@ -83,7 +84,6 @@ const REDIRECTS = {
   "stripe-mode": ["platform-health", "stripe"],
   "api-health": ["platform-health", "providers"],
   "queue-health": ["platform-health", "queue"],
-  careers: ["admin", "careers"],
   // #4130 Wave 6: Support and Community are real pages now; the old Email
   // page is Support's Email tab. #/community-support is redirected by its
   // tab (issue_4130_wave6_support_community.implementor.test.js).
@@ -95,12 +95,12 @@ const admin = { email: "a@example.test", role: "admin", status: "active", areas:
 const growth = { email: "g@example.test", role: "growth", status: "active", areas: ["role_home", "crm", "beta_leads"] };
 
 describe("#4130 W0-1: the menu is the approved sidebar", () => {
-  it("nine groups, 26 pages, labels and order exactly as approved", () => {
+  it("nine groups, 27 pages, labels and order exactly as approved", () => {
     assert.deepEqual(NAV_GROUPS.map((g) => g.label), MENU.map(([label]) => label));
     for (const [i, [label, items]] of MENU.entries()) {
       assert.deepEqual(NAV_GROUPS[i].items.map((it) => `${it.id}:${it.label}`), items, label);
     }
-    assert.equal(NAV_ITEMS.length, 26);
+    assert.equal(NAV_ITEMS.length, 27); // #4130: Careers is back as its own page
   });
   it("Needs you, My agent and Guide are not menu entries; My agent and Guide keep their pages in the header", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
@@ -141,7 +141,12 @@ describe("#4130 W0-2: retired page ids redirect to their new homes", () => {
     assert.equal(redirectHash("#/business-venues?venueId=v1"), "#/brands?tab=venues&venueId=v1");
     assert.equal(redirectHash("#/users?userId=u1"), "#/people?tab=explorers&userId=u1");
     assert.equal(redirectHash("#/hosts?view=list&card=new"), "#/outreach?tab=hosts&view=list&card=new");
-    assert.equal(redirectHash("#/careers?tab=roles&x=1"), "#/admin?tab=careers&x=1");
+    // #4130 (Seth): #/careers is a page again; an old Team and roles Careers-tab link moves to it.
+    assert.equal(redirectHash("#/careers?tab=roles&x=1"), null);
+    assert.equal(redirectHash("#/admin?tab=careers&x=1"), "#/careers?x=1");
+    assert.equal(redirectHash("#/admin?tab=careers"), "#/careers");
+    assert.equal(redirectHash("#/admin?tab=invited"), null);
+    assert.equal(redirectHash("#/admin"), null);
     assert.equal(redirectHash("#/drafts?record=r1"), "#/work-board?record=r1");
   });
   it("a live page, an unknown address or a hostile one is left alone", () => {
@@ -169,7 +174,6 @@ describe("#4130 W0-3: every redirect lands somewhere real", () => {
   });
   it("no retired id is still a page or a menu entry", () => {
     for (const id of Object.keys(RETIRED_PAGE_REDIRECTS)) {
-      if (id === "careers") continue; // a tab of Team and roles, whose id is "admin"
       assert.equal(PAGE_IDS.includes(id), false, `${id} is still a page`);
     }
     const menu = NAV_ITEMS.map((i) => i.id).filter((id) => Object.hasOwn(RETIRED_PAGE_REDIRECTS, id));
@@ -214,11 +218,18 @@ describe("#4130 W0-4: access is the union of the replaced pages, never wider", (
       }
     }
   });
-  it("Team and roles: the Team tab stays the owner's; an admin gets the Careers tab only", () => {
+  it("Team and roles is the owner's; Careers is its own page, open to admins as before", () => {
+    // #4130 (Seth): an admin (not the owner) sees Careers but not Team and roles.
     assert.equal(canOpenOwnPage(admin, "admin"), false);
-    assert.equal(canOpenOwnPage(admin, "careers"), true);
-    assert.equal(canOpenPage(admin, "admin"), true);
+    assert.equal(canOpenPage(admin, "admin"), false);
+    assert.equal(canOpenPage(admin, "careers"), true);
+    assert.equal(canOpenPage(owner, "admin"), true);
+    assert.equal(canOpenPage(owner, "careers"), true);
     assert.equal(canOpenPage(growth, "admin"), false);
+    assert.equal(canOpenPage(growth, "careers"), false);
+    const adminMenu = visibleNavGroups(NAV_GROUPS, admin).flatMap((g) => g.items.map((i) => i.id));
+    assert.ok(adminMenu.includes("careers"), "an admin sees Careers");
+    assert.equal(adminMenu.includes("admin"), false, "an admin does not see Team and roles");
     // #4130 (integration): the generic PageHub is retired with shellHubs; the
     // one hub left (Hosts and creators) applies the same per-tab rule.
     const hub = stripComments(read("pages/HostsAndCreatorsHub.jsx"));
@@ -272,10 +283,11 @@ describe("#4130 W0-6: every page lights its own menu entry", () => {
 describe("#4130 W0-7: the Work entry counts only your own waiting cards", () => {
   it("the badge sits on Work and reads cards, not drafts", () => {
     const sidebar = stripComments(read("components/layout/Sidebar.jsx"));
-    assert.ok(sidebar.includes('const waiting = item.id === "work-board" ? reviewCount.cards : 0;'));
+    assert.ok(sidebar.includes('const waiting = item.id === "work-board" ? reviewCount.cards || 0 : 0;'));
     assert.equal(sidebar.includes('item.id === "drafts"'), false);
     const hook = stripComments(read("hooks/useReviewCount.js"));
-    assert.ok(hook.includes("const cards = needsPerson + draftNeeded + wording;"));
+    // #4130 (rework): the count is your own cards waiting on a person, send cards with a ready draft included.
+    assert.ok(hook.includes("cards: work.cards,"));
     assert.ok(hook.includes('canOpenPage(access, "work-board")'));
     assert.ok(/needs_person_mine/.test(hook) && /draft_needed_mine/.test(hook) && /wording_mine/.test(hook), "only the _mine counts");
   });

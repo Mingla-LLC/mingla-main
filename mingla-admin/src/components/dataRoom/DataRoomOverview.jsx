@@ -12,7 +12,7 @@ import { SectionCard } from "../ui/Card";
 import { Badge } from "../ui/Badge";
 import { formatMoneyMinor } from "../../lib/moneyFormat";
 import {
-  SEGMENTS, cumulativeMonths, lastMonthNew, monthLabel, countChange, funnelVerdicts,
+  SEGMENTS, cumulativeMonths, lastMonthNew, monthLabel, monthName, countChange, funnelVerdicts,
   verdictRulesText, verdictSentence, weeklyMoney, moneyCurrencies, last30,
   CHART_TICK, fmtInt, fmtPct, fmtWeek,
 } from "../../lib/dataRoomAnalytics";
@@ -22,7 +22,7 @@ function AllUsers({ users }) {
   const data = users.data;
   const months = data.months || [];
   const latest = lastMonthNew(months);
-  const latestName = latest ? monthLabel(latest.month) : "";
+  const latestName = latest ? monthName(latest.month) : "";
   const growth = cumulativeMonths(months);
   const newRows = months.map((m) => ({ ...m }));
   const plus = (n) => (latest ? `+${fmtInt(n)} in ${latestName}` : null);

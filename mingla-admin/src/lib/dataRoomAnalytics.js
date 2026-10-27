@@ -169,6 +169,17 @@ export function monthLabel(month) {
   return new Date(Date.UTC(y, m - 1, 1)).toLocaleString("en-GB", { month: "short", year: "2-digit", timeZone: "UTC" });
 }
 
+/**
+ * #4130: a month in a sentence, unambiguous ("October 2026", never "Oct 26",
+ * which reads as a day). Chart ticks keep the short monthLabel.
+ */
+export function monthName(month) {
+  if (!month || typeof month !== "string") return "";
+  const [y, m] = month.split("-").map(Number);
+  if (!y || !m) return month;
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+}
+
 export function share(part, whole) {
   return pctOf(Number(part) || 0, Number(whole) || 0);
 }

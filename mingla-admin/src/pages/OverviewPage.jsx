@@ -87,16 +87,18 @@ export function OverviewPage() {
   const queue = useServerRead(loadQueue);
   const pushes = useServerRead(loadPushes);
   const review = useReviewCount();
-  const work = review.loaded ? { status: "ready", data: { cards: review.cards } } : { status: "loading" };
+  // #4130: a failed Work read is a "failed" item and a failed KPI, never a
+  // skeleton forever and never 0.
+  const work = review.cardsError ? { status: "error" } : review.cardsLoaded ? { status: "ready", data: { cards: review.cards } } : { status: "loading" };
 
   const s = summary.data;
   const signups = s ? weekTrend(s.signups?.last7, s.signups?.prev7) : null;
   const tickets = s ? weekTrend(s.paid_tickets?.last7, s.paid_tickets?.prev7) : null;
   const profitUsd = profit.data ? headline(profit.data).profit.usdTotal : null;
   const items = needsYouToday({ work, money, health, queue, summary, announcements: isAdmin ? pushes : undefined });
-  const retryFor = { money: money.retry, health: health.retry, queue: queue.retry, summary: summary.retry, work: review.refetch, announcements: pushes.retry };
+  const retryFor = { money: money.retry, health: health.retry, queue: queue.retry, summary: summary.retry, work: () => review.refetch?.(), announcements: pushes.retry };
   const weekly = s ? weeklyRows(s) : [];
-  const stillChecking = [money, health, summary].some((x) => x.status === "loading") || !review.loaded;
+  const stillChecking = [money, health, summary, work].some((x) => x.status === "loading");
 
   const date = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
@@ -147,14 +149,16 @@ export function OverviewPage() {
           </Kpi>
         )}
 
-        {!review.loaded ? (
+        {work.status === "loading" ? (
           <Skeleton height={104} rounded="xl" />
+        ) : work.status === "error" ? (
+          <KpiFailed label="Waiting on a person" onRetry={() => review.refetch?.()} />
         ) : (
           <Kpi
             label="Waiting on a person"
             action={<a href="#/work-board" className="inline-flex min-h-8 items-center gap-1 text-sm font-semibold text-[var(--color-brand-700)] hover:underline">Open Work <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" /></a>}
           >
-            {review.cards.toLocaleString()}
+            {Number(review.cards).toLocaleString()}
           </Kpi>
         )}
       </div>

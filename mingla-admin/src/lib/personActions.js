@@ -67,6 +67,18 @@ export function createPersonActions(client) {
         p_reason: requireReason(reason),
       });
     },
+    /**
+     * #4130: the brand-level decision, audited. true = staff or test, false =
+     * a real host (even on a staff account), null = clear it so the owner
+     * account decides again.
+     */
+    async setBrandInternal(brandId, internal, reason) {
+      return call("admin_set_internal_brand", {
+        p_brand_id: brandId,
+        p_internal: internal === null ? null : internal === true,
+        p_reason: requireReason(reason),
+      });
+    },
   });
 }
 

@@ -43,7 +43,6 @@ export const RETIRED_PAGE_REDIRECTS = Object.freeze({
   "stripe-mode": Object.freeze({ page: "platform-health", tab: "stripe" }),
   "api-health": Object.freeze({ page: "platform-health", tab: "providers" }),
   "queue-health": Object.freeze({ page: "platform-health", tab: "queue" }),
-  careers: Object.freeze({ page: "admin", tab: "careers" }),
   // #3720 Slice F legacy address: the old Email page is Support's Email tab.
   email: Object.freeze({ page: "support", tab: "email" }),
 });
@@ -85,6 +84,30 @@ export function redirectFor(pageId) {
     : null;
 }
 
+// A tab of a live page that became its own page again (#4130, Seth's call:
+// Careers is its own menu item). page -> tab -> new page. The page itself is
+// not retired: only an address naming that tab moves.
+export const TAB_PAGE_REDIRECTS = Object.freeze({
+  admin: Object.freeze({ careers: "careers" }),
+});
+
+function tabRedirect(hash) {
+  const page = hashPageId(hash);
+  if (typeof page !== "string" || !Object.hasOwn(TAB_PAGE_REDIRECTS, page)) return null;
+  let params;
+  try {
+    params = new URLSearchParams(hashSearch(hash));
+  } catch {
+    return null;
+  }
+  const tab = params.get(HUB_TAB_PARAM);
+  const tabs = TAB_PAGE_REDIRECTS[page];
+  if (!tab || !Object.hasOwn(tabs, tab)) return null;
+  params.delete(HUB_TAB_PARAM);
+  const query = params.toString();
+  return `#/${tabs[tab]}${query ? `?${query}` : ""}`;
+}
+
 /**
  * The address an old address now lives at, or null when it is not retired.
  *   "#/business-venues?venueId=v1" -> "#/brands?tab=venues&venueId=v1"
@@ -92,6 +115,8 @@ export function redirectFor(pageId) {
  * way to the new one, since it named a tab of a page that no longer exists.
  */
 export function redirectHash(hash) {
+  const moved = tabRedirect(hash);
+  if (moved) return moved;
   const split = splitRedirectFor(hashPageId(hash));
   if (split) return split(hash);
   const target = redirectFor(hashPageId(hash));

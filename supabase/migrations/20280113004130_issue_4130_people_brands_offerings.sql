@@ -5,8 +5,8 @@
 -- PUBLIC and anon):
 --
 --   1. admin_internal_accounts — the one "staff and test" flag. A row decides;
---      with no row, the email rule decides (company domain, example.com, or
---      "test" in the address). Rows are seeded from the rule once here, and an
+--      with no row, the email rule decides (the usemingla.com domain, an
+--      example.com/.org/.net domain, or "test" as its own word before the @). Rows are seeded from the rule once here, and an
 --      admin can mark or unmark anyone (audited, reason required).
 --   2. admin_people_segments() / admin_list_people(...) / admin_get_person_activity(...)
 --      — everyone with an account split into explorer (finished Explorer
@@ -14,6 +14,9 @@
 --      role), both, incomplete (neither), internal (staff and test, left out of
 --      every other count). Seed rows are never people.
 --   3. admin_set_internal_account(...) — the audited mark/unmark (WRITE).
+--      admin_internal_brands + admin_set_internal_brand(...) — the same for a
+--      brand: a recorded decision beats the owner account's status
+--      (admin_brand_is_internal(), the one brand rule).
 --   4. admin_brands_summary() / admin_list_brands_board(...) — brands with a
 --      real owner name, payment readiness for Stripe AND Paystack, live
 --      offerings and followers; deleted and staff/test brands hidden unless
@@ -50,12 +53,28 @@ ALTER TABLE public.admin_internal_accounts ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.admin_internal_accounts FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE public.admin_internal_accounts TO service_role;
 
+-- The email rule, precise on purpose (a word that merely contains "test",
+-- such as contest, greatest, latest or attest, is a real person):
+--   * the domain is usemingla.com; or
+--   * the domain is example.com, example.org or example.net; or
+--   * the local part starts with "test", or has "test" as its own token,
+--     delimited by . _ - + or digits (seth+test@, qa.test1@).
+-- Mirrored in mingla-admin/src/lib/peopleSegments.js isInternalEmail().
 CREATE OR REPLACE FUNCTION public.admin_internal_email_rule(p_email text)
 RETURNS boolean
 LANGUAGE sql IMMUTABLE
 SET search_path = public, pg_temp
 AS $$
-  SELECT COALESCE(p_email, '') ~* '(usemingla|example\.com|test)'
+  SELECT COALESCE(
+    e.domain IN ('usemingla.com', 'example.com', 'example.org', 'example.net')
+      OR e.local ~ '^test'
+      OR e.local ~ '(^|[._+0-9-])test($|[._+0-9-])',
+    false)
+  FROM (
+    SELECT substring(v FROM '^(.*)@[^@]*$') AS local,
+           substring(v FROM '@([^@]*)$') AS domain
+      FROM (SELECT lower(btrim(COALESCE(p_email, ''))) AS v) x
+  ) e
 $$;
 REVOKE ALL ON FUNCTION public.admin_internal_email_rule(text) FROM PUBLIC, anon, authenticated;
 
@@ -74,6 +93,39 @@ AS $$
     false)
 $$;
 REVOKE ALL ON FUNCTION public.admin_account_is_internal(uuid) FROM PUBLIC, anon, authenticated;
+
+-- Brand-level decision. A brand owned by a staff account can still be a real
+-- host (and a staff brand can sit on a real account). A row decides; with no
+-- row the owner account's status decides. Same audited pattern as accounts.
+CREATE TABLE IF NOT EXISTS public.admin_internal_brands (
+  brand_id    uuid PRIMARY KEY REFERENCES public.brands(id) ON DELETE CASCADE,
+  is_internal boolean NOT NULL,
+  reason      text NOT NULL CHECK (length(btrim(reason)) > 0),
+  marked_by   text NOT NULL CHECK (length(btrim(marked_by)) > 0),
+  marked_at   timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.admin_internal_brands IS
+  'Issue #4130: an admin''s decision that a brand is (or is not) staff or test, overriding its owner account. Read and written only through admin RPCs.';
+
+ALTER TABLE public.admin_internal_brands ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.admin_internal_brands FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE public.admin_internal_brands TO service_role;
+
+-- Is this brand staff or test? The one rule for Brands, Offerings, the
+-- Calendar and the Data room's host figures.
+CREATE OR REPLACE FUNCTION public.admin_brand_is_internal(p_brand_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE
+SET search_path = public, pg_temp
+AS $$
+  SELECT COALESCE(
+    (SELECT ib.is_internal FROM public.admin_internal_brands ib WHERE ib.brand_id = p_brand_id),
+    (SELECT b.account_id IS NOT NULL AND public.admin_account_is_internal(b.account_id)
+       FROM public.brands b WHERE b.id = p_brand_id),
+    false)
+$$;
+REVOKE ALL ON FUNCTION public.admin_brand_is_internal(uuid) FROM PUBLIC, anon, authenticated;
 
 -- Seed once from the rule, so every staff and test account has a recorded
 -- reason. Later sign-ups that match the rule are internal without a row.
@@ -116,8 +168,8 @@ AS $$
 $$;
 REVOKE ALL ON FUNCTION public.admin_people_classified() FROM PUBLIC, anon, authenticated;
 
--- Payment readiness of one brand. [TRANSITIONAL] swap for the shared Wave 2a
--- money helper at merge — exit when that helper is on main.
+-- Payment readiness of one brand. The integration migration (20280118004130)
+-- makes this delegate to the shared Payments rule, admin_brand_payment_readiness().
 CREATE OR REPLACE FUNCTION public.admin_brand_payment_readiness_w3(p_brand_id uuid)
 RETURNS text
 LANGUAGE sql STABLE
@@ -431,6 +483,62 @@ $$;
 REVOKE ALL ON FUNCTION public.admin_set_internal_account(uuid, boolean, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_set_internal_account(uuid, boolean, text) TO authenticated, service_role;
 
+-- The brand-level decision (WRITE, audited, reason required). p_internal
+-- true or false records a decision; NULL clears it, so the owner account's
+-- status decides again.
+CREATE OR REPLACE FUNCTION public.admin_set_internal_brand(
+  p_brand_id uuid,
+  p_internal boolean,
+  p_reason   text
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_before jsonb;
+  v_after  jsonb;
+  v_email  text;
+BEGIN
+  IF NOT public.is_admin_user() THEN RAISE EXCEPTION 'not_authorized'; END IF;
+  IF p_reason IS NULL OR btrim(p_reason) = '' THEN RAISE EXCEPTION 'reason_required'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.brands b WHERE b.id = p_brand_id) THEN
+    RAISE EXCEPTION 'not_found';
+  END IF;
+
+  SELECT u.email INTO v_email FROM auth.users u WHERE u.id = auth.uid();
+
+  v_before := jsonb_build_object(
+    'is_internal', public.admin_brand_is_internal(p_brand_id),
+    'row', (SELECT to_jsonb(ib) FROM public.admin_internal_brands ib WHERE ib.brand_id = p_brand_id));
+
+  IF p_internal IS NULL THEN
+    DELETE FROM public.admin_internal_brands WHERE brand_id = p_brand_id;
+  ELSE
+    INSERT INTO public.admin_internal_brands AS ib (brand_id, is_internal, reason, marked_by, marked_at)
+    VALUES (p_brand_id, p_internal, btrim(p_reason), COALESCE(v_email, 'admin'), now())
+    ON CONFLICT (brand_id) DO UPDATE
+      SET is_internal = EXCLUDED.is_internal,
+          reason      = EXCLUDED.reason,
+          marked_by   = EXCLUDED.marked_by,
+          marked_at   = EXCLUDED.marked_at;
+  END IF;
+
+  v_after := jsonb_build_object(
+    'is_internal', public.admin_brand_is_internal(p_brand_id),
+    'row', (SELECT to_jsonb(ib) FROM public.admin_internal_brands ib WHERE ib.brand_id = p_brand_id));
+
+  PERFORM public.admin_write_audit(
+    CASE WHEN p_internal IS NULL THEN 'brand.clear_internal'
+         WHEN p_internal THEN 'brand.mark_internal' ELSE 'brand.mark_real' END,
+    'brand', p_brand_id::text, p_reason,
+    jsonb_build_object('before', v_before, 'after', v_after));
+
+  RETURN v_after;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_set_internal_brand(uuid, boolean, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_set_internal_brand(uuid, boolean, text) TO authenticated, service_role;
+
 --------------------------------------------------------------------------------
 -- 4. Brands.
 --------------------------------------------------------------------------------
@@ -446,7 +554,7 @@ BEGIN
 
   WITH b AS (
     SELECT br.id, br.deleted_at,
-           (br.account_id IS NOT NULL AND public.admin_account_is_internal(br.account_id)) AS internal
+           public.admin_brand_is_internal(br.id) AS internal
       FROM public.brands br
   ),
   live AS (
@@ -509,7 +617,7 @@ BEGIN
     SELECT br.id, br.name, br.slug, br.account_id, br.country_code, br.default_currency,
            br.payment_provider, br.take_rate_bps_override, br.claim_status,
            br.created_at, br.deleted_at, br.city,
-           (br.account_id IS NOT NULL AND public.admin_account_is_internal(br.account_id)) AS internal,
+           public.admin_brand_is_internal(br.id) AS internal,
            public.admin_brand_payment_readiness_w3(br.id) AS payment_readiness,
            COALESCE(
              NULLIF(btrim(op.display_name), ''),
@@ -527,7 +635,8 @@ BEGIN
     SELECT b.*,
       (SELECT count(*) FROM public.events e
          LEFT JOIN public.event_dates d ON d.event_id = e.id AND d.is_master
-        WHERE e.brand_id = b.id AND e.deleted_at IS NULL
+        WHERE e.brand_id = b.id AND e.deleted_at IS NULL AND e.visibility = 'public'
+          -- #4130: public and on sale, the same rule as the KPI tile.
           AND public.admin_offering_is_current(e.status, d.start_at)) AS live_offerings,
       (SELECT count(*) FROM public.brand_follows f WHERE f.brand_id = b.id) AS followers
       FROM base b
@@ -565,7 +674,10 @@ BEGIN
       'payment_provider', r.payment_provider, 'payment_readiness', r.payment_readiness,
       'take_rate_bps_override', r.take_rate_bps_override, 'claim_status', r.claim_status,
       'live_offerings', r.live_offerings, 'followers', r.followers,
-      'created_at', r.created_at, 'deleted_at', r.deleted_at, 'internal', r.internal
+      'created_at', r.created_at, 'deleted_at', r.deleted_at, 'internal', r.internal,
+      'internal_decision', (SELECT jsonb_build_object('is_internal', ib.is_internal, 'reason', ib.reason,
+                                                      'marked_by', ib.marked_by, 'marked_at', ib.marked_at)
+                              FROM public.admin_internal_brands ib WHERE ib.brand_id = r.id)
     ) ORDER BY r.rn), '[]'::jsonb)
   INTO v_total, v_rows
   FROM ranked r
@@ -596,7 +708,7 @@ BEGIN
       JOIN public.brands b ON b.id = e.brand_id
       LEFT JOIN public.event_dates d ON d.event_id = e.id AND d.is_master
      WHERE e.deleted_at IS NULL AND b.deleted_at IS NULL
-       AND NOT (b.account_id IS NOT NULL AND public.admin_account_is_internal(b.account_id))
+       AND NOT public.admin_brand_is_internal(b.id)
   )
   SELECT jsonb_build_object(
     'on_sale_public', (SELECT count(*) FROM shown s
@@ -658,7 +770,7 @@ BEGIN
            b.name AS brand_name,
            d.start_at,
            (e.deleted_at IS NOT NULL OR b.deleted_at IS NOT NULL
-             OR (b.account_id IS NOT NULL AND public.admin_account_is_internal(b.account_id))) AS hidden,
+             OR public.admin_brand_is_internal(b.id)) AS hidden,
            CASE
              WHEN e.status = 'cancelled' THEN 'cancelled'
              WHEN e.status = 'draft' THEN 'draft'
@@ -736,6 +848,8 @@ BEGIN
     'public.admin_list_people(text,text,text,timestamptz,integer,integer,text)',
     'public.admin_get_person_activity(uuid)',
     'public.admin_set_internal_account(uuid,boolean,text)',
+    'public.admin_set_internal_brand(uuid,boolean,text)',
+    'public.admin_brand_is_internal(uuid)',
     'public.admin_brands_summary()',
     'public.admin_list_brands_board(text,boolean,text,text,integer,integer)',
     'public.admin_offerings_summary()',

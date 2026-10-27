@@ -11,7 +11,7 @@ import { LoadError } from "../ui/LoadError";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { useToast } from "../../context/ToastContext";
 import { formatDate } from "../../lib/formatters";
-import { announcementsWithFailedPushes } from "../../lib/announcementDelivery";
+import { announcementsWithFailedPushes, failedPushTitle } from "../../lib/announcementDelivery";
 import { listAnnouncementDeliveries, retryAnnouncementDelivery } from "../../services/communityService";
 
 export function FailedPushBanner() {
@@ -68,10 +68,10 @@ export function FailedPushBanner() {
     <>
       <AlertCard
         variant="error"
-        title={`${latest.failed} of ${latest.tried} pushes failed`}
+        title={failedPushTitle(latest)}
         action={
           <Button size="sm" variant="secondary" icon={RefreshCw} onClick={() => setConfirming(latest)}>
-            Retry {latest.failed}
+            {latest.wholeSendFailed ? "Retry the send" : `Retry ${latest.failed}`}
           </Button>
         }
       >

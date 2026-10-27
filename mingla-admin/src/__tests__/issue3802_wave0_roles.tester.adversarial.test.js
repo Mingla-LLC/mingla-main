@@ -208,12 +208,11 @@ describe("#3802 AC-6: the menu never leaks a forbidden page", () => {
   it("an admin sees the console but not Team and roles", () => {
     const ids = visibleNavGroups(NAV_GROUPS, admin).flatMap((g) => g.items.map((i) => i.id));
     assert.ok(ids.includes("overview"), "dashboard");
-    // #4130: Team and roles now also holds Careers, which admins could always
-    // open, so the entry shows for an admin; its Team tab (the old Team and
-    // roles page) stays the owner's alone.
-    assert.ok(ids.includes("admin"), "Team and roles opens for its Careers tab");
-    assert.equal(canOpenOwnPage(admin, "admin"), false, "the Team tab is the owner's alone");
-    assert.equal(canOpenOwnPage(admin, "careers"), true, "the Careers tab is open to admins");
+    // #4130 (Seth): Team and roles is the owner's alone again; Careers is
+    // its own menu entry, open to admins.
+    assert.ok(!ids.includes("admin"), "no Team and roles");
+    assert.equal(canOpenOwnPage(admin, "admin"), false, "Team and roles is the owner's alone");
+    assert.ok(ids.includes("careers"), "Careers is open to admins");
     assert.ok(!ids.includes("home"), "admin has no role home");
   });
   it("the owner sees Team and roles; a malformed access sees an empty menu", () => {

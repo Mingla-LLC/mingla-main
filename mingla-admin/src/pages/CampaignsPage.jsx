@@ -30,6 +30,7 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Spinner } from "../components/ui/Spinner";
+import { LoadError } from "../components/ui/LoadError";
 import { useToast } from "../context/ToastContext";
 import {
   adPlanAction,
@@ -259,6 +260,9 @@ export function CampaignsPage({ embedded = false }) {
   const [campaigns, setCampaigns] = useState(null);
   const [reviewQueue, setReviewQueue] = useState(null);
   const [recoveryQueue, setRecoveryQueue] = useState(null);
+  // #4130: which reads failed. A failed read shows an error with Retry, never
+  // "No ... need review/recovery" or "No campaigns yet".
+  const [loadErrors, setLoadErrors] = useState({ campaigns: null, review: null, recovery: null });
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -312,8 +316,15 @@ export function CampaignsPage({ embedded = false }) {
     } else {
       setCampaigns(data ?? []);
     }
+    const reviewParsed = reviewResult.error ? await parseEdgeError(reviewResult.error) : null;
+    const recoveryParsed = recoveryResult.error ? await parseEdgeError(recoveryResult.error) : null;
+    setLoadErrors({
+      campaigns: error ? String(error.message || "The campaign list could not load.") : null,
+      review: reviewResult.error ? String(reviewParsed?.message ?? "The review queue could not load.") : null,
+      recovery: recoveryResult.error ? String(recoveryParsed?.message ?? "The recovery queue could not load.") : null,
+    });
     if (reviewResult.error) {
-      const parsed = await parseEdgeError(reviewResult.error);
+      const parsed = reviewParsed;
       addToast({
         variant: "error",
         title: "Host review queue failed",
@@ -326,7 +337,7 @@ export function CampaignsPage({ embedded = false }) {
       setReviewQueue(reviewResult.data?.queue ?? []);
     }
     if (recoveryResult.error) {
-      const parsed = await parseEdgeError(recoveryResult.error);
+      const parsed = recoveryParsed;
       addToast({
         variant: "error",
         title: "Mingla plan recovery failed",
@@ -359,9 +370,9 @@ export function CampaignsPage({ embedded = false }) {
     });
     addToast({
       variant: "success",
-      title: "Paused provider objects recovered",
+      title: "Missing parts set up, paused",
       description:
-        "Only missing platforms were retried from the exact frozen hash. Nothing was launched or spent.",
+        "Only the missing platforms were set up, exactly as approved. Nothing was launched or spent.",
     });
     await load();
   };
@@ -743,7 +754,7 @@ export function CampaignsPage({ embedded = false }) {
       ) : (
         <PageHeader
           title="Campaigns"
-          description="Everything is created paused — launching is the explicit act that starts spend. Provider spend feeds enforce the frozen account-currency cap and end date; unresolved or stale spend pauses delivery for safety."
+          description="Every campaign starts paused; nothing is spent until someone presses Launch. Each one stops at its budget and end date, and pauses itself if we can't read its spend."
           actions={
             <div className="flex gap-2">
               <Button
@@ -783,12 +794,14 @@ export function CampaignsPage({ embedded = false }) {
       })()}
       <SectionCard
         title="Host plans awaiting staff review"
-        subtitle="The first three campaigns for each Host, plus flagged plans, stop here before any provider object is created. Funds are held, not spent."
+        subtitle="A host's first three campaigns, and any flagged ones, wait here before anything is set up on Meta or TikTok. Funds are held, not spent."
       >
         {loading && reviewQueue === null ? (
           <div className="flex items-center gap-2 py-4">
             <Spinner size="sm" /> Loading review queue…
           </div>
+        ) : loadErrors.review ? (
+          <LoadError title="Couldn't load the Host plans waiting for review" message={loadErrors.review} onRetry={() => void load()} retrying={loading} />
         ) : !reviewQueue || reviewQueue.length === 0 ? (
           <p className="text-sm text-[var(--color-text-secondary)]">
             No Host plans need review.
@@ -825,7 +838,7 @@ export function CampaignsPage({ embedded = false }) {
                         Plan {version.plan_hash}
                       </div>
                     </div>
-                    <Badge variant="warning">STAFF REVIEW</Badge>
+                    <Badge variant="warning">Needs review</Badge>
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs">
                     {(plan.review_reasons ?? []).map((reason) => (
@@ -963,7 +976,7 @@ export function CampaignsPage({ embedded = false }) {
       </SectionCard>
       <SectionCard
         title="Campaign workspace"
-        subtitle="Search and filter the governed provider objects without exposing internal owner identifiers."
+        subtitle="Every campaign on Meta and TikTok. Search and filter them here."
       >
         <div className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-5">
           <label className="relative block xl:col-span-2">
@@ -1057,6 +1070,8 @@ export function CampaignsPage({ embedded = false }) {
           <div className="flex items-center gap-2 py-4">
             <Spinner size="sm" /> Loading campaigns…
           </div>
+        ) : loadErrors.campaigns ? (
+          <LoadError title="Couldn't load the campaigns" message={loadErrors.campaigns} onRetry={() => void load()} />
         ) : !campaigns || campaigns.length === 0 ? (
           <p className="text-sm text-[var(--color-text-secondary)]">
             No campaigns yet — build one in the Campaign Builder. It will start
@@ -1105,12 +1120,14 @@ export function CampaignsPage({ embedded = false }) {
 
       <SectionCard
         title="Mingla plans that need recovery"
-        subtitle="These plans are server-owned and survive a browser reload. Resume retries only missing paused provider objects from the exact frozen hash; it never launches spend."
+        subtitle="Mingla campaigns that stopped part-way through being set up. Resume sets up only the missing parts, paused, exactly as approved; it never starts spending."
       >
         {loading && recoveryQueue === null ? (
           <div className="flex items-center gap-2 py-4">
             <Spinner size="sm" /> Loading recovery queue…
           </div>
+        ) : loadErrors.recovery ? (
+          <LoadError title="Couldn't load the Mingla plans that need recovery" message={loadErrors.recovery} onRetry={() => void load()} retrying={loading} />
         ) : !recoveryQueue || recoveryQueue.length === 0 ? (
           <p className="text-sm text-[var(--color-text-secondary)]">
             No Mingla plans need recovery.

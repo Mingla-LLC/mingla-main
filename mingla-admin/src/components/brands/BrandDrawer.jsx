@@ -22,7 +22,9 @@ import { getBrandPayoutConsole } from "../../services/adminMoneyService";
 import { listOfferingsBoard } from "../../services/offeringsService";
 import { listVenues } from "../../services/venuesService";
 import { getBrandSiteDetail, listBrandSites } from "../../services/brandSitesAdminService";
+import { personActions } from "../../services/peopleService";
 import {
+  brandInternalView,
   brandRoleLabel,
   feeOverrideLabel,
   offeringState,
@@ -130,6 +132,9 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
   }, [brandId, rowFromList]);
   const row = rowFromList || rowFromServer;
   const [action, setAction] = useState(null);
+  // #4130: the brand-level staff/test decision, as the server last answered.
+  const [internalNow, setInternalNow] = useState(null);
+  const internalView = brandInternalView(row, internalNow ?? row?.internal === true);
   const [detail, setDetail] = useState({ loading: true, error: null, data: null });
 
   const loadDetail = useCallback(async () => {
@@ -203,6 +208,12 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
         return { title: "Suspend this brand", description: "The brand can't sell or publish until someone unsuspends it.", confirmLabel: "Suspend", destructive: true, confirmPhrase: "SUSPEND", run: (r) => setBrandClaimStatus(brandId, "suspended", r), success: "Brand suspended." };
       case "unsuspend":
         return { title: "Unsuspend this brand", description: "The brand goes back to verified.", confirmLabel: "Unsuspend", run: (r) => setBrandClaimStatus(brandId, "verified", r), success: "Brand unsuspended." };
+      case "markReal":
+        return { title: "Treat as a real host", description: "This brand counts as a real host on Brands, Offerings, the Calendar and the Data room, even if its owner is a staff account. Recorded with your reason.", confirmLabel: "Treat as a real host", internal: false, success: "Counted as a real host." };
+      case "markInternal":
+        return { title: "Treat as staff or test", description: "This brand and its offerings are left out of host counts on Brands, Offerings, the Calendar and the Data room. Recorded with your reason.", confirmLabel: "Treat as staff or test", internal: true, success: "Left out as staff or test." };
+      case "clearInternal":
+        return { title: "Go back to the owner's status", description: "Removes the decision on this brand, so its owner account decides whether it counts. Recorded with your reason.", confirmLabel: "Remove the decision", internal: null, success: "The owner's status decides again." };
       default:
         return null;
     }
@@ -220,9 +231,12 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
           </Badge>
         )}
         {b.deleted_at && <Badge variant="error">Deleted</Badge>}
-        {row?.internal && <Badge variant="default">Staff or test</Badge>}
+        {internalView.internal && <Badge variant="default">Staff or test</Badge>}
         {suspended && <Badge variant="error" dot>Suspended</Badge>}
       </div>
+      {(internalView.internal || internalView.canClear) && (
+        <p className="text-xs text-[var(--color-text-secondary)]">{internalNow === null ? internalView.why : internalView.label}</p>
+      )}
     </div>
   );
 
@@ -236,6 +250,12 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
       <Button variant={suspended ? "secondary" : "danger"} size="sm" onClick={() => setAction(suspended ? "unsuspend" : "suspend")}>
         {suspended ? "Unsuspend…" : "Suspend…"}
       </Button>
+      <Button variant="secondary" size="sm" onClick={() => setAction(internalView.action === "real" ? "markReal" : "markInternal")} title={internalView.why}>
+        {internalView.actionLabel}
+      </Button>
+      {internalView.canClear && internalNow === null && (
+        <Button variant="ghost" size="sm" onClick={() => setAction("clearInternal")}>Use the owner's status…</Button>
+      )}
       <a
         href={`#/brands?view=record&brandId=${encodeURIComponent(brandId)}`}
         className="ml-auto text-sm font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline"
@@ -443,6 +463,13 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
           confirmPhrase={modal.confirmPhrase}
           successMessage={modal.success}
           onConfirm={async ({ reason }) => {
+            if (Object.hasOwn(modal, "internal")) {
+              // Throws a plain-English error when the server refuses; nothing else runs.
+              const after = await personActions.setBrandInternal(brandId, modal.internal, reason);
+              setInternalNow(after?.is_internal === true);
+              onChanged?.();
+              return;
+            }
             const { error } = await modal.run(reason);
             if (error) throw new Error(mapWriteError(error));
             await loadDetail();

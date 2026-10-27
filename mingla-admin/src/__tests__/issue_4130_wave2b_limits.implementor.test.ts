@@ -127,7 +127,7 @@ Deno.test("#4130 subscriptions: next page follows the server total, not a full p
   assertEquals(hasNextPage(20, 0), false);
   assertEquals(hasNextPage(21, 0), true);
   assertEquals(hasNextPage(40, 1), false);
-  assertEquals(pageRangeLabel(212, 1, 20), "Showing 21–40 of 212");
+  assertEquals(pageRangeLabel(150, 1, 20), "Showing 21–40 of 150");
 });
 
 Deno.test("#4130 subscriptions: blank names, real tiers and what people get now", () => {
@@ -140,10 +140,10 @@ Deno.test("#4130 subscriptions: blank names, real tiers and what people get now"
 });
 
 Deno.test("#4130 subscriptions: turning Global Plus off says how many lose access", () => {
-  const off = globalPlusConfirmCopy({ turningOn: false, realFree: 209, realPlus: 3 });
-  assertMatch(off.body, /209 people will lose Mingla\+/);
-  assertMatch(off.body, /3 people with Mingla\+ of their own/);
-  assertEquals(off.confirmLabel, "Turn off for 209 people");
+  const off = globalPlusConfirmCopy({ turningOn: false, realFree: 140, realPlus: 5 });
+  assertMatch(off.body, /140 people will lose Mingla\+/);
+  assertMatch(off.body, /5 people with Mingla\+ of their own/);
+  assertEquals(off.confirmLabel, "Turn off for 140 people");
   // Counts that did not load never become a guess.
   assertEquals(globalPlusConfirmCopy({ turningOn: false, realFree: null, realPlus: null }).confirmLabel, null);
 });

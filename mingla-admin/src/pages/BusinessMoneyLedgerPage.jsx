@@ -23,7 +23,7 @@ import { Button } from "../components/ui/Button";
 import { StayOperationsPanel } from "../components/stay/StayOperationsPanel";
 import { listRefunds, getDispute, listAllDisputes, listPayouts, getPayoutSummary, listOrganiserPayoutDebts } from "../services/adminMoneyService";
 import { annotateDispute, settleOwesBack } from "../services/adminMoneyActService";
-import { feeShareOfTicket } from "../lib/minglaMoney";
+import { payoutFeeBadge } from "../lib/minglaMoney";
 import { LoadError } from "../components/ui/LoadError";
 import { Skeleton } from "../components/ui/Skeleton";
 import { PaystackDisputeDetail } from "../components/money/PaystackDisputeDetail";
@@ -61,13 +61,16 @@ function PayoutMetric({ title, value, sub, alert = false, action = null }) {
   );
 }
 
-/** #4130: the fee as a share of the ticket price, labelled "older pricing" below 4%. */
-function FeeCell({ fee, ticket, currency }) {
-  const share = feeShareOfTicket(fee, ticket);
+/**
+ * #4130: the fee as a share of the ticket price, labelled "older pricing"
+ * below 4%, and "mixed pricing" when the payout holds sales on both.
+ */
+function FeeCell({ fee, ticket, currency, pricing }) {
+  const badge = payoutFeeBadge(fee, ticket, pricing);
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
       <span className="tabular-nums">{formatMoney(fee, currency)}</span>
-      {share ? <Badge variant={share.older ? "default" : "success"}>{share.older ? `${share.label} · older pricing` : share.label}</Badge> : null}
+      {badge ? <Badge variant={badge.mixed ? "warning" : badge.older ? "default" : "success"}>{badge.text}</Badge> : null}
     </span>
   );
 }
@@ -102,9 +105,10 @@ function PayoutDetailDrawer({ payout, onClose }) {
           {line(
             (() => {
               // #4130: the real share of the ticket price, never a hard-coded 4.5%.
-              const share = feeShareOfTicket(payout.mingla_fee_cents, payout.ticket_cents);
-              if (!share) return "Mingla fee";
-              return share.older ? `Mingla fee · ${share.label} of ticket, older pricing` : `Mingla fee · ${share.label} of ticket`;
+              const badge = payoutFeeBadge(payout.mingla_fee_cents, payout.ticket_cents, payout.pricing);
+              if (!badge) return "Mingla fee";
+              if (badge.mixed) return `Mingla fee · ${badge.share.label} of ticket, mixed pricing`;
+              return badge.older ? `Mingla fee · ${badge.share.label} of ticket, older pricing` : `Mingla fee · ${badge.share.label} of ticket`;
             })(),
             `−${formatMoney(payout.mingla_fee_cents, payout.currency)}`,
           )}
@@ -219,7 +223,7 @@ const PAYOUT_COLUMNS = [
   { key: "brand_name", label: "Brand", render: brandCell },
   { key: "provider", label: "Rail", render: (v) => <Badge variant="default">{v === "paystack" ? "Paystack" : v === "stripe" ? "Stripe" : v || "—"}</Badge> },
   { key: "ticket_cents", label: "Ticket price", render: (v, row) => <span className="tabular-nums">{formatMoney(v, row.currency)}</span> },
-  { key: "mingla_fee_cents", label: "Mingla fee", render: (v, row) => <FeeCell fee={v} ticket={row.ticket_cents} currency={row.currency} /> },
+  { key: "mingla_fee_cents", label: "Mingla fee", render: (v, row) => <FeeCell fee={v} ticket={row.ticket_cents} currency={row.currency} pricing={row.pricing} /> },
   { key: "gross_cents", label: "Buyer paid", render: (v, row) => <span className="font-medium tabular-nums">{formatMoney(v, row.currency)}</span> },
   { key: "sent_to_bank_cents", label: "Sent to bank", render: (v, row) => <span className="tabular-nums">{formatMoney(v, row.currency)}</span> },
   { key: "due_at", label: "Due", render: (v) => (v ? formatDateTime(v) : "—") },

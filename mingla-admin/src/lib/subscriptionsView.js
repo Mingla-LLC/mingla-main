@@ -47,7 +47,7 @@ export function hasNextPage(total, page, pageSize = SUBSCRIPTIONS_PAGE_SIZE) {
   return (page + 1) * pageSize < t;
 }
 
-/** "Showing 21–40 of 212". */
+/** "Showing 21–40 of 150". */
 export function pageRangeLabel(total, page, rowsOnPage, pageSize = SUBSCRIPTIONS_PAGE_SIZE) {
   if (!total || rowsOnPage === 0) return `Showing 0 of ${Number(total || 0).toLocaleString("en-US")}`;
   const first = page * pageSize + 1;
@@ -98,6 +98,18 @@ export function subscriptionErrorMessage(error) {
   const msg = String(error?.message ?? error ?? "");
   if (msg.includes("not_authorized") || msg.includes("Unauthorized")) return "You don't have permission to change subscriptions.";
   if (msg.includes("reason_required")) return "Add a reason. It is saved on the server with your name.";
+  if (msg.includes("no_change")) return "Nothing changed: Global Plus was already set that way. Refresh to see the current state.";
+  if (msg.includes("global_plus_setting_missing")) return "The Global Plus setting is missing on the server, so nothing changed.";
   if (msg.includes("does not exist")) return "That person's account could not be found.";
   return "Couldn't save. Check your connection and try again.";
+}
+
+/**
+ * #4130: the staff-and-test toggle. Hidden by default; the label says how
+ * many the list left out.
+ */
+export function internalToggleLabel(showing, hidden) {
+  if (showing) return "Hide staff and test";
+  const n = Number(hidden);
+  return Number.isFinite(n) && n > 0 ? `Show staff and test (${n})` : "Show staff and test";
 }

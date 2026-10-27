@@ -17,7 +17,7 @@ import { logAdminAction } from "../lib/auditLog";
 import { PageHeader } from "../components/ui/PageHeader";
 import { useOnline } from "../hooks/useCrmPipeline";
 import { useHashTab } from "../hooks/useHashTab";
-import { COMPETITOR_WATCH_FROM, RESTART_WORD, SETTINGS_SECTIONS, canRestartTour, sectionFor } from "../lib/systemPages";
+import { COMPETITOR_WATCH_FROM, RESTART_WORD, SETTINGS_SECTIONS, appConfigRow, canRestartTour, sectionFor } from "../lib/systemPages";
 import { fetchTrialRunHistory, restartTourForEveryone, systemErrorWords } from "../services/systemPagesService";
 import { TeamAutomationSettings } from "../components/ops/TeamSettingsPanels";
 import { RunHistoryGroups } from "../components/placeIntelligenceTrial/RunHistoryGroups";
@@ -73,31 +73,39 @@ function AppConfigView() {
 
   const [configs, setConfigs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(null);
   const [newConfig, setNewConfig] = useState({ key: "", value: "", type: "string" });
   const [confirmDelete, setConfirmDelete] = useState(null);
 
+  // #4130: the table's columns are config_key and config_value. A failed read
+  // shows the error with Retry, never "No app config entries yet".
   const fetchConfigs = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase.from("app_config").select("*").order("key");
+    const { data, error } = await supabase.from("app_config").select("id, config_key, config_value, value_type, description").order("config_key");
     if (!mountedRef.current) return;
-    if (!error) setConfigs(data || []);
+    if (error) {
+      setLoadError(error);
+    } else {
+      setLoadError(null);
+      setConfigs((data || []).map(appConfigRow));
+    }
     setLoading(false);
   }, []);
 
   useEffect(() => { fetchConfigs(); }, [fetchConfigs]);
 
   const handleCreate = async () => {
-    if (!newConfig.key.trim()) { addToast("Key is required", "error"); return; }
+    if (!newConfig.key.trim()) { addToast({ variant: "error", title: "Key is required" }); return; }
     const { error } = await supabase.from("app_config").insert({
-      key: newConfig.key.trim(),
-      value: newConfig.value,
+      config_key: newConfig.key.trim(),
+      config_value: newConfig.value,
       value_type: newConfig.type,
     });
-    if (error) { addToast(error.message, "error"); return; }
-    addToast("Config created", "success");
+    if (error) { addToast({ variant: "error", title: "Couldn't create the setting", description: error.message }); return; }
+    addToast({ variant: "success", title: "Setting created" });
     logAdminAction("config.create", "config", newConfig.key, { key: newConfig.key });
     setCreating(false);
     setNewConfig({ key: "", value: "", type: "string" });
@@ -106,9 +114,9 @@ function AppConfigView() {
 
   const handleSaveEdit = async () => {
     const oldVal = configs.find((c) => c.id === editing.id)?.value;
-    const { error } = await supabase.from("app_config").update({ value: editing.value }).eq("id", editing.id);
-    if (error) { addToast(error.message, "error"); return; }
-    addToast("Config updated", "success");
+    const { error } = await supabase.from("app_config").update({ config_value: editing.value }).eq("id", editing.id);
+    if (error) { addToast({ variant: "error", title: "Couldn't save the setting", description: error.message }); return; }
+    addToast({ variant: "success", title: "Setting saved" });
     logAdminAction("config.update", "config", editing.key, { key: editing.key, old_value: oldVal, new_value: editing.value });
     setEditing(null);
     fetchConfigs();
@@ -116,8 +124,8 @@ function AppConfigView() {
 
   const handleDelete = async (cfg) => {
     const { error } = await supabase.from("app_config").delete().eq("id", cfg.id);
-    if (error) { addToast(error.message, "error"); return; }
-    addToast("Config deleted", "success");
+    if (error) { addToast({ variant: "error", title: "Couldn't delete the setting", description: error.message }); return; }
+    addToast({ variant: "success", title: "Setting deleted" });
     logAdminAction("config.delete", "config", cfg.key, { key: cfg.key });
     setConfirmDelete(null);
     fetchConfigs();
@@ -126,7 +134,7 @@ function AppConfigView() {
   const filtered = configs.filter((c) => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return c.key?.toLowerCase().includes(q) || c.value?.toLowerCase().includes(q);
+    return c.key.toLowerCase().includes(q) || c.value.toLowerCase().includes(q);
   });
 
   return (
@@ -138,6 +146,8 @@ function AppConfigView() {
 
       {loading ? (
         <div className="flex justify-center py-12"><Spinner /></div>
+      ) : loadError ? (
+        <LoadError title="Couldn't load app config" message={systemErrorWords(loadError)} onRetry={fetchConfigs} />
       ) : filtered.length === 0 ? (
         <p className="text-sm text-[var(--color-text-tertiary)] text-center py-12">
           {search ? "No config items match that search." : "No app config entries yet."}
@@ -148,7 +158,7 @@ function AppConfigView() {
             <div key={cfg.id} className="flex items-center gap-3 p-3 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)]">
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-[var(--color-text-primary)] font-mono">{cfg.key}</p>
-                <p className="text-xs text-[var(--color-text-tertiary)] truncate">{String(cfg.value)}</p>
+                <p className="text-xs text-[var(--color-text-tertiary)] truncate">{cfg.value}</p>
               </div>
               <Badge variant="default">{cfg.value_type || "string"}</Badge>
               <Button variant="ghost" size="sm" icon={Edit3} onClick={() => setEditing({ ...cfg })} />

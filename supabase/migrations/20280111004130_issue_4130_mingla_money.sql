@@ -778,7 +778,15 @@ BEGIN
           THEN true
         WHEN COALESCE(items.ticket_cents, r.gross_cents - r.mingla_fee_cents) > 0 THEN false
         ELSE false
-      END AS older_pricing
+      END AS older_pricing,
+      -- #4130: each sale is judged on its own; a payout holding both kinds
+      -- is 'mixed', never labelled older from its blended share.
+      CASE
+        WHEN COALESCE(items.older_items, 0) > 0 AND COALESCE(items.current_items, 0) > 0 THEN 'mixed'
+        WHEN COALESCE(items.older_items, 0) > 0 THEN 'older'
+        WHEN COALESCE(items.current_items, 0) > 0 THEN 'current'
+        ELSE NULL
+      END AS pricing
     FROM public.brand_payout_releases r
     JOIN public.brands b ON b.id = r.brand_id
     LEFT JOIN public.brand_payout_admin_holds h ON h.brand_id = r.brand_id
@@ -792,7 +800,11 @@ BEGIN
     ) credits ON true
     LEFT JOIN LATERAL (
       SELECT count(*)::int AS sales_count,
-        sum(COALESCE(o.net_subtotal_cents, i.gross_cents - i.mingla_fee_cents))::bigint AS ticket_cents
+        sum(COALESCE(o.net_subtotal_cents, i.gross_cents - i.mingla_fee_cents))::bigint AS ticket_cents,
+        count(*) FILTER (WHERE COALESCE(o.net_subtotal_cents, i.gross_cents - i.mingla_fee_cents) > 0
+          AND i.mingla_fee_cents::numeric / COALESCE(o.net_subtotal_cents, i.gross_cents - i.mingla_fee_cents)::numeric < 0.04)::int AS older_items,
+        count(*) FILTER (WHERE COALESCE(o.net_subtotal_cents, i.gross_cents - i.mingla_fee_cents) > 0
+          AND i.mingla_fee_cents::numeric / COALESCE(o.net_subtotal_cents, i.gross_cents - i.mingla_fee_cents)::numeric >= 0.04)::int AS current_items
       FROM public.payout_release_items i
       LEFT JOIN public.orders o ON i.source_type = 'order' AND o.id = i.source_id
       WHERE i.release_id = r.id

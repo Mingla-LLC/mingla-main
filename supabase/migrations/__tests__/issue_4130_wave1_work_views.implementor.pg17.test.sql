@@ -12,6 +12,10 @@
 --              timeline card), kept slipping and the review list
 --   W1-PULSE   crm_team_pulse counts distinct host and creator records for a
 --              period and the one before it; deleted records never count
+--   W1-WAIT    one definition of "Waiting on a person": ops_my_counts
+--              waiting_on_person_mine counts your own open person cards,
+--              a send card whether or not its draft is ready, and equals the
+--              Work board's count (ops_work_list who=mine and owner=you)
 --   W1-GATE    the crm area is needed (the Team dashboard numbers need an
 --              owner or admin); anon and PUBLIC cannot run them; the two
 --              internal helpers cannot be run by any client; bad periods and
@@ -289,6 +293,37 @@ begin
                       'public.crm_team_pulse(timestamptz,timestamptz)'::regprocedure) and a.grantee = 0), '0');
 end;
 $gate$;
+
+-- W1-WAIT: two send cards for Gia, one with its draft ready, one without.
+do $wait$
+declare v_draft uuid; v_mine jsonb; v_board jsonb; v_owner jsonb;
+begin
+  perform pg_temp.tw_card('S1', 'W4130 Send with draft ready', 'gia.w4130@test.local', 'person', 2, interval '1 day');
+  perform pg_temp.tw_card('S2', 'W4130 Send needs a draft',    'gia.w4130@test.local', 'person', 2, interval '1 day');
+  perform pg_temp.tw_card('S3', 'W4130 Hal waits too',         'hal.w4130@test.local', 'person', 2, interval '1 day');
+  insert into public.team_drafts (owner_email, record_id, channel, body, original_body, created_via, request_key)
+  values ('gia.w4130@test.local', gen_random_uuid(), 'email', 'Hello from the test.', 'Hello from the test.', 'claude', 'w4130-wait-s1')
+  returning id into v_draft;
+  update public.ops_work_cards set proof = jsonb_build_array(jsonb_build_object('kind', 'draft', 'id', v_draft))
+   where id = pg_temp.tw_id('S1');
+  perform pg_temp.tw_check('W1-WAIT', 'fixture: the first send card has its draft ready',
+    public.ops_send_draft_waiting(pg_temp.tw_id('S1'), (select proof from public.ops_work_cards where id = pg_temp.tw_id('S1')))::text, 'true');
+
+  v_mine := pg_temp.tw_j(pg_temp.tw_as('growth', $q$select public.ops_my_counts()::text$q$));
+  v_board := pg_temp.tw_j(pg_temp.tw_as('growth', $q$select public.ops_work_list('{"who":"mine","status":["person"],"done_days":0,"limit":1}'::jsonb)::text$q$));
+  v_owner := pg_temp.tw_j(pg_temp.tw_as('growth', $q$select public.ops_work_list('{"owner":"gia.w4130@test.local","done_days":0,"limit":1}'::jsonb)::text$q$));
+  perform pg_temp.tw_check('W1-WAIT', 'your own waiting cards count the send card whose draft is ready',
+    v_mine ->> 'waiting_on_person_mine', '2');
+  perform pg_temp.tw_check('W1-WAIT', 'the Work menu count equals the Work board (who=mine)',
+    v_mine ->> 'waiting_on_person_mine', v_board -> 'counts' ->> 'person');
+  perform pg_temp.tw_check('W1-WAIT', 'and equals the board filtered to you (owner chip)',
+    v_mine ->> 'waiting_on_person_mine', v_owner -> 'counts' ->> 'person');
+  perform pg_temp.tw_check('W1-WAIT', 'the older keys left the ready send card out (why the pages disagreed)',
+    ((v_mine ->> 'needs_person_mine')::int + (v_mine ->> 'draft_needed_mine')::int)::text, '1');
+  perform pg_temp.tw_check('W1-WAIT', 'someone else''s waiting card is not yours',
+    pg_temp.tw_j(pg_temp.tw_as('hal', $q$select public.ops_my_counts()::text$q$)) ->> 'waiting_on_person_mine', '1');
+end;
+$wait$;
 
 select count(*) as tw_total, count(*) filter (where not ok) as tw_failed,
        coalesce(string_agg(test || ' ' || label || ' [' || detail || ']', E'\n' order by seq) filter (where not ok), 'none') as tw_failures

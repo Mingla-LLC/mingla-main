@@ -38,7 +38,9 @@
 -- public.ops_events_window(timestamptz, text),
 -- public.ops_period_cards(timestamptz, timestamptz, text),
 -- public.ops_period_summary(timestamptz, timestamptz, text, text),
--- public.crm_team_pulse(timestamptz, timestamptz). Nothing else changes.
+-- public.crm_team_pulse(timestamptz, timestamptz), and restore
+-- public.ops_my_counts(date) from 20271201003980 (it gains one key,
+-- waiting_on_person_mine). Nothing else changes.
 
 BEGIN;
 
@@ -346,6 +348,40 @@ REVOKE ALL ON FUNCTION public.crm_team_pulse(timestamptz, timestamptz) FROM PUBL
 GRANT EXECUTE ON FUNCTION public.crm_team_pulse(timestamptz, timestamptz) TO authenticated;
 COMMENT ON FUNCTION public.crm_team_pulse(timestamptz, timestamptz) IS
   'Issue #4130. Team dashboard: hosts contacted, hosts onboarded, stage moves per pipeline and beta leads for a period and the one before it. Distinct record counts only. Gate: is_admin_user() and crm_ctx(), as crm_team_summary.';
+
+-- ---------------------------------------------------------------------------
+-- 3b. One definition of "Waiting on a person".
+-- ---------------------------------------------------------------------------
+-- A card is waiting on a person when it is open (not archived) and its status
+-- is 'person', whatever the reason: a "send" card counts whether or not its
+-- draft is ready. "Yours" means you are an owner, exactly as the Work board's
+-- who=mine. The Dashboard KPI, the Work menu count, the Work board column and
+-- the Team dashboard all count this; ops_work_list counts.person is the same
+-- rule for the whole team. The older keys stay as they were for the agent
+-- tool (my_work), which reads them by name.
+CREATE OR REPLACE FUNCTION public.ops_my_counts(p_today date DEFAULT NULL) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v record; v_today date := public.ops_today(p_today); v_review jsonb := public.ops_review_list(p_today);
+BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  RETURN (SELECT jsonb_build_object(
+    'open_mine', count(*) FILTER (WHERE w.status <> 'done' AND p.role = 'owner'),
+    'waiting_on_person_mine', count(*) FILTER (WHERE w.status = 'person' AND p.role = 'owner'),
+    -- A wording card is listed under Spend or publish and on What hosts are
+    -- told; it is counted once, as wording.
+    'needs_person_mine', (SELECT count(*) FROM jsonb_array_elements(v_review->'cards') c
+                           WHERE c->>'auto_kind' IS DISTINCT FROM 'roadmap_shipped'
+                              OR jsonb_array_length(v_review->'wording') = 0),
+    'draft_needed_mine', jsonb_array_length(v_review->'draft_needed'),
+    'wording_mine', jsonb_array_length(v_review->'wording'),
+    'overdue_mine', count(*) FILTER (WHERE w.status <> 'done' AND p.role = 'owner' AND w.due_on < v_today),
+    'watching_open', count(*) FILTER (WHERE w.status <> 'done' AND p.role = 'watcher'))
+    FROM public.ops_work_cards w JOIN public.ops_work_people p ON p.card_id = w.id AND p.email = v.actor_email
+   WHERE w.archived_at IS NULL);
+END;
+$$;
+-- CREATE OR REPLACE keeps the grants ops_my_counts already has.
 
 -- ---------------------------------------------------------------------------
 -- 4. Self-check. The apply stops here if anything above is not as stated.

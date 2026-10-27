@@ -14,12 +14,10 @@ import { formatRelativeTime } from "../lib/formatters";
 import { INVITABLE_ROLES, ROLE_LABELS, canOpenOwnPage } from "../lib/access";
 import { Drawer } from "../components/ui/Drawer";
 import { Tabs } from "../components/ui/Tabs";
-import { EmbeddedPageContext } from "../components/layout/embeddedPage";
 import { useAuth } from "../context/AuthContext";
 import { useHashTab } from "../hooks/useHashTab";
 import { TEAM_TABS, tabFor, teamGroups, lastActiveLabel } from "../lib/systemPages";
 import { fetchTeamLastActive } from "../services/systemPagesService";
-import { CareersPage } from "./CareersPage";
 import { INVITE_STATE_COPY, findInviteState, inviteRowState } from "../lib/inviteLink";
 import { PageHeader } from "../components/ui/PageHeader";
 import { useOnline } from "../hooks/useCrmPipeline";
@@ -32,11 +30,11 @@ import { opsErrorWords } from "../lib/opsModel";
 
 // Issue #3802 — Team and roles (owner only).
 //
-// #4130 (Wave 4b): one table with tabs (People, Invited, Removed, Careers),
+// #4130 (Wave 4b): one table with tabs (People, Invited, Removed),
 // last active on each person, and every change in a drawer: Invite opens one
 // from the header, a row opens one with that person's role, name, activity and
-// access. The team tabs are the owner's (team_manage); the Careers tab (the
-// old Careers page) is anyone's who could open Careers. Nothing widens.
+// access. The page is the owner's (team_manage). Careers is its own page again
+// (Seth's call), with the access it always had.
 //
 // Every read and write on this page goes through the server: the roster and
 // the invitation states are read with two owner-only functions, membership is
@@ -96,7 +94,6 @@ export function AdminPage() {
   const { addToast } = useToast();
   const { access } = useAuth();
   const canTeam = canOpenOwnPage(access, "admin");
-  const canCareers = canOpenOwnPage(access, "careers");
   const [requestedTab, openTab] = useHashTab("admin");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [managing, setManaging] = useState(null);   // email whose drawer is open
@@ -874,9 +871,10 @@ export function AdminPage() {
   };
 
   const tabCount = { team: withAccess.length, invited: invited.length, removed: removed.length };
-  const visibleTabs = TEAM_TABS.filter((t) => (t.hosts === "careers" ? canCareers : canTeam)).map((t) => ({
+  // #4130 (Seth): Team and roles is the owner's alone; Careers is its own page.
+  const visibleTabs = TEAM_TABS.filter(() => canTeam).map((t) => ({
     id: t.id,
-    label: t.id === "careers" ? t.label : `${t.label} · ${tabCount[t.id]}`,
+    label: `${t.label} · ${tabCount[t.id]}`,
   }));
   const tab = visibleTabs.length ? tabFor(visibleTabs, requestedTab) : "";
   const listed = tab === "invited" ? invited : tab === "removed" ? removed : withAccess;
@@ -1013,11 +1011,6 @@ export function AdminPage() {
         </div>
       </Drawer>
 
-      {tab === "careers" ? (
-        <EmbeddedPageContext.Provider value={true}>
-          <CareersPage />
-        </EmbeddedPageContext.Provider>
-      ) : (
       <SectionCard
         title={tab === "invited" ? "Invited" : tab === "removed" ? "Removed" : "People"}
         subtitle={
@@ -1089,7 +1082,6 @@ export function AdminPage() {
           </div>
         )}
       </SectionCard>
-      )}
 
       {/* A person's drawer: role, name, activity and access */}
       <Drawer open={!!managed} onClose={() => setManaging(null)} title={managed ? managed.email : ""}>

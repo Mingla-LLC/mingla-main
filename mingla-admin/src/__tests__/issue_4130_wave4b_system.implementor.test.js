@@ -12,7 +12,7 @@
 //   3. Feature flags change only through the server, with a reason, from a
 //      drawer; Settings has no flags, no Integrations and no one-click
 //      "reset everyone"; the danger zone is the owner's, behind RESTART.
-//   4. Team and roles: one table with tabs, Careers inside, last active.
+//   4. Team and roles: one table with tabs (owner only), last active; Careers is its own page.
 //   5. Ads: plain words, campaigns first, results labelled "not proven".
 //   6. Every old address still lands on its page and tab.
 import { describe, it } from "node:test";
@@ -114,27 +114,27 @@ describe("#4130 W4b-2: Platform health", () => {
     display_name: "Twilio",
     sort_order: 53,
     depletion_signal: { balance: { warn: 25, crit: 5, unit: "USD" } },
-    layers: { synthetic: { status: "healthy", detail: { balance: 6.67, currency: "USD" }, checked_at: "2026-10-26T20:00:00Z" } },
+    layers: { synthetic: { status: "healthy", detail: { balance: 12.34, currency: "USD" }, checked_at: "2026-10-26T20:00:00Z" } },
   };
   const paystack = {
     service_key: "paystack",
     display_name: "Paystack",
     sort_order: 11,
     depletion_signal: { processor: { balance_display_only: true } },
-    layers: { synthetic: { status: "healthy", detail: { balance: 12125200, currency: "NGN" }, checked_at: "2026-10-26T20:00:00Z" } },
+    layers: { synthetic: { status: "healthy", detail: { balance: 50000000, currency: "NGN" }, checked_at: "2026-10-26T20:00:00Z" } },
   };
   const giphy = { service_key: "giphy", display_name: "Giphy", sort_order: 43, layers: {} };
   const stripe = { service_key: "stripe", display_name: "Stripe", sort_order: 10, layers: { synthetic: { status: "healthy", detail: { balance: 0, currency: "usd" } } } };
 
   it("a balance is judged against the provider's own alert line", () => {
     const b = providerBalance(twilio);
-    assert.equal(b.text, "$6.67");
+    assert.equal(b.text, "$12.34");
     assert.equal(b.line, "$25.00");
     assert.equal(b.low, true);
     assert.equal(providerStatus(twilio).label, "Low balance");
   });
   it("Paystack reports kobo; the page shows naira", () => {
-    assert.equal(providerBalance(paystack).text, "₦121,252.00");
+    assert.equal(providerBalance(paystack).text, "₦500,000.00");
     assert.equal(providerBalance(paystack).low, false);
   });
   it("problems come first, then never-checked providers", () => {
@@ -199,12 +199,13 @@ describe("#4130 W4b-3: Feature flags and Settings", () => {
 
 describe("#4130 W4b-4: Team and roles", () => {
   const owner = { status: "active", areas: ["admin_console", "team_manage"] };
-  it("the team tabs are the owner's; Careers is anyone's who could open Careers", () => {
-    assert.deepEqual(TEAM_TABS.map((t) => `${t.id}:${t.hosts}`), ["team:admin", "invited:admin", "removed:admin", "careers:careers"]);
+  // #4130 (Seth): Careers left Team and roles and is its own page again.
+  it("the team tabs are the owner's; Careers is not one of them", () => {
+    assert.deepEqual(TEAM_TABS.map((t) => `${t.id}:${t.hosts}`), ["team:admin", "invited:admin", "removed:admin"]);
     const page = read("pages/AdminPage.jsx");
     assert.ok(page.includes('const canTeam = canOpenOwnPage(access, "admin");'));
-    assert.ok(page.includes('const canCareers = canOpenOwnPage(access, "careers");'));
-    assert.ok(page.includes('(t.hosts === "careers" ? canCareers : canTeam)'));
+    assert.equal(page.includes("CareersPage"), false, "Careers is not drawn inside Team and roles");
+    assert.ok(read("App.jsx").includes("  careers: CareersPage,"), "Careers is its own page");
     assert.ok(owner);
   });
   it("one table split by status, with last active", () => {
@@ -244,7 +245,7 @@ describe("#4130 W4b-6: old addresses land on their page and tab", () => {
       assert.ok(pages[page](tab), `${id} -> ${page}?tab=${tab}`);
       checked += 1;
     }
-    assert.equal(checked, 8);
+    assert.equal(checked, 7); // #4130 (Seth): #/careers is its own page again, not a redirect
     assert.equal(redirectHash("#/deck-tuner"), "#/placepool?tab=browse");
     assert.equal(placePoolTabFor("places"), "browse");
     assert.equal(placePoolTabFor("nonsense"), "overview");

@@ -385,8 +385,8 @@ describe("#3802 P-6: the boards follow the areas the server returned", () => {
     for (const id of PAGE_IDS) {
       if (id === "home") continue;
       assert.equal(canOpenPage(owner, id), true, `owner '${id}'`);
-      // #4130: Team and roles also holds Careers, so an admin opens it (that tab only).
-      assert.equal(canOpenPage(admin, id), true, `admin '${id}'`);
+      // #4130 (Seth): Team and roles is the owner's alone again.
+      assert.equal(canOpenPage(admin, id), id !== "admin", `admin '${id}'`);
     }
   });
   it("without the crm area, even an owner or admin does not open the boards", () => {
@@ -436,8 +436,9 @@ describe("#3802 P-7: the menu each role sees", () => {
       assert.deepEqual(outreach.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["outreach:Hosts and creators:Handshake", "inbound:Inbound leads:Inbox", "content-calendar:Calendar:CalendarClock", "team-dashboard:Team dashboard:BarChart3"]);
     }
     assert.ok(ids(owner).includes("admin"));
-    // #4130: an admin reaches Team and roles for its Careers tab only.
-    assert.ok(ids(admin).includes("admin"));
+    // #4130 (Seth): Team and roles is the owner's again; an admin sees Careers.
+    assert.ok(!ids(admin).includes("admin"));
+    assert.ok(ids(admin).includes("careers"));
   });
   it("the group is in the one menu list, once, and its icons are ones the sidebar knows", () => {
     // [TEST-MOD-APPROVED ISSUE-3802] was: "Team" is second to last, with Store.

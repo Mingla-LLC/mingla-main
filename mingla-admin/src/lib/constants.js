@@ -184,6 +184,7 @@ export const NAV_GROUPS = [
     label: "Company",
     items: [
       { id: "admin",                     label: "Team and roles",     icon: "Shield" },
+      { id: "careers",                   label: "Careers",            icon: "Briefcase" },
       { id: "data-room",                 label: "Data room",          icon: "FolderLock" },
     ],
   },

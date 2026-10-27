@@ -222,13 +222,16 @@ export function render(props) { return renderToStaticMarkup(<WorkColumns onSelec
     ({ render } = await import(pathToFileURL(file).href));
   });
 
-  it("the first column is Waiting on a person and counts cards and loose drafts together", () => {
+  // #4130 (rework): the column's number is cards only (the send card with a
+  // ready draft included), the same definition as the Dashboard, the Work
+  // menu and the Team dashboard; loose drafts get their own "+N drafts".
+  it("the first column is Waiting on a person and counts its cards; loose drafts are listed with their own count", () => {
     const { byCard, loose } = splitDrafts(drafts, [sendCard, spendCard]);
     const html = render({ cards: [sendCard, spendCard], drafts: loose, draftsByCard: byCard, allDraftsHref: "#/work-board?drafts=all" });
     assert.equal(WORK_COLUMNS[0].label, "Waiting on a person");
     assert.equal(workStatusLabel("person"), "Waiting on a person");
     const first = html.slice(0, html.indexOf('id="work-col-todo"'));
-    assert.match(first, /<span>Waiting on a person<\/span><span[^>]*>4<\/span>/);
+    assert.match(first, /<span>Waiting on a person<\/span><span[^>]*><span[^>]*aria-label="2 cards"[^>]*>2<\/span><span[^>]*>\+2 drafts<\/span>/);
     assert.ok(!/Needs you/.test(html), "the retired name is gone");
     assert.match(first, /data-draft-item="41300000-0000-4000-8000-0000000000d2"[\s\S]*Send a message to Gallery/);
     assert.match(first, /data-draft-item="41300000-0000-4000-8000-0000000000d3"/);

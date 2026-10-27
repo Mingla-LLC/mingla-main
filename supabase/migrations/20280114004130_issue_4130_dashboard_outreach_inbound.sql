@@ -492,7 +492,7 @@ SET search_path = public, pg_temp
 AS $$
   SELECT COALESCE((
     SELECT b.deleted_at IS NOT NULL
-        OR (b.account_id IS NOT NULL AND public.admin_account_is_internal(b.account_id))
+        OR public.admin_brand_is_internal(b.id)
         OR COALESCE(b.name, '') ~* '\m(test|testing|demo)\M'
       FROM public.brands b WHERE b.id = p_brand_id), false)
 $$;

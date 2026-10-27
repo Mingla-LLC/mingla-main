@@ -130,7 +130,7 @@ const EMPTY = {
   host: "No hosts match. People with a business account or a role on a brand appear here.",
   both: "No one matches. People who host and also finished Explorer onboarding appear here.",
   incomplete: "No one matches. People who signed in but never finished either app's setup appear here.",
-  internal: "No staff or test accounts match. Accounts marked as staff or test, or with a company, example.com or \"test\" email, appear here.",
+  internal: "No staff or test accounts match. Accounts marked as staff or test, or with a usemingla.com or example.com email, or \"test\" as its own word before the @, appear here.",
 };
 
 const JOINED_OPTIONS = [

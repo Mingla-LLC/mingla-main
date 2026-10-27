@@ -78,7 +78,8 @@ export const PAGE_ACCESS_UNION = Object.freeze({
   placepool: Object.freeze(["placepool", "launch-cities", "signals", "deck-tuner"]),
   "platform-health": Object.freeze(["api-health", "stripe-mode", "queue-health"]),
   settings: Object.freeze(["settings", "place-intelligence-trial"]),
-  admin: Object.freeze(["admin", "careers"]),
+  // #4130 (Seth): Team and roles is the owner's again (team_manage only);
+  // Careers is its own page with its own access, so it is not merged here.
   support: Object.freeze(["community-support"]),
   community: Object.freeze(["community-support"]),
 });

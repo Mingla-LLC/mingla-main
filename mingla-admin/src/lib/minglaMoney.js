@@ -211,3 +211,17 @@ export function feeShareOfTicket(feeCents, ticketCents) {
   const rounded = Math.round(percent * 10) / 10;
   return { percent, label: `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}%`, older: percent < 4 };
 }
+
+/**
+ * #4130: the fee badge of one payout. Each sale is judged on its own on the
+ * server (`pricing`: current | older | mixed); a payout holding both kinds is
+ * "Mixed pricing", never "older" from its blended share. Without `pricing`
+ * (one sale, or an older row) the share of the ticket decides.
+ */
+export function payoutFeeBadge(fee, ticket, pricing = null) {
+  const share = feeShareOfTicket(fee, ticket);
+  if (!share) return null;
+  if (pricing === "mixed") return { text: `Mixed pricing · ${share.label}`, older: false, mixed: true, share };
+  const older = pricing === "older" ? true : pricing === "current" ? false : share.older;
+  return { text: older ? `${share.label} · older pricing` : share.label, older, mixed: false, share };
+}

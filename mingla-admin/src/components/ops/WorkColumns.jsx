@@ -3,7 +3,7 @@
 // "Nothing here." when empty. Columns keep at least 220px; when the board is
 // narrower they scroll sideways inside the board box only, never the page.
 import { Avatars } from "./OpsChip";
-import { WORK_COLUMNS, cardReasons, columnCards, dayLabel, groupCards, personReasonLabel, workStatusLabel } from "../../lib/opsModel";
+import { WORK_COLUMNS, cardReasons, columnCards, dayLabel, groupCards, personReasonLabel, waitingColumnCount, workStatusLabel } from "../../lib/opsModel";
 import { draftItemTitle } from "../../lib/workViews";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
@@ -76,14 +76,21 @@ export function WorkColumns({ cards = [], selectedId, onSelect, today, drafts = 
         {WORK_COLUMNS.map((col) => {
           const list = columnCards(cards, col.key, today);
           const extra = col.key === "person" && onOpenDraft ? drafts : [];
-          const count = list.length + extra.length;
+          // #4130: the column's number counts cards only (one definition with
+          // the Dashboard, the Work menu and the Team dashboard); drafts that
+          // no card carries are listed under it with their own count.
+          const count = col.key === "person" ? waitingColumnCount(list) : list.length;
+          const empty = list.length + extra.length === 0;
           return (
             <section key={col.key} aria-labelledby={`work-col-${col.key}`} className="flex min-w-0 flex-col gap-2">
               <h2 id={`work-col-${col.key}`} className="flex items-center justify-between px-1 pt-1 text-[12.5px] font-semibold text-[var(--color-text-primary)]">
                 <span>{col.label}</span>
-                <span className="rounded-full bg-[var(--color-background-primary)] px-2 py-0.5 text-[11px] tabular-nums text-[var(--color-text-secondary)]">{count}</span>
+                <span className="flex items-center gap-1">
+                  <span className="rounded-full bg-[var(--color-background-primary)] px-2 py-0.5 text-[11px] tabular-nums text-[var(--color-text-secondary)]" aria-label={`${count} ${count === 1 ? "card" : "cards"}`}>{count}</span>
+                  {extra.length > 0 && <span className="rounded-full bg-[var(--color-info-50)] px-2 py-0.5 text-[11px] tabular-nums text-[var(--color-info-700)]">+{extra.length} {extra.length === 1 ? "draft" : "drafts"}</span>}
+                </span>
               </h2>
-              {count === 0
+              {empty
                 ? <p className="px-1.5 pb-1 text-[12.5px] text-[var(--color-text-tertiary)]">Nothing here.</p>
                 : <ul className="flex min-w-0 flex-col gap-1.5">
                     {list.map((card) => <li key={card.id} className="min-w-0"><WorkColumnCard card={card} selected={card.id === selectedId} onSelect={onSelect} draftsReady={draftsByCard?.get?.(card.id) || 0} /></li>)}

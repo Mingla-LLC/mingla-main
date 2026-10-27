@@ -139,9 +139,8 @@ describe("#3802 C-1: a page nobody listed is owner/admin-only", () => {
     for (const id of PAGE_IDS) {
       if (id === "home") continue;
       assert.equal(canOpenPage(owner, id), true, `owner must open '${id}'`);
-      // #4130: Team and roles now also holds Careers (an admin page), so an
-      // admin opens it for that tab alone; its Team tab stays the owner's.
-      assert.equal(canOpenPage(admin, id), true, `admin on '${id}'`);
+      // #4130 (Seth): Team and roles is the owner's alone again; Careers is its own page.
+      assert.equal(canOpenPage(admin, id), id !== "admin", `admin on '${id}'`);
       assert.equal(canOpenOwnPage(admin, id), id !== "admin", `admin on the old '${id}'`);
     }
   });
@@ -160,14 +159,11 @@ describe("#3802 C-2: money, ads and people pages", () => {
 
 describe("#3802 C-3: Team and roles", () => {
   it("is the owner's alone", () => {
-    // #4130: the Team tab (the old Team and roles page) is the owner's alone;
-    // the page also holds Careers, which every admin could open before, so an
-    // admin reaches the page for that tab only (the hub shows a tab only to
-    // whoever could open the old page it shows).
-    assert.equal(canOpenOwnPage(owner, "admin"), true);
-    assert.equal(canOpenOwnPage(admin, "admin"), false);
-    assert.equal(canOpenPage(admin, "admin"), true);
-    assert.equal(canOpenOwnPage(admin, "careers"), true);
+    // #4130 (Seth): Team and roles is the owner's alone again; Careers is
+    // its own page, which every admin can open.
+    assert.equal(canOpenPage(owner, "admin"), true);
+    assert.equal(canOpenPage(admin, "admin"), false);
+    assert.equal(canOpenPage(admin, "careers"), true);
     assert.equal(canOpenPage(growth, "admin"), false);
     assert.equal(canOpenPage(partner, "admin"), false);
   });
@@ -187,8 +183,8 @@ describe("#3802 C-4: the menu each role sees", () => {
   });
 
   it("an admin sees every existing item except Team and roles, and no Home", () => {
-    // #4130: Team and roles shows for an admin (its Careers tab only).
-    assert.deepEqual(ids(admin), allIds);
+    // #4130 (Seth): Team and roles is the owner's again; Careers shows for an admin.
+    assert.deepEqual(ids(admin), allIds.filter((id) => id !== "admin"));
     assert.equal(ids(admin).includes("home"), false);
   });
 
@@ -225,10 +221,9 @@ describe("#3802 C-5: what an address resolves to", () => {
       { pageId: "home", denied: true, requestedId: "platform-health" });
     assert.deepEqual(resolveRoute("home", owner, PAGE_IDS),
       { pageId: "overview", denied: true, requestedId: "home" });
-    // #4130: was "admin" for an admin; Team and roles now opens for an admin
-    // (Careers tab), so the refused example is the role home for an admin.
-    assert.deepEqual(resolveRoute("home", admin, PAGE_IDS),
-      { pageId: "overview", denied: true, requestedId: "home" });
+    // #4130 (Seth): Team and roles is the owner's again, so an admin is refused it.
+    assert.deepEqual(resolveRoute("admin", admin, PAGE_IDS),
+      { pageId: "overview", denied: true, requestedId: "admin" });
   });
 
   it("an unknown address goes home quietly", () => {

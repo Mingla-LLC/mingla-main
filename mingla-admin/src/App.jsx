@@ -64,6 +64,7 @@ import { GuidePage } from "./pages/GuidePage";
 import { ContentCalendarPage } from "./pages/ContentCalendarPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { DataRoomPage } from "./pages/DataRoomPage";
+import { CareersPage } from "./pages/CareersPage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -114,8 +115,10 @@ const PAGES = {
   // on #/campaigns, never in the builder — I-PROPOSED-864-CREATE-PAUSED).
   "campaign-builder": CampaignBuilderPage,
   campaigns: CampaignsPage,
-  // ── Company ── #4130: Careers is a tab of Team and roles.
+  // ── Company ── #4130 (Seth): Team and roles (owner only), Careers (its own
+  // page again, the access it always had), Data room.
   admin: AdminPage,
+  careers: CareersPage,
   "data-room": DataRoomPage,
   // ── System ── #4130: Stripe mode, API health, Queue health in one page;
   // Intelligence Trial history is a section of Settings; Feature flags have

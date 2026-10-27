@@ -112,7 +112,7 @@ BEGIN
 
   WITH b AS (
     SELECT br.id, br.deleted_at,
-           (br.account_id IS NOT NULL AND public.admin_account_is_internal(br.account_id)) AS internal
+           public.admin_brand_is_internal(br.id) AS internal
       FROM public.brands br
   ),
   live AS (
@@ -175,7 +175,7 @@ BEGIN
     SELECT br.id, br.name, br.slug, br.account_id, br.country_code, br.default_currency,
            br.payment_provider, br.take_rate_bps_override, br.claim_status,
            br.created_at, br.deleted_at, br.city,
-           (br.account_id IS NOT NULL AND public.admin_account_is_internal(br.account_id)) AS internal,
+           public.admin_brand_is_internal(br.id) AS internal,
            public.admin_brand_payment_readiness(br.id) AS payment_readiness,
            COALESCE(
              NULLIF(btrim(op.display_name), ''),
@@ -193,7 +193,8 @@ BEGIN
     SELECT b.*,
       (SELECT count(*) FROM public.events e
          LEFT JOIN public.event_dates d ON d.event_id = e.id AND d.is_master
-        WHERE e.brand_id = b.id AND e.deleted_at IS NULL
+        WHERE e.brand_id = b.id AND e.deleted_at IS NULL AND e.visibility = 'public'
+          -- #4130: public and on sale, the same rule as the KPI tile.
           AND public.admin_offering_is_current(e.status, d.start_at)) AS live_offerings,
       (SELECT count(*) FROM public.brand_follows f WHERE f.brand_id = b.id) AS followers
       FROM base b
@@ -234,7 +235,10 @@ BEGIN
       'payment_provider', r.payment_provider, 'payment_readiness', r.payment_readiness,
       'take_rate_bps_override', r.take_rate_bps_override, 'claim_status', r.claim_status,
       'live_offerings', r.live_offerings, 'followers', r.followers,
-      'created_at', r.created_at, 'deleted_at', r.deleted_at, 'internal', r.internal
+      'created_at', r.created_at, 'deleted_at', r.deleted_at, 'internal', r.internal,
+      'internal_decision', (SELECT jsonb_build_object('is_internal', ib.is_internal, 'reason', ib.reason,
+                                                      'marked_by', ib.marked_by, 'marked_at', ib.marked_at)
+                              FROM public.admin_internal_brands ib WHERE ib.brand_id = r.id)
     ) ORDER BY r.rn), '[]'::jsonb)
   INTO v_total, v_rows
   FROM ranked r

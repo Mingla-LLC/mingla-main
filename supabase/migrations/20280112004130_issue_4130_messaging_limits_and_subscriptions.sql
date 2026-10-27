@@ -12,7 +12,10 @@
 --    change the defaults, raise or clear one brand's limits.
 -- 4. Subscriptions: real tier without Global Plus, a paged/sorted list, the
 --    overview counts and the overrides expiring soon (the browser cannot read
---    admin_subscription_overrides; RLS hides it, so these are RPCs).
+--    admin_subscription_overrides; RLS hides it, so these are RPCs). Staff and
+--    test accounts are hidden from the list unless asked for.
+-- 5. admin_set_global_plus(on, reason): the only switch for Global Plus;
+--    reason required, audited, errors when nothing changed.
 --
 -- MINGLA-INVARIANT: I-4130-MESSAGING-LIMITS-ONE-SOURCE | issue #4130 | Monthly email/SMS/push caps for a brand come only from brand_messaging_effective_limits: an active override, else the defaults row, else 1000/100/unlimited.
 -- MINGLA-INVARIANT: I-4130-MESSAGING-LIMITS-ADMIN-ONLY | issue #4130 | brand_messaging_limits is never readable or writable by anon or authenticated directly; admin RPCs check is_admin_user() and write admin_audit_log.
@@ -650,13 +653,19 @@ GRANT EXECUTE ON FUNCTION public.admin_subscription_overrides_expiring(integer) 
 -- Paged, sorted and filtered over everyone (sort and export cover the whole
 -- filtered list). p_filter: NULL | 'plus' | 'free' | 'admin' (real tier).
 -- p_sort: 'joined' | 'name' | 'real_tier' | 'override_expires_at'.
+-- p_show_internal: staff and test accounts are left out unless asked for
+-- (the one rule, public.admin_account_is_internal, from the Wave 3 migration
+-- 20280113004130; PL/pgSQL resolves it when the function runs, and every
+-- migration here is applied together). `internal_hidden` says how many.
+DROP FUNCTION IF EXISTS public.admin_list_subscriptions_v2(text, text, text, boolean, integer, integer);
 CREATE OR REPLACE FUNCTION public.admin_list_subscriptions_v2(
   p_search text DEFAULT NULL,
   p_filter text DEFAULT NULL,
   p_sort text DEFAULT 'joined',
   p_desc boolean DEFAULT true,
   p_limit integer DEFAULT 20,
-  p_offset integer DEFAULT 0
+  p_offset integer DEFAULT 0,
+  p_show_internal boolean DEFAULT false
 ) RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
@@ -671,6 +680,7 @@ DECLARE
   v_global boolean;
   v_total integer;
   v_rows jsonb;
+  v_internal_hidden integer;
 BEGIN
   IF NOT public.is_admin_user() THEN
     RAISE EXCEPTION 'not_authorized';
@@ -700,7 +710,8 @@ BEGIN
       ao.tier AS override_tier,
       ao.expires_at AS override_expires_at,
       s.trial_ends_at,
-      s.current_period_end
+      s.current_period_end,
+      public.admin_account_is_internal(p.id) AS internal
     FROM public.profiles p
     CROSS JOIN LATERAL public.subscription_tier_without_global(p.id) r
     LEFT JOIN public.subscriptions s ON s.user_id = p.id
@@ -714,8 +725,10 @@ BEGIN
            OR p.first_name ILIKE v_pattern
            OR p.last_name ILIKE v_pattern
            OR p.phone ILIKE v_pattern)
+  ), shown AS (
+    SELECT * FROM base WHERE COALESCE(p_show_internal, false) OR NOT base.internal
   ), filtered AS (
-    SELECT * FROM base
+    SELECT * FROM shown
     WHERE p_filter IS NULL
        OR (p_filter = 'plus' AND real_tier = 'mingla_plus')
        OR (p_filter = 'free' AND real_tier = 'free')
@@ -753,16 +766,74 @@ BEGIN
       'override_expires_at', o.override_expires_at,
       'trial_ends_at', o.trial_ends_at,
       'current_period_end', o.current_period_end,
-      'created_at', o.created_at
+      'created_at', o.created_at,
+      'internal', o.internal
     ) ORDER BY o.rn) FILTER (WHERE o.rn > v_offset AND o.rn <= v_offset + v_limit), '[]'::jsonb)
   INTO v_total, v_rows
   FROM ordered o;
 
-  RETURN jsonb_build_object('total', v_total, 'global_plus', v_global, 'rows', v_rows);
+  -- Staff and test accounts the list left out for this search and filter.
+  SELECT count(*)::integer INTO v_internal_hidden
+    FROM public.profiles p
+   WHERE NOT COALESCE(p_show_internal, false)
+     AND (v_pattern IS NULL OR p.first_name ILIKE v_pattern OR p.last_name ILIKE v_pattern OR p.phone ILIKE v_pattern)
+     AND public.admin_account_is_internal(p.id);
+
+  RETURN jsonb_build_object('total', v_total, 'global_plus', v_global, 'rows', v_rows,
+    'internal_hidden', COALESCE(v_internal_hidden, 0), 'show_internal', COALESCE(p_show_internal, false));
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.admin_list_subscriptions_v2(text, text, text, boolean, integer, integer) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.admin_list_subscriptions_v2(text, text, text, boolean, integer, integer) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.admin_list_subscriptions_v2(text, text, text, boolean, integer, integer, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_list_subscriptions_v2(text, text, text, boolean, integer, integer, boolean) TO authenticated, service_role;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 5. Global Plus: switched only through this audited admin RPC.
+-- ───────────────────────────────────────────────────────────────────────────
+-- Needs a reason, writes admin_audit_log with before and after, and refuses
+-- when nothing changed (already in that state, or the setting row is missing),
+-- so the page can never report a switch that did not happen.
+CREATE OR REPLACE FUNCTION public.admin_set_global_plus(p_on boolean, p_reason text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_before text;
+  v_after text := CASE WHEN p_on THEN 'true' ELSE 'false' END;
+BEGIN
+  IF NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'not_authorized';
+  END IF;
+  IF p_on IS NULL THEN
+    RAISE EXCEPTION 'state_required';
+  END IF;
+  IF p_reason IS NULL OR btrim(p_reason) = '' THEN
+    RAISE EXCEPTION 'reason_required';
+  END IF;
+
+  SELECT config_value INTO v_before FROM public.app_config WHERE config_key = 'global_plus_access' FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'global_plus_setting_missing';
+  END IF;
+
+  UPDATE public.app_config
+     SET config_value = v_after, updated_at = now()
+   WHERE config_key = 'global_plus_access'
+     AND config_value IS DISTINCT FROM v_after;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'no_change';
+  END IF;
+
+  PERFORM public.admin_write_audit('subscriptions.global_plus_set', 'app_config', 'global_plus_access', p_reason,
+    jsonb_build_object('before', v_before, 'after', v_after));
+
+  RETURN jsonb_build_object('ok', true, 'global_plus', p_on);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.admin_set_global_plus(boolean, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_set_global_plus(boolean, text) TO authenticated;
 
 COMMIT;

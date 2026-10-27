@@ -340,6 +340,33 @@ on:
       - "mingla-admin/src/lib/access.js"
       - "mingla-admin/src/lib/announcementDelivery.js"
       - "supabase/migrations/20280118004130_issue_4130_integration.sql"
+      # #4130 rework (tester FAIL findings): the suite and the files it reads
+      # that are not already listed here.
+      - "mingla-admin/src/__tests__/issue_4130_rework.implementor.test.js"
+      - "mingla-admin/src/lib/opsModel.js"
+      - "mingla-admin/src/lib/dashboardToday.js"
+      - "mingla-admin/src/lib/systemPages.js"
+      - "mingla-admin/src/lib/subscriptionsView.js"
+      - "mingla-admin/src/lib/messagingLimits.js"
+      - "mingla-admin/src/lib/minglaMoney.js"
+      - "mingla-admin/src/lib/dataRoomAnalytics.js"
+      - "mingla-admin/src/lib/personActions.js"
+      - "mingla-admin/src/lib/adminRoutes.js"
+      - "mingla-admin/src/lib/constants.js"
+      - "mingla-admin/src/hooks/useReviewCount.js"
+      - "mingla-admin/src/components/ops/WorkColumns.jsx"
+      - "mingla-admin/src/components/ops/PlanSteps.jsx"
+      - "mingla-admin/src/components/brands/BrandDrawer.jsx"
+      - "mingla-admin/src/components/dataRoom/DataRoomOverview.jsx"
+      - "mingla-admin/src/pages/SettingsPage.jsx"
+      - "mingla-admin/src/pages/CampaignsPage.jsx"
+      - "mingla-admin/src/pages/OverviewPage.jsx"
+      - "mingla-admin/src/pages/SubscriptionManagementPage.jsx"
+      - "mingla-admin/src/pages/BusinessMoneyLedgerPage.jsx"
+      - "mingla-admin/src/pages/BrandsPage.jsx"
+      - "mingla-admin/src/pages/ToolLeadsPage.jsx"
+      - "mingla-admin/src/pages/TeamDashboardPage.jsx"
+      - "mingla-admin/src/services/subscriptionsService.js"
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
@@ -710,6 +737,33 @@ on:
       - "mingla-admin/src/lib/access.js"
       - "mingla-admin/src/lib/announcementDelivery.js"
       - "supabase/migrations/20280118004130_issue_4130_integration.sql"
+      # #4130 rework (tester FAIL findings): the suite and the files it reads
+      # that are not already listed here.
+      - "mingla-admin/src/__tests__/issue_4130_rework.implementor.test.js"
+      - "mingla-admin/src/lib/opsModel.js"
+      - "mingla-admin/src/lib/dashboardToday.js"
+      - "mingla-admin/src/lib/systemPages.js"
+      - "mingla-admin/src/lib/subscriptionsView.js"
+      - "mingla-admin/src/lib/messagingLimits.js"
+      - "mingla-admin/src/lib/minglaMoney.js"
+      - "mingla-admin/src/lib/dataRoomAnalytics.js"
+      - "mingla-admin/src/lib/personActions.js"
+      - "mingla-admin/src/lib/adminRoutes.js"
+      - "mingla-admin/src/lib/constants.js"
+      - "mingla-admin/src/hooks/useReviewCount.js"
+      - "mingla-admin/src/components/ops/WorkColumns.jsx"
+      - "mingla-admin/src/components/ops/PlanSteps.jsx"
+      - "mingla-admin/src/components/brands/BrandDrawer.jsx"
+      - "mingla-admin/src/components/dataRoom/DataRoomOverview.jsx"
+      - "mingla-admin/src/pages/SettingsPage.jsx"
+      - "mingla-admin/src/pages/CampaignsPage.jsx"
+      - "mingla-admin/src/pages/OverviewPage.jsx"
+      - "mingla-admin/src/pages/SubscriptionManagementPage.jsx"
+      - "mingla-admin/src/pages/BusinessMoneyLedgerPage.jsx"
+      - "mingla-admin/src/pages/BrandsPage.jsx"
+      - "mingla-admin/src/pages/ToolLeadsPage.jsx"
+      - "mingla-admin/src/pages/TeamDashboardPage.jsx"
+      - "mingla-admin/src/services/subscriptionsService.js"
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
@@ -967,6 +1021,9 @@ jobs:
       - name: "Issue #4130 — tester adversarial: Work weeks and months in five time zones and across clock changes, every failed Dashboard read gets Retry, a missing rate never becomes 0 USD, limit end dates at year end, a refused person action has no browser fallback, Payments and boards agree on eight edge brands, Data room and Support/Community access per role"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_4130_admin_polish.tester.adversarial.test.js
+      - name: "Issue #4130 — rework: precise staff/test email rule, one Waiting on a person count, failed reads shown as failed, audited Global Plus, mixed pricing, plain words, brand-level staff/test decision, Careers its own page"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue_4130_rework.implementor.test.js
       - name: "#3720 Slice B — email segments + single log writer (admin node:test)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_3720_email_segments.implementor.happy.test.js

@@ -85,8 +85,13 @@ export function untilOptions(now = new Date()) {
 export function endsAtFromDay(day, now = new Date()) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day ?? ""))) return { error: "Pick the last day the limits apply." };
   const [y, m, d] = String(day).split("-").map(Number);
+  // #4130: a day that does not exist (2026-02-30, 2026-13-01) is refused, not
+  // rolled over into the next month.
+  const day0 = new Date(Date.UTC(y, m - 1, d));
+  if (Number.isNaN(day0.getTime()) || day0.getUTCFullYear() !== y || day0.getUTCMonth() !== m - 1 || day0.getUTCDate() !== d) {
+    return { error: "That date doesn't exist. Pick the last day the limits apply." };
+  }
   const end = new Date(Date.UTC(y, m - 1, d + 1));
-  if (Number.isNaN(end.getTime())) return { error: "Pick the last day the limits apply." };
   if (end.getTime() <= now.getTime()) return { error: "Pick a day that has not passed." };
   return { value: end.toISOString() };
 }

@@ -69,7 +69,7 @@ const stripeShortBalance = {
   brand_id: "b4", brand_name: "Short balance", payment_provider: "stripe", stripe_connect_id: "acct_2",
   has_stripe_account: true, stripe_charges_enabled: true, stripe_payouts_enabled: true,
   stripe_past_due_count: 0, blocked_on_mingla_balance: true,
-  held_by_currency: { USD: 3090 }, held_states: { late_on_us: 1 }, has_paid_sales: true,
+  held_by_currency: { USD: 4500 }, held_states: { late_on_us: 1 }, has_paid_sales: true,
 };
 const stripeNoBank = {
   brand_id: "b5", brand_name: "No bank", payment_provider: "stripe", stripe_connect_id: "acct_3",
@@ -126,37 +126,38 @@ describe("W2A-1 payment readiness, one place, both providers", () => {
 });
 
 // A summary as admin_mingla_money_summary returns it.
+// #4130: synthetic round figures only, never production numbers.
 const SUMMARY = {
   lines: [
-    { kind: "buyers_paid", currency: "NGN", cents: 50829750, usd_cents: 38215 },
-    { kind: "buyers_paid", currency: "USD", cents: 5435, usd_cents: 5435 },
+    { kind: "buyers_paid", currency: "NGN", cents: 40000000, usd_cents: 30000 },
+    { kind: "buyers_paid", currency: "USD", cents: 4000, usd_cents: 4000 },
     { kind: "buyers_paid", currency: "GBP", cents: 2000, usd_cents: null },
-    { kind: "fee", currency: "NGN", cents: 1524600, usd_cents: 1148 },
-    { kind: "fee", currency: "USD", cents: 50, usd_cents: 50 },
-    { kind: "profit", currency: "NGN", cents: 494246, usd_cents: 373 },
-    { kind: "profit", currency: "USD", cents: -110, usd_cents: -110 },
+    { kind: "fee", currency: "NGN", cents: 1200000, usd_cents: 900 },
+    { kind: "fee", currency: "USD", cents: 100, usd_cents: 100 },
+    { kind: "profit", currency: "NGN", cents: 400000, usd_cents: 300 },
+    { kind: "profit", currency: "USD", cents: -100, usd_cents: -100 },
   ],
   pricing: {
     rows: [
-      { kind: "fee", currency: "NGN", period: "current", cents: 1192500, usd_cents: 898 },
-      { kind: "profit", currency: "NGN", period: "current", cents: 567106, usd_cents: 427 },
+      { kind: "fee", currency: "NGN", period: "current", cents: 800000, usd_cents: 600 },
+      { kind: "profit", currency: "NGN", period: "current", cents: 300000, usd_cents: 225 },
     ],
     current_since: { NGN: "2026-10-22T15:29:08Z" },
   },
   exceptions: {
-    never_in_payout: { count: 7 }, late_on_mingla: { count: 1 }, processing_over_fee: { count: 0 },
-    transfer_fee_not_recorded: { count: 25 }, owes_back_open: { count: 0 },
+    never_in_payout: { count: 3 }, late_on_mingla: { count: 2 }, processing_over_fee: { count: 0 },
+    transfer_fee_not_recorded: { count: 4 }, owes_back_open: { count: 0 },
   },
 };
 
 describe("W2A-2 Mingla money never adds currencies", () => {
   it("each currency keeps its own figure; the USD total adds USD figures only", () => {
     const fee = moneyRow(SUMMARY, "fee", ["NGN", "USD"]);
-    assert.equal(fee.byCurrency.NGN.cents, 1524600);
-    assert.equal(fee.byCurrency.USD.cents, 50);
-    assert.equal(fee.usdTotal, 1198, "$11.48 + $0.50");
+    assert.equal(fee.byCurrency.NGN.cents, 1200000);
+    assert.equal(fee.byCurrency.USD.cents, 100);
+    assert.equal(fee.usdTotal, 1000, "$9.00 + $1.00");
     const profit = moneyRow(SUMMARY, "profit", ["NGN", "USD"]);
-    assert.equal(profit.usdTotal, 263, "$3.73 − $1.10");
+    assert.equal(profit.usdTotal, 200, "$3.00 − $1.00");
   });
   it("a currency with no USD figure makes the total 'not converted', never a partial sum", () => {
     assert.equal(moneyRow(SUMMARY, "buyers_paid").usdTotal, null);
@@ -164,9 +165,9 @@ describe("W2A-2 Mingla money never adds currencies", () => {
   });
   it("headline: revenue, profit and the share of the fee kept on 4.5% pricing", () => {
     const h = headline({ ...SUMMARY, lines: SUMMARY.lines.filter((l) => l.currency !== "GBP") });
-    assert.equal(h.revenue.usdTotal, 1198);
-    assert.equal(h.profit.usdTotal, 263);
-    assert.equal(Math.round(h.currentPricing.sharePercent * 10) / 10, 47.6);
+    assert.equal(h.revenue.usdTotal, 1000);
+    assert.equal(h.profit.usdTotal, 200);
+    assert.equal(Math.round(h.currentPricing.sharePercent * 10) / 10, 37.5);
   });
   it("the made table has the waterfall rows in order", () => {
     assert.deepEqual(madeTable(SUMMARY).rows.map((r) => r.kind),
@@ -276,7 +277,8 @@ describe("W2A-7 Money ledger", () => {
   it("payout totals show an error with Retry; refunds filter has Cancelled; fee is a share of the ticket", () => {
     assert.match(page, /<LoadError title="Couldn't load the payout totals"/);
     assert.match(page, /\{ value: "cancelled", label: "Cancelled" \}/);
-    assert.match(page, /feeShareOfTicket\(payout\.mingla_fee_cents, payout\.ticket_cents\)/);
+    // #4130: the badge now also knows a payout mixing both pricings.
+    assert.match(page, /payoutFeeBadge\(payout\.mingla_fee_cents, payout\.ticket_cents, payout\.pricing\)/);
     assert.doesNotMatch(page, /Mingla fee · 4\.5%"/);
   });
 });

@@ -22,7 +22,6 @@ export const TEAM_TABS = Object.freeze([
   Object.freeze({ id: "team", label: "People", hosts: "admin" }),
   Object.freeze({ id: "invited", label: "Invited", hosts: "admin" }),
   Object.freeze({ id: "removed", label: "Removed", hosts: "admin" }),
-  Object.freeze({ id: "careers", label: "Careers", hosts: "careers" }),
 ]);
 
 // Platform health and Settings are one page each; a tab in a link names the
@@ -396,3 +395,32 @@ export function seenLabel(value) {
 export const ADS_RESULTS_PROVEN = false;
 export const ADS_RESULTS_CAVEAT =
   "Not proven: these may include purchases that did not come from an ad. They stay labelled until attribution is checked against each ad.";
+
+/**
+ * #4130: one app_config row in the page's words. The table's columns are
+ * config_key and config_value (there is no key or value column).
+ */
+export function appConfigRow(row) {
+  return {
+    id: row?.id ?? null,
+    key: typeof row?.config_key === "string" ? row.config_key : "",
+    value: row?.config_value == null ? "" : String(row.config_value),
+    value_type: row?.value_type || "string",
+    description: typeof row?.description === "string" ? row.description : "",
+  };
+}
+
+// #4130: Competitor watch in plain words. The values stay the server's.
+export const OPS_STATE_WORDS = Object.freeze({
+  due: "Waiting to run", leased: "Running now", retry_wait: "Will try again", succeeded: "Checked",
+  partial: "Partly checked", no_change: "Checked, nothing new", failed_terminal: "Failed", budget_deferred: "Waiting for budget", cancelled: "Cancelled",
+});
+export const opsStateWords = (v) => OPS_STATE_WORDS[v] || String(v || "").replaceAll("_", " ");
+const centsWords = (c) => `$${(Number(c || 0) / 100).toFixed(2)}`;
+/** This week's checking spend in words, never "¢" or "reserved". */
+export function weeklySpendWords(row) {
+  const spent = row?.weekly_actual_cents == null ? "spend not measured yet" : `${centsWords(row.weekly_actual_cents)} spent`;
+  return `${spent} · ${centsWords(row?.weekly_reserved_cents)} set aside · ${centsWords(row?.weekly_remaining_cents)} left`;
+}
+const PROVIDER_WORDS = { website: "Website", instagram: "Instagram", tiktok: "TikTok" };
+export const providerWords = (v) => PROVIDER_WORDS[v] || v || "Source";

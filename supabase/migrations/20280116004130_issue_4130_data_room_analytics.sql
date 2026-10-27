@@ -131,13 +131,14 @@ AS $$
 $$;
 REVOKE ALL ON FUNCTION public.analytics_dr_activity() FROM PUBLIC, anon, authenticated;
 
--- A brand run by a staff or test account (the Brands page's rule).
-CREATE OR REPLACE FUNCTION public.analytics_dr_brand_internal(p_account_id uuid)
+-- A staff or test brand: the Brands page's one rule (a brand-level decision
+-- if an admin made one, else its owner account's status).
+CREATE OR REPLACE FUNCTION public.analytics_dr_brand_internal(p_brand_id uuid)
 RETURNS boolean
 LANGUAGE sql STABLE
 SET search_path = public, pg_temp
 AS $$
-  SELECT p_account_id IS NOT NULL AND public.admin_account_is_internal(p_account_id)
+  SELECT public.admin_brand_is_internal(p_brand_id)
 $$;
 REVOKE ALL ON FUNCTION public.analytics_dr_brand_internal(uuid) FROM PUBLIC, anon, authenticated;
 
@@ -262,7 +263,7 @@ AS $$
                                  AND at < now() - interval '7 days'),
       -- Same rule as the Brands page "with a live public offering".
       'hosts_with_live_event', (SELECT count(*) FROM public.brands b
-        WHERE b.deleted_at IS NULL AND NOT public.analytics_dr_brand_internal(b.account_id)
+        WHERE b.deleted_at IS NULL AND NOT public.analytics_dr_brand_internal(b.id)
           AND EXISTS (
             SELECT 1 FROM public.events e
               LEFT JOIN public.event_dates d ON d.event_id = e.id AND d.is_master
@@ -368,7 +369,7 @@ AS $$
            COALESCE(ca.created_at, b.created_at) AS host_since
       FROM public.brands b
       LEFT JOIN public.creator_accounts ca ON ca.id = b.account_id
-     WHERE b.deleted_at IS NULL AND NOT public.analytics_dr_brand_internal(b.account_id)
+     WHERE b.deleted_at IS NULL AND NOT public.analytics_dr_brand_internal(b.id)
   ), first_sale AS (
     SELECT rb.id, rb.host_since, min(COALESCE(o.confirmed_at, o.created_at)) AS at
       FROM rb

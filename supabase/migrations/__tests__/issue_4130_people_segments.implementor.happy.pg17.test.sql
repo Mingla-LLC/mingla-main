@@ -17,6 +17,13 @@
 --         staff/test and deleted brands are hidden unless asked for.
 --   C-07  Offerings: a staff/test brand's offering is hidden unless asked for;
 --         one state per row.
+--   C-09  Brand-level decision: a staff-owned brand marked as a real host
+--         counts as one on Brands, the Calendar and the Data room, while its
+--         sibling (same staff owner, no decision) stays internal. Admin-only,
+--         reason required, audited; clearing it hands back to the owner.
+--   C-08  The staff/test email rule is precise: usemingla.com, example.com/
+--         .org/.net, or "test" as its own token before the @. A word that only
+--         contains "test" (contest, greatest, latest, attest) is a real person.
 -- MINGLA-INVARIANT: I-4130-PEOPLE-SEGMENTS-ADMIN-ONLY | issue #4130 | People segments, brand and offering boards are admin-only aggregates; staff and test accounts are counted only as internal; marking an account internal is admin-only, needs a reason and writes admin_audit_log.
 
 CREATE OR REPLACE FUNCTION pg_temp.w3_assert(p_ok boolean, p_label text)
@@ -46,6 +53,7 @@ BEGIN
     'public.admin_list_people(text,text,text,timestamptz,integer,integer,text)',
     'public.admin_get_person_activity(uuid)',
     'public.admin_set_internal_account(uuid,boolean,text)',
+    'public.admin_set_internal_brand(uuid,boolean,text)',
     'public.admin_brands_summary()',
     'public.admin_list_brands_board(text,boolean,text,text,integer,integer)',
     'public.admin_offerings_summary()',
@@ -62,7 +70,8 @@ BEGIN
     'public.admin_people_classified()',
     'public.admin_account_is_internal(uuid)',
     'public.admin_brand_payment_readiness_w3(uuid)',
-    'public.admin_internal_email_rule(text)'
+    'public.admin_internal_email_rule(text)',
+    'public.admin_brand_is_internal(uuid)'
   ] LOOP
     PERFORM pg_temp.w3_assert(NOT has_function_privilege('authenticated', v_fn, 'EXECUTE'),
       'C-01 helper not callable by signed-in users ' || v_fn);
@@ -96,6 +105,7 @@ DECLARE
   v_brand_gone constant uuid := '41300000-0000-4000-a300-000000000104';
   v_event_ok   constant uuid := '41300000-0000-4000-a300-000000000200';
   v_event_staff constant uuid := '41300000-0000-4000-a300-000000000201';
+  v_brand_real constant uuid := '41300000-0000-4000-a300-000000000105';
   v_before jsonb;
   v_after  jsonb;
   v jsonb;
@@ -303,6 +313,86 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN v_state := SQLERRM; END;
   PERFORM pg_temp.w3_assert(v_state = 'invalid_view', 'C-07 an unknown view is refused');
   RESET ROLE;
+
+  -- C-09 a second brand on the same staff account, which an admin says is a real host.
+  INSERT INTO public.brands(id, account_id, name, slug, default_currency)
+  VALUES (v_brand_real, v_staff, 'W3 Staff Real Host', 'w3-staffreal-' || v_brand_real, 'NGN');
+  PERFORM pg_temp.w3_assert(public.admin_brand_is_internal(v_brand_real) AND public.admin_brand_is_internal(v_brand_staff),
+    'C-09 with no decision both staff-owned brands follow their owner (internal)');
+
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claim.sub', v_outsider::text, true);
+  BEGIN PERFORM public.admin_set_internal_brand(v_brand_real, false, 'not allowed'); v_state := 'ran';
+  EXCEPTION WHEN OTHERS THEN v_state := SQLERRM; END;
+  PERFORM pg_temp.w3_assert(v_state = 'not_authorized', 'C-09 a non-admin cannot decide for a brand');
+  PERFORM set_config('request.jwt.claim.sub', v_admin::text, true);
+  BEGIN PERFORM public.admin_set_internal_brand(v_brand_real, false, '  '); v_state := 'ran';
+  EXCEPTION WHEN OTHERS THEN v_state := SQLERRM; END;
+  PERFORM pg_temp.w3_assert(v_state = 'reason_required', 'C-09 the brand decision needs a reason');
+
+  v := public.admin_set_internal_brand(v_brand_real, false, 'A real host run from a team account');
+  PERFORM pg_temp.w3_assert(NOT (v ->> 'is_internal')::boolean, 'C-09 marked as a real host');
+  PERFORM pg_temp.w3_assert((public.admin_list_brands_board('W3 Staff Real Host', false) ->> 'total')::int = 1,
+    'C-09 the real-host brand is listed by default');
+  SELECT r INTO v_row FROM jsonb_array_elements(public.admin_list_brands_board('W3 Staff Real Host', false) -> 'rows') r;
+  PERFORM pg_temp.w3_assert(NOT (v_row ->> 'internal')::boolean
+      AND (v_row -> 'internal_decision' ->> 'is_internal')::boolean = false
+      AND v_row -> 'internal_decision' ->> 'marked_by' = 'w3-admin@mingla-fixture.org',
+    'C-09 the row says it is real and who decided');
+  PERFORM pg_temp.w3_assert((public.admin_list_brands_board('W3 Staff Brand', false) ->> 'total')::int = 0,
+    'C-09 its sibling without a decision stays hidden as staff or test');
+  RESET ROLE;
+  PERFORM pg_temp.w3_assert(NOT public.analytics_dr_brand_internal(v_brand_real) AND public.analytics_dr_brand_internal(v_brand_staff),
+    'C-09 the Data room counts the real-host brand and not its sibling');
+  PERFORM pg_temp.w3_assert(NOT public.calendar_brand_is_test(v_brand_real) AND public.calendar_brand_is_test(v_brand_staff),
+    'C-09 the Calendar agrees');
+  PERFORM pg_temp.w3_assert(
+    (SELECT count(*) FROM public.admin_audit_log
+      WHERE target_type = 'brand' AND target_id = v_brand_real::text AND action = 'brand.mark_real'
+        AND metadata ? 'before' AND metadata ? 'after') = 1,
+    'C-09 the decision wrote one audit row with before and after');
+
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claim.sub', v_admin::text, true);
+  v := public.admin_set_internal_brand(v_brand_real, NULL, 'Undo: the owner decides');
+  PERFORM pg_temp.w3_assert((v ->> 'is_internal')::boolean AND v -> 'row' = 'null'::jsonb,
+    'C-09 clearing the decision hands back to the staff owner');
+  RESET ROLE;
 END
 $c02$;
+DO $c08$
+DECLARE
+  v_case record;
+BEGIN
+  FOR v_case IN
+    SELECT * FROM (VALUES
+      ('a@usemingla.com', true),
+      ('A@UseMingla.COM ', true),
+      ('b@example.org', true),
+      ('c@example.com', true),
+      ('d@example.net', true),
+      ('test@x.com', true),
+      ('tester@x.com', true),
+      ('seth+test@gmail.com', true),
+      ('qa.test1@gmail.com', true),
+      ('qa_test@gmail.com', true),
+      ('3test@gmail.com', true),
+      ('contest.lagos@gmail.com', false),
+      ('hello@greatestnights.ng', false),
+      ('latest@news.ng', false),
+      ('attest@gmail.com', false),
+      ('ade@test.ng', false),
+      ('ade@usemingla.co', false),
+      ('ade@notusemingla.com', false),
+      ('ade@example.co.uk', false),
+      ('no-at-sign-test', false),
+      ('', false)
+    ) AS t(email, expected)
+  LOOP
+    PERFORM pg_temp.w3_assert(public.admin_internal_email_rule(v_case.email) = v_case.expected,
+      format('C-08 email rule %L is %s', v_case.email, CASE WHEN v_case.expected THEN 'staff/test' ELSE 'a real person' END));
+  END LOOP;
+  PERFORM pg_temp.w3_assert(public.admin_internal_email_rule(NULL) = false, 'C-08 a missing email is a real person');
+END
+$c08$;
 ROLLBACK;

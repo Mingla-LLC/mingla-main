@@ -30,6 +30,7 @@ import {
   Bell,
   FolderLock,
   SquareKanban,
+  Briefcase,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -78,6 +79,7 @@ const ICON_MAP = {
   Map: MapIcon,
   Megaphone,
   Shield,
+  Briefcase,
   FolderLock,
   HeartPulse,
   Flag,
@@ -161,7 +163,7 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
     const isActive = activeTab === item.id;
     // #4130: Needs you was retired into Work; the Work entry counts only this
     // person's own cards waiting on them (useReviewCount().cards).
-    const waiting = item.id === "work-board" ? reviewCount.cards : 0;
+    const waiting = item.id === "work-board" ? reviewCount.cards || 0 : 0;
     const spokenLabel = waiting > 0 ? `${item.label}, ${waiting} waiting` : item.label;
 
     return (

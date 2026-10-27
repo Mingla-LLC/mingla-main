@@ -287,10 +287,11 @@ describe("#3802 TA-3: access for every combination of areas", () => {
       assert.equal(canOpenPage(p, "team-dashboard"), areas.includes("admin_console"), areas.join(","));
       assert.equal(canOpenPage(p, "hosts"), areas.includes("crm"), areas.join(","));
       assert.equal(canOpenPage(p, "home"), areas.includes("role_home"), areas.join(","));
-      // #4130: Team and roles also holds Careers (admin console), so the page
-      // opens with either area; its Team tab only with team_manage.
+      // #4130 (Seth): Team and roles opens with team_manage only again;
+      // Careers is its own page (the admin console).
       assert.equal(canOpenOwnPage(p, "admin"), areas.includes("team_manage"), areas.join(","));
-      assert.equal(canOpenPage(p, "admin"), areas.includes("team_manage") || areas.includes("admin_console"), areas.join(","));
+      assert.equal(canOpenPage(p, "admin"), areas.includes("team_manage"), areas.join(","));
+      assert.equal(canOpenPage(p, "careers"), areas.includes("admin_console"), areas.join(","));
       // #4130: Inbound leads opens with Beta leads (its Beta leads tab) or the admin area (Web tool leads).
       assert.equal(canOpenPage(p, "inbound"), areas.includes("beta_leads") || areas.includes("admin_console"), areas.join(","));
       assert.equal(canOpenPage(p, "outreach"), areas.includes("crm"), areas.join(","));

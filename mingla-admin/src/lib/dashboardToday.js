@@ -1,7 +1,7 @@
 // Issue #4130 (Wave 4a) — the Dashboard's founder numbers and "Needs you
 // today". Pure: no React, no Supabase.
 
-import { announcementsWithFailedPushes } from "./announcementDelivery.js";
+import { announcementsWithFailedPushes, failedPushTitle } from "./announcementDelivery.js";
 //
 // Each source (Work, Money, Platform health, Support, Inbound) is passed in as
 // { status: "loading" | "error" | "ready", data, error }. A source that failed
@@ -167,7 +167,7 @@ export function needsYouToday(sources = {}) {
       const others = pushes.length - 1;
       items.push({
         id: "announcement-push-failed", area: "community", areaLabel: AREA_LABEL.community, tone: "bad",
-        title: `${latest.failed} of ${latest.tried} announcement pushes failed`,
+        title: failedPushTitle(latest),
         detail: `${latest.title ? `"${latest.title}": t` : "T"}hose hosts did not get it on their phone.`
           + (others > 0 ? ` ${plural(others, "older announcement has", "older announcements have")} failed pushes too.` : ""),
         href: "#/community?tab=announcements",

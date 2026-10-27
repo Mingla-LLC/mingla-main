@@ -8,7 +8,10 @@
 --   4. push stays uncapped by default;
 --   5. the brand×channel advisory lock and book_blast_monthly_cap_exceeded (P0001) are kept;
 --   6. the admin RPCs (limits and the expiring-overrides read) are admin-only and
---      the table is closed to anon and authenticated.
+--      the table is closed to anon and authenticated;
+--   7. the subscriptions list hides staff and test accounts unless asked for;
+--   8. Global Plus switches only through admin_set_global_plus: admin-only,
+--      reason required, audited, and an error when nothing changed.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -26,7 +29,8 @@ INSERT INTO t4130b_people VALUES
   ('outsider', '41300000-0000-4000-b200-000000000003', 'issue4130b-outsider@test.local'),
   ('payer',    '41300000-0000-4000-b200-000000000004', 'issue4130b-payer@test.local'),
   ('comped',   '41300000-0000-4000-b200-000000000005', 'issue4130b-comped@test.local'),
-  ('nobody',   '41300000-0000-4000-b200-000000000006', 'issue4130b-nobody@test.local');
+  ('nobody',   '41300000-0000-4000-b200-000000000006', 'issue4130b-nobody@test.local'),
+  ('staff',    '41300000-0000-4000-b200-000000000007', 'issue4130b-staff@usemingla.com');
 
 INSERT INTO auth.users (id, email, email_confirmed_at)
 SELECT id, email, now() FROM t4130b_people
@@ -114,7 +118,8 @@ BEGIN
      OR has_function_privilege('anon', 'public.admin_messaging_limits_overview()', 'EXECUTE')
      OR has_function_privilege('anon', 'public.admin_set_brand_messaging_limits(uuid,integer,integer,integer,integer,timestamptz,text)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.admin_set_messaging_limit_defaults(integer,integer,integer,integer,text)', 'EXECUTE')
-     OR has_function_privilege('anon', 'public.admin_list_subscriptions_v2(text,text,text,boolean,integer,integer)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.admin_list_subscriptions_v2(text,text,text,boolean,integer,integer,boolean)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.admin_set_global_plus(boolean,text)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.admin_subscription_overview()', 'EXECUTE') THEN
     RAISE EXCEPTION 'admin RPC executable by anon';
   END IF;
@@ -311,6 +316,7 @@ BEGIN
     pg_temp.t4130b_as('host', format('public.admin_clear_brand_messaging_limits(%L::uuid, ''mine'')', v_a)),
     pg_temp.t4130b_as('host', 'public.admin_subscription_overview()'),
     pg_temp.t4130b_as('host', 'public.admin_list_subscriptions_v2(NULL, NULL, ''joined'', true, 20, 0)'),
+    pg_temp.t4130b_as('host', 'public.admin_set_global_plus(false, ''mine'')'),
     pg_temp.t4130b_as('host', '(SELECT count(*) FROM public.brand_messaging_limits)')
   ] LOOP
     IF v NOT LIKE 'ERR:%' THEN
@@ -330,12 +336,15 @@ DECLARE
   v_payer uuid := '41300000-0000-4000-b200-000000000004';
   v_comped uuid := '41300000-0000-4000-b200-000000000005';
   v_nobody uuid := '41300000-0000-4000-b200-000000000006';
+  v_staff uuid := '41300000-0000-4000-b200-000000000007';
   v_global text;
+  v_audits integer;
   v jsonb;
   t text;
 BEGIN
   INSERT INTO public.profiles (id, first_name, last_name)
-  VALUES (v_payer, 'Pat', 'Issue4130bzz'), (v_comped, 'Cam', 'Issue4130bzz'), (v_nobody, NULL, 'Issue4130bzz')
+  VALUES (v_payer, 'Pat', 'Issue4130bzz'), (v_comped, 'Cam', 'Issue4130bzz'), (v_nobody, NULL, 'Issue4130bzz'),
+         (v_staff, 'Sam', 'Issue4130bzz')
   ON CONFLICT (id) DO UPDATE SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name;
   DELETE FROM public.subscriptions WHERE user_id IN (v_payer, v_comped, v_nobody);
   INSERT INTO public.subscriptions (user_id, tier, is_active, current_period_end)
@@ -380,6 +389,15 @@ BEGIN
      OR v->'rows'->0->>'gets_now' <> 'mingla_plus' OR v->'rows'->0->>'gets_now_reason' <> 'global' THEN
     RAISE EXCEPTION 'free filter / global reason wrong: %', v;
   END IF;
+  -- 7. The staff account (usemingla.com) is left out by default and counted.
+  IF (v->>'internal_hidden')::int <> 1 OR (v->>'show_internal')::boolean THEN
+    RAISE EXCEPTION 'staff not counted as hidden: %', v;
+  END IF;
+  v := pg_temp.t4130b_as('admin', 'public.admin_list_subscriptions_v2(''Issue4130bzz'', NULL, ''name'', false, 20, 0, true)')::jsonb;
+  IF (v->>'total')::int <> 4 OR (v->>'internal_hidden')::int <> 0
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'rows') x WHERE x->>'user_id' = v_staff::text AND (x->>'internal')::boolean) THEN
+    RAISE EXCEPTION 'staff not shown when asked for: %', v;
+  END IF;
   -- Past the last page still reports the total.
   v := pg_temp.t4130b_as('admin', 'public.admin_list_subscriptions_v2(''Issue4130bzz'', NULL, ''joined'', true, 20, 40)')::jsonb;
   IF (v->>'total')::int <> 3 OR jsonb_array_length(v->'rows') <> 0 THEN
@@ -403,6 +421,24 @@ BEGIN
      OR (t::jsonb->>'expiring_3d')::int < 1 OR (t::jsonb->>'paid')::int < 1 THEN
     RAISE EXCEPTION 'overview wrong: %', t;
   END IF;
+
+  -- 8. Global Plus (on here): no reason, no change; the same state is an
+  -- error, not a silent success; a real switch is audited.
+  t := pg_temp.t4130b_as('admin', 'public.admin_set_global_plus(false, ''  '')');
+  IF t NOT LIKE 'ERR:%reason_required%' THEN RAISE EXCEPTION 'blank Global Plus reason accepted: %', t; END IF;
+  t := pg_temp.t4130b_as('admin', 'public.admin_set_global_plus(true, ''Already on'')');
+  IF t NOT LIKE 'ERR:%no_change%' THEN RAISE EXCEPTION 'no-op Global Plus switch reported success: %', t; END IF;
+  SELECT count(*) INTO v_audits FROM public.admin_audit_log WHERE action = 'subscriptions.global_plus_set';
+  t := pg_temp.t4130b_as('admin', 'public.admin_set_global_plus(false, ''Launch promo over'')');
+  IF t LIKE 'ERR:%' OR (SELECT config_value FROM public.app_config WHERE config_key = 'global_plus_access') <> 'false' THEN
+    RAISE EXCEPTION 'Global Plus did not switch off: %', t;
+  END IF;
+  IF (SELECT count(*) FROM public.admin_audit_log WHERE action = 'subscriptions.global_plus_set') <> v_audits + 1 THEN
+    RAISE EXCEPTION 'Global Plus switch not audited';
+  END IF;
+  DELETE FROM public.app_config WHERE config_key = 'global_plus_access';
+  t := pg_temp.t4130b_as('admin', 'public.admin_set_global_plus(true, ''Missing row'')');
+  IF t NOT LIKE 'ERR:%global_plus_setting_missing%' THEN RAISE EXCEPTION 'missing Global Plus row not refused: %', t; END IF;
 END $subs$;
 
 ROLLBACK;
