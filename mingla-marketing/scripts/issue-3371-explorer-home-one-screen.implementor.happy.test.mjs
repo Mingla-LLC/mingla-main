@@ -149,7 +149,9 @@ function sourceContract(overrides = {}) {
   const sourceCommand = `node scripts/${SELF} --source-only`
   const builtCommand = `node --experimental-websocket scripts/${SELF} --built-only`
   assert(scripts.build.includes(sourceCommand) && scripts.build.indexOf(sourceCommand) < scripts.build.indexOf('next build'), 'source guard must run before the first production build')
-  assert(scripts.build.endsWith(` && ${builtCommand}`) && scripts.build.lastIndexOf(builtCommand) > scripts.build.lastIndexOf('next build'), 'geometry guard must run against the final production build')
+  // #4137: only the #4137 release-build tests may follow it.
+  const releaseTail = scripts.build.slice(scripts.build.lastIndexOf(` && ${builtCommand}`) + ` && ${builtCommand}`.length)
+  assert(scripts.build.includes(` && ${builtCommand}`) && /^(?: && node (?:--experimental-websocket )?scripts\/issue-4137-[a-z-]+\.implementor\.happy\.test\.mjs --built-only)*$/.test(releaseTail) && scripts.build.lastIndexOf(builtCommand) > scripts.build.lastIndexOf('next build'), 'geometry guard must run against the final production build')
   assert.equal(scripts['test:issue-3371'], `node --experimental-websocket scripts/${SELF}`, 'focused command must remain available')
   process.stdout.write('PASS #3371 source: menu order/hrefs without Home, one-screen home without city grid, /going-out rename, registry redirect, footers, analytics and build wiring\n')
 }

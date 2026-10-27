@@ -116,7 +116,8 @@ function wiringContract() {
   const scripts = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).scripts
   const own = `node --experimental-websocket scripts/${SELF} --built-only`
   const implementor = 'node --experimental-websocket scripts/issue-3371-explorer-home-one-screen.implementor.happy.test.mjs --built-only'
-  assert(scripts.build.endsWith(` && ${own} && ${implementor}`), 'the #3371 tester guard must run immediately before the #3371 implementor guard at the end of the build')
+  // #4137: only the #4137 release-build tests may follow the #3371 pair.
+  assert(new RegExp(`${(` && ${own} && ${implementor}`).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?: && node (?:--experimental-websocket )?scripts/issue-4137-[a-z-]+\\.implementor\\.happy\\.test\\.mjs --built-only)*$`).test(scripts.build), 'the #3371 tester guard must run immediately before the #3371 implementor guard at the end of the build')
   assert(scripts.build.lastIndexOf(own) > scripts.build.lastIndexOf('next build'), 'the #3371 tester guard must run against the final production build')
   assert.equal(scripts.build.split(own).length, 2, 'the #3371 tester guard must be wired exactly once')
 }
