@@ -361,6 +361,58 @@ export function videoDueText(videoDueAt: string | null | undefined, postBy: stri
   return formatShortDate(postBy ?? null, now, locale);
 }
 
+// ── Changing the video-due date after hire ─────────────────────────────────
+// Seth's decision (#3872): a change carries a date AND a time, and the
+// contract shows the agreed (current terms) due date and time.
+
+type DueSource = { video_due_at?: unknown; post_by?: unknown } | null | undefined;
+
+/** The agreed due: the current terms' exact time and day, else the gig's. */
+export function agreedVideoDue(terms: DueSource, gig: DueSource): { videoDueAt: string | null; postBy: string | null } {
+  const pick = (key: 'video_due_at' | 'post_by'): string | null => {
+    const fromTerms = terms?.[key];
+    if (typeof fromTerms === 'string' && fromTerms.length > 0) return fromTerms;
+    // An older server without terms.video_due_at: the gig's time only while
+    // the terms still sit on the gig's day.
+    if (key === 'video_due_at' && typeof terms?.post_by === 'string' && typeof gig?.post_by === 'string' && terms.post_by !== gig.post_by) return null;
+    const fromGig = gig?.[key];
+    return typeof fromGig === 'string' && fromGig.length > 0 ? fromGig : null;
+  };
+  return { videoDueAt: pick('video_due_at'), postBy: pick('post_by') };
+}
+
+/** "Nov 22, 6:00 PM" for the agreed due. */
+export function agreedVideoDueText(terms: DueSource, gig: DueSource, now: Date = new Date(), locale?: string): string {
+  const due = agreedVideoDue(terms, gig);
+  return videoDueText(due.videoDueAt, due.postBy, now, locale);
+}
+
+/** Day ("YYYY-MM-DD") and time ("HH:MM") to prefill the change sheet with. */
+export function dueChangeInitial(due: { videoDueAt: string | null; postBy: string | null }): { day: string | null; time: string | null } {
+  const at = due.videoDueAt && due.videoDueAt.length > 10 ? parseDay(due.videoDueAt) : null;
+  if (at) return { day: toDayString(at), time: `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` };
+  return { day: due.postBy ?? null, time: due.postBy ? '23:59' : null };
+}
+
+/** The change sent to gig_change_proposal_save: local date and time. */
+export function dueChangePayload(day: string, time: string): { video_due_at: string } {
+  return { video_due_at: `${day}T${time}` };
+}
+
+/** Time chips for the change sheet: the usual times plus the agreed one. */
+export function dueTimeOptions(current: string | null): string[] {
+  const base = ['12:00', '15:00', '17:00', '18:00', '19:00', '20:00', '21:00', '23:59'];
+  return current && /^\d{2}:\d{2}$/.test(current) && !base.includes(current) ? [...base, current].sort() : base;
+}
+
+/** The line a proposal card shows for a due change, or null for other changes. */
+export function proposalDueText(changes: Record<string, unknown>, now: Date = new Date(), locale?: string): string | null {
+  const due = typeof changes.video_due_at === 'string' ? changes.video_due_at : null;
+  const day = typeof changes.post_by === 'string' ? changes.post_by : null;
+  if (!due && !day) return null;
+  return `Video due ${videoDueText(due, day, now, locale)}`;
+}
+
 /**
  * Which days the creator may pick for the shoot: inside the host's window and
  * never before today. The calendar opens on the picked day, else the first day

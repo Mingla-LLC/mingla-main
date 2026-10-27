@@ -8,7 +8,7 @@ import { creatorGigsService, type CreatorHomeContract, type PublicGig } from '..
 import { programErrorText } from '../../src/services/programResult';
 import {
   CLOSED_CONTRACT_STATES, FORMAT_INFO, creatorOwnsNextStep, creatorStateWords, deliverablesLabel, formatDateRange, payUpToText,
-  formatDue, formatMoney, formatName, formatShortDate, nicheLabel, setupMinutesLeft,
+  formatDue, formatMoney, formatName, formatShortDate, nicheLabel, setupMinutesLeft, videoDueText,
 } from '../../src/utils/programFormat';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramLoadError, ProgramLoading, ProgramNotice, ProgramPill, ProgramScreen, programStyles as s } from '../../src/components/programs/ProgramUi';
 import { JOIN_IN_FLIGHT } from '../../src/components/programs/programRefresh';
@@ -217,7 +217,7 @@ function ContractRow({ contract, isLast, onPress }: { contract: CreatorHomeContr
     <View style={styles.fmt}><Icon name="videocam" size={16} color={C.accent} /></View>
     <View style={s.flex}>
       <Text style={s.strong} numberOfLines={1}>{contract.title}</Text>
-      <Text style={s.copy} numberOfLines={1}>{formatName(contract.format_key)} · video due {formatShortDate(contract.post_by)}</Text>
+      <Text style={s.copy} numberOfLines={1}>{formatName(contract.format_key)} · video due {videoDueText(contract.video_due_at ?? null, contract.post_by)}</Text>
     </View>
     <View style={styles.right}>
       <Text style={s.strong}>{formatMoney(contract.fee_minor, contract.currency)}</Text>

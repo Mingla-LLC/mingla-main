@@ -15,6 +15,8 @@ export type PublicGig = {
 
 export type CreatorHomeContract = {
   id: string; state: string; deadline_at: string | null; title: string; format_key: string; city: string; post_by: string;
+  /** The agreed exact due time (current terms). */
+  video_due_at?: string | null;
   fee_minor: number; currency: string; updated_at: string;
   /** Creator-words key for the one next action (server), and when it's due. */
   next_action?: string | null; due_at?: string | null; fix_rounds_used?: number | null;
@@ -27,6 +29,8 @@ export type CreatorHome = { contracts: CreatorHomeContract[]; interests: Creator
 export type GigTerms = Record<string, unknown> & {
   version: number; fee_minor: number; booking_fee_minor: number; currency: string; format_key?: string;
   deliverables?: Array<{ platform: string; kind: string; count: number }>; shoot_date?: string | null; post_by?: string;
+  /** The agreed exact due time for this version. */
+  video_due_at?: string | null;
   usage_days?: number; sales_share_bps?: number | null; proposed_by?: 'host' | 'creator'; accepted_at?: string | null; created_at?: string;
 };
 export type GigProposal = { id: string; from_version: number; proposed_by: 'host' | 'creator'; changes: Record<string, unknown>; reason: string; note: string | null; status: string; expires_at: string; created_at?: string };

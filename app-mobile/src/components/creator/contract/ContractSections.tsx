@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { GigProposal, GigTerms, GigWorkspace } from '../../../services/creatorGigsService';
 import { chooseAndUploadCreatorMedia, isPickerCancel } from '../../../services/creatorMediaService';
 import { programErrorText } from '../../../services/programResult';
-import { deliverablesLabel, formatDateRange, formatDateTime, formatMoney, formatShortDate, parseDay, platformLabel, salesShareText, shootPickRange, usageLabel, videoDueText } from '../../../utils/programFormat';
+import { agreedVideoDueText, deliverablesLabel, formatDateRange, formatDateTime, formatMoney, formatShortDate, parseDay, platformLabel, proposalDueText, salesShareText, shootPickRange, usageLabel, videoDueText } from '../../../utils/programFormat';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramField, ProgramNotice, ProgramPill, ProgramRow, ProgramSheet, programStyles as s } from '../../programs/ProgramUi';
 import { CalendarGrid, CheckRow, Chip, StarsInput, TimeChips } from '../../programs/ProgramPickers';
 import { playOwnVideo } from '../../programs/VideoTile';
@@ -83,10 +83,9 @@ export function TermsCard({ terms, gig }: { terms: GigTerms; gig: GigWorkspace['
   </ProgramCard>;
 }
 
-/** The stored due time, unless the terms moved the day (then that day alone). */
+/** The agreed due (current terms): date and time. */
 function termsVideoDue(terms: GigTerms, gig: GigWorkspace['gig']): string {
-  const moved = terms.post_by && gig.post_by && terms.post_by !== gig.post_by;
-  return moved ? videoDueText(null, terms.post_by) : videoDueText(gig.video_due_at ?? null, terms.post_by ?? gig.post_by);
+  return agreedVideoDueText(terms, gig);
 }
 
 export function TermsHistory({ terms }: { terms: GigTerms[] }): React.ReactElement | null {
@@ -95,15 +94,15 @@ export function TermsHistory({ terms }: { terms: GigTerms[] }): React.ReactEleme
     <Text style={s.label}>Terms history</Text>
     <ProgramCard>
       {terms.slice().reverse().map((t, i) => <ProgramRow key={t.version} title={t.version === 1 ? 'Original terms' : `Updated terms${t.created_at ? ` · ${formatShortDate(t.created_at)}` : ''}`}
-        subtitle={`Video due ${formatShortDate(t.post_by)} · ${deliverablesLabel(t.deliverables)}`} value={formatMoney(t.fee_minor, t.currency)} chevron={false} isLast={i === terms.length - 1} />)}
+        subtitle={`Video due ${videoDueText(t.video_due_at ?? null, t.post_by ?? null)} · ${deliverablesLabel(t.deliverables)}`} value={formatMoney(t.fee_minor, t.currency)} chevron={false} isLast={i === terms.length - 1} />)}
     </ProgramCard>
   </>;
 }
 
 /** A change the host proposed (accept / decline) or yours that's waiting. */
 export function ProposalCard({ proposal, currency, busy, onRespond }: { proposal: GigProposal; currency: string; busy: boolean; onRespond: (accept: boolean) => void }): React.ReactElement {
-  const lines = Object.entries(proposal.changes).map(([key, value]) => {
-    if (key === 'post_by') return `Video due ${formatShortDate(String(value))}`;
+  const due = proposalDueText(proposal.changes);
+  const lines = Object.entries(proposal.changes).filter(([key]) => key !== 'post_by' && key !== 'video_due_at').map(([key, value]) => {
     if (key === 'shoot_date') return `Shoot on ${formatShortDate(String(value))}`;
     if (key === 'usage_days') return `Host may reuse for ${usageLabel(Number(value))}`;
     if (key === 'fee_minor') return `Fee ${formatMoney(Number(value), currency)}`;
@@ -112,6 +111,7 @@ export function ProposalCard({ proposal, currency, busy, onRespond }: { proposal
     if (key === 'shoot_passes') return `${Number(value)} door pass${Number(value) === 1 ? '' : 'es'}`;
     return 'Other change';
   });
+  if (due) lines.unshift(due);
   const fromHost = proposal.proposed_by === 'host';
   return <ProgramCard tone="highlight">
     <Text style={s.label}>{fromHost ? 'The host proposed a change' : 'Your proposed change'}</Text>
