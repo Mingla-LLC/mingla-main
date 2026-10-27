@@ -74,6 +74,8 @@ import {
   sectionLabel,
   sectionLines,
   shootInstant,
+  shootWindowWords,
+  workspaceShootWindow,
 } from "../../../../../src/components/programs/contractCopy";
 import {
   creatorGigsService,
@@ -245,6 +247,7 @@ export default function HostGigContract(): React.ReactElement {
   );
   const plan = workspace?.shoot_plan ?? null;
   const gig = workspace?.gig;
+  const shootWindow = workspaceShootWindow(gig);
   // The agreed due: the current terms version (an accepted change moves it).
   const agreedDue = agreedVideoDue({
     terms: workspace?.terms,
@@ -507,12 +510,8 @@ export default function HostGigContract(): React.ReactElement {
                   value={suggestDay}
                   onChangeValue={setSuggestDay}
                   accessibilityLabel="Shoot day"
-                  min={String(gig?.shoot_window_start ?? toIsoDay(new Date()))}
-                  max={
-                    typeof gig?.shoot_window_end === "string"
-                      ? gig.shoot_window_end
-                      : undefined
-                  }
+                  min={shootWindow?.start ?? toIsoDay(new Date())}
+                  max={shootWindow?.end ?? undefined}
                   placeholder="Choose a day"
                 />
                 <View style={styles.chips}>
@@ -895,7 +894,7 @@ export default function HostGigContract(): React.ReactElement {
                   ) : null}
                 </>
               ) : (
-                <Muted>{`Shoot dates: ${shortDate(String(gig?.shoot_window_start ?? ""))} to ${shortDate(String(gig?.shoot_window_end ?? ""))}.`}</Muted>
+                <Muted>{shootWindowWords(shootWindow)}</Muted>
               )}
               {plan && !plan.confirmed_at && plan.proposed_by === "creator" ? (
                 <>

@@ -4,6 +4,7 @@ import {
   hostContractStatus,
   activityWords,
   programMoney,
+  shortDate,
   type HostStatusTone,
 } from "../../utils/creatorProgramFormat";
 import type {
@@ -291,4 +292,28 @@ export function activityEvents<T extends { kind: string }>(
     out.push({ ...event, words });
   }
   return out;
+}
+
+/** The gig's shoot window as the contract workspace sends it ({start,end}), or
+ *  the older flat start/end fields. Null when the gig has no window. */
+export function workspaceShootWindow(
+  gig: unknown,
+): { start: string; end: string } | null {
+  if (!gig || typeof gig !== "object") return null;
+  const g = gig as Record<string, unknown>;
+  const nested = g.shoot_window as Record<string, unknown> | null | undefined;
+  const start = nested?.start ?? g.shoot_window_start;
+  const end = nested?.end ?? g.shoot_window_end ?? start;
+  if (typeof start !== "string" || start === "") return null;
+  return { start, end: typeof end === "string" && end !== "" ? end : start };
+}
+
+/** "Shoot day: Nov 9" or "Shoot dates: Nov 9 to Nov 12"; a plain line when
+ *  the host left the shoot open. */
+export function shootWindowWords(
+  window: { start: string; end: string } | null,
+): string {
+  if (!window) return "The creator suggests a shoot time for you to approve.";
+  if (window.start === window.end) return `Shoot day: ${shortDate(window.start)}.`;
+  return `Shoot dates: ${shortDate(window.start)} to ${shortDate(window.end)}.`;
 }
