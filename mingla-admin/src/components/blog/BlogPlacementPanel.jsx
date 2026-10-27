@@ -1,0 +1,24 @@
+import { Toggle } from "../ui/Input";
+export function BlogPlacementPanel({post,blocks,featuredNow,canPublish,onChange,onFeaturedChange}) {
+  const count=2+(post.show_in_more_stories?1:0)+(post.featured?1:0);
+  const offerings=(blocks||[]).filter((block)=>block.type==="offering"&&block.eventId);
+  const topics=(post.topics||[]).join(", ");
+  const zone=Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return <section className="space-y-4 border-t border-[var(--gray-200)] pt-5">
+    <div><h3 className="font-semibold">Where this post appears <span className="font-normal text-[var(--color-text-tertiary)]">· {count} places</span></h3><p className="text-xs text-[var(--color-text-secondary)]">Placements go live when the post publishes and follow the timing below.</p></div>
+    <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-tertiary)]">On usemingla.com</p>
+    <Placement title="Blog, latest stories" detail="Every published post appears here" value="Always" />
+    <div><Placement title="Blog, featured story" detail="Big card at the top of the blog" /><Toggle label={post.featured?"Featured":"Not featured"} checked={Boolean(post.featured)} disabled={!canPublish} onChange={onFeaturedChange} /><p className="mt-1 text-xs text-[var(--color-text-tertiary)]">{featuredNow?`Featured now: ${featuredNow.title}, since ${new Date(featuredNow.since).toLocaleDateString(undefined,{day:"numeric",month:"short"})}. Turning this on replaces it.`:"No featured post yet."}</p></div>
+    <Placement title={`Category page, ${post.category_slug}`} detail="Set by the post's category" />
+    <Toggle label="More stories under other posts" checked={post.show_in_more_stories} onChange={(value)=>onChange({show_in_more_stories:value})} />
+    <label className="block text-sm font-medium">Topics <span className="font-normal text-[var(--color-text-tertiary)]">· up to 5, comma separated</span><input value={topics} onChange={(event)=>onChange({topics:event.target.value.split(",").map((item)=>item.trim()).filter(Boolean).slice(0,5)})} className="mt-1 block h-10 w-full rounded-lg border border-[var(--gray-300)] px-3" /></label>
+    <p className="pt-2 text-[11px] font-bold uppercase tracking-wide text-[var(--color-text-tertiary)]">Timing · {zone}</p>
+    <label className="block text-sm font-medium">Show from<select value={post.publish_at?"date":"now"} onChange={(event)=>onChange({publish_at:event.target.value==="now"?null:new Date(Date.now()+3600000).toISOString()})} className="mt-1 block h-10 w-full rounded-lg border border-[var(--gray-300)] px-3"><option value="now">Now</option><option value="date">Choose a date and time</option></select></label>
+    {post.publish_at?<input aria-label="Show from date and time" type="datetime-local" value={String(post.publish_at).slice(0,16)} onChange={(event)=>onChange({publish_at:event.target.value})} className="h-10 w-full rounded-lg border border-[var(--gray-300)] px-3" />:null}
+    <label className="block text-sm font-medium">Take down<select value={post.take_down_mode||"never"} onChange={(event)=>onChange({take_down_mode:event.target.value,take_down_at:event.target.value==="at"?post.take_down_at:null,take_down_event_id:event.target.value==="event_end"?post.take_down_event_id:null})} className="mt-1 block h-10 w-full rounded-lg border border-[var(--gray-300)] px-3"><option value="never">Never</option><option value="at">After a date…</option><option value="event_end" disabled={!offerings.length}>When the linked event ends</option></select></label>
+    {post.take_down_mode==="at"?<input aria-label="Take down date and time" type="datetime-local" value={post.take_down_at?String(post.take_down_at).slice(0,16):""} onChange={(event)=>onChange({take_down_at:event.target.value})} className="h-10 w-full rounded-lg border border-[var(--gray-300)] px-3" />:null}
+    {post.take_down_mode==="event_end"?<label className="block text-sm font-medium">Linked event<select value={post.take_down_event_id||""} onChange={(event)=>onChange({take_down_event_id:event.target.value})} className="mt-1 block h-10 w-full rounded-lg border border-[var(--gray-300)] px-3"><option value="">Choose an event…</option>{offerings.map((offering)=><option key={offering.eventId} value={offering.eventId}>{offering.displayTitle||offering.offeringTitle||offering.eventId}</option>)}</select></label>:null}
+    {offerings.length?<Toggle label="Remove event cards when their event has passed, and keep the rest of the post" checked={post.hide_passed_event_cards} onChange={(value)=>onChange({hide_passed_event_cards:value})} />:null}
+  </section>;
+}
+function Placement({title,detail,value}){return <div className="flex justify-between gap-3"><div><p className="text-sm font-medium">{title}</p><p className="text-xs text-[var(--color-text-secondary)]">{detail}</p></div>{value?<span className="text-xs font-semibold text-[var(--color-text-tertiary)]">{value}</span>:null}</div>;}

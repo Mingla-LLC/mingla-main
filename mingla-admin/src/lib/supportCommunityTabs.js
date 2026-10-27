@@ -13,6 +13,7 @@
 export const SUPPORT_PAGE_TABS = Object.freeze([
   Object.freeze({ id: "support", label: "Inbox" }),
   Object.freeze({ id: "email", label: "Email" }),
+  Object.freeze({ id: "blog", label: "Blog" }),
   Object.freeze({ id: "team", label: "People and roles" }),
 ]);
 

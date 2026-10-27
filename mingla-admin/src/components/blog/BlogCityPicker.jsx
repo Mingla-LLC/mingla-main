@@ -1,0 +1,2 @@
+import { BLOG_CITY_TARGETS } from "../../lib/blogLinkTargets";
+export function BlogCityPicker({value,onChange}) { return <label className="block text-sm font-medium">City page<select value={value} onChange={(e)=>onChange(e.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-[var(--gray-300)] px-3">{BLOG_CITY_TARGETS.map((city)=><option key={city.slug} value={city.slug}>{city.label}</option>)}</select></label>; }

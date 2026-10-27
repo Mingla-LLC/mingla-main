@@ -1,0 +1,62 @@
+import { useState } from "react";
+import { Image as ImageIcon, MapPin } from "lucide-react";
+import { sanitizeBlogRichText } from "@mingla/blog-document";
+import { Input, Textarea } from "../ui/Input";
+import { Modal, ModalBody } from "../ui/Modal";
+import { BlogBlockToolbar } from "./BlogBlockToolbar";
+import { BlogCityPicker } from "./BlogCityPicker";
+import { BlogInsertMenu } from "./BlogInsertMenu";
+import { BlogMediaPicker } from "./BlogMediaPicker";
+import { BlogOfferingPicker } from "./BlogOfferingPicker";
+import { BlogPlacePicker } from "./BlogPlacePicker";
+import { BlogPlanEditor } from "./BlogPlanEditor";
+import { BlogTextBlock } from "./BlogTextBlock";
+
+const TEXT_TYPES = new Set(["paragraph", "quote", "callout", "list"]);
+
+export function BlogBlockList({ api, blocks, dispatch, onFocusBlock }) {
+  const [picker, setPicker] = useState(null);
+  const [focusedId, setFocusedId] = useState(null);
+  const update = (id, patch) => dispatch({ type: "update", blockId: id, patch });
+  return <div className="space-y-4" role="list">
+    {blocks.map((block, index) => <div key={block.id} role="listitem" aria-label={`${block.type} block ${index + 1}`} tabIndex={0} onFocus={()=>{setFocusedId(block.id);onFocusBlock?.(block.id);}} onKeyDown={(event) => { if (event.altKey && event.key === "ArrowUp") dispatch({type:"move",blockId:block.id,direction:-1}); if(event.altKey&&event.key==="ArrowDown")dispatch({type:"move",blockId:block.id,direction:1}); }} className="group relative rounded-xl border border-transparent p-3 focus-within:border-[var(--color-brand-200)] hover:border-[var(--gray-200)]">
+      <BlogBlockToolbar block={block} onMove={(direction)=>dispatch({type:"move",blockId:block.id,direction})} onRemove={()=>dispatch({type:"remove",blockId:block.id})} onStyle={block.type==="place"?(style)=>update(block.id,{style}):null} onSwap={block.type==="place"||block.type==="offering"?()=>setPicker({kind:block.type,block}):null} />
+      {TEXT_TYPES.has(block.type) ? <BlogTextBlock block={block} onChange={(html)=>update(block.id,block.type==="list"?{items:[html]}:{html})} onSplit={()=>{const id=crypto.randomUUID().replaceAll("-","").slice(0,12);dispatch({type:"insert",afterId:block.id,block:{id,type:"paragraph",html:""}});requestAnimationFrame(()=>document.querySelector(`[data-blog-text-block="${id}"]`)?.focus());}} onRemoveEmpty={()=>{const previous=document.querySelector(`[data-blog-text-block="${block.id}"]`)?.closest('[role="listitem"]')?.previousElementSibling?.querySelector?.("[contenteditable]");dispatch({type:"remove",blockId:block.id});requestAnimationFrame(()=>previous?.focus());}} /> : null}
+      {block.type === "heading" ? <input aria-label={`Heading ${index+1}`} value={block.text||""} maxLength={200} placeholder={`Heading ${block.level||2}`} onChange={(e)=>update(block.id,{text:e.target.value})} className="w-full border-0 bg-transparent text-2xl font-bold outline-none" /> : null}
+      {block.type === "divider" ? <hr className="my-4 border-[var(--gray-300)]" /> : null}
+      {block.type === "image" ? <MediaBlock block={block} api={api} onPick={(media)=>update(block.id,{mediaId:media.id,alt:block.alt||media.alt})} onChange={(patch)=>update(block.id,patch)} /> : null}
+      {block.type === "gallery" ? <div className="space-y-3"><label className="block text-sm font-medium">Gallery layout<select value={block.layout||"pair"} onChange={(event)=>update(block.id,{layout:event.target.value})} className="mt-1 h-10 w-full rounded-lg border border-[var(--gray-300)] px-3"><option value="pair">Pair</option><option value="grid">Grid</option></select></label><button type="button" disabled={(block.items?.length||0)>=12} onClick={()=>setPicker({kind:"media",block})} className="flex min-h-28 w-full items-center justify-center rounded-lg border border-dashed border-[var(--gray-300)] text-sm text-[var(--color-text-secondary)] disabled:opacity-50"><ImageIcon className="mr-2 h-5 w-5" />{block.items?.length?`Add another photo · ${block.items.length}/12`:"Add gallery photos (2–12)"}</button>{block.items?.length?<ul className="space-y-2">{block.items.map((item,itemIndex)=><li key={`${item.mediaId}-${itemIndex}`} className="space-y-2 rounded-lg bg-[var(--gray-50)] p-2"><Input label={`Photo ${itemIndex+1} alt text`} value={item.alt||""} onChange={(event)=>update(block.id,{items:block.items.map((entry,index)=>index===itemIndex?{...entry,alt:event.target.value}:entry)})} /><button type="button" className="text-xs font-semibold text-red-600" onClick={()=>update(block.id,{items:block.items.filter((_,index)=>index!==itemIndex)})}>Remove photo</button></li>)}</ul>:null}</div> : null}
+      {block.type === "place" ? <CardTarget label={`PLACE${block.city?` · ${block.city.toUpperCase()}`:""} · LIVE DATA`} title={block.placeName||"Choose a place"} detail={block.placeId?`${block.rating||"—"} · ${block.reviewCount||0} Google reviews. Photo, rating and hours stay in sync. The photo loads live from Google on the site.`:"Search the place pool"} onClick={()=>setPicker({kind:"place",block})} /> : null}
+      {block.type === "offering" ? <div className="space-y-3"><CardTarget label="EVENT OR OFFERING · LIVE DATA" title={block.offeringTitle||"Choose an offering"} detail={block.brandName?`Host: ${block.brandName}. The public card never shows this name.`:"The public card never shows the host's name."} onClick={()=>setPicker({kind:"offering",block})} /><Input label="Card title shown on the site" value={block.displayTitle||""} maxLength={90} helper="Don't include the host's name." onChange={(e)=>update(block.id,{displayTitle:e.target.value})} /><Input label="City label (optional)" value={block.eyebrowCity||""} maxLength={40} onChange={(e)=>update(block.id,{eyebrowCity:e.target.value})} /><button type="button" onClick={()=>setPicker({kind:"mood",block})} className="h-10 rounded-lg border border-[var(--gray-300)] px-3 text-sm font-semibold">{block.moodMediaId?"Replace mood photo":"Add mood photo"}</button>{block.moodMediaId?<Input label="Mood photo alt text" value={block.moodAlt||""} onChange={(event)=>update(block.id,{moodAlt:event.target.value})} />:null}</div> : null}
+      {block.type === "plan" ? <BlogPlanEditor api={api} block={block} places={blocks.filter((item)=>item.type==="place"&&item.placeId)} onChange={(next)=>update(block.id,next)} /> : null}
+      {block.type === "city" ? <BlogCityPicker value={block.citySlug} onChange={(citySlug)=>update(block.id,{citySlug})} /> : null}
+      {block.type === "video" ? <VideoEditor block={block} onChange={(patch)=>update(block.id,patch)} /> : null}
+      {block.type === "embed" ? <EmbedEditor block={block} onChange={(patch)=>update(block.id,patch)} /> : null}
+      {block.type === "button" ? <div className="grid gap-3 sm:grid-cols-[1fr_auto]"><Input label="Button label" value={block.label||""} maxLength={40} onChange={(e)=>update(block.id,{label:e.target.value})} /><button type="button" className="mt-7 h-10 rounded-lg border border-[var(--gray-300)] px-3 text-sm font-semibold" onClick={()=>setPicker({kind:"link",block})}>Choose target</button><p className="text-xs text-[var(--color-text-secondary)] sm:col-span-2">Target: {block.target?.path||block.target?.href||block.target?.placeId||block.target?.eventId||"Not chosen"}</p></div> : null}
+    </div>)}
+    <BlogInsertMenu onInsert={(block)=>dispatch({type:"insert",block,afterId:focusedId})} />
+    <Modal open={picker?.kind==="place"} onClose={()=>setPicker(null)} title="Choose a place"><ModalBody><BlogPlacePicker api={api} onPick={(row)=>{update(picker.block.id,{placeId:row.id,placeName:row.name,city:row.city,rating:row.rating,reviewCount:row.review_count,placeType:row.primary_type_display_name});setPicker(null);}} /></ModalBody></Modal>
+    <Modal open={picker?.kind==="offering"} onClose={()=>setPicker(null)} title="Choose an event or offering"><ModalBody><BlogOfferingPicker api={api} onPick={(row)=>{update(picker.block.id,{eventId:row.id,offeringTitle:row.title,displayTitle:row.displayTitle,brandName:row.brand_name,eyebrowCity:picker.block.eyebrowCity||row.city||"",eventType:row.event_type,nextStartAt:row.next_start_at});setPicker(null);}} /></ModalBody></Modal>
+    <BlogMediaPicker open={picker?.kind==="media"||picker?.kind==="mood"} onClose={()=>setPicker(null)} api={api} onPick={(item)=>{if(picker.kind==="mood")update(picker.block.id,{moodMediaId:item.id,moodAlt:item.alt});else update(picker.block.id,{items:[...(picker.block.items||[]),{mediaId:item.id,alt:item.alt,caption:""}]});setPicker(null);}} />
+    <Modal open={picker?.kind==="link"} onClose={()=>setPicker(null)} title="Choose a button target"><ModalBody><BlogLinkPicker api={api} onPick={(target)=>{update(picker.block.id,{target});setPicker(null);}} /></ModalBody></Modal>
+  </div>;
+}
+
+function CardTarget({label,title,detail,onClick}) { return <button type="button" onClick={onClick} className="flex w-full items-center gap-4 rounded-xl border border-[var(--gray-200)] bg-[var(--gray-50)] p-4 text-left"><span className="grid h-20 w-24 place-items-center rounded-lg bg-[var(--gray-200)]"><MapPin className="h-6 w-6 text-[var(--color-text-tertiary)]" /></span><span><small className="font-bold uppercase tracking-wide text-[var(--color-brand-700)]">{label}</small><strong className="mt-1 block">{title}</strong><span className="text-xs text-[var(--color-text-secondary)]">{detail}</span></span></button>; }
+function MediaBlock({block,api,onPick,onChange}) { const[open,setOpen]=useState(false); return <div className="space-y-3"><button type="button" onClick={()=>setOpen(true)} className="flex min-h-44 w-full items-center justify-center rounded-xl border border-dashed border-[var(--gray-300)] text-sm text-[var(--color-text-secondary)]"><ImageIcon className="mr-2 h-5 w-5" />{block.mediaId?"Replace image":"Choose image"}</button><Input label="Alt text" value={block.alt||""} error={block.mediaId&&!block.alt?.trim()?"Alt text is required":null} onChange={(e)=>onChange({alt:e.target.value})} /><Textarea label="Caption (optional)" value={block.caption||""} maxLength={200} className="min-h-16 font-sans" onChange={(e)=>onChange({caption:sanitizeBlogRichText(e.target.value)})} /><BlogMediaPicker open={open} onClose={()=>setOpen(false)} api={api} onPick={onPick} /></div>; }
+
+function parseVideoUrl(value) {
+  try {
+    const url = new URL(value);
+    if (["youtube.com","www.youtube.com","m.youtube.com"].includes(url.hostname)) return { provider: "youtube", videoId: url.searchParams.get("v") || url.pathname.split("/").filter(Boolean).at(-1) || "" };
+    if (url.hostname === "youtu.be") return { provider: "youtube", videoId: url.pathname.split("/").filter(Boolean)[0] || "" };
+    if (["vimeo.com","www.vimeo.com","player.vimeo.com"].includes(url.hostname)) return { provider: "vimeo", videoId: url.pathname.split("/").filter(Boolean).at(-1) || "" };
+  } catch { return null; }
+  return null;
+}
+
+function VideoEditor({block,onChange}) { const[url,setUrl]=useState(block.videoUrl||""); const parsed=parseVideoUrl(url); return <div className="grid gap-3 sm:grid-cols-2"><Input label="YouTube or Vimeo URL" type="url" value={url} error={url&&!parsed?"Paste a YouTube or Vimeo URL":null} onChange={(event)=>{setUrl(event.target.value);const next=parseVideoUrl(event.target.value);onChange({videoUrl:event.target.value,...(next||{videoId:""})});}} /><Input label="Frame title" value={block.title||""} error={!block.title?.trim()?"A title is required":null} onChange={(e)=>onChange({title:e.target.value})} /></div>; }
+
+const EMBED_HOSTS = {spotify:["open.spotify.com"],youtube:["youtube.com","www.youtube.com","m.youtube.com","youtu.be"],vimeo:["vimeo.com","www.vimeo.com","player.vimeo.com"],instagram:["instagram.com","www.instagram.com"],tiktok:["tiktok.com","www.tiktok.com","vm.tiktok.com"],x:["x.com","www.x.com","twitter.com","www.twitter.com"]};
+function embedProvider(value) { try { const host=new URL(value).hostname.toLowerCase(); return Object.entries(EMBED_HOSTS).find(([,hosts])=>hosts.includes(host))?.[0]||null; } catch { return null; } }
+function EmbedEditor({block,onChange}) { const provider=embedProvider(block.url||""); return <Input label="Embed URL" type="url" value={block.url||""} error={block.url&&!provider?"This site can't be embedded. Use a Button instead.":null} helper={provider?`${provider} embed detected.`:"Spotify, YouTube, Vimeo, Instagram, TikTok or X."} onChange={(event)=>{const next=embedProvider(event.target.value);onChange({url:event.target.value,provider:next||"youtube"});}} />; }

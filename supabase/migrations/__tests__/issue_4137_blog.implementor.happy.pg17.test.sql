@@ -3,10 +3,8 @@
 -- MINGLA-INVARIANT: I-4137-BLOG-WRITES-VIA-RPC-ROLE-GUARDED | issue #4137 | writer = is_support_staff, publisher = Owner/Admin or an enabled Support lead; anon and authenticated hold no table write grant.
 -- MINGLA-INVARIANT: I-4137-BLOG-NO-HOST-IDENTITY | issue #4137 | blog embeds return only allow-listed place and event facts: never a brand field, event cover, event title, description or location text.
 --
--- Covers AC-DB1, AC-DB2, AC-DB3, AC-DB8, AC-DB10 (visibility half), AC-DB11,
--- AC-DB12 (folder and delete policies), AC-DB13, the writer/publisher
--- predicates (AC-DB4 predicate half) and the public RPC shapes. The staff
--- workflow RPCs (AC-DB4 RPC half, 5, 6, 7, 9) arrive with wave 4.
+-- Covers AC-DB1 through AC-DB13, including role-guarded staff workflow,
+-- optimistic conflicts, readiness, frozen published versions and featuring.
 -- Runs after the complete migration replay and rolls every fixture back.
 -- Fails on revert: without the #4137 migrations the blog tables and RPCs do not exist.
 \set ON_ERROR_STOP on
@@ -517,6 +515,130 @@ BEGIN
   INSERT INTO storage.objects (bucket_id, name) VALUES ('blog-media', 'anon/x.jpg');
   RAISE EXCEPTION 'AC-DB12: anon uploaded a blog image';
 EXCEPTION WHEN insufficient_privilege THEN NULL;
+END
+$t$;
+RESET ROLE;
+
+-- ── Wave 4 workflow: writer save/review; publisher publish/feature ───────
+SELECT set_config('request.jwt.claim.sub', '41370000-0000-4000-a000-000000000002', true);
+SET LOCAL ROLE authenticated;
+DO $t$
+DECLARE v jsonb;
+BEGIN
+  v := public.issue_4137_blog_my_permissions();
+  IF (v ->> 'can_write')::boolean IS NOT TRUE OR (v ->> 'can_publish')::boolean IS NOT FALSE THEN
+    RAISE EXCEPTION 'AC-DB4: writer permissions %', v;
+  END IF;
+  v := public.issue_4137_blog_update_media(
+    '41370000-0000-4000-e000-000000000003','Draft image corrected','mingla_owned','UPDATED-SHOOT-REF-3');
+  IF v ->> 'alt' <> 'Draft image corrected' OR v ->> 'source_ref' <> 'UPDATED-SHOOT-REF-3' THEN
+    RAISE EXCEPTION 'media update %',v;
+  END IF;
+  BEGIN
+    PERFORM public.issue_4137_blog_delete_media('41370000-0000-4000-e000-000000000003');
+    RAISE EXCEPTION 'writer deleted media';
+  EXCEPTION WHEN insufficient_privilege THEN
+    IF SQLERRM <> 'blog_forbidden' THEN RAISE; END IF;
+  END;
+  v := public.issue_4137_blog_create_post('Workflow ready post', 'product-news');
+  IF (v ->> 'revision')::int <> 1 OR v ->> 'slug' <> 'workflow-ready-post' THEN
+    RAISE EXCEPTION 'create_post %', v;
+  END IF;
+  v := public.issue_4137_blog_save_draft(
+    (v ->> 'id')::uuid,
+    1,
+    jsonb_build_object(
+      'summary', 'A complete workflow fixture.',
+      'cover_media_id', '41370000-0000-4000-e000-000000000001',
+      'cover_alt', 'Lake at dusk',
+      'seo_title', 'Workflow ready post',
+      'seo_description', 'A complete workflow fixture.',
+      'document', '{"version":1,"blocks":[{"id":"para41","type":"paragraph","html":"Ready to publish."}]}'::jsonb
+    )
+  );
+  IF (v ->> 'revision')::int <> 2 THEN RAISE EXCEPTION 'save_draft %', v; END IF;
+  BEGIN
+    PERFORM public.issue_4137_blog_publish((v ->> 'id')::uuid, 2, now(), false);
+    RAISE EXCEPTION 'AC-DB4: writer published';
+  EXCEPTION WHEN insufficient_privilege THEN
+    IF SQLERRM <> 'blog_forbidden' THEN RAISE; END IF;
+  END;
+  v := public.issue_4137_blog_submit_for_review((v ->> 'id')::uuid, 2);
+  IF v ->> 'status' <> 'in_review' OR (v ->> 'revision')::int <> 3 THEN RAISE EXCEPTION 'submit %', v; END IF;
+END
+$t$;
+RESET ROLE;
+
+-- The link checker is the only service-role writer of receipts.
+INSERT INTO public.blog_post_link_checks(post_id, version_id, ok, results, checked_by)
+SELECT post.id, post.draft_version_id, true, '[]'::jsonb, '41370000-0000-4000-a000-000000000003'
+FROM public.blog_posts post WHERE post.slug='workflow-ready-post';
+
+SELECT set_config('request.jwt.claim.sub', '41370000-0000-4000-a000-000000000003', true);
+SET LOCAL ROLE authenticated;
+DO $t$
+DECLARE v jsonb; v_post uuid; v_public jsonb;
+BEGIN
+  v := public.issue_4137_blog_my_permissions();
+  IF (v ->> 'can_publish')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'AC-DB4: lead permissions %',v; END IF;
+  BEGIN
+    PERFORM public.issue_4137_blog_delete_media('41370000-0000-4000-e000-000000000001');
+    RAISE EXCEPTION 'in-use media deleted';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'blog_media_in_use' THEN RAISE; END IF;
+  END;
+  SELECT id INTO v_post FROM public.blog_posts WHERE slug='workflow-ready-post';
+  v := public.issue_4137_blog_publish(v_post,3,now(),true);
+  IF v #>> '{post,status}' <> 'published' OR (v #>> '{post,revision}')::int<>4 THEN RAISE EXCEPTION 'publish %',v; END IF;
+  IF public.issue_4137_blog_featured_now() ->> 'post_id' <> v_post::text THEN RAISE EXCEPTION 'AC-DB9: feature missing'; END IF;
+  v_public := public.blog_public_post('workflow-ready-post');
+  IF v_public ->> 'title' <> 'Workflow ready post' THEN RAISE EXCEPTION 'AC-DB7: public payload %',v_public; END IF;
+END
+$t$;
+RESET ROLE;
+
+-- Editing after publish changes only the draft; stale writes are PT409 and atomic.
+SELECT set_config('request.jwt.claim.sub', '41370000-0000-4000-a000-000000000002', true);
+SET LOCAL ROLE authenticated;
+DO $t$
+DECLARE v_post uuid; v jsonb; v_before jsonb;
+BEGIN
+  SELECT id INTO v_post FROM public.blog_posts WHERE slug='workflow-ready-post';
+  v_before:=public.blog_public_post('workflow-ready-post');
+  v:=public.issue_4137_blog_save_draft(v_post,4,jsonb_build_object('title','Changed draft only'));
+  IF (v ->> 'revision')::int<>5 OR public.blog_public_post('workflow-ready-post')->>'title'<>'Workflow ready post' THEN
+    RAISE EXCEPTION 'AC-DB7: draft changed live post';
+  END IF;
+  BEGIN
+    PERFORM public.issue_4137_blog_save_draft(v_post,4,jsonb_build_object('title','Stale overwrite'));
+    RAISE EXCEPTION 'AC-DB5: stale save succeeded';
+  EXCEPTION WHEN SQLSTATE 'PT409' THEN NULL;
+  END;
+  IF public.issue_4137_blog_get_post(v_post) #>> '{draft,title}'<>'Changed draft only' THEN
+    RAISE EXCEPTION 'AC-DB5: stale write mutated the draft';
+  END IF;
+  IF jsonb_array_length(public.issue_4137_blog_list_posts(NULL,'Workflow',50,0)->'posts')<>1 THEN RAISE EXCEPTION 'list_posts search'; END IF;
+  IF public.issue_4137_blog_get_post(v_post) #>> '{draft,title}'<>'Changed draft only' THEN RAISE EXCEPTION 'get_post'; END IF;
+END
+$t$;
+RESET ROLE;
+
+-- A not-ready post reports stable readiness ids and cannot publish.
+SELECT set_config('request.jwt.claim.sub', '41370000-0000-4000-a000-000000000003', true);
+SET LOCAL ROLE authenticated;
+DO $t$
+DECLARE v_post uuid; v_detail text;
+BEGIN
+  SELECT id INTO v_post FROM public.blog_posts WHERE slug='still-a-draft';
+  BEGIN
+    PERFORM public.issue_4137_blog_publish(v_post,1,now(),false);
+    RAISE EXCEPTION 'AC-DB6: incomplete post published';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_detail=PG_EXCEPTION_DETAIL;
+    IF SQLERRM<>'blog_not_ready' OR v_detail::jsonb ?& ARRAY['cover_present','cover_size','links_live'] IS NOT TRUE THEN
+      RAISE EXCEPTION 'AC-DB6: readiness % / %',SQLERRM,v_detail;
+    END IF;
+  END;
 END
 $t$;
 RESET ROLE;

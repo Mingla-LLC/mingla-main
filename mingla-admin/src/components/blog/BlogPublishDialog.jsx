@@ -1,0 +1,10 @@
+import { useState } from "react";
+import { Button } from "../ui/Button";
+import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
+import { Toggle } from "../ui/Input";
+export function BlogPublishDialog({open,onClose,checks,featured,initialPublishAt,featuredNow,onPublish,busy,serverFailures=[]}) {
+  const scheduled=initialPublishAt&&new Date(initialPublishAt)>new Date();
+  const[mode,setMode]=useState(scheduled?"schedule":"now");const[when,setWhen]=useState(scheduled?String(initialPublishAt).slice(0,16):"");const[feature,setFeature]=useState(Boolean(featured));
+  const blocked=checks.some((item)=>item.serverEnforced&&!item.ok)||serverFailures.length>0;
+  return <Modal open={open} onClose={onClose} title="Publish blog post"><ModalBody className="space-y-4"><p className="text-sm text-[var(--color-text-secondary)]">{blocked?"Finish the required checks before this post can go live.":"Everything required is ready."}</p>{serverFailures.length?<div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Server checks: {serverFailures.join(", ")}</div>:null}<label className="flex gap-2 text-sm"><input type="radio" name="blog-publish-mode" checked={mode==="now"} onChange={()=>setMode("now")} />Publish now</label><label className="flex gap-2 text-sm"><input type="radio" name="blog-publish-mode" checked={mode==="schedule"} onChange={()=>setMode("schedule")} />Schedule for</label>{mode==="schedule"?<input aria-label="Schedule date and time" type="datetime-local" value={when} onChange={(e)=>setWhen(e.target.value)} className="h-10 rounded-lg border border-[var(--gray-300)] px-3"/>:null}<Toggle label="Feature this post" checked={feature} onChange={setFeature}/>{feature&&featuredNow?<p className="text-xs text-amber-800">This replaces “{featuredNow.title}” as the featured story.</p>:null}</ModalBody><ModalFooter><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={busy} disabled={blocked||(mode==="schedule"&&!when)} onClick={()=>onPublish(mode==="now"?new Date().toISOString():new Date(when).toISOString(),feature)}>{mode==="now"?"Publish":"Schedule"}</Button></ModalFooter></Modal>;
+}
