@@ -27,7 +27,7 @@
 -- Fails on revert: without the migration, A-02 (the apply moves the revision)
 -- and A-04 (the pre-apply save is refused) fail. Without the reset after the
 -- UPDATE, D-02 / D-04 fail. Without the cover-only check, E-02 fails.
--- MINGLA-INVARIANT: I-3801-DRAFT-COVER-APPLY-KEEPS-REVISION | issue #3801 | A cover video applied by cover_video_apply_once to a DRAFT event leaves events.updated_at unchanged; on a published event it still moves; any other change to a draft still moves it; the flag never outlives the apply's own UPDATE.
+-- MINGLA-INVARIANT: I-3801-COVER-APPLY-KEEPS-UNPUBLISHED-REVISION | issue #3801 | A cover video applied by cover_video_apply_once to an unpublished event leaves events.updated_at unchanged; on a published event it still moves; any other change to an unpublished event still moves it; the flag never outlives the apply's own UPDATE.
 
 BEGIN;
 

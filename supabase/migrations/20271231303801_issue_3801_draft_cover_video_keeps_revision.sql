@@ -35,7 +35,8 @@
 --
 -- Applies after #4134's 20271231204134 (PT409). Neither function raises 40001.
 --
--- MINGLA-INVARIANT: I-3801-DRAFT-COVER-APPLY-KEEPS-REVISION | issue #3801 | A cover video applied by cover_video_apply_once to a DRAFT event leaves events.updated_at unchanged; on a published event it still moves; any other change to a draft still moves it; the flag never outlives the apply's own UPDATE. Enforced by supabase/migrations/__tests__/issue_3801_draft_cover_video_keeps_revision.implementor.pg17.test.sql
+-- The invariant for this change is declared beside its enforcing test:
+-- supabase/migrations/__tests__/issue_3801_draft_cover_video_keeps_revision.implementor.pg17.test.sql
 
 BEGIN;
 
