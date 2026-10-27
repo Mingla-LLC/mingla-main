@@ -11,6 +11,8 @@ import {
 } from '../../../src/utils/programFormat';
 import { ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoading, ProgramNotice, ProgramScreen, ProgramSheet, programStyles as s } from '../../../src/components/programs/ProgramUi';
 import { CalendarGrid } from '../../../src/components/programs/ProgramPickers';
+import { JOIN_IN_FLIGHT } from '../../../src/components/programs/programRefresh';
+import { useRefreshOnFocus } from '../../../src/components/programs/useProgramRefresh';
 import {
   BrandCard, DeliveriesCard, DisputeCard, DisputeOpenCard, PostLinksCard, PostsStatus, ProposalCard, RatingCard, ScriptEditor, ShootSheet, TermsCard, TermsHistory, Timeline, Tracker, UploadCard,
 } from '../../../src/components/creator/contract/ContractSections';
@@ -34,6 +36,9 @@ export default function CreatorContractScreen(): React.ReactElement {
   const refresh = async (): Promise<void> => {
     await queryClient.invalidateQueries({ queryKey: ['creator'] });
   };
+  // Reopened (from a notification or link) or back from the background: read it again,
+  // so neither the old state nor a cached "isn't available" sticks.
+  useRefreshOnFocus(() => { if (contractId) void queryClient.invalidateQueries({ queryKey: ['creator', 'contract', contractId] }, JOIN_IN_FLIGHT); });
 
   /** Runs one action; failures (including `{ok:false}`) stay next to the control that caused them. */
   const act = async (key: Exclude<Busy, null>, action: () => Promise<unknown>, after?: () => void): Promise<boolean> => {
@@ -194,7 +199,7 @@ export default function CreatorContractScreen(): React.ReactElement {
     {terms ? <TermsCard terms={terms} gig={w.gig} /> : null}
     <TermsHistory terms={w.terms} />
 
-    {canChangeTerms && !openProposal ? <ProgramButton label="Ask to change the post-by date" variant="secondary" onPress={() => { setNewPostBy(null); setChangeNote(''); setSheet('change'); }} /> : null}
+    {canChangeTerms && !openProposal ? <ProgramButton label="Ask to change the video-due date" variant="secondary" onPress={() => { setNewPostBy(null); setChangeNote(''); setSheet('change'); }} /> : null}
     {canDispute ? <DisputeOpenCard busy={busy === 'dispute'} error={errors.dispute ?? null}
       onOpen={(statement) => void act('dispute', () => creatorGigsService.openDispute(contractId, state === 'fix_requested' ? 'nontechnical_fix_abuse' : 'posts_failed', statement))} /> : null}
     {canCancel ? <ProgramButton label="Can’t do this gig? Cancel it" variant="ghost" busy={busy === 'cancel'} onPress={cancel} /> : null}
@@ -206,11 +211,11 @@ export default function CreatorContractScreen(): React.ReactElement {
       busy={busy === 'shoot'} error={errors.shoot ?? null}
       onSend={(iso, note) => void act('shoot', () => creatorGigsService.planShoot(contractId, iso, note, false), () => setSheet(null))} />
 
-    <ProgramSheet visible={sheet === 'change'} onClose={() => setSheet(null)} title="Ask to change the post-by date" snapPoints={['70%']} busy={busy === 'change'}
+    <ProgramSheet visible={sheet === 'change'} onClose={() => setSheet(null)} title="Ask to change the video-due date" snapPoints={['70%']} busy={busy === 'change'}
       footer={<ProgramButton label="Send to the host" busy={busy === 'change'} disabled={!newPostBy}
         onPress={() => void act('change', () => creatorGigsService.proposeChange(contractId, { post_by: newPostBy }, 'dates', changeNote), () => setSheet(null))} />}>
       <Text style={s.copy}>The host has 48 hours to answer. The fee can’t change here.</Text>
-      <Text style={s.fieldLabel}>New post-by date{newPostBy ? `: ${formatShortDate(newPostBy)}` : ''}</Text>
+      <Text style={s.fieldLabel}>New video-due date{newPostBy ? `: ${formatShortDate(newPostBy)}` : ''}</Text>
       <CalendarGrid start={newPostBy ?? terms?.post_by ?? null} onPick={setNewPostBy} minDate={toDayString(new Date())} />
       <ProgramField inSheet label="Why (optional)" value={changeNote} onChangeText={setChangeNote} multiline counter={{ max: 300 }} maxLength={300} />
       {errors.change ? <ProgramNotice tone="error" text={errors.change} /> : null}

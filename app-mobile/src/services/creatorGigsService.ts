@@ -6,6 +6,8 @@ export type PublicGig = {
   deliverables: Array<{ platform: string; kind: string; count: number }>;
   city_name: string; category: string; shoot_window: { start: string; end: string };
   post_by: string; usage_days: number; sales_share_bps: number | null; slots_left: number;
+  /** When the video is due and the set shoot time (timestamptz), when the host gave them. */
+  video_due_at?: string | null; shoot_at?: string | null;
   saved?: boolean;
   /** The most the host pays each creator, in the gig's currency (null on gigs saved before pay existed). */
   pay_up_to_minor?: number | null; currency?: string | null;
@@ -44,6 +46,7 @@ export type GigWorkspace = {
     /** Shown once revealed when the server includes them. */
     brand_name?: string | null; place_name?: string | null; place_address?: string | null;
     shoot_window?: { start: string; end: string } | null; city_name?: string | null;
+    video_due_at?: string | null; shoot_at?: string | null;
   };
   terms: GigTerms[];
   proposals: GigProposal[];

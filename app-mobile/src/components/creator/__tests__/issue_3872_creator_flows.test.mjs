@@ -46,8 +46,8 @@ test("#3872 the agreement step collects an 18+ date of birth, the tax line, and 
 
 test("#3872 the shoot is picked inside the window and posts use a URL keyboard", () => {
   const parts = read("src/components/creator/contract/ContractSections.tsx");
-  assert.match(parts, /<CalendarGrid start=\{day\} onPick=\{setDay\} minDate=\{window\?\.start/);
-  assert.match(parts, /maxDate=\{window\?\.end/);
+  assert.match(parts, /shootPickRange\(window, initialAt\)/);
+  assert.match(parts, /minDate=\{range\.minDate\} maxDate=\{range\.maxDate\}/);
   assert.match(parts, /keyboardType="url"/);
   assert.match(parts, /autoCapitalize="none"/);
 });

@@ -1,6 +1,6 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { creatorProgramService, setupChecks } from '../../src/services/creatorProgramService';
@@ -11,6 +11,8 @@ import {
   formatDue, formatMoney, formatName, formatShortDate, nicheLabel, setupMinutesLeft,
 } from '../../src/utils/programFormat';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramLoadError, ProgramLoading, ProgramNotice, ProgramPill, ProgramScreen, programStyles as s } from '../../src/components/programs/ProgramUi';
+import { JOIN_IN_FLIGHT } from '../../src/components/programs/programRefresh';
+import { useRefreshOnFocus } from '../../src/components/programs/useProgramRefresh';
 import { ChoiceSheet, Chip, Segmented, type Choice } from '../../src/components/programs/ProgramPickers';
 import { GlassIconButton } from '../../src/components/ui/GlassIconButton';
 import { Icon } from '../../src/components/ui/Icon';
@@ -47,9 +49,8 @@ export default function CreatorHubScreen(): React.ReactElement {
     enabled: Boolean(status.data?.profile),
   });
 
-  useFocusEffect(useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ['creator'] });
-  }, [queryClient]));
+  // Every return to the hub, and every return to the app while it shows, re-reads it.
+  useRefreshOnFocus(() => { void queryClient.invalidateQueries({ queryKey: ['creator'] }, JOIN_IN_FLIGHT); });
 
   const refresh = (): void => { void queryClient.invalidateQueries({ queryKey: ['creator'] }); };
   const withdraw = (interestId: string, title: string): void => {
@@ -216,7 +217,7 @@ function ContractRow({ contract, isLast, onPress }: { contract: CreatorHomeContr
     <View style={styles.fmt}><Icon name="videocam" size={16} color={C.accent} /></View>
     <View style={s.flex}>
       <Text style={s.strong} numberOfLines={1}>{contract.title}</Text>
-      <Text style={s.copy} numberOfLines={1}>{formatName(contract.format_key)} · post by {formatShortDate(contract.post_by)}</Text>
+      <Text style={s.copy} numberOfLines={1}>{formatName(contract.format_key)} · video due {formatShortDate(contract.post_by)}</Text>
     </View>
     <View style={styles.right}>
       <Text style={s.strong}>{formatMoney(contract.fee_minor, contract.currency)}</Text>
