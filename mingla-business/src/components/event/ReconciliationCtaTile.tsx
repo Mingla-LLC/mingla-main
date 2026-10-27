@@ -28,7 +28,7 @@ export const ReconciliationCtaTile: React.FC<ReconciliationCtaTileProps> = ({
 }) => {
   const { rank } = useCurrentBrandRole(brandId);
   if (!canPerformAction(rank, "VIEW_RECONCILIATION")) return null;
-  return <ActionTile icon="chart" label="Reconciliation" onPress={onPress} />;
+  return <ActionTile icon="receipt" label="Reconciliation" onPress={onPress} />;
 };
 
 export default ReconciliationCtaTile;

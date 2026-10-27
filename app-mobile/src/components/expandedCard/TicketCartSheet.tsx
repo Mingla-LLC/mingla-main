@@ -365,6 +365,8 @@ export interface TicketCartSheetProps {
   pendingPhase?: NativeCheckoutPhase | null;
   /** Server-confirmed v2 terminal/recovery state. */
   terminalOutcome?: NativeCheckoutOutcome | null;
+  /** Optional post-confirmation action owned by the calling listing surface. */
+  successFooter?: React.ReactNode;
   /**
    * True when this cart is rendered inline below Mingla's floating nav. When the
    * parent group is already hosted in an overlay carrier, the nav is behind the
@@ -434,6 +436,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   isSubmitting,
   pendingPhase = null,
   terminalOutcome = null,
+  successFooter = null,
   clearFloatingNav = true,
   planTiersByTicketId,
   installmentNoteByTicketId,
@@ -1332,6 +1335,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                   : terminalOutcome.message}
           </Text>
         )}
+        {terminalOutcome.outcome === "succeeded" ? successFooter : null}
       </View>
     );
 

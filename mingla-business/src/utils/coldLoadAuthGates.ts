@@ -314,10 +314,14 @@ export const SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES = [
  *
  * `/accept-brand-invitation` also covers `/accept-brand-invitation/success`
  * (app/accept-brand-invitation/success.tsx) via the matcher's `base + "/"` clause.
+ * `/join` currently owns only the referral-token acceptance route. It renders
+ * no invite data while signed out and sends the user through sign-in with the
+ * exact return path before the authenticated acceptance RPC can run.
  */
 export const INVITE_ACCEPT_ROUTE_PREFIXES = [
   "/accept-brand-invitation", // app/accept-brand-invitation.tsx (+ /success sub-route)
   "/accept-scanner-invitation", // app/accept-scanner-invitation.tsx
+  "/join", // app/join/referral/[token].tsx — signed-out token landing + return-to-sign-in
 ] as const;
 
 /** Issue #3827 — `/g/[token]` authorizes itself with the bearer credential in

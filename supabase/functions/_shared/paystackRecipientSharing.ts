@@ -15,18 +15,19 @@
  * fail with nothing to explain why. That is exactly what happened in
  * production on 2026-09-11.
  *
- * CROSS-TABLE BY CONSTRUCTION. Brands (`brand_paystack_recipients`) and Growth
- * Partners (`partner_paystack_accounts`) are different tables but share ONE
- * Paystack integration, so de-duplication crosses between them: a partner who
- * banks at the same account as a brand receives that brand's recipient code.
- * A check that consulted only the caller's own table would still delete the
- * other side's recipient. Both tables are always consulted.
+ * CROSS-TABLE BY CONSTRUCTION. Brands (`brand_paystack_recipients`), Growth
+ * Partners (`partner_paystack_accounts`) and referral payees
+ * (`payee_accounts`) are different tables but share ONE Paystack integration,
+ * so de-duplication crosses between them. A check that consulted only the
+ * caller's own table would still delete another holder's recipient. All three
+ * tables are always consulted.
  */
 
 /** Identifies the row that is asking, so it can be excluded from the check. */
 export type RecipientHolder =
   | { kind: "brand"; brandId: string }
-  | { kind: "partner"; accountId: string };
+  | { kind: "partner"; accountId: string }
+  | { kind: "payee"; userId: string };
 
 /**
  * Minimal client surface. `from` is intentionally loose: supabase-js query
@@ -77,5 +78,18 @@ export async function isPaystackRecipientShared(
     ? await partnerQuery.neq("account_id", holder.accountId).limit(1)
     : await partnerQuery.limit(1);
   if (partnerResult.error) throw partnerResult.error;
-  return hasRows(partnerResult.data);
+  if (hasRows(partnerResult.data)) return true;
+
+  // #3872 R2 referral payees share the same Paystack integration too. A
+  // de-duplicated code must remain live until brand, partner and payee holders
+  // have all released it.
+  const payeeQuery = client
+    .from("payee_accounts")
+    .select("user_id")
+    .eq("paystack_recipient_code", recipientCode);
+  const payeeResult = holder.kind === "payee"
+    ? await payeeQuery.neq("user_id", holder.userId).limit(1)
+    : await payeeQuery.limit(1);
+  if (payeeResult.error) throw payeeResult.error;
+  return hasRows(payeeResult.data);
 }

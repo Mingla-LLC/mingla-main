@@ -30,7 +30,7 @@
  * interactive claim banner above the suite so the loop is always reachable.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -90,6 +90,14 @@ import { openExternal } from "../../../src/services/guestFunnelLink";
 import { useVenueSuiteStore } from "../../../src/store/venueSuiteStore";
 import { listingStatusView } from "../../../src/utils/listingStatus";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
+import { OptionalFeatureBoundary } from "../../../src/components/brandContact/OptionalFeatureBoundary";
+
+// #3872 — Local reviews belong to the Creator and Referral program, so they
+// load through its one lazy owner and stay out of the eager web chunk.
+const LocalReviewsManager = React.lazy(async () => {
+  const mod = await import("../../../src/components/programs/creatorProgramOwner");
+  return { default: mod.LocalReviewsManager };
+});
 
 function paramValue(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) return value[0] ?? null;
@@ -404,6 +412,18 @@ export default function VenueManagementPage(): React.ReactElement {
           venueId={venueId}
           claimStatus={venue.claimStatus}
         />
+      ) : null}
+
+      {venue.claimStatus === "verified" &&
+      brandId !== null &&
+      venue.placePoolId !== null ? (
+        // An optional, lazily-loaded panel: if its chunk fails to load or it
+        // throws, it hides itself and the rest of the venue page stays up.
+        <OptionalFeatureBoundary name="venue-local-reviews">
+          <Suspense fallback={null}>
+            <LocalReviewsManager brandId={brandId} placePoolId={venue.placePoolId} />
+          </Suspense>
+        </OptionalFeatureBoundary>
       ) : null}
 
       {!isWideDesktop &&

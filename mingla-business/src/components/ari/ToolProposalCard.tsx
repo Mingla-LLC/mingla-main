@@ -149,6 +149,12 @@ function humanizeToolName(toolName: string): string {
       return "Pause discount";
     case "list_discounts":
       return "List discounts";
+    case "list_referral_offers":
+      return "List referral offers";
+    case "create_referral_offer":
+      return "Create referral offer";
+    case "invite_promoters":
+      return "Invite promoters";
     case "propose_ad_plan":
       return "Propose ad plan";
     case "approve_ad_plan":
@@ -301,6 +307,18 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
   if (toolName === "pause_discount") {
     if (typeof args.discount_id === "string") out.push({ label: "Discount", value: args.discount_id });
     out.push({ label: "Effect", value: "Stops new uses; existing orders keep their price" });
+  }
+  if (toolName === "create_referral_offer") {
+    if (typeof args.name === "string") out.push({ label: "Offer", value: args.name });
+    if (typeof args.audience === "string") out.push({ label: "Who earns", value: args.audience.replace(/_/g, " ") });
+    if (typeof args.reward_kind === "string") out.push({ label: "Reward", value: args.reward_kind });
+    if (typeof args.share_bps === "number") out.push({ label: "Cash share", value: `${args.share_bps / 100}%` });
+    if (typeof args.scope_kind === "string") out.push({ label: "Scope", value: args.scope_kind });
+  }
+  if (toolName === "invite_promoters") {
+    const members = Array.isArray(args.members) ? args.members : [];
+    out.push({ label: "Promoters", value: `${members.length} email${members.length === 1 ? "" : "s"}` });
+    out.push({ label: "Invite", value: "Private link expires after 14 days" });
   }
 
   if (toolName === "propose_ad_plan" || toolName === "approve_ad_plan") {

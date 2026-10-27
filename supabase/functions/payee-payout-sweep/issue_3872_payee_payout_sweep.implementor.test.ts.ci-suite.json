@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/payee-payout-sweep/issue_3872_payee_payout_sweep.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3872-r2-10-payee-payout-sweep",
+  "profile": "deno-1.46-stripe"
+}

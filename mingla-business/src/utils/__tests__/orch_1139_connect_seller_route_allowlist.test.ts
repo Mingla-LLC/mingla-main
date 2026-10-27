@@ -11,7 +11,7 @@
  *
  * The fix adds two distinct exemption sets —
  * `SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES` (6 connect routes) and
- * `INVITE_ACCEPT_ROUTE_PREFIXES` (2 invite routes) — plus the segment-safe
+ * `INVITE_ACCEPT_ROUTE_PREFIXES` (3 invite routes) — plus the segment-safe
  * matcher `isSelfAuthenticatedExemptRoute`, ANDed into
  * `shouldRedirectToSignInFromRoute` (web) and `nativeRedirectToSignIn`
  * (_layout.tsx native). Each class authenticates via an out-of-band URL
@@ -59,6 +59,7 @@ const EXEMPT_BARE_ROUTES: string[] = [
   "/stripe-onboarding-return",
   "/accept-brand-invitation",
   "/accept-scanner-invitation",
+  "/join",
 ];
 
 // A representative sub-path under each exempt route (Stripe / Expo may append a
@@ -72,6 +73,7 @@ const EXEMPT_SUBPATH_ROUTES: string[] = [
   "/stripe-onboarding-return/done",
   "/accept-brand-invitation/success", // the real sub-route
   "/accept-scanner-invitation/done",
+  "/join/referral/test-token",
 ];
 
 // Private routes that MUST still redirect a logged-out user (the allowlist did
@@ -112,6 +114,7 @@ describe("ORCH-1139 T-A3 (happy) — each invite-accept route resolves exempt", 
     "/accept-brand-invitation",
     "/accept-brand-invitation/success",
     "/accept-scanner-invitation",
+    "/join/referral/test-token",
   ])("%s → isSelfAuthenticatedExemptRoute === true", (pathname) => {
     expect(isSelfAuthenticatedExemptRoute(pathname)).toBe(true);
     expect(
@@ -175,10 +178,13 @@ describe("ORCH-1139 T-A7 (single source of truth) — constants defined once; we
     ]);
   });
 
-  test("INVITE_ACCEPT_ROUTE_PREFIXES contains exactly the 2 spec'd prefixes", () => {
+  test("INVITE_ACCEPT_ROUTE_PREFIXES contains exactly the 3 reviewed prefixes", () => {
     expect([...INVITE_ACCEPT_ROUTE_PREFIXES]).toEqual([
       "/accept-brand-invitation",
       "/accept-scanner-invitation",
+      // [TEST-MOD-APPROVED #3872] promoter invite tokens land here before the
+      // route sends signed-out people through its exact sign-in return path.
+      "/join",
     ]);
   });
 

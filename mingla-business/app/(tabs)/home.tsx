@@ -57,7 +57,6 @@ import { Icon } from "../../src/components/ui/Icon";
 import { Toast } from "../../src/components/ui/Toast";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { TopBar } from "../../src/components/ui/TopBar";
-import { UniversalCreatorSheet } from "../../src/components/ui/UniversalCreatorSheet";
 // RecentRow is Home's rendering boundary for Recent covers and owns the shared
 // video-capable EventCoverMedia presentation; Home must not reimplement it.
 import { RecentRow } from "../../src/components/home/RecentRow";
@@ -164,6 +163,13 @@ const HomeMoneyCard: React.FC<{
 const LazyBrandDeleteSheet = React.lazy(async () => {
   const mod = await import("../../src/components/brand/BrandDeleteSheet");
   return { default: mod.BrandDeleteSheet };
+});
+
+// The universal creator is an explicit + action, so keep its form and picker
+// dependencies out of the Home dashboard until the host opens it.
+const LazyUniversalCreatorSheet = React.lazy(async () => {
+  const mod = await import("../../src/components/ui/UniversalCreatorSheet");
+  return { default: mod.UniversalCreatorSheet };
 });
 
 // ORCH-1143 — LayoutAnimation requires this guard on Android or the live-section
@@ -1234,10 +1240,14 @@ export default function HomeTab(): React.ReactElement {
       />
 
       {/* ORCH-0826 M0: universal creator sheet (Create event/experience/trip) */}
-      <UniversalCreatorSheet
-        visible={isUniversalCreatorOpen}
-        onClose={() => setIsUniversalCreatorOpen(false)}
-      />
+      {isUniversalCreatorOpen ? (
+        <Suspense fallback={null}>
+          <LazyUniversalCreatorSheet
+            visible
+            onClose={() => setIsUniversalCreatorOpen(false)}
+          />
+        </Suspense>
+      ) : null}
 
       {deleteSheetVisible ? (
         <Suspense fallback={null}>

@@ -42,9 +42,9 @@
 -- suite. The fixture fingerprints are production's, probed once, and never move.
 -- [TEST-MOD-APPROVED #1984] Tip census was 20270705001984 (138→140).
 -- [TEST-MOD-APPROVED #3697] Tip census was 20270824003697 (140→145).
--- [TEST-MOD-APPROVED #3872] Tip census is now 20271216043872 (145→148). B2 re-applies
--- only #3872 M5 (no-op on tip). The (A) repair path applies #3055, #1982, #1984,
--- #3697, then #3872 M5 so it converges on (B).
+-- [TEST-MOD-APPROVED #3872] Tip census is now 20271229003872 (145→152). B2 re-applies
+-- only the convergent R2-R3 census (no-op on tip). The (A) repair path applies
+-- #3055, #1982, #1984, #3697, #3872 R1, then the R2-R3 census so it converges on (B).
 -- [TEST-MOD-APPROVED #1982] Tip census was 20270704001982 (137→138). B2 re-applies
 -- only #1982 (no-op on tip). The (A) repair path applies #3055 then #1982 so it converges on (B).
 -- =====================================================================================
@@ -293,7 +293,11 @@ BEGIN
     'ari.ads.get_ad_campaign_report',
     'ari.discounts.list',
     'ari.discounts.create',
-    'ari.discounts.pause');
+    'ari.discounts.pause',
+    'ari.referrals.list',
+    'ari.referrals.create',
+    'ari.referrals.invite_promoters',
+    'ari.creators.draft_gig_script');
   INSERT INTO public.ari_cert_capability_requirements (capability_id, evidence_mode)
   VALUES ('ari.guests.set_approval', 'write');
   UPDATE public.ari_cert_capability_requirements
@@ -330,12 +334,12 @@ END;
 $b1$;
 
 -- Tip census after #3872. Re-applying an older census on this tip would rewrite
--- finalize back and abort against 148 rows; B2 therefore proves the tip file
+-- finalize back and abort against fewer rows; B2 therefore proves the tip file
 -- is the no-op.
 -- [TEST-MOD-APPROVED #3872]
-\ir ../20271216043872_issue_3872_r1_host_operations.sql
+\ir ../20271229003872_issue_3872_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('B+repair');
-\ir ../20271216043872_issue_3872_r1_host_operations.sql
+\ir ../20271229003872_issue_3872_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('B+repair+repair');
 
 DO $b2$
@@ -431,11 +435,12 @@ ROLLBACK;
 \ir ../20270705001984_issue_1984_ari_cert_capability_census.sql
 \ir ../20270824003697_issue_3697_ari_cert_capability_census.sql
 \ir ../20271216043872_issue_3872_r1_host_operations.sql
+\ir ../20271229003872_issue_3872_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('A+repair');
 -- Second pass is tip-only: re-applying older censuses on the post-#3872 tip
--- would rewrite finalize and abort against 148 rows (same constraint as B2).
+-- would rewrite finalize and abort against fewer rows (same constraint as B2).
 -- [TEST-MOD-APPROVED #3872]
-\ir ../20271216043872_issue_3872_r1_host_operations.sql
+\ir ../20271229003872_issue_3872_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('A+repair+repair');
 
 DO $a2$

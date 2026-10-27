@@ -73,6 +73,10 @@ ari.venue.send_sms
 ari.discounts.list
 ari.discounts.create
 ari.discounts.pause
+ari.referrals.list
+ari.referrals.create
+ari.referrals.invite_promoters
+ari.creators.draft_gig_script
 ari.marketing.draft_campaign
 ari.marketing.schedule_campaign
 ari.marketing.send_now

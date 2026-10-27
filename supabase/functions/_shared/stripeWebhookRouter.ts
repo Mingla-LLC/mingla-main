@@ -1,7 +1,10 @@
 // @ts-ignore — Deno ESM import
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { StripeClient } from "./stripe.ts";
-import { classifyFeeRefundEvidence, listAllFeeRefunds } from "./issue2097TicketRefundTruth.ts";
+import {
+  classifyFeeRefundEvidence,
+  listAllFeeRefunds,
+} from "./issue2097TicketRefundTruth.ts";
 import {
   STRIPE_API_VERSION,
   stripeTicketCheckout,
@@ -77,6 +80,12 @@ import {
   handleStayStripePaymentEvent,
   isStayStripePaymentEvent,
 } from "./stayPaymentWebhook.ts";
+import {
+  handlePayeeStripeDisputeLoss,
+  handlePayeeStripeRefund,
+  handlePayeeStripeTransferReversed,
+  syncPayeeStripeAccount,
+} from "./payeeLedger.ts";
 // Issue #1790 (SPEC #1788 P-28) — venue menu orders, discriminated by the
 // `metadata.mingla_venue_order_id` marker Mingla sets at create. Checked before
 // the ticket finalize path so the two money paths never cross; the ticket path
@@ -97,6 +106,7 @@ export const STRIPE_ROUTED_EVENT_TYPES = [
   "payout.paid",
   "payout.failed",
   "payout.canceled",
+  "transfer.reversed",
   "charge.refund.updated",
   // ORCH-0787: subscribe to the modern Stripe refund event family for full coverage
   // beyond the legacy charge.refund.updated event. STRIPE_API_VERSION '2026-04-22.dahlia'
@@ -932,7 +942,8 @@ async function handleRefundEvent(
     ? metadata.mingla_order_id
     : null;
   const ticketRefundIdHint = typeof metadata.mingla_refund_id === "string" &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(metadata.mingla_refund_id)
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        .test(metadata.mingla_refund_id)
     ? metadata.mingla_refund_id
     : null;
 
@@ -1080,7 +1091,11 @@ async function handleRefundEvent(
     .select("id")
     .eq("buyer_refund_id", refundId)
     .maybeSingle();
-  if (truthAttemptError) throw new Error(`ticket refund attempt lookup failed: ${truthAttemptError.message}`);
+  if (truthAttemptError) {
+    throw new Error(
+      `ticket refund attempt lookup failed: ${truthAttemptError.message}`,
+    );
+  }
   if (truthAttempt) return brandId;
   // Crash recovery: Stripe may acknowledge the buyer Refund before the edge
   // function durably records its ID. Adopt only the exact local refund + PI,
@@ -1092,21 +1107,39 @@ async function handleRefundEvent(
       .eq("refund_id", ticketRefundIdHint)
       .eq("payment_intent_id", paymentIntentId)
       .maybeSingle();
-    if (pendingAttemptError) throw new Error(`ticket refund adoption lookup failed: ${pendingAttemptError.message}`);
+    if (pendingAttemptError) {
+      throw new Error(
+        `ticket refund adoption lookup failed: ${pendingAttemptError.message}`,
+      );
+    }
     if (pendingAttempt) {
       if (!pendingAttempt.buyer_refund_id) {
         const owner = crypto.randomUUID();
-        const { data: claim, error: claimError } = await supabase.rpc("issue_2097_claim_refund_attempt", { p_attempt_id: pendingAttempt.id, p_lease_owner: owner });
-        if (claimError) throw new Error(`ticket refund adoption claim failed: ${claimError.message}`);
+        const { data: claim, error: claimError } = await supabase.rpc(
+          "issue_2097_claim_refund_attempt",
+          { p_attempt_id: pendingAttempt.id, p_lease_owner: owner },
+        );
+        if (claimError) {
+          throw new Error(
+            `ticket refund adoption claim failed: ${claimError.message}`,
+          );
+        }
         if (claim?.claimed === true) {
-          const { error: adoptError } = await supabase.rpc("issue_2097_record_buyer_refund", {
-            p_attempt_id: pendingAttempt.id,
-            p_lease_owner: owner,
-            p_lease_epoch: claim.lease_epoch,
-            p_buyer_refund_id: refundId,
-            p_buyer_refund_amount_text: String(amountCents),
-          });
-          if (adoptError) throw new Error(`ticket refund adoption failed: ${adoptError.message}`);
+          const { error: adoptError } = await supabase.rpc(
+            "issue_2097_record_buyer_refund",
+            {
+              p_attempt_id: pendingAttempt.id,
+              p_lease_owner: owner,
+              p_lease_epoch: claim.lease_epoch,
+              p_buyer_refund_id: refundId,
+              p_buyer_refund_amount_text: String(amountCents),
+            },
+          );
+          if (adoptError) {
+            throw new Error(
+              `ticket refund adoption failed: ${adoptError.message}`,
+            );
+          }
         }
       }
       return brandId;
@@ -1412,49 +1445,100 @@ async function handleApplicationFeeRefund(
     objectString(feeRefund, "application_fee");
   const amount = Number(feeRefund.amount ?? 0);
   if (!sourceRefundId) {
-    if (!feeRefundId || !feeId) throw new Error("application_fee_refund_identity_missing");
+    if (!feeRefundId || !feeId) {
+      throw new Error("application_fee_refund_identity_missing");
+    }
     const { data: attempts, error: attemptError } = await supabase
       .from("ticket_refund_attempts")
-      .select("id,status,application_fee_id,application_fee_amount_text,baseline_fee_refund_ids,baseline_amount_refunded_text,currency,connected_account_id,charge_id")
+      .select(
+        "id,status,application_fee_id,application_fee_amount_text,baseline_fee_refund_ids,baseline_amount_refunded_text,currency,connected_account_id,charge_id",
+      )
       .eq("application_fee_id", feeId)
       .in("status", ["pending_visibility", "awaiting_application_fee"]);
-    if (attemptError) throw new Error(`ticket fee attempt lookup failed:${attemptError.message}`);
-    if (!attempts?.length) throw new Error("application_fee_refund_source_identity_missing");
+    if (attemptError) {
+      throw new Error(
+        `ticket fee attempt lookup failed:${attemptError.message}`,
+      );
+    }
+    if (!attempts?.length) {
+      throw new Error("application_fee_refund_source_identity_missing");
+    }
     // orch-strict-grep-allow stripe-no-idempotency-key — signed-webhook recovery performs read-only evidence lookup.
     const fee = await stripe.applicationFees.retrieve(feeId);
     const rows = await listAllFeeRefunds(async (startingAfter) => {
       // orch-strict-grep-allow stripe-no-idempotency-key — signed-webhook recovery paginates read-only evidence.
-      const page = await stripe.applicationFees.listRefunds(feeId, { limit: 100, ...(startingAfter ? { starting_after: startingAfter } : {}) });
-      return { data: page.data.map((row: { id: string; fee: string; amount: number; currency: string }) => ({ id: String(row.id), fee: String(row.fee), amount: row.amount, currency: String(row.currency) })), has_more: page.has_more === true };
+      const page = await stripe.applicationFees.listRefunds(feeId, {
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      });
+      return {
+        data: page.data.map((
+          row: { id: string; fee: string; amount: number; currency: string },
+        ) => ({
+          id: String(row.id),
+          fee: String(row.fee),
+          amount: row.amount,
+          currency: String(row.currency),
+        })),
+        has_more: page.has_more === true,
+      };
     });
-    const matches = attempts.map((attempt: any) => ({ attempt, decision: classifyFeeRefundEvidence({
-      applicationFeeId: feeId, currency: attempt.currency,
-      originalFeeAmount: attempt.application_fee_amount_text,
-      baselineAmountRefunded: attempt.baseline_amount_refunded_text,
-      baselineIds: attempt.baseline_fee_refund_ids,
-      afterAmountRefunded: fee.amount_refunded, afterRefunds: rows, listComplete: true,
-    }) })).filter(({ decision }: any) => decision.status === "succeeded_positive" && decision.feeRefundId === feeRefundId);
-    if (matches.length !== 1) throw new Error("ticket_fee_refund_attempt_identity_conflict");
+    const matches = attempts.map((attempt: any) => ({
+      attempt,
+      decision: classifyFeeRefundEvidence({
+        applicationFeeId: feeId,
+        currency: attempt.currency,
+        originalFeeAmount: attempt.application_fee_amount_text,
+        baselineAmountRefunded: attempt.baseline_amount_refunded_text,
+        baselineIds: attempt.baseline_fee_refund_ids,
+        afterAmountRefunded: fee.amount_refunded,
+        afterRefunds: rows,
+        listComplete: true,
+      }),
+    })).filter(({ decision }: any) =>
+      decision.status === "succeeded_positive" &&
+      decision.feeRefundId === feeRefundId
+    );
+    if (matches.length !== 1) {
+      throw new Error("ticket_fee_refund_attempt_identity_conflict");
+    }
     const { attempt, decision } = matches[0];
     if (decision.status !== "pending_visibility") {
       const leaseOwner = crypto.randomUUID();
-      const { data: claim, error: claimError } = await supabase.rpc("issue_2097_claim_refund_attempt", { p_attempt_id: attempt.id, p_lease_owner: leaseOwner });
-      if (claimError) throw new Error(`ticket fee claim failed:${claimError.message}`);
+      const { data: claim, error: claimError } = await supabase.rpc(
+        "issue_2097_claim_refund_attempt",
+        { p_attempt_id: attempt.id, p_lease_owner: leaseOwner },
+      );
+      if (claimError) {
+        throw new Error(`ticket fee claim failed:${claimError.message}`);
+      }
       if (claim?.claimed === true) {
-        const { error: finalizeError } = await supabase.rpc("issue_2097_finalize_refund_attempt", {
-          p_attempt_id: attempt.id,
-          p_lease_owner: leaseOwner,
-          p_lease_epoch: claim.lease_epoch,
-          p_status: decision.status,
-          p_fee_refund_id: decision.feeRefundId,
-          p_fee_refund_amount_text: decision.status === "succeeded_positive" ? decision.amountText : decision.observedAmountText,
-          p_after_amount_refunded_text: String(fee.amount_refunded),
-          p_stripe_event_id: event.id,
-        });
-        if (finalizeError) throw new Error(`ticket fee finalize failed:${finalizeError.message}`);
+        const { error: finalizeError } = await supabase.rpc(
+          "issue_2097_finalize_refund_attempt",
+          {
+            p_attempt_id: attempt.id,
+            p_lease_owner: leaseOwner,
+            p_lease_epoch: claim.lease_epoch,
+            p_status: decision.status,
+            p_fee_refund_id: decision.feeRefundId,
+            p_fee_refund_amount_text: decision.status === "succeeded_positive"
+              ? decision.amountText
+              : decision.observedAmountText,
+            p_after_amount_refunded_text: String(fee.amount_refunded),
+            p_stripe_event_id: event.id,
+          },
+        );
+        if (finalizeError) {
+          throw new Error(
+            `ticket fee finalize failed:${finalizeError.message}`,
+          );
+        }
       }
     }
-    return await brandIdForStripeAccount(supabase, attempt.connected_account_id);
+    return await brandIdForStripeAccount(
+      supabase,
+      attempt.connected_account_id,
+    );
   }
   const { data: operation, error } = await supabase.from("source_refunds")
     .select(
@@ -1827,7 +1911,9 @@ async function handleTicketCheckoutPaymentIntent(
         if (brandId && eventId) {
           const { data: orderRow } = await supabase
             .from("orders")
-            .select("total_cents, currency, pricing_breakdown, stripe_application_fee_amount_cents")
+            .select(
+              "total_cents, currency, pricing_breakdown, stripe_application_fee_amount_cents",
+            )
             .eq("id", orderId)
             .maybeSingle();
           const { count: ticketCount } = await supabase
@@ -2068,6 +2154,16 @@ export async function routeStripeEvent(
             : String(partnerSyncErr),
         );
       }
+      try {
+        await syncPayeeStripeAccount(supabase, event.data.object);
+      } catch (payeeSyncErr) {
+        console.error(
+          "[stripe-webhook] payee account sync failed (non-fatal)",
+          payeeSyncErr instanceof Error
+            ? payeeSyncErr.message
+            : String(payeeSyncErr),
+        );
+      }
       break;
     case "account.application.deauthorized":
       brandId = await handleDeauthorized(supabase, event);
@@ -2098,12 +2194,27 @@ export async function routeStripeEvent(
     case "payout.canceled":
       brandId = await handlePayout(supabase, event);
       break;
+    case "transfer.reversed":
+      await handlePayeeStripeTransferReversed(supabase, event.data.object);
+      break;
     // ORCH-0787: unified refund event family
     case "charge.refund.updated":
     case "charge.refunded":
     case "refund.created":
     case "refund.updated":
       brandId = await handleRefundEvent(supabase, event);
+      if (event.type !== "charge.refunded") {
+        try {
+          await handlePayeeStripeRefund(supabase, stripe, event.data.object);
+        } catch (payeeReversalErr) {
+          console.error(
+            "[stripe-webhook] payee reversal (refund) failed after refund commit",
+            payeeReversalErr instanceof Error
+              ? payeeReversalErr.message
+              : String(payeeReversalErr),
+          );
+        }
+      }
       // ORCH-1054: refund → reverse partner split (TransferReversal if
       // already transferred; mark reversed_pending otherwise). Only
       // charge.refunded carries the application_fee on the charge object;
@@ -2232,9 +2343,13 @@ export async function routeStripeEvent(
       // toward #3697 Wave 7c — Ads credit Checkout: do NOT credit here.
       // checkout.session.completed is not proof the PI succeeded (async methods).
       // Credit applies only on payment_intent.succeeded (above) or client apply.
-      if (isAdCreditTopUpStripeObject(event.data?.object as {
-        metadata?: Record<string, string> | null;
-      } | undefined)) {
+      if (
+        isAdCreditTopUpStripeObject(
+          event.data?.object as {
+            metadata?: Record<string, string> | null;
+          } | undefined,
+        )
+      ) {
         break;
       }
       brandId = await handleCheckoutSessionCompleted(supabase, event);
@@ -2246,6 +2361,20 @@ export async function routeStripeEvent(
         const stayBrandId = await handleStayStripeDispute(supabase, event);
         brandId = await handleChargeDispute(supabase, event);
         if (stayBrandId) brandId = stayBrandId;
+      }
+      try {
+        await handlePayeeStripeDisputeLoss(
+          supabase,
+          stripe,
+          event.data.object,
+        );
+      } catch (payeeReversalErr) {
+        console.error(
+          "[stripe-webhook] payee reversal (dispute) failed after dispute commit",
+          payeeReversalErr instanceof Error
+            ? payeeReversalErr.message
+            : String(payeeReversalErr),
+        );
       }
       // ORCH-1054: dispute → reverse partner split (TransferReversal if
       // already transferred; mark reversed_pending otherwise). Only fire

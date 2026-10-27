@@ -47,6 +47,7 @@ Deno.test("#3980 the Pipeline menu: To review, Work board, Agent log, Calendar, 
     [
       "hosts:Hosts:Handshake",
       "creators:Creators:Sparkles",
+      // [TEST-MOD-APPROVED #3872] walkthrough W4: Creator gigs left Pipeline for the Programs group.
       // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar together; the Agent log is a tab on Work.
       "drafts:Needs you:FileText",
       "work-board:Work:SquareKanban",

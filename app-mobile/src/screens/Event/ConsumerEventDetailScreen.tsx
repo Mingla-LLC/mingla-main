@@ -182,6 +182,7 @@ import { postHogService } from "../../services/postHogService";
 import { captureExplorerSearchOutcome } from "../../services/searchOutcome";
 import { shareContent } from "../../services/contentShareAdapter";
 import { glass } from "../../constants/designSystem";
+import { EarnBySharingCard } from "../../components/wallet/EarnBySharingCard";
 // ORCH-1162 Bug 2 — shared static-Mapbox builder (re-exported from
 // @mingla/offering-rendering) for the consumer EVENT "Where you'll be" map.
 import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
@@ -821,9 +822,13 @@ export default function ConsumerEventDetailScreen({
     const slug = seed?.brandSlug ?? brandSlug;
     const evSlug = seed?.eventSlug ?? eventSlug;
     if (slug !== undefined && evSlug !== undefined) {
-      void shareContent(isRsvp ? "rsvp_event" : "event", { brandSlug:slug, eventSlug:evSlug });
+      void shareContent(isRsvp ? "rsvp_event" : "event", {
+        brandSlug: slug,
+        eventSlug: evSlug,
+        eventId: !isRsvp ? eventId ?? undefined : undefined,
+      });
     }
-  }, [seed?.brandSlug, seed?.eventSlug, brandSlug, eventSlug, isRsvp]);
+  }, [seed?.brandSlug, seed?.eventSlug, brandSlug, eventSlug, eventId, isRsvp]);
 
   const tickets = canonical?.event.tickets ?? ticketsQuery.data ?? [];
 
@@ -1779,11 +1784,12 @@ export default function ConsumerEventDetailScreen({
                 FLOW-A modals) byte-identically with buyer-web/business; its
                 floating decision dock is pinned below. */}
             {!isRsvp ? (
-              /* ORCH-1167-R2 (change 4) — onTicketBoxLayout fires from the INLINE
+              <>
+              {/* ORCH-1167-R2 (change 4) — onTicketBoxLayout fires from the INLINE
                  TICKET BOX (section 5), NOT a wrapper around the whole body, so the
                  floating bar stays pinned through the cover + scroll and ducks away
                  only once the box is actually on-screen (was: hid right after the
-                 cover because it measured the body top). */
+                 cover because it measured the body top). */}
               <EventOfferingBody
                 event={publicEventForBody}
                 brand={{
@@ -1848,6 +1854,13 @@ export default function ConsumerEventDetailScreen({
                 refundHostName={seed.brandName}
                 testID="orch-1167-consumer-event-body"
               />
+              <EarnBySharingCard
+                listingKind="event"
+                listingId={seed.eventId}
+                title={seed.title}
+                onUnavailable={handleShare}
+              />
+              </>
             ) : (
               <RsvpOfferingBody
                 event={rsvpPublicEvent}
@@ -1954,6 +1967,14 @@ export default function ConsumerEventDetailScreen({
         isSubmitting={checkoutInFlight}
         pendingPhase={checkoutPhase}
         terminalOutcome={checkoutTerminalOutcome}
+        successFooter={
+          <EarnBySharingCard
+            listingKind="event"
+            listingId={seed.eventId}
+            title={seed.title}
+            compact
+          />
+        }
         multiDaySelection={multiDaySelection}
         hideRemainingCount={hideRemainingCount}
         clearFloatingNav={false}

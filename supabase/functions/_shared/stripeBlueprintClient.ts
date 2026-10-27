@@ -376,6 +376,45 @@ export function createRecipientAccount(
   });
 }
 
+/**
+ * #3872 R2: a referral payee only receives platform transfers. It is not a
+ * Mingla merchant and must never receive card_payments capability merely
+ * because the older host/partner blueprint carries both configurations.
+ */
+export function buildPayoutRecipientAccountBody(
+  input: Omit<CreateRecipientAccountInput, "idempotencyKey">,
+): Record<string, unknown> {
+  return {
+    configuration: {
+      recipient: {
+        capabilities: {
+          stripe_balance: {
+            stripe_transfers: { requested: true },
+          },
+        },
+      },
+    },
+    display_name: input.displayName,
+    contact_email: input.contactEmail,
+    ...STRIPE_MANAGED_RISK_CONTROLLER,
+    defaults: buildRecipientAccountDefaults(input),
+    include: ["configuration.recipient", "identity", "defaults"],
+    identity: { country: input.country },
+  };
+}
+
+export function createPayoutRecipientAccount(
+  input: CreateRecipientAccountInput,
+): Promise<StripeV2Account> {
+  return stripeBlueprintRequest<StripeV2Account>({
+    method: "POST",
+    path: "/v2/core/accounts",
+    envVarNames: ["STRIPE_RAK_ONBOARD"],
+    idempotencyKey: input.idempotencyKey,
+    body: buildPayoutRecipientAccountBody(input),
+  });
+}
+
 export function createAccountSession(
   input: CreateAccountSessionInput,
 ): Promise<StripeAccountSession> {
@@ -418,6 +457,34 @@ export function createRecipientAccountLink(
         },
       },
     },
+  });
+}
+
+export function buildPayoutRecipientAccountLinkBody(
+  input: Omit<CreateRecipientAccountLinkInput, "idempotencyKey">,
+): Record<string, unknown> {
+  return {
+    account: input.accountId,
+    use_case: {
+      type: "account_onboarding",
+      account_onboarding: {
+        configurations: ["recipient"],
+        refresh_url: input.refreshUrl,
+        return_url: input.returnUrl,
+      },
+    },
+  };
+}
+
+export function createPayoutRecipientAccountLink(
+  input: CreateRecipientAccountLinkInput,
+): Promise<StripeV2AccountLink> {
+  return stripeBlueprintRequest<StripeV2AccountLink>({
+    method: "POST",
+    path: "/v2/core/account_links",
+    envVarNames: ["STRIPE_RAK_ONBOARD"],
+    idempotencyKey: input.idempotencyKey,
+    body: buildPayoutRecipientAccountLinkBody(input),
   });
 }
 
