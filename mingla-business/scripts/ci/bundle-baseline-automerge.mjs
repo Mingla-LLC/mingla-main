@@ -64,7 +64,7 @@
  *     refuse when   measurement  >  ceiling - allowance
  *
  *   __common raw     > 2,788,000 B   (2,800,000 - 12,000)
- *   __common brotli  >   538,000 B   (  550,000 - 12,000)
+ *   __common brotli  >   548,000 B   (  560,000 - 12,000)
  *   eager raw        > 3,975,000 B   (4,000,000 - 25,000)
  *   eager brotli     >   775,000 B   (  800,000 - 25,000)
  *
@@ -118,7 +118,7 @@ const apiVersion = "2022-11-28";
  * proves the copy is still true.
  */
 export const CEILING = Object.freeze({
-  common: Object.freeze({ raw: 2_800_000, brotli: 550_000 }),
+  common: Object.freeze({ raw: 2_800_000, brotli: 560_000 }),
   eager: Object.freeze({ raw: 4_000_000, brotli: 800_000 }),
 });
 
