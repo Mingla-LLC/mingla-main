@@ -315,6 +315,9 @@ declare
     'crm_record_undo_stage_move','crm_record_set_owners','crm_record_log','crm_record_delete','crm_record_restore',
     'crm_home_summary','crm_team_summary','crm_target_set','crm_beta_leads_list','crm_beta_lead_to_host',
     'crm_contact_check'];
+  -- #4130: the Team dashboard reader is a separately guarded aggregate RPC,
+  -- with the public, pg_temp path from the approved admin contract.
+  c_later_readers constant text[] := array['crm_team_pulse'];
   r record;
   v_n int;
 begin
@@ -329,18 +332,25 @@ begin
   loop
     perform pg_temp.x_ok('XA-1', r.proname || ': has an explicit privilege list', r.proacl is not null);
     perform pg_temp.x_eq('XA-1', r.proname || ': grantees besides the owner', array_to_string(r.others, ','),
-      case when r.proname = any (c_client) then 'authenticated,service_role' else 'service_role' end);
-    perform pg_temp.x_ok('XA-1', r.proname || ': search path is pinned empty',
-      coalesce(r.proconfig, '{}') @> array['search_path=""'], coalesce(r.proconfig::text, 'none'));
+      case
+        when r.proname = any (c_client) then 'authenticated,service_role'
+        when r.proname = any (c_later_readers) then 'authenticated,service_role'
+        else 'service_role'
+      end);
+    perform pg_temp.x_ok('XA-1', r.proname || ': search path matches its declared contract',
+      case when r.proname = any (c_later_readers)
+        then coalesce(r.proconfig, '{}') @> array['search_path=public, pg_temp']
+        else coalesce(r.proconfig, '{}') @> array['search_path=""']
+      end, coalesce(r.proconfig::text, 'none'));
     perform pg_temp.x_ok('XA-1', r.proname || ': anon cannot execute', not has_function_privilege('anon', r.oid, 'EXECUTE'));
     perform pg_temp.x_ok('XA-1', r.proname || ': authenticator cannot execute', not has_function_privilege('authenticator', r.oid, 'EXECUTE'));
   end loop;
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname like 'crm\_%';
-  perform pg_temp.x_eq('XA-1', 'number of crm_ functions', v_n::text, '52');
+  perform pg_temp.x_eq('XA-1', 'number of crm_ functions', v_n::text, '53');
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-   where n.nspname = 'public' and p.proname = any (c_client) and p.prosecdef;
-  perform pg_temp.x_eq('XA-1', 'client functions that run with owner rights', v_n::text, '20');
+   where n.nspname = 'public' and p.proname = any (c_client || c_later_readers) and p.prosecdef;
+  perform pg_temp.x_eq('XA-1', 'client functions that run with owner rights', v_n::text, '21');
 
   -- Every other function with owner rights in this migration is pinned too.
   perform pg_temp.x_ok('XA-1', 'admin_beta_leads_list keeps a pinned search path',

@@ -47,7 +47,8 @@ function Skeleton({ label }) {
   );
 }
 
-function RunwayPanel({ runway }) {
+// #4130: the Team dashboard shows it collapsed at the bottom.
+export function RunwayPanel({ runway }) {
   const counts = runway?.counts || {};
   const atRisk = Array.isArray(runway?.at_risk) ? runway.at_risk : [];
   return (
@@ -142,7 +143,8 @@ function SprintPanel({ sprint, hostsWithoutOwner }) {
   );
 }
 
-function NextStepConversion({ online, team }) {
+// #4130: moved to Settings (Wave 4b renders it through NextStepsToCards).
+export function NextStepConversion({ online, team }) {
   const { addToast } = useToast();
   const [preview, setPreview] = useState(null);
   const [picked, setPicked] = useState([]);
@@ -281,4 +283,15 @@ export function TeamOpsPanels({ online }) {
       {canConvert && <NextStepConversion online={online} team={team} />}
     </div>
   );
+}
+
+/**
+ * #4130 (Wave 1): "Turn next steps into cards" on its own, for Settings. The
+ * owner only (the server refuses everyone else too); nothing for anyone else.
+ */
+export function NextStepsToCards({ online }) {
+  const config = useOpsConfig();
+  const team = Array.isArray(config.data?.team) ? config.data.team : [];
+  if (!config.data?.me?.can_convert) return null;
+  return <NextStepConversion online={online} team={team} />;
 }

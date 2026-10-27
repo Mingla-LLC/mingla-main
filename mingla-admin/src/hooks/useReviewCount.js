@@ -9,6 +9,7 @@ import * as ops from "../services/opsService";
 import { todayIso } from "../lib/opsModel";
 import { useDraftCountValue } from "./useDraftCounts";
 import { useOpsPoll } from "./useOpsWork";
+import { waitingCardsState } from "../lib/opsModel";
 
 export const REVIEW_CHANGED = "mingla:ops-review-changed";
 
@@ -20,7 +21,8 @@ export function announceReviewChange() {
 export function useReviewCount() {
   const { access } = useAuth();
   const drafts = useDraftCountValue();
-  const enabled = canOpenPage(access, "drafts");
+  // #4130: Needs you (#/drafts) was retired into Work; the count follows it.
+  const enabled = canOpenPage(access, "work-board");
   const counts = useOpsPoll(() => ops.fetchMyCounts(todayIso()), { key: access?.email || "", intervalMs: 30_000, enabled });
   const refetchCounts = counts.refetch;
   useEffect(() => {
@@ -37,5 +39,19 @@ export function useReviewCount() {
   // Loaded once both counts have answered (the work counts only when this
   // person can open the page).
   const loaded = drafts.data != null && (!enabled || counts.data != null);
-  return { waiting, needsPerson, draftNeeded, wording, total: waiting + needsPerson + draftNeeded + wording, loaded, refetch: counts.refetch };
+  // #4130: the Work menu entry's and the Dashboard's count, one definition
+  // with the Work board column and the Team dashboard: this person's own open
+  // cards whose status is "Waiting on a person", whatever the reason. A send
+  // card counts whether or not its draft is ready (ops_my_counts
+  // waiting_on_person_mine). Waiting drafts are not cards, so not in it.
+  const work = waitingCardsState({ enabled, data: counts.data, error: counts.error });
+  return {
+    waiting, needsPerson, draftNeeded, wording,
+    cards: work.cards,
+    cardsLoaded: work.status !== "loading",
+    cardsError: work.status === "error" ? counts.error : null,
+    total: waiting + needsPerson + draftNeeded + wording,
+    loaded,
+    refetch: counts.refetch,
+  };
 }

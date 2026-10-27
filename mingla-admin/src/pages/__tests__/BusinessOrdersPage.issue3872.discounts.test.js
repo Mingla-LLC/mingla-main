@@ -23,12 +23,15 @@ test("#3872 admin order detail renders discount truth", () => {
   assert.match(page, /label: `Discounts \(\$\{discountLines\.length\}\)`/);
 });
 
-test("#3872 admin list renders the read-only margin strip", () => {
-  assert.match(service, /admin_discount_margin_summary/);
-  assert.match(page, /Discount margin · last 30 days/);
-  assert.match(page, /buyer contact details are excluded/);
-  assert.match(page, /row\.discountedOrderCount/);
-  assert.match(page, /row\.discountCents/);
-  assert.match(page, /row\.marginCents/);
-  assert.match(page, /row\.negativeMarginCount/);
+// #4130: the old strip counted discounted orders but summed the margin of ALL
+// paid orders under that headline. Discounts (discounted orders only) and
+// margin are now two separate cards fed by admin_orders_overview.
+test("#3872 admin list shows discounts and margin as separate cards", () => {
+  assert.match(service, /admin_orders_overview/);
+  assert.match(page, /Discounts given, last 30 days/);
+  assert.match(page, /Mingla margin on sales, last 30 days/);
+  assert.match(page, /data\.discounts, "discount_cents"/);
+  assert.match(page, /data\.margin, "margin_cents"/);
+  assert.match(page, /below zero/);
+  assert.doesNotMatch(page, /D38/);
 });

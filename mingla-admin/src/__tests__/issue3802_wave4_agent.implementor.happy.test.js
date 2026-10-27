@@ -29,7 +29,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { PAGE_AREA_OVERRIDES, areaForPage, canOpenPage, pageTitle, resolveRoute, visibleNavGroups } from "../lib/access.js";
-import { NAV_GROUPS, NAV_ITEMS } from "../lib/constants.js";
+import { HEADER_PAGE_ITEMS, NAV_GROUPS, NAV_ITEMS } from "../lib/constants.js";
 import {
   AGENTS,
   AGENT_ABILITIES,
@@ -86,6 +86,8 @@ const LIB = read("lib/agentConnect.js");
 const SIDEBAR = read("components/layout/Sidebar.jsx");
 const PALETTE = read("components/CommandPalette.jsx");
 const SHELL = read("components/layout/AppShell.jsx");
+// #4130: My agent and Guide are opened from the header.
+const HEADER = read("components/layout/Header.jsx");
 const PARTS = ["AgentKeyCard.jsx", "AgentConnectSteps.jsx", "AgentTeamList.jsx", "CopyBlock.jsx", "AgentSetupCard.jsx", "AgentAdvanced.jsx"].map((f) => [f, read(path.join("components", "agent", f))]);
 const ALL_AGENT_SRC = [["AgentPage", PAGE], ["teamAgentService", SERVICE], ["useAgentKeys", HOOK], ["agentConnect", LIB], ...PARTS];
 const GUIDE_PAGE = read("pages/GuidePage.jsx");
@@ -113,38 +115,33 @@ describe("#3802 A-1: who may open My agent, and where it sits", () => {
     assert.deepEqual(resolveRoute("agent", growth, ["home", "agent"]), { pageId: "agent", denied: false, requestedId: "agent" });
     assert.deepEqual(resolveRoute("agent", person("growth", ["role_home"]), ["home", "agent"]), { pageId: "home", denied: true, requestedId: "agent" });
   });
-  it("sits immediately before Guide in the System group, the last group, in the menu each role is shown", () => {
-    // [TEST-MOD-APPROVED ISSUE-3802] was: its own "Help" group, after "Team".
+  // #4130: My agent and Guide left the menu for the header (profile menu and
+  // ? help button); their routes, access and titles are unchanged.
+  it("sits in the header's profile menu, beside the ? Guide button, for each role that may open it", () => {
     const groups = (a) => visibleNavGroups(NAV_GROUPS, a);
     for (const a of [growth, partner]) {
-      // [TEST-MOD-APPROVED #3802] Drafts to send is now the third pipeline page.
-      // [TEST-MOD-APPROVED #3980] the Work board and Agent log sit in the Pipeline group.
-      // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work.
-      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "hosts", "creators", "drafts", "work-board", "content-calendar", "beta-leads", "agent", "guide"], a.role);
+      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "work-board", "outreach", "inbound", "content-calendar"], a.role);
     }
     for (const a of [owner, admin, growth, partner]) {
-      const shown = groups(a);
-      const system = shown.at(-1);
-      assert.equal(system.label, "System", a.role);
-      assert.equal(`${system.items.at(-2).id}:${system.items.at(-2).label}:${system.items.at(-2).icon}`, "agent:My agent:Bot");
-      assert.equal(`${system.items.at(-1).id}:${system.items.at(-1).label}:${system.items.at(-1).icon}`, "guide:Guide:BookOpen");
-      assert.equal(shown.slice(0, -1).some((g) => g.items.some((i) => i.id === "agent")), false);
+      assert.equal(groups(a).some((g) => g.items.some((i) => i.id === "agent" || i.id === "guide")), false, a.role);
+      assert.equal(canOpenPage(a, "agent"), true, a.role);
     }
-    // The two non-admin roles are shown nothing else from System.
-    for (const a of [growth, partner]) assert.deepEqual(groups(a).at(-1).items.map((i) => i.id), ["agent", "guide"]);
-    assert.equal(NAV_GROUPS.at(-1).label, "System");
-    assert.equal(NAV_GROUPS.filter((g) => g.label === "System").length, 1);
+    assert.deepEqual(HEADER_PAGE_ITEMS, [{ id: "agent", label: "My agent" }, { id: "guide", label: "Guide" }]);
+    assert.ok(HEADER.includes('canOpenPage(access, "agent")') && HEADER.includes('openPage("agent")'));
+    assert.ok(HEADER.includes('canOpenPage(access, "guide")') && HEADER.includes('openPage("guide")'));
     assert.equal(NAV_GROUPS.some((g) => g.label === "Help"), false);
-    // Someone with no pipelines area is shown no System group at all.
+    // Someone with no pipelines area is shown no menu group beyond Home.
     assert.deepEqual(groups(person("growth", ["role_home"])).map((g) => g.label), [null]);
   });
   it("the menu, the title and the command palette all know it", () => {
     assert.ok(SIDEBAR.includes("const groups = visibleNavGroups(NAV_GROUPS, access);"), "the menu is drawn from the one list, like every other group");
-    assert.ok(/\bBot,\n/.test(SIDEBAR) && /\n {2}Bot,\n/.test(SIDEBAR), "the Bot icon is imported and registered");
-    assert.equal(NAV_ITEMS.find((i) => i.id === "agent")?.label, "My agent");
-    assert.equal(pageTitle("agent", growth, NAV_ITEMS), "My agent");
-    assert.ok(SHELL.includes("pageTitle(activeTab, access, NAV_ITEMS)"));
-    assert.ok(PALETTE.includes("[...TEAM_NAV_GROUP.items, ...NAV_ITEMS].filter((p) => canOpenPage(access, p.id))"));
+    assert.ok(/import \{ Bot, [^}]*\} from "lucide-react";/.test(HEADER) && HEADER.includes("<Bot "), "the header draws the Bot icon for the profile menu");
+    assert.equal(HEADER_PAGE_ITEMS.find((i) => i.id === "agent")?.label, "My agent");
+    assert.equal(pageTitle("agent", growth, [...NAV_ITEMS, ...HEADER_PAGE_ITEMS]), "My agent");
+    // #4130 (Wave 6): every page lights its own menu entry, so the shell titles
+    // the page id itself (the Community & Support stand-in id is gone).
+    assert.ok(SHELL.includes("pageTitle(activeTab, access, [...NAV_ITEMS, ...HEADER_PAGE_ITEMS])"));
+    assert.ok(PALETTE.includes("[...TEAM_NAV_GROUP.items, ...NAV_ITEMS, ...HEADER_PAGE_ITEMS].filter((p) => canOpenPage(access, p.id))"));
   });
 });
 
@@ -760,7 +757,8 @@ describe("#3802 PR-D: Guide, prompts and counts-only agent outcomes", () => {
     for (const a of [owner, admin, growth, partner]) assert.equal(canOpenPage(a, "guide"), true, a.role);
     assert.ok(APP.includes('import { GuidePage } from "./pages/GuidePage";'));
     assert.match(APP, /\n {2}guide: GuidePage,/);
-    assert.deepEqual(NAV_GROUPS.at(-1).items.slice(-2).map((item) => item.id), ["agent", "guide"]);
+    // #4130: Guide opens from the header's ? help button, after My agent in HEADER_PAGE_ITEMS.
+    assert.deepEqual(HEADER_PAGE_ITEMS.map((item) => item.id), ["agent", "guide"]);
     assert.deepEqual(GUIDE_TABS.map((tab) => tab.id), ["stages", "icp", "agent", "rules"]);
     assert.match(GUIDE_PAGE, /requested && requested !== tab[\s\S]*setSearch\("tab=stages", \{ replace: true \}\)/);
     assert.match(GUIDE_PAGE, /const changeTab = \(next\) => setSearch\(`tab=\$\{next\}`\)/);

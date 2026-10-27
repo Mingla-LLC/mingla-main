@@ -44,6 +44,7 @@ import { PushBackForm } from "./PushBackForm";
 import { CardHistory } from "./CardHistory";
 import { NoteBox } from "./NoteBox";
 import { AUTO_GROW_CLASS, useAutoGrow } from "./useAutoGrow";
+import { CardDrafts, CardWording } from "./CardPersonPanels";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60 ${FOCUS}`;
@@ -232,6 +233,10 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
           {anchorWords.rest}
         </p>
       )}
+
+      {/* #4130: what the old Needs you page did lives on the card itself. */}
+      <CardDrafts card={card} />
+      <CardWording card={card} onChanged={refresh} />
 
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
         <PeopleField

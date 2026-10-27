@@ -101,7 +101,8 @@ Deno.test("the Support desk no longer grants Support and links to People and rol
   assertEquals(desk.includes("support-grant-staff"), false);
   assertEquals(/>\s*Agents\s*</.test(desk) || desk.includes("Support agents"), false, "no Agents button or modal");
   assertMatch(desk, /Manage who's on Support/);
-  assertMatch(desk, /"#\/community-support\?tab=team"/);
+  // #4130 Wave 6: People and roles is a tab of the Support page.
+  assertMatch(desk, /"#\/support\?tab=team"/);
 });
 
 Deno.test("the availability refusal says where Support is turned on", () => {

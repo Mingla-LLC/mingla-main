@@ -412,11 +412,28 @@ export function parseMigration(name, rawSql) {
     "gi",
   );
   while ((m = tableRe.exec(top))) definitions.add(`table:${bareName(m[1])}`);
-  const colRe = new RegExp(
-    `\\bALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:ONLY\\s+)?${QUALIFIED}\\s+ADD\\s+COLUMN\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${IDENT})`,
+  // #4130: read EVERY `ADD COLUMN` clause of an ALTER TABLE statement, not only
+  // the first. `ALTER TABLE public.orders ADD COLUMN a …, ADD COLUMN
+  // refunded_amount_cents …;` (orch_0787) defines both columns; reading only
+  // the first left the model believing `orders.refunded_amount_cents` existed
+  // solely via a later skipped migration, so a real, replay-clean reference
+  // was reported as a closure break. Only real definitions are credited: the
+  // clause must sit inside an ALTER TABLE statement (up to its `;`) and must
+  // spell `ADD COLUMN`, exactly as the single-clause form already required
+  // (a bare `ADD x` is never read, so `ADD CONSTRAINT` cannot pose as a column).
+  const alterRe = new RegExp(
+    `\\bALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:ONLY\\s+)?${QUALIFIED}\\s[^;]*`,
     "gi",
   );
-  while ((m = colRe.exec(top))) definitions.add(`col:${bareName(m[1])}`);
+  const colRe = new RegExp(
+    `\\bADD\\s+COLUMN\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${IDENT})`,
+    "gi",
+  );
+  while ((m = alterRe.exec(top))) {
+    let c;
+    colRe.lastIndex = 0;
+    while ((c = colRe.exec(m[0]))) definitions.add(`col:${bareName(c[1])}`);
+  }
 
   // Every identifier this file mentions where PostgreSQL resolves names at
   // CREATE time. Lowercased: unquoted SQL identifiers are case-insensitive.

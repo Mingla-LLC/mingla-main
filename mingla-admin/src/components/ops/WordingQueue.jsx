@@ -20,7 +20,8 @@ import { opsErrorWords, proofFromLines, todayIso } from "../../lib/opsModel";
 const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
-function WordingCard({ card, myName, onDone }) {
+// #4130 (Wave 1): also opened inside a roadmap wording card's Work drawer.
+export function WordingCard({ card, myName, onDone }) {
   const { addToast } = useToast();
   const draft = card.roadmap || {};
   const [title, setTitle] = useState(draft.public_title || "");
@@ -70,7 +71,7 @@ function WordingCard({ card, myName, onDone }) {
         )}
         <div className="flex min-w-0 flex-wrap gap-2">
           {draft.id && <Button className="min-h-11" loading={busy === "publish"} disabled={!!busy || title.trim().length < 1} onClick={publish}>Publish</Button>}
-          <a href="#/community-support?tab=announcements" className={`inline-flex min-h-11 items-center rounded-lg border border-[var(--gray-300)] px-3 text-[13px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] ${FOCUS}`}>Write an announcement</a>
+          <a href="#/community?tab=announcements" className={`inline-flex min-h-11 items-center rounded-lg border border-[var(--gray-300)] px-3 text-[13px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] ${FOCUS}`}>Write an announcement</a>
           <Button variant="ghost" className="min-h-11" loading={busy === "decline"} disabled={!!busy} onClick={notNeeded}>Not needed</Button>
         </div>
       </div>

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "mingla-admin/src/__tests__/issue_4130_wave2b_limits.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4130-w2b-admin-limits",
+  "profile": "deno-1.46-stripe"
+}

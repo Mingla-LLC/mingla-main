@@ -173,18 +173,23 @@ describe("ORCH-1272 — nav + routing repointed", () => {
   it("NAV_GROUPS 'Business' group has People + Brands (business-console removed)", () => {
     const biz = NAV_GROUPS.find((g) => g.label === "Business");
     assert.ok(biz, "Business group present");
-    assert.ok(biz.items.some((i) => i.id === "business-people" && i.icon === "Users"));
-    assert.ok(biz.items.some((i) => i.id === "business-brands" && i.icon === "Building2"));
+    // #4130: People and Brands are the menu entries; the consoles are their tabs.
+    assert.ok(biz.items.some((i) => i.id === "people" && i.icon === "Users"));
+    assert.ok(biz.items.some((i) => i.id === "brands" && i.icon === "Building2"));
     assert.ok(!biz.items.some((i) => i.id === "business-console"), "placeholder item removed");
-    assert.ok(NAV_ITEMS.some((i) => i.id === "business-people"));
-    assert.ok(NAV_ITEMS.some((i) => i.id === "business-brands"));
+    assert.ok(NAV_ITEMS.some((i) => i.id === "people"));
+    assert.ok(NAV_ITEMS.some((i) => i.id === "brands"));
   });
   it("App.jsx routes #/business-people + #/business-brands (business-console gone)", () => {
     const app = readSrc("App.jsx");
-    assert.match(app, /import \{ PeopleConsolePage \} from "\.\/pages\/PeopleConsolePage"/);
-    assert.match(app, /import \{ BrandsConsolePage \} from "\.\/pages\/BrandsConsolePage"/);
-    assert.match(app, /"business-people": PeopleConsolePage/);
-    assert.match(app, /"business-brands": BrandsConsolePage/);
+    // #4130 (Wave 3): People and Brands open each console as the full record
+    // of a person or brand (#/people?view=record, #/brands?view=record).
+    const people = readSrc("pages/PeoplePage.jsx");
+    const brands = readSrc("pages/BrandsPage.jsx");
+    assert.match(people, /import \{ PeopleConsolePage \} from "\.\/PeopleConsolePage"/);
+    assert.match(brands, /import \{ BrandsConsolePage \} from "\.\/BrandsConsolePage"/);
+    assert.match(app, /people: PeoplePage/);
+    assert.match(app, /brands: BrandsPage/);
     assert.doesNotMatch(app, /"business-console"/);
     assert.doesNotMatch(app, /BusinessConsolePage/);
   });

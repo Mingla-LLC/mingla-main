@@ -58,7 +58,8 @@ Deno.test("#3980 W4 rework P2-3: a tick past 100 does nothing; untick and First 
 });
 
 Deno.test("#3980 W4 rework P2-3: the panel offers Select none and First 100 and never more than 100 ticked", () => {
-  const page = code("pages/TeamDashboardPage.jsx");
+  // #4130: the brands panel moved from the Team dashboard to components/ops/TeamSettingsPanels.jsx (Settings renders it).
+  const page = code("components/ops/TeamSettingsPanels.jsx");
   assertMatch(page, /onClick=\{\(\) => setPicked\(\[\]\)\}>Select none<\/Button>/);
   assertMatch(page, /onClick=\{\(\) => setPicked\(brandFirstPicked\(rows\)\)\}>First \{BRAND_CONFIRM_MAX\}<\/Button>/);
   assertMatch(page, /setPicked\(brandDefaultPicked\(answer\?\.rows\)\)/);
@@ -70,7 +71,8 @@ Deno.test("#3980 W4 rework P2-3: the panel offers Select none and First 100 and 
 });
 
 Deno.test("#3980 W4 rework P2-4: opening the dashboard reads the count only; the preview is paged with Show more", () => {
-  const page = code("pages/TeamDashboardPage.jsx");
+  // #4130: the brands panel moved from the Team dashboard to components/ops/TeamSettingsPanels.jsx (Settings renders it).
+  const page = code("components/ops/TeamSettingsPanels.jsx");
   const at = page.indexOf("function BrandCardsBackfill");
   const effect = page.slice(at, page.indexOf("if (!canEdit) return null;", at));
   assertMatch(effect, /ops\.countBrandCards\(\)/);
@@ -92,7 +94,8 @@ Deno.test("#3980 W4 rework P1-1: a decided brand says who decided and when, and 
   assertEquals(brandDecidedWords({ by_name: "Seth", at: "2026-09-30T08:00:00Z" }), "Decided by Seth on 30 Sep 2026");
   assertEquals(brandSelectable(decided), false);
   assertEquals(brandDefaultPicked([{ ...decided, action: "link" }, { brand_id: "n1", action: "create" }]), ["n1"]);
-  const page = code("pages/TeamDashboardPage.jsx");
+  // #4130: the brands panel moved from the Team dashboard to components/ops/TeamSettingsPanels.jsx (Settings renders it).
+  const page = code("components/ops/TeamSettingsPanels.jsx");
   assertMatch(page, /\{brandDecidedWords\(r\.decided\)\}\. Mingla leaves this brand as it is\./);
 });
 

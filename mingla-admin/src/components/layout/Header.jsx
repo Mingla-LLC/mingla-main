@@ -1,8 +1,9 @@
-import { Menu, Moon, PanelLeft, Search, Sun } from "lucide-react";
+import { Bot, CircleHelp, Menu, Moon, PanelLeft, Search, Sun } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { Breadcrumbs } from "../ui/Breadcrumbs";
 import { useAuth } from "../../context/AuthContext";
-import { AREA } from "../../lib/access";
+import { AREA, canOpenPage } from "../../lib/access";
+import { Dropdown, DropdownItem, DropdownLabel } from "../ui/Dropdown";
 import { NAV_GROUPS } from "../../lib/constants";
 import { breadcrumbFor } from "../../lib/shellNav";
 
@@ -20,9 +21,18 @@ function searchShortcut() {
 // (--header-height) and its content starts on the page gutter, the same edge
 // every page starts on. `title` is the page's own title, already resolved for
 // this person (a role home reads "My day" or "Company view").
+//
+// #4130 (Wave 0): My agent and Guide left the menu. Guide opens from the ?
+// help button, My agent from the profile menu; both keep their routes.
 export function Header({ activeTab, title, collapsed, onToggleCollapsed, onMobileMenuOpen, onOpenSearch }) {
   const { theme, toggleTheme } = useTheme();
-  const { access } = useAuth();
+  const { access, session } = useAuth();
+  const canOpenGuide = canOpenPage(access, "guide");
+  const canOpenAgent = canOpenPage(access, "agent");
+  // An address change, like every menu click: App picks the page from it.
+  const openPage = (id) => {
+    window.location.hash = `#/${id}`;
+  };
   // The same words the search box itself uses (components/CommandPalette.jsx).
   const searchesEverything = !!access && access.status === "active" && access.areas.includes(AREA.ADMIN_CONSOLE);
   const searchLabel = searchesEverything ? "Search pages, users, places" : "Search pages";
@@ -81,6 +91,38 @@ export function Header({ activeTab, title, collapsed, onToggleCollapsed, onMobil
           </span>
           Live
         </div>
+
+        {canOpenGuide && (
+          <button
+            type="button"
+            onClick={() => openPage("guide")}
+            className={ICON_BUTTON}
+            aria-label="Help: open the Guide"
+            title="Guide"
+          >
+            <CircleHelp aria-hidden="true" className="h-4 w-4" />
+          </button>
+        )}
+
+        {canOpenAgent && (
+          <Dropdown
+            ariaLabel="Profile menu"
+            trigger={
+              <span className={ICON_BUTTON} title="Profile">
+                <Bot aria-hidden="true" className="h-4 w-4" />
+              </span>
+            }
+          >
+            {(close) => (
+              <>
+                {session?.user?.email && <DropdownLabel>{session.user.email}</DropdownLabel>}
+                <DropdownItem onClick={() => openPage("agent")} onClose={close}>
+                  My agent
+                </DropdownItem>
+              </>
+            )}
+          </Dropdown>
+        )}
 
         <button
           type="button"

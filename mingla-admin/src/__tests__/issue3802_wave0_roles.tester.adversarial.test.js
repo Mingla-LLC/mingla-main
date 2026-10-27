@@ -41,6 +41,8 @@ import {
   parseInviteHash,
 } from "../lib/inviteLink.js";
 import { NAV_GROUPS } from "../lib/constants.js";
+// #4130: a page's own access, before pages were merged.
+import { canOpenOwnPage } from "../lib/access.js";
 
 const VALID = "A".repeat(43);
 const owner = { email: "o@x", role: "owner", status: "active", areas: ["admin_console", "team_manage", "crm", "beta_leads"] };
@@ -206,7 +208,11 @@ describe("#3802 AC-6: the menu never leaks a forbidden page", () => {
   it("an admin sees the console but not Team and roles", () => {
     const ids = visibleNavGroups(NAV_GROUPS, admin).flatMap((g) => g.items.map((i) => i.id));
     assert.ok(ids.includes("overview"), "dashboard");
-    assert.ok(!ids.includes("admin"), "Team and roles is the owner's alone");
+    // #4130 (Seth): Team and roles is the owner's alone again; Careers is
+    // its own menu entry, open to admins.
+    assert.ok(!ids.includes("admin"), "no Team and roles");
+    assert.equal(canOpenOwnPage(admin, "admin"), false, "Team and roles is the owner's alone");
+    assert.ok(ids.includes("careers"), "Careers is open to admins");
     assert.ok(!ids.includes("home"), "admin has no role home");
   });
   it("the owner sees Team and roles; a malformed access sees an empty menu", () => {

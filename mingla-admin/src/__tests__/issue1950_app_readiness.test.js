@@ -45,9 +45,13 @@ test("#1950 URL and analytics helpers serialize only controlled values", () => {
 test("#1950 Admin IA, a11y, responsive, audited certification boundary, and web behavior stay explicit", () => {
   const page=read("src/pages/AdEnginePage.jsx"), panel=read("src/components/app-readiness/AppDownloadReadinessPanel.jsx"), selector=read("src/components/app-readiness/TargetSelector.jsx"), row=read("src/components/app-readiness/ProviderReadinessRow.jsx"), evidence=read("src/components/app-readiness/ReadinessEvidence.jsx"), boundary=read("src/components/app-readiness/FutureAppCampaignBoundary.jsx"), shell=read("src/components/layout/AppShell.jsx"), card=read("src/components/ui/Card.jsx"), service=read("src/services/adEngineService.js");
   assert.ok(page.indexOf("<AdConnectionsPanel />") < page.indexOf("<AppDownloadReadinessPanel />"));
-  assert.ok(page.indexOf("<AppDownloadReadinessPanel />") < page.indexOf("Governed campaign operations"));
+  // #4130: Wave 4b rewrote the Ads headings in plain words ("Governed campaign operations" is now
+  // "How campaigns are made", "Channel preflight" is now "Check the ad platforms"). The order is
+  // anchored on the section's stable heading id so later wording changes cannot break it.
+  assert.ok(page.indexOf("<AppDownloadReadinessPanel />") < page.indexOf('id="governed-campaign-operations-heading"'));
+  assert.ok(page.indexOf('id="governed-campaign-operations-heading"') > -1);
   assert.doesNotMatch(page,/AppIdentityReadinessPanel/);
-  assert.match(page,/Campaign work/); assert.match(page,/Channel preflight/);
+  assert.match(page,/Campaign work/); assert.match(page,/title="Check the ad platforms"/);
   assert.doesNotMatch(page,/createCampaign|campaignAction|budget_usd/);
   assert.match(panel,/aria-live="polite"/); assert.match(panel,/aria-busy/); assert.match(panel,/visibilitychange/); assert.match(panel,/window\.setInterval/); assert.match(selector,/role="tablist"/); assert.match(selector,/type="radio"/); assert.match(row,/aria-expanded/); assert.match(evidence,/<dl/);
   assert.match(boundary,/Native-app certification/); assert.match(boundary,/LAUNCH CERTIFICATION/); assert.match(boundary,/Stop and confirm provider/); assert.match(boundary,/Record bounded evidence/); assert.doesNotMatch(boundary,/coming later/);

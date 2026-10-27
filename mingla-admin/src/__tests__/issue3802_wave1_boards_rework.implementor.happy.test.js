@@ -452,7 +452,8 @@ describe("#3802 R-8: the smaller items", () => {
     assert.ok(HEADER.includes("items={breadcrumbFor(activeTab, title, NAV_GROUPS)}"));
     assert.equal(/["']Admin["']/.test(HEADER), false);
     assert.deepEqual(breadcrumbFor("home", "My day", NAV_GROUPS), [{ label: "My day" }]);
-    assert.deepEqual(breadcrumbFor("hosts", "Hosts", NAV_GROUPS), [{ label: "Pipeline" }, { label: "Hosts" }]);
+    // #4130: the boards are tabs of Hosts and creators, in the Outreach group.
+    assert.deepEqual(breadcrumbFor("outreach", "Hosts and creators", NAV_GROUPS), [{ label: "Outreach" }, { label: "Hosts and creators" }]);
   });
 
   it("both keys in the key factory are used", () => {

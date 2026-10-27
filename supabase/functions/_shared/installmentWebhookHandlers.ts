@@ -25,6 +25,10 @@
 // @ts-ignore — Deno ESM import
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { writeAudit } from "./audit.ts";
+import {
+  installmentFeeCents,
+  resolveInstallmentFeeRate,
+} from "./installments/installmentFeeRate.ts";
 // The one reader of a PaymentIntent's charge id. The router imports this
 // module too; the cycle is safe because both sides only export function
 // declarations and neither calls the other while the module loads.
@@ -135,17 +139,24 @@ export async function handleInstallmentPaymentSucceeded(
     throw new Error(`installment collected update failed: ${error.message}`);
   }
 
-  const applicationFeeFromPi = (piObj: Record<string, unknown>, amountCents: number): number => {
+  // The fee Stripe actually took; if the PaymentIntent does not carry it, the
+  // brand's effective rate (the same one createInstallmentPI charged).
+  const applicationFeeFromPi = async (
+    piObj: Record<string, unknown>,
+    amountCents: number,
+  ): Promise<number> => {
     const appFeeRaw = piObj["application_fee_amount"];
-    return typeof appFeeRaw === "number"
-      ? Math.max(0, Math.trunc(appFeeRaw))
-      : Math.round(amountCents * 0.045);
+    if (typeof appFeeRaw === "number") return Math.max(0, Math.trunc(appFeeRaw));
+    return installmentFeeCents(
+      amountCents,
+      await resolveInstallmentFeeRate(supabase, brandId),
+    );
   };
 
   const recordProviderSaleOrThrow = async (
     amountCents: number,
   ): Promise<void> => {
-    const applicationFeeAmountCents = applicationFeeFromPi(pi, amountCents);
+    const applicationFeeAmountCents = await applicationFeeFromPi(pi, amountCents);
     const { data: feeRpcData, error: feeRpcError } = await supabase.rpc(
       "record_order_installment_provider_sale",
       {

@@ -120,12 +120,16 @@ Deno.test("ORCH-0869 cron: card-only payment_method_types for installments (SPEC
   );
 });
 
-Deno.test("ORCH-0869 cron: application_fee_amount per #3645 flat 4.5% rate", () => {
+Deno.test("ORCH-0869 cron: application_fee_amount at the brand's effective rate (#3645, #4130)", () => {
+  // #4130: the hard-coded 0.045 ignored brand overrides; the rate now comes
+  // from the brand's effective take rate + service fee (behaviour proven in
+  // _shared/installments/__tests__/issue_4130_installment_fee_rate.implementor.test.ts).
   assertMatch(
     HELPER_SOURCE,
-    /MINGLA_APPLICATION_FEE_RATE\s*=\s*0\.045/,
-    "Mingla platform cut = 4.5% per #3645; installments inherit.",
+    /resolveInstallmentFeeRate\(supabase, brand\.id\)/,
+    "Instalment fee must read the brand's effective rate; installments inherit.",
   );
+  assert(!/0\.045/.test(HELPER_SOURCE), "no hard-coded 4.5% left in the instalment helper");
   assertMatch(
     HELPER_SOURCE,
     /application_fee_amount:\s*applicationFeeAmountCents/,

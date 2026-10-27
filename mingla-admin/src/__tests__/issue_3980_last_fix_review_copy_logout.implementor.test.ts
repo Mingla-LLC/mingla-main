@@ -42,14 +42,16 @@ const copySource = page.slice(copyStart, copyEnd);
 
 type Review = { data: { draft_needed?: unknown[] } | null; error: unknown };
 function emptyCopyFor(review: Review, countSaysDraftNeeded: number, state = "waiting", filtered = false) {
+  // #4130: the page also runs embedded in a Work drawer; this is the page itself (embedded = null).
   const run = new Function(
-    "review", "query", "filtered", "reviewCount", "useDraftNeededReview",
+    "review", "query", "filtered", "reviewCount", "useDraftNeededReview", "embedded",
     `${cardsSource}\n${copySource}\nreturn { emptyTitle, emptyCopy };`,
   );
   return run(
     { tab: "messages" }, { state }, filtered,
     { draftNeeded: countSaysDraftNeeded, total: countSaysDraftNeeded },
     () => review,
+    null,
   ) as { emptyTitle: string; emptyCopy: string };
 }
 

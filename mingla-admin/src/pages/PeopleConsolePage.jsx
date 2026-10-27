@@ -542,6 +542,7 @@ export function PeopleConsolePage() {
         title="Business accounts"
         columns={COLUMNS}
         fetchPage={listAccounts}
+        serverSort
         searchPlaceholder="Search business, name, email, or phone…"
         filters={FILTERS}
         onRowClick={(row) => openUser(row.id)}

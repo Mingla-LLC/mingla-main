@@ -1,171 +1,157 @@
 // ORCH-1273 [Admin Offerings console — READ-ONLY] — Offerings console.
+// Issue #4130 (Wave 3) — rebuilt list: opens on "On sale and upcoming" (not
+// far-future drafts), one state per row, sold / going counts, a KPI row, and
+// offerings of deleted or staff/test brands hidden unless asked for. Served by
+// the admin-only admin_offerings_summary + admin_list_offerings_board RPCs.
 //
-// ONE cross-brand list over public.events (event / rsvp / trip / experience),
-// served by the guard-first admin_list_offerings RPC (server-computed lifecycle
-// bucket + per-row child counts). MUST surface DRAFT / PRIVATE / cross-brand rows
-// (the whole point of the console). Row click → the type-aware OfferingDetailView.
-//
-// READ-ONLY (visibility-first). No edit / mutation. Every wave-2 offering action
-// (unpublish / cancel / close-bookings / price fix …) is deferred to a later ORCH
-// via the ORCH-1271 audited-write primitive (SPEC §6).
+// Row click → the type-aware OfferingDetailView (#/business-offerings?offeringId=<id>).
+// READ-ONLY list: no edit or mutation here; offering actions live in the detail.
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { CalendarDays } from "lucide-react";
 import { EntityListView } from "../components/entity/EntityListView";
 import { Badge } from "../components/ui/Badge";
-import { listOfferings, listOfferingBrands } from "../services/offeringsService";
+import { LoadError } from "../components/ui/LoadError";
+import { StatTileSkeleton } from "../components/crm/home/StatTile";
+import { listOfferingsBoard, getOfferingsSummary } from "../services/offeringsService";
 import { OfferingDetailView } from "./OfferingDetailView";
-import { formatDateTime, timeAgo } from "../lib/formatters";
+import { formatDateTime } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
+import {
+  OFFERING_VIEWS,
+  offeringState,
+  offeringTypeLabel,
+  offeringViewFor,
+  soldOrGoing,
+} from "../lib/peopleSegments";
 
-// ── Badge maps ────────────────────────────────────────────────────────────────
-
-const TYPE_VARIANT = { event: "info", rsvp: "brand", trip: "warning", experience: "success" };
-const STATUS_VARIANT = { draft: "default", scheduled: "info", live: "success", ended: "default", cancelled: "error" };
-const VISIBILITY_VARIANT = { public: "success", discover: "info", private: "warning", hidden: "default", draft: "default" };
-const LIFECYCLE_VARIANT = { draft: "default", upcoming: "info", live: "success", past: "default", cancelled: "error" };
-
-const TYPE_OPTIONS = [
-  { value: "event", label: "Event" },
-  { value: "rsvp", label: "RSVP" },
-  { value: "trip", label: "Trip" },
-  { value: "experience", label: "Experience" },
-];
-const STATUS_OPTIONS = [
-  { value: "draft", label: "Draft" },
-  { value: "scheduled", label: "Scheduled" },
-  { value: "live", label: "Live" },
-  { value: "ended", label: "Ended" },
-  { value: "cancelled", label: "Cancelled" },
-];
-const VISIBILITY_OPTIONS = [
-  { value: "public", label: "Public" },
-  { value: "discover", label: "Discover" },
-  { value: "private", label: "Private" },
-  { value: "hidden", label: "Hidden" },
-  { value: "draft", label: "Draft" },
-];
-const LIFECYCLE_OPTIONS = [
-  { value: "draft", label: "Draft" },
-  { value: "upcoming", label: "Upcoming" },
-  { value: "live", label: "Live" },
-  { value: "past", label: "Past" },
-  { value: "cancelled", label: "Cancelled" },
-];
-const DELETED_OPTIONS = [{ value: "include", label: "Include deleted" }];
-
-// ── Columns ───────────────────────────────────────────────────────────────────
+const muted = (text) => <span className="text-[var(--color-text-muted)]">{text}</span>;
 
 const COLUMNS = [
   {
     key: "title",
-    label: "Title",
-    sortable: true,
+    label: "Offering",
     render: (val, row) => (
-      <div className="flex flex-col gap-0.5 min-w-0">
-        <span className="font-medium text-[var(--color-text-primary)] truncate">{val || "Untitled"}</span>
-        {row.slug && <span className="text-xs text-[var(--color-text-muted)] truncate">/{row.slug}</span>}
-      </div>
+      <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <span className="truncate font-medium text-[var(--color-text-primary)]">{val || "Untitled"}</span>
+        {row.hidden && <Badge variant="default">Deleted or test brand</Badge>}
+      </span>
     ),
   },
-  { key: "brand_name", label: "Brand", render: (val) => val || <span className="text-[var(--color-text-muted)]">—</span> },
+  { key: "brand_name", label: "Brand", render: (val) => val || muted("No brand") },
+  { key: "event_type", label: "Type", render: (val) => offeringTypeLabel(val) },
+  { key: "start_at", label: "When", sortable: true, render: (val) => (val ? formatDateTime(val) : muted("No date yet")) },
+  {
+    key: "state",
+    label: "State",
+    render: (val) => {
+      const st = offeringState(val);
+      return <Badge variant={st.variant} dot>{st.label}</Badge>;
+    },
+  },
+  { key: "sold", label: "Sold / going", render: (_val, row) => <span className="tabular-nums">{soldOrGoing(row)}</span> },
+  { key: "city", label: "City", render: (val) => val || muted("–") },
+];
+
+const FILTERS = [
   {
     key: "event_type",
-    label: "Type",
-    render: (val) => <Badge variant={TYPE_VARIANT[val] || "default"}>{val || "—"}</Badge>,
+    label: "Any type",
+    options: [
+      { value: "event", label: "Event" },
+      { value: "experience", label: "Experience" },
+      { value: "trip", label: "Trip" },
+      { value: "rsvp", label: "RSVP" },
+    ],
   },
-  {
-    key: "status",
-    label: "Status",
-    sortable: true,
-    render: (val) => <Badge variant={STATUS_VARIANT[val] || "default"} dot>{val || "—"}</Badge>,
-  },
-  {
-    key: "visibility",
-    label: "Visibility",
-    render: (val) => <Badge variant={VISIBILITY_VARIANT[val] || "default"}>{val || "—"}</Badge>,
-  },
-  {
-    key: "lifecycle_bucket",
-    label: "Lifecycle",
-    render: (val) => <Badge variant={LIFECYCLE_VARIANT[val] || "default"} dot>{val || "—"}</Badge>,
-  },
-  { key: "city", label: "City", render: (val) => val || <span className="text-[var(--color-text-muted)]">—</span> },
-  {
-    key: "master_start_at",
-    label: "Starts",
-    sortable: true,
-    render: (val) => <span className="text-sm">{formatDateTime(val)}</span>,
-  },
-  {
-    key: "created_at",
-    label: "Created",
-    sortable: true,
-    render: (val) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(val)}</span>,
-  },
+  { key: "show", label: "Live brands only", options: [{ value: "all", label: "Include deleted and test brands" }] },
 ];
 
 const CSV = {
   columns: [
     { key: "id", label: "ID" },
-    { key: "title", label: "Title" },
-    { key: "slug", label: "Slug" },
-    { key: "event_type", label: "Type" },
+    { key: "title", label: "Offering" },
     { key: "brand_name", label: "Brand" },
-    { key: "status", label: "Status" },
-    { key: "visibility", label: "Visibility" },
-    { key: "lifecycle_bucket", label: "Lifecycle" },
+    { key: "event_type", label: "Type" },
+    { key: "start_at", label: "Starts" },
+    { key: "state", label: "State" },
+    { key: "sold", label: "Sold" },
+    { key: "going", label: "Going" },
     { key: "city", label: "City" },
     { key: "currency", label: "Currency" },
-    { key: "master_start_at", label: "Starts" },
-    { key: "attendee_count", label: "Attendees" },
-    { key: "rsvp_going_count", label: "RSVP going" },
-    { key: "created_at", label: "Created at" },
+    { key: "created_at", label: "Created" },
   ],
   filename: "offerings",
 };
 
-// ── Hash helper ───────────────────────────────────────────────────────────────
+const EMPTY = {
+  on_sale: "Nothing on sale right now. Published offerings that haven't ended appear here.",
+  drafts: "No drafts. Offerings hosts start but haven't published appear here.",
+  past: "Nothing has ended yet. Offerings appear here once they're over.",
+  cancelled: "Nothing cancelled.",
+};
+
+// ── Hash helpers ──────────────────────────────────────────────────────────────
+
+function hashParams() {
+  return new URLSearchParams(window.location.hash.split("?")[1] || "");
+}
 
 function offeringIdFromHash() {
-  const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
-  return params.get("offeringId");
+  return hashParams().get("offeringId");
+}
+
+function viewFromHash() {
+  return offeringViewFor(hashParams().get("view")).id;
+}
+
+function Kpi({ value, label, note }) {
+  return (
+    <div className="flex min-h-[92px] min-w-0 flex-col justify-center rounded-xl border border-[var(--gray-200)] border-l-[3px] border-l-[var(--color-brand-500)] bg-[var(--color-background-primary)] p-4">
+      <span className="text-[28px] font-bold leading-tight tabular-nums text-[var(--color-text-primary)]">{value}</span>
+      <span className="text-[13px] text-[var(--color-text-secondary)]">{label}</span>
+      {note ? <span className="mt-1 text-xs text-[var(--color-text-tertiary)]">{note}</span> : null}
+    </div>
+  );
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function OfferingsConsolePage() {
   const [selectedId, setSelectedId] = useState(() => offeringIdFromHash());
-  const [brandOptions, setBrandOptions] = useState([]);
+  const [view, setView] = useState(viewFromHash);
+  const [summary, setSummary] = useState(null);
+  const [summaryError, setSummaryError] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
 
   useEffect(() => {
-    const sync = () => setSelectedId(offeringIdFromHash());
+    const sync = () => {
+      setSelectedId(offeringIdFromHash());
+      setView(viewFromHash());
+    };
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
   }, []);
 
-  // Load the brand filter options once (best-effort; degrades to a name search).
-  useEffect(() => {
-    let alive = true;
-    listOfferingBrands().then((brands) => {
-      if (alive) setBrandOptions(brands.map((b) => ({ value: b.id, label: b.name || b.id })));
-    });
-    return () => {
-      alive = false;
-    };
+  const loadSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    setSummaryError(null);
+    try {
+      setSummary(await getOfferingsSummary());
+    } catch (err) {
+      setSummary(null);
+      setSummaryError(err?.message || "Couldn't load the offering counts.");
+    } finally {
+      setSummaryLoading(false);
+    }
   }, []);
 
-  const filters = useMemo(
-    () => [
-      { key: "event_type", label: "Type", options: TYPE_OPTIONS },
-      { key: "status", label: "Status", options: STATUS_OPTIONS },
-      { key: "visibility", label: "Visibility", options: VISIBILITY_OPTIONS },
-      { key: "lifecycle", label: "Lifecycle", options: LIFECYCLE_OPTIONS },
-      ...(brandOptions.length ? [{ key: "brand_id", label: "Brand", options: brandOptions }] : []),
-      { key: "deleted", label: "Deleted", options: DELETED_OPTIONS },
-    ],
-    [brandOptions],
-  );
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load on open, like the other admin pages
+    loadSummary();
+  }, [loadSummary]);
+
+  const fetchPage = useCallback((query) => listOfferingsBoard(view, query), [view]);
 
   const openOffering = useCallback((id) => {
     window.location.hash = `#/business-offerings?offeringId=${id}`;
@@ -173,9 +159,9 @@ export function OfferingsConsolePage() {
   }, []);
 
   const backToList = useCallback(() => {
-    window.location.hash = "#/business-offerings";
+    window.location.hash = `#/business-offerings?view=${view}`;
     setSelectedId(null);
-  }, []);
+  }, [view]);
 
   // ── Detail view ───────────────────────────────────────────────────────────
   if (selectedId) {
@@ -186,23 +172,59 @@ export function OfferingsConsolePage() {
     );
   }
 
+  const n = (key) => Number(summary?.[key] ?? 0).toLocaleString();
+
   // ── List view ─────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title="Offerings"
-        description="Every event, RSVP, trip, and experience across all brands — including drafts, private, and deleted. Open one for the type-aware detail: tiers, orders, guest list, itinerary."
+        description="Events, experiences, trips and RSVPs across all brands. Opens on what is on sale now; offerings of deleted and staff/test brands are hidden unless you include them."
       />
 
+      {summaryError ? (
+        <LoadError title="Couldn't load the offering counts" message={summaryError} onRetry={loadSummary} retrying={summaryLoading} />
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Offerings at a glance">
+          {summaryLoading || !summary ? (
+            [0, 1, 2, 3].map((i) => <StatTileSkeleton key={i} />)
+          ) : (
+            <>
+              <Kpi value={n("on_sale_public")} label="On sale and public" />
+              <Kpi value={n("starting_14_days")} label="Starting in 14 days" />
+              <Kpi value={n("drafts_never_published")} label="Drafts" note="never published" />
+              <Kpi value={n("sold_7_days")} label="Sold, last 7 days" note="tickets on paid orders" />
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Which offerings">
+        {OFFERING_VIEWS.map((v) => (
+          <button
+            key={v.id}
+            type="button"
+            aria-pressed={view === v.id}
+            onClick={() => {
+              window.location.hash = `#/business-offerings?view=${v.id}`;
+            }}
+            className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${view === v.id ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-text-primary)]" : "border-[var(--gray-200)] bg-white text-[var(--color-text-secondary)]"}`}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+
       <EntityListView
-        title="All offerings"
+        key={view}
         columns={COLUMNS}
-        fetchPage={listOfferings}
-        searchPlaceholder="Search title, brand, city, or slug…"
-        filters={filters}
+        fetchPage={fetchPage}
+        serverSort
+        searchPlaceholder="Title, brand or city"
+        filters={FILTERS}
         onRowClick={(row) => openOffering(row.id)}
-        csv={CSV}
-        emptyMessage="No offerings match these filters."
+        csv={{ ...CSV, filename: `offerings_${view}` }}
+        emptyMessage={EMPTY[view]}
         emptyIcon={CalendarDays}
       />
     </div>
