@@ -271,7 +271,7 @@ export function phase3dContractDigest(manifest) {
   return crypto.createHash("sha256").update(JSON.stringify(phase3dContractRows(manifest))).digest("hex");
 }
 // [TEST-MOD-APPROVED #3643] Final 48-suite Phase 3E command/runtime/routing seal.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "764ea46098698c8c47c85504d64afce501e47fa414125ae7601d9622e8f6ac78";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "43a877247b85701f0caa64b0b6f936e195bfc79fa6daa561502699f58e77124a";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

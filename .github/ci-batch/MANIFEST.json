@@ -18062,6 +18062,8 @@
         ".github/scripts/strict-grep/issue-1930-checkout-current-truth.mjs",
         ".github/scripts/strict-grep/issue-2050-host-route-ownership.mjs",
         ".github/scripts/strict-grep/issue-2492-replay-skip-closure.mjs",
+        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.implementor.test.mjs",
+        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.tester.test.mjs",
         "scripts/ci/security_definer_anon_gate.sh"
       ],
       "steps": [
@@ -52565,5 +52567,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3",
-  "phase3eContractSha256": "764ea46098698c8c47c85504d64afce501e47fa414125ae7601d9622e8f6ac78"
+  "phase3eContractSha256": "43a877247b85701f0caa64b0b6f936e195bfc79fa6daa561502699f58e77124a"
 }
