@@ -89,40 +89,6 @@ jobs:
           src/services/__tests__/issue_2107_update_launch_fallback.test.ts
           src/services/__tests__/issue_2075_app_version_policy.test.ts
 
-  host-ota-gate:
-    if: ${{ github.event.pull_request.draft != true }}
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: mingla-business
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: mingla-business/package-lock.json
-      - run: npm ci
-      - run: >-
-          npx jest --runInBand
-          src/services/__tests__/issue_2107_ota_update_policy.test.ts
-          src/services/__tests__/issue_2107_ota_update_gate.tester_adversarial.test.ts
-          src/services/__tests__/issue_2107_update_gate_airtight.test.ts
-          src/services/__tests__/issue_2107_update_gate_telemetry.test.ts
-          src/services/__tests__/issue_2107_safe_reload.test.ts
-          src/services/__tests__/issue_2107_video_player_release.test.ts
-          src/services/__tests__/issue_2107_allowed_outcome_contract.test.ts
-          src/services/__tests__/issue_2107_safe_reload_body_read.test.ts
-          src/services/__tests__/issue_2107_safe_reload_retap_window.tester_adversarial.test.ts
-          src/services/__tests__/issue_2107_update_gate_device_journeys.tester_adversarial.test.ts
-          src/services/__tests__/issue_2107_update_gate_device_rework.test.ts
-          src/components/auth/__tests__/issue_2107_welcome_video_released_on_restart.test.tsx
-          src/services/__tests__/issue_2107_update_launch_guard.test.ts
-          src/components/ui/__tests__/issue_2107_update_launch_boundary.test.tsx
-          src/services/__tests__/issue_2107_update_launch_journey.tester_adversarial.test.ts
-          src/services/__tests__/issue_2107_update_launch_fallback.test.ts
-          src/services/__tests__/issue_2075_app_version_policy.test.ts
-
   edge-ota-policy:
     if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest

@@ -261,6 +261,37 @@ jobs:
             tertiaryNode: ""
             tertiaryDeno: ""
             tertiaryOrder: ""
+          # #3643 Phase 3D. Twenty per-issue workflows that ran only Deno and
+          # plain `node --test` (no database, no install, no jest, no secrets)
+          # were folded in as the PRIMARY suites of these two hosts, grouped by
+          # the Deno and Node versions their origin jobs pinned. They are the
+          # only rows that set `primaryDeno`, which selects the Deno runtime below.
+          - class: deno146-node20-noinstall
+            node: "20"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 45
+            primaryDeno: "1.46.x"
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
+          - class: deno2x-node22-noinstall
+            node: "22"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 35
+            primaryDeno: "v2.x"
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
     steps:
       # fetch-depth: 0 is REQUIRED, not incidental. Three batched suites
       # (#1881, #1532, #1996) run `git show <baseline>` / `git diff <baseline>` to
@@ -340,6 +371,21 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: ${{ matrix.cache }}
           cache-dependency-path: ${{ matrix.cache-lock }}
+      # #3643 Phase 3D. The two folded hosts run Deno suites in the PRIMARY lane,
+      # so they need Deno before the primary run. Only those rows set
+      # `matrix.primaryDeno`, so every other host skips both steps; and like the
+      # primary setup above, a host whose routed selection is empty skips them on
+      # an explicit `false` only.
+      - name: Select immutable primary Deno 1.46 runtime
+        if: always() && matrix.primaryDeno == '1.46.x' && steps.route.outputs.runPrimarySetup != 'false'
+        uses: denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d
+        with:
+          deno-version: 1.46.x
+      - name: Select immutable primary Deno v2 runtime
+        if: always() && matrix.primaryDeno == 'v2.x' && steps.route.outputs.runPrimarySetup != 'false'
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed
+        with:
+          deno-version: v2.x
 
       # Setup is selected only from the reviewed typed profile registry. The runner
       # executes each exact argv capability once, then writes non-forgeable evidence

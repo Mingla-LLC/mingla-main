@@ -44,9 +44,12 @@ const DENIED = [
 // auditWorkflowSources reports zero errors. Count 124 -> 125, identity and
 // projection re-derived locally with this file's own canonicalDigests on the
 // branch (the base tree reproduces the previous literals exactly).
-const PR_FAMILY_COUNT = 125;
+// [#3643] Phase 3D deletes twenty PR-family per-issue workflows (folded into the
+// CI batch). Count 125 -> 105; identity re-derived locally and cross-checked by
+// hashing the sorted pull_request/pull_request_target workflow names directly.
+const PR_FAMILY_COUNT = 105;
 const PR_FAMILY_IDENTITY_SHA256 =
-  "54680b0c66c7443c8d706c7d824868463309d83cb44c7df1569994c1fdb100d6";
+  "91b4bd37a5a3ae931798dfa17ce9813ada5a2490dbff1a4621d23bbd4c29b047";
 // [TEST-MOD-APPROVED #2241] Mechanically re-derived after the exact approved
 // #1930 shared-resolver trigger addition, #2241 secret-readiness lanes,
 // #2893/#2899 Sites workflow authority, and #2885's reviewed baseline-only path
@@ -1256,7 +1259,12 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // workflow_dispatch event required by the exact-current-main recovery
   // contract. The PR-family inventory, workflow identities, concurrency blocks
   // and reusable-workflow calls are unchanged.
-  "7cfc84d970b2691bfe6974bd3ef1b8879eaac830ec38e59a0c67a0857a629208";
+  // [#3643] Re-derived because the PR-family set changed: Phase 3D deletes
+  // twenty per-issue PR-family workflows whose commands now run as CI batch
+  // suites. No remaining workflow's trigger keys, job-level concurrency or
+  // uses: values moved (the batch workflow gains matrix rows and two Deno steps
+  // only). Derived locally with this file's own canonical projection.
+  "abdd8d7c9c7de6c27c094451839e9ac7fd5957393d110b3fe76ff941d2250bf2";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1431,17 +1439,18 @@ function expectMutationFailure(name, mutate, diagnostic) {
 
 // [TEST-MOD-APPROVED #2241] #2899's Sites recovery workflow is a mixed
 // PR/schedule/dispatch workflow and therefore joins the exact PR-family set.
-test("the real tree has 124 canonical PR-family policies and the sole load exception", () => {
+test("the real tree has 104 canonical PR-family policies and the sole load exception", () => {
   const result = auditWorkflowSources(readWorkflowSources());
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.counts, {
     // [TEST-MOD-APPROVED #3980] release-records is the 132nd workflow and the
     // second pull_request_target member of the PR family, on the canonical policy.
-    totalWorkflows: 132,
-    prFamily: 125,
-    standardPullRequest: 123,
+    // [#3643] Phase 3D deletes twenty PR-family workflows: 132 -> 112, 125 -> 105.
+    totalWorkflows: 112,
+    prFamily: 105,
+    standardPullRequest: 103,
     pullRequestTarget: 2,
-    normalPolicies: 124,
+    normalPolicies: 104,
     exceptions: 1,
   });
 });
@@ -1450,7 +1459,7 @@ test("the real tree has 124 canonical PR-family policies and the sole load excep
 // merged, then became an empty moving-base comparison downstream. Preserve the
 // same exact 124 identities and non-concurrency semantics with current-tree
 // digests, and preserve the seven exclusions with durable full-byte hashes.
-test("the real tree independently classifies 124 PR-family and seven non-PR workflows", () => {
+test("the real tree independently classifies 105 PR-family and seven non-PR workflows", () => {
   const sources = readWorkflowSources();
   // [TEST-MOD-APPROVED #3095] The same pin assertion, over a derivation the
   // controls and the inverted rows below reuse, so it costs no extra spawn.
@@ -1468,11 +1477,12 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.deepEqual(audit.counts, {
     // [TEST-MOD-APPROVED #3980] release-records is the 132nd workflow and the
     // second pull_request_target member of the PR family, on the canonical policy.
-    totalWorkflows: 132,
-    prFamily: 125,
-    standardPullRequest: 123,
+    // [#3643] Phase 3D deletes twenty PR-family workflows: 132 -> 112, 125 -> 105.
+    totalWorkflows: 112,
+    prFamily: 105,
+    standardPullRequest: 103,
     pullRequestTarget: 2,
-    normalPolicies: 124,
+    normalPolicies: 104,
     exceptions: 1,
   });
 

@@ -48,12 +48,6 @@ jobs:
           cache-dependency-path: mingla-business/package-lock.json
       - run: npm ci
         working-directory: mingla-business
-      - name: Prove server-driven controls and split-safe writes
-        working-directory: mingla-business
-        run: >
-          npx jest
-          src/components/stay/__tests__/stayAuthoringPermissions.issue1469.test.ts
-          --runInBand
       - name: Lint changed Business boundaries
         working-directory: mingla-business
         run: >

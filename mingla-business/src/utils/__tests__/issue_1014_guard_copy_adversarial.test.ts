@@ -11,8 +11,7 @@
  * the locked copy entry) in src/utils/paidPublishGuards.ts turns the
  * decorated-message + copy-pin tests red (verified by true line deletion).
  *
- * CI: picked up by .github/workflows/issue-1014-free-publish-currency-tests.yml
- * (`npx jest issue_1014 paidPublishGuards` — the issue_1014 pattern).
+ * CI: runs in the required mingla-business full jest suite (#3643).
  */
 
 import {

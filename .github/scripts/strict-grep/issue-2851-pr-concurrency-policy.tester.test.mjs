@@ -100,17 +100,18 @@ function byId(active, id) {
 // [TEST-MOD-APPROVED #2241] #2899 adds the mixed-event Sites recovery
 // workflow to the exact PR family; its production events remain protected by
 // the same run-id isolation and PR-only cancellation policy.
-test("real YAML remains the complete canonical 124-workflow policy", () => {
+test("real YAML remains the complete canonical 104-workflow policy", () => {
   const result = auditWorkflowSources(readWorkflowSources(TEST_ROOT));
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.counts, {
     // [TEST-MOD-APPROVED #3980] release-records joins the PR family on the
     // canonical policy (the second pull_request_target workflow).
-    totalWorkflows: 132,
-    prFamily: 125,
-    standardPullRequest: 123,
+    // [#3643] Phase 3D deletes twenty PR-family workflows: 132 -> 112, 125 -> 105.
+    totalWorkflows: 112,
+    prFamily: 105,
+    standardPullRequest: 103,
     pullRequestTarget: 2,
-    normalPolicies: 124,
+    normalPolicies: 104,
     exceptions: 1,
   });
 });

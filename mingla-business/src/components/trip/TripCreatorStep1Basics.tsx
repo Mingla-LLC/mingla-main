@@ -140,6 +140,12 @@ export interface TripCreatorStep1BasicsProps {
    * proximity hint for both address fields. Absent → the device's zone.
    */
   timeZone?: string | null;
+  /**
+   * Issue #3801 — the cover picker reports whether a cover video is still
+   * uploading or processing. The wizard uses it to never save cover fields
+   * over a video the server is about to apply.
+   */
+  onCoverVideoProcessingChange?: (isProcessing: boolean) => void;
   // ORCH-0892-A: legacy wizard-scroll-ref prop removed. CoverPicker now
   // uses the keyboard-controller library's KAV wrap instead.
 }
@@ -187,6 +193,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   onShowToast,
   showAddressErrors = false,
   timeZone,
+  onCoverVideoProcessingChange,
 }) => {
   const [departureSelectionState, setDepartureSelectionState] =
     useState<LocationSelectionState>(
@@ -867,6 +874,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         }}
         onCoverChange={handleCoverChange}
         onShowToast={handleCoverToast}
+        onCoverVideoProcessingChange={onCoverVideoProcessingChange}
         disabled={disabled}
         // issue #3319 — `handleCoverChange` saves `coverGallery` into the trip draft.
         galleryEnabled

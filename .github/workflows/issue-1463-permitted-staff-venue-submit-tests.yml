@@ -59,14 +59,6 @@ jobs:
         run: >
           deno test --allow-read
           supabase/migrations/__tests__/issue_1463_permitted_staff_venue_submit.test.ts
-      - name: Prove category copy and structured errors
-        working-directory: mingla-business
-        run: >
-          npx jest
-          src/components/venue/__tests__/ClaimStepBookings.issue1463.test.ts
-          src/utils/__tests__/sanitizeAuthoringError.issue1463.test.ts
-          src/utils/__tests__/sanitizeAuthoringError.test.ts
-          --runInBand
       - name: Lint changed client boundaries
         working-directory: mingla-business
         run: >

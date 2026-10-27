@@ -109,8 +109,6 @@ jobs:
         with: { node-version: "22" }
       - run: npm ci
         working-directory: mingla-business
-      - run: npx jest --runInBand src/services/__tests__/issue_1929_hidden_direct_checkout.test.ts src/services/__tests__/issue_1929_hidden_direct_checkout.tester_adversarial.test.ts
-        working-directory: mingla-business
       - run: npm ci
         working-directory: app-mobile
       # issue #3284 — the consumer refund-terms mapping suite runs here, beside the

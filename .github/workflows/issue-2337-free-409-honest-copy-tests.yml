@@ -110,10 +110,3 @@ jobs:
       # running no tests. `--listTests` proves the pattern selects the file.
       - name: "#2337 suite is actually selected by the pattern"
         run: npx jest --listTests issue_2337 | tee /dev/stderr | grep -q issue_2337_free_409_token_mapper.test.ts
-      # 47 tests. Restoring the status-keyed mapper turns 15 red; dropping
-      # `failure.detail` in invokeOrThrow turns 2 red; dropping the
-      # already-reserved arm in either buyer screen turns 1 red each.
-      - name: "#2337 free-checkout copy suite"
-        run: npx jest issue_2337 --runInBand
-      - name: "#2136 and #2150 sibling client guards stay green"
-        run: npx jest issue_2136 issue_2150 --runInBand

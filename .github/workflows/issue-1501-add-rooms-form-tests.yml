@@ -152,18 +152,6 @@ jobs:
       - name: Tester adversarial proofs (axis audit + boundaries)
         run: npx jest --config jest.issue1501.tester.cjs --runInBand
 
-      # testID contract + the `styles.field` / override-with-undefined guards.
-      # Runs under the DEFAULT node/ts-jest config (it reads source, no mount).
-      - name: testID contract + axis source guards
-        run: >-
-          npx jest --runInBand
-          src/components/stay/__tests__/stayTestIdContract.issue1501.test.ts
-          src/components/ui/__tests__/OptionCard.iconSource.issue1501.test.ts
-          src/components/stay/__tests__/stayAuthoringPermissions.issue1469.test.ts
-          src/components/stay/__tests__/stayInventoryPresentation.issue1425.test.ts
-          src/components/stay/__tests__/stayAuthoring.issue1424.test.ts
-          src/components/stay/__tests__/stayAvailabilityContracts.issue1471.test.ts
-
       # #1484 must stay green: the Stay LIST is uncapped while the editor form
       # keeps a readable measure, and that distinction is the point.
       - name: Issue #1484 Stay desktop measures still hold

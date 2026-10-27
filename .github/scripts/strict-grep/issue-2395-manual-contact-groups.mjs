@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -26,6 +27,23 @@ const files = {
   componentTest: "mingla-business/src/components/people/__tests__/issue_2395_manual_contact_groups.happy.test.ts",
   workflow: ".github/workflows/issue-2395-manual-contact-groups-tests.yml",
 };
+
+/** Whether the stock mingla-business jest config (the required full suite) collects a file. */
+function stockJestCollects(base, repoRelative) {
+  const absolute = path.join(base, repoRelative);
+  if (!fs.existsSync(absolute)) return false;
+  // Evaluated fresh each call (not via require's cache) so the self-test's edited
+  // fixture config is the one read.
+  const configPath = path.join(base, "mingla-business/jest.config.cjs"), module = { exports: {} };
+  new Function("module", "exports", "require", fs.readFileSync(configPath, "utf8"))(module, module.exports, createRequire(configPath));
+  const config = module.exports;
+  const relative = path.relative(path.join(base, "mingla-business"), absolute).split(path.sep).join("/");
+  const glob = (pattern) => new RegExp(`^${pattern.split("**/").map((part) => part.split("*")
+    .map((piece) => piece.replace(/[.+^${}()|[\]\\]/g, "\\$&")).join("[^/]*")).join("(?:.*/)?")}$`);
+  const matched = (config.testMatch || []).some((pattern) => glob(pattern).test(relative));
+  const ignored = (config.testPathIgnorePatterns || []).some((pattern) => new RegExp(pattern).test(absolute.split(path.sep).join("/")));
+  return matched && !ignored;
+}
 
 export function audit(base = repoRoot) {
   const failures = [];
@@ -75,7 +93,11 @@ export function audit(base = repoRoot) {
   if (!reportService.includes("audience_name_snapshot") || !reportScreen.includes("Audience: {campaign.audience_name_snapshot}")) failures.push("historical report loses the Manual audience-name snapshot");
   const analyticsSources = [flow, detail].join("\n");
   if (/capturePeople\([^\n]+(?:name|email|phone|fileName|csv)\s*:/i.test(analyticsSources)) failures.push("Manual analytics may include PII or group names");
-  for (const test of ["issue_2395_manual_contact_groups.happy.pg17.test.sql", "issue_2395_manual_contact_groups.happy.test.ts", "issue_2395_manual_group_service.happy.test.ts", "issue_2395_manual_contact_groups.happy.test.ts"]) if (!workflow.includes(test)) failures.push(`workflow does not execute ${test}`);
+  // [#3643] The Host jest proofs (service + component) run in the required
+  // `mingla-business jest (full suite)` check, so their wiring proof is that the
+  // stock jest config collects them; the SQL and Deno proofs stay in this lane.
+  for (const test of ["issue_2395_manual_contact_groups.happy.pg17.test.sql", "issue_2395_manual_contact_groups.happy.test.ts"]) if (!workflow.includes(test)) failures.push(`workflow does not execute ${test}`);
+  for (const key of ["serviceTest", "componentTest"]) if (!stockJestCollects(base, files[key])) failures.push(`required Host jest suite does not collect ${files[key]}`);
   for (const needle of ["dblink_send_query", "biz_create_manual_group_v1", "biz_add_manual_group_people_v1", "biz_confirm_marketing_people_send_v2", "source switch stale check", "pending creation changed reach version", "cross-brand delete leaked existence"]) if (!sqlTest.includes(needle)) failures.push(`PostgreSQL behavior suite missing ${needle}`);
   if (!workflow.includes('mingla-business/app/(tabs)/people/groups/**')) failures.push("workflow Manual detail path is not glob-safe");
   return failures;

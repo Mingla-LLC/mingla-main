@@ -171,12 +171,23 @@ const BOUNDARY: Record<string, () => unknown> = {
     useCreateTripPricingTier: () => idleMutation,
     useRemoveTripPricingTier: () => idleMutation,
     usePublishTrip: () => idleMutation,
+    // Issue #3801 — the reload-after-conflict path (not exercised here).
+    useTripWizardServerSync: () => ({
+      reloadTrip: () => Promise.reject(new Error("reload_not_expected")),
+      markTripChanged: (): void => undefined,
+    }),
   }),
   useRefundPolicy: () => ({
     useUpdateBookingDeadline: () => idleMutation,
     useUpdateRefundPolicy: () => idleMutation,
   }),
-  tripsService: () => ({ setTripPricingSwitches: asyncNoop }),
+  // Issue #3801 — the session re-reads the revision after a direct write.
+  tripsService: () => ({
+    setTripPricingSwitches: asyncNoop,
+    readTripRevision: async () => "revision-3801",
+  }),
+  // Issue #3801 — REAL: the one-save-at-a-time queue is pure.
+  tripSaveQueue: () => jest.requireActual("../../../utils/tripSaveQueue"),
   businessEvents: () => ({ setEventGuestPrivacy: asyncNoop }),
   // issue #3827 going-box — the wizard's extras copy + error matcher (pure; real module).
   guestListPrivacy: () => jest.requireActual("../../../constants/guestListPrivacy"),
@@ -392,7 +403,10 @@ describe("#3801 — the reader the wizard uses never loses a server reason", () 
 
 describe("#3801 — a failed step save is shown on that step", () => {
   test("Continue: an unmapped server refusal shows the plain toast and stays on the step", async () => {
-    saves.basics.mockRejectedValue(postgrestError("trip_revision_conflict", "40001"));
+    // Issue #3801 (#4134) — a revision conflict is now MAPPED (it offers
+    // Reload; see issue_3801_trip_wizard_single_save). This case keeps an
+    // unmapped refusal.
+    saves.basics.mockRejectedValue(postgrestError("trip_graph_invalid", "22023"));
     const tree = await mountWizard();
     expect(onStep(tree, "TripCreatorStep1Basics")).toBe(true);
     expect(toast(tree).visible).toBe(false);
@@ -404,7 +418,7 @@ describe("#3801 — a failed step save is shown on that step", () => {
     expect(shown.visible).toBe(true);
     expect(shown.message).toBe(GENERIC_SAVE_FAILED);
     // Never the raw code, never the object tag.
-    expect(shown.message).not.toContain("trip_revision_conflict");
+    expect(shown.message).not.toContain("trip_graph_invalid");
     expect(shown.message).not.toContain("[object");
     // A failed save does not advance: the data is not there yet.
     expect(onStep(tree, "TripCreatorStep1Basics")).toBe(true);

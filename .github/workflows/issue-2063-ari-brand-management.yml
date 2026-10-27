@@ -142,27 +142,6 @@ jobs:
           node .github/scripts/strict-grep/issue-2063-ari-brand-management.mjs --self-test
           node .github/scripts/strict-grep/issue-2063-ari-brand-management.mjs
 
-  issue-2063-business-parity:
-    if: ${{ github.event.pull_request.draft != true }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: mingla-business/package-lock.json
-      - run: npm ci
-        working-directory: mingla-business
-      - name: Shared web, iOS, and Android brand proposal contract
-        working-directory: mingla-business
-        run: >-
-          npx jest --runInBand
-          src/components/ari/__tests__/issue_2063_brand_confirmation_recovery.test.ts
-          src/components/ari/__tests__/orch_1103_ari_brand_crud_ui.test.ts
-          src/components/ari/__tests__/orch_1103_rework3_create_attach_lifecycle.test.ts
-
   issue-2063-postgres:
     if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest

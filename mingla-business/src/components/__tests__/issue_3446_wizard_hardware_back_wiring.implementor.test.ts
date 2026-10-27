@@ -97,7 +97,9 @@ const WIZARDS: WizardSpec[] = [
   {
     name: "Trip",
     file: "components/trip/TripCreatorWizard.tsx",
-    component: "TripCreatorWizard",
+    // Issue #3801 — the exported TripCreatorWizard is now a thin wrapper that
+    // remounts the editing session on Reload; the hook lives in the session.
+    component: "TripCreatorWizardSession",
     stepVar: "step",
     steps: [1, 2, 3, 4, 5, 6, 7, 8],
     firstStep: 1,

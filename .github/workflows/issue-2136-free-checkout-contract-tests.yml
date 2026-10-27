@@ -73,27 +73,6 @@ jobs:
           supabase/functions/ticket-checkout-create/__tests__/issue_2101_named_buyer_access.test.ts
       - run: deno check supabase/functions/ticket-checkout-create/index.ts
 
-  issue-2136-client-guard:
-    if: ${{ github.event.pull_request.draft != true }}
-    name: "#2136 Client — no raw TypeError, no confirmation without a ticket"
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    defaults:
-      run:
-        working-directory: mingla-business
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: mingla-business/package-lock.json
-      - run: npm ci
-      # 17 tests. Fails on a true line deletion of the `isCompletedFreeOrder`
-      # guard and the `freeCheckoutErrorMessage` wiring in buyer.tsx.
-      - name: "#2136 free-checkout client guard suite"
-        run: npx jest issue_2136 --runInBand
-
   issue-2136-postgres-contract:
     if: ${{ github.event.pull_request.draft != true }}
     name: "#2136 PostgreSQL 17 — the no-value arm, executed (tester adversarial)"

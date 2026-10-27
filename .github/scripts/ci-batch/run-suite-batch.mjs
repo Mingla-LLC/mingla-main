@@ -29,8 +29,26 @@ const CHILD_ENV_NAMES = new Set(["CI", "NODE_ENV", "TZ", "LANG", "LC_ALL", "FORC
 const PHASE3C_AUTHORISED_ENV_NAMES = new Set([
   "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "PAYSTACK_MODE", "PAYSTACK_SECRET_KEY_TEST",
 ]);
+// [#3643] The one Phase 3D literal the folded #2240 live-destination step sets.
+// The validator pins which Phase 3D steps may carry env and the exact literal on
+// each; this set is the runner's lock on the names, as PHASE3C's is for #1326.
+const PHASE3D_AUTHORISED_ENV_NAMES = new Set([...PHASE3C_AUTHORISED_ENV_NAMES, "ISSUE_2240_LIVE"]);
 const PHASE3B_WAVE = "phase3b-postgres-wave";
 const PHASE3C_WAVE = "phase3c-deno-wave";
+const PHASE3D_WAVE = "phase3d-fold-wave";
+
+/**
+ * [#3643] Whether a failed step stops the rest of its suite.
+ *
+ * A Phase 1/3A primary suite is one origin job, and GitHub stopped that job at
+ * its first failing step, so the primary lane breaks there too. A Phase 3D suite
+ * is a whole folded WORKFLOW whose jobs ran independently: a red in one job never
+ * hid the verdict of another. Breaking would hide exactly that, so a Phase 3D
+ * suite runs every step, keeps the FIRST failure as its reason, and is red if
+ * any step failed. A timed-out step still ends the suite, because the deadline
+ * is the suite's.
+ */
+export function continuesAfterFailedStep(suite) { return suite?.migrationWave === PHASE3D_WAVE && isPrimarySuite(suite); }
 
 // [#2439] Lane routing is DERIVED from the registry, never from a wave name.
 // A migrated suite is one the registry gives its own executionClass; it runs in
@@ -737,9 +755,9 @@ function signalProcessGroup(child, signal) {
 
 const SECRET_NAME = /(?:secret|token|password|passwd|credential|private|api[_-]?key|auth|cookie|webhook)/i;
 
-export function minimalChildEnvironment(requested = {}, home, { allowNodePath = false, allowReviewedEnv = false } = {}) {
+export function minimalChildEnvironment(requested = {}, home, { allowNodePath = false, allowReviewedEnv = false, reviewedEnvNames = PHASE3C_AUTHORISED_ENV_NAMES } = {}) {
   for (const name of Object.keys(requested)) {
-    const reviewedEnv = allowReviewedEnv && PHASE3C_AUTHORISED_ENV_NAMES.has(name) && typeof requested[name] === "string"
+    const reviewedEnv = allowReviewedEnv && reviewedEnvNames.has(name) && typeof requested[name] === "string"
       && !/\$\{\{|\$\(|`|secrets\./.test(requested[name]);
     if (!CHILD_ENV_NAMES.has(name) && !reviewedEnv
       && !(allowNodePath && name === "NODE_PATH" && requested[name] === "./node_modules")) throw new Error(`undeclared child environment capability: ${name}`);
@@ -774,7 +792,7 @@ function secretValues(extraEnv = {}) {
     if (typeof value !== "string" || value.length < 6) continue;
     // Values excluded from the explicit child environment are sensitive by
     // boundary, regardless of whether their variable name looks secret-like.
-    if ((!CHILD_ENV_NAMES.has(name) && name !== "PATH" && !PHASE3C_AUTHORISED_ENV_NAMES.has(name)) || (SECRET_NAME.test(name) && !PHASE3C_AUTHORISED_ENV_NAMES.has(name))) {
+    if ((!CHILD_ENV_NAMES.has(name) && name !== "PATH" && !PHASE3D_AUTHORISED_ENV_NAMES.has(name)) || (SECRET_NAME.test(name) && !PHASE3D_AUTHORISED_ENV_NAMES.has(name))) {
       values.push(value, encodeURIComponent(value), Buffer.from(value).toString("base64"), Buffer.from(value).toString("base64url"));
     }
   }
@@ -822,7 +840,7 @@ function pipeRedacted(stream, destination, env) {
 }
 
 export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 2_000, spawnImpl = spawn, allowNodePath = false, allowReviewedEnv = false,
-  stdout = process.stdout, stderr = process.stderr, home } = {}) {
+  reviewedEnvNames = PHASE3C_AUTHORISED_ENV_NAMES, stdout = process.stdout, stderr = process.stderr, home } = {}) {
   return new Promise((resolve) => {
     let settled = false;
     let timedOut = false;
@@ -831,7 +849,7 @@ export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 
     const ownsHome = !home;
     const temporaryHome = home || fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
     let childEnv;
-    try { childEnv = minimalChildEnvironment(env, temporaryHome, { allowNodePath, allowReviewedEnv }); }
+    try { childEnv = minimalChildEnvironment(env, temporaryHome, { allowNodePath, allowReviewedEnv, reviewedEnvNames }); }
     catch (error) { if (ownsHome) fs.rmSync(temporaryHome, { recursive: true, force: true }); resolve({ ok: false, code: 2, timedOut: false, reason: redactText(error.message) }); return; }
     const supervised = spawnImpl === spawn;
     const actual = supervised
@@ -1034,9 +1052,20 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
         if (status === "timed-out") break;
         if (outerFailed) continue;
       } else {
-        const result = await execute(invocation, { cwd, env: step.env, timeoutMs: remaining, graceMs, home: suiteHome });
+        const continues = continuesAfterFailedStep(suite);
+        const result = await execute(invocation, { cwd, env: step.env, timeoutMs: remaining, graceMs, home: suiteHome,
+          // [#3643] Only a Phase 3D step whose registry record DECLARES env may
+          // receive it; the validator pins which steps and which literals.
+          ...(continues && step.env ? { allowReviewedEnv: true, reviewedEnvNames: PHASE3D_AUTHORISED_ENV_NAMES } : {}) });
         executed += 1;
-        if (!result.ok) { status = result.timedOut ? "timed-out" : "failed"; code = result.code; reason = result.reason || `step failed: ${step.name}`; break; }
+        if (!result.ok) {
+          if (!continues) { status = result.timedOut ? "timed-out" : "failed"; code = result.code; reason = result.reason || `step failed: ${step.name}`; break; }
+          // [#3643] Keep the first failure as the suite's reason, name the step,
+          // and carry on: the next step belonged to an independent origin job.
+          if (status === "passed") reason = `${step.commandId} (${step.name}): ${result.reason || "step failed"}`;
+          status = result.timedOut ? "timed-out" : "failed"; code = Math.max(code, result.code || 1);
+          if (result.timedOut) break;
+        }
       }
     }
     if (dependencyRoots.length) {

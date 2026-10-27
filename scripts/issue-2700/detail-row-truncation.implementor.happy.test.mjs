@@ -232,10 +232,10 @@ test('P9 CI actually COLLECTS this suite — registered in a live provider workf
   }
   assert.equal(examined, 3, `checked ${examined} paths, expected 3`);
 
-  // The manifest's copy of the workflow is CONTENT-COUPLED. Re-derive it here so
-  // an edit to the workflow that forgets the manifest cannot pass this suite.
-  const digest = require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(ROOT, WORKFLOW))).digest('hex');
-  assert.equal(origin.workflowMetadata.sourceSha256, digest, 'manifest sourceSha256 is stale for the provider workflow');
+  // [#3643 Wave 4] The manifest describes the workflow by its PROPERTIES (the
+  // ci-batch validator compares them with the YAML), not by a byte fingerprint.
+  assert.ok(fs.existsSync(path.join(ROOT, WORKFLOW)), 'the provider workflow must exist on disk');
+  assert.equal(Object.hasOwn(origin.workflowMetadata, 'sourceSha256'), false, 'a live workflow row must not carry a byte fingerprint');
 });
 
 test('P10 RUNTIME: the composed row is never handed to the shaper with anything to clip', async () => {

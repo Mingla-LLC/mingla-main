@@ -160,7 +160,12 @@ describe("ISSUE-1184 UI/service wiring remains truthful", () => {
   const flags = read("lib/adBuilder/flags.js");
   const service = read("services/adEngineService.js");
   const creativeStep = read("components/campaign-builder/StepCreative.jsx");
-  const workflow = read("../../.github/workflows/issue-1184-video-phase-a-tests.yml");
+  // [#3643] The #1184 lane's workflow was folded into the CI batch, and its path
+  // filters became the batch suite's routing patterns. Read them from there.
+  const routing = JSON.parse(read("../../.github/ci-batch/MANIFEST.json"))
+    .suites.filter((suite) => suite.id === "issue-1184-video-phase-a-tests")
+    .flatMap((suite) => suite.originPaths)
+    .join("\n");
 
   // [TEST-MOD-APPROVED #3697] Preparation is no longer an operator-triggered
   // creative-step action. It is a sequential, resumable launch service called
@@ -269,12 +274,12 @@ describe("ISSUE-1184 UI/service wiring remains truthful", () => {
     assert.match(preview, /currentMetaFingerprint\.current !== metaPreviewFingerprint/);
   });
 
-  it("workflow watches config and every allowlisted shared runtime dependency", () => {
-    assert.match(workflow, /supabase\/config\.toml/);
-    assert.match(workflow, /_shared\/adCreative\.ts/);
-    assert.match(workflow, /_shared\/adCreativeProbe\.ts/);
-    assert.match(workflow, /_shared\/adCreativePrepare\.ts/);
-    assert.match(workflow, /_shared\/adDestination\.ts/);
-    assert.match(workflow, /_shared\/meta\.ts/);
+  it("CI routing watches config and every allowlisted shared runtime dependency", () => {
+    assert.match(routing, /supabase\/config\.toml/);
+    assert.match(routing, /_shared\/adCreative\.ts/);
+    assert.match(routing, /_shared\/adCreativeProbe\.ts/);
+    assert.match(routing, /_shared\/adCreativePrepare\.ts/);
+    assert.match(routing, /_shared\/adDestination\.ts/);
+    assert.match(routing, /_shared\/meta\.ts/);
   });
 });
