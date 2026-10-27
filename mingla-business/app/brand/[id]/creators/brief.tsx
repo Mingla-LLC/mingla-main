@@ -14,7 +14,7 @@ import { useRouter } from "expo-router";
 import { Button } from "../../../../src/components/ui/Button";
 import { DateField } from "../../../../src/components/ui/DateField";
 import { NumberStepper } from "../../../../src/components/ui/NumberStepper";
-import { Sheet } from "../../../../src/components/ui/Sheet";
+import { ProgramSheet } from "../../../../src/components/programs/ProgramSheet";
 import { Input } from "../../../../src/components/ui/Input";
 import { TimeField } from "../../../../src/components/programs/TimeField";
 import {
@@ -378,7 +378,7 @@ export default function GigBriefEditor(): React.ReactElement {
         ) : undefined
       }
       overlay={
-        <Sheet
+        <ProgramSheet
           visible={formatOpen}
           onClose={() => setFormatOpen(false)}
           snapPoint="full"
@@ -405,7 +405,7 @@ export default function GigBriefEditor(): React.ReactElement {
               ))}
             </ListGroup>
           </SheetBody>
-        </Sheet>
+        </ProgramSheet>
       }
     >
       {!ready ? (

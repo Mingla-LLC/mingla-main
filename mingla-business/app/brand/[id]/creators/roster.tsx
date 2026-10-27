@@ -11,7 +11,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Button } from "../../../../src/components/ui/Button";
 import { Icon } from "../../../../src/components/ui/Icon";
 import { Input } from "../../../../src/components/ui/Input";
-import { Sheet } from "../../../../src/components/ui/Sheet";
+import { ProgramSheet } from "../../../../src/components/programs/ProgramSheet";
 import {
   Chip,
   FieldError,
@@ -218,7 +218,7 @@ export default function CreatorRoster(): React.ReactElement {
       onRefresh={() => void load()}
       overlay={
         <>
-          <Sheet
+          <ProgramSheet
             visible={adding}
             onClose={() => setAdding(false)}
             snapPoint="full"
@@ -277,8 +277,8 @@ export default function CreatorRoster(): React.ReactElement {
               />
               <FieldError message={error} />
             </SheetBody>
-          </Sheet>
-          <Sheet
+          </ProgramSheet>
+          <ProgramSheet
             visible={selected !== null}
             onClose={() => setSelected(null)}
             snapPoint="full"
@@ -365,7 +365,7 @@ export default function CreatorRoster(): React.ReactElement {
                 <FieldError message={error} />
               </SheetBody>
             ) : null}
-          </Sheet>
+          </ProgramSheet>
         </>
       }
     >

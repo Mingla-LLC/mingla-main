@@ -1,12 +1,20 @@
 /**
  * #3872 round 2 — a time picker that matches DateField: native time picker
  * on phones, `<input type="time">` on web. Value is "HH:MM" or "" (unset).
+ *
+ * iOS: the spinner opens in the app's Sheet at full width. Rendered inline it
+ * sat inside the half-width Time column and its AM/PM wheel was clipped off
+ * the right edge of the screen. Android keeps its own dialog.
  */
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import React, { useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+
+import { Button } from "../ui/Button";
+import { ProgramSheet } from "./ProgramSheet";
+import { SheetBody } from "./ProgramKit";
 
 import {
   glass,
@@ -28,6 +36,20 @@ export function timeLabel(value: string): string {
   return `${twelve}:${match[2]} ${suffix}`;
 }
 
+/** "18:00" from a Date. */
+function hhmm(date: Date): string {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+/**
+ * Where the native time picker shows: iOS in a full-width sheet (never inline
+ * inside a narrow column), Android in its own dialog, web as an input.
+ */
+export function timePickerPresentation(os: string): "sheet" | "dialog" | "web" {
+  if (os === "web") return "web";
+  return os === "ios" ? "sheet" : "dialog";
+}
+
 export function TimeField({
   label,
   value,
@@ -44,7 +66,9 @@ export function TimeField({
   hasError?: boolean;
 }): React.ReactElement {
   const [open, setOpen] = useState(false);
-  if (Platform.OS === "web") {
+  const [draft, setDraft] = useState<Date | null>(null);
+  const presentation = timePickerPresentation(Platform.OS);
+  if (presentation === "web") {
     return (
       <View style={styles.host}>
         <Text style={styles.label}>{label}</Text>
@@ -61,6 +85,10 @@ export function TimeField({
   const anchor = new Date();
   const match = /^(\d{2}):(\d{2})$/.exec(value);
   anchor.setHours(match ? Number(match[1]) : 18, match ? Number(match[2]) : 0, 0, 0);
+  const close = () => {
+    setOpen(false);
+    setDraft(null);
+  };
   return (
     <View style={styles.host}>
       <Text style={styles.label}>{label}</Text>
@@ -74,19 +102,47 @@ export function TimeField({
           {value ? timeLabel(value) : placeholder}
         </Text>
       </Pressable>
-      {open ? (
+      {presentation === "sheet" ? (
+        <ProgramSheet visible={open} onClose={close} snapPoint="half">
+          <SheetBody
+            title={accessibilityLabel}
+            footer={
+              <Button
+                fullWidth
+                label="Done"
+                onPress={() => {
+                  onChangeValue(hhmm(draft ?? anchor));
+                  close();
+                }}
+              />
+            }
+          >
+            {open ? (
+              <DateTimePicker
+                value={draft ?? anchor}
+                mode="time"
+                minuteInterval={15}
+                display="spinner"
+                themeVariant="dark"
+                style={styles.spinner}
+                onChange={(_event: DateTimePickerEvent, selected?: Date) => {
+                  if (selected) setDraft(selected);
+                }}
+              />
+            ) : null}
+          </SheetBody>
+        </ProgramSheet>
+      ) : open ? (
         <DateTimePicker
           value={anchor}
           mode="time"
           minuteInterval={15}
-          display={Platform.OS === "ios" ? "spinner" : "default"}
+          display="default"
           themeVariant="dark"
           onChange={(event: DateTimePickerEvent, selected?: Date) => {
             setOpen(false);
             if (event.type === "dismissed" || !selected) return;
-            onChangeValue(
-              `${String(selected.getHours()).padStart(2, "0")}:${String(selected.getMinutes()).padStart(2, "0")}`,
-            );
+            onChangeValue(hhmm(selected));
           }}
         />
       ) : null}
@@ -109,4 +165,6 @@ const styles = StyleSheet.create({
   rowError: { borderColor: semantic.error },
   value: { fontSize: 16, color: textTokens.primary },
   placeholder: { fontSize: 16, color: textTokens.quaternary },
+  // Full width of the sheet body (inside its 16pt gutter), never wider.
+  spinner: { alignSelf: "stretch", width: "100%" },
 });

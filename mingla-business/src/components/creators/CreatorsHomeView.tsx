@@ -10,7 +10,8 @@ import { useRouter } from "expo-router";
 
 import { Button } from "../ui/Button";
 import { Icon, type IconName } from "../ui/Icon";
-import { Sheet } from "../ui/Sheet";
+import { ProgramSheet } from "../programs/ProgramSheet";
+import { useRefreshOnFocus } from "../programs/useScreenLifecycle";
 import {
   Card,
   Initials,
@@ -87,6 +88,7 @@ export const CreatorsHomeView: React.FC<CreatorsHomeViewProps> = ({
     setListings(null);
     void load();
   }, [load]);
+  useRefreshOnFocus(load);
 
   useEffect(() => {
     if (!picking || listings !== null) return;
@@ -118,7 +120,7 @@ export const CreatorsHomeView: React.FC<CreatorsHomeViewProps> = ({
         />
       }
       overlay={
-        <Sheet
+        <ProgramSheet
           visible={picking}
           onClose={() => setPicking(false)}
           snapPoint="half"
@@ -149,7 +151,7 @@ export const CreatorsHomeView: React.FC<CreatorsHomeViewProps> = ({
               </ListGroup>
             )}
           </SheetBody>
-        </Sheet>
+        </ProgramSheet>
       }
     >
       {loading && !home ? <ProgramLoading /> : null}

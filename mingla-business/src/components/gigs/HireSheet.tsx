@@ -9,7 +9,6 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
-import { Sheet } from "../ui/Sheet";
 import { StripeProviderWrapper } from "../../payments/StripeProviderWrapper";
 import { useGigHirePay } from "../../payments/useGigHirePay";
 import {
@@ -33,6 +32,7 @@ import {
   SheetBody,
   SummaryLine,
 } from "../programs/ProgramKit";
+import { ProgramSheet } from "../programs/ProgramSheet";
 import { spacing } from "../../constants/designSystem";
 import { randomUuid } from "../../utils/randomId";
 import { hireTerms } from "./hireTerms";
@@ -69,11 +69,13 @@ type Pending = { start: GigHireStart };
 
 export function HireSheet(props: Props): React.ReactElement {
   return (
-    <Sheet visible={props.visible} onClose={props.onClose} snapPoint="full">
+    // Closes when its screen blurs (a route change) so it never stays on top
+    // of another screen.
+    <ProgramSheet visible={props.visible} onClose={props.onClose} snapPoint="full">
       <StripeProviderWrapper>
         <HireSheetBody {...props} />
       </StripeProviderWrapper>
-    </Sheet>
+    </ProgramSheet>
   );
 }
 
@@ -200,8 +202,46 @@ function HireSheetBody({
       : countering
         ? `Offer ${creatorName} a fee`
         : `Hire ${creatorName}`;
+  // The error sits above the button inside one footer column, so a long
+  // error wraps and pushes the button down instead of running under it.
+  const footer = (
+    <View style={styles.footer}>
+      <FieldError message={error} />
+      {pending ? (
+        <>
+          <Muted>
+            Finish paying on the payment page, then come back and check.
+          </Muted>
+          <Button
+            fullWidth
+            label="I've paid · check payment"
+            loading={busy}
+            onPress={() => {
+              setBusy(true);
+              void confirm(pending.start).finally(() => setBusy(false));
+            }}
+          />
+        </>
+      ) : (
+        <Button
+          fullWidth
+          label={
+            feeMinor
+              ? `Agree and pay ${programMoney(total, currency)}`
+              : "Agree and pay"
+          }
+          loading={busy}
+          disabled={busy || !allChecked || !feeMinor}
+          onPress={() => void run()}
+        />
+      )}
+      {mode.kind === "hire" && !allChecked ? (
+        <Muted>Tick each term to continue.</Muted>
+      ) : null}
+    </View>
+  );
   return (
-    <SheetBody title={title}>
+    <SheetBody title={title} footer={footer}>
       {mode.kind === "hire" && mode.allowCounter && !pending ? (
         countering ? (
           <>
@@ -276,42 +316,11 @@ function HireSheetBody({
           ))}
         </View>
       ) : null}
-      <FieldError message={error} />
-      {pending ? (
-        <>
-          <Muted>
-            Finish paying on the payment page, then come back and check.
-          </Muted>
-          <Button
-            fullWidth
-            label="I've paid · check payment"
-            loading={busy}
-            onPress={() => {
-              setBusy(true);
-              void confirm(pending.start).finally(() => setBusy(false));
-            }}
-          />
-        </>
-      ) : (
-        <Button
-          fullWidth
-          label={
-            feeMinor
-              ? `Agree and pay ${programMoney(total, currency)}`
-              : "Agree and pay"
-          }
-          loading={busy}
-          disabled={busy || !allChecked || !feeMinor}
-          onPress={() => void run()}
-        />
-      )}
-      {mode.kind === "hire" && !allChecked ? (
-        <Muted>Tick each term to continue.</Muted>
-      ) : null}
     </SheetBody>
   );
 }
 
 const styles = StyleSheet.create({
   terms: { gap: spacing.xs },
+  footer: { gap: spacing.sm, alignSelf: "stretch" },
 });

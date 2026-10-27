@@ -59,14 +59,49 @@ export function latestScript(
     : [...scripts].sort((a, b) => b.version - a.version)[0];
 }
 
+/**
+ * The format's section names, the same words the creator app shows
+ * (app-mobile/app/creator/gig/[gigId].tsx SECTION_WORDS). Unknown keys fall
+ * back to the key title-cased.
+ */
+export const SECTION_WORDS: Readonly<Record<string, string>> = {
+  hook: "Hook",
+  arrival: "Arrival",
+  reaction: "Reaction",
+  cta: "End card",
+  atmosphere: "Atmosphere",
+  experience: "Experience",
+  price_hook: "Price hook",
+  included: "What\u2019s included",
+  value: "The value",
+  people: "The people",
+  craft: "The craft",
+  reasons: "Three reasons",
+  mood: "The mood",
+  plan: "The plan",
+};
+
+export function sectionWord(key: string): string {
+  return (
+    SECTION_WORDS[key] ??
+    key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " ")
+  );
+}
+
 /** "0–3s · Hook" style label for a script section. */
 export function sectionLabel(section: GigScriptSection, index: number): string {
+  const key =
+    typeof section.key === "string" && section.key.trim()
+      ? section.key.trim()
+      : null;
   const name =
     typeof section.label === "string" && section.label.trim()
       ? section.label.trim()
       : typeof section.title === "string" && section.title.trim()
         ? section.title.trim()
-        : `Part ${index + 1}`;
+        : key
+          ? sectionWord(key)
+          : `Part ${index + 1}`;
   if (
     typeof section.start_s === "number" &&
     typeof section.end_s === "number"

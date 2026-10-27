@@ -10,7 +10,8 @@ import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { Icon } from "../ui/Icon";
-import { Sheet } from "../ui/Sheet";
+import { ProgramSheet } from "../programs/ProgramSheet";
+import { useRefreshOnFocus } from "../programs/useScreenLifecycle";
 import {
   ListGroup,
   ListRow,
@@ -60,6 +61,8 @@ export function BlastPromotionOverview({
     queryFn: () => fetchPromotionOverview(brandId, listing),
     retry: false,
   });
+  // Live counts: refetch on refocus and when the app returns to the foreground.
+  useRefreshOnFocus(query.refetch);
   // A listing that no longer exists (or is unpublished) falls back to the
   // whole brand instead of an error screen.
   const failedCode =
@@ -162,7 +165,7 @@ export function BlastPromotionOverview({
         </>
       ) : null}
 
-      <Sheet
+      <ProgramSheet
         visible={picking}
         onClose={() => setPicking(false)}
         snapPoint="half"
@@ -200,7 +203,7 @@ export function BlastPromotionOverview({
             ))}
           </ListGroup>
         </SheetBody>
-      </Sheet>
+      </ProgramSheet>
     </View>
   );
 }

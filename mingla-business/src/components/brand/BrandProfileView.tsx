@@ -83,8 +83,9 @@ import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
-import { KpiTile } from "../ui/KpiTile";
-import { FollowersKpiTile } from "./FollowersKpiTile";
+import { StatStrip } from "../programs/ProgramKit";
+import { useBrandFollowerSummary } from "../../hooks/useBrandFollowerSummary";
+import { brandStatStripItems } from "./brandStatStrip";
 import { OfferingListCard } from "../offering/OfferingListCard";
 import { liveEventToOfferingModel } from "../offering/offeringCardModels";
 import { TopBar } from "../ui/TopBar";
@@ -274,6 +275,31 @@ export interface BrandProfileViewProps {
    * Hidden when undefined (e.g., for read-only public-page consumers).
    */
   onRequestDelete?: (brand: Brand) => void;
+}
+
+function BrandStatStrip({
+  brandId,
+  attendees,
+  salesText,
+  onOpenPeople,
+}: {
+  brandId: string;
+  attendees: number;
+  salesText: string;
+  onOpenPeople?: () => void;
+}): React.ReactElement {
+  const followers = useBrandFollowerSummary(brandId);
+  return (
+    <StatStrip
+      items={brandStatStripItems({
+        attendees,
+        salesText,
+        followers: followers.data,
+        followersFailed: followers.isError,
+        onOpenPeople,
+      })}
+    />
+  );
 }
 
 export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
@@ -937,27 +963,19 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         </GlassCard>
 
         {/* SECTION B — Stats Strip */}
-        {/* #3872 round 2 — one strip of three numbers (Attendees, Sales,
-            Followers); no tile grid. */}
-        <View style={styles.statsRow}>
-          <KpiTile label="Attendees" value={formatCount(brand.stats.attendees)} sub="all time" style={styles.statCell} />
-          <KpiTile
-            label="Sales"
-            value={
-              brand.defaultCurrency !== undefined
-                ? formatCurrencyRound(brand.stats.rev, brand.defaultCurrency)
-                : "—"
-            }
-            sub="all time"
-            style={styles.statCell}
-          />
-          <View style={styles.statCell}>
-            <FollowersKpiTile
-              brandId={brand.id}
-              onOpenPeople={onOpenPeople}
-            />
-          </View>
-        </View>
+        {/* #3872 round 2 — one compact strip of three numbers (Attendees ·
+            Sales · Followers), no hint text, like the program screens'
+            strip. Followers still opens People. */}
+        <BrandStatStrip
+          brandId={brand.id}
+          attendees={brand.stats.attendees}
+          salesText={
+            brand.defaultCurrency !== undefined
+              ? formatCurrencyRound(brand.stats.rev, brand.defaultCurrency)
+              : "—"
+          }
+          onOpenPeople={onOpenPeople}
+        />
 
         {/* #3872 round 2 — one Promote row opens Blast (campaigns, ads,
             creators, referrals) for this brand. */}
@@ -1395,15 +1413,6 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
 
-  // Stats Strip ----------------------------------------------------------
-  statsRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  statCell: {
-    flex: 1,
-    minWidth: 0,
-  },
   runLabel: {
     fontSize: 12,
     fontWeight: "700",
