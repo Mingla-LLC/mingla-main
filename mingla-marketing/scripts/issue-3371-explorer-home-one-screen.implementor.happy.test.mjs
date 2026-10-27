@@ -94,7 +94,7 @@ function sourceContract(overrides = {}) {
   assert.doesNotMatch(home, /h-\[100svh\]/, 'the scrolling deck wrapper height must not return')
   assert.match(home, /location="hero_above_deck"/, 'the Use Mingla action must stay between headline and deck')
   assert.doesNotMatch(code(source(M('app/(explorer)/layout.tsx'))), /city-hubs\.css/, 'the one-screen home has no city module to style')
-  assert.match(code(source(M('app/host/page.tsx'))), /<RootCityGrid surface="host"/, 'the Host page keeps its city list')
+  assert.match(code(source(M('app/host/page.tsx'))), /<HostStartCta\b/, '#4137: the Host page ends with the Start hosting call to action')
 
   assert(fs.existsSync(path.join(REPO, M('app/(core)/going-out/page.tsx'))), '/going-out page must exist')
   assert(!fs.existsSync(path.join(REPO, M('app/(core)/explorer'))), 'the old /explorer page directory must be gone')

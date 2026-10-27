@@ -5,10 +5,9 @@ import { cn } from '@/lib/cn'
 import { captureSearchMeasurement } from '@/components/marketing/posthog-provider'
 import { AppQrPanel } from '@/components/marketing/app-qr-panel'
 import { AppleMark, PlayMark } from '@/components/ui/store-marks'
-import { detectClientPlatform, type Platform } from '@/lib/device-platform'
-import { resolveExplorerAppTarget } from '@/lib/explorer-app-target'
-import { resolveBusinessAppTarget } from '@/lib/business-app-target'
 import { siteAttribution, type SiteCampaign } from '@/lib/links-src'
+import { detectClientPlatform } from '@/lib/device-platform'
+import { DeviceLink } from './device-link'
 
 // ---------------------------------------------------------------
 // #2902 — the ONE call-to-action component for the Cutout system.
@@ -23,17 +22,28 @@ import { siteAttribution, type SiteCampaign } from '@/lib/links-src'
 // So this component owns the decision once and every section consumes it:
 //
 //   explorer + phone    → the attributed Explorer OneLink (301s to the store)
-//   explorer + desktop  → opens the QR panel (nothing to install here)
+//   explorer + desktop  → opens the QR panel (nothing to install here). The
+//                         anchor's href is /download, so no-JS visitors and a
+//                         click before hydration still reach the QR page.
+//                         Seth kept the pop-up on #4137 (OQ-1).
 //   host     + phone    → the attributed Business OneLink
 //   host     + desktop  → the business web app
 //
-// SSR SAFETY. `detectClientPlatform()` reads `navigator`, which does not exist
-// on the server. Seeding 'other' means the server HTML and the first client
-// render agree (the web-only treatment — always safe), then an effect swaps in
-// the real platform. Rendering the platform directly would hydration-mismatch.
+// The destinations come from the ONE seam, lib/cta-destination.ts, rendered by
+// DeviceLink (#4137, I-4137-MARKETING-CTA-DEVICE-SEAM).
 //
-// The click handlers deliberately RE-READ the platform rather than trust state,
-// so a tap can never resolve against a stale value.
+// #4137 F-7 — WHY BOTH LABELS AND ALL THREE MARKS RENDER. The server has no
+// navigator, so it used to render the computer wording and arrow, and a phone
+// corrected them only after hydration: one wrong paint, and a tap in that window
+// went to the computer destination. Now the markup carries the phone label AND
+// the computer label (`data-cta-when`) and the Apple, Play and arrow marks
+// (`data-cta-mark`), and app/globals.css shows the right ones from
+// <html data-platform>, which the inline boot script in <head>
+// (lib/device-platform-boot.ts) sets before first paint. That script also
+// re-points a pre-hydration tap at `data-cta-phone-href`. No timing involved.
+//
+// The click handler re-reads the platform rather than trusting state, so a tap
+// can never resolve against a stale value.
 // ---------------------------------------------------------------
 
 export type CutoutSurface = 'explorer' | 'host'
@@ -91,7 +101,8 @@ interface DeviceCtaProps {
 }
 
 const SIZES = {
-  md: 'h-[2.625rem] px-5 text-[0.9375rem]',
+  // #4137 §4.8: 44px minimum touch target.
+  md: 'h-11 px-5 text-[0.9375rem]',
   lg: 'h-[3.25rem] px-7 text-base',
 } as const
 
@@ -122,175 +133,105 @@ export function DeviceCta({
   onActivate,
   captureDefaultAnalytics = true,
 }: DeviceCtaProps) {
-  const [platform, setPlatform] = useState<Platform>('other')
-  const [hydrated, setHydrated] = useState(false)
   const [qrOpen, setQrOpen] = useState(false)
-
+  // The QR pop-up exists only on a computer, and only once React is running.
+  const [qrReady, setQrReady] = useState(false)
   useEffect(() => {
-    setPlatform(detectClientPlatform())
-    setHydrated(true)
-  }, [])
+    if (surface === 'explorer' && detectClientPlatform() === 'other') setQrReady(true)
+  }, [surface])
 
   const classes = cn(classesFor(variant, size), className)
   const arrow = withArrow ? (
     <ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
   ) : null
-  /**
-   * One label, one icon set, everywhere. The DESTINATION stays device-aware —
-   * that is the whole point of this component — but the button no longer
-   * changes its words depending on what you are holding. Showing all three
-   * platforms tells every visitor that Mingla exists on all of them, which
-   * "Download the app" and "Use on web" each only said half of.
-   */
-  /**
-   * ONE mark, not three. The stacked discs made the pill ~190px, which a
-   * 390px header cannot hold alongside the wordmark and the menu button.
-   *
-   * On a phone the store mark is INFORMATION -- Apple or Play tells you the tap
-   * ends in your store. On desktop there is no store, and the monitor glyph
-   * that used to sit here just said "this is a screen", which the reader is
-   * already looking at. An arrow says the one useful thing instead: this goes
-   * somewhere. Slightly smaller than before, so the pill reads as type with a
-   * mark rather than type with a badge.
-   */
-  /**
-   * On a phone the label stays "Use Mingla" and the store mark says where the
-   * tap lands. On desktop there is no app to install, so the label says so
-   * outright rather than promising one.
-   *
-   * Like the mark, this resolves AFTER mount -- the server has no navigator,
-   * so it renders the web wording and a phone corrects it on hydration. That
-   * is the same trade the icon already makes, and the alternative is a
-   * hydration mismatch.
-   */
-  const onPhone = platform === 'ios' || platform === 'android'
+
   // Only HOST has a web app. Explorer on desktop opens a QR panel to install
   // the app, so "Use Mingla Web" there promised something that does not exist.
-  const defaultText = !onPhone && surface === 'host' ? 'Use Mingla Web' : 'Use Mingla'
-  const text = label ?? (onPhone ? phoneLabel : desktopLabel) ?? defaultText
-
-  const marks =
-    platform === 'ios' ? (
-      <AppleMark className="h-4 w-4 shrink-0" />
-    ) : platform === 'android' ? (
-      <PlayMark className="h-4 w-4 shrink-0" />
-    ) : (
-      <ArrowRight className="h-[15px] w-[15px] shrink-0" strokeWidth={2.5} aria-hidden="true" />
+  const computerText = desktopLabel ?? (surface === 'host' ? 'Use Mingla Web' : 'Use Mingla')
+  const phoneText = phoneLabel ?? 'Use Mingla'
+  const text =
+    label ?? (
+      <>
+        <span data-cta-when="phone">{phoneText}</span>
+        <span data-cta-when="computer">{computerText}</span>
+      </>
     )
 
-  if (surface === 'host') {
-    const attribution = siteAttribution(campaignFor('host', location))
-    const target = resolveBusinessAppTarget(platform, attribution)
-    const canInstall = target.canInstall && target.installHref !== null
-    const href = canInstall ? (target.installHref as string) : target.webHref
-    return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener"
-        onClick={() => {
-          onExternalActivate?.()
-          const live = detectClientPlatform()
-          const t = resolveBusinessAppTarget(live, attribution)
-          onActivate?.(t.canInstall ? 'host_download' : 'host_web')
-          if (captureDefaultAnalytics) {
-            captureSearchMeasurement('host_start_click', {
-              audience: 'host',
-              page_family: 'host_pillar',
-              source_kind: sourceKindForLocation(location),
-              destination_kind: t.canInstall ? 'host_onelink' : 'host_web',
-              action_state: 'opened',
-            })
-          }
-        }}
-        className={classes}
-      >
-        {text}
-        {marks}
-        {arrow}
-      </a>
-    )
-  }
-
-  // Progressive enhancement: crawlers, no-JavaScript visitors and the first
-  // hydrated frame receive a real route. Once mounted, desktop can replace it
-  // with the QR dialog while phones receive the attributed OneLink below.
-  if (!hydrated) {
-    return (
-      <a
-        href="/download"
-        onClick={() => onActivate?.('explorer_download')}
-        className={classes}
-      >
-        {text}
-        {marks}
-        {arrow}
-      </a>
-    )
-  }
-
-  const target = resolveExplorerAppTarget(
-    platform,
-    siteAttribution(campaignFor('explorer', location)),
+  // One mark per device, chosen by CSS: Apple or Play tells a phone the tap ends
+  // in its store; a computer gets an arrow (this goes somewhere).
+  const marks = (
+    <>
+      <span data-cta-mark="ios" aria-hidden="true"><AppleMark className="h-4 w-4 shrink-0" /></span>
+      <span data-cta-mark="android" aria-hidden="true"><PlayMark className="h-4 w-4 shrink-0" /></span>
+      <span data-cta-mark="other" aria-hidden="true">
+        <ArrowRight className="h-[15px] w-[15px] shrink-0" strokeWidth={2.5} aria-hidden="true" />
+      </span>
+    </>
   )
-  // Phone: a real anchor to the attributed OneLink. It navigates, so it must be
-  // an <a> — and it carries no aria-haspopup, because it can never open a dialog.
-  if (target.canInstall && target.installHref !== null) {
-    return (
-      <a
-        href={target.installHref}
-        target="_blank"
-        rel="noopener"
-        onClick={() => {
-          onExternalActivate?.()
-          const live = detectClientPlatform()
-          onActivate?.('explorer_download')
-          if (captureDefaultAnalytics) {
-            captureSearchMeasurement('explorer_install_click', {
-              audience: 'explorer',
-              page_family: 'explorer_pillar',
-              source_kind: sourceKindForLocation(location),
-              destination_kind: 'explorer_onelink',
-              action_state: 'opened',
-            })
-          }
-        }}
-        className={classes}
-      >
-        {text}
-        {marks}
-        {arrow}
-      </a>
-    )
-  }
 
-  // Desktop: there is nothing to install, so this opens the QR panel. It
-  // navigates nowhere, which is why it is correctly a <button> and keeps its
-  // dialog semantics.
+  const attribution = siteAttribution(campaignFor(surface, location))
+  const explorerOnComputer = surface === 'explorer' && qrReady
+
   return (
     <>
-      <button
-        type="button"
-        aria-haspopup="dialog"
-        aria-expanded={qrOpen}
-        onClick={() => {
+      <DeviceLink
+        surface={surface}
+        attribution={attribution}
+        className={classes}
+        aria-haspopup={explorerOnComputer ? 'dialog' : undefined}
+        aria-expanded={explorerOnComputer ? qrOpen : undefined}
+        onActivate={(live, event) => {
+          const onPhone = live === 'ios' || live === 'android'
+          if (surface === 'host') {
+            onExternalActivate?.()
+            onActivate?.(onPhone ? 'host_download' : 'host_web')
+            if (captureDefaultAnalytics) {
+              captureSearchMeasurement('host_start_click', {
+                audience: 'host',
+                page_family: 'host_pillar',
+                source_kind: sourceKindForLocation(location),
+                destination_kind: onPhone ? 'host_onelink' : 'host_web',
+                action_state: 'opened',
+              })
+            }
+            return
+          }
+          if (onPhone) {
+            onExternalActivate?.()
+            onActivate?.('explorer_download')
+            if (captureDefaultAnalytics) {
+              captureSearchMeasurement('explorer_install_click', {
+                audience: 'explorer',
+                page_family: 'explorer_pillar',
+                source_kind: sourceKindForLocation(location),
+                destination_kind: 'explorer_onelink',
+                action_state: 'opened',
+              })
+            }
+            return
+          }
+          // Explorer on a computer: nothing to install here, so the QR panel
+          // opens over the page (Seth, #4137 OQ-1). Without React this anchor
+          // simply follows its /download href, which shows the same QR.
+          event.preventDefault()
           onActivate?.('explorer_qr')
           setQrOpen(true)
           onDialogOpenChange?.(true)
         }}
-        className={classes}
       >
         {text}
         {marks}
         {arrow}
-      </button>
-      <AppQrPanel
-        open={qrOpen}
-        onClose={() => {
-          setQrOpen(false)
-          onDialogOpenChange?.(false)
-        }}
-      />
+      </DeviceLink>
+      {surface === 'explorer' ? (
+        <AppQrPanel
+          open={qrOpen}
+          onClose={() => {
+            setQrOpen(false)
+            onDialogOpenChange?.(false)
+          }}
+        />
+      ) : null}
     </>
   )
 }

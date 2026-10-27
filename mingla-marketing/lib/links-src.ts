@@ -74,7 +74,15 @@ export type SiteCampaign =
   | 'business_hero'
   | 'business_download'
 
-export type OneLinkCampaign = LinksCampaign | SiteCampaign
+/**
+ * #4137 — campaigns for the free growth tools' "create it on Mingla" CTAs. The
+ * tool CTAs used to hand-build `?pid=tool_x&c=tool_x` on the OneLink base; they
+ * now go through the device seam (`lib/cta-destination.ts`), so the campaign is
+ * a governed member of this union instead of a string literal per file.
+ */
+export type ToolCampaign = 'tool_events' | 'tool_trips' | 'tool_pricing' | 'tool_venues'
+
+export type OneLinkCampaign = LinksCampaign | SiteCampaign | ToolCampaign
 
 /** Everything a OneLink needs to attribute an install. */
 export interface OneLinkAttribution {
@@ -144,4 +152,13 @@ export function linksAttribution(src: string, campaign: LinksCampaign): OneLinkA
 /** The attribution for an owned non-bio site surface (SPEC OQ-4). */
 export function siteAttribution(campaign: SiteCampaign): OneLinkAttribution {
   return { pid: SITE_PID, campaign }
+}
+
+/**
+ * #4137 — the attribution for a free growth tool CTA. `pid` and `c` are both the
+ * tool campaign, so `buildOneLinkHref` emits `?pid=tool_events&c=tool_events`,
+ * byte-identical to the hrefs the tools hand-built before.
+ */
+export function toolAttribution(campaign: ToolCampaign): OneLinkAttribution {
+  return { pid: campaign, campaign }
 }

@@ -8,6 +8,7 @@ import { ConsentBanner } from '@/components/marketing/consent-banner'
 import { requireRouteContract, type SearchReadyRouteContract } from '@/lib/search/route-registry'
 import { SITE_ORIGIN } from '@/lib/site'
 import { SkipLink } from '@/components/marketing/skip-link'
+import { DEVICE_PLATFORM_BOOT_SCRIPT } from '@/lib/device-platform-boot'
 
 // META-ORCH-1187 [Growth Analytics Hub] Phase 1 — LEG 1 (marketing web).
 // GA4 Measurement ID — public by design (web-only). Single shared stream.
@@ -59,7 +60,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${mochiy.variable} ${nunito.variable} ${inter.variable}`}>
+    // #4137 F-7: the boot script writes <html data-platform> before React
+    // hydrates, so the html element suppresses that one expected difference.
+    <html lang="en" className={`${mochiy.variable} ${nunito.variable} ${inter.variable}`} suppressHydrationWarning>
+      <head>
+        {/* #4137: device-aware CTA labels from first paint; see lib/device-platform-boot.ts. */}
+        <script dangerouslySetInnerHTML={{ __html: DEVICE_PLATFORM_BOOT_SCRIPT }} />
+      </head>
       <body>
         <noscript>
           <style>{`.search-primary-answer{opacity:1!important;transform:none!important;filter:none!important}`}</style>

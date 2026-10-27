@@ -244,7 +244,8 @@ const layout = read('app/layout.tsx')
 const eventPreview = read('app/event-preview/page.tsx')
 const tripPreview = read('app/trip-preview/page.tsx')
 assert.match(layout, /import \{ inter, mochiy, nunito \} from '\.\/fonts'/)
-assert.match(layout, /<html lang="en" className=\{`\$\{mochiy\.variable\} \$\{nunito\.variable\} \$\{inter\.variable\}`\}>/)
+// #4137: `suppressHydrationWarning` is allowed after the font classes (the device boot script sets data-platform).
+assert.match(layout, /<html lang="en" className=\{`\$\{mochiy\.variable\} \$\{nunito\.variable\} \$\{inter\.variable\}`\}(?: suppressHydrationWarning)?>/)
 for (const [name, source] of [
   ['event preview', eventPreview],
   ['trip preview', tripPreview],

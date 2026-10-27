@@ -1,5 +1,7 @@
 import type { HostGuideRecord } from '@/content/page-system/shared'
 import { DeviceCta } from '@/components/cutout'
+import { DeviceLink } from '@/components/cutout/device-link'
+import { siteAttribution } from '@/lib/links-src'
 import { GrowthToolEmbed } from './growth-tool-embed'
 
 export function HostSellingGuide({ guide }: { readonly guide: HostGuideRecord }) {
@@ -37,7 +39,16 @@ export function HostSellingGuide({ guide }: { readonly guide: HostGuideRecord })
 
       <section className="ps-host-conversion" aria-labelledby="host-conversion-heading">
         <div><p className="ps-eyebrow">Ready to publish?</p><h2 id="host-conversion-heading">Put the {guide.creationNoun} where people can understand and join it.</h2></div>
-        <a href={guide.hostUrl} className="ps-primary-action">{guide.hostAction}</a>
+        {/* #4137: phone → Mingla Host install; computer → the guide's create page. */}
+        <DeviceLink
+          surface="host"
+          attribution={siteAttribution('business_hero')}
+          hostComputerHref={guide.hostUrl}
+          sameTab
+          className="ps-primary-action"
+        >
+          {guide.hostAction}
+        </DeviceLink>
       </section>
     </>
   )

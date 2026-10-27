@@ -75,7 +75,9 @@ function sourceContract() {
   assert.match(deviceCta, /onDialogOpenChange\?: \(open: boolean\) => void/)
   assert.match(deviceCta, /phoneLabel\?: ReactNode/)
   assert.match(deviceCta, /desktopLabel\?: ReactNode/)
-  assert.match(deviceCta, /label \?\? \(onPhone \? phoneLabel : desktopLabel\) \?\? defaultText/)
+  // #4137 F-7: both labels render and CSS picks one from <html data-platform>, so no flash.
+  assert.match(deviceCta, /<span data-cta-when="phone">\{phoneText\}<\/span>/, '#4137: the phone label must be in the server HTML')
+  assert.match(deviceCta, /<span data-cta-when="computer">\{computerText\}<\/span>/, '#4137: the computer label must be in the server HTML')
   assert.match(businessTarget, /buildOneLinkHref\(BUSINESS_ONELINK_URL, attribution\)/)
   assert.match(businessTarget, /webHref: BUSINESS_WEB_URL/)
   assert.match(explorerTarget, /buildOneLinkHref\(EXPLORER_ONELINK_URL, attribution\)/)
