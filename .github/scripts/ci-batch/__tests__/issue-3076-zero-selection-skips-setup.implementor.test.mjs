@@ -66,7 +66,7 @@ const IDLE_PROBE = "issue-3076-claimed-by-no-suite/marker.txt";
 const PHASE3C_HOST = MANIFEST.classes.find((klass) =>
   phase3cOwnedForHost(MANIFEST, klass).length > 0
   && selectSuites(MANIFEST, expectedPrimarySuites(MANIFEST, klass),
-    { eventName: "pull_request", mode: "routed", changedPaths: [IDLE_PROBE] }).selectedSuiteIds.length === 0);
+    { eventName: "pull_request", mode: "routed", changedPaths: [IDLE_PROBE] }).suites.length === 0);
 assert.ok(PHASE3C_HOST, "the zero-selection proof needs a real idle host");
 
 /** The step blocks of the `batch` job, split on their own list markers. */
@@ -127,7 +127,7 @@ test("#3076-1 a class whose diff invalidates nothing publishes an explicit refus
   const inert = IDLE_PROBE;
   const exhaustive = selectSuites(MANIFEST, expectedPrimarySuites(MANIFEST, PHASE3C_HOST),
     { eventName: "pull_request", mode: "routed", changedPaths: [inert] });
-  assert.deepEqual(exhaustive.selectedSuiteIds, [], "the probe must select no suite on this host");
+  assert.deepEqual(exhaustive.suites, [], "the probe must select no suite on this host");
 
   const outputs = previewAgainst(PHASE3C_HOST, inert);
   assert.equal(outputs[PRIMARY_OUTPUT], false, "a zero-selection class must publish an explicit false");
