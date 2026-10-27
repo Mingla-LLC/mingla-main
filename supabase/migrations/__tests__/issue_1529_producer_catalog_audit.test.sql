@@ -83,7 +83,7 @@ $vacuity$;
 -- explicit NULL country_code, raising 22 -> 25. Their owning registered
 -- PostgreSQL suite (issue_4111_brand_enquiries.implementor.happy) asserts the
 -- NULL on every row they enqueue.
--- [TEST-MOD-APPROVED #3643] The ten #3872 push-only producers are observed by
+-- [TEST-MOD-APPROVED #3643] The eleven #3872 push-only producers are observed by
 -- the full replay and are tracked separately from the country-aware writers,
 -- raising the writer catalog floor 25 -> 35.
 -- (2) RATCHET — raised 12 -> 18 for #3988, 18 -> 19 for #4073, 19 -> 20 for
@@ -199,6 +199,7 @@ DECLARE
     'issue_3872_referral_payout_notice',
     'issue_3872_local_application_notice',
     'issue_3872_local_month_notice',
+    'gig_notification_tick',
     'local_timer_tick'
   ];
   drain_derived text[] := ARRAY[

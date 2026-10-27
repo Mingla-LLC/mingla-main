@@ -272,7 +272,7 @@ BEGIN
   -- twelve proved readers are the exact live catalog: 31 functions that touch
   -- the outbox.
   -- [TEST-MOD-APPROVED #3643] Raised to the live catalog measured on a fresh
-  -- PostgreSQL 17 replay of every migration with the ten #3872 push-only
+  -- PostgreSQL 17 replay of every migration with the eleven #3872 push-only
   -- producers included: 47 functions touch the outbox.
   IF v_count < 47 THEN
     RAISE EXCEPTION
@@ -286,7 +286,7 @@ BEGIN
   -- appearing.
   SELECT count(*) INTO v_count
   FROM issue_1529_adv_producers WHERE writes_outbox;
-  -- [TEST-MOD-APPROVED #3643] The ten #3872 push-only writers are deliberately
+  -- [TEST-MOD-APPROVED #3643] The eleven #3872 push-only writers are deliberately
   -- outside the country-code bucket; the measured live writer count is 35.
   IF v_count < 35 THEN
     RAISE EXCEPTION
@@ -346,6 +346,7 @@ DECLARE
     'issue_3872_referral_payout_notice',
     'issue_3872_local_application_notice',
     'issue_3872_local_month_notice',
+    'gig_notification_tick',
     'local_timer_tick'
   ];
   -- Bucket 2: producers exempt because their rows belong to the source-refund
