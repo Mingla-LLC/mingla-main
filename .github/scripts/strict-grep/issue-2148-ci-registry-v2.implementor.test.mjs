@@ -210,7 +210,11 @@ test("#2435 registry v2 proves the complete current topology", () => {
   // stays pinned; the subtrahend is still read from the registry, never typed.
   // [TEST-MOD-APPROVED #2591 · :164] Same subtraction, same reason: a consolidated
   // origin has no yamlTruth[name] either, because its wrapper is gone.
-  assert.equal([...registered].filter(([name, metadata]) => JSON.stringify(metadata) === JSON.stringify(yamlTruth[name])).length, 146 - deletedWrappers.length - consolidatedOrigins.length);
+  // [#3643 Wave 4] Live rows are compared by property: the YAML's byte
+  // fingerprint is not part of a live row, so it is set aside before comparing.
+  const properties = (name) => { const { sourceSha256: _bytes, ...rest } = yamlTruth[name] || {}; return rest; };
+  assert.equal([...registered].filter(([name, metadata]) => JSON.stringify(metadata) === JSON.stringify(properties(name))).length, 146 - deletedWrappers.length - consolidatedOrigins.length);
+  assert.equal([...registered].filter(([, metadata]) => Object.hasOwn(metadata || {}, "sourceSha256")).length, 0);
 
   const mixed = structuredClone(manifest);
   mixed.suites[23].lifecycle = "shadow-active";

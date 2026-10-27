@@ -836,7 +836,7 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     // terminal-clone proof overlays those reviewed workflow changes alongside
     // the registry patches so it exercises the proposed state, not HEAD's old
     // inventories. validateRegistry below still rejects either workflow when
-    // its bytes disagree with the corresponding sourceSha256 authority.
+    // its triggers, paths, jobs or actions disagree with the registry.
     for (const filename of [
       "issue-1931-private-event-access.yml",
       "issue-2117-offering-visibility-gate-tests.yml",
@@ -863,10 +863,16 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     ].join("\n");
     assert.equal(onlinePublishSource.split(currentMainReplayStep).length, 2,
       "the merge-touched #3288 replay step must have one exact current-main owner");
+    // [#3643 Wave 4] A live workflow is registered by its properties, not its
+    // bytes: dropping the #3288 replay STEP is a step-body edit and needs no
+    // registry change. Renaming one of its jobs is a property edit and stays RED.
     fs.writeFileSync(path.join(temp, onlinePublishWorkflow), onlinePublishSource.replace(currentMainReplayStep, ""));
+    assert.deepEqual(validateRegistry(terminal, { root: temp }), [],
+      "a step-body edit to a live workflow must not need a registry change");
+    fs.writeFileSync(path.join(temp, onlinePublishWorkflow), onlinePublishSource.replace(/^  issue-2333-client-contract:$/m, "  issue-2333-client-contract-renamed:"));
     assert.match(validateRegistry(terminal, { root: temp }).join("\n"),
       /issue-2333-online-event-publish\.yml: runtime\/setup\/trust\/trigger inventory drifted/,
-      "reverting the current-main #2333 workflow while retaining its registry authority must be RED");
+      "a job-key change to the #2333 workflow while retaining its registry authority must be RED");
     fs.writeFileSync(path.join(temp, onlinePublishWorkflow), onlinePublishSource);
     assert.deepEqual(validateRegistry(terminal, { root: temp }), [], "restoring the current workflow must restore PASS");
     for (const relative of GUARDS) assert.equal(guard(relative), 0, `${relative} must pass at terminal`);

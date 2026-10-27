@@ -10,7 +10,8 @@ export const ROOT = path.resolve(HERE, "../../..");
 export const BOOTSTRAP_PATH = path.join(HERE, "MANIFEST.json");
 // #3643 Phase 3D: re-sealed after the #2198 and #2418 gates' enforcement moved
 // from their deleted per-issue workflows to the CI batch suites that now run them.
-export const BOOTSTRAP_SHA256 = "0b5f222c73e323eafa031f3f5da11c8bceb237763b765262c7c277e9f992e956";
+// #3643 Wave 4: re-sealed after the workflow-properties regression test joined class A.
+export const BOOTSTRAP_SHA256 = "e8499e1d1156d698665eeccd703ebb02f845fd65596dbd73eab32f680cb2a503";
 export const DESCRIPTOR_SUFFIX = ".gate.json";
 
 function fail(code, detail = "") {

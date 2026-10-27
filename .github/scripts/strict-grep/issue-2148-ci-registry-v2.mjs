@@ -161,7 +161,8 @@ function selfTest(loadBase) {
     // first match (a folded, now batched-historical row) terminal, so select by
     // the live dispositions explicitly rather than by position.
     const live = m.legacyOrigins.find((item) => !["batched-active", "batched-historical", "consolidated-provider"].includes(item.disposition));
-    live.workflowMetadata.sourceSha256 = "0".repeat(64);
+    // [#3643 Wave 4] Live rows are checked by property: drift one.
+    live.workflowMetadata.jobKeys = [...live.workflowMetadata.jobKeys, "invented-job"];
   }, /runtime\/setup\/trust\/trigger inventory drifted/, discovery);
   assertRed("nondeterministic commit stamp", loadBase, (m) => { m.generatedAtCommit = "deadbeef"; }, /generatedAtCommit is forbidden/, discovery);
 }

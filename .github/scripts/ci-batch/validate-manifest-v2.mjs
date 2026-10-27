@@ -1248,6 +1248,7 @@ names.each do |name|
     "triggers" => events.uniq.sort,
     "pathScope" => path_scope.uniq.sort,
     "jobKeys" => jobs.keys.map(&:to_s).uniq.sort,
+    "jobTimeouts" => jobs.keys.map(&:to_s).uniq.sort.to_h { |key| [key, jobs[key].is_a?(Hash) ? jobs[key]["timeout-minutes"] : nil] },
     "runners" => runners,
     "runtimeVersions" => runtimes,
     "setupActions" => actions,
@@ -2955,7 +2956,17 @@ function validateRegistryInTrackedFilesScope(
     } else if (item.disposition !== "batched-active") {
       if (item.providerWorkflow !== `.github/workflows/${key}`) fail(errors, `${key}: live origin must name its sole provider workflow`);
       if (!fs.existsSync(path.join(root, item.providerWorkflow || ""))) fail(errors, `${key}: live provider workflow is missing`);
-      const expectedMetadata = inspect(key);
+      // [#3643 Wave 4] A live workflow is checked for its PROPERTIES, not its
+      // spelling. Triggers, path scope, job keys, runners, runtime versions,
+      // setup actions and trust boundary must still equal what the YAML says,
+      // so a changed trigger, path filter, job or action is red here. The byte
+      // fingerprint is no longer part of a live row: a comment, wording or
+      // step-body edit no longer forces a registry re-seal. A live row that still
+      // carries a `sourceSha256` is red, so a stale fingerprint cannot mislead.
+      const { sourceSha256: _liveBytes, ...expectedMetadata } = inspect(key) || {};
+      if (item.workflowMetadata && Object.hasOwn(item.workflowMetadata, "sourceSha256")) {
+        fail(errors, `${key}: a live workflow row must not carry a byte fingerprint (sourceSha256); its properties are checked instead`);
+      }
       if (JSON.stringify(item.workflowMetadata) !== JSON.stringify(expectedMetadata)) fail(errors, `${key}: runtime/setup/trust/trigger inventory drifted`);
     }
   }

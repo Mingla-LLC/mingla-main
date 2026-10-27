@@ -141,6 +141,17 @@
       "jobKeys": []
     },
     {
+      "script": ".github/scripts/ci-batch/__tests__/issue-3643-workflow-properties-not-bytes.implementor.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
       "script": ".github/scripts/strict-grep/__tests__/i-1272-identity-admin-read.test.mjs",
       "kind": "file",
       "enforcement": "fixture",

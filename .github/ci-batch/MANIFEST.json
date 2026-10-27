@@ -14445,7 +14445,6 @@
       "providerWorkflow": ".github/workflows/issue-1020-discover-geo-fallback-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "0aa80f7848ebdcdadb985753b26cedcf6e28777d8c429123cc80eaed615d94f6",
         "triggers": [
           "pull_request",
           "push"
@@ -14467,6 +14466,10 @@
           "issue-1020-deno",
           "issue-1020-pg17"
         ],
+        "jobTimeouts": {
+          "issue-1020-deno": null,
+          "issue-1020-pg17": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -14641,7 +14644,6 @@
       "providerWorkflow": ".github/workflows/issue-1042-assetlinks-tests.yml",
       "rationale": "Retained as the sole live provider of its complete suite during Phase 1.",
       "workflowMetadata": {
-        "sourceSha256": "97268463374096d175ab3750ac6a3899ea0a0c468f3fe3ac15da460e44e43819",
         "triggers": [
           "pull_request",
           "push"
@@ -14660,6 +14662,9 @@
         "jobKeys": [
           "issue-1042-assetlinks-parity"
         ],
+        "jobTimeouts": {
+          "issue-1042-assetlinks-parity": 10
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -14687,7 +14692,6 @@
       "providerWorkflow": ".github/workflows/issue-1044-auth-failure-capture-tests.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
-        "sourceSha256": "afa3f591465ac2eb191783e2b69429185ffa69df0bdd5d02e7b28c4a451e4850",
         "triggers": [
           "pull_request",
           "push"
@@ -14706,6 +14710,9 @@
         "jobKeys": [
           "issue-1044-consumer-node-test"
         ],
+        "jobTimeouts": {
+          "issue-1044-consumer-node-test": 15
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -14893,7 +14900,6 @@
       "providerWorkflow": ".github/workflows/issue-1175-paystack-refunds-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "53f2c83a85a6098fc13d27a4683ec7093323890b80e21163ac08a6c4a0d0bb4b",
         "triggers": [
           "pull_request"
         ],
@@ -14920,6 +14926,10 @@
           "issue-1175-paystack-refunds",
           "issue-1175-pg17"
         ],
+        "jobTimeouts": {
+          "issue-1175-paystack-refunds": null,
+          "issue-1175-pg17": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -15068,7 +15078,6 @@
       "providerWorkflow": ".github/workflows/issue-1179-cancel-refund-fanout-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "a632cf672c65d82a92e3b9c3c0968ae53e1e2bec295b32b6a4f0a61517041f42",
         "triggers": [
           "pull_request"
         ],
@@ -15099,6 +15108,10 @@
           "issue-1179-deno-check",
           "issue-1179-pg17"
         ],
+        "jobTimeouts": {
+          "issue-1179-deno-check": null,
+          "issue-1179-pg17": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -15518,7 +15531,6 @@
         "rationale": "MEASURED by tracing every gate this lane runs: its wiring gate, the auth-ready gate, the source-pin audit and the quarantine audit read mingla-business/app and mingla-business/src in full, and the typecheck delta typechecks the whole business graph, which tsconfig paths resolves into packages/. The PG17 job replays the entire migration history and then runs three .test.sql files under supabase/migrations/__tests__, so every migration is an input, as is the composite action that restores the migrated cluster. The manifest parity and ratchet-frontier steps read .github/ci-batch/MANIFEST.json and parse every workflow."
       },
       "workflowMetadata": {
-        "sourceSha256": "e05be4e2aec640279ced4401356587a12b7132392d0fd607f2ccff98bfea017e",
         "triggers": [
           "pull_request",
           "push",
@@ -15532,6 +15544,11 @@
           "issue-1403-venue-rollup-pg17",
           "route"
         ],
+        "jobTimeouts": {
+          "issue-1403-listing-insights": 35,
+          "issue-1403-venue-rollup-pg17": 35,
+          "route": 5
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -15561,7 +15578,6 @@
       "providerWorkflow": ".github/workflows/issue-1406-customer-patterns-performance-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "66855e9aa0886c0ab4dac424d02bf19f8e1e4e5f722e0c796dfb5541d8d83c81",
         "triggers": [
           "pull_request",
           "push"
@@ -15577,6 +15593,9 @@
         "jobKeys": [
           "issue-1406-customer-patterns-performance-pg17"
         ],
+        "jobTimeouts": {
+          "issue-1406-customer-patterns-performance-pg17": 20
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -15622,7 +15641,6 @@
         "rationale": "MEASURED: the deno steps check three edge functions and test one of them, and deno check follows their imports into supabase/functions/_shared (entrySource.ts was read). The wiring gate reads the consumer venue route under app-mobile/app/b, and the node --test step runs a consumer capture test that imports two services under app-mobile/src/services. The PG17 job replays every migration before running this issue's .test.sql proof. The business half runs a jest render config, the auth-ready gate and a web export over the business graph."
       },
       "workflowMetadata": {
-        "sourceSha256": "7dd25a30da5f2760fb2581ad4e65a6581d48bcdb8f4c1c0a374fe72960414fbe",
         "triggers": [
           "pull_request",
           "push",
@@ -15636,6 +15654,11 @@
           "issue-1421-venue-organic-insights",
           "route"
         ],
+        "jobTimeouts": {
+          "issue-1421-migration-pg17": 35,
+          "issue-1421-venue-organic-insights": 35,
+          "route": 5
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -15666,7 +15689,6 @@
       "providerWorkflow": ".github/workflows/issue-1423-stay-discovery-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "cbb76512436cd156b416234c06acf2bdb97edcbd0380eb6a5526245c2164c6e7",
         "triggers": [
           "pull_request",
           "push"
@@ -15685,6 +15707,9 @@
         "jobKeys": [
           "consumer-stay-discovery"
         ],
+        "jobTimeouts": {
+          "consumer-stay-discovery": 25
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -15815,7 +15840,6 @@
       "providerWorkflow": ".github/workflows/issue-1431-stay-ads-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "1454fc52ba12248d48d6831513ac2920e19ef0be1c3216053223792aea3288f0",
         "triggers": [
           "pull_request",
           "push"
@@ -15836,6 +15860,12 @@
           "consumer-native",
           "contracts"
         ],
+        "jobTimeouts": {
+          "admin": 15,
+          "buyer-web": 20,
+          "consumer-native": 25,
+          "contracts": 12
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -15929,7 +15959,6 @@
       "providerWorkflow": ".github/workflows/issue-1447-rsvp-admission-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "f41218c775df936563ec88933ad55780a455e6b238644353b596ede6f06ad27f",
         "triggers": [
           "pull_request",
           "push"
@@ -15970,6 +15999,10 @@
           "issue-1447-pg17",
           "issue-1447-rsvp-admission"
         ],
+        "jobTimeouts": {
+          "issue-1447-pg17": null,
+          "issue-1447-rsvp-admission": 12
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -16047,7 +16080,6 @@
       "providerWorkflow": ".github/workflows/issue-1459-venue-manager-photo-upload-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "bfcb51958addde1907da13c83b7167fa3d1df008848c8363e70df6116f9369a6",
         "triggers": [
           "pull_request",
           "push"
@@ -16063,6 +16095,10 @@
           "business-client",
           "storage-contract"
         ],
+        "jobTimeouts": {
+          "business-client": 15,
+          "storage-contract": 8
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -16142,7 +16178,6 @@
       "providerWorkflow": ".github/workflows/issue-1463-permitted-staff-venue-submit-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "de3db09005424a5848ba1e142e5b4a2e3163da704a2d9c8343ea30853f5cbc31",
         "triggers": [
           "pull_request",
           "push"
@@ -16162,6 +16197,10 @@
           "contracts-and-client",
           "postgres-17-runtime"
         ],
+        "jobTimeouts": {
+          "contracts-and-client": 15,
+          "postgres-17-runtime": 35
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -16288,7 +16327,6 @@
       "providerWorkflow": ".github/workflows/issue-1469-stay-authoring-permissions.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "d7c7c5740be8de1e77e14ddf1dc2c712ae64c32c0350b12a20fb1fb5ddc3c0ab",
         "triggers": [
           "pull_request",
           "push"
@@ -16306,6 +16344,10 @@
           "client-permission-parity",
           "postgres-17-runtime"
         ],
+        "jobTimeouts": {
+          "client-permission-parity": 15,
+          "postgres-17-runtime": 35
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -16397,7 +16439,6 @@
         "rationale": "MEASURED: the desktop-gate gate walks mingla-business/app and mingla-business/src in full (2,297 src and 228 app files read on one run) and additionally reads the Mingla-host strict-grep workflow, because it asserts its own registration there. The render proofs, the venue suite contracts and the web export cover the same business graph plus the packages/ tree that tsconfig maps @mingla/* into."
       },
       "workflowMetadata": {
-        "sourceSha256": "bbbdefb152966a016590af6b2b81deacea4b71412a6aea081fb0656972b49298",
         "triggers": [
           "pull_request",
           "push",
@@ -16410,6 +16451,10 @@
           "issue-1484-stay-desktop-shell",
           "route"
         ],
+        "jobTimeouts": {
+          "issue-1484-stay-desktop-shell": 30,
+          "route": 5
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -16499,7 +16544,6 @@
       "providerWorkflow": ".github/workflows/issue-1486-dormant-render-suites.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "ce3ee7fbf44f0dcbf63d89b42cb3464b1f05d35ffd5f09c72463331ffcc04dfa",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -16510,6 +16554,9 @@
         "jobKeys": [
           "issue-1486-dormant-render-suites"
         ],
+        "jobTimeouts": {
+          "issue-1486-dormant-render-suites": 25
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -16549,7 +16596,6 @@
         "rationale": "MEASURED: same walked business graph as #1484, plus 135 files under packages/offering-rendering and 51 under packages/brand-rendering read on one run through the lucide-shim and desktop-gate gates. The desktop-gate gate reads the Mingla-host strict-grep workflow to assert its own registration. Three jest configs, the stay/venue contract suites and a web export with the boot-payload budget all run over that graph."
       },
       "workflowMetadata": {
-        "sourceSha256": "0be55e3cd997acc1cbb8327a3595bb676043905dec4746a9c73f056f538d9595",
         "triggers": [
           "pull_request",
           "push",
@@ -16562,6 +16608,10 @@
           "issue-1501-add-rooms-form",
           "route"
         ],
+        "jobTimeouts": {
+          "issue-1501-add-rooms-form": 30,
+          "route": 5
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -16589,7 +16639,6 @@
       "providerWorkflow": ".github/workflows/issue-1503-stay-date-pickers-tests.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "7af7d4cbf9d357de2a870249520bf9d3822db61e8e548ff6427096a1eaf1e826",
         "triggers": [
           "pull_request",
           "push"
@@ -16612,6 +16661,9 @@
         "jobKeys": [
           "stay-date-pickers"
         ],
+        "jobTimeouts": {
+          "stay-date-pickers": 30
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -16740,7 +16792,6 @@
       "providerWorkflow": ".github/workflows/issue-1529-notification-country-code-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "6ac673183b8be90fe1d41390717c85fa4a93e7541ccaef0f8ef00538dbc92e47",
         "triggers": [
           "pull_request",
           "push"
@@ -16768,6 +16819,10 @@
           "issue-1529-contracts",
           "postgres-17-runtime"
         ],
+        "jobTimeouts": {
+          "issue-1529-contracts": 15,
+          "postgres-17-runtime": 35
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -16809,7 +16864,6 @@
         "rationale": "MEASURED: the keyboard-plumbing gate reads 1,360 .ts/.tsx files across mingla-business and packages, and the lane re-runs the #1484 and #1501 render proofs on top of its own, so its inputs are a superset of theirs. The desktop-gate gate reads the Mingla-host strict-grep workflow to assert its own registration."
       },
       "workflowMetadata": {
-        "sourceSha256": "578bf5d3328f8c9755f1a0e9fc913c29ccae1fce43644d1fc49808e566116243",
         "triggers": [
           "pull_request",
           "push",
@@ -16822,6 +16876,10 @@
           "issue-1532-stay-manager-ux",
           "route"
         ],
+        "jobTimeouts": {
+          "issue-1532-stay-manager-ux": 30,
+          "route": 5
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -16857,7 +16915,6 @@
       "providerWorkflow": ".github/workflows/issue-1540-paired-saves-sheet-tests.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
-        "sourceSha256": "39da021c90c6b499cd979de92a12f6b9d8838d83d13a756266689a085e3cc794",
         "triggers": [
           "pull_request",
           "push"
@@ -16883,6 +16940,9 @@
         "jobKeys": [
           "paired-saves-sheet"
         ],
+        "jobTimeouts": {
+          "paired-saves-sheet": 25
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -16912,7 +16972,6 @@
       "providerWorkflow": ".github/workflows/issue-1563-room-price-filter-tests.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
-        "sourceSha256": "af8902da7d6a02b63f829f2f93fef256aedf37285182719e15ca5062e2507f36",
         "triggers": [
           "pull_request",
           "push"
@@ -16930,6 +16989,9 @@
         "jobKeys": [
           "room-price-filter"
         ],
+        "jobTimeouts": {
+          "room-price-filter": 30
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -17220,7 +17282,6 @@
       "providerWorkflow": ".github/workflows/issue-1614-onconflict-arbiter-audit.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "d4e9bba5d9c7f04d5c1c3629b3dab34f4e4b9a3d008228c1b60ca8ad19f77a11",
         "triggers": [
           "pull_request",
           "push"
@@ -17229,6 +17290,9 @@
         "jobKeys": [
           "issue-1614-onconflict-arbiter-audit"
         ],
+        "jobTimeouts": {
+          "issue-1614-onconflict-arbiter-audit": 20
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -17660,7 +17724,6 @@
       "providerWorkflow": ".github/workflows/issue-1644-storage-guardrail-collage-fill-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "f768e36479d606af4ef6872b19a8ec0e4421420c234a037cb4a983a9f4a560c8",
         "triggers": [
           "pull_request",
           "push"
@@ -17690,6 +17753,11 @@
           "postgres-17-collage-reencode-contract",
           "postgres-17-guard-rpc"
         ],
+        "jobTimeouts": {
+          "issue-1644-contracts": 15,
+          "postgres-17-collage-reencode-contract": 25,
+          "postgres-17-guard-rpc": 15
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -17719,7 +17787,6 @@
       "providerWorkflow": ".github/workflows/issue-1647-admin-mv-and-db-reclaim-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "d1a131d1cdc129be1585b9c165c80d0839060d18f2c17c42932ebd692d6de131",
         "triggers": [
           "pull_request",
           "push"
@@ -17739,6 +17806,10 @@
           "issue-1647-watchdog-contracts",
           "postgres-17-issue-1647-contracts"
         ],
+        "jobTimeouts": {
+          "issue-1647-watchdog-contracts": 15,
+          "postgres-17-issue-1647-contracts": 30
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -17935,7 +18006,6 @@
       "providerWorkflow": ".github/workflows/issue-1719-unified-sharing.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "68bc5b674f34f27eb62ed3a6967da3b86db4d95c4d35eca9c53d74f5e1a8d8a5",
         "triggers": [
           "pull_request",
           "push"
@@ -17964,6 +18034,10 @@
           "postgres-17-adversarial",
           "unified-sharing"
         ],
+        "jobTimeouts": {
+          "postgres-17-adversarial": 12,
+          "unified-sharing": 12
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -17993,7 +18067,6 @@
       "providerWorkflow": ".github/workflows/issue-1771-friends-trigger-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "b7478bf17f0e2710400c09d410bd4d6d8285aea20e873396abdb385ca31a0d5a",
         "triggers": [
           "pull_request",
           "push"
@@ -18006,6 +18079,9 @@
         "jobKeys": [
           "issue-1771-friends-trigger-dropped"
         ],
+        "jobTimeouts": {
+          "issue-1771-friends-trigger-dropped": 10
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -18032,7 +18108,6 @@
       "providerWorkflow": ".github/workflows/issue-1773-reservation-stay-ingest-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "7d28201209be1bf736fe3c7fee61b0db4b187d61a2dbd08f126a8f911205b83c",
         "triggers": [
           "pull_request",
           "push"
@@ -18051,6 +18126,9 @@
         "jobKeys": [
           "issue-1773-reservation-stay-ingest"
         ],
+        "jobTimeouts": {
+          "issue-1773-reservation-stay-ingest": 25
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -18081,7 +18159,6 @@
       "providerWorkflow": ".github/workflows/issue-1774-people-page-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "72061d5b0e5d5b9eea13efc75bb8d46555fa6c3810b2259090ca9b911cf414b4",
         "triggers": [
           "pull_request",
           "push"
@@ -18130,6 +18207,9 @@
         "jobKeys": [
           "issue-1774-people-page"
         ],
+        "jobTimeouts": {
+          "issue-1774-people-page": 25
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -18159,7 +18239,6 @@
       "providerWorkflow": ".github/workflows/issue-1775-csv-contact-import-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "6b14c84612bf99c6b48b56928227920c5970a81c325c408323266d59e2c1e42c",
         "triggers": [
           "pull_request",
           "push"
@@ -18184,6 +18263,9 @@
         "jobKeys": [
           "issue-1775-csv-contact-import"
         ],
+        "jobTimeouts": {
+          "issue-1775-csv-contact-import": 25
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -18388,7 +18470,6 @@
       "providerWorkflow": ".github/workflows/issue-1793-guest-ordering-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "76344f49210be901c7e86e4b06141739e8728b3c20956e6777911f10e704cd10",
         "triggers": [
           "pull_request",
           "push"
@@ -18423,6 +18504,11 @@
           "guest-ordering-rules",
           "guest-ordering-structure"
         ],
+        "jobTimeouts": {
+          "guest-ordering-consumer": 15,
+          "guest-ordering-rules": 20,
+          "guest-ordering-structure": 10
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -18453,7 +18539,6 @@
       "providerWorkflow": ".github/workflows/issue-1810-guest-roster-export-compat-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "cc04632997a97eaac7bb6ab9f7ca2e68fc3f45141d638439247d38f5a4c389a4",
         "triggers": [
           "pull_request",
           "push"
@@ -18468,6 +18553,9 @@
         "jobKeys": [
           "issue-1810-pg17"
         ],
+        "jobTimeouts": {
+          "issue-1810-pg17": 20
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -18495,7 +18583,6 @@
       "providerWorkflow": ".github/workflows/issue-1812-brand-people-export-search-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "94408435d90b642ed559bebc3b9c5cae23b043da5107ee7e029173e9f0bb6b7b",
         "triggers": [
           "pull_request",
           "push"
@@ -18509,6 +18596,9 @@
         "jobKeys": [
           "issue-1812-pg17"
         ],
+        "jobTimeouts": {
+          "issue-1812-pg17": 20
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -18560,7 +18650,6 @@
       "providerWorkflow": ".github/workflows/issue-1857-phone-country-authority-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5424ce6d0e4bd8d4cec59578a6d6f818561e6f91c1daeac00e5bfee658510e57",
         "triggers": [
           "pull_request",
           "push"
@@ -18595,6 +18684,10 @@
           "issue-1857-pg17",
           "issue-1857-phone-country-authority"
         ],
+        "jobTimeouts": {
+          "issue-1857-pg17": 25,
+          "issue-1857-phone-country-authority": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -18624,7 +18717,6 @@
       "providerWorkflow": ".github/workflows/issue-1858-explicit-brand-export-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "423546ff7f9b6622128a29678dd32871d99cf757762dc03a3d95c8fce652b210",
         "triggers": [
           "pull_request",
           "push"
@@ -18642,6 +18734,9 @@
         "jobKeys": [
           "issue-1858-explicit-brand-export"
         ],
+        "jobTimeouts": {
+          "issue-1858-explicit-brand-export": 20
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -18720,7 +18815,6 @@
       "providerWorkflow": ".github/workflows/issue-1875-google-signin-transient-failure-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "9b2a4cd7e51ae68921cd00f3e34e89fccdb3da27c68135b51bff68b4c7d3d338",
         "triggers": [
           "pull_request",
           "push"
@@ -18735,6 +18829,9 @@
         "jobKeys": [
           "issue-1875-consumer-node-test"
         ],
+        "jobTimeouts": {
+          "issue-1875-consumer-node-test": 15
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -18883,7 +18980,6 @@
       "providerWorkflow": ".github/workflows/issue-1902-rsvp-backend-safety-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "920591a7bbd126340084d240a6d111a8f77cf6ad7d619f6ab2381b5e69c11827",
         "triggers": [
           "pull_request",
           "push"
@@ -18898,6 +18994,10 @@
           "rsvp-backend-contract",
           "rsvp-backend-pg17"
         ],
+        "jobTimeouts": {
+          "rsvp-backend-contract": 12,
+          "rsvp-backend-pg17": 20
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -18927,7 +19027,6 @@
       "providerWorkflow": ".github/workflows/issue-1928-app-identity-registry-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5b05bae117e11045ef09be621b2dd209d281c298c6eeaa704c17584710e89ecb",
         "triggers": [
           "pull_request",
           "push"
@@ -18960,6 +19059,10 @@
           "admin-build",
           "contracts"
         ],
+        "jobTimeouts": {
+          "admin-build": 15,
+          "contracts": 15
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -18991,7 +19094,6 @@
       "providerWorkflow": ".github/workflows/issue-1929-hidden-direct-checkout-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "a8ce1baa10f13cf9f1e20f1d456d6b5071102d9f7cf0056b7b6d01f2c1355be5",
         "triggers": [
           "pull_request",
           "push"
@@ -19021,6 +19123,11 @@
           "postgres-replay",
           "structural-and-edge"
         ],
+        "jobTimeouts": {
+          "clients": 25,
+          "postgres-replay": 35,
+          "structural-and-edge": 15
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -19052,7 +19159,6 @@
       "providerWorkflow": ".github/workflows/issue-1930-checkout-current-truth.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "14cf9ce9e710319d0a69198196a6390d24598a9d0ec6c29f0c4a400627a7c38f",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -19087,6 +19193,10 @@
           "issue-1930-checkout-current-truth",
           "issue-1930-postgres-races"
         ],
+        "jobTimeouts": {
+          "issue-1930-checkout-current-truth": null,
+          "issue-1930-postgres-races": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -19115,7 +19225,6 @@
       "providerWorkflow": ".github/workflows/issue-1931-private-event-access.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "1752650bfdb4969594caa76943484dffd61bc0dc01c8f004bada0dcdf993a0e5",
         "triggers": [
           "pull_request",
           "push"
@@ -19141,6 +19250,10 @@
           "gates-and-edge",
           "postgres-replay"
         ],
+        "jobTimeouts": {
+          "gates-and-edge": 20,
+          "postgres-replay": 40
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -19387,7 +19500,6 @@
       "providerWorkflow": ".github/workflows/issue-1972-ari-event-lifecycle.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5acf75b0c8de1147f73a54e700e5ffda58753926365005a79c81b3038a81e326",
         "triggers": [
           "pull_request",
           "push",
@@ -19426,6 +19538,10 @@
           "deno-and-business",
           "postgres-17"
         ],
+        "jobTimeouts": {
+          "deno-and-business": 20,
+          "postgres-17": 25
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -19455,7 +19571,6 @@
       "providerWorkflow": ".github/workflows/issue-1973-ari-experience-lifecycle.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "db1873dc6107b3042b36b3ba9775bd0dbbc3475253b6c0248cd8af214df9832c",
         "triggers": [
           "pull_request"
         ],
@@ -19481,6 +19596,10 @@
           "deno-business-and-guard",
           "postgres-17"
         ],
+        "jobTimeouts": {
+          "deno-business-and-guard": 20,
+          "postgres-17": 25
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -19510,7 +19629,6 @@
       "providerWorkflow": ".github/workflows/issue-1974-ari-ticket-pricing.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "305ff02b72e4c46311a4d2abc6a486c38c58e16ee4d8c1c271110494302b1608",
         "triggers": [
           "pull_request",
           "push",
@@ -19544,6 +19662,9 @@
         "jobKeys": [
           "contract"
         ],
+        "jobTimeouts": {
+          "contract": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -19632,7 +19753,6 @@
       "providerWorkflow": ".github/workflows/issue-1985-ari-task-state.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "85dbc04e8df38a4eab2e1b3bd502e04bbbca6a8343e3783cf5e96020807de021",
         "triggers": [
           "pull_request",
           "push",
@@ -19723,6 +19843,10 @@
           "ari-task-state",
           "ari-task-state-pg17"
         ],
+        "jobTimeouts": {
+          "ari-task-state": 15,
+          "ari-task-state-pg17": 40
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -19754,7 +19878,6 @@
       "providerWorkflow": ".github/workflows/issue-1995-contact-book-blast.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "9be460c23039bab0d358aa39166eb351eaebac09f31408ebe80b7dd639c2e627",
         "triggers": [
           "pull_request"
         ],
@@ -19796,6 +19919,9 @@
         "jobKeys": [
           "issue-1995-contact-book-blast"
         ],
+        "jobTimeouts": {
+          "issue-1995-contact-book-blast": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -19934,7 +20060,6 @@
       "providerWorkflow": ".github/workflows/issue-2009-published-event-visibility.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "200dc453a0e498b357417654fc9b2fe2b0d368f8a4febebbe0803c70cf960a8b",
         "triggers": [
           "pull_request",
           "push"
@@ -19971,6 +20096,11 @@
           "postgres-replay",
           "strict-grep-gate"
         ],
+        "jobTimeouts": {
+          "edge-function-tests": 15,
+          "postgres-replay": 40,
+          "strict-grep-gate": 10
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -20063,7 +20193,6 @@
       "providerWorkflow": ".github/workflows/issue-2015-app-network-bindings.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "2f0c77d6018992974423e637171267d6f39378356bd77fb7de55cc9dd72360ca",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -20080,6 +20209,9 @@
         "jobKeys": [
           "contracts"
         ],
+        "jobTimeouts": {
+          "contracts": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -20208,7 +20340,6 @@
       "providerWorkflow": ".github/workflows/issue-2060-ari-reliability.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "4b2b80e6831872398d352e9faa2a080b61b10a9c097783b8464afb7bcf3866ce",
         "triggers": [
           "pull_request",
           "push"
@@ -20256,6 +20387,10 @@
           "reliability-certification-pg17",
           "reliability-contracts"
         ],
+        "jobTimeouts": {
+          "reliability-certification-pg17": 12,
+          "reliability-contracts": 12
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -20287,7 +20422,6 @@
       "providerWorkflow": ".github/workflows/issue-2063-ari-brand-management.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "c915b6ea1dcb4ac2cda5e0251fc70e898571398b887906bc9866fbf48bdce482",
         "triggers": [
           "pull_request",
           "push",
@@ -20335,6 +20469,10 @@
           "issue-2063-contracts",
           "issue-2063-postgres"
         ],
+        "jobTimeouts": {
+          "issue-2063-contracts": 15,
+          "issue-2063-postgres": 40
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -20366,7 +20504,6 @@
       "providerWorkflow": ".github/workflows/issue-2075-force-update.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "792be1c7fbbcbb82d4008b3b2585d388e465a636db08e3b5f4f73e2c070af963",
         "triggers": [
           "pull_request"
         ],
@@ -20405,6 +20542,11 @@
           "edge-policy",
           "structural-contract"
         ],
+        "jobTimeouts": {
+          "consumer-policy": null,
+          "edge-policy": null,
+          "structural-contract": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -20436,7 +20578,6 @@
       "providerWorkflow": ".github/workflows/issue-2079-paystack-late-refund-identity-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "124f0c5b3a06beb359de4cdc8a6f0233f6f24cc76236f6577d0660c6c883530e",
         "triggers": [
           "pull_request",
           "push",
@@ -20471,6 +20612,10 @@
           "issue-2079-postgres-contract",
           "issue-2079-provider-correct-late-refund"
         ],
+        "jobTimeouts": {
+          "issue-2079-postgres-contract": null,
+          "issue-2079-provider-correct-late-refund": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -20549,7 +20694,6 @@
       "providerWorkflow": ".github/workflows/issue-2097-stripe-fee-refund-truth.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "11c5f6f2e1448164fc0c9307a5b06ce13316a26475b07aee732a7aea6593aac4",
         "triggers": [
           "pull_request",
           "push",
@@ -20583,6 +20727,10 @@
           "issue-2097-deno-and-contract",
           "issue-2097-postgres-17"
         ],
+        "jobTimeouts": {
+          "issue-2097-deno-and-contract": null,
+          "issue-2097-postgres-17": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -20611,7 +20759,6 @@
       "providerWorkflow": ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "db7cbb028f65b37abdceaef227d2c5cad6d328e7f95873114748461a47d9b9b2",
         "triggers": [
           "pull_request",
           "push",
@@ -20660,6 +20807,12 @@
           "issue-2099-postgres-contract",
           "issue-2099-web-contracts"
         ],
+        "jobTimeouts": {
+          "issue-2099-boot-payload-ceiling": null,
+          "issue-2099-browser-geometry": null,
+          "issue-2099-postgres-contract": null,
+          "issue-2099-web-contracts": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -20690,7 +20843,6 @@
       "providerWorkflow": ".github/workflows/issue-2101-named-buyer-checkout-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "0c21e9c57736be9e6b0369030f007295b616bd181016280ee51c2f34ddb74f26",
         "triggers": [
           "pull_request",
           "push",
@@ -20737,6 +20889,11 @@
           "issue-2101-edge",
           "issue-2101-postgres-contract"
         ],
+        "jobTimeouts": {
+          "issue-2101-contract-guard": null,
+          "issue-2101-edge": null,
+          "issue-2101-postgres-contract": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -20767,7 +20924,6 @@
       "providerWorkflow": ".github/workflows/issue-2107-mandatory-js-update.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "9d4906b67eae85e62f8a352e9cf5abebacea6a512d7a5a1f4b1e29305f3b7a8d",
         "triggers": [
           "pull_request"
         ],
@@ -20800,6 +20956,11 @@
           "edge-ota-policy",
           "structural-contract"
         ],
+        "jobTimeouts": {
+          "consumer-ota-gate": null,
+          "edge-ota-policy": null,
+          "structural-contract": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -20831,7 +20992,6 @@
       "providerWorkflow": ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "94a8a540ab89cc662424629526b9be45e23ea38999e94bd0cc4d25c21a8d6338",
         "triggers": [
           "pull_request",
           "push"
@@ -20851,6 +21011,10 @@
           "edge-typecheck",
           "postgres-replay"
         ],
+        "jobTimeouts": {
+          "edge-typecheck": 15,
+          "postgres-replay": 35
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -20880,7 +21044,6 @@
       "providerWorkflow": ".github/workflows/issue-2136-free-checkout-contract-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e37c4c107aa7ad70b70be3e9c1f44dc7bc7a751cae84346e753a85abe31ea77c",
         "triggers": [
           "pull_request",
           "push",
@@ -20907,6 +21070,10 @@
           "issue-2136-edge-contract",
           "issue-2136-postgres-contract"
         ],
+        "jobTimeouts": {
+          "issue-2136-edge-contract": 10,
+          "issue-2136-postgres-contract": 30
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -20935,7 +21102,6 @@
       "providerWorkflow": ".github/workflows/issue-2150-free-resubmit-idempotent-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "a2fd5310ee7a5d6afa84fc34771c671a43355ab65bc60bcff1a8147e00bc7b0a",
         "triggers": [
           "pull_request",
           "push",
@@ -20965,6 +21131,11 @@
           "issue-2150-postgres-contract",
           "issue-2150-strict-grep"
         ],
+        "jobTimeouts": {
+          "issue-2150-edge-contract": 10,
+          "issue-2150-postgres-contract": 30,
+          "issue-2150-strict-grep": 5
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -20994,7 +21165,6 @@
       "providerWorkflow": ".github/workflows/issue-2160-multiday-multiselect-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "35c8dcfbb699af52cc6883e3cbf57e4faa0bc937cec08eaf180083985fb3be8d",
         "triggers": [
           "pull_request",
           "push",
@@ -21046,6 +21216,11 @@
           "issue-2160-postgres-admission",
           "issue-2160-strict-grep"
         ],
+        "jobTimeouts": {
+          "issue-2160-edge-contract": 10,
+          "issue-2160-postgres-admission": 30,
+          "issue-2160-strict-grep": 5
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -21075,7 +21250,6 @@
       "providerWorkflow": ".github/workflows/issue-2160-tester-adversarial-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "8573e323fe53bf70f77951bfce160e573c6f27d9165367dc45ee1b382a8f0396",
         "triggers": [
           "pull_request",
           "push",
@@ -21099,6 +21273,9 @@
         "jobKeys": [
           "issue-2160-tester-adversarial-postgres"
         ],
+        "jobTimeouts": {
+          "issue-2160-tester-adversarial-postgres": 30
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -21123,7 +21300,6 @@
       "providerWorkflow": ".github/workflows/issue-2168-revocation-refund-handoff-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "f76d8e79ae944e2b7ae9e3c7c12264e5058556936fb0744710ddeb5cd0672240",
         "triggers": [
           "pull_request"
         ],
@@ -21138,6 +21314,10 @@
           "issue-2168-deno-check",
           "issue-2168-pg17"
         ],
+        "jobTimeouts": {
+          "issue-2168-deno-check": null,
+          "issue-2168-pg17": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -21267,7 +21447,6 @@
       "providerWorkflow": ".github/workflows/issue-2216-ticket-qr-image-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "b20a42eacfdf746df45aa898e1f9e3db6b8435c8eaed0f724c4bb67b13a16b0e",
         "triggers": [
           "pull_request",
           "push",
@@ -21298,6 +21477,11 @@
           "issue-2216-edge-qr",
           "issue-2216-strict-grep"
         ],
+        "jobTimeouts": {
+          "issue-2216-carousel": 12,
+          "issue-2216-edge-qr": 12,
+          "issue-2216-strict-grep": 5
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -21327,7 +21511,6 @@
       "providerWorkflow": ".github/workflows/issue-2217-confirmation-app-cta-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "95f90626e8e44286d2d5ae8429aee6a8ec1028e36ccc5116c13bb9734ed4100b",
         "triggers": [
           "pull_request",
           "push",
@@ -21360,6 +21543,11 @@
           "issue-2217-edge-contract",
           "issue-2217-postgres-contract"
         ],
+        "jobTimeouts": {
+          "issue-2217-client-cta": 12,
+          "issue-2217-edge-contract": 10,
+          "issue-2217-postgres-contract": 30
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -21389,7 +21577,6 @@
       "providerWorkflow": ".github/workflows/issue-2220-icon-geometry.yml",
       "rationale": "Retained as the sole live provider of its complete suite during Phase 1.",
       "workflowMetadata": {
-        "sourceSha256": "af349b07ba8688c7b2cc8060e96c844856656b3ca1e6fbb5d810be891920862d",
         "triggers": [
           "pull_request"
         ],
@@ -21408,6 +21595,9 @@
         "jobKeys": [
           "icon-geometry"
         ],
+        "jobTimeouts": {
+          "icon-geometry": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -21620,7 +21810,6 @@
       "providerWorkflow": ".github/workflows/issue-2262-composer-responsive-layout.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "77496e8cd7a276b5a2eabe7d0947ca4ea1e452a881f5ac34124cac1a1d8ec136",
         "triggers": [
           "pull_request",
           "push",
@@ -21661,6 +21850,9 @@
         "jobKeys": [
           "issue-2262-composer-layout"
         ],
+        "jobTimeouts": {
+          "issue-2262-composer-layout": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -21688,7 +21880,6 @@
       "providerWorkflow": ".github/workflows/issue-2267-marketing-tenancy.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "f637c7986868a0413b5d81517a3c06dc75a889b4d11062256423d6c8d36ebc99",
         "triggers": [
           "pull_request",
           "push",
@@ -21709,6 +21900,10 @@
           "issue-2267-emission",
           "issue-2267-policies"
         ],
+        "jobTimeouts": {
+          "issue-2267-emission": 15,
+          "issue-2267-policies": 20
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -21738,7 +21933,6 @@
       "providerWorkflow": ".github/workflows/issue-2269-verified-phone-claim-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e7f054a132f0a1d3ab5c2efe5590455c3d5f89fd6ed93855e8a0d051f1071e04",
         "triggers": [
           "pull_request",
           "push",
@@ -21762,6 +21956,10 @@
           "issue-2269-edge-contract",
           "issue-2269-postgres-contract"
         ],
+        "jobTimeouts": {
+          "issue-2269-edge-contract": 10,
+          "issue-2269-postgres-contract": 30
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -21789,7 +21987,6 @@
       "providerWorkflow": ".github/workflows/issue-2272-web-app-link-landings.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "d12404da6701e1bcf57af0dce4109e72845942ca935f0bc75e00b6c642c226f0",
         "triggers": [
           "pull_request",
           "push",
@@ -21823,6 +22020,11 @@
           "model",
           "served"
         ],
+        "jobTimeouts": {
+          "live": 10,
+          "model": 10,
+          "served": 20
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -21899,7 +22101,6 @@
       "providerWorkflow": ".github/workflows/issue-2305-conflict-resolution-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "f1def9867de28a4694eeb580550189fc486a56f55cbbde52be674cae5f358a08",
         "triggers": [
           "pull_request",
           "push",
@@ -21925,6 +22126,10 @@
           "issue-2305-class-guard",
           "issue-2305-postgres-contract"
         ],
+        "jobTimeouts": {
+          "issue-2305-class-guard": null,
+          "issue-2305-postgres-contract": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -21950,7 +22155,6 @@
       "providerWorkflow": ".github/workflows/issue-2306-lazy-native-imports.yml",
       "rationale": "Retained as the sole live provider of its complete suite during Phase 1.",
       "workflowMetadata": {
-        "sourceSha256": "f933157f13a6c4028cb67db2880b5a80ee46f619c16a180304c024c0de3e95cd",
         "triggers": [
           "pull_request"
         ],
@@ -21971,6 +22175,10 @@
           "consumer-guard",
           "sole-owner-contract"
         ],
+        "jobTimeouts": {
+          "consumer-guard": null,
+          "sole-owner-contract": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -22062,7 +22270,6 @@
       "providerWorkflow": ".github/workflows/issue-2323-free-order-claim-and-cta-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "13c1d4250c9de9ffd8824fb6a090ee093ea1234f3e0e8cbaa63a84269b0810cf",
         "triggers": [
           "pull_request",
           "push",
@@ -22097,6 +22304,10 @@
           "issue-2323-client",
           "issue-2323-postgres-contract"
         ],
+        "jobTimeouts": {
+          "issue-2323-client": 15,
+          "issue-2323-postgres-contract": 30
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -22124,7 +22335,6 @@
       "providerWorkflow": ".github/workflows/issue-2333-online-event-publish.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "24458dbb697fa7b995e00ae5c538b407234c1a39258b31209134b00d40790297",
         "triggers": [
           "pull_request",
           "push",
@@ -22153,6 +22363,10 @@
           "issue-2333-client-contract",
           "issue-2333-postgres-contract"
         ],
+        "jobTimeouts": {
+          "issue-2333-client-contract": null,
+          "issue-2333-postgres-contract": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -22180,7 +22394,6 @@
       "providerWorkflow": ".github/workflows/issue-2337-free-409-honest-copy-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "a8b99a065cc1e13f576f8f60f1c6d71993b126238dd6b2f4c1334967a0132295",
         "triggers": [
           "pull_request",
           "push",
@@ -22210,6 +22423,10 @@
           "issue-2337-client-copy",
           "issue-2337-edge-to-copy"
         ],
+        "jobTimeouts": {
+          "issue-2337-client-copy": 12,
+          "issue-2337-edge-to-copy": 10
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -22305,7 +22522,6 @@
       "providerWorkflow": ".github/workflows/issue-2353-format-truth-and-edit-grant.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "0f9cc1bd7deb122ac14e3c5a416fb1d2c6e04eb3d1f66d2accb9f96722ef73c5",
         "triggers": [
           "pull_request",
           "push"
@@ -22322,6 +22538,10 @@
           "postgres-replay",
           "strict-grep-gate"
         ],
+        "jobTimeouts": {
+          "postgres-replay": 40,
+          "strict-grep-gate": 10
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -22351,7 +22571,6 @@
       "providerWorkflow": ".github/workflows/issue-2391-migrated-postgres-snapshot.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "011c4267efa54185b6444d0deece5c8382a47840790889663e67e140974a80a1",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -22363,6 +22582,9 @@
         "jobKeys": [
           "snapshot-integrity"
         ],
+        "jobTimeouts": {
+          "snapshot-integrity": 5
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -22390,7 +22612,6 @@
       "providerWorkflow": ".github/workflows/issue-2391-tester-ordered-suffix.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "8cf127083a28d86f996d48160ea0031151463cebe0cea4f139e17db8a9a7952e",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -22402,6 +22623,9 @@
         "jobKeys": [
           "ordered-suffix-integrity"
         ],
+        "jobTimeouts": {
+          "ordered-suffix-integrity": 5
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -22476,7 +22700,6 @@
       "providerWorkflow": ".github/workflows/issue-2393-valid-marketing-test-fixtures.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "466ad276405d0719a0d91c7dab4398192085784cc473b791d68895c154eab12e",
         "triggers": [
           "pull_request",
           "push"
@@ -22492,6 +22715,9 @@
         "jobKeys": [
           "pg17"
         ],
+        "jobTimeouts": {
+          "pg17": 30
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -22519,7 +22745,6 @@
       "providerWorkflow": ".github/workflows/issue-2395-manual-contact-groups-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "0a9755577d84c3324ba01b67f516f0c12e60d71c49f402bfc2b6f19dffb9e861",
         "triggers": [
           "pull_request",
           "push",
@@ -22546,6 +22771,10 @@
           "manual-group-client-edge-contract",
           "manual-group-postgres-contract"
         ],
+        "jobTimeouts": {
+          "manual-group-client-edge-contract": null,
+          "manual-group-postgres-contract": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -22704,7 +22933,6 @@
       "providerWorkflow": ".github/workflows/issue-679-brand-follows-rls-proof.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "7c2ef59a790f26a6ce953de6dd63fd623e57a1bfca3727892deaecf8fce85137",
         "triggers": [
           "pull_request",
           "push"
@@ -22717,6 +22945,9 @@
         "jobKeys": [
           "issue-679-brand-follows-rls"
         ],
+        "jobTimeouts": {
+          "issue-679-brand-follows-rls": 10
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -22743,7 +22974,6 @@
       "providerWorkflow": ".github/workflows/issue-855-pr2-source-tracking-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "ffe8ca4485e8ab048d5a346e4a819a29ddc0ebb8799d7c568782e2e9b8ccd5ff",
         "triggers": [
           "pull_request",
           "push"
@@ -22758,6 +22988,9 @@
         "jobKeys": [
           "attribution-capture-deno-tests"
         ],
+        "jobTimeouts": {
+          "attribution-capture-deno-tests": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -22785,7 +23018,6 @@
       "providerWorkflow": ".github/workflows/issue-871-attendance-entitlement-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e6e736b042a9fa868be0fbce5c1a85d2becbdb3f952530c517eb95102c1d0629",
         "triggers": [
           "pull_request"
         ],
@@ -22830,6 +23062,10 @@
           "issue-871-contract",
           "issue-871-pg17"
         ],
+        "jobTimeouts": {
+          "issue-871-contract": null,
+          "issue-871-pg17": null
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -22857,7 +23093,6 @@
       "providerWorkflow": ".github/workflows/issue-873-guest-status-roster-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "101f0e4ce5b114f1b39fa841fc4f19e8e5c71687c15931f1138ae6a81fef6db9",
         "triggers": [
           "pull_request",
           "push"
@@ -22918,6 +23153,11 @@
           "business-render",
           "issue-873-pg17"
         ],
+        "jobTimeouts": {
+          "action-edge": 10,
+          "business-render": 15,
+          "issue-873-pg17": 25
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -22964,7 +23204,6 @@
         "rationale": "MEASURED: the analytics service, hooks, cache and events under test live in mingla-business/src, the home tile and analytics route in mingla-business/app, and the home-lock-pane and last-seven-days gates assert against app/(tabs)/home.tsx directly. The typecheck delta covers the whole business graph. The currency-fallback gate holds an explicit file list that reaches outside the business tree: it reads _business-query.ts under the discover-merged-events edge function, QuantityRow.tsx under packages/offering-rendering, and exactly two app-mobile components, which are named literally here because that gate names them literally."
       },
       "workflowMetadata": {
-        "sourceSha256": "935d7b9688c964a445df0a0cbef7f5ad18f1859d4db6a545e106bb54e95d1fef",
         "triggers": [
           "pull_request",
           "push",
@@ -22977,6 +23216,10 @@
           "issue-874-business-analytics",
           "route"
         ],
+        "jobTimeouts": {
+          "issue-874-business-analytics": 30,
+          "route": 5
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -23005,7 +23248,6 @@
       "providerWorkflow": ".github/workflows/issue-875-customer-patterns-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "6656d16febe3663464a3a0785a736886a07145834703c532582f242feda9ed57",
         "triggers": [
           "pull_request",
           "push"
@@ -23018,6 +23260,9 @@
         "jobKeys": [
           "issue-875-customer-patterns-pg17"
         ],
+        "jobTimeouts": {
+          "issue-875-customer-patterns-pg17": 15
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -23097,7 +23342,6 @@
       "providerWorkflow": ".github/workflows/issue-905-links-consent-suppression-tests.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
-        "sourceSha256": "fcdf1729a0b9e709961bca3bfc27c0bdabc99d7b99925b9673f0dc4d36b45dd0",
         "triggers": [
           "pull_request",
           "push"
@@ -23112,6 +23356,9 @@
         "jobKeys": [
           "marketing"
         ],
+        "jobTimeouts": {
+          "marketing": 10
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -23139,7 +23386,6 @@
       "providerWorkflow": ".github/workflows/issue-922-business-web-actionable.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
-        "sourceSha256": "a2b57e94ca5614d50c6a149fd2304a2e74b1bb6239fe303419877688784d2b9a",
         "triggers": [
           "pull_request",
           "push",
@@ -23169,6 +23415,9 @@
         "jobKeys": [
           "issue-922-business-web-actionable"
         ],
+        "jobTimeouts": {
+          "issue-922-business-web-actionable": 25
+        },
         "runners": [
           "ubuntu-latest"
         ],
@@ -23723,7 +23972,6 @@
       "providerWorkflow": ".github/workflows/meta-orch-1337-social-proof-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "b30aa8d0903397f3857674cdf2b622d6be8d77654e1b2259a119e32108af8d7a",
         "triggers": [
           "pull_request",
           "push"
@@ -23743,6 +23991,9 @@
         "jobKeys": [
           "meta-1337-deno-suites"
         ],
+        "jobTimeouts": {
+          "meta-1337-deno-suites": null
+        },
         "runners": [
           "ubuntu-latest"
         ],

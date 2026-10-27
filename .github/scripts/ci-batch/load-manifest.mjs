@@ -27,7 +27,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // in as primary suites of two new Deno hosts (20 suites, 93 commands, 2 classes
 // and profiles, 20 legacy rows flipped to batched-historical, 4 provider records
 // to batched-provider). The #2240 sourceSha256 patch is folded in and deleted.
-export const BOOTSTRAP_SHA256 = "4b96239e5a777cb96a00493514c9e6810bdd6154eb1012c9d38530b50600a1e6";
+// #3643 Wave 4: re-sealed after the 88 live workflow rows dropped their byte
+// fingerprint (sourceSha256) and gained their per-job timeouts; the validator
+// now checks those rows by property.
+// The four sourceSha256-only patches are deleted and that patch op is refused.
+export const BOOTSTRAP_SHA256 = "176a70a8db3a1cf017a7e1630f81e8e0984d5b8aa6a929a9c0e4e27e97f520d7";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
@@ -191,19 +195,13 @@ function applyOperation({ descriptorPath, root, collection, selector, original, 
   if (protectedSealPath(collection, operation.path)) {
     fail("dependent_seal_change", `${descriptorPath}:${operation.path}`);
   }
+  // [#3643 Wave 4] Live workflow rows no longer carry a byte fingerprint: the
+  // validator checks their triggers, paths, jobs, runtimes, actions and trust
+  // boundary against the YAML instead. A patch that re-banks a fingerprint
+  // therefore has nothing to re-bank, and is refused by name rather than
+  // silently accepted.
   if (collection === "legacyOrigins" && operation.path === "/workflowMetadata/sourceSha256") {
-    if (operation.op !== "replace" || !SHA256.test(operation.expected) || !SHA256.test(operation.value)) {
-      fail("malformed_source_digest_patch", descriptorPath);
-    }
-    const current = original.workflowMetadata?.sourceSha256;
-    if (!same(current, operation.expected)) fail("patch_cas_mismatch", `${descriptorPath}:${operation.path}`);
-    if (operation.expected === operation.value) fail("patch_noop", `${descriptorPath}:${operation.path}`);
-    const workflowPath = path.join(root, ".github/workflows", `${selector.stem}.${selector.extension}`);
-    if (!fs.existsSync(workflowPath)) fail("source_workflow_missing", descriptorPath);
-    const inspected = sha256(fs.readFileSync(workflowPath));
-    if (operation.value !== inspected) fail("source_digest_mismatch", `${descriptorPath}:${operation.value}:inspected=${inspected}`);
-    patched.workflowMetadata.sourceSha256 = operation.value;
-    return;
+    fail("source_digest_patch_retired", `${descriptorPath}: live workflows are checked by property, not by byte fingerprint; edit the workflow and drop this patch`);
   }
   if (collection === "suites" && ["/originPaths", "/externalReferenceFiles"].includes(operation.path) &&
       operation.op !== "append-unique") {

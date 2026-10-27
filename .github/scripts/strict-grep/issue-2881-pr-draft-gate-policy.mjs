@@ -530,13 +530,18 @@ function auditBotCreationSite(errors, source, required) {
  *   regex   - a test asserts a pattern spanning the trigger block            (#1614)
  *   job-if  - a test asserts a job's `if:` value verbatim                    (ci-batch)
  *   registry- .github/ci-batch/MANIFEST.json legacyOrigins[].workflowMetadata
- *             .sourceSha256 banks a sha256 of 108 workflow files            (#1719 + 107)
+ *             once banked a sha256 of 108 workflow files                    (#1719 + 107)
  *
  * A8 proves every registered pin-protected entry is a REAL, CURRENTLY SATISFIED pin,
  * so the registry cannot rot into a list of excuses.
- * A9 is the catch-all: every workflow registered in the ci-batch origin registry must
- * hash to its banked value. That is base-free, so it fails the build for ANY edit that
- * forgets to re-bank -- this issue's, #2882's tiering, or anyone's.
+ * A9 is the catch-all for the registry shape. [#3643 Wave 4] It used to require every
+ * registered live workflow to hash to a banked sha256, which made a one-word comment
+ * edit a registry re-seal. The registry now records a live workflow's PROPERTIES
+ * (triggers, path scope, jobs, timeouts, runners, runtimes, setup actions, trust
+ * boundary) and the ci-batch validator compares them with the YAML. A9 keeps the
+ * part of the old rule that is still a fact about the registry: every registered
+ * live workflow has a property inventory, and none carries a byte fingerprint that
+ * nothing checks any more and that would only mislead.
  */
 export const CI_BATCH_MANIFEST = ".github/ci-batch/MANIFEST.json";
 
@@ -617,20 +622,23 @@ function auditPins(errors, sources, alwaysOn, options) {
   }
   const origins = Array.isArray(manifest.legacyOrigins) ? manifest.legacyOrigins : null;
   if (!origins) { errors.push(`${CI_BATCH_MANIFEST}: legacyOrigins is missing or not an array`); return; }
-  const stale = [];
+  const fingerprinted = [];
   for (const origin of origins) {
     const name = `${origin.stem}.${origin.extension}`;
     const workflow = sources[name];
     if (typeof workflow !== "string") continue; // registered origin no longer on disk: not this gate's rule
-    const banked = origin.workflowMetadata?.sourceSha256;
-    if (typeof banked !== "string") { errors.push(`${CI_BATCH_MANIFEST}: ${name} has no banked sourceSha256`); continue; }
-    if (!digestVariants(workflow).has(banked)) stale.push(name);
+    if (origin.disposition === "batched-active") continue; // no live provider row to describe
+    const metadata = origin.workflowMetadata;
+    if (!metadata || typeof metadata !== "object" || !Array.isArray(metadata.jobKeys) || !Array.isArray(metadata.triggers)) {
+      errors.push(`${CI_BATCH_MANIFEST}: ${name} has no property inventory (triggers, jobKeys, ...) for the validator to compare`);
+      continue;
+    }
+    if (Object.hasOwn(metadata, "sourceSha256")) fingerprinted.push(name);
   }
-  if (stale.length) {
+  if (fingerprinted.length) {
     errors.push(
-      `${CI_BATCH_MANIFEST}: ${stale.length} registered workflow(s) no longer hash to their banked sourceSha256 — ` +
-      `re-bank them in the same commit that edits the workflow, or the registry silently describes files that no longer exist in that form. ` +
-      `First few: ${stale.slice(0, 5).join(", ")}`,
+      `${CI_BATCH_MANIFEST}: ${fingerprinted.length} live workflow row(s) still carry a byte fingerprint (sourceSha256) — ` +
+      `live workflows are checked by property, so remove it. First few: ${fingerprinted.slice(0, 5).join(", ")}`,
     );
   }
 }
@@ -698,7 +706,7 @@ const safePinInputs = (sources) => {
   const ciBatchManifest = { legacyOrigins: Object.keys(sources).map((name) => ({
     stem: name.replace(/\.ya?ml$/, ""),
     extension: name.split(".").pop(),
-    workflowMetadata: { sourceSha256: crypto.createHash("sha256").update(sources[name]).digest("hex") },
+    workflowMetadata: { triggers: ["pull_request"], jobKeys: ["only"] },
   })) };
   return { pinSources, ciBatchManifest };
 };
@@ -834,13 +842,21 @@ export function runSelfTest() {
     assert.ok(result.errors.some((error) => error.includes("is unreadable")), "A8 must fail closed when the pinning file is gone");
     assertions += 1;
   }
-  // A9 — a workflow that no longer hashes to its banked value fails. THIS IS THE 108-CLASS.
+  // A9 — a live row carrying a byte fingerprint, or no property inventory, fails.
   {
     const sources = safeSources();
     const inputs = safePinInputs(sources);
     inputs.ciBatchManifest.legacyOrigins[0].workflowMetadata.sourceSha256 = "0".repeat(64);
     const result = auditWorkflowSources(sources, { botCreationSource: OK_BOT_SOURCE, ...inputs });
-    assert.ok(result.errors.some((error) => error.includes("no longer hash to their banked sourceSha256")), "A9 must fail on registry drift");
+    assert.ok(result.errors.some((error) => error.includes("still carry a byte fingerprint")), "A9 must reject a live byte fingerprint");
+    assertions += 1;
+  }
+  {
+    const sources = safeSources();
+    const inputs = safePinInputs(sources);
+    delete inputs.ciBatchManifest.legacyOrigins[0].workflowMetadata;
+    const result = auditWorkflowSources(sources, { botCreationSource: OK_BOT_SOURCE, ...inputs });
+    assert.ok(result.errors.some((error) => error.includes("has no property inventory")), "A9 must reject a live row with no inventory");
     assertions += 1;
   }
   // A9 — a missing registry fails closed.
