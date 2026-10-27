@@ -52,7 +52,7 @@ describe("#3872 B5 buyer referral web", () => {
       publicDetails: { actionEligible: true },
       destination: { kind: "event", brandSlug: "lantern-room", eventSlug: "night-market" },
     };
-    expect(renderContentShareHtml(share)).not.toContain("shared_by_card_viewed");
+    expect(renderContentShareHtml(share, null, null, false)).not.toContain("shared_by_card_viewed");
     expect(renderContentShareHtml(share, null, { firstName: "Ada", avatarUrl: null }, false))
       .toContain("record('shared_by_card_viewed')");
   });
