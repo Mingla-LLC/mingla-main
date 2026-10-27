@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 import { BaseBottomSheet, BottomSheetScrollView } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { colors, fontWeights } from "../../constants/designSystem";
@@ -18,6 +19,7 @@ import { getDisplayName } from "../../utils/getDisplayName";
 import { getCountryByCode, getDefaultCountryCode } from "../../constants/countries";
 import { useDebouncedValue, usePhoneLookup } from "../../hooks/usePhoneLookup";
 import { inviteByPhone } from "../../services/sessionInviteService";
+import { showInviteNotTextedAlert } from "../../utils/inviteNotTextedAlert";
 import { PhoneInput } from "../onboarding/PhoneInput";
 import {
   buildPendingCollabPhoneE164,
@@ -94,6 +96,7 @@ export function PendingCollabChatSheet({
   onAddFriendRequest,
 }: PendingCollabChatSheetProps) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation(["board", "connections", "common"]);
   const [phoneInput, setPhoneInput] = useState("");
   const [countryCode, setCountryCode] = useState(getDefaultCountryCode());
   const [phoneError, setPhoneError] = useState<string | null>(null);
@@ -156,6 +159,12 @@ export function PendingCollabChatSheet({
       }
       setPhoneInput("");
       await onPhoneInviteSettled();
+      // Issue #4114 QA run 2: a cold invite whose text did not go out says so
+      // and offers Share instead of claiming it was sent.
+      if (outcome.kind === "cold" && !outcome.texted) {
+        showInviteNotTextedAlert(t, outcome.phoneE164, outcome.inviteLink);
+        return;
+      }
       Alert.alert(
         "Invite sent",
         outcome.kind === "warm" && outcome.displayName

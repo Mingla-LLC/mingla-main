@@ -16,6 +16,7 @@
     "adventurous": "모험", "firstDate": "첫 데이트", "romantic": "로맨틱", "groupFun": "그룹 놀이", "picnicDates": "피크닉 데이트", "takeAStroll": "산책"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "{{phone}}에 문자를 보내지 못했어요. 대신 초대 링크를 공유해 주세요.",
     "adminPrivileges": "관리자 권한", "manageBoard": "보드 관리", "renameBoard": "보드 이름 변경",
     "inviteParticipants": "참가자 초대", "turnOffNotifications": "알림 끄기", "turnOnNotifications": "알림 켜기",
     "leaveBoard": "보드 나가기", "leaving": "나가는 중...", "deleteBoard": "보드 삭제",

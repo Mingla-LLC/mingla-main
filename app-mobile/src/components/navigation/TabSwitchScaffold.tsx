@@ -50,6 +50,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { glass } from '../../constants/designSystem';
 import { useA11yPreferences } from '../../hooks/useA11yPreferences';
 import { markTabSwitch } from '../../utils/tabSwitchPerf';
+import { ChatListSkeleton } from '../connections/ChatListSkeleton';
+import {
+  CHAT_FILTER_CHIP_HEIGHT,
+  CHAT_FILTER_ROW_HEIGHT,
+  CHAT_HEADER_BUTTON_SIZE,
+  CHAT_ROW_SIDE_PADDING,
+  CHAT_SEARCH_HEIGHT,
+  CHAT_SEARCH_TOP_GAP,
+} from '../connections/chatListModel';
 
 const c = glass.chrome;
 const d = glass.discover;
@@ -129,6 +138,9 @@ const DiscoverSkeleton = ({ insetTop }: { insetTop: number }): React.ReactElemen
 );
 
 const ConnectionsSkeleton = ({ insetTop }: { insetTop: number }): React.ReactElement => {
+  // Issue #4114: lockstep with ConnectionsPage — the same glass header (title +
+  // two 34pt buttons), 36pt search, filter chips and the shared 72pt row
+  // skeleton (ChatListSkeleton, geometry from chatListModel).
   const headerHeight = insetTop + c.row.topInset + 48 + 8;
   return (
     <>
@@ -138,22 +150,21 @@ const ConnectionsSkeleton = ({ insetTop }: { insetTop: number }): React.ReactEle
           <View style={[styles.headerRow, { top: insetTop + c.row.topInset }]}>
             <Block style={styles.title} />
             <View style={styles.headerRowActions}>
-              <Block style={styles.headerCircle} />
-              <Block style={styles.headerCircle} />
+              <Block style={styles.headerCircleChats} />
+              <Block style={styles.headerCircleChats} />
             </View>
           </View>
         }
       />
-      <View style={{ marginTop: headerHeight + 12 }}>
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <View key={i} style={styles.chatRow}>
-            <Block style={styles.avatar} />
-            <View style={styles.chatRowText}>
-              <Block style={styles.chatName} />
-              <Block style={styles.chatPreview} />
-            </View>
-          </View>
-        ))}
+      <View style={{ marginTop: headerHeight + CHAT_SEARCH_TOP_GAP }}>
+        <Block style={styles.chatSearch} />
+        <View style={styles.chatChips}>
+          <Block style={styles.chatChip} />
+          <Block style={styles.chatChip} />
+          <Block style={styles.chatChip} />
+          <Block style={styles.chatChip} />
+        </View>
+        <ChatListSkeleton rows={7} />
       </View>
     </>
   );
@@ -428,33 +439,29 @@ const styles = StyleSheet.create({
     backgroundColor: BLOCK_STRONG,
   },
 
-  // ── connections (chat list) ───────────────────────────────
-  chatRow: {
+  // ── connections (chat list) — issue #4114 lockstep ────────
+  headerCircleChats: {
+    width: CHAT_HEADER_BUTTON_SIZE,
+    height: CHAT_HEADER_BUTTON_SIZE,
+    borderRadius: CHAT_HEADER_BUTTON_SIZE / 2,
+  },
+  chatSearch: {
+    marginHorizontal: CHAT_ROW_SIDE_PADDING,
+    height: CHAT_SEARCH_HEIGHT,
+    borderRadius: 10,
+  },
+  chatChips: {
+    height: CHAT_FILTER_ROW_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
+    gap: 6,
+    paddingHorizontal: CHAT_ROW_SIDE_PADDING,
+    paddingTop: 4,
   },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: BLOCK_STRONG,
-  },
-  chatRowText: {
-    flex: 1,
-    gap: 8,
-  },
-  chatName: {
-    width: '42%',
-    height: 16,
-    borderRadius: 8,
-  },
-  chatPreview: {
-    width: '76%',
-    height: 12,
-    borderRadius: 6,
+  chatChip: {
+    width: 64,
+    height: CHAT_FILTER_CHIP_HEIGHT,
+    borderRadius: CHAT_FILTER_CHIP_HEIGHT / 2,
   },
 
   // ── likes (saved tiles) ───────────────────────────────────

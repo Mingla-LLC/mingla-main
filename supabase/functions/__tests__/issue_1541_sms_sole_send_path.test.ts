@@ -581,6 +581,10 @@ test("#1541 B-1 send-phone-invite: an NG destination in a dark market makes ZERO
     assertEquals(body.success, true, "the invite exists regardless of the SMS");
     // F-4 — this used to say "sent" no matter what happened.
     assertEquals(body.status, "skipped");
+    // #4114 QA run 2: the app reads smsStatus and offers Share on "failed".
+    assertEquals(body.smsStatus, "failed", "a skipped text is not a sent text");
+    assertEquals(body.smsProviderStatus, "skipped");
+    assert(typeof body.inviteLink === "string" && body.inviteLink.length > 0, "the link to share");
   });
 });
 
@@ -590,6 +594,7 @@ test("#1541 B-2 send-phone-invite: a US destination sends exactly one Twilio mes
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.status, "sent");
+    assertEquals(body.smsStatus, "sent", "#4114: a sent text says so");
 
     const calls = twilioCalls();
     assertEquals(calls.length, 1, "exactly one Twilio call");

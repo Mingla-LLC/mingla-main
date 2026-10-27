@@ -144,9 +144,24 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // `useMessages` already uses for chat read receipts. No new arbiter columns;
   // census +1 for the new call site only (98).
   //
+  // #4114 Chats polish, net +1 (99):
+  //   -1  onboarding `OnboardingFriendsAndPairingStep` no longer upserts
+  //       `friend_requests` on `(sender_id,receiver_id)` from the client; Add a
+  //       friend now goes through the one server path. Call-site subtraction
+  //       only; the arbiter and the other call site are unchanged.
+  //   +1  `messagingService` mark-read for the unread chunk upserts
+  //       `message_reads` on `(message_id,user_id)` — the same non-partial
+  //       `message_reads_message_id_user_id_key` UNIQUE constraint that
+  //       `useMessages` already uses. No new arbiter columns.
+  //   +1  new `open-view-once` edge function records the first open in
+  //       `message_media_views` on `(message_id,user_id)` with
+  //       `ignoreDuplicates: true`. New arbiter: the table's non-partial
+  //       `PRIMARY KEY (message_id, user_id)` from
+  //       `20271230034114_issue_4114_chat_media.sql`.
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 98);
+  assert.equal(sites.length, 99);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&

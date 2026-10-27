@@ -116,7 +116,7 @@ BEGIN
       v->'nextCursor',50
     );
     RAISE EXCEPTION 'T-873-01C FAIL: cursor was not bound to its query';
-  EXCEPTION WHEN serialization_failure THEN NULL;
+  EXCEPTION WHEN sqlstate 'PT409' THEN NULL;
   END;
   v_preview:=public.biz_guest_roster_store_preview(
     '87300000-0000-4000-8000-000000000001','87300000-0000-4000-8000-000000000020',
@@ -215,7 +215,7 @@ BEGIN
       'reminder',ARRAY['person:87300000-0000-4000-8000-000000000030'],ARRAY['email']
     );
     RAISE EXCEPTION 'T-873-02B FAIL: responded guest stayed reminder-eligible';
-  EXCEPTION WHEN serialization_failure THEN NULL;
+  EXCEPTION WHEN sqlstate 'PT409' THEN NULL;
   END;
   BEGIN
     PERFORM public.biz_execute_guest_roster_send_group(
@@ -227,7 +227,7 @@ BEGIN
       ),ARRAY['email'],'87300000-0000-4000-8000-000000000056','{}'::jsonb
     );
     RAISE EXCEPTION 'T-873-02B FAIL: final reminder transaction ignored changed RSVP';
-  EXCEPTION WHEN serialization_failure THEN
+  EXCEPTION WHEN sqlstate 'PT409' THEN
     IF SQLERRM NOT LIKE '%guest_roster_status_changed%' THEN RAISE; END IF;
   END;
   v:=public.biz_guest_roster_set_rsvp_approval(
@@ -360,7 +360,7 @@ BEGIN
       '87300000-0000-4000-8000-000000000082','{}'::jsonb
     );
     RAISE EXCEPTION 'T-873-05B FAIL: stale failed attempt was retried after a newer attempt existed';
-  EXCEPTION WHEN serialization_failure THEN NULL;
+  EXCEPTION WHEN sqlstate 'PT409' THEN NULL;
   END;
 END;
 $stale_retry$;

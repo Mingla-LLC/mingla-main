@@ -178,7 +178,14 @@
     "alert_decline_error": "تعذّر رفض طلب الاقتران. حاول مرة أخرى.",
     "alert_generic_error": "تعذّرت معالجة الطلب. حاول مرة أخرى.",
     "share_message": "مرحباً! انضم إليّ على Mingla ولنكتشف تجارب رائعة معاً. https://usemingla.com",
-    "fallback_user": "مستخدم"
+    "fallback_user": "مستخدم",
+    "invite_card_title": "أصدقاؤك هنا بالفعل",
+    "invite_card_body": "دعاك {{name}} إلى Mingla. اقبل لتصبحا صديقين وتريا أعياد ميلاد بعضكما وخططكما ومحفوظاتكما.",
+    "invite_card_sub": "★ صديق + اقتران · دعاك برسالة نصية",
+    "invite_card_accept": "قبول",
+    "invite_card_not_now": "ليس الآن",
+    "invite_card_done": "أنت صديق لـ {{name}} ومقترن به",
+    "invite_card_friends_only": "أنت صديق لـ {{name}}"
   },
   "collaborations": {
     "headline": "خططوا معًا",
