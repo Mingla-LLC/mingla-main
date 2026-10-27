@@ -20,18 +20,20 @@
 --              before (re-raised as 40001, or counted "busy"), PT409 is handled
 --              the same way, and an unrelated error still falls through to the
 --              WHEN OTHERS arm unchanged.
---   T3 AGAIN   the migration applied a second time is a no-op: not one
---              pg_proc row is rewritten (same oid, same xmin).
+--   T3 AGAIN   the migration applied a second time is a no-op: every
+--              function keeps its oid, its definition (md5 of
+--              pg_get_functiondef), owner, grants and comment, and only the
+--              77 target functions in public/private are even rewritten.
 --   T4 CLOSED  the migration fails closed and rolls back as a whole: a 40001
---              raise it cannot rewrite (outside public/private) makes it
---              refuse, and so does any change beyond the body of a rewritten
---              function (grant, comment, setting, volatility, owner, oid),
---              forced by an event trigger. After each refusal nothing is
---              applied, not even the rewrite of a function it could fix.
---              Finally a clean run rewrites every RAISE form (ERRCODE '40001',
---              ERRCODE 'serialization_failure', RAISE SQLSTATE '40001', RAISE
---              serialization_failure) and widens a handler, in one tester
---              function and nowhere else.
+--              raise left in any function (here outside public/private) makes
+--              it refuse; so does drift in a TARGET function's grant, comment,
+--              search_path, volatility, owner or oid, forced by an event
+--              trigger while the migration re-creates it; so does a target
+--              whose definition is no longer the one the file was generated
+--              from (the file must never overwrite a later change). After each
+--              refusal nothing is applied. Finally a target reverted to its
+--              pre-migration 40001 definition is restored by a clean run, and
+--              the clean run touches the 77 targets and nothing else.
 --
 -- T1 and T2 roll back. T3 and T4 must commit (the migration owns its own
 -- transaction); T4 removes every object it created and re-checks the
@@ -317,57 +319,94 @@ $t2$;
 ROLLBACK;
 
 -------------------------------------------------------------------------------
--- T3: applying the migration again changes nothing.
+-- Shared by T3 and T4: a snapshot of every function outside the system
+-- schemas. Definitions are read under the search_path the migration itself
+-- uses, so an md5 means the same thing here as in the migration.
 -------------------------------------------------------------------------------
-CREATE TEMP TABLE t4134_procs AS
-SELECT p.oid, p.xmin::text AS proc_xmin
-  FROM pg_catalog.pg_proc AS p
-  JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
- WHERE n.nspname NOT IN ('pg_catalog', 'information_schema');
+CREATE FUNCTION pg_temp.t4134_def(p_oid oid) RETURNS text
+LANGUAGE sql STABLE SET search_path TO pg_catalog, pg_temp
+AS $fn$ SELECT pg_get_functiondef(p_oid) $fn$;
+
+CREATE TEMP TABLE t4134_procs (
+  oid oid PRIMARY KEY,
+  nspname name NOT NULL,
+  proc_xmin text NOT NULL,
+  def_md5 text NOT NULL,
+  proowner oid NOT NULL,
+  acl text,
+  comment text
+);
+
+CREATE FUNCTION pg_temp.t4134_take_snapshot() RETURNS void
+LANGUAGE plpgsql AS $fn$
+BEGIN
+  TRUNCATE t4134_procs;
+  INSERT INTO t4134_procs
+  SELECT p.oid, n.nspname, p.xmin::text, md5(pg_temp.t4134_def(p.oid)), p.proowner, p.proacl::text,
+         obj_description(p.oid, 'pg_proc')
+    FROM pg_catalog.pg_proc AS p
+    JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
+   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+     AND p.prokind <> 'a';
+END;
+$fn$;
+
+-- Functions whose definition, owner, grants or comment differ from the
+-- snapshot, or that are gone (a new oid counts as gone).
+CREATE FUNCTION pg_temp.t4134_drift() RETURNS text
+LANGUAGE sql STABLE AS $fn$
+  SELECT string_agg(coalesce(p.oid::regprocedure::text, s.oid::text), ', ' ORDER BY 1)
+    FROM t4134_procs AS s
+    LEFT JOIN pg_catalog.pg_proc AS p ON p.oid = s.oid
+   WHERE p.oid IS NULL
+      OR md5(pg_temp.t4134_def(p.oid)) IS DISTINCT FROM s.def_md5
+      OR p.proowner IS DISTINCT FROM s.proowner
+      OR p.proacl::text IS DISTINCT FROM s.acl
+      OR obj_description(p.oid, 'pg_proc') IS DISTINCT FROM s.comment
+$fn$;
+
+-- Functions whose pg_proc row was written since the snapshot.
+CREATE FUNCTION pg_temp.t4134_rewritten() RETURNS TABLE(signature text, nspname name)
+LANGUAGE sql STABLE AS $fn$
+  SELECT p.oid::regprocedure::text, s.nspname
+    FROM t4134_procs AS s
+    JOIN pg_catalog.pg_proc AS p ON p.oid = s.oid
+   WHERE p.xmin::text <> s.proc_xmin
+$fn$;
+
+-------------------------------------------------------------------------------
+-- T3: applying the migration again changes nothing. CREATE OR REPLACE writes
+-- each target's pg_proc row again, so "nothing" means: every function keeps
+-- its oid, definition, owner, grants and comment, and the only rows written
+-- are the 77 targets in public/private.
+-------------------------------------------------------------------------------
+SELECT pg_temp.t4134_take_snapshot();
 
 \ir ../20271231204134_issue_4134_pt409_application_conflicts.sql
 
 DO $t3$
-DECLARE v_bad text;
+DECLARE
+  v_bad text;
+  v_count integer;
 BEGIN
-  SELECT string_agg(coalesce(p.oid::regprocedure::text, s.oid::text), ', ') INTO v_bad
-    FROM t4134_procs AS s
-    LEFT JOIN pg_catalog.pg_proc AS p ON p.oid = s.oid
-   WHERE p.oid IS NULL OR p.xmin::text <> s.proc_xmin;
+  v_bad := pg_temp.t4134_drift();
   IF v_bad IS NOT NULL THEN
-    RAISE EXCEPTION 'ISSUE-4134-T T3 FAIL: a second run rewrote or dropped: %', v_bad;
+    RAISE EXCEPTION 'ISSUE-4134-T T3-1 FAIL: a second run changed or dropped: %', v_bad;
   END IF;
-  RAISE NOTICE 'ISSUE-4134-T T3 PASS: a second run of the migration rewrote nothing';
+  SELECT count(*), string_agg(r.signature, ', ') FILTER (WHERE r.nspname NOT IN ('public', 'private'))
+    INTO v_count, v_bad
+    FROM pg_temp.t4134_rewritten() AS r;
+  IF v_bad IS NOT NULL OR v_count <> 77 THEN
+    RAISE EXCEPTION 'ISSUE-4134-T T3-2 FAIL: a second run wrote % functions (want the 77 targets); outside public/private: %',
+      v_count, coalesce(v_bad, '<none>');
+  END IF;
+  RAISE NOTICE 'ISSUE-4134-T T3 PASS: a second run of the migration left every definition, owner, grant and comment as it was';
 END
 $t3$;
 
 -------------------------------------------------------------------------------
 -- T4: the migration fails closed and rolls back whole.
 -------------------------------------------------------------------------------
--- A tester function in public with every RAISE form and a handler. The
--- migration can rewrite it, so it must stay untouched after every refusal.
-CREATE FUNCTION public.issue_4134_tester_probe(p integer) RETURNS text
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'pg_catalog', 'pg_temp'
-AS $fn$
-BEGIN
-  IF p = 1 THEN RAISE EXCEPTION 'probe_errcode_number' USING ERRCODE = '40001'; END IF;
-  IF p = 2 THEN RAISE EXCEPTION 'probe_errcode_name' USING ERRCODE = 'serialization_failure'; END IF;
-  IF p = 3 THEN RAISE SQLSTATE '40001' USING MESSAGE = 'probe_raise_sqlstate'; END IF;
-  IF p = 4 THEN RAISE serialization_failure USING MESSAGE = 'probe_raise_condition'; END IF;
-  IF p = 5 THEN
-    BEGIN
-      PERFORM public.issue_4134_tester_probe(1);
-    EXCEPTION WHEN serialization_failure THEN
-      RETURN 'caught';
-    END;
-  END IF;
-  RETURN 'none';
-END;
-$fn$;
-REVOKE ALL ON FUNCTION public.issue_4134_tester_probe(integer) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.issue_4134_tester_probe(integer) TO service_role;
-COMMENT ON FUNCTION public.issue_4134_tester_probe(integer) IS 'issue 4134 tester probe';
-
 -- A 40001 raise in a schema the migration does not rewrite.
 CREATE SCHEMA issue_4134_tester;
 CREATE FUNCTION issue_4134_tester.lingering() RETURNS void
@@ -378,47 +417,48 @@ END;
 $fn$;
 
 -- An event trigger that, only while issue_4134_tester.break is set in this
--- session, changes more than the body of the probe when it is re-created.
-CREATE FUNCTION issue_4134_tester.break_probe() RETURNS event_trigger
+-- session, changes more than the body of one TARGET function at the moment
+-- the migration re-creates it.
+CREATE FUNCTION issue_4134_tester.break_target() RETURNS event_trigger
 LANGUAGE plpgsql AS $fn$
 DECLARE
   v_mode text := coalesce(current_setting('issue_4134_tester.break', true), '');
   v_cmd record;
   v_def text;
+  v_owner text;
 BEGIN
   IF v_mode = '' THEN RETURN; END IF;
   FOR v_cmd IN SELECT * FROM pg_event_trigger_ddl_commands() LOOP
-    IF v_cmd.object_identity = 'public.issue_4134_tester_probe(integer)' THEN
+    IF v_cmd.objid = 'public.ops_request_begin(text,text,text,jsonb)'::regprocedure::oid THEN
       PERFORM set_config('issue_4134_tester.break', '', true);
       CASE v_mode
         WHEN 'acl' THEN
-          GRANT EXECUTE ON FUNCTION public.issue_4134_tester_probe(integer) TO authenticated;
+          REVOKE EXECUTE ON FUNCTION public.ops_request_begin(text, text, text, jsonb) FROM service_role;
         WHEN 'comment' THEN
-          COMMENT ON FUNCTION public.issue_4134_tester_probe(integer) IS 'changed by a rewrite';
+          COMMENT ON FUNCTION public.ops_request_begin(text, text, text, jsonb) IS 'changed during the migration';
         WHEN 'config' THEN
-          ALTER FUNCTION public.issue_4134_tester_probe(integer) SET search_path TO 'public';
+          ALTER FUNCTION public.ops_request_begin(text, text, text, jsonb) SET search_path TO 'public';
         WHEN 'volatility' THEN
-          ALTER FUNCTION public.issue_4134_tester_probe(integer) VOLATILE;
+          ALTER FUNCTION public.ops_request_begin(text, text, text, jsonb) STABLE;
         WHEN 'owner' THEN
-          ALTER FUNCTION public.issue_4134_tester_probe(integer) OWNER TO postgres;
+          SELECT CASE WHEN pg_get_userbyid(p.proowner) = 'postgres' THEN 'supabase_admin' ELSE 'postgres' END
+            INTO v_owner FROM pg_proc AS p WHERE p.oid = v_cmd.objid;
+          EXECUTE format('ALTER FUNCTION public.ops_request_begin(text, text, text, jsonb) OWNER TO %I', v_owner);
         WHEN 'oid' THEN
           v_def := pg_get_functiondef(v_cmd.objid);
-          DROP FUNCTION public.issue_4134_tester_probe(integer);
+          DROP FUNCTION public.ops_request_begin(text, text, text, jsonb);
           EXECUTE v_def;
       END CASE;
     END IF;
   END LOOP;
 END;
 $fn$;
-CREATE EVENT TRIGGER issue_4134_tester_break_probe ON ddl_command_end
-  WHEN TAG IN ('CREATE FUNCTION') EXECUTE FUNCTION issue_4134_tester.break_probe();
+CREATE EVENT TRIGGER issue_4134_tester_break_target ON ddl_command_end
+  WHEN TAG IN ('CREATE FUNCTION') EXECUTE FUNCTION issue_4134_tester.break_target();
 
-TRUNCATE t4134_procs;
-INSERT INTO t4134_procs
-SELECT p.oid, p.xmin::text
-  FROM pg_catalog.pg_proc AS p
-  JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
- WHERE n.nspname NOT IN ('pg_catalog', 'information_schema');
+-- The target as this branch ships it, to check against and restore from.
+CREATE TEMP TABLE t4134_saved AS
+SELECT pg_temp.t4134_def('public.ops_request_begin(text,text,text,jsonb)'::regprocedure) AS def;
 
 CREATE FUNCTION pg_temp.t4134_assert_refused(p_case text, p_last_error text, p_want text) RETURNS void
 LANGUAGE plpgsql AS $fn$
@@ -428,34 +468,34 @@ BEGIN
     RAISE EXCEPTION 'ISSUE-4134-T T4 FAIL (%): the migration did not refuse as expected; last error: %',
       p_case, coalesce(p_last_error, '<none>');
   END IF;
-  SELECT string_agg(coalesce(p.oid::regprocedure::text, s.oid::text), ', ') INTO v_bad
-    FROM t4134_procs AS s
-    LEFT JOIN pg_catalog.pg_proc AS p ON p.oid = s.oid
-   WHERE p.oid IS NULL OR p.xmin::text <> s.proc_xmin;
+  SELECT string_agg(r.signature, ', ') INTO v_bad FROM pg_temp.t4134_rewritten() AS r;
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'ISSUE-4134-T T4 FAIL (%): a refused run still wrote: %', p_case, v_bad;
+  END IF;
+  v_bad := pg_temp.t4134_drift();
   IF v_bad IS NOT NULL THEN
     RAISE EXCEPTION 'ISSUE-4134-T T4 FAIL (%): a refused run still changed: %', p_case, v_bad;
-  END IF;
-  IF pg_get_functiondef('public.issue_4134_tester_probe(integer)'::regprocedure) ~ 'PT409' THEN
-    RAISE EXCEPTION 'ISSUE-4134-T T4 FAIL (%): a refused run kept its rewrite of the probe', p_case;
   END IF;
   RAISE NOTICE 'ISSUE-4134-T T4 PASS (%): refused and rolled back whole', p_case;
 END;
 $fn$;
 
+SELECT pg_temp.t4134_take_snapshot();
+
 \echo 'ISSUE-4134-T T4: the next ERROR lines are the migration refusing, as this test expects.'
 \set ON_ERROR_STOP off
 
--- T4-1 a 40001 raise the migration cannot rewrite.
+-- T4-1 a 40001 raise left in a function the migration does not rewrite.
 \set LAST_ERROR_MESSAGE ''
 \ir ../20271231204134_issue_4134_pt409_application_conflicts.sql
 SELECT set_config('issue_4134_tester.last_error', :'LAST_ERROR_MESSAGE', false);
 \set ON_ERROR_STOP on
 SELECT pg_temp.t4134_assert_refused('lingering 40001', current_setting('issue_4134_tester.last_error'),
   'issue_4134_verify: still raising or only catching SQLSTATE 40001: issue_4134_tester.lingering()');
-DELETE FROM t4134_procs WHERE oid = 'issue_4134_tester.lingering()'::regprocedure;
 DROP FUNCTION issue_4134_tester.lingering();
+SELECT pg_temp.t4134_take_snapshot();
 
--- T4-2..7 a rewrite that changes more than the body.
+-- T4-2..7 drift in a target function while the migration re-creates it.
 SELECT set_config('issue_4134_tester.break', 'acl', false);
 \set ON_ERROR_STOP off
 \set LAST_ERROR_MESSAGE ''
@@ -463,7 +503,7 @@ SELECT set_config('issue_4134_tester.break', 'acl', false);
 SELECT set_config('issue_4134_tester.last_error', :'LAST_ERROR_MESSAGE', false);
 \set ON_ERROR_STOP on
 SELECT pg_temp.t4134_assert_refused('grant', current_setting('issue_4134_tester.last_error'),
-  'issue_4134_verify: rewriting changed more than the body of: %issue_4134_tester_probe(integer)');
+  'issue_4134_verify: rewriting changed more than the body of: %public.ops_request_begin(text,text,text,jsonb)%');
 
 SELECT set_config('issue_4134_tester.break', 'comment', false);
 \set ON_ERROR_STOP off
@@ -472,7 +512,7 @@ SELECT set_config('issue_4134_tester.break', 'comment', false);
 SELECT set_config('issue_4134_tester.last_error', :'LAST_ERROR_MESSAGE', false);
 \set ON_ERROR_STOP on
 SELECT pg_temp.t4134_assert_refused('comment', current_setting('issue_4134_tester.last_error'),
-  'issue_4134_verify: rewriting changed more than the body of: %issue_4134_tester_probe(integer)');
+  'issue_4134_verify: rewriting changed more than the body of: %public.ops_request_begin(text,text,text,jsonb)%');
 
 SELECT set_config('issue_4134_tester.break', 'config', false);
 \set ON_ERROR_STOP off
@@ -481,7 +521,7 @@ SELECT set_config('issue_4134_tester.break', 'config', false);
 SELECT set_config('issue_4134_tester.last_error', :'LAST_ERROR_MESSAGE', false);
 \set ON_ERROR_STOP on
 SELECT pg_temp.t4134_assert_refused('search_path', current_setting('issue_4134_tester.last_error'),
-  'issue_4134_verify: rewriting changed more than the body of: %issue_4134_tester_probe(integer)');
+  'issue_4134_verify: rewriting changed more than the body of: %public.ops_request_begin(text,text,text,jsonb)%');
 
 SELECT set_config('issue_4134_tester.break', 'volatility', false);
 \set ON_ERROR_STOP off
@@ -490,7 +530,7 @@ SELECT set_config('issue_4134_tester.break', 'volatility', false);
 SELECT set_config('issue_4134_tester.last_error', :'LAST_ERROR_MESSAGE', false);
 \set ON_ERROR_STOP on
 SELECT pg_temp.t4134_assert_refused('volatility', current_setting('issue_4134_tester.last_error'),
-  'issue_4134_verify: rewriting changed more than the body of: %issue_4134_tester_probe(integer)');
+  'issue_4134_verify: rewriting changed more than the body of: %public.ops_request_begin(text,text,text,jsonb)%');
 
 SELECT set_config('issue_4134_tester.break', 'owner', false);
 \set ON_ERROR_STOP off
@@ -499,7 +539,7 @@ SELECT set_config('issue_4134_tester.break', 'owner', false);
 SELECT set_config('issue_4134_tester.last_error', :'LAST_ERROR_MESSAGE', false);
 \set ON_ERROR_STOP on
 SELECT pg_temp.t4134_assert_refused('owner', current_setting('issue_4134_tester.last_error'),
-  'issue_4134_verify: rewriting changed more than the body of: %issue_4134_tester_probe(integer)');
+  'issue_4134_verify: rewriting changed more than the body of: %public.ops_request_begin(text,text,text,jsonb)%');
 
 SELECT set_config('issue_4134_tester.break', 'oid', false);
 \set ON_ERROR_STOP off
@@ -508,65 +548,87 @@ SELECT set_config('issue_4134_tester.break', 'oid', false);
 SELECT set_config('issue_4134_tester.last_error', :'LAST_ERROR_MESSAGE', false);
 \set ON_ERROR_STOP on
 SELECT pg_temp.t4134_assert_refused('oid', current_setting('issue_4134_tester.last_error'),
-  'issue_4134_verify: rewriting changed more than the body of: %issue_4134_tester_probe(integer)');
-
--- T4-8 a clean run rewrites the probe, and only the probe.
+  'issue_4134_verify: rewriting changed more than the body of: %public.ops_request_begin(text,text,text,jsonb)%');
 SELECT set_config('issue_4134_tester.break', '', false);
+
+-- T4-8 a target that moved on since the file was generated (a later change)
+-- is refused, never overwritten.
+DO $t4_moved$
+DECLARE v_def text := (SELECT def FROM t4134_saved);
+BEGIN
+  IF pg_catalog.strpos(v_def, 'Send the same request again.') = 0 THEN
+    RAISE EXCEPTION 'ISSUE-4134-T T4-8 FAIL: ops_request_begin no longer has the message this case edits';
+  END IF;
+  EXECUTE pg_catalog.replace(v_def, 'Send the same request again.', 'Send the same request once more.');
+END
+$t4_moved$;
+SELECT pg_temp.t4134_take_snapshot();
+\set ON_ERROR_STOP off
+\set LAST_ERROR_MESSAGE ''
+\ir ../20271231204134_issue_4134_pt409_application_conflicts.sql
+SELECT set_config('issue_4134_tester.last_error', :'LAST_ERROR_MESSAGE', false);
+\set ON_ERROR_STOP on
+SELECT pg_temp.t4134_assert_refused('moved on', current_setting('issue_4134_tester.last_error'),
+  'issue_4134_verify: not the definition this migration was generated from: public.ops_request_begin(text,text,text,jsonb)');
+DO $t4_moved_kept$
+BEGIN
+  IF pg_catalog.strpos(pg_temp.t4134_def('public.ops_request_begin(text,text,text,jsonb)'::regprocedure),
+                       'Send the same request once more.') = 0 THEN
+    RAISE EXCEPTION 'ISSUE-4134-T T4-8 FAIL: the refused run overwrote the later change';
+  END IF;
+  RAISE NOTICE 'ISSUE-4134-T T4-8 PASS: a target that moved on is refused and kept as it was';
+END
+$t4_moved_kept$;
+
+-- T4-9 a target reverted to its pre-migration 40001 definition: a clean run
+-- puts it back exactly as generated and writes the 77 targets and nothing
+-- else.
+DO $t4_revert$
+DECLARE
+  v_def text := (SELECT def FROM t4134_saved);
+  v_from constant text := 'USING ERRCODE = ''PT409''';
+BEGIN
+  IF (pg_catalog.length(v_def) - pg_catalog.length(pg_catalog.replace(v_def, v_from, '')))
+     / pg_catalog.length(v_from) <> 1 THEN
+    RAISE EXCEPTION 'ISSUE-4134-T T4-9 FAIL: ops_request_begin no longer has exactly one PT409 raise';
+  END IF;
+  EXECUTE pg_catalog.replace(v_def, v_from, 'USING ERRCODE = ''40001''');
+END
+$t4_revert$;
+SELECT pg_temp.t4134_take_snapshot();
+
 \ir ../20271231204134_issue_4134_pt409_application_conflicts.sql
 
 DO $t4_clean$
 DECLARE
-  v_probe constant regprocedure := 'public.issue_4134_tester_probe(integer)'::regprocedure;
   v_bad text;
-  v_state text;
-  v_message text;
-  i integer;
-  v_want text[] := ARRAY['probe_errcode_number', 'probe_errcode_name', 'probe_raise_sqlstate', 'probe_raise_condition'];
+  v_count integer;
 BEGIN
-  SELECT string_agg(coalesce(p.oid::regprocedure::text, s.oid::text), ', ') INTO v_bad
-    FROM t4134_procs AS s
-    LEFT JOIN pg_catalog.pg_proc AS p ON p.oid = s.oid
-   WHERE (p.oid IS NULL OR p.xmin::text <> s.proc_xmin) AND s.oid <> v_probe;
-  IF v_bad IS NOT NULL THEN
-    RAISE EXCEPTION 'ISSUE-4134-T T4-8 FAIL: the clean run rewrote more than the probe: %', v_bad;
+  v_bad := pg_temp.t4134_drift();
+  IF v_bad IS DISTINCT FROM 'public.ops_request_begin(text,text,text,jsonb)'::regprocedure::text THEN
+    RAISE EXCEPTION 'ISSUE-4134-T T4-9 FAIL: the clean run should change only the reverted target; it changed: %',
+      coalesce(v_bad, '<nothing>');
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM t4134_procs AS s JOIN pg_proc AS p ON p.oid = s.oid
-                  WHERE s.oid = v_probe AND p.xmin::text <> s.proc_xmin) THEN
-    RAISE EXCEPTION 'ISSUE-4134-T T4-8 FAIL: the clean run did not rewrite the probe';
+  IF pg_temp.t4134_def('public.ops_request_begin(text,text,text,jsonb)'::regprocedure)
+     IS DISTINCT FROM (SELECT def FROM t4134_saved) THEN
+    RAISE EXCEPTION 'ISSUE-4134-T T4-9 FAIL: the reverted target did not come back exactly as generated';
   END IF;
-  IF (SELECT proacl::text FROM pg_proc WHERE oid = v_probe) LIKE '%authenticated%'
-     OR obj_description(v_probe, 'pg_proc') IS DISTINCT FROM 'issue 4134 tester probe'
-     OR NOT (SELECT prosecdef FROM pg_proc WHERE oid = v_probe)
-     OR (SELECT provolatile FROM pg_proc WHERE oid = v_probe) <> 's' THEN
-    RAISE EXCEPTION 'ISSUE-4134-T T4-8 FAIL: the clean run changed the probe beyond its body';
+  SELECT count(*), string_agg(r.signature, ', ') FILTER (WHERE r.nspname NOT IN ('public', 'private'))
+    INTO v_count, v_bad
+    FROM pg_temp.t4134_rewritten() AS r;
+  IF v_bad IS NOT NULL OR v_count <> 77 THEN
+    RAISE EXCEPTION 'ISSUE-4134-T T4-9 FAIL: the clean run wrote % functions (want the 77 targets); outside public/private: %',
+      v_count, coalesce(v_bad, '<none>');
   END IF;
-  FOR i IN 1..4 LOOP
-    v_state := NULL; v_message := NULL;
-    BEGIN
-      PERFORM public.issue_4134_tester_probe(i);
-    EXCEPTION WHEN OTHERS THEN
-      GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_message = MESSAGE_TEXT;
-    END;
-    IF v_state IS DISTINCT FROM 'PT409' OR v_message IS DISTINCT FROM v_want[i] THEN
-      RAISE EXCEPTION 'ISSUE-4134-T T4-8 FAIL: RAISE form % now gives % / % (want PT409 / %)',
-        i, v_state, v_message, v_want[i];
-    END IF;
-  END LOOP;
-  IF public.issue_4134_tester_probe(5) IS DISTINCT FROM 'caught' THEN
-    RAISE EXCEPTION 'ISSUE-4134-T T4-8 FAIL: the widened handler no longer catches the conflict';
-  END IF;
-  IF pg_get_functiondef(v_probe) !~ 'WHEN serialization_failure OR SQLSTATE ''PT409'' THEN' THEN
-    RAISE EXCEPTION 'ISSUE-4134-T T4-8 FAIL: the handler did not keep serialization_failure and add PT409';
-  END IF;
-  RAISE NOTICE 'ISSUE-4134-T T4-8 PASS: a clean run rewrote every RAISE form and the handler, in the probe only';
+  RAISE NOTICE 'ISSUE-4134-T T4-9 PASS: a clean run restored the reverted target exactly and wrote only the 77 targets';
 END
 $t4_clean$;
 
 -- Clean up everything T4 created, then prove the catalogue is clean again.
-DROP EVENT TRIGGER issue_4134_tester_break_probe;
+DROP EVENT TRIGGER issue_4134_tester_break_target;
 DROP SCHEMA issue_4134_tester CASCADE;
-DROP FUNCTION public.issue_4134_tester_probe(integer);
 DROP TABLE t4134_procs;
+DROP TABLE t4134_saved;
 
 DO $t4_after$
 DECLARE v_bad text;
@@ -581,8 +643,13 @@ BEGIN
           OR p.prosrc ~* '(when|or)\s+(serialization_failure|sqlstate\s+''40001'')(?!\s+or\s+sqlstate\s+''PT409'')'
           OR p.proname LIKE 'issue\_4134\_tester%');
   IF v_bad IS NOT NULL OR to_regnamespace('issue_4134_tester') IS NOT NULL
-     OR EXISTS (SELECT 1 FROM pg_event_trigger WHERE evtname = 'issue_4134_tester_break_probe') THEN
+     OR EXISTS (SELECT 1 FROM pg_event_trigger WHERE evtname = 'issue_4134_tester_break_target') THEN
     RAISE EXCEPTION 'ISSUE-4134-T T4 FAIL: cleanup left a 40001 raise or a tester object behind: %', v_bad;
+  END IF;
+  IF (SELECT pg_get_userbyid(proowner) || ' ' || coalesce(proacl::text, '')
+        FROM pg_proc WHERE oid = 'public.ops_request_begin(text,text,text,jsonb)'::regprocedure)
+     NOT LIKE '%service_role=X%' THEN
+    RAISE EXCEPTION 'ISSUE-4134-T T4 FAIL: ops_request_begin lost its service_role grant';
   END IF;
   RAISE NOTICE 'ISSUE-4134-T PASS: stale stays stale, genuine 40001 handled as before, idempotent, fails closed';
 END
