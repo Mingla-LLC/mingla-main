@@ -657,70 +657,8 @@ BEGIN
 END;
 $fn$;
 
--- local_months.place_id is a new, deliberate FK lane into place_pool. Keep it
--- disallowed by #2099's inventory, but advance the two correction RPCs over the
--- reviewed schema shape so an empty lane does not strand every correction.
-DO $issue_3872_pending_venue_repin$
-DECLARE
-  v_expected_live constant text := '474371dd0c8edfdd734c8ef5fe78b167bf5422e95b37493111c9a6cdc40213f2';
-  v_old_pin constant text := '(''52f4624c994529d2e63b8f70b79a3fcf'' || ''e28f3ff90dafe300bc45439e37cd2921'')';
-  v_new_pin constant text := '(''474371dd0c8edfdd734c8ef5fe78b167'' || ''bf5422e95b37493111c9a6cdc40213f2'')';
-  v_function_prefix constant text := 'CREATE OR REPLACE FUNCTION ';
-  v_oid regprocedure;
-  v_definition text;
-  v_old_count integer;
-  v_new_count integer;
-  v_live text;
-BEGIN
-  v_live := public.issue_2099_pending_venue_dependency_inventory(
-    '00000000-0000-0000-0000-000000000001'::uuid,
-    '00000000-0000-0000-0000-000000000002'::uuid
-  ) ->> 'schema_fingerprint';
-  IF v_live IS DISTINCT FROM v_expected_live THEN
-    RAISE EXCEPTION 'issue_3872_pending_venue_schema_unreviewed:%', v_live;
-  END IF;
-
-  FOREACH v_oid IN ARRAY ARRAY[
-    'public.preview_pending_venue_identity_correction(uuid)'::regprocedure,
-    'public.correct_pending_venue_identity(uuid,uuid,uuid,timestamptz,text,text,text,text,text,text,text,uuid,text,text,text,uuid)'::regprocedure
-  ] LOOP
-    SELECT pg_get_functiondef(v_oid) INTO v_definition;
-    v_old_count := (length(v_definition)-length(replace(v_definition,v_old_pin,'')))/length(v_old_pin);
-    v_new_count := (length(v_definition)-length(replace(v_definition,v_new_pin,'')))/length(v_new_pin);
-    IF v_old_count=1 AND v_new_count=0 THEN
-      -- pg_get_functiondef is the sole statement source and is sealed to a
-      -- CREATE OR REPLACE FUNCTION prefix before the catalog text is reused.
-      -- Keeping that prefix literal also lets the public-table RLS gate prove
-      -- that this dynamic statement cannot create an unprotected table.
-      IF left(v_definition,length(v_function_prefix))<>v_function_prefix THEN
-        RAISE EXCEPTION 'issue_3872_pending_venue_rpc_definition_unreviewed:%',v_oid;
-      END IF;
-      EXECUTE pg_catalog.format(
-        'CREATE OR REPLACE FUNCTION %s',
-        substr(replace(v_definition,v_old_pin,v_new_pin),length(v_function_prefix)+1)
-      );
-    ELSIF NOT (v_old_count=0 AND v_new_count=1) THEN
-      RAISE EXCEPTION 'issue_3872_pending_venue_rpc_unreviewed:%:old=%:new=%',v_oid,v_old_count,v_new_count;
-    END IF;
-  END LOOP;
-
-  IF EXISTS (
-    SELECT 1 FROM pg_proc p JOIN pg_roles owner ON owner.oid=p.proowner
-    WHERE p.oid IN (
-      'public.preview_pending_venue_identity_correction(uuid)'::regprocedure,
-      'public.correct_pending_venue_identity(uuid,uuid,uuid,timestamptz,text,text,text,text,text,text,text,uuid,text,text,text,uuid)'::regprocedure
-    ) AND (
-      owner.rolname<>'postgres' OR NOT p.prosecdef
-      OR p.proconfig IS DISTINCT FROM ARRAY['search_path=public, pg_temp']::text[]
-      OR has_function_privilege('anon',p.oid,'EXECUTE')
-      OR has_function_privilege('service_role',p.oid,'EXECUTE')
-      OR NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
-    )
-  ) THEN
-    RAISE EXCEPTION 'issue_3872_pending_venue_rpc_security_drift';
-  END IF;
-END;
-$issue_3872_pending_venue_repin$;
+-- The #2099 schema pin is advanced over local_months.place_id by
+-- 20271228013872_issue_3872_pending_venue_repin.sql, which the #2099 lane can replay.
 
 ALTER TABLE public.local_city_programs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.local_city_programs FORCE ROW LEVEL SECURITY;
