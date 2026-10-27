@@ -343,6 +343,75 @@ export function tripToStep1Draft(trip: Trip): Step1Draft {
   };
 }
 
+/**
+ * Issue #3801 — which cover fields a Step-1 save (or Publish) may send.
+ *
+ * A save is a patch: a field it leaves out keeps what the server stores. The
+ * wizard sends the cover only when the host changed it in this session (it
+ * differs from the cover the session last knew the server to hold), and never
+ * while one of the host's cover videos is still uploading or processing. The
+ * server applies that video to the trip on its own when it is ready, often
+ * after the cover sheet closed; a save from this session must never put the
+ * old (or an empty) cover back over it. The extra photos (the gallery) are
+ * not touched by a video apply, so they are sent whenever the host changed
+ * them.
+ */
+export interface TripCoverBaseline {
+  coverMediaUrl: string | null;
+  coverMediaType: Step1Draft["coverMediaType"];
+  coverMediaPosterUrl: string | null;
+  galleryKey: string;
+}
+
+export function tripCoverBaselineOf(draft: Step1Draft): TripCoverBaseline {
+  return {
+    coverMediaUrl: draft.coverMediaUrl ?? null,
+    coverMediaType: draft.coverMediaType ?? null,
+    coverMediaPosterUrl: draft.coverMediaPosterUrl ?? null,
+    galleryKey: JSON.stringify(draft.coverGallery ?? []),
+  };
+}
+
+export interface TripCoverSaveDecision {
+  /** Send cover_media_url / _type / _poster_url. */
+  sendCover: boolean;
+  /** Send cover_media_gallery. */
+  sendGallery: boolean;
+}
+
+export function decideTripCoverSave(
+  draft: Step1Draft,
+  baseline: TripCoverBaseline,
+  coverVideoInFlight: boolean,
+): TripCoverSaveDecision {
+  const now = tripCoverBaselineOf(draft);
+  const coverChanged =
+    now.coverMediaUrl !== baseline.coverMediaUrl ||
+    now.coverMediaType !== baseline.coverMediaType ||
+    now.coverMediaPosterUrl !== baseline.coverMediaPosterUrl;
+  return {
+    sendCover: coverChanged && !coverVideoInFlight,
+    sendGallery: now.galleryKey !== baseline.galleryKey,
+  };
+}
+
+/** Issue #3801 — after a save lands, what it sent is what the server holds. */
+export function advanceCoverBaseline(
+  baseline: TripCoverBaseline,
+  sent: Step1Draft,
+  decision: TripCoverSaveDecision,
+): TripCoverBaseline {
+  const next = tripCoverBaselineOf(sent);
+  return {
+    coverMediaUrl: decision.sendCover ? next.coverMediaUrl : baseline.coverMediaUrl,
+    coverMediaType: decision.sendCover ? next.coverMediaType : baseline.coverMediaType,
+    coverMediaPosterUrl: decision.sendCover
+      ? next.coverMediaPosterUrl
+      : baseline.coverMediaPosterUrl,
+    galleryKey: decision.sendGallery ? next.galleryKey : baseline.galleryKey,
+  };
+}
+
 export function tripToDaysDraft(trip: Trip): TripDayDraft[] {
   return trip.days.map((d) => ({
     ordinal: d.ordinal,
@@ -1344,7 +1413,34 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     revision.current = stored.updatedAt;
     markTripChanged(trip.id);
   }, [revision, trip.id, markTripChanged]);
+  // Issue #3801 — the cover this session last knew the server to hold (seeded
+  // from the trip, moved by every save that sent the cover), and whether one of
+  // the host's cover videos is still uploading or processing. See
+  // `decideTripCoverSave`.
+  const coverBaselineRef = useRef<TripCoverBaseline>(
+    tripCoverBaselineOf(tripToStep1Draft(trip)),
+  );
+  const coverVideoInFlightRef = useRef<boolean>(false);
+  const lastReportedCoverProcessingRef = useRef<boolean>(false);
+  const handleCoverVideoProcessingChange = useCallback(
+    (isProcessing: boolean): void => {
+      // A video starting to upload (false -> true) holds the cover back. The
+      // picker reports nothing once its sheet closes, so the hold outlives
+      // the sheet; it ends when the picker reports the video finished, failed
+      // or was cancelled, or when the host picks or removes a cover.
+      if (isProcessing && !lastReportedCoverProcessingRef.current) {
+        coverVideoInFlightRef.current = true;
+      }
+      if (!isProcessing) coverVideoInFlightRef.current = false;
+      lastReportedCoverProcessingRef.current = isProcessing;
+    },
+    [],
+  );
   const handleStep1Change = useCallback((patch: Partial<Step1Draft>): void => {
+    if ("coverMediaUrl" in patch || "coverMediaType" in patch) {
+      // The host picked, replaced or removed the cover: that is the cover now.
+      coverVideoInFlightRef.current = false;
+    }
     if (
       patch.coverMediaType === "video" &&
       typeof patch.coverMediaUrl === "string" &&
@@ -1357,6 +1453,11 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
   }, [step1Draft.coverMediaUrl]);
 
   const autosaveStep1 = useCallback(async (): Promise<void> => {
+    const coverSave = decideTripCoverSave(
+      step1Draft,
+      coverBaselineRef.current,
+      coverVideoInFlightRef.current,
+    );
     await updateBasicsMutation.mutateAsync({
       eventId: trip.id,
       brandId: trip.brandId,
@@ -1382,13 +1483,26 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
         // ORCH-0876 — cover fields persist alongside basics. CoverPicker
         // emits patches synchronously into draft state; this writes them
         // to the events row on Continue / Back / Close (edit mode).
-        coverMediaUrl: step1Draft.coverMediaUrl,
-        coverMediaType: step1Draft.coverMediaType,
+        // Issue #3801 — only when the host changed them in this session, and
+        // never while a cover video is processing (`decideTripCoverSave`).
+        ...(coverSave.sendCover
+          ? {
+              coverMediaUrl: step1Draft.coverMediaUrl,
+              coverMediaType: step1Draft.coverMediaType,
+            }
+          : {}),
         // issue #868 [cover-gallery] — persist the ADDITIONAL photos via
         // updateTripBasics (§G.5, writes cover_media_gallery independently).
-        coverGallery: step1Draft.coverGallery ?? [],
+        ...(coverSave.sendGallery
+          ? { coverGallery: step1Draft.coverGallery ?? [] }
+          : {}),
       },
     });
+    coverBaselineRef.current = advanceCoverBaseline(
+      coverBaselineRef.current,
+      step1Draft,
+      coverSave,
+    );
     // #1022 — the theme override columns are written SEPARATELY and strictly
     // AFTER updateBasicsMutation resolves. updateTripBasics read-modify-writes
     // the whole `theme` JSONB across two round-trips; sequencing after it means
@@ -2033,6 +2147,11 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     }
     setPublishError(null);
     try {
+      const publishCoverSave = decideTripCoverSave(
+        step1Draft,
+        coverBaselineRef.current,
+        coverVideoInFlightRef.current,
+      );
       const published = await saveQueue.run(async () => {
         await adoptAppliedVideoRevision();
         return publishMutation.mutateAsync({
@@ -2047,12 +2166,21 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
             : undefined,
           draftPayload: {
             title: step1Draft.title.trim(),
-            cover_media_url: step1Draft.coverMediaUrl,
-            cover_media_poster_url:
-              step1Draft.coverMediaPosterUrl ??
-              (step1Draft.coverMediaType === "image" ? step1Draft.coverMediaUrl : null),
-            cover_media_type: step1Draft.coverMediaType,
-            cover_media_gallery: step1Draft.coverGallery ?? [],
+            // Issue #3801 — the cover rides only when the host changed it in
+            // this session and no cover video is processing; a key left out
+            // keeps what the server stores (`decideTripCoverSave`).
+            ...(publishCoverSave.sendCover
+              ? {
+                  cover_media_url: step1Draft.coverMediaUrl,
+                  cover_media_poster_url:
+                    step1Draft.coverMediaPosterUrl ??
+                    (step1Draft.coverMediaType === "image" ? step1Draft.coverMediaUrl : null),
+                  cover_media_type: step1Draft.coverMediaType,
+                }
+              : {}),
+            ...(publishCoverSave.sendGallery
+              ? { cover_media_gallery: step1Draft.coverGallery ?? [] }
+              : {}),
             theme: {
               business_trip: {
                 startAt: step1Draft.startAt,
@@ -2471,6 +2599,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               onShowToast={showToast}
               showAddressErrors={showStep1AddressErrors}
               timeZone={trip.timezone ?? null}
+              onCoverVideoProcessingChange={handleCoverVideoProcessingChange}
             />
           ) : null}
           {step === 2 ? (

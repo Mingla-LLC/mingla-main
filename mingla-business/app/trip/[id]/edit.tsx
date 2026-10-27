@@ -191,11 +191,29 @@ export default function TripEditRoute(): React.ReactElement {
           contentContainerStyle={styles.hostContent}
         >
         <Text style={styles.title}>Couldn&rsquo;t load trip</Text>
+        {/* Issue #3801 — the trip read's deadline (`fetchTripDetail`) ends in
+            a TimeoutError, whose message is not written for people. */}
         <Text style={styles.body}>
-          {tripQuery.error instanceof Error
-            ? tripQuery.error.message
-            : "Check your connection and try again."}
+          {(tripQuery.error as { isTimeout?: unknown } | null)?.isTimeout === true
+            ? "This is taking too long. Check your connection and try again."
+            : tripQuery.error instanceof Error
+              ? tripQuery.error.message
+              : "Check your connection and try again."}
         </Text>
+        {/* Issue #3801 — the route reads the trip again on every open, so an
+            offline or failed read lands here; Retry reads it again. */}
+        <Button
+          label={tripQuery.isFetching ? "Retrying…" : "Retry"}
+          variant="secondary"
+          size="md"
+          onPress={() => {
+            void tripQuery.refetch();
+          }}
+          loading={tripQuery.isFetching}
+          disabled={tripQuery.isFetching}
+          accessibilityLabel="Try loading this trip again"
+          testID="trip-edit-retry"
+        />
       </ScrollView>
     );
   }

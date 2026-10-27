@@ -26,6 +26,7 @@ import {
 } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
+import { DATA_FETCH_TIMEOUT_MS, withTimeout } from "../utils/withTimeout";
 
 // ORCH-0965 — home composite-upcoming cache key.
 // Imported from the keyless `upcomingKeys` module to avoid a require-cycle
@@ -118,6 +119,16 @@ export interface UseTripOptions {
   refetchOnMount?: "always";
 }
 
+/**
+ * Issue #3801 — the trip-detail read, with a deadline. The trip editor reads
+ * the trip again on every open and gates on that read, so a read that never
+ * answers (a stalled connection) must end in the route's error state, with
+ * Retry, instead of "Loading trip…" with no end.
+ */
+export const TRIP_DETAIL_FETCH_TIMEOUT_MS = DATA_FETCH_TIMEOUT_MS;
+export const fetchTripDetail = (eventId: string): Promise<Trip | null> =>
+  withTimeout(getTrip(eventId), TRIP_DETAIL_FETCH_TIMEOUT_MS, "trip detail");
+
 export const useTrip = (
   eventId: string | null,
   options?: UseTripOptions,
@@ -131,7 +142,7 @@ export const useTrip = (
     queryKey: enabled ? tripKeys.detail(eventId) : DISABLED_KEY,
     queryFn: async () => {
       if (!enabled) return null;
-      return getTrip(eventId);
+      return fetchTripDetail(eventId);
     },
     enabled,
     staleTime: TRIP_DETAIL_STALE_MS,
@@ -594,7 +605,7 @@ export const useTripWizardServerSync = (): TripWizardServerSync => {
       const [fresh] = await Promise.all([
         queryClient.fetchQuery({
           queryKey: tripKeys.detail(eventId),
-          queryFn: () => getTrip(eventId),
+          queryFn: () => fetchTripDetail(eventId),
           staleTime: 0,
         }),
         queryClient.fetchQuery({

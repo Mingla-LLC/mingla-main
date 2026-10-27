@@ -366,13 +366,16 @@ const trip = {
 
 const mounted: Renderer[] = [];
 const onExit = jest.fn<() => void>();
-const mountWizard = async (initialStep?: number): Promise<Renderer> => {
+const mountWizard = async (
+  initialStep?: number,
+  tripOverride?: Record<string, unknown>,
+): Promise<Renderer> => {
   const TripCreatorWizard = loadWizard();
   let tree!: Renderer;
   await act(async () => {
     tree = TestRenderer.create(
       <TripCreatorWizard
-        trip={trip}
+        trip={tripOverride ?? trip}
         brand={{ id: BRAND_ID, slug: "issue-3801", name: "Issue 3801" }}
         onPublished={jest.fn()}
         onExit={onExit}
@@ -802,5 +805,278 @@ describe("(f) a cover video the server applied is not a conflict; a real edit st
     await settle(80);
     expect(coverRevisionReads).toBe(0);
     expect(callsNamed("basics")[0].revisionAtCall).toBe(LOADED_REVISION);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rework 3 (tester retest-2 P1-3): a save is a patch that never clobbers the
+// cover. `cover_video_apply_once` writes the host's video onto the trip on its
+// own, often after "Close — keep working" unmounted the picker, or after the
+// host tapped Continue while the video processed. A Step-1 save or Publish
+// from that session used to send the session's old cover (often EMPTY) back.
+// Now cover fields ride only when the host changed the cover in this session,
+// and never while one of their cover videos is processing.
+// ---------------------------------------------------------------------------
+
+describe("(g) Step 1 saves and Publish never put an old or empty cover over the server's", () => {
+  const PHOTO_URL = "https://images.example.test/original-photo.jpg";
+  const VIDEO_URL = "https://video.example.test/processed.mp4";
+  const tripWithPhoto = {
+    ...trip,
+    coverMediaUrl: PHOTO_URL,
+    coverMediaType: "image",
+    coverGallery: [{ url: "https://images.example.test/extra-1.jpg", type: "image" }],
+  };
+
+  /**
+   * The stored trip row, as `biz_apply_trip_draft_graph` merges a patch into
+   * it: a key the patch leaves out keeps the stored value.
+   */
+  const storedRow = (): Record<string, unknown> => ({
+    coverMediaUrl: PHOTO_URL,
+    coverMediaType: "image",
+  });
+  const patchMerger = (row: Record<string, unknown>): Behaviour => async (call) => {
+    const patch = (call.input.patch ?? {}) as Record<string, unknown>;
+    for (const key of ["coverMediaUrl", "coverMediaType", "coverGallery"]) {
+      if (key in patch) row[key] = patch[key];
+    }
+    (call.input.revision as Cursor).current = `rev-after-${call.name}-${calls.length}`;
+    return {};
+  };
+  const step1 = (tree: Renderer): TestInstance =>
+    tree.root.findAll((n) => n.type === "TripCreatorStep1Basics")[0];
+  /** The cover picker reports a video uploading / processing (or done). */
+  const reportVideoProcessing = async (tree: Renderer, processing: boolean): Promise<void> => {
+    const handler = step1(tree).props.onCoverVideoProcessingChange as
+      | ((p: boolean) => void)
+      | undefined;
+    expect(typeof handler).toBe("function");
+    await act(async () => {
+      handler?.(processing);
+    });
+  };
+  const pickCover = async (tree: Renderer, patch: Record<string, unknown>): Promise<void> => {
+    await act(async () => {
+      (step1(tree).props.onChange as (p: unknown) => void)(patch);
+    });
+  };
+  const patchOf = (call: SaveCall): Record<string, unknown> =>
+    (call.input.patch ?? {}) as Record<string, unknown>;
+  const COVER_KEYS = ["coverMediaUrl", "coverMediaType", "coverMediaPosterUrl"];
+  const sentCoverKeys = (call: SaveCall): string[] =>
+    COVER_KEYS.filter((key) => key in patchOf(call));
+
+  test("P1-3a: picker closed while the video processes; the server applies it; Continue sends no cover", async () => {
+    const row = storedRow();
+    behaviours.basics = patchMerger(row);
+    const tree = await mountWizard(1, tripWithPhoto);
+
+    // The host adds a video; it starts processing; they tap "Close — keep
+    // working" (the picker unmounts and reports nothing more).
+    await reportVideoProcessing(tree, true);
+    // The server applies the video to the trip while nobody listens.
+    row.coverMediaUrl = VIDEO_URL;
+    row.coverMediaType = "video";
+
+    await tap(tree, "Continue");
+    await settle(80);
+
+    const basics = callsNamed("basics");
+    expect(basics).toHaveLength(1);
+    expect(sentCoverKeys(basics[0])).toEqual([]);
+    expect("coverGallery" in patchOf(basics[0])).toBe(false);
+    expect(row).toEqual({ coverMediaUrl: VIDEO_URL, coverMediaType: "video" });
+    expect(onStep(tree, "TripCreatorStep2Itinerary")).toBe(true);
+  });
+
+  test("P1-3b: Continue while the video processes, then Back and Continue again: the applied video survives every save", async () => {
+    const row = storedRow();
+    behaviours.basics = patchMerger(row);
+    const tree = await mountWizard(1, tripWithPhoto);
+    await reportVideoProcessing(tree, true);
+
+    await tap(tree, "Continue"); // Step 1 save while the video processes
+    await settle(80);
+    expect(onStep(tree, "TripCreatorStep2Itinerary")).toBe(true);
+
+    // The video applies while the host is on Step 2.
+    row.coverMediaUrl = VIDEO_URL;
+    row.coverMediaType = "video";
+
+    await tap(tree, "Continue"); // Step 2 save
+    await settle(80);
+    await tap(tree, "Back");
+    await settle(80);
+    await tap(tree, "Back");
+    await settle(80);
+    expect(onStep(tree, "TripCreatorStep1Basics")).toBe(true);
+    await tap(tree, "Continue"); // Step 1 save again (the picker never reopened)
+    await settle(80);
+
+    const basics = callsNamed("basics");
+    expect(basics.length).toBeGreaterThanOrEqual(2);
+    for (const call of basics) expect(sentCoverKeys(call)).toEqual([]);
+    expect(row).toEqual({ coverMediaUrl: VIDEO_URL, coverMediaType: "video" });
+  });
+
+  test("a photo picked first, then a video started: the video is the cover, so the photo is not sent over it", async () => {
+    const row = storedRow();
+    behaviours.basics = patchMerger(row);
+    const tree = await mountWizard(1, tripWithPhoto);
+    const EARLIER_PHOTO = "https://images.example.test/picked-first.jpg";
+    await pickCover(tree, {
+      coverMediaUrl: EARLIER_PHOTO,
+      coverMediaPosterUrl: EARLIER_PHOTO,
+      coverMediaType: "image",
+      coverGallery: tripWithPhoto.coverGallery,
+    });
+    // Then the host adds a video instead and closes the sheet while it
+    // processes; the server applies it.
+    await reportVideoProcessing(tree, true);
+    row.coverMediaUrl = VIDEO_URL;
+    row.coverMediaType = "video";
+
+    await tap(tree, "Continue");
+    await settle(80);
+    expect(sentCoverKeys(callsNamed("basics")[0])).toEqual([]);
+    expect(row).toEqual({ coverMediaUrl: VIDEO_URL, coverMediaType: "video" });
+  });
+
+  test("Publish while a cover video processes sends no cover fields", async () => {
+    const tree = await mountWizard(1, tripWithPhoto);
+    await pickCover(tree, {
+      coverMediaUrl: "https://images.example.test/picked-first.jpg",
+      coverMediaPosterUrl: "https://images.example.test/picked-first.jpg",
+      coverMediaType: "image",
+      coverGallery: tripWithPhoto.coverGallery,
+    });
+    await reportVideoProcessing(tree, true);
+    const dialog = tree.root.findAll(
+      (n) => n.type === "ConfirmDialog" && n.props.title === "Publish trip?",
+    )[0];
+    await act(async () => {
+      void (dialog.props.onConfirm as () => Promise<void>)();
+    });
+    await settle(80);
+
+    const publish = callsNamed("publish");
+    expect(publish).toHaveLength(1);
+    const payload = publish[0].input.draftPayload as Record<string, unknown>;
+    for (const key of ["cover_media_url", "cover_media_type", "cover_media_poster_url", "cover_media_gallery"]) {
+      expect(key in payload).toBe(false);
+    }
+    expect(payload.title).toBe("Lisbon long weekend");
+  });
+
+  test("an untouched cover is never sent, by Continue or by Publish", async () => {
+    const tree = await mountWizard(1, tripWithPhoto);
+    await tap(tree, "Continue");
+    await settle(80);
+    expect(sentCoverKeys(callsNamed("basics")[0])).toEqual([]);
+    expect("coverGallery" in patchOf(callsNamed("basics")[0])).toBe(false);
+
+    const dialog = tree.root.findAll(
+      (n) => n.type === "ConfirmDialog" && n.props.title === "Publish trip?",
+    )[0];
+    await act(async () => {
+      void (dialog.props.onConfirm as () => Promise<void>)();
+    });
+    await settle(80);
+    const payload = callsNamed("publish")[0].input.draftPayload as Record<string, unknown>;
+    expect("cover_media_url" in payload).toBe(false);
+  });
+
+  test("a cover the host picks is sent once; the next save does not send it again", async () => {
+    const tree = await mountWizard(1, tripWithPhoto);
+    const NEW_PHOTO = "https://images.example.test/new-photo.jpg";
+    await pickCover(tree, {
+      coverMediaUrl: NEW_PHOTO,
+      coverMediaPosterUrl: NEW_PHOTO,
+      coverMediaType: "image",
+      coverGallery: tripWithPhoto.coverGallery,
+    });
+    await tap(tree, "Continue");
+    await settle(80);
+    await tap(tree, "Back");
+    await settle(80);
+    await tap(tree, "Continue");
+    await settle(80);
+
+    const basics = callsNamed("basics");
+    expect(patchOf(basics[0]).coverMediaUrl).toBe(NEW_PHOTO);
+    expect(patchOf(basics[0]).coverMediaType).toBe("image");
+    // The gallery did not change, so it is not sent.
+    expect("coverGallery" in patchOf(basics[0])).toBe(false);
+    const stepOneSaves = basics.filter((c) => "title" in patchOf(c));
+    expect(stepOneSaves.length).toBeGreaterThanOrEqual(2);
+    expect(sentCoverKeys(stepOneSaves[stepOneSaves.length - 1])).toEqual([]);
+  });
+
+  test("removing the cover while nothing processes is still saved (a deliberate removal)", async () => {
+    const tree = await mountWizard(1, tripWithPhoto);
+    await pickCover(tree, {
+      coverMediaUrl: null,
+      coverMediaPosterUrl: null,
+      coverMediaType: null,
+      coverGallery: tripWithPhoto.coverGallery,
+    });
+    await tap(tree, "Continue");
+    await settle(80);
+    const patch = patchOf(callsNamed("basics")[0]);
+    expect(patch.coverMediaUrl).toBeNull();
+    expect(patch.coverMediaType).toBeNull();
+  });
+
+  test("a photo picked after the video started ends the hold: the host's pick is saved", async () => {
+    const tree = await mountWizard(1, tripWithPhoto);
+    await reportVideoProcessing(tree, true);
+    const NEW_PHOTO = "https://images.example.test/picked-instead.jpg";
+    await pickCover(tree, {
+      coverMediaUrl: NEW_PHOTO,
+      coverMediaPosterUrl: NEW_PHOTO,
+      coverMediaType: "image",
+      coverGallery: tripWithPhoto.coverGallery,
+    });
+    // A later progress report from the same video does not hold the pick back.
+    await reportVideoProcessing(tree, true);
+    await tap(tree, "Continue");
+    await settle(80);
+    expect(patchOf(callsNamed("basics")[0]).coverMediaUrl).toBe(NEW_PHOTO);
+  });
+
+  test("gallery photos the host changed are saved even while a cover video processes", async () => {
+    const tree = await mountWizard(1, tripWithPhoto);
+    await reportVideoProcessing(tree, true);
+    const gallery = [
+      ...tripWithPhoto.coverGallery,
+      { url: "https://images.example.test/extra-2.jpg", type: "image" },
+    ];
+    await act(async () => {
+      (step1(tree).props.onChange as (p: unknown) => void)({ coverGallery: gallery });
+    });
+    await tap(tree, "Continue");
+    await settle(80);
+    const patch = patchOf(callsNamed("basics")[0]);
+    expect(patch.coverGallery).toEqual(gallery);
+    expect(sentCoverKeys(callsNamed("basics")[0])).toEqual([]);
+  });
+
+  test("the video finishing while the picker is open hands the host the video, which is then saved", async () => {
+    const tree = await mountWizard(1, tripWithPhoto);
+    await reportVideoProcessing(tree, true);
+    await reportVideoProcessing(tree, false);
+    await pickCover(tree, {
+      coverMediaUrl: VIDEO_URL,
+      coverMediaPosterUrl: "https://video.example.test/poster.jpg",
+      coverMediaType: "video",
+      coverGallery: tripWithPhoto.coverGallery,
+    });
+    storedCoverRow = { updatedAt: LOADED_REVISION, coverMediaUrl: VIDEO_URL, coverMediaType: "video" };
+    await tap(tree, "Continue");
+    await settle(80);
+    const patch = patchOf(callsNamed("basics")[0]);
+    expect(patch.coverMediaUrl).toBe(VIDEO_URL);
+    expect(patch.coverMediaType).toBe("video");
   });
 });
