@@ -159,7 +159,17 @@ export function buildHostCampaignList(input: HostCampaignListInput) {
       : null;
     const conversions = input.conversions.filter((row) =>
       campaignIds.includes(String(row.campaign_id))
-    ).length;
+    );
+    const resultsValueCents = new Map<string, number>();
+    for (const row of conversions) {
+      const currency = (text(row.currency) ?? hostCurrency ?? "").toUpperCase();
+      const amount = integer(row.value_cents);
+      if (!/^[A-Z]{3}$/.test(currency) || amount === null) continue;
+      resultsValueCents.set(
+        currency,
+        (resultsValueCents.get(currency) ?? 0) + amount,
+      );
+    }
     const ads = campaignIds.flatMap((id) =>
       adsByCampaignId.get(id) ?? []
     );
@@ -201,10 +211,15 @@ export function buildHostCampaignList(input: HostCampaignListInput) {
       host_spend_equivalent_cents: hostSpend,
       spend_by_currency: spendByCurrency,
       primary_result_label: text(hierarchy[0]) ?? "conversions",
-      primary_result_count: conversions,
-      cost_per_result_cents: hostSpend !== null && conversions > 0
-        ? Math.round(hostSpend / conversions)
+      primary_result_count: conversions.length,
+      cost_per_result_cents: hostSpend !== null && conversions.length > 0
+        ? Math.round(hostSpend / conversions.length)
         : null,
+      results_value_cents: Object.fromEntries(
+        [...resultsValueCents.entries()].sort(([left], [right]) =>
+          left.localeCompare(right)
+        ),
+      ),
       impressions,
       clicks,
       creative: creative

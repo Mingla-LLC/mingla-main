@@ -584,6 +584,8 @@ export const glass = {
 } as const;
 
 export const semantic = {
+  live: "#ff4d4f",
+  liveGlow: "rgba(255,77,79,0.45)",
   success: "#22c55e",
   successTint: "rgba(34, 197, 94, 0.18)",
   warning: "#f59e0b",

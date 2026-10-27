@@ -11,6 +11,44 @@ import type { HostAdCampaign } from "../services/hostAdCampaignService";
 
 export type HomeAdDestructiveAction = "cancel" | "end";
 
+const NETWORK_LABELS: Readonly<Record<string, string>> = {
+  meta: "Meta",
+  tiktok: "TikTok",
+  google: "Google",
+  snapchat: "Snapchat",
+};
+
+const ATTENTION_COPY: Readonly<Record<string, string>> = {
+  "Track review": "The network is still reviewing this ad",
+  "View schedule": "Open the ad to review its schedule",
+  "View results": "Open the ad to review its results",
+  Resume: "This ad is paused and ready to resume",
+  "Fix issue": "Your payment method needs updating",
+  "View report": "Open the ad to review its report",
+};
+
+export function homeAdNetworkLabel(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  return NETWORK_LABELS[normalized] ?? normalized
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+export function homeAdNetworkList(values: readonly string[]): string {
+  return [...new Set(values.map(homeAdNetworkLabel))].join(" · ");
+}
+
+export function homeAdTileSpan(count: number): number {
+  if (count <= 1) return 12;
+  if (count === 2) return 6;
+  if (count === 3) return 4;
+  return 3;
+}
+
+export function homeAdAttentionCopy(nextAction: string): string {
+  return ATTENTION_COPY[nextAction] ?? "Open the ad to see what's needed";
+}
+
 const HOME_LIFECYCLE_PRIORITY: Record<HostAdCampaign["lifecycle"], number> = {
   needs_attention: 0,
   live: 1,

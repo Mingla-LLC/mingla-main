@@ -1,5 +1,5 @@
 import React from "react";
-import { act, fireEvent, render } from "@testing-library/react-native";
+import { act, render } from "@testing-library/react-native";
 import HomeTab from "../home";
 
 // [TEST-MOD-APPROVED #2794] The approved Recent workspace supersedes this
@@ -147,14 +147,18 @@ jest.mock("../../../src/hooks/useBrandAnalytics", () => ({
     isError: false,
   }),
 }));
-jest.mock("../../../src/store/liveSectionCollapseStore", () => ({
-  useLiveSectionCollapseStore: (
-    selector: (state: {
-      collapsed: boolean;
-      hasHydrated: boolean;
-      toggle: () => void;
-    }) => unknown,
-  ) => selector({ collapsed: false, hasHydrated: true, toggle: jest.fn() }),
+jest.mock("../../../src/hooks/useBrandPayoutScreen", () => ({
+  brandPayoutScreenKey: (brandId: string) => ["brand", brandId, "payout-screen"],
+}));
+jest.mock("../../../src/hooks/useTrafficAnalytics", () => ({
+  trafficAnalyticsKeys: {
+    brand: (brandId: string, range: string) => [
+      "traffic-analytics",
+      "brand",
+      brandId,
+      range,
+    ],
+  },
 }));
 jest.mock("../../../src/utils/routeForEventRow", () => ({
   routeForEventRowDefensive: ({ id }: { id: string }) => `/event/${id}`,
@@ -181,14 +185,11 @@ jest.mock("../../../src/components/brand/BrandSwitcherSheet", () => ({
 jest.mock("../../../src/components/home/BusinessTodoToggle", () => ({
   BusinessTodoToggle: "BusinessTodoToggle",
 }));
-jest.mock("../../../src/components/home/AnalyticsHomeTile", () => ({
-  AnalyticsHomeTile: "AnalyticsHomeTile",
+jest.mock("../../../src/components/home/BusinessPulsePanel", () => ({
+  BusinessPulsePanel: "BusinessPulsePanel",
 }));
 jest.mock("../../../src/components/home/HomeAdsSection", () => ({
   HomeAdsSection: "HomeAdsSection",
-}));
-jest.mock("../../../src/components/home/LiveOfferingCard", () => ({
-  LiveOfferingCard: "LiveOfferingCard",
 }));
 jest.mock("../../../src/components/home/RecentRow", () => ({
   RecentRow: "RecentRow",
@@ -234,12 +235,8 @@ const renderedOrder = (root: TestNode): string[] => {
   const order: string[] = [];
   const visit = (node: TestNode | string): void => {
     if (typeof node === "string") return;
-    if (node.type === "KpiTile" && node.props.label === "Last 7 days") {
-      order.push("last7");
-    } else if (node.type === "AnalyticsHomeTile") {
-      order.push("analytics");
-    } else if (node.type === "LiveOfferingCard") {
-      order.push("live");
+    if (node.type === "BusinessPulsePanel") {
+      order.push("pulse");
     } else if (node.type === "RecentRow") {
       order.push("recent");
     }
@@ -280,17 +277,17 @@ describe("issue #874 Home integration real render", () => {
   it.each([
     ["mobile", false],
     ["wide", true],
-  ])("renders Analytics before Recent on %s", async (_, wide) => {
+  ])("renders the Pulse panel before Recent on %s", async (_, wide) => {
     mockIsWideDesktop = wide;
     const screen = await render(<HomeTab />);
     expect(screen.root).not.toBeNull();
     const order = renderedOrder(screen.root as unknown as TestNode);
-    expect(order.indexOf("analytics")).toBeGreaterThan(-1);
-    expect(order.indexOf("recent")).toBeGreaterThan(order.indexOf("analytics"));
+    expect(order.indexOf("pulse")).toBeGreaterThan(-1);
+    expect(order.indexOf("recent")).toBeGreaterThan(order.indexOf("pulse"));
     expect(screen.queryByText("Active events")).toBeNull();
   });
 
-  it("keeps Analytics discoverable and renders Recent without a live carousel", async () => {
+  it("keeps the Pulse panel and Recent when nothing is live", async () => {
     mockUpcoming = {
       items: [mockUpcomingItem],
       liveItems: [],
@@ -300,23 +297,30 @@ describe("issue #874 Home integration real render", () => {
     const screen = await render(<HomeTab />);
     expect(screen.root).not.toBeNull();
     const root = screen.root as unknown as TestNode;
-    expect(findNodes(root, (node) => node.type === "AnalyticsHomeTile")).toHaveLength(1);
-    expect(findNodes(root, (node) => node.type === "LiveOfferingCard")).toHaveLength(0);
+    const panel = findNodes(
+      root,
+      (node) => node.type === "BusinessPulsePanel",
+    );
+    expect(panel).toHaveLength(1);
+    expect(panel[0]?.props.liveItems).toEqual([]);
     expect(findNodes(root, (node) => node.type === "RecentRow")).toHaveLength(1);
   });
 
-  it("preserves Analytics navigation alongside Recent", async () => {
+  it("passes live and upcoming truth into the Pulse panel", async () => {
     const screen = await render(<HomeTab />);
     expect(screen.root).not.toBeNull();
     const root = screen.root as unknown as TestNode;
     expect(findNodes(root, (node) => node.type === "RecentRow")).toHaveLength(1);
-    fireEvent.press(
-      findNodes(root, (node) => node.type === "AnalyticsHomeTile")[0] as never,
+    const panel = findNodes(
+      root,
+      (node) => node.type === "BusinessPulsePanel",
     );
-    expect(mockPush).toHaveBeenCalledWith("/analytics?entry=home_tile");
+    expect(panel).toHaveLength(1);
+    expect(panel[0]?.props.liveItems).toEqual(mockUpcoming.liveItems);
+    expect(panel[0]?.props.upcomingItems).toEqual(mockUpcoming.items);
   });
 
-  it("pull-to-refresh invalidates the brand-keyed Analytics preview", async () => {
+  it("pull-to-refresh invalidates payout, 30-day traffic and all-time traffic", async () => {
     const screen = await render(<HomeTab />);
     const list = screen.getByTestId("home-mobile-scroll");
     const refreshControl = list.props.refreshControl as {
@@ -327,6 +331,15 @@ describe("issue #874 Home integration real render", () => {
     });
     expect(mockInvalidateQueries).toHaveBeenCalledWith({
       queryKey: ["brand-analytics", mockBrand.id, "mingla-drove"],
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["brand", mockBrand.id, "payout-screen"],
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["traffic-analytics", "brand", mockBrand.id, "30d"],
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["traffic-analytics", "brand", mockBrand.id, "all"],
     });
     expect(mockRecentRefresh).toHaveBeenCalledTimes(1);
   });

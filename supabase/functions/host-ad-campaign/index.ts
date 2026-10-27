@@ -248,7 +248,9 @@ serve(async (req: Request): Promise<Response> => {
       supabase.from("ad_spend_daily").select(
         "campaign_id,spend_cents,impressions,clicks,currency",
       ).in("campaign_id", campaignIds),
-      supabase.from("ad_conversions").select("campaign_id").in(
+      supabase.from("ad_conversions").select(
+        "campaign_id,value_cents,currency",
+      ).in(
         "campaign_id",
         campaignIds,
       ),

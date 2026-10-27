@@ -56,8 +56,14 @@ Deno.test("#3697 Host campaign list aggregates one plan without adding currencie
       impressions: 2000,
       clicks: 100,
     }],
-    conversions: [{ campaign_id: "campaign-meta" }, {
+    conversions: [{
+      campaign_id: "campaign-meta",
+      value_cents: 12_000,
+      currency: "ngn",
+    }, {
       campaign_id: "campaign-tiktok",
+      value_cents: 8_000,
+      currency: "NGN",
     }],
     adSets: [{ id: "set-meta", campaign_id: "campaign-meta" }],
     ads: [{
@@ -89,6 +95,7 @@ Deno.test("#3697 Host campaign list aggregates one plan without adding currencie
   }, { currency: "USD", spend_cents: 500 }]);
   assertEquals(rows[0].primary_result_label, "ticket_purchase");
   assertEquals(rows[0].primary_result_count, 2);
+  assertEquals(rows[0].results_value_cents, { NGN: 20_000 });
   assertEquals(rows[0].cost_per_result_cents, null);
   assertEquals(rows[0].impressions, 3000);
   assertEquals(rows[0].creative, {
@@ -118,9 +125,19 @@ Deno.test("#3697 Host campaign list reports safe same-currency cost per result",
       spend_cents: 30_000,
       currency: "NGN",
     }],
-    conversions: [{ campaign_id: "campaign-1" }, {
+    conversions: [{
       campaign_id: "campaign-1",
-    }, { campaign_id: "campaign-1" }],
+      value_cents: 200,
+      currency: "NGN",
+    }, {
+      campaign_id: "campaign-1",
+      value_cents: 300,
+      currency: null,
+    }, {
+      campaign_id: "campaign-1",
+      value_cents: 400,
+      currency: "USD",
+    }],
     adSets: [],
     ads: [],
     nowIso: "2026-10-17T00:00:00.000Z",
@@ -129,6 +146,7 @@ Deno.test("#3697 Host campaign list reports safe same-currency cost per result",
   assertEquals(row.lifecycle, "scheduled");
   assertEquals(row.host_spend_equivalent_cents, 30_000);
   assertEquals(row.cost_per_result_cents, 10_000);
+  assertEquals(row.results_value_cents, { NGN: 500, USD: 400 });
 });
 
 Deno.test("#3697 Host resume is permissioned, typed and aggregate-wide", async () => {

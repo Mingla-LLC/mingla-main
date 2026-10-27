@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, {
   Circle,
@@ -12,8 +12,10 @@ import Svg, {
 } from "react-native-svg";
 import {
   accent,
+  canvas,
   glass,
   radius,
+  semantic,
   spacing,
   text as textTokens,
   trafficAnalytics,
@@ -34,6 +36,11 @@ import type {
   TrafficSource,
 } from "../../services/trafficAnalyticsService";
 import { formatCurrencyRound } from "../../utils/currency";
+import {
+  analyticsGridModules,
+  packAnalyticsGrid,
+  type AnalyticsGridModuleId,
+} from "../../utils/analyticsGridPacking";
 import {
   formatTrafficDelta,
   trafficDeltaAccessibilityLabel,
@@ -246,26 +253,12 @@ const HeroCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
       <Text style={styles.heroSentence}>
         {`${minglaPercent}% of your bookings came from people Mingla sent: the Mingla app, Mingla ads and search.`}
       </Text>
-      <View style={styles.miniRow}>
+      <View style={[styles.miniRow, styles.heroFooter]}>
         <MiniStat
           label="Customers from Mingla"
           value={count(data.totals.minglaCustomers)}
         />
-        <MiniStat
-          label="Visitors from Mingla"
-          value={
-            data.totals.pageViews < 30
-              ? "Collecting"
-              : count(data.totals.minglaVisitors)
-          }
-        />
-        <MiniStat
-          label="All booking value"
-          value={money(
-            data.totals.bookingValue[current.currency ?? ""] ?? 0,
-            current.currency,
-          )}
-        />
+        <MiniStat label="Bookings" value={count(data.totals.bookings)} />
       </View>
     </LinearGradient>
   );
@@ -316,7 +309,12 @@ const TrendCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
   const highestDay = data.daily[highestIndex]?.day;
   const accessibilityLabel = `Visits per day, ${RANGE_LABELS[data.range]}, ${count(data.totals.pageViews)} total${highestDay === undefined ? "" : `, highest ${count(highest)} on ${shortDay(highestDay)}`}`;
   return (
-    <GlassCard variant="elevated" padding={spacing.lg} style={styles.card}>
+    <GlassCard
+      variant="elevated"
+      padding={spacing.lg}
+      style={styles.card}
+      contentStyle={styles.cardContent}
+    >
       <View style={styles.titleRow}>
         <Text style={styles.cardTitle} accessibilityRole="header">
           Visits per day
@@ -328,7 +326,11 @@ const TrendCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
           {collectingCopy(data.captureStartedAt)}
         </Text>
       ) : (
-        <View accessibilityRole="image" accessibilityLabel={accessibilityLabel}>
+        <View
+          style={styles.chartFill}
+          accessibilityRole="image"
+          accessibilityLabel={accessibilityLabel}
+        >
           <Svg width="100%" height={132} viewBox="0 0 340 132">
             <Defs>
               <SvgLinearGradient id="trafficArea" x1="0" y1="0" x2="0" y2="1">
@@ -391,15 +393,15 @@ const FunnelCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
     data.captureStartedAt !== null && data.totals.pageViews >= 30;
   const visible = visibleFunnelSteps(data.totals, hasTraffic);
   return (
-    <GlassCard variant="elevated" padding={spacing.lg} style={styles.card}>
+    <GlassCard
+      variant="elevated"
+      padding={spacing.lg}
+      style={styles.card}
+      contentStyle={styles.cardContent}
+    >
       <Text style={styles.cardTitle} accessibilityRole="header">
         From visit to sale
       </Text>
-      {!hasTraffic ? (
-        <Text style={styles.collecting}>
-          {collectingCopy(data.captureStartedAt)}
-        </Text>
-      ) : null}
       <View
         style={styles.funnel}
         accessibilityRole="image"
@@ -450,7 +452,12 @@ const SourceCard: React.FC<{ data: TrafficRollupBase; scoped?: boolean }> = ({
     .filter((row) => MINGLA_SOURCES.has(row.source))
     .reduce((sum, row) => sum + row.visitors, 0);
   return (
-    <GlassCard variant="elevated" padding={spacing.lg} style={styles.card}>
+    <GlassCard
+      variant="elevated"
+      padding={spacing.lg}
+      style={styles.card}
+      contentStyle={styles.cardContent}
+    >
       <Text style={styles.cardTitle} accessibilityRole="header">
         Where visitors came from
       </Text>
@@ -531,7 +538,12 @@ const PageListCard: React.FC<{
 }> = ({ pages, selected, onSelect, captureStartedAt, enoughTraffic }) => {
   const max = Math.max(...pages.map((page) => page.pageViews), 1);
   return (
-    <GlassCard variant="elevated" padding={spacing.lg} style={styles.card}>
+    <GlassCard
+      variant="elevated"
+      padding={spacing.lg}
+      style={styles.card}
+      contentStyle={styles.cardContent}
+    >
       <Text style={styles.cardTitle} accessibilityRole="header">
         Your pages
       </Text>
@@ -597,18 +609,7 @@ const PageDetailCard: React.FC<{
   onRetry: () => void;
   onOpenListing?: () => void;
 }> = ({ page, data, isLoading, isError, onRetry, onOpenListing }) => {
-  if (page === null) {
-    return (
-      <GlassCard variant="elevated" padding={spacing.lg} style={styles.card}>
-        <Text style={styles.cardTitle} accessibilityRole="header">
-          Selected page
-        </Text>
-        <Text style={styles.collecting}>
-          Select a page when visit data is available.
-        </Text>
-      </GlassCard>
-    );
-  }
+  if (page === null) return null;
   if (isError)
     return (
       <AnalyticsModuleError
@@ -623,50 +624,40 @@ const PageDetailCard: React.FC<{
     page.valueByCurrency,
     data.totals.primaryCurrency,
   );
-  const hasTraffic =
-    data.captureStartedAt !== null && data.totals.pageViews >= 30;
   return (
-    <View style={styles.detailStack}>
-      <GlassCard variant="elevated" padding={spacing.lg} style={styles.card}>
-        <Text style={styles.eyebrow}>
-          {PAGE_TYPE_LABELS[page.entityType].toUpperCase()}
-        </Text>
-        <Text style={styles.detailTitle} numberOfLines={2}>
-          {page.title}
-        </Text>
-        <Text style={styles.detailValue}>
-          {money(current.cents, current.currency)}
-        </Text>
-        {hasTraffic ? (
-          <View style={styles.miniRow}>
-            <MiniStat label="Visitors" value={count(data.totals.visitors)} />
-            <MiniStat
-              label="Button taps"
-              value={count(data.totals.buttonTaps)}
-            />
-            <MiniStat
-              label="Checkouts started"
-              value={count(data.totals.checkoutStarts)}
-            />
-          </View>
-        ) : (
-          <Text style={styles.collecting}>
-            {collectingCopy(data.captureStartedAt)}
-          </Text>
-        )}
-        {onOpenListing === undefined ? null : (
-          <Pressable
-            onPress={onOpenListing}
-            accessibilityRole="link"
-            style={styles.detailLink}
-          >
-            <Text style={styles.detailLinkText}>Open listing insights ›</Text>
-          </Pressable>
-        )}
-      </GlassCard>
-      <FunnelCard data={data} />
-      <SourceCard data={data} scoped />
-    </View>
+    <GlassCard
+      variant="elevated"
+      padding={spacing.lg}
+      style={styles.card}
+      contentStyle={styles.cardContent}
+    >
+      <Text style={styles.eyebrow}>
+        {PAGE_TYPE_LABELS[page.entityType].toUpperCase()}
+      </Text>
+      <Text style={styles.detailTitle} numberOfLines={2}>
+        {page.title}
+      </Text>
+      <Text style={styles.detailValue}>
+        {money(current.cents, current.currency)}
+      </Text>
+      <View style={styles.miniRow}>
+        <MiniStat label="Visitors" value={count(data.totals.visitors)} />
+        <MiniStat label="Button taps" value={count(data.totals.buttonTaps)} />
+        <MiniStat
+          label="Checkouts started"
+          value={count(data.totals.checkoutStarts)}
+        />
+      </View>
+      {onOpenListing === undefined ? null : (
+        <Pressable
+          onPress={onOpenListing}
+          accessibilityRole="link"
+          style={styles.detailLink}
+        >
+          <Text style={styles.detailLinkText}>Open listing insights ›</Text>
+        </Pressable>
+      )}
+    </GlassCard>
   );
 };
 
@@ -680,44 +671,51 @@ const ButtonTapsCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
     ),
   }));
   const max = Math.max(...values.map((row) => row.count), 1);
-  const hasTraffic =
-    data.captureStartedAt !== null && data.totals.pageViews >= 30;
   return (
-    <GlassCard variant="elevated" padding={spacing.lg} style={styles.card}>
+    <GlassCard
+      variant="elevated"
+      padding={spacing.lg}
+      style={styles.card}
+      contentStyle={styles.cardContent}
+      testID="traffic-button-taps-card"
+    >
       <Text style={styles.cardTitle} accessibilityRole="header">
         Button taps
       </Text>
-      {!hasTraffic ? (
-        <Text style={styles.collecting}>
-          {collectingCopy(data.captureStartedAt)}
-        </Text>
-      ) : (
-        <View
-          style={styles.tapGrid}
-          accessibilityRole="image"
-          accessibilityLabel={`Button taps, ${values
-            .map((row) => `${row.label} ${count(row.count)}`)
-            .join(", ")}`}
-        >
-          {values.map((row) => (
-            <View key={row.label} style={styles.tapTile}>
-              <Text style={styles.tapCount}>{count(row.count)}</Text>
-              <Text style={styles.tapLabel}>{row.label}</Text>
-              <View style={styles.track}>
-                <View
-                  style={[
-                    styles.tapFill,
-                    { width: `${Math.max(3, (row.count / max) * 100)}%` },
-                  ]}
-                />
-              </View>
+      <View
+        style={styles.tapGrid}
+        accessibilityRole="image"
+        accessibilityLabel={`Button taps, ${values
+          .map((row) => `${row.label} ${count(row.count)}`)
+          .join(", ")}`}
+      >
+        {values.map((row) => (
+          <View key={row.label} style={styles.tapTile}>
+            <Text style={styles.tapCount}>{count(row.count)}</Text>
+            <Text style={styles.tapLabel}>{row.label}</Text>
+            <View style={styles.track}>
+              <View
+                style={[
+                  styles.tapFill,
+                  { width: `${Math.max(3, (row.count / max) * 100)}%` },
+                ]}
+              />
             </View>
-          ))}
-        </View>
-      )}
+          </View>
+        ))}
+      </View>
     </GlassCard>
   );
 };
+
+export const visibleButtonTapTypeCount = (data: TrafficRollupBase): number =>
+  CTA_GROUPS.filter((group) =>
+    group.keys.reduce(
+      (sum, key) =>
+        sum + (data.ctas.find((row) => row.type === key)?.count ?? 0),
+      0,
+    ) > 0
+  ).length;
 
 export interface TrafficAnalyticsDashboardProps {
   data: BrandTrafficRollup | EntityTrafficRollup | undefined;
@@ -735,6 +733,11 @@ export interface TrafficAnalyticsDashboardProps {
   selectedPageError?: boolean;
   onRetrySelectedPage?: () => void;
   onOpenSelectedListing?: () => void;
+  onClearSelectedPage?: () => void;
+  regularsModule?: React.ReactNode;
+  customerPatternsModule?: React.ReactNode;
+  regularsCollecting?: boolean;
+  customerPatternsCollecting?: boolean;
 }
 
 export const TrafficAnalyticsDashboard: React.FC<
@@ -755,28 +758,37 @@ export const TrafficAnalyticsDashboard: React.FC<
   selectedPageError = false,
   onRetrySelectedPage = onRetry,
   onOpenSelectedListing,
+  onClearSelectedPage,
+  regularsModule,
+  customerPatternsModule,
+  regularsCollecting = false,
+  customerPatternsCollecting = false,
 }) => {
   if (isError) {
     return (
-      <View style={styles.loadingGrid}>
-        {Array.from({ length: pages === undefined ? 5 : 8 }, (_, index) => (
-          <AnalyticsModuleError
-            key={index}
-            title="Couldn't load traffic analytics"
-            onRetry={onRetry}
-          />
-        ))}
+      <View style={styles.errorBanner}>
+        <Text style={styles.errorBannerText}>
+          Couldn&apos;t load traffic analytics
+        </Text>
+        <Pressable
+          onPress={onRetry}
+          accessibilityRole="button"
+          style={styles.errorRetry}
+        >
+          <Text style={styles.errorRetryText}>Retry</Text>
+        </Pressable>
       </View>
     );
   }
   if (isLoading || data === undefined) {
     return (
-      <View style={styles.loadingGrid}>
-        {Array.from({ length: pages === undefined ? 5 : 8 }, (_, index) => (
-          <AnalyticsModuleSkeleton
-            key={index}
-            testID={`traffic-analytics-loading-${index}`}
-          />
+      <View style={[styles.loadingGrid, isWideDesktop && styles.loadingGridWide]}>
+        {Array.from({ length: 4 }, (_, index) => (
+          <View key={index} style={isWideDesktop ? styles.loadingCell : undefined}>
+            <AnalyticsModuleSkeleton
+              testID={`traffic-analytics-loading-${index}`}
+            />
+          </View>
         ))}
       </View>
     );
@@ -790,7 +802,9 @@ export const TrafficAnalyticsDashboard: React.FC<
   const sources = <SourceCard data={data} scoped={pages === undefined} />;
   const taps = <ButtonTapsCard data={data} />;
   const pageList =
-    pages === undefined || onSelectPage === undefined ? null : (
+    !enoughTraffic || pages === undefined || onSelectPage === undefined
+      ? null
+      : (
       <PageListCard
         pages={brandPages}
         selected={selectedPage}
@@ -800,7 +814,7 @@ export const TrafficAnalyticsDashboard: React.FC<
       />
     );
   const pageDetail =
-    pages === undefined ? null : (
+    pages === undefined || selectedPage === null ? null : (
       <PageDetailCard
         page={selectedPage}
         data={selectedPageData}
@@ -810,46 +824,102 @@ export const TrafficAnalyticsDashboard: React.FC<
         onOpenListing={onOpenSelectedListing}
       />
     );
+  const showTaps = visibleButtonTapTypeCount(data) >= 2;
+  const nodes: Partial<Record<AnalyticsGridModuleId, React.ReactNode>> = {
+    hero,
+    visits: trend,
+    funnel,
+    sources,
+    pages: pageList,
+    selectedPage: pageDetail,
+    buttonTaps: taps,
+    regulars: regularsModule,
+    customerPatterns: customerPatternsModule,
+  };
+  const modules = analyticsGridModules({
+    showVisits: enoughTraffic,
+    showPages: pageList !== null,
+    showSelectedPage: isWideDesktop && pageDetail !== null,
+    showButtonTaps: showTaps,
+    showRegulars: regularsModule !== undefined && regularsModule !== null,
+    showCustomerPatterns:
+      customerPatternsModule !== undefined && customerPatternsModule !== null,
+  });
+  const collecting = [
+    ...(!enoughTraffic
+      ? [`visits${captureDate(data.captureStartedAt) === null ? "" : ` (since ${captureDate(data.captureStartedAt)})`}`]
+      : []),
+    ...(regularsCollecting ? ["regulars"] : []),
+    ...(customerPatternsCollecting ? ["booking patterns"] : []),
+  ];
   return (
     <View style={styles.dashboard}>
       <TrafficRangeControl value={range} onChange={onRangeChange} />
       <TrafficCoverageNote data={data} />
-      {isWideDesktop ? (
-        <>
-          <View style={styles.wideRow}>
-            <View style={styles.wideHero}>{hero}</View>
-            <View style={styles.wideStandard}>{trend}</View>
-            <View style={styles.wideStandard}>{funnel}</View>
-          </View>
-          {pageList === null ? null : (
-            <View style={styles.wideRow}>
-              <View style={styles.widePages}>{pageList}</View>
-              <View style={styles.wideDetail}>{pageDetail}</View>
-            </View>
-          )}
-          <View style={styles.wideRow}>
-            <View style={styles.widePages}>{sources}</View>
-            <View style={styles.wideDetail}>{taps}</View>
-          </View>
-        </>
-      ) : (
-        <>
-          {hero}
-          {trend}
-          {funnel}
-          {sources}
-          {pageList}
-          {pageDetail}
-          {taps}
-        </>
+      {collecting.length === 0 ? null : (
+        <Text style={styles.collectingLine}>
+          {`Still collecting: ${collecting.join(", ")}`}
+        </Text>
       )}
+      {isWideDesktop ? packAnalyticsGrid(modules).map((row, rowIndex) => (
+        <View key={rowIndex} style={styles.gridRow}>
+          {row.map((module) => (
+            <View key={module.id} style={[styles.gridCell, { flex: module.width }]}>
+              {nodes[module.id]}
+            </View>
+          ))}
+        </View>
+      )) : modules
+        .filter((module) => module.id !== "selectedPage")
+        .map((module) => (
+          <View key={module.id}>{nodes[module.id]}</View>
+        ))}
+      {!isWideDesktop && pageDetail !== null ? (
+        <Modal
+          visible
+          transparent
+          animationType="slide"
+          onRequestClose={onClearSelectedPage}
+        >
+          <Pressable style={styles.sheetBackdrop} onPress={onClearSelectedPage}>
+            <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
+              <View style={styles.sheetHandle} />
+              {pageDetail}
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   dashboard: { gap: spacing.lg },
-  loadingGrid: { gap: spacing.lg },
+  loadingGrid: { gap: spacing.md },
+  loadingGridWide: { flexDirection: "row", flexWrap: "wrap", gap: spacing.lg },
+  loadingCell: { flexGrow: 1, flexBasis: "46%", minWidth: 0 },
+  errorBanner: {
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: semantic.error,
+    backgroundColor: semantic.errorTint,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  errorBannerText: {
+    ...typography.bodySm,
+    color: textTokens.primary,
+    flex: 1,
+  },
+  errorRetry: { minHeight: 44, justifyContent: "center" },
+  errorRetryText: {
+    ...typography.buttonMd,
+    color: accent.warm,
+  },
   rangeControl: {
     flexDirection: "row",
     padding: spacing.xs,
@@ -881,9 +951,11 @@ const styles = StyleSheet.create({
     marginTop: -spacing.sm,
   },
   pressed: { opacity: 0.68 },
-  card: { minWidth: 0 },
+  card: { minWidth: 0, flex: 1 },
+  cardContent: { flex: 1 },
   heroCard: {
     minWidth: 0,
+    flex: 1,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: accent.border,
@@ -945,6 +1017,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginTop: spacing.lg,
   },
+  heroFooter: { marginTop: "auto", paddingTop: spacing.lg },
   miniStat: { flexGrow: 1, flexBasis: 112, minWidth: 0 },
   miniValue: {
     color: textTokens.primary,
@@ -989,6 +1062,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginTop: spacing.xs,
   },
+  chartFill: { flex: 1, justifyContent: "center" },
   axisText: {
     color: textTokens.tertiary,
     fontSize: typography.caption.fontSize,
@@ -1121,7 +1195,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   pageMeterFill: { height: "100%", backgroundColor: accent.warm },
-  detailStack: { gap: spacing.md },
   detailTitle: {
     color: textTokens.primary,
     fontSize: typography.h3.fontSize,
@@ -1141,7 +1214,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
     justifyContent: "center",
     alignSelf: "flex-start",
-    marginTop: spacing.md,
+    marginTop: "auto",
+    paddingTop: spacing.md,
   },
   detailLinkText: {
     color: accent.warm,
@@ -1182,11 +1256,40 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     backgroundColor: trafficAnalytics.tapMeter,
   },
-  wideRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.lg },
-  wideHero: { flex: 1.25, minWidth: 0 },
-  wideStandard: { flex: 1, minWidth: 0 },
-  widePages: { flex: 1.4, minWidth: 0 },
-  wideDetail: { flex: 1, minWidth: 0 },
+  collectingLine: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+    marginTop: -spacing.sm,
+  },
+  gridRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: spacing.lg,
+  },
+  gridCell: { minWidth: 0 },
+  sheetBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: canvas.depth,
+  },
+  sheet: {
+    maxHeight: "88%",
+    padding: spacing.md,
+    paddingBottom: spacing.xl,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: glass.border.profileElevated,
+    backgroundColor: canvas.profile,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: radius.full,
+    backgroundColor: textTokens.quaternary,
+    alignSelf: "center",
+    marginBottom: spacing.md,
+  },
 });
 
 export default TrafficAnalyticsDashboard;

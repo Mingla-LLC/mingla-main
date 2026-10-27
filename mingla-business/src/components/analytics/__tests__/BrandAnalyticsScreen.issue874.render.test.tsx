@@ -179,7 +179,7 @@ describe("issue #874 Analytics screen real RN render", () => {
     );
     expect(screen.getByText("Customers Mingla drove")).toBeTruthy();
     expect(screen.getByText("Couldn't load regulars")).toBeTruthy();
-    expect(screen.getByText("Customer patterns")).toBeTruthy();
+    expect(screen.queryByText("Customer patterns")).toBeNull();
     fireEvent.press(screen.getByText("Retry"));
     expect(mockRefetchRegulars).toHaveBeenCalledTimes(1);
   });

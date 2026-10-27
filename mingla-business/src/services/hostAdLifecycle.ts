@@ -31,6 +31,7 @@ export type HostAdListItem = {
   primaryResultLabel: string;
   primaryResultCount: number;
   costPerResultCents: number | null;
+  resultsValueCents: Record<string, number>;
   nextAction: string;
   route: string;
   reason: string | null;
@@ -115,6 +116,7 @@ function draftItem(draft: HostAdDraft): HostAdListItem {
     primaryResultLabel: "results",
     primaryResultCount: 0,
     costPerResultCents: null,
+    resultsValueCents: {},
     nextAction: "Continue draft",
     route: `/(tabs)/marketing/ads/create?draft_id=${draft.id}`,
     reason: `Saved at ${draft.current_step.replaceAll("_", " ")}`,
@@ -151,6 +153,7 @@ function planItem(aggregate: HostAdPlanAggregate): HostAdListItem {
     primaryResultLabel: "results",
     primaryResultCount: 0,
     costPerResultCents: null,
+    resultsValueCents: {},
     nextAction: planNextAction(aggregate.plan.state),
     route: `/(tabs)/marketing/ads/create?plan_id=${aggregate.plan.id}`,
     reason: typeof reason === "string" ? reason : null,
@@ -180,6 +183,7 @@ function campaignItem(campaign: HostAdCampaign): HostAdListItem {
     primaryResultLabel: campaign.primary_result_label,
     primaryResultCount: campaign.primary_result_count,
     costPerResultCents: campaign.cost_per_result_cents,
+    resultsValueCents: campaign.results_value_cents ?? {},
     nextAction: campaign.next_action,
     route: `/(tabs)/marketing/ads/${campaign.id}`,
     reason: campaign.creative?.review_status?.toUpperCase().includes("REJECT")

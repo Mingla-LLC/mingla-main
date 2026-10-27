@@ -112,7 +112,7 @@ describe("#4037 host traffic dashboard render contract", () => {
     jest.clearAllMocks();
   });
 
-  it("uses independent card skeletons and retryable card errors", () => {
+  it("uses four grid skeletons and one retryable error banner", () => {
     const loading = render(
       <TrafficAnalyticsDashboard
         {...baseProps}
@@ -123,8 +123,8 @@ describe("#4037 host traffic dashboard render contract", () => {
       />,
     );
     expect(
-      loading.getAllByTestId(/traffic-analytics-loading-/).length,
-    ).toBeGreaterThanOrEqual(8);
+      loading.getAllByTestId(/^traffic-analytics-loading-\d$/).length,
+    ).toBe(4);
     loading.unmount();
 
     const failed = render(
@@ -136,10 +136,8 @@ describe("#4037 host traffic dashboard render contract", () => {
         pages={[]}
       />,
     );
-    expect(failed.getAllByText("Couldn't load traffic analytics")).toHaveLength(
-      8,
-    );
-    fireEvent.press(failed.getAllByText("Retry")[0]!);
+    expect(failed.getAllByText("Couldn't load traffic analytics")).toHaveLength(1);
+    fireEvent.press(failed.getByText("Retry"));
     expect(baseProps.onRetry).toHaveBeenCalledTimes(1);
   });
 
@@ -165,13 +163,11 @@ describe("#4037 host traffic dashboard render contract", () => {
     expect(
       screen.getByText("Tracking began 21 Oct; this range is partial."),
     ).toBeTruthy();
-    expect(
-      screen.getAllByText(
-        "Collecting since 21 Oct. Visits show here as people open your pages.",
-      ).length,
-    ).toBeGreaterThan(2);
+    expect(screen.getByText("Still collecting: visits (since 21 Oct)")).toBeTruthy();
     expect(screen.getAllByText("6").length).toBeGreaterThan(0);
-    expect(screen.queryByLabelText(/Visits per day/)).toBeNull();
+    expect(screen.queryByText("Visits per day")).toBeNull();
+    expect(screen.queryByText("Where visitors came from")).toBeNull();
+    expect(screen.queryByText("Your pages")).toBeNull();
   });
 
   it("renders the complete phone hierarchy, chart labels and page drill-down", () => {
@@ -194,8 +190,8 @@ describe("#4037 host traffic dashboard render contract", () => {
     );
     expect(screen.getByText("VALUE MINGLA BROUGHT")).toBeTruthy();
     expect(screen.getByText("Visits per day")).toBeTruthy();
-    expect(screen.getAllByText("From visit to sale")).toHaveLength(2);
-    expect(screen.getAllByText("Where visitors came from")).toHaveLength(2);
+    expect(screen.getAllByText("From visit to sale")).toHaveLength(1);
+    expect(screen.getAllByText("Where visitors came from")).toHaveLength(1);
     expect(screen.getByText("Your pages")).toBeTruthy();
     expect(screen.getAllByText("Button taps").length).toBeGreaterThan(0);
     expect(
@@ -204,13 +200,13 @@ describe("#4037 host traffic dashboard render contract", () => {
       ),
     ).toBeTruthy();
     expect(
-      screen.getAllByLabelText(
+      screen.getByLabelText(
         "From visit to sale, Page visits 48, Button taps 18, Checkouts started 8, Bookings 6",
       ),
-    ).toHaveLength(2);
+    ).toBeTruthy();
     expect(
-      screen.getAllByLabelText("50 percent of visitors came from Mingla"),
-    ).toHaveLength(2);
+      screen.getByLabelText("50 percent of visitors came from Mingla"),
+    ).toBeTruthy();
     expect(
       screen.getAllByLabelText(
         "Button taps, Buy or book 6, Share 4, Save 5, Directions 6, Website or call 15, Opened another page 0",
@@ -269,6 +265,32 @@ describe("#4037 host traffic dashboard render contract", () => {
     expect(screen.getByText("Since tracking started 1 Oct")).toBeTruthy();
     expect(screen.getByText("Your pages")).toBeTruthy();
     expect(screen.getAllByText("Button taps").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Where visitors came from")).toHaveLength(2);
+    expect(screen.getAllByText("Where visitors came from")).toHaveLength(1);
+  });
+
+  it("hides button taps until two tap types have data and uses one collecting line", () => {
+    const oneTapType: BrandTrafficRollup = {
+      ...brandData,
+      ctas: ctas.map((type) => ({ type, count: type === "buy" ? 3 : 0 })),
+    };
+    const screen = render(
+      <TrafficAnalyticsDashboard
+        {...baseProps}
+        data={oneTapType}
+        isLoading={false}
+        isError={false}
+        pages={oneTapType.pages}
+        onSelectPage={jest.fn()}
+        regularsCollecting
+        customerPatternsCollecting
+      />,
+    );
+    expect(screen.queryByTestId("traffic-button-taps-card")).toBeNull();
+    expect(
+      screen.getByText("Still collecting: regulars, booking patterns"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText("Select a page when visit data is available"),
+    ).toBeNull();
   });
 });
