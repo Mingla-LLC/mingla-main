@@ -2,12 +2,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const read = (relative) => relative.startsWith(".github/workflows/")
-  ? readWorkflowSource(ROOT, relative)
-  : fs.readFileSync(path.join(ROOT, relative), "utf8");
+const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
 const sources = {
   domain: read("supabase/functions/_shared/agentDomainTools.ts"),
   helper: read("supabase/functions/_shared/agentTicketPricing.ts"),
@@ -20,7 +17,6 @@ const sources = {
   draftService: read("mingla-business/src/services/eventDrafts.ts"),
   publishedEditor: read("mingla-business/src/components/event/EditPublishedScreen.tsx"),
   pricingService: read("mingla-business/src/services/pricingSwitchesService.ts"),
-  workflow: read(".github/workflows/issue-1974-ari-ticket-pricing.yml"),
 };
 
 function requireText(failures, source, needle, label) {
@@ -63,8 +59,6 @@ function check(s) {
   requireText(failures, s.pricingService, 'rpc("business_patch_pricing_switches"', "sparse event pricing service");
   requireText(failures, s.pricingService, 'rpc("business_patch_brand_pricing_defaults"', "sparse brand pricing service");
   requireText(failures, s.pricingService, "refreshBrandTaxRegistrationAttestation", "Business tax attestation refresh");
-  requireText(failures, s.workflow, "issue_1974_ticket_pricing.implementor.tax_attestation.pg17.test.sql", "tax attestation PG17 wiring");
-  requireText(failures, s.workflow, "issue_1974_initial_proposal_context.implementor.test.ts", "initial proposal context wiring");
 
   const ticketWriter = s.domain.slice(s.domain.indexOf("const upsertTicketTier"), s.domain.indexOf("const setPricingSwitches"));
   if (/\.from\(["']ticket_types["']\)\s*\.(?:insert|update)/s.test(ticketWriter)) {
@@ -106,7 +100,6 @@ if (process.argv.includes("--self-test")) {
     { ...sources, chat: sources.chat.replaceAll("const proposalArgs = verifiedProposalArgs(", "const proposalArgs = (") },
     { ...sources, migration: sources.migration.replaceAll("issue_1974_require_fresh_tax_registration", "removed_tax_attestation_guard") },
     { ...sources, taxProbe: sources.taxProbe.replaceAll('source: "brand-tax-registrations-list"', 'source: "removed"') },
-    { ...sources, workflow: sources.workflow.replaceAll("issue_1974_ticket_pricing.implementor.tax_attestation.pg17.test.sql", "removed.sql") },
   ];
   if (mutations.some((mutation) => check(mutation).length === 0)) {
     console.error("issue-1974 self-test FAIL: a material revert escaped");

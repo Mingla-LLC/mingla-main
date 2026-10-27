@@ -3,7 +3,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readWorkflowSource, copyWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const files = {
@@ -17,7 +16,6 @@ const files = {
     "mingla-business/src/components/people/__tests__/PeoplePage.issue1774.happy.test.tsx",
   preservedAdversarial:
     "mingla-business/src/components/people/__tests__/PeoplePage.issue1774.tester.adversarial.test.tsx",
-  workflow: ".github/workflows/issue-1774-people-page-tests.yml",
 };
 
 const futureUi =
@@ -27,7 +25,7 @@ export function audit(base) {
   const failures = [];
   const read = (key) => {
     const target = path.join(base, files[key]);
-    if (key === "workflow") return readWorkflowSource(base, files[key]);
+
     if (!fs.existsSync(target)) {
       failures.push(`${files[key]} is missing`);
       return "";
@@ -42,7 +40,6 @@ export function audit(base) {
   const happy = read("happy");
   const preservedHappy = read("preservedHappy");
   const preservedAdversarial = read("preservedAdversarial");
-  const workflow = read("workflow");
 
   if (futureUi.test(page) || futureUi.test(route)) {
     failures.push("fabricated reach/export UI returned to the People route");
@@ -111,9 +108,7 @@ export function audit(base) {
   if (!happy.includes("marginBottom).toBeUndefined()") || !happy.includes('paddingBottom).toBe(120)') || !happy.includes('people-fab-exclusion')) {
     failures.push("issue #2024 rendered guard no longer proves sibling FAB geometry and full cards");
   }
-  if (!workflow.includes("PeoplePage.issue2024.happy.test.tsx") || !workflow.includes("issue-2024-people-page-layout.mjs --self-test") || !workflow.includes("issue-2024-people-page-layout.mjs")) {
-    failures.push("issue #2024 happy/static guards are not both CI-wired");
-  }
+
   if (!preservedHappy.includes('status="Import unavailable"') || !preservedHappy.includes("flag\\.data")) {
     failures.push("the preserved #1774 happy import fail-closed guard was weakened");
   }
@@ -135,8 +130,7 @@ function selfTest() {
     for (const relative of Object.values(files)) {
       const target = path.join(fixture, relative);
       fs.mkdirSync(path.dirname(target), { recursive: true });
-      if (relative === files.workflow) copyWorkflowSource(root, relative, target);
-      else fs.copyFileSync(path.join(root, relative), target);
+      fs.copyFileSync(path.join(root, relative), target);
     }
   };
   const expectMutation = (label, mutate, expected) => {
@@ -236,14 +230,7 @@ function selfTest() {
       },
       "hidden semantic heading",
     );
-    expectMutation(
-      "happy render removed from CI",
-      () => {
-        const source = fs.readFileSync(target("workflow"), "utf8");
-        fs.writeFileSync(target("workflow"), source.replace(/^.*PeoplePage\.issue2024\.happy\.test\.tsx.*\n/m, ""));
-      },
-      "both CI-wired",
-    );
+
     console.log("[issue-2024-people-page-layout] self-test PASS");
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true });

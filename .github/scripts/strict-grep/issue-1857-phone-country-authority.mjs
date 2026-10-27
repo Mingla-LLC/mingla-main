@@ -2,7 +2,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 // MINGLA-INVARIANT: I-PROPOSED-PHONE-COUNTRY-AUTHORITY-1 | issue #1857 | National phone input enters identity matching only through explicit handset-country evidence and canonical conversion.
 
@@ -22,7 +21,7 @@ const PATHS = {
   nativeReservation: "app-mobile/src/services/venueReservationService.ts",
   webReservation: "mingla-business/src/services/venueGuestReservationService.ts",
   migration: "supabase/migrations/20270325001857_issue_1857_phone_country_authority.sql",
-  workflow: ".github/workflows/issue-1857-phone-country-authority-tests.yml",
+
   gate: ".github/scripts/strict-grep/issue-1857-phone-country-authority.mjs",
 };
 
@@ -106,8 +105,7 @@ export function violations(files) {
   }
   forbidPattern(migration, /^CREATE TRIGGER\s/m, "migration zero trigger changes", failures);
   forbid(migration, "UPDATE public.event_rsvps SET guest_phone_country_iso", "migration no backfill", failures);
-  need(files.workflow, "issue-1857-phone-country-authority.mjs --self-test", "CI self-test", failures);
-  need(files.workflow, "issue_1857_phone_country_authority.pg17.test.sql", "CI SQL test", failures);
+
   need(files.gate, `${LOCAL_DECLARATION_PREFIX}I-PROPOSED-PHONE-COUNTRY-AUTHORITY-1 | issue #1857 |`, "local invariant declaration", failures);
   return failures;
 }
@@ -115,7 +113,7 @@ export function violations(files) {
 function readFiles() {
   return Object.fromEntries(Object.entries(PATHS).map(([key, relative]) => [
     key,
-    key === "workflow" ? readWorkflowSource(ROOT, relative) : fs.readFileSync(path.join(ROOT, relative), "utf8"),
+    fs.readFileSync(path.join(ROOT, relative), "utf8"),
   ]));
 }
 

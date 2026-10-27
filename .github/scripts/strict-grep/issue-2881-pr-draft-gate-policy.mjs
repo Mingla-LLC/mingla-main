@@ -35,7 +35,6 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { loadEffectiveManifest } from "../ci-batch/load-manifest.mjs";
-import { readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, "../../..");
@@ -113,22 +112,6 @@ export const ALWAYS_ON = Object.freeze([
   // issue's contract and re-writing it to suit this one would be weakening it.
   // A8 DERIVES this set by computation and fails if it drifts, so occurrence #4
   // fails the build instead of a CI run.
-  Object.freeze({
-    path: liveWorkflow("issue", "1614", "onconflict", "arbiter", "audit"),
-    kind: "pin-protected",
-    issue: "#1614",
-    pin: "regex",
-    pinnedBy: ".github/scripts/__tests__/issue-1614-onconflict-arbiter-audit.test.mjs",
-    reason: "asserts /pull_request:\\s*\\n\\s*push:/ over its own trigger block; a types: insertion splits that match",
-  }),
-  Object.freeze({
-    path: liveWorkflow("issue", "2393", "valid", "marketing", "test", "fixtures"),
-    kind: "pin-protected",
-    issue: "#2148",
-    pin: "digest",
-    pinnedBy: ".github/scripts/strict-grep/issue-2148-ci-node-wave-shadow.tester.test.mjs",
-    reason: "the wave-shadow tester banks a sha256 of this workflow's exact bytes",
-  }),
   Object.freeze({
     path: liveWorkflow("issue", "679", "brand", "follows", "rls", "proof"),
     kind: "pin-protected",
@@ -280,35 +263,10 @@ export function evaluateDraftGate(eventName, draft) {
 
 export function auditWorkflowSources(sources, options = {}) {
   const { alwaysOn = ALWAYS_ON, botCreationSource = null, requireBotSource = true } = options;
-  const manifest = options.ciBatchManifest ?? (() => {
-    try { return loadEffectiveManifest(); } catch { return null; }
-  })();
-  const historicalPaths = new Set((manifest?.legacyOrigins || [])
-    .filter((origin) => origin?.disposition === "batched-historical")
-    .map((origin) => `${origin.stem}.${origin.extension}`));
-  // Folded terminal wrappers are deliberately absent from the working tree.
-  // Their old pin belongs to the historical evidence, not to the live
-  // draft-gate partition; the consolidated CI batch is the active provider.
-  const effectiveAlwaysOn = alwaysOn.filter((entry) => !historicalPaths.has(path.basename(entry.path)));
-  const policySources = { ...sources };
-  // Only the real checkout needs retired-wrapper evidence. Synthetic fixtures
-  // deliberately exercise the missing-registration failure and must not be
-  // repaired from this repository's historical base.
-  const batchWorkflowName = ["ci-batch", "yml"].join(".");
-  const strictWorkflowName = ["strict-grep-mingla-business", "yml"].join(".");
-  if (Object.keys(sources).length > 20
-    && Object.hasOwn(sources, batchWorkflowName)
-    && Object.hasOwn(sources, strictWorkflowName)) {
-    for (const entry of effectiveAlwaysOn) {
-      if (policySources[entry.path]) continue;
-      const historical = readWorkflowSource(REPO_ROOT, `.github/workflows/${entry.path}`, { allowSynthetic: false });
-      if (historical) policySources[entry.path] = historical;
-    }
-  }
-  const parsed = parseSources(policySources);
+  const parsed = parseSources(sources);
   const errors = [...parsed.errors];
-  const alwaysOnPaths = new Set(effectiveAlwaysOn.map((entry) => entry.path));
-  const requiredContexts = new Map(effectiveAlwaysOn.filter(isRulesetRequired).map((entry) => [entry.context, entry.path]));
+  const alwaysOnPaths = new Set(alwaysOn.map((entry) => entry.path));
+  const requiredContexts = new Map(alwaysOn.filter(isRulesetRequired).map((entry) => [entry.context, entry.path]));
 
   const counts = { totalWorkflows: Object.keys(parsed.documents).length, prFamily: 0, gated: 0, exempt: 0, gatedJobs: 0, composed: 0 };
   const seenAlwaysOn = new Set();
@@ -359,7 +317,7 @@ export function auditWorkflowSources(sources, options = {}) {
       // ---- A4 — exempt-set integrity ----
       counts.exempt += 1;
       seenAlwaysOn.add(workflowName);
-      const entry = effectiveAlwaysOn.find((candidate) => candidate.path === workflowName);
+      const entry = alwaysOn.find((candidate) => candidate.path === workflowName);
       if (draftJobs.length) {
         errors.push(isRulesetRequired(entry)
           ? `${workflowName}: always-on merge-gate workflow carries a draft condition on job(s) ${draftJobs.join(", ")}. ` +
@@ -457,7 +415,7 @@ export function auditWorkflowSources(sources, options = {}) {
     }
   }
 
-  for (const entry of effectiveAlwaysOn) {
+  for (const entry of alwaysOn) {
     if (!seenAlwaysOn.has(entry.path)) {
       errors.push(`${entry.path}: registered always-on merge-gate workflow is missing or is not pull-request triggered (${entry.reason})`);
     }
@@ -486,7 +444,7 @@ export function auditWorkflowSources(sources, options = {}) {
   auditBotCreationSite(errors, botCreationSource, requireBotSource);
 
   // A8/A9 — the pin class (see the header note on #1614/#1719/#2393/#679/ci-batch).
-  auditPins(errors, policySources, effectiveAlwaysOn, options);
+  auditPins(errors, sources, alwaysOn, options);
 
   return { errors, counts };
 }

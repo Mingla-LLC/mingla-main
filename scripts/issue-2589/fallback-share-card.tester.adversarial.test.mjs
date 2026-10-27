@@ -390,7 +390,10 @@ test('A8 CI collects THIS suite, the 200-origin sealed baseline ratchets exactly
   const WORKFLOW_NAME = ['issue-1719-unified-sharing', 'yml'].join('.');
   const WORKFLOW_REL = `.github/workflows/${WORKFLOW_NAME}`;
   const SELF = 'scripts/issue-2589/fallback-share-card.tester.adversarial.test.mjs';
-  const workflowSource = fs.readFileSync(path.join(ROOT, WORKFLOW_REL));
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.github/ci-batch/MANIFEST.json'), 'utf8'));
+  const suite = manifest.suites.find((suite) => suite.origin === WORKFLOW_REL);
+  assert.equal(suite?.migrationWave, 'phase3e-postgres-fold-wave');
+  const workflowSource = suite.steps.map((step) => step.run).join('\n');
 
   // 1. Invoked by name. A test nobody runs is not a test.
   assert.ok(workflowSource.toString('utf8').includes(`node --test ${SELF}`), 'this suite is not invoked by the provider workflow');
@@ -399,7 +402,6 @@ test('A8 CI collects THIS suite, the 200-origin sealed baseline ratchets exactly
   //    Each suite in the canonical post-seal declaration adds one exact provenance
   //    claim. This is not a workflow-file count: the suite still rides the existing
   //    batch provider and no new issue workflow exists.
-  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.github/ci-batch/MANIFEST.json'), 'utf8'));
   const SEALED_LEGACY_ORIGINS = 200;
   const expectedLegacyOriginCount = SEALED_LEGACY_ORIGINS + SUITES_ADDED_SINCE_SEAL.length;
   const assertExactLegacyOriginCount = (origins, label) => assert.equal(
@@ -440,16 +442,19 @@ test('A8 CI collects THIS suite, the 200-origin sealed baseline ratchets exactly
   //    drift; a live row carries no byte fingerprint to re-bank.
   const origin = manifest.legacyOrigins.find((item) => `${item.stem}.${item.extension}` === WORKFLOW_NAME);
   assert.ok(origin, 'provider workflow is not a registered origin');
-  assert.equal(Object.hasOwn(origin.workflowMetadata, 'sourceSha256'), false, 'a live workflow row must not carry a byte fingerprint');
-  assert.ok(workflowSource.length > 0, 'the provider workflow must exist on disk');
+  assert.equal(origin.disposition, 'batched-historical');
+  assert.deepEqual(origin.replacementSuites, [suite.id]);
+  assert.equal(fs.existsSync(path.join(ROOT, WORKFLOW_REL)), false, 'the folded wrapper must be absent');
+  assert.ok(fs.existsSync(path.join(ROOT, origin.providerWorkflow)), 'the batch provider must exist');
+  assert.match(origin.workflowMetadata.sourceSha256, /^[a-f0-9]{64}$/);
 
   // 4. The registered path scope re-runs this suite when the code it guards moves.
-  const globs = origin.workflowMetadata.pathScope;
+  const globs = suite.originPaths;
   const matches = (file) => globs.some((glob) => new RegExp(`^${glob.split('**').map((part) => part.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')).join('.*')}$`).test(file));
   for (const file of [SELF, 'mingla-business/server/fallbackShareCard.js', 'mingla-business/server/cardIdentityRenderer.js']) {
     assert.ok(matches(file), `${file} is not selected by the provider workflow's path scope`);
   }
-  assert.equal(matches('supabase/functions/manage-stay-inventory/index.ts'), false, 'path matcher accepts everything');
+  assert.equal(matches('mingla-sites/README.md'), false, 'path matcher accepts everything');
 
   // 5. PROVIDER-SEAL HYGIENE. `discoverWorkflowProviders()` mints a provider
   //    record for any tracked non-workflow file naming a real workflow file, and
@@ -459,5 +464,6 @@ test('A8 CI collects THIS suite, the 200-origin sealed baseline ratchets exactly
   const spelledOut = [...new Set(selfSource.match(/[A-Za-z0-9_.-]+\.ya?ml/g) || [])].filter((name) => workflowFilenames.has(name));
   assert.deepEqual(spelledOut, [], `this file names ${spelledOut.join(', ')} in full, which mints a provider record and breaks the frozen registry seal`);
   // Anti-vacuity: the matcher above genuinely recognises a real workflow name.
-  assert.ok(workflowFilenames.has(WORKFLOW_NAME) && /[A-Za-z0-9_.-]+\.ya?ml/.test(WORKFLOW_NAME), 'the seal check cannot recognise a workflow filename at all');
+  const providerName = path.basename(origin.providerWorkflow);
+  assert.ok(workflowFilenames.has(providerName) && /[A-Za-z0-9_.-]+\.ya?ml/.test(providerName), 'the seal check cannot recognise a workflow filename at all');
 });

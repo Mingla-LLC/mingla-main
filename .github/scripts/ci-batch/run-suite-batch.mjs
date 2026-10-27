@@ -207,6 +207,16 @@ export function selectSuites(manifest, candidates, context) {
   }
   const reasons = new Map();
   const invalidated = (suite) => {
+    // #3643: an origin without a path filter ran on every PR. Folding it must
+    // not narrow that contract to just the files named by its commands.
+    if (isPostgresBatchSuite(suite)) {
+      const origin = manifest.legacyOrigins?.find((entry) =>
+        `.github/workflows/${entry.stem}.${entry.extension}` === suite.origin);
+      if (origin?.workflowMetadata?.pathScope?.length === 0 && !origin.routing) {
+        reasons.set(suite.id, "unfiltered origin");
+        return true;
+      }
+    }
     for (const pattern of patterns.get(suite.id)) {
       const hit = context.changedPaths.find((file) => pathMatches(pattern, file));
       if (hit) { reasons.set(suite.id, pattern); return true; }
@@ -759,7 +769,7 @@ function signalProcessGroup(child, signal) {
 const SECRET_NAME = /(?:secret|token|password|passwd|credential|private|api[_-]?key|auth|cookie|webhook)/i;
 
 export function minimalChildEnvironment(requested = {}, home, { allowNodePath = false, allowReviewedEnv = false,
-  reviewedEnvNames = PHASE3C_AUTHORISED_ENV_NAMES, pathPrefix = null } = {}) {
+  reviewedEnvNames = PHASE3C_AUTHORISED_ENV_NAMES, pathPrefix = null, offline = true } = {}) {
   for (const name of Object.keys(requested)) {
     const reviewedEnv = allowReviewedEnv && reviewedEnvNames.has(name) && typeof requested[name] === "string"
       && !/\$\{\{|\$\(|`|secrets\./.test(requested[name]);
@@ -779,7 +789,7 @@ export function minimalChildEnvironment(requested = {}, home, { allowNodePath = 
     npm_config_cache: cacheDirectory,
     npm_config_audit: "false",
     npm_config_fund: "false",
-    npm_config_offline: "true",
+    npm_config_offline: String(offline),
     npm_config_update_notifier: "false",
     CI: "true",
     NODE_ENV: "test",
@@ -844,7 +854,7 @@ function pipeRedacted(stream, destination, env) {
 }
 
 export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 2_000, spawnImpl = spawn, allowNodePath = false, allowReviewedEnv = false,
-  reviewedEnvNames = PHASE3C_AUTHORISED_ENV_NAMES, pathPrefix = null, stdout = process.stdout, stderr = process.stderr, home } = {}) {
+  reviewedEnvNames = PHASE3C_AUTHORISED_ENV_NAMES, pathPrefix = null, offline = true, stdout = process.stdout, stderr = process.stderr, home } = {}) {
   return new Promise((resolve) => {
     let settled = false;
     let timedOut = false;
@@ -853,7 +863,7 @@ export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 
     const ownsHome = !home;
     const temporaryHome = home || fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
     let childEnv;
-    try { childEnv = minimalChildEnvironment(env, temporaryHome, { allowNodePath, allowReviewedEnv, reviewedEnvNames, pathPrefix }); }
+    try { childEnv = minimalChildEnvironment(env, temporaryHome, { allowNodePath, allowReviewedEnv, reviewedEnvNames, pathPrefix, offline }); }
     catch (error) { if (ownsHome) fs.rmSync(temporaryHome, { recursive: true, force: true }); resolve({ ok: false, code: 2, timedOut: false, reason: redactText(error.message) }); return; }
     const supervised = spawnImpl === spawn;
     const actual = supervised
@@ -1096,12 +1106,18 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
         if (outerFailed) continue;
       } else {
         const continues = continuesAfterFailedStep(suite);
-        const runtimeEnv = postgresRuntime ? { ...postgresRuntime.env, ...(step.env || {}) } : step.env;
-        const result = await execute(invocation, { cwd, env: runtimeEnv, timeoutMs: remaining, graceMs, home: suiteHome,
+        const inheritedEnv = postgresRuntime ? Object.fromEntries((suite.envNames || [])
+          .filter(name => typeof process.env[name] === "string").map(name => [name, process.env[name]])) : {};
+        const runtimeEnv = postgresRuntime ? { ...inheritedEnv, ...postgresRuntime.env, RUNNER_TEMP: path.join(suiteHome, "tmp"), ...(step.env || {}) } : step.env;
+        // GitHub's Bash steps stop on a failed command or pipeline. Preserve
+        // that behavior when the same commands run inside the shared batch.
+        const command = postgresRuntime && invocation.command === "bash" && invocation.argv[0] === "-c"
+          ? { ...invocation, argv: ["-e", "-o", "pipefail", ...invocation.argv] } : invocation;
+        const result = await execute(command, { cwd, env: runtimeEnv, timeoutMs: remaining, graceMs, home: suiteHome,
           // [#3643] Only a Phase 3D step whose registry record DECLARES env may
           // receive it; the validator pins which steps and which literals.
-          ...(postgresRuntime ? { allowReviewedEnv: true, reviewedEnvNames: new Set([...POSTGRES_CHILD_ENV_NAMES, ...PHASE3D_AUTHORISED_ENV_NAMES]),
-            pathPrefix: postgresRuntime.pathPrefix }
+          ...(postgresRuntime ? { allowReviewedEnv: true, reviewedEnvNames: new Set([...POSTGRES_CHILD_ENV_NAMES, ...PHASE3D_AUTHORISED_ENV_NAMES, ...suite.envNames, "RUNNER_TEMP"]),
+            pathPrefix: postgresRuntime.pathPrefix, offline: false }
             : continues && step.env ? { allowReviewedEnv: true, reviewedEnvNames: PHASE3D_AUTHORISED_ENV_NAMES } : {}) });
         executed += 1;
         if (!result.ok) {

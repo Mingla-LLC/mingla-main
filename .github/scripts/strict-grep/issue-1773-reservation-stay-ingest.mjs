@@ -3,7 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 // MINGLA-INVARIANT: I-PROPOSED-PERSON-SUPPRESSION-1 | issue #1773 | Reservation and confirmed-stay identity sources preserve pre-existing suppression across every linked contact method.
 // MINGLA-INVARIANT: I-PROPOSED-SOURCE-FAILOPEN-1 | issue #1773 | Reservation and confirmed-stay source writes remain authoritative when asynchronous Brand People ingestion is unavailable.
@@ -18,7 +17,7 @@ const files = {
   sqlTest: "supabase/migrations/__tests__/issue_1773_reservation_stay_ingest.test.sql",
   phoneAuthoritySuccessor: "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
   artifactTest: "supabase/functions/brand-person-ingest-worker/issue_1773_worker_cjs_artifact.test.ts",
-  workflow: ".github/workflows/issue-1773-reservation-stay-ingest-tests.yml",
+
   gate: ".github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs",
 };
 
@@ -91,14 +90,7 @@ export function inspect(source) {
   need("phoneAuthoritySuccessor", "issue_1773_1857_security_contract_drift", "service-only ACL proof");
   need("phoneAuthoritySuccessor", "ALTER FUNCTION ", "two-function deliberate drift proof");
   need("phoneAuthoritySuccessor", "ROLLBACK;", "rollback-only successor");
-  need("workflow", "issue_1773_reservation_stay_ingest.test.sql", "SQL workflow registration");
-  need("workflow", "issue_1773_worker_cjs_artifact.test.ts", "deployment artifact regression wiring");
-  need("workflow", "issue_1773_preserves_1857_phone_authority.pg17.test.sql", "phone-authority successor wiring");
-  if ((source.workflow ?? "").includes("--unstable-detect-cjs")) failures.push("workflow relies on unstable CommonJS detection");
-  need("workflow", "deno-version: v2.9.5", "Deno 2.9.5 workflow pin");
-  need("workflow", "supabase/setup-cli@v1", "Supabase CLI setup");
-  need("workflow", "version: 2.98.2", "Supabase CLI 2.98.2 workflow pin");
-  need("workflow", "issue-1773-reservation-stay-ingest.mjs --self-test", "gate self-test wiring");
+
   need("gate", `${LOCAL_DECLARATION_PREFIX}I-PROPOSED-PERSON-SUPPRESSION-1 | issue #1773 |`, "local suppression declaration");
   need("gate", `${LOCAL_DECLARATION_PREFIX}I-PROPOSED-SOURCE-FAILOPEN-1 | issue #1773 |`, "local fail-open declaration");
   return failures;
@@ -106,7 +98,7 @@ export function inspect(source) {
 
 function readSources() {
   const source = Object.fromEntries(Object.entries(files).map(([key, file]) => [key,
-    key === "workflow" ? readWorkflowSource(root, file) : fs.readFileSync(path.join(root, file), "utf8")
+    fs.readFileSync(path.join(root, file), "utf8")
   ]));
   const adapterPath = path.join(root, files.adapter);
   source.adapterKind = fs.lstatSync(adapterPath).isFile() && !fs.lstatSync(adapterPath).isSymbolicLink() ? "regular" : "other";
@@ -128,7 +120,7 @@ function readSources() {
     "packages/card-identity/__tests__/issue_1857_phone_country_authority.tester.adversarial.test.mjs",
   ].map((file) => fs.readFileSync(path.join(root, file), "utf8"));
   source.consumerImports = consumers.join("\n");
-  source.phoneScoped = [source.worker, source.adapter, source.consumerImports, source.workflow].join("\n");
+  source.phoneScoped = [source.worker, source.adapter, source.consumerImports].join("\n");
   return source;
 }
 

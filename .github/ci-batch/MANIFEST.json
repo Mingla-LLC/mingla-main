@@ -878,6 +878,24 @@
       ],
       "classes": [
         "postgres17-deno2-node22-noinstall"
+      ],
+      "toolExposures": [
+        {
+          "id": "tool:postgres17-deno2-node22-noinstall:jest-29.7.0",
+          "providerCwd": "mingla-business",
+          "consumerCwd": "app-mobile",
+          "packageName": "jest",
+          "executableName": "jest",
+          "version": "29.7.0",
+          "providerPackage": "mingla-business/node_modules/jest/package.json",
+          "providerExecutable": "mingla-business/node_modules/jest/bin/jest.js",
+          "consumerPackageLink": "app-mobile/node_modules/jest",
+          "consumerPackageLinkTarget": "../../mingla-business/node_modules/jest",
+          "consumerBinLink": "app-mobile/node_modules/.bin/jest",
+          "consumerBinLinkTarget": "../jest/bin/jest.js",
+          "authorityLock": "mingla-business/package-lock.json",
+          "authorityKey": "node_modules/jest"
+        }
       ]
     },
     "postgres17-deno2-node22-pre1931": {
@@ -27215,6 +27233,15 @@
       "origin": ".github/workflows/issue-1403-listing-insights-tests.yml",
       "originPaths": [
         "mingla-business/scripts/ci/bundle-baseline.json",
+        "mingla-business/app/**",
+        "mingla-business/src/**",
+        "mingla-business/*",
+        "packages/**",
+        ".github/scripts/strict-grep/**",
+        "supabase/migrations/**",
+        ".github/actions/migrated-postgres/**",
+        ".github/ci-batch/MANIFEST.json",
+        ".github/workflows/**",
         ".github/scripts/ci-batch/postgres-batch-contract.mjs",
         ".github/scripts/ci-batch/postgres-batch.mjs",
         ".github/scripts/strict-grep/__tests__/orch-1400-ratchet-frontier.adversarial.test.mjs",
@@ -27621,6 +27648,19 @@
       "origin": ".github/workflows/issue-1421-venue-organic-insights-tests.yml",
       "originPaths": [
         "mingla-business/scripts/ci/bundle-baseline.json",
+        "mingla-business/app/**",
+        "mingla-business/src/**",
+        "mingla-business/*",
+        "packages/**",
+        ".github/scripts/strict-grep/**",
+        "supabase/migrations/**",
+        ".github/actions/migrated-postgres/**",
+        "supabase/functions/_shared/**",
+        "supabase/functions/attribution-capture/**",
+        "supabase/functions/venue-organic-capture/**",
+        "supabase/functions/venue-reservation-create/**",
+        "app-mobile/app/b/**",
+        "app-mobile/src/services/**",
         ".github/scripts/ci-batch/postgres-batch-contract.mjs",
         ".github/scripts/ci-batch/postgres-batch.mjs",
         ".github/scripts/strict-grep/issue-1421-venue-organic-insights-wiring.mjs",
@@ -40443,30 +40483,6 @@
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },
     {
-      "workflow": "issue-1644-storage-guardrail-collage-fill-tests.yml",
-      "ownerIssue": "#1644",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1644-storage-guardrail-collage-fill-tests.yml",
-      "referenceFiles": [
-        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.implementor.test.mjs",
-        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.mjs",
-        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.tester.test.mjs"
-      ],
-      "rationale": "Issue #2492 records this external coupling and preserves the existing live provider unchanged."
-    },
-    {
-      "workflow": "issue-1647-admin-mv-and-db-reclaim-tests.yml",
-      "ownerIssue": "#1647",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1647-admin-mv-and-db-reclaim-tests.yml",
-      "referenceFiles": [
-        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.implementor.test.mjs",
-        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.mjs",
-        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.tester.test.mjs"
-      ],
-      "rationale": "Issue #2492 records this external coupling and preserves the existing live provider unchanged."
-    },
-    {
       "workflow": "issue-1661-completed-write-unparks-invalidation.yml",
       "ownerIssue": "#1661",
       "transition": "batched-provider",
@@ -52078,5 +52094,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3",
-  "phase3eContractSha256": "bd763a1da4dbd812255efc7e39feb2302abbab75110e851c905c5161f6305b76"
+  "phase3eContractSha256": "e09da3d63a6574a79491004842b1da2c8c823f2199f85d10699cb2fe7a8cc12f"
 }

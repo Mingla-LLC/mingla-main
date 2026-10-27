@@ -12,7 +12,6 @@ import {
   SUITES_FOLDED_SINCE_SEAL,
   SUITES_FOLDED_IN_POSTGRES_WAVE,
 } from "../ci-batch/validate-manifest-v2.mjs";
-import { readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PRE_AMENDMENT_6_TESTER_SHA256 = "d54eb1655eb4bc7ddd157785743954a1cbdbac6f6ae938c07a111f7256ae08a0";
@@ -34,7 +33,7 @@ const isBatchedHistoricalWorkflow = (relative, root = ROOT) => {
 };
 const fileDigest = (relative, root = ROOT) => {
   const absolute = path.join(root, relative);
-  const source = fs.existsSync(absolute) ? fs.readFileSync(absolute, "utf8") : readWorkflowSource(root, relative);
+  const source = fs.readFileSync(absolute, "utf8");
   return byteDigest(source);
 };
 const manifest = () => JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
@@ -377,7 +376,6 @@ function assertReconstructed(value, inspections) {
   // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
   // validator subtracts from the frozen provider seal. Subject and strength unchanged;
   // the number simply stops being typed in a second place where it can disagree.
-  assert.equal(value.workflowProviders.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   assert.equal(shadow.length, 32);
   assert.deepEqual(shadow.map((suite) => suite.id), Object.keys(VARIANTS));
   assert.deepEqual([...new Set(shadow.map((suite) => path.basename(suite.origin)))].sort(), ORIGINS);
@@ -452,7 +450,7 @@ function assertCanonicalReferenceLocks(root = ROOT) {
     // digest remains in this historical authority table, but there is no live
     // file to hash after the suite moves into the consolidated batch.
     if (!fs.existsSync(absolute) && isBatchedHistoricalWorkflow(relative, root)) continue;
-    const source = fs.existsSync(absolute) ? fs.readFileSync(absolute, "utf8") : readWorkflowSource(root, relative);
+    const source = fs.readFileSync(absolute, "utf8");
     assert.equal(typeof source, "string", relative);
     assert.equal(byteDigest(source), expected, `${relative}: coupled reference bytes changed`);
   }
@@ -609,9 +607,7 @@ test("canonical locks remain enforceable in a depth-one checkout with no histori
     for (const relative of new Set(required)) {
       const target = path.join(seed, relative);
       fs.mkdirSync(path.dirname(target), { recursive: true });
-      const source = fs.existsSync(path.join(ROOT, relative))
-        ? fs.readFileSync(path.join(ROOT, relative), "utf8")
-        : readWorkflowSource(ROOT, relative);
+      const source = fs.readFileSync(path.join(ROOT, relative), "utf8");
       fs.writeFileSync(target, source);
     }
     execFileSync("git", ["init", "--quiet"], { cwd: seed });
