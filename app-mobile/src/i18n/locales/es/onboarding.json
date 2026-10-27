@@ -178,7 +178,14 @@
     "alert_decline_error": "No se pudo rechazar la solicitud. Inténtalo de nuevo.",
     "alert_generic_error": "No se pudo procesar la solicitud. Inténtalo de nuevo.",
     "share_message": "¡Hola! Únete a Mingla y encontremos experiencias increíbles juntos. https://usemingla.com",
-    "fallback_user": "Usuario"
+    "fallback_user": "Usuario",
+    "invite_card_title": "Tu gente ya está aquí",
+    "invite_card_body": "{{name}} te invitó a Mingla. Acepta para ser amigos y ver sus cumpleaños, planes y guardados.",
+    "invite_card_sub": "★ Amigo + pareja · te invitó por SMS",
+    "invite_card_accept": "Aceptar",
+    "invite_card_not_now": "Ahora no",
+    "invite_card_done": "Eres amigo y estás emparejado con {{name}}",
+    "invite_card_friends_only": "Eres amigo de {{name}}"
   },
   "collaborations": {
     "headline": "Planéenlo juntos",

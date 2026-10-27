@@ -47,6 +47,9 @@ export interface FriendActionsApi {
   addToSessionVisible: boolean;
   blockVisible: boolean;
   reportVisible: boolean;
+  /** Issue #4114: the paywall opens on every pair-limit hit, this menu included. */
+  paywallVisible: boolean;
+  closePaywall: () => void;
   sendPair: () => void;
   unpair: () => void;
   toggleMute: () => void;
@@ -81,6 +84,7 @@ export function useFriendActions(args: UseFriendActionsArgs): FriendActionsApi {
   const [addToSessionVisible, setAddToSessionVisible] = useState(false);
   const [blockVisible, setBlockVisible] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
+  const [paywallVisible, setPaywallVisible] = useState(false);
 
   // Joinable sessions for the add-to-session picker. One-shot, lazy (enabled only while
   // the picker is open), no realtime — deliberately NOT useSessionManagement, which mounts
@@ -131,7 +135,10 @@ export function useFriendActions(args: UseFriendActionsArgs): FriendActionsApi {
       .then(() => Alert.alert("Pair request sent", `Your pair request to ${friendName} was sent.`))
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : "";
-        if (msg !== "pairing_limit_reached") {
+        if (msg === "pairing_limit_reached") {
+          // Issue #4114: this used to be swallowed with no paywall.
+          setPaywallVisible(true);
+        } else {
           Alert.alert("Couldn't send pair request", "Please try again.");
         }
       });
@@ -193,6 +200,7 @@ export function useFriendActions(args: UseFriendActionsArgs): FriendActionsApi {
   const closeBlock = useCallback(() => setBlockVisible(false), []);
   const openReport = useCallback(() => setReportVisible(true), []);
   const closeReport = useCallback(() => setReportVisible(false), []);
+  const closePaywall = useCallback(() => setPaywallVisible(false), []);
 
   const confirmBlock = useCallback(
     async (reason?: BlockReason) => {
@@ -240,6 +248,8 @@ export function useFriendActions(args: UseFriendActionsArgs): FriendActionsApi {
     addToSessionVisible,
     blockVisible,
     reportVisible,
+    paywallVisible,
+    closePaywall,
     sendPair,
     unpair,
     toggleMute,

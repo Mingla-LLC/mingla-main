@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/notify-message/__tests__/issue_4114_dm_push_retry.tester_adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4114-dm-push-retry-tester-adversarial",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

@@ -178,7 +178,14 @@
     "alert_decline_error": "Ba a iya ƙin buƙatar haɗawa. Sake gwadawa.",
     "alert_generic_error": "Ba a iya gudanar da buƙatar. Sake gwadawa.",
     "share_message": "Sannu! Ka shigo Mingla mu sami abubuwa masu ban sha'awa tare. https://usemingla.com",
-    "fallback_user": "Mai amfani"
+    "fallback_user": "Mai amfani",
+    "invite_card_title": "Your people are already here",
+    "invite_card_body": "{{name}} invited you to Mingla. Accept to be friends and see each other's birthdays, plans and saves.",
+    "invite_card_sub": "★ Friend + pair · invited you by text",
+    "invite_card_accept": "Accept",
+    "invite_card_not_now": "Not now",
+    "invite_card_done": "You're friends and paired with {{name}}",
+    "invite_card_friends_only": "You're friends with {{name}}"
   },
   "collaborations": {
     "headline": "Ku tsara shi tare",

@@ -2313,7 +2313,7 @@ begin
   v_snap := pg_temp.t3802w_snapshot();
   v_audit := pg_temp.t3802w_audit();
   r := pg_temp.t3802w_as('growth', format($q$select public.crm_records_bulk_create('hosts', %L::jsonb, 'w23-bulk-0001')::text$q$, c_items));
-  perform pg_temp.t3802w_like('W1-23', 'a fault on the server stops bulk add with a plain try-again message', r, 'ERR:40001:try_again:%nothing was saved%');
+  perform pg_temp.t3802w_like('W1-23', 'a fault on the server stops bulk add with a plain try-again message', r, 'ERR:PT409:try_again:%nothing was saved%');
   perform pg_temp.t3802w_check('W1-23', 'the message does not carry the database error', (r not like '%planted fault%' and r not like '%55000%')::text, 'true');
   perform pg_temp.t3802w_check('W1-23', 'nothing was saved, nothing was kept under the request key, and no audit row was written',
     pg_temp.t3802w_snapshot() || '/' || (pg_temp.t3802w_audit() - v_audit)::text

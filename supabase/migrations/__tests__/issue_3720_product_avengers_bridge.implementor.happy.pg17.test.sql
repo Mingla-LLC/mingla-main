@@ -57,7 +57,7 @@ BEGIN
       v_signal,0,'Stale title','A sufficiently long public problem statement.',
       'A sufficiently long intended outcome.',ARRAY['One useful acceptance criterion'],
       'Business','Business Tooling','P1','3','Now','Q4 2026');
-  EXCEPTION WHEN serialization_failure THEN v_stale:=true; END;
+  EXCEPTION WHEN sqlstate 'PT409' THEN v_stale:=true; END;
   IF NOT v_stale THEN RAISE EXCEPTION 'stale_review_was_not_rejected'; END IF;
   v_search:=public.issue_3720_queue_product_avengers_command(v_signal,'search','{}'::jsonb,gen_random_uuid());
   RESET ROLE;

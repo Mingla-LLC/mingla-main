@@ -16,6 +16,7 @@
     "adventurous": "冒险", "firstDate": "初次约会", "romantic": "浪漫", "groupFun": "团体乐趣", "picnicDates": "野餐约会", "takeAStroll": "散步"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "我们无法向 {{phone}} 发送短信。请改为与对方分享邀请链接。",
     "adminPrivileges": "管理员权限", "manageBoard": "管理面板", "renameBoard": "重命名面板",
     "inviteParticipants": "邀请参与者", "turnOffNotifications": "关闭通知", "turnOnNotifications": "开启通知",
     "leaveBoard": "离开面板", "leaving": "正在离开...", "deleteBoard": "删除面板",

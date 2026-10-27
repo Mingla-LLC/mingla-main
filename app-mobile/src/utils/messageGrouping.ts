@@ -7,6 +7,8 @@ export interface MessageForGrouping {
   id: string;
   senderId: string;
   timestamp: string;
+  /** Issue #4114 Wave 6: in a brand channel, the event chat this message belongs to. */
+  conversationId?: string;
 }
 
 export interface GroupedMessage<T extends MessageForGrouping = MessageForGrouping> {
@@ -25,6 +27,7 @@ const FIVE_MINUTES_MS = 5 * 60 * 1000;
  * Grouping rules:
  * - Same sender AND within 2 minutes of previous message → same group
  * - Different sender OR >2 minute gap → new group
+ * - A different source conversation (brand channel event marker) → new group
  *
  * Group position:
  * - 'solo': only message in its group
@@ -50,8 +53,9 @@ export function groupMessages<T extends MessageForGrouping>(messages: T[]): Grou
     const timeDiff = new Date(curr.timestamp).getTime() - new Date(prev.timestamp).getTime();
     const sameSender = curr.senderId === prev.senderId;
     const withinTwoMin = timeDiff < TWO_MINUTES_MS;
+    const sameThread = curr.conversationId === prev.conversationId;
 
-    if (!sameSender || !withinTwoMin) {
+    if (!sameSender || !withinTwoMin || !sameThread) {
       groupStarts.push(i);
     }
   }

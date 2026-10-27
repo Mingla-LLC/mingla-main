@@ -16,9 +16,11 @@ import {
   CountryPickerOverlay as PackageCountryPickerOverlay,
   type IconRenderer,
   type PhoneInputLabels,
+  type PhoneInputTheme,
 } from "@mingla/phone-input";
 
 import { Icon } from "../ui/Icon";
+import { chatTokens } from "../../constants/chatTokens";
 
 type PickerLabels = Pick<
   PhoneInputLabels,
@@ -33,7 +35,24 @@ interface CountryPickerContentProps {
 
 interface CountryPickerModalProps extends CountryPickerContentProps {
   visible: boolean;
+  /**
+   * Issue #4114 QA run 2: the Chats tab opens the picker over the dark chat
+   * screen, so it asks for the dark surface. Onboarding, settings and the pair
+   * request keep the light default.
+   */
+  tone?: "light" | "dark";
 }
+
+/** Issue #4114 QA run 2: the picker on the dark chat surface (chatTokens). */
+export const CHAT_DARK_COUNTRY_PICKER_THEME: PhoneInputTheme = {
+  backgroundPrimary: chatTokens.surface,
+  textPrimary: chatTokens.textPrimary,
+  textTertiary: chatTokens.textSoft,
+  searchBackground: chatTokens.surfaceRaised,
+  rowPressedBackground: chatTokens.strip,
+  divider: chatTokens.hairline,
+  accent: chatTokens.accent,
+};
 
 const useConsumerIconRenderer = (): IconRenderer => {
   return useCallback<IconRenderer>((name, iconProps) => {
@@ -62,9 +81,10 @@ const usePickerLabels = (): PickerLabels => {
   };
 };
 
-export const CountryPickerModal: React.FC<CountryPickerModalProps> = (
-  props,
-) => {
+export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
+  tone = "light",
+  ...props
+}) => {
   const iconRenderer = useConsumerIconRenderer();
   const labels = usePickerLabels();
   return (
@@ -72,6 +92,7 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = (
       {...props}
       iconRenderer={iconRenderer}
       labels={labels}
+      theme={tone === "dark" ? CHAT_DARK_COUNTRY_PICKER_THEME : undefined}
     />
   );
 };

@@ -211,7 +211,7 @@ BEGIN
       gen_random_uuid()
     );
     RAISE EXCEPTION 'A-3 FAIL: idempotency key replayed a changed payload';
-  EXCEPTION WHEN serialization_failure THEN
+  EXCEPTION WHEN sqlstate 'PT409' THEN
     IF SQLERRM NOT LIKE '%stay_idempotency_conflict%' THEN
       RAISE;
     END IF;

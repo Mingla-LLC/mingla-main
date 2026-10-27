@@ -1,15 +1,31 @@
+/**
+ * Issue #4114 Wave 2a — a pending group invite in the Chats list.
+ *
+ * One 72pt row under the "Invites" section label, with a Join button. Decline
+ * lives in the row's long-press menu (and the screen reader's actions), so the
+ * row is one tap to join and never a second big button.
+ */
 import React from "react";
 import {
+  AccessibilityActionEvent,
   ActivityIndicator,
-  Image,
+  Alert,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useTranslation } from "react-i18next";
-import { colors, fontWeights } from "../../constants/designSystem";
-import { s } from "../../utils/responsive";
+import { glass } from "../../constants/designSystem";
+import { ChatAvatar } from "./ChatAvatar";
+import {
+  CHAT_ROW_GAP,
+  CHAT_ROW_HEIGHT,
+  CHAT_ROW_SIDE_PADDING,
+  CHAT_SEPARATOR_INSET,
+} from "./chatListModel";
+
+const tk = glass.discover.chatList;
 
 export type PendingSessionInvite = {
   sessionId: string;
@@ -24,16 +40,7 @@ interface PendingSessionInviteRowProps {
   onAccept: (sessionId: string, inviteId: string) => Promise<void>;
   onDecline: (sessionId: string, inviteId: string) => Promise<void>;
   isProcessing: boolean;
-}
-
-function getInitials(name: string): string {
-  return name
-    .trim()
-    .split(/\s+/)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2) || "?";
+  showSeparator?: boolean;
 }
 
 export function PendingSessionInviteRow({
@@ -41,149 +48,117 @@ export function PendingSessionInviteRow({
   onAccept,
   onDecline,
   isProcessing,
-}: PendingSessionInviteRowProps) {
-  const { t } = useTranslation(["social", "common"]);
+  showSeparator = false,
+}: PendingSessionInviteRowProps): React.ReactElement {
+  const { t } = useTranslation(["social", "connections", "common"]);
+  const name = invite.inviterDisplayName;
+
+  const confirmDecline = (): void => {
+    if (isProcessing) return;
+    Alert.alert(name, t("social:pendingInviteRowSubtitle", { name }), [
+      { text: t("common:cancel"), style: "cancel" },
+      {
+        text: t("social:pendingInviteDecline"),
+        style: "destructive",
+        onPress: () => void onDecline(invite.sessionId, invite.inviteId),
+      },
+    ]);
+  };
+
+  const onAccessibilityAction = (event: AccessibilityActionEvent): void => {
+    if (event.nativeEvent.actionName === "decline") confirmDecline();
+  };
 
   return (
-    <View style={styles.row} accessibilityRole="none">
-      {invite.inviterAvatarUrl ? (
-        <Image source={{ uri: invite.inviterAvatarUrl }} style={styles.avatar} />
-      ) : (
-        <View style={styles.avatarFallback}>
-          <Text style={styles.avatarText}>{getInitials(invite.inviterDisplayName)}</Text>
-        </View>
-      )}
-
+    <Pressable
+      onLongPress={confirmDecline}
+      delayLongPress={350}
+      accessibilityLabel={`${name}, ${t("social:pendingInviteRowSubtitle", { name })}`}
+      accessibilityActions={[{ name: "decline", label: t("social:pendingInviteDecline") }]}
+      onAccessibilityAction={onAccessibilityAction}
+      style={styles.row}
+    >
+      {showSeparator ? <View style={styles.separator} /> : null}
+      <ChatAvatar
+        people={[{ id: invite.inviteId, name, avatarUrl: invite.inviterAvatarUrl }]}
+        shape="circle"
+        label={name}
+      />
       <View style={styles.textWrap}>
         <Text style={styles.name} numberOfLines={1}>
-          {invite.inviterDisplayName}
+          {name}
         </Text>
-        <Text style={styles.subtitle} numberOfLines={2}>
-          {t("social:pendingInviteRowSubtitle", { name: invite.inviterDisplayName })}
+        <Text style={styles.subtitle} numberOfLines={1}>
+          {t("social:pendingInviteRowSubtitle", { name })}
         </Text>
       </View>
-
-      <View style={styles.actions}>
-        <Pressable
-          onPress={() => onAccept(invite.sessionId, invite.inviteId)}
-          disabled={isProcessing}
-          accessibilityRole="button"
-          accessibilityLabel={`${t("social:pendingInviteAccept")} from ${invite.inviterDisplayName}`}
-          style={({ pressed }) => [
-            styles.acceptButton,
-            isProcessing ? styles.disabled : null,
-            pressed && !isProcessing ? styles.pressed : null,
-          ]}
-        >
-          {isProcessing ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Text style={styles.acceptText}>{t("social:pendingInviteAccept")}</Text>
-          )}
-        </Pressable>
-
-        <Pressable
-          onPress={() => onDecline(invite.sessionId, invite.inviteId)}
-          disabled={isProcessing}
-          accessibilityRole="button"
-          accessibilityLabel={`${t("social:pendingInviteDecline")} invite from ${invite.inviterDisplayName}`}
-          style={({ pressed }) => [
-            styles.declineButton,
-            isProcessing ? styles.disabled : null,
-            pressed && !isProcessing ? styles.pressed : null,
-          ]}
-        >
-          <Text style={styles.declineText}>{t("social:pendingInviteDecline")}</Text>
-        </Pressable>
-      </View>
-    </View>
+      <Pressable
+        onPress={() => onAccept(invite.sessionId, invite.inviteId)}
+        disabled={isProcessing}
+        accessibilityRole="button"
+        accessibilityLabel={t("connections:invite_join_a11y", { name })}
+        accessibilityState={{ disabled: isProcessing, busy: isProcessing }}
+        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+        style={({ pressed }) => [
+          styles.joinButton,
+          isProcessing ? styles.disabled : null,
+          pressed && !isProcessing ? styles.pressed : null,
+        ]}
+      >
+        {isProcessing ? (
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        ) : (
+          <Text style={styles.joinText}>{t("connections:invite_join")}</Text>
+        )}
+      </Pressable>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   row: {
-    minHeight: s(100),
+    height: CHAT_ROW_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
-    marginHorizontal: s(10),
-    marginVertical: s(4),
-    borderRadius: s(18),
-    paddingHorizontal: s(14),
-    paddingVertical: s(18),
-    backgroundColor: "rgba(255, 255, 255, 0.075)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.10)",
-    gap: s(14),
+    gap: CHAT_ROW_GAP,
+    paddingHorizontal: CHAT_ROW_SIDE_PADDING,
+    backgroundColor: glass.discover.screenBg,
   },
-  avatar: {
-    width: s(50),
-    height: s(50),
-    borderRadius: s(25),
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
-  },
-  avatarFallback: {
-    width: s(50),
-    height: s(50),
-    borderRadius: s(25),
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.accent,
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
-  },
-  avatarText: {
-    color: "#FFFFFF",
-    fontSize: s(14),
-    fontWeight: fontWeights.bold,
+  separator: {
+    position: "absolute",
+    top: 0,
+    left: CHAT_SEPARATOR_INSET,
+    right: 0,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: tk.separator,
   },
   textWrap: {
     flex: 1,
     minWidth: 0,
+    gap: 3,
   },
   name: {
-    color: "#FFFFFF",
-    fontSize: s(16),
-    fontWeight: fontWeights.bold,
+    color: tk.ink,
+    fontSize: 16,
+    fontWeight: "700",
   },
   subtitle: {
-    color: "rgba(255, 255, 255, 0.64)",
-    fontSize: s(15),
-    lineHeight: s(20),
-    marginTop: s(6),
+    color: tk.dim,
+    fontSize: 14,
   },
-  actions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: s(8),
-  },
-  acceptButton: {
-    minWidth: s(76),
-    height: s(40),
-    borderRadius: s(20),
+  joinButton: {
+    minWidth: 64,
+    height: 30,
+    borderRadius: 15,
+    paddingHorizontal: 12,
+    backgroundColor: tk.accent,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: s(12),
-    backgroundColor: colors.accent,
   },
-  acceptText: {
+  joinText: {
     color: "#FFFFFF",
-    fontSize: s(13),
-    fontWeight: fontWeights.bold,
-  },
-  declineButton: {
-    height: s(40),
-    borderRadius: s(20),
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: s(12),
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.22)",
-  },
-  declineText: {
-    color: "rgba(255, 255, 255, 0.78)",
-    fontSize: s(13),
-    fontWeight: fontWeights.semibold,
+    fontSize: 13,
+    fontWeight: "700",
   },
   disabled: {
     opacity: 0.55,

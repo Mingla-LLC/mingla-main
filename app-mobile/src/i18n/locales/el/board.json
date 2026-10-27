@@ -40,6 +40,7 @@
     "takeAStroll": "Κάνε μια Βόλτα"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "Δεν μπορέσαμε να στείλουμε SMS στο {{phone}}. Μοιράσου τον σύνδεσμο πρόσκλησης αντί γι' αυτό.",
     "adminPrivileges": "Δικαιώματα Διαχειριστή",
     "manageBoard": "Διαχείριση Πίνακα",
     "renameBoard": "Μετονομασία Πίνακα",

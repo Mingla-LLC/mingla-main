@@ -39,6 +39,10 @@ export interface Friend {
 
 export interface Message {
   id: string;
+  /** Issue #4114: messages.client_id — the merge key (with id) for every write. */
+  clientId?: string;
+  /** Issue #4114 Wave 6: messages.conversation_id (a brand channel merges several chats). */
+  conversationId?: string;
   senderId: string;
   senderName: string;
   content: string;
@@ -53,6 +57,11 @@ export interface Message {
   isMe: boolean;
   unread?: boolean;
   failed?: boolean;
+  /**
+   * Issue #4114 QA run 2: why a failed send cannot be retried. "daily_limit"
+   * is today's photo and video allowance: the bubble says so and offers no retry.
+   */
+  failedReason?: "daily_limit";
   isRead?: boolean;
   replyToId?: string;
   marketingCampaignId?: string | null;
@@ -60,6 +69,41 @@ export interface Message {
   // ORCH-1058B: structured collab dead-end banner payload (chips + button data).
   // Typed loosely (CollabDeadEndBannerPayload) to avoid a circular import.
   systemPayload?: any;
+  /** Issue #4114 Wave 3: direct_message_reactions rows (absent on realtime rows). */
+  reactions?: Array<{ user_id: string; emoji: string }>;
+  /** Issue #4114 Wave 3: unsent (soft-deleted); hidden from the thread. */
+  unsent?: boolean;
+  /** Issue #4114 Wave 4: a photo or video each recipient may open once. */
+  viewOnce?: boolean;
+  /** Issue #4114 Wave 4: the view-once file was deleted from storage. */
+  viewOncePurged?: boolean;
+  /** Issue #4114 Wave 4: who opened it (message_media_views; absent on realtime rows). */
+  mediaViews?: Array<{ user_id: string; viewed_at: string }>;
+  /**
+   * Issue #4114 Wave 4: the picked file of a media send that has not uploaded
+   * yet (this phone only; never persisted, never sent to the server). A retry
+   * uploads it again under the same client id.
+   */
+  localMedia?: {
+    uri: string;
+    kind: 'image' | 'video' | 'file';
+    mimeType?: string | null;
+    fileName?: string | null;
+    fileSize?: number | null;
+    durationMs?: number | null;
+    width?: number | null;
+    height?: number | null;
+  };
+  /** Issue #4114 Wave 7: the 480px thumbnail's storage path (ordinary photos and videos). */
+  thumbPath?: string;
+  /** Issue #4114 Wave 7: a video's length and the media's size (the card's shape). */
+  mediaDurationMs?: number;
+  mediaWidth?: number;
+  mediaHeight?: number;
+  /** Issue #4114 Wave 7: photos sent together share this id. */
+  mediaAlbumId?: string;
+  /** Issue #4114 Wave 7 (D18): the video's full file was removed after 90 days. */
+  mediaExpired?: boolean;
 }
 
 export interface Conversation {

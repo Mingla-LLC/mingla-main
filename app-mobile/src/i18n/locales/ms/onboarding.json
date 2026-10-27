@@ -178,7 +178,14 @@
     "alert_decline_error": "Tidak dapat menolak permintaan pasangan. Cuba lagi.",
     "alert_generic_error": "Tidak dapat memproses permintaan. Cuba lagi.",
     "share_message": "Hei! Sertai saya di Mingla dan jom cari pengalaman hebat bersama. https://usemingla.com",
-    "fallback_user": "Pengguna"
+    "fallback_user": "Pengguna",
+    "invite_card_title": "Orang anda sudah ada di sini",
+    "invite_card_body": "{{name}} menjemput anda ke Mingla. Terima untuk berkawan dan melihat hari jadi, rancangan dan simpanan masing-masing.",
+    "invite_card_sub": "★ Rakan + pasangan · menjemput anda melalui SMS",
+    "invite_card_accept": "Terima",
+    "invite_card_not_now": "Bukan sekarang",
+    "invite_card_done": "Anda berkawan dan berpasangan dengan {{name}}",
+    "invite_card_friends_only": "Anda berkawan dengan {{name}}"
   },
   "collaborations": {
     "headline": "Rancang bersama",

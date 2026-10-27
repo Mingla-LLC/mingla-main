@@ -79,7 +79,8 @@ BEGIN
     -- #4063 last-writes this wrapper so approved RSVPs receive only a pass,
     -- while pending/other outcomes retain acknowledgement delivery.
     ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'c043d726559b59db1ea641ff4b5503de'),
-    ('public.issue_1388_create_stay_group(uuid,text,jsonb,bigint,uuid)', 'eec5f6a9750eb113d3c75c027455a704'),
+    -- #4134 last-writes this function: its stale-stay raises use PT409, not 40001.
+    ('public.issue_1388_create_stay_group(uuid,text,jsonb,bigint,uuid)', '284a54566e53f692dccdd48acff12b38'),
     -- #4063 M9 last-writes this function so every direct host booking has a phone.
     ('public.biz_reservation_create(uuid,timestamp with time zone,integer,text,text,text,text,uuid,text,text,text[],text)', 'a47b808186f0c59fb1aa6fd3a33e7f8d'),
     ('public.pg_create_guest_reservation(uuid,timestamp with time zone,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)', '97adc49789e7e254744ff9b60efbe9ba'),

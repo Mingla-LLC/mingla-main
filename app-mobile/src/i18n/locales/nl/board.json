@@ -40,6 +40,7 @@
     "takeAStroll": "Wandeling maken"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "We konden {{phone}} geen sms sturen. Deel in plaats daarvan de uitnodigingslink.",
     "adminPrivileges": "Beheerdersrechten",
     "manageBoard": "Bord beheren",
     "renameBoard": "Bord hernoemen",

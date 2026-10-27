@@ -178,7 +178,14 @@
     "alert_decline_error": "ไม่สามารถปฏิเสธคำขอจับคู่ได้ ลองอีกครั้ง",
     "alert_generic_error": "ไม่สามารถดำเนินการตามคำขอ ลองอีกครั้ง",
     "share_message": "เฮ้! มาร่วมกันใช้ Mingla หาประสบการณ์ดีๆ ด้วยกัน https://usemingla.com",
-    "fallback_user": "ผู้ใช้"
+    "fallback_user": "ผู้ใช้",
+    "invite_card_title": "คนของคุณอยู่ที่นี่แล้ว",
+    "invite_card_body": "{{name}} เชิญคุณมาที่ Mingla ยอมรับเพื่อเป็นเพื่อนและเห็นวันเกิด แผน และที่บันทึกของกันและกัน",
+    "invite_card_sub": "★ เพื่อน + จับคู่ · เชิญคุณทาง SMS",
+    "invite_card_accept": "ยอมรับ",
+    "invite_card_not_now": "ไว้ทีหลัง",
+    "invite_card_done": "คุณเป็นเพื่อนและจับคู่กับ {{name}} แล้ว",
+    "invite_card_friends_only": "คุณเป็นเพื่อนกับ {{name}} แล้ว"
   },
   "collaborations": {
     "headline": "วางแผนไปด้วยกัน",

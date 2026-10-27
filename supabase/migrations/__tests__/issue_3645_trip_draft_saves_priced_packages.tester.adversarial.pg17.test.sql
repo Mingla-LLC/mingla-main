@@ -205,7 +205,7 @@ BEGIN
         'ticket_type_id', v_tier, 'price_cents', 7000, 'capacity', 5))),
       pg_temp.rev(v_event) - interval '1 hour', '36450823-0000-4000-8000-a2a200000009');
     RAISE EXCEPTION 'R5-05 a priced save with a stale revision was accepted';
-  EXCEPTION WHEN sqlstate '40001' THEN
+  EXCEPTION WHEN sqlstate 'PT409' THEN
     IF SQLERRM <> 'trip_revision_conflict' THEN RAISE EXCEPTION 'R5-06 stale revision raised %', SQLERRM; END IF;
   END;
   SELECT price_cents INTO v_price FROM public.ticket_types WHERE id = v_tier;

@@ -40,6 +40,7 @@
     "takeAStroll": "Take a Stroll"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "{{phone}} numarasına SMS gönderemedik. Bunun yerine davet bağlantısını paylaş.",
     "adminPrivileges": "Eklek Privileges",
     "manageBoard": "Erkekage Board",
     "renameBoard": "Rename Board",
