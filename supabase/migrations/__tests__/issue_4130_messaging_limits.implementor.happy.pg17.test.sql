@@ -1,4 +1,4 @@
--- MINGLA-INVARIANT: I-4130-MESSAGING-LIMITS-ONE-SOURCE | issue #4130 | Monthly email/SMS/push caps for a brand come only from brand_messaging_effective_limits: an active override, else the defaults row, else 1000/100/unlimited.
+-- MINGLA-INVARIANT: I-4130-MESSAGING-LIMITS-ONE-SOURCE | issue #4130 | Monthly email/SMS/push caps for a brand come only from brand_messaging_effective_limits: a current (unexpired) override, else the defaults row, else 1000/100/unlimited.
 -- MINGLA-INVARIANT: I-4130-MESSAGING-LIMITS-ADMIN-ONLY | issue #4130 | brand_messaging_limits is never readable or writable by anon or authenticated directly; admin RPCs check is_admin_user() and write admin_audit_log.
 -- #4130 Wave 2b — messaging limits and subscriptions, executable PostgreSQL 17 proof.
 -- Runs after the complete migration replay and rolls every fixture back.
