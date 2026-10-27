@@ -8,7 +8,7 @@
  * (On the way · Ready · Paid), posts, and Activity folded behind Show with
  * events only — never the button names.
  */
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
@@ -16,7 +16,7 @@ import { Button } from "../../../../../src/components/ui/Button";
 import { DateField } from "../../../../../src/components/ui/DateField";
 import { Icon } from "../../../../../src/components/ui/Icon";
 import { Input } from "../../../../../src/components/ui/Input";
-import { Sheet } from "../../../../../src/components/ui/Sheet";
+import { ProgramSheet } from "../../../../../src/components/programs/ProgramSheet";
 import { FullScreenVideoViewer } from "../../../../../src/components/ui/FullScreenVideoViewer";
 import {
   HireSheet,
@@ -40,6 +40,12 @@ import {
   programStyles,
 } from "../../../../../src/components/programs/ProgramKit";
 import { useProgramParams } from "../../../../../src/components/programs/useProgramParams";
+import { useRefreshOnFocus } from "../../../../../src/components/programs/useScreenLifecycle";
+import {
+  playbackNotice,
+  visibleNotice,
+  type ContractNotice,
+} from "../../../../../src/components/programs/screenLifecycle";
 import {
   DISPUTE_REASONS,
   FIX_CATEGORIES,
@@ -60,7 +66,7 @@ import {
 } from "../../../../../src/components/programs/contractCopy";
 import {
   creatorGigsService,
-  deliveryPlayback,
+  deliveryPlaybackStatus,
   openCounter,
   pendingTopup,
   type GigWorkspace,
@@ -115,7 +121,14 @@ export default function HostGigContract(): React.ReactElement {
   const [gigIdForRetry, setGigIdForRetry] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  // A success notice is stamped with the contract state it was shown for and
+  // disappears once the contract moves on, so "The creator can start the
+  // script." never rides into later steps.
+  const [noticeRecord, setNoticeRecord] = useState<ContractNotice | null>(null);
+  const loadedState = useRef("");
+  const setNotice = useCallback((text: string | null) => {
+    setNoticeRecord(text ? { text, state: loadedState.current } : null);
+  }, []);
   const [busy, setBusy] = useState(false);
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [note, setNote] = useState("");
@@ -143,6 +156,7 @@ export default function HostGigContract(): React.ReactElement {
           : Promise.resolve(null),
       ]);
       if (!next) throw new Error("contract_not_found");
+      loadedState.current = next.contract.state ?? "";
       setWorkspace(next);
       const summary = home?.contracts.find((row) => row.id === contractId);
       if (summary) {
@@ -162,6 +176,9 @@ export default function HostGigContract(): React.ReactElement {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+  // The creator acts on their side: refetch on refocus and when the app
+  // returns to the foreground, not only on pull-to-refresh.
+  useRefreshOnFocus(refresh);
   const contractState = workspace?.contract.state ?? "";
   useEffect(() => {
     setChecklist([false, false, false]);
@@ -196,6 +213,7 @@ export default function HostGigContract(): React.ReactElement {
   };
 
   const state = workspace?.contract.state ?? "";
+  const notice = visibleNotice(noticeRecord, state);
   const step = hostContractStep(state);
   const deadline = workspace?.contract.state_deadline_at ?? null;
   const script = workspace ? latestScript(workspace) : null;
@@ -267,6 +285,10 @@ export default function HostGigContract(): React.ReactElement {
           termsVersion: result.terms_version,
           topupMinor: result.topup_minor ?? 0,
         });
+      }
+      await refresh();
+      if (accept && result.requires_topup && typeof result.terms_version === "number") {
+        // The top-up sheet carries on from here.
       } else if (accept && result.refund_minor && currentTerms) {
         setNotice(
           `New fee agreed. We'll refund ${programMoney(result.refund_minor, currentTerms.currency)} to you.`,
@@ -274,7 +296,6 @@ export default function HostGigContract(): React.ReactElement {
       } else {
         setNotice(accept ? "New fee agreed." : "You kept the original fee.");
       }
-      await refresh();
     } catch (counterError) {
       setError(
         programErrorMessage(
@@ -324,8 +345,9 @@ export default function HostGigContract(): React.ReactElement {
               currency={currentTerms?.currency ?? "USD"}
               onPaid={() => {
                 setTopup(null);
-                setNotice("Paid. The new fee is held by Mingla.");
-                void refresh();
+                void refresh().then(() =>
+                  setNotice("Paid. The new fee is held by Mingla."),
+                );
               }}
             />
           ) : null}
@@ -334,7 +356,7 @@ export default function HostGigContract(): React.ReactElement {
             title={`${creatorName}'s video`}
             onClose={() => setVideoUri(null)}
           />
-          <Sheet
+          <ProgramSheet
             visible={sheet !== null}
             onClose={() => setSheet(null)}
             snapPoint="full"
@@ -516,13 +538,13 @@ export default function HostGigContract(): React.ReactElement {
               </SheetBody>
             ) : null}
             {sheet === "change_dates" ? (
-              <SheetBody title="Change the post-by date">
+              <SheetBody title="Change the video-due date">
                 <Muted>{`Currently ${shortDate(String(gig?.post_by ?? ""))}. The fee can't change here.`}</Muted>
                 <DateField
-                  label="New post-by date"
+                  label="New video-due date"
                   value={newPostBy}
                   onChangeValue={setNewPostBy}
-                  accessibilityLabel="New post-by date"
+                  accessibilityLabel="New video-due date"
                   min={toIsoDay(new Date())}
                   placeholder="Choose a date"
                 />
@@ -640,7 +662,7 @@ export default function HostGigContract(): React.ReactElement {
                 </ListGroup>
               </SheetBody>
             ) : null}
-          </Sheet>
+          </ProgramSheet>
         </>
       }
     >
@@ -985,10 +1007,10 @@ export default function HostGigContract(): React.ReactElement {
                     return;
                   }
                   setNotice(null);
-                  void deliveryPlayback(delivery.media_job_id)
-                    .then((url) => {
+                  void deliveryPlaybackStatus(delivery.media_job_id)
+                    .then(({ status, url }) => {
                       if (url) setVideoUri(url);
-                      else setNotice("The video is still processing. Try again in a minute.");
+                      else setNotice(playbackNotice(status, url));
                     })
                     .catch(() => setError("We couldn't load the video. Try again."));
                 }}
@@ -1320,7 +1342,7 @@ export default function HostGigContract(): React.ReactElement {
               <Button
                 size="sm"
                 variant="ghost"
-                label="Change the post-by date"
+                label="Change the video-due date"
                 onPress={() => {
                   setNote("");
                   setNewPostBy("");
@@ -1445,9 +1467,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  // Centred at the card's content width, 9:16 like the video itself. The old
+  // 9:13 box with a max height shrank its width and sat left with a gap.
   player: {
-    aspectRatio: 9 / 13,
-    maxHeight: 420,
+    alignSelf: "stretch",
+    width: "100%",
+    aspectRatio: 9 / 16,
     borderRadius: radius.lg,
     backgroundColor: "#5b3a22",
     alignItems: "center",

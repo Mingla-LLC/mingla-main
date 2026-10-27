@@ -444,13 +444,26 @@ export async function showcasePlayback(jobId: string): Promise<string> {
  * contract may play it (creator-media-status shares deliveries with the
  * contract's parties). Returns null while the video is still processing.
  */
-export async function deliveryPlayback(jobId: string): Promise<string | null> {
+/**
+ * The delivery's processing status and, once ready, a playback URL. A ready
+ * video with no URL is "can't play right now", not "still processing".
+ */
+export async function deliveryPlaybackStatus(
+  jobId: string,
+): Promise<{ status: string | null; url: string | null }> {
   const { data, error } = await supabase.functions.invoke<{
     status?: string;
     playback?: { url?: string } | null;
   }>("creator-media-status", { body: { jobId } });
   if (error) throw new Error("video_unavailable");
-  return typeof data?.playback?.url === "string" ? data.playback.url : null;
+  return {
+    status: typeof data?.status === "string" ? data.status : null,
+    url: typeof data?.playback?.url === "string" ? data.playback.url : null,
+  };
+}
+
+export async function deliveryPlayback(jobId: string): Promise<string | null> {
+  return (await deliveryPlaybackStatus(jobId)).url;
 }
 
 /** A top-up the host still owes after accepting a higher counter-offer. */
