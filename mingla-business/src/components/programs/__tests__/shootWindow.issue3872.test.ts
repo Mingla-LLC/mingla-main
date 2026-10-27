@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  contractNoticeKey,
   shootWindowWords,
   workspaceShootWindow,
 } from "../contractCopy";
@@ -32,5 +33,21 @@ describe("host contract shoot window", () => {
     expect(page).toContain("workspaceShootWindow(gig)");
     expect(page).toContain("shootWindowWords(shootWindow)");
     expect(page).not.toContain("gig?.shoot_window_start");
+  });
+});
+
+describe("host contract notices", () => {
+  const base = {
+    contract: { id: "c", state: "accepted", state_deadline_at: null, fix_rounds_used: 0, current_terms_version: 1 },
+    proposals: [{ id: "p1", status: "pending" }],
+  } as never;
+  it("a notice goes stale when the request is answered, even if the step stays the same", () => {
+    const sent = contractNoticeKey(base);
+    const answered = contractNoticeKey({
+      contract: { id: "c", state: "accepted", state_deadline_at: null, fix_rounds_used: 0, current_terms_version: 2 },
+      proposals: [{ id: "p1", status: "accepted" }],
+    } as never);
+    expect(answered).not.toEqual(sent);
+    expect(contractNoticeKey(base)).toEqual(sent);
   });
 });

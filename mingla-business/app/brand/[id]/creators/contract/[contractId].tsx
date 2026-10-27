@@ -74,6 +74,7 @@ import {
   sectionLabel,
   sectionLines,
   shootInstant,
+  contractNoticeKey,
   shootWindowWords,
   workspaceShootWindow,
 } from "../../../../../src/components/programs/contractCopy";
@@ -133,9 +134,9 @@ export default function HostGigContract(): React.ReactElement {
   const [gigIdForRetry, setGigIdForRetry] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // A success notice is stamped with the contract state it was shown for and
-  // disappears once the contract moves on, so "The creator can start the
-  // script." never rides into later steps.
+  // A success notice is stamped with the contract snapshot it was shown for
+  // (state, terms version and open requests) and disappears once any of them
+  // moves on, so "Request sent" never outlives the answer.
   const [noticeRecord, setNoticeRecord] = useState<ContractNotice | null>(null);
   const loadedState = useRef("");
   const setNotice = useCallback((text: string | null) => {
@@ -170,7 +171,7 @@ export default function HostGigContract(): React.ReactElement {
           : Promise.resolve(null),
       ]);
       if (!next) throw new Error("contract_not_found");
-      loadedState.current = next.contract.state ?? "";
+      loadedState.current = contractNoticeKey(next);
       setWorkspace(next);
       const summary = home?.contracts.find((row) => row.id === contractId);
       if (summary) {
@@ -227,7 +228,7 @@ export default function HostGigContract(): React.ReactElement {
   };
 
   const state = workspace?.contract.state ?? "";
-  const notice = visibleNotice(noticeRecord, state);
+  const notice = visibleNotice(noticeRecord, contractNoticeKey(workspace));
   const step = hostContractStep(state);
   const deadline = workspace?.contract.state_deadline_at ?? null;
   const script = workspace ? latestScript(workspace) : null;

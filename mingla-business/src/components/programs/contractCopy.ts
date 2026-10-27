@@ -317,3 +317,18 @@ export function shootWindowWords(
   if (window.start === window.end) return `Shoot day: ${shortDate(window.start)}.`;
   return `Shoot dates: ${shortDate(window.start)} to ${shortDate(window.end)}.`;
 }
+
+/** What a success notice is tied to: the contract's state, its terms version
+ *  and its change requests. When any of them changes the notice is stale. */
+export function contractNoticeKey(
+  workspace: Pick<GigWorkspace, "contract" | "proposals"> | null | undefined,
+): string {
+  if (!workspace) return "";
+  const requests = (workspace.proposals ?? [])
+    .map((p) => {
+      const row = p as unknown as Record<string, unknown>;
+      return `${String(row.id ?? "")}:${String(row.status ?? "")}`;
+    })
+    .join(",");
+  return `${workspace.contract.state ?? ""}|v${workspace.contract.current_terms_version ?? ""}|${requests}`;
+}

@@ -113,7 +113,8 @@ describe("B7: a success notice clears when the contract moves on", () => {
 
   it("the contract renders the stamped notice, not a free-floating string", () => {
     const src = read(CONTRACT);
-    expect(src).toContain("const notice = visibleNotice(noticeRecord, state);");
+    expect(src).toContain("const notice = visibleNotice(noticeRecord, contractNoticeKey(workspace));");
+    expect(src).toContain("loadedState.current = contractNoticeKey(next);");
     expect(src).toContain("state: loadedState.current");
   });
 });
