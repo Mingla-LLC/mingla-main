@@ -461,10 +461,6 @@ export function audit(base = repoRoot) {
   }
 
   for (const needle of [
-    'const LOCKED_PROVIDER_DISCOVERY_SHA256 = "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f";',
-    'const LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256 = "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1";',
-    "const expectedProviderCount = 91 + PROVIDERS_ADDED_SINCE_SEAL.length;",
-    "sealedDiscovery.length !== 73",
     "issue: 2855",
     "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts",
     "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql",

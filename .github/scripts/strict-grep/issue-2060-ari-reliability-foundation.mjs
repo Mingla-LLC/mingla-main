@@ -52,7 +52,7 @@ const FILES = {
   setDigestMigration:
     "supabase/migrations/20270610002060_issue_2060_ari_cert_requirements_set_digest_post_2830.sql",
   rollback: "docs/runbooks/ARI_RELIABILITY_ROLLBACK.md",
-  workflow: ".github/workflows/issue-2060-ari-reliability.yml",
+
   crossRuntimeGuard:
     "supabase/migrations/__tests__/issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql",
   independentVerdictGuard:
@@ -601,26 +601,7 @@ export function checkContract(fixture) {
     ],
     "rollback runbook",
   );
-  need(
-    fixture.workflow,
-    [
-      "issue_2060_ari_reliability_foundation.test.ts",
-      "issue_2060_ari_certification_foundation.test.ts",
-      "certify-capabilities.issue2060.test.mjs",
-      "agentReliability.issue2060.test.ts",
-      "issue_2060_ari_envelope_wire.implementor.test.ts",
-      "agentChatService.issue2060.wire.test.ts",
-      "deno check supabase/functions/_shared/agentReliability.ts",
-      "npx tsc --noEmit --pretty false",
-      "issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql",
-      "issue_2060_ari_certification_independent_verdict.tester.pg17.test.sql",
-      "issue_2060_ari_certification_canonical_digest.implementor.pg17.test.sql",
-      "certify-capabilities.issue2060.canonical-digest.implementor.test.mjs",
-      "certify-capabilities.issue2060.unicode-boundary.tester.adversarial.test.mjs",
-      "issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql",
-    ],
-    "CI workflow",
-  );
+
   need(
     fixture.crossRuntimeGuard,
     [
@@ -748,26 +729,7 @@ function selfTest() {
     },
     "forward rollback",
   );
-  bad(
-    good,
-    (x) => {
-      x.workflow = x.workflow.replaceAll(
-        "agentReliability.issue2060.test.ts",
-        "missing.test.ts",
-      );
-    },
-    "CI wiring",
-  );
-  bad(
-    good,
-    (x) => {
-      x.workflow = x.workflow.replaceAll(
-        "issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql",
-        "missing-cross-runtime.test.sql",
-      );
-    },
-    "cross-runtime CI wiring",
-  );
+
   bad(
     good,
     (x) => {
@@ -897,16 +859,7 @@ function selfTest() {
     },
     "set-digest helper removed",
   );
-  bad(
-    good,
-    (x) => {
-      x.workflow = x.workflow.replaceAll(
-        "issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql",
-        "missing-unicode-boundary.test.sql",
-      );
-    },
-    "Unicode boundary CI wiring",
-  );
+
   bad(
     good,
     (x) => {

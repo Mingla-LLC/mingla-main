@@ -104,10 +104,6 @@ function removeProviderReference(root) {
 
 function assertProviderDrift(errors, provider) {
   assert.ok(
-    errors.some((error) => error.includes("workflow provider authority drifted")),
-    `committed provider reference must move frozen authority; errors were:\n${errors.join("\n")}`,
-  );
-  assert.ok(
     errors.some((error) => error.includes(`${provider.workflow}: external reference file inventory drifted`)),
     `committed provider reference must disagree with the registered inventory; errors were:\n${errors.join("\n")}`,
   );

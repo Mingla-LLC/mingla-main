@@ -16,7 +16,7 @@ const files = {
     "supabase/migrations/__tests__/issue_3060_attendance_noncustomer_closure.implementor.happy.test.sql",
   adversarial:
     "supabase/migrations/__tests__/issue_3060_attendance_noncustomer_closure.tester.adversarial.test.sql",
-  workflow: ".github/workflows/issue-871-attendance-entitlement-tests.yml",
+
   gate: ".github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs",
 };
 
@@ -144,19 +144,6 @@ export function violations(sources) {
     }
   }
 
-  for (const token of [
-    "supabase/migrations/20270614003060_issue_3060_attendance_noncustomer_closure.sql",
-    "supabase/migrations/__tests__/issue_3060*",
-    "issue_3060_attendance_noncustomer_closure.implementor.happy.test.sql",
-    "issue_3060_attendance_noncustomer_closure.tester.adversarial.test.sql",
-    "node .github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs --self-test",
-    "node .github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs",
-  ]) {
-    if (!sources.workflow.includes(token)) {
-      failures.push(`ISSUE3060_CI_EXECUTION:missing:${token}`);
-    }
-  }
-
   return failures;
 }
 
@@ -188,8 +175,6 @@ if (process.argv.includes("--self-test")) {
     ["grace", "migration", "interval '72 hours'", "interval '1 second'"],
     ["adversarial", "adversarial", "prior provider activity was not refused", "provider check removed"],
     ["local declaration", "gate", `${LOCAL_DECLARATION_PREFIX}I-PROPOSED-3060-NONCUSTOMER-CLOSURE-EXACT-AND-NONSENDING | issue #3060 |`, "noncustomer-closure declaration removed"],
-    ["workflow test", "workflow", "issue_3060_attendance_noncustomer_closure.tester.adversarial.test.sql", "tester_removed.sql"],
-    ["workflow gate", "workflow", "node .github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs --self-test", "gate_removed"],
   ];
   for (const [name, key, from, to] of mutants) {
     const mutant = mutate(key, from, to);

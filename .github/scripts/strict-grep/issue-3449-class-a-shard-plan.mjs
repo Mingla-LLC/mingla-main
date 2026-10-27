@@ -235,7 +235,7 @@ export function auditPlanInputs({ manifest, costs, notes = [] }) {
 
   // R-3.10's five numbers, asserted as PROPERTIES rather than as literals, so a
   // growing corpus cannot make this gate red for the wrong reason. The exact
-  // 168.8/168.8/168.8 s and 340/351/342 numbers are pinned in the regression
+  // 156.9/156.8/156.8 s and 343/346/354 numbers are pinned in the regression
   // suites, which are re-derived when the corpus moves.
   let plan;
   try {

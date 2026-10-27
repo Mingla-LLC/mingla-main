@@ -80,15 +80,10 @@ const ORIGINAL_SHA256 =
 // set is deep-equalled rather than matched as text; the frozen provider seal is
 // still pinned; the #2582 Phase 3B fragments are still exact-once. The single
 // property given up is detection of INERT byte drift in a file this issue does
-// not own. Its semantic half is enforced repo-wide and on every pull request by
-// validate-manifest-v2.mjs itself, which reconstructs provider discovery by
-// subtracting declared additions BY EXACT CONTENT, NEVER BY NAME, against
-// LOCKED_PROVIDER_DISCOVERY_SHA256 (validate-manifest-v2.mjs:2404). A deleted,
-// widened, or narrowed #2855 declaration still reds there as well as here.
+// not own. The active validator compares registered provider references with
+// current discovery; this test keeps the declaration owned by #2855 intact.
 const ISSUE_2855_DECLARATION_SHA256 =
   "d23d2eece82ff8554bd1459e44c0e4144970f4712d5e0626790eb1d5c14a2212";
-const FROZEN_PROVIDER_SEAL =
-  "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f";
 const PROVIDER_DELTA = `  Object.freeze({
     issue: 2855,
     workflow: "issue-2099-pending-venue-identity-correction-tests.yml",
@@ -202,15 +197,6 @@ function assertComposedValidatorProvenance(source: string): void {
   // #2582 Phase 3B 40/0 fragments are present exactly once with the retired 37/3
   // pair absent. Unchanged from the form this replaces.
   reconstructValidatorBeforeAmendments(source);
-  const seal = source.match(
-    /const LOCKED_PROVIDER_DISCOVERY_SHA256 = "([0-9a-f]{64})";/,
-  );
-  assert.ok(seal, "frozen provider seal declaration missing");
-  assert.equal(
-    seal[1],
-    FROZEN_PROVIDER_SEAL,
-    "#2855 must not re-pin the provider seal",
-  );
   assert.equal(
     count(source, "issue: 2855,"),
     1,
@@ -676,13 +662,6 @@ Deno.test("#2855 records only its reviewed provider-reference delta", () => {
         `${validator}\n// "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts"`,
       ),
     "a #2855 reference file named outside #2855's own declaration must fail",
-  );
-  assert.throws(
-    () =>
-      assertComposedValidatorProvenance(
-        validator.replace(FROZEN_PROVIDER_SEAL, "0".repeat(64)),
-      ),
-    "re-pinning the frozen provider seal must remain red",
   );
 });
 

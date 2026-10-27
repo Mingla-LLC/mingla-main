@@ -281,15 +281,17 @@ test('P10 CI collects this suite — the 200-origin sealed baseline gains exact 
   const WORKFLOW_NAME = ['issue-1719-unified-sharing', 'yml'].join('.');
   const WORKFLOW = `.github/workflows/${WORKFLOW_NAME}`;
   const SELF = 'scripts/issue-2589/fallback-share-card.implementor.happy.test.mjs';
-  const workflow = fs.readFileSync(path.join(ROOT, WORKFLOW), 'utf8');
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.github/ci-batch/MANIFEST.json'), 'utf8'));
+  const suite = manifest.suites.find((suite) => suite.origin === WORKFLOW);
+  assert.equal(suite?.migrationWave, 'phase3e-postgres-fold-wave');
+  const workflow = suite.steps.map((step) => step.run).join('\n');
   // 1. The suite is invoked by name. A test nobody runs is not a test.
-  assert.ok(workflow.includes(`- run: node --test ${SELF}`), 'suite is not invoked by the workflow');
+  assert.ok(workflow.includes(`node --test ${SELF}`), 'suite is not invoked by the batch');
 
   // 2. The origin registry was SEALED at a 200-entry baseline. Each suite named
   //    by the canonical post-seal declaration adds one exact provenance claim;
   //    this is not a workflow-file count and this suite still rides an existing
   //    provider instead of adding a workflow file.
-  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.github/ci-batch/MANIFEST.json'), 'utf8'));
   const SEALED_LEGACY_ORIGINS = 200;
   const expectedLegacyOriginCount = SEALED_LEGACY_ORIGINS + SUITES_ADDED_SINCE_SEAL.length;
   assert.equal(
@@ -299,12 +301,14 @@ test('P10 CI collects this suite — the 200-origin sealed baseline gains exact 
   );
   const origin = manifest.legacyOrigins.find((item) => `${item.stem}.${item.extension}` === WORKFLOW_NAME);
   assert.ok(origin, 'provider workflow is not a registered origin');
-  assert.equal(origin.providerWorkflow, `.github/${WORKFLOW.split('/').slice(1).join('/')}`);
+  assert.equal(origin.disposition, 'batched-historical');
+  assert.deepEqual(origin.replacementSuites, [suite.id]);
+  assert.ok(fs.existsSync(path.join(ROOT, origin.providerWorkflow)));
 
   // 3. The registered path scope actually SELECTS every file this work changes,
   //    including the ones outside `scripts/`. A suite that never re-runs when
   //    the code it guards changes is collected in name only.
-  const globs = origin.workflowMetadata.pathScope;
+  const globs = suite.originPaths;
   const matches = (file) => globs.some((glob) => {
     const pattern = new RegExp(`^${glob.split('**').map((part) => part.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')).join('.*')}$`);
     return pattern.test(file);
@@ -320,5 +324,5 @@ test('P10 CI collects this suite — the 200-origin sealed baseline gains exact 
   }
   // NEGATIVE CONTROL — the matcher must be capable of saying NO, or every
   // assertion above passes for the wrong reason.
-  assert.equal(matches('supabase/functions/manage-stay-inventory/index.ts'), false, 'path matcher accepts everything');
+  assert.equal(matches('mingla-sites/README.md'), false, 'path matcher accepts everything');
 });

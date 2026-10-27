@@ -202,10 +202,11 @@ test('P9 CI actually COLLECTS this suite — registered in a live provider workf
   const WORKFLOW_NAME = ['issue-1719-unified-sharing', 'yml'].join('.');
   const WORKFLOW = `.github/workflows/${WORKFLOW_NAME}`;
   const SELF = 'scripts/issue-2700/detail-row-truncation.implementor.happy.test.mjs';
-  const workflow = fs.readFileSync(path.join(ROOT, WORKFLOW), 'utf8');
-  assert.ok(workflow.includes(`- run: node --test ${SELF}`), 'suite is not invoked by the workflow');
-
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.github/ci-batch/MANIFEST.json'), 'utf8'));
+  const suite = manifest.suites.find((suite) => suite.origin === WORKFLOW);
+  assert.equal(suite?.migrationWave, 'phase3e-postgres-fold-wave');
+  const workflow = suite.steps.map((step) => step.run).join('\n');
+  assert.ok(workflow.includes(`node --test ${SELF}`), 'suite is not invoked by the batch');
   // The origin registry was SEALED at 200 entries. Each suite the validator
   // declares in SUITES_ADDED_SINCE_SEAL adds exactly one provenance claim, so the
   // expected count is derived from that one declaration, never hand-typed (#3017).
@@ -220,7 +221,7 @@ test('P9 CI actually COLLECTS this suite — registered in a live provider workf
 
   // The registered path scope must SELECT every file this work changes, or the
   // suite is collected in name only and never re-runs when the code it guards moves.
-  const globs = origin.workflowMetadata.pathScope;
+  const globs = suite.originPaths;
   const matches = (file) => globs.some((glob) => {
     const pattern = new RegExp(`^${glob.split('**').map((part) => part.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')).join('.*')}$`);
     return pattern.test(file);
@@ -234,8 +235,11 @@ test('P9 CI actually COLLECTS this suite — registered in a live provider workf
 
   // [#3643 Wave 4] The manifest describes the workflow by its PROPERTIES (the
   // ci-batch validator compares them with the YAML), not by a byte fingerprint.
-  assert.ok(fs.existsSync(path.join(ROOT, WORKFLOW)), 'the provider workflow must exist on disk');
-  assert.equal(Object.hasOwn(origin.workflowMetadata, 'sourceSha256'), false, 'a live workflow row must not carry a byte fingerprint');
+  assert.equal(fs.existsSync(path.join(ROOT, WORKFLOW)), false, 'the folded wrapper must be absent');
+  assert.equal(origin.disposition, 'batched-historical');
+  assert.deepEqual(origin.replacementSuites, [suite.id]);
+  assert.ok(fs.existsSync(path.join(ROOT, origin.providerWorkflow)), 'the batch provider must exist');
+  assert.match(origin.workflowMetadata.sourceSha256, /^[a-f0-9]{64}$/, 'the historical origin retains its seal');
 });
 
 test('P10 RUNTIME: the composed row is never handed to the shaper with anything to clip', async () => {
