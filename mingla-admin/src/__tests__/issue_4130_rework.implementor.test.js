@@ -256,7 +256,7 @@ describe("R-13 plain words", () => {
   it("Competitor watch", () => {
     assert.equal(opsStateWords("failed_terminal"), "Failed");
     assert.equal(opsStateWords("budget_deferred"), "Waiting for budget");
-    assert.equal(weeklySpendWords({ weekly_actual_cents: 125, weekly_reserved_cents: 50, weekly_remaining_cents: 825 }), "$1.25 spent · $0.50 set aside · $8.25 left");
+    assert.equal(weeklySpendWords({ weekly_actual_cents: 125, weekly_reserved_cents: 60, weekly_remaining_cents: 815 }), "$1.25 spent · $0.60 set aside · $8.15 left");
     const panel = read("pages/ToolLeadsPage.jsx");
     const ops = panel.slice(panel.indexOf("export function CompetitorOpsPanel"));
     for (const jargon of ["Generation {cap.generation}", "Safe reason", "¢ reserved", "provider generation", "Brand internal id"]) {

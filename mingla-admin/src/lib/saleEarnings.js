@@ -34,7 +34,7 @@ export const PROCESSING_RATES = {
 export const SALE_PRESETS = [
   { id: "ngn-small", currency: "NGN", ticketMinor: 550_000, label: "₦5,500 ticket" },
   { id: "ngn-large", currency: "NGN", ticketMinor: 5_000_000, label: "₦50,000 ticket" },
-  { id: "usd", currency: "USD", ticketMinor: 3_000, label: "$30 ticket" },
+  { id: "usd", currency: "USD", ticketMinor: 3_200, label: "$32 ticket" },
 ];
 
 function feeFromBps(baseMinor, bps) {

@@ -220,10 +220,10 @@ begin
     (v_s2, 'exchange_rate_api_open_v6', 'USD', v_t, v_t + interval '1 day', v_t + interval '2 days',
       v_t + interval '1 hour', v_t + interval '1 day', v_t + interval '2 days', 'ta-4130-s2', 'superseded');
   insert into public.fx_rates (snapshot_id, currency_code, rate_per_base) values
-    (v_s1, 'NGN', 1000), (v_s2, 'NGN', 2000), (v_s1, 'USD', 1), (v_s2, 'USD', 1);
+    (v_s1, 'NGN', 1000), (v_s2, 'NGN', 2100), (v_s1, 'USD', 1), (v_s2, 'USD', 1);
 
   perform pg_temp.ta_check('T-MONEY', 'a moment exactly at a snapshot uses that snapshot (fx_exact_moment_wrong)',
-    (public.fx_rate_on('NGN', v_t) = 2000)::text, 'true');
+    (public.fx_rate_on('NGN', v_t) = 2100)::text, 'true');
   perform pg_temp.ta_check('T-MONEY', 'one microsecond earlier uses the snapshot before',
     (public.fx_rate_on('NGN', v_t - interval '1 microsecond') = 1000)::text, 'true');
   perform pg_temp.ta_check('T-MONEY', 'a currency with no stored rate has no rate (never 0 or 1)',
@@ -239,25 +239,25 @@ begin
     payment_method, source, created_at, confirmed_at, list_subtotal_cents, discount_cents, buyer_fees_cents, tax_cents, pricing_source)
   values
     (v_o1, v_ev, 104500, 104500, 100000, 'NGN', 'paid', 'online_card', 'legacy', v_t, v_t, 100000, 0, 4500, 0, 'computed_at_checkout'),
-    (v_o2, v_ev, 2000, 2000, 2000, 'SEK', 'paid', 'online_card', 'legacy', v_t, v_t, 2000, 0, 0, 0, 'computed_at_checkout');
+    (v_o2, v_ev, 2100, 2100, 2100, 'SEK', 'paid', 'online_card', 'legacy', v_t, v_t, 2100, 0, 0, 0, 'computed_at_checkout');
   insert into public.brand_payout_releases (id, brand_id, occurrence_key, surface, provider, currency, anchor_end_at,
     releasable_at, gross_cents, mingla_fee_cents, provider_fee_cents, net_release_cents, organiser_cash_delivered_cents,
     status, released_at, created_at)
-  values (v_r1, v_brand, 'ta-4130-r1', 'order', 'paystack', 'ngn', v_t, v_t + interval '1 day', 104500, 4500, 2000,
+  values (v_r1, v_brand, 'ta-4130-r1', 'order', 'paystack', 'ngn', v_t, v_t + interval '1 day', 104500, 4500, 1900,
     100000, 100000, 'released', v_t + interval '1 day', v_t);
   insert into public.payout_release_items (release_id, source_type, source_id, gross_cents, mingla_fee_cents,
     provider_fee_cents, net_cents, source_finalized_at)
-  values (v_r1, 'order', v_o1, 104500, 4500, 2000, 100000, v_t);
+  values (v_r1, 'order', v_o1, 104500, 4500, 1900, 100000, v_t);
   insert into public.payout_ledger_adjustments (release_id, brand_id, currency, kind, amount_cents, idempotency_key)
   values (v_r1, v_brand, 'ngn', 'transfer_fee_credit', 700, 'ta-4130-credit-1');
 
   v_sum := pg_temp.ta_as('admin', format($q$select public.admin_mingla_money_summary(%L, %L)::text$q$,
     v_t, v_t + interval '1 hour'))::jsonb;
-  -- 4,500 kobo at 2,000 per USD is 2.25 US cents -> 2 (the snapshot at the sale's own moment).
+  -- 4,500 kobo at 2,100 per USD is 2.14 US cents -> 2 (the snapshot at the sale's own moment).
   perform pg_temp.ta_check('T-MONEY', 'the fee at the snapshot moment converts at that snapshot',
     (select l->>'usd_cents' from jsonb_array_elements(v_sum->'lines') l where l->>'kind' = 'fee' and l->>'currency' = 'NGN'), '2');
   perform pg_temp.ta_check('T-MONEY', 'a currency with no rate keeps its own figure',
-    (select l->>'cents' from jsonb_array_elements(v_sum->'lines') l where l->>'kind' = 'buyers_paid' and l->>'currency' = 'SEK'), '2000');
+    (select l->>'cents' from jsonb_array_elements(v_sum->'lines') l where l->>'kind' = 'buyers_paid' and l->>'currency' = 'SEK'), '2100');
   perform pg_temp.ta_check('T-MONEY', 'a currency with no rate has no USD figure (null, never 0)',
     (select coalesce(l->>'usd_cents', 'null') from jsonb_array_elements(v_sum->'lines') l where l->>'kind' = 'buyers_paid' and l->>'currency' = 'SEK'), 'null');
   perform pg_temp.ta_check('T-MONEY', 'no line ever mixes currencies',

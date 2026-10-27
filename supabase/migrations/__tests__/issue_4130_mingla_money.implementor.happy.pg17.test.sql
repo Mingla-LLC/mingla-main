@@ -82,14 +82,14 @@ BEGIN
       '2001-01-05 00:02+00', '2001-01-03 01:15+00', '2001-01-04 00:02+00', '2001-01-05 00:02+00',
       'issue-4130-s3', 'rejected');
   INSERT INTO public.fx_rates (snapshot_id, currency_code, rate_per_base) VALUES
-    (v_s1, 'NGN', 1000), (v_s2, 'NGN', 2000), (v_s3, 'NGN', 5000),
+    (v_s1, 'NGN', 1000), (v_s2, 'NGN', 2100), (v_s3, 'NGN', 5000),
     (v_s1, 'USD', 1), (v_s2, 'USD', 1), (v_s3, 'USD', 1);
 
   -- FX-1
   IF public.fx_rate_on('NGN', v_day1) IS DISTINCT FROM 1000 THEN
     RAISE EXCEPTION 'fx_day1_wrong: %', public.fx_rate_on('NGN', v_day1);
   END IF;
-  IF public.fx_rate_on('ngn', v_day2) IS DISTINCT FROM 2000 THEN
+  IF public.fx_rate_on('ngn', v_day2) IS DISTINCT FROM 2100 THEN
     RAISE EXCEPTION 'fx_day2_wrong: %', public.fx_rate_on('ngn', v_day2);
   END IF;
   -- Before the first snapshot: nothing earlier exists, so NULL. A lookup that
@@ -98,7 +98,7 @@ BEGIN
   IF v_rate IS NOT NULL THEN RAISE EXCEPTION 'fx_forward_extrapolated: %', v_rate; END IF;
   -- After the rejected snapshot: the rejected 5000 is ignored; long-expired
   -- snapshots still serve history.
-  IF public.fx_rate_on('NGN', '2001-02-01 00:00+00') IS DISTINCT FROM 2000 THEN
+  IF public.fx_rate_on('NGN', '2001-02-01 00:00+00') IS DISTINCT FROM 2100 THEN
     RAISE EXCEPTION 'fx_rejected_or_expired_wrong: %', public.fx_rate_on('NGN', '2001-02-01 00:00+00');
   END IF;
   IF public.fx_rate_on('USD', '1990-01-01 00:00+00') IS DISTINCT FROM 1 THEN
@@ -165,7 +165,7 @@ BEGIN
     (v_o3, v_ev_us, 1000, 1000, 985, 'USD', 'paid', 'online_card', 'legacy', v_day1, v_day1),
     (v_o4, v_ev_ng, 50000, 50000, 48000, 'NGN', 'paid', 'online_card', 'legacy', v_day1, v_day1),
     (v_o5, v_ev_ng, 0, 0, 0, 'NGN', 'paid', 'free', 'legacy', v_day1, v_day1),
-    (v_o6, v_ev_us, 2000, 2000, 2000, 'GBP', 'paid', 'online_card', 'legacy', '2000-06-01+00'::timestamptz, '2000-06-01+00'::timestamptz)
+    (v_o6, v_ev_us, 2100, 2100, 2100, 'GBP', 'paid', 'online_card', 'legacy', '2000-06-01+00'::timestamptz, '2000-06-01+00'::timestamptz)
   ) AS v(id, event_id, total_cents, buyer_total_cents, net_subtotal_cents, currency,
          payment_status, payment_method, source, created_at, confirmed_at);
 
@@ -182,8 +182,8 @@ BEGIN
   INSERT INTO public.payout_release_items (release_id, source_type, source_id, gross_cents,
     mingla_fee_cents, provider_fee_cents, net_cents, source_finalized_at)
   VALUES
-    (v_r1, 'order', v_o1, 104500, 4500, 2000, 100000, v_day1),
-    (v_r1, 'order', v_o2, 101500, 1500, 2500, 100000, v_day2),
+    (v_r1, 'order', v_o1, 104500, 4500, 1900, 100000, v_day1),
+    (v_r1, 'order', v_o2, 101500, 1500, 2600, 100000, v_day2),
     (v_r2, 'order', v_o3, 1000, 15, 60, 985, v_day1);
 
   INSERT INTO public.payout_ledger_adjustments (release_id, brand_id, currency, kind,
@@ -217,9 +217,9 @@ BEGIN
   IF v_n <> 2 THEN RAISE EXCEPTION 'sum_fee_rows_not_per_currency: %', v_n; END IF;
 
   -- SUM-2: USD at own-day rate, rounded per currency and day.
-  --   NGN fee: day 1 4,500/1,000 = 4.5 -> 5; day 2 1,500/2,000 = 0.75 -> 1; total 6.
-  --   NGN profit: day 1 2.5 -> 3; day 2 -0.5 -> -1; total 2.
-  --   NGN buyers paid: day 1 (104,500 + 50,000)/1,000 = 154.5 -> 155; day 2 50.75 -> 51.
+  --   NGN fee: day 1 4,500/1,000 = 4.5 -> 5; day 2 1,500/2,100 = 0.71 -> 1; total 6.
+  --   NGN profit: day 1 2.6 -> 3; day 2 -0.52 -> -1; total 2.
+  --   NGN buyers paid: day 1 (104,500 + 50,000)/1,000 = 154.5 -> 155; day 2 48.33 -> 48.
   IF (SELECT (l->>'usd_cents')::bigint FROM jsonb_array_elements(v_sum->'lines') l
       WHERE l->>'kind' = 'fee' AND l->>'currency' = 'NGN') IS DISTINCT FROM 6 THEN
     RAISE EXCEPTION 'sum_ngn_fee_usd_wrong: %', v_sum->'lines';
@@ -229,7 +229,7 @@ BEGIN
     RAISE EXCEPTION 'sum_ngn_profit_usd_wrong: %', v_sum->'lines';
   END IF;
   IF (SELECT (l->>'usd_cents')::bigint FROM jsonb_array_elements(v_sum->'lines') l
-      WHERE l->>'kind' = 'buyers_paid' AND l->>'currency' = 'NGN') IS DISTINCT FROM 206 THEN
+      WHERE l->>'kind' = 'buyers_paid' AND l->>'currency' = 'NGN') IS DISTINCT FROM 203 THEN
     RAISE EXCEPTION 'sum_ngn_paid_usd_wrong: %', v_sum->'lines';
   END IF;
   IF (SELECT (l->>'usd_cents')::bigint FROM jsonb_array_elements(v_sum->'lines') l
@@ -239,7 +239,7 @@ BEGIN
   -- GBP buyers paid exists natively but has no USD figure (no rate that old).
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sum->'lines') l
       WHERE l->>'kind' = 'buyers_paid' AND l->>'currency' = 'GBP'
-        AND (l->>'cents')::bigint = 2000 AND l->'usd_cents' = 'null'::jsonb) THEN
+        AND (l->>'cents')::bigint = 2100 AND l->'usd_cents' = 'null'::jsonb) THEN
     RAISE EXCEPTION 'sum_gbp_usd_guessed: %', v_sum->'lines';
   END IF;
 

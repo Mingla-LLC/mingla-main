@@ -191,12 +191,12 @@ describe("T-MONEY: a missing rate never becomes a number", () => {
   const summary = {
     lines: [
       { kind: "fee", currency: "NGN", cents: 450000, usd_cents: 300 },
-      { kind: "fee", currency: "SEK", cents: 2000, usd_cents: null },
+      { kind: "fee", currency: "SEK", cents: 2100, usd_cents: null },
       { kind: "fee", currency: "USD", cents: 0, usd_cents: 0 },
       { kind: "profit", currency: "NGN", cents: 100, usd_cents: 0 },
       { kind: "profit", currency: "SEK", cents: -5, usd_cents: null },
     ],
-    pricing: { rows: [{ period: "current", kind: "fee", currency: "SEK", cents: 2000, usd_cents: null }] },
+    pricing: { rows: [{ period: "current", kind: "fee", currency: "SEK", cents: 2100, usd_cents: null }] },
   };
 
   it("a USD total with one unconverted currency is null, not the sum of the rest", () => {
@@ -209,7 +209,7 @@ describe("T-MONEY: a missing rate never becomes a number", () => {
 
   it("each currency keeps its own figure in its own column", () => {
     const row = moneyRow(summary, "fee");
-    assert.equal(row.byCurrency.SEK.cents, 2000);
+    assert.equal(row.byCurrency.SEK.cents, 2100);
     assert.equal(row.byCurrency.NGN.cents, 450000);
     assert.equal(row.byCurrency.SEK.usdCents, null);
   });

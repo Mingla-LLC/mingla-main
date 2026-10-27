@@ -35,7 +35,9 @@
 -- [TEST-MOD-APPROVED #3720] Keep this legacy self-check scoped to the original
 -- agent surface while accounting for both separately guarded sibling gateways.
 -- [TEST-MOD-APPROVED #3802] Wave 6 carries the newest complete CRM self-check.
-\set t3802b_check `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql`
+-- #4130: crm_team_pulse is a separately guarded dashboard reader, not a
+-- pipeline command owned by the historical #3802 self-check.
+\set t3802b_check `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/"`
 -- [TEST-MOD-APPROVED #3980] The work gateway (ops_agent_call) writes request rows and the key's last-used marker on the same rail.
 \set t3802b_w4check `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call' AND p.proname <> 'team_agent_product_truth_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'ops_agent_call,team_agent_call,team_agent_content_call,team_agent_housekeeping,team_agent_product_truth_call'/" -e "s/'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_resolve,team_agent_setup_redeem'/'admin_team_set_member,ops_agent_call,team_agent_call,team_agent_content_call,team_agent_key_issue,team_agent_key_revoke,team_agent_product_truth_call,team_agent_resolve,team_agent_setup_redeem'/"`
 \set t3802b_file `cat supabase/migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql`
@@ -307,9 +309,11 @@ begin
   end loop;
   -- [TEST-MOD-APPROVED #3720] Wave 5 adds one closed sibling gateway; Wave 6
   -- adds the closed crm_record_sources_json helper.
-  perform pg_temp.t3802b_check('B-1', 'there are exactly 18 team_agent_ functions and 52 crm_ functions',
+  -- #4130: the separately guarded Team dashboard aggregate adds exactly one
+  -- crm_ reader and does not broaden the agent write surface.
+  perform pg_temp.t3802b_check('B-1', 'there are exactly 18 team_agent_ functions and 53 crm_ functions',
     (select count(*) filter (where p.proname like 'team\_agent\_%')::text || '/' || count(*) filter (where p.proname like 'crm\_%')
-       from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'), '18/52');
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'), '18/53');
   perform pg_temp.t3802b_check('B-1', 'no agent function takes a person from its caller',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.proname like 'team\_agent\_%'

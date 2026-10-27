@@ -259,12 +259,12 @@ describe("F-4a Ads errors go through the plain-words mapper everywhere", () => {
 
 describe("F-4b money signs", () => {
   it("a negative amount on any row reads with a true minus sign", () => {
-    assert.equal(signedMoney(-110, "USD", 1), "−$1.10", "Profit row loss");
+    assert.equal(signedMoney(-111, "USD", 1), "−$1.11", "Profit row loss");
     assert.equal(signedMoney(-72860, "NGN", 1).startsWith("−"), true);
-    assert.ok(!signedMoney(-110, "USD", 1).includes("-"), "never a hyphen-minus");
+    assert.ok(!signedMoney(-111, "USD", 1).includes("-"), "never a hyphen-minus");
     assert.equal(signedMoney(500, "USD", -1), "−$5.00", "a cost row reads as money out");
     assert.equal(signedMoney(0, "USD", -1), "$0.00");
-    assert.equal(signedMoney(263, "USD", 1), "$2.63");
+    assert.equal(signedMoney(264, "USD", 1), "$2.64");
     assert.equal(signedMoney(null, "USD", 1), "not converted");
   });
   it("the money page uses the shared helper for every table cell", () => {

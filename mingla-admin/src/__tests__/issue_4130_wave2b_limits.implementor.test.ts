@@ -107,13 +107,13 @@ Deno.test("#4130 sale earnings: 1.5% + 3% on a ₦5,500 ticket, Paystack's publi
   assertEquals(formatMinor(r.buyerPays, "NGN"), "₦5,747.50");
 });
 
-Deno.test("#4130 sale earnings: a $30 ticket at Stripe's published rate, and a brand override", () => {
-  const r = saleEarnings({ ticketMinor: 3_000, takeBps: 150, currency: "USD" })!;
-  assertEquals([r.fee, r.buyerPays, r.processing, r.profit], [135, 3_135, 121, 14]);
-  const override = saleEarnings({ ticketMinor: 3_000, takeBps: 100, currency: "USD" })!;
-  assertEquals(override.fee, 120);
+Deno.test("#4130 sale earnings: a $32 ticket at Stripe's published rate, and a brand override", () => {
+  const r = saleEarnings({ ticketMinor: 3_200, takeBps: 150, currency: "USD" })!;
+  assertEquals([r.fee, r.buyerPays, r.processing, r.profit], [144, 3_344, 127, 17]);
+  const override = saleEarnings({ ticketMinor: 3_200, takeBps: 100, currency: "USD" })!;
+  assertEquals(override.fee, 128);
   assertEquals(saleEarnings({ ticketMinor: 0, takeBps: 150, currency: "USD" }), null);
-  assertEquals(saleEarnings({ ticketMinor: 3_000, takeBps: 150, currency: "GBP" }), null);
+  assertEquals(saleEarnings({ ticketMinor: 3_200, takeBps: 150, currency: "GBP" }), null);
   // Paystack's fee is capped at ₦2,000.
   const big = saleEarnings({ ticketMinor: 50_000_000, takeBps: 150, currency: "NGN" })!;
   assertEquals(big.processing, 200_000);

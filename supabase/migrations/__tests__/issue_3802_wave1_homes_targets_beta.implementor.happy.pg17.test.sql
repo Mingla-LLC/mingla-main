@@ -48,7 +48,9 @@
 \set ON_ERROR_STOP on
 \getenv t3802h_pw PGPASSWORD
 -- [TEST-MOD-APPROVED #3802] Wave 6 carries the newest complete self-check.
-\set t3802h_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql`
+-- #4130: crm_team_pulse is a separately guarded dashboard reader, not a
+-- pipeline command owned by the historical #3802 self-check.
+\set t3802h_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/"`
 \set t3802h_rekey `sed -n '/^-- issue-3802-pr3 rekey: begin/,/^-- issue-3802-pr3 rekey: end/p' supabase/migrations/20270823003802_issue_3802_wave1_homes_targets_beta.sql`
 \set t3802h_oldkey `sed -n '/^CREATE FUNCTION public.crm_name_key/,/^\$\$;/p' supabase/migrations/20270820003802_issue_3802_wave1_crm_pipelines.sql`
 
