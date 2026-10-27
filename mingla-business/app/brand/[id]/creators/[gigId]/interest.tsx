@@ -11,7 +11,7 @@ import { useRouter } from "expo-router";
 
 import { Button } from "../../../../../src/components/ui/Button";
 import { Icon } from "../../../../../src/components/ui/Icon";
-import { Sheet } from "../../../../../src/components/ui/Sheet";
+import { ProgramSheet } from "../../../../../src/components/programs/ProgramSheet";
 import { SimpleConfirmDialog } from "../../../../../src/components/ui/SimpleConfirmDialog";
 import {
   Chip,
@@ -27,6 +27,7 @@ import {
   StatusTag,
 } from "../../../../../src/components/programs/ProgramKit";
 import { useProgramParams } from "../../../../../src/components/programs/useProgramParams";
+import { useRefreshOnFocus } from "../../../../../src/components/programs/useScreenLifecycle";
 import {
   briefFromGig,
   gigPayload,
@@ -101,6 +102,9 @@ export default function GigApplicants(): React.ReactElement {
   useEffect(() => {
     void load();
   }, [load]);
+  // Interested/Hired change on the other side: refetch on refocus and when
+  // the app returns to the foreground, not only on pull-to-refresh.
+  useRefreshOnFocus(load);
 
   useEffect(() => {
     if (tab !== "results" || results !== null) return;
@@ -193,7 +197,7 @@ export default function GigApplicants(): React.ReactElement {
       onRefresh={() => void load()}
       overlay={
         <>
-          <Sheet
+          <ProgramSheet
             visible={menuOpen}
             onClose={() => setMenuOpen(false)}
             snapPoint="half"
@@ -225,7 +229,7 @@ export default function GigApplicants(): React.ReactElement {
                 />
               ) : null}
             </SheetBody>
-          </Sheet>
+          </ProgramSheet>
           <SimpleConfirmDialog
             visible={closing}
             onClose={() => setClosing(false)}
