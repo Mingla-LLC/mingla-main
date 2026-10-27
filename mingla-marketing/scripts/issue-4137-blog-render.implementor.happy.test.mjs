@@ -139,7 +139,9 @@ function get(port, pathname, userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X
     req.end()
   })
 }
-const withoutScripts = (html) => html.replace(/<script[\s\S]*?<\/script>/g, '')
+const withoutScripts = (html) => html
+  .replace(/<script[\s\S]*?<\/script>/g, '')
+  .replace(/<!--[\s\S]*?-->/g, '')
 const mainText = (html) => (/<main[^>]*>([\s\S]*?)<\/main>/.exec(html)?.[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 
 const fixturePort = await freePort()
@@ -184,7 +186,12 @@ try {
   assert.match(html, /<link rel="canonical" href="https:\/\/usemingla\.com\/blog\/a-slow-saturday"/)
   assert.match(html, /<meta name="robots" content="index, follow"/)
   assert.match(html, /<meta property="og:type" content="article"/)
-  assert.match(html, /<meta property="og:image" content="https:\/\/gqnoajqerqhnvulmnyvv\.supabase\.co\/storage\/v1\/object\/public\/blog-media\/u\/cover\.jpg"/)
+  assert(
+    html.includes(
+      `<meta property="og:image" content="http://127.0.0.1:${fixturePort}/storage/v1/object/public/blog-media/u/cover.jpg"`,
+    ),
+    '#4137 AC-P4: og:image follows the configured blog-media origin',
+  )
   assert.match(html, /<meta name="twitter:card" content="summary_large_image"/)
   const ld = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => JSON.parse(m[1]))
   const graph = ld.flatMap((value) => value['@graph'] ?? [value])
@@ -231,7 +238,11 @@ try {
   assert.match(visible, /Open on Instagram/)
   assert.match(visible, /Things to do in Raleigh/)
   const article = /<article>([\s\S]*?)<\/article>/.exec(visible)?.[1] ?? ''
-  assert.doesNotMatch(article, /<(img|svg|script)[^>]*(onerror|onclick)|\son[a-z]+=|javascript:/i, '#4137 AC-P10: hostile text is inert')
+  assert.doesNotMatch(
+    article,
+    /<(?:img|svg|script)\b[^>]*(?:onerror|onclick)\s*=|<[^>]+\son[a-z]+\s*=|href=["']\s*javascript:/i,
+    '#4137 AC-P10: hostile text is inert',
+  )
   assert.match(article, /&lt;img src=x onerror=alert\(1\)/, '#4137 AC-P10: the fragment shows as text')
   assert.doesNotMatch(article, /href="javascript/i)
 
@@ -258,7 +269,10 @@ try {
   // Load more API.
   const more = await get(port, '/api/blog/posts?offset=12')
   assert.equal(more.status, 200)
-  assert.equal(JSON.parse(more.body).items[0].coverSrc, 'https://gqnoajqerqhnvulmnyvv.supabase.co/storage/v1/object/public/blog-media/u/cover.jpg')
+  assert.equal(
+    JSON.parse(more.body).items[0].coverSrc,
+    `http://127.0.0.1:${fixturePort}/storage/v1/object/public/blog-media/u/cover.jpg`,
+  )
   assert.equal((await get(port, '/api/blog/posts?category=city-guide&offset=0')).status, 400)
 
   // AC-P11 revalidate without the secret.

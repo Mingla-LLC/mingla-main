@@ -125,11 +125,11 @@ Deno.test("#4137 parse tree exposes app links for the device CTA", () => {
 Deno.test("#4137 references, word count and read minutes", () => {
   const doc = everyBlock as unknown as BlogDocument;
   const refs = blogDocumentReferences(doc);
-  assertEquals(refs.placeIds.sort(), [PLACE, PLACE_2].sort());
+  assertEquals([...refs.placeIds].sort(), [PLACE, PLACE_2].sort());
   assertEquals(refs.eventIds, [EVENT]);
-  assertEquals(refs.mediaIds.sort(), [MEDIA, MEDIA_2].sort());
+  assertEquals([...refs.mediaIds].sort(), [MEDIA, MEDIA_2].sort());
   assertEquals(refs.citySlugs, ["raleigh-nc"]);
-  assertEquals(refs.urls.sort(), ["https://example.com/a", "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"].sort());
+  assertEquals([...refs.urls].sort(), ["https://example.com/a", "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"].sort());
   assertEquals(refs.pagePaths, ["/cities/raleigh-nc"]);
   assertEquals(blogDocumentWordCount(doc), 23);
   assertEquals(blogReadMinutes(doc), 1);

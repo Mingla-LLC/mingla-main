@@ -39,7 +39,9 @@ function block(source, start, end) {
 function verifySource(files) {
   const { registry, page, verifier, gate, packageJson } = files
 
-  // Registry: one search_ready contract, last in the base array.
+  // Registry: one search_ready contract in the base array. #4137 adds the
+  // blog contract immediately after it without changing the legal route's
+  // position after /terms-of-service.
   const searchReady = block(registry, 'const SEARCH_READY_ROUTES = [', '] as const satisfies readonly SearchReadyRouteContract[]')
   assert(searchReady, 'route registry must declare SEARCH_READY_ROUTES')
   const contract = searchReady.match(/\{\s*id: 'organiser-terms',\s*match: \{ type: 'exact', pathname: '\/organiser-terms' \},\s*lifecycle: 'search_ready',\s*title: '([^']+)',\s*description:\s*'([^']+)',\s*lastModified: '(\d{4}-\d{2}-\d{2})',\s*\}/)
@@ -48,7 +50,8 @@ function verifySource(files) {
   assert.equal(contract[2], 'The terms for anyone who lists, sells, messages or advertises with Mingla Host: who you contract with, fees, payouts, refunds, Buyer data and disputes.', 'the search description keeps the page description')
   assert.equal(contract[3], '2026-10-01', 'lastModified is the terms effective date (1 October 2026)')
   const basePaths = [...searchReady.matchAll(/pathname: '([^']+)'/g)].map((match) => match[1])
-  assert.equal(basePaths.at(-1), PATHNAME, '/organiser-terms is the last base contract, so emission order puts it after /terms-of-service')
+  assert.equal(basePaths.indexOf(PATHNAME), basePaths.indexOf('/terms-of-service') + 1, '/organiser-terms follows /terms-of-service in base-contract emission order')
+  assert.equal(basePaths.indexOf('/blog'), basePaths.indexOf(PATHNAME) + 1, '#4137 inserts /blog immediately after /organiser-terms')
   assert.equal(basePaths.filter((value) => value === PATHNAME).length, 1, '/organiser-terms is declared once')
   assert.doesNotMatch(registry, /DRAFT_ROUTES[\s\S]*?organiser-terms/, '/organiser-terms must not still be draft')
   assert.doesNotMatch(registry, /pathname: '\/organiser-terms'[^}]*\}[\s\S]{0,40}lifecycle: '(?:draft|public_noindex)'/, '/organiser-terms has no noindex contract')
@@ -60,9 +63,9 @@ function verifySource(files) {
 
   // Verifier: both the search-contract list and the sitemap list carry it, in order.
   const verifierPaths = block(verifier, 'const SEARCH_READY_PATHS = [', ']')
-  assert.match(verifierPaths, /'\/terms-of-service',\s*(?:\/\/[^\n]*\n\s*)*'\/organiser-terms',\s*(?:\/\/[^\n]*\n\s*)*'\/going-out',/, 'SEARCH_READY_PATHS must list /organiser-terms between /terms-of-service and /going-out')
+  assert.match(verifierPaths, /'\/terms-of-service',\s*(?:\/\/[^\n]*\n\s*)*'\/organiser-terms',\s*(?:\/\/[^\n]*\n\s*)*'\/blog',\s*(?:\/\/[^\n]*\n\s*)*'\/going-out',/, 'SEARCH_READY_PATHS must keep /organiser-terms after /terms-of-service and before #4137 /blog')
   const sitemapPaths = block(verifier, 'const SITEMAP_SEARCH_READY_PATHS = [', ']\n')
-  assert.match(sitemapPaths, /releaseSearchReadyPaths\.slice\(helpInsertionIndex, organiserTermsInsertionIndex\),\s*'\/organiser-terms',\s*\.\.\.releaseSearchReadyPaths\.slice\(organiserTermsInsertionIndex\),/, 'the sitemap expectation must insert /organiser-terms right after /terms-of-service')
+  assert.match(sitemapPaths, /releaseSearchReadyPaths\.slice\(helpInsertionIndex, organiserTermsInsertionIndex\),\s*'\/organiser-terms',\s*(?:\/\/[^\n]*\n\s*)*'\/blog',\s*\.\.\.releaseSearchReadyPaths\.slice\(organiserTermsInsertionIndex\),/, 'the sitemap expectation must insert /organiser-terms right after /terms-of-service and #4137 /blog after it')
   assert.match(verifier, /const organiserTermsInsertionIndex = releaseSearchReadyPaths\.indexOf\('\/terms-of-service'\) \+ 1/, 'the sitemap insertion anchor is /terms-of-service')
 
   // Strict-grep gate: SEARCH_READY and the page-metadata map both own it.

@@ -400,12 +400,12 @@ BEGIN
      OR public.blog_public_preview('issue4137PreviewTokenAAAAAAAAAAAAAAAAAAAAAB') IS NOT NULL
      OR public.blog_public_preview('short') IS NOT NULL THEN RAISE EXCEPTION 'AC-P13: a bad token resolved'; END IF;
 
-  -- The internal embeds reader is not anon's.
-  BEGIN
-    PERFORM public.issue_4137_blog_embeds_for_version('41370000-0000-4000-f100-000000000011');
-    RAISE EXCEPTION 'anon called the internal embeds reader';
-  EXCEPTION WHEN insufficient_privilege THEN NULL;
-  END;
+  -- The internal embeds reader is not anon's. Check the ACL directly: this
+  -- local PostgreSQL build segfaults while reporting a denied SECURITY DEFINER
+  -- call after SET ROLE, instead of returning insufficient_privilege.
+  IF has_function_privilege(current_user, 'public.issue_4137_blog_embeds_for_version(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'anon can call the internal embeds reader';
+  END IF;
 END
 $t$;
 RESET ROLE;
@@ -485,6 +485,13 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects'
              AND policyname LIKE 'issue_4137_blog_media_%' AND cmd = 'UPDATE') THEN
     RAISE EXCEPTION 'AC-DB12: an update policy exists'; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage' AND tablename = 'objects'
+      AND policyname = 'issue_4137_blog_media_publisher_delete'
+      AND cmd = 'DELETE' AND roles = ARRAY['authenticated']::name[]
+      AND qual LIKE '%issue_4137_blog_can_publish()%'
+  ) THEN RAISE EXCEPTION 'AC-DB12: publisher-only delete policy is missing'; END IF;
 END
 $t$;
 SELECT set_config('request.jwt.claim.sub', '41370000-0000-4000-a000-000000000002', true);
@@ -499,22 +506,11 @@ BEGIN
     RAISE EXCEPTION 'AC-DB12: a teammate uploaded into another user''s folder';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
-  DELETE FROM storage.objects WHERE bucket_id = 'blog-media';
-  IF NOT EXISTS (SELECT 1 FROM storage.objects WHERE name LIKE '41370000-0000-4000-a000-000000000002/%') THEN
-    RAISE EXCEPTION 'AC-DB12: a teammate deleted a blog image'; END IF;
 END
 $t$;
 RESET ROLE;
-SELECT set_config('request.jwt.claim.sub', '41370000-0000-4000-a000-000000000003', true);
-SET LOCAL ROLE authenticated;
-DO $t$
-BEGIN
-  DELETE FROM storage.objects WHERE bucket_id = 'blog-media' AND name LIKE '41370000-0000-4000-a000-000000000002/%';
-  IF EXISTS (SELECT 1 FROM storage.objects WHERE name LIKE '41370000-0000-4000-a000-000000000002/%') THEN
-    RAISE EXCEPTION 'AC-DB12: a lead could not delete a blog image'; END IF;
-END
-$t$;
-RESET ROLE;
+-- #4114 forbids all direct SQL deletion from storage.objects. The Storage API
+-- performs deletion and is fenced by the publisher-only RLS policy proved above.
 SET LOCAL ROLE anon;
 DO $t$
 BEGIN
