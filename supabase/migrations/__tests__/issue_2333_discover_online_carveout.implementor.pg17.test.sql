@@ -632,5 +632,5 @@ END $$;
 ROLLBACK;
 
 DO $$ BEGIN
-  RAISE NOTICE 'issue #2333 S3 implementor probe: D-00 … D-09 all PASS';
+  RAISE NOTICE 'issue #2333 S3 implementor probe: D-01 … D-09 all PASS';
 END $$;
