@@ -43,6 +43,20 @@ describe("#3872 B5 buyer referral web", () => {
     expect(html).not.toContain("email");
   });
 
+  it("records the shared-by view only when the card is rendered", () => {
+    const share = {
+      shortCode: "Aa0Bb1Cc2Dd3Ee4F",
+      version: 1,
+      facts: { schemaVersion: 1, kind: "event", title: "Night market" },
+      media: null,
+      publicDetails: { actionEligible: true },
+      destination: { kind: "event", brandSlug: "lantern-room", eventSlug: "night-market" },
+    };
+    expect(renderContentShareHtml(share)).not.toContain("shared_by_card_viewed");
+    expect(renderContentShareHtml(share, null, { firstName: "Ada", avatarUrl: null }, false))
+      .toContain("record('shared_by_card_viewed')");
+  });
+
   it("threads only a valid opaque referral visitor cookie into checkout", () => {
     const attribution = readFileSync(
       path.join(repoRoot, "mingla-business/src/services/referralAttribution.ts"),
