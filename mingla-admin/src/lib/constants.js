@@ -119,6 +119,8 @@ export const SEED_SCRIPTS = [
 // into Work as a tab. #4130 Wave 0 cut the menu from 40 entries to 26 pages
 // in nine groups (Home first); the retired ids redirect to the page that now
 // holds them (lib/adminRoutes.js), My agent and Guide moved to the header.
+// #4130 + #3872: the Creator Program pages (Creators, Gigs, Mingla Locals,
+// Disputes) sit under Hosts and creators in Outreach: 31 entries.
 
 export const NAV_GROUPS = [
   {
@@ -135,6 +137,13 @@ export const NAV_GROUPS = [
     label: "Outreach",
     items: [
       { id: "outreach",                  label: "Hosts and creators", icon: "Handshake" },
+      // #4130 + #3872: the Creator Program's working pages sit right under
+      // Hosts and creators, each its own page, with the access it shipped
+      // with (lib/access.js default). #/gig-queue opens Disputes.
+      { id: "program-creators",          label: "Creators",           icon: "BadgeCheck" },
+      { id: "program-gigs",              label: "Gigs",               icon: "Clapperboard" },
+      { id: "program-locals",            label: "Mingla Locals",      icon: "MapPin" },
+      { id: "program-disputes",          label: "Disputes",           icon: "Scale" },
       { id: "inbound",                   label: "Inbound leads",      icon: "Inbox" },
       { id: "content-calendar",          label: "Calendar",           icon: "CalendarClock" },
       { id: "team-dashboard",            label: "Team dashboard",     icon: "BarChart3" },

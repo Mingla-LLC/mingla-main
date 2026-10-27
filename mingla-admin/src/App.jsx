@@ -65,6 +65,12 @@ import { ContentCalendarPage } from "./pages/ContentCalendarPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { DataRoomPage } from "./pages/DataRoomPage";
 import { CareersPage } from "./pages/CareersPage";
+// Issue #3872 — the Creator Program pages: Creators, Gigs, Mingla Locals,
+// Disputes. #4130 + #3872: listed under Hosts and creators in Outreach.
+import { ProgramCreatorsPage } from "./pages/ProgramCreatorsPage";
+import { ProgramGigsPage } from "./pages/ProgramGigsPage";
+import { ProgramLocalsPage } from "./pages/ProgramLocalsPage";
+import { ProgramDisputesPage } from "./pages/ProgramDisputesPage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -85,6 +91,12 @@ const PAGES = {
   notifications: NotificationsPage,
   // ── Outreach ── #4130: Hosts and creators (two tabs) and Inbound leads.
   outreach: OutreachPage,
+  // Issue #3872: the Creator Program pages (#4130 + #3872: under Hosts and
+  // creators). #/gig-queue redirects to Disputes (lib/adminRoutes.js).
+  "program-creators": ProgramCreatorsPage,
+  "program-gigs": ProgramGigsPage,
+  "program-locals": ProgramLocalsPage,
+  "program-disputes": ProgramDisputesPage,
   inbound: InboundLeadsPage,
   "content-calendar": ContentCalendarPage,
   "team-dashboard": TeamDashboardPage,
@@ -161,6 +173,7 @@ function canonicalizeLegacyCommunityHashes() {
   // honest" effect never writes #/agent-log back over the redirect.
   if (page === "agent-log") {
     window.history.replaceState(null, "", AGENT_LOG_REDIRECT);
+    return;
   }
 }
 
@@ -177,6 +190,7 @@ function getTabFromHash() {
 // A retired page's address counts as named (it rewrites to its new home).
 function addressNamesPage() {
   const page = requestedPageId();
+  // #4130 + #3872: #/gig-queue is a retired id too (it opens Disputes).
   if (isRetiredPageId(page)) return true;
   return Object.hasOwn(PAGES, page);
 }

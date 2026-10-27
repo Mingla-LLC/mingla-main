@@ -54,6 +54,16 @@ export async function annotateDispute({ dispute_id, note, mark_reviewed, reason 
   });
 }
 
+// ── #3872 R2 — referral-payee fraud hold / clear (DB-only audited RPC) ───────
+
+export async function setReferralMemberPayoutHold({ member_id, hold, reason }) {
+  return callAdminWriteRpc("admin_set_referral_member_hold", {
+    p_member_id: member_id,
+    p_hold: !!hold,
+    p_reason: reason,
+  });
+}
+
 // ── #3645 WS5 — Paystack dispute evidence (DB-only audited RPCs) ──────────────
 
 /**

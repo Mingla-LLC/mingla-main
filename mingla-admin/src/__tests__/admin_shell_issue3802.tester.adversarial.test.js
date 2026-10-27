@@ -70,7 +70,8 @@ const CSS = read("globals.css");
 const SHELL_FILES = { SIDEBAR, HEADER, SHELL, PAGE_HEADER, CRUMBS };
 
 // #4130: Wave 0 — nine named groups, Home first; only the role Home group
-// (lib/access.js TEAM_NAV_GROUP) has no label.
+// (lib/access.js TEAM_NAV_GROUP) has no label. #4130 + #3872: the Creator Program pages joined Outreach,
+// so no Programs group.
 const APPROVED_LABELS = ["Home", "Outreach", "Support", "Business", "Money", "Explorer app", "Growth", "Company", "System"];
 const ALL_IDS = NAV_ITEMS.map((i) => i.id);
 const KNOWN = ["home", ...ALL_IDS];

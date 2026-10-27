@@ -99,7 +99,7 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 // Seeded 2026-08-11 from a measured main (see bundle-baseline.json), with
 // deliberate runway above it so the DELTA gate — not this one — is what a
 // normal PR ever meets:
-//   __common  brotli 439,775 → ceiling 550,000   (raised 2026-09-20)
+//   __common  brotli 439,775 → ceiling 560,000   (raised 2026-09-20, 2026-10-27)
 //   __common  raw    2,341,978 → ceiling 2,800,000 (raised 2026-09-20)
 //   eager     brotli 660,678 → ceiling 800,000   (raised 2026-10-17)
 //   eager     raw    3,349,598 → ceiling 4,000,000 (~19% runway)
@@ -125,12 +125,18 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 // allowance. Seth approved the product-limit move; the per-PR allowance and
 // machine-maintained baseline remain unchanged.
 //
+// RAISED 2026-10-27 — __common brotli ONLY, from 550,000 to 560,000. After
+// #4133 recorded common.brotli at 538,311 B, less than one 12,000 B PR
+// allowance remained under 550,000 and #2524 guard 4 reded every PR that
+// touches a workflow (first seen on #4139). Seth approved the product-limit
+// move; the per-PR allowance and the machine-maintained baseline are unchanged.
+//
 // The eager raw ceiling REPLACES the old 9,405,478 B constant, which had been
 // unfailable since route splitting landed. This is a tightening, not a
 // relaxation: 4,000,000 is 57% below the number it replaces.
 // ═══════════════════════════════════════════════════════════════════════════
 const HARD_CEILING = {
-  common: { raw: 2_800_000, brotli: 550_000 },
+  common: { raw: 2_800_000, brotli: 560_000 },
   // 2026-10-17 — eager brotli 775_000 → 800_000 after #3937 recorded
   // eager.brotli at 750,291 B, which left only 24,709 B beneath the old
   // ceiling. Human limit move only; automation still cannot raise this.

@@ -202,6 +202,12 @@
       ]
     },
     {
+      "source": "/join/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
       "source": "/marketing/:path*",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
@@ -245,6 +251,12 @@
     },
     {
       "source": "/people/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/promoting/:path*",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
       ]

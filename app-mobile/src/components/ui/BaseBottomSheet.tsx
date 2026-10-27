@@ -237,6 +237,13 @@ interface BaseBottomSheetSheetProps extends BaseBottomSheetCommonProps {
    * while accounting for the overlay's bottom footprint.
    */
   bottomSheetInset?: number;
+  /**
+   * #3872 W5.1 — the highest the sheet may go (gorhom `topInset`). Pass the top
+   * safe-area inset so a sheet that grows for the keyboard stops below the
+   * status bar / notch instead of sliding its title under it. Default 0 keeps
+   * every existing consumer unchanged.
+   */
+  topInset?: number;
   keyboardBehavior?: 'interactive' | 'extend' | 'fillParent';
   keyboardBlurBehavior?: 'none' | 'restore';
   android_keyboardInputMode?: 'adjustPan' | 'adjustResize';
@@ -466,6 +473,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     tabBarAware = false,
     hidesBottomNav = false,
     bottomSheetInset = 0,
+    topInset = 0,
     keyboardBehavior = 'interactive',
     keyboardBlurBehavior = 'restore',
     android_keyboardInputMode = 'adjustResize',
@@ -925,6 +933,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       keyboardBlurBehavior={keyboardBlurBehavior}
       android_keyboardInputMode={android_keyboardInputMode}
       bottomInset={bottomSheetInset}
+      topInset={topInset}
       accessible={false}
       accessibilityLabel={accessibilityLabel}
     >

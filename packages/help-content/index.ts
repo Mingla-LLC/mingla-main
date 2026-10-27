@@ -1347,6 +1347,135 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'referrals-and-earnings',
+    episode: 24,
+    title: 'Run referrals and track your earnings',
+    blurb:
+      'Create a host-funded referral offer, share a personal earning link, and understand every reward status.',
+    duration: '0:00',
+    durationIso: 'PT0S',
+    chapter: 'selling',
+    intents: ['Sell tickets', 'Run a venue', 'Get paid', 'Market to customers'],
+    surfaces: ['Web', 'iOS', 'Android'],
+    bambooEntryId: null,
+    uploadedAt: '2026-10-24',
+    hasCaptions: false,
+    steps: [
+      {
+        title: 'Hosts create the offer and set the budget',
+        body:
+          'In Mingla Host, open a brand and choose Referrals. Pick who may promote it, which listings qualify, the reward type and the schedule. Tracking-only links measure sales without creating a reward.',
+        links: [{ label: 'Mingla Host', href: 'https://host.usemingla.com' }],
+      },
+      {
+        title: 'Explorers share a personal earning link',
+        body:
+          'On an eligible event, after a purchase or from Earnings & rewards, choose Share & earn. The public page says who shared it only when that person chose to share their identity, and it reveals only a first name and avatar.',
+      },
+      {
+        title: 'Read reward status in plain English',
+        body:
+          'On the way means the purchase is still inside its event or refund window. Ready means Mingla can include it in an automatic payout. Paid means the provider completed it. A refund can reverse all or part of a reward. This history is not a stored balance and there is no withdrawal button.',
+      },
+      {
+        title: 'Know who pays each fee',
+        body:
+          'The host funds the referral reward. Mingla deducts its 5% referral service fee from that reward, so it does not increase the buyer total. The person receiving cash absorbs any transfer fee charged by Stripe or Paystack. Voucher and perk rewards have no cash transfer fee.',
+      },
+      {
+        title: 'Claim guest rewards with the same email',
+        body:
+          'If a reward was earned before sign-in, open the private claim link and sign in with the exact email that received it. Claim links expire and are single-use; Mingla never exposes the token in the wallet or public share page.',
+      },
+    ],
+  },
+  {
+    slug: 'become-a-mingla-creator',
+    episode: 25,
+    title: 'Become a Creator and complete paid gigs',
+    blurb:
+      'Verify your Creator profile, choose paid briefs, agree the work, publish it and get paid safely through Mingla.',
+    duration: '0:00',
+    durationIso: 'PT0S',
+    chapter: 'selling',
+    intents: ['Get set up', 'Get paid', 'Market to customers'],
+    surfaces: ['Web', 'iOS', 'Android'],
+    bambooEntryId: null,
+    uploadedAt: '2026-10-26',
+    hasCaptions: false,
+    steps: [
+      {
+        title: 'Set up Creator mode in Mingla Host',
+        body:
+          'Add your public name, city, niches, social proof, agreement, payout details and showcase. Verification protects both sides; private contact details and handles stay hidden before a funded offer is accepted.',
+        links: [{ label: 'Mingla Host', href: 'https://host.usemingla.com' }],
+      },
+      {
+        title: 'Browse briefs and send interest',
+        body:
+          'Filter the Creator Hub by city, format, budget, date or saved gigs. A public brief shows enough to decide without revealing the host. Send a package and quote; this does not charge anyone.',
+      },
+      {
+        title: 'Accept only the exact funded terms',
+        body:
+          'The offer names the work, fee, booking fee, usage period, shoot window and post deadline. You or the host can propose structured changes before capture. Once funded, the creator fee cannot be changed quietly.',
+      },
+      {
+        title: 'Use the shared workspace from shoot to posts',
+        body:
+          'Confirm the shoot plan, write or review the script, upload the video, handle the included fix round and submit public post links. Automatic deadlines and reminders are visible in the same timeline.',
+      },
+      {
+        title: 'Get released or open a dispute',
+        body:
+          'Mingla verifies the required posts before releasing the creator fee. Either side can open a structured dispute, offer a partial outcome and see the final decision. Rate one another only after the contract completes.',
+      },
+    ],
+  },
+  {
+    slug: 'mingla-local-independent-reviews',
+    episode: 26,
+    title: 'Join Local and publish independent reviews',
+    blurb:
+      'Apply for a city seat, choose an eligible place independently, submit one honest monthly review and track its payout.',
+    duration: '0:00',
+    durationIso: 'PT0S',
+    chapter: 'selling',
+    intents: ['Get set up', 'Get paid', 'Run a venue'],
+    surfaces: ['Web', 'iOS', 'Android'],
+    bambooEntryId: null,
+    uploadedAt: '2026-10-26',
+    hasCaptions: false,
+    steps: [
+      {
+        title: 'Apply only where applications are open',
+        body:
+          'Choose an open city, share public work samples and explain the local perspective you can contribute. The application status stays visible; applying does not reserve a paid action or charge a place.',
+      },
+      {
+        title: 'Choose independently and disclose conflicts',
+        body:
+          'Each monthly seat can choose one eligible place. Recent coverage, paid relationships and personal ties can block a selection. The place cannot buy, choose or approve the review.',
+      },
+      {
+        title: 'Visit as a customer and submit the real experience',
+        body:
+          'Pay normally, record the actual visit date, write a useful 300–2,000 character review, upload one short review video and link the public social post with the required Mingla Local disclosure.',
+      },
+      {
+        title: 'Track review, publication and payment',
+        body:
+          'Independent review can approve the submission or request changes. Published reviews appear on the Local’s profile and the place card. Approved months pay through the verified provider account; provider transfer fees are absorbed by the recipient.',
+      },
+      {
+        title: 'Places may reply once',
+        body:
+          'A verified claimed place can post one public reply from Mingla Host and edit it for 24 hours. It cannot remove, rewrite or pre-approve the Local review.',
+      },
+    ],
+  },
+
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>

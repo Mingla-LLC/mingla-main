@@ -1,8 +1,10 @@
 /**
  * Marketing → Overview (ORCH-0863 Phase B).
  *
- * Renders headline card + 4 funnel metric cards + up to 3 recent
- * campaigns + FAB. Replaces the Phase A placeholder.
+ * #3872 round 2: opens with all promotion for a listing (picker, one strip,
+ * Campaigns / Ads / Creators / Referrals rows — BlastPromotionOverview),
+ * then the campaign delivery funnel + up to 3 recent campaigns + FAB.
+ * `listingKind` / `listingId` route params preselect a listing.
  *
  * Constitution #9 enforced via strict-grep gate
  * `orch-0863-marketing-hub-phase-b.mjs` (no currency-symbol literal, no
@@ -10,7 +12,7 @@
  * attribution (Phase F) + Resend webhook ingest (separate ORCH).
  */
 
-import React, { useCallback } from "react";
+import React, { Suspense, useCallback, useMemo } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -19,7 +21,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { Icon } from "../../../src/components/ui/Icon";
@@ -37,6 +39,14 @@ import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import { useMarketingOverview } from "../../../src/hooks/marketing/useMarketingOverview";
 import { useStickyFooterOffset } from "../../../src/hooks/useStickyFooterOffset";
 
+// #3872 round 2 — the promotion section loads through the Creator and
+// Referral program's one lazy owner, so program code stays out of the
+// eager web chunk; the campaign funnel below never waits on it.
+const BlastPromotionOverview = React.lazy(async () => {
+  const mod = await import("../../../src/components/programs/creatorProgramOwner");
+  return { default: mod.BlastPromotionOverview };
+});
+
 export default function MarketingOverviewRoute(): React.ReactElement {
   const router = useRouter();
   const fabOffset = useStickyFooterOffset();
@@ -44,10 +54,43 @@ export default function MarketingOverviewRoute(): React.ReactElement {
   // the account it summed across every brand the operator belongs to.
   const currentBrand = useCurrentBrand();
   const overviewQuery = useMarketingOverview(currentBrand?.id ?? null);
+  const params = useLocalSearchParams<{
+    listingKind?: string | string[];
+    listingId?: string | string[];
+  }>();
+  const rawKind = Array.isArray(params.listingKind)
+    ? params.listingKind[0]
+    : params.listingKind;
+  const rawListingId = Array.isArray(params.listingId)
+    ? params.listingId[0]
+    : params.listingId;
+  const initialListing = useMemo(
+    () =>
+      rawListingId
+        ? {
+            kind: rawKind === "venue" ? ("venue" as const) : ("event" as const),
+            id: rawListingId,
+          }
+        : null,
+    [rawKind, rawListingId],
+  );
 
   const handleNewCampaign = useCallback(() => {
     router.push("/marketing/campaigns/compose" as never);
   }, [router]);
+
+  // #3872 round 2 — all promotion for the brand or one listing, above the
+  // campaign funnel in every branch so it never waits on email metrics.
+  const promotion =
+    currentBrand?.id ? (
+      <Suspense fallback={null}>
+        <BlastPromotionOverview
+          brandId={currentBrand.id}
+          initialListing={initialListing}
+          onNewCampaign={handleNewCampaign}
+        />
+      </Suspense>
+    ) : null;
 
   const handleOpenCampaign = useCallback(
     (id: string) => {
@@ -67,6 +110,7 @@ export default function MarketingOverviewRoute(): React.ReactElement {
     return (
       <View style={styles.host} testID="overview-skeleton">
         <ScrollView contentContainerStyle={styles.scrollContent}>
+          {promotion}
           <View style={styles.headlineCardSkeleton}>
             <ActivityIndicator size="small" color={textTokens.secondary} />
           </View>
@@ -83,6 +127,9 @@ export default function MarketingOverviewRoute(): React.ReactElement {
   if (overviewQuery.isError || overviewQuery.data === undefined) {
     return (
       <View style={styles.host}>
+        {promotion ? (
+          <View style={styles.promotionOnly}>{promotion}</View>
+        ) : null}
         <View style={styles.centerHost}>
           <EmptyState
             illustration="users"
@@ -129,6 +176,7 @@ export default function MarketingOverviewRoute(): React.ReactElement {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
+        {promotion}
         <View style={styles.headlineCard}>
           <View style={styles.headlineLabelRow}>
             <Icon name="send" size={20} color={textTokens.secondary} />
@@ -249,6 +297,10 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: 120,
     gap: spacing.lg,
+  },
+  promotionOnly: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
   },
   centerHost: {
     flex: 1,

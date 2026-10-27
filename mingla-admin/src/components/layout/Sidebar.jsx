@@ -31,6 +31,11 @@ import {
   FolderLock,
   SquareKanban,
   Briefcase,
+  // #4130 + #3872: the Creator Program pages under Hosts and creators.
+  BadgeCheck,
+  Clapperboard,
+  MapPin,
+  Scale,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -61,6 +66,11 @@ const ICON_MAP = {
   SquareKanban,
   Bell,
   Handshake,
+  // #4130 + #3872: Creators, Gigs, Mingla Locals, Disputes.
+  BadgeCheck,
+  Clapperboard,
+  MapPin,
+  Scale,
   Inbox,
   CalendarClock,
   BarChart3,

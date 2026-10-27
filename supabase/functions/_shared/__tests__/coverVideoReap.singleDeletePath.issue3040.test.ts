@@ -7,7 +7,9 @@
 // This suite reads every non-test edge-function source file and fails if a
 // provider delete is invoked anywhere else: a direct destroyCoverVideoAsset(...)
 // call, a bunnyDeleteVideo(...) call outside the one helper that wraps it, or a
-// second Bunny DELETE request.
+// second Bunny DELETE request. The Creator-media lane has its own database
+// ownership/retention guard and may call the same low-level helper from its
+// separate provider library; it must never introduce another HTTP DELETE.
 //
 // MINGLA-INVARIANT: I-VIDEO-SINGLE-GUARDED-DELETE | issue #3040 | destroyIfUnreferenced is the only caller of the provider delete
 //
@@ -24,13 +26,18 @@ const isTestPath = (path: string): boolean =>
   path.includes("/__tests__/") || /\.(test|spec)\.ts$/.test(path) ||
   /_test\.ts$/.test(path) || /\.worker\.ts$/.test(path);
 
-async function* sourceFiles(dir: URL, rel = ""): AsyncGenerator<{ rel: string; url: URL }> {
+async function* sourceFiles(
+  dir: URL,
+  rel = "",
+): AsyncGenerator<{ rel: string; url: URL }> {
   for await (const entry of Deno.readDir(dir)) {
     const childRel = `${rel}${entry.name}`;
     if (entry.isDirectory) {
       if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
       yield* sourceFiles(new URL(`${entry.name}/`, dir), `${childRel}/`);
-    } else if (entry.isFile && entry.name.endsWith(".ts") && !isTestPath(`/${childRel}`)) {
+    } else if (
+      entry.isFile && entry.name.endsWith(".ts") && !isTestPath(`/${childRel}`)
+    ) {
       yield { rel: childRel, url: new URL(entry.name, dir) };
     }
   }
@@ -47,10 +54,16 @@ export const stripComments = (source: string): string =>
 
 type Hit = { file: string; line: number; text: string };
 
-export const findCalls = (rel: string, source: string, pattern: RegExp): Hit[] => {
+export const findCalls = (
+  rel: string,
+  source: string,
+  pattern: RegExp,
+): Hit[] => {
   const hits: Hit[] = [];
   stripComments(source).split("\n").forEach((text, index) => {
-    if (pattern.test(text)) hits.push({ file: rel, line: index + 1, text: text.trim() });
+    if (pattern.test(text)) {
+      hits.push({ file: rel, line: index + 1, text: text.trim() });
+    }
   });
   return hits;
 };
@@ -79,17 +92,33 @@ const describe = (hits: Hit[]): string =>
 
 Deno.test("#3040 P1-1 destroyCoverVideoAsset is invoked only inside the guarded path", async () => {
   const { destroy } = await collect();
-  const outside = destroy.filter((hit) => hit.file !== "_shared/coverVideoReap.ts");
-  assert(outside.length === 0, `unguarded provider delete:\n${describe(outside)}`);
-  const inside = destroy.filter((hit) => hit.file === "_shared/coverVideoReap.ts");
-  assert(inside.length === 1, `the guard must call the delete exactly once:\n${describe(inside)}`);
+  const outside = destroy.filter((hit) =>
+    hit.file !== "_shared/coverVideoReap.ts"
+  );
+  assert(
+    outside.length === 0,
+    `unguarded provider delete:\n${describe(outside)}`,
+  );
+  const inside = destroy.filter((hit) =>
+    hit.file === "_shared/coverVideoReap.ts"
+  );
+  assert(
+    inside.length === 1,
+    `the guard must call the delete exactly once:\n${describe(inside)}`,
+  );
 });
 
-Deno.test("#3040 P1-1 bunnyDeleteVideo is only wrapped by destroyCoverVideoAsset", async () => {
+Deno.test("#3040 P1-1 Bunny deletes stay inside the two domain-owned wrappers", async () => {
   const { bunnyDelete } = await collect();
+  const locations = bunnyDelete.map((hit) => hit.file).sort();
   assert(
-    bunnyDelete.length === 1 && bunnyDelete[0].file === "_shared/eventCoverVideo.ts",
-    `bunnyDeleteVideo called outside its wrapper:\n${describe(bunnyDelete)}`,
+    JSON.stringify(locations) === JSON.stringify([
+      "_shared/creatorMedia.ts",
+      "_shared/eventCoverVideo.ts",
+    ]),
+    `bunnyDeleteVideo called outside its domain wrappers:\n${
+      describe(bunnyDelete)
+    }`,
   );
 });
 
@@ -105,10 +134,15 @@ Deno.test("#3040 P1-1 the scanner itself: comments never count, calls always do"
   const sample = [
     "// await deps.destroyCoverVideoAsset(job);",
     "/* destroyCoverVideoAsset(row) */",
-    "const url = \"https://x.test/a\"; await deps.destroyCoverVideoAsset(target);",
+    'const url = "https://x.test/a"; await deps.destroyCoverVideoAsset(target);',
     "export async function destroyCoverVideoAsset(job) {",
     "await destroyCoverVideoAsset ({ source_asset_id: id });",
   ].join("\n");
-  const hits = findCalls("sample.ts", sample, DESTROY_CALL).map((hit) => hit.line);
-  assert(JSON.stringify(hits) === JSON.stringify([3, 5]), `scanner hits ${JSON.stringify(hits)}`);
+  const hits = findCalls("sample.ts", sample, DESTROY_CALL).map((hit) =>
+    hit.line
+  );
+  assert(
+    JSON.stringify(hits) === JSON.stringify([3, 5]),
+    `scanner hits ${JSON.stringify(hits)}`,
+  );
 });

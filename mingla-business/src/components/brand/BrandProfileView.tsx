@@ -83,8 +83,9 @@ import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
-import { KpiTile } from "../ui/KpiTile";
-import { FollowersKpiTile } from "./FollowersKpiTile";
+import { StatStrip } from "../programs/StatStrip";
+import { useBrandFollowerSummary } from "../../hooks/useBrandFollowerSummary";
+import { brandStatStripItems } from "./brandStatStrip";
 import { OfferingListCard } from "../offering/OfferingListCard";
 import { liveEventToOfferingModel } from "../offering/offeringCardModels";
 import { TopBar } from "../ui/TopBar";
@@ -228,8 +229,12 @@ export interface BrandProfileViewProps {
    * customers →" CTA that pre-fills the marketing composer.
    */
   onBlasts: (brandId: string) => void;
-  /** toward #3697 Wave 7 — Blast → Ads credit. */
-  onAds: (brandId: string) => void;
+  /**
+   * #3872 round 2 — the one Promote row (campaigns, ads, creators,
+   * referrals). Opens the Blast tab for this brand; the route sets the
+   * current brand first. Replaces the Referrals, Creators and Ads rows.
+   */
+  onPromote: (brandId: string) => void;
   /**
    * Called when user taps "View public page". Receives the brand SLUG
    * (not id) — the public page route is `/b/{brandSlug}`.
@@ -272,6 +277,31 @@ export interface BrandProfileViewProps {
   onRequestDelete?: (brand: Brand) => void;
 }
 
+function BrandStatStrip({
+  brandId,
+  attendees,
+  salesText,
+  onOpenPeople,
+}: {
+  brandId: string;
+  attendees: number;
+  salesText: string;
+  onOpenPeople?: () => void;
+}): React.ReactElement {
+  const followers = useBrandFollowerSummary(brandId);
+  return (
+    <StatStrip
+      items={brandStatStripItems({
+        attendees,
+        salesText,
+        followers: followers.data,
+        followersFailed: followers.isError,
+        onOpenPeople,
+      })}
+    />
+  );
+}
+
 export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   brand,
   isResolving = false,
@@ -290,7 +320,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onAuditLog,
   onWebsite,
   onBlasts,
-  onAds,
+  onPromote,
   onViewPublic,
   onCreateEvent,
   onOpenEvent,
@@ -546,7 +576,8 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         },
       }] : []),
       {
-        icon: "users",
+        // #3872 round 2 (H1.1) — distinct icons: Team is a person.
+        icon: "user",
         label: "Team & permissions",
         // Cycle 13a: brand.members is dropped (DEC-092). Member count now lives
         // in brandTeamStore + useCurrentBrandRole synthesis; the row caption is
@@ -567,15 +598,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         sub: "Message your event buyers about what's next",
         onPress: () => {
           if (brand !== null) onBlasts(brand.id);
-        },
-      },
-      {
-        // toward #3697 Wave 7 — compact Ads entry → Blast → Ads credit.
-        icon: "sparkle",
-        label: "Ads",
-        sub: "Credit balance, top-up, withdraw, and ad history",
-        onPress: () => {
-          if (brand !== null) onAds(brand.id);
         },
       },
       {
@@ -602,9 +624,9 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     brand,
     onTeam,
     onBlasts,
-    onAds,
     onPayments,
     onPricingDefaults,
+    currentRank,
     onDiscounts,
     discountsEnabled,
     onReports,
@@ -751,7 +773,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: 96 + Math.max(insets.bottom, spacing.md) }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: SHELF_CLEARANCE + Math.max(insets.bottom, spacing.md) }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
@@ -941,26 +963,39 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         </GlassCard>
 
         {/* SECTION B — Stats Strip */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCell}>
-            <FollowersKpiTile
-              brandId={brand.id}
-              onOpenPeople={onOpenPeople}
-            />
-          </View>
-          <KpiTile label="Events" value={brand.stats.events} sub="all time" style={styles.statCell} />
-          <KpiTile label="Attendees" value={formatCount(brand.stats.attendees)} sub="all time" style={styles.statCell} />
-          <KpiTile
-            label="GMV"
-            value={
-              brand.defaultCurrency !== undefined
-                ? formatCurrencyRound(brand.stats.rev, brand.defaultCurrency)
-                : "—"
-            }
-            sub="all time"
-            style={styles.statCell}
-          />
-        </View>
+        {/* #3872 round 2 — one compact strip of three numbers (Attendees ·
+            Sales · Followers), no hint text, like the program screens'
+            strip. Followers still opens People. */}
+        <BrandStatStrip
+          brandId={brand.id}
+          attendees={brand.stats.attendees}
+          salesText={
+            brand.defaultCurrency !== undefined
+              ? formatCurrencyRound(brand.stats.rev, brand.defaultCurrency)
+              : "—"
+          }
+          onOpenPeople={onOpenPeople}
+        />
+
+        {/* #3872 round 2 — one Promote row opens Blast (campaigns, ads,
+            creators, referrals) for this brand. */}
+        <GlassCard variant="base" padding={0}>
+          <Pressable
+            onPress={() => onPromote(brand.id)}
+            accessibilityRole="button"
+            accessibilityLabel="Promote: campaigns, ads, creators and referrals"
+            style={styles.opsRow}
+          >
+            <View style={styles.opsIconWrap}>
+              <Icon name="megaphone" size={18} color={textTokens.primary} />
+            </View>
+            <View style={styles.opsTextCol}>
+              <Text style={styles.opsLabel}>Promote</Text>
+              <Text style={styles.opsSub}>Campaigns, ads, creators, referrals</Text>
+            </View>
+            <Icon name="chevR" size={16} color={textTokens.tertiary} />
+          </Pressable>
+        </GlassCard>
 
         {/* SECTION C — Status-driven Stripe banner. Suppressed entirely
             when effective stripeStatus === "active" (banner copy is null
@@ -1006,6 +1041,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         })()}
 
         {/* SECTION D — Operations List */}
+        <Text style={styles.runLabel}>Run</Text>
         <GlassCard variant="base" padding={0}>
           {operationsRows.map((row, index) => {
             const isLast = index === operationsRows.length - 1;
@@ -1176,6 +1212,9 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     </View>
   );
 };
+
+/** Shelf height (button + padding) plus a gap, so the last row clears it. */
+const SHELF_CLEARANCE = 44 + spacing.sm + spacing.lg + spacing.md;
 
 const styles = StyleSheet.create({
   host: {
@@ -1374,15 +1413,13 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
 
-  // Stats Strip ----------------------------------------------------------
-  statsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-  },
-  statCell: {
-    flexBasis: "48%",
-    flexGrow: 1,
+  runLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: textTokens.tertiary,
+    marginBottom: -spacing.xs,
   },
 
   // Banner ---------------------------------------------------------------
@@ -1547,7 +1584,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
-    backgroundColor: "rgba(12, 14, 18, 0.85)",
+    // #3872 round 2 — an opaque footer with a hairline, so the Edit brand and
+    // Public page buttons never sit over a row (the scroll ends above it).
+    backgroundColor: canvas.discover,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: glass.border.profileBase,
   },
   shelfRow: {
     flexDirection: "row",

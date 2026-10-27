@@ -47,6 +47,7 @@ import { stopReplacementService } from "../services/stopReplacementService"; // 
 import { useRecommendationsOptional } from "../contexts/RecommendationsContext";
 import ExpandedCardHeader from "./expandedCard/ExpandedCardHeader";
 import CardInfoSection from "./expandedCard/CardInfoSection";
+import { LocalReviewsSection } from "./expandedCard/LocalReviewsSection";
 // #1605 wave 4 — WeatherSection + BusynessSection are DELETED. Two orange-tinted
 // boxes with 26pt icon badges became two fact rows under one RIGHT NOW heading.
 import ConditionsSection from "./expandedCard/ConditionsSection";
@@ -2112,6 +2113,10 @@ export default function ExpandedCardModal({
               tip={isCuratedCard ? null : card.tip}
               discoveryPrice={card}
             />
+
+            {!isCuratedCard ? (
+              <LocalReviewsSection placePoolId={card.placePoolId ?? card.id} />
+            ) : null}
 
             {/*
               Slot 5 — the gallery, `images.length > 1`, SINGLE PLACE ONLY. Not a

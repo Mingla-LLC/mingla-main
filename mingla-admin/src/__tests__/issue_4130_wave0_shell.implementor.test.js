@@ -52,7 +52,8 @@ const PAGE_IDS = pageIds();
 // The approved sidebar (~/.mingla-private/4130 design, "sidebar").
 const MENU = [
   ["Home", ["overview:Dashboard", "work-board:Work", "notifications:Notifications"]],
-  ["Outreach", ["outreach:Hosts and creators", "inbound:Inbound leads", "content-calendar:Calendar", "team-dashboard:Team dashboard"]],
+  // #4130 + #3872: the Creator Program pages sit right under Hosts and creators.
+  ["Outreach", ["outreach:Hosts and creators", "program-creators:Creators", "program-gigs:Gigs", "program-locals:Mingla Locals", "program-disputes:Disputes", "inbound:Inbound leads", "content-calendar:Calendar", "team-dashboard:Team dashboard"]],
   ["Support", ["support:Support", "community:Community"]],
   ["Business", ["people:People", "brands:Brands", "business-offerings:Offerings"]],
   ["Money", ["mingla-money:Mingla money", "business-payments:Payments", "business-orders:Orders", "business-money-ledger:Money ledger", "refund-operations:Refund operations", "subscriptions:Subscriptions", "pricing:Pricing and limits"]],
@@ -88,6 +89,8 @@ const REDIRECTS = {
   // page is Support's Email tab. #/community-support is redirected by its
   // tab (issue_4130_wave6_support_community.implementor.test.js).
   email: ["support", "email"],
+  // #4130 + #3872: the old one-page Creator gigs queue opens Disputes.
+  "gig-queue": ["program-disputes", undefined],
 };
 
 const owner = { email: "o@example.test", role: "owner", status: "active", areas: ["admin_console", "team_manage", "crm", "beta_leads"] };
@@ -95,12 +98,13 @@ const admin = { email: "a@example.test", role: "admin", status: "active", areas:
 const growth = { email: "g@example.test", role: "growth", status: "active", areas: ["role_home", "crm", "beta_leads"] };
 
 describe("#4130 W0-1: the menu is the approved sidebar", () => {
-  it("nine groups, 27 pages, labels and order exactly as approved", () => {
+  it("nine groups, 31 pages, labels and order exactly as approved", () => {
     assert.deepEqual(NAV_GROUPS.map((g) => g.label), MENU.map(([label]) => label));
     for (const [i, [label, items]] of MENU.entries()) {
       assert.deepEqual(NAV_GROUPS[i].items.map((it) => `${it.id}:${it.label}`), items, label);
     }
-    assert.equal(NAV_ITEMS.length, 27); // #4130: Careers is back as its own page
+    // #4130: Careers is back as its own page (27). #4130 + #3872: + the four Creator Program pages.
+    assert.equal(NAV_ITEMS.length, 31);
   });
   it("Needs you, My agent and Guide are not menu entries; My agent and Guide keep their pages in the header", () => {
     const ids = NAV_ITEMS.map((i) => i.id);

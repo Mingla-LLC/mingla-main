@@ -116,9 +116,12 @@ const EXPECTED: Record<string, Bucket> = {
   "connect-partner-account-management": "connect-seller-exempt",
   "connect-tax-registrations": "connect-seller-exempt",
   "stripe-onboarding-return": "connect-seller-exempt",
-  // --- invite-exempt (2) ---
+  // --- invite-exempt (3) ---
   "accept-brand-invitation": "invite-exempt",
   "accept-scanner-invitation": "invite-exempt",
+  // [TEST-MOD-APPROVED #3872] signed-out promoter invitees must reach the
+  // token landing before its explicit sign-in return path can authenticate.
+  join: "invite-exempt",
   // --- buyer-exempt (11 — directory segments) ---
   e: "buyer-exempt",
   t: "buyer-exempt",
@@ -145,11 +148,14 @@ const EXPECTED: Record<string, Bucket> = {
   brand: "gated-default",
   event: "gated-default",
   experience: "gated-default",
+  // #3872 decision 1: the creator side lives in Explorer only; the Host app
+  // has no top-level `creator` route any more.
   // [TEST-MOD-APPROVED ORCH-1403] — private listing Insights is an authenticated
   // route and is intentionally absent from every public/connect/invite exemption.
   insights: "gated-default",
   messages: "gated-default",
   partner: "gated-default",
+  promoting: "gated-default",
   // #3660 — tokenless Accept/Decline for the signed-in invitee's own pending
   // invite (Home/Hub to-do). Requires auth; not in INVITE_ACCEPT (token deep
   // links stay on accept-brand-invitation / accept-scanner-invitation).
@@ -200,7 +206,7 @@ describe("ORCH-1139 T-C1 (closure) — every app/ route is classified into exact
     }
   });
 
-  test("all 6 connect + 2 invite + 1 bearer exempt routes resolve to real classifications", () => {
+  test("all 6 connect + 3 invite + 1 bearer exempt routes resolve to real classifications", () => {
     const connectRoutes = liveRoutes.filter(
       (r) => classify(r)[0] === "connect-seller-exempt",
     );
@@ -221,7 +227,7 @@ describe("ORCH-1139 T-C1 (closure) — every app/ route is classified into exact
       ].sort(),
     );
     expect(inviteRoutes.sort()).toEqual(
-      ["accept-brand-invitation", "accept-scanner-invitation"].sort(),
+      ["accept-brand-invitation", "accept-scanner-invitation", "join"].sort(),
     );
     expect(bearerRoutes).toEqual(["g"]);
   });

@@ -76,7 +76,7 @@ function runOpen({ resolveLoaders = true } = {}) {
     "setNativeCycleId", "setInput", "setPrepared", "setPrepFailure", "setRecipients",
     "setRecipientError", "setRecipientsReady", "setSelected", "setNote", "setNoteExpanded",
     "setSearch", "setCopied", "setSending", "setDeliveryState", "setPosterFailed",
-    "setExternalError", "setReadiness", "setOutcome",
+    "setExternalError", "setShowSharer", "setReadiness", "setOutcome",
   ]) scope[setter] = record(setter);
 
   const names = Object.keys(scope);

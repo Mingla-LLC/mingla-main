@@ -430,6 +430,9 @@ describe("#3802 C-9: source contracts — auth, menu, palette, routes", () => {
     assert.ok(APP_JSX.includes("function addressNamesPage()"));
     // #4130: every retired id (the old #/email and #/community-support among them) counts as named.
     assert.ok(APP_JSX.includes("if (isRetiredPageId(page)) return true;"));
+    // #4130 + #3872: the retired #/gig-queue bookmark is a retired id too
+    // (lib/adminRoutes.js), so it counts as named and opens #/program-disputes.
+    assert.ok(read("lib/adminRoutes.js").includes('"gig-queue": Object.freeze({ page: "program-disputes" })'));
     assert.ok(APP_JSX.includes("return Object.hasOwn(PAGES, page);"));
     assert.ok(APP_JSX.includes("<AppShell activeTab={route.pageId}"));
     assert.ok(APP_JSX.includes("That page isn't part of your access"));

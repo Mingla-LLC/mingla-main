@@ -38,6 +38,7 @@ import {
   type VenueOrderRequest,
   venueOrderCreateBody,
 } from "@mingla/brand-rendering/venueOrdering/venueOrderingWire";
+import { getStoredReferralVisitorKey } from "./referralAttribution";
 
 export type { VenueOrderRequest };
 
@@ -154,15 +155,21 @@ export async function createVenueOrder(
   request: VenueOrderRequest,
   idempotencyKey: string,
 ): Promise<VenueOrderCreated> {
+  const referralVisitorKey = getStoredReferralVisitorKey();
   const { data, error } = await supabase.functions.invoke<
     Record<string, unknown>
   >(VENUE_ORDER_FUNCTIONS.create, {
-    body: venueOrderCreateBody({
-      request,
-      mode: "create",
-      surface: "web",
-      idempotencyKey,
-    }),
+    body: {
+      ...venueOrderCreateBody({
+        request,
+        mode: "create",
+        surface: "web",
+        idempotencyKey,
+      }),
+      ...(referralVisitorKey !== null
+        ? { visitorKey: referralVisitorKey }
+        : {}),
+    },
   });
   if (error !== null) throw new VenueOrderError(await readFailure(error));
   if (data === null) throw new VenueOrderError(VENUE_ORDER_GENERIC_FAILURE);

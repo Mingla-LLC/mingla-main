@@ -1005,10 +1005,16 @@ function selfTest() {
   // [TEST-MOD-APPROVED #4063] Wave 5 door-sale and ticket-transfer migrations
   // each depend on schema intentionally omitted by the #1931 filtered replay.
   // Exact skips move that lane only: 37/29 -> 39/29.
+  // [TEST-MOD-APPROVED #3872] The complete R2-R4 referral, Creator, and Local
+  // chain adds ten exact skips to #1931; canonical full replay still applies it.
+  // Counts only: 39/29 -> 49/29.
+  // [TEST-MOD-APPROVED #3872] The Ari census and seven downstream #3872 walkthrough,
+  // round 2, gig pay, shoot-window, and due-change migrations add eight exact #1931 skips;
+  // canonical full replay still applies them. Counts only: 49/29 -> 57/29.
   const expectedInventory = {
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
-    "issue-1931-private-event-access.yml": 39,
+    "issue-1931-private-event-access.yml": 57,
     "issue-2117-offering-visibility-gate-tests.yml": 29,
   };
   if (JSON.stringify(inventory) !== JSON.stringify(expectedInventory)) {
@@ -1131,8 +1137,8 @@ function selfTest() {
           "M-5",
           `subject read as "${lane.subjectKind}", expected "basename"`,
         );
-      else if (lane.globs.length !== 39)
-        record("M-5", `${lane.globs.length} globs extracted, expected 39`);
+      else if (lane.globs.length !== 57)
+        record("M-5", `${lane.globs.length} globs extracted, expected 57`);
       else if (out.lanes.length !== 4)
         record(
           "M-5",
@@ -1161,10 +1167,10 @@ function selfTest() {
         (l) => l.workflow === PINNED_LANE,
       );
       if (!lane) record("M-6", "lane vanished");
-      else if (lane.globs.length !== 41)
+      else if (lane.globs.length !== 59)
         record(
           "M-6",
-          `alternation under-read: ${lane.globs.length} globs from ${lane.branchCount} branches, expected 41`,
+          `alternation under-read: ${lane.globs.length} globs from ${lane.branchCount} branches, expected 59`,
         );
     }
   }
@@ -1229,10 +1235,10 @@ function selfTest() {
     ) {
       const out = analyseTrees(tree);
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (lane.branchCount !== 39)
+      if (lane.branchCount !== 57)
         record(
           "M-9",
-          `expected the 3-line branch to stay unread (branchCount 39), got ${lane.branchCount}`,
+          `expected the 3-line branch to stay unread (branchCount 57), got ${lane.branchCount}`,
         );
       else if (!fired(out, "C-4c")) {
         record(
@@ -1263,13 +1269,13 @@ function selfTest() {
     ) {
       const out = analyseTrees(tree);
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (lane.branchCount !== 40)
+      if (lane.branchCount !== 58)
         record(
           "M-10",
-          `two-line branch form not read: branchCount ${lane.branchCount}, expected 40 (R-5)`,
+          `two-line branch form not read: branchCount ${lane.branchCount}, expected 58 (R-5)`,
         );
-      else if (lane.globs.length !== 40)
-        record("M-10", `${lane.globs.length} globs, expected 40`);
+      else if (lane.globs.length !== 58)
+        record("M-10", `${lane.globs.length} globs, expected 58`);
       else if (out.violations.length)
         record(
           "M-10",
@@ -1283,7 +1289,7 @@ function selfTest() {
     process.exit(1);
   }
   console.log(
-    "#2492 self-test PASS (1 good tree with the 39/1/3/29 lane inventory, 10 mutants M-1…M-10 all behaving).",
+    "#2492 self-test PASS (1 good tree with the 57/1/3/29 lane inventory, 10 mutants M-1…M-10 all behaving).",
   );
 }
 

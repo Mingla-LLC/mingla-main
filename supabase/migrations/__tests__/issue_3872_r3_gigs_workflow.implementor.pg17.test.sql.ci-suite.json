@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3872_r3_gigs_workflow.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3872-r3-03-gigs-workflow",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "postgres", "reset": "suite-owned" }
+}

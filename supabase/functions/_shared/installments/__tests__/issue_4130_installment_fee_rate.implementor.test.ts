@@ -120,7 +120,7 @@ function fakeStripe() {
   };
 }
 
-async function chargeOne(takeBps: number, amountCents: number) {
+async function chargeOne(takeBps: number, amountCents: number, referralShareMinor?: number) {
   const db = new ChargeFakeDb(takeBps);
   const stripe = fakeStripe();
   const result = await createInstallmentPI({
@@ -138,6 +138,7 @@ async function chargeOne(takeBps: number, amountCents: number) {
       status: "scheduled",
       retry_count: 0,
       stripe_payment_intent_id: null,
+      ...(referralShareMinor === undefined ? {} : { referral_share_minor: referralShareMinor }),
     },
     order: {
       id: "order_4130",
@@ -173,6 +174,24 @@ Deno.test("#4130 createInstallmentPI: the default brand is still charged 4.5%", 
 Deno.test("#4130 createInstallmentPI: a 0% take still collects the 3% service fee", async () => {
   const { stripe } = await chargeOne(0, 10_000);
   assertEquals(stripe.creates[0].application_fee_amount, 300);
+});
+
+// #4130 + #3872: the brand's own rate sets Mingla's fee, then #3872's
+// referral share rides on top of it unchanged; a bad share skips the charge.
+Deno.test("#4130 + #3872 createInstallmentPI: the brand rate and the referral share add up", async () => {
+  const { result, stripe } = await chargeOne(100, 10_000, 250);
+  assertEquals(result.ok, true);
+  assertEquals(stripe.creates[0].application_fee_amount, 650);
+});
+
+Deno.test("#4130 + #3872 createInstallmentPI: a referral share above the instalment is skipped before Stripe", async () => {
+  for (const share of [10_001, -1, 1.5]) {
+    const { result, stripe } = await chargeOne(100, 10_000, share);
+    assertEquals(result.ok, false);
+    assertEquals(result.outcome, "skipped");
+    assertEquals(result.reason, "referral_installment_share_invalid");
+    assertEquals(stripe.creates.length, 0, String(share));
+  }
 });
 
 // ── the webhook fallback records the override ──────────────────────────────

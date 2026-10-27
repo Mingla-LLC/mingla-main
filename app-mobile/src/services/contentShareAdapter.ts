@@ -5,6 +5,7 @@ import { supabase } from './supabase';
 import { openUnifiedContentShare } from './contentShareController';
 import { mixpanelService } from './mixpanelService';
 import { logAppsFlyerEvent } from './appsFlyerService';
+import { fetchBuyerReferralLink } from './referralEarningsService';
 
 export type ContentShareIdentity = {
   placePoolId?: string; googlePlaceId?: string; savedCardId?: string; stopPlaceIds?: string[];
@@ -84,6 +85,8 @@ export function adoptContentShareVersion(
 export type ShareMessageContext = {
   planningPreference?: string | { dayOfWeek?: string; timeOfDay?: string; planningTimeframe?: string };
   senderNote?: string;
+  /** #3872 — explicit public-card opt-in; omitted/false never exposes profile fields. */
+  showSharer?: boolean;
 };
 
 /**
@@ -120,6 +123,20 @@ const invokeStatus = (error: unknown): number | null => {
   return typeof status === 'number' ? status : null;
 };
 
+export function applyBuyerReferralLink(
+  prepared: PreparedContentShare,
+  referralUrl: string,
+): PreparedContentShare {
+  const shareMessage = prepared.shareMessage.includes(prepared.url)
+    ? prepared.shareMessage.split(prepared.url).join(referralUrl)
+    : `${prepared.shareMessage.trim()}\n${referralUrl}`;
+  return {
+    ...prepared,
+    url: referralUrl,
+    shareMessage,
+  };
+}
+
 export async function prepareContentShare(kind: ShareEntityKind, identity: ContentShareIdentity, channel = 'generic', messageContext: ShareMessageContext = {}): Promise<PreparedContentShare> {
   const key = JSON.stringify([kind, identity, messageContext]);
   const prepared=await singleFlight(key,async () => {
@@ -136,7 +153,7 @@ export async function prepareContentShare(kind: ShareEntityKind, identity: Conte
   const shortShareUrl=buildShortShareUrl(data.shortCode);
   const media = data.media ?? null;
   const destination = data.destination ?? { kind };
-  return {
+  const result: PreparedContentShare = {
     contract: 'content_share_v1',
     kind: data.facts.kind,
     title: data.facts.title,
@@ -157,6 +174,19 @@ export async function prepareContentShare(kind: ShareEntityKind, identity: Conte
     destination,
     publicDetails: data.publicDetails ?? null,
   };
+  // #3872 — an authenticated buyer's eligible event share earns through the
+  // same sheet they already know. Failure or ineligibility must never break
+  // ordinary sharing; it simply keeps the canonical content link.
+  if (kind === 'event' && identity.eventId) {
+    try {
+      const referral = await fetchBuyerReferralLink({
+        listingKind: 'event',
+        listingId: identity.eventId,
+      });
+      if (referral) return applyBuyerReferralLink(result, referral.url);
+    } catch { /* normal content sharing remains available */ }
+  }
+  return result;
 }
 
 /**

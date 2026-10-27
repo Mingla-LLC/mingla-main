@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/creator-handle-verify/issue_3872_creator_identity.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3872-r3-02-creator-identity",
+  "profile": "deno-1.46-stripe"
+}

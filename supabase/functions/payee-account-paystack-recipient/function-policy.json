@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "payee-account-paystack-recipient",
+  "verify_jwt": true,
+  "gateway_reason": "Authenticated referral-payee Paystack recipient onboarding; the handler revalidates the caller, sends bank details only to Paystack, and persists only recipient identity plus account last4.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": ["SENTRY_DSN", "SENTRY_ENVIRONMENT"],
+    "required_bundle_fields": {},
+    "required_top_level": []
+  }
+}

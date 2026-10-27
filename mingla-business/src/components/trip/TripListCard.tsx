@@ -2,8 +2,9 @@
  * ORCH-0874 [Trip surfaces visual parity with Events] — TripListCard.
  *
  * Mirror of `src/components/event/EventListCard.tsx` shape with trip-native
- * content. Shared visual primitives: 76×92 cover (EventCoverMedia is
- * content-agnostic — accepts a coverHue derived from trip.id), status pill,
+ * content. Shared visual primitives: 76×92 cover (EventCoverMedia shows the
+ * trip's uploaded cover — image, GIF or video — and falls back to a hue
+ * derived from trip.id when there is none; issue #3827), status pill,
  * date/destination subline, capacity progress bar when capacity > 0, manage
  * icon right-rail (32×32 glass.tint.chrome.idle), revenue strip bottom-right.
  *
@@ -127,8 +128,8 @@ export const TripListCard: React.FC<TripListCardProps> = ({
     ? `${dateLine} · ${destination}`
     : dateLine;
 
-  // Deterministic cover hue from trip.id when coverHue not set on Trip.
-  // EventCoverMedia accepts hue:number; derive a stable hue from id hash.
+  // Deterministic placeholder hue from trip.id, shown only when the trip has
+  // no cover. EventCoverMedia accepts hue:number; derive a stable hue from id hash.
   const coverHue = useMemo<number>((): number => {
     let h = 0;
     for (let i = 0; i < trip.id.length; i += 1) {
@@ -136,6 +137,16 @@ export const TripListCard: React.FC<TripListCardProps> = ({
     }
     return Math.abs(h) % 360;
   }, [trip.id]);
+
+  // Issue #3827 — pass the trip's real cover (the list query already loads it)
+  // the way EventListCard / OfferingListCard do. Trip.coverMediaType is a raw
+  // column string, so narrow it to the cover media union.
+  const coverMediaType =
+    trip.coverMediaType === "image" ||
+    trip.coverMediaType === "video" ||
+    trip.coverMediaType === "gif"
+      ? trip.coverMediaType
+      : null;
 
   const cardAccessibilityLabel = `${title}, ${status}, ${subline}`;
   const isFaded = status === "ended" || status === "cancelled";
@@ -196,8 +207,9 @@ export const TripListCard: React.FC<TripListCardProps> = ({
         <View style={styles.coverWrap}>
           <EventCoverMedia
             hue={coverHue}
-            mediaUrl={null}
-            mediaType={null}
+            mediaUrl={trip.coverMediaUrl}
+            mediaType={coverMediaType}
+            posterUrl={trip.coverMediaPosterUrl ?? null}
             radius={12}
             label=""
             height={COVER_H}

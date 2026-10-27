@@ -21,6 +21,15 @@ async function actorHash(secret: string, actor: string) {
   return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
     .map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+// #3872 — who shared the link and whether the friend discount applies.
+async function publicReferralContext(db: any, shortCode: string) {
+  const [sharer, discount] = await Promise.all([
+    db.rpc("public_content_share_sharer", { p_short_code: shortCode }),
+    db.rpc("public_content_share_friend_discount", { p_short_code: shortCode }),
+  ]);
+  if (sharer.error || discount.error) throw new Error("referral_context_unavailable");
+  return { sharedBy: sharer.data ?? null, friendDiscount: discount.data === true };
+}
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -54,13 +63,18 @@ serve(async (req) => {
         const exactVersion = requestedVersion === null ? null : Number(requestedVersion);
         if (exactVersion === null) {
           const refreshed = await refreshContentShareV1(db, shortCode);
-          return json(refreshed.body, refreshed.status);
+          if (refreshed.status !== 200 || !("contentShare" in refreshed.body) || !refreshed.body.contentShare) {
+            return json(refreshed.body, refreshed.status);
+          }
+          const referral = await publicReferralContext(db, shortCode);
+          return json({ ...refreshed.body, ...referral }, refreshed.status);
         }
         const { data, error } = await db.rpc("resolve_content_share_version", { p_code: shortCode, p_version: exactVersion });
         if (error || !data) return json({ error: "not_found" }, 404);
         if (data.gone === true) return json({ error: "gone" }, 410);
         const envelope=validatePublicContentShareEnvelope(data);
-        return envelope ? json({ contentShare:envelope }) : json({ error:"unavailable" },503);
+        if(!envelope) return json({ error:"unavailable" },503);
+        return json({ contentShare:envelope, ...(await publicReferralContext(db, shortCode)) });
       }
       const { data: alias, error: aliasError } = await db.rpc("resolve_content_share_alias", { p_share_id: shareId });
       if (aliasError) return json({ error: "unavailable" }, 503);
@@ -124,6 +138,18 @@ serve(async (req) => {
         return json({ error: "not_available" }, 503);
       }
       const created = await createContentShareV1(db, user?.id || null, raw, { serverCreated });
+      const messageContext = raw.messageContext && typeof raw.messageContext === "object" && !Array.isArray(raw.messageContext)
+        ? raw.messageContext as Record<string, unknown>
+        : {};
+      if (created.status < 300 && user && messageContext.showSharer === true) {
+        const shortCode = typeof created.body?.shortCode === "string" ? created.body.shortCode : "";
+        const { data: link, error: linkError } = await db.from("content_share_links").select("id").eq("short_code", shortCode).maybeSingle();
+        if (linkError || !link) throw new Error("share_sharer_opt_in_failed");
+        const { error: markError } = await db.rpc("issue_3872_mark_content_share_sharer", {
+          p_actor: user.id, p_link_id: link.id, p_show_sharer: true,
+        });
+        if (markError) throw new Error("share_sharer_opt_in_failed");
+      }
       return json(created.body, created.status);
     }
     // The trusted public proxy is authorized only for content_share_v1. Legacy

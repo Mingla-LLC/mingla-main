@@ -411,7 +411,8 @@ jobs:
           PY
 
       # §D4 — the exact ordered current contract (historical original followed
-      # by #2855's forward owner) applied a SECOND and THIRD time must
+      # by #2855's forward owner, then #3872's current pin owner, which re-pins
+      # over local_months.place_id) applied a SECOND and THIRD time must
       # exit 0 without dropping or truncating either #2099 table, without losing
       # a guard or audit row, and leaving the catalog contract equivalent.
       - name: "D4 — migration replay safety (second and third apply)"
@@ -456,11 +457,15 @@ jobs:
             -f - < supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f - < supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql
+          docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f - < supabase/migrations/20271228013872_issue_3872_pending_venue_repin.sql
           after_second="$(snapshot)"
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f - < supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f - < supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql
+          docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f - < supabase/migrations/20271228013872_issue_3872_pending_venue_repin.sql
           after_third="$(snapshot)"
           test "$before" = "$after_second"
           test "$after_second" = "$after_third"

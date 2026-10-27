@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3872_referral_attribution.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3872-r2-06-attribution-happy",
+  "profile": "deno-1.46-stripe"
+}

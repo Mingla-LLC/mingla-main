@@ -5,8 +5,10 @@ const people = fs.readFileSync(
   "mingla-business/src/components/people/PeoplePage.tsx",
   "utf8",
 );
+// #3872 round 2: the Blast tab list (and People's route) moved into a pure
+// module the sub-nav renders.
 const nav = fs.readFileSync(
-  "mingla-business/src/components/marketing/MarketingSubNav.tsx",
+  "mingla-business/src/components/marketing/marketingSubNavTabs.ts",
   "utf8",
 );
 const oldRoute = fs.readFileSync(

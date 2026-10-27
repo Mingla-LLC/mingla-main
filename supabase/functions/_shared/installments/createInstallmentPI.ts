@@ -8,9 +8,13 @@
  */
 
 // @ts-ignore — Deno ESM import
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  createClient,
+  type SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
 import { stripeTicketCheckout } from "../stripe.ts";
 import { writeAudit } from "../audit.ts";
+import { applicationFeeWithReferralShare } from "../attribution.ts";
 import {
   installmentFeeCents,
   resolveInstallmentFeeRate,
@@ -34,6 +38,7 @@ export type InstallmentRow = {
   order_id: string;
   ordinal: number;
   amount_cents: number;
+  referral_share_minor?: number;
   currency: string;
   due_at: string;
   status: string;
@@ -143,15 +148,19 @@ async function loadInstallmentContext(
   supabase: SupabaseClient,
   installmentId: string,
   brandId: string,
-): Promise<{
-  installment: InstallmentRow;
-  order: OrderRow;
-  brand: BrandRow;
-  stripeAccount: StripeAccount;
-} | { error: string }> {
+): Promise<
+  {
+    installment: InstallmentRow;
+    order: OrderRow;
+    brand: BrandRow;
+    stripeAccount: StripeAccount;
+  } | { error: string }
+> {
   const { data: installment } = await supabase
     .from("order_installments")
-    .select("id, order_id, ordinal, amount_cents, currency, due_at, status, retry_count, stripe_payment_intent_id")
+    .select(
+      "id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status, retry_count, stripe_payment_intent_id",
+    )
     .eq("id", installmentId)
     .maybeSingle();
   if (installment === null) return { error: "installment_not_found" };
@@ -159,7 +168,9 @@ async function loadInstallmentContext(
   const inst = installment as InstallmentRow;
   const { data: order } = await supabase
     .from("orders")
-    .select("id, event_id, stripe_customer_id_on_connected_account, saved_payment_method_id, buyer_user_id, buyer_email, at_risk, cancelled_at")
+    .select(
+      "id, event_id, stripe_customer_id_on_connected_account, saved_payment_method_id, buyer_user_id, buyer_email, at_risk, cancelled_at",
+    )
     .eq("id", inst.order_id)
     .maybeSingle();
   if (order === null) return { error: "order_not_found" };
@@ -236,7 +247,9 @@ export async function createInstallmentPI(
         reason: "claim_rpc_error",
       };
     }
-    const claimRow = (claim ?? null) as { ok?: boolean; reason?: string } | null;
+    const claimRow = (claim ?? null) as
+      | { ok?: boolean; reason?: string }
+      | null;
     if (claimRow === null || claimRow.ok !== true) {
       const reason = String(claimRow?.reason ?? "not_chargeable");
       return {
@@ -291,12 +304,31 @@ export async function createInstallmentPI(
   }
 
   const stripe = input.stripe ?? stripeTicketCheckout();
+  // #4130 + #3872: the brand's own effective rate sets Mingla's fee; the
+  // referral share is then carved out of it unchanged.
   const feeRate = await resolveInstallmentFeeRate(supabase, brand.id);
-  const applicationFeeAmountCents = installmentFeeCents(
+  const minglaApplicationFeeAmountCents = installmentFeeCents(
     installment.amount_cents,
     feeRate,
   );
-  const idempotencyKey = `installment:${installment.order_id}:${installment.ordinal}:${installment.retry_count}`;
+  const referralShareMinor = Number(installment.referral_share_minor ?? 0);
+  if (
+    !Number.isSafeInteger(referralShareMinor) || referralShareMinor < 0 ||
+    referralShareMinor > installment.amount_cents
+  ) {
+    return {
+      ok: false,
+      error: "referral_installment_share_invalid",
+      outcome: "skipped",
+      reason: "referral_installment_share_invalid",
+    };
+  }
+  const applicationFeeAmountCents = applicationFeeWithReferralShare(
+    minglaApplicationFeeAmountCents,
+    { shareMinor: referralShareMinor },
+  );
+  const idempotencyKey =
+    `installment:${installment.order_id}:${installment.ordinal}:${installment.retry_count}`;
 
   try {
     // orch-strict-grep-allow stripe-no-idempotency-key — idempotencyKey IS passed via the request-options second arg; SPEC §3.2.1 retry-aware format diverges from generateIdempotencyKey's epoch-ms shape because cron + webhook need deterministic per-(installment,attempt) keys to prevent double-charge.
@@ -335,7 +367,9 @@ export async function createInstallmentPI(
         "claim_order_installment_for_charge",
         { p_installment_id: installment.id },
       );
-      const reclaimRow = (reclaim ?? null) as { ok?: boolean; reason?: string } | null;
+      const reclaimRow = (reclaim ?? null) as
+        | { ok?: boolean; reason?: string }
+        | null;
       if (
         reclaimError !== null ||
         reclaimRow === null ||
@@ -405,7 +439,9 @@ export async function createInstallmentPI(
           } catch (refundErr) {
             throw new Error(
               `cancelled_during_charge_refund_failed:${
-                refundErr instanceof Error ? refundErr.message : String(refundErr)
+                refundErr instanceof Error
+                  ? refundErr.message
+                  : String(refundErr)
               }`,
             );
           }

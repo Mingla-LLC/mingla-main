@@ -10,6 +10,10 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   // #3872 — brand discount reads are scoped through requireBrand exactly like
   // every other inline Host read; public brand visibility never grants access.
   "list_discounts",
+  "list_referral_offers",
+  // #3872 — drafting a gig script reads the brand's listing facts and checks
+  // brand read access (assertAgentReadBrand) before it drafts anything.
+  "draft_gig_script",
   "quote_stay",
   "get_payout_status",
   "get_partner_status",

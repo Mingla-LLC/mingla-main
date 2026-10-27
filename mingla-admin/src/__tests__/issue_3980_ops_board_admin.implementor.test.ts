@@ -53,6 +53,11 @@ Deno.test("#3980 the Pipeline menu: To review, Work board, Agent log, Calendar, 
     outreach?.items.map((i: { id: string; label: string; icon: string }) => `${i.id}:${i.label}:${i.icon}`),
     [
       "outreach:Hosts and creators:Handshake",
+      // #4130 + #3872: the Creator Program pages sit under Hosts and creators.
+      "program-creators:Creators:BadgeCheck",
+      "program-gigs:Gigs:Clapperboard",
+      "program-locals:Mingla Locals:MapPin",
+      "program-disputes:Disputes:Scale",
       "inbound:Inbound leads:Inbox",
       "content-calendar:Calendar:CalendarClock",
       "team-dashboard:Team dashboard:BarChart3",

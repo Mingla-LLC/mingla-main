@@ -45,6 +45,9 @@ export const RETIRED_PAGE_REDIRECTS = Object.freeze({
   "queue-health": Object.freeze({ page: "platform-health", tab: "queue" }),
   // #3720 Slice F legacy address: the old Email page is Support's Email tab.
   email: Object.freeze({ page: "support", tab: "email" }),
+  // #4130 + #3872: the old one-page "Creator gigs" queue was split into the
+  // Creator Program pages; its bookmarks open Disputes, which it mostly held.
+  "gig-queue": Object.freeze({ page: "program-disputes" }),
 });
 
 // Retired page id -> the function that works out its new address from the

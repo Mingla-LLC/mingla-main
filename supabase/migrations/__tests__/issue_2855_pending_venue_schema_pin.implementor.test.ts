@@ -46,8 +46,11 @@ const OLD_PIN =
   "('9a8c2a743af413f17f3b3e75e4f656f3' || 'e9cf3867cda091eb204bb9d5460f1ba0')";
 const NEW_PIN =
   "('52f4624c994529d2e63b8f70b79a3fcf' || 'e28f3ff90dafe300bc45439e37cd2921')";
-const NEW_HASH =
-  "52f4624c994529d2e63b8f70b79a3fcfe28f3ff90dafe300bc45439e37cd2921";
+// [TEST-MOD-APPROVED #3872] #2855 still owns its historical six-lane forward
+// pin above. The live fixture follows the later reviewed Local place dependency,
+// which stays disallowed and is advanced by the #3872 R4 migration.
+const CURRENT_HASH =
+  "474371dd0c8edfdd734c8ef5fe78b167bf5422e95b37493111c9a6cdc40213f2";
 const ORIGINAL_SHA256 =
   "8d35452b0237115640d4fcbc9dbc05c12b25ffa1b57a706c85cfc698df0c2bbe";
 // [TEST-MOD-APPROVED #2648] RE-DERIVED, NOT RE-PINNED. This pin is the sha256 of
@@ -758,7 +761,7 @@ Deno.test("#2855 host-composes the tester fragment into the real outer SQL fixtu
     "tester guard must truthfully name its CI provider",
   );
   assert.ok(
-    sqlTest.includes(NEW_HASH),
+    sqlTest.includes(CURRENT_HASH),
     "main SQL fixture still expects the stale hash",
   );
 });

@@ -74,6 +74,8 @@ const LEDGER_PATH = path.join(ROOT, "docs/contracts/ari-capability-ledger.json")
 // [TEST-MOD-APPROVED #3697] Host Ads tools (128→133 / 140→145). registered_unverified 127→132.
 // [TEST-MOD-APPROVED #3872] Discount list/create/pause tools
 // (133→136 / 145→148). registered_unverified 132→135.
+// [TEST-MOD-APPROVED #3872] R2 referral list/create/invite and R3 guarded gig
+// script drafting (136→140 / 148→152). registered_unverified 135→139.
 const EXPECTED_TOOL_NAMES = [
   "approve_ad_plan",
   "attach_approved_site_media",
@@ -86,6 +88,7 @@ const EXPECTED_TOOL_NAMES = [
   "create_discount",
   "create_event",
   "create_experience",
+  "create_referral_offer",
   "create_rsvp",
   "create_site_preview",
   "create_stay_reservation",
@@ -100,6 +103,7 @@ const EXPECTED_TOOL_NAMES = [
   "discard_event_draft",
   "disconnect_partner",
   "draft_campaign",
+  "draft_gig_script",
   "duplicate_event",
   "edit_profile_avatar",
   "end_ad_campaign",
@@ -124,6 +128,7 @@ const EXPECTED_TOOL_NAMES = [
   "get_trip_order_money",
   "get_venue_listing_status",
   "invite_brand_member",
+  "invite_promoters",
   "invite_scanner",
   "list_brand_audit_log",
   "list_brand_team",
@@ -134,6 +139,7 @@ const EXPECTED_TOOL_NAMES = [
   "list_guest_roster",
   "list_partner_brand_links",
   "list_partner_splits",
+  "list_referral_offers",
   "list_site_pages",
   "list_site_versions",
   "list_trip_installments",
@@ -214,19 +220,19 @@ const EXPECTED_TOOL_NAMES = [
 ];
 
 const EXPECTED = Object.freeze({
-  capabilityCount: 148,
+  capabilityCount: 152,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 135,
+    registered_unverified: 139,
     broken: 0,
     guided_handoff: 8,
     unsupported: 0,
     in_flight: 5,
   }),
-  idDigest: "b1293fe3cba570aeadc7b4a79916f138fc75ad9b5ddace6b34c2cc4ab5be5f78",
-  statusDigest: "84c4533bfe566af5658921f45fbfc96bd567e8223aecc25b4bb904cd7c9c330c",
-  mappingDigest: "e6bc284cd3cb3d426674b7fc586f8fdbaf5325accc5722bf935012c248fc2068",
-  sourceRefDigest: "cc9337fc6dec386193fb5ad9dbf7a0366c43007e70f77ca58b49fb2766589cb5",
+  idDigest: "8ec23b77f79ee63671deb8df9601889084f9e1e2d5635e7e5b8bb0ce8c8895fb",
+  statusDigest: "d98096d4afc01681541fbf89800502b5b41c99bdf5fa9c797b68cb6613848df0",
+  mappingDigest: "70ace5b73f859dab50a393d69e2e6fd54c83bb5516dcb407cd0c64ea619763be",
+  sourceRefDigest: "3d1c480a697239da8e71f0d1b290320b9bc65ce481422597611807b02b7056a4",
 });
 
 function readLedger() {
@@ -252,9 +258,9 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("136-tool set changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("140-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
-    failures.push("0/135/0/8/0/5 classification changed");
+    failures.push("0/139/0/8/0/5 classification changed");
   }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");

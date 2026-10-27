@@ -60,7 +60,8 @@ const APP = read("App.jsx");
 // 27 pages, Home first. (#4130: Careers is its own page again.) Retired ids redirect (lib/adminRoutes.js).
 const MENU = [
   ["Home", ["overview", "work-board", "notifications"]],
-  ["Outreach", ["outreach", "inbound", "content-calendar", "team-dashboard"]],
+  // #4130 + #3872: the four Creator Program pages sit under Hosts and creators.
+  ["Outreach", ["outreach", "program-creators", "program-gigs", "program-locals", "program-disputes", "inbound", "content-calendar", "team-dashboard"]],
   ["Support", ["support", "community"]],
   ["Business", ["people", "brands", "business-offerings"]],
   ["Money", ["mingla-money", "business-payments", "business-orders", "business-money-ledger", "refund-operations", "subscriptions", "pricing"]],
@@ -73,7 +74,10 @@ const MENU = [
 // The words on each menu item. #4130: the polish design's names.
 const LABELS = {
   overview: "Dashboard", "work-board": "Work", notifications: "Notifications",
-  outreach: "Hosts and creators", inbound: "Inbound leads", "content-calendar": "Calendar", "team-dashboard": "Team dashboard",
+  outreach: "Hosts and creators",
+  // #4130 + #3872: the Creator Program pages keep their #3872 labels.
+  "program-creators": "Creators", "program-gigs": "Gigs", "program-locals": "Mingla Locals", "program-disputes": "Disputes",
+  inbound: "Inbound leads", "content-calendar": "Calendar", "team-dashboard": "Team dashboard",
   support: "Support", community: "Community",
   people: "People", brands: "Brands", "business-offerings": "Offerings",
   "mingla-money": "Mingla money", "business-payments": "Payments", "business-orders": "Orders", "business-money-ledger": "Money ledger",
@@ -108,6 +112,7 @@ describe("#3802 S-1: the menu is nine groups, in the approved order", () => {
   it("group labels, in order", () => {
     assert.deepEqual(NAV_GROUPS.map((g) => g.label), MENU.map(([label]) => label));
     // #4130: nine groups (Home and Support added, Pipeline became Outreach).
+    // #4130 + #3872: still nine; the Creator Program pages joined Outreach.
     assert.equal(NAV_GROUPS.length, 9);
   });
   it("each group holds exactly its pages, in order", () => {
@@ -137,7 +142,8 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     // [TEST-MOD-APPROVED #3980] Work board and Agent log (+2).
     // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work. (-1)
     // #4130: Wave 0 — 40 entries became 26 pages.
-    assert.equal(ids.length, 27);
+    // #4130 + #3872: + the four Creator Program pages (Creators, Gigs, Mingla Locals, Disputes).
+    assert.equal(ids.length, 31);
   });
   it("the menu plus governed Ads deep links are the app's pages (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -428,6 +434,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     // (Hosts and creators is pages/HostsAndCreatorsHub.jsx: the board inside
     // it, PipelinePage, draws its one header with the tabs in it.)
     "InboundLeadsPage.jsx",
+    // #4130 + #3872: the four Creator Program pages draw the one header.
+    "ProgramCreatorsPage.jsx", "ProgramGigsPage.jsx", "ProgramLocalsPage.jsx", "ProgramDisputesPage.jsx",
   ];
   // The five pages that moved later (My agent, Hosts and Creators, Beta Leads,
   // Home, Team dashboard) are now in the list above; none is left to follow.
@@ -465,7 +473,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     // #4130 (Wave 4b): three pages folded in (-3), three added (+3).
     // #4130 (Wave 4a): Inbound leads page added (+1).
     // #4130 (integration): 46 after 4b + 1 from 4a = 47, the count of pages/*Page.jsx.
-    assert.equal(MIGRATED.length, 47);
+    // #4130 + #3872: + the four Creator Program pages = 51, the count of pages/*Page.jsx.
+    assert.equal(MIGRATED.length, 51);
     assert.equal(FOLLOW_UP.length, 0);
   });
 
@@ -614,7 +623,8 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
     // #4130 (Wave 4b): three pages folded in (-3), three added (+3).
     // #4130 (Wave 4a): Inbound leads page added (+1).
     // #4130 (integration): 46 after 4b + 1 from 4a = 47, the count of pages/*Page.jsx.
-    assert.equal(MIGRATED.length, 47);
+    // #4130 + #3872: + the four Creator Program pages = 51, the count of pages/*Page.jsx.
+    assert.equal(MIGRATED.length, 51);
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);
       assert.equal(

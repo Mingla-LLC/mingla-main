@@ -39,6 +39,12 @@ export interface PublishedBannerProps {
   /** The screen's existing Public page handler. Omit when there is no page. */
   onViewPublic?: () => void;
   onDismiss: () => void;
+  /**
+   * #3872 round 2 (H0.1) — "Get it seen" opens Blast › Overview for this
+   * listing. Passed only for rollout brands at rank 20+; when present it
+   * leads, Share follows, and the Public page stays on the screen's own tile.
+   */
+  onGetSeen?: () => void;
   testID?: string;
 }
 
@@ -47,9 +53,12 @@ export const PublishedBanner: React.FC<PublishedBannerProps> = ({
   onShare,
   onViewPublic,
   onDismiss,
+  onGetSeen,
   testID = "published-banner",
 }) => {
-  const hasActions = onShare !== undefined || onViewPublic !== undefined;
+  const showViewPublic = onViewPublic !== undefined && onGetSeen === undefined;
+  const hasActions =
+    onShare !== undefined || showViewPublic || onGetSeen !== undefined;
   return (
     <GlassCard
       variant="elevated"
@@ -90,10 +99,22 @@ export const PublishedBanner: React.FC<PublishedBannerProps> = ({
       </View>
       {hasActions ? (
         <View style={styles.actions}>
+          {onGetSeen !== undefined ? (
+            <Button
+              label="Get it seen"
+              variant="primary"
+              size="md"
+              leadingIcon="megaphone"
+              onPress={onGetSeen}
+              accessibilityLabel="Get it seen: hire a creator or set up referrals"
+              testID={`${testID}-get-seen`}
+              style={styles.action}
+            />
+          ) : null}
           {onShare !== undefined ? (
             <Button
               label="Share"
-              variant="primary"
+              variant={onGetSeen !== undefined ? "secondary" : "primary"}
               size="md"
               leadingIcon="share"
               onPress={onShare}
@@ -102,7 +123,7 @@ export const PublishedBanner: React.FC<PublishedBannerProps> = ({
               style={styles.action}
             />
           ) : null}
-          {onViewPublic !== undefined ? (
+          {showViewPublic && onViewPublic !== undefined ? (
             <Button
               label="View public page"
               variant="secondary"

@@ -140,15 +140,9 @@ interface HydrateResponse {
   omitted: { entityType: BusinessRecentEntityType; entityId: string }[];
 }
 
-export const businessRecentKeys = {
-  all: ["business-recent"] as const,
-  index: (userId: string, brandId: string) =>
-    ["business-recent-index", userId, brandId] as const,
-  pages: (userId: string, brandId: string) =>
-    ["business-recent-page", userId, brandId] as const,
-  page: (userId: string, brandId: string, page: number, cursor: string) =>
-    ["business-recent-page", userId, brandId, page, cursor] as const,
-};
+// Issue #3827 — the key factory lives in a keyless module so trip mutations can
+// invalidate Recent without importing this service graph.
+export { businessRecentKeys } from "./businessRecentKeys";
 
 const CACHE_MANIFEST_KEY = "business-recent-cache-manifest-v1";
 const cacheKey = (scope: string): string => `business-recent-cache-v1:${scope}`;

@@ -119,6 +119,48 @@ const I4111_BLOCK = [
 ].join("\n");
 const I4111_NAMES = ["brand_enquiry_public_profile(", "issue_4111_brand_takes_enquiries("];
 
+// #3872 R3/R4 — seventh binding amendment. The Creator Program, Mingla Local,
+// buyer referral landing and attribution-redirect readers that signed-out
+// viewers reach by design, appended as one commented block after the PostGIS
+// tail. Each returns only already-public display facts or a listing target.
+// The frozen #2986 count header is deliberately unchanged.
+const I3872P_ANCHOR = "st_estimatedextent(text, text, text, boolean)";
+const I3872P_SIGNATURES = [
+  "gig_ratings_public(p_creator_account_id uuid)",
+  "public_creator_profile(p_creator_account_id uuid)",
+  "public_local_profile(p_user_id uuid)",
+  "public_place_local_reviews(p_place_id uuid)",
+  "public_content_share_friend_discount(p_short_code text)",
+  "public_content_share_sharer(p_short_code text)",
+  "public_referral_landing(p_slug text, p_listing_kind text, p_listing_id uuid)",
+  "referral_link_resolve(p_slug text)",
+  "tracking_link_resolve(p_slug text)",
+];
+const I3872P_BLOCK = [
+  "",
+  "# === #3872 Creator Program public surfaces (signed-out viewers by design) ===",
+  "# Public creator card and ratings on profiles and the buyer web: display name,",
+  "# niches, processed showcase ids, completed-gig count, live promotions, and",
+  "# submitted star ratings. No handles, contact details, money or account data.",
+  I3872P_SIGNATURES[0],
+  I3872P_SIGNATURES[1],
+  "# Mingla Local public profile and a place's published Local reviews: the Local's",
+  "# display name, avatar and city, and reviews Mingla has already published.",
+  I3872P_SIGNATURES[2],
+  I3872P_SIGNATURES[3],
+  "# Buyer referral landing on the buyer web before sign-in: whether a share link or",
+  "# referral offer is active, the sharer's display name and avatar, and the friend",
+  "# discount shown on the landing. No buyer, order or payout data.",
+  I3872P_SIGNATURES[4],
+  I3872P_SIGNATURES[5],
+  I3872P_SIGNATURES[6],
+  "# Attribution redirects: a referral or tracking slug resolves to its listing so a",
+  "# signed-out click can be attributed. Returns the listing target only.",
+  I3872P_SIGNATURES[7],
+  I3872P_SIGNATURES[8],
+].join("\n");
+const I3872P_NAMES = I3872P_SIGNATURES.map((signature) => signature.slice(0, signature.indexOf("(") + 1));
+
 const countExactLine = (source, expected) => source.split(/\r?\n/).filter((line) => line.trim() === expected).length;
 
 const expectedAfter2986 = (base) => {
@@ -236,13 +278,32 @@ const expectedAfter4111 = (base) => {
   return base.replace(`${I4111_ANCHOR}\n`, `${I4111_ANCHOR}\n${I4111_BLOCK}\n`);
 };
 
+// #3872 R3/R4 — applied last; its anchor is the final PostGIS reader.
+const expectedAfter3872Public = (base) => {
+  if (
+    I3872P_SIGNATURES.every((signature) => countExactLine(base, signature) === 1) &&
+    base.includes(`${I3872P_ANCHOR}\n${I3872P_BLOCK}\n`)
+  ) {
+    return base;
+  }
+  if (I3872P_NAMES.some((name) => base.includes(name)) || base.includes("# === #3872 Creator Program public surfaces")) {
+    throw new Error("base contains a partial or lookalike #3872 R3/R4 public reader set");
+  }
+  if (countExactLine(base, I3872P_ANCHOR) !== 1) {
+    throw new Error("base #3872 R3/R4 insertion anchor is absent or duplicated");
+  }
+  return base.replace(`${I3872P_ANCHOR}\n`, `${I3872P_ANCHOR}\n${I3872P_BLOCK}\n`);
+};
+
 export const expectedAllowlist = (base) =>
-  expectedAfter4111(
+  expectedAfter3872Public(
+    expectedAfter4111(
     expectedAfter3872(
       expectedAfter3682(
         expectedAfter3697(expectedAfter3281(expectedAfter3426(expectedAfter2986(base)))),
       ),
     ),
+  ),
   );
 
 export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
@@ -255,7 +316,7 @@ export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
   }
   if (expected && currentAllowlist !== expected) {
     failures.push(
-      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, and #4111 brand-page enquiry readers",
+      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, #4111 brand-page enquiry readers, and #3872 R3/R4 public creator, Local and referral readers",
     );
   }
   for (const signature of [
@@ -266,6 +327,7 @@ export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
     ...I3682_SIGNATURES,
     ...I3872_SIGNATURES,
     ...I4111_SIGNATURES,
+    ...I3872P_SIGNATURES,
   ]) {
     if (countExactLine(currentAllowlist, signature) !== 1) failures.push(`signature must occur exactly once: ${signature}`);
   }
@@ -294,6 +356,7 @@ const fixtureBase = () => [
   I3872_ANCHOR,
   I3281_ANCHOR,
   "place_discovery_range_for_viewer(p_place_pool_id uuid)",
+  I3872P_ANCHOR,
   "",
 ].join("\n");
 
@@ -381,17 +444,25 @@ const runSelfTest = () => {
     ["#4111 lookalike overload", `${head}issue_4111_brand_takes_enquiries(p_brand_id uuid, p_debug boolean)\n`, workflow, false],
     ["#4111 moved away from its anchor", head.replace(`${I4111_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I4111_BLOCK}\n`), workflow, false],
     ["#4111 plus a forged neighbour", head.replace(`${I4111_BLOCK}\n`, `${I4111_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
+    // #3872 R3/R4 — the seventh amendment is exactly the commented public
+    // block after the PostGIS tail, with no header change.
+    ["#3872 R3/R4 block missing", head.replace(`${I3872P_BLOCK}\n`, ""), workflow, false],
+    ["#3872 R3/R4 comment substituted", head.replace("# === #3872 Creator Program public surfaces", "# === approved somehow"), workflow, false],
+    ["#3872 R3/R4 signature changed", head.replace(I3872P_SIGNATURES[0], "gig_ratings_public(creator_account_id uuid)"), workflow, false],
+    ["#3872 R3/R4 lookalike overload", `${head}referral_link_resolve(p_slug text, p_debug boolean)\n`, workflow, false],
+    ["#3872 R3/R4 reader dropped", head.replace(`${I3872P_SIGNATURES[8]}\n`, ""), workflow, false],
+    ["#3872 R3/R4 plus a forged neighbour", head.replace(`${I3872P_BLOCK}\n`, `${I3872P_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
     ["#4111 header edited", head.replace(I3697_NEW_HEADER, "# Signature count: 206 (intended-public 37, internally-gated 108, predicate/read-helper 58, PostGIS 3)."), workflow, false],
   ];
   for (const [name, candidate, candidateWorkflow, shouldPass] of cases) {
     const passed = validate({ baseAllowlist: base, currentAllowlist: candidate, workflow: candidateWorkflow }).length === 0;
     if (passed !== shouldPass) throw new Error(`self-test ${name} ${shouldPass ? "failed" : "was not rejected"}`);
   }
-  // Once a base carries all seven amendments, the ONLY accepted head is that
+  // Once a base carries all eight amendments, the ONLY accepted head is that
   // base, byte for byte.
   const settled = expectedAllowlist(base);
   if (validate({ baseAllowlist: settled, currentAllowlist: settled, workflow }).length !== 0) {
-    throw new Error("self-test settled base with all seven amendments failed");
+    throw new Error("self-test settled base with all eight amendments failed");
   }
   if (validate({ baseAllowlist: settled, currentAllowlist: `${settled}forged_after_settle()\n`, workflow }).length === 0) {
     throw new Error("self-test settled base accepted a new line");
@@ -408,7 +479,7 @@ const runReal = (baseSha) => {
   const failures = validate({ baseAllowlist, currentAllowlist, workflow });
   if (failures.length) throw new Error(failures.join("\n"));
   process.stdout.write(
-    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + frozen #2117 live gate PASS\n",
+    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + #3872 R3/R4 public readers + frozen #2117 live gate PASS\n",
   );
 };
 
