@@ -18,8 +18,8 @@
 --    reason required, audited, errors when nothing changed.
 -- 6. No API role can TRUNCATE app_config (statement guard + revoked grant).
 --
--- MINGLA-INVARIANT: I-4130-MESSAGING-LIMITS-ONE-SOURCE | issue #4130 | Monthly email/SMS/push caps for a brand come only from brand_messaging_effective_limits: an active override, else the defaults row, else 1000/100/unlimited.
--- MINGLA-INVARIANT: I-4130-MESSAGING-LIMITS-ADMIN-ONLY | issue #4130 | brand_messaging_limits is never readable or writable by anon or authenticated directly; admin RPCs check is_admin_user() and write admin_audit_log.
+-- Invariant (declared in the pg17 test): I-4130-MESSAGING-LIMITS-ONE-SOURCE | issue #4130 | Monthly email/SMS/push caps for a brand come only from brand_messaging_effective_limits: an active override, else the defaults row, else 1000/100/unlimited.
+-- Invariant (declared in the pg17 test): I-4130-MESSAGING-LIMITS-ADMIN-ONLY | issue #4130 | brand_messaging_limits is never readable or writable by anon or authenticated directly; admin RPCs check is_admin_user() and write admin_audit_log.
 
 BEGIN;
 

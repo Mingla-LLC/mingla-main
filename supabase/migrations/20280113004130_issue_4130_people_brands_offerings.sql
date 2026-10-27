@@ -32,7 +32,7 @@
 -- brand_paystack_recipients row; brands.payment_provider picks the label when
 -- both are set up.
 --
--- MINGLA-INVARIANT: I-4130-PEOPLE-SEGMENTS-ADMIN-ONLY | issue #4130 | People segments, brand and offering boards are admin-only aggregates; staff and test accounts are counted only as internal; marking an account internal is admin-only, needs a reason and writes admin_audit_log.
+-- Invariant (declared in the pg17 test): I-4130-PEOPLE-SEGMENTS-ADMIN-ONLY | issue #4130 | People segments, brand and offering boards are admin-only aggregates; staff and test accounts are counted only as internal; marking an account internal is admin-only, needs a reason and writes admin_audit_log.
 
 --------------------------------------------------------------------------------
 -- 1. The staff and test flag.

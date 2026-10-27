@@ -21,7 +21,7 @@
 --   5. admin_team_last_active() — owner only, like the team list: when each
 --      teammate was last active (last sign-in or last recorded admin action).
 --
--- MINGLA-INVARIANT: I-4130-SYSTEM-PAGES-ADMIN-ONLY | issue #4130 | The place funnel and flag board are admin-only aggregates; a flag changes only through admin_set_feature_flag with a reason and an audit row; restarting the tour for everyone is owner-only, needs the typed word RESTART and a reason, and writes an audit row.
+-- Invariant (declared in the pg17 test): I-4130-SYSTEM-PAGES-ADMIN-ONLY | issue #4130 | The place funnel and flag board are admin-only aggregates; a flag changes only through admin_set_feature_flag with a reason and an audit row; restarting the tour for everyone is owner-only, needs the typed word RESTART and a reason, and writes an audit row.
 
 --------------------------------------------------------------------------------
 -- 1. Place pool funnel.

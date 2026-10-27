@@ -37,8 +37,8 @@
 --       time and time zone (so it is shown in local time, not the viewer's)
 --       and whether its brand is staff or test (hidden by default).
 --
--- MINGLA-INVARIANT: I-4130-DASHBOARD-ADMIN-AGGREGATES | issue #4130 | the Dashboard numbers come from one admin-only aggregate; a failed read is shown as failed, never as 0.
--- MINGLA-INVARIANT: I-4130-INBOUND-EXCLUDES-APP-RUNS | issue #4130 | Inbound leads list and count beta leads and web tool leads only; app-lane tool runs are never leads.
+-- Invariant (declared in the pg17 test): I-4130-DASHBOARD-ADMIN-AGGREGATES | issue #4130 | the Dashboard numbers come from one admin-only aggregate; a failed read is shown as failed, never as 0.
+-- Invariant (declared in the pg17 test): I-4130-INBOUND-EXCLUDES-APP-RUNS | issue #4130 | Inbound leads list and count beta leads and web tool leads only; app-lane tool runs are never leads.
 
 --------------------------------------------------------------------------------
 -- 0. Is a lead a staff or test row? (internal helper, no client grant)

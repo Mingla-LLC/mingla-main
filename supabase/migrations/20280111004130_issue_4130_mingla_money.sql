@@ -39,8 +39,8 @@
 -- PUBLIC and anon, and return integer minor units plus a currency code, never
 -- a formatted string (I-PROPOSED-1274-MONEY-READ-CENTS-CONTRACT).
 --
--- MINGLA-INVARIANT: I-4130-FX-OWN-DAY | issue #4130 | a historical money figure converts at the latest stored rate on or before its own moment; never a later rate; NULL when none exists.
--- MINGLA-INVARIANT: I-4130-NO-CROSS-CURRENCY-SUM | issue #4130 | admin money summaries keep each currency separate; the only cross-currency totals are USD conversions.
+-- Invariant (declared in the pg17 test): I-4130-FX-OWN-DAY | issue #4130 | a historical money figure converts at the latest stored rate on or before its own moment; never a later rate; NULL when none exists.
+-- Invariant (declared in the pg17 test): I-4130-NO-CROSS-CURRENCY-SUM | issue #4130 | admin money summaries keep each currency separate; the only cross-currency totals are USD conversions.
 
 BEGIN;
 

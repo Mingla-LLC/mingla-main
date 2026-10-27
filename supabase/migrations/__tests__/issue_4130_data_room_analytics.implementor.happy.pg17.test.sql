@@ -1,3 +1,4 @@
+-- MINGLA-INVARIANT: I-4130-DATA-ROOM-ANALYTICS-GATED | issue #4130 | Data room analytics are aggregate-only reads gated to active owners, admins and founding partners; staff and test accounts are left out through Wave 3's classification; money never sums across currencies; a retention cell too new to measure is NULL, never 0.
 \set ON_ERROR_STOP on
 
 -- Issue #4130 (Wave 5) — Data room analytics. Run after the full migration

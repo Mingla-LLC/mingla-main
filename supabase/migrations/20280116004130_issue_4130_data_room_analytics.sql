@@ -42,7 +42,7 @@
 --   person counts only once all of those seven days have passed; a cohort
 --   cell is NULL ("too new") until every member's window has passed — never 0.
 --
--- MINGLA-INVARIANT: I-4130-DATA-ROOM-ANALYTICS-GATED | issue #4130 | Data room analytics are aggregate-only reads gated to active owners, admins and founding partners; staff and test accounts are left out through Wave 3's classification; money never sums across currencies; a retention cell too new to measure is NULL, never 0.
+-- Invariant (declared in the pg17 test): I-4130-DATA-ROOM-ANALYTICS-GATED | issue #4130 | Data room analytics are aggregate-only reads gated to active owners, admins and founding partners; staff and test accounts are left out through Wave 3's classification; money never sums across currencies; a retention cell too new to measure is NULL, never 0.
 
 BEGIN;
 
