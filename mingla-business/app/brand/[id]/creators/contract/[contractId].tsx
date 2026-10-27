@@ -17,6 +17,17 @@ import { DateField } from "../../../../../src/components/ui/DateField";
 import { Icon } from "../../../../../src/components/ui/Icon";
 import { Input } from "../../../../../src/components/ui/Input";
 import { ProgramSheet } from "../../../../../src/components/programs/ProgramSheet";
+import { TimeField } from "../../../../../src/components/programs/TimeField";
+import {
+  agreedVideoDue,
+  agreedVideoDueWords,
+  dueChangeInitial,
+  dueChangeLocalErrors,
+  dueChangePayload,
+  dueChangeServerErrors,
+  proposalChangeWords,
+  type DueChangeErrors,
+} from "../../../../../src/components/programs/dueChange";
 import { FullScreenVideoViewer } from "../../../../../src/components/ui/FullScreenVideoViewer";
 import {
   HireSheet,
@@ -83,7 +94,6 @@ import {
   shortDate,
   shortDateTime,
   toIsoDay,
-  videoDueWords,
 } from "../../../../../src/utils/creatorProgramFormat";
 import {
   accent,
@@ -140,7 +150,9 @@ export default function HostGigContract(): React.ReactElement {
     "technical_fixes_exhausted",
   );
   const [refundPercent, setRefundPercent] = useState("50");
-  const [newPostBy, setNewPostBy] = useState("");
+  const [dueDay, setDueDay] = useState("");
+  const [dueTime, setDueTime] = useState("");
+  const [dueErrors, setDueErrors] = useState<DueChangeErrors>({});
   const [stars, setStars] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
   const [topup, setTopup] = useState<HireSheetMode | null>(null);
@@ -233,6 +245,53 @@ export default function HostGigContract(): React.ReactElement {
   );
   const plan = workspace?.shoot_plan ?? null;
   const gig = workspace?.gig;
+  // The agreed due: the current terms version (an accepted change moves it).
+  const agreedDue = agreedVideoDue({
+    terms: workspace?.terms,
+    currentVersion: workspace?.contract.current_terms_version,
+    gig,
+  });
+  const sendDueChange = async () => {
+    const local = dueChangeLocalErrors(dueDay, dueTime);
+    setDueErrors(local);
+    if (local.day || local.time) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = (await creatorGigsService.proposeChange(
+        contractId,
+        dueChangePayload(dueDay, dueTime),
+        "dates",
+        note.trim(),
+      )) as { ok?: unknown; error?: unknown } | null;
+      if (result && result.ok === false) {
+        setDueErrors(dueChangeServerErrors(String(result.error ?? "")));
+        return;
+      }
+      setSheet(null);
+      setNote("");
+      await refresh();
+      setNotice("Request sent. The creator has 48 hours to answer.");
+    } catch (sendError) {
+      const code =
+        sendError && typeof sendError === "object" && "message" in sendError
+          ? String((sendError as { message?: unknown }).message ?? "")
+          : "";
+      const mapped = dueChangeServerErrors(code);
+      setDueErrors(
+        mapped.form === "That didn't go through. Try again."
+          ? {
+              form: programErrorMessage(
+                sendError,
+                "That didn't go through. Try again.",
+              ),
+            }
+          : mapped,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
   const caption = useMemo(() => {
     const autoWords =
       state === "script_sent"
@@ -539,15 +598,34 @@ export default function HostGigContract(): React.ReactElement {
             ) : null}
             {sheet === "change_dates" ? (
               <SheetBody title="Change the video-due date">
-                <Muted>{`Currently ${shortDate(String(gig?.post_by ?? ""))}. The fee can't change here.`}</Muted>
-                <DateField
-                  label="New video-due date"
-                  value={newPostBy}
-                  onChangeValue={setNewPostBy}
-                  accessibilityLabel="New video-due date"
-                  min={toIsoDay(new Date())}
-                  placeholder="Choose a date"
-                />
+                <Muted>{`Agreed now: ${agreedVideoDueWords(agreedDue)}. The fee can't change here.`}</Muted>
+                <View style={styles.pair}>
+                  <View style={styles.pairDate}>
+                    <DateField
+                      label="New date"
+                      value={dueDay}
+                      onChangeValue={(value) => {
+                        setDueDay(value);
+                        setDueErrors({});
+                      }}
+                      accessibilityLabel="New video-due date"
+                      min={toIsoDay(new Date())}
+                      placeholder="Choose"
+                      hasError={Boolean(dueErrors.day)}
+                    />
+                  </View>
+                  <TimeField
+                    label="Time"
+                    value={dueTime}
+                    onChangeValue={(value) => {
+                      setDueTime(value);
+                      setDueErrors({});
+                    }}
+                    accessibilityLabel="New video-due time"
+                    hasError={Boolean(dueErrors.day || dueErrors.time)}
+                  />
+                </View>
+                <FieldError message={dueErrors.day ?? dueErrors.time ?? null} />
                 <Input
                   value={note}
                   onChangeText={setNote}
@@ -555,24 +633,13 @@ export default function HostGigContract(): React.ReactElement {
                   placeholder="Why it needs to change"
                   accessibilityLabel="Why the date needs to change"
                 />
-                <FieldError message={error} />
+                <FieldError message={dueErrors.form ?? null} />
                 <Button
                   fullWidth
                   label="Ask the creator"
                   loading={busy}
-                  disabled={!newPostBy}
-                  onPress={() =>
-                    void run(
-                      () =>
-                        creatorGigsService.proposeChange(
-                          contractId,
-                          { post_by: newPostBy },
-                          "dates",
-                          note.trim(),
-                        ),
-                      "Request sent. The creator has 48 hours to answer.",
-                    )
-                  }
+                  disabled={!dueDay || !dueTime}
+                  onPress={() => void sendDueChange()}
                 />
               </SheetBody>
             ) : null}
@@ -1263,7 +1330,7 @@ export default function HostGigContract(): React.ReactElement {
             {gig ? (
               <ListRow
                 title="Video needed by"
-                right={videoDueWords(gig.video_due_at, gig.post_by)}
+                right={agreedVideoDueWords(agreedDue)}
                 chevron={false}
               />
             ) : null}
@@ -1282,19 +1349,7 @@ export default function HostGigContract(): React.ReactElement {
                   ? `${creatorName} asked to change the terms`
                   : "Your change request"}
               </Text>
-              <Muted>
-                {Object.entries(openChange.changes)
-                  .map(([key, value]) =>
-                    key === "post_by"
-                      ? `Post by ${shortDate(String(value))}`
-                      : key === "shoot_date"
-                        ? `Shoot on ${shortDate(String(value))}`
-                        : key === "usage_days"
-                          ? `Reuse for ${String(value)} days`
-                          : "Other terms",
-                  )
-                  .join(" · ")}
-              </Muted>
+              <Muted>{proposalChangeWords(openChange.changes)}</Muted>
               {openChange.note ? (
                 <Text style={styles.quote}>{openChange.note}</Text>
               ) : null}
@@ -1345,7 +1400,10 @@ export default function HostGigContract(): React.ReactElement {
                 label="Change the video-due date"
                 onPress={() => {
                   setNote("");
-                  setNewPostBy("");
+                  const initial = dueChangeInitial(agreedDue);
+                  setDueDay(initial.day);
+                  setDueTime(initial.time);
+                  setDueErrors({});
                   setSheet("change_dates");
                 }}
               />
@@ -1488,6 +1546,8 @@ const styles = StyleSheet.create({
     borderColor: accent.border,
     borderRadius: radius.md,
   },
+  pair: { flexDirection: "row", gap: spacing.sm },
+  pairDate: { flex: 1.4 },
   quote: {
     color: textTokens.secondary,
     fontStyle: "italic",
