@@ -133,7 +133,8 @@ Deno.test("#3980 W3 rework D8: Needs you starts on the tab that has something an
   assertMatch(page, /setSearch\(`tab=\$\{start\}`, \{ replace: true \}\)/);
   // Picking Messages names it, so the start-tab rule never moves you off it.
   assertMatch(page, /: "tab=messages"\);/);
-  assertMatch(code("hooks/useReviewCount.js"), /loaded, refetch: counts\.refetch/);
+  // #4130: the hook's return spans lines now (it also carries the Work card count); same fields.
+  assertMatch(code("hooks/useReviewCount.js"), /\n\s*loaded,\n\s*refetch: counts\.refetch,/);
 });
 
 Deno.test("#3980 W3 rework D9: nothing sits under the month, every list follows Show, no Back to runway", () => {

@@ -433,7 +433,10 @@ describe("#3802 P-7: the menu each role sees", () => {
       assert.equal(groups[0].label, "Home");
       const outreach = groups[1];
       assert.equal(outreach.label, "Outreach");
-      assert.deepEqual(outreach.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["outreach:Hosts and creators:Handshake", "inbound:Inbound leads:Inbox", "content-calendar:Calendar:CalendarClock", "team-dashboard:Team dashboard:BarChart3"]);
+      // #4130: the merge with #3872 puts the Creator Program pages (Creators,
+      // Gigs, Mingla Locals, Disputes) right under Hosts and creators; owner
+      // and admin open them by default, so they see them here.
+      assert.deepEqual(outreach.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["outreach:Hosts and creators:Handshake", "program-creators:Creators:BadgeCheck", "program-gigs:Gigs:Clapperboard", "program-locals:Mingla Locals:MapPin", "program-disputes:Disputes:Scale", "inbound:Inbound leads:Inbox", "content-calendar:Calendar:CalendarClock", "team-dashboard:Team dashboard:BarChart3"]);
     }
     assert.ok(ids(owner).includes("admin"));
     // #4130 (Seth): Team and roles is the owner's again; an admin sees Careers.
@@ -447,6 +450,8 @@ describe("#3802 P-7: the menu each role sees", () => {
     const sidebar = read("components/layout/Sidebar.jsx");
     const map = sidebar.slice(sidebar.indexOf("ICON_MAP"));
     assert.ok(/\bHandshake\b/.test(map) && /\bInbox\b/.test(map));
+    // #4130: the Creator Program icons that now sit in Outreach are known too.
+    for (const icon of ["BadgeCheck", "Clapperboard", "MapPin", "Scale"]) assert.ok(new RegExp(`\\b${icon}\\b`).test(map), icon);
   });
 });
 
