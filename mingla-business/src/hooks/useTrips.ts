@@ -15,6 +15,7 @@
  * Spec: Mingla_Artifacts/specs/SPEC_ORCH-0859_TR2_MINIMUM_VIABLE_TRIP.md §4.7
  */
 
+import { useMemo } from "react";
 import { publishWithDraftCurrencySync } from "../services/draftCurrencySync";
 import {
   useMutation,
@@ -25,6 +26,7 @@ import {
 } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
+import { DATA_FETCH_TIMEOUT_MS, withTimeout } from "../utils/withTimeout";
 
 // ORCH-0965 — home composite-upcoming cache key.
 // Imported from the keyless `upcomingKeys` module to avoid a require-cycle
@@ -66,27 +68,20 @@ import {
   // automatic retry so the canonical command replays its receipt instead of
   // mutating twice. See operationIdFor's contract in tripsService.
   operationIdFor,
+  // Issue #3801 — the editor's held revision and the reload path.
+  readTripRevision,
+  type TripRevisionCursor,
 } from "../services/tripsService";
+import { getTripIntakeSchemasByEvent } from "../services/intakeSchemaService";
+import { intakeSchemaKeys } from "./useIntakeSchema";
+import { tripKeys } from "./tripKeys";
 
 // ---------------------- Query key factory ----------------------
 
-export const tripKeys = {
-  all: ["trips"] as const,
-  lists: (): readonly ["trips", "list"] =>
-    [...tripKeys.all, "list"] as const,
-  listByBrand: (brandId: string) =>
-    [...tripKeys.lists(), brandId] as const,
-  details: (): readonly ["trips", "detail"] =>
-    [...tripKeys.all, "detail"] as const,
-  detail: (eventId: string) =>
-    [...tripKeys.details(), eventId] as const,
-  soldCountsByTier: (eventId: string) =>
-    [...tripKeys.detail(eventId), "soldCountsByTier"] as const,
-  public: (): readonly ["trips", "public"] =>
-    [...tripKeys.all, "public"] as const,
-  publicBySlug: (brandSlug: string, tripSlug: string) =>
-    [...tripKeys.public(), brandSlug, tripSlug] as const,
-};
+// Issue #3801 — the factory lives in the keyless `tripKeys` module so hooks
+// that `useTrips` itself imports (useIntakeSchema) can invalidate the trip
+// detail without a require-cycle. Re-exported here for every existing caller.
+export { tripKeys };
 
 const DISABLED_KEY = ["trips", "__disabled__"] as const;
 const TRIP_LIST_STALE_MS = 5 * 60 * 1000;
@@ -116,8 +111,29 @@ export const useTripsByBrand = (
 
 // ---------------------- useTrip ----------------------
 
+export interface UseTripOptions {
+  /**
+   * Issue #3801 — `"always"` reads the trip from the server on every mount,
+   * even when a cached copy is still fresh. The trip editor uses it (with
+   * `isFetchedAfterMount`) so an editing session is never seeded from a
+   * cached revision the server has moved past.
+   */
+  refetchOnMount?: "always";
+}
+
+/**
+ * Issue #3801 — the trip-detail read, with a deadline. The trip editor reads
+ * the trip again on every open and gates on that read, so a read that never
+ * answers (a stalled connection) must end in the route's error state, with
+ * Retry, instead of "Loading trip…" with no end.
+ */
+export const TRIP_DETAIL_FETCH_TIMEOUT_MS = DATA_FETCH_TIMEOUT_MS;
+export const fetchTripDetail = (eventId: string): Promise<Trip | null> =>
+  withTimeout(getTrip(eventId), TRIP_DETAIL_FETCH_TIMEOUT_MS, "trip detail");
+
 export const useTrip = (
   eventId: string | null,
+  options?: UseTripOptions,
 ): UseQueryResult<Trip | null, Error> => {
   // ORCH-1004 — authed trip detail (dashboard/edit). getTrip reads RLS
   // auth.uid()-scoped `events` + sidecars. The public buyer path uses
@@ -128,10 +144,13 @@ export const useTrip = (
     queryKey: enabled ? tripKeys.detail(eventId) : DISABLED_KEY,
     queryFn: async () => {
       if (!enabled) return null;
-      return getTrip(eventId);
+      return fetchTripDetail(eventId);
     },
     enabled,
     staleTime: TRIP_DETAIL_STALE_MS,
+    ...(options?.refetchOnMount !== undefined
+      ? { refetchOnMount: options.refetchOnMount }
+      : {}),
   });
 };
 
@@ -175,6 +194,8 @@ export interface UpdateTripBasicsInput {
   eventId: string;
   patch: TripBasicsPatch;
   brandId: string;
+  /** Issue #3801 — the revision the editor holds; sent and adopted by the command. */
+  revision?: TripRevisionCursor;
 }
 
 /**
@@ -204,6 +225,7 @@ export const useUpdateTripBasics = (): UseMutationResult<
     mutationFn: async (variables) =>
       updateTripBasics(variables.eventId, variables.patch, {
         operationId: operationIdFor(variables),
+        revision: variables.revision,
       }),
     onSuccess: (trip, { brandId }) => {
       const previous = queryClient.getQueryData<Trip>(tripKeys.detail(trip.id));
@@ -238,6 +260,8 @@ export const useUpdateTripBasics = (): UseMutationResult<
 export interface UpsertTripDaysInput {
   eventId: string;
   days: TripDayInput[];
+  /** Issue #3801 — the revision the editor holds; sent and adopted by the command. */
+  revision?: TripRevisionCursor;
 }
 
 export const useUpsertTripDays = (): UseMutationResult<
@@ -250,6 +274,7 @@ export const useUpsertTripDays = (): UseMutationResult<
     mutationFn: async (variables) =>
       upsertTripDays(variables.eventId, variables.days, {
         operationId: operationIdFor(variables),
+        revision: variables.revision,
       }),
     onSuccess: (_, { eventId }) => {
       queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
@@ -268,6 +293,8 @@ export const useUpsertTripDays = (): UseMutationResult<
 export interface UpsertTripInclusionsInput {
   eventId: string;
   items: TripInclusionInput[];
+  /** Issue #3801 — the revision the editor holds; sent and adopted by the command. */
+  revision?: TripRevisionCursor;
 }
 
 export const useUpsertTripInclusions = (): UseMutationResult<
@@ -280,6 +307,7 @@ export const useUpsertTripInclusions = (): UseMutationResult<
     mutationFn: async (variables) =>
       upsertTripInclusions(variables.eventId, variables.items, {
         operationId: operationIdFor(variables),
+        revision: variables.revision,
       }),
     onSuccess: (_, { eventId }) => {
       queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
@@ -298,6 +326,8 @@ export const useUpsertTripInclusions = (): UseMutationResult<
 export interface UpdateTripPricingInput {
   eventId: string;
   patch: TripPricingPatch;
+  /** Issue #3801 — the revision the editor holds; sent and adopted by the command. */
+  revision?: TripRevisionCursor;
 }
 
 export const useUpdateTripPricing = (): UseMutationResult<
@@ -310,6 +340,7 @@ export const useUpdateTripPricing = (): UseMutationResult<
     mutationFn: async (variables) =>
       updateTripPricing(variables.eventId, variables.patch, {
         operationId: operationIdFor(variables),
+        revision: variables.revision,
       }),
     onSuccess: (_, { eventId }) => {
       queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
@@ -334,6 +365,8 @@ export const useUpdateTripPricing = (): UseMutationResult<
 export interface CreateTripPricingTierInput {
   eventId: string;
   patch: Omit<TripPricingPatch, "ticketTypeId">;
+  /** Issue #3801 — the revision the editor holds; sent and adopted by the command. */
+  revision?: TripRevisionCursor;
 }
 
 /**
@@ -351,6 +384,7 @@ export const useCreateTripPricingTier = (): UseMutationResult<
     mutationFn: async (variables) =>
       createTripPricingTier(variables.eventId, variables.patch, {
         operationId: operationIdFor(variables),
+        revision: variables.revision,
       }),
     onSuccess: (_, { eventId }) => {
       queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
@@ -367,6 +401,8 @@ export const useCreateTripPricingTier = (): UseMutationResult<
 export interface RemoveTripPricingTierInput {
   eventId: string;
   ticketTypeId: string;
+  /** Issue #3801 — the revision the editor holds; sent and adopted by the command. */
+  revision?: TripRevisionCursor;
 }
 
 /**
@@ -384,6 +420,7 @@ export const useRemoveTripPricingTier = (): UseMutationResult<
     mutationFn: async (variables) =>
       removeTripPricingTier(variables.eventId, variables.ticketTypeId, {
         operationId: operationIdFor(variables),
+        revision: variables.revision,
       }),
     onSuccess: (_, { eventId }) => {
       queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
@@ -407,6 +444,8 @@ export interface PublishTripInput {
     selectionRevision: number;
     selectionConfirmed: true;
   };
+  /** Issue #3801 — the revision the editor holds; sent and adopted by the command. */
+  revision?: TripRevisionCursor;
 }
 
 export const usePublishTrip = (): UseMutationResult<
@@ -428,11 +467,19 @@ export const usePublishTrip = (): UseMutationResult<
             // publish runs two commands; the pre-save needs its own stable id.
             saveOperationId: operationIdFor(variables.draftPayload),
             invites: variables.invites,
+            revision: variables.revision,
           }),
-        () =>
-          queryClient.invalidateQueries({
+        async () => {
+          // Issue #3801 — the server just moved this draft to the brand's
+          // currency. The wizard re-seeds the cleared prices from the re-read
+          // trip, so it holds the revision that change made from here on.
+          if (variables.revision !== undefined) {
+            variables.revision.current = await readTripRevision(variables.eventId);
+          }
+          await queryClient.invalidateQueries({
             queryKey: tripKeys.detail(variables.eventId),
-          }),
+          });
+        },
       ),
     onSuccess: (trip, { brandId }) => {
       queryClient.setQueryData<Trip>(tripKeys.detail(trip.id), trip);
@@ -562,4 +609,48 @@ export const useUpdateLiveTripFields = (): UseMutationResult<
       });
     },
   });
+};
+
+// ---------------------- Issue #3801: wizard server sync ----------------------
+
+export interface TripWizardServerSync {
+  /**
+   * Read the trip and its traveler questions from the server again, ignoring
+   * any cached copy, so the wizard can start over from what is stored now.
+   * Throws when the trip cannot be read (or no longer exists).
+   */
+  reloadTrip: (eventId: string) => Promise<Trip>;
+  /**
+   * The wizard wrote the trip outside a canonical command (theme, pricing
+   * switches, refund policy, booking deadline, guest privacy): mark the cached
+   * detail stale so an editor opened later seeds from the stored revision.
+   */
+  markTripChanged: (eventId: string) => void;
+}
+
+export const useTripWizardServerSync = (): TripWizardServerSync => {
+  const queryClient = useQueryClient();
+  return useMemo<TripWizardServerSync>(() => ({
+    reloadTrip: async (eventId) => {
+      const [fresh] = await Promise.all([
+        queryClient.fetchQuery({
+          queryKey: tripKeys.detail(eventId),
+          queryFn: () => fetchTripDetail(eventId),
+          staleTime: 0,
+        }),
+        queryClient.fetchQuery({
+          queryKey: intakeSchemaKeys.byEvent(eventId),
+          queryFn: () => getTripIntakeSchemasByEvent(eventId),
+          staleTime: 0,
+        }),
+      ]);
+      if (fresh === null) {
+        throw new Error("reloadTrip: trip not found for id=" + eventId);
+      }
+      return fresh;
+    },
+    markTripChanged: (eventId) => {
+      void queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
+    },
+  }), [queryClient]);
 };

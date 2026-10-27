@@ -184,5 +184,8 @@ DELETE FROM auth.users WHERE id='30400000-0000-4000-8000-000000000101';
 \ir ../20271108013040_issue_3040_ready_owner_alerts.sql
 -- Issue #3697: the lifecycle migration redefines a function M-1 also defines.
 \ir ../20271109003697_issue_3697_creative_library_lifecycle.sql
+-- Issue #3801: cover_video_apply_once was rebuilt again (a draft keeps its
+-- revision through a cover video apply); restore that latest definition too.
+\ir ../20271231303801_issue_3801_draft_cover_video_keeps_revision.sql
 
 \echo 'issue_3040_deleted_event_backfill_bridge.implementor.pg17: PASS'
