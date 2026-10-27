@@ -58,7 +58,14 @@ INSERT INTO auth.users(id) VALUES
   ('23050000-0000-4000-8000-000000000001'),  -- brand owner (rank 60)
   ('23050000-0000-4000-8000-000000000002'),  -- marketing manager (rank 20)
   ('23050000-0000-4000-8000-000000000003'),  -- event manager (rank 40)
-  ('23050000-0000-4000-8000-000000000004');  -- the authenticated buyer
+  ('23050000-0000-4000-8000-000000000004'),  -- the authenticated buyer
+  ('23050000-0000-4000-8000-000000000005');  -- a signed-in payer who does NOT own the contact
+-- #4063 (claim core): an order is owned by a signed-in account only when that
+-- account has PROVED the order's email or phone; otherwise the trigger moves the
+-- payer to purchased_by_user_id and leaves the order unowned (claimable). The
+-- authenticated buyer here proves the email by code, as a real buyer would.
+INSERT INTO public.account_claim_contacts(user_id,channel,value,verified_via)
+VALUES('23050000-0000-4000-8000-000000000004','email','arifatd99@example.test','email_code');
 INSERT INTO public.creator_accounts(id) VALUES('23050000-0000-4000-8000-000000000001');
 INSERT INTO public.brands(id,account_id,name,slug,default_currency,created_at,updated_at)
 VALUES('23050000-0000-4000-8000-000000000010','23050000-0000-4000-8000-000000000001',
@@ -654,6 +661,57 @@ BEGIN
   RAISE NOTICE 'T-2305-14 PASS: merges are auditable and reversible in the ledger';
 END;
 $reversible$;
+
+-- --------------------------------------------------------------- T-2305-17 --
+-- #4063 x #2305: a signed-in account that paid with someone else's email does
+-- not own the order. Resolving the conflict by merge must still link the SOURCE,
+-- but must not link that payer's account to the winner: only a proved owner may
+-- be linked, or a payer could attach themselves to another person's record.
+DO $non_owner_payer$
+DECLARE
+  v_brand uuid := '23050000-0000-4000-8000-000000000010';
+  v_event uuid := '23050000-0000-4000-8000-000000000020';
+  v_owner uuid := '23050000-0000-4000-8000-000000000001';
+  v_payer uuid := '23050000-0000-4000-8000-000000000005';
+  v_order uuid := '23050000-0000-4000-8000-000000000037';
+  v_existing uuid; v_first jsonb; v_result jsonb;
+BEGIN
+  INSERT INTO public.brand_people(brand_id,display_name) VALUES(v_brand,'Tolu')
+    RETURNING id INTO v_existing;
+  INSERT INTO public.brand_person_names(brand_person_id,display_name,normalized_name,name_kind)
+  VALUES(v_existing,'Tolu','tolu','primary');
+  INSERT INTO public.brand_person_contact_methods(
+    brand_id,brand_person_id,channel,normalized_value,provenance_scope,is_exportable,is_primary)
+  VALUES(v_brand,v_existing,'phone','+14435550117','brand_owned',true,true);
+
+  INSERT INTO public.orders(
+    id,event_id,buyer_user_id,buyer_name,buyer_email,buyer_phone_e164,
+    payment_status,confirmed_at,created_at,currency,total_cents)
+  VALUES(v_order,v_event,v_payer,'Tolu Adeyemi','tolu.gift@example.test','+14435550117',
+         'paid',now(),now(),'USD',1000);
+  IF (SELECT buyer_user_id FROM public.orders WHERE id=v_order) IS NOT NULL
+     OR (SELECT purchased_by_user_id FROM public.orders WHERE id=v_order) IS DISTINCT FROM v_payer THEN
+    RAISE EXCEPTION 'T-2305-17 FAIL: a payer who does not own the contact still owns the order';
+  END IF;
+
+  v_first := public.biz_resolve_brand_person_source_derived('order',v_order);
+  IF v_first->>'linkOutcome' <> 'conflict' THEN
+    RAISE EXCEPTION 'T-2305-17 FAIL: expected a conflict, got %', v_first;
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
+  v_result := public.biz_resolve_brand_person_conflict(
+    v_brand,ARRAY[(v_first->>'conflictId')::uuid],'merge',v_existing,gen_random_uuid());
+  IF NOT EXISTS(SELECT 1 FROM public.brand_person_source_links
+                WHERE source_kind='order' AND source_id=v_order AND detached_at IS NULL
+                  AND brand_person_id=(v_result->>'personId')::uuid) THEN
+    RAISE EXCEPTION 'T-2305-17 FAIL: the merge left the unowned order orphaned';
+  END IF;
+  IF (SELECT linked_user_id FROM public.brand_people WHERE id=v_existing) IS NOT NULL THEN
+    RAISE EXCEPTION 'T-2305-17 FAIL: the merge linked a payer who never proved the contact';
+  END IF;
+  RAISE NOTICE 'T-2305-17 PASS: an unproved payer is never linked by a merge';
+END;
+$non_owner_payer$;
 
 -- ------------------------------------------------------------------- G-3 ----
 -- The live conflicts are the tester's evidence and resolution is a human act.
