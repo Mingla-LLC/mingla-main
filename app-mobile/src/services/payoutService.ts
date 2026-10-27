@@ -1,4 +1,5 @@
 import * as WebBrowser from 'expo-web-browser';
+import { countryToCurrencyMap } from './countryCurrencyService';
 import { programEdge } from './programApi';
 import { ProgramActionError } from './programResult';
 
@@ -10,43 +11,51 @@ import { ProgramActionError } from './programResult';
  */
 export type PayoutCountry = { code: string; name: string; currency: string };
 
-export const PAYOUT_COUNTRIES: readonly PayoutCountry[] = [
-  { code: 'US', name: 'United States', currency: 'USD' },
-  { code: 'NG', name: 'Nigeria', currency: 'NGN' },
-  { code: 'GB', name: 'United Kingdom', currency: 'GBP' },
-  { code: 'CA', name: 'Canada', currency: 'CAD' },
-  { code: 'IE', name: 'Ireland', currency: 'EUR' },
-  { code: 'FR', name: 'France', currency: 'EUR' },
-  { code: 'DE', name: 'Germany', currency: 'EUR' },
-  { code: 'ES', name: 'Spain', currency: 'EUR' },
-  { code: 'IT', name: 'Italy', currency: 'EUR' },
-  { code: 'NL', name: 'Netherlands', currency: 'EUR' },
-  { code: 'PT', name: 'Portugal', currency: 'EUR' },
-  { code: 'BE', name: 'Belgium', currency: 'EUR' },
-  { code: 'AT', name: 'Austria', currency: 'EUR' },
-  { code: 'CH', name: 'Switzerland', currency: 'CHF' },
-  { code: 'SE', name: 'Sweden', currency: 'SEK' },
-  { code: 'NO', name: 'Norway', currency: 'NOK' },
-  { code: 'DK', name: 'Denmark', currency: 'DKK' },
-  { code: 'FI', name: 'Finland', currency: 'EUR' },
-  { code: 'PL', name: 'Poland', currency: 'PLN' },
-  { code: 'CZ', name: 'Czechia', currency: 'CZK' },
-  { code: 'GR', name: 'Greece', currency: 'EUR' },
-  { code: 'HU', name: 'Hungary', currency: 'HUF' },
-  { code: 'RO', name: 'Romania', currency: 'RON' },
-  { code: 'BG', name: 'Bulgaria', currency: 'BGN' },
-  { code: 'HR', name: 'Croatia', currency: 'EUR' },
-  { code: 'SI', name: 'Slovenia', currency: 'EUR' },
-  { code: 'SK', name: 'Slovakia', currency: 'EUR' },
-  { code: 'LT', name: 'Lithuania', currency: 'EUR' },
-  { code: 'LV', name: 'Latvia', currency: 'EUR' },
-  { code: 'EE', name: 'Estonia', currency: 'EUR' },
-  { code: 'LU', name: 'Luxembourg', currency: 'EUR' },
-  { code: 'MT', name: 'Malta', currency: 'EUR' },
-  { code: 'CY', name: 'Cyprus', currency: 'EUR' },
-  { code: 'IS', name: 'Iceland', currency: 'ISK' },
-  { code: 'LI', name: 'Liechtenstein', currency: 'CHF' },
+// Currency comes from the app's one country→currency table, so this list only
+// names where payouts are offered (USD is the consumer floor, issue #963).
+const PAYOUT_COUNTRY_NAMES: ReadonlyArray<readonly [string, string]> = [
+  ['US', 'United States'],
+  ['NG', 'Nigeria'],
+  ['GB', 'United Kingdom'],
+  ['CA', 'Canada'],
+  ['IE', 'Ireland'],
+  ['FR', 'France'],
+  ['DE', 'Germany'],
+  ['ES', 'Spain'],
+  ['IT', 'Italy'],
+  ['NL', 'Netherlands'],
+  ['PT', 'Portugal'],
+  ['BE', 'Belgium'],
+  ['AT', 'Austria'],
+  ['CH', 'Switzerland'],
+  ['SE', 'Sweden'],
+  ['NO', 'Norway'],
+  ['DK', 'Denmark'],
+  ['FI', 'Finland'],
+  ['PL', 'Poland'],
+  ['CZ', 'Czechia'],
+  ['GR', 'Greece'],
+  ['HU', 'Hungary'],
+  ['RO', 'Romania'],
+  ['BG', 'Bulgaria'],
+  ['HR', 'Croatia'],
+  ['SI', 'Slovenia'],
+  ['SK', 'Slovakia'],
+  ['LT', 'Lithuania'],
+  ['LV', 'Latvia'],
+  ['EE', 'Estonia'],
+  ['LU', 'Luxembourg'],
+  ['MT', 'Malta'],
+  ['CY', 'Cyprus'],
+  ['IS', 'Iceland'],
+  ['LI', 'Liechtenstein'],
 ];
+
+export const PAYOUT_COUNTRIES: readonly PayoutCountry[] = PAYOUT_COUNTRY_NAMES.map(([code, name]) => ({
+  code,
+  name,
+  currency: countryToCurrencyMap[code] ?? 'USD',
+}));
 
 export function payoutCountry(code: string | null | undefined): PayoutCountry | null {
   return PAYOUT_COUNTRIES.find((c) => c.code === (code ?? '').toUpperCase()) ?? null;

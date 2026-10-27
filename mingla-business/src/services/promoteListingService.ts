@@ -53,6 +53,7 @@ export async function fetchPromoteListing(
   }
   const [event, dates, view] = await Promise.all([
     supabase
+      // orch-strict-grep-allow events-type-filter — by-id read (.eq("id")) of one listing the host already chose; any event_type is a valid gig target and no list is returned
       .from("events")
       .select("id,title,timezone")
       .eq("id", id)
@@ -64,6 +65,7 @@ export async function fetchPromoteListing(
       .order("start_at", { ascending: true })
       .limit(1),
     supabase
+      // orch-strict-grep-allow events-type-filter — by-id read (.eq("id")) of the same listing's city only; the view does not expose event_type and no list is returned
       .from("business_management_events_view")
       .select("city")
       .eq("id", id)
