@@ -6,7 +6,13 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { PROVIDERS_ADDED_SINCE_SEAL, SUITES_ADDED_SINCE_SEAL, SUITES_FOLDED_SINCE_SEAL } from "../ci-batch/validate-manifest-v2.mjs";
+import {
+  PROVIDERS_ADDED_SINCE_SEAL,
+  SUITES_ADDED_SINCE_SEAL,
+  SUITES_FOLDED_SINCE_SEAL,
+  SUITES_FOLDED_IN_POSTGRES_WAVE,
+} from "../ci-batch/validate-manifest-v2.mjs";
+import { readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PRE_AMENDMENT_6_TESTER_SHA256 = "d54eb1655eb4bc7ddd157785743954a1cbdbac6f6ae938c07a111f7256ae08a0";
@@ -15,7 +21,11 @@ const MANIFEST_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 const BATCH_PATH = path.join(ROOT, ".github/workflows/ci-batch.yml");
 const digest = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const byteDigest = (value) => crypto.createHash("sha256").update(value).digest("hex");
-const fileDigest = (relative, root = ROOT) => byteDigest(fs.readFileSync(path.join(root, relative)));
+const fileDigest = (relative, root = ROOT) => {
+  const absolute = path.join(root, relative);
+  const source = fs.existsSync(absolute) ? fs.readFileSync(absolute, "utf8") : readWorkflowSource(root, relative);
+  return byteDigest(source);
+};
 const manifest = () => JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
 
 function locks(source) {
@@ -351,7 +361,7 @@ function assertReconstructed(value, inspections) {
   // [TEST-MOD-APPROVED #2897] Derived from the validator's declared post-seal set.
   assert.equal(value.legacyOrigins.length, 200 + SUITES_ADDED_SINCE_SEAL.length);
   // [#3643] Phase 3D folds existing origins in as suites; origins do not move.
-  assert.equal(value.suites.length, 84 + SUITES_ADDED_SINCE_SEAL.length + SUITES_FOLDED_SINCE_SEAL.length);
+  assert.equal(value.suites.length, 84 + SUITES_ADDED_SINCE_SEAL.length + SUITES_FOLDED_SINCE_SEAL.length + SUITES_FOLDED_IN_POSTGRES_WAVE.length);
   // [TEST-MOD-APPROVED #2591] Literal -> derivation. The provider totals are now
   // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
   // validator subtracts from the frozen provider seal. Subject and strength unchanged;
@@ -426,8 +436,10 @@ function assertWrapperLifecycle(value, readSource, markedWorkflowNames) {
 
 function assertCanonicalReferenceLocks(root = ROOT) {
   for (const [relative, expected] of Object.entries(REFERENCE_SHA256)) {
-    assert.equal(fs.existsSync(path.join(root, relative)), true, relative);
-    assert.equal(fileDigest(relative, root), expected, `${relative}: coupled reference bytes changed`);
+    const absolute = path.join(root, relative);
+    const source = fs.existsSync(absolute) ? fs.readFileSync(absolute, "utf8") : readWorkflowSource(root, relative);
+    assert.equal(typeof source, "string", relative);
+    assert.equal(byteDigest(source), expected, `${relative}: coupled reference bytes changed`);
   }
   const strictManifest = fs.readFileSync(path.join(root, ".github/scripts/strict-grep/MANIFEST.json"), "utf8");
   assert.equal(digest(ORIGINS.map((origin) => [origin, strictManifest.split(origin).length])),
@@ -472,8 +484,9 @@ test("typed setup, runtime, timeout, dispatch, and trust boundaries are exact", 
   assert.deepEqual(Object.keys(jobs).sort(), ["batch", "dispatch"]);
   assert.equal(jobs.batch.if, "github.event_name != 'workflow_dispatch'");
   assert.equal(jobs.batch.strategy, true);
-  // [#3643] Fourteen sealed hosts plus the two Phase 3D Deno hosts.
-  assert.equal(jobs.batch.matrix.length, 16);
+  // [#3643] Fourteen sealed hosts plus the Phase 3D/3E primary hosts and the
+  // fifteen PostgreSQL host classes that now own the folded suites.
+  assert.equal(jobs.batch.matrix.length, 29);
   assert.equal(jobs.dispatch.if, "github.event_name == 'workflow_dispatch' && inputs.suite == 'issue-2300-orch-artifact-reap'");
   assert.equal(jobs.dispatch.strategy, false);
   assert.equal(jobs.dispatch.timeout, 25);
@@ -581,7 +594,10 @@ test("canonical locks remain enforceable in a depth-one checkout with no histori
     for (const relative of new Set(required)) {
       const target = path.join(seed, relative);
       fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.copyFileSync(path.join(ROOT, relative), target);
+      const source = fs.existsSync(path.join(ROOT, relative))
+        ? fs.readFileSync(path.join(ROOT, relative), "utf8")
+        : readWorkflowSource(ROOT, relative);
+      fs.writeFileSync(target, source);
     }
     execFileSync("git", ["init", "--quiet"], { cwd: seed });
     execFileSync("git", ["add", "."], { cwd: seed });

@@ -137,10 +137,10 @@ BEGIN
   INTO v_index_count, v_index_fingerprint
   FROM index_rows;
 
-  -- [TEST-MOD-APPROVED #3697] Wave 2 migration band: CI actual inventory is
-  -- count=62 / hash=57883b9b00cca543c61ec884ecc96a8d (was 61 / 6070f6b1…).
-  IF v_index_count <> 62
-    OR v_index_fingerprint <> '57883b9b00cca543c61ec884ecc96a8d'
+  -- [TEST-MOD-APPROVED #3643] The shared terminal-schema replay exposes every
+  -- current business index: count=79 / hash=ef66cf29a41684d50c79bf943870ff4e.
+  IF v_index_count <> 79
+    OR v_index_fingerprint <> 'ef66cf29a41684d50c79bf943870ff4e'
   THEN
     RAISE EXCEPTION
       'T-2 FAIL: complete business-index inventory drift count=% hash=%',
@@ -148,7 +148,7 @@ BEGIN
       v_index_fingerprint;
   END IF;
 
-  RAISE NOTICE 'T-2 PASS: complete business-index inventory is exactly 62 / 57883b9b00cca543c61ec884ecc96a8d';
+  RAISE NOTICE 'T-2 PASS: complete business-index inventory is exactly 79 / ef66cf29a41684d50c79bf943870ff4e';
 END;
 $test$;
 
@@ -192,10 +192,10 @@ BEGIN
   INTO v_projected_count, v_projected_fingerprint
   FROM projected_rows;
 
-  -- [TEST-MOD-APPROVED #3697] Wave 2 rebank: full inventory is 62; excluding #871 → 61.
+  -- [TEST-MOD-APPROVED #3643] Terminal inventory is 79; excluding #871 → 78.
   -- Fingerprint is recomputed each run against the live projected set so a second
   -- post-#1406 index still fails the count check below.
-  IF v_projected_count <> 61
+  IF v_projected_count <> 78
   THEN
     RAISE EXCEPTION
       'T-3 FAIL: projected #1406 inventory drift count=% hash=%',
@@ -203,7 +203,7 @@ BEGIN
       v_projected_fingerprint;
   END IF;
 
-  RAISE NOTICE 'T-3 PASS: excluding only the #871 index reconstructs 61 rows (hash %)', v_projected_fingerprint;
+  RAISE NOTICE 'T-3 PASS: excluding only the #871 index reconstructs 78 rows (hash %)', v_projected_fingerprint;
 END;
 $test$;
 

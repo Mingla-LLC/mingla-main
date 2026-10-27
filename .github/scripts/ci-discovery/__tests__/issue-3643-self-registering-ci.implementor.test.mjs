@@ -618,8 +618,9 @@ test("the split migration runner preserves every effective SQL suite around the 
 test("CI-batch keeps every sealed suite and admits one complete local suite without an aggregate edit", async (t) => {
   const bootstrap = loadCiBatchBootstrap();
   const live = loadCiBatchManifest();
-  // #3643 Phase 3D folded twenty no-database lanes into the sealed bootstrap.
-  assert.equal(bootstrap.suites.length, 105);
+  // #3643 Phase 3D folded twenty no-database lanes and Phase 3E folded the
+  // forty-eight Postgres lanes into the sealed bootstrap.
+  assert.equal(bootstrap.suites.length, 153);
   // [TEST-MOD-APPROVED #3643] Preserve the sealed bootstrap as an exact prefix
   // without making valid local suites change this test.
   assert.deepEqual(live.suites.slice(0, bootstrap.suites.length), bootstrap.suites);

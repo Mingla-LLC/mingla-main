@@ -4,9 +4,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
+const read = (name) => name.startsWith(".github/workflows/")
+  ? readWorkflowSource(root, name)
+  : fs.readFileSync(path.join(root, name), "utf8");
 
 export function check(sources) {
   const failures = [];

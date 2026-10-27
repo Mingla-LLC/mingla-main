@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PATHS = Object.freeze({
@@ -24,7 +25,9 @@ const PATHS = Object.freeze({
   workflow: ".github/workflows/issue-2063-ari-brand-management.yml",
 });
 
-const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
+const read = (relative) => relative.startsWith(".github/workflows/")
+  ? readWorkflowSource(ROOT, relative)
+  : fs.readFileSync(path.join(ROOT, relative), "utf8");
 
 function requireText(failures, source, needle, label) {
   if (!source.includes(needle)) failures.push(label);

@@ -30,11 +30,24 @@ const files = {
     "supabase/functions/marketing-send/issue-1821-accepted-email-sms-invites.test.ts",
   privacy: "mingla-marketing/lib/privacyContent.ts",
   ciManifest: ".github/ci-batch/MANIFEST.json",
-  // Split the historical workflow stem so CI-batch provider discovery does
-  // not mistake this gate's input path for an external provider declaration.
-  workflow: [".github", "workflows", "issue-" + "1995-contact-book-blast.yml"]
-    .join("/"),
 };
+
+// [#3643] The historical #1995 workflow is folded. Resolve the one sealed
+// batch suite that now executes these checks: command text proves executable
+// wiring, while originPaths proves the migration still wakes the suite.
+function batchWiring(manifestSource) {
+  const manifest = JSON.parse(manifestSource);
+  const suites = (manifest.suites || []).filter((suite) =>
+    suite.id === "issue-1995-contact-book-blast"
+  );
+  if (suites.length !== 1 || suites[0].lifecycle !== "batched-historical") {
+    return { workflow: "", ciManifest: "" };
+  }
+  return {
+    workflow: suites[0].steps.map((step) => step.invocation?.argv?.[1] ?? "").join("\n"),
+    ciManifest: JSON.stringify(suites[0].originPaths || []),
+  };
+}
 
 const migrationPath = files.migration;
 const migrationName = path.basename(migrationPath);
@@ -127,16 +140,15 @@ function checkMigrationContract(
     );
   } else pass("migration-sha");
 
-  for (const [key, needle] of [
-    ["workflow-migration-reference", migrationPath],
-    ["ci-manifest-migration-reference", migrationPath],
-  ]) {
-    const sourceKey = key.startsWith("workflow") ? "workflow" : "ciManifest";
-    requireExactCount(key, sources[sourceKey], needle, 1);
-    requireAbsent(`${key}-superseded`, sources[sourceKey], [
-      supersededMigrationName,
-    ]);
-  }
+  requireExactCount(
+    "batch-origin-migration-reference",
+    sources.ciManifest,
+    migrationPath,
+    1,
+  );
+  requireAbsent("batch-origin-migration-reference-superseded", sources.ciManifest, [
+    supersededMigrationName,
+  ]);
 }
 
 function check(sources, migrationEntries, migrationSha) {
@@ -260,7 +272,7 @@ function check(sources, migrationEntries, migrationSha) {
     "ignore: true",
     "only: true",
   ]);
-  requireAll("workflow", sources.workflow, [
+  requireAll("batch-commands", sources.workflow, [
     "issue-2714-campaign-open-truth.mjs --self-test",
     "issue-2714-campaign-open-truth.mjs",
     "issue_2714_campaign_open_truth.happy.pg17.test.sql",
@@ -392,13 +404,26 @@ if (process.argv.includes("--self-test")) {
       !entry.startsWith(`${expectedPredecessorPrefix}_`)
     );
   });
-  for (const sourceKey of ["workflow", "ciManifest"]) {
+  for (const sourceKey of ["ciManifest"]) {
     proveMutation(`self-test-stale-${sourceKey}-reference`, (fixture) => {
       fixture.sources[sourceKey] = fixture.sources[sourceKey].replace(
         migrationName,
         supersededMigrationName,
       );
     });
+  }
+  const commandMutationBefore = failures;
+  const commandMutation = structuredClone(good);
+  commandMutation.workflow = commandMutation.workflow.replace(
+    "issue_2714_campaign_open_truth.happy.pg17.test.sql",
+    "removed_campaign_open_truth.happy.pg17.test.sql",
+  );
+  check(commandMutation, goodEntries, expectedMigrationSha);
+  if (failures === commandMutationBefore) {
+    fail("self-test-batch-command", "dropped batch SQL command was not rejected");
+  } else {
+    pass("self-test-batch-command");
+    failures = commandMutationBefore;
   }
   proveMutation("self-test-migration-sha", (fixture) => {
     fixture.sha = "0".repeat(64);
@@ -414,6 +439,13 @@ if (process.argv.includes("--self-test")) {
       fail("read", `${relative}: ${error.message}`);
       sources[key] = "";
     }
+  }
+  try {
+    Object.assign(sources, batchWiring(sources.ciManifest));
+  } catch (error) {
+    fail("batch-wiring", error.message);
+    sources.workflow = "";
+    sources.ciManifest = "";
   }
   const migrationDir = path.join(root, "supabase/migrations");
   let migrationEntries = [];

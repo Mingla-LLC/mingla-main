@@ -42,11 +42,24 @@ const files = {
   typecheck: "mingla-business/tsconfig.issue-1985.json",
   typecheckRunner:
     ".github/scripts/strict-grep/issue-1985-business-typecheck.mjs",
-  workflow: ".github/workflows/issue-1985-ari-task-state.yml",
+  ciManifest: ".github/ci-batch/MANIFEST.json",
 };
 const sources = Object.fromEntries(
   Object.entries(files).map(([key, file]) => [key, read(file)]),
 );
+// [#3643] The historical workflow is gone. The sealed Postgres batch suite is
+// now the executable CI provider, so wiring assertions read its exact template
+// replay plus command bodies. Manifest validation separately proves the suite's
+// originPaths preserve every historical trigger.
+const suite = JSON.parse(sources.ciManifest).suites?.filter(
+  (item) => item.id === "issue-1985-ari-task-state",
+) ?? [];
+sources.workflow = suite.length === 1 && suite[0].lifecycle === "batched-historical"
+  ? [
+    suite[0].templateReplay?.script ?? "",
+    ...suite[0].steps.map((step) => step.invocation?.argv?.[1] ?? ""),
+  ].join("\n")
+  : "";
 
 export function check(s) {
   const failures = [];
@@ -399,12 +412,12 @@ export function check(s) {
     ) ||
     s.workflow.split(
         "issue_1985_choice_payload_authority.tester_round3.pg17.test.sql",
-      ).length - 1 !== 3 ||
+      ).length - 1 !== 1 ||
     s.workflow.split(
         "issue_1985_message_role_authority.implementor.pg17.test.sql",
-      ).length - 1 !== 3
+      ).length - 1 !== 1
   ) {
-    failures.push("message-role PG17 tester/implementor workflow wiring incomplete");
+      failures.push("message-role PG17 tester/implementor batch wiring incomplete");
   }
   if (
     !s.choiceTest.includes(
@@ -556,39 +569,39 @@ export function check(s) {
     )
   ) {
     failures.push(
-      "#1985 workflow does not run the issue-scoped Business typecheck",
+      "#1985 batch suite does not run the issue-scoped Business typecheck",
     );
   }
   const tenantGuardPair =
     "node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs --self-test && node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs";
   if (!s.workflow.includes(tenantGuardPair)) {
-    failures.push("#1985 workflow does not run the #2013 self-test immediately before plain mode");
+    failures.push("#1985 batch suite does not run the #2013 self-test immediately before plain mode");
   }
   if (
-    s.workflow.split("issue_1985_message_delivery_identity.test.ts").length - 1 !== 3
+    s.workflow.split("issue_1985_message_delivery_identity.test.ts").length - 1 !== 1
   ) {
-    failures.push("#1985 workflow does not trigger on and run the delivery identity proof");
+    failures.push("#1985 batch suite does not run the delivery identity proof");
   }
   if (
-    s.workflow.split("issue_1985_active_conversation_persistence.test.ts").length - 1 !== 3
+    s.workflow.split("issue_1985_active_conversation_persistence.test.ts").length - 1 !== 1
   ) {
     failures.push(
-      "#1985 workflow does not trigger on and run the active conversation proof",
+      "#1985 batch suite does not run the active conversation proof",
     );
   }
   const reworkIntegrityWorkflowRefs =
     s.workflow.split("issue_1985_rework2_integrity.test.ts").length - 1;
-  if (reworkIntegrityWorkflowRefs !== 3) {
+  if (reworkIntegrityWorkflowRefs !== 1) {
     failures.push(
-      `#1985 workflow expected 3 rework-2 integrity references, found ${reworkIntegrityWorkflowRefs}`,
+      `#1985 batch suite expected 1 rework-2 integrity command reference, found ${reworkIntegrityWorkflowRefs}`,
     );
   }
   const implementorPgWorkflowRefs = s.workflow.split(
     "issue_1985_task_state_authority.implementor.pg17.test.sql",
   ).length - 1;
-  if (implementorPgWorkflowRefs !== 3) {
+  if (implementorPgWorkflowRefs !== 1) {
     failures.push(
-      `#1985 workflow expected 3 implementor PG17 references, found ${implementorPgWorkflowRefs}`,
+      `#1985 batch suite expected 1 implementor PG17 command reference, found ${implementorPgWorkflowRefs}`,
     );
   }
   for (const testPath of [
@@ -615,8 +628,8 @@ export function check(s) {
     // class, where a test reads as protection and is inert. Registered here so
     // the lane fails if it is ever unhooked again.
     "issue_3429_ari_attachment_boundaries.tester.adversarial.test.ts",
-  ]) if (s.workflow.split(testPath).length - 1 !== 3) {
-    failures.push(`#3429 workflow routing incomplete for ${testPath}`);
+  ]) if (s.workflow.split(testPath).length - 1 !== 1) {
+    failures.push(`#3429 batch routing incomplete for ${testPath}`);
   }
   const vaultUrlFixture = s.workflow.indexOf(
     "vault.create_secret('http://127.0.0.1:54321', 'supabase_url', 'CI fixture only')",
@@ -624,7 +637,10 @@ export function check(s) {
   const vaultKeyFixture = s.workflow.indexOf(
     "vault.create_secret('ci-service-role-fixture', 'service_role_key', 'CI fixture only')",
   );
-  const migrationReplay = s.workflow.indexOf('-f "$migration"', vaultKeyFixture);
+  const migrationReplay = s.workflow.indexOf(
+    "-f supabase/migrations/20270712003429_issue_3429_ari_chat_context.sql",
+    vaultKeyFixture,
+  );
   if (
     vaultUrlFixture < 0 || vaultKeyFixture < vaultUrlFixture ||
     migrationReplay < vaultKeyFixture

@@ -126,6 +126,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { copyWorkflowSource, readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 import { analyseLanes } from "./issue-2492-replay-skip-closure.mjs";
 
@@ -184,6 +185,9 @@ function fullCopyFixture(t, { editWorkflow, addMigration } = {}) {
   const workflowsDir = path.join(root, "workflows");
   const migrationsDir = path.join(root, "migrations");
   fs.cpSync(REAL_WORKFLOWS, workflowsDir, { recursive: true });
+  for (const name of ["issue-1931-private-event-access.yml", "issue-2117-offering-visibility-gate-tests.yml"]) {
+    if (!fs.existsSync(path.join(workflowsDir, name))) copyWorkflowSource(REPO_ROOT, `.github/workflows/${name}`, path.join(workflowsDir, name));
+  }
   fs.cpSync(REAL_MIGRATIONS, migrationsDir, { recursive: true });
 
   // Belt-and-braces containment. A fixture must never be able to reach a real
@@ -728,10 +732,7 @@ test("T-21 — branch census: every terminator in every real lane maps to a bran
   );
   assert.equal(lanes.length, 4);
   for (const lane of lanes) {
-    const yamlText = fs.readFileSync(
-      path.join(REAL_WORKFLOWS, lane.workflow),
-      "utf8",
-    );
+    const yamlText = readWorkflowSource(REPO_ROOT, `.github/workflows/${lane.workflow}`);
     const census = branchCensus(yamlText, lane);
     assert.notEqual(
       census,
@@ -985,7 +986,9 @@ test("T-27 — a SECOND filtered apply loop in the same workflow is discovered, 
 // coherent whole. [TEST-MOD-APPROVED #2723] This is additive; no prior tester
 // scenario or assertion is removed or relaxed.
 function assertIssue2723DependencyTopology(workflowsDir, migrationsDir) {
-  const filtered = fs.readFileSync(path.join(workflowsDir, LANE), "utf8");
+  const filtered = workflowsDir === REAL_WORKFLOWS
+    ? readWorkflowSource(REPO_ROOT, `.github/workflows/${LANE}`)
+    : fs.readFileSync(path.join(workflowsDir, LANE), "utf8");
   const canonical = fs.readFileSync(
     path.join(workflowsDir, CANONICAL_REPLAY),
     "utf8",

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 // MINGLA-INVARIANT: I-PROPOSED-3060-NONCUSTOMER-CLOSURE-EXACT-AND-NONSENDING | issue #3060 | Noncustomer attendance closure requires the exact proven order population and never contacts anyone or fabricates delivery.
 
@@ -163,7 +164,7 @@ export function violations(sources) {
 const sources = Object.fromEntries(
   Object.entries(files).map(([key, relative]) => [
     key,
-    fs.readFileSync(path.join(root, relative), "utf8"),
+    key === "workflow" ? readWorkflowSource(root, relative) : fs.readFileSync(path.join(root, relative), "utf8"),
   ]),
 );
 

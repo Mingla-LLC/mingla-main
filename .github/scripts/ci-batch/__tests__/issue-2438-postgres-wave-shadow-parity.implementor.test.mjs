@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { discoverLiveOrigins, discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, normalizeProviderReferenceFilesForSeal, PACKAGE_AUTHORITY_DIGESTS, providerDiscoveryAccounting, PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL, PROVIDERS_ADDED_SINCE_SEAL, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope, SUITES_ADDED_SINCE_SEAL, SUITES_FOLDED_SINCE_SEAL, PHASE3D_HOSTS,
+import { discoverLiveOrigins, discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, normalizeProviderReferenceFilesForSeal, PACKAGE_AUTHORITY_DIGESTS, providerDiscoveryAccounting, PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL, PROVIDERS_ADDED_SINCE_SEAL, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope, SUITES_ADDED_SINCE_SEAL, SUITES_FOLDED_SINCE_SEAL, SUITES_FOLDED_IN_POSTGRES_WAVE, PHASE3D_HOSTS, PHASE3E_HOSTS,
 } from "../validate-manifest-v2.mjs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
@@ -21,6 +21,11 @@ const ADDED_STEPS = SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.ste
 // commands and its declared host classes, never origins.
 const FOLDED_SUITES = SUITES_FOLDED_SINCE_SEAL.length;
 const FOLDED_STEPS = SUITES_FOLDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
+const POSTGRES_FOLDED_SUITES = SUITES_FOLDED_IN_POSTGRES_WAVE.length;
+const POSTGRES_FOLDED_STEPS = SUITES_FOLDED_IN_POSTGRES_WAVE.reduce((sum, item) => sum + item.steps, 0);
+const PHASE3E_PROVIDER_NAMES = new Set(
+  SUITES_FOLDED_IN_POSTGRES_WAVE.map((item) => `${item.suite}.yml`),
+);
 
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
@@ -143,9 +148,17 @@ const carriedWaveProviders = (root) => {
   for (const item of value.workflowProviders) {
     if (item.transition === "consolidated-provider") deleted.add(item.workflow);
   }
-  return value.workflowProviders.filter((item) => deleted.has(item.workflow))
+  const carried = value.workflowProviders.filter((item) => deleted.has(item.workflow))
     .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }))
     .sort((a, b) => a.workflow.localeCompare(b.workflow));
+  // Keep the carried side of the reconstruction byte-for-byte aligned with the
+  // production validator: reference-file deltas are normalized before the one
+  // frozen seal is recomputed. Without this, a carried provider that gained a
+  // reviewed reference after the seal hashes its post-delta bytes twice.
+  return normalizeProviderReferenceFilesForSeal(
+    carried,
+    PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL.filter((item) => deleted.has(item.workflow)),
+  );
 };
 // [TEST-MOD-APPROVED #2591] The reconstruction MIRRORS the validator, in the one
 // helper all four digest assertions go through. Providers declared in
@@ -155,7 +168,11 @@ const carriedWaveProviders = (root) => {
 // what keeps a drifted declaration red, and an UNDECLARED new provider is not
 // subtracted at all, so it still breaks the digest — which is the tripwire.
 const sealedDiscovery = (discovered) => {
-  const referenceNormalized = normalizeProviderReferenceFilesForSeal(discovered);
+  const referenceNormalized = normalizeProviderReferenceFilesForSeal(
+    discovered,
+    undefined,
+    { allowedMissingWorkflows: PHASE3E_PROVIDER_NAMES },
+  );
   const declared = new Map(PROVIDERS_ADDED_SINCE_SEAL
     .map((item) => [item.workflow, JSON.stringify([...item.referenceFiles])]));
   return referenceNormalized.filter((item) => declared.get(item.workflow) !== JSON.stringify(item.referenceFiles));
@@ -197,7 +214,13 @@ function createExactRootDiscoveryBundle(root, { workflowProviders: suppliedWorkf
 
 test("reviewed partial provider references preserve the frozen seal and fail closed", () => {
   const discovered = discoverWorkflowProviders(ROOT);
-  const declaration = PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL[0];
+  // Phase 3E legitimately deletes some providers whose reviewed reference
+  // delta predates the frozen seal. Exercise the first declared delta that is
+  // still discoverable, rather than assuming the first historical row survives
+  // every terminal wave.
+  const declaration = PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL.find((item) =>
+    discovered.some((provider) => provider.workflow === item.workflow));
+  assert.ok(declaration, "at least one reviewed provider reference delta must remain discoverable");
   assert.equal(digest(reconstructShadowAuthority(ROOT, discovered)), PROVIDER_DIGEST,
     "the reviewed reference addition must reconstruct the unchanged frozen seal");
 
@@ -205,7 +228,7 @@ test("reviewed partial provider references preserve the frozen seal and fail clo
   missing.find((item) => item.workflow === declaration.workflow).referenceFiles = missing
     .find((item) => item.workflow === declaration.workflow).referenceFiles
     .filter((item) => !declaration.referenceFiles.includes(item));
-  assert.throws(() => normalizeProviderReferenceFilesForSeal(missing), /delta is missing/,
+  assert.throws(() => normalizeProviderReferenceFilesForSeal(missing, [declaration]), /delta is missing/,
     "missing declared reference must be RED");
 
   const wrongWorkflow = [{ ...declaration, workflow: "issue-1485-web-missing-chunk-404-tests.yml" }];
@@ -230,7 +253,7 @@ function assertWave(value) {
   // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
   // validator subtracts from the frozen provider seal. Subject and strength unchanged;
   // the number simply stops being typed in a second place where it can disagree.
-  assert.equal(value.legacyOrigins.length, 200 + ADDED_SUITES); assert.equal(value.suites.length, 84 + ADDED_SUITES + FOLDED_SUITES); assert.equal(value.commandCapabilities.commands.length, 240 + ADDED_STEPS + FOLDED_STEPS); assert.equal(value.workflowProviders.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
+  assert.equal(value.legacyOrigins.length, 200 + ADDED_SUITES); assert.equal(value.suites.length, 84 + ADDED_SUITES + FOLDED_SUITES + POSTGRES_FOLDED_SUITES); assert.equal(value.commandCapabilities.commands.length, 240 + ADDED_STEPS + FOLDED_STEPS + POSTGRES_FOLDED_STEPS); assert.equal(value.workflowProviders.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   assert.equal(suites.length, 12); assert.equal(suites.flatMap((suite) => suite.steps).length, 36);
   // [TEST-MOD-APPROVED #2438 · SC-21] Terminal, and atomic on all three carriers of
   // the lifecycle: the suites, the wave header, and the legacy-origin dispositions.
@@ -276,7 +299,7 @@ function assertWave(value) {
   // the number simply stops being typed in a second place where it can disagree.
   assert.equal(retained.length + batched.length + consolidated.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   assert.equal(value.phase3bLeafCapabilities.leaves.length, 40); assert.equal(value.phase3bLeafCapabilities.currentExecutedLeaves, 40); assert.equal(value.phase3bLeafCapabilities.currentAbsentLeaves, 0);
-  assert.equal(new Set(suites.map((suite) => suite.executionClass)).size, 9); assert.equal(new Set(suites.map((suite) => suite.hostClass)).size, 9); assert.equal(value.classes.length, 14 + PHASE3D_HOSTS.length); assert.equal(value.executionClasses.length, 29 + PHASE3D_HOSTS.length);
+  assert.equal(new Set(suites.map((suite) => suite.executionClass)).size, 9); assert.equal(new Set(suites.map((suite) => suite.hostClass)).size, 9); assert.equal(value.classes.length, 14 + PHASE3D_HOSTS.length + PHASE3E_HOSTS.length); assert.equal(value.executionClasses.length, 29 + PHASE3D_HOSTS.length + PHASE3E_HOSTS.length);
   assert.equal(digest(value.commandCapabilities.commands.slice(0,51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
   assert.equal(digest(value.commandCapabilities.commands.slice(51,158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
   assert.equal(digest(value.commandCapabilities.commands.slice(158, 194)), "df9f09e2454fa05f7d74ae96517657a8582aff4c3ad742c6f2ab657cef179bc1");
@@ -863,14 +886,9 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     fs.cpSync(path.join(ROOT, ".github/ci-batch"), path.join(temp, ".github/ci-batch"), { recursive: true });
     overlayPackageAuthorities(temp);
     overlayCiDiscoveryDeclarations(temp);
-    // [TEST-MOD-APPROVED #3176] The prior reconstruction was correct while every
-    // workflow byte named by the overlaid registry also lived at HEAD. Current
-    // main changed #2333's replay inventory and its derived sourceSha256 together;
-    // overlay that one merge-touched workflow as part of the same authority. The
-    // removal mutant below proves this is not an exemption: restoring the prior
-    // workflow bytes must still fail closed against the current registry.
-    const onlinePublishWorkflow = ".github/workflows/issue-2333-online-event-publish.yml";
-    fs.copyFileSync(path.join(ROOT, onlinePublishWorkflow), path.join(temp, onlinePublishWorkflow));
+    // Phase 3E owns the former #2333 workflow, so its wrapper is intentionally
+    // absent from this terminal clone. Property-vs-bytes coverage for the live
+    // workflow set remains in the dedicated workflow-properties contract.
     // [TEST-MOD-APPROVED #3872] The discount checkout migration extends two
     // filtered replay inventories and re-seals their exact workflow bytes. The
     // terminal-clone proof overlays those reviewed workflow changes alongside
@@ -882,7 +900,13 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
       "issue-2117-offering-visibility-gate-tests.yml",
     ]) {
       const workflow = path.join(".github", "workflows", filename);
-      fs.copyFileSync(path.join(ROOT, workflow), path.join(temp, workflow));
+      // Phase 3E owns these former wrappers; they are intentionally absent from
+      // the terminal clone. Keep the overlay for a shadow-era checkout when a
+      // sibling branch still carries them, but never resurrect a deleted
+      // provider just to exercise this terminal-state contract.
+      if (fs.existsSync(path.join(ROOT, workflow))) {
+        fs.copyFileSync(path.join(ROOT, workflow), path.join(temp, workflow));
+      }
     }
     const terminal = effectiveManifest(temp);
     const writeManifest = (value) => fs.writeFileSync(path.join(temp, ".github/ci-batch/MANIFEST.json"), `${JSON.stringify(value, null, 2)}\n`);
@@ -892,29 +916,6 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     //    state; it must PASS and must reach a clean verdict rather than throwing.
     for (const name of wrapperNames) assert.equal(fs.existsSync(wrapperPath(name)), false, `${name} must be absent`);
     assert.deepEqual(validateRegistry(terminal, { root: temp }), [], "terminal state must validate clean");
-    const onlinePublishSource = fs.readFileSync(path.join(temp, onlinePublishWorkflow), "utf8");
-    const currentMainReplayStep = [
-      "          # Issue #3288 re-emits `business_publish_event_draft` (an absent gallery key",
-      "          # keeps the stored photos) and owns its final definition on a full replay,",
-      "          # so the re-apply set must end with it, per the instruction above.",
-      "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\",
-      "            -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql",
-      "",
-    ].join("\n");
-    assert.equal(onlinePublishSource.split(currentMainReplayStep).length, 2,
-      "the merge-touched #3288 replay step must have one exact current-main owner");
-    // [#3643 Wave 4] A live workflow is registered by its properties, not its
-    // bytes: dropping the #3288 replay STEP is a step-body edit and needs no
-    // registry change. Renaming one of its jobs is a property edit and stays RED.
-    fs.writeFileSync(path.join(temp, onlinePublishWorkflow), onlinePublishSource.replace(currentMainReplayStep, ""));
-    assert.deepEqual(validateRegistry(terminal, { root: temp }), [],
-      "a step-body edit to a live workflow must not need a registry change");
-    fs.writeFileSync(path.join(temp, onlinePublishWorkflow), onlinePublishSource.replace(/^  issue-2333-client-contract:$/m, "  issue-2333-client-contract-renamed:"));
-    assert.match(validateRegistry(terminal, { root: temp }).join("\n"),
-      /issue-2333-online-event-publish\.yml: runtime\/setup\/trust\/trigger inventory drifted/,
-      "a job-key change to the #2333 workflow while retaining its registry authority must be RED");
-    fs.writeFileSync(path.join(temp, onlinePublishWorkflow), onlinePublishSource);
-    assert.deepEqual(validateRegistry(terminal, { root: temp }), [], "restoring the current workflow must restore PASS");
     for (const relative of GUARDS) assert.equal(guard(relative), 0, `${relative} must pass at terminal`);
     siblingIsIntact();
 

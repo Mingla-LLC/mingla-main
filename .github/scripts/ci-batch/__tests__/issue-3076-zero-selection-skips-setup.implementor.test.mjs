@@ -220,7 +220,7 @@ test("#3076-5 exactly the paid-for setup steps are gated, on an explicit false a
   // Nothing else in the job reads the routing decision.
   const gated = batchSteps().filter((step) =>
     step.condition.includes(PRIMARY_OUTPUT) || step.condition.includes(PHASE3C_OUTPUT));
-  assert.equal(gated.length, 5, "exactly the three setup steps and the two Phase 3D Deno selectors may be gated on the routing decision");
+  assert.equal(gated.length, 9, "exactly the shared setup steps and the five primary runtime selectors may be gated on the routing decision");
 
   // Polarity, stated as an assertion rather than left to review: no gate may be
   // written as a positive test, which would skip on a MISSING signal.

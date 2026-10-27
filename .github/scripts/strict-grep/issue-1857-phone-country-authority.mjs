@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 // MINGLA-INVARIANT: I-PROPOSED-PHONE-COUNTRY-AUTHORITY-1 | issue #1857 | National phone input enters identity matching only through explicit handset-country evidence and canonical conversion.
 
@@ -114,7 +115,7 @@ export function violations(files) {
 function readFiles() {
   return Object.fromEntries(Object.entries(PATHS).map(([key, relative]) => [
     key,
-    fs.readFileSync(path.join(ROOT, relative), "utf8"),
+    key === "workflow" ? readWorkflowSource(ROOT, relative) : fs.readFileSync(path.join(ROOT, relative), "utf8"),
   ]));
 }
 

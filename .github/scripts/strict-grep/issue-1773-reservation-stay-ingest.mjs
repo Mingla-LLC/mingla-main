@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 // MINGLA-INVARIANT: I-PROPOSED-PERSON-SUPPRESSION-1 | issue #1773 | Reservation and confirmed-stay identity sources preserve pre-existing suppression across every linked contact method.
 // MINGLA-INVARIANT: I-PROPOSED-SOURCE-FAILOPEN-1 | issue #1773 | Reservation and confirmed-stay source writes remain authoritative when asynchronous Brand People ingestion is unavailable.
@@ -104,7 +105,9 @@ export function inspect(source) {
 }
 
 function readSources() {
-  const source = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, fs.readFileSync(path.join(root, file), "utf8")]));
+  const source = Object.fromEntries(Object.entries(files).map(([key, file]) => [key,
+    key === "workflow" ? readWorkflowSource(root, file) : fs.readFileSync(path.join(root, file), "utf8")
+  ]));
   const adapterPath = path.join(root, files.adapter);
   source.adapterKind = fs.lstatSync(adapterPath).isFile() && !fs.lstatSync(adapterPath).isSymbolicLink() ? "regular" : "other";
   source.legacyJsExists = fs.existsSync(path.join(root, "packages/card-identity/phone.js"));

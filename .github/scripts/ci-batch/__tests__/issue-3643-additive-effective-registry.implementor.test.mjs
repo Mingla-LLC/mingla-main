@@ -153,12 +153,12 @@ test("a synthetic additive suite passes the full production loader, validator, r
 
   const views = trustedRegistryViews(manifest);
   assert.ok(views);
-  // [#3643] Phase 3D folded 20 suites / 93 commands into the bootstrap; it adds
-  // no origin, so legacyOrigins stays 201.
-  assert.equal(views.rawBootstrap.suites.length, 105);
-  assert.equal(views.patchedBootstrap.suites.length, 105);
-  assert.equal(views.rawBootstrap.commandCapabilities.commands.length, 334);
-  assert.equal(views.patchedBootstrap.commandCapabilities.commands.length, 334);
+  // [#3643] Phase 3D plus the first Phase 3E PostgreSQL wave are sealed into
+  // the bootstrap; folding origins changes no legacy-origin count.
+  assert.equal(views.rawBootstrap.suites.length, 153);
+  assert.equal(views.patchedBootstrap.suites.length, 153);
+  assert.equal(views.rawBootstrap.commandCapabilities.commands.length, 742);
+  assert.equal(views.patchedBootstrap.commandCapabilities.commands.length, 742);
   assert.equal(views.patchedBootstrap.legacyOrigins.length, 201);
   // [TEST-MOD-APPROVED #3682] Effective totals derive from the sealed
   // projection plus every trusted local descriptor, including this fixture.

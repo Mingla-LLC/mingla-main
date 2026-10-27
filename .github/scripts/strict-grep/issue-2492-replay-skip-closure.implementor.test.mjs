@@ -56,6 +56,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { copyWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 import { analyseLanes, parseMigration } from "./issue-2492-replay-skip-closure.mjs";
 
@@ -116,6 +117,9 @@ function fullCopyFixture(t, { editWorkflow, addMigration } = {}) {
   const workflowsDir = path.join(root, "workflows");
   const migrationsDir = path.join(root, "migrations");
   fs.cpSync(REAL_WORKFLOWS, workflowsDir, { recursive: true });
+  for (const name of ["issue-1931-private-event-access.yml", "issue-2117-offering-visibility-gate-tests.yml"]) {
+    if (!fs.existsSync(path.join(workflowsDir, name))) copyWorkflowSource(REPO_ROOT, `.github/workflows/${name}`, path.join(workflowsDir, name));
+  }
   fs.cpSync(REAL_MIGRATIONS, migrationsDir, { recursive: true });
 
   // Belt-and-braces containment. A fixture must never be able to reach a real
@@ -569,6 +573,9 @@ test("T-25 — a real closure break hidden behind a two-line branch is now named
   const workflowsDir = path.join(root, "workflows");
   const migrationsDir = path.join(root, "migrations");
   fs.cpSync(REAL_WORKFLOWS, workflowsDir, { recursive: true });
+  for (const name of ["issue-1931-private-event-access.yml", "issue-2117-offering-visibility-gate-tests.yml"]) {
+    if (!fs.existsSync(path.join(workflowsDir, name))) copyWorkflowSource(REPO_ROOT, `.github/workflows/${name}`, path.join(workflowsDir, name));
+  }
   fs.cpSync(REAL_MIGRATIONS, migrationsDir, { recursive: true });
   assert.ok(
     !path.resolve(workflowsDir).startsWith(REPO_ROOT + path.sep) &&

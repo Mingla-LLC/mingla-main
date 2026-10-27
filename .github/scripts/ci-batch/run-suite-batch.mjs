@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { decodeManifestTextRepresentations, isMigratedSuite, isPrimarySuite, suiteCommandFingerprint, suiteOriginPatterns } from "./validate-manifest-v2.mjs";
 import { changedPathDigest, deriveChangedPaths, pathMatches, validateDecision } from "./select-phase3b-suites.mjs";
 import { loadEffectiveManifest } from "./load-manifest.mjs";
+import { POSTGRES_CHILD_ENV_NAMES, POSTGRES_WAVE, isPostgresBatchSuite, postgresEvidencePath } from "./postgres-batch-contract.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, "../../..");
@@ -48,7 +49,9 @@ const PHASE3D_WAVE = "phase3d-fold-wave";
  * any step failed. A timed-out step still ends the suite, because the deadline
  * is the suite's.
  */
-export function continuesAfterFailedStep(suite) { return suite?.migrationWave === PHASE3D_WAVE && isPrimarySuite(suite); }
+export function continuesAfterFailedStep(suite) {
+  return [PHASE3D_WAVE, POSTGRES_WAVE].includes(suite?.migrationWave) && isPrimarySuite(suite);
+}
 
 // [#2439] Lane routing is DERIVED from the registry, never from a wave name.
 // A migrated suite is one the registry gives its own executionClass; it runs in
@@ -755,7 +758,8 @@ function signalProcessGroup(child, signal) {
 
 const SECRET_NAME = /(?:secret|token|password|passwd|credential|private|api[_-]?key|auth|cookie|webhook)/i;
 
-export function minimalChildEnvironment(requested = {}, home, { allowNodePath = false, allowReviewedEnv = false, reviewedEnvNames = PHASE3C_AUTHORISED_ENV_NAMES } = {}) {
+export function minimalChildEnvironment(requested = {}, home, { allowNodePath = false, allowReviewedEnv = false,
+  reviewedEnvNames = PHASE3C_AUTHORISED_ENV_NAMES, pathPrefix = null } = {}) {
   for (const name of Object.keys(requested)) {
     const reviewedEnv = allowReviewedEnv && reviewedEnvNames.has(name) && typeof requested[name] === "string"
       && !/\$\{\{|\$\(|`|secrets\./.test(requested[name]);
@@ -768,7 +772,7 @@ export function minimalChildEnvironment(requested = {}, home, { allowNodePath = 
   fs.mkdirSync(temporaryDirectory, { recursive: true });
   fs.mkdirSync(cacheDirectory, { recursive: true });
   return {
-    PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
+    PATH: pathPrefix ? `${pathPrefix}:${process.env.PATH || "/usr/local/bin:/usr/bin:/bin"}` : process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
     HOME: temporaryHome,
     TMPDIR: temporaryDirectory,
     XDG_CACHE_HOME: path.join(temporaryHome, ".cache"),
@@ -840,7 +844,7 @@ function pipeRedacted(stream, destination, env) {
 }
 
 export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 2_000, spawnImpl = spawn, allowNodePath = false, allowReviewedEnv = false,
-  reviewedEnvNames = PHASE3C_AUTHORISED_ENV_NAMES, stdout = process.stdout, stderr = process.stderr, home } = {}) {
+  reviewedEnvNames = PHASE3C_AUTHORISED_ENV_NAMES, pathPrefix = null, stdout = process.stdout, stderr = process.stderr, home } = {}) {
   return new Promise((resolve) => {
     let settled = false;
     let timedOut = false;
@@ -849,7 +853,7 @@ export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 
     const ownsHome = !home;
     const temporaryHome = home || fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
     let childEnv;
-    try { childEnv = minimalChildEnvironment(env, temporaryHome, { allowNodePath, allowReviewedEnv, reviewedEnvNames }); }
+    try { childEnv = minimalChildEnvironment(env, temporaryHome, { allowNodePath, allowReviewedEnv, reviewedEnvNames, pathPrefix }); }
     catch (error) { if (ownsHome) fs.rmSync(temporaryHome, { recursive: true, force: true }); resolve({ ok: false, code: 2, timedOut: false, reason: redactText(error.message) }); return; }
     const supervised = spawnImpl === spawn;
     const actual = supervised
@@ -935,9 +939,47 @@ export function evaluateTypedPredicate(child, workspaceRoot, leafCwd) {
   return { ok: false, reason: `${child.id}: unsupported leaf predicate ${kind}` };
 }
 
+function postgresSuiteRuntime(suite, evidence, home) {
+  if (!isPostgresBatchSuite(suite)) return null;
+  const database = evidence?.databases?.[suite.id];
+  const expectedIds = evidence?.selectedSuiteIds || [];
+  if (evidence?.schemaVersion !== 1 || evidence.class !== suite.class || evidence.replayExecutions !== 1
+      || !expectedIds.includes(suite.id) || database !== suite.databaseName
+      || !Number.isInteger(evidence.port) || !process.env.PG_BATCH_PASSWORD) {
+    throw new Error(`${suite.id}: PostgreSQL setup evidence is missing, stale, or does not own this suite database`);
+  }
+  const realPsql = execFileSync("sh", ["-c", "command -v psql"], { encoding: "utf8" }).trim();
+  if (!realPsql) throw new Error("psql is unavailable for a PostgreSQL batch suite");
+  const bin = path.join(home, "ci-batch-bin");
+  fs.mkdirSync(bin, { recursive: true });
+  const wrapper = path.join(bin, "psql");
+  // Commands stay byte-for-byte identical to their origin workflows. This
+  // narrow adapter changes only the database named `postgres` to the database
+  // the one-replay setup cloned for this suite. Explicit non-template database
+  // names pass through untouched.
+  const additional = evidence.additionalDatabases?.[suite.id] || {};
+  const portAliases = Object.fromEntries(Object.entries(suite.portDatabaseAliases || {}).map(([port, alias]) => {
+    const mapped = additional[alias];
+    if (!mapped || mapped !== suite.additionalDatabases?.[alias]) throw new Error(`${suite.id}: PostgreSQL alias ${port} -> ${alias} is missing from setup evidence`);
+    return [port, mapped];
+  }));
+  const aliasCases = Object.entries(portAliases).map(([port, mapped]) => `    ${JSON.stringify(port)}) target_db=${JSON.stringify(mapped)} ;;`).join("\n");
+  fs.writeFileSync(wrapper, `#!/usr/bin/env bash\nset -euo pipefail\nreal=${JSON.stringify(realPsql)}\nprimary_db=${JSON.stringify(database)}\nactual_port=${JSON.stringify(String(evidence.port))}\ntarget_db="$primary_db"\nnext_port=0\nfor arg in "$@"; do\n  if [ "$next_port" = 1 ]; then\n    case "$arg" in\n${aliasCases}\n    esac\n    next_port=0\n  elif [ "$arg" = -p ] || [ "$arg" = --port ]; then\n    next_port=1\n  else\n    case "$arg" in\n${Object.entries(portAliases).map(([port, mapped]) => `      --port=${port}) target_db=${JSON.stringify(mapped)} ;;`).join("\n")}\n    esac\n  fi\ndone\nout=()\nnext_db=0\nnext_port=0\nfor arg in "$@"; do\n  if [ "$next_db" = 1 ]; then\n    [ "$arg" = postgres ] && arg="$target_db"\n    next_db=0\n  elif [ "$next_port" = 1 ]; then\n    case "$arg" in\n${Object.keys(portAliases).map((port) => `      ${JSON.stringify(port)}) arg="$actual_port" ;;`).join("\n")}\n    esac\n    next_port=0\n  elif [ "$arg" = -d ] || [ "$arg" = --dbname ]; then\n    next_db=1\n  elif [ "$arg" = -p ] || [ "$arg" = --port ]; then\n    next_port=1\n  elif [ "$arg" = --dbname=postgres ]; then\n    arg="--dbname=$target_db"\n  else\n    case "$arg" in\n${Object.keys(portAliases).map((port) => `      --port=${port}) arg="--port=$actual_port" ;;`).join("\n")}\n    esac\n  fi\n  out+=("$arg")\ndone\nexec "$real" "\${out[@]}"\n`, { mode: 0o700, flag: "wx" });
+  return {
+    env: {
+      PGHOST: "127.0.0.1",
+      PGPORT: String(evidence.port),
+      PGUSER: "postgres",
+      PGDATABASE: database,
+      PGPASSWORD: process.env.PG_BATCH_PASSWORD,
+    },
+    pathPrefix: bin,
+  };
+}
+
 export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFactory = createIsolatedWorkspace,
   execute = runInvocation, now = Date.now, graceMs = 2_000, commandCapabilities,
-  leafCapabilities,
+  leafCapabilities, postgresEvidence = null,
   removeHome = (home) => fs.rmSync(home, { recursive: true, force: true }) } = {}) {
   const started = now();
   let workspace;
@@ -954,6 +996,7 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
   try {
     workspace = workspaceFactory({ root, profile, suite });
     suiteHome = fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
+    const postgresRuntime = postgresSuiteRuntime(suite, postgresEvidence, suiteHome);
     for (const expectedFile of suite.expectedFiles || []) {
       if (!fs.statSync(path.join(workspace.root, expectedFile), { throwIfNoEntry: false })?.isFile()) {
         status = "missing"; code = 2; reason = `expected file missing: ${expectedFile}`; break;
@@ -1053,10 +1096,13 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
         if (outerFailed) continue;
       } else {
         const continues = continuesAfterFailedStep(suite);
-        const result = await execute(invocation, { cwd, env: step.env, timeoutMs: remaining, graceMs, home: suiteHome,
+        const runtimeEnv = postgresRuntime ? { ...postgresRuntime.env, ...(step.env || {}) } : step.env;
+        const result = await execute(invocation, { cwd, env: runtimeEnv, timeoutMs: remaining, graceMs, home: suiteHome,
           // [#3643] Only a Phase 3D step whose registry record DECLARES env may
           // receive it; the validator pins which steps and which literals.
-          ...(continues && step.env ? { allowReviewedEnv: true, reviewedEnvNames: PHASE3D_AUTHORISED_ENV_NAMES } : {}) });
+          ...(postgresRuntime ? { allowReviewedEnv: true, reviewedEnvNames: new Set([...POSTGRES_CHILD_ENV_NAMES, ...PHASE3D_AUTHORISED_ENV_NAMES]),
+            pathPrefix: postgresRuntime.pathPrefix }
+            : continues && step.env ? { allowReviewedEnv: true, reviewedEnvNames: PHASE3D_AUTHORISED_ENV_NAMES } : {}) });
         executed += 1;
         if (!result.ok) {
           if (!continues) { status = result.timedOut ? "timed-out" : "failed"; code = result.code; reason = result.reason || `step failed: ${step.name}`; break; }
@@ -1408,15 +1454,25 @@ async function main() {
   const suites = selection.suites;
   const started = Date.now();
   let evidence;
+  let postgresEvidence = null;
   let results;
   try {
     const evidencePath = setupEvidencePath(manifest, klass);
     if (!fs.statSync(evidencePath, { throwIfNoEntry: false })?.isFile()) throw new Error(`setup evidence missing for ${klass}`);
     evidence = JSON.parse(fs.readFileSync(evidencePath, "utf8"));
     const { profile } = validateSetupEvidence(manifest, klass, evidence);
+    if (suites.some(isPostgresBatchSuite)) {
+      const databaseEvidencePath = postgresEvidencePath(klass);
+      if (!fs.statSync(databaseEvidencePath, { throwIfNoEntry: false })?.isFile()) throw new Error(`PostgreSQL setup evidence missing for ${klass}`);
+      postgresEvidence = JSON.parse(fs.readFileSync(databaseEvidencePath, "utf8"));
+      if (JSON.stringify(postgresEvidence.selectedSuiteIds) !== JSON.stringify(suites.map((suite) => suite.id))) {
+        throw new Error(`PostgreSQL setup evidence selection does not equal the routed suite selection for ${klass}`);
+      }
+    }
     results = await runSuitesV2(suites, { profile, commandCapabilities: manifest.commandCapabilities, leafCapabilities: manifest.phase3bLeafCapabilities,
-      graceMs: manifest.runnerContract.timeoutGraceSeconds * 1_000 });
+      postgresEvidence, graceMs: manifest.runnerContract.timeoutGraceSeconds * 1_000 });
     fs.rmSync(evidencePath, { force: true });
+    if (postgresEvidence) fs.rmSync(postgresEvidencePath(klass), { force: true });
   } catch (error) {
     results = suites.map((suite) => ({ id: suite.id, setupProfile: suite.setupProfile, commandFingerprint: commandFingerprint(suite),
       status: "missing", ok: false, code: 2, reason: error.message, durationMs: 0, seconds: 0,
@@ -1428,6 +1484,15 @@ async function main() {
   // ROUTED set — `buildShardReport` already received `suites`, which is now the
   // selection — and the reconciler re-derives that selection independently.
   report.routing = routingReport(context, selection);
+  if (postgresEvidence) report.postgres = {
+    replayExecutions: postgresEvidence.replayExecutions,
+    migrationFiles: postgresEvidence.migrationFiles,
+    replayDurationMs: postgresEvidence.replayDurationMs,
+    selectedSuiteIds: postgresEvidence.selectedSuiteIds,
+    databases: postgresEvidence.databases,
+    templateFingerprint: postgresEvidence.templateFingerprint,
+    templateCounts: postgresEvidence.templateCounts,
+  };
   // [#2882 §12 layer 2] Tier 2 is where an originPaths blind spot becomes
   // visible: everything ran, so a failure here that PR-time routing would have
   // skipped names its own gap. Annotation only — the suite failure already

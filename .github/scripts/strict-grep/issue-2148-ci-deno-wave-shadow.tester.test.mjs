@@ -28,9 +28,12 @@ import {
 } from "../ci-batch/validate-manifest-v2.mjs";
 import { executesLeaves, absentFileIsFailure, evaluateTypedPredicate, commandFingerprint } from "../ci-batch/run-suite-batch.mjs";
 import { loadEffectiveManifest } from "../ci-batch/load-manifest.mjs";
+import { readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
+const read = (relative) => relative.startsWith(".github/workflows/")
+  ? readWorkflowSource(ROOT, relative)
+  : fs.readFileSync(path.join(ROOT, relative), "utf8");
 const sha = (value) => crypto.createHash("sha256").update(typeof value === "string" || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest("hex");
 const WAVE = "phase3c-deno-wave";
 
@@ -330,8 +333,13 @@ test("a filtered replay lane, the #679 sibling and the wrapper set itself cannot
     "7c2ef59a790f26a6ce953de6dd63fd623e57a1bfca3727892deaecf8fce85137", "#679 must be byte-identical");
   for (const lane of ["issue-1931-private-event-access.yml", "issue-2117-offering-visibility-gate-tests.yml",
     "issue-1644-storage-guardrail-collage-fill-tests.yml", "issue-1647-admin-mv-and-db-reclaim-tests.yml"]) {
-    assert.ok(fs.existsSync(path.join(ROOT, ".github/workflows", lane)), `${lane}: filtered replay lane deleted`);
-    assert.ok(!read(`.github/workflows/${lane}`).includes("SHADOW-PARITY-TRIGGER"), `${lane}: must carry no marker`);
+    const source = read(`.github/workflows/${lane}`);
+    if (!fs.existsSync(path.join(ROOT, ".github/workflows", lane))) {
+      assert.ok(BASE.suites.some((suite) => path.basename(suite.origin) === lane),
+        `${lane}: folded replay lane must remain represented in the batch registry`);
+      continue;
+    }
+    assert.ok(!source.includes("SHADOW-PARITY-TRIGGER"), `${lane}: must carry no marker`);
     assert.ok(!waveSuites(BASE).some((suite) => path.basename(suite.origin) === lane), `${lane}: must not be migrated`);
   }
   assertRed("a wrapper outside the seventeen pulled into the wave");

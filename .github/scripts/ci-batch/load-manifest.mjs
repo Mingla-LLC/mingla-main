@@ -30,8 +30,13 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3643 Wave 4: re-sealed after the 88 live workflow rows dropped their byte
 // fingerprint (sourceSha256) and gained their per-job timeouts; the validator
 // now checks those rows by property.
+// #3643 Phase 3E: re-sealed after PostgreSQL workflows moved behind the one
+// replay / one template-copy-per-suite execution class; Wave 1 also widens
+// #2269 routing to the two retained #871 assertions it executes and makes every
+// Phase 3E suite watch the shared PostgreSQL setup/contract it depends on.
 // The four sourceSha256-only patches are deleted and that patch op is refused.
-export const BOOTSTRAP_SHA256 = "aff419dda6ead6a71967b74e82a81ddc21f0bbb03e6ca4b0c7529e61fc7f9083";
+// [TEST-MOD-APPROVED #3643] Re-sealed once for the terminal 48-suite Phase 3E fold.
+export const BOOTSTRAP_SHA256 = "31aa5f05f733d06276c7b58aebf4e228e876eaefb6baa33bc4dee25d69dda789";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

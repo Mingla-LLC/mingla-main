@@ -22,7 +22,8 @@
 //   P1 every on-disk strict-grep .mjs appears exactly once in gates[]
 //   P2 every file-kind gates[] entry exists on disk
 //   P3 strict-grep .mjs entry count === expectedStrictGrepMjsFiles === actual on disk
-//   P4 every external:<wf> gate is actually invoked in <wf>   (YAML-parsed, never grep)
+//   P4 every external:<wf> gate is actually invoked in <wf> (or its folded CI-batch suite)
+//      (YAML-parsed, never grep)
 //   P5 every batch:X gate is in run-batch.mjs's expected set for class X
 //   P6 selfTest field matches source reality (source has --self-test => never "none")
 //   P7 exact truth: count(selfTest === "wired") === selfTestWiredFloor
@@ -75,6 +76,30 @@ export function walkMjsUnder(dir, relPrefix, base = "") {
 
 export function walkMjs(dir, base = "") {
   return walkMjsUnder(dir, SG_REL, base);
+}
+
+function observedBatchModes(gate, suite, capabilities, failures, prefix) {
+  const observedModes = new Set();
+  for (const [index, step] of (suite.steps ?? []).entries()) {
+    const capability = capabilities.filter((item) => item.id === step.commandId);
+    const invocation = step.invocation;
+    const capabilityExact = capability.length === 1 && capability[0].suiteId === suite.id
+      && capability[0].stepIndex === index && capability[0].cwd === (step.cwd || ".")
+      && capability[0].executable === invocation?.command
+      && JSON.stringify(capability[0].argv) === JSON.stringify(invocation?.argv);
+    if (!capabilityExact) {
+      failures.push(`${prefix}: ${suite.id} step ${index} lacks its exact registered command capability.`);
+      continue;
+    }
+    const source = stripComments(invocation?.argv?.[1] ?? step.run ?? "").replace(/\\\s*\n/g, " ");
+    for (const command of source.split(/\n|&&|\|\||;/)) {
+      const tokens = command.trim().split(/\s+/).filter(Boolean);
+      const position = tokens.indexOf(gate.script);
+      if (position === -1) continue;
+      observedModes.add(tokens.includes("--self-test") ? "self-test" : "plain");
+    }
+  }
+  return observedModes;
 }
 
 /**
@@ -155,12 +180,24 @@ export function runChecks({ manifest, diskFiles, readSource, fileExists, workflo
     );
   }
 
+  const batchSuites = ciBatchManifest?.suites ?? [];
+  const batchCapabilities = ciBatchManifest?.commandCapabilities?.commands ?? [];
+
   // P4 — external gates are still invoked where the manifest says they are.
   for (const g of gates) {
     if (!g.enforcement?.startsWith("external:")) continue;
     const wf = g.enforcement.slice("external:".length);
     const invoked = workflowInvocations[wf];
-    if (!invoked) {
+    const foldedSuiteId = wf.replace(/\.ya?ml$/, "");
+    const foldedSuite = batchSuites.find((suite) => suite.id === foldedSuiteId);
+    if (!invoked && foldedSuite) {
+      const observedModes = observedBatchModes(g, foldedSuite, batchCapabilities, failures, "P4");
+      for (const mode of g.modes ?? []) {
+        if (!observedModes.has(mode)) {
+          failures.push(`P4: folded ${foldedSuiteId} does not execute "${g.script}" in declared ${mode} mode.`);
+        }
+      }
+    } else if (!invoked) {
       failures.push(`P4: "${g.script}" claims external:${wf} but that workflow was not found/parsed.`);
     } else if (!invoked.has(g.script)) {
       failures.push(
@@ -173,8 +210,6 @@ export function runChecks({ manifest, diskFiles, readSource, fileExists, workflo
   // P4b — terminal Phase 3 providers are typed suites, not deleted wrapper files.
   // A gate may claim ci-batch:<suite-id> only when that exact terminal suite and
   // its immutable command capability execute every declared mode.
-  const batchSuites = ciBatchManifest?.suites ?? [];
-  const batchCapabilities = ciBatchManifest?.commandCapabilities?.commands ?? [];
   for (const g of gates) {
     if (!g.enforcement?.startsWith("ci-batch:")) continue;
     const suiteId = g.enforcement.slice("ci-batch:".length);
@@ -188,26 +223,7 @@ export function runChecks({ manifest, diskFiles, readSource, fileExists, workflo
       failures.push(`P4b: "${g.script}" names ${suiteId}, but its lifecycle is not terminal batched-historical.`);
       continue;
     }
-    const observedModes = new Set();
-    for (const [index, step] of (suite.steps ?? []).entries()) {
-      const capability = batchCapabilities.filter((item) => item.id === step.commandId);
-      const invocation = step.invocation;
-      const capabilityExact = capability.length === 1 && capability[0].suiteId === suite.id
-        && capability[0].stepIndex === index && capability[0].cwd === (step.cwd || ".")
-        && capability[0].executable === invocation?.command
-        && JSON.stringify(capability[0].argv) === JSON.stringify(invocation?.argv);
-      if (!capabilityExact) {
-        failures.push(`P4b: ${suiteId} step ${index} lacks its exact registered command capability.`);
-        continue;
-      }
-      const source = stripComments(invocation?.argv?.[1] ?? step.run ?? "").replace(/\\\s*\n/g, " ");
-      for (const command of source.split(/\n|&&|\|\||;/)) {
-        const tokens = command.trim().split(/\s+/).filter(Boolean);
-        const position = tokens.indexOf(g.script);
-        if (position === -1) continue;
-        observedModes.add(tokens.includes("--self-test") ? "self-test" : "plain");
-      }
-    }
+    const observedModes = observedBatchModes(g, suite, batchCapabilities, failures, "P4b");
     for (const mode of g.modes ?? []) {
       if (!observedModes.has(mode)) failures.push(`P4b: ${suiteId} does not execute "${g.script}" in declared ${mode} mode.`);
     }

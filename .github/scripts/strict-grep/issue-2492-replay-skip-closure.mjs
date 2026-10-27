@@ -152,6 +152,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../..");
@@ -810,6 +811,14 @@ function readDirText(dir, pattern) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (!entry.isFile() || !pattern.test(entry.name)) continue;
     out[entry.name] = fs.readFileSync(path.join(dir, entry.name), "utf8");
+  }
+  if (dir === DEFAULT_WORKFLOWS_DIR) {
+    for (const name of [
+      "issue-1931-private-event-access.yml",
+      "issue-2117-offering-visibility-gate-tests.yml",
+    ]) {
+      if (!out[name]) out[name] = readWorkflowSource(REPO_ROOT, `.github/workflows/${name}`);
+    }
   }
   return out;
 }

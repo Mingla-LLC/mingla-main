@@ -26,8 +26,10 @@ import {
   PROVIDERS_ADDED_SINCE_SEAL,
   trackedFilesCalls, trackedFilesProcessInvocations,
   validateRegistry, withTrackedFilesScope, PHASE3C_SHADOW_MARKER, PHASE3C_WRAPPER_NAMES,
-  SUITES_ADDED_SINCE_SEAL, SUITES_FOLDED_SINCE_SEAL, PHASE3D_HOSTS, PHASE3D_WAVE,
+  SUITES_ADDED_SINCE_SEAL, SUITES_FOLDED_SINCE_SEAL, SUITES_FOLDED_IN_POSTGRES_WAVE,
+  PHASE3D_HOSTS, PHASE3E_HOSTS, PHASE3D_WAVE,
 } from "../validate-manifest-v2.mjs";
+import { POSTGRES_WAVE } from "../postgres-batch-contract.mjs";
 import { executesLeaves, absentFileIsFailure, evaluateTypedPredicate, expectedPrimarySuites, retryIsHonoured, sleepBounded, minimalChildEnvironment } from "../run-suite-batch.mjs";
 import { reconcilePhase3bReports, selectionDocument } from "../select-phase3b-suites.mjs";
 import { commandFingerprint } from "../run-suite-batch.mjs";
@@ -42,6 +44,8 @@ const ADDED_STEPS = SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.ste
 // hosts: it adds suites, commands and classes, never origins.
 const FOLDED_SUITES = SUITES_FOLDED_SINCE_SEAL.length;
 const FOLDED_STEPS = SUITES_FOLDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
+const POSTGRES_FOLDED_SUITES = SUITES_FOLDED_IN_POSTGRES_WAVE.length;
+const POSTGRES_FOLDED_STEPS = SUITES_FOLDED_IN_POSTGRES_WAVE.reduce((sum, item) => sum + item.steps, 0);
 
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -235,7 +239,13 @@ test("#2439 registry validates and owns exactly the seventeen sealed Deno candid
     assert.equal(sha(read(wrapper(stem))), seal, `${stem}: non-candidate sibling was modified`);
   }
   for (const lane of FILTERED_REPLAY_LANES) {
-    assert.ok(fs.existsSync(path.join(ROOT, wrapper(lane))), `${lane}: filtered replay lane must remain`);
+    if (!fs.existsSync(path.join(ROOT, wrapper(lane)))) {
+      // Phase 3E folds the two PostgreSQL filtered lanes into the terminal
+      // batch; their source wrappers are intentionally absent but remain
+      // represented by a suite carrying the same origin.
+      assert.ok(manifest.suites.some((suite) => suite.origin === wrapper(lane)), `${lane}: folded replay lane lost its batch owner`);
+      continue;
+    }
     assert.ok(!read(wrapper(lane)).includes("#2439 SHADOW-PARITY-TRIGGER"), `${lane}: must carry no marker`);
   }
   const marked = fs.readdirSync(path.join(ROOT, WORKFLOWS))
@@ -675,9 +685,13 @@ test("#2439 SC-11 lifecycle is atomic, dispositions are honest, and providers tr
     const phase3dOrigins = new Set(manifest.legacyOrigins.filter((origin) => origin.migrationWave === PHASE3D_WAVE)
       .map((origin) => `${origin.stem}.${origin.extension}`));
     const phase3dProviders = manifest.workflowProviders.filter((item) => phase3dOrigins.has(item.workflow));
+    const phase3eOrigins = new Set(manifest.legacyOrigins.filter((origin) => origin.migrationWave === POSTGRES_WAVE)
+      .map((origin) => `${origin.stem}.${origin.extension}`));
+    const phase3eProviders = manifest.workflowProviders.filter((item) => phase3eOrigins.has(item.workflow));
     assert.ok(phase3dProviders.every((item) => item.transition === "batched-provider"));
-    assert.equal(providers.length, 60 + PROVIDERS_ADDED_SINCE_SEAL.length - consolidatedProviders.length - phase3dProviders.length,
-      "terminal provider discovery must MEASURE 60 plus the declared additions minus the consolidated and Phase 3D records, not inherit 67");
+    assert.ok(phase3eProviders.every((item) => item.transition === "batched-provider"));
+    assert.equal(providers.length, 60 + PROVIDERS_ADDED_SINCE_SEAL.length - consolidatedProviders.length - phase3dProviders.length - phase3eProviders.length,
+      "terminal provider discovery must subtract every deleted wrapper's carried provider record");
     // The seven that left discovery are exactly the seven the registry now
     // carries as batched providers, so nothing was lost — only relocated.
     assert.equal(manifest.workflowProviders.filter((item) => candidateNames.includes(item.workflow)
@@ -686,18 +700,20 @@ test("#2439 SC-11 lifecycle is atomic, dispositions are honest, and providers tr
 });
 
 test("#2439 SC-11.4 registry totals are counted on the merged tree, never typed", () => {
-  assert.equal(manifest.suites.length, 84 + ADDED_SUITES + FOLDED_SUITES);
-  assert.equal(manifest.expectedSuites, 84 + ADDED_SUITES + FOLDED_SUITES);
-  assert.equal(manifest.expectedExecutableSuites, 84 + ADDED_SUITES + FOLDED_SUITES);
-  assert.equal(manifest.suites.reduce((sum, suite) => sum + suite.steps.length, 0), 240 + ADDED_STEPS + FOLDED_STEPS);
-  assert.equal(manifest.commandCapabilities.commands.length, 240 + ADDED_STEPS + FOLDED_STEPS);
-  assert.equal(manifest.commandCapabilities.expectedCommands, 240 + ADDED_STEPS + FOLDED_STEPS);
+  assert.equal(manifest.suites.length, 84 + ADDED_SUITES + FOLDED_SUITES + POSTGRES_FOLDED_SUITES);
+  assert.equal(manifest.expectedSuites, 84 + ADDED_SUITES + FOLDED_SUITES + POSTGRES_FOLDED_SUITES);
+  assert.equal(manifest.expectedExecutableSuites, 84 + ADDED_SUITES + FOLDED_SUITES + POSTGRES_FOLDED_SUITES);
+  assert.equal(manifest.suites.reduce((sum, suite) => sum + suite.steps.length, 0), 240 + ADDED_STEPS + FOLDED_STEPS + POSTGRES_FOLDED_STEPS);
+  assert.equal(manifest.commandCapabilities.commands.length, 240 + ADDED_STEPS + FOLDED_STEPS + POSTGRES_FOLDED_STEPS);
+  assert.equal(manifest.commandCapabilities.expectedCommands, 240 + ADDED_STEPS + FOLDED_STEPS + POSTGRES_FOLDED_STEPS);
   assert.equal(manifest.phase3cLeafCapabilities.expectedLeaves, 54);
   // Phase 3C itself adds no class or job; Phase 3D adds exactly its declared hosts.
-  assert.equal(manifest.executionClasses.length, 29 + PHASE3D_HOSTS.length);
-  assert.equal(manifest.classes.length, 14 + PHASE3D_HOSTS.length, "Phase 3C adds NO new GitHub Actions job");
+  assert.equal(manifest.executionClasses.length, 29 + PHASE3D_HOSTS.length + PHASE3E_HOSTS.length);
+  assert.equal(manifest.classes.length, 14 + PHASE3D_HOSTS.length + PHASE3E_HOSTS.length, "later primary waves declare every added host");
   assert.equal(manifest.suites.filter((suite) => PHASE3D_HOSTS.some((host) => host.class === suite.class)
     && suite.migrationWave !== PHASE3D_WAVE).length, 0, "no Phase 3C or earlier suite moved onto a Phase 3D host");
+  assert.equal(manifest.suites.filter((suite) => PHASE3E_HOSTS.some((host) => host.class === suite.class)
+    && suite.migrationWave !== POSTGRES_WAVE).length, 0, "only Phase 3E suites may use a Phase 3E host");
   assert.ok([...new Set(suites.map((suite) => suite.executionClass))].length <= 7, "at most 7 new execution classes");
   assert.deepEqual(manifest.migrationWaves[WAVE], {
     suiteCount: 17, outerCommandCount: 46, maximumLeafCount: 54,

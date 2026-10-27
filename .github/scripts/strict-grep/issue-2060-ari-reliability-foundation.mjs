@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 // MINGLA-INVARIANT: I-ARI-LOGICAL-TURN-ONCE | issue #2060 | One logical Ari turn owns one durable identity and cannot be duplicated by retry, replay, or recovery.
 // MINGLA-INVARIANT: I-ARI-EXECUTION-ONCE | issue #2060 | Ari side-effect execution is claimed exactly once and replay cannot perform the deed twice.
@@ -65,7 +66,9 @@ const FILES = {
 function readLive() {
   return Object.fromEntries(
     Object.entries(FILES).map(([key, rel]) => {
-      const raw = fs.readFileSync(path.join(ROOT, rel), "utf8");
+      const raw = rel.startsWith(".github/workflows/")
+        ? readWorkflowSource(ROOT, rel)
+        : fs.readFileSync(path.join(ROOT, rel), "utf8");
       return [key, rel.endsWith(".json") ? JSON.parse(raw) : raw];
     }),
   );

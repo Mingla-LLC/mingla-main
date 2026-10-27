@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { readWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
-const read = (path) => fs.readFileSync(path, "utf8");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const read = (relative) => relative.startsWith(".github/workflows/")
+  ? readWorkflowSource(ROOT, relative)
+  : fs.readFileSync(path.join(ROOT, relative), "utf8");
 const sources = {
   migration: read(
     "supabase/migrations/20270505001973_issue_1973_ari_experience_lifecycle.sql",

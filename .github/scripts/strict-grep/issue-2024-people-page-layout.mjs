@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readWorkflowSource, copyWorkflowSource } from "../ci-batch/workflow-source.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const files = {
@@ -26,6 +27,7 @@ export function audit(base) {
   const failures = [];
   const read = (key) => {
     const target = path.join(base, files[key]);
+    if (key === "workflow") return readWorkflowSource(base, files[key]);
     if (!fs.existsSync(target)) {
       failures.push(`${files[key]} is missing`);
       return "";
@@ -133,7 +135,8 @@ function selfTest() {
     for (const relative of Object.values(files)) {
       const target = path.join(fixture, relative);
       fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.copyFileSync(path.join(root, relative), target);
+      if (relative === files.workflow) copyWorkflowSource(root, relative, target);
+      else fs.copyFileSync(path.join(root, relative), target);
     }
   };
   const expectMutation = (label, mutate, expected) => {
