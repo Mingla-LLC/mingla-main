@@ -96,12 +96,13 @@ describe("#4130 Wave 5 — funnels, All users, retention", () => {
   });
 
   it("adds months up per segment and reads the newest month", () => {
+    // #4130: made-up monthly counts (never production sign-up figures).
     const months = [
-      { month: "2026-09", explorer: 4, host: 3, both: 0, incomplete: 0 },
-      { month: "2026-10", explorer: 16, host: 19, both: 2, incomplete: 10 },
+      { month: "2026-09", explorer: 7, host: 5, both: 0, incomplete: 2 },
+      { month: "2026-10", explorer: 30, host: 40, both: 3, incomplete: 8 },
     ];
-    assert.deepEqual(cumulativeMonths(months)[1], { month: "2026-10", explorer: 20, host: 22, both: 2, incomplete: 10 });
-    assert.deepEqual(lastMonthNew(months), { month: "2026-10", total: 47, explorer: 16, host: 19, both: 2, incomplete: 10 });
+    assert.deepEqual(cumulativeMonths(months)[1], { month: "2026-10", explorer: 37, host: 45, both: 3, incomplete: 10 });
+    assert.deepEqual(lastMonthNew(months), { month: "2026-10", total: 81, explorer: 30, host: 40, both: 3, incomplete: 8 });
     assert.equal(lastMonthNew([]), null);
   });
 

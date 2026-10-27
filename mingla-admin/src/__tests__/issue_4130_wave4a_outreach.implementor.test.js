@@ -213,10 +213,11 @@ describe("#4130 W4A-3: Hosts and creators", () => {
   });
 
   it("the funnel shows each step's conversion and marks the weakest", () => {
-    const steps = funnelSteps(HOSTS_DEF, { prospect: 295, contacted: 349, replied: 11, meeting: 6, onboarded: 13, live: 12, lost: 40 });
+    // #4130: made-up stage counts (never production pipeline figures).
+    const steps = funnelSteps(HOSTS_DEF, { prospect: 200, contacted: 250, replied: 10, meeting: 6, onboarded: 5, live: 4, lost: 30 });
     assert.deepEqual(steps.map((s) => s.id), ["prospect", "contacted", "replied", "meeting", "onboarded", "live"]);
     const replied = steps.find((s) => s.id === "replied");
-    assert.equal(replied.conversion, 3);
+    assert.equal(replied.conversion, 4);
     assert.equal(replied.weakest, true);
     assert.equal(steps.filter((s) => s.weakest).length, 1);
     assert.equal(steps[0].conversion, null);
