@@ -402,8 +402,10 @@ async function crawl(port) {
   const section = moduleAt >= 0 ? host.body.slice(moduleAt, host.body.indexOf('</section>', moduleAt)) : ''
   const hostCityLinks = [...new Set([...section.matchAll(/href="(\/cities\/[a-z0-9-]+)"/g)].map((match) => match[1]))]
   report.crawl.hostCityGrid = { present: moduleAt >= 0, links: hostCityLinks }
-  check(moduleAt >= 0, '/host lost its city grid')
-  check(hostCityLinks.length === 10, `/host city grid must link 10 city hubs (got ${hostCityLinks.length})`)
+  // #4137: /host now ends with the Start hosting card instead of the city grid
+  // (the city hubs stay reachable from the menu, footer and sitemap).
+  check(moduleAt < 0, '#4137: /host must not server-render the city grid')
+  check(/class="cut-start\b/.test(host.body), '#4137: /host must end with the Start hosting card')
   const hubStatuses = {}
   for (const hub of [...new Set([...hostCityLinks, ...sitemapPaths.filter((value) => value.startsWith('/cities/'))])]) {
     hubStatuses[hub] = (await request(port, hub)).status
@@ -433,7 +435,8 @@ const GEOMETRY = `(()=>{
   const clip=(el)=>{let t=-Infinity,b=Infinity;for(let n=el.parentElement;n&&n!==document.documentElement;n=n.parentElement){const s=getComputedStyle(n);if(s.overflowX!=='visible'||s.overflowY!=='visible'){const r=n.getBoundingClientRect();t=Math.max(t,r.top);b=Math.min(b,r.bottom)}}return {t,b}}
   const cards=[...deck.querySelectorAll('.group.absolute')].map(cell=>cell.firstElementChild).filter(card=>card&&alpha(card)>0.05).map(card=>{const r=card.getBoundingClientRect(),c=clip(card);return {top:Math.max(r.top,c.t),bottom:Math.min(r.bottom,c.b)}}).filter(r=>r.bottom>r.top)
   const cardTop=Math.min(...cards.map(r=>r.top)), cardBottom=Math.max(...cards.map(r=>r.bottom))
-  const actionEl=[...deck.querySelectorAll('a,button')].find(el=>el.textContent.trim()==='Use Mingla'&&el.getBoundingClientRect().width>0&&alpha(el)>0.05)
+  // #4137: the CTA ships both device labels and CSS shows one, so match the VISIBLE text.
+  const actionEl=[...deck.querySelectorAll('a,button')].find(el=>el.innerText.trim()==='Use Mingla'&&el.getBoundingClientRect().width>0&&alpha(el)>0.05)
   const action=actionEl?actionEl.getBoundingClientRect():null
   let hitCardTop=null
   if(action){ const cx=(action.left+action.right)/2; outer: for(let y=Math.ceil(action.bottom);y<Math.min(innerHeight,action.bottom+320);y+=1){ for(const x of [cx-70,cx,cx+70]){ const hit=document.elementsFromPoint(x,y).find(el=>!el.closest('.z-30')); if(hit&&hit.closest('.group.absolute')&&alpha(hit)>0.05){hitCardTop=y;break outer} } } }

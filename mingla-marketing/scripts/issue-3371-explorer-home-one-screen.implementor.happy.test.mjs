@@ -175,8 +175,9 @@ const MENU_GEOMETRY = `(()=>{
       iconLeft:icon.left,iconRight:icon.right,textLeft:Math.min(...texts.map((r)=>r.left)),textRight:Math.max(...texts.map((r)=>r.right)),
       lines:new Set(texts.map((r)=>Math.round(r.top))).size,scrollWidth:a.scrollWidth,clientWidth:a.clientWidth}
   })
+  // #4137: the CTA ships all three device marks; only the visible one has a box.
   const ctas=[...new Set(card.querySelectorAll('.mt-auto .cut-btn'))].map((button)=>{
-    const parts=[...textRects(button),...[...button.querySelectorAll('svg')].map((svg)=>svg.getBoundingClientRect())]
+    const parts=[...textRects(button),...[...button.querySelectorAll('svg')].map((svg)=>svg.getBoundingClientRect()).filter((r)=>r.width>0)]
     const b=box(button),left=Math.min(...parts.map((r)=>r.left)),right=Math.max(...parts.map((r)=>r.right))
     return {label:button.textContent.trim(),centreOffset:(left+right)/2-(b.left+b.right)/2}
   })
@@ -397,7 +398,9 @@ async function runtimeContract() {
     assert.doesNotMatch(sitemap, /usemingla\.com\/explorer</, 'sitemap must not list the redirected path')
     assert.equal(sitemap.includes('usemingla.com/going-out<'), sitemap.includes('usemingla.com/about<'), '/going-out must share the core-page sitemap state')
     const host = (await request(serverPort, '/host')).body
-    assert.equal(host.includes('city-root-module'), sitemap.includes('/cities/lagos<'), 'the Host page keeps its city list whenever the city launch is live')
+    // #4137: /host ends with the Start hosting card; the city list moved off it.
+    assert(!host.includes('city-root-module'), '#4137: the Host page no longer renders the city list')
+    assert(host.includes('class="cut-start'), '#4137: the Host page ends with the Start hosting card')
     process.stdout.write('PASS #3371 runtime HTTP: 308 with query, /going-out title/H1, home without city guides, sitemap and Host list\n')
 
     if (process.env.VERCEL === '1') {

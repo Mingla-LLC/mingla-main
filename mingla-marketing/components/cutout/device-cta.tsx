@@ -102,7 +102,7 @@ interface DeviceCtaProps {
 
 const SIZES = {
   // #4137 §4.8: 44px minimum touch target.
-  md: 'h-11 px-5 text-[0.9375rem]',
+  md: 'h-[2.625rem] px-5 text-[0.9375rem]',
   lg: 'h-[3.25rem] px-7 text-base',
 } as const
 
