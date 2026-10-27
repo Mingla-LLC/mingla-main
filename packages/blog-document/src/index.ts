@@ -375,8 +375,8 @@ const APP_TARGET = /^(place|offering):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 
 function safeInlineHref(raw: string | undefined): string | null {
   if (raw === undefined) return null
-  const value = raw.trim()
-  if (isSafeHttpsUrl(value)) return value
+  const value: string = raw.trim()
+  if (isSafeHttpsUrl(value as unknown)) return value
   if (/^mailto:[^\s<>"'\\]+@[^\s<>"'\\]+$/i.test(value) && value.length <= 320) return value
   if (/^\/(?!\/)[A-Za-z0-9\-._~/%?=&#]*$/.test(value) && value.length <= 500 && !value.includes('\\')) return value
   return null
@@ -467,9 +467,9 @@ export function parseBlogRichText(input: string): readonly BlogRichNode[] {
       if (!tag.closing) stack[stack.length - 1].children.push({ type: 'br' })
       continue
     }
-    const alias = INLINE_ALIASES[tag.name]
+    const alias: 'strong' | 'em' | 'u' | undefined = Object.hasOwn(INLINE_ALIASES, tag.name) ? INLINE_ALIASES[tag.name] : undefined
     if (alias || tag.name === 'a') {
-      const kind = alias ?? 'a'
+      const kind: 'strong' | 'em' | 'u' | 'a' = alias ?? 'a'
       if (tag.closing) {
         const at = stack.map((frame) => frame.kind).lastIndexOf(kind)
         if (at > 0) while (stack.length > at) closeTop(stack)

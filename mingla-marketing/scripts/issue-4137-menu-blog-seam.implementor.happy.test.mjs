@@ -27,7 +27,10 @@ const { renderToStaticMarkup } = requireReal('react-dom/server')
 
 const MENU = 'components/cutout/audience-menu-content.tsx'
 const seamSource = read('lib/blog/menu-entry.ts')
-assert.match(seamSource, /export const BLOG_MENU_ENTRY: BlogMenuEntry = \{ blogVisible: false, showNewBadge: false, latest: null \}/, '#4137: the shipped seam value is hidden')
+// #4137 wave 3: the value is produced at build time (scripts/generate-blog-menu-entry.mjs)
+// into menu-entry.generated.json, committed as the hidden value.
+assert.match(seamSource, /export const BLOG_MENU_ENTRY: BlogMenuEntry = parseBlogMenuEntry\(generated\)/, '#4137: the seam reads the build-time value')
+assert.deepEqual(JSON.parse(read('lib/blog/menu-entry.generated.json')), { blogVisible: false, showNewBadge: false, latest: null }, '#4137: the committed seam value is hidden')
 assert.doesNotMatch(seamSource.replace(/\/\/.*$/gm, ''), /coreReady|allCityHubsSearchReady|allCoreTrustPagesSearchReady|server-only/, '#4137: the seam is not a readiness gate and bundles into the client')
 assert.match(read(MENU), /import \{ BLOG_MENU_ENTRY \} from '@\/lib\/blog\/menu-entry'/, '#4137: the menu reads the one seam')
 
@@ -108,6 +111,32 @@ for (const selector of ['.cut-menu-new', '.cut-btn-brand .cut-menu-new']) {
   const ratio = contrast(colour(body, 'background'), colour(body, 'color'))
   assert(ratio >= 4.5, `#4137 AC-M8: ${selector} contrast ${ratio.toFixed(2)} < 4.5`)
   process.stdout.write(`EVIDENCE #4137 ${selector} contrast ${ratio.toFixed(2)}:1\n`)
+}
+
+// #4137 wave 3 — the derivation the build runs: Blog only with a public post,
+// "New" for 14 days, Latest story = the newest post with a licensed cover, and
+// anything malformed falls back to hidden.
+{
+  const derive = (() => {
+    const js = ts.transpileModule(read('lib/blog/menu-entry-derive.ts'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+    const module = { exports: {} }
+    Function('module', 'exports', js)(module, module.exports)
+    return module.exports
+  })()
+  const now = new Date('2026-11-01T12:00:00Z')
+  const media = (objectPath) => `https://example.supabase.co/storage/v1/object/public/blog-media/${objectPath}`
+  const card = (slug, publishAt, cover = { path: 'u/c.jpg' }) => ({ slug, title: `Title ${slug}`, publish_at: publishAt, cover })
+  assert.deepEqual(derive.blogMenuEntryFromIndex({ featured: null, posts: [] }, media, now), { blogVisible: false, showNewBadge: false, latest: null }, '#4137: no post, no Blog row')
+  assert.deepEqual(derive.blogMenuEntryFromIndex(null, media, now), { blogVisible: false, showNewBadge: false, latest: null })
+  const live = derive.blogMenuEntryFromIndex({ featured: card('pinned-old', '2026-09-01T00:00:00Z'), posts: [card('newest-one', '2026-10-30T00:00:00Z')] }, media, now)
+  assert.equal(live.blogVisible, true)
+  assert.equal(live.showNewBadge, true, '#4137: New while the newest story is under 14 days old')
+  assert.equal(live.latest.href, '/blog/newest-one', '#4137: the newest post, even when another is featured')
+  assert.equal(live.latest.coverSrc, `/_next/image?url=${encodeURIComponent(media('u/c.jpg'))}&w=128&q=75`, '#4137: licensed blog cover through the site optimiser')
+  assert.equal(derive.blogMenuEntryFromIndex({ featured: null, posts: [card('old-one', '2026-09-01T00:00:00Z')] }, media, now).showNewBadge, false, '#4137: no New after 14 days')
+  assert.equal(derive.blogMenuEntryFromIndex({ featured: null, posts: [card('no-cover', '2026-10-30T00:00:00Z', null)] }, media, now).latest, null, '#4137: no cover, no story card')
+  assert.deepEqual(derive.parseBlogMenuEntry({ blogVisible: true, showNewBadge: true, latest: { href: 'https://evil.example', title: 'x', coverSrc: '/_next/image?url=x', coverWidth: 60, coverHeight: 60 } }), { blogVisible: true, showNewBadge: true, latest: null }, '#4137: a bad story href is dropped')
+  assert.deepEqual(derive.parseBlogMenuEntry('nonsense'), { blogVisible: false, showNewBadge: false, latest: null })
 }
 
 process.stdout.write('PASS #4137 menu blog seam: hidden by default, Blog + New + Latest story only together, one lit item per route, AA badge\n')

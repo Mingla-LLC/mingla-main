@@ -76,7 +76,9 @@ function sourceContract() {
   )
   assert.match(menu, /\{ href: '\/cities', label: 'Cities', Icon: MapPinned \}/, '#4137: the Cities literal is kept verbatim')
   assert.match(menu, /const \{ blogVisible, showNewBadge, latest \} = BLOG_MENU_ENTRY/, '#4137: Blog and story read the one seam')
-  assert.match(read('lib/blog/menu-entry.ts'), /BLOG_MENU_ENTRY: BlogMenuEntry = \{ blogVisible: false, showNewBadge: false, latest: null \}/, '#4137: shipped blog seam is hidden')
+  // #4137 wave 3: the seam is generated at build time; the committed value is hidden.
+  assert.match(read('lib/blog/menu-entry.ts'), /BLOG_MENU_ENTRY: BlogMenuEntry = parseBlogMenuEntry\(generated\)/, '#4137: the seam reads the build-time value')
+  assert.deepEqual(JSON.parse(read('lib/blog/menu-entry.generated.json')), { blogVisible: false, showNewBadge: false, latest: null }, '#4137: committed blog seam is hidden')
   assert.match(menu, /\{blogVisible && latest \? \(/, '#4137: the story card needs the blog AND a story')
   assert(read('components/cutout/audience-menu-content.tsx').includes(`<div className="cut-menu-ctas mt-auto flex flex-col gap-2.5 pt-6">\n${CTA_BLOCK}\n      </div>`), '#4137: the bottom CTAs are byte-identical and sit in the sticky strip')
   assert.match(menu, /const menuButtonClass = 'cut-btn flex min-h-12 /, '#4137: 48px rows')

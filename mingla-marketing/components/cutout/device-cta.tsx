@@ -80,7 +80,8 @@ interface DeviceCtaProps {
   surface: CutoutSurface
   /** Analytics label for WHERE this instance sits (`hero`, `nav`, `faq`, …). */
   location: string
-  variant?: 'primary' | 'ink' | 'quiet'
+  /** `inline` (#4137): an underlined text link inside prose, no pill and no store marks. */
+  variant?: 'primary' | 'ink' | 'quiet' | 'inline'
   size?: 'md' | 'lg'
   /** Override the label. Defaults are surface-correct and device-correct. */
   label?: ReactNode
@@ -112,7 +113,7 @@ const SIZES = {
  * that is a large part of why the page read as bland. The recipes now live in
  * `cutout.css` as `.cut-btn-{dark,light,brand}`.
  */
-function classesFor(variant: NonNullable<DeviceCtaProps['variant']>, size: 'md' | 'lg') {
+function classesFor(variant: Exclude<NonNullable<DeviceCtaProps['variant']>, 'inline'>, size: 'md' | 'lg') {
   const tint =
     variant === 'primary' ? 'cut-btn-brand' : variant === 'ink' ? 'cut-btn-dark' : 'cut-btn-light'
   return cn('cut-btn font-display tracking-[-0.005em] focus-ring', tint, SIZES[size])
@@ -140,7 +141,8 @@ export function DeviceCta({
     if (surface === 'explorer' && detectClientPlatform() === 'other') setQrReady(true)
   }, [surface])
 
-  const classes = cn(classesFor(variant, size), className)
+  const inline = variant === 'inline'
+  const classes = inline ? cn('cut-cta-inline focus-ring', className) : cn(classesFor(variant, size), className)
   const arrow = withArrow ? (
     <ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
   ) : null
@@ -220,8 +222,8 @@ export function DeviceCta({
         }}
       >
         {text}
-        {marks}
-        {arrow}
+        {inline ? null : marks}
+        {inline ? null : arrow}
       </DeviceLink>
       {surface === 'explorer' ? (
         <AppQrPanel

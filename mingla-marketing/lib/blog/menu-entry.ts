@@ -3,15 +3,21 @@
 // The menu shows a Blog row and a "Latest story" card only when this value says
 // the blog has at least one published post. Until then both stay hidden, so the
 // menu never links to an empty page (Constitution #9: missing is hidden, never
-// faked). Wave 3 owns the value: it sets `blogVisible` true only once /blog
-// exists with a published post, fills `latest` with the newest post and a
-// licensed cover, and produces it at build time (or on a revalidated schedule)
-// so every marketing route stays static.
+// faked).
+//
+// #4137 wave 3 — the value is now produced at BUILD time from the public blog
+// index by scripts/generate-blog-menu-entry.mjs, which writes
+// menu-entry.generated.json (committed as the hidden value). Every marketing
+// route stays static and no client component fetches per request (wave 2
+// contract). No database at build (CI), or any read error: hidden.
 //
 // Plain TypeScript with no server-only import: AudienceMenuContent is a client
 // component and bundles this constant.
 //
 // {"invariant":"I-4137-MENU-BLOG-GATED","enforced_by":["scripts/issue-4137-menu-blog-seam.implementor.happy.test.mjs"]}
+
+import generated from './menu-entry.generated.json'
+import { parseBlogMenuEntry } from './menu-entry-derive'
 
 export interface MenuLatestStory {
   readonly href: `/blog/${string}`
@@ -27,4 +33,4 @@ export interface BlogMenuEntry {
   readonly latest: MenuLatestStory | null
 }
 
-export const BLOG_MENU_ENTRY: BlogMenuEntry = { blogVisible: false, showNewBadge: false, latest: null }
+export const BLOG_MENU_ENTRY: BlogMenuEntry = parseBlogMenuEntry(generated)
