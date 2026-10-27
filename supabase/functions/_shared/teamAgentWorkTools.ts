@@ -828,6 +828,15 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
   ops_next_action_convert: {
     excluded: "the owner turns next steps into cards in person",
   },
+  // #4130: the Work Today, This week and This month views.
+  ops_events_since: {
+    excluded:
+      "the standup feed is for people; an agent reads what changed with read_log",
+  },
+  ops_period_summary: {
+    excluded:
+      "the week and month summaries are for people; an agent reads cards with list_work",
+  },
   // #3980 synced program, Wave 2: the bridges' screens.
   ops_github_status_list: { tools: ["list_work"] },
   ops_ticket_engineering: {

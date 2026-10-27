@@ -717,6 +717,8 @@ Deno.test("#3802 W-5: every function a screen calls has an agent tool, or a writ
       "crm_record_restore",
       "crm_record_undo_stage_move",
       "crm_target_set",
+      // #4130: the Team dashboard's numbers are read by people; agents use team_summary.
+      "crm_team_pulse",
       "team_agent_key_create",
       "team_agent_key_revoke",
       "team_agent_keys_mine",
