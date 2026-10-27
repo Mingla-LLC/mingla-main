@@ -1,5 +1,3 @@
--- MINGLA-INVARIANT: I-4130-DASHBOARD-ADMIN-AGGREGATES | issue #4130 | the Dashboard numbers come from one admin-only aggregate; a failed read is shown as failed, never as 0.
--- MINGLA-INVARIANT: I-4130-INBOUND-EXCLUDES-APP-RUNS | issue #4130 | Inbound leads list and count beta leads and web tool leads only; app-lane tool runs are never leads.
 \set ON_ERROR_STOP on
 
 -- Issue #4130 (Wave 4a) — Dashboard, Notifications, Hosts and creators,
