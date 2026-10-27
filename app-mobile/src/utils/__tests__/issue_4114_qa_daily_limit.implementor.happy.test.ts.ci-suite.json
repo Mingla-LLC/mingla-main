@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/utils/__tests__/issue_4114_qa_daily_limit.implementor.happy.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4114-qa-daily-limit-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

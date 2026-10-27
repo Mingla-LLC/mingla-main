@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/i18n/__tests__/issue_4114_qa_run2_translations.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4114-qa-run2-translations-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

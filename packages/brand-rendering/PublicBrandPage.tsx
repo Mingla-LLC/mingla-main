@@ -17,7 +17,10 @@
 //     FIRST + DEFAULT, horizontally scrollable (no clipping), only non-empty tabs.
 //     #3426: Upcoming opens with a distinct "Happening now" block when anything is
 //     in progress; Past lists ended offerings of all four kinds, most recent first.
-//   • About pane: tagline → bio (4-line clamp + Read more) → contact (email/phone).
+//   • About pane: tagline → bio (4-line clamp + Read more). #4111 D10: the brand's
+//     email and phone are no longer shown; guests use the Message card instead.
+//   • #4111 foot: the host's `foot` (BrandPageFoot) renders under the active pane
+//     on every tab, phone and desktop; desktop adds Message beside Share.
 //   • Desktop ≥1024px: contained 21:9 hero + two-column (tabs+2-col grid left,
 //     sticky Share + Next-up brand-summary panel right). No money/membership
 //     action — a brand page is a profile+directory, not a checkout.
@@ -96,7 +99,6 @@ import { spacing } from "./designTokens";
 // runner. Deep-import only; deliberately NOT re-exported from index.ts, for the
 // same partial-mock reason documented above for `hexToRgba`.
 import { solveSocialRow } from "./socialRowSizing";
-import { brandPhoneDialNumber } from "./brandPhoneHref";
 // META-ORCH-1255(R2) — the DISPLAY-ONLY menu renderer lives in its own module
 // so the venue public page can share it WITHOUT dragging this whole file into
 // the eager __common chunk (ORCH-1083 bundle budget). Composition unchanged.
@@ -328,6 +330,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   useDirectionCIdentity = false,
   chromeTopOffset,
   contentBottomInset = 24,
+  foot = null,
   callbacks,
   // #3426 — the parameter carries its type DIRECTLY (not only via React.FC):
   // under a tsc graph where `react` does not resolve from packages/, React.FC is
@@ -776,13 +779,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         onPress={callbacks.onOpenExperience}
       />
     ) : (
-      <AboutTab
-        brand={brand}
-        theme={resolvedTheme}
-        palette={palette}
-        surface={surface}
-        onExternal={onExternal}
-      />
+      <AboutTab brand={brand} theme={resolvedTheme} palette={palette} />
     );
 
   // ---- body (left column / phone flow) ----
@@ -813,6 +810,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
 
       {tabBar}
       <View style={styles.paneWrap}>{activePane}</View>
+      {/* #4111 — the host's page foot, under the active pane on every tab. */}
+      {foot !== null && foot !== undefined ? (
+        <View style={styles.footWrap} testID="issue-4111-brand-page-foot-slot">
+          {foot}
+        </View>
+      ) : null}
     </View>
   );
 
@@ -853,20 +856,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           onFollowingMenu={callbacks.onFollowingMenu}
           desktop
         />
-        <Pressable
-          onPress={callbacks.onShare}
-          accessibilityRole="button"
-          accessibilityLabel="Share this brand"
-          style={({ pressed }) => [
-            styles.deskShareBtn,
-            { backgroundColor: palette.accent },
-            pressed && styles.cardPressed,
-          ]}
-        >
-          <Text style={[styles.deskShareLabel, { color: palette.accentText }]}>
-            Share
-          </Text>
-        </Pressable>
+        <DeskShareRow
+          palette={palette}
+          brandName={brand.displayName}
+          onShare={callbacks.onShare}
+          onMessage={callbacks.onMessage}
+        />
             {showFeaturedTeaser ? (
               <View style={styles.deskNextWrap}>
                 <Text style={[styles.deskNextLabel, { color: palette.tertiaryText }]}>Next up</Text>
@@ -909,6 +904,53 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     </ParallaxCoverShell>
   );
 };
+
+// #4111 — the desktop panel's Share row: Share, plus Message when the brand
+// takes enquiries (the host passes `callbacks.onMessage` only then).
+type DeskShareRowProps = {
+  palette: ThemePalette;
+  brandName: string;
+  onShare: () => void;
+  onMessage?: () => void;
+};
+const DeskShareRow = ({ palette, brandName, onShare, onMessage }: DeskShareRowProps) => (
+  <View style={styles.deskShareRow}>
+    <Pressable
+      onPress={onShare}
+      accessibilityRole="button"
+      accessibilityLabel="Share this brand"
+      style={({ pressed }) => [
+        styles.deskShareBtn,
+        onMessage !== undefined && styles.deskShareBtnHalf,
+        { backgroundColor: palette.accent },
+        pressed && styles.cardPressed,
+      ]}
+    >
+      <Text style={[styles.deskShareLabel, { color: palette.accentText }]}>
+        Share
+      </Text>
+    </Pressable>
+    {onMessage !== undefined ? (
+      <Pressable
+        onPress={onMessage}
+        accessibilityRole="button"
+        accessibilityLabel={`Message ${brandName}`}
+        testID="issue-4111-desk-message"
+        style={({ pressed }) => [
+          styles.deskShareBtn,
+          styles.deskShareBtnHalf,
+          styles.deskMessageBtn,
+          { borderColor: palette.accent },
+          pressed && styles.cardPressed,
+        ]}
+      >
+        <Text style={[styles.deskShareLabel, { color: palette.primaryText }]}>
+          Message
+        </Text>
+      </Pressable>
+    ) : null}
+  </View>
+);
 
 const Avatar: React.FC<{
   brand: PublicBrand;
@@ -2285,14 +2327,14 @@ const ReservationsPane = ({
   );
 };
 
-// ORCH-1155 — About pane: tagline → bio (4-line clamp + Read more) → contact.
+// ORCH-1155 — About pane: tagline → bio (4-line clamp + Read more).
+// #4111 D10 — the brand's email and phone rows are gone from the public page;
+// guests reach the brand through the foot's Message card.
 const AboutTab: React.FC<{
   brand: PublicBrand;
   theme: ResolvedTheme;
   palette: ThemePalette;
-  surface: Surface;
-  onExternal: (url: string) => void;
-}> = ({ brand, theme, palette, surface, onExternal }) => {
+}> = ({ brand, theme, palette }) => {
   const tagline =
     brand.tagline !== undefined && brand.tagline.trim().length > 0
       ? brand.tagline.trim()
@@ -2301,9 +2343,6 @@ const AboutTab: React.FC<{
     brand.bio !== undefined && brand.bio.trim().length > 0
       ? brand.bio.trim()
       : null;
-  const email = brand.contact?.email;
-  const phone = brand.contact?.phone;
-  const hasContact = email !== undefined || phone !== undefined;
 
   return (
     <View style={styles.aboutWrap}>
@@ -2318,44 +2357,6 @@ const AboutTab: React.FC<{
         </Text>
       ) : null}
       {bio !== null ? <ClampedBio text={bio} palette={palette} /> : null}
-      {hasContact ? (
-        <View style={styles.contactWrap}>
-          {email !== undefined ? (
-            <Pressable
-              onPress={() => onExternal(`mailto:${email}`)}
-              accessibilityRole="link"
-              accessibilityLabel={`Email ${email}`}
-              style={[styles.contactRow, surface.card]}
-            >
-              <Text
-                style={[styles.contactLabel, { color: palette.tertiaryText }]}
-              >
-                Email
-              </Text>
-              <Text style={[styles.contactVal, { color: palette.primaryText }]}>
-                {email}
-              </Text>
-            </Pressable>
-          ) : null}
-          {phone !== undefined ? (
-            <Pressable
-              onPress={() => onExternal(`tel:${brandPhoneDialNumber(phone)}`)}
-              accessibilityRole="link"
-              accessibilityLabel={`Call ${phone}`}
-              style={[styles.contactRow, surface.card]}
-            >
-              <Text
-                style={[styles.contactLabel, { color: palette.tertiaryText }]}
-              >
-                Phone
-              </Text>
-              <Text style={[styles.contactVal, { color: palette.primaryText }]}>
-                {phone}
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
-      ) : null}
     </View>
   );
 };
@@ -2814,24 +2815,8 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "400",
   },
-  contactWrap: {
-    marginTop: 28,
-    gap: 10,
-  },
-  contactRow: {
-    borderRadius: 14,
-    padding: 14,
-  },
-  contactLabel: {
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  contactVal: {
-    fontSize: 14,
-    fontWeight: "700",
-    marginTop: 1,
+  footWrap: {
+    paddingBottom: 8,
   },
   // ---- desktop sticky panel ----
   deskPanel: {
@@ -2854,12 +2839,24 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: -0.4,
   },
-  deskShareBtn: {
+  deskShareRow: {
+    flexDirection: "row",
+    gap: 10,
     marginTop: 18,
+  },
+  deskShareBtn: {
+    flex: 1,
     minHeight: 48,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
+  },
+  deskShareBtnHalf: {
+    flexBasis: 0,
+  },
+  deskMessageBtn: {
+    borderWidth: 1.5,
+    backgroundColor: "transparent",
   },
   // Issue #679 / #3682 — Follow wrap (button owns its own chrome).
   followWrapPhone: {

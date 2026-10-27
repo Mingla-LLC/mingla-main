@@ -64,6 +64,9 @@ import type {
 } from "../../../src/services/cancelTripBookingService";
 import { RefundPreviewBody } from "../../../src/components/trip/RefundPreviewBody";
 import { tripPublicPath } from "../../../src/constants/publicUrls";
+import { resolveTheme } from "@mingla/offering-rendering";
+import { useBrandMessage } from "../../../src/components/brandContact/useBrandMessage";
+import { usePublicBrandIdentity } from "../../../src/hooks/usePublicBrandEnquiry";
 
 function makeIdempotencyKey(orderId: string): string {
   return `tr4_buyer_cancel_${orderId.slice(0, 8)}_${Date.now()}`;
@@ -84,6 +87,67 @@ export default function CancelBookingScreen(): React.ReactElement {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successResult, setSuccessResult] =
     useState<CancelTripBookingResult | null>(null);
+
+  // #4111 D6 — "contact the organizer" is a Message {Brand} button. This route
+  // is anonymous (no useAuth): the message goes as a signed-out web enquiry
+  // with the trip attached as the offering (never the order itself).
+  const brandSlug = previewQuery.data?.brandSlug ?? null;
+  const brandIdentityQuery = usePublicBrandIdentity(brandSlug);
+  const brandIdentity = brandIdentityQuery.data ?? null;
+  const messageTarget = useMemo(
+    () =>
+      brandIdentity === null
+        ? null
+        : {
+            id: brandIdentity.id,
+            name: brandIdentity.name,
+            slug: brandIdentity.slug,
+            theme: resolveTheme(brandIdentity.theme, null),
+          },
+    [brandIdentity],
+  );
+  const tripEventId = previewQuery.data?.eventId ?? null;
+  const brandMessage = useBrandMessage({
+    brand: messageTarget,
+    viewer: { userId: null, name: null },
+    entry: "cancel_page",
+  });
+  const canMessageBrand = brandMessage.available && messageTarget !== null;
+  const openBrandMessage = useCallback((): void => {
+    if (tripEventId === null || tripEventId.length === 0) {
+      brandMessage.open();
+      return;
+    }
+    brandMessage.open({
+      contextKind: "offering",
+      contextId: tripEventId,
+      offering: {
+        id: tripEventId,
+        title: "Your trip booking",
+        kind: "trip",
+        startsAt: previewQuery.data?.tripStart ?? null,
+        when: "upcoming",
+      },
+    });
+  }, [brandMessage, previewQuery.data?.tripStart, tripEventId]);
+  const messageBrandButton = canMessageBrand && messageTarget !== null ? (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Message ${messageTarget.name}`}
+      hitSlop={8}
+      onPress={openBrandMessage}
+      testID="booking-cancel-message-brand"
+      style={({ pressed }) => [
+        styles.secondaryButton,
+        styles.messageBrandButton,
+        pressed && styles.pressed,
+      ]}
+    >
+      <Text numberOfLines={2} style={styles.secondaryButtonText}>
+        {`Message ${messageTarget.name}`}
+      </Text>
+    </Pressable>
+  ) : null;
 
   const handleClose = useCallback(() => {
     const preview = previewQuery.data;
@@ -243,9 +307,13 @@ export default function CancelBookingScreen(): React.ReactElement {
           </Text>
           <Text style={styles.terminalBody}>
             {isAlreadyCancelled
-              ? "This reservation was already cancelled. If you have questions, contact the organizer."
+              ? canMessageBrand
+                ? "This reservation was already cancelled. Questions? Message the organizer below."
+                : "This reservation was already cancelled. If you have questions, contact the organizer."
               : isInvalidToken
-                ? "The link may have expired, been used already, or copied incorrectly. Contact the organizer if you need to cancel."
+                ? canMessageBrand
+                  ? "The link may have expired, been used already, or copied incorrectly. Message the organizer below if you need to cancel."
+                  : "The link may have expired, been used already, or copied incorrectly. Contact the organizer if you need to cancel."
                 : tErr.message ?? "Try again later or contact the organizer."}
           </Text>
           <Pressable
@@ -261,7 +329,9 @@ export default function CancelBookingScreen(): React.ReactElement {
           >
             <Text style={styles.secondaryButtonText}>Visit trip page</Text>
           </Pressable>
+          {messageBrandButton}
         </ScrollView>
+        {brandMessage.overlays}
       </View>
     );
   }
@@ -379,7 +449,9 @@ export default function CancelBookingScreen(): React.ReactElement {
             )}
           </Pressable>
         </View>
+        {messageBrandButton}
       </ScrollView>
+      {brandMessage.overlays}
     </View>
   );
 }
@@ -397,6 +469,10 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
+  },
+  messageBrandButton: {
+    flex: 0,
+    alignSelf: "stretch",
   },
   scrollContent: {
     paddingHorizontal: spacing.md,

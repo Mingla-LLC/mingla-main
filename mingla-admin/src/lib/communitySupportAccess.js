@@ -32,6 +32,9 @@ export function communitySupportTabsForAccess(access, tabs) {
     allowed.add("ideas");
     allowed.add("questions");
     allowed.add("moderation");
+    // #4111: admin_* enquiry-report RPCs guard on issue_4111_is_mingla_staff,
+    // the same people community_can('moderate') admits.
+    allowed.add("enquiry-reports");
   }
   if (canSupport) {
     allowed.add("support");

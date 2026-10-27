@@ -28,11 +28,13 @@ export interface BrandGroupMessage {
   sender_role: string | null;
   reply_content: string | null;
   reply_sender_display_name: string | null;
-  message_type: "text" | "image" | "video" | "file";
+  message_type: "text" | "image" | "video" | "file" | "brand_enquiry_card";
   file_id: string | null;
   file_name: string | null;
   file_size: number | null;
   file_mime: string | null;
+  /** #4111 — only on brand_enquiry_card messages: the enquiry to open. Never a guest name. */
+  card_payload?: { kind: "brand_enquiry_card"; enquiry_id: string | null; topic_label: string | null } | null;
 }
 
 function errorMessage(error: { message?: string } | null, fallback: string): string | null {

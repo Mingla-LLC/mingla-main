@@ -40,6 +40,7 @@
     "takeAStroll": "Take a Stroll"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "Nu am putut trimite SMS la {{phone}}. Distribuie în schimb linkul de invitație.",
     "adminPrivileges": "Admin Privileges",
     "manageBoard": "Manage Board",
     "renameBoard": "Rename Board",

@@ -208,7 +208,7 @@ BEGIN
       v_rev - interval '1 microsecond',
       '19710000-0000-4000-8000-0000000000a4');
     RAISE EXCEPTION 'C-01 a stale revision was accepted';
-  EXCEPTION WHEN sqlstate '40001' THEN NULL;
+  EXCEPTION WHEN sqlstate 'PT409' THEN NULL;
   END;
   IF (SELECT title FROM public.events WHERE id = v_event) IS DISTINCT FROM v_title THEN
     RAISE EXCEPTION 'C-02 a stale-revision reject still wrote';

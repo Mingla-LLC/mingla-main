@@ -33,6 +33,8 @@ import {
 } from "../_shared/bunnyStream.ts";
 import { resolveAlertRecipientValue } from "../_shared/secretBundle.ts";
 import { resolveRuntimeConfigValue } from "../_shared/runtimeConfig.ts";
+// Issue #4114 Wave 7 — chat media storage early warning (daily tick).
+import { runChatMediaStorageCheck } from "./chatMediaStorage.ts";
 import {
   bodyVerdict,
   buildCheckRows,
@@ -1353,8 +1355,45 @@ serve(async (req) => {
     const alertsSent = await runAlertStateMachine(contexts, serviceClient, nowMs);
 
     let digestSent = false;
+    let chatMediaStorage: string | null = null;
     if (new Date(nowMs).getUTCHours() === 13) {
       digestSent = await maybeSendDigest(serviceClient, contexts, nowMs);
+      // Issue #4114 Wave 7: once a day, alert when chat media passes 5, 10 or
+      // 20 GB (each threshold once). Its own try so it can never fail the tick.
+      try {
+        const outcome = await runChatMediaStorageCheck({
+          async due(thresholdsGb) {
+            const { data, error } = await serviceClient.rpc("issue_4114_chat_media_storage_due", {
+              p_thresholds_gb: thresholdsGb,
+            });
+            const row = Array.isArray(data) ? data[0] : data;
+            return { data: row ?? null, error: error ? error.message : null };
+          },
+          async send(alert) {
+            const result = await sendOpsAlertEmail({
+              subject: alert.subject,
+              paragraphs: alert.paragraphs,
+              recipients: alertRecipients(),
+              cta: { label: "Open API Health hub", url: `${adminUrl()}/#/api-health` },
+            });
+            return { succeeded: result.succeeded };
+          },
+          async markAlerted(thresholdsGb, totalBytes) {
+            const { error } = await serviceClient.rpc("issue_4114_chat_media_storage_mark_alerted", {
+              p_thresholds_gb: thresholdsGb,
+              p_total_bytes: totalBytes,
+            });
+            return { error: error ? error.message : null };
+          },
+        });
+        chatMediaStorage = outcome.status;
+        if (outcome.status === "error" || outcome.status === "send_failed") {
+          structuredLog("warn", "chat media storage check did not complete", { fn: "api-health-probe", outcome });
+        }
+      } catch (err) {
+        chatMediaStorage = "error";
+        logError("chat media storage check failed", err, { fn: "api-health-probe" });
+      }
     }
 
     structuredLog("info", "api_health_probe tick", {
@@ -1369,6 +1408,7 @@ serve(async (req) => {
       ticks: checkRows.length,
       alerts_sent: alertsSent,
       digest_sent: digestSent,
+      chat_media_storage: chatMediaStorage,
       timestamp: new Date(nowMs).toISOString(),
     });
   } catch (err) {

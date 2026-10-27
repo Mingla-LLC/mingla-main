@@ -10,6 +10,12 @@ import { discoverCityWatchCopy } from "./discoverCityWatchCopy.ts";
 
 import { formatMessageTime, type MessageTime } from "./messageTime.ts";
 import { type BuyerSmsNoun, renderBuyerSms } from "./sms/buyerSms.ts";
+import {
+  isIssue4111EnquiryCategory,
+  ISSUE_4111_SUBSCRIBE_SMS_CATEGORY,
+  renderIssue4111Message,
+  renderIssue4111SubscribeSms,
+} from "./issue4111EnquiryNotifications.ts";
 
 export interface RenderedMessage {
   push: { title: string; body: string };
@@ -211,6 +217,13 @@ export function renderCategoryMessage(
   categoryKey: string,
   payload: Record<string, unknown>,
 ): RenderedMessage {
+  // #4111 — customer enquiry copy lives with its categories.
+  if (isIssue4111EnquiryCategory(categoryKey)) {
+    return renderIssue4111Message(categoryKey, payload);
+  }
+  if (categoryKey === ISSUE_4111_SUBSCRIBE_SMS_CATEGORY) {
+    return renderIssue4111SubscribeSms(payload);
+  }
   const brand = str(payload.brand_name ?? payload.brand, "Mingla");
   const party = str(payload.party_size ?? payload.party, "");
   const { date, time } = fmtDate(payload);

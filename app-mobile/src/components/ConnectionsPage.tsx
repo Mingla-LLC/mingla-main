@@ -10,23 +10,65 @@ import {
   Alert,
   FlatList,
   TextInput,
-  TouchableWithoutFeedback,
   Keyboard,
+  BackHandler,
   Platform,
-  ScrollView,
   RefreshControl,
   InteractionManager,
-  Image,
   AccessibilityInfo,
 } from "react-native";
 import { BlurView } from "expo-blur";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Icon } from "./ui/Icon";
 import { useFriends, Friend as UseFriend } from "../hooks/useFriends";
 import { useAppStore } from "../store/appStore";
-import { messagingService, DirectMessage, MentionEntry, CardTagEntry } from "../services/messagingService";
+import { messagingService, DirectMessage, MentionEntry, CardTagEntry, MESSAGE_PAGE_SIZE } from "../services/messagingService";
+import { sendFailureFeedback, toggleReactionRows } from "../utils/threadModel";
+import {
+  mergeMessages,
+  isLocalMessage,
+  createClientMessageId,
+  oldestConfirmedTimestamp,
+  LOCAL_MESSAGE_ID_PREFIX,
+  type MergeMessagesOptions,
+} from "../utils/mergeMessages";
+import { applyChatLiveChange, type ChatLiveChange } from "../utils/chatLiveModel";
+import { openAfterKeyboardHides } from "../utils/openAfterKeyboard";
+import {
+  conversationChannelKey,
+  releaseConversationSubscription,
+  switchConversationSubscription,
+} from "../utils/conversationSubscription";
+import {
+  brandChannelId,
+  brandChannelMatchesSearch,
+  brandChannelMessages,
+  defaultSendTarget,
+  explorerConversations,
+  explorerUnreadTotal,
+  findBrandChannelEvent,
+  foldBrandChannels,
+  foldsIntoBrandChannel,
+  isBrandChannelId,
+  isHostChatForUser,
+  isBrandChannelRow,
+  pinnedBrandChannelMemberIds,
+  resolveSendTarget,
+  type BrandChannel,
+} from "./connections/brandChannelModel";
+import {
+  ChatMediaUploadError,
+  cancelChatMediaUpload,
+  prepareChatMedia,
+  uploadChatMedia,
+} from "../services/chatMediaUploadService";
+import type { PickedChatMedia } from "../utils/chatMedia";
+import {
+  discardPickerTempFiles,
+  holdPickerTempFiles,
+  releasePickerTempFiles,
+} from "../services/chatPickerTempFiles";
 import { invalidateContentShareRecipients } from "../services/contentShareDeliveryService";
 import type { CollabDeadEndBannerPayload } from "../services/collabDeadEndBannerService";
 import { blockService, BlockReason } from "../services/blockService";
@@ -62,9 +104,50 @@ import type { BusinessEventCard } from "../types/mergedDiscover";
 import { BaseBottomSheet } from "./ui/BaseBottomSheet";
 
 // Sub-components
-import { ChatListItem } from "./connections/ChatListItem";
-import { FriendPickerSheet } from "./connections/FriendPickerSheet";
-import { AddFriendView } from "./connections/AddFriendView";
+import { ChatListItem, type ChatListItemConversation } from "./connections/ChatListItem";
+import { NewMessageSheet } from "./connections/NewMessageSheet";
+import { ChatRowActionsSheet, type ChatRowAction } from "./connections/ChatRowActionsSheet";
+import { ChatListSkeleton } from "./connections/ChatListSkeleton";
+import { ChatAvatar } from "./connections/ChatAvatar";
+import {
+  CHAT_ARCHIVED_ROW_HEIGHT,
+  CHAT_FILTERS,
+  CHAT_FILTER_CHIP_HEIGHT,
+  CHAT_FILTER_ROW_HEIGHT,
+  CHAT_HEADER_BUTTON_SIZE,
+  CHAT_ROW_GAP,
+  CHAT_ROW_HEIGHT,
+  CHAT_ROW_SIDE_PADDING,
+  CHAT_SEARCH_HEIGHT,
+  CHAT_SEARCH_TOP_GAP,
+  CHAT_SECTION_LABEL_HEIGHT,
+  MAX_PINNED_CHATS,
+  buildBrowseItems,
+  buildSearchItems,
+  canPinChat,
+  chatListLayouts,
+  friendUserIdOf,
+  sortChatList,
+  type ChatFilter,
+  type ChatListItemModel,
+} from "./connections/chatListModel";
+// Issue #4114 Wave 2b: the one Add a friend flow (add = pair) is its own dark
+// sheet; its AddFriendView body reads the hoisted phone/country below.
+import { AddFriendSheet } from "./connections/AddFriendSheet";
+import {
+  activePairs,
+  buildReceivedRows,
+  buildSentRows,
+  pairTileState,
+  runCombinedAccept,
+  type ReceivedRow,
+  type SentRow,
+} from "./connections/friendsSheetModel";
+// #4111 Wave D: brand enquiry threads. Each is its own "enquiry" row in the
+// list model (never folded into a brand channel); the row is EnquiryChatListRow.
+import { EnquiryChatListRow } from "./brandEnquiry/EnquiryChatListRow";
+import { isEnquiryConversation, mergeEnquiryConversations } from "./brandEnquiry/enquiryChatRows";
+import { useEnquiryChatRows } from "./brandEnquiry/useEnquiryChatRows";
 // ORCH-1371 [add-friend-country-picker-hidden]: the add-friend country picker is
 // hoisted here (owner of the transient phone/country/flag state) and rendered as
 // a sibling of the friends sheet — iOS presents only one RN <Modal> at a time.
@@ -74,7 +157,6 @@ import { getDefaultCountryCode, getCountryByCode } from "../constants/countries"
 import { RequestsView } from "./connections/RequestsView";
 import { FriendsManagementList } from "./connections/FriendsManagementList";
 import { BlockedUsersView } from "./connections/BlockedUsersView";
-import { FriendsActionChooserSheet } from "./connections/FriendsActionChooserSheet";
 import {
   CreateGroupChatSheet,
   type CreateGroupChatFriend,
@@ -90,6 +172,7 @@ import {
 } from "./connections/PendingCollabChatSheet";
 import { isPendingCollabReadyChange } from "./connections/pendingCollabChatUtils";
 import MessageInterface from "./MessageInterface";
+import { serializeTeamBrandCache, startupTeamBrandIds, teamBrandCacheKey } from "./connections/teamBrandCache";
 import { CustomPaywallScreen } from "./CustomPaywallScreen";
 import { useSessionCreationGate } from "../hooks/useSessionCreationGate";
 import type { GatedFeature } from "../hooks/useFeatureGate";
@@ -102,11 +185,20 @@ import { emitAddToBoardToasts } from "../utils/addToBoardToasts";
 // Pairing — ORCH-0435 Phase A
 import PairRequestModal from "./PairRequestModal";
 import IncomingPairRequestCard from "./IncomingPairRequestCard";
-import { usePairingPills, useIncomingPairRequests, useSendPairRequest, useCancelPairRequest, useCancelPairInvite, useAcceptPairRequest, useDeclinePairRequest, useUnpair } from "../hooks/usePairings";
+import { usePairingPills, useIncomingPairRequests, useIncomingHiddenPairRequests, useSendPairRequest, useCancelPairRequest, useCancelPairInvite, useAcceptPairRequest, useDeclinePairRequest, useUnpair } from "../hooks/usePairings";
+import { usePendingPhoneInvites, phoneInviteKeys } from "../hooks/usePhoneInvite";
+import { cancelPendingInvite } from "../services/phoneLookupService";
+import { dmCollabNeedsPaywall } from "./chat/dmCollabModel";
+import { fetchSessionConversationId } from "../services/dmCollabService";
+import { useEffectiveTier } from "../hooks/useSubscription";
+import { getTierLimits } from "../constants/tierLimits";
+import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import type { PairRequest } from "../services/pairingService";
 
 type PanelId = "add" | "friends" | "blocked" | null; // [TRANSITIONAL] kept for initialPanel prop compat
-type FriendsModalTab = "friend-list" | "sent" | "requests" | "blocked";
+// Issue #4114 Wave 2b: two segmented tabs. Sent folded into Requests; Blocked is
+// a row at the bottom of Friends that opens the blocked view inside the tab.
+type FriendsModalTab = "friend-list" | "requests";
 
 const BUSINESS_BUYER_DOMAIN = "https://business.mingla.app";
 // Was a flex-end sheet sized at screenHeight*0.88 → fixed ['88%'] snap (playbook §2).
@@ -122,6 +214,8 @@ type GroupEventMeta = {
   brandAccountId: string | null;
   coverMediaUrl: string | null;
   publicCard: BusinessEventCard | null;
+  /** Issue #4114 Wave 6: the brand's logo (brand channel row and header). */
+  brandLogoUrl?: string | null;
 };
 
 function getThemeObject(value: unknown): Record<string, any> {
@@ -208,6 +302,7 @@ async function fetchGroupEventMetaByIds(eventIds: string[]): Promise<Map<string,
           brandSlug: brand?.slug ?? null,
           brandAccountId: brand?.account_id ?? null,
           coverMediaUrl: event.cover_media_url ?? null,
+          brandLogoUrl: event.brand_profile_photo_url ?? null,
           publicCard: {
             eventId: event.id,
             brandId: event.brand_id ?? '',
@@ -344,7 +439,8 @@ interface ConnectionsPageProps {
   onOpenPreferences?: () => void;
   onOpenCollabPreferences?: (sessionId?: string, sessionName?: string) => void;
   onUnreadCountChange?: (count: number) => void;
-  onNavigateToFriendProfile?: (userId: string) => void;
+  /** Issue #4114: `focus: "paired"` opens the profile at birthday, holidays and saves. */
+  onNavigateToFriendProfile?: (userId: string, options?: { focus?: "paired" }) => void;
   onFriendAccepted?: () => void;
   /** When set (e.g. Discover map "Message"), open DM with this user; clear via onOpenDirectMessageHandled */
   openDirectMessageWithUserId?: string | null;
@@ -358,6 +454,8 @@ interface ConnectionsPageProps {
 
 const CONNECTIONS_CACHE_VERSION = "v2-orch-0898-group-metadata";
 
+const EMPTY_MESSAGES: Message[] = [];
+
 const getMessagesCacheKey = (conversationId: string) =>
   `mingla:connections:messages:${CONNECTIONS_CACHE_VERSION}:${conversationId}`;
 
@@ -368,164 +466,47 @@ const normalizeSearchText = (value: string | null | undefined): string =>
     .replace(/\s+/g, " ")
     .trim();
 
-// ── ORCH-0435 + ORCH-0600: Paired friends pill (dark-glass) ────────────────
-interface PairedPillPerson {
-  pairedUserId: string;
-  displayName: string;
-  firstName: string | null;
-  avatarUrl: string | null;
-  initials: string;
-  pending?: boolean;
-  incoming?: boolean;
-  incomingRequest?: PairRequest;
-}
-
 // META-ORCH-1002 Sub-1 (S2): shared Android-opaque-fallback gate (was the per-component Android-11 version gate).
 const isAndroidPreBlur = ANDROID_GLASS_USES_OPAQUE_FALLBACK;
 
-// Compact dark-glass paired pill — horizontal inside the filter-bar-style row.
-// ORCH-0600: replaces the ORCH-0435 vertical avatar+name stack with a row pill
-// matching the Discover chip visual (rounded glass, orange active state).
-function GlassPairedPill({
-  person,
-  onPress,
+// Issue #4114 Wave 2a: the paired-pills strip left the Chats screen (D13). The
+// pairing data hooks below stay alive for the friends sheet (Wave 2b).
+type ChatListRow = ChatListItemModel<Conversation, UseFriend>;
+const tokens = glass.discover.chatList;
+
+// Issue #4114: a friend you have not chatted with yet, shown in search results.
+const FriendSearchRow = React.memo(function FriendSearchRow({
+  friend,
+  currentUserId,
+  showSeparator,
+  onStartChat,
 }: {
-  person: PairedPillPerson;
-  onPress: () => void;
-}) {
-  const [failedAvatar, setFailedAvatar] = useState(false);
-  const name = person.firstName || person.displayName?.split(' ')[0] || 'Friend';
-  const isIncoming = !!person.incoming;
-  const isPending = !!person.pending;
-  const isActive = !isPending && !isIncoming;
-
-  const bg = isIncoming
-    ? 'rgba(235, 120, 37, 0.22)'
-    : isPending
-    ? 'rgba(255, 255, 255, 0.05)'
-    : 'rgba(255, 255, 255, 0.08)';
-  const border = isIncoming
-    ? 'rgba(235, 120, 37, 0.55)'
-    : isPending
-    ? 'rgba(255, 255, 255, 0.08)'
-    : 'rgba(255, 255, 255, 0.14)';
-  const labelColor = isIncoming
-    ? '#FFFFFF'
-    : isPending
-    ? 'rgba(255, 255, 255, 0.55)'
-    : 'rgba(255, 255, 255, 0.9)';
-
+  friend: UseFriend;
+  currentUserId: string;
+  showSeparator: boolean;
+  onStartChat: (friend: UseFriend) => void;
+}): React.ReactElement {
+  const { t } = useTranslation(['connections']);
+  const name = getDisplayName(friend);
   return (
     <Pressable
-      onPress={() => {
-        HapticFeedback.light();
-        onPress();
-      }}
-      hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
+      onPress={() => onStartChat(friend)}
       accessibilityRole="button"
-      accessibilityLabel={
-        isIncoming
-          ? `Incoming pair request from ${person.displayName}`
-          : isPending
-          ? `Pair request pending for ${person.displayName}, tap to cancel`
-          : `Open ${person.displayName} profile`
-      }
-      style={({ pressed }) => [
-        glassPillStyles.pill,
-        { backgroundColor: bg, borderColor: border },
-        pressed ? { transform: [{ scale: 0.97 }] } : null,
-      ]}
+      accessibilityLabel={`${name}, ${t('connections:start_chat')}`}
+      style={({ pressed }) => [styles.friendRow, pressed ? styles.rowPressed : null]}
     >
-      <View style={[glassPillStyles.avatarWrap, isPending ? { opacity: 0.55 } : null]}>
-        {person.avatarUrl && !failedAvatar ? (
-          <Image
-            source={{ uri: person.avatarUrl }}
-            style={glassPillStyles.avatar}
-            onError={() => setFailedAvatar(true)}
-          />
-        ) : (
-          <View style={glassPillStyles.avatarFallback}>
-            <Text style={glassPillStyles.avatarInitials} allowFontScaling={false}>
-              {person.initials}
-            </Text>
-          </View>
-        )}
-        {isActive ? (
-          <View style={glassPillStyles.statusDotActive}>
-            <Icon name="star" size={8} color="#FFFFFF" />
-          </View>
-        ) : null}
+      {showSeparator ? <View style={styles.rowSeparator} /> : null}
+      <ChatAvatar
+        people={[{ id: friendUserIdOf(friend, currentUserId), name, avatarUrl: friend.avatar_url }]}
+        shape="circle"
+        label={name}
+      />
+      <Text style={styles.friendRowName} numberOfLines={1}>{name}</Text>
+      <View style={styles.friendRowAction}>
+        <Text style={styles.friendRowActionText}>{t('connections:start_chat')}</Text>
       </View>
-      <Text style={[glassPillStyles.name, { color: labelColor }]} numberOfLines={1} allowFontScaling>
-        {name}
-      </Text>
-      {isIncoming ? (
-        <View style={glassPillStyles.incomingDot} />
-      ) : null}
     </Pressable>
   );
-}
-
-const glassPillStyles = StyleSheet.create({
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    height: 36,
-    paddingLeft: 4,
-    paddingRight: 12,
-    borderRadius: 18,
-    borderWidth: 1,
-  },
-  avatarWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    position: 'relative',
-    overflow: 'visible',
-  },
-  avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-  },
-  avatarFallback: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(235, 120, 37, 0.85)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitials: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  statusDotActive: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#eb7825',
-    borderWidth: 1.5,
-    borderColor: 'rgba(12, 14, 18, 1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  incomingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#eb7825',
-  },
-  name: {
-    fontSize: 13,
-    fontWeight: '500',
-    maxWidth: 100,
-  },
 });
 
 function ConnectionsPageRefactored({
@@ -568,14 +549,14 @@ function ConnectionsPageRefactored({
   }
 
   useScreenLogger('connections');
-  const { t } = useTranslation(['connections', 'common', 'social']);
+  const { t } = useTranslation(['connections', 'common', 'social', 'chat']);
   // ORCH-1037 + ORCH-1035: step 6 = the in-page people icon (NOT the bottom-nav tab,
-  // NOT the whole header row — operator-LOCKED); step 7 (NEW) = the + button that
-  // opens the FriendsActionChooser (pair a friend + start a shared group chat).
-  // Renumbered from the prior single step 5. People icon radius ~14 hugs the 22px
-  // icon + hit area; + button radius ~8 hugs the round glass button.
-  const coachPeopleIcon = useCoachMark(6, 14);
-  const coachPlusButton = useCoachMark(7, 8);
+  // NOT the whole header row — operator-LOCKED). Issue #4114: step 7 now points at
+  // the ✎ pencil that opens New message (it replaced the + chooser). The ref keeps
+  // its `coachPlusButton` name so the ORCH-1037 leaf-target gates still read it.
+  // Both are 34pt round glass buttons; radius ~17 hugs them.
+  const coachPeopleIcon = useCoachMark(6, 17);
+  const coachPlusButton = useCoachMark(7, 17);
   const user = useAppStore((state) => state.user);
   const {
     canCreateSession,
@@ -603,8 +584,13 @@ function ConnectionsPageRefactored({
   const [showFriendsModal, setShowFriendsModal] = useState(false);
   const [badgeDismissed, setBadgeDismissed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // Issue #4114 Wave 2a: list filter chip, the pencil's New message sheet, the
+  // long-press actions target, and the full archived list.
+  const [chatFilter, setChatFilter] = useState<ChatFilter>("all");
+  const [showNewMessageSheet, setShowNewMessageSheet] = useState(false);
+  const [chatActionsTarget, setChatActionsTarget] = useState<ChatListItemConversation | null>(null);
+  const [showArchivedList, setShowArchivedList] = useState(false);
   const [friendsModalTab, setFriendsModalTab] = useState<FriendsModalTab>("friend-list");
   // ORCH-1371 [add-friend-country-picker-hidden]: hoisted add-friend country
   // picker state — must survive the friends sheet's RN <Modal> drop (which
@@ -620,6 +606,11 @@ function ConnectionsPageRefactored({
   );
   const [addFriendPhone, setAddFriendPhone] = useState("");
   const [addFriendPickerOpen, setAddFriendPickerOpen] = useState(false);
+  // Issue #4114 Wave 2b: the Add a friend sheet (opened from New message and the
+  // friends sheet's Add), and the blocked view inside the Friends tab.
+  const [showAddFriendSheet, setShowAddFriendSheet] = useState(false);
+  const [showBlockedView, setShowBlockedView] = useState(false);
+  const [requestBusyKey, setRequestBusyKey] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
@@ -642,11 +633,13 @@ function ConnectionsPageRefactored({
     fetchBlockedUsers,
   } = useFriends();
 
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    await fetchFriends();
-    setIsRefreshing(false);
-  }, [fetchFriends]);
+  // #4111 Wave D: the guest's brand enquiries (own query + realtime). They
+  // come straight from here, so the Explorer guest-only rule (D19) and the
+  // brand-channel fold never touch them.
+  const enquiryRows = useEnquiryChatRows(user?.id ?? null);
+
+  // Issue #4114: pull-to-refresh reloads chats AND friends (it used to reload
+  // friends only). Declared after fetchConversations below.
 
   // ── Mute tracking ────────────────────────────────────────
   const [mutedUserIds, setMutedUserIds] = useState<string[]>([]);
@@ -664,6 +657,18 @@ function ConnectionsPageRefactored({
 
   // ── Conversations data ───────────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  // Issue #4114: brands this user is on the team of. Explorer is the guest
+  // app: their event and trip chats are host chats, run in the Host app, and
+  // hidden here everywhere; every other brand's event and trip chats fold into
+  // one brand channel row. Starts from the last cached set (so the first frame
+  // is right on every launch after the first); null only while nothing is
+  // known, which hides nothing and folds everything.
+  const [teamBrandIds, setTeamBrandIds] = useState<ReadonlySet<string> | null>(null);
+  // Explorer's chats: everything but host chats (list, search, filters, archive, unread).
+  const explorerChats = useMemo(
+    () => explorerConversations(conversations as ChatListItemConversation[], teamBrandIds) as Conversation[],
+    [conversations, teamBrandIds],
+  );
   const [conversationsLoading, setConversationsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -677,20 +682,45 @@ function ConnectionsPageRefactored({
     const result = await messagingService.setConversationLifecycle(conversationId, action);
     setLifecycleBusyIds((current) => { const next = new Set(current); next.delete(conversationId); return next; });
     if (result.error) {
-      const copy = action === 'archive' ? "Couldn't archive chat. Try again."
-        : action === 'unarchive' ? "Couldn't unarchive chat. Try again."
-        : "Couldn't remove chat. Try again.";
+      const copy = action === 'archive' ? t('connections:archive_failed')
+        : action === 'unarchive' ? t('connections:unarchive_failed')
+        : t('connections:remove_failed');
       AccessibilityInfo.announceForAccessibility(copy);
       Alert.alert(copy);
       return false;
     }
     invalidateContentShareRecipients();
     return true;
-  }, []);
+  }, [t]);
 
   const handleArchiveChat = useCallback(async (conversationId: string) => {
-    if (await runLifecycle(conversationId, 'archive')) setArchivedIds((current) => new Set(current).add(conversationId));
-  }, [runLifecycle]);
+    if (!await runLifecycle(conversationId, 'archive')) return;
+    setArchivedIds((current) => new Set(current).add(conversationId));
+    // Issue #4114: an archived chat gives its pin back (the 3-pin limit counts
+    // every pinned row, so a hidden pin would block a visible one).
+    const archived = conversations.find((conversation) => conversation.id === conversationId) as ChatListItemConversation | undefined;
+    if (archived?.pinned_at) {
+      setConversations((current) => current.map((conversation) =>
+        conversation.id === conversationId ? ({ ...conversation, pinned_at: null } as Conversation) : conversation));
+      const result = await messagingService.setConversationListState(conversationId, 'unpin');
+      if (result.error) console.warn('[ConnectionsPage] unpin after archive failed', result.error);
+    }
+  }, [conversations, runLifecycle]);
+
+  // Issue #4114 Wave 6: archiving a brand channel row archives each of its
+  // event chats (they come back one by one from the Archived list).
+  const handleArchiveRow = useCallback(async (rowId: string) => {
+    if (!isBrandChannelId(rowId)) {
+      await handleArchiveChat(rowId);
+      return;
+    }
+    const brandRow = conversations.filter((conversation) => {
+      const member = conversation as ChatListItemConversation;
+      return Boolean(member.eventBrandId) && rowId === brandChannelId(member.eventBrandId as string) &&
+        foldsIntoBrandChannel(member, teamBrandIds) && !archivedIds.has(conversation.id);
+    });
+    for (const member of brandRow) await handleArchiveChat(member.id);
+  }, [archivedIds, conversations, handleArchiveChat, teamBrandIds]);
 
   const handleUnarchiveChat = useCallback(async (conversationId: string) => {
     if (await runLifecycle(conversationId, 'unarchive')) setArchivedIds((current) => { const next = new Set(current); next.delete(conversationId); return next; });
@@ -699,14 +729,14 @@ function ConnectionsPageRefactored({
   const handleDeleteChat = useCallback((conversationId: string) => {
     const isGroup = conversations.find((conversation) => conversation.id === conversationId)?.type === 'group';
     if (isGroup) {
-      Alert.alert('Leave group?', "You'll stop receiving messages, and this group won't appear when you share in Mingla.", [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Leave', style: 'destructive', onPress: () => void (async () => {
+      Alert.alert(t('connections:leave_group_title', { defaultValue: 'Leave group?' }), t('connections:leave_group_body'), [
+        { text: t('common:cancel'), style: 'cancel' },
+        { text: t('connections:action_leave'), style: 'destructive', onPress: () => void (async () => {
           setLifecycleBusyIds((current) => new Set(current).add(conversationId));
           const result = await messagingService.leaveGroupConversation(conversationId, user?.id ?? '');
           setLifecycleBusyIds((current) => { const next = new Set(current); next.delete(conversationId); return next; });
           if (result.error) {
-            const copy = "Couldn't leave the group. Try again.";
+            const copy = t('connections:leave_failed');
             AccessibilityInfo.announceForAccessibility(copy); Alert.alert(copy); return;
           }
           setConversations((current) => current.filter((conversation) => conversation.id !== conversationId));
@@ -715,25 +745,73 @@ function ConnectionsPageRefactored({
       ]);
       return;
     }
-    Alert.alert('Remove chat?', 'This chat will disappear from your lists on every device. If another person sends a new message, it will reappear.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('connections:remove_chat_title', { defaultValue: 'Remove chat?' }), t('connections:remove_chat_body'), [
+      { text: t('common:cancel'), style: 'cancel' },
       {
-        text: 'Remove', style: 'destructive', onPress: () => void (async () => {
+        text: t('connections:action_remove'), style: 'destructive', onPress: () => void (async () => {
           if (!await runLifecycle(conversationId, 'hide')) return;
           setConversations(prev => prev.filter(c => c.id !== conversationId));
-          AccessibilityInfo.announceForAccessibility('Chat removed.');
+          AccessibilityInfo.announceForAccessibility(t('connections:chat_removed', { defaultValue: 'Chat removed.' }));
         })()
       },
     ]);
-  }, [conversations, runLifecycle, user?.id]);
+  }, [conversations, runLifecycle, t, user?.id]);
 
   // ── Messaging state ──────────────────────────────────────
   const [activeChat, setActiveChat] = useState<Friend | null>(null);
   const [showMessageInterface, setShowMessageInterface] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  // Issue #4114: ONE owner for every chat's messages. The open chat's list is
+  // derived from the per-conversation store, and every write goes through
+  // `writeConversationMessages` → `mergeMessages` (keyed `clientId || id`,
+  // sorted by time, pending sends kept through refreshes). There is no second
+  // "visible messages" copy to drift from the store.
   const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>({});
-  const [uploadingFile, setUploadingFile] = useState(false);
+  // Issue #4114 Wave 6: the open brand channel (null for every other chat).
+  // `currentConversationId` is then the event chat a new message goes to; the
+  // thread shows every member chat's messages merged (each cache stays keyed
+  // by its own conversation, so writes never cross chats).
+  const [activeBrandChannel, setActiveBrandChannel] = useState<BrandChannel | null>(null);
+  const activeBrandChannelRef = useRef<BrandChannel | null>(null);
+  activeBrandChannelRef.current = activeBrandChannel;
+  const brandChannelMemberIds = useMemo(
+    () => activeBrandChannel?.events.map((event) => event.conversationId) ?? [],
+    [activeBrandChannel],
+  );
+  const messages = useMemo<Message[]>(() => {
+    if (activeBrandChannel) {
+      return brandChannelMessages(
+        brandChannelMemberIds.map((conversationId) => ({
+          conversationId,
+          messages: messagesCache[conversationId] ?? EMPTY_MESSAGES,
+        })),
+        (prev, incoming) => mergeMessages(prev, incoming),
+      );
+    }
+    return currentConversationId ? messagesCache[currentConversationId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES;
+  }, [activeBrandChannel, brandChannelMemberIds, currentConversationId, messagesCache]);
+  /** The key older-history paging is tracked under: the brand channel, or the open chat. */
+  const threadPagingKey = activeBrandChannel?.id ?? currentConversationId;
+  // Issue #4114: which conversation's live channel is open (released on switch/back).
+  const subscribedConversationIdRef = useRef<string | null>(null);
+  // Issue #4114 Wave 3: chats whose first server read has finished (either
+  // way), so an empty chat shows a loader instead of flashing "Start a
+  // conversation" before its messages arrive.
+  const [messagesSettledIds, setMessagesSettledIds] = useState<ReadonlySet<string>>(() => new Set());
+  const markMessagesSettled = useCallback((conversationId: string) => {
+    setMessagesSettledIds((prev) => (prev.has(conversationId) ? prev : new Set(prev).add(conversationId)));
+  }, []);
+  // Issue #4114: older-history paging for the open chat.
+  const [olderPaging, setOlderPaging] = useState<{ conversationId: string | null; hasMore: boolean; loading: boolean }>({
+    conversationId: null,
+    hasMore: false,
+    loading: false,
+  });
+  const olderLoadInFlightRef = useRef<string | null>(null);
+  // Issue #4114: client ids of sends in flight, so a double tap on Retry sends once.
+  const sendsInFlightRef = useRef<Set<string>>(new Set());
+  // Issue #4114 Wave 4: upload progress (0..1) of media sends, by client id.
+  const [mediaUploadProgress, setMediaUploadProgress] = useState<Record<string, number>>({});
   const [activeChatIsBlocked, setActiveChatIsBlocked] = useState(false);
   const [activeChatIsUnfriended, setActiveChatIsUnfriended] = useState(false);
   const [activeChatIsDeletedAccount, setActiveChatIsDeletedAccount] = useState(false);
@@ -784,7 +862,6 @@ function ConnectionsPageRefactored({
   const declinePairRequestMutation = useDeclinePairRequest();
   const unpairMutation = useUnpair();
   const [showPairRequestModal, setShowPairRequestModal] = useState(false);
-  const [showFriendsActionChooser, setShowFriendsActionChooser] = useState(false);
   const [showCreateGroupChatSheet, setShowCreateGroupChatSheet] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   // ORCH-1239: which gated feature opened the paywall (drives header/analytics).
@@ -794,7 +871,6 @@ function ConnectionsPageRefactored({
   const [pendingCollabChat, setPendingCollabChat] = useState<PendingCollabChatDetails | null>(null);
   const [pendingCollabWorking, setPendingCollabWorking] = useState(false);
   const [showIncomingPairRequest, setShowIncomingPairRequest] = useState<PairRequest | null>(null);
-  const [pairLoadingUserId, setPairLoadingUserId] = useState<string | null>(null);
   const pendingCollabChatRef = useRef<PendingCollabChatDetails | null>(null);
   const readyPendingCollabToastSessionIdsRef = useRef(new Set<string>());
   pendingCollabChatRef.current = pendingCollabChat;
@@ -808,11 +884,12 @@ function ConnectionsPageRefactored({
   // onChange(-1) when visible flips false) so suppressing for a child does NOT
   // tear down the whole friends flow — only a genuine user dismiss propagates.
   const anyFriendsChildOpen =
-    friendPickerVisible ||
     addFriendPickerOpen ||
+    showAddFriendSheet ||
     actionsSheetVisible ||
     showPairRequestModal ||
-    showFriendsActionChooser ||
+    showNewMessageSheet ||
+    !!chatActionsTarget ||
     showCreateGroupChatSheet ||
     showReportModal ||
     showBlockModal ||
@@ -839,8 +916,11 @@ function ConnectionsPageRefactored({
   // round-trip (only `anyFriendsChildOpen` gates the sheet's `visible`), so this
   // effect does NOT fire mid-round-trip → the typed value survives the picker;
   // it fires only on a genuine reopen → matches the old empty-on-reopen behavior.
+  // Issue #4114 Wave 2b: the same reset fires on a genuine open of the Add a
+  // friend sheet. A picker round-trip changes neither flag (only the picker flag
+  // gates the sheet's `visible`), so the typed number survives the picker.
   useEffect(() => {
-    if (showFriendsModal) {
+    if (showFriendsModal || showAddFriendSheet) {
       setAddFriendPhone("");
       setAddFriendCountry(
         getCountryByCode(getDefaultCountryCode()) ?? {
@@ -852,41 +932,7 @@ function ConnectionsPageRefactored({
       );
       setAddFriendPickerOpen(false);
     }
-  }, [showFriendsModal]);
-
-  const activePairedPeople: PairedPillPerson[] = useMemo(() => {
-    const active = pairingPills
-      .filter(p => p.pillState === 'active' && p.pairedUserId != null)
-      .map(p => ({
-        pairedUserId: p.pairedUserId!,
-        displayName: p.displayName,
-        firstName: p.firstName,
-        avatarUrl: p.avatarUrl,
-        initials: p.initials,
-        pending: false,
-      }));
-    const pending = pairingPills
-      .filter(p => p.pillState !== 'active' && p.pairedUserId != null)
-      .map(p => ({
-        pairedUserId: p.pairedUserId!,
-        displayName: p.displayName,
-        firstName: p.firstName,
-        avatarUrl: p.avatarUrl,
-        initials: p.initials,
-        pending: true,
-      }));
-    const incoming = incomingPairRequests.map(req => ({
-      pairedUserId: req.senderId,
-      displayName: req.senderName,
-      firstName: req.senderName.split(' ')[0] ?? null,
-      avatarUrl: req.senderAvatar ?? null,
-      initials: req.senderName.split(' ').map(n => n[0] ?? '').join('').toUpperCase().slice(0, 2) || '?',
-      pending: true,
-      incoming: true,
-      incomingRequest: req,
-    }));
-    return [...active, ...incoming, ...pending];
-  }, [pairingPills, incomingPairRequests]);
+  }, [showFriendsModal, showAddFriendSheet]);
 
   const pairedUserIds = useMemo(() => new Set(
     pairingPills.filter(p => p.pillState === 'active' && p.pairedUserId != null).map(p => p.pairedUserId!)
@@ -896,66 +942,6 @@ function ConnectionsPageRefactored({
     pairingPills.filter(p => p.pillState !== 'active' && p.pairedUserId != null).map(p => p.pairedUserId!)
   ), [pairingPills]);
 
-  const handlePairFriend = useCallback(async (friendUserId: string) => {
-    setPairLoadingUserId(friendUserId);
-    // Find friend details for optimistic pill display
-    const friend = dbFriends.find(f => {
-      const fid = f.user_id === (user?.id || '') ? f.friend_user_id : f.user_id;
-      return fid === friendUserId;
-    });
-    const friendDisplayName = friend ? getDisplayName(friend) : undefined;
-    try {
-      await sendPairMutation.mutateAsync({
-        friendUserId,
-        displayName: friendDisplayName ?? undefined,
-        avatarUrl: friend?.avatar_url ?? null,
-      });
-      showToast({ message: 'Pair request sent!', type: 'info' });
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : '';
-      // ORCH-1239: free pairing limit reached → surface the paywall instead of
-      // swallowing the error silently (feature 'pairing').
-      if (errMsg === 'pairing_limit_reached') {
-        setPaywallFeature('pairing');
-        setShowPaywall(true);
-      } else {
-        showMutationError(err, 'sending pair request', showToast);
-      }
-    } finally {
-      setPairLoadingUserId(null);
-    }
-  }, [sendPairMutation, showToast, dbFriends, user?.id]);
-
-  const handleUnpairFriend = useCallback((friendUserId: string) => {
-    // Find the pairingId for this friend
-    const pill = pairingPills.find(p => p.pairedUserId === friendUserId && p.pillState === 'active');
-    if (!pill?.pairingId) return;
-    Alert.alert(
-      'Unpair',
-      `Are you sure you want to unpair?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Unpair',
-          style: 'destructive',
-          onPress: () => {
-            unpairMutation.mutate(pill.pairingId!);
-          },
-        },
-      ]
-    );
-  }, [pairingPills, unpairMutation]);
-
-  /** Derive pair status for a given user ID (used by ChatListItem star buttons) */
-  const getPairStatus = useCallback((participantId: string): 'paired' | 'pending' | 'unpaired' | 'not-friend' => {
-    if (pairedUserIds.has(participantId)) return 'paired';
-    if (pendingPairUserIds.has(participantId)) return 'pending';
-    const isFriend = dbFriends.some(f => {
-      const friendId = f.user_id === (user?.id || '') ? f.friend_user_id : f.user_id;
-      return friendId === participantId;
-    });
-    return isFriend ? 'unpaired' : 'not-friend';
-  }, [pairedUserIds, pendingPairUserIds, dbFriends, user?.id]);
 
   // ── Derived data ─────────────────────────────────────────
   const incomingRequests = useMemo(() => {
@@ -970,6 +956,144 @@ function ConnectionsPageRefactored({
     );
   }, [friendRequests]);
 
+  // ── Issue #4114 Wave 2b: friends sheet data ──────────────
+  const { data: hiddenIncomingPairRequests = [] } = useIncomingHiddenPairRequests(user?.id);
+  const { data: legacyPhoneInvites = [] } = usePendingPhoneInvites();
+  const { tier: pairingTier } = useEffectiveTier(user?.id);
+  const maxPairings = getTierLimits(pairingTier).maxPairings;
+  const pairedPills = useMemo(() => activePairs(pairingPills), [pairingPills]);
+  const pairTile = useMemo(
+    () => pairTileState({ pairedCount: pairedPills.length, isUnlimited: maxPairings < 0, freeLimit: maxPairings }),
+    [pairedPills.length, maxPairings],
+  );
+  const receivedRows = useMemo(
+    () =>
+      buildReceivedRows({
+        incomingFriendRequests: incomingRequests,
+        hiddenPairRequests: hiddenIncomingPairRequests,
+        visiblePairRequests: incomingPairRequests,
+      }),
+    [incomingRequests, hiddenIncomingPairRequests, incomingPairRequests],
+  );
+  const sentRows = useMemo(
+    () =>
+      buildSentRows({
+        outgoingFriendRequests: outgoingRequests,
+        pairingPills,
+        legacyPhoneInvites,
+      }),
+    [outgoingRequests, pairingPills, legacyPhoneInvites],
+  );
+
+  const openPairingPaywall = useCallback(() => {
+    setPaywallFeature('pairing');
+    setShowPaywall(true);
+  }, []);
+
+  // Issue #4114: the friend_request_accepted analytics moved here from the dead
+  // FriendRequestsModal (it was the only place they fired).
+  const trackFriendAccepted = useCallback((requestId: string, senderName: string) => {
+    mixpanelService.trackFriendRequestAccepted({ requestId, senderName });
+    logAppsFlyerEvent('friend_request_accepted', { source: 'friends_sheet' });
+  }, []);
+
+  const handleAcceptReceived = useCallback(async (row: ReceivedRow) => {
+    if (requestBusyKey) return;
+    HapticFeedback.medium();
+    setRequestBusyKey(row.key);
+    try {
+      if (row.kind === "friend_pair") {
+        // ONE Accept: the friend accept (its trigger reveals the pair request),
+        // then the pair accept. At the limit they are still friends.
+        onFriendAccepted?.();
+        const result = await runCombinedAccept(row, user?.id ?? "", {
+          acceptFriend: acceptFriendRequest,
+          acceptPair: (pairRequestId) => acceptPairRequestMutation.mutateAsync(pairRequestId),
+        });
+        trackFriendAccepted(row.friendRequestId, row.name);
+        if (result.paired) {
+          showToast({ message: t('connections:fs_now_paired', { name: row.name }), type: 'success' });
+        } else if (result.limit === "mine") {
+          showToast({ message: t('connections:fs_now_friends', { name: row.name }), type: 'info' });
+          openPairingPaywall();
+        } else if (result.limit === "theirs") {
+          showToast({ message: t('connections:fs_friends_pair_waiting', { name: row.name }), type: 'info' });
+        } else {
+          showToast({ message: t('connections:fs_now_friends', { name: row.name }), type: 'info' });
+        }
+      } else if (row.kind === "friend") {
+        onFriendAccepted?.();
+        await acceptFriendRequest(row.friendRequestId);
+        trackFriendAccepted(row.friendRequestId, row.name);
+        showToast({ message: t('connections:fs_now_friends', { name: row.name }), type: 'success' });
+      } else {
+        try {
+          await acceptPairRequestMutation.mutateAsync(row.pairRequestId);
+          showToast({ message: t('connections:fs_paired_with', { name: row.name }), type: 'success' });
+        } catch (err) {
+          // ORCH-1239 / #4114: the paywall opens on EVERY pair-limit hit.
+          if (err instanceof Error && err.message === 'pairing_limit_reached') openPairingPaywall();
+          else throw err;
+        }
+      }
+    } catch (err) {
+      showMutationError(err, 'accepting request', showToast);
+    } finally {
+      setRequestBusyKey(null);
+    }
+  }, [requestBusyKey, user?.id, acceptFriendRequest, acceptPairRequestMutation, trackFriendAccepted, onFriendAccepted, showToast, t, openPairingPaywall]);
+
+  const handleDeclineReceived = useCallback(async (row: ReceivedRow) => {
+    if (requestBusyKey) return;
+    HapticFeedback.warning();
+    setRequestBusyKey(row.key);
+    try {
+      if (row.kind === "pair") await declinePairRequestMutation.mutateAsync(row.pairRequestId);
+      else await declineFriendRequest(row.friendRequestId);
+    } catch (err) {
+      showMutationError(err, 'declining request', showToast);
+    } finally {
+      setRequestBusyKey(null);
+    }
+  }, [requestBusyKey, declinePairRequestMutation, declineFriendRequest, showToast]);
+
+  // Called only after the person confirmed in RequestsView (every Cancel asks once).
+  const handleCancelSent = useCallback(async (row: SentRow) => {
+    setRequestBusyKey(row.key);
+    try {
+      if (row.kind === "friend_request") await cancelFriendRequest(row.friendRequestId);
+      else if (row.kind === "phone_invite") {
+        if (row.pairInviteId) await cancelPairInviteMutation.mutateAsync(row.pairInviteId);
+        if (row.legacyInviteId) {
+          await cancelPendingInvite(row.legacyInviteId);
+          await queryClient.invalidateQueries({ queryKey: phoneInviteKeys.all });
+        }
+      } else await cancelPairRequestMutation.mutateAsync(row.pairRequestId);
+      if (row.kind === "friend_pair_request") void loadFriendRequests();
+    } catch (err) {
+      showMutationError(err, 'cancelling request', showToast);
+    } finally {
+      setRequestBusyKey(null);
+    }
+  }, [cancelFriendRequest, cancelPairInviteMutation, cancelPairRequestMutation, queryClient, loadFriendRequests, showToast]);
+
+  // Issue #4114: the friends sheet's Add and New message's "Add a friend" open the
+  // one Add a friend sheet. The friends sheet stays "open" underneath (the
+  // anyFriendsChildOpen gate drops its window) and returns when this closes.
+  const openAddFriendSheet = useCallback(() => {
+    dismissKeyboard();
+    setShowAddFriendSheet(true);
+  }, [dismissKeyboard]);
+  const closeAddFriendSheet = useCallback(() => {
+    setShowAddFriendSheet(false);
+  }, []);
+  // BaseBottomSheet fires onClose on every hide, including the drop for the
+  // country picker; only a genuine swipe-down (picker closed) closes the flow.
+  const handleAddFriendSheetClose = useCallback(() => {
+    if (addFriendPickerOpen) return;
+    setShowAddFriendSheet(false);
+  }, [addFriendPickerOpen]);
+
   // Reset badge when NEW requests arrive after dismissal
   const prevRequestCountRef = useRef(0);
   useEffect(() => {
@@ -982,39 +1106,59 @@ function ConnectionsPageRefactored({
 
   // Sort conversations by most recent message
   const sortedConversations = useMemo(() => {
-    const pending = conversations
+    const pending = explorerChats
       .filter(isPendingInviteConversation)
       .sort((a, b) => {
         const aTime = a.__pendingInvite.createdAt || a.created_at;
         const bTime = b.__pendingInvite.createdAt || b.created_at;
         return new Date(bTime).getTime() - new Date(aTime).getTime();
       });
-    const regular = conversations
-      .filter((conversation) => !isPendingInviteConversation(conversation))
-      .sort((a, b) => {
-      const aTime = a.last_message?.created_at || a.created_at;
-      const bTime = b.last_message?.created_at || b.created_at;
-      return new Date(bTime).getTime() - new Date(aTime).getTime();
-    });
+    // Issue #4114: pinned chats first (in pin order), then most recent activity.
+    const regular = sortChatList(
+      explorerChats.filter((conversation) => !isPendingInviteConversation(conversation)),
+    );
     return [...pending, ...regular].filter(c => !archivedIds.has(c.id));
-  }, [conversations, archivedIds]);
+  }, [explorerChats, archivedIds]);
+
+  // Issue #4114 Wave 6: a guest's event and trip chats fold into one row per
+  // brand (brand team members keep per-event rows). The fold keeps the order;
+  // buildBrowseItems sorts again (pinned first, then activity).
+  const brandFold = useMemo(
+    () => foldBrandChannels(sortedConversations as ChatListItemConversation[], teamBrandIds),
+    [sortedConversations, teamBrandIds],
+  );
+  const listConversations = brandFold.rows as Conversation[];
+  const brandChannels = brandFold.channels;
+
+  // Keep the open brand channel in step with the list (new event chats,
+  // counts); it stays as it was if its rows briefly drop out.
+  useEffect(() => {
+    if (!activeBrandChannel) return;
+    const fresh = brandChannels.get(activeBrandChannel.id);
+    if (fresh && fresh !== activeBrandChannel) setActiveBrandChannel(fresh);
+  }, [activeBrandChannel, brandChannels]);
 
   const archivedConversations = useMemo(() => {
-    return [...conversations]
+    return [...explorerChats]
       .filter(c => archivedIds.has(c.id))
       .sort((a, b) => {
         const aTime = a.last_message?.created_at || a.created_at;
         const bTime = b.last_message?.created_at || b.created_at;
         return new Date(bTime).getTime() - new Date(aTime).getTime();
       });
-  }, [conversations, archivedIds]);
+  }, [explorerChats, archivedIds]);
 
   // Search-filtered conversations
   const filteredConversations = useMemo(() => {
     const q = normalizeSearchText(searchQuery);
-    if (!q) return sortedConversations;
+    if (!q) return listConversations;
 
-    return sortedConversations.filter((conv) => {
+    return listConversations.filter((conv) => {
+      // Issue #4114 Wave 6: a brand channel matches its brand, its events and its last message.
+      if (isBrandChannelRow(conv)) {
+        return brandChannelMatchesSearch(conv.__brandChannel, q) ||
+          normalizeSearchText(conv.last_message?.content || "").includes(q);
+      }
       if (isPendingInviteConversation(conv)) {
         return normalizeSearchText(conv.__pendingInvite.inviterDisplayName).includes(q);
       }
@@ -1055,7 +1199,18 @@ function ConnectionsPageRefactored({
 
       return nameMatch || contentMatch;
     });
-  }, [sortedConversations, searchQuery, user?.id]);
+  }, [listConversations, searchQuery, user?.id]);
+  // #4111 Wave D: search also finds enquiries (brand name, topic, last
+  // message); they are woven in by recency and never merged into other rows.
+  const visibleConversations = useMemo(
+    () => mergeEnquiryConversations(filteredConversations, enquiryRows.conversations, searchQuery),
+    [enquiryRows.conversations, filteredConversations, searchQuery],
+  );
+  // Browse mode: every enquiry, after D19 and the brand-channel fold.
+  const browseConversations = useMemo(
+    () => mergeEnquiryConversations(listConversations, enquiryRows.conversations, ""),
+    [enquiryRows.conversations, listConversations],
+  );
 
   const pendingCreatorCollabSessionIds = useMemo(
     () =>
@@ -1117,7 +1272,7 @@ function ConnectionsPageRefactored({
         }
       });
 
-      const [sessionsResult, pendingPhoneInvitesResult, eventMetaMap] = await Promise.all([
+      const [sessionsResult, pendingPhoneInvitesResult, eventMetaMap, teamBrandRows] = await Promise.all([
         groupSessionIds.size > 0
           ? supabase
               .from("collaboration_sessions")
@@ -1142,10 +1297,40 @@ function ConnectionsPageRefactored({
           console.warn('[ConnectionsPage] Failed to batch-resolve group chat event metadata:', error);
           return new Map<string, GroupEventMeta>();
         }),
+        // Issue #4114 Wave 6: your own active brand team rows (RLS: user_id =
+        // auth.uid()): accepted and not removed, the same rows that let a team
+        // member read the event chat. A failed read keeps the last known set
+        // (or, before any success, folds nothing) and logs.
+        groupEventIds.size > 0
+          ? Promise.resolve(
+              supabase
+                .from('brand_team_members')
+                .select('brand_id')
+                .eq('user_id', userId)
+                .not('accepted_at', 'is', null)
+                .is('removed_at', null),
+            ).then(({ data, error }) => {
+              if (error) {
+                console.warn('[ConnectionsPage] brand team read failed; keeping the last known teams', error);
+                return null;
+              }
+              return (data ?? []).map((row: { brand_id: string | null }) => row.brand_id).filter((id): id is string => Boolean(id));
+            })
+          : Promise.resolve([] as string[]),
       ]);
 
       if (sessionsResult.error) throw sessionsResult.error;
       if (pendingPhoneInvitesResult.error) throw pendingPhoneInvitesResult.error;
+      if (teamBrandRows !== null) {
+        // The brand's owner is on its team too (owner trigger); account_id is a belt and braces.
+        const owned = Array.from(eventMetaMap.values())
+          .filter((meta) => meta.brandId && meta.brandAccountId === userId)
+          .map((meta) => meta.brandId as string);
+        const teams = new Set([...teamBrandRows, ...owned]);
+        setTeamBrandIds(teams);
+        AsyncStorage.setItem(teamBrandCacheKey(userId), serializeTeamBrandCache(teams))
+          .catch((error) => console.warn('[ConnectionsPage] team brand cache write failed', error));
+      }
 
       for (const session of sessionsResult.data || []) {
         for (const participant of (session as any).session_participants || []) {
@@ -1211,7 +1396,9 @@ function ConnectionsPageRefactored({
             first_name: profile?.first_name,
             last_name: profile?.last_name,
             avatar_url: profile?.avatar_url,
-            is_online: false,
+            // Issue #4114: no hard-coded presence. The only presence data is
+            // per-conversation "has this chat open" (conversation_presence),
+            // which is not app-wide online state, so the list shows no dot.
           };
         });
 
@@ -1335,10 +1522,21 @@ function ConnectionsPageRefactored({
           is_broadcast_only: Boolean((conv as any).is_broadcast_only),
           eventBrandName: eventMeta?.brandName ?? null,
           eventBrandAccountId: eventMeta?.brandAccountId ?? null,
+          // Issue #4114 Wave 6: what the brand channel fold reads.
+          eventBrandId: eventMeta?.brandId ?? null,
+          eventBrandSlug: eventMeta?.brandSlug ?? null,
+          eventBrandLogoUrl: eventMeta?.brandLogoUrl ?? null,
+          eventStartAt: eventMeta?.publicCard?.masterDateUtc ?? null,
+          eventEndAt: eventMeta?.publicCard?.masterEndAtUtc ?? null,
           eventCoverMediaUrl: eventMeta?.coverMediaUrl ?? null,
           eventPublicUrl,
           eventPublicCard,
           archived_at: (conv as any).archived_at ?? null,
+          pinned_at: (conv as any).pinned_at ?? null,
+          marked_unread_at: (conv as any).marked_unread_at ?? null,
+          // Issue #4114 Wave 5: the 1:1 chat's live collab (from the access RPC).
+          live_session_id: (conv as any).live_session_id ?? null,
+          live_session_status: (conv as any).live_session_status ?? null,
         };
       });
 
@@ -1380,11 +1578,116 @@ function ConnectionsPageRefactored({
     }
   }, []);
 
+  // ── Issue #4114: pull-to-refresh reloads chats and friends ──
+  // Pull to refresh: chats start first; friends (awaited, issue-1638 C3.7)
+  // and then the #4111 enquiry rows reload while they run.
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const chats = user?.id ? fetchConversations(user.id) : Promise.resolve();
+      await fetchFriends();
+      await enquiryRows.refetch();
+      await chats;
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [enquiryRows.refetch, fetchConversations, fetchFriends, user?.id]);
+
+  const patchConversation = useCallback((conversationId: string, patch: Partial<ChatListItemConversation>) => {
+    setConversations((current) => current.map((conversation) =>
+      conversation.id === conversationId ? ({ ...conversation, ...patch } as Conversation) : conversation));
+  }, []);
+
+  // ── Issue #4114: pin up to 3 chats (client check + server trigger) ──
+  const handleTogglePin = useCallback(async (conversation: ChatListItemConversation) => {
+    // A brand channel row is pinned when any chat folded into it is. Its only
+    // pin action is Unpin, which unpins each of those chats (pins stay per chat).
+    if (isBrandChannelRow(conversation)) {
+      const memberIds = pinnedBrandChannelMemberIds(
+        conversations as ChatListItemConversation[],
+        conversation.__brandChannel.brandId,
+        teamBrandIds,
+      );
+      for (const memberId of memberIds) {
+        const member = conversations.find((candidate) => candidate.id === memberId) as ChatListItemConversation | undefined;
+        if (member?.pinned_at) await handleTogglePin(member);
+      }
+      return;
+    }
+    const pinning = !conversation.pinned_at;
+    if (pinning && !canPinChat(conversations as ChatListItemConversation[], conversation.id)) {
+      HapticFeedback.warning();
+      showToast({ message: t('connections:pin_limit', { count: MAX_PINNED_CHATS }), type: 'info' });
+      return;
+    }
+    HapticFeedback.light();
+    const previous = conversation.pinned_at ?? null;
+    patchConversation(conversation.id, { pinned_at: pinning ? new Date().toISOString() : null });
+    const result = await messagingService.setConversationListState(conversation.id, pinning ? 'pin' : 'unpin');
+    if (result.error) {
+      patchConversation(conversation.id, { pinned_at: previous });
+      showToast({
+        message: result.pinLimitReached
+          ? t('connections:pin_limit', { count: MAX_PINNED_CHATS })
+          : t('connections:pin_failed'),
+        type: result.pinLimitReached ? 'info' : 'error',
+      });
+    }
+  }, [conversations, patchConversation, showToast, t, teamBrandIds]);
+
+  // ── Issue #4114: mark unread is a private flag, never a read-receipt change ──
+  const handleToggleUnread = useCallback(async (conversation: ChatListItemConversation) => {
+    const marking = !conversation.marked_unread_at;
+    HapticFeedback.light();
+    const previous = conversation.marked_unread_at ?? null;
+    patchConversation(conversation.id, { marked_unread_at: marking ? new Date().toISOString() : null });
+    const result = await messagingService.setConversationListState(conversation.id, marking ? 'mark_unread' : 'mark_read');
+    if (result.error) {
+      patchConversation(conversation.id, { marked_unread_at: previous });
+      showToast({ message: t('connections:unread_failed'), type: 'error' });
+    }
+  }, [patchConversation, showToast, t]);
+
+  // ── Issue #4114: mute (direct chats; mute is per person) ──
+  // One owner for the list row and the 1:1 chat's menu. Resolves whether the
+  // change reached the server; a failure rolls back and toasts.
+  const toggleMuteForUser = useCallback(async (otherUserId: string): Promise<boolean> => {
+    const wasMuted = mutedUserIds.includes(otherUserId);
+    HapticFeedback.light();
+    setMutedUserIds((current) => wasMuted ? current.filter((id) => id !== otherUserId) : [...current, otherUserId]);
+    const result = wasMuted ? await muteService.unmuteUser(otherUserId) : await muteService.muteUser(otherUserId);
+    if (!result.success) {
+      setMutedUserIds((current) => wasMuted ? [...current, otherUserId] : current.filter((id) => id !== otherUserId));
+      showToast({ message: t('connections:mute_error'), type: 'error' });
+      return false;
+    }
+    return true;
+  }, [mutedUserIds, showToast, t]);
+
+  const handleToggleMuteChat = useCallback(async (conversation: ChatListItemConversation) => {
+    const other = conversation.participants.find((participant) => participant.id !== user?.id);
+    if (!other?.id) return;
+    await toggleMuteForUser(other.id);
+  }, [toggleMuteForUser, user?.id]);
+
+  const handleOpenChatActions = useCallback((conversation: ChatListItemConversation) => {
+    HapticFeedback.medium();
+    setChatActionsTarget(conversation);
+  }, []);
+
   // ── Fetch conversations on mount ─────────────────────────
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
     void (async () => {
+      // Issue #4114: the last known team set, before the first fresh read, so
+      // host chats are hidden (and guests' chats folded) from the first frame.
+      try {
+        const cachedTeams = await AsyncStorage.getItem(teamBrandCacheKey(user.id));
+        if (!cancelled) setTeamBrandIds((current) => startupTeamBrandIds(current, cachedTeams));
+      } catch (cacheError) {
+        console.warn('[ConnectionsPage] team brand cache read failed', cacheError);
+      }
       const migrationKey = `mingla:archived_chats_server_migrated:${user.id}`;
       const legacyKey = `mingla:archived_chats:${user.id}`;
       try {
@@ -1528,12 +1831,14 @@ function ConnectionsPageRefactored({
 
   // ── Unread count reporting ───────────────────────────────
   useEffect(() => {
-    const totalUnread = conversations.reduce((sum, conv) => {
-      const isMuted = conv.participants?.some((p) => mutedUserIds.includes(p.id));
-      return sum + (isMuted ? 0 : (conv.unread_count || 0));
-    }, 0);
+    // Issue #4114: host chats (run in the Host app) never count in Explorer.
+    const totalUnread = explorerUnreadTotal(
+      conversations as ChatListItemConversation[],
+      teamBrandIds,
+      (conv) => conv.participants?.some((p) => mutedUserIds.includes(p.id)) === true,
+    );
     onUnreadCountChange?.(totalUnread);
-  }, [conversations, onUnreadCountChange, mutedUserIds]);
+  }, [conversations, onUnreadCountChange, mutedUserIds, teamBrandIds]);
 
   // ORCH-0600: handleInvitePress + link-outline button deleted (dead weight per
   // user directive). Clipboard import removed. mixpanelService.trackReferralLinkShared
@@ -1543,6 +1848,7 @@ function ConnectionsPageRefactored({
     HapticFeedback.light();
     dismissKeyboard();
     setFriendsModalTab(tab ?? "friend-list");
+    setShowBlockedView(false);
     setShowFriendsModal(true);
     setBadgeDismissed(true);
   };
@@ -1553,9 +1859,10 @@ function ConnectionsPageRefactored({
   useEffect(() => {
     if (initialPanel && isTabVisible !== false) {
       setShowFriendsModal(true);
-      if (initialPanel === "friends") setFriendsModalTab("friend-list");
-      else if (initialPanel === "add") setFriendsModalTab("friend-list");
-      else if (initialPanel === "blocked") setFriendsModalTab("blocked");
+      setFriendsModalTab("friend-list");
+      setShowBlockedView(initialPanel === "blocked");
+      // Issue #4114: "add" now opens the one Add a friend sheet over the friends sheet.
+      if (initialPanel === "add") setShowAddFriendSheet(true);
       onInitialPanelHandled?.();
     }
   }, [initialPanel, onInitialPanelHandled, isTabVisible]);
@@ -1590,12 +1897,15 @@ function ConnectionsPageRefactored({
   // ORCH-0987 unify: the legacy friends-modal action handlers (mute/remove/block/report
   // FromModal) were removed — the friends-modal ⋮ now routes through the shared
   // FriendActionsSheet (single owner). Block/Report state + modals remain (used by other
-  // entry points). Pair/unpair handlers (handlePairFriend/handleUnpairFriend) live above.
+  // entry points). Issue #4114: pair / unpair live in that sheet too (the row Pair button left).
 
   // ── Transform message from DirectMessage to MessageInterface format ──
   const transformMessage = useCallback(
     (msg: DirectMessage, userId: string): Message => ({
       id: msg.id,
+      // Issue #4114: the merge key that pairs the optimistic bubble, the insert
+      // response, the realtime echo and every refresh.
+      clientId: msg.client_id ?? undefined,
       senderId: msg.sender_id ?? '',
       senderName: msg.sender_name || "Unknown",
       content: msg.content,
@@ -1621,6 +1931,23 @@ function ConnectionsPageRefactored({
         msg.card_payload && (msg.card_payload as { kind?: string }).kind === 'collab_dead_end'
           ? (msg.card_payload as unknown as CollabDeadEndBannerPayload)
           : undefined,
+      // Issue #4114 Wave 3: reactions come with each page read (undefined on a
+      // realtime row, so the merge keeps what the store already has), and an
+      // unsent message (deleted_at, via the realtime UPDATE) is hidden.
+      reactions: msg.reactions,
+      unsent: msg.deleted_at ? true : undefined,
+      // Issue #4114 Wave 4: view once. `mediaViews` is undefined on a realtime
+      // row, so the merge keeps what the last page read found.
+      viewOnce: msg.view_once === true ? true : undefined,
+      viewOncePurged: msg.view_once_purged_at ? true : undefined,
+      mediaViews: msg.media_views,
+      // Issue #4114 Wave 7: the thumbnail, the card's shape, the album and D18 expiry.
+      thumbPath: msg.thumb_path ?? undefined,
+      mediaDurationMs: typeof msg.media_duration_ms === "number" ? msg.media_duration_ms : undefined,
+      mediaWidth: typeof msg.media_width === "number" ? msg.media_width : undefined,
+      mediaHeight: typeof msg.media_height === "number" ? msg.media_height : undefined,
+      mediaAlbumId: msg.media_album_id ?? undefined,
+      mediaExpired: msg.media_expired_at ? true : undefined,
     }),
     []
   );
@@ -1630,8 +1957,9 @@ function ConnectionsPageRefactored({
     (conversationId: string, msgs: Message[]) => {
       // Only persist real, successfully-sent messages — exclude optimistic
       // temp messages and failed messages (ghost messages across sessions)
+      // Issue #4114: `msgs` is the merged store (deduped, time-sorted).
       const persistable = msgs
-        .filter((m) => !m.id.startsWith("temp-") && !m.failed)
+        .filter((m) => !isLocalMessage(m) && !m.failed)
         .slice(-100); // Cap to last 100 to avoid unbounded AsyncStorage growth
       if (persistable.length === 0) return;
       AsyncStorage.setItem(
@@ -1649,7 +1977,9 @@ function ConnectionsPageRefactored({
         const cached = await AsyncStorage.getItem(getMessagesCacheKey(conversationId));
         if (cached) {
           const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          // Issue #4114: older builds could persist duplicate rows; hydrate
+          // through the merge so a cached chat shows each message once.
+          if (Array.isArray(parsed) && parsed.length > 0) return mergeMessages([], parsed as Message[]);
         }
       } catch (e) {
         console.warn("[ConnectionsPage] Message cache hydration failed:", e);
@@ -1659,9 +1989,192 @@ function ConnectionsPageRefactored({
     []
   );
 
+  // ── Issue #4114: the single write path for chat messages ──
+  // Every source (send result, retry, realtime echo, broadcast, background
+  // refresh, reconnect refresh, AsyncStorage hydrate, older pages) lands here.
+  // Writes are keyed by conversation, so a late event for chat A can never
+  // land in chat B's list.
+  const writeConversationMessages = useCallback(
+    (conversationId: string, incoming: Message[], options?: MergeMessagesOptions) => {
+      setMessagesCache((prev) => ({
+        ...prev,
+        [conversationId]: mergeMessages(prev[conversationId] ?? EMPTY_MESSAGES, incoming, options),
+      }));
+    },
+    []
+  );
+
+  // Issue #4114: record whether older history exists after a server read of the newest page.
+  const noteNewestPageLoaded = useCallback((conversationId: string, hasMore: boolean) => {
+    setOlderPaging((prev) =>
+      prev.conversationId === conversationId && prev.loading
+        ? prev
+        : { conversationId, hasMore, loading: false }
+    );
+  }, []);
+
+  // ── Issue #4114 Wave 6: the brand channel ─────────────────
+  // The open thread's "friend" is the event chat a new message goes to, so the
+  // broadcast receiver, typing and the participants read follow that chat.
+  const buildBrandChannelFriend = (channel: BrandChannel, conversationId: string): Friend => {
+    const member = conversations.find((conv) => conv.id === conversationId) as ChatListItemConversation | undefined;
+    const event = findBrandChannelEvent(channel, conversationId);
+    return {
+      id: channel.id,
+      name: event?.title || channel.brandName,
+      username: "group",
+      status: "offline",
+      isOnline: false,
+      conversationType: 'group',
+      sessionId: null,
+      eventId: event?.eventId ?? member?.event_id ?? null,
+      linkedEntityType: event?.linkedEntityType ?? 'event',
+      sessionCreatorId: null,
+      eventBrandName: channel.brandName,
+      eventBrandAccountId: channel.brandAccountId,
+      eventCoverMediaUrl: member?.eventCoverMediaUrl ?? null,
+      eventPublicUrl: member?.eventPublicUrl ?? null,
+      eventPublicCard: member?.eventPublicCard ?? null,
+      isBroadcastOnly: Boolean(member?.is_broadcast_only),
+      isSessionAdmin: false,
+      participantCount: member?.participants.length ?? event?.participantCount ?? 0,
+      participants: (member?.participants ?? []).map((p) => ({
+        id: p.id,
+        name: getDisplayName(p, p.username || 'User'),
+        username: p.username,
+        avatar_url: p.avatar_url,
+        is_online: p.is_online,
+      })),
+    };
+  };
+
+  /** Loads the newest page across every event chat of the channel (one query). */
+  const loadBrandChannelNewest = (channel: BrandChannel, userId: string) => {
+    const memberIds = channel.events.map((event) => event.conversationId);
+    return withTimeout(messagingService.getMessages(memberIds, userId), 8000, 'getMessages')
+      .then(({ messages: freshMsgs, error: msgError, hasMore }) => {
+        for (const id of memberIds) markMessagesSettled(id);
+        if (msgError) {
+          console.error("Error loading brand channel messages:", msgError);
+          return;
+        }
+        const byConversation = new Map<string, Message[]>(memberIds.map((id) => [id, []]));
+        for (const raw of freshMsgs || []) {
+          byConversation.get(raw.conversation_id)?.push(transformMessage(raw, userId));
+        }
+        for (const [conversationId, list] of byConversation) {
+          writeConversationMessages(conversationId, list, { snapshot: { complete: !hasMore } });
+          if (activeBrandChannelRef.current?.id === channel.id) {
+            markConversationAsRead(conversationId, userId, list);
+          }
+        }
+        noteNewestPageLoaded(channel.id, hasMore);
+      })
+      .catch((e) => {
+        for (const id of memberIds) markMessagesSettled(id);
+        console.warn("[ConnectionsPage] Brand channel refresh failed (offline?):", e);
+      });
+  };
+
+  const handleOpenBrandChannel = async (channel: BrandChannel, preferredConversationId?: string | null) => {
+    if (!user?.id) return;
+    const target = preferredConversationId && findBrandChannelEvent(channel, preferredConversationId)
+      ? preferredConversationId
+      : defaultSendTarget(channel.events, Date.now());
+    if (!target) return;
+    const userId = user.id;
+    const memberIds = channel.events.map((event) => event.conversationId);
+
+    setActiveChatIsBlocked(false);
+    setActiveChatIsUnfriended(false);
+    setActiveChatIsDeletedAccount(false);
+    latestSelectedChatRef.current = channel.id;
+    activeBrandChannelRef.current = channel;
+    setActiveBrandChannel(channel);
+    setActiveChat(buildBrandChannelFriend(channel, target));
+    setCurrentConversationId(target);
+
+    // Open at once with what is cached (memory, then AsyncStorage), then refresh.
+    for (const conversationId of memberIds) {
+      const inMemory = messagesCache[conversationId];
+      if (inMemory && inMemory.length > 0) {
+        markConversationAsRead(conversationId, userId, inMemory);
+        continue;
+      }
+      const stored = await hydrateMessages(conversationId);
+      if (stored.length > 0) {
+        writeConversationMessages(conversationId, stored);
+        markConversationAsRead(conversationId, userId, stored);
+      }
+    }
+    setShowMessageInterface(true);
+    void loadBrandChannelNewest(channel, userId);
+    setupRealtimeSubscription(memberIds, userId);
+  };
+
+  /** D10: the "Sending to" chip picked another of your upcoming events. */
+  const handleSelectBrandChannelTarget = useCallback((conversationId: string) => {
+    const channel = activeBrandChannelRef.current;
+    if (!channel || !findBrandChannelEvent(channel, conversationId)) return;
+    setCurrentConversationId(conversationId);
+    setActiveChat(buildBrandChannelFriend(channel, conversationId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reads the list through buildBrandChannelFriend at call time
+  }, [conversations]);
+
+  /** The chat a loaded message belongs to (a brand channel holds several). */
+  const conversationOfMessage = (messageId: string | null | undefined): string | null => {
+    if (!messageId) return null;
+    const channel = activeBrandChannelRef.current;
+    if (!channel) return currentConversationId;
+    for (const event of channel.events) {
+      if ((messagesCache[event.conversationId] ?? EMPTY_MESSAGES).some((msg) => msg.id === messageId)) {
+        return event.conversationId;
+      }
+    }
+    return null;
+  };
+
+  /** D10: where a brand channel send goes (a reply goes to the quoted message's event). */
+  const brandChannelSendTarget = (replyToId?: string): string | null => {
+    const channel = activeBrandChannelRef.current;
+    if (!channel) return null;
+    return resolveSendTarget({
+      events: channel.events,
+      chosenConversationId: currentConversationId,
+      replyToConversationId: replyToId ? conversationOfMessage(replyToId) : null,
+      now: Date.now(),
+    });
+  };
+
   // ── Select conversation from chat list ───────────────────
   const handleSelectConversation = async (conversation: Conversation) => {
     if (!user?.id) return;
+
+    // Issue #4114: a host chat (your own brand's event or trip chat) is run in
+    // the Host app; a push or deep link never opens it in Explorer. A row built
+    // from a link may lack the brand, so the loaded list is checked too.
+    const known = (conversations.find((candidate) => candidate.id === conversation.id) ?? conversation) as ChatListItemConversation;
+    if (isHostChatForUser(known, teamBrandIds) || isHostChatForUser(conversation as ChatListItemConversation, teamBrandIds)) {
+      showToast({ message: t('connections:host_chat_in_business_app'), type: 'info' });
+      return;
+    }
+
+    // Issue #4114 Wave 6: a brand row opens its channel, and so does any of its
+    // event chats (deep links, notifications), with that event as the target.
+    if (isBrandChannelRow(conversation)) {
+      await handleOpenBrandChannel(conversation.__brandChannel);
+      return;
+    }
+    const folded = conversation as ChatListItemConversation;
+    if (folded.eventBrandId && foldsIntoBrandChannel(folded, teamBrandIds)) {
+      const channel = brandChannels.get(brandChannelId(folded.eventBrandId));
+      if (channel && findBrandChannelEvent(channel, conversation.id)) {
+        await handleOpenBrandChannel(channel, conversation.id);
+        return;
+      }
+    }
+    activeBrandChannelRef.current = null;
+    setActiveBrandChannel(null);
 
     const conversationMeta = conversation as Conversation & {
       type?: 'direct' | 'group';
@@ -1838,76 +2351,53 @@ function ConnectionsPageRefactored({
     setCurrentConversationId(conversation.id);
 
     // ── Offline-resilient message loading ──────────────────
-    // Priority: in-memory cache → AsyncStorage cache → network fetch
-    // Always open the chat immediately with whatever we have, then refresh in background.
+    // Priority: in-memory store → AsyncStorage cache → network fetch.
+    // Always open the chat immediately with whatever we have, then refresh in
+    // background. Issue #4114: the refresh MERGES into the store (it no longer
+    // replaces it), so a send still in flight survives it.
     const inMemoryCached = messagesCache[conversation.id];
-    let initialMessages: Message[] = [];
+    let initialMessages: Message[] = inMemoryCached ?? EMPTY_MESSAGES;
 
-    if (inMemoryCached && inMemoryCached.length > 0) {
-      initialMessages = inMemoryCached;
-    } else {
+    if (!inMemoryCached || inMemoryCached.length === 0) {
       // Try AsyncStorage before hitting network
       const storageCached = await hydrateMessages(conversation.id);
       if (storageCached.length > 0) {
         initialMessages = storageCached;
-        // Warm up in-memory cache
-        setMessagesCache((prev) => ({ ...prev, [conversation.id]: storageCached }));
+        writeConversationMessages(conversation.id, storageCached);
       }
     }
 
+    setShowMessageInterface(true);
     if (initialMessages.length > 0) {
-      // We have cached messages — show them immediately
-      setMessages(initialMessages);
-      setShowMessageInterface(true);
       markConversationAsRead(conversation.id, user.id, initialMessages);
-
-      // Refresh in background (silently fails if offline)
-      (async () => {
-        try {
-          const { messages: freshMsgs, error: msgError } =
-            await messagingService.getMessages(conversation.id, user.id);
-          if (!msgError && freshMsgs) {
-            const transformed = freshMsgs.map((m) => transformMessage(m, user.id));
-            setMessages(transformed);
-            setMessagesCache((prev) => ({ ...prev, [conversation.id]: transformed }));
-            persistMessages(conversation.id, transformed);
-            markConversationAsRead(conversation.id, user.id, transformed);
-          }
-        } catch (e) {
-          // Offline — user is already viewing cached messages, no action needed
-          console.warn("[ConnectionsPage] Background message refresh failed (offline?):", e);
-        }
-      })();
-    } else {
-      // No cache — open chat immediately with empty state, fetch in background
-      setMessages([]);
-      setShowMessageInterface(true);
-
-      const capturedConvId = conversation.id;
-      const capturedFriendId = friend.id;
-      withTimeout(
-        messagingService.getMessages(conversation.id, user.id),
-        8000,
-        'getMessages'
-      )
-        .then(({ messages: freshMsgs, error: msgError }) => {
-          // Guard against stale result if user switched chats
-          if (latestSelectedChatRef.current !== capturedFriendId) return;
-          if (msgError) {
-            console.error("Error loading messages:", msgError);
-            return;
-          }
-          const transformed = (freshMsgs || []).map((m) => transformMessage(m, user.id));
-          setMessages(transformed);
-          setMessagesCache((prev) => ({ ...prev, [capturedConvId]: transformed }));
-          persistMessages(capturedConvId, transformed);
-          markConversationAsRead(capturedConvId, user.id, transformed);
-        })
-        .catch((e) => {
-          // Timeout or network failure — chat is already open with empty state
-          console.warn("[ConnectionsPage] No-cache message fetch failed:", e);
-        });
     }
+
+    const capturedConvId = conversation.id;
+    const openedChatId = friend.id;
+    withTimeout(
+      messagingService.getMessages(conversation.id, user.id),
+      8000,
+      'getMessages'
+    )
+      .then(({ messages: freshMsgs, error: msgError, hasMore }) => {
+        markMessagesSettled(capturedConvId);
+        if (msgError) {
+          console.error("Error loading messages:", msgError);
+          return;
+        }
+        const transformed = (freshMsgs || []).map((m) => transformMessage(m, user.id));
+        writeConversationMessages(capturedConvId, transformed, { snapshot: { complete: !hasMore } });
+        noteNewestPageLoaded(capturedConvId, hasMore);
+        // Only mark read while this chat is still the one on screen.
+        if (latestSelectedChatRef.current === openedChatId) {
+          markConversationAsRead(capturedConvId, user.id, transformed);
+        }
+      })
+      .catch((e) => {
+        markMessagesSettled(capturedConvId);
+        // Offline / timeout — the chat is already open with whatever was cached.
+        console.warn("[ConnectionsPage] Background message refresh failed (offline?):", e);
+      });
 
     // Real-time subscription (gracefully degrades if offline)
     setupRealtimeSubscription(conversation.id, user.id);
@@ -1916,6 +2406,8 @@ function ConnectionsPageRefactored({
   // ── Start new conversation from friend picker ────────────
   const handlePickFriend = async (friend: UseFriend) => {
     if (!user?.id) return;
+    activeBrandChannelRef.current = null;
+    setActiveBrandChannel(null);
 
     const friendUserId = friend.friend_user_id || friend.id;
 
@@ -1931,7 +2423,6 @@ function ConnectionsPageRefactored({
     };
 
     setActiveChat(chatFriend);
-    setFriendPickerVisible(false);
 
     // Synchronous block check from cached blocked-users list
     const isBlockedByMe = blockedUsers.some((b) => b.id === friendUserId);
@@ -1954,8 +2445,9 @@ function ConnectionsPageRefactored({
       })
       .catch(() => {});
 
-    // Open chat UI immediately — conversation creation happens in background
-    setMessages([]);
+    // Open chat UI immediately — conversation creation happens in background.
+    // Issue #4114: clear the open conversation so no other chat's list shows.
+    setCurrentConversationId(null);
     setShowMessageInterface(true);
 
     const capturedFriendId = friendUserId;
@@ -1971,11 +2463,8 @@ function ConnectionsPageRefactored({
       if (latestSelectedChatRef.current !== capturedFriendId) return true; // stale — don't update
       setCurrentConversationId(cachedConv.id);
       const storageCached = await hydrateMessages(cachedConv.id);
-      const inMemoryCached = messagesCache[cachedConv.id];
-      const msgs = (inMemoryCached && inMemoryCached.length > 0) ? inMemoryCached : storageCached;
-      setMessages(msgs);
-      if (msgs.length > 0) {
-        setMessagesCache((prev) => ({ ...prev, [cachedConv.id]: msgs }));
+      if (storageCached.length > 0) {
+        writeConversationMessages(cachedConv.id, storageCached);
       }
       if (!isOffline) {
         setupRealtimeSubscription(cachedConv.id, currentUserId);
@@ -1985,20 +2474,18 @@ function ConnectionsPageRefactored({
 
     // Helper: load messages for a conversation in the background
     const loadMessagesInBackground = (conversationId: string) => {
-      // Try in-memory cache first
+      // The open chat reads the in-memory store directly (Issue #4114).
       const inMemoryCached = messagesCache[conversationId];
       if (inMemoryCached && inMemoryCached.length > 0) {
         if (latestSelectedChatRef.current !== capturedFriendId) return;
-        setMessages(inMemoryCached);
         markConversationAsRead(conversationId, currentUserId, inMemoryCached);
       }
 
-      // Try AsyncStorage cache
+      // Try AsyncStorage cache — merged, so it can never wipe a newer write.
       hydrateMessages(conversationId).then((storageCached) => {
         if (latestSelectedChatRef.current !== capturedFriendId) return;
         if (!inMemoryCached?.length && storageCached.length > 0) {
-          setMessages(storageCached);
-          setMessagesCache((prev) => ({ ...prev, [conversationId]: storageCached }));
+          writeConversationMessages(conversationId, storageCached);
           markConversationAsRead(conversationId, currentUserId, storageCached);
         }
       });
@@ -2009,16 +2496,20 @@ function ConnectionsPageRefactored({
         8000,
         'getMessages'
       )
-        .then(({ messages: freshMsgs, error: msgError }) => {
-          if (latestSelectedChatRef.current !== capturedFriendId) return;
-          if (msgError || !freshMsgs) return;
+        .then(({ messages: freshMsgs, error: msgError, hasMore }) => {
+          markMessagesSettled(conversationId);
+          if (msgError || !freshMsgs) {
+            if (msgError) console.warn("[ConnectionsPage] Background message fetch failed:", msgError);
+            return;
+          }
           const transformed = freshMsgs.map((m) => transformMessage(m, currentUserId));
-          setMessages(transformed);
-          setMessagesCache((prev) => ({ ...prev, [conversationId]: transformed }));
-          persistMessages(conversationId, transformed);
+          writeConversationMessages(conversationId, transformed, { snapshot: { complete: !hasMore } });
+          noteNewestPageLoaded(conversationId, hasMore);
+          if (latestSelectedChatRef.current !== capturedFriendId) return;
           markConversationAsRead(conversationId, currentUserId, transformed);
         })
         .catch((e) => {
+          markMessagesSettled(conversationId);
           console.warn("[ConnectionsPage] Background message fetch failed:", e);
         });
     };
@@ -2042,7 +2533,6 @@ function ConnectionsPageRefactored({
       } else {
         // No conversation yet — open empty chat UI, no DB row created
         setCurrentConversationId(null);
-        setMessages([]);
       }
     } catch (e) {
       if (latestSelectedChatRef.current !== capturedFriendId) return;
@@ -2075,6 +2565,8 @@ function ConnectionsPageRefactored({
     );
     const displayName = friend ? getDisplayName(friend) : "Chat";
 
+    activeBrandChannelRef.current = null;
+    setActiveBrandChannel(null);
     setShowMessageInterface(true);
     setActiveChat({
       id: targetId,
@@ -2085,9 +2577,21 @@ function ConnectionsPageRefactored({
       isOnline: false,
     });
     latestSelectedChatRef.current = targetId;
-    setMessages([]);
     setCurrentConversationId(null);
   }, [openDirectMessageWithUserId, user?.id, showMessageInterface, activeChat?.id]);
+
+  // ── Issue #4114: `mingla://connections?tab=requests` (send-pair-request and
+  // send-friend-request-email pushes, and a friend invite link opened by a
+  // signed-in user) opens the friends sheet on Requests. ─────────────────────
+  useEffect(() => {
+    if (!deepLinkParams || deepLinkParams.tab !== 'requests') return;
+    setFriendsModalTab("requests");
+    setShowBlockedView(false);
+    setShowFriendsModal(true);
+    setBadgeDismissed(true);
+    onDeepLinkHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one handoff per deep link
+  }, [deepLinkParams]);
 
   // ── Open trip/event group chat from deep links ───────────────────────────
   useEffect(() => {
@@ -2131,6 +2635,17 @@ function ConnectionsPageRefactored({
               event_id: conversation.event_id ?? deepLinkParams.eventId,
               linked_entity_type: conversation.linked_entity_type,
             } as Conversation;
+          }
+        }
+
+        // Issue #4114 Wave 5: a collab started from a 1:1 chat talks in that
+        // chat, so its invite / match / lock links open the 1:1 chat.
+        if (!rawConversation && deepLinkParams.sessionId) {
+          const dmConversationId = await fetchSessionConversationId(deepLinkParams.sessionId);
+          if (dmConversationId) {
+            // A friends' 1:1 chat is in the loaded list; if it is not, the link
+            // lands on the list like any other unresolved chat (ORCH-1080 SC-5).
+            rawConversation = conversations.find((conv) => conv.id === dmConversationId) ?? null;
           }
         }
 
@@ -2257,7 +2772,6 @@ function ConnectionsPageRefactored({
         });
         setShowMessageInterface(true);
         setCurrentConversationId(null);
-        setMessages([]);
       } finally {
         if (active) {
           onOpenDirectMessageHandled?.();
@@ -2282,20 +2796,34 @@ function ConnectionsPageRefactored({
         .filter((msg) => !msg.isMe && msg.unread)
         .map((msg) => msg.id);
 
-      // 2. Mark as read in the database
-      if (unreadIds.length > 0) {
-        messagingService.markAsRead(unreadIds, userId).catch(console.error);
+      // 2. Mark as read in the database. Issue #4114 QA: the WHOLE chat, not
+      //    only the loaded page — unread rows older than the first page kept
+      //    the badge alive (it came back after loading older messages).
+      const hadUnread = unreadIds.length > 0 ||
+        (conversationsForOpenDmRef.current.find((conv) => conv.id === conversationId)?.unread_count ?? 0) > 0;
+      if (hadUnread) {
+        void messagingService.markConversationRead(conversationId, userId);
       }
 
       // 3. Zero out unread_count in local conversations state so the badge
-      //    updates immediately (don't wait for the next fetchConversations)
+      //    updates immediately (don't wait for the next fetchConversations).
+      //    Issue #4114: opening a chat also clears a private "marked unread".
+      const wasMarkedUnread = Boolean(
+        (conversationsForOpenDmRef.current.find((conv) => conv.id === conversationId) as ChatListItemConversation | undefined)
+          ?.marked_unread_at,
+      );
       setConversations((prev) =>
         prev.map((conv) =>
           conv.id === conversationId
-            ? { ...conv, unread_count: 0 }
+            ? ({ ...conv, unread_count: 0, marked_unread_at: null } as Conversation)
             : conv
         )
       );
+      if (wasMarkedUnread) {
+        void messagingService.setConversationListState(conversationId, 'mark_read').then((result) => {
+          if (result.error) console.warn('[ConnectionsPage] clearing marked-unread failed', result.error);
+        });
+      }
     },
     []
   );
@@ -2305,16 +2833,19 @@ function ConnectionsPageRefactored({
   // 2-second debounce batches rapid mutations (send + confirm + reply)
   // into a single AsyncStorage write, avoiding excessive serialization.
   useEffect(() => {
-    if (!currentConversationId) return;
-    const msgs = messagesCache[currentConversationId];
-    if (!msgs || msgs.length === 0) return;
+    // Issue #4114 Wave 6: a brand channel persists each of its event chats.
+    const ids = activeBrandChannel ? brandChannelMemberIds : currentConversationId ? [currentConversationId] : [];
+    const pending = ids
+      .map((id) => [id, messagesCache[id]] as const)
+      .filter((entry): entry is readonly [string, Message[]] => Boolean(entry[1] && entry[1].length > 0));
+    if (pending.length === 0) return;
 
     const timeout = setTimeout(() => {
-      persistMessages(currentConversationId, msgs);
+      for (const [id, msgs] of pending) persistMessages(id, msgs);
     }, 2000);
 
     return () => clearTimeout(timeout);
-  }, [messagesCache, currentConversationId, persistMessages]);
+  }, [messagesCache, currentConversationId, activeBrandChannel, brandChannelMemberIds, persistMessages]);
 
   // ── Auto-refresh messages when network reconnects ───────
   const prevIsOfflineRef = useRef(isOffline);
@@ -2323,18 +2854,29 @@ function ConnectionsPageRefactored({
     prevIsOfflineRef.current = isOffline;
 
     // Just came back online while a chat is open — re-subscribe + refresh
-    if (wasOffline && !isOffline && currentConversationId && user?.id) {
+    const reconnectChannel = activeBrandChannelRef.current;
+    if (wasOffline && !isOffline && reconnectChannel && user?.id) {
+      // Issue #4114 Wave 6: a brand channel re-subscribes and refreshes all its chats.
+      setupRealtimeSubscription(reconnectChannel.events.map((event) => event.conversationId), user.id);
+      void loadBrandChannelNewest(reconnectChannel, user.id);
+      fetchConversations(user.id);
+    } else if (wasOffline && !isOffline && currentConversationId && user?.id) {
       // Re-establish realtime subscription (may have died or never been set up)
       setupRealtimeSubscription(currentConversationId, user.id);
 
       (async () => {
         try {
-          const { messages: freshMsgs, error: msgError } =
+          const { messages: freshMsgs, error: msgError, hasMore } =
             await messagingService.getMessages(currentConversationId, user.id);
-          if (!msgError && freshMsgs) {
+          if (msgError) {
+            console.warn("[ConnectionsPage] Reconnection refresh failed:", msgError);
+            return;
+          }
+          if (freshMsgs) {
             const transformed = freshMsgs.map((m) => transformMessage(m, user.id));
-            setMessages(transformed);
-            setMessagesCache((prev) => ({ ...prev, [currentConversationId]: transformed }));
+            // Issue #4114: merge, never replace — pending sends survive the refresh.
+            writeConversationMessages(currentConversationId, transformed, { snapshot: { complete: !hasMore } });
+            noteNewestPageLoaded(currentConversationId, hasMore);
             markConversationAsRead(currentConversationId, user.id, transformed);
           }
         } catch (e) {
@@ -2345,7 +2887,7 @@ function ConnectionsPageRefactored({
       // Also refresh the conversations list
       fetchConversations(user.id);
     }
-  }, [isOffline, currentConversationId, user?.id, transformMessage, markConversationAsRead, fetchConversations]);
+  }, [isOffline, currentConversationId, user?.id, transformMessage, markConversationAsRead, fetchConversations, writeConversationMessages, noteNewestPageLoaded]);
 
   /**
    * ORCH-0664 (I-DEDUP-AFTER-DELIVERY): single owner for incoming-message UI
@@ -2355,11 +2897,12 @@ function ConnectionsPageRefactored({
    *   2. postgres_changes (conversation:${id}) via subscribeToConversation
    *      .onMessage → THIS HELPER
    *
-   * The seen-set add is INSIDE this helper, AFTER `setMessages` succeeds, to
-   * satisfy the invariant. If `broadcastSeenIds.current.has(newMessage.id)` is
-   * already true, the OTHER delivery path won the race — we skip the
-   * visible-messages add but still run idempotent side effects (cache,
-   * conversation list, mark-as-read).
+   * The seen-set add is INSIDE this helper, AFTER the store write, to satisfy
+   * the invariant. Issue #4114: the write is `writeConversationMessages`, which
+   * merges by `clientId || id` — idempotent, so whichever path wins the race
+   * (broadcast, postgres_changes echo, or the sender's own insert response)
+   * the message shows exactly once. The old sender + text + 5-second guess is
+   * gone; the client id pairs the echo with the optimistic bubble.
    *
    * Sender-side L1907-area `broadcastSeenIds.current.add(sentMessage.id)` is
    * the documented exception to I-DEDUP-AFTER-DELIVERY (sender already mutated
@@ -2367,68 +2910,15 @@ function ConnectionsPageRefactored({
    */
   const addIncomingMessageToUI = useCallback(
     (newMessage: DirectMessage, conversationId: string, userId: string) => {
-      const alreadyDelivered = broadcastSeenIds.current.has(newMessage.id);
+      // Store write ALWAYS runs: mergeMessages is idempotent by
+      // `clientId || id`, so a second delivery of the same row is a no-op and
+      // the sender's own echo replaces its optimistic bubble in place.
+      writeConversationMessages(conversationId, [transformMessage(newMessage, userId)]);
 
-      if (!alreadyDelivered) {
-        const transformedMsg = transformMessage(newMessage, userId);
-
-        // Add to messages (replace optimistic or add new)
-        setMessages((prev) => {
-          const exists = prev.some((msg) => msg.id === transformedMsg.id);
-          if (exists) return prev;
-
-          const optimisticIndex = prev.findIndex(
-            (msg) =>
-              msg.id.startsWith("temp-") &&
-              msg.senderId === transformedMsg.senderId &&
-              msg.content === transformedMsg.content &&
-              Math.abs(
-                new Date(msg.timestamp).getTime() -
-                  new Date(transformedMsg.timestamp).getTime()
-              ) < 5000
-          );
-
-          if (optimisticIndex !== -1) {
-            const updated = [...prev];
-            updated[optimisticIndex] = transformedMsg;
-            return updated;
-          }
-
-          return [...prev, transformedMsg];
-        });
-
-        // Couple the seen-set add to a successful UI mutation.
-        // I-DEDUP-AFTER-DELIVERY: never populate the seen-set without
-        // a corresponding visible-messages addition.
-        broadcastSeenIds.current.add(newMessage.id);
-      }
-
-      // Cache update ALWAYS runs (idempotent — uses same exists/optimistic checks)
-      const transformedForCache = transformMessage(newMessage, userId);
-      setMessagesCache((prev) => {
-        const existing = prev[conversationId] || [];
-        const exists = existing.some((msg) => msg.id === transformedForCache.id);
-        if (exists) return prev;
-
-        const optimisticIndex = existing.findIndex(
-          (msg) =>
-            msg.id.startsWith("temp-") &&
-            msg.senderId === transformedForCache.senderId &&
-            msg.content === transformedForCache.content &&
-            Math.abs(
-              new Date(msg.timestamp).getTime() -
-                new Date(transformedForCache.timestamp).getTime()
-            ) < 5000
-        );
-
-        if (optimisticIndex !== -1) {
-          const updated = [...existing];
-          updated[optimisticIndex] = transformedForCache;
-          return { ...prev, [conversationId]: updated };
-        }
-
-        return { ...prev, [conversationId]: [...existing, transformedForCache] };
-      });
+      // Couple the seen-set add to the successful store write.
+      // I-DEDUP-AFTER-DELIVERY: never populate the seen-set without
+      // a corresponding visible-messages write.
+      broadcastSeenIds.current.add(newMessage.id);
 
       // Conversation list update ALWAYS runs.
       // Do NOT increment unread_count — the chat is open, so the message
@@ -2452,7 +2942,7 @@ function ConnectionsPageRefactored({
         messagingService.markAsRead([newMessage.id], userId).catch(console.error);
       }
     },
-    [transformMessage]
+    [transformMessage, writeConversationMessages]
   );
 
   // ORCH-0664: callback passed to MessageInterface as `onBroadcastReceive`.
@@ -2461,27 +2951,34 @@ function ConnectionsPageRefactored({
   const handleBroadcastReceive = useCallback(
     (msg: DirectMessage) => {
       if (!currentConversationId || !user?.id) return;
-      addIncomingMessageToUI(msg, currentConversationId, user.id);
+      // The broadcast channel is the open chat's (in a brand channel, the
+      // target event's); the row's own conversation id wins when present.
+      addIncomingMessageToUI(msg, msg.conversation_id || currentConversationId, user.id);
     },
     [currentConversationId, user?.id, addIncomingMessageToUI]
   );
 
   // ── Realtime subscription setup ──────────────────────────
-  const setupRealtimeSubscription = (conversationId: string, userId: string) => {
-
-    // Cleanup existing subscription
-    if (conversationChannelRef.current) {
-      messagingService.unsubscribeFromConversation(conversationId);
-    }
-
-    conversationChannelRef.current = messagingService.subscribeToConversation(
-      conversationId,
+  const setupRealtimeSubscription = (conversationIds: string | readonly string[], userId: string) => {
+    // Issue #4114 Wave 6: one chat, or every event chat of a brand channel on
+    // ONE channel (filter conversation_id=in.(…)). Each row is written to its
+    // own conversation's store.
+    const fallbackConversationId = typeof conversationIds === 'string' ? conversationIds : conversationIds[0] ?? '';
+    // Issue #4114: release the conversation that is ACTUALLY subscribed (it used
+    // to unsubscribe `conversationId`, the one being opened, which left the
+    // previous chat's channel running).
+    conversationChannelRef.current = switchConversationSubscription(
+      subscribedConversationIdRef,
+      conversationChannelKey(conversationIds),
+      messagingService,
+      () => messagingService.subscribeToConversation(
+      conversationIds,
       userId,
       {
         onMessage: (newMessage: DirectMessage) => {
           // ORCH-0664: delegate to single owner. Both delivery paths
           // (broadcast + postgres_changes) funnel here.
-          addIncomingMessageToUI(newMessage, conversationId, userId);
+          addIncomingMessageToUI(newMessage, newMessage.conversation_id || fallbackConversationId, userId);
         },
 
         // Read receipt flow: when the receiver marks a message as read,
@@ -2490,23 +2987,39 @@ function ConnectionsPageRefactored({
         // This callback updates the sender's UI with the read state.
         onMessageUpdated: (updatedMessage: DirectMessage) => {
           const transformed = transformMessage(updatedMessage, userId);
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === transformed.id ? { ...msg, ...transformed } : msg
-            )
-          );
+          const conversationId = updatedMessage.conversation_id || fallbackConversationId;
+          // Issue #4114: an UPDATE only patches a row the chat already holds
+          // (read receipts, edits); it never adds one.
           setMessagesCache((prev) => {
-            const existing = prev[conversationId] || [];
-            return {
-              ...prev,
-              [conversationId]: existing.map((msg) =>
-                msg.id === transformed.id ? { ...msg, ...transformed } : msg
-              ),
-            };
+            const existing = prev[conversationId] || EMPTY_MESSAGES;
+            const known = existing.some((msg) =>
+              msg.id === transformed.id || (!!transformed.clientId && msg.clientId === transformed.clientId)
+            );
+            if (!known) return prev;
+            return { ...prev, [conversationId]: mergeMessages(existing, [transformed]) };
+          });
+        },
+
+        // Issue #4114 QA: reactions and view-once opens arrive live and are
+        // merged into the subscribed chat(s) in place — no thread refetch.
+        // Rows for messages outside these chats change nothing.
+        onLiveChange: (change: ChatLiveChange) => {
+          const ids = typeof conversationIds === 'string' ? [conversationIds] : conversationIds;
+          setMessagesCache((prev) => {
+            let next = prev;
+            for (const id of ids) {
+              const existing = prev[id];
+              if (!existing) continue;
+              const patched = applyChatLiveChange(existing, change);
+              if (patched === existing) continue;
+              // Only the patched rows go through the one merge.
+              next = { ...next, [id]: mergeMessages(existing, patched.filter((msg, index) => msg !== existing[index]) as Message[]) };
+            }
+            return next;
           });
         },
       }
-    );
+    ));
   };
 
   const handleCancelPendingCollabChat = useCallback(async () => {
@@ -2630,15 +3143,15 @@ function ConnectionsPageRefactored({
 
   // ── Back from MessageInterface ───────────────────────────
   const handleBackFromMessage = useCallback(() => {
-    if (currentConversationId && conversationChannelRef.current) {
-      messagingService.unsubscribeFromConversation(currentConversationId);
-      conversationChannelRef.current = null;
-    }
+    // Issue #4114: release whichever conversation is actually subscribed.
+    releaseConversationSubscription(subscribedConversationIdRef, messagingService);
+    conversationChannelRef.current = null;
 
     setShowMessageInterface(false);
     setActiveChat(null);
     setCurrentConversationId(null);
-    setMessages([]);
+    activeBrandChannelRef.current = null;
+    setActiveBrandChannel(null);
     setActiveChatIsBlocked(false);
     setActiveChatIsUnfriended(false);
     setActiveChatIsDeletedAccount(false);
@@ -2667,271 +3180,148 @@ function ConnectionsPageRefactored({
     handleBackFromMessage();
   }, [handleBackFromMessage]);
 
-  // ── Send message ─────────────────────────────────────────
-  const handleSendMessage = async (
-    content: string,
-    type: "text" | "image" | "video" | "file",
-    file?: any,
-    replyToId?: string,
-    mentions: MentionEntry[] = [],
-    cardTags: CardTagEntry[] = [],
-  ) => {
-    if (!activeChat || !user?.id) return;
+  // ── Issue #4114: one delivery path for a fresh send and a retry ──
+  // The optimistic bubble is already in the store under its client id. The
+  // insert carries the same client id, so the response, the realtime echo
+  // (which usually lands first) and any refresh all merge into that one row.
+  // A retry reuses the client id; the server's unique index turns a retry of a
+  // send that already landed into a read of the original row.
+  const deliverMessage = async (conversationId: string, pending: Message): Promise<void> => {
+    if (!user?.id) return;
+    const clientId = pending.clientId;
+    if (!clientId) return;
+    if (sendsInFlightRef.current.has(clientId)) return; // double tap on Retry
+    sendsInFlightRef.current.add(clientId);
 
-    // ORCH-0436: First message — create conversation + send atomically
-    if (!currentConversationId) {
-      // Handle file upload if needed — create conversation first for storage path
-      let firstFileUrl: string | undefined;
-      let firstFileName: string | undefined;
-      let firstFileSize: number | undefined;
-
-      const { conversationId: newConvId, error: convError } =
-        await messagingService.ensureConversation(user.id, activeChat.id);
-
-      if (convError || !newConvId) {
-        Alert.alert(
-          t('connections:message_not_sent'),
-          convError || t('connections:message_failed')
-        );
-        return;
-      }
-
-      if (file && type !== 'text') {
-        try {
-          const ext = file.name?.split('.').pop() || 'file';
-          const storagePath = `messages/${newConvId}/${Date.now()}.${ext}`;
-          const { error: uploadError } = await supabase.storage
-            .from('chat-files')
-            .upload(storagePath, file);
-          if (uploadError) throw uploadError;
-          const { data: urlData } = supabase.storage
-            .from('chat-files')
-            .getPublicUrl(storagePath);
-          firstFileUrl = urlData?.publicUrl;
-          firstFileName = file.name;
-          firstFileSize = file.size;
-        } catch (uploadErr) {
-          console.error('[ConnectionsPage] First message file upload failed:', uploadErr);
-          Alert.alert(t('connections:upload_error_title'), t('connections:upload_error_body'));
-          return;
-        }
-      }
-
-      const { message: sentMsg, error: sendError } = await messagingService.sendMessage(
-        newConvId, user.id, content, type, firstFileUrl, firstFileName, firstFileSize, replyToId, mentions, cardTags
-      );
-
-      if (sendError || !sentMsg) {
-        Alert.alert(
-          t('connections:message_not_sent'),
-          sendError || t('connections:message_failed')
-        );
-        return;
-      }
-
-      // Set conversation ID + start Realtime
-      setCurrentConversationId(newConvId);
-      setupRealtimeSubscription(newConvId, user.id);
-
-      // Add the sent message to UI
-      const transformed = transformMessage(sentMsg, user.id);
-      setMessages([transformed]);
-      setMessagesCache(prev => ({ ...prev, [newConvId]: [transformed] }));
-
-      // Refresh conversations list to pick up the new conversation
-      fetchConversations(user.id);
-
-      return;
-    }
-
-    // ── Existing conversation: original logic below ──
-
-    // Synchronous block check — uses cached list + background reconciliation state.
-    // No network call on the send path. RLS enforces server-side as the real authority.
-    if (activeChatIsBlocked || blockedUsers.some((b) => b.id === activeChat.id)) {
-      Alert.alert(
-        t('connections:message_not_sent'),
-        t('connections:message_blocked')
-      );
-      return;
-    }
-
-    const tempId = `temp-${Date.now()}-${Math.random()}`;
-    const now = new Date().toISOString();
-
-    // Upload file if needed
-    let fileUrl: string | undefined;
-    let fileName: string | undefined;
-    let fileSize: number | undefined;
-
-    if (file && type !== "text") {
-      setUploadingFile(true);
-      try {
-        const fileUri = file.uri || file;
-        const fileExt =
-          file.name?.split(".").pop() ||
-          (file.type === "image" ? "jpg" : file.type === "video" ? "mp4" : fileUri.split(".").pop() || "bin");
-        const fileNameWithExt = `${user.id}_${Date.now()}.${fileExt}`;
-        const filePath = `${currentConversationId}/${fileNameWithExt}`;
-
-        let contentType = "application/octet-stream";
-        if (type === "image") contentType = file.type === "image" ? "image/jpeg" : "image/png";
-        else if (type === "video") contentType = "video/mp4";
-
-        const formData = new FormData();
-        formData.append("file", {
-          uri: fileUri,
-          type: contentType,
-          name: fileNameWithExt,
-        } as any);
-
-        const { error: uploadError } = await supabase.storage
-          .from("messages")
-          .upload(filePath, formData, { contentType, upsert: false });
-
-        if (uploadError) {
-          console.error("Error uploading file:", uploadError);
-          setUploadingFile(false);
-          Alert.alert(t('connections:upload_error_title'), t('connections:upload_error_body'));
-          return;
-        }
-
-        const { data: urlData } = supabase.storage.from("messages").getPublicUrl(filePath);
-        fileUrl = urlData.publicUrl;
-        fileName = file.name || fileNameWithExt;
-        fileSize = file.size || 0;
-        setUploadingFile(false);
-      } catch (e) {
-        console.error("Error uploading file:", e);
-        setUploadingFile(false);
-        Alert.alert(t('connections:upload_error_title'), t('connections:upload_error_body'));
-        return;
-      }
-    }
-
-    // Optimistic message
-    const optimisticMsg: Message = {
-      id: tempId,
-      senderId: user.id,
-      senderName: "Me",
-      content,
-      timestamp: now,
-      type,
-      fileUrl,
-      fileName,
-      fileSize: fileSize?.toString(),
-      isMe: true,
-      unread: false,
-      replyToId,
-      mentions,
-      cardTags,
-      marketingCampaignId: null,
+    // The latest local copy: after a media upload it carries the storage path,
+    // so a failed send keeps it and Retry does not upload again.
+    let current: Message = pending;
+    const markFailed = (failedReason?: "daily_limit") => {
+      // Ignored by the merge if the server already confirmed this client id.
+      writeConversationMessages(conversationId, [{ ...current, failed: true, failedReason }]);
     };
 
-    setMessages((prev) => [...prev, optimisticMsg]);
-    setMessagesCache((prev) => ({
-      ...prev,
-      [currentConversationId]: [...(prev[currentConversationId] || []), optimisticMsg],
-    }));
-
-    // Update conversation list optimistically
-    setConversations((prev) =>
-      prev.map((conv) => {
-        if (conv.id === currentConversationId) {
-          return {
-            ...conv,
-            last_message: {
-              id: tempId,
-              conversation_id: currentConversationId,
-              sender_id: user.id,
-              content,
-              message_type: type as "text" | "image" | "video" | "file" | "card",
-              file_url: fileUrl,
-              file_name: fileName,
-              file_size: fileSize,
-              mentions,
-              card_tags: cardTags,
-              marketing_campaign_id: null,
-              created_at: now,
-              sender_name: "Me",
-              is_read: true,
-            },
-          };
-        }
-        return conv;
-      })
-    );
-
     try {
+      if (
+        pending.type !== "text" &&
+        pending.type !== "image" &&
+        pending.type !== "video" &&
+        pending.type !== "file"
+      ) {
+        throw new Error(`Unsupported message type for send: ${pending.type}`);
+      }
+
+      // Issue #4114 Wave 4: a media send uploads first (private bucket, real
+      // MIME type, progress, cancel) through the one upload service.
+      if (pending.localMedia && !pending.fileUrl) {
+        try {
+          const prepared = await prepareChatMedia(pending.localMedia);
+          const uploaded = await uploadChatMedia({
+            conversationId,
+            clientId,
+            item: prepared,
+            viewOnce: pending.viewOnce === true,
+            onProgress: (fraction) => reportUploadProgress(clientId, fraction),
+          });
+          current = {
+            ...pending,
+            fileUrl: uploaded.path,
+            fileName: prepared.fileName,
+            fileSize: uploaded.fileSize !== null ? String(uploaded.fileSize) : undefined,
+            thumbPath: uploaded.thumbPath ?? undefined,
+            mediaWidth: uploaded.width ?? pending.mediaWidth,
+            mediaHeight: uploaded.height ?? pending.mediaHeight,
+          };
+          writeConversationMessages(conversationId, [current]);
+        } catch (uploadError) {
+          clearUploadProgress(clientId);
+          if (uploadError instanceof ChatMediaUploadError && uploadError.code === "cancelled") {
+            // Cancelled by the sender: hide the bubble (it never reached the server).
+            writeConversationMessages(conversationId, [{ ...pending, failed: true, unsent: true }]);
+            // Issue #4114 QA run 3: the cancelled pick's temp copy goes too.
+            releasePickerTempFiles([pending.localMedia.uri]);
+            void discardPickerTempFiles([pending.localMedia.uri]);
+            return;
+          }
+          console.error("[ConnectionsPage] Media upload failed:", uploadError);
+          const code = uploadError instanceof ChatMediaUploadError ? uploadError.code : "failed";
+          // QA run 2: today's limit is not retryable, so its bubble says so
+          // instead of "Tap to retry".
+          markFailed(code === "daily_limit" ? "daily_limit" : undefined);
+          // Issue #4114 QA (P3): a retryable upload failure shows only the
+          // bubble's "Tap to retry"; a refusal that a retry cannot fix toasts.
+          if (code === "refused_type" || code === "refused_size" || code === "daily_limit") {
+            showToast({
+              message:
+                code === "refused_type"
+                  ? t("chat:mediaTypeNotSupported")
+                  : code === "refused_size"
+                    ? t("chat:mediaTooLarge")
+                    : t("chat:mediaDailyLimit"),
+              type: "error",
+            });
+          }
+          return;
+        }
+        clearUploadProgress(clientId);
+      }
+
+      const mentionEntries = (current.mentions ?? []).filter(
+        (mention): mention is MentionEntry => typeof mention !== "string"
+      );
+      const parsedFileSize = current.fileSize ? Number(current.fileSize) : undefined;
+
       const { message: sentMessage, error: sendError } =
         await messagingService.sendMessage(
-          currentConversationId,
+          conversationId,
           user.id,
-          content,
-          type,
-          fileUrl,
-          fileName,
-          fileSize,
-          replyToId,
-          mentions,
-          cardTags,
+          current.content,
+          current.type as "text" | "image" | "video" | "file",
+          current.fileUrl,
+          current.fileName,
+          parsedFileSize !== undefined && Number.isFinite(parsedFileSize) ? parsedFileSize : undefined,
+          current.replyToId,
+          mentionEntries,
+          current.cardTags ?? [],
+          clientId,
+          {
+            viewOnce: current.viewOnce === true,
+            thumbPath: current.thumbPath ?? null,
+            durationMs: current.mediaDurationMs ?? null,
+            width: current.mediaWidth ?? null,
+            height: current.mediaHeight ?? null,
+            albumId: current.mediaAlbumId ?? null,
+          },
         );
 
       if (sendError || !sentMessage) {
         console.error("Error sending message:", sendError);
 
-        // Mark optimistic message as failed (not removed — user sees retry state)
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === tempId ? { ...msg, failed: true } : msg
-          )
-        );
-        setMessagesCache((prev) => ({
-          ...prev,
-          [currentConversationId]: (prev[currentConversationId] || []).map(
-            (msg) => (msg.id === tempId ? { ...msg, failed: true } : msg)
-          ),
-        }));
+        // Mark optimistic message as failed (not removed — user sees tap-to-retry)
+        markFailed();
 
-        if (
-          sendError?.includes("Cannot") ||
-          sendError?.includes("blocked") ||
-          sendError?.includes("policy")
-        ) {
-          Alert.alert(
-            t('connections:message_not_sent'),
-            t('connections:message_blocked_alt')
-          );
-        } else {
-          Alert.alert(
-            t('connections:message_not_sent'),
-            t('connections:message_failed')
-          );
+        // Issue #4114 QA (P3): the bubble's "Tap to retry" is the only
+        // feedback for a retryable failure; a refused send gets a toast.
+        if (sendFailureFeedback(sendError) === "toast_not_allowed") {
+          showToast({ message: t('connections:message_blocked_alt'), type: "error" });
         }
         return;
       }
 
-      // CRITICAL: Replace temp ID with real ID in messages state
-      const realMsg = transformMessage(sentMessage, user.id);
-
-      setMessages((prev) =>
-        prev.map((msg) => (msg.id === tempId ? realMsg : msg))
-      );
-
-      setMessagesCache((prev) => {
-        const existing = prev[currentConversationId] || [];
-        return {
-          ...prev,
-          [currentConversationId]: existing.map((msg) =>
-            msg.id === tempId ? realMsg : msg
-          ),
-        };
-      });
+      // Confirmation: the server row replaces the optimistic bubble by client id
+      // (and shows the server's time). If the echo already did it, this is a no-op.
+      writeConversationMessages(conversationId, [transformMessage(sentMessage, user.id)]);
+      // Issue #4114 QA run 3: once the server row replaces the bubble, nothing
+      // reads the picker's temp copy (a failed send keeps it for its preview).
+      if (current.localMedia) {
+        releasePickerTempFiles([current.localMedia.uri]);
+        void discardPickerTempFiles([current.localMedia.uri]);
+      }
 
       // Update conversation with real message
       setConversations((prev) =>
         prev.map((conv): Conversation => {
-          if (conv.id === currentConversationId) {
+          if (conv.id === conversationId) {
             return { ...conv, last_message: sentMessage as unknown as ConvMessage };
           }
           return conv;
@@ -2946,7 +3336,7 @@ function ConnectionsPageRefactored({
       // already subscribed to this channel. supabase.channel() returns the
       // existing subscribed instance, enabling the send.
       try {
-        const channelName = `chat:${currentConversationId}`;
+        const channelName = `chat:${conversationId}`;
         const broadcastChannel = supabase.channel(channelName);
         broadcastChannel.send({
           type: "broadcast",
@@ -2962,19 +3352,374 @@ function ConnectionsPageRefactored({
       }
     } catch (e) {
       console.error("Error sending message:", e);
-      // Mark as failed instead of removing
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === tempId ? { ...msg, failed: true } : msg
-        )
-      );
-      setMessagesCache((prev) => ({
-        ...prev,
-        [currentConversationId]: (prev[currentConversationId] || []).map(
-          (msg) => (msg.id === tempId ? { ...msg, failed: true } : msg)
-        ),
-      }));
+      // Mark as failed instead of removing — the bubble offers tap-to-retry.
+      markFailed();
+    } finally {
+      sendsInFlightRef.current.delete(clientId);
     }
+  };
+
+  // ── Issue #4114: tap a failed bubble to send it again with the same client id ──
+  // ── Issue #4114 Wave 3: reactions, unsend and report from inside a thread ──
+  // All three write through the one merge (writeConversationMessages).
+  const handleToggleReaction = async (messageId: string, emoji: string): Promise<void> => {
+    // Issue #4114 Wave 6: the message's own chat (a brand channel holds several).
+    const conversationId = conversationOfMessage(messageId);
+    if (!user?.id || !conversationId) return;
+    const target = (messagesCache[conversationId] ?? EMPTY_MESSAGES).find((msg) => msg.id === messageId);
+    if (!target || isLocalMessage(target) || target.isSystem) return;
+    const before = target.reactions ?? [];
+    writeConversationMessages(conversationId, [{ ...target, reactions: toggleReactionRows(before, user.id, emoji) }]);
+    const { error } = await messagingService.toggleDirectMessageReaction(messageId, user.id, emoji);
+    if (error) {
+      writeConversationMessages(conversationId, [{ ...target, reactions: before }]);
+      showToast({ message: t('chat:reactionFailed'), type: 'error' });
+    }
+  };
+
+  const handleUnsendMessage = async (messageId: string): Promise<boolean> => {
+    const conversationId = conversationOfMessage(messageId);
+    if (!user?.id || !conversationId) return false;
+    const target = (messagesCache[conversationId] ?? EMPTY_MESSAGES).find((msg) => msg.id === messageId);
+    if (!target || !target.isMe || isLocalMessage(target)) return false;
+    const { error } = await messagingService.unsendMessage(messageId, user.id);
+    if (error) {
+      showToast({ message: t('chat:unsendFailed'), type: 'error' });
+      return false;
+    }
+    writeConversationMessages(conversationId, [{ ...target, unsent: true }]);
+    return true;
+  };
+
+  const reportMessageRef = useRef<{ id: string; content: string } | null>(null);
+  const handleReportMessage = (
+    message: { id: string; senderId: string; senderName: string; content: string },
+    onSettled?: (reported: boolean) => void,
+  ) => {
+    if (!message.senderId) return;
+    reportMessageRef.current = { id: message.id, content: message.content };
+    const sender: Friend = { id: message.senderId, name: message.senderName, username: "", isOnline: false };
+    handleReportUser(sender, (reported) => {
+      reportMessageRef.current = null;
+      onSettled?.(reported);
+    });
+  };
+
+  const handleRetryMessage = (messageId: string) => {
+    const retryConversationId = conversationOfMessage(messageId);
+    if (!retryConversationId || !user?.id) return;
+    const failedMessage = (messagesCache[retryConversationId] ?? EMPTY_MESSAGES).find(
+      (msg) => msg.id === messageId
+    );
+    if (!failedMessage || failedMessage.failed !== true || !isLocalMessage(failedMessage)) return;
+    if (failedMessage.failedReason === "daily_limit") return; // a retry cannot fix today's limit
+    if (activeChatIsBlocked || (activeChat && blockedUsers.some((b) => b.id === activeChat.id))) {
+      Alert.alert(
+        t('connections:message_not_sent'),
+        t('connections:message_blocked')
+      );
+      return;
+    }
+    const pending: Message = {
+      ...failedMessage,
+      clientId: failedMessage.clientId ?? createClientMessageId(),
+      failed: false,
+    };
+    writeConversationMessages(retryConversationId, [pending]);
+    void deliverMessage(retryConversationId, pending);
+  };
+
+  // ── Issue #4114: load older messages when the user scrolls to the top ──
+  // Pages backwards from the oldest confirmed message (50 at a time) and merges
+  // the page into the store, so nothing already on screen moves or repeats.
+  const handleLoadOlderMessages = async () => {
+    // Issue #4114 Wave 6: a brand channel pages all its event chats together
+    // (one `.in()` query, the oldest message on screen as the cursor) and each
+    // row lands in its own chat's store.
+    const conversationId = threadPagingKey;
+    if (!conversationId || !user?.id) return;
+    if (olderPaging.conversationId !== conversationId || !olderPaging.hasMore || olderPaging.loading) return;
+    if (olderLoadInFlightRef.current === conversationId) return;
+    const channel = activeBrandChannelRef.current;
+    const loaded = channel ? messages : messagesCache[conversationId] ?? EMPTY_MESSAGES;
+    const before = oldestConfirmedTimestamp(loaded);
+    if (!before) return;
+
+    olderLoadInFlightRef.current = conversationId;
+    setOlderPaging({ conversationId, hasMore: true, loading: true });
+    try {
+      const { messages: page, error, hasMore } = await messagingService.getMessages(
+        channel ? channel.events.map((event) => event.conversationId) : conversationId,
+        user.id,
+        MESSAGE_PAGE_SIZE,
+        before,
+      );
+      if (error) throw new Error(error);
+      const transformed = page.map((m) => transformMessage(m, user.id));
+      const loadedIds = new Set(loaded.map((m) => m.id));
+      // The cursor is inclusive; a page with nothing new means we reached the start.
+      const gotNew = transformed.some((m) => !loadedIds.has(m.id));
+      if (channel) {
+        const byConversation = new Map<string, Message[]>();
+        page.forEach((raw, index) => {
+          const list = byConversation.get(raw.conversation_id) ?? [];
+          list.push(transformed[index]);
+          byConversation.set(raw.conversation_id, list);
+        });
+        for (const [memberId, list] of byConversation) writeConversationMessages(memberId, list);
+      } else {
+        writeConversationMessages(conversationId, transformed);
+      }
+      // Issue #4114 QA: an older page can hold messages still unread (the chat
+      // was opened with more unread than one page); read them now so the badge
+      // and the list stay cleared.
+      if (transformed.some((m) => !m.isMe && m.unread)) {
+        if (channel) {
+          for (const memberId of new Set(page.map((raw) => raw.conversation_id))) {
+            markConversationAsRead(memberId, user.id, transformed.filter((_m, index) => page[index].conversation_id === memberId));
+          }
+        } else {
+          markConversationAsRead(conversationId, user.id, transformed);
+        }
+      }
+      setOlderPaging({ conversationId, hasMore: hasMore && gotNew, loading: false });
+    } catch (e) {
+      console.warn("[ConnectionsPage] Loading older messages failed:", e);
+      setOlderPaging({ conversationId, hasMore: true, loading: false });
+      showToast({ message: t('chat:olderMessagesFailed'), type: "error" });
+    } finally {
+      olderLoadInFlightRef.current = null;
+    }
+  };
+
+  // ── Issue #4114 Wave 4: upload progress for media sends ──
+  const lastProgressRef = useRef<Record<string, number>>({});
+  const reportUploadProgress = useCallback((clientId: string, fraction: number) => {
+    // Re-render at most every 5%, so a large video does not redraw the thread per chunk.
+    const step = Math.floor(fraction * 20) / 20;
+    if (lastProgressRef.current[clientId] === step) return;
+    lastProgressRef.current[clientId] = step;
+    setMediaUploadProgress((prev) => ({ ...prev, [clientId]: step }));
+  }, []);
+  const clearUploadProgress = useCallback((clientId: string) => {
+    delete lastProgressRef.current[clientId];
+    setMediaUploadProgress((prev) => {
+      if (!(clientId in prev)) return prev;
+      const next = { ...prev };
+      delete next[clientId];
+      return next;
+    });
+  }, []);
+
+  // ── Send message ─────────────────────────────────────────
+  // Issue #4114 Wave 4: the first message of a new chat takes the same path as
+  // every other send (optimistic bubble, deliverMessage, the one upload
+  // service). It used to upload to a bucket that does not exist.
+  const ensureChatConversation = async (): Promise<string | null> => {
+    if (!activeChat || !user?.id) return null;
+    if (currentConversationId) return currentConversationId;
+    // ORCH-0436: first message — create the conversation, then send into it.
+    const { conversationId: newConvId, error: convError } =
+      await messagingService.ensureConversation(user.id, activeChat.id);
+    if (convError || !newConvId) {
+      Alert.alert(
+        t('connections:message_not_sent'),
+        convError || t('connections:message_failed')
+      );
+      return null;
+    }
+    setCurrentConversationId(newConvId);
+    setupRealtimeSubscription(newConvId, user.id);
+    noteNewestPageLoaded(newConvId, false);
+    return newConvId;
+  };
+
+  const isActiveChatBlocked = (): boolean => {
+    // Synchronous block check — uses cached list + background reconciliation state.
+    // No network call on the send path. RLS enforces server-side as the real authority.
+    if (activeChatIsBlocked || (activeChat && blockedUsers.some((b) => b.id === activeChat.id))) {
+      Alert.alert(
+        t('connections:message_not_sent'),
+        t('connections:message_blocked')
+      );
+      return true;
+    }
+    return false;
+  };
+
+  /** Puts a not-yet-sent message on screen and in the chat list row. */
+  const postOptimisticMessage = (conversationId: string, optimisticMsg: Message) => {
+    writeConversationMessages(conversationId, [optimisticMsg]);
+    setConversations((prev) =>
+      prev.map((conv) => {
+        if (conv.id === conversationId) {
+          return {
+            ...conv,
+            last_message: {
+              id: optimisticMsg.id,
+              conversation_id: conversationId,
+              sender_id: optimisticMsg.senderId,
+              content: optimisticMsg.content,
+              message_type: optimisticMsg.type as "text" | "image" | "video" | "file" | "card",
+              file_url: undefined,
+              file_name: optimisticMsg.fileName,
+              file_size: optimisticMsg.fileSize ? Number(optimisticMsg.fileSize) : undefined,
+              mentions: optimisticMsg.mentions,
+              card_tags: optimisticMsg.cardTags,
+              marketing_campaign_id: null,
+              created_at: optimisticMsg.timestamp,
+              sender_name: "Me",
+              is_read: true,
+            },
+          };
+        }
+        return conv;
+      })
+    );
+  };
+
+  const handleSendMessage = async (
+    content: string,
+    type: "text" | "image" | "video" | "file",
+    _file?: unknown,
+    replyToId?: string,
+    mentions: MentionEntry[] = [],
+    cardTags: CardTagEntry[] = [],
+  ) => {
+    if (!activeChat || !user?.id) return;
+    // Photos, videos and files go through handleSendMedia (the attach sheet).
+    if (type !== "text") return;
+
+    // Issue #4114: minted before anything else and reused on every retry.
+    const clientId = createClientMessageId();
+    // Issue #4114 Wave 6 (D10): in a brand channel the message goes to exactly
+    // one event's chat (the quoted message's when replying).
+    const brandTarget = brandChannelSendTarget(replyToId);
+    const isNewChat = !brandTarget && !currentConversationId;
+    const conversationId = brandTarget ?? await ensureChatConversation();
+    if (!conversationId) return;
+    if (isActiveChatBlocked()) return;
+
+    const optimisticMsg: Message = {
+      id: `${LOCAL_MESSAGE_ID_PREFIX}${clientId}`,
+      clientId,
+      senderId: user.id,
+      senderName: "Me",
+      content,
+      timestamp: new Date().toISOString(),
+      type: "text",
+      isMe: true,
+      unread: false,
+      replyToId,
+      mentions,
+      cardTags,
+      marketingCampaignId: null,
+    };
+    postOptimisticMessage(conversationId, optimisticMsg);
+    await deliverMessage(conversationId, optimisticMsg);
+    if (isNewChat) fetchConversations(user.id);
+  };
+
+  // ── Issue #4114 Wave 4: send photos, videos and files from the attach sheet ──
+  // Each item is its own message with its own client id, shown at once with
+  // its upload progress, then uploaded and sent in order. A caption rides on
+  // the first item; with view once it is sent as its own text message instead,
+  // so the words never sit on an item that disappears.
+  const handleSendMedia = async (
+    items: PickedChatMedia[],
+    caption: string,
+    viewOnce: boolean,
+    replyToId?: string,
+  ) => {
+    // Issue #4114 sim run 4: an in-flight or failed upload holds its picker
+    // copy (preview and retry) until the send is confirmed or cancelled. Held
+    // before the first await, so the tray's release never leaves a gap.
+    const itemUris = items.map((item) => item.uri);
+    holdPickerTempFiles(itemUris);
+    const dropItems = () => {
+      releasePickerTempFiles(itemUris);
+      void discardPickerTempFiles(itemUris);
+    };
+    if (!activeChat || !user?.id || items.length === 0) {
+      dropItems();
+      return;
+    }
+    const brandTarget = brandChannelSendTarget(replyToId);
+    const isNewChat = !brandTarget && !currentConversationId;
+    const conversationId = brandTarget ?? await ensureChatConversation();
+    if (!conversationId || isActiveChatBlocked()) {
+      dropItems();
+      return;
+    }
+
+    const text = caption.trim();
+    const queue: Message[] = [];
+    const base = Date.now();
+    if (text && viewOnce) {
+      const clientId = createClientMessageId();
+      queue.push({
+        id: `${LOCAL_MESSAGE_ID_PREFIX}${clientId}`,
+        clientId,
+        senderId: user.id,
+        senderName: "Me",
+        content: text,
+        timestamp: new Date(base).toISOString(),
+        type: "text",
+        isMe: true,
+        unread: false,
+        replyToId,
+        mentions: [],
+        cardTags: [],
+        marketingCampaignId: null,
+      });
+    }
+    // Issue #4114 Wave 7: two or more ordinary photos sent together share an
+    // album id (one nullable column; each photo stays its own message, so
+    // retry, unsend and old apps keep working per photo).
+    const albumPhotos = viewOnce ? 0 : items.filter((item) => item.kind === "image").length;
+    const albumId = albumPhotos >= 2 ? createClientMessageId() : undefined;
+    items.forEach((item, index) => {
+      const clientId = createClientMessageId();
+      const first = index === 0;
+      queue.push({
+        id: `${LOCAL_MESSAGE_ID_PREFIX}${clientId}`,
+        clientId,
+        senderId: user.id,
+        senderName: "Me",
+        content: first && !viewOnce ? text : "",
+        timestamp: new Date(base + queue.length).toISOString(),
+        type: item.kind,
+        fileName: item.fileName ?? undefined,
+        fileSize: typeof item.fileSize === "number" ? String(item.fileSize) : undefined,
+        isMe: true,
+        unread: false,
+        replyToId: first && !(text && viewOnce) ? replyToId : undefined,
+        mentions: [],
+        cardTags: [],
+        marketingCampaignId: null,
+        viewOnce: viewOnce && item.kind !== "file" ? true : undefined,
+        localMedia: item,
+        mediaDurationMs: item.kind === "video" && typeof item.durationMs === "number" ? item.durationMs : undefined,
+        mediaWidth: item.width ?? undefined,
+        mediaHeight: item.height ?? undefined,
+        mediaAlbumId: item.kind === "image" ? albumId : undefined,
+      });
+    });
+
+    for (const message of queue) postOptimisticMessage(conversationId, message);
+    for (const message of queue) {
+      await deliverMessage(conversationId, message);
+    }
+    if (isNewChat) fetchConversations(user.id);
+  };
+
+  // ── Issue #4114 Wave 4: cancel a media send while it uploads ──
+  const handleCancelMediaUpload = (messageId: string) => {
+    const uploadConversationId = conversationOfMessage(messageId);
+    if (!uploadConversationId) return;
+    const target = (messagesCache[uploadConversationId] ?? EMPTY_MESSAGES).find((msg) => msg.id === messageId);
+    if (!target?.clientId || !isLocalMessage(target)) return;
+    void cancelChatMediaUpload(target.clientId);
   };
 
   // ── Collaboration session cleanup ────────────────────────
@@ -3026,12 +3771,14 @@ function ConnectionsPageRefactored({
     onShareSavedCard?.(friend);
   };
 
-  const handleRemoveFriend = (friend: Friend) => {
+  // Issue #4114 Wave 3: `onSettled` reports the real outcome (after the confirm
+  // and the server call), so a caller's "removed" toast never fires on Cancel.
+  const handleRemoveFriend = (friend: Friend, onSettled?: (removed: boolean) => void) => {
     Alert.alert(
       t('connections:remove_friend_title'),
       t('connections:remove_friend_body_alt', { name: friend.name }),
       [
-        { text: t('common:cancel'), style: "cancel" },
+        { text: t('common:cancel'), style: "cancel", onPress: () => onSettled?.(false) },
         {
           text: t('common:remove'),
           style: "destructive",
@@ -3047,13 +3794,16 @@ function ConnectionsPageRefactored({
               .then(() => {
                 // Invalidate nearby-people so the map updates relationship state (ORCH-0360)
                 queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
+                onSettled?.(true);
               })
               .catch((e) => {
                 showMutationError(e, 'removing friend', showToast);
+                onSettled?.(false);
               });
           },
         },
-      ]
+      ],
+      { cancelable: true, onDismiss: () => onSettled?.(false) },
     );
   };
 
@@ -3084,7 +3834,16 @@ function ConnectionsPageRefactored({
     }
   };
 
-  const handleBlockUser = (friend: Friend) => {
+  // Issue #4114 Wave 3: settled once the block modal resolves (true only after
+  // the block reached the server).
+  const blockSettledRef = useRef<((blocked: boolean) => void) | null>(null);
+  const settleBlock = (blocked: boolean) => {
+    const settle = blockSettledRef.current;
+    blockSettledRef.current = null;
+    settle?.(blocked);
+  };
+  const handleBlockUser = (friend: Friend, onSettled?: (blocked: boolean) => void) => {
+    blockSettledRef.current = onSettled ?? null;
     setSelectedUserToBlock(friend);
     // Defer modal show until pending animations/interactions complete.
     // ConnectionsPage is ~2100 lines — immediate setState triggers a heavy
@@ -3111,215 +3870,65 @@ function ConnectionsPageRefactored({
     // Sequential: cleanup before block. blockFriend invalidates friendsKeys.all.
     cleanupSharedSessions(userToBlock.id)
       .then(() => blockFriend(userToBlock.id, reason))
+      .then(() => settleBlock(true))
       .catch((e) => {
         showMutationError(e, 'blocking user', showToast);
+        settleBlock(false);
       });
   };
 
-  const handleReportUser = (friend: Friend) => {
+  // Issue #4114 Wave 3: a caller that passes `onSettled` shows its own
+  // confirmation after a successful report, so the generic alert is skipped.
+  const reportSettledRef = useRef<((reported: boolean) => void) | null>(null);
+  const settleReport = (reported: boolean) => {
+    const settle = reportSettledRef.current;
+    reportSettledRef.current = null;
+    settle?.(reported);
+  };
+  const handleReportUser = (friend: Friend, onSettled?: (reported: boolean) => void) => {
+    reportSettledRef.current = onSettled ?? null;
     setSelectedUserToReport(friend);
     setShowReportModal(true);
   };
 
   const handleReportSubmit = async (userId: string, reason: string, details?: string) => {
     try {
-      const result = await reportService.submitReport(userId, reason as ReportReason, details);
+      // Issue #4114 Wave 3: a report started from a message names that message.
+      const reportedMessage = reportMessageRef.current;
+      const fullDetails = reportedMessage
+        ? [details, `Reported message ${reportedMessage.id}: ${reportedMessage.content.slice(0, 200)}`].filter(Boolean).join("\n")
+        : details;
+      const result = await reportService.submitReport(userId, reason as ReportReason, fullDetails);
       setShowReportModal(false);
       setSelectedUserToReport(null);
       if (result.success) {
-        Alert.alert(
-          t('connections:report_submitted_title'),
-          t('connections:report_submitted_body'),
-          [{ text: t('common:ok') }]
-        );
+        if (!reportSettledRef.current) {
+          Alert.alert(
+            t('connections:report_submitted_title'),
+            t('connections:report_submitted_body'),
+            [{ text: t('common:ok') }]
+          );
+        }
         onReportUser?.(selectedUserToReport, true);
+        settleReport(true);
       } else {
         Alert.alert(t('connections:report_failed_title'), result.error || t('connections:report_failed_body'), [{ text: t('common:ok') }]);
+        settleReport(false);
       }
     } catch (e) {
       console.error("Error submitting report:", e);
       setShowReportModal(false);
       setSelectedUserToReport(null);
       Alert.alert(t('common:error'), t('connections:unexpected_error'), [{ text: t('common:ok') }]);
+      settleReport(false);
     }
   };
 
-  // ── Error state ──────────────────────────────────────────
-  // Skip when opening a DM from the map so the conversation UI shows immediately.
-  if (error && conversations.length === 0 && !(showMessageInterface && activeChat)) {
-    return (
-      <>
-        <View style={styles.container}>
-          <View style={styles.headerRow}>
-            <Text style={styles.title}>{t('connections:title')}</Text>
-            <View style={styles.headerActions}>
-              <TouchableOpacity
-                onPress={() => openFriendsModal()}
-                style={styles.headerIconBtn}
-                activeOpacity={0.7}
-              >
-                <Icon name="people-outline" size={18} color="#eb7825" />
-                {!badgeDismissed && (incomingRequests.length + incomingPairRequests.length) > 0 && (
-                  <View style={styles.headerBadge}>
-                    <Text style={styles.headerBadgeText}>
-                      {(incomingRequests.length + incomingPairRequests.length) > 9
-                        ? "9+"
-                        : incomingRequests.length + incomingPairRequests.length}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity
-              style={styles.retryButton}
-              onPress={() => {
-                setConversationsLoading(true);
-                if (user?.id) {
-                  fetchConversations(user.id);
-                }
-                fetchFriends();
-                loadFriendRequests();
-              }}
-            >
-              <Text style={styles.retryButtonText}>{t('common:try_again')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Friends Modal rendered below (shared across all render paths) */}
-
-        <ReportUserModal
-          isOpen={showReportModal}
-          onClose={() => {
-            setShowReportModal(false);
-            setSelectedUserToReport(null);
-          }}
-          user={
-            selectedUserToReport
-              ? { id: selectedUserToReport.id, name: selectedUserToReport.name, username: selectedUserToReport.username }
-              : { id: "", name: "", username: "" }
-          }
-          onReport={handleReportSubmit}
-        />
-        <BlockUserModal
-          visible={showBlockModal}
-          onClose={() => {
-            if (!blockLoading) {
-              setShowBlockModal(false);
-              setSelectedUserToBlock(null);
-            }
-          }}
-          onConfirm={handleBlockConfirm}
-          userName={selectedUserToBlock?.name || selectedUserToBlock?.username || "this user"}
-          loading={blockLoading}
-        />
-      </>
-    );
-  }
-
-  // ── When viewing a conversation ──────────────────────────
-  if (showMessageInterface && activeChat) {
-    return (
-      <>
-        <View style={styles.container}>
-          <MessageInterface
-            friend={activeChat}
-            onBack={handleBackFromMessage}
-            onSendMessage={handleSendMessage}
-            messages={messages}
-            onOpenAddToBoardModal={(friend: Friend) => handleAddToBoard(friend)}
-            onShareSavedCard={handleShareSavedCard}
-            onRemoveFriend={handleRemoveFriend}
-            onBlockUser={handleBlockUser}
-            onReportUser={handleReportUser}
-            accountPreferences={accountPreferences}
-            onCardLike={onCardLike}
-            onAddToCalendar={onAddToCalendar}
-            onShareCard={onShareCard}
-            onPurchaseComplete={onPurchaseComplete}
-            userPreferences={userPreferences}
-            savedCards={savedCards}
-            onOpenPreferences={onOpenPreferences}
-            onOpenCollabPreferences={onOpenCollabPreferences}
-            isBlocked={activeChatIsBlocked}
-            isUnfriended={activeChatIsUnfriended}
-            isDeletedAccount={activeChatIsDeletedAccount}
-            conversationId={currentConversationId}
-            currentUserId={user?.id || null}
-            currentUserName={currentUserDisplayName}
-            broadcastSeenIds={broadcastSeenIds}
-            onBroadcastReceive={handleBroadcastReceive}
-            isOffline={isOffline}
-            onViewProfile={onNavigateToFriendProfile}
-            onSessionNameUpdated={handleGroupSessionNameUpdated}
-            onGroupSessionExited={handleGroupSessionRemoved}
-            onGroupSessionDeleted={handleGroupSessionRemoved}
-            onGroupParticipantsChange={() => {
-              if (user?.id) fetchConversations(user.id);
-            }}
-          />
-        </View>
-
-        <AddToBoardModal
-          isOpen={showAddToBoardModal}
-          onClose={() => {
-            setShowAddToBoardModal(false);
-            setSelectedFriendForBoard(null);
-          }}
-          friend={selectedFriendForBoard}
-          boardsSessions={boardsSessions}
-          onMutationSettled={() => {
-            // ORCH-0666: refresh boardsSessions so newly-pending invitees are
-            // filtered out on next open and any state mutations propagate.
-            void onRefreshSessions?.();
-          }}
-          onResult={(result) => {
-            if (selectedFriendForBoard) {
-              emitAddToBoardToasts(
-                result,
-                { id: selectedFriendForBoard.id, name: selectedFriendForBoard.name || 'Friend' },
-                (boardsSessions || []).map((s: any) => ({
-                  id: s.id || s.session_id,
-                  name: s.name || 'Session',
-                }))
-              );
-            }
-          }}
-        />
-        <ReportUserModal
-          isOpen={showReportModal}
-          onClose={() => {
-            setShowReportModal(false);
-            setSelectedUserToReport(null);
-          }}
-          user={
-            selectedUserToReport
-              ? { id: selectedUserToReport.id, name: selectedUserToReport.name, username: selectedUserToReport.username }
-              : { id: "", name: "", username: "" }
-          }
-          onReport={handleReportSubmit}
-        />
-        <BlockUserModal
-          visible={showBlockModal}
-          onClose={() => {
-            if (!blockLoading) {
-              setShowBlockModal(false);
-              setSelectedUserToBlock(null);
-            }
-          }}
-          onConfirm={handleBlockConfirm}
-          userName={selectedUserToBlock?.name || selectedUserToBlock?.username || "this user"}
-          loading={blockLoading}
-        />
-      </>
-    );
-  }
-
-  // ORCH-0600 v2: single-row glass header — title + friends icon + add button
-  // + scrollable paired pills all inline. Panel shrinks from two bands to one.
+  // ── Issue #4114 Wave 2a: the Chats list ──────────────────
+  // One render path. The list keeps cached chats visible on error (inline
+  // "Couldn't load chats · Try again" row), shows a slim offline bar, and the
+  // shared modals below mount ONCE for every view (they used to be duplicated
+  // per branch).
   const g = glass.discover;
   const HEADER_ROW_TOP = chatInsets.top + glass.chrome.row.topInset;
   const HEADER_ROW_HEIGHT = 48;
@@ -3328,356 +3937,690 @@ function ConnectionsPageRefactored({
   const useGlass = !reduceTransparency && !isAndroidPreBlur;
   const incomingCount = incomingRequests.length + incomingPairRequests.length;
   const showBadge = !badgeDismissed && incomingCount > 0;
+  const currentUserId = user?.id ?? "";
+  const searchActive = normalizeSearchText(searchQuery).length > 0;
 
-  // Pills-row handlers shared by both the + button and the scroll rows below
-  const handlePillPress = (person: PairedPillPerson): void => {
-    if (person.incoming && person.incomingRequest) {
-      setShowIncomingPairRequest(person.incomingRequest);
-      return;
+  const chattedUserIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const conversation of conversations) {
+      if (conversation.type === "group") continue;
+      for (const participant of conversation.participants) {
+        if (participant.id !== currentUserId) ids.add(participant.id);
+      }
     }
-    if (person.pending) {
-      const pill = pairingPills.find(
-        (p) => p.pairedUserId === person.pairedUserId && p.pillState !== 'active'
-      );
-      if (!pill) return;
-      Alert.alert(
-        'Cancel Pair Request',
-        `Cancel your pair request to ${person.displayName}?`,
-        [
-          { text: 'Keep', style: 'cancel' },
-          {
-            text: 'Cancel Request',
-            style: 'destructive',
-            onPress: () => {
-              if (pill.pairRequestId) cancelPairRequestMutation.mutate(pill.pairRequestId);
-              else if (pill.pendingInviteId) cancelPairInviteMutation.mutate(pill.pendingInviteId);
-            },
-          },
-        ]
-      );
-      return;
-    }
-    onNavigateToFriendProfile?.(person.pairedUserId);
+    return ids;
+  }, [conversations, currentUserId]);
+
+  const listItems = useMemo<ChatListRow[]>(
+    () =>
+      searchActive
+        ? buildSearchItems<Conversation, UseFriend>({
+            matchedChats: visibleConversations,
+            friends: dbFriends,
+            allConversations: explorerChats,
+            currentUserId,
+            query: searchQuery,
+          })
+        : buildBrowseItems<Conversation, UseFriend>({
+            active: browseConversations,
+            archivedCount: archivedConversations.length,
+            filter: chatFilter,
+          }),
+    [archivedConversations.length, browseConversations, chatFilter, explorerChats, currentUserId, dbFriends, searchActive, searchQuery, visibleConversations],
+  );
+  const listLayouts = useMemo(() => chatListLayouts(listItems), [listItems]);
+  const getItemLayout = useCallback(
+    (_data: ArrayLike<ChatListRow> | null | undefined, index: number) => ({
+      length: listLayouts[index]?.length ?? CHAT_ROW_HEIGHT,
+      offset: listLayouts[index]?.offset ?? CHAT_ROW_HEIGHT * index,
+      index,
+    }),
+    [listLayouts],
+  );
+  const archivedLayouts = useMemo(
+    () => archivedConversations.map((_, index) => ({ length: CHAT_ROW_HEIGHT, offset: CHAT_ROW_HEIGHT * index })),
+    [archivedConversations],
+  );
+  const getArchivedItemLayout = useCallback(
+    (_data: ArrayLike<Conversation> | null | undefined, index: number) => ({
+      length: CHAT_ROW_HEIGHT,
+      offset: archivedLayouts[index]?.offset ?? CHAT_ROW_HEIGHT * index,
+      index,
+    }),
+    [archivedLayouts],
+  );
+
+  // Stable row callbacks: the handlers read fresh state through a ref, so
+  // React.memo'd rows only re-render when their own conversation changes.
+  const rowHandlersRef = useRef({
+    select: handleSelectConversation,
+    pickFriend: handlePickFriend,
+    togglePin: handleTogglePin,
+    toggleUnread: handleToggleUnread,
+    toggleMute: handleToggleMuteChat,
+    archive: handleArchiveRow,
+    unarchive: handleUnarchiveChat,
+  });
+  rowHandlersRef.current = {
+    select: handleSelectConversation,
+    pickFriend: handlePickFriend,
+    togglePin: handleTogglePin,
+    toggleUnread: handleToggleUnread,
+    toggleMute: handleToggleMuteChat,
+    archive: handleArchiveRow,
+    unarchive: handleUnarchiveChat,
   };
+  const onRowPress = useCallback((conversation: ChatListItemConversation) => {
+    void rowHandlersRef.current.select(conversation as Conversation);
+  }, []);
+  const onRowTogglePin = useCallback((conversation: ChatListItemConversation) => {
+    void rowHandlersRef.current.togglePin(conversation);
+  }, []);
+  const onRowToggleUnread = useCallback((conversation: ChatListItemConversation) => {
+    void rowHandlersRef.current.toggleUnread(conversation);
+  }, []);
+  const onRowToggleMute = useCallback((conversation: ChatListItemConversation) => {
+    void rowHandlersRef.current.toggleMute(conversation);
+  }, []);
+  const onRowArchive = useCallback((conversationId: string) => {
+    void rowHandlersRef.current.archive(conversationId);
+  }, []);
+  const onRowUnarchive = useCallback((conversationId: string) => {
+    void rowHandlersRef.current.unarchive(conversationId);
+  }, []);
 
-  // ── Main chat list view ──────────────────────────────────
-  return (
-    <>
-      <View style={styles.container}>
-        {/* Glass header panel — status bar + title row + action/pills row */}
-        <View
-          pointerEvents="box-none"
-          style={[
-            styles.headerPanel,
-            {
-              height: HEADER_PANEL_HEIGHT,
-              borderBottomLeftRadius: HEADER_PANEL_RADIUS,
-              borderBottomRightRadius: HEADER_PANEL_RADIUS,
-            },
-          ]}
-        >
-          {useGlass ? (
-            <BlurView
-              intensity={g.stickyHeader.blurIntensity}
-              tint="dark"
-              experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-          ) : null}
-          <View
-            pointerEvents="none"
-            style={[
-              StyleSheet.absoluteFill,
-              { backgroundColor: useGlass ? g.stickyHeader.tint : g.stickyHeader.fallbackSolid },
-            ]}
-          />
-          <View
-            pointerEvents="none"
-            style={[
-              styles.headerPanelHairline,
-              {
-                borderBottomLeftRadius: HEADER_PANEL_RADIUS,
-                borderBottomRightRadius: HEADER_PANEL_RADIUS,
-              },
-            ]}
-          />
+  const handleAcceptInvite = useCallback(async (sessionId: string, inviteId: string) => {
+    setProcessingInviteIds((prev) => new Set(prev).add(inviteId));
+    try {
+      await onAcceptPendingInvite?.(sessionId, inviteId);
+      if (user?.id) await fetchConversations(user.id);
+    } finally {
+      setProcessingInviteIds((prev) => {
+        const next = new Set(prev);
+        next.delete(inviteId);
+        return next;
+      });
+    }
+  }, [fetchConversations, onAcceptPendingInvite, user?.id]);
 
-          {/* Single header row — title + friends icon (+ button / pills relocated above search per ORCH-0990) */}
-          {/* ORCH-1037: coach step 6 ref moved OFF this broad header row onto the
-              people-icon Pressable below (operator-LOCKED exact target). */}
-          <View
-            style={[styles.headerRowAbsolute, { top: HEADER_ROW_TOP, height: HEADER_ROW_HEIGHT }]}
-          >
-            <Text style={styles.titleText} numberOfLines={1} allowFontScaling accessibilityRole="header">
-              {t('connections:title')}
+  const handleDeclineInvite = useCallback(async (sessionId: string, inviteId: string) => {
+    setProcessingInviteIds((prev) => new Set(prev).add(inviteId));
+    try {
+      await onDeclinePendingInvite?.(sessionId, inviteId);
+      if (user?.id) await fetchConversations(user.id);
+    } finally {
+      setProcessingInviteIds((prev) => {
+        const next = new Set(prev);
+        next.delete(inviteId);
+        return next;
+      });
+    }
+  }, [fetchConversations, onDeclinePendingInvite, user?.id]);
+
+  const handleRetryLoad = useCallback(() => {
+    setConversationsLoading(true);
+    if (user?.id) void fetchConversations(user.id);
+    fetchFriends();
+    loadFriendRequests();
+  }, [fetchConversations, fetchFriends, loadFriendRequests, user?.id]);
+
+  const openNewMessage = useCallback(() => {
+    HapticFeedback.light();
+    Keyboard.dismiss();
+    setShowNewMessageSheet(true);
+  }, []);
+
+  // Android back closes the archived list before leaving the tab.
+  useEffect(() => {
+    if (!showArchivedList || showMessageInterface) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      setShowArchivedList(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, [showArchivedList, showMessageInterface]);
+
+  const chatActions: ChatRowAction[] = useMemo(() => {
+    const target = chatActionsTarget;
+    if (!target) return [];
+    const close = (run: () => void, delay = 0) => () => {
+      setChatActionsTarget(null);
+      // Present-after-dismiss: an Alert or another sheet opens only once the
+      // actions sheet has left (iOS presents one RN Modal at a time).
+      setTimeout(run, delay);
+    };
+    // Issue #4114 Wave 6: a brand channel row stands for several event chats;
+    // Archive (all of them) applies to the row as a whole, and Unpin when one
+    // of its chats is pinned (Pin stays per chat).
+    if (isBrandChannelRow(target)) {
+      const brandActions: ChatRowAction[] = [];
+      if (target.pinned_at) {
+        brandActions.push({
+          key: "pin",
+          icon: "pin-off-outline",
+          label: t("connections:action_unpin"),
+          onPress: close(() => void rowHandlersRef.current.togglePin(target)),
+        });
+      }
+      brandActions.push({
+        key: "archive",
+        icon: "archive-outline",
+        label: t("connections:action_archive"),
+        onPress: close(() => void rowHandlersRef.current.archive(target.id)),
+      });
+      return brandActions;
+    }
+    const isGroup = target.type === "group";
+    const isArchived = archivedIds.has(target.id);
+    const other = target.participants.find((participant) => participant.id !== currentUserId);
+    const isMuted = Boolean(other && mutedUserIds.includes(other.id));
+    const marked = Boolean(target.marked_unread_at);
+    const canToggleUnread = marked || (target.unread_count ?? 0) === 0;
+    const actions: ChatRowAction[] = [
+      {
+        key: "pin",
+        icon: target.pinned_at ? "pin-off-outline" : "pin-outline",
+        label: target.pinned_at ? t("connections:action_unpin") : t("connections:action_pin"),
+        onPress: close(() => void rowHandlersRef.current.togglePin(target)),
+      },
+    ];
+    if (canToggleUnread) {
+      actions.push({
+        key: "unread",
+        icon: marked ? "mail-open-outline" : "mail-outline",
+        label: marked ? t("connections:action_mark_read") : t("connections:action_mark_unread"),
+        onPress: close(() => void rowHandlersRef.current.toggleUnread(target)),
+      });
+    }
+    if (!isGroup && other) {
+      actions.push({
+        key: "mute",
+        icon: isMuted ? "notifications-outline" : "volume-mute",
+        label: isMuted ? t("connections:action_unmute") : t("connections:action_mute"),
+        onPress: close(() => void rowHandlersRef.current.toggleMute(target)),
+      });
+    }
+    actions.push({
+      key: "archive",
+      icon: "archive-outline",
+      label: isArchived ? t("connections:action_unarchive") : t("connections:action_archive"),
+      onPress: close(() =>
+        void (isArchived ? rowHandlersRef.current.unarchive(target.id) : rowHandlersRef.current.archive(target.id))),
+    });
+    actions.push({
+      key: "remove",
+      icon: isGroup ? "exit-outline" : "trash-outline",
+      label: isGroup ? t("connections:action_leave") : t("connections:action_remove"),
+      destructive: true,
+      onPress: close(() => handleDeleteChat(target.id), 450),
+    });
+    return actions;
+  }, [archivedIds, chatActionsTarget, currentUserId, handleDeleteChat, mutedUserIds, t]);
+
+  const chatActionsTitle = chatActionsTarget
+    ? chatActionsTarget.type === "group"
+      ? chatActionsTarget.name?.trim() || t("connections:group_fallback_name")
+      : getDisplayName(chatActionsTarget.participants.find((participant) => participant.id !== currentUserId))
+    : "";
+
+  const renderListItem = useCallback(
+    ({ item, index }: { item: ChatListRow; index: number }) => {
+      const previous = index > 0 ? listItems[index - 1] : null;
+      const showSeparator = Boolean(previous && previous.kind !== "section");
+      switch (item.kind) {
+        case "section":
+          return (
+            <Text style={styles.sectionLabel} accessibilityRole="header" numberOfLines={1}>
+              {t(`connections:section_${item.section}`)}
             </Text>
-
+          );
+        case "invite": {
+          const invite = (item.conversation as Conversation & { __pendingInvite: PendingSessionInvite }).__pendingInvite;
+          return (
+            <PendingSessionInviteRow
+              invite={invite}
+              isProcessing={processingInviteIds.has(invite.inviteId)}
+              onAccept={handleAcceptInvite}
+              onDecline={handleDeclineInvite}
+              showSeparator={showSeparator}
+            />
+          );
+        }
+        case "enquiry": {
+          // #4111: an enquiry is always its own row, opening app/enquiry/[enquiryId].
+          if (!isEnquiryConversation(item.conversation)) return null;
+          return (
+            <EnquiryChatListRow
+              conversation={item.conversation}
+              onPress={enquiryRows.open}
+              showSeparator={showSeparator}
+            />
+          );
+        }
+        case "chat": {
+          const conversation = item.conversation as ChatListItemConversation;
+          const isMuted = conversation.participants?.some((p) => mutedUserIds.includes(p.id)) ?? false;
+          return (
+            <ChatListItem
+              conversation={conversation}
+              currentUserId={currentUserId}
+              onPress={onRowPress}
+              onLongPress={handleOpenChatActions}
+              isMuted={isMuted}
+              onToggleMute={onRowToggleMute}
+              onArchive={onRowArchive}
+              onTogglePin={onRowTogglePin}
+              onToggleUnread={onRowToggleUnread}
+              lifecycleBusy={lifecycleBusyIds.has(conversation.id)}
+              showSeparator={showSeparator}
+            />
+          );
+        }
+        case "friend":
+          return (
+            <FriendSearchRow
+              friend={item.friend}
+              currentUserId={currentUserId}
+              showSeparator={showSeparator}
+              onStartChat={(friend) => void rowHandlersRef.current.pickFriend(friend)}
+            />
+          );
+        case "archived":
+          return (
             <Pressable
-              ref={coachPeopleIcon.targetRef as React.Ref<View>}
-              collapsable={false}
-              onPress={() => openFriendsModal()}
-              hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-              accessibilityRole="button"
-              accessibilityLabel={showBadge ? `Friends, ${incomingCount} new` : 'Friends'}
-              style={[styles.friendsIconButton, { marginLeft: 'auto' }]}
-            >
-              <Icon name="people-outline" size={22} color="#FFFFFF" />
-              {showBadge ? (
-                <View style={styles.titleIconBadge}>
-                  <Text style={styles.titleIconBadgeText} allowFontScaling={false}>
-                    {incomingCount > 9 ? '9+' : String(incomingCount)}
-                  </Text>
-                </View>
-              ) : null}
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={[styles.content, { paddingTop: HEADER_PANEL_HEIGHT + 12 }]}>
-
-          {/* ORCH-0990: + button, divider, paired-pills row — relocated here from the
-              glass header to sit directly above the search bar. */}
-          <View style={styles.pairControlsRow}>
-            <Pressable
-              ref={coachPlusButton.targetRef as React.Ref<View>}
-              collapsable={false}
               onPress={() => {
                 HapticFeedback.light();
-                setShowFriendsActionChooser(true);
+                setShowArchivedList(true);
               }}
-              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
               accessibilityRole="button"
-              accessibilityLabel={t('social:friendsActionChooserPlusButtonA11y')}
-              style={({ pressed }) => [
-                styles.addButtonGlass,
-                pressed ? { transform: [{ scale: 0.96 }] } : null,
-              ]}
+              accessibilityLabel={t("connections:archived_row_a11y", { count: item.count })}
+              style={({ pressed }) => [styles.archivedRow, pressed ? styles.rowPressed : null]}
+              testID="chat-list-archived-row"
             >
-              <Icon name="add" size={20} color="#FFFFFF" />
+              <Icon name="archive-outline" size={18} color={tokens.dim} />
+              <Text style={styles.archivedRowLabel}>{t("connections:archived_row")}</Text>
+              <Text style={styles.archivedRowCount}>{item.count}</Text>
+              <Icon name="chevron-forward" size={16} color={tokens.faint} />
             </Pressable>
+          );
+        default: {
+          const exhaustive: never = item;
+          return exhaustive;
+        }
+      }
+    },
+    [
+      currentUserId,
+      enquiryRows.open,
+      handleAcceptInvite,
+      handleDeclineInvite,
+      handleOpenChatActions,
+      lifecycleBusyIds,
+      listItems,
+      mutedUserIds,
+      onRowArchive,
+      onRowPress,
+      onRowToggleMute,
+      onRowTogglePin,
+      onRowToggleUnread,
+      processingInviteIds,
+      t,
+    ],
+  );
 
-            <View style={styles.pillsDividerInline} />
+  const renderArchivedItem = useCallback(
+    ({ item, index }: { item: Conversation; index: number }) => {
+      const conversation = item as ChatListItemConversation;
+      const isMuted = conversation.participants?.some((p) => mutedUserIds.includes(p.id)) ?? false;
+      return (
+        <ChatListItem
+          conversation={conversation}
+          currentUserId={currentUserId}
+          onPress={onRowPress}
+          onLongPress={handleOpenChatActions}
+          isMuted={isMuted}
+          onToggleMute={onRowToggleMute}
+          onArchive={onRowUnarchive}
+          onTogglePin={onRowTogglePin}
+          onToggleUnread={onRowToggleUnread}
+          lifecycleBusy={lifecycleBusyIds.has(conversation.id)}
+          isArchived
+          showSeparator={index > 0}
+        />
+      );
+    },
+    [currentUserId, handleOpenChatActions, lifecycleBusyIds, mutedUserIds, onRowPress, onRowToggleMute, onRowTogglePin, onRowToggleUnread, onRowUnarchive],
+  );
 
-            <View style={styles.pillsScrollWrap}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.pillsScrollContent}
-              >
-                {activePairedPeople.map((person) => (
-                  <GlassPairedPill
-                    key={person.pairedUserId}
-                    person={person}
-                    onPress={() => handlePillPress(person)}
-                  />
-                ))}
-                {activePairedPeople.length === 0 ? (
-                  <View style={styles.pillsEmptyHint}>
-                    <Text style={styles.pillsEmptyHintText} allowFontScaling numberOfLines={1}>
-                      Tap + to pair
-                    </Text>
-                  </View>
-                ) : null}
-              </ScrollView>
-              <LinearGradient
-                colors={[g.filterBar.backdropTint, 'rgba(12,14,18,0)']}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={[styles.pillsFade, { left: 0, width: g.filterBar.fadeEdgeWidth }]}
-                pointerEvents="none"
-              />
-              <LinearGradient
-                colors={['rgba(12,14,18,0)', g.filterBar.backdropTint]}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={[styles.pillsFade, { right: 0, width: g.filterBar.fadeEdgeWidth }]}
-                pointerEvents="none"
-              />
-            </View>
+  const keyExtractor = useCallback((item: ChatListRow) => item.key, []);
+  const archivedKeyExtractor = useCallback((item: Conversation) => item.id, []);
+
+  const glassHeader = (title: string, actions: React.ReactNode, leading?: React.ReactNode) => (
+    <View
+      pointerEvents="box-none"
+      style={[
+        styles.headerPanel,
+        {
+          height: HEADER_PANEL_HEIGHT,
+          borderBottomLeftRadius: HEADER_PANEL_RADIUS,
+          borderBottomRightRadius: HEADER_PANEL_RADIUS,
+        },
+      ]}
+    >
+      {useGlass ? (
+        <BlurView
+          intensity={g.stickyHeader.blurIntensity}
+          tint="dark"
+          experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+      ) : null}
+      <View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          { backgroundColor: useGlass ? g.stickyHeader.tint : g.stickyHeader.fallbackSolid },
+        ]}
+      />
+      <View
+        pointerEvents="none"
+        style={[
+          styles.headerPanelHairline,
+          {
+            borderBottomLeftRadius: HEADER_PANEL_RADIUS,
+            borderBottomRightRadius: HEADER_PANEL_RADIUS,
+          },
+        ]}
+      />
+      <View style={[styles.headerRowAbsolute, { top: HEADER_ROW_TOP, height: HEADER_ROW_HEIGHT }]}>
+        {leading}
+        <Text style={styles.titleText} numberOfLines={1} allowFontScaling accessibilityRole="header">
+          {title}
+        </Text>
+        <View style={styles.headerButtons}>{actions}</View>
+      </View>
+    </View>
+  );
+
+  // ORCH-1037: coach step 6 sits on the people-icon Pressable (leaf target);
+  // issue #4114: step 7 sits on the pencil.
+  const chatsHeaderActions = (
+    <>
+      <Pressable
+        ref={coachPeopleIcon.targetRef as React.Ref<View>}
+        collapsable={false}
+        onPress={() => openFriendsModal()}
+        hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+        accessibilityRole="button"
+        accessibilityLabel={
+          showBadge
+            ? t('connections:people_button_a11y_badge', { count: incomingCount })
+            : t('connections:people_button_a11y')
+        }
+        style={({ pressed }) => [styles.headerButton, pressed ? styles.headerButtonPressed : null]}
+      >
+        <Icon name="people-outline" size={17} color={tokens.ink} />
+        {showBadge ? (
+          <View style={styles.titleIconBadge}>
+            <Text style={styles.titleIconBadgeText} allowFontScaling={false}>
+              {incomingCount > 9 ? '9+' : String(incomingCount)}
+            </Text>
           </View>
+        ) : null}
+      </Pressable>
+      <Pressable
+        ref={coachPlusButton.targetRef as React.Ref<View>}
+        collapsable={false}
+        onPress={openNewMessage}
+        hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+        accessibilityRole="button"
+        accessibilityLabel={t('connections:new_message_button_a11y')}
+        style={({ pressed }) => [styles.headerButton, pressed ? styles.headerButtonPressed : null]}
+        testID="chats-new-message-button"
+      >
+        <Icon name="create-outline" size={17} color={tokens.ink} />
+      </Pressable>
+    </>
+  );
 
-          {/* Search bar */}
+  const offlineBar = isOffline ? (
+    <View style={styles.offlineBar} accessibilityLiveRegion="polite">
+      <Icon name="cloud-offline-outline" size={14} color={tokens.dim} />
+      <Text style={styles.offlineBarText} numberOfLines={1}>{t('connections:offline_bar')}</Text>
+    </View>
+  ) : null;
+
+  const errorRow = error ? (
+    <Pressable
+      onPress={handleRetryLoad}
+      accessibilityRole="button"
+      accessibilityLabel={`${t('connections:error_inline')}, ${t('common:try_again')}`}
+      style={styles.errorRow}
+      testID="chat-list-error-row"
+    >
+      <Icon name="alert-circle-outline" size={16} color={tokens.errorLabel} />
+      <Text style={styles.errorRowText} numberOfLines={1}>
+        {t('connections:error_inline')}
+        <Text style={styles.errorRowAction}>{` · ${t('common:try_again')}`}</Text>
+      </Text>
+    </Pressable>
+  ) : null;
+
+  const showSkeleton = conversationsLoading && conversations.length === 0 && !error;
+  const listEmpty = showSkeleton ? (
+    <ChatListSkeleton />
+  ) : searchActive ? (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptyTitle}>{t('connections:no_results', { query: searchQuery })}</Text>
+    </View>
+  ) : chatFilter !== "all" ? (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptySubtitle}>{t(`connections:filter_empty_${chatFilter}`)}</Text>
+    </View>
+  ) : error ? null : (
+    <View style={styles.emptyContainer}>
+      <Icon name="chatbubbles-outline" size={56} color={tokens.faint} />
+      <Text style={styles.emptyTitle}>{t('connections:empty_title')}</Text>
+      <Text style={styles.emptySubtitle}>{t('connections:empty_subtitle')}</Text>
+      <Pressable
+        onPress={openNewMessage}
+        accessibilityRole="button"
+        style={({ pressed }) => [styles.emptyCtaButton, pressed ? styles.headerButtonPressed : null]}
+      >
+        <Text style={styles.emptyCtaText}>{t('connections:start_chat')}</Text>
+      </Pressable>
+    </View>
+  );
+
+  let screen: React.ReactNode;
+  if (showMessageInterface && activeChat) {
+    screen = (
+      <View style={styles.container}>
+        <MessageInterface
+          friend={activeChat}
+          onBack={handleBackFromMessage}
+          onSendMessage={handleSendMessage}
+          messages={messages}
+          onSendMedia={(items, caption, viewOnce, replyToId) => {
+            void handleSendMedia(items, caption, viewOnce, replyToId);
+          }}
+          uploadProgress={mediaUploadProgress}
+          onCancelUpload={handleCancelMediaUpload}
+          onRetryMessage={handleRetryMessage}
+          onLoadOlderMessages={handleLoadOlderMessages}
+          hasOlderMessages={olderPaging.conversationId === threadPagingKey && olderPaging.hasMore}
+          isLoadingOlderMessages={olderPaging.conversationId === threadPagingKey && olderPaging.loading}
+          onOpenAddToBoardModal={(friend: Friend) => handleAddToBoard(friend)}
+          onShareSavedCard={handleShareSavedCard}
+          onRemoveFriend={handleRemoveFriend}
+          onBlockUser={handleBlockUser}
+          onReportUser={handleReportUser}
+          accountPreferences={accountPreferences}
+          onCardLike={onCardLike}
+          onAddToCalendar={onAddToCalendar}
+          onShareCard={onShareCard}
+          onPurchaseComplete={onPurchaseComplete}
+          userPreferences={userPreferences}
+          savedCards={savedCards}
+          onOpenPreferences={onOpenPreferences}
+          onOpenCollabPreferences={onOpenCollabPreferences}
+          isBlocked={activeChatIsBlocked}
+          isUnfriended={activeChatIsUnfriended}
+          isDeletedAccount={activeChatIsDeletedAccount}
+          conversationId={currentConversationId}
+          brandChannel={activeBrandChannel}
+          onSelectBrandChannelTarget={handleSelectBrandChannelTarget}
+          currentUserId={user?.id || null}
+          currentUserName={currentUserDisplayName}
+          broadcastSeenIds={broadcastSeenIds}
+          onBroadcastReceive={handleBroadcastReceive}
+          isOffline={isOffline}
+          onViewProfile={onNavigateToFriendProfile}
+          isPairedFriend={Boolean(activeChat?.id && pairedUserIds.has(activeChat.id))}
+          onOpenPairedProfile={(friendUserId) => onNavigateToFriendProfile?.(friendUserId, { focus: "paired" })}
+          onToggleReaction={handleToggleReaction}
+          onUnsendMessage={handleUnsendMessage}
+          onReportMessage={handleReportMessage}
+          isLoadingMessages={Boolean(
+            currentConversationId &&
+            messages.length === 0 &&
+            !isOffline &&
+            !messagesSettledIds.has(currentConversationId)
+          )}
+          isMuted={Boolean(activeChat?.id && mutedUserIds.includes(activeChat.id))}
+          onToggleMute={activeChat?.conversationType === "group" || !activeChat?.id ? undefined : () => toggleMuteForUser(activeChat.id)}
+          onGroupConversationLeft={() => {
+            handleBackFromMessage();
+            if (user?.id) fetchConversations(user.id);
+          }}
+          onSessionNameUpdated={handleGroupSessionNameUpdated}
+          onGroupSessionExited={handleGroupSessionRemoved}
+          onGroupSessionDeleted={handleGroupSessionRemoved}
+          onGroupParticipantsChange={() => {
+            if (user?.id) fetchConversations(user.id);
+          }}
+          // Issue #4114 Wave 5 (D4): a 1:1 collab uses the same gate and paywall as a new group.
+          sessionLimitReached={dmCollabNeedsPaywall({ canCreateSession, isUnlimited })}
+          onSessionLimitPaywall={() => {
+            setPaywallFeature('session_creation');
+            setShowPaywall(true);
+          }}
+          onDmCollabChanged={() => {
+            void queryClient.invalidateQueries({ queryKey: ['session-creation-gate'] });
+            if (user?.id) fetchConversations(user.id);
+          }}
+        />
+      </View>
+    );
+  } else if (showArchivedList) {
+    screen = (
+      <View style={styles.container}>
+        {glassHeader(
+          t('connections:archived_title'),
+          null,
+          <Pressable
+            onPress={() => setShowArchivedList(false)}
+            accessibilityRole="button"
+            accessibilityLabel={t('connections:back_a11y')}
+            hitSlop={8}
+            style={styles.backButton}
+            testID="chat-archived-back"
+          >
+            <Icon name="chevron-back" size={24} color={tokens.ink} />
+          </Pressable>,
+        )}
+        <View style={[styles.content, { paddingTop: HEADER_PANEL_HEIGHT + CHAT_SEARCH_TOP_GAP }]}>
+          {offlineBar}
+          <FlatList
+            data={archivedConversations}
+            keyExtractor={archivedKeyExtractor}
+            renderItem={renderArchivedItem}
+            getItemLayout={getArchivedItemLayout}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: bottomNavTotalHeight + 24 }}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptySubtitle}>{t('connections:archived_empty')}</Text>
+              </View>
+            }
+          />
+        </View>
+      </View>
+    );
+  } else {
+    screen = (
+      <View style={styles.container}>
+        {glassHeader(t('connections:title'), chatsHeaderActions)}
+        <View style={[styles.content, { paddingTop: HEADER_PANEL_HEIGHT + CHAT_SEARCH_TOP_GAP }]}>
+          {offlineBar}
           <View style={styles.searchContainer}>
-            <Icon
-              name="search"
-              size={16}
-              color="#9ca3af"
-              style={styles.searchIcon}
-            />
+            <Icon name="search" size={16} color={tokens.faint} />
             <TextInput
               placeholder={t('connections:search_placeholder')}
               value={searchQuery}
               onChangeText={setSearchQuery}
               style={styles.searchInput}
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={tokens.faint}
               autoCapitalize="none"
               autoCorrect={false}
               spellCheck={false}
               autoComplete="off"
               returnKeyType="search"
               clearButtonMode="while-editing"
+              accessibilityLabel={t('connections:search_placeholder')}
             />
           </View>
-
-          {/* Archived chats section */}
-          {archivedConversations.length > 0 && (
-            <TouchableOpacity
-              style={styles.archivedSection}
-              onPress={() => setShowArchived(!showArchived)}
-              activeOpacity={0.7}
-            >
-              <Icon name="archive-outline" size={16} color="#6b7280" />
-              <Text style={styles.archivedSectionText}>
-                Archived ({archivedConversations.length})
-              </Text>
-              <Icon name={showArchived ? "chevron-up" : "chevron-down"} size={16} color="#9ca3af" />
-            </TouchableOpacity>
-          )}
-          {showArchived && archivedConversations.map((conv) => {
-            const otherP = conv.participants?.find((p) => p.id !== user?.id);
-            const convName = otherP ? getDisplayName(otherP) : 'Chat';
-            const cleanName = convName.includes("@") ? convName.substring(0, convName.indexOf("@")).trim() : convName;
-            return (
-              <View key={conv.id} style={styles.archivedRow}>
-                <View style={styles.archivedAvatar}>
-                  <Text style={styles.archivedAvatarText}>
-                    {cleanName.split(" ").map(n => n[0]).join("").toUpperCase().substring(0, 2)}
-                  </Text>
-                </View>
-                <Text style={styles.archivedName} numberOfLines={1}>{cleanName}</Text>
-                <TouchableOpacity
-                  onPress={() => void handleUnarchiveChat(conv.id)}
-                  disabled={lifecycleBusyIds.has(conv.id)}
-                  accessibilityState={{ disabled: lifecycleBusyIds.has(conv.id), busy: lifecycleBusyIds.has(conv.id) }}
-                  style={styles.unarchiveBtn}
-                  activeOpacity={0.7}
-                >
-                  {lifecycleBusyIds.has(conv.id) ? <ActivityIndicator size="small" /> : <Text style={styles.unarchiveBtnText}>Unarchive</Text>}
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-
-          {/* Chat list */}
-          {conversationsLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#eb7825" />
-            </View>
-          ) : filteredConversations.length === 0 && !searchQuery.trim() ? (
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <View style={styles.emptyContainer}>
-              <Icon name="chatbubbles-outline" size={56} color="#d1d5db" />
-              <Text style={styles.emptyTitle}>{t('connections:empty_title')}</Text>
-              <Text style={styles.emptySubtitle}>{t('connections:empty_subtitle')}</Text>
-              <TouchableOpacity
-                onPress={() => openFriendsModal()}
-                style={styles.emptyCtaButton}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.emptyCtaText}>{t('connections:start_chat')}</Text>
-              </TouchableOpacity>
-            </View>
-            </TouchableWithoutFeedback>
-          ) : filteredConversations.length === 0 && searchQuery.trim() ? (
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyTitle}>{t('connections:no_results', { query: searchQuery })}</Text>
-            </View>
-            </TouchableWithoutFeedback>
-          ) : (
-            <FlatList
-              data={filteredConversations}
-              keyExtractor={(item) => item.id}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              renderItem={({ item, index }) => {
-                if (isPendingInviteConversation(item)) {
-                  return (
-                    <PendingSessionInviteRow
-                      invite={item.__pendingInvite}
-                      isProcessing={processingInviteIds.has(item.__pendingInvite.inviteId)}
-                      onAccept={async (sessionId, inviteId) => {
-                        setProcessingInviteIds((prev) => new Set(prev).add(inviteId));
-                        try {
-                          await onAcceptPendingInvite?.(sessionId, inviteId);
-                          if (user?.id) await fetchConversations(user.id);
-                        } finally {
-                          setProcessingInviteIds((prev) => {
-                            const next = new Set(prev);
-                            next.delete(inviteId);
-                            return next;
-                          });
-                        }
-                      }}
-                      onDecline={async (sessionId, inviteId) => {
-                        setProcessingInviteIds((prev) => new Set(prev).add(inviteId));
-                        try {
-                          await onDeclinePendingInvite?.(sessionId, inviteId);
-                          if (user?.id) await fetchConversations(user.id);
-                        } finally {
-                          setProcessingInviteIds((prev) => {
-                            const next = new Set(prev);
-                            next.delete(inviteId);
-                            return next;
-                          });
-                        }
-                      }}
-                    />
-                  );
-                }
-                const isMuted = item.participants?.some((p) =>
-                  mutedUserIds.includes(p.id)
-                );
-                const otherParticipant = item.participants?.find((p) => p.id !== user?.id);
-                const participantPairStatus = otherParticipant?.id ? getPairStatus(otherParticipant.id) : 'not-friend' as const;
-                const chatItem = (
-                  <ChatListItem
-                    conversation={item}
-                    currentUserId={user?.id || ""}
-                    onPress={handleSelectConversation}
-                    isMuted={isMuted}
-                    onAvatarPress={onNavigateToFriendProfile}
-                    pairStatus={participantPairStatus}
-                    onPairPress={handlePairFriend}
-                    onUnpairPress={handleUnpairFriend}
-                    pairLoading={otherParticipant?.id ? pairLoadingUserId === otherParticipant.id : false}
-                    onPendingPairPress={(userId) => {
-                      const pill = pairingPills.find(p => p.pairedUserId === userId && p.pillState !== 'active');
-                      if (!pill) return;
-                      Alert.alert('Cancel Pair Request', 'Cancel your pair request?', [
-                        { text: 'Keep', style: 'cancel' },
-                        { text: 'Cancel Request', style: 'destructive', onPress: () => {
-                          if (pill.pairRequestId) cancelPairRequestMutation.mutate(pill.pairRequestId);
-                          else if (pill.pendingInviteId) cancelPairInviteMutation.mutate(pill.pendingInviteId);
-                        }},
-                      ]);
+          {searchActive ? null : (
+            <View style={styles.filterRow} accessibilityRole="tablist">
+              {CHAT_FILTERS.map((filter) => {
+                const selected = chatFilter === filter;
+                return (
+                  <Pressable
+                    key={filter}
+                    onPress={() => {
+                      HapticFeedback.light();
+                      setChatFilter(filter);
                     }}
-                    onArchive={handleArchiveChat}
-                    onDelete={handleDeleteChat}
-                    lifecycleBusy={lifecycleBusyIds.has(item.id)}
-                  />
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected }}
+                    style={[styles.filterChip, selected ? styles.filterChipActive : null]}
+                    testID={`chat-filter-${filter}`}
+                  >
+                    <Text style={[styles.filterChipText, selected ? styles.filterChipTextActive : null]}>
+                      {t(`connections:filter_${filter}`)}
+                    </Text>
+                  </Pressable>
                 );
-                if (index === 0) {
-                  return (
-                    <View>
-                      {chatItem}
-                    </View>
-                  );
-                }
-                return chatItem;
-              }}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={[
-                styles.chatListContent,
-                { paddingBottom: bottomNavTotalHeight + 24 },
-              ]}
-              ItemSeparatorComponent={null}
-              refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#999" />}
-            />
+              })}
+            </View>
           )}
+          <FlatList
+            data={showSkeleton ? [] : listItems}
+            keyExtractor={keyExtractor}
+            renderItem={renderListItem}
+            getItemLayout={getItemLayout}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+            initialNumToRender={12}
+            windowSize={9}
+            ListHeaderComponent={errorRow}
+            ListEmptyComponent={listEmpty}
+            contentContainerStyle={[
+              styles.chatListContent,
+              { paddingBottom: bottomNavTotalHeight + 24 },
+            ]}
+            refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={tokens.faint} />}
+          />
         </View>
       </View>
+    );
+  }
+
+  return (
+    <>
+      {screen}
 
       {/* ORCH-0435: Consolidated 4-tab Friends Modal.
           META-ORCH-0991 Wave C: RN <Modal> + hand-rolled useKeyboard sheet-height
@@ -3696,76 +4639,67 @@ function ConnectionsPageRefactored({
         onClose={handleFriendsModalClose}
         snapPoints={FRIENDS_MODAL_SNAP as unknown as string[]}
         wrapInRNModal
-        theme="light"
+        theme="dark"
+        backgroundStyle={styles.friendsSheetBackground}
         scrollMode="scroll"
         keyboardBehavior="interactive"
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
-        accessibilityLabel="Friends"
+        accessibilityLabel={t('connections:fs_title')}
         header={
           <View style={styles.friendsSheetHeaderBlock}>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>Friends</Text>
-              <TouchableOpacity onPress={() => { dismissKeyboard(); setShowFriendsModal(false); }} activeOpacity={0.7}>
-                <Icon name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
+            <View style={styles.friendsSheetTitleRow}>
+              <Pressable
+                onPress={() => { dismissKeyboard(); setShowFriendsModal(false); }}
+                accessibilityRole="button"
+                accessibilityLabel={t('connections:fs_done')}
+                hitSlop={8}
+                style={styles.friendsSheetSide}
+              >
+                <Text style={styles.friendsSheetDone}>{t('connections:fs_done')}</Text>
+              </Pressable>
+              <Text style={styles.friendsSheetTitle} accessibilityRole="header" numberOfLines={1}>
+                {t('connections:fs_title')}
+              </Text>
+              <Pressable
+                onPress={openAddFriendSheet}
+                accessibilityRole="button"
+                accessibilityLabel={t('connections:af_title')}
+                hitSlop={8}
+                style={[styles.friendsSheetSide, styles.friendsSheetSideRight]}
+              >
+                <Text style={styles.friendsSheetAdd}>{t('connections:fs_add')}</Text>
+              </Pressable>
             </View>
 
-            {/* 4-Tab Bar */}
-            <View style={styles.tabBar}>
-              <TouchableOpacity
-                onPress={() => setFriendsModalTab("friend-list")}
-                style={[styles.tab, friendsModalTab === "friend-list" && styles.tabActive]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.tabText, friendsModalTab === "friend-list" && styles.tabTextActive]}>
-                  Friends
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setFriendsModalTab("sent")}
-                style={[styles.tab, friendsModalTab === "sent" && styles.tabActive]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.tabText, friendsModalTab === "sent" && styles.tabTextActive]}>
-                  Sent
-                </Text>
-                {(outgoingRequests.length + pairingPills.filter(p => p.pillState !== 'active').length) > 0 && (
-                  <View style={styles.tabBadge}>
-                    <Text style={styles.tabBadgeText}>
-                      {outgoingRequests.length + pairingPills.filter(p => p.pillState !== 'active').length}
+            {/* Two segmented tabs (design v6, D14). */}
+            <View style={styles.friendsSegment} accessibilityRole="tablist">
+              {(["friend-list", "requests"] as const).map((tab) => {
+                const active = friendsModalTab === tab;
+                const count = tab === "friend-list" ? dbFriends.length : receivedRows.length;
+                const label = tab === "friend-list" ? t('connections:fs_tab_friends') : t('connections:fs_tab_requests');
+                return (
+                  <Pressable
+                    key={tab}
+                    onPress={() => { setFriendsModalTab(tab); setShowBlockedView(false); }}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={count > 0 ? `${label}, ${count}` : label}
+                    style={[styles.friendsSegmentItem, active ? styles.friendsSegmentItemActive : null]}
+                  >
+                    <Text style={[styles.friendsSegmentText, active ? styles.friendsSegmentTextActive : null]}>
+                      {tab === "friend-list" && count > 0 ? `${label} ${count}` : label}
                     </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setFriendsModalTab("requests")}
-                style={[styles.tab, friendsModalTab === "requests" && styles.tabActive]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.tabText, friendsModalTab === "requests" && styles.tabTextActive]}>
-                  Requests
-                </Text>
-                {(incomingRequests.length + incomingPairRequests.length) > 0 && (
-                  <View style={styles.tabBadge}>
-                    <Text style={styles.tabBadgeText}>
-                      {incomingRequests.length + incomingPairRequests.length}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setFriendsModalTab("blocked")}
-                style={[styles.tab, friendsModalTab === "blocked" && styles.tabActive]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.tabText, friendsModalTab === "blocked" && styles.tabTextActive]}>
-                  Blocked
-                </Text>
-              </TouchableOpacity>
+                    {tab === "requests" && count > 0 ? (
+                      <View style={styles.friendsSegmentBadge}>
+                        <Text style={styles.friendsSegmentBadgeText} allowFontScaling={false}>
+                          {count > 9 ? '9+' : String(count)}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
         }
@@ -3777,181 +4711,65 @@ function ConnectionsPageRefactored({
         }}
       >
         <View style={styles.sheetBodyInner}>
-              {/* Tab 1: Friend List = Add Friend + Friend List */}
-              {friendsModalTab === "friend-list" && (
-                <>
-                  <AddFriendView
-                    currentUserId={user?.id || ""}
-                    onRequestSent={() => loadFriendRequests()}
-                    outgoingRequests={outgoingRequests}
-                    outgoingRequestsLoading={requestsLoading}
-                    onCancelRequest={cancelFriendRequest}
-                    onAddFriend={addFriend}
-                    selectedCountry={addFriendCountry}
-                    phoneNumber={addFriendPhone}
-                    onPhoneNumberChange={setAddFriendPhone}
-                    onOpenCountryPicker={() => setAddFriendPickerOpen(true)}
-                  />
-                  <View style={styles.friendListDivider} />
-                  <FriendsManagementList
-                    friends={dbFriends}
-                    loading={friendsLoading}
-                    mutedUserIds={mutedUserIds}
-                    currentUserId={user?.id || ""}
-                    pairedUserIds={pairedUserIds}
-                    pendingPairUserIds={pendingPairUserIds}
-                    onPairFriend={handlePairFriend}
-                    onUnpairFriend={handleUnpairFriend}
-                    pairLoadingUserId={pairLoadingUserId}
-                    onAvatarPress={(friendUserId) => {
-                      setShowFriendsModal(false);
-                      onNavigateToFriendProfile?.(friendUserId);
-                    }}
-                    onFriendPress={(friendUserId) => {
-                      setShowFriendsModal(false);
-                      const friend = dbFriends.find(f => {
-                        const fid = f.user_id === (user?.id || '') ? f.friend_user_id : f.user_id;
-                        return fid === friendUserId;
-                      });
-                      if (friend) handlePickFriend(friend);
-                    }}
-                    onOpenFriendActions={(friend) => {
-                      // ORCH-0987 unify: close the friends modal, then present the shared
-                      // FriendActionsSheet after the dismiss settles. Presenting it in the
-                      // same tick the friends modal dismisses freezes iOS (present-during-
-                      // dismiss). The shared sheet owns all six actions (single owner).
-                      setShowFriendsModal(false);
-                      setTimeout(() => { setActionsFriend(friend); setActionsSheetVisible(true); }, 450);
-                    }}
-                  />
-                </>
-              )}
-
-              {/* Tab 2: Sent = Outgoing friend requests + outgoing pair requests */}
-              {friendsModalTab === "sent" && (
-                <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
-                  {outgoingRequests.length === 0 && pairingPills.filter(p => p.pillState !== 'active').length === 0 ? (
-                    <View style={styles.modalEmptyState}>
-                      <Icon name="paper-plane-outline" size={32} color="#d1d5db" />
-                      <Text style={styles.modalEmptyText}>No sent requests</Text>
-                    </View>
-                  ) : (
-                    <>
-                      {/* Outgoing friend requests */}
-                      {outgoingRequests.map((req) => {
-                        const reqName = req.sender?.display_name || req.sender?.first_name || req.sender?.username || 'Unknown';
-                        return (
-                          <View key={req.id} style={styles.sentRequestRow}>
-                            <View style={styles.sentRequestAvatar}>
-                              <Text style={styles.sentRequestAvatarText}>
-                                {reqName[0].toUpperCase()}
-                              </Text>
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.sentRequestName}>{reqName}</Text>
-                              <Text style={styles.sentRequestType}>Friend request</Text>
-                            </View>
-                            <TouchableOpacity
-                              onPress={() => cancelFriendRequest(req.id)}
-                              style={styles.sentCancelBtn}
-                              activeOpacity={0.7}
-                            >
-                              <Text style={styles.sentCancelText}>Cancel</Text>
-                            </TouchableOpacity>
-                          </View>
-                        );
-                      })}
-                      {/* Outgoing pair requests */}
-                      {pairingPills.filter(p => p.pillState !== 'active').map((pill) => (
-                        <View key={pill.id} style={styles.sentRequestRow}>
-                          <View style={styles.sentRequestAvatar}>
-                            <Text style={styles.sentRequestAvatarText}>{pill.initials}</Text>
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.sentRequestName}>{pill.displayName}</Text>
-                            <Text style={styles.sentRequestType}>
-                              Pair request · {pill.pillState === 'pending_active' ? 'Pending' : pill.pillState === 'greyed_waiting_friend' ? 'Waiting for friend' : pill.pillState === 'greyed_waiting_signup' ? 'Waiting for signup' : 'Pending'}
-                            </Text>
-                          </View>
-                          <TouchableOpacity
-                            onPress={() => {
-                              if (pill.pairRequestId) cancelPairRequestMutation.mutate(pill.pairRequestId);
-                              else if (pill.pendingInviteId) cancelPairInviteMutation.mutate(pill.pendingInviteId);
-                            }}
-                            style={styles.sentCancelBtn}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={styles.sentCancelText}>Cancel</Text>
-                          </TouchableOpacity>
-                        </View>
-                      ))}
-                    </>
-                  )}
-                </View>
-              )}
-
-              {/* Tab 3: Requests = Incoming friend + pair requests */}
-              {friendsModalTab === "requests" && (
-                <View>
-                  {/* Incoming pair requests */}
-                  {incomingPairRequests.map((req) => (
-                    <View key={req.id} style={styles.sentRequestRow}>
-                      <View style={[styles.sentRequestAvatar, { backgroundColor: '#fff7ed' }]}>
-                        <Icon name="star" size={18} color="#eb7825" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.sentRequestName}>{req.senderName}</Text>
-                        <Text style={styles.sentRequestType}>Wants to pair with you</Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <TouchableOpacity
-                          onPress={() => declinePairRequestMutation.mutate(req.id)}
-                          style={styles.sentCancelBtn}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.sentCancelText}>Decline</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => acceptPairRequestMutation.mutate(req.id, {
-                            // ORCH-1239: accept can now throw 'pairing_limit_reached'
-                            // (the migration closed the accept-path leak). Surface the
-                            // paywall instead of a raw error / crash.
-                            onError: (err) => {
-                              const msg = err instanceof Error ? err.message : '';
-                              if (msg === 'pairing_limit_reached') {
-                                setPaywallFeature('pairing');
-                                setShowPaywall(true);
-                              } else {
-                                showMutationError(err, 'accepting pair request', showToast);
-                              }
-                            },
-                          })}
-                          style={[styles.sentCancelBtn, { backgroundColor: '#eb7825', borderColor: '#eb7825' }]}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.sentCancelText, { color: '#ffffff' }]}>Accept</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))}
-                  {/* Incoming friend requests */}
-                  <RequestsView
-                    requests={incomingRequests}
-                    loading={friendsLoading || requestsLoading}
-                    onAccept={handleAcceptRequest}
-                    onDecline={handleDeclineRequest}
-                  />
-                </View>
-              )}
-
-              {/* Tab 4: Blocked */}
-              {friendsModalTab === "blocked" && (
-                <BlockedUsersView
-                  blockedUsers={blockedUsers}
-                  loading={friendsLoading}
-                  onUnblock={handleUnblock}
-                />
-              )}
+          {friendsModalTab === "friend-list" && showBlockedView ? (
+            <BlockedUsersView
+              blockedUsers={blockedUsers}
+              loading={friendsLoading}
+              onUnblock={handleUnblock}
+              onBack={() => setShowBlockedView(false)}
+            />
+          ) : null}
+          {friendsModalTab === "friend-list" && !showBlockedView ? (
+            <FriendsManagementList
+              friends={dbFriends}
+              loading={friendsLoading}
+              mutedUserIds={mutedUserIds}
+              currentUserId={user?.id || ""}
+              pairedPills={pairedPills}
+              pairTile={pairTile}
+              onPairTile={() => {
+                // The + tile pairs someone; at the free limit it opens Mingla+.
+                if (pairTile.atLimit) {
+                  openPairingPaywall();
+                  return;
+                }
+                setShowPairRequestModal(true);
+              }}
+              onOpenPaired={(friendUserId) => {
+                setShowFriendsModal(false);
+                onNavigateToFriendProfile?.(friendUserId, { focus: "paired" });
+              }}
+              onAvatarPress={(friendUserId) => {
+                setShowFriendsModal(false);
+                onNavigateToFriendProfile?.(friendUserId);
+              }}
+              onMessage={(friend) => {
+                setShowFriendsModal(false);
+                handlePickFriend(friend);
+              }}
+              onOpenFriendActions={(friend) => {
+                // ORCH-0987 unify: close the friends modal, then present the shared
+                // FriendActionsSheet after the dismiss settles. Presenting it in the
+                // same tick the friends modal dismisses freezes iOS (present-during-
+                // dismiss). The shared sheet owns every friend action (single owner).
+                setShowFriendsModal(false);
+                setTimeout(() => { setActionsFriend(friend); setActionsSheetVisible(true); }, 450);
+              }}
+              blockedCount={blockedUsers.length}
+              onOpenBlocked={() => setShowBlockedView(true)}
+            />
+          ) : null}
+          {friendsModalTab === "requests" ? (
+            <RequestsView
+              received={receivedRows}
+              sent={sentRows}
+              loading={friendsLoading || requestsLoading}
+              busyKey={requestBusyKey}
+              onAccept={(row) => void handleAcceptReceived(row)}
+              onDecline={(row) => void handleDeclineReceived(row)}
+              onCancelSent={(row) => void handleCancelSent(row)}
+            />
+          ) : null}
         </View>
       </BaseBottomSheet>
 
@@ -3964,15 +4782,35 @@ function ConnectionsPageRefactored({
         selectedCode={addFriendCountry.code}
         onSelect={handleAddFriendCountrySelect}
         onClose={() => setAddFriendPickerOpen(false)}
+        tone="dark"
       />
 
-      {/* Friend Picker Sheet */}
-      <FriendPickerSheet
-        visible={friendPickerVisible}
-        onClose={() => setFriendPickerVisible(false)}
-        onSelectFriend={handlePickFriend}
-        friends={dbFriends}
-        loadingFriends={friendsLoading}
+      {/* Issue #4114 Wave 2b — the one Add a friend sheet. Same ORCH-1371
+          pattern as the friends sheet: it drops while the sibling picker above
+          is up (`visible` gated on addFriendPickerOpen) and the number, country
+          and picker flag stay here, so they survive the drop. */}
+      <AddFriendSheet
+        visible={showAddFriendSheet && !addFriendPickerOpen}
+        onSheetClose={handleAddFriendSheetClose}
+        onDismiss={closeAddFriendSheet}
+        currentUserId={user?.id || ""}
+        selectedCountry={addFriendCountry}
+        phoneNumber={addFriendPhone}
+        onPhoneNumberChange={setAddFriendPhone}
+        onOpenCountryPicker={() => openAfterKeyboardHides(Keyboard, () => setAddFriendPickerOpen(true))}
+        pendingUserIds={pendingPairUserIds}
+        pairingAtLimit={pairTile.atLimit}
+        onMessageFriend={(friendUserId) => {
+          const friend = dbFriends.find((f) => friendUserIdOf(f, user?.id ?? "") === friendUserId);
+          setShowAddFriendSheet(false);
+          setShowFriendsModal(false);
+          if (friend) void handlePickFriend(friend);
+        }}
+        onSeePlus={() => {
+          setShowAddFriendSheet(false);
+          requestAnimationFrame(() => openPairingPaywall());
+        }}
+        onRequestSent={() => loadFriendRequests()}
       />
 
       <ReportUserModal
@@ -3980,6 +4818,7 @@ function ConnectionsPageRefactored({
         onClose={() => {
           setShowReportModal(false);
           setSelectedUserToReport(null);
+          settleReport(false);
         }}
         user={
           selectedUserToReport
@@ -3994,6 +4833,7 @@ function ConnectionsPageRefactored({
           if (!blockLoading) {
             setShowBlockModal(false);
             setSelectedUserToBlock(null);
+            settleBlock(false);
           }
         }}
         onConfirm={handleBlockConfirm}
@@ -4001,24 +4841,40 @@ function ConnectionsPageRefactored({
         loading={blockLoading}
       />
 
-      {/* ORCH-0435: Pairing modals */}
-      <FriendsActionChooserSheet
-        visible={showFriendsActionChooser}
-        onClose={() => setShowFriendsActionChooser(false)}
+      {/* Issue #4114 (D15): the pencil's New message sheet replaces the + chooser. */}
+      <NewMessageSheet
+        visible={showNewMessageSheet}
+        onClose={() => setShowNewMessageSheet(false)}
+        friends={dbFriends}
+        loadingFriends={friendsLoading}
+        currentUserId={currentUserId}
+        chattedUserIds={chattedUserIds}
+        onPickFriend={(friend) => {
+          setShowNewMessageSheet(false);
+          void handlePickFriend(friend);
+        }}
         createGroupChatDisabled={!canCreateSession && !isUnlimited}
-        onChooseCreateGroupChat={() => {
-          setShowFriendsActionChooser(false);
+        onNewGroup={() => {
+          setShowNewMessageSheet(false);
           requestAnimationFrame(() => setShowCreateGroupChatSheet(true));
         }}
-        onChooseAddFriend={() => {
-          setShowFriendsActionChooser(false);
-          requestAnimationFrame(() => setShowPairRequestModal(true));
-        }}
-        onCreateGroupChatPaywall={() => {
-          setShowFriendsActionChooser(false);
+        onNewGroupPaywall={() => {
+          setShowNewMessageSheet(false);
           setPaywallFeature('session_creation');
           requestAnimationFrame(() => setShowPaywall(true));
         }}
+        onAddFriend={() => {
+          // Issue #4114 Wave 2b: the one Add a friend flow (add = pair).
+          setShowNewMessageSheet(false);
+          requestAnimationFrame(() => openAddFriendSheet());
+        }}
+      />
+
+      <ChatRowActionsSheet
+        visible={Boolean(chatActionsTarget)}
+        title={chatActionsTitle}
+        actions={chatActions}
+        onClose={() => setChatActionsTarget(null)}
       />
 
       <CreateGroupChatSheet
@@ -4036,7 +4892,7 @@ function ConnectionsPageRefactored({
           setShowCreateGroupChatSheet(false);
           setConversations((prev) => prev.filter((conversation) => conversation.id !== conversationId));
           showToast({
-            message: "Invites sent. The chat will open once someone accepts.",
+            message: t('connections:group_invites_sent'),
             type: "info",
           });
           if (user?.id) {
@@ -4072,12 +4928,19 @@ function ConnectionsPageRefactored({
         />
       ) : null}
 
+      {/* The paired section's + tile: pair with a friend you already have.
+          Issue #4114: one confirmation (this toast) — the modal no longer also
+          alerts — and the paywall on the pairing limit. */}
       <PairRequestModal
         visible={showPairRequestModal}
         onClose={() => setShowPairRequestModal(false)}
         onPairRequestSent={() => {
           setShowPairRequestModal(false);
-          showToast({ message: 'Pair request sent!', type: 'info' });
+          showToast({ message: t('connections:pair_request_sent'), type: 'info' });
+        }}
+        onPairingLimitReached={() => {
+          setShowPairRequestModal(false);
+          requestAnimationFrame(() => openPairingPaywall());
         }}
       />
 
@@ -4092,6 +4955,10 @@ function ConnectionsPageRefactored({
           setShowIncomingPairRequest(null);
         }}
         onClose={() => setShowIncomingPairRequest(null)}
+        onPairingLimitReached={() => {
+          setShowIncomingPairRequest(null);
+          requestAnimationFrame(() => openPairingPaywall());
+        }}
       />
 
       {/* ORCH-0666: AddToBoardModal must be mounted on the default-render branch
@@ -4147,6 +5014,14 @@ function ConnectionsPageRefactored({
             isPaired={pairedUserIds.has(fid)}
             isPending={pendingPairUserIds.has(fid)}
             isFriend={true}
+            onViewProfile={() => {
+              setShowFriendsModal(false);
+              onNavigateToFriendProfile?.(fid);
+            }}
+            onOpenPairedView={() => {
+              setShowFriendsModal(false);
+              onNavigateToFriendProfile?.(fid, { focus: "paired" });
+            }}
           />
         );
       })()}
@@ -4198,25 +5073,17 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     textAlignVertical: 'center',
   },
-  friendsIconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
   titleIconBadge: {
     position: 'absolute',
-    top: 0,
-    right: 0,
+    top: -3,
+    right: -3,
     minWidth: 16,
     height: 16,
     paddingHorizontal: 4,
     borderRadius: 8,
-    backgroundColor: '#eb7825',
+    backgroundColor: tokens.accent,
     borderWidth: 1.5,
-    borderColor: 'rgba(12, 14, 18, 1)',
+    borderColor: tokens.avatarRing,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -4226,431 +5093,298 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 12,
   },
-  addButtonGlass: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: glass.chrome.active.tint,
-    borderWidth: 1,
-    borderColor: glass.chrome.active.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: glass.chrome.active.glowColor,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  pillsDividerInline: {
-    width: StyleSheet.hairlineWidth,
-    height: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
-    marginHorizontal: 4,
-  },
-  // ORCH-0990: row holding the + button, divider, and paired-pills scroll,
-  // relocated out of the glass header to sit just above the search bar.
-  pairControlsRow: {
+  // ── Issue #4114 Wave 2a: Chats header, search, filters, rows ──
+  headerButtons: {
+    marginLeft: 'auto',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    height: 48,
-    paddingHorizontal: 16,
   },
-  pillsScrollWrap: {
-    flex: 1,
-    height: '100%',
-    justifyContent: 'center',
-  },
-  pillsScrollContent: {
+  headerButton: {
+    width: CHAT_HEADER_BUTTON_SIZE,
+    height: CHAT_HEADER_BUTTON_SIZE,
+    borderRadius: CHAT_HEADER_BUTTON_SIZE / 2,
+    backgroundColor: tokens.headerButtonBg,
+    borderWidth: 1,
+    borderColor: tokens.headerButtonBorder,
     alignItems: 'center',
-    gap: glass.discover.filterBar.chipGap,
-    paddingRight: glass.discover.filterBar.fadeEdgeWidth,
-  },
-  pillsFade: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-  },
-  pillsEmptyHint: {
-    height: 36,
     justifyContent: 'center',
-    paddingHorizontal: 8,
   },
-  pillsEmptyHintText: {
-    color: 'rgba(255, 255, 255, 0.55)',
-    fontSize: 13,
-    fontWeight: '500',
+  headerButtonPressed: {
+    transform: [{ scale: 0.96 }],
   },
-
-  // ── Header ────────────────────────────────
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    minHeight: 62,
-    backgroundColor: "#ffffff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#6B7280",
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  headerDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: "#E5E7EB",
-    marginHorizontal: 2,
-  },
-  headerIconBtn: {
+  backButton: {
     width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#fff7ed",
-    position: "relative",
+    height: 44,
+    marginLeft: -8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerIconBtnActive: {
-    backgroundColor: "#eb7825",
-  },
-  headerBadge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    minWidth: 16,
-    height: 16,
-    backgroundColor: "#ef4444",
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-    borderWidth: 1.5,
-    borderColor: "#ffffff",
-  },
-  headerBadgeText: {
-    fontSize: 9,
-    color: "#ffffff",
-    fontWeight: "700",
-  },
-  composeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#eb7825",
-  },
-  // ── Archived section (ORCH-0435) ──────
-  archivedSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginHorizontal: 16,
-    marginBottom: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: "#f9fafb",
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#e5e7eb",
-  },
-  archivedSectionText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#6b7280",
-  },
-  archivedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 10,
-  },
-  archivedAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#eb7825",
-    alignItems: "center",
-    justifyContent: "center",
-    opacity: 0.6,
-  },
-  archivedAvatarText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#ffffff",
-  },
-  archivedName: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#9ca3af",
-  },
-  unarchiveBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    backgroundColor: "#f3f4f6",
-  },
-  unarchiveBtnText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#6b7280",
-  },
-  // ── Modal empty state (ORCH-0435) ──────
-  modalEmptyState: {
-    paddingVertical: 24,
-    alignItems: "center",
-    marginHorizontal: 16,
-  },
-  modalEmptyText: {
-    fontSize: 14,
-    color: "#9ca3af",
-    marginTop: 8,
-  },
-  // ── Friend list divider (ORCH-0435) ──────
-  friendListDivider: {
-    height: 1,
-    backgroundColor: "#e5e7eb",
-    marginVertical: 12,
-    marginHorizontal: 16,
-  },
-  // ── Sent request rows (ORCH-0435) ──────
-  sentRequestRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  sentRequestAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#eb7825",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  sentRequestAvatarText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  sentRequestName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  sentRequestType: {
-    fontSize: 12,
-    color: "#9ca3af",
-    marginTop: 2,
-  },
-  sentCancelBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#f9fafb",
-  },
-  sentCancelText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#6b7280",
-  },
-  // ── Incoming pair banner (ORCH-0435) ──────
-  incomingPairBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: "#fff7ed",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#fed7aa",
-  },
-  incomingPairBannerText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  // ── Search ────────────────────────────────
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 10,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    height: 44,
-  },
-  searchIcon: {
-    marginRight: 10,
+    gap: 8,
+    marginHorizontal: CHAT_ROW_SIDE_PADDING,
+    height: CHAT_SEARCH_HEIGHT,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    backgroundColor: tokens.searchBg,
   },
   searchInput: {
     flex: 1,
     fontSize: 15,
-    color: "#1f2937",
+    color: tokens.ink,
     paddingVertical: 0,
   },
-  // ── Chat list ─────────────────────────────
-  chatListContent: {
-    paddingBottom: 16,
+  filterRow: {
+    height: CHAT_FILTER_ROW_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: CHAT_ROW_SIDE_PADDING,
+    paddingTop: 4,
   },
-  chatSeparator: {
-    height: 1,
-    backgroundColor: "#f3f4f6",
-    marginLeft: 78,
-    marginRight: 16,
+  filterChip: {
+    height: CHAT_FILTER_CHIP_HEIGHT,
+    borderRadius: CHAT_FILTER_CHIP_HEIGHT / 2,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    backgroundColor: tokens.chipBg,
   },
-  loadingContainer: {
+  filterChipActive: {
+    backgroundColor: tokens.chipActiveBg,
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: tokens.dim,
+  },
+  filterChipTextActive: {
+    color: tokens.chipActiveLabel,
+  },
+  sectionLabel: {
+    height: CHAT_SECTION_LABEL_HEIGHT,
+    paddingHorizontal: CHAT_ROW_SIDE_PADDING,
+    paddingTop: 12,
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: tokens.sectionLabel,
+  },
+  rowPressed: {
+    backgroundColor: tokens.rowPressed,
+  },
+  rowSeparator: {
+    position: 'absolute',
+    top: 0,
+    left: CHAT_ROW_SIDE_PADDING + 52 + CHAT_ROW_GAP,
+    right: 0,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: tokens.separator,
+  },
+  friendRow: {
+    height: CHAT_ROW_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: CHAT_ROW_GAP,
+    paddingHorizontal: CHAT_ROW_SIDE_PADDING,
+  },
+  friendRowName: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    minWidth: 0,
+    fontSize: 16,
+    fontWeight: '600',
+    color: tokens.ink,
   },
-  // ── Empty state ───────────────────────────
+  friendRowAction: {
+    height: 30,
+    borderRadius: 15,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    backgroundColor: tokens.chipBg,
+  },
+  friendRowActionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: tokens.ink,
+  },
+  archivedRow: {
+    height: CHAT_ARCHIVED_ROW_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: CHAT_ROW_SIDE_PADDING + 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: tokens.separator,
+  },
+  archivedRowLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: tokens.dim,
+  },
+  archivedRowCount: {
+    marginLeft: 'auto',
+    fontSize: 15,
+    color: tokens.faint,
+  },
+  offlineBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: CHAT_ROW_SIDE_PADDING,
+    marginBottom: 8,
+    paddingHorizontal: 10,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: tokens.offlineBarBg,
+  },
+  offlineBarText: {
+    flex: 1,
+    fontSize: 12.5,
+    color: tokens.dim,
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    height: 44,
+    paddingHorizontal: CHAT_ROW_SIDE_PADDING + 2,
+  },
+  errorRowText: {
+    flex: 1,
+    fontSize: 14,
+    color: tokens.errorLabel,
+  },
+  errorRowAction: {
+    fontWeight: '700',
+    color: tokens.ink,
+  },
   emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 40,
+    paddingTop: 72,
   },
   emptyTitle: {
     fontSize: 17,
     fontWeight: "600",
-    color: "#FFFFFF",
+    color: tokens.ink,
     marginTop: 14,
+    textAlign: "center",
   },
   emptySubtitle: {
     fontSize: 14,
-    color: "rgba(255, 255, 255, 0.65)",
+    color: tokens.dim,
     textAlign: "center",
     marginTop: 6,
+    lineHeight: 20,
   },
   emptyCtaButton: {
     marginTop: 20,
-    backgroundColor: "#eb7825",
+    backgroundColor: tokens.accent,
     paddingHorizontal: 28,
     paddingVertical: 12,
     borderRadius: 24,
   },
   emptyCtaText: {
-    color: "#ffffff",
+    color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "600",
   },
-  // ── Error state ───────────────────────────
-  errorContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  errorText: {
-    fontSize: 16,
-    color: "#ef4444",
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: "#eb7825",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "500",
+  // ── Friends sheet (Wave 2b redesigns these) ──────
+  // ── Chat list ─────────────────────────────
+  chatListContent: {
+    paddingBottom: 16,
   },
   // ── Bottom Sheet (Friends modal) ──────────────────────────
   // META-ORCH-0991 Wave C: the scrim/flex-end card/hand-rolled handle styles
   // (sheetOverlay, sheetContainer, sheetHandle) are owned by BaseBottomSheet now.
-  friendsSheetHeaderBlock: {
-    paddingTop: 4,
+  // Issue #4114 Wave 2b — the dark friends sheet (design v6: sheet #17191e,
+  // 17/700 title, Done / Add, a two-item segmented control).
+  friendsSheetBackground: {
+    backgroundColor: glass.discover.friendsSheet.sheetBg,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
   },
-  sheetHeader: {
+  friendsSheetHeaderBlock: {
+    paddingHorizontal: 14,
+    paddingBottom: 6,
+  },
+  friendsSheetTitleRow: {
+    height: 44,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
+    paddingHorizontal: 2,
+    marginBottom: 6,
   },
-  sheetTitle: {
-    fontSize: 18,
+  friendsSheetSide: {
+    width: 72,
+  },
+  friendsSheetSideRight: {
+    alignItems: "flex-end",
+  },
+  friendsSheetDone: {
+    fontSize: 15,
+    color: tokens.dim,
+  },
+  friendsSheetAdd: {
+    fontSize: 15,
     fontWeight: "600",
-    color: "#111827",
+    color: tokens.accent,
+  },
+  friendsSheetTitle: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 17,
+    fontWeight: "700",
+    color: tokens.ink,
+  },
+  friendsSegment: {
+    flexDirection: "row",
+    padding: 3,
+    borderRadius: 11,
+    backgroundColor: glass.discover.friendsSheet.segmentBg,
+  },
+  friendsSegmentItem: {
+    flex: 1,
+    minHeight: 32,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  friendsSegmentItemActive: {
+    backgroundColor: glass.discover.friendsSheet.segmentActiveBg,
+  },
+  friendsSegmentText: {
+    fontSize: 13.5,
+    fontWeight: "600",
+    color: tokens.dim,
+  },
+  friendsSegmentTextActive: {
+    color: tokens.ink,
+  },
+  friendsSegmentBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    backgroundColor: tokens.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  friendsSegmentBadgeText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "700",
   },
   sheetBodyInner: {
     flex: 1,
   },
   sheetBodyContent: {
-    paddingTop: 8,
+    paddingTop: 4,
     paddingBottom: 24,
-  },
-  // ── Tab bar (Friends modal) ────────────
-  tabBar: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-    marginBottom: 12,
-    marginHorizontal: 16,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-  },
-  tabActive: {
-    borderBottomColor: "#eb7825",
-  },
-  tabText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#9ca3af",
-  },
-  tabTextActive: {
-    color: "#eb7825",
-  },
-  tabBadge: {
-    backgroundColor: "#ef4444",
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 6,
-  },
-  tabBadgeText: {
-    color: "#ffffff",
-    fontSize: 11,
-    fontWeight: "700",
   },
 });
 

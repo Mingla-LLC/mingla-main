@@ -13,6 +13,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // I-PROPOSED-1161-SMS-FROM-APPROVED-SENDER-ONLY +
 // I-PROPOSED-1541-SMS-PROVIDER-EGRESS-ALLOWLIST.
 import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
+import { buildFriendInviteOneLink, buildFriendInviteSms } from "../_shared/friendInviteLink.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -90,24 +91,29 @@ export const handler = async (req: Request): Promise<Response> => {
     });
 
     // --- TIER GATING: Pairing limit check ---
+    // Issue #4114 (D16): the limit no longer refuses the whole request up
+    // front. Adding a friend always works: at the free limit, a person who is
+    // not yet a friend still gets the friend request (without the pair) and the
+    // response says `pairingLimitReached` so the app can offer Mingla+. A pure
+    // pair request to someone who is ALREADY a friend is still refused with
+    // `pairing_limit_reached` — there is nothing else to send.
     const { data: pairingAllowed } = await adminClient
       .rpc('check_pairing_allowed', { p_user_id: senderId });
 
-    if (!pairingAllowed?.[0]?.allowed) {
-      return jsonResponse({
-        error: 'pairing_limit_reached',
-        feature: 'pairing',
-        message: 'You\'ve reached your free pairing limit. Upgrade to Mingla+ for unlimited pairings.',
-        currentTier: pairingAllowed?.[0]?.tier ?? 'free',
-        currentCount: pairingAllowed?.[0]?.current_count ?? 0,
-        maxAllowed: pairingAllowed?.[0]?.max_allowed ?? 1,
-      }, 403);
-    }
+    const canPair = pairingAllowed?.[0]?.allowed === true;
+    const pairingLimitResponse = () => jsonResponse({
+      error: 'pairing_limit_reached',
+      feature: 'pairing',
+      message: 'You\'ve reached your free pairing limit. Upgrade to Mingla+ for unlimited pairings.',
+      currentTier: pairingAllowed?.[0]?.tier ?? 'free',
+      currentCount: pairingAllowed?.[0]?.current_count ?? 0,
+      maxAllowed: pairingAllowed?.[0]?.max_allowed ?? 1,
+    }, 403);
 
     // ── Get sender profile ────────────────────────────────────────────────
     const { data: senderProfile } = await adminClient
       .from("profiles")
-      .select("first_name, last_name, display_name, phone")
+      .select("first_name, last_name, display_name, phone, referral_code")
       .eq("id", senderId)
       .single();
 
@@ -129,222 +135,23 @@ export const handler = async (req: Request): Promise<Response> => {
       return jsonResponse({ error: "Must provide either friendUserId or phoneE164" }, 400);
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // TIER 1: Direct pair request to an existing friend
-    // ═══════════════════════════════════════════════════════════════════════
-    if (friendUserId) {
-      if (friendUserId === senderId) {
-        return jsonResponse({ error: "Cannot pair with yourself" }, 400);
-      }
-
-      // Verify friendship (limit 1: accept_friend_request_atomic creates bidirectional rows)
-      const { data: friendship } = await adminClient
-        .from("friends")
-        .select("id")
-        .or(
-          `and(user_id.eq.${senderId},friend_user_id.eq.${friendUserId}),and(user_id.eq.${friendUserId},friend_user_id.eq.${senderId})`
-        )
-        .eq("status", "accepted")
-        .limit(1)
-        .maybeSingle();
-
-      if (!friendship) {
-        // ── TIER 2 FALLTHROUGH: Not friends yet — create hidden pair request ──
-        // Reuse the Tier 2 logic but skip the phone lookup since we already
-        // have the target user ID.
-
-        // Check for existing pending pair request (either direction)
-        const { data: existingRequest2 } = await adminClient
-          .from("pair_requests")
-          .select("id, status")
-          .or(
-            `and(sender_id.eq.${senderId},receiver_id.eq.${friendUserId}),and(sender_id.eq.${friendUserId},receiver_id.eq.${senderId})`
-          )
-          .eq("status", "pending")
-          .maybeSingle();
-
-        if (existingRequest2) {
-          return jsonResponse({ error: "Already have a pending pair request with this user" }, 400);
-        }
-
-        // Check for existing pairing
-        const uA2 = senderId < friendUserId ? senderId : friendUserId;
-        const uB2 = senderId < friendUserId ? friendUserId : senderId;
-
-        const { data: existingPairing2 } = await adminClient
-          .from("pairings")
-          .select("id")
-          .eq("user_a_id", uA2)
-          .eq("user_b_id", uB2)
-          .maybeSingle();
-
-        if (existingPairing2) {
-          return jsonResponse({ error: "Already paired with this user" }, 400);
-        }
-
-        // Find or create the friend_request to gate the pair_request
-        let friendRequestId: string | null = null;
-        let createdNewFriendRequest = false;
-
-        const { data: existingFR } = await adminClient
-          .from("friend_requests")
-          .select("id, status")
-          .eq("sender_id", senderId)
-          .eq("receiver_id", friendUserId)
-          .eq("status", "pending")
-          .maybeSingle();
-
-        if (existingFR) {
-          friendRequestId = existingFR.id;
-        } else {
-          // Check reverse direction
-          const { data: reverseFR } = await adminClient
-            .from("friend_requests")
-            .select("id, status")
-            .eq("sender_id", friendUserId)
-            .eq("receiver_id", senderId)
-            .eq("status", "pending")
-            .maybeSingle();
-
-          if (reverseFR) {
-            friendRequestId = reverseFR.id;
-          } else {
-            // Create new friend request
-            const { data: newFR, error: frError } = await adminClient
-              .from("friend_requests")
-              .insert({
-                sender_id: senderId,
-                receiver_id: friendUserId,
-                status: "pending",
-              })
-              .select("id")
-              .single();
-
-            if (frError) {
-              console.error("[send-pair-request] Friend request error:", frError);
-              return jsonResponse({ error: "Failed to create friend request" }, 500);
-            }
-            friendRequestId = newFR.id;
-            createdNewFriendRequest = true;
-          }
-        }
-
-        // Create hidden pair request gated by the friend request
-        const { data: pairRequest2, error: prError2 } = await adminClient
-          .from("pair_requests")
-          .insert({
-            sender_id: senderId,
-            receiver_id: friendUserId,
-            status: "pending",
-            visibility: "hidden_until_friend",
-            gated_by_friend_request_id: friendRequestId,
-          })
-          .select("id")
-          .single();
-
-        if (prError2) {
-          console.error("[send-pair-request] Pair request error:", prError2);
-          return jsonResponse({ error: "Failed to create pair request" }, 500);
-        }
-
-        // Only send push if we created a NEW friend request (not reused an existing one)
-        if (createdNewFriendRequest) {
-          await callNotifyDispatch({
-            userId: friendUserId,
-            type: "friend_request_received",
-            title: `${senderName} wants to connect`,
-            body: "Tap to accept or pass.",
-            data: {
-              deepLink: "mingla://connections?tab=requests",
-              type: "friend_request",
-              requestId: friendRequestId,
-              senderId,
-            },
-            actorId: senderId,
-            relatedId: friendRequestId,
-            relatedType: "friend_request",
-            idempotencyKey: `friend_request_received:${senderId}:${friendRequestId}`,
-            pushOverrides: {
-              androidChannelId: "social",
-              buttons: [
-                { id: "accept", text: "Accept" },
-                { id: "decline", text: "Decline" },
-              ],
-            },
-          });
-        }
-
-        return jsonResponse({
-          success: true,
-          tier: 2,
-          requestId: pairRequest2.id,
-          pillState: "greyed_waiting_friend",
-          message: "Pair request created (hidden until friend request accepted)",
-        });
-      }
-
-      // Check for existing pairing
-      const uA = senderId < friendUserId ? senderId : friendUserId;
-      const uB = senderId < friendUserId ? friendUserId : senderId;
-
-      const { data: existingPairing } = await adminClient
-        .from("pairings")
-        .select("id")
-        .eq("user_a_id", uA)
-        .eq("user_b_id", uB)
-        .maybeSingle();
-
-      if (existingPairing) {
-        return jsonResponse({ error: "Already paired with this user" }, 400);
-      }
-
-      // Check for existing pending pair request (either direction)
-      const { data: existingRequest } = await adminClient
-        .from("pair_requests")
-        .select("id, status")
-        .or(
-          `and(sender_id.eq.${senderId},receiver_id.eq.${friendUserId}),and(sender_id.eq.${friendUserId},receiver_id.eq.${senderId})`
-        )
-        .eq("status", "pending")
-        .maybeSingle();
-
-      if (existingRequest) {
-        return jsonResponse({ error: "Already have a pending pair request with this user" }, 400);
-      }
-
-      // Create pair request
-      const { data: pairRequest, error: insertError } = await adminClient
-        .from("pair_requests")
-        .insert({
-          sender_id: senderId,
-          receiver_id: friendUserId,
-          status: "pending",
-          visibility: "visible",
-        })
-        .select("id")
-        .single();
-
-      if (insertError) {
-        console.error("[send-pair-request] Insert error:", insertError);
-        return jsonResponse({ error: "Failed to create pair request" }, 500);
-      }
-
-      // Send push notification via notify-dispatch
-      await callNotifyDispatch({
-        userId: friendUserId,
-        type: "pair_request_received",
-        title: `${senderName} wants to pair with you`,
-        body: "Accept to discover experiences for each other.",
+    // ── Shared push payloads (unchanged copy) ─────────────────────────────
+    const notifyFriendRequest = (targetUserId: string, friendRequestId: string) =>
+      callNotifyDispatch({
+        userId: targetUserId,
+        type: "friend_request_received",
+        title: `${senderName} wants to connect`,
+        body: "Tap to accept or pass.",
         data: {
-          deepLink: `mingla://discover?pairRequest=${pairRequest.id}`,
-          type: "pair_request",
-          requestId: pairRequest.id,
+          deepLink: "mingla://connections?tab=requests",
+          type: "friend_request",
+          requestId: friendRequestId,
           senderId,
         },
         actorId: senderId,
-        relatedId: pairRequest.id,
-        relatedType: "pair_request",
-        idempotencyKey: `pair_request_received:${senderId}:${pairRequest.id}`,
+        relatedId: friendRequestId,
+        relatedType: "friend_request",
+        idempotencyKey: `friend_request_received:${senderId}:${friendRequestId}`,
         pushOverrides: {
           androidChannelId: "social",
           buttons: [
@@ -354,12 +161,237 @@ export const handler = async (req: Request): Promise<Response> => {
         },
       });
 
+    const notifyPairRequest = (targetUserId: string, pairRequestId: string) =>
+      callNotifyDispatch({
+        userId: targetUserId,
+        type: "pair_request_received",
+        title: `${senderName} wants to pair with you`,
+        body: "Accept to discover experiences for each other.",
+        data: {
+          deepLink: `mingla://discover?pairRequest=${pairRequestId}`,
+          type: "pair_request",
+          requestId: pairRequestId,
+          senderId,
+        },
+        actorId: senderId,
+        relatedId: pairRequestId,
+        relatedType: "pair_request",
+        idempotencyKey: `pair_request_received:${senderId}:${pairRequestId}`,
+        pushOverrides: {
+          androidChannelId: "social",
+          buttons: [
+            { id: "accept", text: "Accept" },
+            { id: "decline", text: "Decline" },
+          ],
+        },
+      });
+
+    const findPendingPairRequest = async (targetUserId: string) => {
+      const { data } = await adminClient
+        .from("pair_requests")
+        .select("id, status")
+        .or(
+          `and(sender_id.eq.${senderId},receiver_id.eq.${targetUserId}),and(sender_id.eq.${targetUserId},receiver_id.eq.${senderId})`
+        )
+        .eq("status", "pending")
+        .maybeSingle();
+      return data;
+    };
+
+    const findPairing = async (targetUserId: string) => {
+      const uA = senderId < targetUserId ? senderId : targetUserId;
+      const uB = senderId < targetUserId ? targetUserId : senderId;
+      const { data } = await adminClient
+        .from("pairings")
+        .select("id")
+        .eq("user_a_id", uA)
+        .eq("user_b_id", uB)
+        .maybeSingle();
+      return data;
+    };
+
+    const areFriends = async (targetUserId: string) => {
+      // limit 1: accept_friend_request_atomic creates bidirectional rows
+      const { data } = await adminClient
+        .from("friends")
+        .select("id")
+        .or(
+          `and(user_id.eq.${senderId},friend_user_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},friend_user_id.eq.${senderId})`
+        )
+        .eq("status", "accepted")
+        .limit(1)
+        .maybeSingle();
+      return !!data;
+    };
+
+    /** Tier 1: a visible pair request to someone who is already a friend. */
+    const pairWithFriend = async (targetUserId: string, pendingPhone: string | null) => {
+      if (await findPairing(targetUserId)) {
+        return jsonResponse({ error: "Already paired with this user" }, 400);
+      }
+      if (await findPendingPairRequest(targetUserId)) {
+        return jsonResponse({ error: "Already have a pending pair request with this user" }, 400);
+      }
+      if (!canPair) return pairingLimitResponse();
+
+      const insertRow: Record<string, unknown> = {
+        sender_id: senderId,
+        receiver_id: targetUserId,
+        status: "pending",
+        visibility: "visible",
+      };
+      if (pendingPhone) insertRow.pending_phone_e164 = pendingPhone;
+      const { data: pairRequest, error: insertError } = await adminClient
+        .from("pair_requests")
+        .insert(insertRow)
+        .select("id")
+        .single();
+
+      if (insertError) {
+        console.error("[send-pair-request] Insert error:", insertError);
+        return jsonResponse({ error: "Failed to create pair request" }, 500);
+      }
+
+      await notifyPairRequest(targetUserId, pairRequest.id);
+
       return jsonResponse({
         success: true,
         tier: 1,
         requestId: pairRequest.id,
         pillState: "pending_active",
       });
+    };
+
+    /**
+     * Tier 2: someone on Mingla who is not a friend yet. A friend request plus
+     * a pair request hidden until that friend request is accepted. At the free
+     * pairing limit (D16) the friend request still goes, without the pair.
+     */
+    const addFriendAndPair = async (targetUserId: string, pendingPhone: string | null) => {
+      if (await findPendingPairRequest(targetUserId)) {
+        return jsonResponse({ error: "Already have a pending pair request with this user" }, 400);
+      }
+      if (await findPairing(targetUserId)) {
+        return jsonResponse({ error: "Already paired with this user" }, 400);
+      }
+
+      // Find or create the friend_request that gates the pair_request.
+      let friendRequestId: string | null = null;
+      let createdNewFriendRequest = false;
+
+      const { data: existingFR } = await adminClient
+        .from("friend_requests")
+        .select("id, status")
+        .eq("sender_id", senderId)
+        .eq("receiver_id", targetUserId)
+        .maybeSingle();
+
+      if (existingFR) {
+        friendRequestId = existingFR.id;
+        if (existingFR.status === "declined") {
+          // Adding again re-asks: the old declined row goes back to pending
+          // (one row per sender/receiver, so a fresh insert would collide).
+          const { error: reopenError } = await adminClient
+            .from("friend_requests")
+            .update({ status: "pending", updated_at: new Date().toISOString() })
+            .eq("id", existingFR.id);
+          if (reopenError) {
+            console.error("[send-pair-request] Friend request reopen error:", reopenError);
+            return jsonResponse({ error: "Failed to create friend request" }, 500);
+          }
+          createdNewFriendRequest = true;
+        }
+      } else {
+        const { data: reverseFR } = await adminClient
+          .from("friend_requests")
+          .select("id, status")
+          .eq("sender_id", targetUserId)
+          .eq("receiver_id", senderId)
+          .eq("status", "pending")
+          .maybeSingle();
+
+        if (reverseFR) {
+          friendRequestId = reverseFR.id;
+        } else {
+          const { data: newFR, error: frError } = await adminClient
+            .from("friend_requests")
+            .insert({
+              sender_id: senderId,
+              receiver_id: targetUserId,
+              status: "pending",
+            })
+            .select("id")
+            .single();
+
+          if (frError) {
+            console.error("[send-pair-request] Friend request error:", frError);
+            return jsonResponse({ error: "Failed to create friend request" }, 500);
+          }
+          friendRequestId = newFR.id;
+          createdNewFriendRequest = true;
+        }
+      }
+
+      let pairRequestId: string | null = null;
+      if (canPair) {
+        const insertRow: Record<string, unknown> = {
+          sender_id: senderId,
+          receiver_id: targetUserId,
+          status: "pending",
+          visibility: "hidden_until_friend",
+          gated_by_friend_request_id: friendRequestId,
+        };
+        if (pendingPhone) insertRow.pending_phone_e164 = pendingPhone;
+        const { data: pairRequest, error: prError } = await adminClient
+          .from("pair_requests")
+          .insert(insertRow)
+          .select("id")
+          .single();
+
+        if (prError) {
+          console.error("[send-pair-request] Pair request error:", prError);
+          return jsonResponse({ error: "Failed to create pair request" }, 500);
+        }
+        pairRequestId = pairRequest.id;
+      }
+
+      // Only send push if we created a NEW friend request (not reused an existing one)
+      if (createdNewFriendRequest && friendRequestId) {
+        await notifyFriendRequest(targetUserId, friendRequestId);
+      }
+
+      if (!canPair) {
+        return jsonResponse({
+          success: true,
+          tier: 2,
+          friendRequestId,
+          friendOnly: true,
+          pairingLimitReached: true,
+          pillState: null,
+          message: "Friend request sent without a pair: free pairing limit reached",
+        });
+      }
+
+      return jsonResponse({
+        success: true,
+        tier: 2,
+        requestId: pairRequestId,
+        friendRequestId,
+        pillState: "greyed_waiting_friend",
+        message: "Pair request created (hidden until friend request accepted)",
+      });
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // TIER 1 / 2: a known Mingla user, by id
+    // ═══════════════════════════════════════════════════════════════════════
+    if (friendUserId) {
+      if (friendUserId === senderId) {
+        return jsonResponse({ error: "Cannot pair with yourself" }, 400);
+      }
+      return (await areFriends(friendUserId))
+        ? await pairWithFriend(friendUserId, null)
+        : await addFriendAndPair(friendUserId, null);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -384,202 +416,13 @@ export const handler = async (req: Request): Promise<Response> => {
         .maybeSingle();
 
       if (targetProfile) {
-        // ── TIER 2: Mingla user found via phone ────────────────────────
         const targetUserId = targetProfile.id;
-
         if (targetUserId === senderId) {
           return jsonResponse({ error: "Cannot pair with yourself" }, 400);
         }
-
-        // Check existing pairing
-        const uA = senderId < targetUserId ? senderId : targetUserId;
-        const uB = senderId < targetUserId ? targetUserId : senderId;
-
-        const { data: existingPairing } = await adminClient
-          .from("pairings")
-          .select("id")
-          .eq("user_a_id", uA)
-          .eq("user_b_id", uB)
-          .maybeSingle();
-
-        if (existingPairing) {
-          return jsonResponse({ error: "Already paired with this user" }, 400);
-        }
-
-        // Check existing pending pair request (either direction)
-        const { data: existingRequest } = await adminClient
-          .from("pair_requests")
-          .select("id, status")
-          .or(
-            `and(sender_id.eq.${senderId},receiver_id.eq.${targetUserId}),and(sender_id.eq.${targetUserId},receiver_id.eq.${senderId})`
-          )
-          .eq("status", "pending")
-          .maybeSingle();
-
-        if (existingRequest) {
-          return jsonResponse({ error: "Already have a pending pair request with this user" }, 400);
-        }
-
-        // Check if already friends (limit 1: bidirectional rows)
-        const { data: friendship } = await adminClient
-          .from("friends")
-          .select("id")
-          .or(
-            `and(user_id.eq.${senderId},friend_user_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},friend_user_id.eq.${senderId})`
-          )
-          .eq("status", "accepted")
-          .limit(1)
-          .maybeSingle();
-
-        if (friendship) {
-          // Already friends — use Tier 1 logic (visible pair request)
-          const { data: pairRequest, error: insertError } = await adminClient
-            .from("pair_requests")
-            .insert({
-              sender_id: senderId,
-              receiver_id: targetUserId,
-              status: "pending",
-              visibility: "visible",
-              pending_phone_e164: phoneE164,
-            })
-            .select("id")
-            .single();
-
-          if (insertError) {
-            console.error("[send-pair-request] Insert error:", insertError);
-            return jsonResponse({ error: "Failed to create pair request" }, 500);
-          }
-
-          await callNotifyDispatch({
-            userId: targetUserId,
-            type: "pair_request_received",
-            title: `${senderName} wants to pair with you`,
-            body: "Accept to discover experiences for each other.",
-            data: {
-              deepLink: `mingla://discover?pairRequest=${pairRequest.id}`,
-              type: "pair_request",
-              requestId: pairRequest.id,
-              senderId,
-            },
-            actorId: senderId,
-            relatedId: pairRequest.id,
-            relatedType: "pair_request",
-            idempotencyKey: `pair_request_received:${senderId}:${pairRequest.id}`,
-            pushOverrides: {
-              androidChannelId: "social",
-              buttons: [
-                { id: "accept", text: "Accept" },
-                { id: "decline", text: "Decline" },
-              ],
-            },
-          });
-
-          return jsonResponse({
-            success: true,
-            tier: 1,
-            requestId: pairRequest.id,
-            pillState: "pending_active",
-          });
-        }
-
-        // Not friends — create friend request + hidden pair request
-        // Check/create friend_request
-        let friendRequestId: string | null = null;
-        let createdNewFR = false;
-
-        const { data: existingFR } = await adminClient
-          .from("friend_requests")
-          .select("id, status")
-          .eq("sender_id", senderId)
-          .eq("receiver_id", targetUserId)
-          .maybeSingle();
-
-        if (existingFR) {
-          friendRequestId = existingFR.id;
-        } else {
-          // Also check reverse direction
-          const { data: reverseFR } = await adminClient
-            .from("friend_requests")
-            .select("id, status")
-            .eq("sender_id", targetUserId)
-            .eq("receiver_id", senderId)
-            .maybeSingle();
-
-          if (reverseFR) {
-            friendRequestId = reverseFR.id;
-          } else {
-            // Create new friend request
-            const { data: newFR, error: frError } = await adminClient
-              .from("friend_requests")
-              .insert({
-                sender_id: senderId,
-                receiver_id: targetUserId,
-                status: "pending",
-              })
-              .select("id")
-              .single();
-
-            if (frError) {
-              console.error("[send-pair-request] Friend request error:", frError);
-              return jsonResponse({ error: "Failed to create friend request" }, 500);
-            }
-            friendRequestId = newFR.id;
-            createdNewFR = true;
-          }
-        }
-
-        // Create hidden pair request
-        const { data: pairRequest, error: prError } = await adminClient
-          .from("pair_requests")
-          .insert({
-            sender_id: senderId,
-            receiver_id: targetUserId,
-            status: "pending",
-            visibility: "hidden_until_friend",
-            gated_by_friend_request_id: friendRequestId,
-            pending_phone_e164: phoneE164,
-          })
-          .select("id")
-          .single();
-
-        if (prError) {
-          console.error("[send-pair-request] Pair request error:", prError);
-          return jsonResponse({ error: "Failed to create pair request" }, 500);
-        }
-
-        // Only send push if we created a NEW friend request (not reused an existing one)
-        if (createdNewFR) {
-          await callNotifyDispatch({
-            userId: targetUserId,
-            type: "friend_request_received",
-            title: `${senderName} wants to connect`,
-            body: "Tap to accept or pass.",
-            data: {
-              deepLink: "mingla://connections?tab=requests",
-              type: "friend_request",
-              requestId: friendRequestId,
-              senderId,
-            },
-            actorId: senderId,
-            relatedId: friendRequestId,
-            relatedType: "friend_request",
-            idempotencyKey: `friend_request_received:${senderId}:${friendRequestId}`,
-            pushOverrides: {
-              androidChannelId: "social",
-              buttons: [
-                { id: "accept", text: "Accept" },
-                { id: "decline", text: "Decline" },
-              ],
-            },
-          });
-        }
-
-        return jsonResponse({
-          success: true,
-          tier: 2,
-          requestId: pairRequest.id,
-          pillState: "greyed_waiting_friend",
-        });
+        return (await areFriends(targetUserId))
+          ? await pairWithFriend(targetUserId, phoneE164)
+          : await addFriendAndPair(targetUserId, phoneE164);
       }
 
       // ── TIER 3: Phone not found — invite non-Mingla user ──────────────
@@ -596,7 +439,11 @@ export const handler = async (req: Request): Promise<Response> => {
         return jsonResponse({ error: "Too many pair invites. Try again tomorrow." }, 429);
       }
 
-      // UPSERT pending_pair_invite
+      // UPSERT pending_pair_invite. Inviting the same number again updates the
+      // existing invite (same row, same token) instead of creating a second one.
+      // Issue #4114: the invite stays a friend + pair invite at the free limit
+      // too; the pair is checked again when it is accepted (ORCH-1239), and the
+      // response flags the limit so the app can say so.
       const { data: invite, error: inviteError } = await adminClient
         .from("pending_pair_invites")
         .upsert(
@@ -607,7 +454,7 @@ export const handler = async (req: Request): Promise<Response> => {
           },
           { onConflict: "inviter_id,phone_e164" }
         )
-        .select("id")
+        .select("id, token")
         .single();
 
       if (inviteError) {
@@ -615,33 +462,40 @@ export const handler = async (req: Request): Promise<Response> => {
         return jsonResponse({ error: "Failed to create invite" }, 500);
       }
 
+      // Issue #4114: the link is the go.usemingla.com OneLink carrying this
+      // invite's token (it used to point at a domain with no DNS records).
+      const inviteLink = buildFriendInviteOneLink({
+        token: (invite as { token?: string | null }).token ?? null,
+        referralCode: senderProfile?.referral_code ?? null,
+      });
+
       // #1541 — the inline Twilio block that lived here is GONE, including
       // its TWILIO_FROM_* env read and the raw `From:` param. NO RAW `From` SURVIVES
       // ANYWHERE IN THIS FILE (F-3).
       //
-      // §4.0 — the ONE call shape. The body is today's verbatim, WITHOUT a STOP
-      // footer: the adapter appends it, which is the intended fix for this
-      // path's missing opt-out affordance. countryCode is omitted (the
-      // destination handset is the routing authority, #1529);
+      // §4.0 — the ONE call shape. The body comes from the one approved
+      // template, WITHOUT a STOP footer: the adapter appends it. countryCode is
+      // omitted (the destination handset is the routing authority, #1529);
       // messagingServiceSid is omitted, and that omission is exactly what
       // retires the raw sender — it selects the approved transactional
       // toll-free, and no code path to anything else remains.
       //
-      // THE BEST-EFFORT CONTRACT IS PRESERVED EXACTLY. The
-      // `pending_pair_invites` upsert above stays AHEAD of the send, and the
-      // Tier-3 response below is returned unchanged for every adapter outcome.
-      // Don't fail the request if SMS fails.
+      // THE BEST-EFFORT CONTRACT IS PRESERVED. The `pending_pair_invites`
+      // upsert above stays AHEAD of the send, and the request never fails
+      // because the text did. Issue #4114: the outcome is now RETURNED
+      // (`smsStatus`), so the app only says "Invite texted" when it was sent and
+      // offers the share sheet otherwise (no silent failure).
+      let smsStatus: "sent" | "failed" = "failed";
+      let smsProviderStatus = "error";
       try {
-        const smsBody = `${senderName} wants to pair with you on Mingla! Download the app to connect: https://mingla.app`;
+        const smsBody = buildFriendInviteSms(senderName, inviteLink);
         const smsResult = await smsAdapter.send({
           to: phoneE164,
           brandName: "Mingla",
           message: smsBody,
         });
-        // This path has never had a delivery record of any kind (F-4) — its
-        // real send history is unrecoverable. Routing through the adapter gives
-        // it the notification_deliveries ledger for the first time; this log is
-        // the cheapest honest signal available without a new table.
+        smsProviderStatus = String(smsResult.status);
+        smsStatus = smsResult.status === "sent" ? "sent" : "failed";
         console.info(
           JSON.stringify({
             event: "pair_invite_sms",
@@ -654,10 +508,25 @@ export const handler = async (req: Request): Promise<Response> => {
         // Don't fail the request if SMS fails.
       }
 
+      // Issue #4114 QA: keep the outcome on the invite, so the Requests tab
+      // can say "Invite not texted · Share" later. Best effort: a failed write
+      // is logged and never fails the request.
+      const { error: smsStatusError } = await adminClient
+        .from("pending_pair_invites")
+        .update({ sms_status: smsStatus })
+        .eq("id", invite.id);
+      if (smsStatusError) {
+        console.error("[send-pair-request] recording the invite text outcome failed:", smsStatusError.message);
+      }
+
       return jsonResponse({
         tier: 3,
         inviteId: invite.id,
         pillState: "greyed_waiting_signup",
+        smsStatus,
+        smsProviderStatus,
+        inviteLink,
+        pairingLimitReached: !canPair,
       });
     }
 

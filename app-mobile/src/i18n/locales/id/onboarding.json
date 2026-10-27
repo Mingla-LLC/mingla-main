@@ -178,7 +178,14 @@
     "alert_decline_error": "Tidak bisa menolak permintaan pasangan. Coba lagi.",
     "alert_generic_error": "Tidak bisa memproses permintaan. Coba lagi.",
     "share_message": "Hai! Gabung denganku di Mingla dan mari temukan pengalaman seru bersama. https://usemingla.com",
-    "fallback_user": "Pengguna"
+    "fallback_user": "Pengguna",
+    "invite_card_title": "Orang-orangmu sudah di sini",
+    "invite_card_body": "{{name}} mengundangmu ke Mingla. Terima untuk berteman dan melihat ulang tahun, rencana, dan simpanan satu sama lain.",
+    "invite_card_sub": "★ Teman + pasangan · mengundangmu lewat SMS",
+    "invite_card_accept": "Terima",
+    "invite_card_not_now": "Nanti saja",
+    "invite_card_done": "Kamu berteman dan berpasangan dengan {{name}}",
+    "invite_card_friends_only": "Kamu berteman dengan {{name}}"
   },
   "collaborations": {
     "headline": "Rencanakan bareng",

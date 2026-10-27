@@ -43,7 +43,10 @@ export interface Conversation {
   name?: string | null;
   session_id?: string | null;
   event_id?: string | null;
-  linked_entity_type?: 'direct' | 'session' | 'trip' | 'event';
+  // #4111 — 'brand_enquiry' rows are built by components/brandEnquiry/enquiryChatRows.
+  linked_entity_type?: 'direct' | 'session' | 'trip' | 'event' | 'brand_enquiry';
+  /** #4111 — enquiry threads (always their own row; #4114 reads this flag). */
+  isEnquiry?: boolean;
   is_broadcast_only?: boolean;
   eventBrandName?: string | null;
   eventBrandAccountId?: string | null;

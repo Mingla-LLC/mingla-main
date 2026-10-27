@@ -621,7 +621,7 @@ begin
     'W2T entry an admin is editing: hosts can use it today. Edited.', array['staff'], array['admin'], 'Open Admin and use W2T entry an admin is editing there.',
     'None known yet.', 'W2T entry an admin is editing works for every host.', 'planned',
     array['source','release_record','live_check'], null)::text$q$, v_rev));
-  perform pg_temp.t3980w2t_like('B2', 'an admin saving with the revision from before the flip is refused, so the flip is never overwritten', v, 'ERR:40001:stale_revision%');
+  perform pg_temp.t3980w2t_like('B2', 'an admin saving with the revision from before the flip is refused, so the flip is never overwritten', v, 'ERR:PT409:stale_revision%');
   perform pg_temp.t3980w2t_check('B2', 'and the entry stays Live',
     (select claimed_status || ':' || (revision = v_rev + 1)::text from public.product_capabilities where capability_key = 'w2t-guide-revision'), 'live:true');
 end;

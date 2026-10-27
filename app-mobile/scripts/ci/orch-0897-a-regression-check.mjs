@@ -58,6 +58,8 @@ const check = (name, pass, detail) => checks.push({ name, pass, detail });
 
 const groupChatService = read("mingla-business/src/services/groupChatService.ts");
 const groupChatPanel = read("mingla-business/src/components/groupChat/GroupChatPanel.tsx");
+const groupChatMessageMedia = read("mingla-business/src/components/groupChat/GroupChatMessageMedia.tsx");
+const groupChatMediaUtil = read("mingla-business/src/utils/groupChatMedia.ts");
 const useEventGroupChat = read("mingla-business/src/hooks/useEventGroupChat.ts");
 // #1627 — T-A04 now verifies the composer's lift END TO END, so it needs the
 // native half of the wrapper the panel imports through. See T-A04.
@@ -146,10 +148,19 @@ check(
 
 check(
   "T-A07 GroupChatPanel renders <Image> when message_type === 'image' && file_url !== null",
+  // [TEST-MOD-APPROVED #4114] chat media moved to the private bucket: the panel
+  // hands image messages to GroupChatMessageMedia, which renders <Image> from a
+  // signed URL resolved from message.file_url (the stored object path).
   groupChatPanel !== null &&
-    /message\.message_type === "image"/.test(groupChatPanel) &&
-    /<Image[\s\S]{0,200}source=\{\{\s*uri:\s*message\.file_url\s*\?\?\s*undefined\s*\}\}/.test(groupChatPanel),
-  "Image messages must render via React Native <Image> sourced from message.file_url.",
+    groupChatMessageMedia !== null &&
+    groupChatMediaUtil !== null &&
+    /message\.message_type === "image"/.test(groupChatMediaUtil) &&
+    /if \(!message\.file_url\) return "none";/.test(groupChatMediaUtil) &&
+    /const hasImage = groupChatMediaKind\(message\) !== "none";/.test(groupChatPanel) &&
+    /\{hasImage \? <GroupChatMessageMedia message=\{message\}/.test(groupChatPanel) &&
+    /resolveGroupChatMediaUrl\(message\.file_url\)/.test(groupChatMessageMedia) &&
+    /<Image\s+source=\{\{\s*uri:\s*url\s*\}\}/.test(groupChatMessageMedia),
+  "Image messages must render via React Native <Image> sourced from a URL resolved from message.file_url.",
 );
 
 check(

@@ -19,11 +19,11 @@
 --
 --   (b) a stale `p_expected_version` is refused BEFORE any write, and is refused
 --       in the exact shape the rest of this repo already uses for an optimistic-
---       concurrency conflict: SQLSTATE `40001` paired with the stable literal
+--       concurrency conflict: SQLSTATE `PT409` (one HTTP 409; #4134 moved every
+--       such site off the retryable `40001`) paired with the stable literal
 --       `reservation_version_conflict`, carrying the ACTUAL current version.
---       The SQLSTATE is convention (~20 sibling sites in 20270131013808,
---       20270131013809 and 20270204001448) and nothing in this repo branches on
---       it; the LITERAL is the load-bearing half, because it is what the layer
+--       The SQLSTATE is convention and nothing in this repo branches on it; the
+--       LITERAL is the load-bearing half, because it is what the layer
 --       above translates into a user-actionable 409 instead of a 500. The
 --       matching tool-layer proof lives in
 --       `supabase/functions/agent-confirm-action/__tests__/issue_2592_version_conflict_status.test.ts`.
@@ -54,6 +54,9 @@ ALTER TABLE public.reservations
 -- Re-apply the REAL migration. It is idempotent by construction
 -- (ADD COLUMN IF NOT EXISTS / CREATE OR REPLACE / DROP TRIGGER IF EXISTS).
 \ir ../20270512001975_issue_1975_ari_stays_reservations.sql
+-- The re-applied #1975 file restores its historical SQLSTATE 40001 raise;
+-- re-apply #4134 so the function is back at the chain head (PT409).
+\ir ../20271231204134_issue_4134_pt409_application_conflicts.sql
 
 BEGIN;
 
@@ -155,7 +158,7 @@ BEGIN
     RAISE EXCEPTION 'issue_2592_stale_expected_version_was_accepted';
   END IF;
   -- Convention parity with every other optimistic-concurrency site in the repo.
-  IF v_sqlstate IS DISTINCT FROM '40001' THEN
+  IF v_sqlstate IS DISTINCT FROM 'PT409' THEN
     RAISE EXCEPTION
       'issue_2592_version_conflict_diverged_from_repo_convention:%', v_sqlstate;
   END IF;

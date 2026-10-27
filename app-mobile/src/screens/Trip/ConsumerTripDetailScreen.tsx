@@ -114,7 +114,7 @@ import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import { OfferingChrome } from "@mingla/offering-rendering";
 
 import { Icon } from "../../components/ui/Icon";
-import { PresentedByFollowButton } from "../../components/brand/PresentedByFollowButton";
+import { PresentedByFollowAndMessage } from "../../components/brandEnquiry/PresentedByFollowAndMessage";
 // ORCH-1016 REWORK-3 — import the gorhom scroll host re-export from the primitive
 // (the SOLE permitted gorhom importer, per
 // I-PROPOSED-BASE-BOTTOM-SHEET-SOLE-GORHOM-CONSUMER) and inject it as the
@@ -1107,11 +1107,22 @@ export default function ConsumerTripDetailScreen({
   // bar/box buy-state (offeringState, computed above the early returns). The §10
   // box + the docked/floating bars all read offeringState — never diverge.
   const offeringBrand = buildConsumerTripOfferingBrand(detail);
+  // #4111 Wave D (D6) — Follow + Message; Message opens the sheet with this
+  // trip picked.
   const presentedByFollow = (
-    <PresentedByFollowButton
+    <PresentedByFollowAndMessage
       brandId={detail.brandId}
       brandName={detail.brandName}
+      brandSlug={brandSlug.length > 0 ? brandSlug : null}
       palette={palette}
+      theme={theme}
+      offering={{
+        id: detail.tripId,
+        title: detail.title,
+        kind: "trip",
+        startsAt: null,
+        when: "upcoming",
+      }}
     />
   );
 

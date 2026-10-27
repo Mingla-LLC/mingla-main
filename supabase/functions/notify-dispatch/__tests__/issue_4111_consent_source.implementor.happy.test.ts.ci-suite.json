@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/notify-dispatch/__tests__/issue_4111_consent_source.implementor.happy.test.ts",
+  "lane": "notification-deno",
+  "orderKey": "issue-4111-notify-dispatch-consent-source",
+  "profile": "deno-1.46-notification"
+}

@@ -37,6 +37,16 @@ import {
   ISSUE_3988_ALERT_CATEGORIES,
   ISSUE_3988_EMAIL_CATEGORIES,
 } from "./issue3988SupportAlerts.ts";
+// #4111 — customer enquiry notifications (team + Explorer guest).
+import {
+  isIssue4111EnquiryCategory,
+  issue4111DeepLinkValid,
+  issue4111EmailCta,
+  issue4111ProviderSafeKeys,
+  issue4111PushThreadId,
+  ISSUE_4111_EMAIL_CATEGORIES,
+  ISSUE_4111_ENQUIRY_CATEGORIES,
+} from "./issue4111EnquiryNotifications.ts";
 
 // Minimal subset of the supabase-js client surface the v2 core uses, so the core
 // is unit-testable with a fake client.
@@ -244,6 +254,9 @@ function validDeepLink(
   if (isIssue3988AlertCategory(category)) {
     return issue3988DeepLinkValid(category, deepLink, payload);
   }
+  if (isIssue4111EnquiryCategory(category)) {
+    return issue4111DeepLinkValid(category, deepLink, payload);
+  }
   if (category === "business.community_roadmap_updated") {
     return deepLink === "mingla-business://community/roadmap";
   }
@@ -307,6 +320,9 @@ export function providerSafePayload(
   if (isIssue3988AlertCategory(category)) {
     return pick(issue3988ProviderSafeKeys(category));
   }
+  if (isIssue4111EnquiryCategory(category)) {
+    return pick(issue4111ProviderSafeKeys());
+  }
   // #4063 — consumer purchase, RSVP, and Stay payloads contain the contact and
   // message-rendering facts needed by email/SMS. None of those facts belong in
   // a third-party push provider's data bag. The mobile app routes these pushes
@@ -333,6 +349,7 @@ const ISSUE_3720_CATEGORIES = new Set([
   "business.brand_group_message",
   "admin.team_mention",
   ...ISSUE_3988_ALERT_CATEGORIES,
+  ...ISSUE_4111_ENQUIRY_CATEGORIES,
 ]);
 const SAFE_DENIAL_REASONS = new Set([
   "category_inactive",
@@ -585,7 +602,8 @@ export async function dispatchV2(
   // #3988 — the email button for a support or product alert is the Mingla
   // Admin page for the item, derived from the validated link only.
   const emailCta = input.email_cta ??
-    issue3988EmailCta(input.category_key, input.deep_link, input.payload);
+    issue3988EmailCta(input.category_key, input.deep_link, input.payload) ??
+    issue4111EmailCta(input.category_key, input.payload);
   for (const channel of requestedChannels) {
     if (channel === "inapp") continue;
     // #3988 — push for a Host reply or a new product signal is decided per
@@ -679,6 +697,9 @@ export async function dispatchV2(
               typeof input.payload.conversation_id === "string"
             ? { threadId: `brand_group:${input.payload.conversation_id}` }
             : {}),
+          ...(issue4111PushThreadId(input.category_key, input.payload)
+            ? { threadId: issue4111PushThreadId(input.category_key, input.payload) }
+            : {}),
           idempotencyKey: nid,
         });
         await completeChannel(
@@ -748,7 +769,8 @@ export async function dispatchV2(
       const missingReason = channel === "email" &&
           (input.category_key === "business.community_announcement" ||
             input.category_key === "business.support_new_ticket" ||
-            ISSUE_3988_EMAIL_CATEGORIES.includes(input.category_key))
+            ISSUE_3988_EMAIL_CATEGORIES.includes(input.category_key) ||
+            ISSUE_4111_EMAIL_CATEGORIES.includes(input.category_key))
         ? "no_confirmed_email"
         : "no_contact";
       await completeChannel(
@@ -1634,7 +1656,10 @@ async function dispatchAnon(
     if (channel === "email") {
       const r = await emailAdapter.send({
         to: contactEmail!,
-        ...emailContent(rendered, input.email_cta),
+        ...emailContent(
+          rendered,
+          input.email_cta ?? issue4111EmailCta(input.category_key, input.payload),
+        ),
       });
       await updateGuestDelivery(
         client,

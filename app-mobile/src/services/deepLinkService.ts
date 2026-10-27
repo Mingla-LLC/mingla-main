@@ -37,6 +37,10 @@ export type Destination =
       claimToken?: string;
       chatType?: 'direct' | 'group';
     }
+  // #4111 — a brand enquiry thread (push `explorer.brand_enquiry_reply`). It is
+  // its own expo-router file route (`app/enquiry/[enquiryId].tsx`), never the
+  // Friends-tab DM pipeline: enquiries are not friend conversations.
+  | { kind: 'enquiry'; enquiryId: string; conversationId?: string }
   | { kind: 'profile'; userId: string }
   | { kind: 'calendarEntry'; entryId: string }
   | { kind: 'review'; experienceId: string }
@@ -174,6 +178,16 @@ export function parseDeepLink(url: string): Destination | null {
         };
 
       case 'chat':
+        // #4111 — `mingla://chat/{conversationId}?type=brand_enquiry&enquiryId={id}`
+        // (brand_enquiry_reply → explorer.brand_enquiry_reply) opens the
+        // enquiry thread, not a DM/group chat.
+        if (params.type === 'brand_enquiry' && params.enquiryId) {
+          return {
+            kind: 'enquiry',
+            enquiryId: params.enquiryId,
+            ...(pathSegments[1] ? { conversationId: pathSegments[1] } : {}),
+          };
+        }
         return {
           kind: 'conversation',
           conversationId: pathSegments[1],
@@ -353,6 +367,15 @@ export function typeFallbackDestination(
     return sessionId ? { kind: 'session', sessionId } : { kind: 'page', page: 'home' };
   }
 
+  // #4111 — a brand replied to the guest's enquiry → that enquiry thread.
+  if (type === 'explorer.brand_enquiry_reply' || type === 'brand_enquiry_reply') {
+    const enquiryId = str('enquiry_id') ?? str('enquiryId');
+    const conversationId = str('conversation_id') ?? str('conversationId');
+    return enquiryId
+      ? { kind: 'enquiry', enquiryId, ...(conversationId ? { conversationId } : {}) }
+      : { kind: 'page', page: 'connections' };
+  }
+
   // Board / group messages → the conversation thread (Connections opens it).
   if (type.startsWith('board_message_')) {
     const conversationId = str('conversationId') ?? str('relatedId') ?? str('related_id');
@@ -443,6 +466,10 @@ export function executeDeepLink(
       handlers.setCurrentPage('connections');
       break;
     }
+
+    case 'enquiry':
+      handlers.openRouterPath?.(`/enquiry/${encodeURIComponent(dest.enquiryId)}`);
+      break;
 
     case 'profile':
       // Overlay mounts over whatever page is current — no page change needed.
@@ -560,5 +587,31 @@ export function openDirectMessageInApp(userId: string): boolean {
     return false;
   }
   _openDirectMessageSink(userId);
+  return true;
+}
+
+// ── In-app shell destination sink (#4111 Wave D) ─────────────────────────────
+//
+// A pushed expo-router file route (a brand page, an event page, the enquiry
+// thread) sits ABOVE the tab shell, so it cannot set the shell's page itself.
+// The message sheet's "Your tickets are in Likes → Calendar · Open" needs
+// exactly that. The shell (app/index.tsx) registers this sink at mount; it pops
+// back to the stack root and runs the SAME executor every deep link uses, so a
+// destination opened from here can never disagree with a push or link.
+let _shellDestinationSink: ((dest: Destination) => void) | null = null;
+
+export function registerShellDestinationSink(
+  sink: ((dest: Destination) => void) | null,
+): void {
+  _shellDestinationSink = sink;
+}
+
+/**
+ * Open a shell destination from anywhere. Returns false when no shell is
+ * mounted (Constitution #3 — the caller shows its own error).
+ */
+export function openShellDestination(dest: Destination): boolean {
+  if (_shellDestinationSink === null) return false;
+  _shellDestinationSink(dest);
   return true;
 }

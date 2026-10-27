@@ -40,6 +40,7 @@
     "takeAStroll": "تنزه"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "تعذّر إرسال رسالة نصية إلى {{phone}}. شارك رابط الدعوة معه بدلاً من ذلك.",
     "adminPrivileges": "صلاحيات المسؤول",
     "manageBoard": "إدارة اللوحة",
     "renameBoard": "إعادة تسمية اللوحة",

@@ -232,6 +232,7 @@ export const PUBLIC_BUYER_ROUTE_PREFIXES = [
   "/o/", // /o/[orderId] — buyer order receipt (post-purchase, anon-tolerant per I-21)
   "/booking/", // /booking/[orderId]/cancel — buyer cancel-from-email (anon-buyer-tolerant)
   "/attendance/claim/", // fragment-only RSVP/ticket handoff into the consumer app
+  "/m/", // /m/[token] — #4111 signed-out guest's enquiry thread (emailed token link)
 ] as const;
 
 /**

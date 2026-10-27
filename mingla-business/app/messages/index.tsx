@@ -14,6 +14,7 @@ import { TopBar } from "../../src/components/ui/TopBar";
 import { Button } from "../../src/components/ui/Button";
 import { useBrandGroups } from "../../src/hooks/useBrandGroups";
 import { useSupportStaff } from "../../src/hooks/useSupportStaff";
+import { brandEnquiryThreadRoute } from "../../src/utils/brandEnquiryWaiting";
 import {
   accent,
   canvas,
@@ -23,6 +24,12 @@ import {
   text as textTokens,
 } from "../../src/constants/designSystem";
 import type { BrandGroupSummary } from "../../src/services/brandGroupsService";
+
+// #4111 — the enquiry list loads with this route, never in the boot chunk.
+// Same module as the enquiry route's thread, so the two share one lazy chunk.
+const LazyBrandEnquiryListSection = React.lazy(async () => ({
+  default: (await import("../../src/components/messages/BrandEnquiryScreens")).BrandEnquiryListSection,
+}));
 
 function GroupRow({ group, onPress }: { group: BrandGroupSummary; onPress: () => void }) {
   return (
@@ -88,6 +95,11 @@ export default function MessagesIndexRoute(): React.ReactElement {
             </Pressable>
           </View>
         ) : null}
+
+        {/* #4111 D4 — customer enquiries sit above the Brand groups. */}
+        <React.Suspense fallback={null}>
+          <LazyBrandEnquiryListSection onOpen={(item) => router.push(brandEnquiryThreadRoute(item.id) as never)} />
+        </React.Suspense>
 
         {loading ? (
           <View style={styles.state}><ActivityIndicator color={accent.warm} /></View>

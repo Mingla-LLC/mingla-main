@@ -83,7 +83,7 @@ import {
 import { experienceSeatsLabel } from "@mingla/offering-rendering/experienceR3";
 
 import { Icon } from "../../components/ui/Icon";
-import { PresentedByFollowButton } from "../../components/brand/PresentedByFollowButton";
+import { PresentedByFollowAndMessage } from "../../components/brandEnquiry/PresentedByFollowAndMessage";
 import {
   BaseBottomSheet,
   BottomSheetScrollView,
@@ -1290,11 +1290,22 @@ export default function ConsumerExperienceDetailScreen({
     }
   }
   const offeringBrand = buildExperienceOfferingBrandFromSeed(seed);
+  // #4111 Wave D (D6) — Follow + Message; Message opens the sheet with this
+  // experience picked.
   const presentedByFollow = (
-    <PresentedByFollowButton
+    <PresentedByFollowAndMessage
       brandId={offeringBrand.id}
       brandName={offeringBrand.name}
+      brandSlug={seed.brandSlug ?? null}
       palette={palette}
+      theme={theme}
+      offering={{
+        id: seed.eventId,
+        title: seed.title,
+        kind: "experience",
+        startsAt: null,
+        when: "upcoming",
+      }}
     />
   );
 

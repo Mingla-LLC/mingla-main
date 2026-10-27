@@ -113,6 +113,12 @@ export interface BusinessTodoInput {
    * [] when absent.
    */
   pendingInvites?: { id: string; brandName: string }[];
+  /**
+   * #4111 D4 — one row per customer enquiry waiting on the team (new|waiting),
+   * across every brand the person answers enquiries for. Rendered right after
+   * invites. Precomputed by the caller (`brandEnquiryTodos`).
+   */
+  enquiryTodos?: { id: string; label: string; sublabel: string; route: string }[];
   /** brandsQuery resolved + zero brands. */
   hasNoBrands: boolean;
   /** Brands exist but none is selected (and not mid-resolve). */
@@ -263,11 +269,21 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
     },
   }));
 
+  // #4111 — guests waiting for a reply come straight after invites, whatever
+  // brand is selected (the route opens the enquiry itself).
+  const enquiryTodos: BusinessTodo[] = (input.enquiryTodos ?? []).map((row) => ({
+    id: row.id,
+    label: row.label,
+    sublabel: row.sublabel,
+    action: { kind: "route", route: row.route },
+  }));
+  const leadingTodos: BusinessTodo[] = [...inviteTodos, ...enquiryTodos];
+
   // 1 — Brand gate. Without a usable brand, the only thing to do is create/select
   // one; nothing downstream applies, so we return early — but invite(s) first.
   if (input.hasNoBrands) {
     return [
-      ...inviteTodos,
+      ...leadingTodos,
       {
         id: "create_brand",
         label: "Create a brand",
@@ -278,7 +294,7 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
   }
   if (input.hasBrandsButNoSelection) {
     return [
-      ...inviteTodos,
+      ...leadingTodos,
       {
         id: "select_brand",
         label: "Select a brand",
@@ -289,10 +305,10 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
   }
   if (input.brandResolving || !input.hasBrand) {
     // Still surface invites even while the brand resolves (hook-gated already).
-    return inviteTodos;
+    return leadingTodos;
   }
 
-  const todos: BusinessTodo[] = [...inviteTodos];
+  const todos: BusinessTodo[] = [...leadingTodos];
 
   // 2 — Venue. META-ORCH-1255: PER-VENUE rows when the caller passes the
   // venue arrays (the live hook always does). `add_venue` is GONE on this

@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 
+
 export interface EventGroupConversation {
   id: string;
   name: string;
@@ -21,8 +22,15 @@ export interface EventGroupMessage {
   marketing_campaign_id: string | null;
   /** 'text' | 'image' | 'video' | 'file' | 'card' per messages.message_type CHECK constraint. */
   message_type: string;
-  /** Public URL into the `messages` storage bucket for image/video/file attachments. NULL for plain text. */
+  /**
+   * Attachment location. Host uploads and pre-#4114 Explorer media: a public
+   * URL into the `messages` bucket. Explorer media since #4114 Wave 4: an
+   * object path in the private `message-attachments` bucket (signed in
+   * components/groupChat/GroupChatMessageMedia). NULL for plain text.
+   */
   file_url: string | null;
+  /** #4114 Wave 4: a photo or video each recipient may open once; never shown in the host panel. */
+  view_once?: boolean | null;
   file_name: string | null;
   file_size: number | null;
   sender_display_name_snapshot: string | null;
@@ -159,7 +167,7 @@ export async function listMessages(
   const { data, error } = await supabase
     .from("messages")
     .select(
-      "id, sender_id, content, created_at, marketing_campaign_id, message_type, file_url, file_name, file_size, sender_display_name_snapshot, sender_role_snapshot, reply_to_id, related_message_ids",
+      "id, sender_id, content, created_at, marketing_campaign_id, message_type, file_url, file_name, file_size, sender_display_name_snapshot, sender_role_snapshot, reply_to_id, related_message_ids, view_once",
     )
     .eq("conversation_id", conversationId)
     .is("deleted_at", null)
@@ -263,3 +271,4 @@ export async function deleteMessage(
   }
   return { error: null };
 }
+

@@ -139,7 +139,7 @@ import { TicketFoundBanner } from "../src/components/purchases/TicketFoundBanner
 import { useClaimRecheck } from "../src/hooks/useClaimRecheck";
 import type { OnboardingMode } from "../src/hooks/ticketFirstLogic";
 import * as friendsService from "../src/services/friendsService";
-import { parseDeepLink, executeDeepLink, typeFallbackDestination, registerOpenDirectMessageSink, type NavigationHandlers } from "../src/services/deepLinkService";
+import { parseDeepLink, executeDeepLink, typeFallbackDestination, registerOpenDirectMessageSink, registerShellDestinationSink, type NavigationHandlers } from "../src/services/deepLinkService";
 import {
   dismissCollaborationInviteNotifications,
   type ServerNotification,
@@ -639,6 +639,20 @@ function AppContent() {
     return () => {
       cancelled = true;
     };
+  }, [isAuthenticated, user?.id, user?.email]);
+
+  // #4111 Wave D — beside the follow-invite attach: an email sign-in claims the
+  // web enquiries and "Stay in the loop" sign-ups made with that address
+  // (claim_brand_enquiries_for_user + claim_brand_subscriptions_for_user).
+  // Once per account per session; failures are reported and retried.
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id || !user?.email) return;
+    void (async () => {
+      const { runBrandContactClaimForSession } = await import(
+        "../src/services/brandContactClaim"
+      );
+      await runBrandContactClaimForSession(user.id, user.email);
+    })();
   }, [isAuthenticated, user?.id, user?.email]);
 
   /**
@@ -1836,6 +1850,27 @@ function AppContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // #4111 Wave D — a pushed route (brand page, message sheet) opens a shell
+  // page (Likes → Calendar for "Can't find my tickets"). Same pop-then-execute
+  // rail as the open-DM sink above, through the ONE deep-link executor.
+  const notificationHandlersRef = useRef<NavigationHandlers | null>(null);
+  notificationHandlersRef.current = notificationHandlers;
+  useEffect(() => {
+    registerShellDestinationSink((dest) => {
+      try {
+        if (router.canGoBack()) {
+          router.dismissAll();
+        }
+      } catch (e) {
+        console.warn("[DEEPLINK] shell-destination sink route pop failed:", e);
+      }
+      const handlers = notificationHandlersRef.current;
+      if (handlers !== null) executeDeepLink(dest, handlers);
+    });
+    return () => registerShellDestinationSink(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ORCH-1080: the former ORCH-1030 Home-landing session effect is
   // deleted. Session/collab notifications now route to the session's group chat
   // (Messages tab) via deepLinkService's `session` executor branch; the deck is
@@ -2620,6 +2655,37 @@ function AppContent() {
           handleIncomingClaimCode(dest.code);
           return;
 
+        case 'friend_invite': {
+          // Issue #4114 — a friend's text invite. Hold the token the way
+          // follow_invite does (it survives install + onboarding), keep the
+          // inviter's referral code the way `referral` does. Signed out: the
+          // onboarding phone step claims it (claim_friend_invite) and the
+          // friends step shows the inviter. Signed in: claim now and open the
+          // friends sheet on Requests.
+          if (dest.referralCode) {
+            persistValidatedReferralCode(dest.referralCode).catch((e) =>
+              console.warn('[OneLink] Failed to persist referral code:', e),
+            );
+          }
+          void (async () => {
+            try {
+              const { setPendingFriendInvite, claimPendingFriendInvite } = await import(
+                "../src/services/pendingFriendInvite"
+              );
+              await setPendingFriendInvite(dest.token);
+              if (!userIdRef.current) return;
+              const claim = await claimPendingFriendInvite();
+              if (claim.status === "error") {
+                console.warn('[OneLink] friend_invite claim failed:', claim.message);
+              }
+              handleDeepLinkRef.current('mingla://connections?tab=requests');
+            } catch (e) {
+              console.warn('[OneLink] friend_invite handling failed:', e);
+            }
+          })();
+          return;
+        }
+
         case 'follow_invite': {
           // #3682 Wave 2.5 — hold token; signed-in attach peeks first (O6).
           void (async () => {
@@ -2897,7 +2963,10 @@ function AppContent() {
     setCurrentPage("connections");
   }, [setPendingOpenDmUserId, setCurrentPage]);
 
-  const handleViewFriendProfile = useCallback((friendUserId: string) => {
+  // Issue #4114 (D13): "paired" opens the profile at birthday, holidays and saves.
+  const [friendProfileFocus, setFriendProfileFocus] = useState<'paired' | null>(null);
+  const handleViewFriendProfile = useCallback((friendUserId: string, options?: { focus?: 'paired' }) => {
+    setFriendProfileFocus(options?.focus ?? null);
     setViewingFriendProfileId(friendUserId);
   }, [setViewingFriendProfileId]);
 
@@ -2975,7 +3044,7 @@ function AppContent() {
     () => ({
       home: t('navigation:tabs.explore'),
       discover: t('navigation:tabs.discover'),
-      connections: t('navigation:tabs.friends'),
+      connections: t('navigation:tabs.chats'),
       likes: t('navigation:tabs.likes'),
       profile: t('navigation:tabs.profile'),
     }),
@@ -3245,12 +3314,15 @@ function AppContent() {
                           />
                         ) : viewingFriendProfileId ? (
                           <ViewFriendProfileScreen
+                            key={`${viewingFriendProfileId}:${friendProfileFocus ?? ''}`}
                             userId={viewingFriendProfileId}
+                            initialFocus={friendProfileFocus ?? undefined}
                             // #1669: replaces the screen's hard-coded
                             // USD/Imperial on its ExpandedCardModal mount.
                             accountPreferences={accountPreferencesMemo}
-                            onBack={() => setViewingFriendProfileId(null)}
+                            onBack={() => { setFriendProfileFocus(null); setViewingFriendProfileId(null); }}
                             onMessage={(userId) => {
+                              setFriendProfileFocus(null);
                               setViewingFriendProfileId(null);
                               setPendingOpenDmUserId(userId);
                               setCurrentPage("connections");
