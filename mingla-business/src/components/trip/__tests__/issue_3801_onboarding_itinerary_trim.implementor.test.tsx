@@ -152,12 +152,23 @@ const BOUNDARY: Record<string, () => unknown> = {
     useCreateTripPricingTier: () => idleMutation,
     useRemoveTripPricingTier: () => idleMutation,
     usePublishTrip: () => idleMutation,
+    // Issue #3801 — the reload-after-conflict path (not exercised here).
+    useTripWizardServerSync: () => ({
+      reloadTrip: () => Promise.reject(new Error("reload_not_expected")),
+      markTripChanged: (): void => undefined,
+    }),
   }),
   useRefundPolicy: () => ({
     useUpdateBookingDeadline: () => idleMutation,
     useUpdateRefundPolicy: () => idleMutation,
   }),
-  tripsService: () => ({ setTripPricingSwitches: asyncNoop }),
+  // Issue #3801 — the session re-reads the revision after a direct write.
+  tripsService: () => ({
+    setTripPricingSwitches: asyncNoop,
+    readTripRevision: async () => "revision-3801",
+  }),
+  // Issue #3801 — REAL: the one-save-at-a-time queue is pure.
+  tripSaveQueue: () => jest.requireActual("../../../utils/tripSaveQueue"),
   businessEvents: () => ({ setEventGuestPrivacy: asyncNoop }),
   // issue #3827 going-box — the wizard's extras copy + error matcher (pure; real module).
   guestListPrivacy: () => jest.requireActual("../../../constants/guestListPrivacy"),

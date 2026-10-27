@@ -617,7 +617,11 @@ describe("#3645 rework: a trip pricing form left open across the change cannot s
     expect(flat).toContain(
       "p.ticketTypeId!==null&&newlyCleared.includes(p.ticketTypeId)?{...p,priceMajor:\"\",priceNeedsReentry:true}:p",
     );
-    expect(flat).toContain("},[trip.pricingTiers,showToast]);");
+    // Issue #3801 — the effect also follows the trip's revision (it adopts the
+    // revision of the change it re-seeds from); it still runs on every read.
+    expect(flat).toContain(
+      "},[trip.pricingTiers,trip.updatedAt,showToast,saveQueue,revision]);",
+    );
     // A package the host was already told about is not emptied again.
     expect(flat).toContain("constnewlyCleared=clearedIds.filter((id)=>!acknowledged.has(id));");
     // The refusal has plain words on the step.

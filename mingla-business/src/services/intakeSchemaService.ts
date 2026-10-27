@@ -32,7 +32,12 @@
  */
 
 import { supabase } from "./supabase";
-import { newTripOperationId, readTripRevision } from "./tripsService";
+import {
+  adoptTripRevision,
+  newTripOperationId,
+  readTripRevision,
+  type TripRevisionCursor,
+} from "./tripsService";
 import { createCheckoutAttemptId } from "@mingla/offering-rendering/ticketCheckoutContract";
 
 // ---------------------------------------------------------------------------
@@ -131,6 +136,7 @@ export type IntakeSchemaErrorCode =
   | "rpc_rejected"
   | "network_error"
   | "feature_not_yet_implemented"
+  | "trip_revision_conflict"
   | "internal_error";
 
 export interface IntakeSchemaServiceError extends Error {
@@ -160,6 +166,23 @@ const makeError = (
  * `I-PROPOSED-TR5-INTAKE-SCHEMA-VALID-AT-WRITE:` prefix per migration §2.
  */
 function mapPgError(error: unknown): IntakeSchemaServiceError {
+  // Issue #3801 — a revision conflict arrives as a PostgREST PLAIN OBJECT
+  // (`{ code: "PT409", message: "trip_revision_conflict" }`), which String()
+  // below would flatten to "[object Object]". Name it, so the wizard can tell
+  // the host the trip changed somewhere else instead of blaming the network.
+  if (typeof error === "object" && error !== null) {
+    const pg = error as { code?: unknown; message?: unknown };
+    if (
+      pg.code === "PT409" ||
+      (typeof pg.message === "string" && pg.message.includes("trip_revision_conflict"))
+    ) {
+      return makeError(
+        "trip_revision_conflict",
+        "This trip was changed somewhere else. Reload to see the latest version.",
+        "trip_revision_conflict",
+      );
+    }
+  }
   const message =
     error instanceof Error ? error.message : String(error ?? "unknown_error");
   const lower = message.toLowerCase();
@@ -328,9 +351,21 @@ export async function upsertTripIntakeSchema(args: {
    * so the canonical command replays its receipt instead of writing twice.
    */
   operationId?: string;
+  /**
+   * Issue #3801 — the revision the editor holds. The draft save sends it and
+   * writes back the revision the server returned (see tripsService).
+   */
+  revision?: TripRevisionCursor;
 }): Promise<void> {
-  const { eventId, ticketTypeId, schema, reason, skipStatusProbe, operationId } =
-    args;
+  const {
+    eventId,
+    ticketTypeId,
+    schema,
+    reason,
+    skipStatusProbe,
+    operationId,
+    revision,
+  } = args;
   if (!eventId || !ticketTypeId) {
     throw makeError("not_found", "Trip or tier not found.");
   }
@@ -400,15 +435,20 @@ export async function upsertTripIntakeSchema(args: {
   // validates the schema, proves the tier belongs to this trip, and commits
   // under compare-and-swap with an exactly-once receipt. A NULL schema still
   // clears the tier's questions idempotently.
-  const { error } = await supabase.rpc("biz_apply_trip_draft_graph", {
+  const { data, error } = await supabase.rpc("biz_apply_trip_draft_graph", {
     p_event_id: eventId,
     p_patch: {
       intake_schemas: [{ ticket_type_id: ticketTypeId, schema }],
     },
-    p_expected_updated_at: await readTripRevision(eventId),
+    p_expected_updated_at:
+      revision?.current ?? (await readTripRevision(eventId)),
     p_operation_id: operationId ?? newTripOperationId(),
   });
   if (error) throw mapPgError(error);
+  // Issue #3801 — the next save carries the revision this one made.
+  if (revision !== undefined && !adoptTripRevision(revision, data)) {
+    revision.current = await readTripRevision(eventId);
+  }
 }
 
 // ---------------------------------------------------------------------------

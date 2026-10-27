@@ -24,6 +24,10 @@ const useTripsSource = readFileSync(
   join(__dirname, "..", "useTrips.ts"),
   "utf-8",
 );
+// Issue #3801 — the factory moved to the keyless `tripKeys` module (so
+// useIntakeSchema can invalidate trip detail without a require-cycle);
+// useTrips re-exports it.
+const tripKeysSource = readFileSync(join(__dirname, "..", "tripKeys.ts"), "utf-8");
 const tripsServiceSource = readFileSync(
   join(__dirname, "..", "..", "services", "tripsService.ts"),
   "utf-8",
@@ -31,14 +35,15 @@ const tripsServiceSource = readFileSync(
 
 describe("ORCH-0859 — useTrips structural contract", () => {
   test("tripKeys factory exported with all 6 partitions", () => {
-    expect(useTripsSource).toMatch(/export const tripKeys = \{/);
-    expect(useTripsSource).toMatch(/all: \["trips"\]/);
-    expect(useTripsSource).toMatch(/lists:/);
-    expect(useTripsSource).toMatch(/listByBrand:/);
-    expect(useTripsSource).toMatch(/details:/);
-    expect(useTripsSource).toMatch(/detail:/);
-    expect(useTripsSource).toMatch(/soldCountsByTier:/);
-    expect(useTripsSource).toMatch(/publicBySlug:/);
+    expect(tripKeysSource).toMatch(/export const tripKeys = \{/);
+    expect(useTripsSource).toMatch(/export \{ tripKeys \}/);
+    expect(tripKeysSource).toMatch(/all: \["trips"\]/);
+    expect(tripKeysSource).toMatch(/lists:/);
+    expect(tripKeysSource).toMatch(/listByBrand:/);
+    expect(tripKeysSource).toMatch(/details:/);
+    expect(tripKeysSource).toMatch(/detail:/);
+    expect(tripKeysSource).toMatch(/soldCountsByTier:/);
+    expect(tripKeysSource).toMatch(/publicBySlug:/);
   });
 
   test("All 6 mutation hooks exported", () => {
@@ -110,6 +115,6 @@ describe("ORCH-0859 — useTrips structural contract", () => {
   test("tripKeys are immutable readonly literal tuples (cache discipline)", () => {
     // The `as const` suffix locks the tuple types so React Query gets
     // stable identity across re-renders.
-    expect(useTripsSource).toMatch(/\["trips"\] as const/);
+    expect(tripKeysSource).toMatch(/\["trips"\] as const/);
   });
 });
