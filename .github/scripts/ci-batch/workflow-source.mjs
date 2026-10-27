@@ -19,6 +19,29 @@ export function readWorkflowSource(root, relative) {
       // fail-closed when no pre-fold source is available.
     }
   }
+  // A pull-request merge checkout can have neither the base ref nor a parent
+  // ref for the deleted wrapper.  The sealed batch manifest still carries the
+  // reviewed suite commands and expected files, which is the source evidence
+  // these strict-grep gates consume.  Return a deterministic, read-only
+  // projection rather than recreating the wrapper in the working tree.
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, ".github/ci-batch/MANIFEST.json"), "utf8"));
+    const suite = (manifest.suites || []).find((candidate) => candidate.origin === relative);
+    if (suite) {
+      return JSON.stringify({
+        origin: suite.origin,
+        expectedFiles: suite.expectedFiles || [],
+        steps: (suite.steps || []).map(({ run, expectedFiles, ...step }) => ({
+          ...step,
+          run,
+          expectedFiles: expectedFiles || [],
+        })),
+      });
+    }
+  } catch {
+    // Keep the helper fail-closed when neither historical bytes nor a sealed
+    // replacement suite can be read.
+  }
   return "";
 }
 
