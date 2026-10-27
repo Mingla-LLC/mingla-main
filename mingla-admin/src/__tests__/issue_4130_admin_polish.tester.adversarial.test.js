@@ -45,6 +45,7 @@ import { createPersonActions } from "../lib/personActions.js";
 import { derivePaymentReadiness, readinessCode } from "../lib/paymentReadiness.js";
 import { retentionCell } from "../lib/dataRoomAnalytics.js";
 import { canOpenPage, normalizeAccess, resolveRoute } from "../lib/access.js";
+import { isInternalEmail } from "../lib/peopleSegments.js";
 import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js";
 import { SUPPORT_PAGE_TABS, COMMUNITY_PAGE_TABS } from "../lib/supportCommunityTabs.js";
 
@@ -401,5 +402,24 @@ describe("T-DROOM and T-SUPP: who sees what", () => {
     assert.deepEqual(ids(acc.growth, COMMUNITY_PAGE_TABS), []);
     assert.deepEqual(ids(acc.partner, COMMUNITY_PAGE_TABS), []);
     assert.deepEqual(ids(acc.invitedAdmin, COMMUNITY_PAGE_TABS), []);
+  });
+});
+
+// T-RULE (retest): the browser mirror answers exactly as the server rule for
+// the server suite's own near-miss list (read from the pg17 adversarial file,
+// so the two lists cannot drift apart).
+describe("T-RULE reserved test domains: whole last label, same answer as the server", () => {
+  const sqlFile = fs.readFileSync(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "supabase", "migrations", "__tests__", "issue_4130_admin_polish.tester.adversarial.pg17.test.sql"),
+    "utf8",
+  );
+  const block = sqlFile.split("-- T-RULE-CASES-BEGIN")[1].split("-- T-RULE-CASES-END")[0];
+  const cases = [...block.matchAll(/\('([^']*)', (true|false)\)/g)].map((m) => [m[1], m[2] === "true"]);
+  it("reads the server's case list", () => {
+    assert.ok(cases.length >= 14, `found ${cases.length} cases`);
+    assert.ok(cases.some(([, want]) => want) && cases.some(([, want]) => !want));
+  });
+  it("each case matches in the browser mirror", () => {
+    for (const [email, want] of cases) assert.equal(isInternalEmail(email), want, email);
   });
 });

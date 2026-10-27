@@ -502,6 +502,40 @@ begin
 end;
 $supp$;
 
+-- T-RULE (retest): the reserved test domains are matched on the whole last
+-- label only, case-insensitively; near misses and subdomains of the Google
+-- test-device domain are real people. The JS adversarial suite reads this
+-- exact list and checks the browser mirror gives the same answer for each.
+do $rule$
+declare
+  v_case record;
+begin
+  for v_case in
+    select * from (values
+      -- T-RULE-CASES-BEGIN
+      ('A@Foo.TEST', true),
+      ('x@my.example', true),
+      ('x@a.localhost', true),
+      ('x@dev.box.invalid', true),
+      ('tester@foo.test', true),
+      ('x@sub.cloudtestlabaccounts.com', false),
+      ('x@cloudtestlabaccounts.co', false),
+      ('x@foo.testing', false),
+      ('x@foo.invalid.ng', false),
+      ('x@foo-test.com', false),
+      ('x@test', false),
+      ('x@example', false),
+      ('x@localhost.com', false),
+      ('ade@latest.ng', false)
+      -- T-RULE-CASES-END
+    ) as t(email, expected)
+  loop
+    perform pg_temp.ta_check('T-RULE', format('email rule %L', v_case.email),
+      public.admin_internal_email_rule(v_case.email)::text, v_case.expected::text);
+  end loop;
+end;
+$rule$;
+
 select count(*) as ta_total, count(*) filter (where not ok) as ta_failed,
        coalesce(string_agg(test || ' ' || label || ' [' || detail || ']', E'\n' order by seq) filter (where not ok), 'none') as ta_failures
   from ta_results \gset
