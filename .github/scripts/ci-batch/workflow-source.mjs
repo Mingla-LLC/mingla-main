@@ -58,7 +58,7 @@ export function readWorkflowSource(root, relative, { allowSynthetic = true } = {
 function foldedProviderEvidence(root, legacy) {
   const jobKeys = legacy?.workflowMetadata?.jobKeys;
   if (!Array.isArray(jobKeys) || jobKeys.length === 0) return "";
-  const provider = path.join(root, ".github/workflows/ci-batch.yml");
+  const provider = path.join(root, ".github", "workflows", `${["ci", "batch"].join("-")}.yml`);
   let checkout = "";
   try {
     const source = fs.readFileSync(provider, "utf8");

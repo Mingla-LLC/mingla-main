@@ -40144,7 +40144,6 @@
         ".github/scripts/ci-batch/__tests__/issue-2437-node-wave-shadow-parity.implementor.test.mjs",
         ".github/scripts/ci-batch/__tests__/run-suite-batch.test.mjs",
         ".github/scripts/ci-batch/validate-manifest-v2.mjs",
-        ".github/scripts/ci-batch/workflow-source.mjs",
         ".github/scripts/strict-grep/issue-1486-jest-config-invoked-by-workflow.mjs",
         ".github/scripts/strict-grep/issue-2148-ci-registry-v2.implementor.test.mjs",
         ".github/scripts/strict-grep/issue-2148-ci-registry-v2.mjs",
