@@ -83,9 +83,12 @@ $vacuity$;
 -- explicit NULL country_code, raising 22 -> 25. Their owning registered
 -- PostgreSQL suite (issue_4111_brand_enquiries.implementor.happy) asserts the
 -- NULL on every row they enqueue.
+-- [TEST-MOD-APPROVED #3643] The ten #3872 push-only producers are observed by
+-- the full replay and are tracked separately from the country-aware writers,
+-- raising the writer catalog floor 25 -> 35.
 -- (2) RATCHET — raised 12 -> 18 for #3988, 18 -> 19 for #4073, 19 -> 20 for
 --     the buyer venue-order receipt, 20 -> 22 for #4063 Wave 5, and
---     22 -> 25 for #4111.
+--     22 -> 25 for #4111 and 25 -> 35 for the #3872 push-only writers.
 --     The floor is the number that ACTUALLY exists in the catalog, so a
 --     producer DISAPPEARING is caught as well as
 --     one appearing. At the old floor of 8 any of #3720's three new producers
@@ -96,15 +99,15 @@ DECLARE
   v_count integer;
 BEGIN
   SELECT count(*) INTO v_count FROM issue_1529_discovered_producers;
-  IF v_count < 25 THEN
+  IF v_count < 35 THEN
     RAISE EXCEPTION
-      'issue_1529_producer_floor_breached_expected_at_least_25_got_%', v_count;
+      'issue_1529_producer_floor_breached_expected_at_least_35_got_%', v_count;
   END IF;
 END;
 $ratchet$;
 
 -- ---------------------------------------------------------------------------
--- (3) PARTITION — every discovered producer must be classified, and the two
+-- (3) PARTITION — every discovered producer must be classified, and the
 --     buckets mean different things.
 --
 --     POPULATING — holds (or can hold) the recipient's contact on the row, so
@@ -137,6 +140,12 @@ $ratchet$;
 --       issue_4111_enqueue_team_notice      → explicit NULL (push-only enquiry notice)
 --       brand_enquiry_reply                 → explicit NULL (push-only Explorer reply)
 --       issue_4111_enquiry_nudge_sweep      → explicit NULL (email-only 24h nudge)
+--
+--     PUSH-ONLY — the #3872 notification producers write only in-app/push
+--     categories and deliberately do not carry an SMS country. They are still
+--     writers, so they belong in this catalog, but they are not subject to the
+--     country_code-at-enqueue rule below. Their owning #3872 PostgreSQL suites
+--     prove the notification payloads and trigger wiring.
 --
 --     DRAIN-DERIVED — emits source-refund-pool rows carrying contact NULL by
 --     #1221's privacy design, so the recipient (and therefore the country) can
@@ -177,6 +186,21 @@ DECLARE
     'brand_enquiry_reply',
     'issue_4111_enquiry_nudge_sweep'
   ];
+  -- [TEST-MOD-APPROVED #3643] Full replay now observes the current #3872
+  -- push-only notification writers, which were invisible to the old
+  -- per-issue trigger path. They do not route SMS and need no country.
+  push_only text[] := ARRAY[
+    'issue_3872_enqueue_brand_referral_notice',
+    'issue_3872_enqueue_gig_notice',
+    'issue_3872_gig_interest_notice',
+    'issue_3872_creator_verification_notice',
+    'issue_3872_referral_share_notice',
+    'issue_3872_referral_voucher_notice',
+    'issue_3872_referral_payout_notice',
+    'issue_3872_local_application_notice',
+    'issue_3872_local_month_notice',
+    'local_timer_tick'
+  ];
   drain_derived text[] := ARRAY[
     'admin_request_source_refund_attention_recovery'
   ];
@@ -186,11 +210,12 @@ BEGIN
     INTO v_unclassified
   FROM issue_1529_discovered_producers d
   WHERE NOT (d.proname = ANY(populating))
+    AND NOT (d.proname = ANY(push_only))
     AND NOT (d.proname = ANY(drain_derived));
 
   IF v_unclassified IS NOT NULL THEN
     RAISE EXCEPTION
-      'issue_1529_unclassified_notification_outbox_producer__%__classify_it_as_populating_or_PROVE_it_is_drain_derived',
+      'issue_1529_unclassified_notification_outbox_producer__%__classify_it_as_populating_push_only_or_PROVE_it_is_drain_derived',
       v_unclassified;
   END IF;
 
