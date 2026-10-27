@@ -24,6 +24,9 @@
 --   C-08  The staff/test email rule is precise: usemingla.com, example.com/
 --         .org/.net, or "test" as its own token before the @. A word that only
 --         contains "test" (contest, greatest, latest, attest) is a real person.
+--         Reserved test domains (.test, .invalid, .example, .localhost as the
+--         last label) and cloudtestlabaccounts.com are staff/test; mytest.com
+--         and test.com (with no test token before the @) are not.
 -- MINGLA-INVARIANT: I-4130-PEOPLE-SEGMENTS-ADMIN-ONLY | issue #4130 | People segments, brand and offering boards are admin-only aggregates; staff and test accounts are counted only as internal; marking an account internal is admin-only, needs a reason and writes admin_audit_log.
 
 CREATE OR REPLACE FUNCTION pg_temp.w3_assert(p_ok boolean, p_label text)
@@ -385,6 +388,16 @@ BEGIN
       ('ade@usemingla.co', false),
       ('ade@notusemingla.com', false),
       ('ade@example.co.uk', false),
+      ('a@foo.test', true),
+      ('b@x.invalid', true),
+      ('a@foo.example', true),
+      ('a@dev.localhost', true),
+      ('c@cloudtestlabaccounts.com', true),
+      ('d@mytest.com', false),
+      ('e@gmail.com', false),
+      ('user@test.com', false),
+      ('ade@foo.test.com', false),
+      ('ade@notcloudtestlabaccounts.com', false),
       ('no-at-sign-test', false),
       ('', false)
     ) AS t(email, expected)

@@ -24,6 +24,9 @@ export const DEFAULT_PEOPLE_TAB = "explorers";
  * node test pin the same cases on both sides. A row in admin_internal_accounts
  * still overrides it on the server.
  *   - domain usemingla.com, or example.com / .org / .net; or
+ *   - domain ends with a reserved test name (.test, .invalid, .example,
+ *     .localhost; whole last label only, so mytest.com is a real person); or
+ *   - domain cloudtestlabaccounts.com (Google's test devices); or
  *   - the part before the @ starts with "test", or has "test" as its own token
  *     between . _ - + or digits. "contest" or "greatest" is a real person.
  */
@@ -33,7 +36,8 @@ export function isInternalEmail(email) {
   if (at < 0) return false;
   const local = value.slice(0, at);
   const domain = value.slice(at + 1);
-  if (["usemingla.com", "example.com", "example.org", "example.net"].includes(domain)) return true;
+  if (["usemingla.com", "example.com", "example.org", "example.net", "cloudtestlabaccounts.com"].includes(domain)) return true;
+  if (/\.(test|invalid|example|localhost)$/.test(domain)) return true;
   return /^test/.test(local) || /(^|[._+0-9-])test($|[._+0-9-])/.test(local);
 }
 

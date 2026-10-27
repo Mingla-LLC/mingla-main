@@ -57,6 +57,9 @@ GRANT ALL ON TABLE public.admin_internal_accounts TO service_role;
 -- such as contest, greatest, latest or attest, is a real person):
 --   * the domain is usemingla.com; or
 --   * the domain is example.com, example.org or example.net; or
+--   * the domain ends with a reserved test name: .test, .invalid, .example
+--     or .localhost (whole last label only, so mytest.com is a real person); or
+--   * the domain is cloudtestlabaccounts.com (Google's test devices); or
 --   * the local part starts with "test", or has "test" as its own token,
 --     delimited by . _ - + or digits (seth+test@, qa.test1@).
 -- Mirrored in mingla-admin/src/lib/peopleSegments.js isInternalEmail().
@@ -66,7 +69,8 @@ LANGUAGE sql IMMUTABLE
 SET search_path = public, pg_temp
 AS $$
   SELECT COALESCE(
-    e.domain IN ('usemingla.com', 'example.com', 'example.org', 'example.net')
+    e.domain IN ('usemingla.com', 'example.com', 'example.org', 'example.net', 'cloudtestlabaccounts.com')
+      OR e.domain ~ '\.(test|invalid|example|localhost)$'
       OR e.local ~ '^test'
       OR e.local ~ '(^|[._+0-9-])test($|[._+0-9-])',
     false)

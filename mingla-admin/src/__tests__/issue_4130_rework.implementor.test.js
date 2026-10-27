@@ -68,6 +68,17 @@ describe("R-1 the staff/test email rule is precise", () => {
     ["b@example.org", true],
     ["c@example.com", true],
     ["d@example.net", true],
+    // #4130: reserved test domains and Google's test devices are staff/test too.
+    ["a@foo.test", true],
+    ["b@x.invalid", true],
+    ["a@foo.example", true],
+    ["a@dev.localhost", true],
+    ["c@cloudtestlabaccounts.com", true],
+    ["d@mytest.com", false],
+    ["e@gmail.com", false],
+    ["user@test.com", false],
+    ["ade@foo.test.com", false],
+    ["ade@notcloudtestlabaccounts.com", false],
   ];
   it("each case, in the browser mirror", () => {
     for (const [email, want] of CASES) assert.equal(isInternalEmail(email), want, String(email));
@@ -75,7 +86,9 @@ describe("R-1 the staff/test email rule is precise", () => {
   it("the server rule is the same shape: domains, then a token before the @", () => {
     const rule = sql(W3).match(/FUNCTION public\.admin_internal_email_rule\(p_email text\)[\s\S]*?\$\$;/)[0];
     assert.doesNotMatch(rule, /\(usemingla\|example\\\.com\|test\)/, "the old substring rule is gone");
-    assert.match(rule, /e\.domain IN \('usemingla\.com', 'example\.com', 'example\.org', 'example\.net'\)/);
+    // #4130: the domain list now also names cloudtestlabaccounts.com, and reserved test TLDs match on the last label only.
+    assert.match(rule, /e\.domain IN \('usemingla\.com', 'example\.com', 'example\.org', 'example\.net', 'cloudtestlabaccounts\.com'\)/);
+    assert.match(rule, /e\.domain ~ '\\\.\(test\|invalid\|example\|localhost\)\$'/);
     assert.match(rule, /e\.local ~ '\^test'/);
     assert.match(rule, /e\.local ~ '\(\^\|\[\._\+0-9-\]\)test\(\$\|\[\._\+0-9-\]\)'/);
   });
