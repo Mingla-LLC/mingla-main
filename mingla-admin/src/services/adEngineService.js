@@ -23,6 +23,7 @@ import {
   preparationPlatformsFor,
   templatesCreativeKind,
 } from "../lib/adBuilder/housePlanPath";
+import { adsEdgeMessage, adsErrorWords } from "../lib/systemPages";
 
 /** Extract { status, body } from a supabase.functions.invoke error (SC-7). */
 export async function parseEdgeError(error) {
@@ -36,11 +37,14 @@ export async function parseEdgeError(error) {
   } catch {
     body = null;
   }
+  const raw =
+    body?.detail?.message ?? body?.detail ?? body?.error ?? error.message;
   return {
     status,
     body,
-    message:
-      body?.detail?.message ?? body?.detail ?? body?.error ?? error.message,
+    // #4130: supabase-js's generic "non-2xx status code" never reaches a
+    // toast or error line; every parsed?.message caller gets plain words.
+    message: adsEdgeMessage(raw),
   };
 }
 
@@ -322,7 +326,7 @@ async function planActionOrThrow(payload, fallback) {
   const { data, error } = await adPlanAction(payload);
   if (!error) return data;
   const parsed = await parseEdgeError(error);
-  throw new Error(String(parsed?.message ?? fallback));
+  throw new Error(adsErrorWords(parsed?.message, fallback));
 }
 
 /**

@@ -16,6 +16,7 @@
 --    test accounts are hidden from the list unless asked for.
 -- 5. admin_set_global_plus(on, reason): the only switch for Global Plus;
 --    reason required, audited, errors when nothing changed.
+-- 6. No API role can TRUNCATE app_config (statement guard + revoked grant).
 --
 -- MINGLA-INVARIANT: I-4130-MESSAGING-LIMITS-ONE-SOURCE | issue #4130 | Monthly email/SMS/push caps for a brand come only from brand_messaging_effective_limits: an active override, else the defaults row, else 1000/100/unlimited.
 -- MINGLA-INVARIANT: I-4130-MESSAGING-LIMITS-ADMIN-ONLY | issue #4130 | brand_messaging_limits is never readable or writable by anon or authenticated directly; admin RPCs check is_admin_user() and write admin_audit_log.
@@ -884,5 +885,38 @@ DROP TRIGGER IF EXISTS issue_4130_guard_global_plus_config ON public.app_config;
 CREATE TRIGGER issue_4130_guard_global_plus_config
   BEFORE INSERT OR UPDATE OR DELETE ON public.app_config
   FOR EACH ROW EXECUTE FUNCTION public.issue_4130_guard_global_plus_config();
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 7. No API role can empty app_config.
+-- ───────────────────────────────────────────────────────────────────────────
+-- Row triggers do not fire on TRUNCATE, and the default grants give the API
+-- roles TRUNCATE on public tables, so one TRUNCATE would wipe every setting,
+-- Global Plus included, with no reason and no audit. A statement-level guard
+-- refuses it for anon, authenticated and service_role (it holds even if a
+-- grant is added back later), and the TRUNCATE grant is revoked as well.
+-- Not SECURITY DEFINER on purpose: current_user must be the caller's role.
+CREATE OR REPLACE FUNCTION public.issue_4130_guard_app_config_truncate()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  IF current_user IN ('anon', 'authenticated', 'service_role') THEN
+    RAISE EXCEPTION 'app_config_truncate_refused'
+      USING ERRCODE = '42501',
+            HINT = 'Settings are changed one at a time, never emptied.';
+  END IF;
+  RETURN NULL;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_4130_guard_app_config_truncate() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS issue_4130_guard_app_config_truncate ON public.app_config;
+CREATE TRIGGER issue_4130_guard_app_config_truncate
+  BEFORE TRUNCATE ON public.app_config
+  FOR EACH STATEMENT EXECUTE FUNCTION public.issue_4130_guard_app_config_truncate();
+
+REVOKE TRUNCATE ON public.app_config FROM anon, authenticated, service_role;
 
 COMMIT;

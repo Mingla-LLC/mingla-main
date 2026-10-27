@@ -152,10 +152,10 @@ export function OverviewPage() {
         {work.status === "loading" ? (
           <Skeleton height={104} rounded="xl" />
         ) : work.status === "error" ? (
-          <KpiFailed label="Waiting on a person" onRetry={() => review.refetch?.()} />
+          <KpiFailed label="Waiting on you" onRetry={() => review.refetch?.()} />
         ) : (
           <Kpi
-            label="Waiting on a person"
+            label="Waiting on you"
             action={<a href="#/work-board" className="inline-flex min-h-8 items-center gap-1 text-sm font-semibold text-[var(--color-brand-700)] hover:underline">Open Work <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" /></a>}
           >
             {Number(review.cards).toLocaleString()}

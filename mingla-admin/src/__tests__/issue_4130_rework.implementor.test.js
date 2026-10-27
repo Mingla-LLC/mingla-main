@@ -179,7 +179,8 @@ describe("R-7 the Dashboard's Work KPI and item", () => {
   });
   it("the KPI has a failed state with Retry", () => {
     const page = strip(read("pages/OverviewPage.jsx"));
-    assert.match(page, /work\.status === "error" \? \(\s*<KpiFailed label="Waiting on a person"/);
+    // #4130: the tile counts only the viewer's own cards, so it says "Waiting on you".
+    assert.match(page, /work\.status === "error" \? \(\s*<KpiFailed label="Waiting on you"/);
     assert.match(page, /review\.cardsError \? \{ status: "error" \}/);
   });
 });

@@ -50,7 +50,7 @@ import {
   updateAdCreativeTags,
 } from "../services/adEngineService";
 import { PageHeader } from "../components/ui/PageHeader";
-import { ADS_RESULTS_CAVEAT, ADS_RESULTS_PROVEN, seenLabel } from "../lib/systemPages";
+import { ADS_RESULTS_CAVEAT, ADS_RESULTS_PROVEN, adsErrorWords, seenLabel } from "../lib/systemPages";
 import { Tabs } from "../components/ui/Tabs";
 import { CampaignsPage } from "./CampaignsPage";
 
@@ -116,7 +116,7 @@ function AdsOperationsOverview({ onOpenCampaigns, onOpenConnections }) {
     setError(null);
     const { data, error: loadError } = await loadAdsOperationsOverview();
     setSnapshot(loadError ? null : data);
-    setError(loadError?.message ?? null);
+    setError(loadError ? adsErrorWords(loadError.message) : null);
     setLoading(false);
   }, []);
 
@@ -426,7 +426,7 @@ function CreativeLibraryPanel() {
     if (request !== requestRef.current) return;
     if (loadError) {
       const parsed = loadError.timeout ? loadError : await parseEdgeError(loadError);
-      setError(String(parsed?.message ?? "The Creative Library could not be loaded."));
+      setError(adsErrorWords(parsed?.message, "The Creative Library could not be loaded."));
       if (!append) {
         setRows([]);
         setRowsKey(key);
@@ -511,10 +511,10 @@ function CreativeLibraryPanel() {
         });
         if (recordError) {
           const parsed = await parseEdgeError(recordError);
-          throw new Error(String(parsed?.message ?? "The image could not be added."));
+          throw new Error(adsErrorWords(parsed?.message, "The image could not be added."));
         }
       } catch (uploadError) {
-        addToast({ variant: "error", title: `${file.name} wasn't added`, description: uploadError.message });
+        addToast({ variant: "error", title: `${file.name} wasn't added`, description: adsErrorWords(uploadError?.message) });
       } finally {
         setImageUploads((n) => n - 1);
       }
@@ -545,7 +545,7 @@ function CreativeLibraryPanel() {
       const parsed = await parseEdgeError(checkError);
       setPurge((current) => ({
         ...current,
-        [creative.id]: { error: String(parsed?.message ?? "Couldn't check what uses it. Try again.") },
+        [creative.id]: { error: adsErrorWords(parsed?.message, "Couldn't check what uses it. Try again.") },
       }));
       return;
     }
@@ -567,7 +567,7 @@ function CreativeLibraryPanel() {
     setArchiving(false);
     if (archiveError) {
       const parsed = await parseEdgeError(archiveError);
-      addToast({ variant: "error", title: "Couldn't archive it", description: String(parsed?.message ?? "Try again.") });
+      addToast({ variant: "error", title: "Couldn't archive it", description: adsErrorWords(parsed?.message, "Try again.") });
       return;
     }
     setArchiveTarget(null);
@@ -596,7 +596,7 @@ function CreativeLibraryPanel() {
     const { error: restoreError } = await unarchiveCreative(creative.id);
     if (restoreError) {
       const parsed = await parseEdgeError(restoreError);
-      addToast({ variant: "error", title: "Couldn't restore it", description: String(parsed?.message ?? "Try again.") });
+      addToast({ variant: "error", title: "Couldn't restore it", description: adsErrorWords(parsed?.message, "Try again.") });
       return;
     }
     hide(creative.id);
@@ -632,7 +632,7 @@ function CreativeLibraryPanel() {
     setTagSaving(false);
     if (saveError) {
       const parsed = await parseEdgeError(saveError);
-      setTagError(String(parsed?.message ?? "The creative tags could not be saved."));
+      setTagError(adsErrorWords(parsed?.message, "The creative tags could not be saved."));
       return;
     }
     setRows((current) => (current ?? []).map((row) =>
@@ -671,7 +671,7 @@ function CreativeLibraryPanel() {
         void load();
         return;
       }
-      setDeleteError(String(parsed?.message ?? "Couldn't delete it. Try again."));
+      setDeleteError(adsErrorWords(parsed?.message, "Couldn't delete it. Try again."));
       return;
     }
     setDeleteTarget(null);
@@ -710,7 +710,7 @@ function CreativeLibraryPanel() {
       else await uploads.cancel(entry);
       void load();
     } catch (cancelError) {
-      addToast({ variant: "error", title: "Couldn't cancel the upload", description: cancelError.message });
+      addToast({ variant: "error", title: "Couldn't cancel the upload", description: adsErrorWords(cancelError?.message) });
     }
   };
 
@@ -718,7 +718,7 @@ function CreativeLibraryPanel() {
     const { error: cancelError } = await invokeWithRefresh("event-cover-video-cancel", { body: { jobId } });
     if (cancelError) {
       const parsed = await parseEdgeError(cancelError);
-      throw new Error(String(parsed?.message ?? "Try again."));
+      throw new Error(adsErrorWords(parsed?.message, "Try again."));
     }
   };
 
@@ -1166,7 +1166,7 @@ export function AdEnginePage() {
       addToast({
         variant: "error",
         title: "Preflight failed",
-        description: String(parsed?.message ?? ""),
+        description: adsErrorWords(parsed?.message, ""),
       });
     } else {
       setPreflightRows(data?.rows ?? []);

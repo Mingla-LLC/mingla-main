@@ -6,6 +6,7 @@
  * Tab order keeps Event → Stay → Brand first (#1431), then the Wave 1 types.
  */
 
+import { adsErrorWords } from "../../lib/systemPages";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
 import { AlertCard } from "../ui/Card";
@@ -121,7 +122,7 @@ export function StepDestination({
       );
       setPageSize(pageResult.pageSize ?? 24);
     } catch (err) {
-      setError(err.message);
+      setError(adsErrorWords(err?.message));
       setRows(null);
       setTotal(0);
     }

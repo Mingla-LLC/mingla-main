@@ -16,7 +16,9 @@
 --      does, and say how many;
 --  10. a direct app_config write to global_plus_access is refused for every
 --      API role (insert, update, rename, delete), while every other key keeps
---      the admin RLS behaviour it had.
+--      the admin RLS behaviour it had;
+--  11. no API role can TRUNCATE app_config: the grant is revoked, and the
+--      statement-level guard refuses it even when the grant is put back.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -553,5 +555,42 @@ BEGIN
     RAISE EXCEPTION 'admin_set_global_plus blocked by the guard: %', t;
   END IF;
 END $direct$;
+
+-- ── 11. No API role can empty app_config ─────────────────────────────────
+DO $truncate$
+DECLARE
+  t text;
+  r text;
+  v_rows bigint;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'public.app_config'::regclass
+                  AND tgname = 'issue_4130_guard_app_config_truncate' AND NOT tgisinternal) THEN
+    RAISE EXCEPTION 'app_config has no TRUNCATE guard trigger';
+  END IF;
+  SELECT count(*) INTO v_rows FROM public.app_config;
+  IF v_rows = 0 THEN RAISE EXCEPTION 'fixture: app_config is empty before the TRUNCATE probe'; END IF;
+
+  FOREACH r IN ARRAY ARRAY['anon', 'authenticated', 'service_role'] LOOP
+    IF has_table_privilege(r, 'public.app_config', 'TRUNCATE') THEN
+      RAISE EXCEPTION '% still holds TRUNCATE on app_config', r;
+    END IF;
+    t := pg_temp.t4130b_exec(r, 'admin', 'TRUNCATE public.app_config');
+    IF t NOT LIKE 'ERR:42501:%' THEN RAISE EXCEPTION '% could TRUNCATE app_config: %', r, t; END IF;
+  END LOOP;
+
+  -- Even with the grant put back, the statement guard refuses it.
+  GRANT TRUNCATE ON public.app_config TO authenticated, service_role;
+  FOREACH r IN ARRAY ARRAY['authenticated', 'service_role'] LOOP
+    t := pg_temp.t4130b_exec(r, 'admin', 'TRUNCATE public.app_config');
+    IF t NOT LIKE 'ERR:42501:app_config_truncate_refused%' THEN
+      RAISE EXCEPTION '% could TRUNCATE app_config once granted: %', r, t;
+    END IF;
+  END LOOP;
+  REVOKE TRUNCATE ON public.app_config FROM authenticated, service_role;
+
+  IF (SELECT count(*) FROM public.app_config) <> v_rows THEN
+    RAISE EXCEPTION 'a refused TRUNCATE removed app_config rows';
+  END IF;
+END $truncate$;
 
 ROLLBACK;

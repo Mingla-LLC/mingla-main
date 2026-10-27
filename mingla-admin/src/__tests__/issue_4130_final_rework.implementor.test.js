@@ -12,6 +12,11 @@
 //   F-3d Ads: "Edge Function returned a non-2xx status code" is never shown.
 //   F-3e A negative amount after another currency reads "₦150.00 − $0.01".
 //   F-3f Reason labels name their inputs (htmlFor / id).
+//   F-4a Ads: every parsed edge message and raw error line goes through the
+//        plain-words mapper (parseEdgeError itself, and each page/panel).
+//   F-4b Mingla money: any negative amount reads "−", the Profit row included.
+//   F-4c Dashboard: the own-cards tile says "Waiting on you".
+//   (F-4d app_config TRUNCATE is pinned in the Wave 2b pg17 suite, §11.)
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -20,13 +25,14 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   ADS_SERVICE_DOWN,
+  adsEdgeMessage,
   adsErrorWords,
   appConfigLock,
   safeReasonWords,
 } from "../lib/systemPages.js";
 import { tilesScopeNote } from "../lib/subscriptionsView.js";
 import { monthLabel } from "../lib/dataRoomAnalytics.js";
-import { joinMoneyAmounts } from "../lib/moneyFormat.js";
+import { joinMoneyAmounts, signedMoney } from "../lib/moneyFormat.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "..");
@@ -201,5 +207,78 @@ export function render(kind, props) { const C = kind === "textarea" ? Textarea :
   it("the two reason boxes the retest named are that Input", () => {
     assert.match(read("pages/SubscriptionManagementPage.jsx"), /<Input\s+label="Reason for removing it \(logged on the server with your name\)"/);
     assert.match(read("components/pricing/MessagingLimitsPanel.jsx"), /<Input\s+label="Reason \(saved with your name\)"/);
+  });
+});
+
+describe("F-4a Ads errors go through the plain-words mapper everywhere", () => {
+  const GENERIC = "Edge Function returned a non-2xx status code";
+  const ADS_FILES = [
+    "pages/AdEnginePage.jsx",
+    "pages/CampaignsPage.jsx",
+    "pages/CampaignBuilderPage.jsx",
+    "components/AdConnectionsPanel.jsx",
+    "components/ad-engine/AdAudiencesPanel.jsx",
+    "components/ad-engine/ChangeBudgetModal.jsx",
+    "components/campaign-builder/StepCreative.jsx",
+    "components/campaign-builder/StepDestination.jsx",
+    "services/adEngineService.js",
+  ];
+  it("parseEdgeError's message is mapped: generic text becomes a sentence, the rest passes through", () => {
+    assert.equal(adsEdgeMessage(GENERIC), ADS_SERVICE_DOWN);
+    assert.equal(adsEdgeMessage("Failed to send a request to the Edge Function"), ADS_SERVICE_DOWN);
+    assert.equal(adsEdgeMessage("Meta token expired"), "Meta token expired");
+    assert.equal(adsEdgeMessage(undefined), undefined, "a missing message keeps the caller's fallback");
+    assert.equal(adsEdgeMessage(""), "", "an empty message keeps the caller's fallback");
+    const detail = { code: "x" };
+    assert.equal(adsEdgeMessage(detail), detail);
+    const svc = strip(read("services/adEngineService.js"));
+    assert.match(svc, /export async function parseEdgeError[\s\S]{0,600}message: adsEdgeMessage\(raw\)/);
+  });
+  it("the named panels map their own error lines", () => {
+    const aud = strip(read("components/ad-engine/AdAudiencesPanel.jsx"));
+    assert.match(aud, /setError\(adsErrorWords\(parsed\?\.message, "Audiences could not be loaded\."\)\)/);
+    assert.match(aud, /setError\(adsErrorWords\(parsed\?\.message, "The audience refresh failed\."\)\)/);
+    const eng = strip(read("pages/AdEnginePage.jsx"));
+    assert.match(eng, /setError\(adsErrorWords\(parsed\?\.message, "The Creative Library could not be loaded\."\)\)/);
+    const builder = strip(read("pages/CampaignBuilderPage.jsx"));
+    assert.match(builder, /const failCreate = \(title, rawMessage\) => \{\s*const message = adsErrorWords\(rawMessage\);/);
+  });
+  it("no Ads file shows a parsed or raw error message without the mapper", () => {
+    for (const rel of ADS_FILES) {
+      const src = strip(read(rel));
+      assert.doesNotMatch(src, /String\(parsed\?\.message \?\?/, `${rel} wraps parsed?.message in String() instead of adsErrorWords`);
+      assert.doesNotMatch(
+        src,
+        /(description:|\bset[A-Za-z]*Error\(|\[platform\]:)\s*\(?[A-Za-z_]+\??\.message\b/,
+        `${rel} shows a raw .message`,
+      );
+      assert.doesNotMatch(src, /message: (err|error)\??\.message\b|message: error instanceof Error \? error\.message/, `${rel} stores a raw .message`);
+    }
+  });
+});
+
+describe("F-4b money signs", () => {
+  it("a negative amount on any row reads with a true minus sign", () => {
+    assert.equal(signedMoney(-110, "USD", 1), "−$1.10", "Profit row loss");
+    assert.equal(signedMoney(-72860, "NGN", 1).startsWith("−"), true);
+    assert.ok(!signedMoney(-110, "USD", 1).includes("-"), "never a hyphen-minus");
+    assert.equal(signedMoney(500, "USD", -1), "−$5.00", "a cost row reads as money out");
+    assert.equal(signedMoney(0, "USD", -1), "$0.00");
+    assert.equal(signedMoney(263, "USD", 1), "$2.63");
+    assert.equal(signedMoney(null, "USD", 1), "not converted");
+  });
+  it("the money page uses the shared helper for every table cell", () => {
+    const page = strip(read("pages/MinglaMoneyPage.jsx"));
+    assert.match(page, /const signed = signedMoney;/);
+    assert.doesNotMatch(page, /function signed\(/);
+  });
+});
+
+describe("F-4c Dashboard tile wording", () => {
+  it("the own-cards tile says Waiting on you, in both its states", () => {
+    const page = strip(read("pages/OverviewPage.jsx"));
+    assert.match(page, /<KpiFailed label="Waiting on you"/);
+    assert.match(page, /<Kpi\s+label="Waiting on you"/);
+    assert.doesNotMatch(page, /label="Waiting on a person"/);
   });
 });

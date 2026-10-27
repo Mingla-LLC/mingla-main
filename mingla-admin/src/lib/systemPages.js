@@ -450,6 +450,15 @@ export function adsErrorWords(message, emptyFallback = ADS_SERVICE_DOWN) {
   if (/non-2xx status code/i.test(text) || /^Failed to send a request to the Edge Function/i.test(text)) return ADS_SERVICE_DOWN;
   return text;
 }
+/**
+ * #4130: the message parseEdgeError hands every Ads caller. The generic
+ * supabase-js edge text becomes ADS_SERVICE_DOWN; a real reason, an empty or
+ * missing message and a non-text detail pass through so each caller's own
+ * fallback still applies.
+ */
+export function adsEdgeMessage(raw) {
+  return typeof raw === "string" && raw.trim() ? adsErrorWords(raw, raw) : raw;
+}
 
 // #4130: Competitor watch in plain words. The values stay the server's.
 export const OPS_STATE_WORDS = Object.freeze({

@@ -44,3 +44,17 @@ export function joinMoneyAmounts(parts) {
     return `${out} ${n < 0 ? "−" : "+"} ${amount}`;
   }, "");
 }
+
+/**
+ * #4130: one amount on the money page. A cost row (sign < 0) always reads as
+ * money going out ("−₦50.00"); any other row that is below zero, such as a
+ * loss on the Profit row, reads "−$1.10" with a true minus sign, never "-$1.10".
+ */
+export function signedMoney(cents, currency, sign = 1) {
+  if (cents == null) return "not converted";
+  const n = Number(cents);
+  if (!Number.isFinite(n)) return "not converted";
+  const negative = sign < 0 ? n !== 0 : n < 0;
+  const amount = formatMoneyMinor(Math.abs(n), currency);
+  return negative ? `−${amount}` : amount;
+}

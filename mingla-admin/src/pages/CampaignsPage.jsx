@@ -389,7 +389,7 @@ export function CampaignsPage({ embedded = false }) {
       addToast({
         variant: "error",
         title: "Provider check failed",
-        description: outcome.error?.message ?? "Nothing was changed.",
+        description: adsErrorWords(outcome.error?.message, "Nothing was changed."),
       });
       throw outcome.error;
     }
@@ -442,7 +442,7 @@ export function CampaignsPage({ embedded = false }) {
     });
     if (error) {
       const parsed = await parseEdgeError(error);
-      throw new Error(String(parsed?.message ?? "Review failed"));
+      throw new Error(adsErrorWords(parsed?.message, "Review failed"));
     }
     addToast({
       variant: decision === "approved" ? "success" : "warning",
@@ -468,7 +468,7 @@ export function CampaignsPage({ embedded = false }) {
         addToast({
           variant: "error",
           title: "Campaign detail failed",
-          description: error.message,
+          description: adsErrorWords(error.message),
         });
         setDetail(null);
       } else {
@@ -522,7 +522,7 @@ export function CampaignsPage({ embedded = false }) {
         addToast({
           variant: "error",
           title: "Conversions failed",
-          description: error.message,
+          description: adsErrorWords(error.message),
         });
         setRoiPayload(null);
       } else {
@@ -560,7 +560,7 @@ export function CampaignsPage({ embedded = false }) {
     void getStayCampaignRollup(selectedId).then(({ data, error }) => {
       if (!active) return;
       setStayRollup(error ? null : data);
-      setStayRollupError(error?.message ?? null);
+      setStayRollupError(error ? adsErrorWords(error.message) : null);
       setStayRollupLoading(false);
     });
     return () => {
@@ -584,7 +584,7 @@ export function CampaignsPage({ embedded = false }) {
     void getPlanSettlements(versionId).then(({ data, error }) => {
       if (!active) return;
       setSettlements(error ? [] : (data ?? []));
-      setSettlementsError(error?.message ?? null);
+      setSettlementsError(error ? adsErrorWords(error.message) : null);
       setSettlementsLoading(false);
     });
     return () => {
@@ -668,7 +668,7 @@ export function CampaignsPage({ embedded = false }) {
       addToast({
         variant: "error",
         title: "Sync failed",
-        description: String(parsed?.message ?? ""),
+        description: adsErrorWords(parsed?.message, ""),
       });
     } else {
       addToast({ variant: "success", title: "Status synced" });

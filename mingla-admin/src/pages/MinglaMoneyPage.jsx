@@ -19,7 +19,7 @@ import { Badge } from "../components/ui/Badge";
 import { Skeleton } from "../components/ui/Skeleton";
 import { LoadError } from "../components/ui/LoadError";
 import { getMinglaMoneySummary } from "../services/adminMoneyService";
-import { formatMoneyMinor, joinMoneyAmounts } from "../lib/moneyFormat";
+import { formatMoneyMinor, joinMoneyAmounts, signedMoney } from "../lib/moneyFormat";
 import { formatDate } from "../lib/formatters";
 import {
   PERIODS,
@@ -36,11 +36,7 @@ import {
 
 const usd = (cents) => (cents == null ? "not converted" : formatMoneyMinor(cents, "USD"));
 
-function signed(cents, currency, sign) {
-  if (cents == null) return "not converted";
-  if (sign < 0 && cents !== 0) return `−${formatMoneyMinor(Math.abs(cents), currency)}`;
-  return formatMoneyMinor(cents, currency);
-}
+const signed = signedMoney;
 
 function Segmented({ label, options, value, onChange }) {
   return (
