@@ -104,3 +104,6 @@ jobs:
 
       - name: Check issue release-record fail-closed boundaries
         run: python3 scripts/docs/__tests__/issue_3643_reports_retirement.tester.adversarial.test.py --repo-root .
+
+      - name: Check that only the ci-batch registry may add workflow-path literals
+        run: python3 scripts/docs/__tests__/issue_3643_workflow_literal_registry_exempt.test.py
