@@ -62,6 +62,11 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
   true;
 
 // platformUrl.ts throws at module load unless the business web origin is set.
+// #3872 — the venue page lazy-loads Local reviews from the Creator and
+// Referral program's owner; this suite is not about that panel.
+jest.mock("../../programs/creatorProgramOwner", () => ({
+  LocalReviewsManager: () => null,
+}));
 jest.mock("expo-constants", () => ({
   __esModule: true,
   default: {

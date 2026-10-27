@@ -18,7 +18,7 @@ const root = process.cwd();
 const read = (relative: string): string =>
   fs.readFileSync(path.join(root, relative), "utf8");
 
-const roster = read("app/brand/[id]/creators/roster.tsx");
+const roster = read("src/components/creators/screens/CreatorRosterScreen.tsx");
 const creatorService = read("src/services/creatorGigsService.ts");
 const creatorRosterService = read("src/services/creatorRosterService.ts");
 const localManager = read("src/components/venue/LocalReviewsManager.tsx");

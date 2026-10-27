@@ -30,7 +30,7 @@
  * interactive claim banner above the suite so the loop is always reachable.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -47,7 +47,6 @@ import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaim
 import { StaySuiteShell } from "../../../src/components/stay/StaySuiteShell";
 import { VenueIdentityBand } from "../../../src/components/venue/VenueIdentityBand";
 import { VenueModulePillRow } from "../../../src/components/venue/VenueModulePillRow";
-import { LocalReviewsManager } from "../../../src/components/venue/LocalReviewsManager";
 import { parseVenueModuleParam } from "../../../src/components/venue/venueModules";
 // #2099 §F3 — EXTENSIONLESS on purpose: Metro resolves `.web` on web and
 // `.native` on iOS/Android, so the correction feature never enters a native
@@ -91,6 +90,13 @@ import { openExternal } from "../../../src/services/guestFunnelLink";
 import { useVenueSuiteStore } from "../../../src/store/venueSuiteStore";
 import { listingStatusView } from "../../../src/utils/listingStatus";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
+
+// #3872 — Local reviews belong to the Creator and Referral program, so they
+// load through its one lazy owner and stay out of the eager web chunk.
+const LocalReviewsManager = React.lazy(async () => {
+  const mod = await import("../../../src/components/programs/creatorProgramOwner");
+  return { default: mod.LocalReviewsManager };
+});
 
 function paramValue(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) return value[0] ?? null;
@@ -410,7 +416,9 @@ export default function VenueManagementPage(): React.ReactElement {
       {venue.claimStatus === "verified" &&
       brandId !== null &&
       venue.placePoolId !== null ? (
-        <LocalReviewsManager brandId={brandId} placePoolId={venue.placePoolId} />
+        <Suspense fallback={null}>
+          <LocalReviewsManager brandId={brandId} placePoolId={venue.placePoolId} />
+        </Suspense>
       ) : null}
 
       {!isWideDesktop &&

@@ -14,7 +14,7 @@ import {
 // #3872: after hire, a video-due change carries a date AND a time, and the
 // contract shows the agreed (current terms) due date and time.
 const root = path.resolve(__dirname, "../../../..");
-const CONTRACT = "app/brand/[id]/creators/contract/[contractId].tsx";
+const CONTRACT = "src/components/creators/screens/HostGigContractScreen.tsx";
 const contractSrc = () => fs.readFileSync(path.join(root, CONTRACT), "utf8");
 
 const local = (y: number, m: number, d: number, h: number, min: number) =>

@@ -38,7 +38,6 @@ import {
   PROGRAM_LABEL_GAP,
   PROGRAM_ROW_MIN_HEIGHT,
   programFormChrome,
-  stripItems,
 } from "./programLayout";
 import type { HostStatusTone } from "../../utils/creatorProgramFormat";
 
@@ -375,61 +374,7 @@ export function ListRow({
  * `tone: "muted"` keeps a value in the normal text colour; only money coming
  * in may be green, so spend and fees are never green.
  */
-export function StatStrip({
-  items,
-}: {
-  items: ReadonlyArray<
-    | { value: string; label: string; onPress?: () => void; accessibilityHint?: string }
-    | null
-    | undefined
-    | false
-  >;
-}): React.ReactElement {
-  const shown = stripItems(items);
-  return (
-    <GlassCard
-      variant="base"
-      radius="lg"
-      padding={0}
-      contentStyle={styles.strip}
-    >
-      {shown.map((item, index) => {
-        const body = (
-          <>
-            <Text style={styles.stripValue} numberOfLines={1} adjustsFontSizeToFit>
-              {item.value}
-            </Text>
-            <Text style={styles.stripLabel} numberOfLines={2}>
-              {item.label}
-            </Text>
-          </>
-        );
-        const cellStyle = [styles.stripCell, index > 0 && styles.stripDivider];
-        return item.onPress ? (
-          <Pressable
-            key={item.label}
-            onPress={item.onPress}
-            accessibilityRole="button"
-            accessibilityLabel={`${item.label}: ${item.value}`}
-            accessibilityHint={item.accessibilityHint}
-            style={({ pressed }) => [...cellStyle, pressed && styles.pressed]}
-          >
-            {body}
-          </Pressable>
-        ) : (
-          <View
-            key={item.label}
-            style={cellStyle}
-            accessible
-            accessibilityLabel={`${item.label}: ${item.value}`}
-          >
-            {body}
-          </View>
-        );
-      })}
-    </GlassCard>
-  );
-}
+export { StatStrip } from "./StatStrip";
 
 /** Centred empty state: icon, one heading, one sentence, one action. */
 export function ProgramEmpty({
@@ -711,14 +656,6 @@ const styles = StyleSheet.create({
   rowTitle: { color: textTokens.primary, fontSize: 16, fontWeight: "600" },
   rowSubtitle: { color: textTokens.secondary, fontSize: 13, lineHeight: 18 },
   rowRight: { color: textTokens.primary, fontSize: 15, fontWeight: "700" },
-  strip: { flexDirection: "row", paddingVertical: 14 },
-  stripCell: { flex: 1, paddingHorizontal: spacing.sm, alignItems: "center", gap: 2 },
-  stripDivider: {
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: glass.border.profileElevated,
-  },
-  stripValue: { color: textTokens.primary, fontSize: 20, fontWeight: "800" },
-  stripLabel: { color: textTokens.secondary, fontSize: 12, textAlign: "center" },
   empty: {
     alignItems: "center",
     gap: 10,

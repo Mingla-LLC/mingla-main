@@ -116,6 +116,8 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "exp",
   "local",
   "p",
+  // #3872 — Payout account (Earnings and Local link here).
+  "payout",
   "purchases",
   "s",
   "stay",

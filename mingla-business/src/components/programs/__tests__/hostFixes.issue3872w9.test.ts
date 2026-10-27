@@ -13,7 +13,7 @@ import { brandStatStripItems } from "../../brand/brandStatStrip";
 // B8, P2–P5).
 const root = path.resolve(__dirname, "../../../..");
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), "utf8");
-const CONTRACT = "app/brand/[id]/creators/contract/[contractId].tsx";
+const CONTRACT = "src/components/creators/screens/HostGigContractScreen.tsx";
 
 describe("B2: the iOS time wheel opens in a full-width sheet", () => {
   it("never renders the spinner inline in the half-width Time column", () => {
@@ -45,9 +45,9 @@ describe("B5: program sheets close when their screen blurs", () => {
     expect(read("src/components/gigs/HireSheet.tsx")).toContain("<ProgramSheet");
     for (const file of [
       CONTRACT,
-      "app/brand/[id]/creators/[gigId]/interest.tsx",
-      "app/brand/[id]/creators/roster.tsx",
-      "app/brand/[id]/creators/brief.tsx",
+      "src/components/creators/screens/GigApplicantsScreen.tsx",
+      "src/components/creators/screens/CreatorRosterScreen.tsx",
+      "src/components/creators/screens/GigBriefEditorScreen.tsx",
       "src/components/creators/CreatorsHomeView.tsx",
     ]) {
       const src = read(file);
@@ -94,7 +94,7 @@ describe("B6: live program screens refetch on focus and foreground", () => {
   });
 
   it("is wired into gig page, contract, Creators home and Blast Overview", () => {
-    expect(read("app/brand/[id]/creators/[gigId]/interest.tsx")).toContain("useRefreshOnFocus(load)");
+    expect(read("src/components/creators/screens/GigApplicantsScreen.tsx")).toContain("useRefreshOnFocus(load)");
     expect(read(CONTRACT)).toContain("useRefreshOnFocus(refresh)");
     expect(read("src/components/creators/CreatorsHomeView.tsx")).toContain("useRefreshOnFocus(load)");
     expect(read("src/components/marketing/BlastPromotionOverview.tsx")).toContain(

@@ -27,7 +27,7 @@ describe("host contract shoot window", () => {
 
   it("the contract screen uses the helper for the line and the day picker", () => {
     const page = fs.readFileSync(
-      path.resolve(__dirname, "../../../../app/brand/[id]/creators/contract/[contractId].tsx"),
+      path.resolve(__dirname, "../../creators/screens/HostGigContractScreen.tsx"),
       "utf8",
     );
     expect(page).toContain("workspaceShootWindow(gig)");

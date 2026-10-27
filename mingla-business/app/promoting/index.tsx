@@ -1,24 +1,21 @@
-import React from "react";
-import { useQueryClient } from "@tanstack/react-query";
+/**
+ * #3872 — Promoting.
+ * Thin route: the screen lives behind the Creator and Referral program's one
+ * lazy owner (src/components/programs/creatorProgramOwner.ts), so program
+ * code stays out of the eager web chunk until a Host opens it.
+ */
+// orch-strict-grep-allow safearea-on-fullscreen-routes — thin lazy route; the loaded program screen pads its own safe area (ProgramScreen / BlastRedirect).
+import React, { Suspense } from "react";
 
-import { PromoterHomeView } from "../../src/components/referrals/PromoterHomeView";
-import { ProgramScreen } from "../../src/components/programs/ProgramKit";
+const Screen = React.lazy(async () => {
+  const mod = await import("../../src/components/programs/creatorProgramOwner");
+  return { default: mod.PromotingScreen };
+});
 
-// #3872 — Promoting (approved K-mine): plain title bar, content scrolls.
 export default function PromotingRoute(): React.ReactElement {
-  const client = useQueryClient();
   return (
-    <ProgramScreen
-      title="Promoting"
-      fallback="/(tabs)/account"
-      refreshing={false}
-      onRefresh={() => {
-        void client.invalidateQueries({ queryKey: ["my-promoting-offers"] });
-        void client.invalidateQueries({ queryKey: ["my-promoting-earnings"] });
-        void client.invalidateQueries({ queryKey: ["my-payout-account"] });
-      }}
-    >
-      <PromoterHomeView />
-    </ProgramScreen>
+    <Suspense fallback={null}>
+      <Screen />
+    </Suspense>
   );
 }

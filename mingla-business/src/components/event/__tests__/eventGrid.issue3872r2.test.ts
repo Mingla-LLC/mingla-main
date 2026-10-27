@@ -61,14 +61,15 @@ describe("event page tool grid", () => {
     expect(page).not.toMatch(/label="Blasts"/);
     expect(page).not.toMatch(/label="Messages"/);
     expect(page).not.toContain("/blasts");
-    expect(page).toMatch(/label="Promote"[\s\S]{0,80}sub=\{promoteTileStatus\(promoteOverview\)\}/);
+    expect(page).toMatch(/label="Promote"[\s\S]{0,80}sub=\{promoteStatus\}/);
+    expect(page).toContain("setPromoteStatus(mod.promoteTileStatus(overview))");
     expect(page).toMatch(/label="Scan tickets"[\s\S]{0,80}primary[\s\S]{0,40}wide/);
   });
 
   it("Get it seen, the Promote tile and Manage → Promote open Blast for this event", () => {
     expect(page).toContain("onGetSeen={promoteEnabled ? handleGetSeen : undefined}");
     expect(page).toMatch(
-      /setCurrentBrandId\(promoteBrandId\);[\s\S]{0,80}blastOverviewHref\(\{ kind: "event", id: promoteListingId \}\)/,
+      /setCurrentBrandId\(promoteBrandId\);[\s\S]{0,200}mod\.blastOverviewHref\(\{ kind: "event", id: promoteListingId \}\)/,
     );
     expect(page).not.toContain("/promote?kind=event");
   });

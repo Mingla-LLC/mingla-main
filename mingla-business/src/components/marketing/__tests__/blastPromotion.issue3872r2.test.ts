@@ -59,13 +59,17 @@ describe("old hub routes land in Blast", () => {
       "/(tabs)/marketing/referrals?tab=links",
     );
     expect(blastHubHref("referrals", "nope")).toBe("/(tabs)/marketing/referrals");
-    for (const file of [
-      "app/brand/[id]/creators/index.tsx",
-      "app/brand/[id]/referrals.tsx",
-      "app/brand/[id]/promote.tsx",
+    // The old routes are thin lazy routes; their bodies (all BlastRedirect)
+    // live behind the program's one lazy owner.
+    for (const [file, screen] of [
+      ["app/brand/[id]/creators/index.tsx", "BrandCreatorsRedirect"],
+      ["app/brand/[id]/referrals.tsx", "BrandReferralsRedirect"],
+      ["app/brand/[id]/promote.tsx", "PromoteRedirect"],
     ]) {
-      expect(read(file)).toContain("<BlastRedirect");
+      expect(read(file)).toContain(`mod.${screen}`);
     }
+    const bodies = read("src/components/creators/screens/BlastRedirectScreens.tsx");
+    expect(bodies.match(/<BlastRedirect\b/g)).toHaveLength(3);
     expect(read("src/components/marketing/BlastRedirect.tsx")).toMatch(
       /setCurrentBrandId\(brandId\)[\s\S]*router\.replace/,
     );
@@ -81,7 +85,7 @@ describe("old hub routes land in Blast", () => {
     expect(blastOverviewHref({ kind: undefined, id: undefined })).toBe(
       "/(tabs)/marketing",
     );
-    const route = read("app/brand/[id]/promote.tsx");
+    const route = read("src/components/creators/screens/BlastRedirectScreens.tsx");
     expect(route).toContain("blastOverviewHref");
     expect(route).not.toContain("fetchPromoteListing");
   });

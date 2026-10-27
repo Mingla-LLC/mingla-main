@@ -50,6 +50,11 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 // router, auth, safe-area, expo-constants, the visual primitives and BOTH suite
 // shells). None of them names a #2099 module — H-0a proves that mechanically.
 // ---------------------------------------------------------------------------
+// #3872 — the venue page lazy-loads Local reviews from the Creator and
+// Referral program's owner; this suite is not about that panel.
+jest.mock("../../programs/creatorProgramOwner", () => ({
+  LocalReviewsManager: () => null,
+}));
 jest.mock("expo-constants", () => ({
   __esModule: true,
   default: {
