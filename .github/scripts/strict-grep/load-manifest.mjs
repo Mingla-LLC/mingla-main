@@ -8,7 +8,9 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(HERE, "../../..");
 export const BOOTSTRAP_PATH = path.join(HERE, "MANIFEST.json");
-export const BOOTSTRAP_SHA256 = "b30d5a788b2c855d0f2cc32f9e0f52d9d115fb94c7708c1aecd2ca4a7d94374c";
+// #3643 Phase 3D: re-sealed after the #2198 and #2418 gates' enforcement moved
+// from their deleted per-issue workflows to the CI batch suites that now run them.
+export const BOOTSTRAP_SHA256 = "0b5f222c73e323eafa031f3f5da11c8bceb237763b765262c7c277e9f992e956";
 export const DESCRIPTOR_SUFFIX = ".gate.json";
 
 function fail(code, detail = "") {

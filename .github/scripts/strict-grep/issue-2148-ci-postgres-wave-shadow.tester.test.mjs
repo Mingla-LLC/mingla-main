@@ -12,6 +12,7 @@ import {
   discoverWorkflowProviders,
   PROVIDERS_ADDED_SINCE_SEAL,
   SUITES_ADDED_SINCE_SEAL,
+  SUITES_FOLDED_SINCE_SEAL,
   isNonAuthoritativeProviderEvidence,
   validateRegistry,
 } from "../ci-batch/validate-manifest-v2.mjs";
@@ -247,7 +248,10 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   // [TEST-MOD-APPROVED #2897] Every figure derived from a declared set, none re-typed.
   const addedSuites = SUITES_ADDED_SINCE_SEAL.length;
   const addedSteps = SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
-  assert.deepEqual([value.legacyOrigins.length, value.suites.length, value.commandCapabilities.commands.length, value.workflowProviders.length], [200 + addedSuites, 84 + addedSuites, 240 + addedSteps, 91 + PROVIDERS_ADDED_SINCE_SEAL.length]);
+  // [#3643] Phase 3D folds existing origins in: suites and commands move, origins do not.
+  const foldedSuites = SUITES_FOLDED_SINCE_SEAL.length;
+  const foldedSteps = SUITES_FOLDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
+  assert.deepEqual([value.legacyOrigins.length, value.suites.length, value.commandCapabilities.commands.length, value.workflowProviders.length], [200 + addedSuites, 84 + addedSuites + foldedSuites, 240 + addedSteps + foldedSteps, 91 + PROVIDERS_ADDED_SINCE_SEAL.length]);
   assert.deepEqual([suites.length, suites.flatMap((suite) => suite.steps).length, value.phase3bLeafCapabilities.leaves.length, value.phase3bLeafCapabilities.currentExecutedLeaves, value.phase3bLeafCapabilities.currentAbsentLeaves], [12,36,40,40,0]);
   assert.equal(sha(value.commandCapabilities.commands.slice(0,51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
   assert.equal(sha(value.commandCapabilities.commands.slice(51,158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
@@ -276,7 +280,16 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   // deleted Postgres wrappers take two discovery records with them, and the
   // registry carries them under `consolidated-provider`. Every term derived.
   const consolidatedCount = value.workflowProviders.filter((item) => item.transition === "consolidated-provider").length;
-  const providers = discoverWorkflowProviders(ROOT); assert.equal(providers.length, 60 + PROVIDERS_ADDED_SINCE_SEAL.length - consolidatedCount);
+  // [#3643] Phase 3D's four deleted wrappers take their discovery records with
+  // them too; the registry carries them, pinned by identity below.
+  const phase3dNames = new Set(value.suites.filter((suite) => suite.migrationWave === "phase3d-fold-wave")
+    .map((suite) => suite.origin.split("/").pop()));
+  const carriedPhase3d = value.workflowProviders.filter((item) => phase3dNames.has(item.workflow))
+    .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }));
+  assert.deepEqual(carriedPhase3d.map((item) => item.workflow).sort(), [
+    "issue-1014-free-publish-currency-tests.yml", "issue-1184-video-phase-a-tests.yml",
+    "issue-2198-paystack-return-verify-tests.yml", "issue-2418-bank-list-native-identity.yml"]);
+  const providers = discoverWorkflowProviders(ROOT); assert.equal(providers.length, 60 + PROVIDERS_ADDED_SINCE_SEAL.length - consolidatedCount - carriedPhase3d.length);
   // [#2438 SC-21] The single-wrapper W3 assertion that stood here was removed under the
   // ruling at issue #2438 comment 5398524723. At shadow it was real: W3 was live and kept
   // out of discovery only by the A4-SC2 carve-out. At terminal it interrogates a deleted
@@ -318,8 +331,8 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   // record reds even when the count holds.
   assert.deepEqual(carriedConsolidated.map((item) => item.workflow).sort(),
     ["issue-1172-stripe-payout-execution-tests.yml", "issue-1840-ng-payout-float-alerts-tests.yml"]);
-  const carried = [...carriedWave, ...carriedConsolidated];
-  assert.equal(carried.length, 13 + carriedConsolidated.length);
+  const carried = [...carriedWave, ...carriedConsolidated, ...carriedPhase3d];
+  assert.equal(carried.length, 13 + carriedConsolidated.length + 4);
   // The Phase 3B six keep their A4-SC3 locked subset digest, unchanged and still exact.
   const carriedPhase3b = carriedWave.filter((item) => WRAPPERS.some(([name]) => name === item.workflow));
   assert.equal(carriedPhase3b.length, 6);
@@ -405,7 +418,9 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   // stays pinned and the number cannot be quietly adjusted until it passes.
   const consolidatedOriginCount = value.legacyOrigins.filter((item) => item.disposition === "consolidated-provider").length;
   assert.equal(consolidatedOriginCount, 9);
-  assert.equal(discoverLiveOrigins(ROOT).length, 117 - consolidatedOriginCount);
+  // [#3643] Phase 3D's twenty folded wrappers leave the live inventory the same way.
+  assert.equal(phase3dNames.size, 20);
+  assert.equal(discoverLiveOrigins(ROOT).length, 117 - consolidatedOriginCount - phase3dNames.size);
   // The invariant #2492 actually violated: two workflows were externally REFERENCED but
   // never REGISTERED. A pair of totals cannot catch that — they both just move. Bind the
   // derived discovery set to the declared live-provider set by identity, so a referenced
@@ -425,7 +440,8 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   // for the same reason the addition is: a second hand-written number is how two
   // sides disagree and auto-merge clean.
   const consolidated = value.workflowProviders.filter((item) => item.transition === "consolidated-provider");
-  assert.deepEqual([retained.length, batched.length], [60 + PROVIDERS_ADDED_SINCE_SEAL.length - consolidated.length, 31]);
+  // [#3643] Phase 3D moves exactly its four records from retained to batched (31 -> 35).
+  assert.deepEqual([retained.length, batched.length], [60 + PROVIDERS_ADDED_SINCE_SEAL.length - consolidated.length - carriedPhase3d.length, 31 + 4]);
   assert.equal(retained.length + batched.length + consolidated.length, value.workflowProviders.length);
   assert.deepEqual(providers.map((item) => item.workflow).sort(), retained.map((item) => item.workflow).sort());
   assert.deepEqual(validateRegistry(effective, { root: ROOT }), []);
@@ -454,8 +470,9 @@ test("canonical cost fixture and workflow topology remain exact", () => {
   assert.deepEqual(rows.find((row)=>row.pr===2201), {pr:2201,baseSha:"4414436a9617b075e2065118f5821458248058d2",headSha:"9a3c551798a3aae58fa4de5de3e1511647f5fa21",mergeBaseSha:"4414436a9617b075e2065118f5821458248058d2",pathSource:"git-diff-z-v1",pathCount:11362,pathSha256:"51764c43bad76f056f343f9bb851597e378e23b005680d10b7e4b5fc1a7c135b",matchedOrigins:[]});
   const histogram = Object.fromEntries([0,1,2,3,4,5].map((n)=>[n,rows.filter((row)=>row.matchedOrigins.length===n).length])); assert.deepEqual(histogram,{0:25,1:41,2:20,3:9,4:4,5:1});
   const workflow = read(".github/workflows/ci-batch.yml");
-  assert.equal((workflow.match(/^\s+- class:/gm)||[]).length,14); assert.equal((workflow.match(/^\s+secondaryClass: phase3b-/gm)||[]).length,9);
-  assert.deepEqual([...workflow.matchAll(/hostTimeoutMinutes:\s*(\d+)/g)].map((m)=>Number(m[1])), [50,45,40,45,45,55,55,50,60,62,55,55,105,55]);
+  // [#3643] Phase 3D appends its two Deno hosts (45 and 35 minutes) after the fourteen.
+  assert.equal((workflow.match(/^\s+- class:/gm)||[]).length,16); assert.equal((workflow.match(/^\s+secondaryClass: phase3b-/gm)||[]).length,9);
+  assert.deepEqual([...workflow.matchAll(/hostTimeoutMinutes:\s*(\d+)/g)].map((m)=>Number(m[1])), [50,45,40,45,45,55,55,50,60,62,55,55,105,55,45,35]);
   for (const pin of ["actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683","denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d","denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"]) assert.match(workflow,new RegExp(pin));
   // [TEST-MOD-APPROVED #2851] The old whole-source target-token ban conflated
   // the approved concurrency operand with a trigger. Semantic events keep the

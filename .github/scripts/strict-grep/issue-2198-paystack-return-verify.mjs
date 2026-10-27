@@ -30,6 +30,8 @@
  *      node .github/scripts/strict-grep/issue-2198-paystack-return-verify.mjs --self-test
  */
 import fs from "node:fs";
+import path from "node:path";
+import { createRequire } from "node:module";
 
 const paths = {
   resolver: "supabase/functions/_shared/paystackTicketReturnVerify.ts",
@@ -43,11 +45,40 @@ const paths = {
   tripScreen: "mingla-business/app/checkout-trip/[tripEventId]/confirm.tsx",
   experienceScreen:
     "mingla-business/app/checkout-experience/[experienceEventId]/confirm.tsx",
-  workflow: ".github/workflows/issue-2198-paystack-return-verify-tests.yml",
 };
 const sources = Object.fromEntries(
   Object.entries(paths).map(([key, path]) => [key, fs.readFileSync(path, "utf8")]),
 );
+
+// [#3643] The #2198 lane's own workflow was folded into the CI batch: its exact
+// Deno and gate commands are now the batch suite below, so THAT is what CI runs
+// and what this gate reads. Its Host jest proofs were already dropped from the
+// lane because the required `mingla-business jest (full suite)` check runs them
+// with the stock config; for those the wiring proof is that the stock config
+// collects each file (it exists, matches testMatch, and no ignore pattern drops it).
+const SUITE_ID = "issue-2198-paystack-return-verify-tests";
+const registry = JSON.parse(fs.readFileSync(".github/ci-batch/MANIFEST.json", "utf8"));
+const suites = (registry.suites || []).filter((suite) => suite.id === SUITE_ID);
+sources.ciCommands = suites.length === 1 && suites[0].lifecycle === "batched-historical"
+  ? suites[0].steps.map((step) => step.invocation?.argv?.[1] ?? "").join("\n")
+  : "";
+const JEST_CONFIG = createRequire(import.meta.url)(path.resolve("mingla-business/jest.config.cjs"));
+const JEST_PROOFS = [
+  "app/checkout/[eventId]/__tests__/issue_2198_paystack_return_confirm.test.tsx",
+  "app/checkout/[eventId]/__tests__/issue_2188_paid_checkout_provider_handoff.test.tsx",
+  "app/checkout/[eventId]/__tests__/issue_2160_multiday_provider_handoff.test.tsx",
+];
+
+/** Whether the stock mingla-business jest config collects one test file. */
+const stockJestCollects = (config, relative) => {
+  const absolute = path.resolve("mingla-business", relative).split(path.sep).join("/");
+  if (!fs.existsSync(absolute)) return false;
+  const glob = (pattern) => new RegExp(`^${pattern.split("**/").map((part) => part.split("*")
+    .map((piece) => piece.replace(/[.+^${}()|[\]\\]/g, "\\$&")).join("[^/]*")).join("(?:.*/)?")}$`);
+  const matched = (config.testMatch || []).some((pattern) => glob(pattern).test(relative));
+  const ignored = (config.testPathIgnorePatterns || []).some((pattern) => new RegExp(pattern).test(absolute));
+  return matched && !ignored;
+};
 
 const fail = (message) => {
   throw new Error(`issue-2198: ${message}`);
@@ -60,7 +91,7 @@ const stripComments = (value) =>
     .replace(/^[ \t]*\/\/.*$/gm, "")
     .replace(/[ \t]\/\/[^\n]*$/gm, "");
 
-const check = (raw) => {
+const check = (raw, jestConfig = JEST_CONFIG) => {
   const s = Object.fromEntries(
     Object.entries(raw).map(([key, value]) => [key, stripComments(value)]),
   );
@@ -232,9 +263,6 @@ const check = (raw) => {
   for (const token of [
     "issue_2198_paystack_return_verify.test.ts",
     "issue_2198_paystack_status_poll.test.ts",
-    "issue_2198_paystack_return_confirm.test.tsx",
-    "issue_2188_paid_checkout_provider_handoff.test.tsx",
-    "issue_2160_multiday_provider_handoff.test.tsx",
     "issue-2198-paystack-return-verify.mjs --self-test",
     // #4063 owns the buyer payload; #2216's retirement proofs prevent QR data
     // from leaking back through this older payment-return lane.
@@ -242,7 +270,10 @@ const check = (raw) => {
     "issue_2216_qr_image_never_silently_blank.test.ts",
     "ticketQrImage.test.ts",
   ]) {
-    if (!s.workflow.includes(token)) fail(`workflow missing ${token}`);
+    if (!s.ciCommands.includes(token)) fail(`the batch suite ${SUITE_ID} no longer runs ${token}`);
+  }
+  for (const proof of JEST_PROOFS) {
+    if (!stockJestCollects(jestConfig, proof)) fail(`the required full jest suite no longer collects ${proof}`);
   }
 };
 
@@ -262,8 +293,8 @@ if (process.argv.includes("--self-test")) {
     ["status", "buildBuyerConfirmationPayload", "legacyBuyerPayload"],
     ["confirm", "const confirmation = await buildBuyerConfirmationPayload", "const qrPayload = await buildBuyerConfirmationPayload"],
     ["status", "const confirmation = await buildBuyerConfirmationPayload", "const qrImageDataUrl = await buildBuyerConfirmationPayload"],
-    ["workflow", "issue_4063_buyer_confirmation_payload.implementor.happy.test.ts", "removed.test.ts"],
-    ["workflow", "issue_2216_qr_image_never_silently_blank.test.ts", "removed.test.ts"],
+    ["ciCommands", "issue_4063_buyer_confirmation_payload.implementor.happy.test.ts", "removed.test.ts"],
+    ["ciCommands", "issue_2216_qr_image_never_silently_blank.test.ts", "removed.test.ts"],
     ["service", 'result.status === "failed"', 'result.status === "never"'],
     ["service", "message: paidCheckoutErrorMessage({ code })", "message: String(code)"],
     ["screen", "awaitTicketConfirmation(", "confirmOnce("],
@@ -273,8 +304,8 @@ if (process.argv.includes("--self-test")) {
     ["tripScreen", 'verdict.kind === "not_issued"', 'verdict.kind === "ignored"'],
     ["experienceScreen", 'verdict.kind === "expired"', 'verdict.kind === "ignored"'],
     ["service", '{ kind: "expired" }', '{ kind: "not_issued" }'],
-    ["workflow", "issue_2198_paystack_return_verify.test.ts", "removed.test.ts"],
-    ["workflow", "issue_2188_paid_checkout_provider_handoff.test.tsx", "removed.test.tsx"],
+    ["ciCommands", "issue_2198_paystack_return_verify.test.ts", "removed.test.ts"],
+    ["ciCommands", "issue-2198-paystack-return-verify.mjs --self-test", "issue-2198-paystack-return-verify.mjs"],
   ];
   for (const [key, from, to] of mutations) {
     let rejected = false;
@@ -284,6 +315,17 @@ if (process.argv.includes("--self-test")) {
       rejected = true;
     }
     if (!rejected) fail(`self-test mutation survived: ${key}:${from}`);
+  }
+  // [#3643] The jest wiring proof bites: a stock config that ignored any one of
+  // the Host return-leg proofs must be rejected.
+  for (const proof of JEST_PROOFS) {
+    let rejected = false;
+    try {
+      check(sources, { ...JEST_CONFIG, testPathIgnorePatterns: [...(JEST_CONFIG.testPathIgnorePatterns || []), path.basename(proof).replaceAll(".", "\\.")] });
+    } catch {
+      rejected = true;
+    }
+    if (!rejected) fail(`self-test mutation survived: stock jest ignores ${proof}`);
   }
   // A mutation that must be ACCEPTED — the gate must not be a tautology that
   // rejects everything. Reformatting a comment changes nothing it asserts.

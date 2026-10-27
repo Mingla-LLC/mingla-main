@@ -16,6 +16,7 @@ import {
   inspectWorkflows,
   PROVIDERS_ADDED_SINCE_SEAL,
   SUITES_ADDED_SINCE_SEAL,
+  SUITES_FOLDED_SINCE_SEAL,
   SHADOW_PARITY_MARKER,
   SHADOW_PARITY_WRAPPER_NAMES,
   validateRegistry,
@@ -72,7 +73,8 @@ test("#2435 registry v2 proves the complete current topology", () => {
   // [TEST-MOD-APPROVED #2897] Derived, not re-typed. `baseline` above is the
   // positional slice(0, 23) and is untouched; only the total moves, and it moves
   // from the one declared set the validator subtracts from its own floors.
-  assert.equal(manifest.suites.length, 84 + SUITES_ADDED_SINCE_SEAL.length);
+  // [#3643] Phase 3D folds twenty existing origins in as suites; origins do not move.
+  assert.equal(manifest.suites.length, 84 + SUITES_ADDED_SINCE_SEAL.length + SUITES_FOLDED_SINCE_SEAL.length);
   assert.deepEqual(baseline.map(({ id, ownerIssue, lifecycle }) => [id, ownerIssue, lifecycle]), [
     ["issue-1282-google-bespoke-copy-tests", "#1282", "batched-active"],
     ["issue-903-open-external-admin-tests", "#903", "batched-active"],
@@ -129,11 +131,12 @@ test("#2435 registry v2 proves the complete current topology", () => {
   const terminalWavesAfter3a = Object.entries(manifest.migrationWaves)
     .filter(([wave, contract]) => contract.lifecycle === "batched-historical" && wave !== "phase3a-node-wave")
     .map(([wave]) => wave);
-  assert.deepEqual([...terminalWavesAfter3a].sort(), ["phase3b-postgres-wave", "phase3c-deno-wave"]);
+  assert.deepEqual([...terminalWavesAfter3a].sort(), ["phase3b-postgres-wave", "phase3c-deno-wave", "phase3d-fold-wave"]);
   const deletedWrappers = manifest.legacyOrigins.filter((origin) => terminalWavesAfter3a.includes(origin.migrationWave));
   const deletedProviders = manifest.workflowProviders.filter((item) =>
     deletedWrappers.some((origin) => `${origin.stem}.${origin.extension}` === item.workflow));
   const phase3cWrappers = manifest.legacyOrigins.filter((origin) => origin.migrationWave === "phase3c-deno-wave");
+  const phase3dWrappers = manifest.legacyOrigins.filter((origin) => origin.migrationWave === "phase3d-fold-wave");
   // [TEST-MOD-APPROVED #2591 · :137 :164] A SECOND way to leave these inventories,
   // and it is not a wave. The nine migration-gated Postgres lanes were folded into
   // the consolidated contract-suites capability workflow at #2591 — deliberately
@@ -153,8 +156,10 @@ test("#2435 registry v2 proves the complete current topology", () => {
   assert.equal(phase3bWrappers.length, 12);
   assert.equal(phase3bProviders.length, 6);
   assert.equal(phase3cWrappers.length, 17);
-  assert.equal(deletedWrappers.length, 29);
-  assert.equal(deletedProviders.length, 13);
+  // [#3643] Phase 3D deletes twenty more wrappers carrying four provider records.
+  assert.equal(phase3dWrappers.length, 20);
+  assert.equal(deletedWrappers.length, 49);
+  assert.equal(deletedProviders.length, 17);
   assert.equal(deletedWrappers.filter((origin) => fs.existsSync(path.join(DEFAULT_ROOT, `.github/workflows/${origin.stem}.${origin.extension}`))).length, 0);
   // [TEST-MOD-APPROVED #2591 · :137] The ratified 146 still stays pinned and both
   // subtrahends are still read from the registry, never typed. MEASURED on the

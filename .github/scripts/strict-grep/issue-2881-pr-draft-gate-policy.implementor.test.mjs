@@ -59,7 +59,8 @@ test("T-1 the real workflow tree passes the draft-gate policy with the expected 
   assert.deepEqual(result.errors, [], `unexpected policy errors:\n${result.errors.join("\n")}`);
   assert.equal(result.counts.gated + result.counts.exempt, result.counts.prFamily, "the partition must be total");
   assert.equal(result.counts.exempt, ALWAYS_ON.length);
-  assert.ok(result.counts.gated >= 100, `expected the gated set to be the bulk of the repo, got ${result.counts.gated}`);
+  // [#3643] Phase 3D deleted twenty gated per-issue lanes (115 -> 95 gated of 105).
+  assert.ok(result.counts.gated >= 95, `expected the gated set to be the bulk of the repo, got ${result.counts.gated}`);
   assert.ok(result.counts.gatedJobs >= result.counts.gated, "every gated workflow has at least one job");
 });
 
@@ -360,20 +361,6 @@ const PHASE3_TRANSITION_RECEIPTS = Object.freeze([
   // the deleted steps; the gates that genuinely pin a step (#1985, #2714, #2851)
   // keep their workflows unchanged in this PR.
   Object.freeze({
-    workflow: ["issue-1014-free-publish-currency-tests", "yml"].join("."),
-    issue: "#3643",
-    beforeSha256: "89affda86ea2374a88530ef6021fad00820522eec64d329da82c44e58b2f4598",
-    afterSha256: "2d0cafca803e5faded316b49daa10d4c9464060468d291a5e63ebbbd29614d33",
-    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
-  }),
-  Object.freeze({
-    workflow: ["issue-1039-1043-theme-readback-rsvp-tests", "yml"].join("."),
-    issue: "#3643",
-    beforeSha256: "3ec0df9b4e5af9e09c66a9574cbf96a3d4c7eb187fed7c215d36d2582d45758e",
-    afterSha256: "bd7378a59babefe9e8d88db65cbe323c212a64d782ad44024570467855158e5c",
-    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
-  }),
-  Object.freeze({
     workflow: ["issue-1044-auth-failure-capture-tests", "yml"].join("."),
     issue: "#3643",
     beforeSha256: "9458e823fe84fe2da691a5107c7f7e2d15213f95b6a585d63ec7ff115f3bb603",
@@ -441,27 +428,6 @@ const PHASE3_TRANSITION_RECEIPTS = Object.freeze([
     issue: "#3643",
     beforeSha256: "fef158667f2909ee12095a10f2b435b951d3076de471857252d69f130cec238f",
     afterSha256: "6b14c84612bf99c6b48b56928227920c5970a81c325c408323266d59e2c1e42c",
-    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
-  }),
-  Object.freeze({
-    workflow: ["issue-1789-spots-print-menu-depth-tests", "yml"].join("."),
-    issue: "#3643",
-    beforeSha256: "74372ad9c74cefa90833266d3c8402e21cd7dd1bc44b1db4415d6aa9e2e82be3",
-    afterSha256: "11997ab74714beb86ef77c5c3ff223a7c270765f74b730f8d5ed0de489161e08",
-    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
-  }),
-  Object.freeze({
-    workflow: ["issue-1791-orders-queue-alerting-tests", "yml"].join("."),
-    issue: "#3643",
-    beforeSha256: "9107f97e9549a5d2719f368e1002ef0ad089c62315d10d4c1376280cb1ea03ff",
-    afterSha256: "cedf79079a7fb3f297f66d662118d512c13cba34abbff3b4648ae0602e0890ca",
-    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
-  }),
-  Object.freeze({
-    workflow: ["issue-1792-waiter-mode-tests", "yml"].join("."),
-    issue: "#3643",
-    beforeSha256: "2e121214ba9f9b8a0fabefe9a5303039464516e8006c0c5d6a019679aa632dfa",
-    afterSha256: "f99d0cdeb45520cd964c7c7f63ee1379cea808169254a43cf1e09adce0981f5a",
     proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
   }),
   Object.freeze({
@@ -542,13 +508,6 @@ const PHASE3_TRANSITION_RECEIPTS = Object.freeze([
     proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
   }),
   Object.freeze({
-    workflow: ["issue-2198-paystack-return-verify-tests", "yml"].join("."),
-    issue: "#3643",
-    beforeSha256: "216a69d8ba7ddf22f33ae95fcb021f03338da9714f6a0f15734ccc70b0b06f8e",
-    afterSha256: "957af53824af18994dd9043dec1f16e9103a3f1c57a8c01ada1474ac09e46d5b",
-    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
-  }),
-  Object.freeze({
     workflow: ["issue-2217-confirmation-app-cta-tests", "yml"].join("."),
     issue: "#3643",
     beforeSha256: "79a54dfa7b7ab6849466fb5cd30dd9fb903401fb21e64135bbf60d729e63cb12",
@@ -598,13 +557,6 @@ const PHASE3_TRANSITION_RECEIPTS = Object.freeze([
     proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
   }),
   Object.freeze({
-    workflow: ["issue-2418-bank-list-native-identity", "yml"].join("."),
-    issue: "#3643",
-    beforeSha256: "08793649ecd1046bc2e48e94dd40f7ec5ad20163a4788320108460b4698b40a1",
-    afterSha256: "704c5013d6cd1b3f427c32b1ebf2211b6c0ad64c769bb83d179eeb8072f04445",
-    proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
-  }),
-  Object.freeze({
     workflow: ["issue-855-pr2-source-tracking-tests", "yml"].join("."),
     issue: "#3643",
     beforeSha256: "40b4bbccfd3c732c81fc9ca9db575bb31afd104ff51c4040a7c1cbfed4a0c7d8",
@@ -632,16 +584,23 @@ const PHASE3_TRANSITION_RECEIPTS = Object.freeze([
     afterSha256: "b30aa8d0903397f3857674cdf2b622d6be8d77654e1b2259a119e32108af8d7a",
     proofOwner: [".github/workflows/mingla-business-jest-suite", "yml"].join("."),
   }),
-  // #3643 step 4: "run it only if it exists" tester loops become unconditional
-  // runs of the files that exist (a deleted file now fails), and loop entries
-  // for tester files that were never written are dropped. The #871 workflow's
-  // receipt above covers the same change there.
+  // #3643 step 4 made the #871 and #1184 "run it only if it exists" tester loops
+  // unconditional; the #871 workflow's receipt above covers it. The #1184
+  // workflow is gone with Phase 3D below, so it needs no receipt.
+  //
+  // #3643 Phase 3D: twenty no-database per-issue workflows are DELETED and their
+  // exact commands run as primary suites of two new CI batch hosts. A deleted
+  // workflow is not a transition T-12 sweeps, so the seven receipts that named
+  // one of them above are dropped with it. The one EDITED workflow is the batch
+  // itself: two matrix rows and two Deno runtime steps. Its proof owner is the
+  // registry validator, which pins those rows, steps, hosts and every folded
+  // suite's command by exact content.
   Object.freeze({
-    workflow: ["issue-1184-video-phase-a-tests", "yml"].join("."),
+    workflow: ["ci-batch", "yml"].join("."),
     issue: "#3643",
-    beforeSha256: "3ded89d1a060bf520c92e9ae6006c992fa700409be3b146058bad0b933838d82",
-    afterSha256: "2da8bbd0f5150b3a127b0ecc089912f1f93f62d337cc6122f28097136e3e6ba8",
-    proofOwner: ".github/scripts/strict-grep/issue-2881-pr-draft-gate-policy.implementor.test.mjs",
+    beforeSha256: "20b2a11accf09618bd0444023d51263e4589c7da7d1f4592e60a4fc94b85126e",
+    afterSha256: "adff0ec432eb88f786d55c7b00586e25aa0d1ba3fe448728de3c0b4fea3cd586",
+    proofOwner: ".github/scripts/ci-batch/validate-manifest-v2.mjs",
   }),
 ]);
 
@@ -693,7 +652,7 @@ const authorizedTransitionNames = (transitions, receipts = PHASE3_TRANSITION_REC
 };
 
 const PHASE3_TRANSITION_RECEIPT_INDEX = validateTransitionReceipts(PHASE3_TRANSITION_RECEIPTS);
-assert.equal(PHASE3_TRANSITION_RECEIPT_INDEX.size, 43, "Phase 3 transition receipt cardinality");
+assert.equal(PHASE3_TRANSITION_RECEIPT_INDEX.size, 36, "Phase 3 transition receipt cardinality");
 
 test("T-11 every pin-protected workflow still satisfies the pin that protects it", () => {
   const pinned = ALWAYS_ON.filter((entry) => entry.kind === "pin-protected");
@@ -706,8 +665,22 @@ test("T-11 every pin-protected workflow still satisfies the pin that protects it
     "a pin-protected workflow no longer satisfies its pin");
   if (historyAvailable()) {
     const paths = pinned.map((entry) => `.github/workflows/${entry.path}`);
-    const changed = gitOut(["diff", "--name-only", mergeBase(), "--", ...paths]).trim();
-    assert.equal(changed, "", `#2881 modified a pin-protected workflow: ${changed}`);
+    const base = mergeBase();
+    const changed = gitOut(["diff", "--name-only", base, "--", ...paths]).trim();
+    // [TEST-MOD-APPROVED #3643] The same exact CAS exception T-12 honours, and
+    // no wider: a pin-protected workflow may differ from the base only by a
+    // reviewed receipt whose name, base digest and head digest all match. The
+    // A8 check above still proves its pin is satisfied by the head bytes.
+    const transitions = changed.split("\n").filter(Boolean).map((relative) => ({
+      workflow: path.basename(relative),
+      beforeSha256: createHash("sha256").update(gitOut(["show", `${base}:${relative}`])).digest("hex"),
+      afterSha256: fs.existsSync(join(REPO_ROOT, relative))
+        ? createHash("sha256").update(readFileSync(join(REPO_ROOT, relative), "utf8")).digest("hex") : "",
+    }));
+    const authorized = authorizedTransitionNames(transitions);
+    const unauthorized = transitions.filter((transition) => !authorized.has(transition.workflow))
+      .map((transition) => `.github/workflows/${transition.workflow}`).join("\n");
+    assert.equal(unauthorized, "", `#2881 modified a pin-protected workflow: ${unauthorized}`);
   }
 });
 

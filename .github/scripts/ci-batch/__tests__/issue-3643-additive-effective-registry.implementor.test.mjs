@@ -153,10 +153,12 @@ test("a synthetic additive suite passes the full production loader, validator, r
 
   const views = trustedRegistryViews(manifest);
   assert.ok(views);
-  assert.equal(views.rawBootstrap.suites.length, 85);
-  assert.equal(views.patchedBootstrap.suites.length, 85);
-  assert.equal(views.rawBootstrap.commandCapabilities.commands.length, 241);
-  assert.equal(views.patchedBootstrap.commandCapabilities.commands.length, 241);
+  // [#3643] Phase 3D folded 20 suites / 93 commands into the bootstrap; it adds
+  // no origin, so legacyOrigins stays 201.
+  assert.equal(views.rawBootstrap.suites.length, 105);
+  assert.equal(views.patchedBootstrap.suites.length, 105);
+  assert.equal(views.rawBootstrap.commandCapabilities.commands.length, 334);
+  assert.equal(views.patchedBootstrap.commandCapabilities.commands.length, 334);
   assert.equal(views.patchedBootstrap.legacyOrigins.length, 201);
   // [TEST-MOD-APPROVED #3682] Effective totals derive from the sealed
   // projection plus every trusted local descriptor, including this fixture.
@@ -358,7 +360,7 @@ test("untrusted additions and weakened bootstrap ratchets fail the production va
   injected.commandCapabilities.commands.push(command);
   injected.commandCapabilities.expectedCommands += 1;
   injected.commandCapabilities.registrySha256 = sha256(JSON.stringify(injected.commandCapabilities.commands));
-  assert.ok(validateRegistry(injected, { root: ROOT }).some((error) => /exactly 85 bootstrap suites|effective registry/.test(error)));
+  assert.ok(validateRegistry(injected, { root: ROOT }).some((error) => /exactly 105 bootstrap suites|effective registry/.test(error)));
 
   const weakened = structuredClone(bootstrap);
   weakened.expectedSuites = 84;
@@ -395,4 +397,33 @@ test("untrusted additions and weakened bootstrap ratchets fail the production va
   const missingCapability = structuredClone(bootstrap);
   missingCapability.commandCapabilities.commands.pop();
   assert.ok(validateRegistry(missingCapability, { root: ROOT }).some((error) => /command capabilit|stable assertion/.test(error)));
+});
+
+// [#3643] Phase 3D. The folded wave is sealed on its own: each of these edits
+// must be named red by the Phase 3D checks, never absorbed by the frozen
+// Phase 3A/3B/3C seals or excused because the suite is primary.
+test("Phase 3D rejects env drift, a wrong host, an undeclared suite, a false rationale and a reverted disposition", () => {
+  const named = (mutate, pattern) => {
+    const value = loadEffectiveManifest({ root: ROOT });
+    mutate(value);
+    return validateRegistry(value, { root: ROOT }).some((error) => pattern.test(error));
+  };
+  const suite = (value, id) => value.suites.find((item) => item.id === id);
+  assert.deepEqual(validateRegistry(loadEffectiveManifest({ root: ROOT }), { root: ROOT }), []);
+  assert.ok(named((value) => { suite(value, "issue-2198-paystack-return-verify-tests").steps[2].env.PAYSTACK_MODE = "live"; },
+    /Phase 3D typed env|environment capabilities/), "a drifted #2198 env literal must be red");
+  assert.ok(named((value) => { suite(value, "issue-1002-campaign-builder-multi-destination-tests").steps[0].env = { GITHUB_TOKEN: "x" }; },
+    /Phase 3D typed env|environment capabilities/), "env on a folded step that never had one must be red");
+  assert.ok(named((value) => { suite(value, "issue-1014-free-publish-currency-tests").class = "deno2x-node22-noinstall"; },
+    /declared Phase 3D suite|Phase 3D suite must be|runtime must agree/), "moving a folded suite to the other host must be red");
+  assert.ok(named((value) => { suite(value, "issue-1014-free-publish-currency-tests").migrationWave = undefined; },
+    /Phase 3D membership|declared Phase 3D suite|only Phase 3D suites/), "dropping a suite out of the wave must be red");
+  assert.ok(named((value) => {
+    const row = value.legacyOrigins.find((item) => item.stem === "issue-1392-stay-activation-tests");
+    row.rationale = "Retained as the sole live provider because it requires database-special execution.";
+  }, /corrected rationale/), "restoring the false database-special rationale must be red");
+  assert.ok(named((value) => {
+    const row = value.legacyOrigins.find((item) => item.stem === "issue-1792-waiter-mode-tests");
+    row.disposition = "database-special";
+  }, /Phase 3D legacy origin|live provider workflow is missing|batched legacy origin/), "reverting a folded origin's disposition must be red");
 });

@@ -23,7 +23,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // only re-ran files the required full suite already runs (new sourceSha256 and,
 // where a whole job went, jobKeys/runtimeVersions/setupActions). Six sourceSha256
 // patches for those rows are folded into the bootstrap and deleted.
-export const BOOTSTRAP_SHA256 = "024892c68d13572167c68b51ec84b070857aa71c8c4b1e62e611f94d95ddfbaf";
+// #3643 Phase 3D: re-sealed after 20 no-database Deno/Node workflows were folded
+// in as primary suites of two new Deno hosts (20 suites, 93 commands, 2 classes
+// and profiles, 20 legacy rows flipped to batched-historical, 4 provider records
+// to batched-provider). The #2240 sourceSha256 patch is folded in and deleted.
+export const BOOTSTRAP_SHA256 = "4b96239e5a777cb96a00493514c9e6810bdd6154eb1012c9d38530b50600a1e6";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

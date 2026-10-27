@@ -19,6 +19,7 @@ import {
   validateManifestTextRepresentations,
   validateShadowParityMarkers,
   SUITES_ADDED_SINCE_SEAL,
+  SUITES_FOLDED_SINCE_SEAL,
 } from "../validate-manifest-v2.mjs";
 import { loadEffectiveManifest } from "../load-manifest.mjs";
 import { commandFingerprint } from "../run-suite-batch.mjs";
@@ -28,6 +29,10 @@ import { SELF_JOB_NAME as CLASS_A_BUDGET_JOB_NAME } from "../../strict-grep/issu
 // post-seal set, never re-typed. See SUITES_ADDED_SINCE_SEAL.
 const ADDED_SUITES = SUITES_ADDED_SINCE_SEAL.length;
 const ADDED_STEPS = SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
+// [#3643] Phase 3D folds existing origins into the batch: it adds suites and
+// commands, never origins. Derived from the validator's one declared list.
+const FOLDED_SUITES = SUITES_FOLDED_SINCE_SEAL.length;
+const FOLDED_STEPS = SUITES_FOLDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
 
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
@@ -292,12 +297,12 @@ test("#2437 terminal registry is exactly 31 historical origins / 32 typed varian
   }
   const terminalWaves = Object.entries(value.migrationWaves)
     .filter(([, contract]) => contract.lifecycle === "batched-historical").map(([wave]) => wave);
-  assert.deepEqual([...terminalWaves].sort(), ["phase3a-node-wave", "phase3b-postgres-wave", "phase3c-deno-wave"]);
+  assert.deepEqual([...terminalWaves].sort(), ["phase3a-node-wave", "phase3b-postgres-wave", "phase3c-deno-wave", "phase3d-fold-wave"]);
   assert.equal(historicalOrigins.length, terminalWaves.reduce((sum, wave) => sum
     + value.legacyOrigins.filter((origin) => origin.disposition === "batched-historical"
       && origin.migrationWave === wave).length, 0));
   assert.equal(value.legacyOrigins.length, 200 + ADDED_SUITES);
-  assert.equal(value.suites.length, 84 + ADDED_SUITES);
+  assert.equal(value.suites.length, 84 + ADDED_SUITES + FOLDED_SUITES);
   // [TEST-MOD-APPROVED #2591] Literal -> derivation. The provider totals are now
   // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
   // validator subtracts from the frozen provider seal. Subject and strength unchanged;
@@ -317,7 +322,7 @@ test("all original Phase 2 commands and all shadow commands have independent imm
   assert.equal(digest(value.commandCapabilities.commands.slice(0, 51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
   assert.equal(digest(value.commandCapabilities.commands.slice(51, 158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
   assert.equal(value.suites.filter((suite) => suite.migrationWave === "phase3a-node-wave").flatMap((suite) => suite.steps).length, 107);
-  assert.equal(value.commandCapabilities.commands.length, 240 + ADDED_STEPS);
+  assert.equal(value.commandCapabilities.commands.length, 240 + ADDED_STEPS + FOLDED_STEPS);
 });
 
 test("#1593 reference proof pins one exact TAP reporter without changing its child target", () => {
@@ -355,7 +360,7 @@ test("terminal source wave retains all 107 exact assertion commands with wrapper
   // SC-17.1 bans. Each wave's own frozen count is still pinned above.
   const terminalWaves = Object.entries(value.migrationWaves)
     .filter(([, contract]) => contract.lifecycle === "batched-historical").map(([wave]) => wave);
-  assert.deepEqual([...terminalWaves].sort(), ["phase3a-node-wave", "phase3b-postgres-wave", "phase3c-deno-wave"]);
+  assert.deepEqual([...terminalWaves].sort(), ["phase3a-node-wave", "phase3b-postgres-wave", "phase3c-deno-wave", "phase3d-fold-wave"]);
   const outersInWave = (wave) => value.suites.filter((suite) => suite.lifecycle === "batched-historical"
     && suite.migrationWave === wave).flatMap((suite) => suite.steps).length;
   assert.equal(value.suites.filter((suite) => suite.lifecycle === "batched-historical").flatMap((suite) => suite.steps).length,

@@ -20,9 +20,7 @@
  * packages/offering-rendering/offeringCta.ts turns the 0-priced non-isFree
  * test red; restoring goes green (verified by true line deletion).
  *
- * CI: picked up by .github/workflows/issue-1014-free-publish-currency-tests.yml
- * (`npx jest issue_1014 …` pattern; packages/offering-rendering/** is in the
- * workflow's path filters).
+ * CI: runs in the required mingla-business full jest suite (#3643).
  */
 
 import * as fs from "fs";
