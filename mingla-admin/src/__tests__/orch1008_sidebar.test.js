@@ -57,23 +57,25 @@ const DELETED_IDS = ["content", "analytics", "reports", "feedback", "seed", "tab
 // [TEST-MOD-APPROVED ISSUE-3802] the approved menu order, every group, top to
 // bottom. The first two ids are the unlabelled primary group.
 const EXPECTED_IDS = [
-  // no label
+  // #4130: the approved menu (nine named groups, Home first; Wave 0 + Wave 6).
+  // Home
   "overview",
-  "support",
-  // Pipeline
-  "hosts",
-  "creators",
-  "beta-leads",
-  "tool-leads",
+  "work-board",
+  "notifications",
+  // Outreach
+  "outreach",
+  "inbound",
+  "content-calendar",
   "team-dashboard",
+  // Support
+  "support",
+  "community",
   // Business
-  "business-people",
-  "business-brands",
-  "brand-sites",
-  "business-venues",
+  "people",
+  "brands",
   "business-offerings",
-  "claims",
   // Money
+  "mingla-money",
   "business-payments",
   "business-orders",
   "business-money-ledger",
@@ -81,34 +83,30 @@ const EXPECTED_IDS = [
   "subscriptions",
   "pricing",
   // Explorer app
-  "users",
   "placepool",
-  "launch-cities",
-  "signals",
-  "deck-tuner",
-  "place-intelligence-trial",
   // Growth
   "ad-engine",
-  "campaign-builder",
-  "campaigns",
-  "email",
   // Company
   "admin",
+  // #4130 (Seth): Careers is its own menu item again.
   "careers",
+  "data-room",
   // System
-  "stripe-mode",
-  "api-health",
+  "platform-health",
+  "feature-flags",
   "settings",
-  "agent",
 ];
-const PRIMARY_IDS = ["overview", "support"];
+// #4130: the first group is Home (Dashboard, Work, Notifications).
+const PRIMARY_IDS = ["overview", "work-board", "notifications"];
 
 describe("ORCH-1008 Phase 1 — sidebar prune + flatten", () => {
-  it("the primary nav group has label:null and is not collapsible", () => {
+  it("the primary nav group is Home and is not collapsible", () => {
     // [TEST-MOD-APPROVED ISSUE-1354] NAV_GROUPS.length === 1 is SUPERSEDED (3
     // groups now: primary + Business + Growth). group[0] remains the primary
     // flat group.
-    assert.equal(NAV_GROUPS[0].label, null, "group[0] must have label:null");
+    // #4130: Seth's approved menu names every group; the first is "Home"
+    // (only the role Home group in lib/access.js has no label).
+    assert.equal(NAV_GROUPS[0].label, "Home", "group[0] is the Home group");
     assert.notEqual(NAV_GROUPS[0].collapsible, true, "the primary group must not be collapsible");
   });
 
@@ -139,11 +137,16 @@ describe("ORCH-1008 Phase 1 — sidebar prune + flatten", () => {
     assert.equal(NAV_GROUPS.find((g) => g.items.some((i) => i.id === "settings")).label, "System");
   });
 
-  it("Email + Users survive in the menu", () => {
+  it("Email + Users survive, inside the pages that now hold them", () => {
     // [TEST-MOD-APPROVED ISSUE-3802] was: both sit in the primary group.
+    // #4130: Users is People's Explorers tab and Email is Support's Email tab;
+    // their old addresses redirect there (lib/adminRoutes.js).
     const ids = NAV_ITEMS.map((i) => i.id);
-    assert.ok(ids.includes("email"), "email must remain in nav");
-    assert.ok(ids.includes("users"), "users must remain in nav");
+    assert.ok(ids.includes("people"), "People (with Users) must remain in nav");
+    assert.ok(ids.includes("support"), "Support (with Email) must remain in nav");
+    const routes = fs.readFileSync(path.join(ADMIN_ROOT, "src", "lib", "adminRoutes.js"), "utf8");
+    assert.match(routes, /users: Object\.freeze\(\{ page: "people", tab: "explorers" \}\)/);
+    assert.match(routes, /email: Object\.freeze\(\{ page: "support", tab: "email" \}\)/);
   });
 
   it("the 6 page files are physically deleted from disk", () => {

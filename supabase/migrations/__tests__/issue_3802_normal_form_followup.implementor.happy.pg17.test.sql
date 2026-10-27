@@ -114,8 +114,10 @@ begin
                                       'public.team_agent_records_find(jsonb)'::regprocedure)),
     'crm_identifier_hits:s00:service_role,team_agent_records_find:s01:service_role');
   -- [TEST-MOD-APPROVED #3802] Wave 6 adds one closed source-summary helper.
-  perform pg_temp.t3802c_check('N-1', 'Wave 6 leaves exactly 52 crm_ functions',
-    (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'crm\_%'), '52');
+  -- #4130: the separately guarded Team dashboard aggregate adds exactly one
+  -- crm_ reader without changing identifier normalization.
+  perform pg_temp.t3802c_check('N-1', '#4130 leaves exactly 53 crm_ functions',
+    (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'crm\_%'), '53');
   perform pg_temp.t3802c_check('N-1', 'is_admin_user() has the source it had before Wave 4',
     (select md5(prosrc) from pg_proc where oid = 'public.is_admin_user()'::regprocedure), 'dc5465a20a4246c6921be0469e261a8b');
 end;

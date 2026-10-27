@@ -122,9 +122,13 @@ Deno.test("#3802 Wave 2: Admin defaults to Calendar, with the six-stage Board an
     "published",
   ]);
   assertEquals(monthWindow("2026-10").days.length, 42);
-  assertMatch(PAGE, /\? p\.get\("view"\) : "calendar"/);
+  // #4130: Wave 4a split the Calendar into two tabs. With no view in the address,
+  // Event runway opens on the runway list and Content opens on the posts board;
+  // Month stays one click away. The runway table replaced the grouped state list.
+  assertMatch(PAGE, /\? p\.get\("view"\) : defaultView\(show\)/);
+  assertMatch(PAGE, /function defaultView\(show\) \{\s*return show === "posts" \? "board" : "list";\s*\}/);
 // [TEST-MOD-APPROVED #3980] synced Wave 3 (R6): Month (MonthGrid), List by state with the posts list, and the Posts board.
-  assertMatch(PAGE, /<MonthGrid [\s\S]*<StateList [\s\S]*<PostsList [\s\S]*<BoardView /);
+  assertMatch(PAGE, /<MonthGrid [\s\S]*<RunwayTable [\s\S]*<PostsList [\s\S]*<BoardView /);
 });
 
 Deno.test("#3802 Wave 2: one simple add, approval prompts, autosave and explicit comments", () => {
@@ -180,17 +184,22 @@ Deno.test("#3802 Wave 2: route, CRM access, RPC boundary and responsive controls
       role,
     );
   }
-  const pipeline =
+  // #4130: Wave 0 regrouped the menu. The Calendar now sits in Outreach, right
+  // after Inbound leads and before Team dashboard (Outreach: Hosts and creators,
+  // Inbound leads, Calendar, Team dashboard).
+  const outreach =
     NAV_GROUPS.find((group: { label: string | null }) =>
-      group.label === "Pipeline"
+      group.label === "Outreach"
     )!.items;
-  // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): the Calendar sits right after Work.
-  assertEquals(
-    pipeline.findIndex((item: { id: string }) =>
-      item.id === "content-calendar"
-    ),
-    pipeline.findIndex((item: { id: string }) => item.id === "work-board") + 1,
+  const calendarAt = outreach.findIndex((item: { id: string }) =>
+    item.id === "content-calendar"
   );
+  assert(calendarAt > 0, "Calendar is in the Outreach group");
+  assertEquals(
+    calendarAt,
+    outreach.findIndex((item: { id: string }) => item.id === "inbound") + 1,
+  );
+  assertEquals(outreach[calendarAt + 1]?.id, "team-dashboard");
   assertEquals(
     [...SERVICE.matchAll(/call\("(content_calendar_[a-z_]+)"/g)].map((match) =>
       match[1]

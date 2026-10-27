@@ -11,7 +11,8 @@ import {
   assertMatch,
   assertNotMatch,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { mentionToken, mentionedEmails } from "../lib/opsModel.js";
+// #4130: waitingCardsState is the Work count the menu now shows.
+import { mentionToken, mentionedEmails, waitingCardsState } from "../lib/opsModel.js";
 import { AGENT_WORK_ABILITIES, AGENT_WORK_GUARDRAILS } from "../lib/agentConnect.js";
 
 const SRC = new URL("../", import.meta.url);
@@ -134,7 +135,18 @@ Deno.test("#3980 rework: the To review header counts what the menu badge counts"
   const hook = code("hooks/useReviewCount.js");
   assertMatch(hook, /total: waiting \+ needsPerson/);
   assertMatch(hook, /window\.addEventListener\(REVIEW_CHANGED, refresh\)/);
-  assertMatch(code("components/layout/Sidebar.jsx"), /item\.id === "drafts" \? reviewCount\.total/);
+  // #4130: Needs you left the menu; Work carries the count of your own waiting cards.
+  assertMatch(code("components/layout/Sidebar.jsx"), /item\.id === "work-board" \? reviewCount\.cards/);
+  // #4130: the Work count is this person's own cards in "Waiting on a person"
+  // (ops_my_counts waiting_on_person_mine), read through waitingCardsState, so
+  // the menu, the Dashboard and the Work first column count the same thing.
+  assertMatch(hook, /const work = waitingCardsState\(\{ enabled, data: counts\.data, error: counts\.error \}\);/);
+  assertMatch(hook, /cards: work\.cards,/);
+  assertEquals(waitingCardsState({ data: { waiting_on_person_mine: 3, needs_person_mine: 9, draft_needed_mine: 9 } }), { status: "ready", cards: 3 });
+  // #4130: a failed or missing count is an error, never a made-up 0.
+  assertEquals(waitingCardsState({ data: null, error: new Error("x") }), { status: "error", cards: null });
+  assertEquals(waitingCardsState({ data: {} }), { status: "error", cards: null });
+  assertEquals(waitingCardsState({ data: null }), { status: "loading", cards: null });
 });
 
 Deno.test("#3980 rework: the agent log names fields in plain words", () => {

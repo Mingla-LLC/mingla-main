@@ -17,8 +17,10 @@ const ID_WORD = /^[a-z][a-z0-9_]{0,39}$/;
 const SLUG = /^[a-z0-9-]{1,60}$/;
 const MAX_Q = 80;
 
+// #4130 (Wave 4a): the list, sorted by due date, is the default view; the
+// board is kept for the small late stages (#/hosts?view=board).
 export const EMPTY_CRM_STATE = Object.freeze({
-  view: "board",
+  view: "list",
   q: "",
   icp: "",
   region: "",
@@ -28,8 +30,11 @@ export const EMPTY_CRM_STATE = Object.freeze({
   // the card on its first missing field).
   filter: "",
   fill: false,
+  // #4130 (Wave 4a): the due chips (lib/outreachView.js DUE_CHIP_IDS).
+  due: "",
 });
 export const HOST_FILTER_VALUES = ["nonext", "soon"];
+export const DUE_VALUES = ["today", "week", "stale", "replied", "noregion", "nodue"];
 
 /** The part of a hash after "?", or "" when there is none. */
 export function hashSearch(hash) {
@@ -70,6 +75,8 @@ export function parseCrmSearch(search) {
   const filter = params.get("filter");
   if (filter && HOST_FILTER_VALUES.includes(filter)) state.filter = filter;
   if (params.get("fill") === "1" && state.card && state.card !== NEW_CARD) state.fill = true;
+  const due = params.get("due");
+  if (due && DUE_VALUES.includes(due)) state.due = due;
   return state;
 }
 
@@ -82,7 +89,7 @@ export function parseCrmHash(hash) {
 export function buildCrmSearch(state) {
   const s = { ...EMPTY_CRM_STATE, ...(state || {}) };
   const params = new URLSearchParams();
-  if (s.view && s.view !== "board" && CRM_VIEWS.includes(s.view)) params.set("view", s.view);
+  if (s.view && s.view !== EMPTY_CRM_STATE.view && CRM_VIEWS.includes(s.view)) params.set("view", s.view);
   if (typeof s.q === "string" && s.q !== "" && s.q.length <= MAX_Q) params.set("q", s.q);
   if (s.icp && ID_WORD.test(s.icp)) params.set("icp", s.icp);
   if (s.region && SLUG.test(s.region)) params.set("region", s.region);
@@ -90,6 +97,7 @@ export function buildCrmSearch(state) {
   if (s.card && (s.card === NEW_CARD || UUID.test(s.card))) params.set("card", s.card);
   if (s.filter && HOST_FILTER_VALUES.includes(s.filter)) params.set("filter", s.filter);
   if (s.fill && s.card && s.card !== NEW_CARD) params.set("fill", "1");
+  if (s.due && DUE_VALUES.includes(s.due)) params.set("due", s.due);
   return params.toString();
 }
 

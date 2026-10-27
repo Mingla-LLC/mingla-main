@@ -16,6 +16,7 @@
  * lib/adBuilder/*.js + the node:test suite under __tests__/).
  */
 
+import { adsErrorWords } from "../lib/systemPages";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PlugZap, RefreshCw } from "lucide-react";
 import { SectionCard, AlertCard } from "./ui/Card";
@@ -56,7 +57,7 @@ export function AdConnectionsPanel() {
     setLoadError(null);
     const { data, error } = await getConnections("consumer");
     if (error) {
-      setLoadError(error.message ?? "Failed to load connections.");
+      setLoadError(adsErrorWords(error.message, "Failed to load connections."));
       setConnections([]);
     } else {
       setConnections(data ?? []);
@@ -95,14 +96,14 @@ export function AdConnectionsPanel() {
           const parsed = await parseEdgeError(error);
           setRowErrors((current) => ({
             ...current,
-            [platform]: parsed?.message ?? "Provider verification failed.",
+            [platform]: adsErrorWords(parsed?.message, "Provider verification failed."),
           }));
         }
       } catch (error) {
         const parsed = await parseEdgeError(error);
         setRowErrors((current) => ({
           ...current,
-          [platform]: parsed?.message ?? error?.message ?? "Provider verification failed.",
+          [platform]: adsErrorWords(parsed?.message ?? error?.message, "Provider verification failed."),
         }));
       } finally {
         setPlatformBusy(platform, false);
@@ -155,7 +156,7 @@ export function AdConnectionsPanel() {
     },
     onError: async (platform, error, action) => {
       const parsed = await parseEdgeError(error);
-      const message = parsed?.message ?? (action === "status" ? "Verification failed." : "Connect failed.");
+      const message = adsErrorWords(parsed?.message, action === "status" ? "Verification failed." : "Connect failed.");
       setRowErrors((prev) => ({ ...prev, [platform]: message }));
       addToast({
         variant: "error",

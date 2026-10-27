@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle, Info, AlertCircle } from "lucide-react";
+import { trendTone } from "../../lib/trendTone";
 
 export function StatCard({ icon: Icon, label, value, trend, trendUp, className = "" }) {
   return (
@@ -14,9 +15,11 @@ export function StatCard({ icon: Icon, label, value, trend, trendUp, className =
         <div className="w-10 h-10 rounded-full bg-[var(--color-brand-50)] flex items-center justify-center shrink-0">
           {Icon && <Icon className="w-[18px] h-[18px] text-[var(--color-brand-500)]" />}
         </div>
+        {/* #4130: green when up, red when down, grey when level or unknown
+            (lib/trendTone.js). Pass trendUp; leaving it out reads as level. */}
         {trend && (
-          <span className={`text-xs font-semibold ${trendUp ? "text-[#22c55e]" : "text-[#ef4444]"}`}>
-            {trendUp ? "\u2197" : "\u2198"} {trend}
+          <span className={`text-xs font-semibold ${trendTone(trendUp).className}`}>
+            <span aria-hidden="true">{trendTone(trendUp).arrow}</span> {trend}
           </span>
         )}
       </div>

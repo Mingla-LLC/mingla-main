@@ -57,7 +57,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { analyseLanes } from "./issue-2492-replay-skip-closure.mjs";
+import { analyseLanes, parseMigration } from "./issue-2492-replay-skip-closure.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../..");
@@ -684,5 +684,61 @@ test("T-2723-I1/I2/I3 — exact #2696 skip is present and C-3 fails on its rever
   assert.ok(
     c3.some((violation) => violation.message.includes(ISSUE_2723_EXACT_GLOB)),
     "C-3 must name the missing exact #2696 pattern",
+  );
+});
+
+// #4130: the guard's model read only the FIRST `ADD COLUMN` of an ALTER TABLE.
+// orch_0787 adds `orders.refunded_amount_cents` as the fourth clause of one
+// ALTER TABLE, so the model believed the column existed only via the skipped
+// #4063 door-sale migration, and #4130's `LANGUAGE sql` money reader (which
+// replays clean on the real #1931 lane) was reported as a closure break. These
+// pin the corrected reading in both directions: every real ADD COLUMN clause is
+// a definition, and nothing that is not an ADD COLUMN clause becomes one.
+test("T-4130 — every ADD COLUMN clause of one ALTER TABLE is a definition, and only those", () => {
+  const { definitions } = parseMigration(
+    "29990101000002_issue_4130_fixture.sql",
+    [
+      "ALTER TABLE public.orders",
+      "  ADD COLUMN IF NOT EXISTS first_col timestamptz,",
+      "  ADD CONSTRAINT not_a_column CHECK (true),",
+      "  -- ADD COLUMN commented_col integer,",
+      "  ADD COLUMN IF NOT EXISTS fourth_col integer NOT NULL DEFAULT 0;",
+      "ALTER TABLE public.orders ADD CONSTRAINT also_not_a_column CHECK (true), ADD COLUMN after_constraint text;",
+      "ALTER TABLE public.orders DROP COLUMN IF EXISTS dropped_col;",
+      "",
+    ].join("\n"),
+  );
+  const cols = [...definitions].filter((d) => d.startsWith("col:")).sort();
+  assert.deepEqual(cols, ["col:after_constraint", "col:first_col", "col:fourth_col"]);
+});
+
+test("T-4130b — orch_0787's fourth-clause column is credited, so a later sql reader of it does not flag", (t) => {
+  const real = parseMigration(
+    "20260520000000_orch_0787_order_refund_cancel.sql",
+    fs.readFileSync(
+      path.join(REAL_MIGRATIONS, "20260520000000_orch_0787_order_refund_cancel.sql"),
+      "utf8",
+    ),
+  );
+  assert.ok(real.definitions.has("col:refunded_amount_cents"));
+  const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
+    addMigration: [
+      FIXTURE_MIGRATION,
+      [
+        "CREATE OR REPLACE FUNCTION public.issue_4130_fixture_refund_reader()",
+        "RETURNS integer",
+        "LANGUAGE sql",
+        "STABLE",
+        "AS $fn$",
+        "  SELECT o.refunded_amount_cents FROM public.orders o LIMIT 1;",
+        "$fn$;",
+        "",
+      ].join("\n"),
+    ],
+  });
+  const { violations } = analyseLanes({ workflowsDir, migrationsDir });
+  assert.deepEqual(
+    violations.filter((v) => v.message.includes(FIXTURE_MIGRATION)).map((v) => v.message),
+    [],
   );
 });

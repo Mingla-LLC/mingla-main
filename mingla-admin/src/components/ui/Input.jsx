@@ -1,24 +1,29 @@
-import { forwardRef, useState } from "react";
+import { forwardRef, useId, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 
 export const Input = forwardRef(function Input(
-  { label, error, helper, className = "", type = "text", onFocus, onBlur, ...props },
+  { label, error, helper, className = "", type = "text", onFocus, onBlur, id, ...props },
   ref
 ) {
   const [showPassword, setShowPassword] = useState(false);
+  // #4130: the label names its input (htmlFor/id), so a click on "Reason"
+  // focuses the box and screen readers read the label with it.
+  const autoId = useId();
+  const inputId = id || autoId;
   const isPassword = type === "password";
   const inputType = isPassword && showPassword ? "text" : type;
 
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">
+        <label htmlFor={inputId} className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">
           {label}
         </label>
       )}
       <div className="relative">
         <input
           ref={ref}
+          id={inputId}
           type={inputType}
           className={[
             "w-full h-10 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
@@ -51,18 +56,21 @@ export const Input = forwardRef(function Input(
 });
 
 export const Textarea = forwardRef(function Textarea(
-  { label, error, helper, className = "", onFocus, onBlur, ...props },
+  { label, error, helper, className = "", onFocus, onBlur, id, ...props },
   ref
 ) {
+  const autoId = useId();
+  const textareaId = id || autoId;
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">
+        <label htmlFor={textareaId} className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">
           {label}
         </label>
       )}
       <textarea
         ref={ref}
+        id={textareaId}
         className={[
           "w-full min-h-[100px] p-3 text-sm font-mono",
           "bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",

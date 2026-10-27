@@ -152,7 +152,8 @@ Deno.test("#3980 W3 the conversion runs only from its confirm step, for the owne
 
 Deno.test("#3980 W3 the Team dashboard and My day show the new panels and keep what they had", () => {
   const team = read("pages/TeamDashboardPage.jsx");
-  assertMatch(team, /<TeamOpsPanels online=\{online\} \/>\s*\{error \?/);
+  // #4130: the dashboard keeps the runway (collapsed at the bottom); the sprint table lives on Work.
+  assertMatch(team, /<RunwayPanel runway=\{overview\.data\.runway\} \/>/);
   assertMatch(team, /const summary = useCrmSummary\("team"\);/);
   const home = read("pages/RoleHomePage.jsx");
   assertMatch(home, /<AgentPromptStrip routine="my_plate" \/>\s*<MyCardsPanels \/>/);

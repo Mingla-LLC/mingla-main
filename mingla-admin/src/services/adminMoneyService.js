@@ -19,6 +19,7 @@
  */
 
 import { supabase } from "../lib/supabase";
+import { filterByReadiness, withReadiness } from "../lib/paymentReadiness";
 
 // ── Connect status (Payments) ─────────────────────────────────────────────────
 
@@ -38,6 +39,53 @@ export async function listBrandStripeStatus({ search, filters = {}, page = 0, pa
 /** Full Connect-status bundle for one brand (requirements jsonb + external accounts). */
 export async function getBrandStripeStatus(brandId) {
   return supabase.rpc("admin_get_brand_stripe_status", { p_brand_id: brandId });
+}
+
+// ── Payment readiness (Payments page; Brands page reuses it) — #4130 Wave 2a ──
+
+/**
+ * Every live brand with a payment setup or the Paystack provider, with the
+ * facts admin_list_brand_payment_readiness returns AND the verdict from
+ * lib/paymentReadiness.js attached as `row.readiness`. Search matches brand
+ * name, slug, Stripe account id, Paystack subaccount or recipient code.
+ * Throws on error (pages show LoadError, never an empty list).
+ */
+export async function fetchPaymentReadinessRows(search = null) {
+  const { data, error } = await supabase.rpc("admin_list_brand_payment_readiness", {
+    p_search: search || null,
+  });
+  if (error) throw new Error(error.message || "Failed to load payment readiness.");
+  return withReadiness(data?.rows ?? []);
+}
+
+/** EntityListView fetchPage over the readiness rows: provider and readiness filters, client pages. */
+export async function listBrandPaymentReadiness({ search, filters = {}, page = 0, pageSize = 25 }) {
+  const rows = filterByReadiness(await fetchPaymentReadinessRows(search), {
+    provider: filters.provider || "all",
+    readiness: filters.readiness || "all",
+  });
+  return { rows: rows.slice(page * pageSize, (page + 1) * pageSize), total: rows.length };
+}
+
+// ── Mingla money (#4130 Wave 2a) ──────────────────────────────────────────────
+
+/** Mingla money summary for [from, to) (ISO strings or null = all time / now). */
+export async function getMinglaMoneySummary(from = null, to = null) {
+  const { data, error } = await supabase.rpc("admin_mingla_money_summary", {
+    p_from: from,
+    p_to: to,
+  });
+  if (error) throw new Error(error.message || "Failed to load Mingla money.");
+  if (!data || typeof data !== "object") throw new Error("Mingla money came back empty.");
+  return data;
+}
+
+/** Orders page cards: paid orders all time, discounts (discounted orders only), margin. */
+export async function getOrdersOverview(from = null, to = null) {
+  const { data, error } = await supabase.rpc("admin_orders_overview", { p_from: from, p_to: to });
+  if (error) throw new Error(error.message || "Failed to load the order totals.");
+  if (!data || typeof data !== "object") throw new Error("The order totals came back empty.");
+  return data;
 }
 
 // ── Orders ────────────────────────────────────────────────────────────────────
@@ -94,6 +142,59 @@ export async function listDisputes({ search, filters = {}, page = 0, pageSize = 
   });
   if (error) throw new Error(error.message || "Failed to load disputes.");
   return { rows: data?.rows ?? [], total: data?.total ?? 0 };
+}
+
+/**
+ * #4130 Wave 2a — Stripe and Paystack disputes in one list, evidence due
+ * first. Both lists are read in full (up to DISPUTES_CAP each) and merged
+ * here, so search, filters, paging and export cover both providers.
+ * `filters.status` is "open" (anything not won, lost or resolved) or "closed".
+ */
+export const DISPUTES_CAP = 500;
+
+function unifiedDispute(row, provider) {
+  if (provider === "stripe") {
+    return {
+      ...row,
+      provider,
+      key: `stripe:${row.id}`,
+      amount_cents: row.amount,
+      reference: row.stripe_charge_id || row.stripe_dispute_id || null,
+      due_at: row.evidence_due_by || null,
+      state: row.status || null,
+      closed: ["won", "lost", "charge_refunded", "warning_closed"].includes(row.status),
+    };
+  }
+  return {
+    ...row,
+    provider,
+    key: `paystack:${row.id}`,
+    reference: row.transaction_reference || row.paystack_dispute_id || null,
+    due_at: row.internal_deadline_at || row.response_due_by || null,
+    state: row.evidence_state || row.status || null,
+    closed: Boolean(row.is_resolved) || row.evidence_state === "resolved",
+  };
+}
+
+export async function listAllDisputes({ search, filters = {}, page = 0, pageSize = 25 }) {
+  const [stripe, paystack] = await Promise.all([
+    listDisputes({ search, filters: {}, page: 0, pageSize: DISPUTES_CAP }),
+    listPaystackDisputes({ search, filters: {}, page: 0, pageSize: DISPUTES_CAP }),
+  ]);
+  let rows = [
+    ...stripe.rows.map((r) => unifiedDispute(r, "stripe")),
+    ...paystack.rows.map((r) => unifiedDispute(r, "paystack")),
+  ];
+  if (filters.status === "open") rows = rows.filter((r) => !r.closed);
+  if (filters.status === "closed") rows = rows.filter((r) => r.closed);
+  if (filters.provider) rows = rows.filter((r) => r.provider === filters.provider);
+  rows.sort((a, b) => {
+    if (a.closed !== b.closed) return a.closed ? 1 : -1;
+    const da = a.due_at ? new Date(a.due_at).getTime() : Infinity;
+    const db = b.due_at ? new Date(b.due_at).getTime() : Infinity;
+    return da - db;
+  });
+  return { rows: rows.slice(page * pageSize, (page + 1) * pageSize), total: rows.length };
 }
 
 /** Full dispute detail bundle (linked order + brand + raw event). */

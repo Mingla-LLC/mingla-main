@@ -92,7 +92,8 @@ Deno.test("#3980 W4 rework 2 P2-A: the status line and the button count what is 
 });
 
 Deno.test("#3980 W4 rework 2 P2-A: the panel asks for the page after the last brand shown, never an offset", () => {
-  const page = code("pages/TeamDashboardPage.jsx");
+  // #4130: the brands panel moved from the Team dashboard to components/ops/TeamSettingsPanels.jsx (Settings renders it).
+  const page = code("components/ops/TeamSettingsPanels.jsx");
   const at = page.indexOf("const loadMore = async");
   const loadMore = page.slice(at, page.indexOf("const confirm = async", at));
   assertMatch(loadMore, /await ops\.previewBrandCardsPage\(next, BRAND_PAGE_SIZE\)/);

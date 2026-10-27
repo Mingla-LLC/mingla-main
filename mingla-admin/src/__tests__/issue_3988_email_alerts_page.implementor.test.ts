@@ -86,10 +86,12 @@ Deno.test("#3988 the page wires one switch per row to the per-category RPC and k
   assertMatch(page, /<Toggle\s+label=\{row\.label\}/);
   assertMatch(page, /collaboration\.setEmailAlertPreference\(row\.key, enabled\)/);
   assertMatch(page, /addToast\(\{\s*variant: "error"/);
-  assertMatch(page, /title="Support alerts"/);
-  assertMatch(page, /title="Mentions"/);
-  // No dead taps: an alert row without an Admin page is not a button.
-  assertMatch(page, /\{route \? \(\s*<button type="button" onClick=\{\(\) => openAlert\(alert, route\)\}/);
+  // #4130: one inbox with Mentions and Support tabs replaced the two lists.
+  assertMatch(page, /INBOX_TABS/);
+  assertMatch(page, /getInbox\(SUPPORT_ALERT_TYPES\)/);
+  // No dead taps: a row without somewhere to go is not a button.
+  assertMatch(page, /\{canOpen\(row\) \? \(\s*<button\s+type="button"\s+onClick=\{\(\) => openRow\(row\)\}/);
+  assertMatch(page, /row\.type === "support" \? alertHashRoute\(row\.source\)/);
   // The old single mention switch is gone (its setting is one of the rows now).
   assertNotMatch(page, /setMentionEmail|getTeamNotificationPreferences/);
   assertMatch(service, /rpc\("issue_3988_my_email_alert_preferences"\)/);

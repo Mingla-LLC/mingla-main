@@ -8,10 +8,11 @@ const read = (relative: string) => Deno.readTextFile(new URL(`../${relative}`, i
 
 // MINGLA-INVARIANT: I-3720-ADMIN-COMMUNITY-CONSOLE | issue #3720 | The Admin console retains the approved grouped navigation, human-action queues, audited Community workflows, safe email audience, responsive support list, and evidence-packet review.
 Deno.test("#3720 Admin Community and Support rebuild stays complete", async () => {
-  const [page, navigation, overview, ideas, questions, moderation, announcements, roadmap, support, email, composer, team, guide, groups, inbox, service] = await Promise.all([
+  const [page, navigation, tabs, ideas, questions, moderation, announcements, roadmap, support, email, composer, team, guide, groups, inbox, service] = await Promise.all([
     read("pages/CommunitySupportPage.jsx"),
     read("components/community/CommunitySupportNavigation.jsx"),
-    read("components/community/OverviewPanel.jsx"),
+    // #4130 Wave 6: Overview was retired; the two pages' tabs live here.
+    read("lib/supportCommunityTabs.js"),
     read("components/community/IdeasPanel.jsx"),
     read("components/community/QuestionsPanel.jsx"),
     read("components/community/ModerationPanel.jsx"),
@@ -27,15 +28,14 @@ Deno.test("#3720 Admin Community and Support rebuild stays complete", async () =
     read("services/communityService.js"),
   ]);
 
-  for (const label of ["Overview", "Community", "Support", "Product", "Email", "Team"]) assert(navigation.includes(`label: "${label}"`), label);
-  for (const tab of ["Announcements", "Roadmap", "Ideas", "Questions", "Moderation", "Brand groups", "Product Inbox", "Feature Guide", "People and roles"]) assert(navigation.includes(tab), tab);
+  // #4130 Wave 6: the grouped navigation became two pages, Support and
+  // Community, each with one flat row of tabs (a select on a phone).
+  for (const tab of ["Inbox", "Email", "People and roles", "Announcements", "Roadmap", "Ideas from hosts", "Questions", "Moderation", "Reported enquiries", "Brand groups", "Feature guide", "Product inbox"]) assert(tabs.includes(`label: "${tab}"`), tab);
   assertMatch(navigation, /md:hidden/);
   assertMatch(page, /Available for support/);
-  assertMatch(page, /Talk to hosts, show what's coming, and answer tickets[.] One place[.]/);
-  assertNotMatch(page, /CutoverPanel|activeTab === "availability"/);
-
-  for (const label of ["Reports due", "First posts waiting", "Unanswered tickets", "Questions unanswered", "Ideas to triage", "Last announcement", "Needs you"]) assert(overview.includes(label), label);
-  assertMatch(overview, /grid-cols-2/);
+  assertMatch(page, /Conversations with hosts and explorers, oldest waiting first[.]/);
+  assertMatch(page, /What we tell hosts, what we've shipped, and what they ask for[.]/);
+  assertNotMatch(page, /CutoverPanel|activeTab === "availability"|OverviewPanel/);
   assertMatch(ideas, /not_now/);
   assertMatch(ideas, /Response from Mingla/);
   assertMatch(ideas, /Merge into this idea/);

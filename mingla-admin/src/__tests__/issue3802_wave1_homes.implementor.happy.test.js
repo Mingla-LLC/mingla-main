@@ -235,8 +235,9 @@ describe("#3802 M-4: addresses", () => {
     assert.equal(targetSliceHash("event_organizer", "lagos"), "#/hosts?icp=event_organizer&region=lagos");
     assert.deepEqual({ icp: parseCrmHash(targetSliceHash("event_organizer", "new-york")).icp, region: parseCrmHash(targetSliceHash("event_organizer", "new-york")).region }, { icp: "event_organizer", region: "new-york" });
     assert.equal(targetSliceHash("<script>", "../x"), "#/hosts");
-    assert.equal(buildCrmHash("hosts", { view: "list", mine: true }), "#/hosts?view=list&mine=1");
-    assert.equal(buildCrmHash("creators", { view: "list" }), "#/creators?view=list");
+    // #4130: the list is the default view now, so it is left out of the address.
+    assert.equal(buildCrmHash("hosts", { view: "list", mine: true }), "#/hosts?mine=1");
+    assert.equal(buildCrmHash("creators", { view: "board" }), "#/creators?view=board");
   });
   it("the Team dashboard's person filter round-trips, and anything that is not an address is dropped", () => {
     assert.equal(buildTeamSearch({ person: "Tunde@UseMingla.com" }), "person=tunde%40usemingla.com");
@@ -425,7 +426,11 @@ describe("#3802 M-8: source contracts for the homes", () => {
     assert.match(HOME, /const summary = useCrmSummary\("home"\);/);
     assert.match(TEAM, /const summary = useCrmSummary\("team"\);/);
     assert.match(BETA, /const summary = useCrmSummary\("betaLeads"\);/);
-    for (const [name, src] of [["RoleHomePage", HOME], ["TeamDashboardPage", TEAM]]) {
+    // #4130: the Team dashboard's numbers are one row of server-counted tiles
+    // (crm_team_pulse and friends, shaped in lib/teamPulse.js), not StatTiles.
+    assert.match(TEAM, /const tiles = pulseTiles\(\{\s*pulse: pulse\.data,/);
+    assert.match(TEAM, /\{tiles\.map\(\(t\) => <Kpi key=\{t\.key\} tile=\{t\} \/>\)\}/);
+    for (const [name, src] of [["RoleHomePage", HOME]]) {
       const tiles = [...src.matchAll(/<StatTile\b[\s\S]*?\/>/g)].map((m) => m[0]);
       assert.ok(tiles.length >= 3, `${name} has its tiles`);
       for (const t of tiles) assert.ok(/value=\{[a-zA-Z]/.test(t) && !/value=\{\d/.test(t) && !/value="/.test(t), `${name} has a tile with a typed number: ${t}`);

@@ -40,7 +40,7 @@ import { dispatchNotification, formatMoneyCents } from "./stripeEdgeAuth.ts";
 import { StripeWebhookRetryableError } from "./stripeWebhookRetry.ts";
 
 // 10% of the 1.5% application fee = 0.15% of GMV.
-// MINGLA_APPLICATION_FEE_RATE = 0.045 lives in installments/createInstallmentPI.ts (#3645)
+// The instalment fee rate lives in installments/installmentFeeRate.ts (#3645, #4130)
 // (reference; we don't re-import it because partner shares are computed FROM
 // the actual fee Stripe charged, not re-derived from total).
 export const PARTNER_SHARE_OF_FEE = 0.10 as const;

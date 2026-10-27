@@ -22,6 +22,7 @@
  *      "Technical details" toggle (creativeCopy.js — mirrors ISSUE-980).
  */
 
+import { adsErrorWords } from "../../lib/systemPages";
 import {
   createElement,
   useCallback,
@@ -231,7 +232,7 @@ export function StepCreative({
         setStageBrandId(null);
         setStageLibrary([]);
         setStageLibraryError(
-          error instanceof Error ? error.message : String(error),
+          adsErrorWords(error instanceof Error ? error.message : String(error)),
         );
       }
     })();
@@ -254,7 +255,7 @@ export function StepCreative({
         const parsed = await parseEdgeError(error);
         setSparkPosts([]);
         setSparkPostsError(
-          parsed?.message ?? "The @usemingla TikTok posts could not be loaded.",
+          adsErrorWords(parsed?.message, "The @usemingla TikTok posts could not be loaded."),
         );
         return;
       }
@@ -341,7 +342,7 @@ export function StepCreative({
     if (error) {
       const parsed = await parseEdgeError(error);
       setVideoLibraryError(
-        parsed?.message ?? "The Creative Library could not be loaded.",
+        adsErrorWords(parsed?.message, "The Creative Library could not be loaded."),
       );
       setVideoLibrary([]);
       return;
@@ -416,11 +417,11 @@ export function StepCreative({
         name: creative.name || file.name.replace(/\.[a-z]+$/i, ""),
       });
     } catch (err) {
-      setServerError({ message: err.message });
+      setServerError({ message: adsErrorWords(err?.message) });
       addToast({
         variant: "error",
         title: "Upload failed",
-        description: err.message,
+        description: adsErrorWords(err?.message),
       });
     }
     setUploading(false);
@@ -464,7 +465,7 @@ export function StepCreative({
       });
     } catch (error) {
       setServerError({
-        message: error instanceof Error ? error.message : String(error),
+        message: adsErrorWords(error instanceof Error ? error.message : String(error)),
       });
     } finally {
       setSelectingVideoId(null);
@@ -489,7 +490,7 @@ export function StepCreative({
       addToast({
         variant: "error",
         title: `${ratio} variant upload failed`,
-        description: err.message,
+        description: adsErrorWords(err?.message),
       });
     }
     setVariantBusy(null);

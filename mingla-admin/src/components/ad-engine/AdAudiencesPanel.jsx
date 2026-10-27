@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { adsErrorWords } from "../../lib/systemPages";
 import { RefreshCw } from "lucide-react";
 import { AlertCard, SectionCard } from "../ui/Card";
 import { Badge } from "../ui/Badge";
@@ -53,7 +54,7 @@ export function AdAudiencesPanel() {
     const { data, error: loadError } = await listAdAudiences(filters);
     if (loadError) {
       const parsed = await parseEdgeError(loadError);
-      setError(String(parsed?.message ?? "Audiences could not be loaded."));
+      setError(adsErrorWords(parsed?.message, "Audiences could not be loaded."));
       setRows([]);
     } else {
       setRows(data?.audiences ?? []);
@@ -91,7 +92,7 @@ export function AdAudiencesPanel() {
     const { error: refreshError } = await refreshAdAudiences(filters);
     if (refreshError) {
       const parsed = await parseEdgeError(refreshError);
-      setError(String(parsed?.message ?? "The audience refresh failed."));
+      setError(adsErrorWords(parsed?.message, "The audience refresh failed."));
     } else {
       await load();
     }

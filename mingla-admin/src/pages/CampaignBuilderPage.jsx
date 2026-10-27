@@ -16,6 +16,7 @@
  * at every step navigation. Executable plan versions remain immutable.
  */
 
+import { adsErrorWords } from "../lib/systemPages";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "../components/ui/Button";
@@ -451,7 +452,7 @@ export function CampaignBuilderPage() {
         addToast({
           variant: "error",
           title: "Draft could not be restored",
-          description: String(parsed?.message ?? "Reload and try again."),
+          description: adsErrorWords(parsed?.message, "Reload and try again."),
         });
         return;
       }
@@ -738,7 +739,7 @@ export function CampaignBuilderPage() {
         addToast({
           variant: "error",
           title: "Preflight failed",
-          description: String(parsed?.message ?? ""),
+          description: adsErrorWords(parsed?.message, ""),
         });
       } else if (platform) {
         const row = (data?.rows ?? [])[0];
@@ -1807,7 +1808,9 @@ export function CampaignBuilderPage() {
         state === "running" ? id : runningStepId === id ? null : runningStepId;
       setCreateSteps(steps);
     };
-    const failCreate = (title, message) => {
+    const failCreate = (title, rawMessage) => {
+      // #4130: the create error line never shows the generic edge text.
+      const message = adsErrorWords(rawMessage);
       if (runningStepId) markStep(runningStepId, "failed", message);
       setCreateError({ title, message });
     };
@@ -2008,7 +2011,7 @@ export function CampaignBuilderPage() {
           }
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = adsErrorWords(error instanceof Error ? error.message : String(error));
         failCreate("Plan preparation failed", message);
         addToast({
           variant: "error",

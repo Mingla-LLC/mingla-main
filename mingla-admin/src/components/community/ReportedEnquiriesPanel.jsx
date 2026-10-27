@@ -1,5 +1,5 @@
 /**
- * #4111 — Reported enquiries (Admin → Community & Support → Community).
+ * #4111 — Reported enquiries (Admin → Community, next to Moderation; #4130 Wave 6).
  *
  * Lists only enquiries the brand or the guest reported (D8). Actions: Dismiss,
  * and Block everywhere (D11), which asks for confirmation inside the row first.

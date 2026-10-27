@@ -30,11 +30,15 @@ function read(rel) {
 }
 
 describe("META-ORCH-1104 Phase 2 — Support desk + segmentation (happy path)", () => {
-  it("registers the Support page in App.jsx PAGES with the SupportDeskPage import", () => {
+  // #4130 Wave 6: #/support is the Support page again; it opens on the desk
+  // (the Inbox tab). The pin had been stale since #3720 folded the desk into
+  // the Community & Support console.
+  it("registers the Support page in App.jsx PAGES, opening on the SupportDeskPage inbox", () => {
     const app = read("src/App.jsx");
-    assert.match(app, /import\s*\{\s*SupportDeskPage\s*\}\s*from\s*["']\.\/pages\/SupportDeskPage["']/);
-    // PAGES map entry `support: SupportDeskPage`
-    assert.match(app, /support:\s*SupportDeskPage/);
+    assert.match(app, /support:\s*SupportPage/);
+    const page = read("src/pages/CommunitySupportPage.jsx");
+    assert.match(page, /import\s*\{\s*SupportDeskPage\s*\}\s*from\s*["']\.\/SupportDeskPage["']/);
+    assert.match(page, /activeTab === "support" && \(\s*<SupportDeskPage embedded/);
   });
 
   it("has a Support NAV_GROUPS item routing to #/support with the LifeBuoy icon", () => {
@@ -60,13 +64,18 @@ describe("META-ORCH-1104 Phase 2 — Support desk + segmentation (happy path)", 
   it("SupportDeskPage renders a support_tickets queue with status + unassigned filters", () => {
     const page = read("src/pages/SupportDeskPage.jsx");
     assert.match(page, /from\("support_tickets"\)/, "queue must read support_tickets");
-    // status filter tabs include the lifecycle states
-    for (const status of ["new", "open", "pending", "resolved", "closed"]) {
-      assert.match(page, new RegExp(`id:\\s*"${status}"`), `status tab ${status} present`);
+    // #4130 Wave 6: the status tabs and the "Unassigned only" box became the
+    // inbox filters (Open, Unassigned, Overdue, Resolved, All) with counts
+    // from the inbox's own rows (lib/supportTicketMetrics.js). The unassigned
+    // filter is worked out client-side over every row the desk loads (live
+    // chats and staff threads), so there is no .is("assigned_staff_id", null)
+    // query; that pin had been stale since #3720 merged the two sources.
+    assert.match(page, /SUPPORT_INBOX_FILTERS\.map\(\(option\) =>/);
+    assert.match(page, /supportInboxRows\(tickets, inboxFilter\)/);
+    const metrics = read("src/lib/supportTicketMetrics.js");
+    for (const id of ["open", "unassigned", "overdue", "resolved", "all"]) {
+      assert.match(metrics, new RegExp(`id: "${id}"`), `inbox filter ${id} present`);
     }
-    // unassigned-only filter
-    assert.match(page, /unassignedOnly/);
-    assert.match(page, /\.is\("assigned_staff_id",\s*null\)/);
     // sorted newest-activity-first
     assert.match(page, /\.order\("last_message_at",\s*\{\s*ascending:\s*false\s*\}\)/);
   });
@@ -93,25 +102,26 @@ describe("META-ORCH-1104 Phase 2 — Support desk + segmentation (happy path)", 
     assert.match(page, /handleSetPriority/);
     // who is on Support is managed in People and roles
     assert.match(page, /Manage who's on Support/);
-    assert.match(page, /#\/community-support\?tab=team/);
+    // #4130 Wave 6: People and roles is a tab of the Support page.
+    assert.match(page, /#\/support\?tab=team/);
   });
 
-  it("UserManagementPage exposes All/Explorer/Business/Admin segment tabs", () => {
-    const page = read("src/pages/UserManagementPage.jsx");
-    // tab definitions
-    for (const seg of ["all", "explorer", "business", "admin"]) {
-      assert.match(page, new RegExp(`id:\\s*"${seg}"`), `segment tab ${seg} present`);
+  // #4130: the Users page and its client-side segment tabs are gone. People
+  // shows the server's segments (explorer / host / both / incomplete /
+  // internal) with counts the server made, never a fabricated number.
+  it("People exposes the server's segments as tabs", () => {
+    const lib = read("src/lib/peopleSegments.js");
+    for (const seg of ["explorer", "host", "both", "incomplete", "internal"]) {
+      assert.match(lib, new RegExp(`segment:\\s*"${seg}"`), `segment tab ${seg} present`);
     }
-    assert.match(page, /SEGMENT_TABS/);
-    assert.match(page, /setSegment/);
+    const page = read("src/pages/PeoplePage.jsx");
+    assert.match(page, /PEOPLE_TABS/);
+    assert.match(page, /peopleTabLabel\(t, countsError \? null : counts\)/);
   });
 
-  it("UserManagementPage reads the derived segment from profiles_with_segment", () => {
-    const page = read("src/pages/UserManagementPage.jsx");
-    assert.match(page, /profiles_with_segment/, "must read the derived-segment view");
-    // filters via the view's `segment` column
-    assert.match(page, /\.eq\("segment",\s*segment\)/);
-    // segment-count badges come from the view, not a fabricated number
-    assert.match(page, /segmentCounts/);
+  it("People reads segments and counts from the admin RPCs", () => {
+    const svc = read("src/services/peopleService.js");
+    assert.match(svc, /rpc\("admin_people_segments"\)/);
+    assert.match(svc, /rpc\("admin_list_people", \{\s*p_segment: segment,/);
   });
 });

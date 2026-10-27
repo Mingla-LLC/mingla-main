@@ -50,7 +50,9 @@
 \getenv t3802w_pw PGPASSWORD
 -- [TEST-MOD-APPROVED #3802] 2026-10-15: Wave 6 extends the newest
 -- complete self-check with the closed import-provenance function and tables.
-\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql`
+-- #4130: crm_team_pulse is a separately guarded dashboard reader, not a
+-- pipeline command owned by the historical #3802 self-check.
+\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/"`
 
 -- ===========================================================================
 -- PART 1 — one transaction, rolled back.
@@ -1522,6 +1524,10 @@ declare
     'crm_ident_key(text,text)', 'crm_clean_identifiers(jsonb)', 'crm_identifier_matches(text,jsonb,uuid)',
     'crm_identifiers_json(uuid)', 'crm_identifier_hits(text,jsonb,uuid)', 'crm_request_claim(text,text,jsonb)',
     'crm_phone_national(text)', 'crm_record_sources_json(uuid)'];
+  -- #4130: this owner-only Team dashboard aggregate deliberately uses the
+  -- public, pg_temp path required by its aggregate RPC contract. Keep it in
+  -- the exact function inventory without pretending it is a pipeline command.
+  c_later_readers constant text[] := array['crm_team_pulse(timestamp with time zone,timestamp with time zone)'];
   v_fn text;
   v_tbl text;
   v_role text;
@@ -1534,7 +1540,7 @@ begin
     (select string_agg(p.oid::regprocedure::text, ' ' order by p.oid::regprocedure::text)
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and (p.proname like 'crm\_%' or p.proname = 'admin_team_directory')),
-    (select string_agg(x, ' ' order by x) from unnest(c_client || c_internal) x));
+    (select string_agg(x, ' ' order by x) from unnest(c_client || c_internal || c_later_readers) x));
   perform pg_temp.t3802w_check('W1-12', 'no pipeline function lives outside public',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname <> 'public' and n.nspname !~ '^pg_' and p.proname like 'crm\_%'), '0');
@@ -1557,6 +1563,17 @@ begin
               || '/' || coalesce(array_to_string(p.proconfig, ','), '<none>')
          from pg_proc p where p.oid = ('public.' || v_fn)::regprocedure),
       'true/true/search_path=""');
+  end loop;
+  foreach v_fn in array c_later_readers loop
+    perform pg_temp.t3802w_check('W1-12', 'the later aggregate reader has only its signed-in grant ' || v_fn,
+      (select string_agg(g.rolname, ',' order by g.rolname)
+         from pg_proc p, aclexplode(p.proacl) a join pg_roles g on g.oid = a.grantee
+        where p.oid = ('public.' || v_fn)::regprocedure and a.grantee <> p.proowner),
+      'authenticated,service_role');
+    perform pg_temp.t3802w_check('W1-12', v_fn || ' runs as its owner and pins the aggregate RPC path',
+      (select p.prosecdef::text || '/' || array_to_string(p.proconfig, ',')
+         from pg_proc p where p.oid = ('public.' || v_fn)::regprocedure),
+      'true/search_path=public, pg_temp');
   end loop;
 
   foreach v_tbl in array array['public.crm_records', 'public.crm_record_owners', 'public.crm_activity', 'public.crm_request_keys',
@@ -1583,7 +1600,9 @@ begin
   for w in
     select * from (values
       -- [TEST-MOD-APPROVED #3980] D-9: brand auto-link (ops_brand_autolink_one) is the one new writer of crm_records and crm_activity.
-      ('crm_records',       'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_delete,public.crm_record_log,public.crm_record_move_stage,public.crm_record_restore,public.crm_record_set_owners,public.crm_record_undo_stage_move,public.crm_record_update,public.ops_brand_autolink_one'),
+      -- #4130: the approved stale-card bulk reset is an admin-only, audited
+      -- writer. Naming it keeps the exact-writer guard closed to every other function.
+      ('crm_records',       'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_delete,public.crm_record_log,public.crm_record_move_stage,public.crm_record_restore,public.crm_record_set_owners,public.crm_record_undo_stage_move,public.crm_record_update,public.ops_brand_autolink_one,public.outreach_reset_stale_due'),
       ('crm_record_owners', 'public.crm_record_create_core,public.crm_record_set_owners'),
       ('crm_record_identifiers', 'public.crm_record_create_core,public.crm_record_update'),
       ('crm_activity',      'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_log,public.crm_record_move_stage,public.crm_record_undo_stage_move,public.ops_brand_autolink_one,public.team_draft_unsend'),

@@ -29,20 +29,16 @@ describe("#3697 Admin Ads operations workspace", () => {
     assert.match(migration, /'scheduler_configuration_proven', false/);
     assert.match(migration, /public\.is_admin_user\(\)/);
     assert.match(service, /ad_admin_operations_overview/);
-    assert.match(
-      overviewPage,
-      /Currencies are separated and never cross-summed/,
-    );
-    assert.match(
-      overviewPage,
-      /does not claim the external scheduler configuration was inspected/,
-    );
+    // #4130 (Wave 4b): the same two promises, in plain English.
+    assert.match(overviewPage, /currencies are never added together/);
+    assert.match(overviewPage, /This does not show how the scheduled sync is set up/);
   });
 
   it("shows real operations, action, provider and delivery evidence", () => {
-    assert.match(overviewPage, /Operations snapshot/);
-    assert.match(overviewPage, /Action queue/);
-    assert.match(overviewPage, /Provider and automation evidence/);
+    // #4130 (Wave 4b): the sections renamed in plain English.
+    assert.match(overviewPage, /At a glance/);
+    assert.match(overviewPage, /Needs action/);
+    assert.match(overviewPage, /Connections and data freshness/);
     assert.match(overviewPage, /missing_spend_campaigns/);
     assert.match(overviewPage, /settlement_attention/);
   });
