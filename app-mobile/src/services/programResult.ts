@@ -98,6 +98,8 @@ const MESSAGES: Record<string, string> = {
   terms_change_reason_invalid: 'Keep the reason under 300 characters.',
   terms_change_stale: 'The terms changed since this was proposed. Pull down to refresh.',
   terms_change_not_found: 'That change is no longer open.',
+  video_due_required: 'Pick a date and time that hasn’t passed yet.',
+  video_due_before_shoot: 'The video can’t be due before the shoot. Pick a later date or time.',
   technical_fixes_exhausted: 'Both technical fix rounds are used.',
   delivery_round_limit: 'Both technical fix rounds are used.',
   ready_delivery_media_required: 'Your video is still processing. Try again in a minute.',

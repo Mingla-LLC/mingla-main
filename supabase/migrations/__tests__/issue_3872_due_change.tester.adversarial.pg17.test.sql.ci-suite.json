@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3872_due_change.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3872-w11-02-due-change-adversarial",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "postgres", "reset": "suite-owned" }
+}

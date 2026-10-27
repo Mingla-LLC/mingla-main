@@ -7,10 +7,10 @@ import { creatorGigsService } from '../../../src/services/creatorGigsService';
 import { programErrorText } from '../../../src/services/programResult';
 import {
   contractCardLabel, contractMoneyLine, creatorStateWords, currencySymbol, formatMoney, formatName, formatShortDate, formatTimeLeft, moneyInputValue, parseMoneyInput,
-  releasedCardText, toDayString,
+  releasedCardText, toDayString, agreedVideoDue, agreedVideoDueText, dueChangeInitial, dueChangePayload, dueTimeOptions,
 } from '../../../src/utils/programFormat';
 import { ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoading, ProgramNotice, ProgramScreen, ProgramSheet, programStyles as s } from '../../../src/components/programs/ProgramUi';
-import { CalendarGrid } from '../../../src/components/programs/ProgramPickers';
+import { CalendarGrid, TimeChips } from '../../../src/components/programs/ProgramPickers';
 import { JOIN_IN_FLIGHT } from '../../../src/components/programs/programRefresh';
 import { useRefreshOnFocus } from '../../../src/components/programs/useProgramRefresh';
 import {
@@ -30,7 +30,8 @@ export default function CreatorContractScreen(): React.ReactElement {
   const [sheet, setSheet] = useState<'counter' | 'shoot' | 'change' | null>(null);
   const [counterPrice, setCounterPrice] = useState('');
   const [counterNote, setCounterNote] = useState('');
-  const [newPostBy, setNewPostBy] = useState<string | null>(null);
+  const [dueDay, setDueDay] = useState<string | null>(null);
+  const [dueTime, setDueTime] = useState<string | null>(null);
   const [changeNote, setChangeNote] = useState('');
 
   const refresh = async (): Promise<void> => {
@@ -199,7 +200,12 @@ export default function CreatorContractScreen(): React.ReactElement {
     {terms ? <TermsCard terms={terms} gig={w.gig} /> : null}
     <TermsHistory terms={w.terms} />
 
-    {canChangeTerms && !openProposal ? <ProgramButton label="Ask to change the video-due date" variant="secondary" onPress={() => { setNewPostBy(null); setChangeNote(''); setSheet('change'); }} /> : null}
+    {canChangeTerms && !openProposal ? <ProgramButton label="Ask to change the video-due date" variant="secondary" onPress={() => {
+      // Prefill from the agreed (current terms) due date and time.
+      const initial = dueChangeInitial(agreedVideoDue(terms, w.gig));
+      setDueDay(initial.day); setDueTime(initial.time); setChangeNote('');
+      setErrors((e) => ({ ...e, change: undefined })); setSheet('change');
+    }} /> : null}
     {canDispute ? <DisputeOpenCard busy={busy === 'dispute'} error={errors.dispute ?? null}
       onOpen={(statement) => void act('dispute', () => creatorGigsService.openDispute(contractId, state === 'fix_requested' ? 'nontechnical_fix_abuse' : 'posts_failed', statement))} /> : null}
     {canCancel ? <ProgramButton label="Can’t do this gig? Cancel it" variant="ghost" busy={busy === 'cancel'} onPress={cancel} /> : null}
@@ -212,13 +218,16 @@ export default function CreatorContractScreen(): React.ReactElement {
       onSend={(iso, note) => void act('shoot', () => creatorGigsService.planShoot(contractId, iso, note, false), () => setSheet(null))} />
 
     <ProgramSheet visible={sheet === 'change'} onClose={() => setSheet(null)} title="Ask to change the video-due date" snapPoints={['70%']} busy={busy === 'change'}
-      footer={<ProgramButton label="Send to the host" busy={busy === 'change'} disabled={!newPostBy}
-        onPress={() => void act('change', () => creatorGigsService.proposeChange(contractId, { post_by: newPostBy }, 'dates', changeNote), () => setSheet(null))} />}>
-      <Text style={s.copy}>The host has 48 hours to answer. The fee can’t change here.</Text>
-      <Text style={s.fieldLabel}>New video-due date{newPostBy ? `: ${formatShortDate(newPostBy)}` : ''}</Text>
-      <CalendarGrid start={newPostBy ?? terms?.post_by ?? null} onPick={setNewPostBy} minDate={toDayString(new Date())} />
-      <ProgramField inSheet label="Why (optional)" value={changeNote} onChangeText={setChangeNote} multiline counter={{ max: 300 }} maxLength={300} />
+      footer={<ProgramButton label="Send to the host" busy={busy === 'change'} disabled={!dueDay || !dueTime}
+        onPress={() => dueDay && dueTime && void act('change', () => creatorGigsService.proposeChange(contractId, dueChangePayload(dueDay, dueTime), 'dates', changeNote), () => setSheet(null))} />}>
+      <Text style={s.copy}>{`Agreed now: ${agreedVideoDueText(terms, w.gig)}. The host has 48 hours to answer. The fee can’t change here.`}</Text>
+      <Text style={s.fieldLabel}>New date{dueDay ? `: ${formatShortDate(dueDay)}` : ''}</Text>
+      <CalendarGrid start={dueDay} onPick={(day) => { setDueDay(day); setErrors((e) => ({ ...e, change: undefined })); }} minDate={toDayString(new Date())} />
+      <Text style={s.fieldLabel}>Time</Text>
+      <TimeChips value={dueTime} onChange={(time) => { setDueTime(time); setErrors((e) => ({ ...e, change: undefined })); }} options={dueTimeOptions(dueTime)} />
+      {/* Refusals (past, before the shoot) sit next to the date and time. */}
       {errors.change ? <ProgramNotice tone="error" text={errors.change} /> : null}
+      <ProgramField inSheet label="Why (optional)" value={changeNote} onChangeText={setChangeNote} multiline counter={{ max: 300 }} maxLength={300} />
     </ProgramSheet>
   </ProgramScreen>;
 }
