@@ -1,7 +1,7 @@
 -- #2829 A20 — a receipt that succeeded carries no stale error code, and a
 -- publication that became published carries no stale failure code (pg17,
 -- BEGIN ... ROLLBACK). Apply every migration through
--- 20271229052829_issue_2829_succeeded_clears_stale_error.sql first, then run
+-- 20280119102829_issue_2829_succeeded_clears_stale_error.sql first, then run
 -- with ON_ERROR_STOP=1. Every fixture rolls back.
 -- Path under test: brand-site-control's 15 s timeout marks the operation
 -- ambiguous (SERVICE_TEMPORARILY_UNAVAILABLE), then Studio's completion

@@ -1,5 +1,5 @@
 -- #2829 W2 — a refused publish names an owner-fixable reason (pg17, BEGIN ... ROLLBACK).
--- Apply every migration through 20271226002829_issue_2829_page_tree_w2.sql
+-- Apply every migration through 20280119022829_issue_2829_page_tree_w2.sql
 -- first, then run with ON_ERROR_STOP=1. Every fixture rolls back.
 -- invariant: I-PROPOSED-2829-06 (DRAFT) — a refused publish keeps the last
 -- good publication live; an owner-fixable reason (PATH_COLLISION,

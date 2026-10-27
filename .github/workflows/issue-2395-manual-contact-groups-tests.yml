@@ -68,6 +68,8 @@ jobs:
   manual-group-postgres-contract:
     if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
     steps:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1

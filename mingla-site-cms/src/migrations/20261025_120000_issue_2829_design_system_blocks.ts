@@ -69,18 +69,18 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   CREATE TYPE "sites_cms"."enum__site_settings_v_version_motion" AS ENUM('design', 'calm', 'lively', 'none');
   CREATE TYPE "sites_cms"."enum_font_assets_style" AS ENUM('normal', 'italic');
   CREATE TABLE "sites_cms"."font_assets" (
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"request_key" varchar NOT NULL,
-  	"family" varchar NOT NULL,
-  	"weight" numeric NOT NULL,
-  	"style" "sites_cms"."enum_font_assets_style" NOT NULL,
-  	"unicode_range" varchar NOT NULL,
-  	"digest" varchar NOT NULL,
-  	"bytes" numeric NOT NULL,
-  	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"request_key" varchar NOT NULL,
+	"family" varchar NOT NULL,
+	"weight" numeric NOT NULL,
+	"style" "sites_cms"."enum_font_assets_style" NOT NULL,
+	"unicode_range" varchar NOT NULL,
+	"digest" varchar NOT NULL,
+	"bytes" numeric NOT NULL,
+	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL
   );
-  
+
   ALTER TABLE "sites_cms"."pages_blocks_hero" ADD COLUMN "variant" "sites_cms"."enum_pages_blocks_hero_variant" DEFAULT 'atelier';
   ALTER TABLE "sites_cms"."pages_blocks_rich_text" ADD COLUMN "variant" "sites_cms"."enum_pages_blocks_rich_text_variant" DEFAULT 'atelier';
   ALTER TABLE "sites_cms"."pages_blocks_media_feature" ADD COLUMN "variant" "sites_cms"."enum_pages_blocks_media_feature_variant" DEFAULT 'atelier';
@@ -200,7 +200,7 @@ export async function down({ db, payload, req }: MigrateDownArgs): Promise<void>
   ALTER TABLE "sites_cms"."font_assets" DISABLE ROW LEVEL SECURITY;
   DROP TABLE "sites_cms"."font_assets" CASCADE;
   ALTER TABLE "sites_cms"."payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_font_assets_fk";
-  
+
   DROP INDEX "sites_cms"."payload_locked_documents_rels_font_assets_id_idx";
   ALTER TABLE "sites_cms"."site_settings" ADD COLUMN "background_color" varchar;
   ALTER TABLE "sites_cms"."site_settings" ADD COLUMN "foreground_color" varchar;

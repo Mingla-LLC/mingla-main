@@ -23,461 +23,461 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   CREATE TYPE "sites_cms"."enum_testimonials_status" AS ENUM('draft', 'published');
   CREATE TYPE "sites_cms"."enum__testimonials_v_version_status" AS ENUM('draft', 'published');
   CREATE TABLE "sites_cms"."pages_blocks_testimonials_testimonial_ids" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" varchar NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"testimonial_id" uuid
+	"_order" integer NOT NULL,
+	"_parent_id" varchar NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"testimonial_id" uuid
   );
-  
+
   CREATE TABLE "sites_cms"."pages_blocks_destination_grid_destinations" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" varchar NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"destination_id" uuid
+	"_order" integer NOT NULL,
+	"_parent_id" varchar NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"destination_id" uuid
   );
-  
+
   CREATE TABLE "sites_cms"."pages_blocks_destination_grid" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"eyebrow" varchar,
-  	"heading" varchar,
-  	"intro" varchar,
-  	"cta_label" varchar,
-  	"cta_href" varchar,
-  	"variant" "sites_cms"."enum_pages_blocks_destination_grid_variant" DEFAULT 'neutral',
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"eyebrow" varchar,
+	"heading" varchar,
+	"intro" varchar,
+	"cta_label" varchar,
+	"cta_href" varchar,
+	"variant" "sites_cms"."enum_pages_blocks_destination_grid_variant" DEFAULT 'neutral',
+	"block_name" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."pages_blocks_story_grid" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"eyebrow" varchar,
-  	"heading" varchar,
-  	"intro" varchar,
-  	"category_id" uuid,
-  	"limit" numeric,
-  	"cta_label" varchar,
-  	"cta_href" varchar,
-  	"variant" "sites_cms"."enum_pages_blocks_story_grid_variant" DEFAULT 'neutral',
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"eyebrow" varchar,
+	"heading" varchar,
+	"intro" varchar,
+	"category_id" uuid,
+	"limit" numeric,
+	"cta_label" varchar,
+	"cta_href" varchar,
+	"variant" "sites_cms"."enum_pages_blocks_story_grid_variant" DEFAULT 'neutral',
+	"block_name" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."pages_blocks_offering_history_series_offering_ids" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" varchar NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"offering_id" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" varchar NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"offering_id" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."pages_blocks_offering_history_series" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" varchar NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"label" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" varchar NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"label" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."pages_blocks_offering_history" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"eyebrow" varchar,
-  	"heading" varchar,
-  	"intro" varchar,
-  	"kind" "sites_cms"."enum_pages_blocks_offering_history_kind" DEFAULT 'trip',
-  	"cta_label" varchar,
-  	"cta_href" varchar,
-  	"variant" "sites_cms"."enum_pages_blocks_offering_history_variant" DEFAULT 'neutral',
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"eyebrow" varchar,
+	"heading" varchar,
+	"intro" varchar,
+	"kind" "sites_cms"."enum_pages_blocks_offering_history_kind" DEFAULT 'trip',
+	"cta_label" varchar,
+	"cta_href" varchar,
+	"variant" "sites_cms"."enum_pages_blocks_offering_history_variant" DEFAULT 'neutral',
+	"block_name" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."pages_blocks_contact_form" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"eyebrow" varchar,
-  	"heading" varchar,
-  	"intro" varchar,
-  	"show_phone" boolean DEFAULT false,
-  	"message_label" varchar,
-  	"message_placeholder" varchar,
-  	"submit_label" varchar,
-  	"success_text" varchar,
-  	"fallback_email" varchar,
-  	"variant" "sites_cms"."enum_pages_blocks_contact_form_variant" DEFAULT 'neutral',
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"eyebrow" varchar,
+	"heading" varchar,
+	"intro" varchar,
+	"show_phone" boolean DEFAULT false,
+	"message_label" varchar,
+	"message_placeholder" varchar,
+	"submit_label" varchar,
+	"success_text" varchar,
+	"fallback_email" varchar,
+	"variant" "sites_cms"."enum_pages_blocks_contact_form_variant" DEFAULT 'neutral',
+	"block_name" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."pages_blocks_newsletter_signup" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"eyebrow" varchar,
-  	"heading" varchar,
-  	"body" varchar,
-  	"placeholder" varchar,
-  	"button_label" varchar,
-  	"small_print" varchar,
-  	"variant" "sites_cms"."enum_pages_blocks_newsletter_signup_variant" DEFAULT 'neutral',
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"eyebrow" varchar,
+	"heading" varchar,
+	"body" varchar,
+	"placeholder" varchar,
+	"button_label" varchar,
+	"small_print" varchar,
+	"variant" "sites_cms"."enum_pages_blocks_newsletter_signup_variant" DEFAULT 'neutral',
+	"block_name" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_pages_v_blocks_testimonials_testimonial_ids" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"testimonial_id" uuid,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"testimonial_id" uuid,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_pages_v_blocks_destination_grid_destinations" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"destination_id" uuid,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"destination_id" uuid,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_pages_v_blocks_destination_grid" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"eyebrow" varchar,
-  	"heading" varchar,
-  	"intro" varchar,
-  	"cta_label" varchar,
-  	"cta_href" varchar,
-  	"variant" "sites_cms"."enum__pages_v_blocks_destination_grid_variant" DEFAULT 'neutral',
-  	"_uuid" varchar,
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"eyebrow" varchar,
+	"heading" varchar,
+	"intro" varchar,
+	"cta_label" varchar,
+	"cta_href" varchar,
+	"variant" "sites_cms"."enum__pages_v_blocks_destination_grid_variant" DEFAULT 'neutral',
+	"_uuid" varchar,
+	"block_name" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_pages_v_blocks_story_grid" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"eyebrow" varchar,
-  	"heading" varchar,
-  	"intro" varchar,
-  	"category_id" uuid,
-  	"limit" numeric,
-  	"cta_label" varchar,
-  	"cta_href" varchar,
-  	"variant" "sites_cms"."enum__pages_v_blocks_story_grid_variant" DEFAULT 'neutral',
-  	"_uuid" varchar,
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"eyebrow" varchar,
+	"heading" varchar,
+	"intro" varchar,
+	"category_id" uuid,
+	"limit" numeric,
+	"cta_label" varchar,
+	"cta_href" varchar,
+	"variant" "sites_cms"."enum__pages_v_blocks_story_grid_variant" DEFAULT 'neutral',
+	"_uuid" varchar,
+	"block_name" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_pages_v_blocks_offering_history_series_offering_ids" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"offering_id" varchar,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"offering_id" varchar,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_pages_v_blocks_offering_history_series" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"label" varchar,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"label" varchar,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_pages_v_blocks_offering_history" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"eyebrow" varchar,
-  	"heading" varchar,
-  	"intro" varchar,
-  	"kind" "sites_cms"."enum__pages_v_blocks_offering_history_kind" DEFAULT 'trip',
-  	"cta_label" varchar,
-  	"cta_href" varchar,
-  	"variant" "sites_cms"."enum__pages_v_blocks_offering_history_variant" DEFAULT 'neutral',
-  	"_uuid" varchar,
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"eyebrow" varchar,
+	"heading" varchar,
+	"intro" varchar,
+	"kind" "sites_cms"."enum__pages_v_blocks_offering_history_kind" DEFAULT 'trip',
+	"cta_label" varchar,
+	"cta_href" varchar,
+	"variant" "sites_cms"."enum__pages_v_blocks_offering_history_variant" DEFAULT 'neutral',
+	"_uuid" varchar,
+	"block_name" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_pages_v_blocks_contact_form" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"eyebrow" varchar,
-  	"heading" varchar,
-  	"intro" varchar,
-  	"show_phone" boolean DEFAULT false,
-  	"message_label" varchar,
-  	"message_placeholder" varchar,
-  	"submit_label" varchar,
-  	"success_text" varchar,
-  	"fallback_email" varchar,
-  	"variant" "sites_cms"."enum__pages_v_blocks_contact_form_variant" DEFAULT 'neutral',
-  	"_uuid" varchar,
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"eyebrow" varchar,
+	"heading" varchar,
+	"intro" varchar,
+	"show_phone" boolean DEFAULT false,
+	"message_label" varchar,
+	"message_placeholder" varchar,
+	"submit_label" varchar,
+	"success_text" varchar,
+	"fallback_email" varchar,
+	"variant" "sites_cms"."enum__pages_v_blocks_contact_form_variant" DEFAULT 'neutral',
+	"_uuid" varchar,
+	"block_name" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_pages_v_blocks_newsletter_signup" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"eyebrow" varchar,
-  	"heading" varchar,
-  	"body" varchar,
-  	"placeholder" varchar,
-  	"button_label" varchar,
-  	"small_print" varchar,
-  	"variant" "sites_cms"."enum__pages_v_blocks_newsletter_signup_variant" DEFAULT 'neutral',
-  	"_uuid" varchar,
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"eyebrow" varchar,
+	"heading" varchar,
+	"body" varchar,
+	"placeholder" varchar,
+	"button_label" varchar,
+	"small_print" varchar,
+	"variant" "sites_cms"."enum__pages_v_blocks_newsletter_signup_variant" DEFAULT 'neutral',
+	"_uuid" varchar,
+	"block_name" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."destinations_seasons_activities" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" varchar NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"text" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" varchar NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"text" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."destinations_seasons" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"heading" varchar,
-  	"body" varchar,
-  	"image_id" uuid
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"heading" varchar,
+	"body" varchar,
+	"image_id" uuid
   );
-  
+
   CREATE TABLE "sites_cms"."destinations_did_you_know" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"text" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"text" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."destinations_related_offerings" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"offering_id" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"offering_id" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."destinations_gallery" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"media_id" uuid,
-  	"alt" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"media_id" uuid,
+	"alt" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."destinations" (
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"tenant_id" uuid,
-  	"title" varchar,
-  	"slug" varchar,
-  	"country" varchar,
-  	"featured_image_id" uuid,
-  	"tagline" varchar,
-  	"summary" varchar,
-  	"facts_language" varchar,
-  	"facts_currency" varchar,
-  	"facts_religion" varchar,
-  	"facts_timezone" varchar,
-  	"story_heading" varchar,
-  	"body" jsonb,
-  	"seo_title" varchar,
-  	"seo_description" varchar,
-  	"seo_noindex" boolean DEFAULT false,
-  	"enabled" boolean DEFAULT true,
-  	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"_status" "sites_cms"."enum_destinations_status" DEFAULT 'draft'
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"tenant_id" uuid,
+	"title" varchar,
+	"slug" varchar,
+	"country" varchar,
+	"featured_image_id" uuid,
+	"tagline" varchar,
+	"summary" varchar,
+	"facts_language" varchar,
+	"facts_currency" varchar,
+	"facts_religion" varchar,
+	"facts_timezone" varchar,
+	"story_heading" varchar,
+	"body" jsonb,
+	"seo_title" varchar,
+	"seo_description" varchar,
+	"seo_noindex" boolean DEFAULT false,
+	"enabled" boolean DEFAULT true,
+	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"_status" "sites_cms"."enum_destinations_status" DEFAULT 'draft'
   );
-  
+
   CREATE TABLE "sites_cms"."_destinations_v_version_seasons_activities" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"text" varchar,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"text" varchar,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_destinations_v_version_seasons" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"heading" varchar,
-  	"body" varchar,
-  	"image_id" uuid,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"heading" varchar,
+	"body" varchar,
+	"image_id" uuid,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_destinations_v_version_did_you_know" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"text" varchar,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"text" varchar,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_destinations_v_version_related_offerings" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"offering_id" varchar,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"offering_id" varchar,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_destinations_v_version_gallery" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"media_id" uuid,
-  	"alt" varchar,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"media_id" uuid,
+	"alt" varchar,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_destinations_v" (
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"parent_id" uuid,
-  	"version_tenant_id" uuid,
-  	"version_title" varchar,
-  	"version_slug" varchar,
-  	"version_country" varchar,
-  	"version_featured_image_id" uuid,
-  	"version_tagline" varchar,
-  	"version_summary" varchar,
-  	"version_facts_language" varchar,
-  	"version_facts_currency" varchar,
-  	"version_facts_religion" varchar,
-  	"version_facts_timezone" varchar,
-  	"version_story_heading" varchar,
-  	"version_body" jsonb,
-  	"version_seo_title" varchar,
-  	"version_seo_description" varchar,
-  	"version_seo_noindex" boolean DEFAULT false,
-  	"version_enabled" boolean DEFAULT true,
-  	"version_updated_at" timestamp(3) with time zone,
-  	"version_created_at" timestamp(3) with time zone,
-  	"version__status" "sites_cms"."enum__destinations_v_version_status" DEFAULT 'draft',
-  	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"latest" boolean
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"parent_id" uuid,
+	"version_tenant_id" uuid,
+	"version_title" varchar,
+	"version_slug" varchar,
+	"version_country" varchar,
+	"version_featured_image_id" uuid,
+	"version_tagline" varchar,
+	"version_summary" varchar,
+	"version_facts_language" varchar,
+	"version_facts_currency" varchar,
+	"version_facts_religion" varchar,
+	"version_facts_timezone" varchar,
+	"version_story_heading" varchar,
+	"version_body" jsonb,
+	"version_seo_title" varchar,
+	"version_seo_description" varchar,
+	"version_seo_noindex" boolean DEFAULT false,
+	"version_enabled" boolean DEFAULT true,
+	"version_updated_at" timestamp(3) with time zone,
+	"version_created_at" timestamp(3) with time zone,
+	"version__status" "sites_cms"."enum__destinations_v_version_status" DEFAULT 'draft',
+	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"latest" boolean
   );
-  
+
   CREATE TABLE "sites_cms"."categories" (
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"tenant_id" uuid,
-  	"title" varchar,
-  	"slug" varchar,
-  	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"_status" "sites_cms"."enum_categories_status" DEFAULT 'draft'
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"tenant_id" uuid,
+	"title" varchar,
+	"slug" varchar,
+	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"_status" "sites_cms"."enum_categories_status" DEFAULT 'draft'
   );
-  
+
   CREATE TABLE "sites_cms"."_categories_v" (
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"parent_id" uuid,
-  	"version_tenant_id" uuid,
-  	"version_title" varchar,
-  	"version_slug" varchar,
-  	"version_updated_at" timestamp(3) with time zone,
-  	"version_created_at" timestamp(3) with time zone,
-  	"version__status" "sites_cms"."enum__categories_v_version_status" DEFAULT 'draft',
-  	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"latest" boolean
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"parent_id" uuid,
+	"version_tenant_id" uuid,
+	"version_title" varchar,
+	"version_slug" varchar,
+	"version_updated_at" timestamp(3) with time zone,
+	"version_created_at" timestamp(3) with time zone,
+	"version__status" "sites_cms"."enum__categories_v_version_status" DEFAULT 'draft',
+	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"latest" boolean
   );
-  
+
   CREATE TABLE "sites_cms"."stories" (
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"tenant_id" uuid,
-  	"title" varchar,
-  	"slug" varchar,
-  	"published_at" timestamp(3) with time zone,
-  	"category_id" uuid,
-  	"featured_image_id" uuid,
-  	"excerpt" varchar,
-  	"content" jsonb,
-  	"seo_title" varchar,
-  	"seo_description" varchar,
-  	"seo_noindex" boolean DEFAULT false,
-  	"enabled" boolean DEFAULT true,
-  	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"_status" "sites_cms"."enum_stories_status" DEFAULT 'draft'
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"tenant_id" uuid,
+	"title" varchar,
+	"slug" varchar,
+	"published_at" timestamp(3) with time zone,
+	"category_id" uuid,
+	"featured_image_id" uuid,
+	"excerpt" varchar,
+	"content" jsonb,
+	"seo_title" varchar,
+	"seo_description" varchar,
+	"seo_noindex" boolean DEFAULT false,
+	"enabled" boolean DEFAULT true,
+	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"_status" "sites_cms"."enum_stories_status" DEFAULT 'draft'
   );
-  
+
   CREATE TABLE "sites_cms"."_stories_v" (
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"parent_id" uuid,
-  	"version_tenant_id" uuid,
-  	"version_title" varchar,
-  	"version_slug" varchar,
-  	"version_published_at" timestamp(3) with time zone,
-  	"version_category_id" uuid,
-  	"version_featured_image_id" uuid,
-  	"version_excerpt" varchar,
-  	"version_content" jsonb,
-  	"version_seo_title" varchar,
-  	"version_seo_description" varchar,
-  	"version_seo_noindex" boolean DEFAULT false,
-  	"version_enabled" boolean DEFAULT true,
-  	"version_updated_at" timestamp(3) with time zone,
-  	"version_created_at" timestamp(3) with time zone,
-  	"version__status" "sites_cms"."enum__stories_v_version_status" DEFAULT 'draft',
-  	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"latest" boolean
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"parent_id" uuid,
+	"version_tenant_id" uuid,
+	"version_title" varchar,
+	"version_slug" varchar,
+	"version_published_at" timestamp(3) with time zone,
+	"version_category_id" uuid,
+	"version_featured_image_id" uuid,
+	"version_excerpt" varchar,
+	"version_content" jsonb,
+	"version_seo_title" varchar,
+	"version_seo_description" varchar,
+	"version_seo_noindex" boolean DEFAULT false,
+	"version_enabled" boolean DEFAULT true,
+	"version_updated_at" timestamp(3) with time zone,
+	"version_created_at" timestamp(3) with time zone,
+	"version__status" "sites_cms"."enum__stories_v_version_status" DEFAULT 'draft',
+	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"latest" boolean
   );
-  
+
   CREATE TABLE "sites_cms"."testimonials" (
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"tenant_id" uuid,
-  	"quote" varchar,
-  	"reviewer" varchar,
-  	"review_date" timestamp(3) with time zone,
-  	"trip_name" varchar,
-  	"related_offering" varchar,
-  	"source_note" varchar,
-  	"confirmed_real" boolean DEFAULT false,
-  	"enabled" boolean DEFAULT true,
-  	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"_status" "sites_cms"."enum_testimonials_status" DEFAULT 'draft'
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"tenant_id" uuid,
+	"quote" varchar,
+	"reviewer" varchar,
+	"review_date" timestamp(3) with time zone,
+	"trip_name" varchar,
+	"related_offering" varchar,
+	"source_note" varchar,
+	"confirmed_real" boolean DEFAULT false,
+	"enabled" boolean DEFAULT true,
+	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"_status" "sites_cms"."enum_testimonials_status" DEFAULT 'draft'
   );
-  
+
   CREATE TABLE "sites_cms"."_testimonials_v" (
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"parent_id" uuid,
-  	"version_tenant_id" uuid,
-  	"version_quote" varchar,
-  	"version_reviewer" varchar,
-  	"version_review_date" timestamp(3) with time zone,
-  	"version_trip_name" varchar,
-  	"version_related_offering" varchar,
-  	"version_source_note" varchar,
-  	"version_confirmed_real" boolean DEFAULT false,
-  	"version_enabled" boolean DEFAULT true,
-  	"version_updated_at" timestamp(3) with time zone,
-  	"version_created_at" timestamp(3) with time zone,
-  	"version__status" "sites_cms"."enum__testimonials_v_version_status" DEFAULT 'draft',
-  	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"latest" boolean
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"parent_id" uuid,
+	"version_tenant_id" uuid,
+	"version_quote" varchar,
+	"version_reviewer" varchar,
+	"version_review_date" timestamp(3) with time zone,
+	"version_trip_name" varchar,
+	"version_related_offering" varchar,
+	"version_source_note" varchar,
+	"version_confirmed_real" boolean DEFAULT false,
+	"version_enabled" boolean DEFAULT true,
+	"version_updated_at" timestamp(3) with time zone,
+	"version_created_at" timestamp(3) with time zone,
+	"version__status" "sites_cms"."enum__testimonials_v_version_status" DEFAULT 'draft',
+	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"latest" boolean
   );
-  
+
   ALTER TABLE "sites_cms"."pages_blocks_testimonials" ADD COLUMN "from_collection" boolean DEFAULT false;
   ALTER TABLE "sites_cms"."pages_blocks_testimonials" ADD COLUMN "intro" varchar;
   ALTER TABLE "sites_cms"."pages_blocks_testimonials" ADD COLUMN "limit" numeric;
@@ -763,13 +763,13 @@ export async function down({ db, payload, req }: MigrateDownArgs): Promise<void>
   DROP TABLE "sites_cms"."testimonials" CASCADE;
   DROP TABLE "sites_cms"."_testimonials_v" CASCADE;
   ALTER TABLE "sites_cms"."payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_destinations_fk";
-  
+
   ALTER TABLE "sites_cms"."payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_categories_fk";
-  
+
   ALTER TABLE "sites_cms"."payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_stories_fk";
-  
+
   ALTER TABLE "sites_cms"."payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_testimonials_fk";
-  
+
   DROP INDEX "sites_cms"."payload_locked_documents_rels_destinations_id_idx";
   DROP INDEX "sites_cms"."payload_locked_documents_rels_categories_id_idx";
   DROP INDEX "sites_cms"."payload_locked_documents_rels_stories_id_idx";

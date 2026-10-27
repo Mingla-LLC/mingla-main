@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#3645",
+  "target": {
+    "kind": "function",
+    "name": "ticket-checkout-status"
+  },
+  "basePolicySha256": "fb6801690d6e77700e6bf7be12a1a8f604f75ac7156dca53afd98adcaa5028a4",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "required_top_level",
+      "name": "RESEND_API_KEY",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "3f17a18205faa0f055637da4311070188a21834afaa01ce4437692852a9047fd",
+  "reason": "Issue #3645 lets checkout status recovery emit the existing organiser outcome email after installment settlement, so its email-provider key must be classified."
+}

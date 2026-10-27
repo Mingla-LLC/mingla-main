@@ -71,129 +71,129 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   ALTER TYPE "sites_cms"."enum_site_settings_design" ADD VALUE 'voyage';
   ALTER TYPE "sites_cms"."enum__site_settings_v_version_design" ADD VALUE 'voyage';
   CREATE TABLE "sites_cms"."pages_blocks_hero_heading_lines" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" varchar NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"text" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" varchar NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"text" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."history_links" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" varchar NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"offering_id" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" varchar NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"offering_id" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."pages_blocks_page_header" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"heading" varchar,
-  	"subheading" varchar,
-  	"media_id" uuid,
-  	"variant" "sites_cms"."enum_pages_blocks_page_header_variant" DEFAULT 'neutral',
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"heading" varchar,
+	"subheading" varchar,
+	"media_id" uuid,
+	"variant" "sites_cms"."enum_pages_blocks_page_header_variant" DEFAULT 'neutral',
+	"block_name" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."pages_blocks_feature_cards_cards" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" varchar NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"title" varchar,
-  	"body" varchar,
-  	"icon" "sites_cms"."enum_pages_blocks_feature_cards_cards_icon"
+	"_order" integer NOT NULL,
+	"_parent_id" varchar NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"title" varchar,
+	"body" varchar,
+	"icon" "sites_cms"."enum_pages_blocks_feature_cards_cards_icon"
   );
-  
+
   CREATE TABLE "sites_cms"."pages_blocks_feature_cards" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"heading" varchar,
-  	"intro" varchar,
-  	"variant" "sites_cms"."enum_pages_blocks_feature_cards_variant" DEFAULT 'neutral',
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"heading" varchar,
+	"intro" varchar,
+	"variant" "sites_cms"."enum_pages_blocks_feature_cards_variant" DEFAULT 'neutral',
+	"block_name" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."pages_blocks_contact_details" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"heading" varchar,
-  	"body" varchar,
-  	"email" varchar,
-  	"location" varchar,
-  	"variant" "sites_cms"."enum_pages_blocks_contact_details_variant" DEFAULT 'neutral',
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"heading" varchar,
+	"body" varchar,
+	"email" varchar,
+	"location" varchar,
+	"variant" "sites_cms"."enum_pages_blocks_contact_details_variant" DEFAULT 'neutral',
+	"block_name" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_pages_v_blocks_hero_heading_lines" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"text" varchar,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"text" varchar,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_history_links_v" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"offering_id" varchar,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"offering_id" varchar,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_pages_v_blocks_page_header" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"heading" varchar,
-  	"subheading" varchar,
-  	"media_id" uuid,
-  	"variant" "sites_cms"."enum__pages_v_blocks_page_header_variant" DEFAULT 'neutral',
-  	"_uuid" varchar,
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"heading" varchar,
+	"subheading" varchar,
+	"media_id" uuid,
+	"variant" "sites_cms"."enum__pages_v_blocks_page_header_variant" DEFAULT 'neutral',
+	"_uuid" varchar,
+	"block_name" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_pages_v_blocks_feature_cards_cards" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"title" varchar,
-  	"body" varchar,
-  	"icon" "sites_cms"."enum__pages_v_blocks_feature_cards_cards_icon",
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"title" varchar,
+	"body" varchar,
+	"icon" "sites_cms"."enum__pages_v_blocks_feature_cards_cards_icon",
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_pages_v_blocks_feature_cards" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"heading" varchar,
-  	"intro" varchar,
-  	"variant" "sites_cms"."enum__pages_v_blocks_feature_cards_variant" DEFAULT 'neutral',
-  	"_uuid" varchar,
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"heading" varchar,
+	"intro" varchar,
+	"variant" "sites_cms"."enum__pages_v_blocks_feature_cards_variant" DEFAULT 'neutral',
+	"_uuid" varchar,
+	"block_name" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_pages_v_blocks_contact_details" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"_path" text NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"heading" varchar,
-  	"body" varchar,
-  	"email" varchar,
-  	"location" varchar,
-  	"variant" "sites_cms"."enum__pages_v_blocks_contact_details_variant" DEFAULT 'neutral',
-  	"_uuid" varchar,
-  	"block_name" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"_path" text NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"heading" varchar,
+	"body" varchar,
+	"email" varchar,
+	"location" varchar,
+	"variant" "sites_cms"."enum__pages_v_blocks_contact_details_variant" DEFAULT 'neutral',
+	"_uuid" varchar,
+	"block_name" varchar
   );
-  
+
   ALTER TABLE "sites_cms"."pages_blocks_hero" ADD COLUMN "eyebrow" varchar;
   ALTER TABLE "sites_cms"."pages_blocks_hero" ADD COLUMN "show_search" boolean DEFAULT false;
   ALTER TABLE "sites_cms"."pages_blocks_rich_text" ADD COLUMN "width" "sites_cms"."enum_pages_blocks_rich_text_width";

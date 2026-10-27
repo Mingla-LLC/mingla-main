@@ -1,3 +1,4 @@
+-- MINGLA-INVARIANT: I-PROPOSED-2829-17 | issue #2829 | An unfinished website plan may remind only the brand owner and rank-50+ teammates with accepted membership, at most once per recipient per brand in any rolling seven-day window; the sweep never mutates the plan or site.
 -- #2829 R1 independent adversarial proof (pg17, replay database).
 -- A weekly nudge must not become a broad or mutating sweep: fresh plans,
 -- deleted brands, revoked entitlements, and inactive teammates stay quiet.

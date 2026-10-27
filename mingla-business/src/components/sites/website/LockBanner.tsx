@@ -35,4 +35,3 @@ export function LockBanner({ section }: { section: WebsiteSection }): React.Reac
     </Banner>
   );
 }
-

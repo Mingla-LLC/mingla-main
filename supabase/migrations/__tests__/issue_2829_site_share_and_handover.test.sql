@@ -15,7 +15,7 @@
 --    nothing else); the owner's reader returns visits, top pages, book
 --    clicks, enquiries, bookings and sources (rank 20), and the overview
 --    counter answers from the same reader.
--- Apply every migration through 20271229092829_issue_2829_seo_analytics_share_handover.sql
+-- Apply every migration through 20280119142829_issue_2829_seo_analytics_share_handover.sql
 -- first, then run with ON_ERROR_STOP=1. Every fixture rolls back. Neutral
 -- fixtures only.
 

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#3645",
+  "target": {
+    "kind": "function",
+    "name": "ticket-checkout-confirm"
+  },
+  "basePolicySha256": "e770e6f1f0be3c3dc862dc4376865c34cc9d2635483d3ffe17b9ef80100e471f",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "required_top_level",
+      "name": "RESEND_API_KEY",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "afde6ef8c877c73e9a20ae79413a8065a6a2af292f44b35ba48021bd6846bbf6",
+  "reason": "Issue #3645 lets checkout confirmation emit the existing organiser outcome email after installment settlement, so its email-provider key must be classified."
+}

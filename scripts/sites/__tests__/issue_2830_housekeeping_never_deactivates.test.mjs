@@ -847,4 +847,3 @@ test("#2830 T-8.1 there is no pilot activation script left to run", () => {
   assert.equal(backup.includes("pilot-deactivation"), false);
   assert.ok(backup.includes("/recovery-state"));
 });
-

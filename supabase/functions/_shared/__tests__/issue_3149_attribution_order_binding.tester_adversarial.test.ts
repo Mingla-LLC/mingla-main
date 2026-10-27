@@ -188,7 +188,7 @@ const FOUNDATION = await Deno.readTextFile(
  */
 const W1 = await Deno.readTextFile(
   new URL(
-    "../../../migrations/20271225002829_issue_2829_sites_multi_brand_w1.sql",
+    "../../../migrations/20280119012829_issue_2829_sites_multi_brand_w1.sql",
     import.meta.url,
   ),
 );

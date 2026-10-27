@@ -203,4 +203,3 @@ export function applyStudioMediaSelection(
   typed.images = images;
   return blocks;
 }
-

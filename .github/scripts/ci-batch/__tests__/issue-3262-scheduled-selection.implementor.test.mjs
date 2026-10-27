@@ -188,8 +188,8 @@ function passingReports(value, host, decision) {
 // ---------------------------------------------------------------------------
 test("#3262 a scheduled run selects every owned Phase 3B suite cleanly on every host class", () => {
   const value = manifest();
-  // [#3643] Fourteen sealed hosts plus the two Phase 3D Deno hosts.
-  assert.equal(value.classes.length, 16, "the batch lane has sixteen host classes; a smaller list would prove less than it claims");
+  // [#3643] The sixteen established hosts plus fourteen Phase 3E Postgres hosts.
+  assert.equal(value.classes.length, 30, "the batch lane has thirty host classes; a smaller list would prove less than it claims");
   let selectedAcrossHosts = 0;
   {
     for (const host of value.classes) {

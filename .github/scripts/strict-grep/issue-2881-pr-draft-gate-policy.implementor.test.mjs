@@ -55,8 +55,10 @@ test("T-1 the real workflow tree passes the draft-gate policy with the expected 
   assert.deepEqual(result.errors, [], `unexpected policy errors:\n${result.errors.join("\n")}`);
   assert.equal(result.counts.gated + result.counts.exempt, result.counts.prFamily, "the partition must be total");
   assert.equal(result.counts.exempt, ALWAYS_ON.length);
-  // [#3643] Phase 3D deleted twenty gated per-issue lanes (115 -> 95 gated of 105).
-  assert.ok(result.counts.gated >= 95, `expected the gated set to be the bulk of the repo, got ${result.counts.gated}`);
+  // [#3643] The Phase 3D/3E folds retire the per-issue wrappers; the live
+  // workflow tree now has 49 draft-gated lanes while the consolidated CI batch
+  // remains gated alongside the read-only pin evidence.
+  assert.ok(result.counts.gated >= 49, `expected the gated set to remain populated, got ${result.counts.gated}`);
   assert.ok(result.counts.gatedJobs >= result.counts.gated, "every gated workflow has at least one job");
 });
 
@@ -268,7 +270,9 @@ test("T-13 the ci-batch origin registry describes every live workflow by its pro
   const sources = readWorkflowSources();
   const live = (manifest.legacyOrigins ?? []).filter((origin) => origin.disposition !== "batched-active"
     && typeof sources[`${origin.stem}.${origin.extension}`] === "string");
-  assert.ok(live.length > 50, `expected the origin registry to cover most workflows, only saw ${live.length}`);
+  // The folded per-issue wrappers are no longer live files; 40 retained
+  // origins are the current property-inventory floor after #3643.
+  assert.ok(live.length >= 40, `expected the origin registry to cover retained workflows, only saw ${live.length}`);
   const inspected = inspectWorkflows(REPO_ROOT, discoverLiveOrigins(REPO_ROOT));
   const fingerprinted = [];
   const drifted = [];

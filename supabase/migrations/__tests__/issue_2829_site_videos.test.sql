@@ -1,5 +1,5 @@
 -- #2829 W6 (AD-9) — brand_site_videos (pg17, BEGIN ... ROLLBACK). Apply every
--- migration through 20271229012829_issue_2829_site_videos.sql first, then run
+-- migration through 20280119062829_issue_2829_site_videos.sql first, then run
 -- with ON_ERROR_STOP=1. Every fixture rolls back. Neutral fixtures only.
 --
 -- Proves: only the service role can read or write it (RLS forced, no grants

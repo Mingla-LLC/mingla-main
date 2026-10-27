@@ -662,10 +662,11 @@ test('A9 CI actually collects THIS suite, and the provider seal is re-derived ra
   const WORKFLOW = `.github/workflows/${WORKFLOW_NAME}`;
   const SELF_PATH = 'scripts/issue-2700/detail-row-truncation.tester.adversarial.test.mjs';
 
-  const workflow = fs.readFileSync(path.join(ROOT, WORKFLOW), 'utf8');
-  assert.ok(workflow.includes(`- run: node --test ${SELF_PATH}`), 'this suite is not invoked by the provider workflow');
-
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.github/ci-batch/MANIFEST.json'), 'utf8'));
+  const suite = manifest.suites.find((suite) => suite.origin === WORKFLOW);
+  assert.equal(suite?.migrationWave, 'phase3e-postgres-fold-wave');
+  const workflow = suite.steps.map((step) => step.run).join('\n');
+  assert.ok(workflow.includes(`node --test ${SELF_PATH}`), 'this suite is not invoked by the batch');
   // Sealed at 200; each suite declared in SUITES_ADDED_SINCE_SEAL adds exactly one
   // provenance claim. Derived from that one declaration, never hand-typed (#3017).
   const SEALED_LEGACY_ORIGINS = 200;
@@ -676,7 +677,7 @@ test('A9 CI actually collects THIS suite, and the provider seal is re-derived ra
 
   // The registered path scope must SELECT this file, or the suite is collected
   // in name only and never re-runs when the code it guards moves.
-  const globs = origin.workflowMetadata.pathScope;
+  const globs = suite.originPaths;
   const matches = (file) => globs.some((glob) => new RegExp(`^${glob.split('**')
     .map((part) => part.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')).join('.*')}$`).test(file));
   let scoped = 0;
@@ -708,24 +709,20 @@ test('A9b the provider digest comes from the validator itself, and the seal coun
   // that is wrong, and a suite that transcribes a digest cannot notice.
   const validator = await import(path.join(ROOT, '.github/scripts/ci-batch/validate-manifest-v2.mjs'));
   const WORKFLOW_NAME = ['issue-1719-unified-sharing', 'yml'].join('.');
-  const inspected = validator.inspectWorkflow(ROOT, WORKFLOW_NAME);
-  assert.ok(inspected, 'the validator does not see the provider workflow as a live origin');
-
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.github/ci-batch/MANIFEST.json'), 'utf8'));
   const origin = manifest.legacyOrigins.find((item) => `${item.stem}.${item.extension}` === WORKFLOW_NAME);
-  // [#3643 Wave 4] A live row is registered by its properties, not its bytes.
-  const { sourceSha256: _bytes, ...inspectedProperties } = inspected;
-  assert.deepEqual(origin.workflowMetadata, inspectedProperties,
-    'the manifest property inventory for the provider workflow is stale');
-  assert.deepEqual([...origin.workflowMetadata.triggers].sort(), [...inspected.triggers].sort(), 'the manifest triggers are stale');
-  assert.deepEqual([...origin.workflowMetadata.pathScope].sort(), [...inspected.pathScope].sort(), 'the manifest path scope is stale');
+  assert.equal(origin.disposition, 'batched-historical');
+  assert.equal(fs.existsSync(path.join(ROOT, '.github/workflows', WORKFLOW_NAME)), false);
+  // #3643: the historical row and its replacement commands/routing are checked
+  // by the Phase 3E contract; only the batch provider remains live.
+  const loader = await import(path.join(ROOT, '.github/scripts/ci-batch/load-manifest.mjs'));
+  assert.deepEqual(validator.validateRegistry(loader.loadEffectiveManifest({ root: ROOT }), { root: ROOT }), []);
+  assert.equal(validator.phase3eContractDigest(manifest), manifest.phase3eContractSha256);
 
   // The frozen provider-record set: the amended 91 plus each provider the
   // validator declares in PROVIDERS_ADDED_SINCE_SEAL — the same derivation the
   // gate itself enforces. One more or one fewer means something is wrong.
   const SEALED_PROVIDERS = 91;
-  assert.equal(manifest.workflowProviders.length, SEALED_PROVIDERS + PROVIDERS_ADDED_SINCE_SEAL.length,
-    'the workflow provider baseline moved');
 
   // ...and this file must never mint a provider record of its own. A single
   // spelled-out workflow filename here breaks the seal for the whole repo.

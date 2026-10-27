@@ -12,4 +12,3 @@ export function SiteStatusChip({ controller }: { controller: WebsiteController }
   if (site.active_publication_id) return <Chip label="Live" tone="ok" testID="status-chip" />;
   return <Chip label="Draft" tone="neutral" testID="status-chip" />;
 }
-

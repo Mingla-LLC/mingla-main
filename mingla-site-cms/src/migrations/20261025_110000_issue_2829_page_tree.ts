@@ -48,130 +48,130 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   CREATE TYPE "sites_cms"."enum_site_settings_redirects_status" AS ENUM('308', '301');
   CREATE TYPE "sites_cms"."enum__site_settings_v_version_redirects_status" AS ENUM('308', '301');
   CREATE TABLE "sites_cms"."navigation_items_children" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" varchar NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"label" varchar,
-  	"target_type" "sites_cms"."enum_navigation_items_children_target_type" DEFAULT 'page',
-  	"page_id" uuid,
-  	"url" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" varchar NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"label" varchar,
+	"target_type" "sites_cms"."enum_navigation_items_children_target_type" DEFAULT 'page',
+	"page_id" uuid,
+	"url" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."navigation_items" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"label" varchar,
-  	"target_type" "sites_cms"."enum_navigation_items_target_type" DEFAULT 'page',
-  	"page_id" uuid,
-  	"url" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"label" varchar,
+	"target_type" "sites_cms"."enum_navigation_items_target_type" DEFAULT 'page',
+	"page_id" uuid,
+	"url" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_navigation_v_version_items_children" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"label" varchar,
-  	"target_type" "sites_cms"."enum__navigation_v_version_items_children_target_type" DEFAULT 'page',
-  	"page_id" uuid,
-  	"url" varchar,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"label" varchar,
+	"target_type" "sites_cms"."enum__navigation_v_version_items_children_target_type" DEFAULT 'page',
+	"page_id" uuid,
+	"url" varchar,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_navigation_v_version_items" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"label" varchar,
-  	"target_type" "sites_cms"."enum__navigation_v_version_items_target_type" DEFAULT 'page',
-  	"page_id" uuid,
-  	"url" varchar,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"label" varchar,
+	"target_type" "sites_cms"."enum__navigation_v_version_items_target_type" DEFAULT 'page',
+	"page_id" uuid,
+	"url" varchar,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."footer_tagline_lines" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"text" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"text" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."footer_columns_links" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" varchar NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"label" varchar,
-  	"href" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" varchar NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"label" varchar,
+	"href" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."footer_columns" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"heading" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"heading" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."footer_socials" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"network" "sites_cms"."enum_footer_socials_network",
-  	"url" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"network" "sites_cms"."enum_footer_socials_network",
+	"url" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_footer_v_version_tagline_lines" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"text" varchar,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"text" varchar,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_footer_v_version_columns_links" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"label" varchar,
-  	"href" varchar,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"label" varchar,
+	"href" varchar,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_footer_v_version_columns" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"heading" varchar,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"heading" varchar,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_footer_v_version_socials" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"network" "sites_cms"."enum__footer_v_version_socials_network",
-  	"url" varchar,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"network" "sites_cms"."enum__footer_v_version_socials_network",
+	"url" varchar,
+	"_uuid" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."site_settings_redirects" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"from" varchar,
-  	"to" varchar,
-  	"status" "sites_cms"."enum_site_settings_redirects_status" DEFAULT '308'
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"from" varchar,
+	"to" varchar,
+	"status" "sites_cms"."enum_site_settings_redirects_status" DEFAULT '308'
   );
-  
+
   CREATE TABLE "sites_cms"."_site_settings_v_version_redirects" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"from" varchar,
-  	"to" varchar,
-  	"status" "sites_cms"."enum__site_settings_v_version_redirects_status" DEFAULT '308',
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"from" varchar,
+	"to" varchar,
+	"status" "sites_cms"."enum__site_settings_v_version_redirects_status" DEFAULT '308',
+	"_uuid" varchar
   );
-  
+
   ALTER TABLE "sites_cms"."pages" ADD COLUMN "parent_id" uuid;
   ALTER TABLE "sites_cms"."pages" ADD COLUMN "kind" "sites_cms"."enum_pages_kind" DEFAULT 'standard';
   ALTER TABLE "sites_cms"."pages" ADD COLUMN "collection_kind" "sites_cms"."enum_pages_collection_kind";

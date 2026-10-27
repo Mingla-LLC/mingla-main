@@ -3,20 +3,20 @@ import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
 export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
    CREATE TABLE "sites_cms"."history_only" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" varchar NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"offering_id" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" varchar NOT NULL,
+	"id" varchar PRIMARY KEY NOT NULL,
+	"offering_id" varchar
   );
-  
+
   CREATE TABLE "sites_cms"."_history_only_v" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" uuid NOT NULL,
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"offering_id" varchar,
-  	"_uuid" varchar
+	"_order" integer NOT NULL,
+	"_parent_id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"offering_id" varchar,
+	"_uuid" varchar
   );
-  
+
   ALTER TABLE "sites_cms"."pages_blocks_contact_form" ADD COLUMN "name_placeholder" varchar;
   ALTER TABLE "sites_cms"."pages_blocks_contact_form" ADD COLUMN "email_placeholder" varchar;
   ALTER TABLE "sites_cms"."_pages_v_blocks_contact_form" ADD COLUMN "name_placeholder" varchar;

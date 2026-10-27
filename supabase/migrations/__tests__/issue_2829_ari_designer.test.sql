@@ -7,7 +7,7 @@
 --  - a refused first publish may say DESIGN_CHECKS_REQUIRED, free text never;
 --  - the certification census moves with the ledger (160 requirement rows =
 --    the finalizer's two literals).
--- Apply every migration through 20271229072829_issue_2829_ari_designer.sql
+-- Apply every migration through 20280119122829_issue_2829_ari_designer.sql
 -- first, then run with ON_ERROR_STOP=1. Every fixture rolls back. Neutral
 -- fixtures only.
 

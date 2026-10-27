@@ -12,31 +12,31 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   CREATE TYPE "sites_cms"."enum_work_log_actor" AS ENUM('ari', 'user');
   CREATE TYPE "sites_cms"."enum_design_check_runs_run_by" AS ENUM('ari', 'user');
   CREATE TABLE "sites_cms"."work_log" (
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"tenant_id" uuid,
-  	"part" "sites_cms"."enum_work_log_part" NOT NULL,
-  	"decision" varchar NOT NULL,
-  	"cites" jsonb NOT NULL,
-  	"actor" "sites_cms"."enum_work_log_actor" NOT NULL,
-  	"actor_user_id" varchar,
-  	"tool" varchar,
-  	"target" varchar,
-  	"revision" varchar,
-  	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"tenant_id" uuid,
+	"part" "sites_cms"."enum_work_log_part" NOT NULL,
+	"decision" varchar NOT NULL,
+	"cites" jsonb NOT NULL,
+	"actor" "sites_cms"."enum_work_log_actor" NOT NULL,
+	"actor_user_id" varchar,
+	"tool" varchar,
+	"target" varchar,
+	"revision" varchar,
+	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL
   );
-  
+
   CREATE TABLE "sites_cms"."design_check_runs" (
-  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"tenant_id" uuid,
-  	"draft_digest" varchar NOT NULL,
-  	"results" jsonb NOT NULL,
-  	"warning_count" numeric NOT NULL,
-  	"run_by" "sites_cms"."enum_design_check_runs_run_by" NOT NULL,
-  	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"tenant_id" uuid,
+	"draft_digest" varchar NOT NULL,
+	"results" jsonb NOT NULL,
+	"warning_count" numeric NOT NULL,
+	"run_by" "sites_cms"."enum_design_check_runs_run_by" NOT NULL,
+	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL
   );
-  
+
   ALTER TABLE "sites_cms"."destinations" ADD COLUMN "drafted_by" "sites_cms"."enum_destinations_drafted_by";
   ALTER TABLE "sites_cms"."_destinations_v" ADD COLUMN "version_drafted_by" "sites_cms"."enum__destinations_v_version_drafted_by";
   ALTER TABLE "sites_cms"."stories" ADD COLUMN "drafted_by" "sites_cms"."enum_stories_drafted_by";
@@ -67,9 +67,9 @@ export async function down({ db, payload, req }: MigrateDownArgs): Promise<void>
   DROP TABLE "sites_cms"."work_log" CASCADE;
   DROP TABLE "sites_cms"."design_check_runs" CASCADE;
   ALTER TABLE "sites_cms"."payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_work_log_fk";
-  
+
   ALTER TABLE "sites_cms"."payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_design_check_runs_fk";
-  
+
   DROP INDEX "sites_cms"."payload_locked_documents_rels_work_log_id_idx";
   DROP INDEX "sites_cms"."payload_locked_documents_rels_design_check_runs_id_idx";
   ALTER TABLE "sites_cms"."destinations" DROP COLUMN "drafted_by";

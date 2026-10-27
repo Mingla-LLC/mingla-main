@@ -1,6 +1,6 @@
 -- #2829 W4 — the trip guide sidecar and the offerings feed a site reads
 -- (pg17, BEGIN ... ROLLBACK). Apply every migration through
--- 20271228002829_issue_2829_trip_guides_and_offerings_feed.sql first, then run
+-- 20280119042829_issue_2829_trip_guides_and_offerings_feed.sql first, then run
 -- with ON_ERROR_STOP=1. Every fixture rolls back.
 -- see I-PROPOSED-2829-11 (declared beside the builder test) — ended or cancelled offerings stay in
 -- the feed with their status (they never fail a publish or vanish from

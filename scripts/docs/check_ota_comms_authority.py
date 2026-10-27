@@ -6,14 +6,6 @@ COMMS_LEDGER.md exists again. Chats coordinate by messaging each other under
 AGENTS.md § Coordinate with other chats; rules that bind every chat live in
 AGENTS.md § Standing holds.
 
-The path and name of this file are kept ONLY because the #2148 workflow
-provider seal (.github/scripts/ci-batch/validate-manifest-v2.mjs,
-LOCKED_PROVIDER_DISCOVERY_SHA256) records this file as the sole external
-reference to docs-artifact-regression.yml, and that seal cannot drop a
-reference file. Until that limitation is fixed (#3477), do not rename or
-delete this file. Its previous job (#2028: guarding the OTA authority rows
-of the COMMS table) ended with the table; those OTA rules now live in
-docs/MINGLA_ENGINEERING_HANDBOOK.md §7.6.
 """
 
 from __future__ import annotations

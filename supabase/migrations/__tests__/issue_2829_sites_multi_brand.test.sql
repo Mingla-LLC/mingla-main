@@ -1,7 +1,7 @@
 -- MINGLA-INVARIANT: I-PROPOSED-2829-03 | issue #2829 | A soft-deleted brand's site does not resolve publicly; restoring the brand brings the same publication back.
 -- MINGLA-INVARIANT: I-PROPOSED-2829-04 | issue #2829 | Publishing and rolling back a site require brand rank 50 (brand admin) or higher; lower ranks are refused by the server.
 -- #2829 Sites multi-brand behavioural regression (pg17, BEGIN ... ROLLBACK).
--- Apply every migration through 20271225002829_issue_2829_sites_multi_brand_w1.sql
+-- Apply every migration through 20280119012829_issue_2829_sites_multi_brand_w1.sql
 -- first, then run with ON_ERROR_STOP=1. Every fixture rolls back.
 -- CI runs it on a fresh migration replay. On the SEEDED local stack the seed's
 -- own environment='local' row is recognised explicitly (see the first block);

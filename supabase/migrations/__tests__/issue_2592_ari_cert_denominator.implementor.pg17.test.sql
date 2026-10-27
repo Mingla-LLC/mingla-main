@@ -31,7 +31,7 @@
 -- [TEST-MOD-APPROVED #3872] 152 after the Discounts, Referrals and Creator Gig
 -- tools in 20271229003872_issue_3872_ari_cert_capability_census (prior pin 148).
 -- #2829 W9b 164 after the website designer tools in
--- 20271229082829_issue_2829_ari_cert_capability_census (prior pin 152).
+-- 20280119132829_issue_2829_ari_cert_capability_census (prior pin 152).
 --
 -- All fixtures roll back.
 -- =====================================================================================

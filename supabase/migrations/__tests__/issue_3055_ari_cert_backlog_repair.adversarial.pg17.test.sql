@@ -391,7 +391,7 @@ COMMIT;
 \ir ../20271216043872_issue_3872_r1_host_operations.sql
 \ir ../20271229003872_issue_3872_ari_cert_capability_census.sql
 -- #2829 W9b: tip census is now the website designer's (152→164), on top of #3872's.
-\ir ../20271229082829_issue_2829_ari_cert_capability_census.sql
+\ir ../20280119132829_issue_2829_ari_cert_capability_census.sql
 
 DO $restored$
 BEGIN

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** #3645 — every installment is routed from its immutable ledger provider. */
+// MINGLA-INVARIANT: I-3645-PS-4 | issue #3645 | Installment charging routes from the immutable installment row provider.
 
 import fs from "node:fs";
 import path from "node:path";

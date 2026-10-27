@@ -166,7 +166,7 @@ export function sitesOwnerFixableRefusal(
 /**
  * #2829 — the hostname shape rule, mirrored by the
  * `brand_site_hosts_hostname_shape_ck` CHECK in
- * 20271225002829_issue_2829_sites_multi_brand_w1.sql (parity tested): lowercase,
+ * 20280119012829_issue_2829_sites_multi_brand_w1.sql (parity tested): lowercase,
  * 4-253 characters, at least one dot, each label 1-63 of [a-z0-9-] not starting
  * or ending with '-', no trailing dot, none of `*:/?#@`.
  */

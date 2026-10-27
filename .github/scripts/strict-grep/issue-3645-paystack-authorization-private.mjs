@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** #3645 — saved charge credentials stay private and never enter logs. */
+// MINGLA-INVARIANT: I-3645-PS-2 | issue #3645 | Paystack authorization never leaves the server.
 
 import fs from "node:fs";
 import path from "node:path";

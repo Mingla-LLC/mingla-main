@@ -357,4 +357,3 @@ const styles = StyleSheet.create({
   sub: { fontSize: 12.5, color: ui.t3 },
   seasonBody: { paddingHorizontal: 14, paddingBottom: 14 },
 });
-

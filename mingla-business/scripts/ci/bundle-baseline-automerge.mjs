@@ -174,24 +174,23 @@ export const STALE_REFUSAL_MINUTES = 360;
  * proven on #3227, 2026-09-11). #3325 then added #2099's four jobs on purpose,
  * taking it to 26, and left the number alone.
  *
- * MEASURED 2026-09-15, identical on #3338, #3356, #3368 and #3400: 26 checks.
- * 23 are GitHub Actions jobs from the six KEEP workflows (ci-batch 15: fourteen
- * matrix classes plus the bounded-dispatch job, which reports as skipped;
- * #2099 4; Framework Major Guard, the jest suite, the provenance guard and
- * #1614 one each) and 3 are app checks (GitGuardian Security Checks, Vercel
- * Preview Comments, Supabase Preview). The ceiling keeps #2885's own room of
- * six above that: enough for another integration, far below the 56 checks the
- * unscoped fan-out cost. The #2524 suite derives the 23 from the KEEP
- * workflows' job lists and holds this constant between 26 and 32, so a KEEP
- * workflow that gains jobs reds that suite on its own pull request instead of
- * reddening main after the next recording merge. Still count the checks on a
- * live recording PR before moving it.
+ * MEASURED after #3643's Postgres fold: 41 checks on a baseline-only PR.
+ * 38 are GitHub Actions jobs from the five KEEP workflows (ci-batch 30,
+ * #2099 4, Framework Major Guard, the jest suite and the provenance guard one
+ * each) and 3 are app checks (GitGuardian Security Checks, Vercel Preview
+ * Comments, Supabase Preview). The ceiling keeps #2885's own room of six above
+ * that: enough for another integration while remaining below the unscoped
+ * fan-out. The #2524 suite derives the 38 from the KEEP workflows' job lists
+ * and holds this constant between 41 and 47, so a KEEP workflow that gains jobs
+ * reds that suite on its own pull request instead of reddening main after the
+ * next recording merge. Still count the checks on a live recording PR before
+ * moving it.
  *
  * It NEVER refuses the merge — a diagnostic that re-creates the stale-baseline
  * jam would be worse than the fan-out it is reporting. The merge happens, then
  * the job goes red.
  */
-export const CHECK_FANOUT_CEILING = 32;
+export const CHECK_FANOUT_CEILING = 47;
 
 export const SCOPES = Object.freeze(["common", "eager"]);
 export const METRICS = Object.freeze(["raw", "brotli"]);
@@ -798,8 +797,8 @@ async function main() {
     problems.push(
       `CI SCOPING REGRESSED. The recording PR reported ${JSON.stringify(result.fanout.count)} checks against a `
       + `ceiling of ${result.fanout.ceiling} (${result.fanout.reason}). A pull request that changes one `
-      + `machine-written baseline file should start only the KEEP workflows of the #2524 suite (26 checks `
-      + `measured 2026-09-15). Compare this PR's check names with an earlier recording PR's: find the workflow `
+      + `machine-written baseline file should start only the KEEP workflows of the #2524 suite (41 checks `
+      + `measured after #3643's Postgres fold). Compare this PR's check names with an earlier recording PR's: find the workflow `
       + `whose pull_request filter does not exclude ${BASELINE_PATH}, or raise the ceiling deliberately if the `
       + `new check is genuinely required.`,
     );

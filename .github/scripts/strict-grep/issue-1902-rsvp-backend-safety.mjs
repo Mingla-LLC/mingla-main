@@ -21,7 +21,8 @@ const paths = {
     "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
   edgeTest:
     "supabase/functions/public-submit-rsvp/__tests__/issue_1902_rsvp_end_guard.test.ts",
-  workflow: ".github/workflows/issue-1902-rsvp-backend-safety-tests.yml",
+
+  replay: ".github/scripts/ci-batch/postgres-batch.mjs",
 };
 
 const need = (source, token, label, failures) => {
@@ -156,38 +157,14 @@ export function violations(files, migrationNames = []) {
     ]
   ) need(mapping, token, "PII-minimal rejection log", failures);
 
-  for (
-    const token of [
-      "issue_1902_public_event_lifecycle.test.ts",
-      "issue_1902_public_event_lifecycle.tester_adversarial.test.ts",
-      "issue_1902_public_event_lifecycle.pg17.test.sql",
-      "issue_1902_public_event_lifecycle.pg17.tester_adversarial.test.sql",
-      "issue_1902_rsvp_end_guard.test.ts",
-      "issue_1902_rsvp_end_guard.tester_adversarial.test.ts",
-      "issue-1902-rsvp-backend-safety.mjs --self-test",
-      "issue-1902-rsvp-backend-safety.mjs",
-      "deno check supabase/functions/public-submit-rsvp/index.ts",
-      "Apply every migration in timestamp order",
-      "--allow-run",
-      "--allow-net",
-      'grep -Fq "actual public-submit-rsvp HTTP handler" "$test_file"',
-    ]
-  ) need(files.workflow ?? "", token, "dedicated blocking workflow", failures);
-  forbid(
-    files.workflow ?? "",
-    "continue-on-error:",
-    "blocking workflow",
-    failures,
-  );
-
-  for (const key of ["migrationTest", "pg17", "edgeTest"]) {
-    need(
-      files.workflow ?? "",
-      path.basename(paths[key]),
-      `CI-wired ${key}`,
-      failures,
-    );
-  }
+  // #3643 moved the replay into the batch. Check its actual ordered executor
+  // rather than a step title from the deleted per-issue workflow.
+  for (const token of [
+    '.split("\\0").filter(Boolean).sort()',
+    'throw new Error("migration replay selected zero SQL files")',
+    "for (const migration of templateMigrations)",
+    '["-q", "-v", "ON_ERROR_STOP=1", "-f", migration]',
+  ]) need(files.replay ?? "", token, "ordered migration replay", failures);
 
   const prefixMatches = migrationNames.filter((name) =>
     name.startsWith("20270322001902_")
@@ -227,6 +204,8 @@ function selfTest() {
     throw new Error(`self-test baseline invalid:\n${baseline.join("\n")}`);
   }
   const reversions = [
+    ["replay", '.filter(Boolean).sort()', '.filter(Boolean).reverse()', "ordered migration replay"],
+    ["replay", '["-q", "-v", "ON_ERROR_STOP=1", "-f", migration]', '["-q", "-v", "ON_ERROR_STOP=0", "-f", migration]', "ordered migration replay"],
     [
       "migration",
       "v_master_end_at <= clock_timestamp()",
@@ -257,18 +236,6 @@ function selfTest() {
       "v_result := public.submit_event_rsvp(",
       "v_result := public.unchecked_submit_event_rsvp(",
       "delivery wrapper",
-    ],
-    [
-      "workflow",
-      "issue_1902_public_event_lifecycle.pg17.test.sql",
-      "disabled.sql",
-      "pg17",
-    ],
-    [
-      "workflow",
-      'grep -Fq "actual public-submit-rsvp HTTP handler" "$test_file"',
-      'grep -Fq "source-only handler mapping" "$test_file"',
-      "actual public-submit-rsvp HTTP handler",
     ],
   ];
   for (const [key, before, after, expected] of reversions) {

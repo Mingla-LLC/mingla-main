@@ -21,7 +21,6 @@ export function check(sources) {
     menu,
     parseMenu,
     parsePlay,
-    workflow,
   } = sources;
   for (const token of [
     "IF v_event.status = 'draft' THEN",
@@ -141,22 +140,7 @@ export function check(sources) {
   }
   const liveBlock = menu.slice(menu.indexOf('if (status === "live"'), menu.indexOf("// Cancel event"));
   if (liveBlock.includes("onUnpublish")) failures.push("live event still exposes impossible unpublish action");
-  for (const token of [
-    "issue_1972_ari_event_lifecycle.implementor.test.ts",
-    "issue_1972_ari_event_lifecycle.tester_adversarial.test.ts",
-    "issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.ts",
-    "issue_1972_ari_event_lifecycle.test.sql",
-    "issue_1972_ari_event_lifecycle.tester.adversarial.test.sql",
-    "issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.sql",
-    "issue_1972_ari_event_lifecycle.round3.implementor.test.sql",
-    "issue_1972_ari_event_lifecycle.tester_round3.adversarial.test.sql",
-    "issue_1972_ari_event_lifecycle.round4.implementor.test.sql",
-    "issue_1972_ari_event_lifecycle.tester_round4.adversarial.test.sql",
-    "issue_1972_ari_event_lifecycle.round5.implementor.test.sql",
-    "issue_1972_ari_event_lifecycle.tester_round5.adversarial.test.sql",
-    "issue_1972_terminalization_claims.implementor.test.sql",
-    "issue-1972-ari-event-lifecycle.mjs --self-test",
-  ]) if (!workflow.includes(token)) failures.push(`CI proof missing ${token}`);
+
   return failures;
 }
 
@@ -171,7 +155,6 @@ const sources = {
   menu: read("mingla-business/src/components/event/EventManageMenu.tsx"),
   parseMenu: read("supabase/functions/parse-restaurant-menu/index.ts"),
   parsePlay: read("supabase/functions/parse-play-activities/index.ts"),
-  workflow: read(".github/workflows/issue-1972-ari-event-lifecycle.yml"),
 };
 
 if (process.argv.includes("--self-test")) {
@@ -184,25 +167,22 @@ if (process.argv.includes("--self-test")) {
     { ...sources, migration: sources.migration.replace("CREATE OR REPLACE FUNCTION public.business_update_live_event_atomic", "CREATE OR REPLACE FUNCTION public.business_update_live_event_fragmented") },
     { ...sources, editor: sources.editor.replace("await patchPublishedEventAtomically(", "await patchPublishedEventCore(") },
     { ...sources, parseMenu: sources.parseMenu.replace("issue_1973_create_snap_proposals", "removed_snap_boundary") },
-    { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester.adversarial.test.sql", "removed.sql") },
+
     { ...sources, migration: sources.migration.replace("v_event.theme#>'{business_draft,requestedVisibility}'", "'public'::jsonb") },
     { ...sources, migration: sources.migration.replace("v_event.theme#>'{business_draft,location}'", "'null'::jsonb") },
     { ...sources, migration: sources.migration.replace("v_core ? 'visibility'", "false") },
-    { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester_round3.adversarial.test.sql", "removed-round3.sql") },
-    { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester_round4.adversarial.test.sql", "removed-round4.sql") },
+
     { ...sources, migration: sources.migration.replace("v_visibility NOT IN('public','unlisted','private')", "false") },
     { ...sources, migration: sources.migration.replace("CREATE TRIGGER business_guard_event_publish_visibility", "CREATE TRIGGER removed_publish_visibility_guard") },
     { ...sources, migration: sources.migration.replace("NEW.visibility IS DISTINCT FROM v_expected_live_visibility", "false") },
     { ...sources, migration: sources.migration.replace("COALESCE(NEW.theme,'{}'::jsonb) ? 'business_event'", "true") },
     { ...sources, tools: sources.tools.replace('required: ["brand_id", "title", "when_mode", "visibility"]', 'required: ["brand_id", "title", "when_mode"]') },
-    { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.round5.implementor.test.sql", "removed-round5.sql") },
-    { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester_round5.adversarial.test.sql", "removed-round5-tester.sql") },
+
     { ...sources, migration: sources.migration.replace("current_setting('request.jwt.claims',true)", "current_setting('request.jwt.claim.role',true)") },
     { ...sources, migration: sources.migration.replace(
       "DECLARE v_brand_id uuid;v_claims jsonb;",
       "DECLARE v_brand_id uuid;v_claims jsonb; -- request.jwt.claim.role",
     ) },
-    { ...sources, workflow: sources.workflow.replaceAll("issue_1972_terminalization_claims.implementor.test.sql", "removed-terminalization-claims.sql") },
   ];
   const undetected = mutations.filter((mutation) => check(mutation).length === 0);
   if (good.length || undetected.length) {

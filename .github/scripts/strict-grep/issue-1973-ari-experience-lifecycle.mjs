@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const read = (path) => fs.readFileSync(path, "utf8");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
 const sources = {
   migration: read(
     "supabase/migrations/20270505001973_issue_1973_ari_experience_lifecycle.sql",
@@ -25,7 +28,6 @@ const sources = {
   precisionTest: read(
     "supabase/migrations/__tests__/issue_1973_experience_public_payload_and_precision.implementor.pg17.test.sql",
   ),
-  workflow: read(".github/workflows/issue-1973-ari-experience-lifecycle.yml"),
 };
 
 function check(s) {
@@ -179,13 +181,7 @@ function check(s) {
     "public manage-stops shape lost canonical precision",
     "partial public update fabricated a timezone",
   ]);
-  requireAll("workflow", s.workflow, [
-    "issue_1973_create_draft_followup.implementor.test.ts",
-    "deno fmt --check",
-    "agentToolAuthorization.ts",
-    "issue_1973_experience_receipt_payload.implementor.test.ts",
-    "issue_1973_experience_public_payload_and_precision.implementor.pg17.test.sql",
-  ]);
+
   for (const [label, parser] of [["play", s.play], ["menu", s.menu]]) {
     requireAll(label, parser, [
       "biz_brand_effective_rank_for_caller",

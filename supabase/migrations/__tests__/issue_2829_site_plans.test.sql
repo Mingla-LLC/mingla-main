@@ -1,6 +1,6 @@
 -- MINGLA-INVARIANT: I-PROPOSED-2829-13 | issue #2829 | A website plan part is ticked only from Mingla's own state (server done-checks), plan writes are revision-checked and lock-guarded, and only brand admins and owners change the plan (rank 20-49 may only point Ari at a part).
 -- #2829 W9a (AD-11) — the website plan (pg17, BEGIN ... ROLLBACK).
--- Apply every migration through 20271229042829_issue_2829_site_plans.sql
+-- Apply every migration through 20280119092829_issue_2829_site_plans.sql
 -- first, then run with ON_ERROR_STOP=1. Every fixture rolls back. Neutral
 -- fixtures only.
 -- Proves: grants (table RPC-only, internals service-only); entitlement and

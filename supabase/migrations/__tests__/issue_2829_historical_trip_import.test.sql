@@ -1,6 +1,6 @@
 -- #2829 W5 (amendment A1.3) — historical trips imported as ended Mingla trips
 -- (pg17, BEGIN ... ROLLBACK). Apply every migration through
--- 20271229002829_issue_2829_historical_trip_import.sql first, then run with
+-- 20280119052829_issue_2829_historical_trip_import.sql first, then run with
 -- ON_ERROR_STOP=1. Every fixture rolls back. Neutral fixtures only.
 --
 -- Proves: only the service role can import; an import creates a PUBLIC,

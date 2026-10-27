@@ -6,11 +6,23 @@ const migration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
-const workflow = await Deno.readTextFile(
-  new URL(
-    "../../../.github/workflows/issue-1902-rsvp-backend-safety-tests.yml",
-    import.meta.url,
+const registry = JSON.parse(
+  await Deno.readTextFile(
+    new URL(
+      "../../../.github/ci-batch/MANIFEST.json",
+      import.meta.url,
+    ),
   ),
+);
+const suite = registry.suites.find((suite: { id: string }) =>
+  suite.id === "issue-1902-rsvp-backend-safety-tests"
+);
+assert(
+  suite?.migrationWave === "phase3e-postgres-fold-wave",
+  "#1902 must have its sealed folded suite",
+);
+const workflow = suite.steps.map((step: { run: string }) => step.run).join(
+  "\n",
 );
 
 const submitStart = migration.indexOf(

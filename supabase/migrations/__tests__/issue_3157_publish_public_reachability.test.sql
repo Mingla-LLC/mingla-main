@@ -6,7 +6,7 @@
 -- brand_site_record_public_reachability over that real publication, then reads
 -- back the publication columns, the audit rows and the operation receipt. It
 -- (It also drove the pilot activate/deactivate switch; #2829 removed that switch
--- in 20271225002829_issue_2829_sites_multi_brand_w1.sql, so those PART A
+-- in 20280119012829_issue_2829_sites_multi_brand_w1.sql, so those PART A
 -- assertions are converted below. Owner offline/online, entitlement grant and
 -- revoke are the replacements and are asserted, with their audit rows, in
 -- issue_2829_sites_multi_brand.test.sql.)

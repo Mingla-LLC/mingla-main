@@ -1,7 +1,7 @@
 -- #2829 W3 — a completed publication records the artifact generation,
 -- renderer and design the CMS wrote, and any font fallbacks (pg17,
 -- BEGIN ... ROLLBACK). Apply every migration through
--- 20271227002829_issue_2829_design_system_w3.sql first, then run with
+-- 20280119032829_issue_2829_design_system_w3.sql first, then run with
 -- ON_ERROR_STOP=1. Every fixture rolls back.
 -- invariant: I-PROPOSED-2829-07 (DRAFT) — Mingla records an owner's font
 -- fallback as a warning on the receipt; it never fails a publish for it.

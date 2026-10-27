@@ -6,7 +6,7 @@
 -- (brand_site_configure_pilot_binding, brand_site_activate_gogi_pilot,
 -- brand_site_deactivate_gogi_pilot, the pilot_* columns and the literal
 -- brand/operator/host checks) was removed by
--- 20271225002829_issue_2829_sites_multi_brand_w1.sql. The assertions on that
+-- 20280119012829_issue_2829_sites_multi_brand_w1.sql. The assertions on that
 -- removed behaviour are replaced by the entitlement, host and resolver
 -- assertions in issue_2829_sites_multi_brand.test.sql. What still applies is
 -- kept here: evidence validation and freshness bounds, host readiness bound to

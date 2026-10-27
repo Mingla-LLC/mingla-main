@@ -15,11 +15,6 @@ const files = {
   recovery: "supabase/functions/attendance-claim-backfill/index.ts",
   dispatch: "supabase/functions/ticket-confirmation-dispatch/index.ts",
   config: "supabase/config.toml",
-  workflow: path.join(
-    ".github",
-    "workflows",
-    ["issue-871-attendance-entitlement-tests", "yml"].join("."),
-  ),
 };
 
 const rules = [
@@ -82,11 +77,6 @@ const rules = [
     "ISSUE2979_MIGRATION_FIRST_OLD_WRAPPER",
     "migration",
     /claim_attendance_internal\([\s\S]*SELECT public\.claim_attendance_internal_v2\([\s\S]*p_proof_digest, p_proof_digest/,
-  ],
-  [
-    "ISSUE2979_WORKFLOW_IMPLEMENTOR_COVERAGE",
-    "workflow",
-    /issue_2979_attendance_pepper_ring\.implementor\.happy\.test\.ts[\s\S]*issue_2979_attendance_claim_continuity\.implementor\.happy\.test\.ts[\s\S]*issue_2979_recovery_delivery\.implementor\.happy\.test\.ts[\s\S]*issue_2979_ticket_confirmation_claim\.implementor\.happy\.test\.ts[\s\S]*issue_2979_attendance_claim_continuity\.tester\.adversarial\.test\.ts[\s\S]*issue_2979_recovery_delivery\.tester\.adversarial\.test\.ts[\s\S]*issue_2979_ticket_confirmation_claim\.tester\.adversarial\.test\.ts[\s\S]*issue_2979_attendance_claim_secret_continuity\.implementor\.happy\.test\.sql[\s\S]*issue_2979_attendance_claim_secret_continuity\.tester\.adversarial\.test\.sql/,
   ],
 ];
 

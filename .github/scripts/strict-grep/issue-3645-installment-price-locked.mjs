@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** #3645 — later charges use the checkout-persisted amount; no repricing. */
+// MINGLA-INVARIANT: I-3645-PS-3 | issue #3645 | Every later installment charge uses its checkout-locked amount.
 
 import fs from "node:fs";
 import path from "node:path";

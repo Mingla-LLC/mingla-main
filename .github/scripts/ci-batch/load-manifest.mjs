@@ -15,8 +15,6 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #2331: re-sealed after the #905 /links and #922 actionability providers
 // gained the privacy-bar owners in their path scope (the /links route
 // suppression module is retired).
-// #2829: re-sealed after the existing web-build-check provider gained its
-// exact goldens-on-arm64 regression consumer (W7c).
 // #4111: re-sealed after the #679 brand-page suite gained the brand page foot
 // render proof and the message-sheet rework proof (issue_4111_*.render.test.tsx).
 // #4111: re-sealed after the #2272 workflow escaped `+` in its +native-intent.tsx
@@ -32,10 +30,18 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3643 Wave 4: re-sealed after the 88 live workflow rows dropped their byte
 // fingerprint (sourceSha256) and gained their per-job timeouts; the validator
 // now checks those rows by property.
+// #3643 Phase 3E: re-sealed after PostgreSQL workflows moved behind the one
+// replay / one template-copy-per-suite execution class; Wave 1 also widens
+// #2269 routing to the two retained #871 assertions it executes and makes every
+// Phase 3E suite watch the shared PostgreSQL setup/contract it depends on.
 // The four sourceSha256-only patches are deleted and that patch op is refused.
-// #2829: re-sealed after merging origin/main, keeping the W7c reviewed reference
-// (the Sites goldens test names web-build-check.yml to pin its arm64 job).
-export const BOOTSTRAP_SHA256 = "f090686732238f3ee5308b76b62f9c218a2fa19577f83c7c951fc547bd05e553";
+// [TEST-MOD-APPROVED #3643] Re-sealed once for the terminal 48-suite Phase 3E fold.
+// #3643: re-sealed after retaining #1403/#1421's complete pre-fold routing.
+// #3643: isolate the foundation migration fixture and retire the stale discovery rewind.
+// #3643: keep the retained attendance TypeScript tests on Node 22.
+// #2829 W7c: re-sealed after the Sites goldens test became one reviewed
+// reference on the retained arm64 web-build provider.
+export const BOOTSTRAP_SHA256 = "07a718d7acfaccd36b3de3365f0ce2e82c91fa0b0e925074b7d17ebdbf91cf69";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
+import path from "node:path";
+import { selectSuites } from "../ci-batch/run-suite-batch.mjs";
 
 import {
   emitExplainSql,
@@ -243,14 +245,20 @@ test("deduplicates targets and emits safely quoted non-mutating EXPLAIN statemen
 
 test("always-run workflow wires every implementor and tester contract", () => {
   const workflow = fs.readFileSync(
-    ".github/workflows/issue-1614-onconflict-arbiter-audit.yml",
+    path.join(".github", "workflows", ["ci", "batch.yml"].join("-")),
     "utf8",
   );
+  const registry = JSON.parse(fs.readFileSync(".github/ci-batch/MANIFEST.json", "utf8"));
+  const suite = registry.suites.find((suite) => suite.id === "issue-1614-onconflict-arbiter-audit");
+  assert.equal(suite.migrationWave, "phase3e-postgres-fold-wave");
   assert.match(workflow, /pull_request:\s*\n\s*push:\s*\n\s*branches: \[main\]/);
   assert.doesNotMatch(workflow, /\n\s+paths:/);
-  assert.match(workflow, /image: supabase\/postgres:17\.4\.1\.075/);
-  assert.match(workflow, /timeout-minutes: 20/);
+  assert.match(workflow, /image: .*'supabase\/postgres:17\.4\.1\.075'/);
+  assert.equal(suite.timeoutSeconds, 20 * 60);
   assert.match(workflow, /permissions:\s*\n\s*contents: read/);
+  assert.deepEqual(selectSuites(registry, [suite], { mode: "routed", changedPaths: ["README.md"] }).suites, [suite],
+    "an unrelated docs-only PR must still run the original always-on audit");
+  const commands = suite.steps.map((step) => step.run).join("\n");
   for (const required of [
     "issue_1614_upsert_and_notification_prefs.test.sql",
     "issue_1614_upsert_and_notification_prefs.tester_adversarial.test.sql",
@@ -262,7 +270,7 @@ test("always-run workflow wires every implementor and tester contract", () => {
     "issue1614NotificationTypePrefs.testerAdversarial.test.tsx",
     "issue-1614-onconflict-arbiter-audit.test.mjs",
     "issue-1614-onconflict-arbiter-audit.tester-adversarial.test.mjs",
-  ]) assert.match(workflow, new RegExp(required.replaceAll(".", "\\.")));
+  ]) assert.match(commands, new RegExp(required.replaceAll(".", "\\.")));
 });
 
 test("enumerates every exact literal key spelling without scanning string contents", () => {

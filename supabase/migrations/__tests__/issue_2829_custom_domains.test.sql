@@ -1,6 +1,6 @@
 -- MINGLA-INVARIANT: I-PROPOSED-2829-12 | issue #2829 | A custom domain belongs to exactly one site, only brand admins and owners attach, make main or detach it, it goes live only after the provider verdict and the site-id probe, and detach moves the main address to the Mingla subdomain first.
 -- #2829 W8 (AD-10) — a brand's own domain (pg17, BEGIN ... ROLLBACK).
--- Apply every migration through 20271229032829_issue_2829_custom_domains.sql
+-- Apply every migration through 20280119082829_issue_2829_custom_domains.sql
 -- first, then run with ON_ERROR_STOP=1. Every fixture rolls back. Neutral
 -- fixtures only.
 -- Proves: attach (rank 50, shape, Mingla/provider domains refused, reserved

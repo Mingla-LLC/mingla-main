@@ -4,13 +4,13 @@ BEGIN;
 
 -- Reapplication must be convergent: the requirement insert and finalizer rewrite
 -- may encounter the already-upgraded state but no third state is accepted.
--- #2829 W9b: the tip census is now 20271229082829_issue_2829_ari_cert_capability_census.sql
+-- #2829 W9b: the tip census is now 20280119132829_issue_2829_ari_cert_capability_census.sql
 -- (152 -> 164, on top of this #3872 census); after a full replay the chain is at
 -- the tip, so the convergence proof re-applies the TIP census (re-applying this
 -- older file on the 164 tip is refused by its own preflight, by design). The
 -- #3872 rows and modes below must still be present, unchanged.
-\ir ../20271229082829_issue_2829_ari_cert_capability_census.sql
-\ir ../20271229082829_issue_2829_ari_cert_capability_census.sql
+\ir ../20280119132829_issue_2829_ari_cert_capability_census.sql
+\ir ../20280119132829_issue_2829_ari_cert_capability_census.sql
 
 DO $test$
 DECLARE

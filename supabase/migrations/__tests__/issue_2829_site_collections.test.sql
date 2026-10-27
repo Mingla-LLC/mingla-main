@@ -1,7 +1,7 @@
 -- MINGLA-INVARIANT: I-PROPOSED-2829-14 | issue #2829 | Website content actions are gated by Core (entitlement + live rank per action, from one list): rank 20 edits drafts, only brand admins and owners confirm a review is real or hide a past trip; every content change is audited without its words; a member's preview size is readable and writable by that member only.
 -- #2829 W9r — the content-collections gate, audit, "Ask an admin" and the
 -- per-user preview preference (pg17, BEGIN ... ROLLBACK).
--- Apply every migration through 20271229062829_issue_2829_site_collections.sql
+-- Apply every migration through 20280119112829_issue_2829_site_collections.sql
 -- first, then run with ON_ERROR_STOP=1. Every fixture rolls back. Neutral
 -- fixtures only.
 

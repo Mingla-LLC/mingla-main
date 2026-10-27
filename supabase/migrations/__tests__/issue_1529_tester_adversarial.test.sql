@@ -24,15 +24,16 @@ BEGIN;
 --              defeat that regex — `public . notification_outbox` and an
 --              unqualified `notification_outbox` — and both wrote real rows
 --              while staying invisible.
---            - CLASSIFICATION is three-way (populating / drain_derived /
---              reader) and a "reader" that actually inserts is rejected, so a
+--            - CLASSIFICATION is four-way (populating / push_only /
+--              drain_derived / reader) and a "reader" that actually inserts is rejected, so a
 --              discovered writer cannot be silenced by parking it.
 --            - THE EXEMPTION discriminates on the producer's CATEGORY LITERALS
 --              and on claim-pool behaviour. Qualifying it with loose words is
 --              not enough: I redefined the exempt name with a body that wrote
 --              an ordinary generic-pool row and kept the marker words in a
 --              comment, and a word-level check stayed green.
---          A producer that is neither populating nor provably drain-derived
+--          A producer that is neither populating, push-only, nor provably
+--          drain-derived
 --          FAILS.
 --
 --   ADV-2  HOSTILE DERIVATION INPUT. The implementor's parity fixtures are
@@ -270,12 +271,12 @@ BEGIN
   -- producers, one #4063 receipt producer, one drain-derived producer, and
   -- twelve proved readers are the exact live catalog: 31 functions that touch
   -- the outbox.
-  -- [TEST-MOD-APPROVED #4111] Raised to the live catalog measured on a fresh
-  -- PostgreSQL 17 replay of every migration with the three #4111 producers:
-  -- 37 functions touch the outbox.
-  IF v_count < 37 THEN
+  -- [TEST-MOD-APPROVED #3643] Raised to the live catalog measured on a fresh
+  -- PostgreSQL 17 replay of every migration with the eleven #3872 push-only
+  -- producers included: 47 functions touch the outbox.
+  IF v_count < 47 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_37_got_%',
+      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_47_got_%',
       v_count;
   END IF;
 
@@ -285,11 +286,11 @@ BEGIN
   -- appearing.
   SELECT count(*) INTO v_count
   FROM issue_1529_adv_producers WHERE writes_outbox;
-  -- [TEST-MOD-APPROVED #4111] Customer enquiries add three explicit-NULL
-  -- producers; the measured live writer count is 25.
-  IF v_count < 25 THEN
+  -- [TEST-MOD-APPROVED #3643] The eleven #3872 push-only writers are deliberately
+  -- outside the country-code bucket; the measured live writer count is 35.
+  IF v_count < 35 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_producer_floor_breached_expected_at_least_25_got_%',
+      'issue_1529_adv_producer_floor_breached_expected_at_least_35_got_%',
       v_count;
   END IF;
 END;
@@ -332,6 +333,21 @@ DECLARE
     'brand_enquiry_reply',
     'issue_4111_enquiry_nudge_sweep',
     'create_support_ticket'
+  ];
+  -- [TEST-MOD-APPROVED #3643] Current #3872 notification writers are
+  -- in-app/push-only and intentionally omit an SMS country.
+  push_only text[] := ARRAY[
+    'issue_3872_enqueue_brand_referral_notice',
+    'issue_3872_enqueue_gig_notice',
+    'issue_3872_gig_interest_notice',
+    'issue_3872_creator_verification_notice',
+    'issue_3872_referral_share_notice',
+    'issue_3872_referral_voucher_notice',
+    'issue_3872_referral_payout_notice',
+    'issue_3872_local_application_notice',
+    'issue_3872_local_month_notice',
+    'gig_notification_tick',
+    'local_timer_tick'
   ];
   -- Bucket 2: producers exempt because their rows belong to the source-refund
   -- pool, which by #1221's privacy design carries contact NULL and resolves the
@@ -376,11 +392,12 @@ BEGIN
   SELECT string_agg(d.proname, ', ' ORDER BY d.proname) INTO v_unclassified
   FROM issue_1529_adv_producers d
   WHERE NOT (d.proname = ANY(populating))
+    AND NOT (d.proname = ANY(push_only))
     AND NOT (d.proname = ANY(drain_derived))
     AND NOT (d.proname = ANY(readers));
   IF v_unclassified IS NOT NULL THEN
     RAISE EXCEPTION
-      'issue_1529_adv_unclassified_outbox_touching_function__%__classify_it_as_populating_drain_derived_or_reader',
+      'issue_1529_adv_unclassified_outbox_touching_function__%__classify_it_as_populating_push_only_drain_derived_or_reader',
       v_unclassified;
   END IF;
 

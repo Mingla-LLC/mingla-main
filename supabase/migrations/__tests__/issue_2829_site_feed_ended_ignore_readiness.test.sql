@@ -2,7 +2,7 @@
 -- the brand cannot take payments; upcoming paid trips still need readiness;
 -- the shared public trip reader is unchanged (pg17, BEGIN ... ROLLBACK).
 -- Apply every migration through
--- 20271229022829_issue_2829_site_feed_ended_ignore_readiness.sql first, then
+-- 20280119072829_issue_2829_site_feed_ended_ignore_readiness.sql first, then
 -- run with ON_ERROR_STOP=1. Every fixture rolls back.
 
 \set ON_ERROR_STOP on
