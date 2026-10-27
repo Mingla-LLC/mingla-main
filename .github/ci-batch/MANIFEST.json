@@ -11524,7 +11524,6 @@
       "class": "deno146-node20-noinstall",
       "origin": ".github/workflows/issue-1002-campaign-builder-multi-destination-tests.yml",
       "originPaths": [
-        ".github/workflows/issue-1002-campaign-builder-multi-destination-tests.yml",
         "mingla-admin/src/**",
         "mingla-marketing/lib/ad-marketing-routes.ts",
         "supabase/functions/_shared/__tests__/issue1002_multi_destination_fanout.test.ts",
@@ -11612,7 +11611,6 @@
       "class": "deno146-node20-noinstall",
       "origin": ".github/workflows/issue-1014-free-publish-currency-tests.yml",
       "originPaths": [
-        ".github/workflows/issue-1014-free-publish-currency-tests.yml",
         "mingla-business/src/**",
         "packages/offering-rendering/**",
         "supabase/migrations/20270108001014_issue_1014_free_only_publish_currency_relax.sql",
@@ -11671,7 +11669,6 @@
       "class": "deno146-node20-noinstall",
       "origin": ".github/workflows/issue-1039-1043-theme-readback-rsvp-tests.yml",
       "originPaths": [
-        ".github/workflows/issue-1039-1043-theme-readback-rsvp-tests.yml",
         "mingla-business/src/components/event/EditPublishedScreen.tsx",
         "mingla-business/src/components/event/__tests__/issue1043RsvpThemeClearPersists.test.ts",
         "mingla-business/src/components/event/__tests__/issue1043RsvpThemeWrite.test.ts",
@@ -11734,7 +11731,6 @@
       "class": "deno146-node20-noinstall",
       "origin": ".github/workflows/issue-1184-video-phase-a-tests.yml",
       "originPaths": [
-        ".github/workflows/issue-1184-video-phase-a-tests.yml",
         "mingla-admin/src/**",
         "supabase/config.toml",
         "supabase/functions/**",
@@ -11843,7 +11839,6 @@
       "class": "deno146-node20-noinstall",
       "origin": ".github/workflows/issue-1185-reddit-video-tests.yml",
       "originPaths": [
-        ".github/workflows/issue-1185-reddit-video-tests.yml",
         "mingla-admin/src/**",
         "supabase/functions/**",
         "supabase/functions/_shared/__tests__/issue1002_*",
@@ -11987,7 +11982,6 @@
       "class": "deno146-node20-noinstall",
       "origin": ".github/workflows/issue-1392-stay-activation-tests.yml",
       "originPaths": [
-        ".github/workflows/issue-1392-stay-activation-tests.yml",
         "scripts/ops/stay-rollout-policy*",
         "supabase/functions/stay-reservations/**",
         "supabase/migrations/20270207001392_issue_1392_stay_activation_guards.sql",
@@ -12278,7 +12272,6 @@
       "origin": ".github/workflows/issue-1456-edge-deploy-idempotency.yml",
       "originPaths": [
         ".github/workflows/deploy-functions.yml",
-        ".github/workflows/issue-1456-edge-deploy-idempotency.yml",
         "scripts/ci/issue1456-edge-deploy-idempotency.test.mjs",
         "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
         "scripts/ci/select-changed-edge-functions.mjs",
@@ -12355,7 +12348,6 @@
       "origin": ".github/workflows/issue-1789-spots-print-menu-depth-tests.yml",
       "originPaths": [
         ".github/scripts/strict-grep/orch-1186c-menu-display-only.mjs",
-        ".github/workflows/issue-1789-spots-print-menu-depth-tests.yml",
         "mingla-business/src/components/venue/**",
         "mingla-business/src/hooks/useMenuModifiers.ts",
         "mingla-business/src/hooks/useMenus.ts",
@@ -12452,7 +12444,6 @@
       "origin": ".github/workflows/issue-1791-orders-queue-alerting-tests.yml",
       "originPaths": [
         ".github/scripts/strict-grep/issue-1791-pause-and-escalation-single-writer.mjs",
-        ".github/workflows/issue-1791-orders-queue-alerting-tests.yml",
         "mingla-business/src/components/venue/**",
         "mingla-business/src/hooks/useVenueOrderingSettings.ts",
         "mingla-business/src/hooks/useVenueOrders.ts",
@@ -12553,7 +12544,6 @@
       "class": "deno146-node20-noinstall",
       "origin": ".github/workflows/issue-1792-waiter-mode-tests.yml",
       "originPaths": [
-        ".github/workflows/issue-1792-waiter-mode-tests.yml",
         "mingla-business/src/components/venue/**",
         "mingla-business/src/hooks/useVenueOrderPad.ts",
         "mingla-business/src/hooks/useVenueOrderTabs.ts",
@@ -12821,7 +12811,6 @@
       "originPaths": [
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/scripts/strict-grep/issue-2198-paystack-return-verify.mjs",
-        ".github/workflows/issue-2198-paystack-return-verify-tests.yml",
         "mingla-business/app/checkout-trip/**",
         "mingla-business/app/checkout/**",
         "mingla-business/src/services/ticketCheckoutService.ts",
@@ -13002,7 +12991,6 @@
       "origin": ".github/workflows/issue-2240-email-app-link-tests.yml",
       "originPaths": [
         ".github/scripts/strict-grep/i-2240-email-app-link-sole-owner.mjs",
-        ".github/workflows/issue-2240-email-app-link-tests.yml",
         "mingla-business/src/constants/storeLinks.ts",
         "mingla-business/src/services/guestFunnelLink.ts",
         "mingla-marketing/app/download/**",
@@ -13271,7 +13259,6 @@
       "class": "deno2x-node22-noinstall",
       "origin": ".github/workflows/issue-2347-wrong-day-pass.yml",
       "originPaths": [
-        ".github/workflows/issue-2347-wrong-day-pass.yml",
         "app-mobile/src/components/activity/BusinessEventCalendarRow.tsx",
         "app-mobile/src/services/__tests__/issue_2160_calendar_per_day_entries.test.ts",
         "app-mobile/src/services/__tests__/issue_2347_day_bound_passes.test.ts",
@@ -13486,7 +13473,6 @@
       "originPaths": [
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/scripts/strict-grep/issue-2418-bank-list-native-identity.mjs",
-        ".github/workflows/issue-2418-bank-list-native-identity.yml",
         "docs/QUERY_KEY_REGISTRY.md",
         "mingla-business/app.json",
         "mingla-business/src/**",
@@ -13654,7 +13640,6 @@
       "class": "deno146-node20-noinstall",
       "origin": ".github/workflows/issue-989-campaign-builder-targeting-tests.yml",
       "originPaths": [
-        ".github/workflows/issue-989-campaign-builder-targeting-tests.yml",
         "mingla-admin/src/**",
         "supabase/functions/_shared/meta.ts",
         "supabase/functions/_shared/tiktok.ts",
@@ -13732,7 +13717,6 @@
       "class": "deno146-node20-noinstall",
       "origin": ".github/workflows/issue-992-campaign-builder-google-snap-targeting-tests.yml",
       "originPaths": [
-        ".github/workflows/issue-992-campaign-builder-google-snap-targeting-tests.yml",
         "mingla-admin/src/**",
         "supabase/functions/_shared/google.ts",
         "supabase/functions/_shared/mapboxGeocode.ts",
@@ -13811,7 +13795,6 @@
       "class": "deno146-node20-noinstall",
       "origin": ".github/workflows/issue-997-video-c-tests.yml",
       "originPaths": [
-        ".github/workflows/issue-997-video-c-tests.yml",
         "mingla-admin/src/**",
         "supabase/config.toml",
         "supabase/functions/**",
@@ -13955,7 +13938,6 @@
       "class": "deno146-node20-noinstall",
       "origin": ".github/workflows/issue-997-video-d1-tests.yml",
       "originPaths": [
-        ".github/workflows/issue-997-video-d1-tests.yml",
         "mingla-admin/src/**",
         "supabase/config.toml",
         "supabase/functions/**",
@@ -14117,7 +14099,6 @@
       "class": "deno146-node20-noinstall",
       "origin": ".github/workflows/issue-997-video-d2-tests.yml",
       "originPaths": [
-        ".github/workflows/issue-997-video-d2-tests.yml",
         "mingla-admin/src/**",
         "supabase/config.toml",
         "supabase/functions/**",
@@ -31538,5 +31519,5 @@
     "orch-1371-1372-tester-adversarial": "business-node20-1"
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
-  "phase3dContractSha256": "84877c9d341041227081ccd330498e2ba8c02c3ed3a8db7933abb91bf710d28e"
+  "phase3dContractSha256": "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3"
 }

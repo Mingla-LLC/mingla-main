@@ -31,7 +31,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // fingerprint (sourceSha256) and gained their per-job timeouts; the validator
 // now checks those rows by property.
 // The four sourceSha256-only patches are deleted and that patch op is refused.
-export const BOOTSTRAP_SHA256 = "176a70a8db3a1cf017a7e1630f81e8e0984d5b8aa6a929a9c0e4e27e97f520d7";
+export const BOOTSTRAP_SHA256 = "aff419dda6ead6a71967b74e82a81ddc21f0bbb03e6ca4b0c7529e61fc7f9083";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

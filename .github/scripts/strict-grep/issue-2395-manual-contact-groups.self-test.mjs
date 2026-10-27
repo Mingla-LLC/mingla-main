@@ -32,6 +32,7 @@ const tracked = [
   "mingla-business/app/(tabs)/marketing/campaigns/[id].tsx",
   "mingla-business/src/components/people/__tests__/issue_2395_manual_contact_groups.happy.test.ts",
   ".github/workflows/issue-2395-manual-contact-groups-tests.yml",
+  "mingla-business/jest.config.cjs",
 ];
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "issue-2395-self-test-"));
 try {
@@ -55,5 +56,18 @@ try {
     const failures = audit(tmp); if (failures.length === 0) throw new Error(`negative control stayed green: ${label}`);
     fs.writeFileSync(target, original);
   }
-  console.log("[issue-2395 self-test] PASS — nine true-deletion-equivalent negative controls fail and restore cleanly.");
+  // [#3643] The Host jest proofs run in the required full suite: removing one, or
+  // hiding it behind an ignore pattern, must fail the audit.
+  const serviceTest = path.join(tmp, "mingla-business/src/services/marketing/__tests__/issue_2395_manual_group_service.happy.test.ts");
+  const kept = fs.readFileSync(serviceTest);
+  fs.rmSync(serviceTest);
+  if (audit(tmp).length === 0) throw new Error("negative control stayed green: Host jest proof removed");
+  fs.writeFileSync(serviceTest, kept);
+  const configPath = path.join(tmp, "mingla-business/jest.config.cjs"), config = fs.readFileSync(configPath, "utf8");
+  if (!config.includes('"/node_modules/",')) throw new Error("fixture needle missing: jest ignore list");
+  fs.writeFileSync(configPath, config.replace('"/node_modules/",', '"/node_modules/", "issue_2395_manual_group_service",'));
+  if (audit(tmp).length === 0) throw new Error("negative control stayed green: Host jest proof ignored by the full suite");
+  fs.writeFileSync(configPath, config);
+  if (audit(tmp).length) throw new Error("fixture did not restore cleanly");
+  console.log("[issue-2395 self-test] PASS — eleven true-deletion-equivalent negative controls fail and restore cleanly.");
 } finally { fs.rmSync(tmp, { recursive: true, force: true }); }

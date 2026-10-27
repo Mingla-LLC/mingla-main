@@ -129,7 +129,7 @@ export const SUITES_FOLDED_SINCE_SEAL = Object.freeze([
 // runtime, deadline, routing, file inventory, exact command capabilities and
 // the digest of the workflow it replaced. A change to any of them is a reviewed
 // re-seal of THIS constant; the Phase 3A/3B/3C seals are never touched by it.
-const LOCKED_PHASE3D_CONTRACT_SHA256 = "84877c9d341041227081ccd330498e2ba8c02c3ed3a8db7933abb91bf710d28e";
+const LOCKED_PHASE3D_CONTRACT_SHA256 = "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3";
 // [#3643] The exact inert literal environment the folded origins set on a step,
 // byte for byte, keyed by the command that carries it. #2198's two Paystack maps
 // are test-mode strings that only satisfy env-presence guards at import time
