@@ -241,7 +241,7 @@ const ANDROID_STATUS_CODES: Record<string, string | undefined> = {
   IN_PROGRESS: "ASYNC_OP_IN_PROGRESS",
   PLAY_SERVICES_NOT_AVAILABLE: "PLAY_SERVICES_NOT_AVAILABLE",
   SIGN_IN_REQUIRED: "4",
-  // app-mobile ships google-signin 16.0.0 — NULL_PRESENTER does NOT exist here.
+  // NULL_PRESENTER is left out on purpose: B6 covers it for any SDK version.
 };
 
 const IOS_STATUS_CODES: Record<string, string | undefined> = {
@@ -619,23 +619,11 @@ test("B5 — undefined constants degrade to OVER-reporting (noise), never to bli
   assert.equal(p("ERR_REQUEST_CANCELED"), false); // hardcoded Apple literal survives
 });
 
-test("B6 — this app's SDK genuinely lacks NULL_PRESENTER, and that absence is harmless here", () => {
-  const pkg = JSON.parse(
-    fs.readFileSync(
-      path.join(
-        HERE,
-        "..",
-        "..",
-        "..",
-        "node_modules",
-        "@react-native-google-signin",
-        "google-signin",
-        "package.json",
-      ),
-      "utf8",
-    ),
-  ) as { version: string };
-  assert.equal(pkg.version, "16.0.0");
+// #3643: google-signin moved 16.0.0 -> 16.1.5 (#4093), and 16.1.5 DOES expose
+// NULL_PRESENTER ("no screen to present sign-in on", a real failure). B6 used to
+// pin the version and the absence. It now pins the property that matters on any
+// SDK: a NULL_PRESENTER error is REPORTED, never swallowed as a cancellation.
+test("B6 — NULL_PRESENTER is reported whether or not this app's SDK exposes it", () => {
   const codes = fs.readFileSync(
     path.join(
       HERE,
@@ -652,11 +640,13 @@ test("B6 — this app's SDK genuinely lacks NULL_PRESENTER, and that absence is 
     ),
     "utf8",
   );
-  assert.ok(
-    !/NULL_PRESENTER/.test(codes),
-    "16.0.0 unexpectedly exposes NULL_PRESENTER — re-check the F-7 trap",
-  );
-  // …and the predicate never references it, so the absence cannot swallow.
+  const exposed = /NULL_PRESENTER:\s*['"]NULL_PRESENTER['"]/.test(codes);
+  const p = compilePredicate({
+    ...ANDROID_STATUS_CODES,
+    NULL_PRESENTER: exposed ? "NULL_PRESENTER" : undefined,
+  });
+  assert.equal(p("NULL_PRESENTER"), true, "a NULL_PRESENTER failure must reach Sentry");
+  // …and the predicate never references it, so it cannot be swallowed by name.
   assert.ok(!/NULL_PRESENTER/.test(SOURCE.replace(/\/\*[\s\S]*?\*\//g, "")));
 });
 
