@@ -379,7 +379,10 @@ export function StatStrip({
   items,
 }: {
   items: ReadonlyArray<
-    { value: string; label: string } | null | undefined | false
+    | { value: string; label: string; onPress?: () => void; accessibilityHint?: string }
+    | null
+    | undefined
+    | false
   >;
 }): React.ReactElement {
   const shown = stripItems(items);
@@ -390,21 +393,40 @@ export function StatStrip({
       padding={0}
       contentStyle={styles.strip}
     >
-      {shown.map((item, index) => (
-        <View
-          key={item.label}
-          style={[styles.stripCell, index > 0 && styles.stripDivider]}
-          accessible
-          accessibilityLabel={`${item.label}: ${item.value}`}
-        >
-          <Text style={styles.stripValue} numberOfLines={1} adjustsFontSizeToFit>
-            {item.value}
-          </Text>
-          <Text style={styles.stripLabel} numberOfLines={2}>
-            {item.label}
-          </Text>
-        </View>
-      ))}
+      {shown.map((item, index) => {
+        const body = (
+          <>
+            <Text style={styles.stripValue} numberOfLines={1} adjustsFontSizeToFit>
+              {item.value}
+            </Text>
+            <Text style={styles.stripLabel} numberOfLines={2}>
+              {item.label}
+            </Text>
+          </>
+        );
+        const cellStyle = [styles.stripCell, index > 0 && styles.stripDivider];
+        return item.onPress ? (
+          <Pressable
+            key={item.label}
+            onPress={item.onPress}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.label}: ${item.value}`}
+            accessibilityHint={item.accessibilityHint}
+            style={({ pressed }) => [...cellStyle, pressed && styles.pressed]}
+          >
+            {body}
+          </Pressable>
+        ) : (
+          <View
+            key={item.label}
+            style={cellStyle}
+            accessible
+            accessibilityLabel={`${item.label}: ${item.value}`}
+          >
+            {body}
+          </View>
+        );
+      })}
     </GlassCard>
   );
 }

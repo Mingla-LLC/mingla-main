@@ -41,19 +41,17 @@ describe("#3682 follower KPI", () => {
     });
   });
 
-  // #3872 round 2 (approved M-brandone): the four tiles became one strip of
-  // three numbers — Attendees, Sales, Followers. Followers stays a live tile.
+  // #3872 round 2 (approved M-brandone): one compact strip of three numbers —
+  // Attendees, Sales, Followers — built by brandStatStripItems (no tiles, no
+  // hint text). Followers still opens People.
   test("profile shows one strip: Attendees, Sales, Followers", () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, "../BrandProfileView.tsx"),
       "utf8",
     );
-    const attendees = source.indexOf('label="Attendees"');
-    const sales = source.indexOf('label="Sales"', attendees);
-    const followers = source.indexOf("<FollowersKpiTile", sales);
-    expect(attendees).toBeGreaterThan(-1);
-    expect(sales).toBeGreaterThan(attendees);
-    expect(followers).toBeGreaterThan(sales);
+    expect(source).toContain("<BrandStatStrip");
+    expect(source).toContain("brandStatStripItems(");
+    expect(source).not.toContain("<FollowersKpiTile");
     expect(source).not.toContain('label="Events"');
   });
 
