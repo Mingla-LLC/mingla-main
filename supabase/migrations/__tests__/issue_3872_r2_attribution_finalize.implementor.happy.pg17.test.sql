@@ -1,7 +1,7 @@
 -- #3872 R2 B2: immutable D8 snapshot, one-payee finalization, voucher fallback,
 -- public link routing, and durable 60/min touch throttling.
--- MINGLA-INVARIANT: I-3872-SNAPSHOT | issue #3872 | A checkout snapshot is set once and order attribution is append-only.
--- MINGLA-INVARIANT: I-3872-ONE-PAYEE | issue #3872 | One order can materialize no more than one referral payee share.
+-- MINGLA-INVARIANT: I-3872-ATTRIBUTION-SNAPSHOT | issue #3872 | A checkout snapshot is set once and order attribution is append-only.
+-- MINGLA-INVARIANT: I-3872-FINALIZE-ONE-PAYEE | issue #3872 | Attribution finalization materializes no more than one referral payee share per order.
 \set ON_ERROR_STOP on
 BEGIN;
 
