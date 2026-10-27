@@ -1,10 +1,10 @@
 -- #3872 R2 B2 — link resolution, anonymous touch throttling, immutable checkout
 -- snapshots, and one-payee order finalization.
 --
--- MINGLA-INVARIANT: I-3872-SNAPSHOT | issue #3872 | The referral decision is
+-- Invariant I-3872-ATTRIBUTION-SNAPSHOT (declared in its test suite): The referral decision is
 -- frozen on the checkout row before a provider object is created; finalization
 -- may materialize it once but can never re-resolve or rewrite it.
--- MINGLA-INVARIANT: I-3872-ONE-PAYEE | issue #3872 | Finalization inserts at
+-- Invariant I-3872-ONE-PAYEE (declared in its test suite): Finalization inserts at
 -- most one referral share and the existing order/payee uniqueness constraint is
 -- the last-line database authority.
 

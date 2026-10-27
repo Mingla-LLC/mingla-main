@@ -1,7 +1,7 @@
 // deno-lint-ignore-file no-explicit-any
 // #3872 R2 — the single referral-attribution decision owner.
 //
-// MINGLA-INVARIANT: I-3872-ONE-PAYEE | issue #3872 | resolveReferrer returns at
+// Invariant I-3872-ONE-PAYEE (declared in its test suite): resolveReferrer returns at
 // most one member/payee candidate; callers persist that immutable result and
 // never compose a second referral rail beside it.
 

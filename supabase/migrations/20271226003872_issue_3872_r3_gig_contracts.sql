@@ -1,7 +1,7 @@
 -- #3872 R3 C2-C3 — privacy-safe gig marketplace, immutable terms and server-owned contracts.
--- MINGLA-INVARIANT: I-3872-PRIVACY-DTO | issue #3872 | Pre-hire gig and creator reads expose only allow-listed fields; creator_gig_board, creator_gig_detail and public_creator_profile are the SQL authorities and _shared/gigDto.ts is the edge authority.
--- MINGLA-INVARIANT: I-3872-HOLD-BEFORE-REVEAL | issue #3872 | A creator cannot accept and receive private brand details until the current terms version has a captured gig hold; gig_transition is the enforcement authority.
--- MINGLA-INVARIANT: I-3872-ONE-TRANSITION | issue #3872 | Contract state changes occur only through gig_transition; the state guard trigger rejects direct updates.
+-- Invariant I-3872-PRIVACY-DTO (declared in its test suite): Pre-hire gig and creator reads expose only allow-listed fields; creator_gig_board, creator_gig_detail and public_creator_profile are the SQL authorities and _shared/gigDto.ts is the edge authority.
+-- Invariant I-3872-HOLD-BEFORE-REVEAL (declared in its test suite): A creator cannot accept and receive private brand details until the current terms version has a captured gig hold; gig_transition is the enforcement authority.
+-- Invariant I-3872-ONE-TRANSITION (declared in its test suite): Contract state changes occur only through gig_transition; the state guard trigger rejects direct updates.
 
 BEGIN;
 SET LOCAL lock_timeout='10s';

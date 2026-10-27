@@ -4,9 +4,9 @@
 -- Reviewed R2/R4 migrations are not edited; this file layers the approved
 -- walkthrough contract and QA defect fixes on top.
 --
--- MINGLA-INVARIANT: I-3872-NO-SELF-REFERRAL-SHARE | issue #3872 | An order whose buyer is the referral payee (same user or same email) never creates a payee share or voucher; issue_3872_finalize_referral_attribution is the database backstop behind the edge resolver.
--- MINGLA-INVARIANT: I-3872-SHARE-FROZEN | issue #3872 | Payee share money and identity columns are immutable and only SECURITY DEFINER ledger functions may write payee_shares; service_role has no direct write grant.
--- MINGLA-INVARIANT: I-3872-NO-EMAIL-PUBLIC-NAME | issue #3872 | Public referral reads never derive a name from an email address; referral_link_resolve returns a member-set or profile first name only while the offer is active.
+-- Invariant I-3872-NO-SELF-REFERRAL-SHARE (declared in its test suite): An order whose buyer is the referral payee (same user or same email) never creates a payee share or voucher; issue_3872_finalize_referral_attribution is the database backstop behind the edge resolver.
+-- Invariant I-3872-SHARE-FROZEN (declared in its test suite): Payee share money and identity columns are immutable and only SECURITY DEFINER ledger functions may write payee_shares; service_role has no direct write grant.
+-- Invariant I-3872-NO-EMAIL-PUBLIC-NAME (declared in its test suite): Public referral reads never derive a name from an email address; referral_link_resolve returns a member-set or profile first name only while the offer is active.
 
 BEGIN;
 SET LOCAL lock_timeout='10s';

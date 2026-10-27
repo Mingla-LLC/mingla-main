@@ -1,7 +1,7 @@
 -- #3872 R3 C1 — creator identity, social proof, packages and onboarding truth.
 --
--- MINGLA-INVARIANT: I-3872-CREATOR-VERIFICATION | issue #3872 | A creator is verified only when age, a verified public handle, an active payout rail, a processed showcase and an approved agreement are all present; issue_3872_recompute_creator_verification and its tests are the enforcement authority.
--- MINGLA-INVARIANT: I-3872-CREATOR-PRIVACY | issue #3872 | Public creator discovery returns only the explicit public_creator_profile allow-list; raw identity, DOB and payout tables remain closed to anon.
+-- Invariant I-3872-CREATOR-VERIFICATION (declared in its test suite): A creator is verified only when age, a verified public handle, an active payout rail, a processed showcase and an approved agreement are all present; issue_3872_recompute_creator_verification and its tests are the enforcement authority.
+-- Invariant I-3872-CREATOR-PRIVACY (declared in its test suite): Public creator discovery returns only the explicit public_creator_profile allow-list; raw identity, DOB and payout tables remain closed to anon.
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';

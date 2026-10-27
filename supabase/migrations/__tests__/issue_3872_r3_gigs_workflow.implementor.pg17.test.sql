@@ -1,3 +1,8 @@
+-- MINGLA-INVARIANT: I-3872-PRIVACY-DTO | issue #3872 | Pre-hire gig and creator reads expose only allow-listed fields; creator_gig_board, creator_gig_detail and public_creator_profile are the SQL authorities and _shared/gigDto.ts is the edge authority.
+-- MINGLA-INVARIANT: I-3872-HOLD-BEFORE-REVEAL | issue #3872 | A creator cannot accept and receive private brand details until the current terms version has a captured gig hold; gig_transition is the enforcement authority.
+-- MINGLA-INVARIANT: I-3872-ONE-TRANSITION | issue #3872 | Contract state changes occur only through gig_transition; the state guard trigger rejects direct updates.
+-- MINGLA-INVARIANT: I-3872-TECHNICAL-FIXES | issue #3872 | Delivery fixes are limited to two rounds and four technical categories; gig_delivery_decide and table constraints enforce the limit.
+-- MINGLA-INVARIANT: I-3872-DOUBLE-BLIND-RATINGS | issue #3872 | Ratings reveal only when both parties submit or seven days pass after completion; gig_ratings_public owns the rule.
 \set ON_ERROR_STOP on
 
 BEGIN;

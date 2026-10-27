@@ -1,8 +1,8 @@
 -- #3872 R3 C0 — creator-gig formats, fail-closed creator-media lane, and
 -- server-issued gig guest passes.
 --
--- MINGLA-INVARIANT: I-3872-MEDIA-FAIL-CLOSED | issue #3872 | Creator uploads are refused when either provider-cap usage is unreadable or at/above 90%; creator-media-upload-intent and its tests are the enforcement authority.
--- MINGLA-INVARIANT: I-3872-GIG-COMP-IS-A-TICKET | issue #3872 | Every active gig comp is backed by the existing real-ticket comp rail, so it counts toward capacity and is visible to the existing roster and scanner.
+-- Invariant I-3872-MEDIA-FAIL-CLOSED (declared in its test suite): Creator uploads are refused when either provider-cap usage is unreadable or at/above 90%; creator-media-upload-intent and its tests are the enforcement authority.
+-- Invariant I-3872-GIG-COMP-IS-A-TICKET (declared in its test suite): Every active gig comp is backed by the existing real-ticket comp rail, so it counts toward capacity and is visible to the existing roster and scanner.
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';

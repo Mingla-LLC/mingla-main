@@ -4,6 +4,10 @@
 -- linter, #10 state token, #11 script rounds, #12 replays, #13 upload
 -- deadline, #19 detail access, plus counters, top-ups, saved gigs and
 -- the gig's pay from the walkthrough contract. Every fixture rolls back.
+-- MINGLA-INVARIANT: I-3872-STATE-TOKEN | issue #3872 | A gig contract state change is accepted only while issue3872.transition names that exact contract, and the token is cleared after every call; issue_3872_contract_apply_state is the only writer and issue_3872_walkthrough_gig_money.implementor.pg17.test.sql proves an unset or stale token is refused.
+-- MINGLA-INVARIANT: I-3872-OFFER-AFTER-CAPTURE | issue #3872 | A creator cannot see, accept or decline an offer until its current hold is captured and no top-up is pending; gig_transition, gig_creator_home and gig_contract_workspace enforce it.
+-- MINGLA-INVARIANT: I-3872-GIG-SLOTS | issue #3872 | gig_offer_prepare serialises on the gig row and never creates more live contracts than the gig has slots.
+-- MINGLA-INVARIANT: I-3872-REFUND-SERVER-AMOUNTS | issue #3872 | Gig refund amounts come only from gig_refund_quote (server terms, holds and decided disputes); gig_refund_record refuses any other amount and any replay with different amounts.
 \set ON_ERROR_STOP on
 BEGIN;
 

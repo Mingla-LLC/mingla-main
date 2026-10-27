@@ -1,7 +1,7 @@
 -- #3872 R2 B1 — attribution, referrals, payee ledger and payout-account foundation.
 --
--- MINGLA-INVARIANT: I-3872-ONE-PAYEE | issue #3872 | An eligible order has at most one referral payee share; payee_shares(order_kind,order_id,payee_kind) is the enforcement authority.
--- MINGLA-INVARIANT: I-3872-NO-STORED-VALUE | issue #3872 | Referral rewards are automatic payout obligations, vouchers or perks; no user balance, cash-out or withdrawal rail exists.
+-- Invariant I-3872-ONE-PAYEE (declared in its test suite): An eligible order has at most one referral payee share; payee_shares(order_kind,order_id,payee_kind) is the enforcement authority.
+-- Invariant I-3872-NO-STORED-VALUE (declared in its test suite): Referral rewards are automatic payout obligations, vouchers or perks; no user balance, cash-out or withdrawal rail exists.
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';

@@ -1,6 +1,6 @@
 -- #3872 R3 C4-C7 — shoot, script, delivery, posts, disputes, ratings and roster.
--- MINGLA-INVARIANT: I-3872-TECHNICAL-FIXES | issue #3872 | Delivery fixes are limited to two rounds and four technical categories; gig_delivery_decide and table constraints enforce the limit.
--- MINGLA-INVARIANT: I-3872-DOUBLE-BLIND-RATINGS | issue #3872 | Ratings reveal only when both parties submit or seven days pass after completion; gig_ratings_public owns the rule.
+-- Invariant I-3872-TECHNICAL-FIXES (declared in its test suite): Delivery fixes are limited to two rounds and four technical categories; gig_delivery_decide and table constraints enforce the limit.
+-- Invariant I-3872-DOUBLE-BLIND-RATINGS (declared in its test suite): Ratings reveal only when both parties submit or seven days pass after completion; gig_ratings_public owns the rule.
 
 BEGIN;
 SET LOCAL lock_timeout='10s';

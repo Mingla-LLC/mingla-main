@@ -2,6 +2,8 @@
 -- never from email (#16), self-referral backstop (#20), frozen payee shares
 -- (#17), every payee kind in the admin ledger (#14) and the creator earnings
 -- summary (On the way / Ready / Paid).
+-- MINGLA-INVARIANT: I-3872-NO-SELF-REFERRAL-SHARE | issue #3872 | An order whose buyer is the referral payee (same user or same email) never creates a payee share or voucher; issue_3872_finalize_referral_attribution is the database backstop behind the edge resolver.
+-- MINGLA-INVARIANT: I-3872-SHARE-FROZEN | issue #3872 | Payee share money and identity columns are immutable and only SECURITY DEFINER ledger functions may write payee_shares; service_role has no direct write grant.
 \set ON_ERROR_STOP on
 BEGIN;
 

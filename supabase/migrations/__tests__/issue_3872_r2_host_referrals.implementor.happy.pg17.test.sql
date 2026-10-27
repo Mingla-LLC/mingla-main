@@ -1,5 +1,6 @@
 -- #3872 R2 B4: Host offer/member/link operations, promoter reads, reports,
 -- notifications, and least-privilege function boundaries on a full PG17 replay.
+-- MINGLA-INVARIANT: I-3872-REFERRAL-WRITES-SERVER-OWNED | issue #3872 | Offers, members and tracking links are mutated only through caller-bound SECURITY DEFINER functions invoked by reviewed edge functions or Ari.
 \set ON_ERROR_STOP on
 BEGIN;
 

@@ -1,8 +1,6 @@
 -- #3872 R2 B4 — Host referral operations, promoter membership and reports.
 --
--- MINGLA-INVARIANT: I-3872-REFERRAL-WRITES-SERVER-OWNED | issue #3872 |
--- Offers, members and tracking links are mutated only through caller-bound
--- SECURITY DEFINER functions invoked by reviewed edge functions or Ari.
+-- Invariant I-3872-REFERRAL-WRITES-SERVER-OWNED (declared in its test suite): Offers, members and tracking links are mutated only through caller-bound SECURITY DEFINER functions invoked by reviewed edge functions or Ari.
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';

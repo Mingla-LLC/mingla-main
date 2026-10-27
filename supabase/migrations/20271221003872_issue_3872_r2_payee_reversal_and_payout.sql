@@ -1,7 +1,7 @@
 -- #3872 R2 B3 — referral-payee reversals, fraud holds and payout ledger.
 --
--- MINGLA-INVARIANT: I-3872-REFUND-NEVER-BLOCKED | issue #3872 | Payee-share reversal is ledger-first: a host refund commits even when a post-payout provider reversal cannot complete; the unpaid recovery remains in payee_debts.
--- MINGLA-INVARIANT: I-3872-PAYEE-PAYOUT-IDEMPOTENT | issue #3872 | One payout row owns immutable share/debt allocations and one deterministic provider identity per attempt; transient reconciliation reuses that attempt until a definitive failure advances it.
+-- Invariant I-3872-REFUND-NEVER-BLOCKED (declared in its test suite): Payee-share reversal is ledger-first: a host refund commits even when a post-payout provider reversal cannot complete; the unpaid recovery remains in payee_debts.
+-- Invariant I-3872-PAYEE-PAYOUT-IDEMPOTENT (declared in its test suite): One payout row owns immutable share/debt allocations and one deterministic provider identity per attempt; transient reconciliation reuses that attempt until a definitive failure advances it.
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';

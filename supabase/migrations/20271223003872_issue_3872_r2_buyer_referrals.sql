@@ -1,8 +1,8 @@
 -- #3872 R2 B5 — buyer referral wallet, personal links, shared-by privacy and guest claims.
 --
--- MINGLA-INVARIANT: I-3872-EARNINGS-IS-NOT-BALANCE | issue #3872 | Explorer reports immutable reward obligations by lifecycle state; no stored-value balance or withdrawal RPC exists.
--- MINGLA-INVARIANT: I-3872-SHARER-ALLOWLIST | issue #3872 | Public share attribution exposes only the sharer's first name and avatar after an explicit show_sharer choice.
--- MINGLA-INVARIANT: I-3872-CLAIM-EMAIL-MATCH | issue #3872 | Guest rewards can be claimed only by an authenticated user whose normalized auth email equals the hashed claim token's email.
+-- Invariant I-3872-EARNINGS-IS-NOT-BALANCE (declared in its test suite): Explorer reports immutable reward obligations by lifecycle state; no stored-value balance or withdrawal RPC exists.
+-- Invariant I-3872-SHARER-ALLOWLIST (declared in its test suite): Public share attribution exposes only the sharer's first name and avatar after an explicit show_sharer choice.
+-- Invariant I-3872-CLAIM-EMAIL-MATCH (declared in its test suite): Guest rewards can be claimed only by an authenticated user whose normalized auth email equals the hashed claim token's email.
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';

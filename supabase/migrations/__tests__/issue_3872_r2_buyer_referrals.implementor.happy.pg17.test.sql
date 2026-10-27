@@ -1,5 +1,8 @@
 -- #3872 R2 B5: buyer links, safe public attribution, wallet lifecycle totals,
 -- guest-email claims, and the no-balance/no-withdrawal boundary on PostgreSQL 17.
+-- MINGLA-INVARIANT: I-3872-EARNINGS-IS-NOT-BALANCE | issue #3872 | Explorer reports immutable reward obligations by lifecycle state; no stored-value balance or withdrawal RPC exists.
+-- MINGLA-INVARIANT: I-3872-SHARER-ALLOWLIST | issue #3872 | Public share attribution exposes only the sharer's first name and avatar after an explicit show_sharer choice.
+-- MINGLA-INVARIANT: I-3872-CLAIM-EMAIL-MATCH | issue #3872 | Guest rewards can be claimed only by an authenticated user whose normalized auth email equals the hashed claim token's email.
 \set ON_ERROR_STOP on
 BEGIN;
 

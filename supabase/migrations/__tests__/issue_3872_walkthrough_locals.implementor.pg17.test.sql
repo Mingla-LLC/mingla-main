@@ -2,6 +2,7 @@
 -- (#3), one conflict source for picker and pick plus review date/social
 -- checks (#18), voiding after the payout share exists (#15), and the
 -- per-city monthly rate and payout currency.
+-- MINGLA-INVARIANT: I-3872-NO-EMAIL-PUBLIC-NAME | issue #3872 | Public referral reads never derive a name from an email address; referral_link_resolve returns a member-set or profile first name only while the offer is active.
 \set ON_ERROR_STOP on
 BEGIN;
 
