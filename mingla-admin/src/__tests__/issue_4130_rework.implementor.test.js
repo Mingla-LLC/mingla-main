@@ -102,6 +102,7 @@ describe("R-3 one definition of Waiting on a person", () => {
   it("every surface reads that one definition", () => {
     const hook = strip(read("hooks/useReviewCount.js"));
     assert.match(hook, /waitingCardsState\(\{ enabled, data: counts\.data, error: counts\.error \}\)/);
+    assert.match(hook, /cards: work\.cards,/);
     assert.doesNotMatch(hook, /const cards = needsPerson \+ draftNeeded \+ wording/);
     assert.match(strip(read("components/ops/WorkColumns.jsx")), /col\.key === "person" \? waitingColumnCount\(list\) : list\.length/);
     assert.match(strip(read("components/layout/Sidebar.jsx")), /item\.id === "work-board" \? reviewCount\.cards \|\| 0 : 0/);
