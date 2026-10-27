@@ -14,7 +14,8 @@ const bentoContent = read('lib/design-preview/host-bento.ts')
 const packageJson = JSON.parse(read('package.json'))
 
 assert.equal(
-  (page.match(/<BentoGrid className="mt-14 lg:auto-rows-\[15\.5rem\] xl:auto-rows-\[14rem\]">/g) ?? []).length,
+  // #4137: rows raised so the tiles fit their new photos.
+  (page.match(/<BentoGrid className="mt-14 lg:auto-rows-\[17rem\] xl:auto-rows-\[16rem\]">/g) ?? []).length,
   1,
   'the Host page must give the compact-desktop bento rows enough vertical room exactly once',
 )
@@ -23,7 +24,7 @@ assert.match(
   /grid grid-cols-1 gap-4 lg:grid-cols-6 lg:auto-rows-\[14rem\]/,
   'the shared BentoGrid primitive must retain its default sizing contract',
 )
-assert.match(page, /<HostFigure id=\{card\.id\} \/>/, 'Host figures must remain visible')
+assert.match(page, /<HostFigure id=\{card\.id\} ambient=\{card\.ambient\} photo=\{card\.photo\} \/>/, '#4137: Host figures must remain visible, with ambient motion and photos')
 assert.match(page, /mt-6 flex flex-wrap gap-2/, 'Host capability chips must keep their standard spacing and wrapping')
 assert.match(
   page,

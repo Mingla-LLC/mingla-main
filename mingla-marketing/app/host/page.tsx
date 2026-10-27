@@ -11,13 +11,13 @@ import {
   AuroraBackground, BentoGrid, BentoGridItem,
 } from '@/components/ui/aurora-bento-grid'
 import { HOST_BENTO } from '@/lib/design-preview/host-bento'
-import { AriCreativeCard } from '@/components/ui/ari-creative-card'
+import { AriSiteBuilderDemo } from '@/components/ui/ari-site-builder-demo'
 import { HostFigure } from '@/components/ui/host-figures'
+import { HostHeroWall } from '@/components/cutout/host-hero-wall'
+import { HostStartCta } from '@/components/cutout/host-start-cta'
 import { ICP_CARDS } from '@/lib/design-preview/icp-cards'
 import { ExpandingCards, type CardItem } from '@/components/ui/expanding-cards'
 import { ScrollVelocityRow } from '@/components/ui/scroll-velocity-text'
-import { RootCityGrid } from '@/components/cities/city-hub'
-import { allCityHubsSearchReady } from '@/content/cities/registry'
 
 // #2902 — Mingla Host, on AIgocy's design, telling Seth's story:
 // "Mingla gives you all the tools to be a successful host."
@@ -39,7 +39,6 @@ const ICP_ICONS: Record<string, React.ReactNode> = {
 }
 
 export default function CutoutHostPage() {
-  const showCityLaunch = allCityHubsSearchReady()
   return (
     <CutoutShell>
       <CutoutNav surface="host" homeHref="/host" />
@@ -47,16 +46,15 @@ export default function CutoutHostPage() {
       <CutoutHero
         line1="Everything a"
         line2={<span className="cut-gradient-brand">host needs.</span>}
-        lede="One app builds your website, publishes your events, trips and stays, sells the tickets and tables, and brings the right people back."
-        image="/marketing/host-hero/world-hosts-create-poster.jpg"
-        video="/marketing/host-hero/world-hosts-create-preview.mp4"
+        lede="Get found by the people planning their night out. Mingla builds your website, sells your tickets, tables and stays, and keeps your guests coming back. All from one app."
+        backdrop={<HostHeroWall />}
         scrollTo="#tools"
         action={<DeviceCta surface="host" location="hero" variant="primary" size="lg" />}
       />
 
       {/* Who it is for. Expanding cards: the collapsed rail states the USP,
-          the open card explains it and offers a way in. The whole tile is the
-          link — the "Learn more" anchor is stretched over it. */}
+          the open card explains it. Hover, focus or tap opens a card and it
+          stays open (#4137). No "Learn more" until the ICP pages exist. */}
       <CutoutSection aria-label="Who Mingla Host is for">
         <CutReveal>
           <CutoutHeading align="center">
@@ -111,7 +109,7 @@ export default function CutoutHostPage() {
             </CutoutHeading>
           </CutReveal>
 
-          <BentoGrid className="mt-14 lg:auto-rows-[15.5rem] xl:auto-rows-[14rem]">
+          <BentoGrid className="mt-14 lg:auto-rows-[17rem] xl:auto-rows-[16rem]">
             {HOST_BENTO.map((card) => (
               <BentoGridItem key={card.id} tone={card.tone} className={card.span}>
                 <div>
@@ -135,15 +133,12 @@ export default function CutoutHostPage() {
                   </p>
                 </div>
 
-                {/* The brand tile runs the Ari demo instead of a static
-                    figure: Ari takes the brief, then the real site it built
-                    scrolls past inside the same card. */}
+                {/* The brand tile runs the site builder demo (#4137): the
+                    prompt types, Ari ticks its steps and a nameless example
+                    site assembles itself. */}
                 {card.tone === 'brand' ? (
-                  <div className="mt-6 h-[24rem] lg:h-auto lg:min-h-0 lg:flex-1">
-                    <AriCreativeCard
-                      siteSrc="/marketing/host-icp/gogi-site.jpg"
-                      siteAlt="A restaurant website Ari built — hero, menu with prices, online ordering and a table booking form."
-                    />
+                  <div className="mt-6 lg:min-h-0 lg:flex-1">
+                    <AriSiteBuilderDemo />
                   </div>
                 ) : null}
 
@@ -152,7 +147,7 @@ export default function CutoutHostPage() {
                     who one send reaches. */}
                 {card.figure ? (
                   <div className="mt-5 min-h-0 flex-1">
-                    <HostFigure id={card.id} />
+                    <HostFigure id={card.id} ambient={card.ambient} photo={card.photo} />
                   </div>
                 ) : null}
 
@@ -185,7 +180,7 @@ export default function CutoutHostPage() {
         </div>
       </CutoutSection>
 
-      {showCityLaunch ? <RootCityGrid surface="host" /> : null}
+      <HostStartCta />
       <CutoutFooter surface="host" />
       {/* preview-banner-clearance */}
       <div aria-hidden="true" className="h-14" />
