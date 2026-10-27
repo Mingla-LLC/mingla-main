@@ -475,7 +475,16 @@ const runReal = (baseSha) => {
   const root = resolve(SCRIPT_DIR, "../..");
   const baseAllowlist = execFileSync("git", ["show", `${baseSha}:${ALLOWLIST_PATH}`], { cwd: root, encoding: "utf8" });
   const currentAllowlist = readFileSync(resolve(root, ALLOWLIST_PATH), "utf8");
-  const workflow = readFileSync(resolve(root, WORKFLOW_PATH), "utf8");
+  // #3643 folds the old wrapper into CI batch, so the wrapper is intentionally
+  // absent from the checkout. The security contract still has to be checked
+  // against the exact pre-fold source; recover that immutable source from the
+  // PR base commit rather than recreating a workflow file in the product tree.
+  let workflow;
+  try {
+    workflow = readFileSync(resolve(root, WORKFLOW_PATH), "utf8");
+  } catch {
+    workflow = execFileSync("git", ["show", `${baseSha}:${WORKFLOW_PATH}`], { cwd: root, encoding: "utf8" });
+  }
   const failures = validate({ baseAllowlist, currentAllowlist, workflow });
   if (failures.length) throw new Error(failures.join("\n"));
   process.stdout.write(
