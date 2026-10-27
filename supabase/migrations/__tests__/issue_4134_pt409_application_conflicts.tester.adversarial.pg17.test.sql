@@ -325,7 +325,7 @@ SELECT p.oid, p.xmin::text AS proc_xmin
   JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
  WHERE n.nspname NOT IN ('pg_catalog', 'information_schema');
 
-\ir ../20271224004134_issue_4134_pt409_application_conflicts.sql
+\ir ../20271231204134_issue_4134_pt409_application_conflicts.sql
 
 DO $t3$
 DECLARE v_bad text;
@@ -447,7 +447,7 @@ $fn$;
 
 -- T4-1 a 40001 raise the migration cannot rewrite.
 \set LAST_ERROR_MESSAGE ''
-\ir ../20271224004134_issue_4134_pt409_application_conflicts.sql
+\ir ../20271231204134_issue_4134_pt409_application_conflicts.sql
 SELECT set_config('issue_4134_tester.last_error', :'LAST_ERROR_MESSAGE', false);
 \set ON_ERROR_STOP on
 SELECT pg_temp.t4134_assert_refused('lingering 40001', current_setting('issue_4134_tester.last_error'),
@@ -459,7 +459,7 @@ DROP FUNCTION issue_4134_tester.lingering();
 SELECT set_config('issue_4134_tester.break', 'acl', false);
 \set ON_ERROR_STOP off
 \set LAST_ERROR_MESSAGE ''
-\ir ../20271224004134_issue_4134_pt409_application_conflicts.sql
+\ir ../20271231204134_issue_4134_pt409_application_conflicts.sql
 SELECT set_config('issue_4134_tester.last_error', :'LAST_ERROR_MESSAGE', false);
 \set ON_ERROR_STOP on
 SELECT pg_temp.t4134_assert_refused('grant', current_setting('issue_4134_tester.last_error'),
@@ -468,7 +468,7 @@ SELECT pg_temp.t4134_assert_refused('grant', current_setting('issue_4134_tester.
 SELECT set_config('issue_4134_tester.break', 'comment', false);
 \set ON_ERROR_STOP off
 \set LAST_ERROR_MESSAGE ''
-\ir ../20271224004134_issue_4134_pt409_application_conflicts.sql
+\ir ../20271231204134_issue_4134_pt409_application_conflicts.sql
 SELECT set_config('issue_4134_tester.last_error', :'LAST_ERROR_MESSAGE', false);
 \set ON_ERROR_STOP on
 SELECT pg_temp.t4134_assert_refused('comment', current_setting('issue_4134_tester.last_error'),
@@ -477,7 +477,7 @@ SELECT pg_temp.t4134_assert_refused('comment', current_setting('issue_4134_teste
 SELECT set_config('issue_4134_tester.break', 'config', false);
 \set ON_ERROR_STOP off
 \set LAST_ERROR_MESSAGE ''
-\ir ../20271224004134_issue_4134_pt409_application_conflicts.sql
+\ir ../20271231204134_issue_4134_pt409_application_conflicts.sql
 SELECT set_config('issue_4134_tester.last_error', :'LAST_ERROR_MESSAGE', false);
 \set ON_ERROR_STOP on
 SELECT pg_temp.t4134_assert_refused('search_path', current_setting('issue_4134_tester.last_error'),
@@ -486,7 +486,7 @@ SELECT pg_temp.t4134_assert_refused('search_path', current_setting('issue_4134_t
 SELECT set_config('issue_4134_tester.break', 'volatility', false);
 \set ON_ERROR_STOP off
 \set LAST_ERROR_MESSAGE ''
-\ir ../20271224004134_issue_4134_pt409_application_conflicts.sql
+\ir ../20271231204134_issue_4134_pt409_application_conflicts.sql
 SELECT set_config('issue_4134_tester.last_error', :'LAST_ERROR_MESSAGE', false);
 \set ON_ERROR_STOP on
 SELECT pg_temp.t4134_assert_refused('volatility', current_setting('issue_4134_tester.last_error'),
@@ -495,7 +495,7 @@ SELECT pg_temp.t4134_assert_refused('volatility', current_setting('issue_4134_te
 SELECT set_config('issue_4134_tester.break', 'owner', false);
 \set ON_ERROR_STOP off
 \set LAST_ERROR_MESSAGE ''
-\ir ../20271224004134_issue_4134_pt409_application_conflicts.sql
+\ir ../20271231204134_issue_4134_pt409_application_conflicts.sql
 SELECT set_config('issue_4134_tester.last_error', :'LAST_ERROR_MESSAGE', false);
 \set ON_ERROR_STOP on
 SELECT pg_temp.t4134_assert_refused('owner', current_setting('issue_4134_tester.last_error'),
@@ -504,7 +504,7 @@ SELECT pg_temp.t4134_assert_refused('owner', current_setting('issue_4134_tester.
 SELECT set_config('issue_4134_tester.break', 'oid', false);
 \set ON_ERROR_STOP off
 \set LAST_ERROR_MESSAGE ''
-\ir ../20271224004134_issue_4134_pt409_application_conflicts.sql
+\ir ../20271231204134_issue_4134_pt409_application_conflicts.sql
 SELECT set_config('issue_4134_tester.last_error', :'LAST_ERROR_MESSAGE', false);
 \set ON_ERROR_STOP on
 SELECT pg_temp.t4134_assert_refused('oid', current_setting('issue_4134_tester.last_error'),
@@ -512,7 +512,7 @@ SELECT pg_temp.t4134_assert_refused('oid', current_setting('issue_4134_tester.la
 
 -- T4-8 a clean run rewrites the probe, and only the probe.
 SELECT set_config('issue_4134_tester.break', '', false);
-\ir ../20271224004134_issue_4134_pt409_application_conflicts.sql
+\ir ../20271231204134_issue_4134_pt409_application_conflicts.sql
 
 DO $t4_clean$
 DECLARE

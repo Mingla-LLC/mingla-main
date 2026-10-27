@@ -56,7 +56,7 @@ ALTER TABLE public.reservations
 \ir ../20270512001975_issue_1975_ari_stays_reservations.sql
 -- The re-applied #1975 file restores its historical SQLSTATE 40001 raise;
 -- re-apply #4134 so the function is back at the chain head (PT409).
-\ir ../20271224004134_issue_4134_pt409_application_conflicts.sql
+\ir ../20271231204134_issue_4134_pt409_application_conflicts.sql
 
 BEGIN;
 
