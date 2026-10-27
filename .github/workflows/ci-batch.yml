@@ -669,6 +669,10 @@ jobs:
           .github/scripts/ci-batch/__tests__/issue-3262-scheduled-selection.implementor.test.mjs
           .github/scripts/ci-batch/__tests__/issue-3643-postgres-template-batch.implementor.test.mjs
 
+      - name: Additive registry self-test
+        if: always() && matrix.class == 'node20-noinstall'
+        run: node --test .github/scripts/ci-batch/__tests__/issue-3643-additive-effective-registry.implementor.test.mjs
+
       - name: Run the ${{ matrix.class }} suites
         if: always()
         env:
