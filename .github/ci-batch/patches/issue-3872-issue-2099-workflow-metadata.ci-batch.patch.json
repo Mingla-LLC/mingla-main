@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-bootstrap-patch",
+  "ownerIssue": "#3872",
+  "target": {
+    "collection": "legacyOrigins",
+    "selector": {
+      "stem": "issue-2099-pending-venue-identity-correction-tests",
+      "extension": "yml"
+    },
+    "baseRowSha256": "75fb951a238870efd5605bdae6b456048413e0c76243071c82f1b69786cd7e8b"
+  },
+  "operations": [
+    {
+      "op": "replace",
+      "path": "/workflowMetadata/sourceSha256",
+      "expected": "db7cbb028f65b37abdceaef227d2c5cad6d328e7f95873114748461a47d9b9b2",
+      "value": "cd8b5527d68e87e8d39378bcb958749f2451ab4bb973babc57e9545d69060cb9"
+    }
+  ],
+  "dependentSeals": [],
+  "reason": "Issue #3872 advances the #2099 pending-venue schema pin over the Local lane (local_months.place_id) in its own replayable migration. The D4 replay step now re-applies that current pin owner after the two historical owners, so the D5 race harness runs against the pin the live schema needs. Execution topology, runtime, setup and triggers are unchanged."
+}
