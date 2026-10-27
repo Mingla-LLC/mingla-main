@@ -11,6 +11,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { isPrimarySuite, isMigratedSuite, suiteCommandFingerprint, suiteOriginPatterns } from "./validate-manifest-v2.mjs";
 import { loadEffectiveManifest } from "./load-manifest.mjs";
+import { isUnfilteredPostgresSuite } from "./postgres-batch-contract.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(HERE, "../../..");
@@ -245,12 +246,13 @@ function setupEvidenceIsExact(report, authority, executionClass) {
  * answer is unchanged: everything the host owns. `mode: "full"` — push, schedule,
  * workflow_dispatch — is the same answer said explicitly.
  */
-export function expectedRoutedPrimaryIds(ownedPrimary, routing) {
+export function expectedRoutedPrimaryIds(manifest, ownedPrimary, routing) {
   if (!routing || routing.mode !== "routed") return ownedPrimary.map((suite) => suite.id);
   const changedPaths = Array.isArray(routing.changedPaths) ? routing.changedPaths : [];
   try {
     return ownedPrimary
-      .filter((suite) => suiteOriginPatterns(suite).some((pattern) => changedPaths.some((file) => pathMatches(pattern, file))))
+      .filter((suite) => isUnfilteredPostgresSuite(manifest, suite)
+        || suiteOriginPatterns(suite).some((pattern) => changedPaths.some((file) => pathMatches(pattern, file))))
       .map((suite) => suite.id);
   } catch {
     // A registry too broken to route from should already have failed the build
@@ -274,7 +276,7 @@ export function changedPathDigest(changedPaths) {
  * (`mode: "selected"`), the runner's independently derived list must agree with
  * it byte for byte — two derivations, one answer, or red.
  */
-function reconcilePrimaryRouting(ownedPrimary, decision, primary) {
+function reconcilePrimaryRouting(manifest, ownedPrimary, decision, primary) {
   const errors = [];
   const routing = primary?.routing;
   if (routing === undefined || routing === null) return errors;
@@ -298,7 +300,7 @@ function reconcilePrimaryRouting(ownedPrimary, decision, primary) {
     try { suiteOriginPatterns(suite); }
     catch (error) { return [...errors, `primary-routing-registry-unreadable: ${error.message}`]; }
   }
-  const recomputed = expectedRoutedPrimaryIds(ownedPrimary, routing);
+  const recomputed = expectedRoutedPrimaryIds(manifest, ownedPrimary, routing);
   if (JSON.stringify(routing.classSelectedSuiteIds) !== JSON.stringify(recomputed)) errors.push("primary-routing-mismatch");
   if (routing.changedPathSha256 !== changedPathDigest(changedPaths)) errors.push("primary-routing-digest-mismatch");
   if (decision?.mode === "selected" && decision.changedPathSha256 !== changedPathDigest(changedPaths)) {
@@ -330,8 +332,8 @@ export function reconcilePhase3bReports(manifest, host, rawDecision, primary, se
   // strong as it was: the routed set is derived twice, independently, and both
   // derivations must agree before any suite is allowed to be absent.
   const ownedPrimary = manifest.suites.filter((suite) => suite.class === host && isPrimarySuite(suite));
-  errors.push(...reconcilePrimaryRouting(ownedPrimary, decision, primary));
-  const expectedPrimaryIds = expectedRoutedPrimaryIds(ownedPrimary, primary?.routing);
+  errors.push(...reconcilePrimaryRouting(manifest, ownedPrimary, decision, primary));
+  const expectedPrimaryIds = expectedRoutedPrimaryIds(manifest, ownedPrimary, primary?.routing);
   const primaryIds = Array.isArray(primary?.results) ? primary.results.map((result) => result.id) : [];
   // Any migrated suite appearing in the primary report is a wrong-lane duplicate,
   // whichever wave it belongs to — not only a Phase 3B one.
