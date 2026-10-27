@@ -410,7 +410,7 @@ BEGIN
     RAISE EXCEPTION 'T-1780-10 FAIL: queued group completed before provider handoff';
   EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_early_state=RETURNED_SQLSTATE;
-    IF v_early_state<>'40001' THEN RAISE; END IF;
+    IF v_early_state<>'PT409' THEN RAISE; END IF;
   END;
 END;
 $execute_before_handoff$;

@@ -252,8 +252,8 @@ BEGIN
       ARRAY['3564a400-0000-4000-8000-000000000001','3564a400-0000-4000-8000-000000000003','3564a400-0000-4000-8000-000000000004','3564a400-0000-4000-8000-000000000002']::uuid[]
     );
   EXCEPTION WHEN OTHERS THEN v_state := SQLSTATE; END;
-  IF v_state IS DISTINCT FROM '40001' OR pg_temp.issue_3564_state() IS DISTINCT FROM v_before THEN
-    RAISE EXCEPTION 'ISSUE-3564 I-ROLLBACK-1: stale snapshot was not zero-side-effect 40001 (%)', coalesce(v_state,'success');
+  IF v_state IS DISTINCT FROM 'PT409' OR pg_temp.issue_3564_state() IS DISTINCT FROM v_before THEN
+    RAISE EXCEPTION 'ISSUE-3564 I-ROLLBACK-1: stale snapshot was not zero-side-effect PT409 (%)', coalesce(v_state,'success');
   END IF;
 
   v_state := NULL;
@@ -276,8 +276,8 @@ BEGIN
       ARRAY['3564a400-0000-4000-8000-000000000003']::uuid[]
     );
   EXCEPTION WHEN OTHERS THEN v_state := SQLSTATE; END;
-  IF v_state IS DISTINCT FROM '40001' OR pg_temp.issue_3564_state() IS DISTINCT FROM v_before THEN
-    RAISE EXCEPTION 'ISSUE-3564 I-ROLLBACK-2B: valid client set vs locked membership was not zero-side-effect 40001 (%)', coalesce(v_state,'success');
+  IF v_state IS DISTINCT FROM 'PT409' OR pg_temp.issue_3564_state() IS DISTINCT FROM v_before THEN
+    RAISE EXCEPTION 'ISSUE-3564 I-ROLLBACK-2B: valid client set vs locked membership was not zero-side-effect PT409 (%)', coalesce(v_state,'success');
   END IF;
 
   v_state := NULL;
@@ -300,8 +300,8 @@ BEGIN
       ARRAY['3564a400-0000-4000-8000-000000000001','3564a400-0000-4000-8000-000000000002','3564a400-0000-4000-8000-000000000003','3564a400-0000-4000-8000-000000000005']::uuid[]
     );
   EXCEPTION WHEN OTHERS THEN v_state := SQLSTATE; END;
-  IF v_state IS DISTINCT FROM '40001' OR pg_temp.issue_3564_state() IS DISTINCT FROM v_before THEN
-    RAISE EXCEPTION 'ISSUE-3564 I-ROLLBACK-4: foreign matching client set was not zero-side-effect 40001 (%)', coalesce(v_state,'success');
+  IF v_state IS DISTINCT FROM 'PT409' OR pg_temp.issue_3564_state() IS DISTINCT FROM v_before THEN
+    RAISE EXCEPTION 'ISSUE-3564 I-ROLLBACK-4: foreign matching client set was not zero-side-effect PT409 (%)', coalesce(v_state,'success');
   END IF;
 END;
 $rollback$;

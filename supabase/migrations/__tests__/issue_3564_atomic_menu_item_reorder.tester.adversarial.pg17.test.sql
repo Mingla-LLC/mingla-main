@@ -259,7 +259,7 @@ BEGIN
     FROM dblink_get_result('issue3564_tester_b') AS completed(attempt jsonb);
   PERFORM * FROM dblink_get_result('issue3564_tester_b') AS drained(attempt jsonb);
   IF v_winner->>'state' <> '00000'
-     OR v_loser->>'state' <> '40001'
+     OR v_loser->>'state' <> 'PT409'
      OR (v_winner#>>'{result,items,0,id}') <> '3564b400-0000-4000-8000-000000000002' THEN
     RAISE EXCEPTION 'ISSUE-3564 T-RACE-4: winner/stale-loser result wrong: winner=%, loser=%',v_winner,v_loser;
   END IF;
@@ -295,7 +295,7 @@ BEGIN
   END IF;
 
   -- INSERT membership race: the FK holds the parent while the RPC queues. Once
-  -- the insert commits, the old complete set loses with 40001 and writes none.
+  -- the insert commits, the old complete set loses with PT409 and writes none.
   PERFORM dblink_exec('issue3564_tester_a','BEGIN');
   PERFORM dblink_exec('issue3564_tester_a',$sql$
     INSERT INTO public.menu_items(id,menu_id,brand_id,name,price_cents,currency,sort_order)
@@ -319,8 +319,8 @@ BEGIN
   PERFORM dblink_exec('issue3564_tester_a','COMMIT');
   SELECT attempt INTO v_attempt FROM dblink_get_result('issue3564_tester_b') AS completed(attempt jsonb);
   PERFORM * FROM dblink_get_result('issue3564_tester_b') AS drained(attempt jsonb);
-  IF v_attempt->>'state' <> '40001' THEN
-    RAISE EXCEPTION 'ISSUE-3564 T-MEMBERSHIP-2: insert race was not stale 40001: %',v_attempt;
+  IF v_attempt->>'state' <> 'PT409' THEN
+    RAISE EXCEPTION 'ISSUE-3564 T-MEMBERSHIP-2: insert race was not stale PT409: %',v_attempt;
   END IF;
 
   -- DELETE membership race: the RPC waits on the deterministically locked child
@@ -343,8 +343,8 @@ BEGIN
   PERFORM dblink_exec('issue3564_tester_a','COMMIT');
   SELECT attempt INTO v_attempt FROM dblink_get_result('issue3564_tester_b') AS completed(attempt jsonb);
   PERFORM * FROM dblink_get_result('issue3564_tester_b') AS drained(attempt jsonb);
-  IF v_attempt->>'state' <> '40001' THEN
-    RAISE EXCEPTION 'ISSUE-3564 T-MEMBERSHIP-4: delete race was not stale 40001: %',v_attempt;
+  IF v_attempt->>'state' <> 'PT409' THEN
+    RAISE EXCEPTION 'ISSUE-3564 T-MEMBERSHIP-4: delete race was not stale PT409: %',v_attempt;
   END IF;
 
   IF dblink_exec('issue3564_tester_a',$sql$
@@ -380,7 +380,7 @@ BEGIN
   PERFORM dblink_exec('issue3564_tester_a','COMMIT');
   SELECT attempt INTO v_attempt FROM dblink_get_result('issue3564_tester_b') AS completed(attempt jsonb);
   PERFORM * FROM dblink_get_result('issue3564_tester_b') AS drained(attempt jsonb);
-  IF v_attempt->>'state' <> '40001'
+  IF v_attempt->>'state' <> 'PT409'
      OR NOT EXISTS (
        SELECT 1 FROM public.menu_items
         WHERE id = '3564b400-0000-4000-8000-000000000004'
@@ -420,8 +420,8 @@ BEGIN
       ARRAY['3564b400-0000-4000-8000-000000000002','3564b400-0000-4000-8000-000000000001','3564b400-0000-4000-8000-000000000003','3564b400-0000-4000-8000-000000000009']::uuid[]
     )
   ) AS refused(attempt jsonb);
-  IF v_attempt->>'state' <> '40001' THEN
-    RAISE EXCEPTION 'ISSUE-3564 T-SCOPE-1: cross-menu/cross-brand adoption was not 40001: %',v_attempt;
+  IF v_attempt->>'state' <> 'PT409' THEN
+    RAISE EXCEPTION 'ISSUE-3564 T-SCOPE-1: cross-menu/cross-brand adoption was not PT409: %',v_attempt;
   END IF;
 
   -- A malformed child brand under the correct parent must be indistinguishable

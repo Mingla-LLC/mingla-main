@@ -32,6 +32,8 @@ import { DATA_FETCH_TIMEOUT_MS, withTimeout } from "../utils/withTimeout";
 // Imported from the keyless `upcomingKeys` module to avoid a require-cycle
 // (useUpcomingForBrand → useTrips → useUpcomingForBrand).
 import { upcomingKeys } from "./upcomingKeys";
+// Issue #3827 — Home > Recent key factory (keyless module, no service graph).
+import { businessRecentKeys } from "../services/businessRecentKeys";
 // META-ORCH-1187 [Growth Analytics Hub] — offering-published conversion (SC-6).
 import { postHogService } from "../services/postHogService";
 import { captureHostSearchOutcome } from "../analytics/searchOutcome";
@@ -196,12 +198,29 @@ export interface UpdateTripBasicsInput {
   revision?: TripRevisionCursor;
 }
 
+/**
+ * Issue #3827 — true when a basics save changed what Home > Recent shows as the
+ * trip's thumbnail. Recent records the row when the trip is opened, before the
+ * step-1 autosave writes the cover, so a changed cover must refresh Recent.
+ * An unknown previous value (no cached detail) counts as changed.
+ */
+export const tripCoverChanged = (
+  previous: Trip | undefined,
+  next: Trip,
+): boolean =>
+  previous === undefined ||
+  previous.coverMediaUrl !== next.coverMediaUrl ||
+  previous.coverMediaType !== next.coverMediaType ||
+  (previous.coverMediaPosterUrl ?? null) !== (next.coverMediaPosterUrl ?? null);
+
 export const useUpdateTripBasics = (): UseMutationResult<
   Trip,
   Error,
   UpdateTripBasicsInput
 > => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   return useMutation<Trip, Error, UpdateTripBasicsInput>({
     mutationFn: async (variables) =>
       updateTripBasics(variables.eventId, variables.patch, {
@@ -209,7 +228,18 @@ export const useUpdateTripBasics = (): UseMutationResult<
         revision: variables.revision,
       }),
     onSuccess: (trip, { brandId }) => {
+      const previous = queryClient.getQueryData<Trip>(tripKeys.detail(trip.id));
       queryClient.setQueryData<Trip>(tripKeys.detail(trip.id), trip);
+      // Issue #3827 — refresh Home > Recent so the row picks up the new cover
+      // without a pull-to-refresh. Only when the cover actually changed.
+      if (userId !== null && tripCoverChanged(previous, trip)) {
+        queryClient.invalidateQueries({
+          queryKey: businessRecentKeys.index(userId, brandId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: businessRecentKeys.pages(userId, brandId),
+        });
+      }
       queryClient.invalidateQueries({
         queryKey: tripKeys.listByBrand(brandId),
       });

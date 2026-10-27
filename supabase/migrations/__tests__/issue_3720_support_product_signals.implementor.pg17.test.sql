@@ -66,7 +66,7 @@ BEGIN
 
   BEGIN
     PERFORM public.issue_3720_update_internal_thread(v_thread, 1, 'open', 'high');
-  EXCEPTION WHEN serialization_failure THEN
+  EXCEPTION WHEN sqlstate 'PT409' THEN
     v_stale := true;
   END;
   IF NOT v_stale THEN
