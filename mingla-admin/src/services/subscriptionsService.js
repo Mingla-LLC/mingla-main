@@ -1,7 +1,7 @@
 // Issue #4130 (Wave 2b) — the one caller of the Subscriptions reads.
 //
 // The browser cannot read subscriptions or admin_subscription_overrides
-// (RPC-only, I-1272), so every number on the page comes from an admin RPC.
+// (RPC-only, per #1272), so every number on the page comes from an admin RPC.
 // Grant and revoke go through the audited RPCs in adminMoneyActService.js,
 // which record the signed-in admin on the server.
 import { supabase } from "../lib/supabase";
