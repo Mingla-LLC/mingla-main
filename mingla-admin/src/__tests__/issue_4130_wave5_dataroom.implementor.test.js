@@ -122,13 +122,13 @@ describe("#4130 Wave 5 — funnels, All users, retention", () => {
 
   it("money stays per currency; a missing rate stays missing", () => {
     const money = { last_30d: [
-      { kind: "profit", currency: "NGN", cents: 494200, usd_cents: null },
-      { kind: "profit", currency: "USD", cents: -110, usd_cents: -110 },
+      { kind: "profit", currency: "NGN", cents: 123400, usd_cents: null },
+      { kind: "profit", currency: "USD", cents: -250, usd_cents: -250 },
       { kind: "fee", currency: "NGN", cents: 1, usd_cents: 0 },
     ] };
     assert.deepEqual(last30(money, "profit"), [
-      { currency: "NGN", cents: 494200, usdCents: null },
-      { currency: "USD", cents: -110, usdCents: -110 },
+      { currency: "NGN", cents: 123400, usdCents: null },
+      { currency: "USD", cents: -250, usdCents: -250 },
     ]);
   });
 });

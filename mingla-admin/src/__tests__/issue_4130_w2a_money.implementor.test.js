@@ -53,7 +53,7 @@ const paystackReady = {
   paystack_subaccount_code: "ACCT_1", paystack_recipient_active: true, paystack_recipient_code: "RCP_1",
   paystack_bank_mask: "••••4130", has_stripe_account: false, stripe_connect_id: null,
   stripe_charges_enabled: false, stripe_payouts_enabled: false,
-  paid_out_by_currency: { NGN: 4904180 }, held_by_currency: {}, held_states: {}, has_paid_sales: true,
+  paid_out_by_currency: { NGN: 1234500 }, held_by_currency: {}, held_states: {}, has_paid_sales: true,
 };
 const paystackNothing = {
   brand_id: "b2", brand_name: "Paystack Nothing", payment_provider: "paystack",

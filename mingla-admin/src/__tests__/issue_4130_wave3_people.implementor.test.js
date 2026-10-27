@@ -188,7 +188,7 @@ describe("#4130 W3: People words", () => {
     assert.deepEqual(PEOPLE_TABS.map((t) => t.id), ["explorers", "hosts", "both", "incomplete", "internal"]);
     assert.equal(peopleTabFor("hosts").segment, "host");
     assert.equal(peopleTabFor("constructor").id, "explorers", "unknown or inherited keys fall back");
-    assert.equal(peopleTabLabel(PEOPLE_TABS[0], { explorer: 75 }), "Explorers · 75");
+    assert.equal(peopleTabLabel(PEOPLE_TABS[0], { explorer: 42 }), "Explorers · 42");
     assert.equal(peopleTabLabel(PEOPLE_TABS[0], null), "Explorers", "no count until the server answers");
     assert.equal(peopleTabLabel(PEOPLE_TABS[4], { internal: "x" }), "Staff and test");
   });
