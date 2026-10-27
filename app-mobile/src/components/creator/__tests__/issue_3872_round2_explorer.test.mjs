@@ -170,7 +170,11 @@ test("W3.3 money words come from money_state; paid names the date; null says not
 
 test("W2.2 ProgramScreen pads the top inset itself and the scroll view adds none", () => {
   const ui = read("src/components/programs/ProgramUi.tsx");
-  const screen = ui.slice(ui.indexOf("export function ProgramScreen"), ui.indexOf("// ── Cards"));
+  const start = ui.indexOf("export function ProgramScreen");
+  const end = ui.indexOf("// ── Cards");
+  assert.ok(start >= 0 && end > start, "ProgramScreen must precede the Cards section");
+  const screen = ui.slice(start, end);
+  assert.ok(screen.length > 200 && screen.length < 20000, "ProgramScreen window must be non-empty and bounded");
   assert.doesNotMatch(screen, /<SafeAreaView\b/);
   assert.match(screen, /paddingTop: insets\.top/);
   assert.match(screen, /automaticallyAdjustContentInsets=\{false\}/);
