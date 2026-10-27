@@ -13,13 +13,13 @@
  *   - Surface 1: the three pass/absorb segmented rows + live preview chip.
  *   - Surface 3: `locked` → read-only resolved values + lock chip + reason
  *     (mirrors the server `pricing_switches_locked` post-sale guard).
- *   - Surface 4: VAT row swaps to a "Set up VAT" nudge when the brand has no
- *     active tax registration (`vatRegistered !== true`) — fail-closed to
- *     absorb, never offers a VAT it can't collect.
+ *   - Surface 4: Stripe-tax markets swap to a "Set up VAT" nudge when the brand
+ *     has no active registration. Nigeria uses configured 7.5% VAT and never
+ *     detours a Paystack host into Stripe setup.
  *
- * Money math: the preview "Buyer pays" is EXACT for GB inclusive VAT (no tax
- * round-trip needed). See `utils/pricingPreview.ts` for the honest-limit on the
- * "You keep" figure (flat-absorb floor, labelled "before VAT").
+ * Money math: the preview mirrors the shared engine for fee gross-up and
+ * configured VAT. "You keep" is the exact connected-account payout before the
+ * host's own tax filing; Mingla does not withhold VAT.
  *
  * Tokens: business is a DARK system — `text.*` (white-alpha), `accent.warm`,
  * `semantic.*`, `glass.*` from `constants/designSystem`. No light-mode palette.
@@ -39,6 +39,10 @@ import {
 } from "../../constants/designSystem";
 import { formatCurrency } from "../../utils/currency";
 import { computePreview } from "../../utils/pricingPreview";
+import {
+  configuredVatRateBps,
+  type PricingTaxContext,
+} from "../../utils/pricingTaxContext";
 import type {
   BrandPricingDefaults,
   PricingSwitchOverrides,
@@ -99,7 +103,18 @@ const ROWS: SwitchRowDef[] = [
   },
 ];
 
-export interface WhoCoversCostsSectionProps {
+const NIGERIA_VAT_ROW: SwitchRowDef = {
+  key: "passTax",
+  label: "VAT",
+  passLabel: "Add 7.5% VAT on top",
+  absorbLabel: "No VAT",
+  subPassed: "Mingla doesn’t file VAT for you.",
+  subAbsorbed: "Mingla doesn’t file VAT for you.",
+  lockedPassed: "7.5% VAT added on top",
+  lockedAbsorbed: "No VAT",
+};
+
+export interface WhoCoversCostsSectionProps extends PricingTaxContext {
   /** Per-offering raw switches; NULL = inherit the brand default. */
   overrides: PricingSwitchOverrides;
   /** Brand-level defaults (resolved at read sites; default false = absorb). */
@@ -117,6 +132,9 @@ export interface WhoCoversCostsSectionProps {
   currency: string | null;
   /** Mingla take-rate in bps (brand override or platform default). */
   effectiveTakeRateBps: number;
+  /** Money rail and ISO-2 payout country; selects configured VAT vs Stripe Tax. */
+  paymentProvider?: "stripe" | "paystack" | null;
+  paymentCountry?: string | null;
   /** Surface 3 — sold a ticket → read-only. */
   locked?: boolean;
   /** Role/loading gate. Unlike `locked`, this does not claim tickets sold. */
@@ -159,6 +177,8 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
   previewBaseCents,
   currency,
   effectiveTakeRateBps,
+  paymentProvider,
+  paymentCountry,
   locked = false,
   disabled = false,
   disabledReason,
@@ -176,15 +196,25 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
   const money = (cents: number): string =>
     currency !== null ? formatCurrency(cents, currency, true) : "";
   const hasPrice = Number.isFinite(previewBaseCents) && previewBaseCents > 0;
-  const vatUnregistered = vatRegistered !== true;
+  const vatRateBps = configuredVatRateBps({ paymentProvider, paymentCountry });
+  const usesNigeriaVat = vatRateBps !== null;
+  const vatUnavailable = !usesNigeriaVat && vatRegistered !== true;
 
   // Surface 4: a brand can't pass a VAT it can't collect. Force the resolved
   // VAT switch to absorbed for the preview when unregistered (fail-closed).
-  const previewSwitches = {
-    passTax: vatUnregistered ? false : resolved.passTax,
-    passMinglaFee: resolved.passMinglaFee,
-    passServiceFee: resolved.passServiceFee,
-  };
+  const previewSwitches = useMemo(
+    () => ({
+      passTax: vatUnavailable ? false : resolved.passTax,
+      passMinglaFee: resolved.passMinglaFee,
+      passServiceFee: resolved.passServiceFee,
+    }),
+    [
+      resolved.passMinglaFee,
+      resolved.passServiceFee,
+      resolved.passTax,
+      vatUnavailable,
+    ],
+  );
 
   const preview = useMemo(
     () =>
@@ -192,13 +222,13 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
         baseCents: previewBaseCents,
         switches: previewSwitches,
         effectiveTakeRateBps,
+        vatRateBps,
       }),
     [
       previewBaseCents,
-      previewSwitches.passTax,
-      previewSwitches.passMinglaFee,
-      previewSwitches.passServiceFee,
+      previewSwitches,
       effectiveTakeRateBps,
+      vatRateBps,
     ],
   );
 
@@ -217,17 +247,32 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
       <Text style={styles.frame}>Buyers always see one all-in price.</Text>
 
       <View style={styles.rows}>
-        {ROWS.map((row, i) => {
+        {ROWS.map((defaultRow, i) => {
+          const row =
+            defaultRow.key === "passTax" && usesNigeriaVat
+              ? NIGERIA_VAT_ROW
+              : defaultRow;
           const resolvedPass = resolved[row.key];
           const isLast = i === ROWS.length - 1;
-          const isVatNudge = row.key === "passTax" && vatUnregistered && !locked && !disabled;
+          const isNigeriaVatRow = row.key === "passTax" && usesNigeriaVat;
+          const isVatNudge =
+            row.key === "passTax" && vatUnavailable && !locked && !disabled;
 
           return (
             <View
               key={row.key}
-              style={[styles.row, isLast ? null : styles.rowDivider]}
+              style={[
+                styles.row,
+                isNigeriaVatRow ? styles.rowStacked : null,
+                isLast ? null : styles.rowDivider,
+              ]}
             >
-              <View style={styles.rowText}>
+              <View
+                style={[
+                  styles.rowText,
+                  isNigeriaVatRow ? styles.rowTextStacked : null,
+                ]}
+              >
                 <Text
                   style={[styles.rowLabel, locked ? styles.lockedText : null]}
                 >
@@ -267,6 +312,7 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
                   onSelect={(pass) => handleToggle(row.key, pass)}
                   accessibilityLabelPassed={`${row.label} ${row.subPassed}`}
                   accessibilityLabelAbsorbed={`${row.label} ${row.subAbsorbed}`}
+                  fullWidth={isNigeriaVatRow}
                 />
               )}
             </View>
@@ -287,24 +333,31 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
           accessibilityRole="summary"
           accessibilityLabel={`Buyer pays ${money(
             preview.buyerPaysCents,
-          )} all in. You get per ticket ${money(
-            preview.youKeepFloorCents,
-          )} before VAT.`}
+          )}. You keep ${money(preview.youKeepCents)}.`}
         >
-          <View style={styles.previewCol}>
+          <View style={styles.previewMoneyRow}>
             <Text style={styles.previewHead}>Buyer pays</Text>
-            <Text style={styles.previewBuyer}>
+            <Text
+              style={styles.previewBuyer}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.65}
+              testID="who-covers-costs-buyer-pays"
+            >
               {money(preview.buyerPaysCents)}
             </Text>
-            <Text style={styles.previewCaption}>all-in, one tap</Text>
           </View>
-          <View style={styles.previewDivider} />
-          <View style={styles.previewCol}>
-            <Text style={styles.previewHead}>You get per ticket</Text>
-            <Text style={styles.previewKeep}>
-              {money(preview.youKeepFloorCents)}
+          <View style={styles.previewMoneyRow}>
+            <Text style={styles.previewHead}>You keep</Text>
+            <Text
+              style={styles.previewKeep}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.65}
+              testID="who-covers-costs-you-keep"
+            >
+              {money(preview.youKeepCents)}
             </Text>
-            <Text style={styles.previewCaption}>before VAT</Text>
           </View>
         </View>
       ) : (
@@ -322,7 +375,8 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
           <Icon name="shield" size={14} color={textTokens.tertiary} />
           <Text style={styles.lockReason}>
             {disabled
-              ? disabledReason ?? "You don't have permission to change these settings."
+              ? (disabledReason ??
+                "You don't have permission to change these settings.")
               : "Pricing locks once your first ticket sells, so every buyer pays on the same terms."}
           </Text>
         </View>
@@ -362,6 +416,7 @@ interface SegmentedToggleProps {
   onSelect: (pass: boolean) => void;
   accessibilityLabelPassed: string;
   accessibilityLabelAbsorbed: string;
+  fullWidth?: boolean;
 }
 
 const SegmentedToggle: React.FC<SegmentedToggleProps> = ({
@@ -372,10 +427,15 @@ const SegmentedToggle: React.FC<SegmentedToggleProps> = ({
   onSelect,
   accessibilityLabelPassed,
   accessibilityLabelAbsorbed,
+  fullWidth = false,
 }) => {
   return (
     <View
-      style={[styles.segTrack, inherited ? styles.segTrackInherited : null]}
+      style={[
+        styles.segTrack,
+        fullWidth ? styles.segTrackFull : null,
+        inherited ? styles.segTrackInherited : null,
+      ]}
       accessibilityRole="radiogroup"
     >
       <Pressable
@@ -383,9 +443,16 @@ const SegmentedToggle: React.FC<SegmentedToggleProps> = ({
         accessibilityRole="radio"
         accessibilityState={{ selected: passed }}
         accessibilityLabel={accessibilityLabelPassed}
-        style={[styles.seg, passed ? styles.segSelected : null]}
+        style={[
+          styles.seg,
+          fullWidth ? styles.segFull : null,
+          passed ? styles.segSelected : null,
+        ]}
       >
-        <Text style={[styles.segLabel, passed ? styles.segLabelSelected : null]}>
+        <Text
+          style={[styles.segLabel, passed ? styles.segLabelSelected : null]}
+          numberOfLines={fullWidth ? 2 : 1}
+        >
           {passLabel}
         </Text>
       </Pressable>
@@ -394,10 +461,15 @@ const SegmentedToggle: React.FC<SegmentedToggleProps> = ({
         accessibilityRole="radio"
         accessibilityState={{ selected: !passed }}
         accessibilityLabel={accessibilityLabelAbsorbed}
-        style={[styles.seg, !passed ? styles.segSelected : null]}
+        style={[
+          styles.seg,
+          fullWidth ? styles.segFull : null,
+          !passed ? styles.segSelected : null,
+        ]}
       >
         <Text
           style={[styles.segLabel, !passed ? styles.segLabelSelected : null]}
+          numberOfLines={fullWidth ? 2 : 1}
         >
           {absorbLabel}
         </Text>
@@ -440,6 +512,11 @@ const styles = StyleSheet.create({
     minHeight: 56,
     paddingVertical: spacing.sm,
   },
+  rowStacked: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: spacing.sm,
+  },
   rowDivider: {
     borderBottomWidth: 1,
     borderBottomColor: glass.border.profileBase,
@@ -447,6 +524,12 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     paddingRight: spacing.sm,
+  },
+  rowTextStacked: {
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: "auto",
+    paddingRight: 0,
   },
   rowLabel: {
     fontSize: typography.body.fontSize,
@@ -478,6 +561,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.pending,
   },
+  segTrackFull: {
+    alignSelf: "stretch",
+  },
   seg: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 6,
@@ -488,10 +574,15 @@ const styles = StyleSheet.create({
   segSelected: {
     backgroundColor: accent.warm,
   },
+  segFull: {
+    flex: 1,
+    alignItems: "center",
+  },
   segLabel: {
     fontSize: typography.micro.fontSize,
     fontWeight: "600",
     color: textTokens.secondary,
+    textAlign: "center",
   },
   segLabelSelected: {
     color: "#ffffff",
@@ -516,24 +607,22 @@ const styles = StyleSheet.create({
   },
   // Preview chip
   previewChip: {
-    flexDirection: "row",
-    alignItems: "stretch",
+    gap: spacing.sm,
     marginTop: spacing.md,
     padding: spacing.md,
     borderRadius: radiusTokens.md,
     backgroundColor: glass.tint.backdrop,
   },
-  previewCol: {
-    flex: 1,
-  },
-  previewDivider: {
-    width: 1,
-    backgroundColor: glass.border.profileBase,
-    marginHorizontal: spacing.md,
+  previewMoneyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
   },
   previewHead: {
     fontSize: typography.caption.fontSize,
     color: textTokens.secondary,
+    flexShrink: 0,
   },
   previewBuyer: {
     fontSize: typography.statValue.fontSize,
@@ -542,6 +631,8 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     marginTop: 2,
     fontVariant: ["tabular-nums"],
+    flexShrink: 1,
+    textAlign: "right",
   },
   previewKeep: {
     fontSize: typography.statValue.fontSize,
@@ -550,11 +641,8 @@ const styles = StyleSheet.create({
     color: semantic.success,
     marginTop: 2,
     fontVariant: ["tabular-nums"],
-  },
-  previewCaption: {
-    fontSize: typography.micro.fontSize,
-    color: textTokens.tertiary,
-    marginTop: 1,
+    flexShrink: 1,
+    textAlign: "right",
   },
   emptyHint: {
     fontSize: typography.caption.fontSize,

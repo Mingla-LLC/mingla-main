@@ -41,8 +41,8 @@ describe("computePreview — all absorbed (default brand posture)", () => {
     expect(r.passed.miglaFeeCents).toBe(0);
     expect(r.passed.serviceFeeCents).toBe(0);
   });
-  it("you-keep floor = base − mingla fee (tax floor 0)", () => {
-    expect(r.youKeepFloorCents).toBe(10000 - 150 - 300);
+  it("you keep = buyer total minus Mingla's application fee", () => {
+    expect(r.youKeepCents).toBe(10000 - 150 - 300);
   });
 });
 
@@ -61,7 +61,7 @@ describe("computePreview — fees passed to buyer", () => {
   });
 });
 
-describe("computePreview — VAT toggle does NOT move buyer (T-1, inclusive)", () => {
+describe("computePreview — Stripe-tax markets preserve inclusive preview behavior", () => {
   const base = {
     baseCents: 5000,
     effectiveTakeRateBps: DEFAULT_TAKE_RATE_BPS,
@@ -76,5 +76,60 @@ describe("computePreview — VAT toggle does NOT move buyer (T-1, inclusive)", (
       switches: { passTax: true, passMinglaFee: false, passServiceFee: false },
     });
     expect(passed.buyerPaysCents).toBe(absorbed.buyerPaysCents);
+  });
+});
+
+describe("computePreview — Nigeria configured VAT", () => {
+  const base = {
+    baseCents: 190_000_000,
+    effectiveTakeRateBps: DEFAULT_TAKE_RATE_BPS,
+    serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
+    vatRateBps: 750,
+  };
+
+  it("shows the exact no-VAT buyer total and connected payout", () => {
+    const result = computePreview({
+      ...base,
+      switches: {
+        passTax: false,
+        passMinglaFee: false,
+        passServiceFee: false,
+      },
+    });
+
+    expect(result.taxCents).toBe(14_250_000);
+    expect(result.buyerPaysCents).toBe(190_000_000);
+    expect(result.youKeepCents).toBe(181_450_000);
+    expect(result.absorbed.taxCents).toBe(14_250_000);
+  });
+
+  it("adds 7.5% on top and keeps passed VAT in the connected payout", () => {
+    const result = computePreview({
+      ...base,
+      switches: {
+        passTax: true,
+        passMinglaFee: false,
+        passServiceFee: false,
+      },
+    });
+
+    expect(result.buyerPaysCents).toBe(204_250_000);
+    expect(result.youKeepCents).toBe(195_700_000);
+    expect(result.passed.taxCents).toBe(14_250_000);
+  });
+
+  it("calculates VAT on the fee-grossed buyer subtotal like the engine", () => {
+    const result = computePreview({
+      ...base,
+      switches: {
+        passTax: true,
+        passMinglaFee: true,
+        passServiceFee: true,
+      },
+    });
+
+    expect(result.taxCents).toBe(14_891_250);
+    expect(result.buyerPaysCents).toBe(213_441_250);
+    expect(result.youKeepCents).toBe(204_891_250);
   });
 });

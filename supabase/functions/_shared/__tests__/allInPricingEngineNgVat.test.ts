@@ -94,7 +94,15 @@ Deno.test("NG all-in: base + passed fees + 7.5% VAT, in kobo (config_vat basis)"
   assertEquals(breakdown.components.tax_cents, 40875);
   assertEquals(breakdown.passed.tax_cents, 40875); // passed
   assertEquals(breakdown.absorbed.tax_cents, 0);
-  assertEquals(breakdown.application_fee_amount_cents, miglaFee);
+  assertEquals(
+    breakdown.application_fee_amount_cents,
+    miglaFee + serviceFee,
+  );
+  // MINGLA-INVARIANT: I-1318-CONNECTED-PAYOUT-EXCLUDES-UNWITHHELD-TAX | issue #1318 | Connected-account payout is buyer total minus Mingla's application fee; Mingla never subtracts VAT it does not withhold or file.
+  assertEquals(
+    breakdown.connected_account_payout_cents,
+    buyerTotalCents - breakdown.application_fee_amount_cents,
+  );
   assertEquals(breakdown.currency, "NGN");
 });
 
@@ -126,6 +134,10 @@ Deno.test("NG all-in absorbed VAT: buyer total excludes VAT, breakdown records i
   });
   assertEquals(breakdown.passed.tax_cents, 0);
   assertEquals(breakdown.absorbed.tax_cents, taxCents); // brand absorbs it
+  assertEquals(
+    breakdown.connected_account_payout_cents,
+    buyerTotalCents - breakdown.application_fee_amount_cents,
+  );
 });
 
 Deno.test("unmapped region still throws (exhaustive guard intact)", () => {

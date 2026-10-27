@@ -285,11 +285,12 @@ export function buildPricingBreakdown(args: {
       tax_cents: passTaxEffective ? 0 : taxCents,
     },
     application_fee_amount_cents: applicationFeeAmountCents,
-    // Host payout preview = buyer_total − Mingla's 4.5% − tax-set-aside.
+    // Host payout preview = buyer_total − Mingla's application fee.
     // Stripe processing is paid by the platform (fees_collector: application),
-    // not deducted from the connected account. The brand remits VAT if registered.
+    // not deducted from the connected account. Mingla does not withhold or file
+    // VAT; the brand receives passed VAT and remains responsible for remitting it.
     connected_account_payout_cents:
-      amountTotalCents - applicationFeeAmountCents - taxCents,
+      amountTotalCents - applicationFeeAmountCents,
     stripe_tax_calculation_id: stripeTaxCalculationId,
     effective_take_rate_bps: input.effectiveTakeRateBps,
     take_rate_source: input.takeRateSource,

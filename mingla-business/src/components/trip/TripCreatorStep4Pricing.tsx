@@ -611,6 +611,8 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
           previewBaseCents={previewBaseCents}
           currency={draft.currency}
           effectiveTakeRateBps={brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS}
+          paymentProvider={brand.paymentProvider}
+          paymentCountry={brand.paymentCountry}
           locked={anySold}
           onEditDefaults={() =>
             router.push(`/brand/${brand.id}/pricing-defaults` as never)
