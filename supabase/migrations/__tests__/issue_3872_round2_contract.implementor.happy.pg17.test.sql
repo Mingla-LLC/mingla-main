@@ -359,7 +359,10 @@ BEGIN
   SELECT id INTO v_c FROM public.gig_contracts WHERE gig_id='38724000-0000-4000-8000-0000000000f1' AND creator_account_id='38724000-0000-4000-8000-0000000000a3';
   UPDATE public.gigs SET video_due_at=v_row.video_due_at,shoot_at=v_row.shoot_at WHERE id='38724000-0000-4000-8000-0000000000f1';
   v_r:=public.gig_contract_workspace(v_c);
-  IF (v_r->'gig'->>'video_due_at')::timestamptz IS DISTINCT FROM v_row.video_due_at OR (v_r->'gig'->>'shoot_at')::timestamptz IS DISTINCT FROM v_row.shoot_at THEN
+  -- After hire the due shown is the contract's agreed one (current terms),
+  -- not a later edit of the brief (#3872 due change).
+  IF (v_r->'gig'->>'video_due_at')::timestamptz IS DISTINCT FROM (SELECT t.video_due_at FROM public.gig_terms_versions t JOIN public.gig_contracts c ON c.id=t.contract_id AND t.version=c.current_terms_version WHERE c.id=v_c)
+     OR (v_r->'gig'->>'video_due_at') IS NULL OR (v_r->'gig'->>'shoot_at')::timestamptz IS DISTINCT FROM v_row.shoot_at THEN
     RAISE EXCEPTION 'workspace gig lacks the exact times: %',v_r->'gig';
   END IF;
   -- ...and the shoot window, so the creator's shoot calendar can limit its days.
