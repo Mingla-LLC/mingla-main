@@ -57,6 +57,9 @@ const SEARCH_READY_PATHS = [
   '/help/discount-codes',
   '/help/sale-prices-and-automatic-discounts',
   '/help/allow-discounts-switch',
+  '/help/referrals-and-earnings',
+  '/help/become-a-mingla-creator',
+  '/help/mingla-local-independent-reviews',
 ]
 
 const releaseRouteScope = JSON.parse(
@@ -102,6 +105,9 @@ const SITEMAP_SEARCH_READY_PATHS = [
   '/help/discount-codes',
   '/help/sale-prices-and-automatic-discounts',
   '/help/allow-discounts-switch',
+  '/help/referrals-and-earnings',
+  '/help/become-a-mingla-creator',
+  '/help/mingla-local-independent-reviews',
 ]
 
 const PUBLIC_NOINDEX_PATHS = [

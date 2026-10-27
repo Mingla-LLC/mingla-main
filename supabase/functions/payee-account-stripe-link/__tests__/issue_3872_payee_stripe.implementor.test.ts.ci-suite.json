@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/payee-account-stripe-link/__tests__/issue_3872_payee_stripe.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3872-r2-03-payee-stripe",
+  "profile": "deno-1.46-stripe"
+}

@@ -56,17 +56,18 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // [TEST-MOD-APPROVED #1982] revoke_brand_invitation; 125→126.
   // [TEST-MOD-APPROVED #1984] get_listing_conversion + get_reservation_metrics; 126→128.
   // [TEST-MOD-APPROVED #3697] Host Ads plan/approve/pause/end/report; 128→133.
-  // [TEST-MOD-APPROVED #3872] Discount list/create/pause; 133→136.
+  // [TEST-MOD-APPROVED #3872] Discount list/create/pause, R2 referral
+  // list/create/invite, and R3 guarded gig-script drafting; 133→140.
   assert(
-    AGENT_TOOLS.length === 136,
-    `expected 136 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 140,
+    `expected 140 tools, got ${AGENT_TOOLS.length}`,
   );
   assert(
-    new Set(AGENT_TOOLS.map((t) => t.name)).size === 136,
+    new Set(AGENT_TOOLS.map((t) => t.name)).size === 140,
     "duplicate tool",
   );
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 136,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 140,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
@@ -123,8 +124,9 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   // [TEST-MOD-APPROVED #1982] 125→126 with revoke_brand_invitation.
   // [TEST-MOD-APPROVED #1984] 126→128 with get_listing_conversion + get_reservation_metrics.
   // [TEST-MOD-APPROVED #3697] 128→133 with Host Ads propose/approve/pause/end/report.
-  // [TEST-MOD-APPROVED #3872] 133→136 with discount list/create/pause.
-  assert(rows.length === 136, `expected 136 ledger rows, got ${rows.length}`);
+  // [TEST-MOD-APPROVED #3872] 133→140 with discount list/create/pause, R2
+  // referral list/create/invite, and R3 guarded gig-script drafting.
+  assert(rows.length === 140, `expected 140 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===

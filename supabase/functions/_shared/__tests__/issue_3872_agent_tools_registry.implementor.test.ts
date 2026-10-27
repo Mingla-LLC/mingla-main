@@ -7,7 +7,7 @@ import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "../agentDomainTools.ts";
 import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
 import { AGENT_TOOLS } from "../agentTools.ts";
 
-// MINGLA-INVARIANT: I-3872-ARI-CANONICAL-WRITER | issue #3872 | Ari exposes the same three Host discount operations and never owns pricing math.
+// MINGLA-INVARIANT: I-3872-ARI-CANONICAL-WRITER | issue #3872 | Ari exposes the same Host discount and referral operations and never owns pricing or attribution math.
 Deno.test(
   "#3872 Ari registry boots with the discount tools and exact roles",
   () => {
@@ -35,6 +35,33 @@ Deno.test(
     assert(!DOMAIN_READ_ONLY.has("pause_discount"));
   },
 );
+
+Deno.test("#3872 R2/R3 Ari registry uses canonical referral and script operations", () => {
+  const names = [
+    "list_referral_offers",
+    "create_referral_offer",
+    "invite_promoters",
+    "draft_gig_script",
+  ] as const;
+  for (const name of names) {
+    assert(
+      DOMAIN_TOOLS.some((tool) => tool.name === name),
+      `${name} domain registration`,
+    );
+    assert(
+      AGENT_TOOLS.some((tool) => tool.name === name),
+      `${name} secure registration`,
+    );
+    assertEquals(AGENT_TOOL_AUTHORIZATION[name], {
+      requiredRole: "marketing_manager",
+      resource: "brand",
+    });
+  }
+  assert(DOMAIN_READ_ONLY.has("list_referral_offers"));
+  assert(DOMAIN_READ_ONLY.has("draft_gig_script"));
+  assert(!DOMAIN_READ_ONLY.has("create_referral_offer"));
+  assert(!DOMAIN_READ_ONLY.has("invite_promoters"));
+});
 
 Deno.test(
   "#3872 create proposal shows every permitted combination choice",

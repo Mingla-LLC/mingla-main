@@ -156,6 +156,9 @@ function explorer(created: Json) {
     "./contentShareController": { openUnifiedContentShare: () => undefined },
     "./mixpanelService": { mixpanelService: { track: () => undefined } },
     "./appsFlyerService": { logAppsFlyerEvent: () => undefined },
+    // [TEST-MOD-APPROVED #3872] Buyer referral lookup is optional; the hostile
+    // canonical-share matrix proves the fallback when no eligibility exists.
+    "./referralEarningsService": { fetchBuyerReferralLink: async () => null },
   });
   return { adapter, rn, calls };
 }

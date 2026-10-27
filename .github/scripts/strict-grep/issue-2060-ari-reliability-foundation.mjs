@@ -36,10 +36,13 @@ const FILES = {
   currentMigration:
     "supabase/migrations/20270609002830_issue_2830_mingla_sites_foundation.sql",
   // #1984 — census pin (138→140). #3055 remains the byte-identity twin of
-  // [TEST-MOD-APPROVED #3872] R1 Discounts tools (145→148).
+  // [TEST-MOD-APPROVED #3872] R1-R3 Discounts, referrals, and gig-script
+  // tools (145→152).
   // #1981 and stays pinned below; do not rewrite applied/history migrations.
   censusMigration:
     "supabase/migrations/20270824003697_issue_3697_ari_cert_capability_census.sql",
+  currentCensusMigration:
+    "supabase/migrations/20271229003872_issue_3872_ari_cert_capability_census.sql",
   census3055Migration:
     "supabase/migrations/20270630003055_issue_3055_ari_cert_backlog_repair.sql",
   census1980Migration:
@@ -231,12 +234,12 @@ export function checkContract(fixture) {
   );
   assert.equal(
     fixture.ledger.capabilities.length,
-    148,
-    "canonical ledger must stay exactly 148 rows",
+    152,
+    "canonical ledger must stay exactly 152 rows",
   );
   assert.equal(
     new Set(fixture.ledger.capabilities.map((row) => row.id)).size,
-    148,
+    152,
     "capability IDs must be unique",
   );
   for (const row of fixture.ledger.capabilities) {
@@ -252,12 +255,12 @@ export function checkContract(fixture) {
 
   assert.equal(
     fixture.schema.properties.capabilities.minItems,
-    148,
+    152,
     "evidence schema row floor",
   );
   assert.equal(
     fixture.schema.properties.capabilities.maxItems,
-    148,
+    152,
     "evidence schema row ceiling",
   );
   assert.ok(
@@ -473,7 +476,8 @@ export function checkContract(fixture) {
   need(
     fixture.certifier,
     [
-      "ledger.capabilities.length !== 148",
+      "ledger.capabilities.length !== 152",
+      "rows.length === 152",
       "`ledger_not_certifiable:${planned.capability_id}",
       "`status_laundering:${planned.capability_id}",
       "verified_zero_residue === true",
@@ -515,6 +519,21 @@ export function checkContract(fixture) {
     fixture.censusMigration,
     ["v_capability_count <> 145", "'capability_count', 145"],
     "#3697 reachable certification census",
+  );
+  need(
+    fixture.currentCensusMigration,
+    [
+      "'ari.referrals.list', 'read'",
+      "'ari.referrals.create', 'write'",
+      "'ari.referrals.invite_promoters', 'write'",
+      "'ari.creators.draft_gig_script', 'read'",
+      "v_capability_count <> 148",
+      "v_capability_count <> 152",
+      "'''capability_count'', 148'",
+      "'''capability_count'', 152'",
+      "issue_3872_ari_cert_finalizer_unreviewed_state",
+    ],
+    "#3872 reachable certification census",
   );
   checkBacklogRepair(fixture);
 
@@ -703,7 +722,7 @@ function selfTest() {
     good,
     (x) => {
       x.certifier = x.certifier.replace(
-        "ledger.capabilities.length !== 148",
+        "ledger.capabilities.length !== 152",
         "false",
       );
     },
@@ -993,6 +1012,6 @@ if (process.argv.includes("--self-test")) selfTest();
 else {
   checkContract(readLive());
   console.log(
-    "issue-2060 Ari reliability foundation: PASS (148 capabilities; #2060 history remains 116)",
+    "issue-2060 Ari reliability foundation: PASS (152 capabilities; #2060 history remains 116)",
   );
 }

@@ -98,7 +98,12 @@ export type IconName =
   | "youtube"
   | "linkedin"
   | "threads"
-  | "compass";
+  | "compass"
+  // #3872 round 2 — distinct program icons (H1.1): Creators video, Referrals
+  // gift, Promote megaphone.
+  | "video"
+  | "gift"
+  | "megaphone";
 
 export interface IconProps {
   name: IconName;
@@ -421,6 +426,21 @@ const RENDERERS: Record<IconName, Renderer> = {
       <Rect x="2" y="9" width="4" height="12" />
       <Circle cx="4" cy="4" r="2" />
     </>
+  ),
+  video: () => (
+    <>
+      <Rect x="2" y="6" width="14" height="12" rx="2" />
+      <Path d="M16 10l6-3v10l-6-3z" />
+    </>
+  ),
+  gift: () => (
+    <>
+      <Rect x="3" y="8" width="18" height="5" rx="1" />
+      <Path d="M5 13v8h14v-8M12 8v13M12 8c-1-3-5-4-6-2s3 2 6 2zM12 8c1-3 5-4 6-2s-3 2-6 2z" />
+    </>
+  ),
+  megaphone: () => (
+    <Path d="M3 10v4a1 1 0 0 0 1 1h3l9 5V4L7 9H4a1 1 0 0 0-1 1zM7 15l1.5 5M19 9a4 4 0 0 1 0 6" />
   ),
   threads: () => (
     <Path d="M12 21a9 9 0 1 1 9-9c0 2-1 4-3 5M9 11c1-2 3-3 5-2 1 1 1 3-1 4M11 14c-1-1-1-3 0-4 2-1 4 1 4 3-1 2-3 2-4 1" />

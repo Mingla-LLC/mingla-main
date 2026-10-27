@@ -431,6 +431,42 @@ jobs:
               # skipped #3872 schema and operations migrations above.
               # Matched by EXACT filename; the unfiltered replay applies it.
               *20271217003872_issue_3872_schedule_json_null.sql) continue ;;
+              # #3872 referral, Creator, and Local program chain — SKIPPED because
+              # this deliberately filtered pre-#1931 lane omits brand_discounts,
+              # referral foundations, and related public checkout identities
+              # these migrations read. Each is matched by exact filename; the
+              # canonical full replay applies the complete chain in order.
+              *20271219003872_issue_3872_r2_referrals_foundation.sql) continue ;;
+              *20271220003872_issue_3872_r2_attribution_resolution.sql) continue ;;
+              *20271221003872_issue_3872_r2_payee_reversal_and_payout.sql) continue ;;
+              *20271222003872_issue_3872_r2_host_referrals.sql) continue ;;
+              *20271223003872_issue_3872_r2_buyer_referrals.sql) continue ;;
+              *20271224003872_issue_3872_r3_foundation.sql) continue ;;
+              *20271225003872_issue_3872_r3_creator_identity.sql) continue ;;
+              *20271226003872_issue_3872_r3_gig_contracts.sql) continue ;;
+              *20271227003872_issue_3872_r3_workflow.sql) continue ;;
+              *20271228003872_issue_3872_r4_locals.sql) continue ;;
+              # #3872 Ari certification census — SKIPPED because it asserts the
+              # complete 152-row requirement registry and upgrades the R1
+              # finalizer's 148 denominator; both are seeded ONLY by the skipped
+              # 20271216043872 host-operations migration above, so on this lane
+              # the census correctly refuses (149 rows). The canonical full
+              # replay applies it and proves 152. Matched by EXACT filename.
+              *20271229003872_issue_3872_ari_cert_capability_census.sql) continue ;;
+              # #3872 walkthrough, round 2, gig pay, shoot-window, and due-change
+              # migrations — SKIPPED because each re-emits Creator, gig, payee,
+              # referral, or Local readers over tables created only by the
+              # skipped #3872 chain above (the shoot-window reader declares a
+              # public.gig_contracts row variable, so it aborts at CREATE time).
+              # Each is matched by exact filename; the canonical full replay
+              # applies the complete chain in order.
+              *20271230003872_issue_3872_walkthrough_creator_gigs.sql) continue ;;
+              *20271231003872_issue_3872_walkthrough_money_and_locals.sql) continue ;;
+              *20280101003872_issue_3872_walkthrough_explorer_gaps.sql) continue ;;
+              *20280102003872_issue_3872_round2.sql) continue ;;
+              *20280103003872_issue_3872_gig_pay.sql) continue ;;
+              *20280104003872_issue_3872_workspace_shoot_window.sql) continue ;;
+              *20280105003872_issue_3872_due_change.sql) continue ;;
               # #4073 Discover V2 — SKIPPED because its public feed re-emits
               # readers that retain the #1931 and #2489 privacy helpers this
               # deliberately filtered lane omits. The unfiltered canonical

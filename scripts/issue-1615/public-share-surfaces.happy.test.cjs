@@ -456,7 +456,10 @@ test("H31 Edge authenticates GET and permits only proved server-created or beare
   const auth = getBlock.indexOf("constantTimeEqualSecret");
   assert.ok(auth >= 0);
   assert.ok(auth < getBlock.indexOf("createClient("));
-  assert.ok(auth < getBlock.indexOf('rpc("consume_shared_card_rate_limit"'));
+  // Whitespace-tolerant: the formatter may wrap the RPC name onto its own line.
+  const rateLimit = getBlock.search(/rpc\(\s*"consume_shared_card_rate_limit"/);
+  assert.ok(rateLimit >= 0);
+  assert.ok(auth < rateLimit);
   assert.ok(auth < getBlock.indexOf('from("shared_card_snapshots")'));
   const postBlock = source.split('if (req.method !== "POST")')[1];
   assert.match(postBlock, /constantTimeEqualSecret\(providedProxySecret, expectedProxySecret\)/);

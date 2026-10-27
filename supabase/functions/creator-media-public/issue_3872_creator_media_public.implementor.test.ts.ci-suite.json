@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/creator-media-public/issue_3872_creator_media_public.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3872-r3-r4-public-media",
+  "profile": "deno-2-unit"
+}

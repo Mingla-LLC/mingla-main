@@ -26,6 +26,8 @@ export interface ActionTileProps {
   label: string;
   sub?: string;
   primary?: boolean;
+  /** #3872 round 2 — full-width tile (Scan tickets heads the event grid). */
+  wide?: boolean;
   accessibilityLabel?: string;
   onPress: () => void;
 }
@@ -35,6 +37,7 @@ export const ActionTile: React.FC<ActionTileProps> = ({
   label,
   sub,
   primary = false,
+  wide = false,
   accessibilityLabel,
   onPress,
 }) => (
@@ -45,6 +48,7 @@ export const ActionTile: React.FC<ActionTileProps> = ({
     style={({ pressed }) => [
       styles.host,
       primary && styles.hostPrimary,
+      wide && styles.hostWide,
       pressed && styles.hostPressed,
     ]}
   >
@@ -53,11 +57,11 @@ export const ActionTile: React.FC<ActionTileProps> = ({
       size={20}
       color={primary ? accent.warm : textTokens.primary}
     />
-    <Text style={styles.label}>
+    <Text style={styles.label} numberOfLines={1}>
       {label}
     </Text>
     {sub !== undefined ? (
-      <Text style={styles.sub}>
+      <Text style={styles.sub} numberOfLines={1}>
         {sub}
       </Text>
     ) : null}
@@ -78,6 +82,14 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     justifyContent: "center",
     gap: 4,
+  },
+  hostWide: {
+    flexBasis: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: spacing.sm,
+    minHeight: 56,
   },
   hostPrimary: {
     backgroundColor: accent.tint,

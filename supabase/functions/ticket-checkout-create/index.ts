@@ -91,6 +91,13 @@ import {
   withDiscounts,
 } from "../_shared/orderMoneyTruth.ts";
 import { normaliseDiscountCode } from "../_shared/discountEngine.ts";
+import {
+  applicationFeeWithReferralShare,
+  emptyReferrerResolution,
+  referralShareForPayment,
+  type ReferrerResolution,
+  resolveReferrerFromSupabase,
+} from "../_shared/attribution.ts";
 import { buildBuyerConfirmationPayload } from "../_shared/buyerConfirmationPayload.ts";
 import {
   checkoutUnavailableResponse,
@@ -887,6 +894,19 @@ export const createTicketCheckoutCreateHandler = (
     const quoteListDigest = typeof body.quoteListDigest === "string"
       ? body.quoteListDigest
       : null;
+    if (
+      body.visitorKey !== undefined && body.visitorKey !== null &&
+      (typeof body.visitorKey !== "string" ||
+        !/^[0-9a-f]{64}$/i.test(body.visitorKey))
+    ) {
+      return jsonResponse(
+        { error: "invalid_request", detail: "visitor_key_invalid" },
+        400,
+      );
+    }
+    const visitorKey = typeof body.visitorKey === "string"
+      ? body.visitorKey.toLowerCase()
+      : null;
     // ORCH-1072: OPTIONAL chosen experience occurrence (event_dates.id). When a
     // recurring/multi-date experience is booked, the consumer Book sheet sends the
     // picked date here so the order records WHICH occurrence was booked. Validated
@@ -1285,6 +1305,21 @@ export const createTicketCheckoutCreateHandler = (
         403,
       );
     }
+    const { data: referralEventRow, error: referralEventError } = await supabase
+      .from("events")
+      .select("brand_id")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (referralEventError !== null) {
+      console.error(
+        "[ticket-checkout-create] referral brand lookup failed",
+        referralEventError,
+      );
+      return jsonResponse({ error: "event_lookup_failed" }, 500);
+    }
+    const eventBrandId = typeof referralEventRow?.brand_id === "string"
+      ? referralEventRow.brand_id
+      : null;
 
     // ═══════════════════════════════════════════════════════════════════════
     // issue #3313 — A LONE eventDateId ON AN EVENT BECOMES THE DAY SET.
@@ -1540,6 +1575,35 @@ export const createTicketCheckoutCreateHandler = (
         serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
       };
       const subtotal = computeBuyerSubtotal(allInInput);
+      const installmentQuote = quote.installmentSchedule !== null &&
+          typeof quote.installmentSchedule === "object" &&
+          !Array.isArray(quote.installmentSchedule)
+        ? quote.installmentSchedule as Record<string, unknown>
+        : null;
+      const eligibleMinor = Number(
+        installmentQuote?.fullPriceCents ?? quote.netSubtotalCents ??
+          dueTodayNetCents,
+      );
+      const referralInput = {
+        brandId: eventBrandId ?? "00000000-0000-4000-8000-000000000000",
+        listingKind: "event",
+        listingId: eventId,
+        orderKind: "ticket",
+        buyer: {
+          userId,
+          emailNorm: buyerEmail || null,
+          phoneE164: buyerPhoneE164,
+        },
+        typedCode: discountCode,
+        visitorKey,
+        eligibleMinor,
+        brandRail: provider.provider,
+        currency,
+        nowIso: new Date().toISOString(),
+      } as const;
+      const referralAttribution = eventBrandId === null
+        ? emptyReferrerResolution(referralInput)
+        : await resolveReferrerFromSupabase(supabase, referralInput);
       let taxCents: number | null = quoteMode && surface !== "native"
         ? null
         : 0;
@@ -1621,6 +1685,7 @@ export const createTicketCheckoutCreateHandler = (
         calculationId,
         subtotalCents: dueTodayNetCents,
         totalCents: buyerTotalCents,
+        referralAttribution,
       };
     };
 
@@ -2777,6 +2842,104 @@ export const createTicketCheckoutCreateHandler = (
     // zero-amount/free-path display fallback before pricing is resolved.
     const sessionCurrency = String(session.currency ?? "GBP").toLowerCase();
 
+    // Resolve the provider before free/paid diverge. Referral attribution is
+    // frozen at create because its share is part of the provider application
+    // fee; retries reuse the database winner rather than re-crediting someone.
+    const { data: providerProbeRows, error: providerProbeError } =
+      await supabase
+        .rpc(
+          "resolve_event_pricing_inputs",
+          { p_event_id: eventId },
+        );
+    const providerProbeAvailable = providerProbeError === null &&
+      Array.isArray(providerProbeRows) && providerProbeRows.length > 0;
+    if (
+      !providerProbeAvailable && totalCents > 0
+    ) {
+      console.error(
+        "[ticket-checkout-create] provider pricing lookup failed",
+        providerProbeError,
+      );
+      return jsonResponse({ error: "pricing_config_unavailable" }, 409);
+    }
+    const providerProbe = (providerProbeAvailable ? providerProbeRows[0] : {
+      payment_provider: "stripe",
+      payment_country: null,
+      pricing_currency: session.currency ?? "GBP",
+    }) as {
+      payment_provider: string | null;
+      payment_country: string | null;
+      pricing_currency: string | null;
+      [key: string]: unknown;
+    };
+    const providerRouting = resolveProviderRouting(providerProbe);
+    const installmentSnapshot = session.installmentSchedule !== null &&
+        typeof session.installmentSchedule === "object" &&
+        !Array.isArray(session.installmentSchedule)
+      ? session.installmentSchedule as Record<string, unknown>
+      : null;
+    const fullPlanMinor = Number(installmentSnapshot?.fullPriceCents);
+    const referralEligibleMinor = Number.isSafeInteger(fullPlanMinor) &&
+        fullPlanMinor >= 0
+      ? fullPlanMinor
+      : totalCents;
+    let referralAttribution: ReferrerResolution;
+    try {
+      const createBrandId = typeof session.brandId === "string"
+        ? session.brandId
+        : eventBrandId;
+      const referralInput = {
+        brandId: createBrandId ?? "00000000-0000-4000-8000-000000000000",
+        listingKind: "event",
+        listingId: eventId,
+        orderKind: "ticket",
+        buyer: {
+          userId,
+          emailNorm: buyerEmail || null,
+          phoneE164: buyerPhoneE164,
+        },
+        typedCode: discountCode,
+        visitorKey,
+        eligibleMinor: referralEligibleMinor,
+        brandRail: providerRouting.provider,
+        currency: (providerProbe.pricing_currency ?? session.currency ?? "")
+          .toString().toUpperCase(),
+        nowIso: new Date().toISOString(),
+      } as const;
+      const resolvedReferral = createBrandId === null
+        ? emptyReferrerResolution(referralInput)
+        : await resolveReferrerFromSupabase(supabase, referralInput);
+      if (createBrandId === null) {
+        // A pre-R2 session envelope has no brand context and therefore cannot
+        // carry a referral decision. Preserve a non-crediting snapshot.
+        referralAttribution = resolvedReferral;
+      } else {
+        const frozen = await supabase.rpc(
+          "issue_3872_freeze_ticket_referral_snapshot",
+          {
+            p_checkout_session_id: checkoutSessionId,
+            p_event_id: eventId,
+            p_snapshot: resolvedReferral,
+          },
+        );
+        if (
+          frozen.error !== null || frozen.data === null ||
+          typeof frozen.data !== "object"
+        ) {
+          throw new Error(
+            frozen.error?.message ?? "referral_snapshot_freeze_failed",
+          );
+        }
+        referralAttribution = frozen.data as ReferrerResolution;
+      }
+    } catch (error) {
+      console.error(
+        "[ticket-checkout-create] referral create failed",
+        error,
+      );
+      return jsonResponse({ error: "referral_attribution_unavailable" }, 409);
+    }
+
     // ORCH-1006 Slice 2 (SPEC §C.4): the native-preview "addressMissing" early
     // return is DELETED. Preview now always computes the full venue-sourced all-in
     // with NO buyer address (WYSIWYP) — it flows through the same engine path as
@@ -2791,6 +2954,11 @@ export const createTicketCheckoutCreateHandler = (
     // installmentSchedule from trip_pricing_tiers.tier_metadata.installments.
     const isInstallmentPlan = session.installmentSchedule !== null &&
       session.installmentSchedule !== undefined;
+    const referralShareOnCurrentPayment = referralShareForPayment(
+      referralAttribution,
+      0,
+      Math.min(totalCents, referralAttribution.eligibleMinor),
+    );
 
     if (totalCents === 0) {
       // issue #2694 — THE PRE-GATE STAYS, and this comment is why.
@@ -2834,23 +3002,16 @@ export const createTicketCheckoutCreateHandler = (
       // and a breakdown recording the event's pricing configuration. Best
       // effort: a pricing-config read failure never blocks a free ticket.
       {
-        const { data: freePricingRows } = await supabase.rpc(
-          "resolve_event_pricing_inputs",
-          { p_event_id: eventId },
-        );
-        const freePricing = Array.isArray(freePricingRows) &&
-            freePricingRows.length > 0
-          ? freePricingRows[0] as {
-            pass_tax?: boolean;
-            pass_mingla_fee?: boolean;
-            pass_service_fee?: boolean;
-            pricing_region?: string | null;
-            pricing_currency?: string | null;
-            payment_provider?: string | null;
-            effective_take_rate_bps?: number;
-            take_rate_source?: "brand_override" | "platform_default";
-          }
-          : null;
+        const freePricing = providerProbe as {
+          pass_tax?: boolean;
+          pass_mingla_fee?: boolean;
+          pass_service_fee?: boolean;
+          pricing_region?: string | null;
+          pricing_currency?: string | null;
+          payment_provider?: string | null;
+          effective_take_rate_bps?: number;
+          take_rate_source?: "brand_override" | "platform_default";
+        };
         const freeRegionRaw = (freePricing?.pricing_region ?? "").trim()
           .toUpperCase();
         const freeRegion: PricingRegion = freePricing?.payment_provider ===
@@ -3185,29 +3346,13 @@ export const createTicketCheckoutCreateHandler = (
     // ===================================================================
     // META-ORCH-1076 [Paystack Africa] — PAYSTACK ARM (NGN), additive branch.
     // ===================================================================
-    // Resolve the brand pricing/provider row ONCE here (the resolver is STABLE /
-    // idempotent — the Stripe arm below re-resolves it byte-for-byte, so the
-    // Stripe path is unchanged). If this is a Paystack brand, run the entire
+    // The provider row above is shared by free, Paystack and Stripe so the
+    // referral snapshot and the provider object cannot disagree on rail. If
+    // this is a Paystack brand, run the entire
     // Paystack flow and return; otherwise fall through to the untouched Stripe
     // arm. The Paystack arm runs BEFORE the Stripe-specific stripe_account_not_ready
     // gate because a Paystack brand has no connected account (stripeAccountId is
     // NULL by design — the session RPC, post-migration, sets it NULL for Paystack).
-    const { data: providerProbeRows } = await supabase.rpc(
-      "resolve_event_pricing_inputs",
-      { p_event_id: eventId },
-    );
-    const providerProbe =
-      Array.isArray(providerProbeRows) && providerProbeRows.length > 0
-        ? (providerProbeRows[0] as {
-          payment_provider: string | null;
-          payment_country: string | null;
-          pricing_currency: string | null;
-        })
-        : null;
-    const providerRouting = providerProbe
-      ? resolveProviderRouting(providerProbe)
-      : { provider: "stripe" as const, country: "", currency: "" };
-
     if (providerRouting.provider === "paystack") {
       // #2050 hard-host cutover: an old native binary would wait for
       // the retired hostname after Paystack. Refuse only that unsafe rail,
@@ -3287,7 +3432,10 @@ export const createTicketCheckoutCreateHandler = (
         },
       );
       // #3645 flat 4.5%: application fee = take-rate + service fee (engine).
-      const psApplicationFeeCents = psBreakdown.application_fee_amount_cents;
+      const psApplicationFeeCents = applicationFeeWithReferralShare(
+        psBreakdown.application_fee_amount_cents,
+        { shareMinor: referralShareOnCurrentPayment },
+      );
 
       // #1930: one deterministic Paystack identity for the logical checkout.
       // Network ambiguity never rotates this reference to escape provider truth.
@@ -3679,7 +3827,10 @@ export const createTicketCheckoutCreateHandler = (
     // Integer basis-point math (no float; invariant I-PROPOSED-TAKE-RATE-BPS-INTEGER).
     // Omitted from the Stripe body when it rounds to zero (existing >0 guard kept).
     // deno-fmt-ignore -- ORCH-0843 audits this exact take-rate + service-fee expression.
-    const applicationFeeAmountCents = buyerSubtotal.miglaFeeCents + buyerSubtotal.serviceFeeCents;
+    const applicationFeeAmountCents = applicationFeeWithReferralShare(
+      buyerSubtotal.miglaFeeCents + buyerSubtotal.serviceFeeCents,
+      { shareMinor: referralShareOnCurrentPayment },
+    );
 
     // ORCH-0843 — persist the computed fee on the session row so the refund
     // flow (refund-order) can read it back via biz_refund_order and decide

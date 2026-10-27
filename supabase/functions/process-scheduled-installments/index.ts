@@ -28,12 +28,15 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 // @ts-ignore — Deno ESM import
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  createInstallmentPI,
-  MAX_RETRY_ATTEMPTS,
+  createClient,
+  type SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
+import {
   type BrandRow,
+  createInstallmentPI,
   type InstallmentRow,
+  MAX_RETRY_ATTEMPTS,
   type OrderRow,
   type StripeAccount,
 } from "../_shared/installments/createInstallmentPI.ts";
@@ -87,15 +90,19 @@ serve(async (req: Request) => {
     body = {};
   }
   const dryRun = body.dryRun === true;
-  const limit = typeof body.limit === "number" && body.limit > 0 && body.limit <= 5000
-    ? body.limit
-    : DEFAULT_BATCH_LIMIT;
+  const limit =
+    typeof body.limit === "number" && body.limit > 0 && body.limit <= 5000
+      ? body.limit
+      : DEFAULT_BATCH_LIMIT;
 
   // [TRANSITIONAL] Typed as untyped SupabaseClient because order_installments
   // + new orders columns (at_risk, saved_payment_method_id, etc.) don't exist
   // in the regenerated DB types until the operator runs `supabase db push` on
   // migration 20260610000000_tr3_installments.sql. Tighten generic after that.
-  const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const supabase: SupabaseClient = createClient(
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
+  );
 
   // Query 1: due scheduled installments (initial attempts).
   // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — belt-and-braces filter
@@ -106,7 +113,7 @@ serve(async (req: Request) => {
   const { data: dueRows, error: dueError } = await supabase
     .from("order_installments")
     .select(`
-      id, order_id, ordinal, amount_cents, currency, due_at, status,
+      id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status,
       retry_count, stripe_payment_intent_id,
       orders!inner(
         cancelled_at,
@@ -122,8 +129,14 @@ serve(async (req: Request) => {
     .limit(limit);
 
   if (dueError !== null) {
-    console.error("[process-scheduled-installments] due query failed", dueError);
-    return jsonResponse({ error: "due_query_failed", detail: dueError.message }, 500);
+    console.error(
+      "[process-scheduled-installments] due query failed",
+      dueError,
+    );
+    return jsonResponse(
+      { error: "due_query_failed", detail: dueError.message },
+      500,
+    );
   }
 
   // Query 2: failed-then-retry-eligible installments.
@@ -131,7 +144,7 @@ serve(async (req: Request) => {
   const { data: retryRows, error: retryError } = await supabase
     .from("order_installments")
     .select(`
-      id, order_id, ordinal, amount_cents, currency, due_at, status,
+      id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status,
       retry_count, stripe_payment_intent_id,
       orders!inner(
         cancelled_at,
@@ -148,8 +161,14 @@ serve(async (req: Request) => {
     .limit(Math.max(0, limit - (dueRows?.length ?? 0)));
 
   if (retryError !== null) {
-    console.error("[process-scheduled-installments] retry query failed", retryError);
-    return jsonResponse({ error: "retry_query_failed", detail: retryError.message }, 500);
+    console.error(
+      "[process-scheduled-installments] retry query failed",
+      retryError,
+    );
+    return jsonResponse({
+      error: "retry_query_failed",
+      detail: retryError.message,
+    }, 500);
   }
 
   // Flip retry rows back to 'scheduled' for processing (matches biz_retry_installment shape).
@@ -162,25 +181,26 @@ serve(async (req: Request) => {
       .eq("status", "failed");
   }
 
-  const allRows: InstallmentRow[] = [...(dueRows ?? []), ...(retryRows ?? [])].map(
-    (row) => {
-      const r = row as Record<string, unknown>;
-      return {
-        id: String(r.id),
-        order_id: String(r.order_id),
-        ordinal: Number(r.ordinal),
-        amount_cents: Number(r.amount_cents),
-        currency: String(r.currency),
-        due_at: String(r.due_at),
-        status: String(r.status),
-        retry_count: Number(r.retry_count),
-        stripe_payment_intent_id:
-          r.stripe_payment_intent_id == null
+  const allRows: InstallmentRow[] = [...(dueRows ?? []), ...(retryRows ?? [])]
+    .map(
+      (row) => {
+        const r = row as Record<string, unknown>;
+        return {
+          id: String(r.id),
+          order_id: String(r.order_id),
+          ordinal: Number(r.ordinal),
+          amount_cents: Number(r.amount_cents),
+          referral_share_minor: Number(r.referral_share_minor ?? 0),
+          currency: String(r.currency),
+          due_at: String(r.due_at),
+          status: String(r.status),
+          retry_count: Number(r.retry_count),
+          stripe_payment_intent_id: r.stripe_payment_intent_id == null
             ? null
             : String(r.stripe_payment_intent_id),
-      } satisfies InstallmentRow;
-    },
-  );
+        } satisfies InstallmentRow;
+      },
+    );
 
   const result: ProcessResult = {
     processed: 0,
@@ -196,11 +216,16 @@ serve(async (req: Request) => {
       // Per-row joins (small N per run; could batch-join in future if N grows)
       const { data: order } = await supabase
         .from("orders")
-        .select("id, event_id, stripe_customer_id_on_connected_account, saved_payment_method_id, buyer_user_id, buyer_email, at_risk, cancelled_at")
+        .select(
+          "id, event_id, stripe_customer_id_on_connected_account, saved_payment_method_id, buyer_user_id, buyer_email, at_risk, cancelled_at",
+        )
         .eq("id", installment.order_id)
         .maybeSingle();
       if (order === null) {
-        result.errors.push({ installment_id: installment.id, reason: "order_not_found" });
+        result.errors.push({
+          installment_id: installment.id,
+          reason: "order_not_found",
+        });
         continue;
       }
       // orders has no brand_id column — resolve via events FK.
@@ -210,10 +235,15 @@ serve(async (req: Request) => {
         .eq("id", (order as OrderRow).event_id)
         .maybeSingle();
       if (eventRow === null) {
-        result.errors.push({ installment_id: installment.id, reason: "event_not_found" });
+        result.errors.push({
+          installment_id: installment.id,
+          reason: "event_not_found",
+        });
         continue;
       }
-      if (String((eventRow as Record<string, unknown>).status) === "cancelled") {
+      if (
+        String((eventRow as Record<string, unknown>).status) === "cancelled"
+      ) {
         // Query filter should already exclude these; skip without charging.
         continue;
       }
@@ -227,7 +257,10 @@ serve(async (req: Request) => {
         .eq("id", brandId)
         .maybeSingle();
       if (brand === null) {
-        result.errors.push({ installment_id: installment.id, reason: "brand_not_found" });
+        result.errors.push({
+          installment_id: installment.id,
+          reason: "brand_not_found",
+        });
         continue;
       }
       const { data: stripeAccount } = await supabase
@@ -237,7 +270,10 @@ serve(async (req: Request) => {
         .is("detached_at", null)
         .maybeSingle();
       if (stripeAccount === null) {
-        result.errors.push({ installment_id: installment.id, reason: "stripe_account_missing" });
+        result.errors.push({
+          installment_id: installment.id,
+          reason: "stripe_account_missing",
+        });
         continue;
       }
 

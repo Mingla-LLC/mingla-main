@@ -286,12 +286,13 @@ export function audit(base, plans = effectiveSuites()) {
     // [TEST-MOD-APPROVED #1980] Draft mutate + growth report read; 120→123.
     // [TEST-MOD-APPROVED #1981] Refund preview + trip installments reads; 123→125.
     // [TEST-MOD-APPROVED #1982] revoke_brand_invitation; 125→126.
-    // [TEST-MOD-APPROVED #3872] R1 Discounts list/create/pause; 133→136.
-    if (parsed.audit?.registered_tool_count !== 136) {
-      failures.push("ledger audit registered_tool_count is not 136");
+    // [TEST-MOD-APPROVED #3872] R1 Discounts, R2 referrals, and R3 gig
+    // script drafting; 133→140.
+    if (parsed.audit?.registered_tool_count !== 140) {
+      failures.push("ledger audit registered_tool_count is not 140");
     }
-    if (mapped.length !== 136 || new Set(mapped).size !== 136) {
-      failures.push("ledger mapped tool census is not 136 unique tools");
+    if (mapped.length !== 140 || new Set(mapped).size !== 140) {
+      failures.push("ledger mapped tool census is not 140 unique tools");
     }
     if (
       !mapped.includes("update_rsvp") ||

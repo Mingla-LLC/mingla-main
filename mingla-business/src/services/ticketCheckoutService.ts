@@ -29,6 +29,7 @@ import {
   TICKET_CHECKOUT_CONTRACT_VERSION,
 } from "@mingla/offering-rendering/ticketCheckoutContract";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
+import { getStoredReferralVisitorKey } from "./referralAttribution";
 
 type TicketCheckoutCreateLine = Omit<CartLine, "paymentPlanChoice"> & {
   paymentPlanChoice?: CartLine["paymentPlanChoice"];
@@ -851,6 +852,7 @@ export const createTicketCheckout = async (
   };
   const clickId = getStoredClickAttribution().clickId;
   const matchData = getStoredAdMatchData();
+  const referralVisitorKey = getStoredReferralVisitorKey();
   // #3697: TikTok matching receives only browser-hashed values. This remains
   // fire-and-forget so an ad blocker or Web Crypto failure cannot delay pay.
   void identifyAdBuyer?.({
@@ -946,6 +948,7 @@ export const createTicketCheckout = async (
       ...(matchData.trackingOptOut === true
         ? { ad_tracking_opt_out: true }
         : {}),
+      ...(referralVisitorKey !== null ? { visitorKey: referralVisitorKey } : {}),
       ...(matchData.clientUserAgent !== null
         ? { client_user_agent: matchData.clientUserAgent }
         : {}),

@@ -110,6 +110,9 @@ function loadExplorerAdapter(created: Record<string, unknown>) {
     "./contentShareController": { openUnifiedContentShare: () => undefined },
     "./mixpanelService": { mixpanelService: { track: () => undefined } },
     "./appsFlyerService": { logAppsFlyerEvent: () => undefined },
+    // [TEST-MOD-APPROVED #3872] Buyer referral lookup is optional; canonical
+    // sharing remains the expected fallback when no eligible referral exists.
+    "./referralEarningsService": { fetchBuyerReferralLink: async () => null },
   }) as {
     prepareContentShare: (kind: string, identity: Record<string, string>) => Promise<Record<string, any>>;
     sharePreparedContent: (prepared: Record<string, any>) => Promise<void>;

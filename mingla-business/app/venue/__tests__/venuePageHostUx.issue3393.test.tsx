@@ -29,6 +29,11 @@ const mockBack = jest.fn();
 const mockReplace = jest.fn((_href: string) => undefined);
 const mockPush = jest.fn((_href: string) => undefined);
 
+// #3872 — the venue page lazy-loads Local reviews from the Creator and
+// Referral program's owner; this suite is not about that panel.
+jest.mock("../../../src/components/programs/creatorProgramOwner", () => ({
+  LocalReviewsManager: () => null,
+}));
 jest.mock("expo-router", () => ({
   __esModule: true,
   // [TEST-MOD-APPROVED #3655] deck leave beforeRemove uses useNavigation.

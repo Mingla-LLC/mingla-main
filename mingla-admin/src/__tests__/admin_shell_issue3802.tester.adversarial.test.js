@@ -69,7 +69,8 @@ const CRUMBS = stripComments(read("components/ui/Breadcrumbs.jsx"));
 const CSS = read("globals.css");
 const SHELL_FILES = { SIDEBAR, HEADER, SHELL, PAGE_HEADER, CRUMBS };
 
-const APPROVED_LABELS = [null, "Pipeline", "Business", "Money", "Explorer app", "Growth", "Company", "System"];
+// [TEST-MOD-APPROVED #3872] walkthrough W4: + Programs, after Business.
+const APPROVED_LABELS = [null, "Pipeline", "Business", "Programs", "Money", "Explorer app", "Growth", "Company", "System"];
 const ALL_IDS = NAV_ITEMS.map((i) => i.id);
 const KNOWN = ["home", ...ALL_IDS];
 const AREAS = Object.values(AREA);

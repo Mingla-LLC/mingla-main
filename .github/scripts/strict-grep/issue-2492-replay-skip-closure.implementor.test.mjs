@@ -310,7 +310,11 @@ test("T-1 — the guard is clean on the repository as shipped", () => {
 // payload migration skip; base and derived parser-fixture counts move by one.
 // [TEST-MOD-APPROVED #4063] Wave 5 adds two exact #1931 skips; count pins move
 // from 37 to 39, while every parser boundary and revert proof stays binding.
-test("T-10 — lane inventory is exactly 4 lanes at 39/1/3/29 (a blind parser reds here)", () => {
+// [TEST-MOD-APPROVED #3872] The full R2-R4 program chain adds ten exact
+// #1931 skips; count pins move from 39 to 49 with every mutation unchanged.
+// [TEST-MOD-APPROVED #3872] The Ari census and seven downstream #3872 migrations
+// add eight exact #1931 skips; count pins move from 49 to 57, mutations unchanged.
+test("T-10 — lane inventory is exactly 4 lanes at 57/1/3/29 (a blind parser reds here)", () => {
   const { lanes, violations } = analyseLanes();
   assert.equal(violations.length, 0);
 
@@ -320,7 +324,7 @@ test("T-10 — lane inventory is exactly 4 lanes at 39/1/3/29 (a blind parser re
   assert.deepEqual(inventory, {
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
-    [LANE]: 39,
+    [LANE]: 57,
     "issue-2117-offering-visibility-gate-tests.yml": 29,
   });
   assert.equal(
@@ -356,7 +360,7 @@ test("T-10 — lane inventory is exactly 4 lanes at 39/1/3/29 (a blind parser re
 
   // SC-2: the #1931 lane's exact inventory excludes ...002463.
   const pinned = lanes.find((l) => l.workflow === LANE);
-  assert.equal(pinned.skipped.length, 39);
+  assert.equal(pinned.skipped.length, 57);
   assert.ok(pinned.skipped.includes(SKIPPED_MIGRATION));
   assert.equal(
     pinned.skipped.includes("20270522002463_issue_2462_phone_backfill.sql"),
@@ -499,10 +503,10 @@ test("T-23 — the two-line branch form is read, and its skip actually takes eff
   const lane = lanes.find((l) => l.workflow === LANE);
   assert.equal(
     lane.branchCount,
-    40,
+    58,
     "`<pattern>)` on one line and `continue ;;` on the next is one branch, not none",
   );
-  assert.equal(lane.globs.length, 40);
+  assert.equal(lane.globs.length, 58);
   assert.ok(
     lane.skipped.includes("20270522002463_issue_2462_phone_backfill.sql"),
     "reading the branch is not enough — the glob must actually resolve and skip the file",
@@ -533,7 +537,7 @@ test("T-24 — C-4(c) reds on a branch the parser cannot read, where C-4(b) cann
   const lane = lanes.find((l) => l.workflow === LANE);
   assert.equal(
     lane.branchCount,
-    39,
+    57,
     "precondition: the 3-line branch really is unread",
   );
   assert.ok(
@@ -632,12 +636,12 @@ test("T-2723-I1/I2/I3 — exact #2696 skip is present and C-3 fails on its rever
   assert.ok(lane, "the #1931 filtered replay lane must exist");
   assert.equal(
     lane.globs.length,
-    39,
+    57,
     "the #1931 lane must expose exactly thirty-nine skip globs",
   );
   assert.equal(
     lane.skipped.length,
-    39,
+    57,
     "those thirty-nine globs must resolve exactly thirty-nine skipped migrations",
   );
   assert.ok(

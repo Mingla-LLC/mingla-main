@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3872_ari_cert_capability_census.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3872-r3-ari-cert-census",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

@@ -415,7 +415,9 @@ describe("#3802 C-9: source contracts — auth, menu, palette, routes", () => {
     // Object.hasOwn(PAGES, page) — not the older inline requestedPageId() form.
     assert.ok(APP_JSX.includes("if (route.denied && nav.named && lastToldRef.current !== nav.seq) {"));
     assert.ok(APP_JSX.includes("function addressNamesPage()"));
-    assert.ok(APP_JSX.includes('if (page === "support" || page === "email") return true;'));
+    // [TEST-MOD-APPROVED #3872] The retired #/gig-queue bookmark also counts as
+    // named: it rewrites to #/program-disputes, like #/support and #/email.
+    assert.ok(APP_JSX.includes('if (page === "support" || page === "email" || page === "gig-queue") return true;'));
     assert.ok(APP_JSX.includes("return Object.hasOwn(PAGES, page);"));
     assert.ok(APP_JSX.includes("<AppShell activeTab={route.pageId}"));
     assert.ok(APP_JSX.includes("That page isn't part of your access"));

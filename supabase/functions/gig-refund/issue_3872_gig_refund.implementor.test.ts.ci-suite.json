@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/gig-refund/issue_3872_gig_refund.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3872-r3-08-gig-refund",
+  "profile": "deno-2-unit"
+}

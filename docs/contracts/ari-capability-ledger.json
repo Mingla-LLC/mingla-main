@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-09-11T00:00:00Z",
-    "registered_tool_count": 136,
-    "capability_count": 148,
+    "registered_tool_count": 140,
+    "capability_count": 152,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 135,
+      "registered_unverified": 139,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -2312,6 +2312,118 @@
       "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
       "confidence": "high",
       "verified_at": "2026-10-22"
+    },
+    {
+      "id": "ari.referrals.list",
+      "domain": "marketing",
+      "outcome": "List a brand's referral offers and attributed results",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3872_r2" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/referrals.tsx"],
+        "source": [{
+          "path": "supabase/functions/_shared/agentDomainTools.ts",
+          "symbol": "const listReferralOffers"
+        }]
+      },
+      "ari_tool": "list_referral_offers",
+      "status": "registered_unverified",
+      "evidence": [{
+        "tier": "regression",
+        "sha": "2f8aea378edcd3ffc0980838b4b19dc9232b8e66",
+        "reference": "issue_3872_agent_tools_registry.implementor.test.ts: registered caller-bound referral listing"
+      }],
+      "owning_issues": [3872, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-10-24"
+    },
+    {
+      "id": "ari.referrals.create",
+      "domain": "marketing",
+      "outcome": "Create a buyer or promoter referral offer through the canonical Host writer",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3872_r2" },
+      "owners": {
+        "ui": ["mingla-business/src/components/referrals/ReferralOfferSheet.tsx"],
+        "source": [{
+          "path": "supabase/functions/_shared/agentDomainTools.ts",
+          "symbol": "const createReferralOffer"
+        }]
+      },
+      "ari_tool": "create_referral_offer",
+      "status": "registered_unverified",
+      "evidence": [{
+        "tier": "regression",
+        "sha": "2f8aea378edcd3ffc0980838b4b19dc9232b8e66",
+        "reference": "issue_3872_agent_tools_registry.implementor.test.ts: registered canonical referral offer creation"
+      }],
+      "owning_issues": [3872, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-10-24"
+    },
+    {
+      "id": "ari.referrals.invite_promoters",
+      "domain": "marketing",
+      "outcome": "Invite promoters by email to an active private referral offer",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3872_r2" },
+      "owners": {
+        "ui": ["mingla-business/src/components/referrals/ReferralHomeView.tsx"],
+        "source": [{
+          "path": "supabase/functions/_shared/agentDomainTools.ts",
+          "symbol": "const invitePromoters"
+        }]
+      },
+      "ari_tool": "invite_promoters",
+      "status": "registered_unverified",
+      "evidence": [{
+        "tier": "regression",
+        "sha": "2f8aea378edcd3ffc0980838b4b19dc9232b8e66",
+        "reference": "issue_3872_agent_tools_registry.implementor.test.ts: registered token-safe promoter invitation"
+      }],
+      "owning_issues": [3872, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-10-24"
+    },
+    {
+      "id": "ari.creators.draft_gig_script",
+      "domain": "marketing",
+      "outcome": "Draft a guarded Creator Gig script from Host-provided format and listing facts",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3872_r3" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/creators/contract/[contractId].tsx"],
+        "source": [{
+          "path": "supabase/functions/_shared/agentDomainTools.ts",
+          "symbol": "const draftGigScript"
+        }]
+      },
+      "ari_tool": "draft_gig_script",
+      "status": "registered_unverified",
+      "evidence": [{
+        "tier": "regression",
+        "sha": "8c5dd1fcc75e2fe47cca4db425ac04b0eb07d0e4",
+        "reference": "issue_3872_gig_script.implementor.test.ts: registered guarded script drafting"
+      }],
+      "owning_issues": [3872, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-10-26"
     },
     {
       "id": "ari.marketing.draft_campaign",

@@ -10,7 +10,12 @@ const createContentShareHandler = (fetchShare = fetchContentShare) => async func
     if (result.status === 410) return sendSharedHtml(res, renderNotFoundHtml("This shared page is no longer available"), 410);
     if ([429, 500, 502, 503].includes(result.status)) return sendSharedHtml(res, renderNotFoundHtml("Shared page unavailable"), result.status);
     if (!result.contentShare) return sendSharedHtml(res, renderNotFoundHtml("Shared page not found"), 404);
-    return sendSharedHtml(res, renderContentShareHtml(result.contentShare, result.installAttribution));
+    return sendSharedHtml(res, renderContentShareHtml(
+      result.contentShare,
+      result.installAttribution,
+      result.sharedBy,
+      result.friendDiscount,
+    ));
   } catch { return sendSharedHtml(res, renderNotFoundHtml("Shared page unavailable"), 503); }
 };
 module.exports = createContentShareHandler();

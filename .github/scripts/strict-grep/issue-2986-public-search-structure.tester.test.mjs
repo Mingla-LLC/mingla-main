@@ -180,10 +180,13 @@ function expectRejected(config, code) {
 test("the real route tree has one complete unconditional robots owner per private leaf", () => {
   const leaves = discoverRouteLeaves();
   const privateFamilies = new Set(leaves.filter(isPrivateRoute).filter((p) => p !== "/").map((p) => p.split("/")[1]));
-  // [TEST-MOD-APPROVED #4111] +1 → 42: /m/{token}, the signed-out guest's
+  // [TEST-MOD-APPROVED #3872] Referral-join and promoter workspaces are
+  // private route families with exact noindex/nofollow owners (+2; the Host
+  // app's creator workspace moved to Explorer, so it no longer counts here).
+  // [TEST-MOD-APPROVED #4111] +1: /m/{token}, the signed-out guest's
   // enquiry thread, is a new private family with its own noindex owner in
-  // mingla-business/vercel.json ("/m/:path*").
-  assert.equal(privateFamilies.size, 42, "current private family inventory must be explicit and non-vacuous");
+  // mingla-business/vercel.json ("/m/:path*"). 41 + 2 + 1 = 44.
+  assert.equal(privateFamilies.size, 44, "current private family inventory must be explicit and non-vacuous");
   assert.deepEqual(inspectPartition(readRealConfig(), leaves), []);
 });
 

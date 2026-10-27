@@ -31,6 +31,7 @@ import * as Sharing from "expo-sharing";
 import { DoorModeModal } from "../../../src/components/purchases/DoorModeModal";
 import { SendTicketSheet } from "../../../src/components/purchases/SendTicketSheet";
 import RsvpPassSheet from "../../../src/components/activity/RsvpPassSheet";
+import { EarnBySharingCard } from "../../../src/components/wallet/EarnBySharingCard";
 import { Icon } from "../../../src/components/ui/Icon";
 import { toastManager } from "../../../src/components/ui/Toast";
 import { useBrandFollow } from "../../../src/hooks/useBrandFollow";
@@ -1072,6 +1073,15 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                       })}
                 </Text>
               </View>
+            ) : null}
+
+            {order ? (
+              <EarnBySharingCard
+                compact
+                listingId={order.eventId}
+                listingKind="event"
+                title={item.title}
+              />
             ) : null}
 
             <View style={styles.quietList}>

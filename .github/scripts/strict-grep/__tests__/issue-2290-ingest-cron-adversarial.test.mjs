@@ -322,7 +322,20 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
       job: "issue_4114_chat_media_cleanup",
     },
   ];
-  for (const { file, job } of issue3697Pairs) {
+  // [TEST-MOD-APPROVED #3872] Creator/payee maintenance adds two reviewed
+  // same-transaction unschedule-then-reschedule pairs (+2; with #4111 and
+  // #4114 from main the total is 18). Both pairs are proven in the loop below.
+  const issue3872Pairs = [
+    {
+      file: "supabase/migrations/20271221003872_issue_3872_r2_payee_reversal_and_payout.sql",
+      job: "issue_3872_payee_payout_sweep",
+    },
+    {
+      file: "supabase/migrations/20271224003872_issue_3872_r3_foundation.sql",
+      job: "issue_3872_creator_media_reaper",
+    },
+  ];
+  for (const { file, job } of [...issue3697Pairs, ...issue3872Pairs]) {
     const sql = stripSqlComments(
       fs.readFileSync(path.join(REPO_ROOT, file), "utf8"),
     );
@@ -365,7 +378,7 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   );
   assert.equal(
     repo.dynamicUnschedules,
-    16,
+    18,
     "the number of unmodelled dynamic cron.unschedule calls changed. Each one is a place " +
       "where this gate cannot see a job being removed. Confirm the new call is the " +
       "unschedule-then-reschedule idiom (and not a permanent removal of a live worker) " +
