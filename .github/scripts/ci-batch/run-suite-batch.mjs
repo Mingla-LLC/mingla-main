@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { decodeManifestTextRepresentations, isMigratedSuite, isPrimarySuite, suiteCommandFingerprint, suiteOriginPatterns } from "./validate-manifest-v2.mjs";
 import { changedPathDigest, deriveChangedPaths, pathMatches, validateDecision } from "./select-phase3b-suites.mjs";
 import { loadEffectiveManifest } from "./load-manifest.mjs";
-import { POSTGRES_CHILD_ENV_NAMES, POSTGRES_WAVE, isPostgresBatchSuite, postgresEvidencePath } from "./postgres-batch-contract.mjs";
+import { POSTGRES_CHILD_ENV_NAMES, POSTGRES_WAVE, isPostgresBatchSuite, isUnfilteredPostgresSuite, postgresEvidencePath } from "./postgres-batch-contract.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, "../../..");
@@ -209,13 +209,9 @@ export function selectSuites(manifest, candidates, context) {
   const invalidated = (suite) => {
     // #3643: an origin without a path filter ran on every PR. Folding it must
     // not narrow that contract to just the files named by its commands.
-    if (isPostgresBatchSuite(suite)) {
-      const origin = manifest.legacyOrigins?.find((entry) =>
-        `.github/workflows/${entry.stem}.${entry.extension}` === suite.origin);
-      if (origin?.workflowMetadata?.pathScope?.length === 0 && !origin.routing) {
-        reasons.set(suite.id, "unfiltered origin");
-        return true;
-      }
+    if (isUnfilteredPostgresSuite(manifest, suite)) {
+      reasons.set(suite.id, "unfiltered origin");
+      return true;
     }
     for (const pattern of patterns.get(suite.id)) {
       const hit = context.changedPaths.find((file) => pathMatches(pattern, file));

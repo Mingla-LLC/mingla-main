@@ -8,8 +8,9 @@ import { fileURLToPath } from "node:url";
 import { BOOTSTRAP_SHA256, loadEffectiveManifest } from "../load-manifest.mjs";
 import { POSTGRES_WAVE, postgresAdditionalDatabaseName, postgresDatabaseName } from "../postgres-batch-contract.mjs";
 import { selectedPostgresSuites } from "../postgres-batch.mjs";
-import { SUITES_FOLDED_IN_POSTGRES_WAVE, validateRegistry } from "../validate-manifest-v2.mjs";
-import { runInvocation, runSuiteV2, selectSuites } from "../run-suite-batch.mjs";
+import { SUITES_FOLDED_IN_POSTGRES_WAVE, suiteCommandFingerprint, validateRegistry } from "../validate-manifest-v2.mjs";
+import { buildShardReport, expectedPrimarySuites, routingReport, runInvocation, runSuiteV2, selectSuites } from "../run-suite-batch.mjs";
+import { reconcilePhase3bReports, selectionDocument } from "../select-phase3b-suites.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const MANIFEST = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
@@ -105,6 +106,31 @@ test("#3643 original unfiltered and live-provider routing cannot narrow during t
       assert.deepEqual(selectSuites(loaded, [candidate], { mode: "routed", changedPaths: [file] }).suites, [candidate]);
     }
   }
+});
+
+test("#3643 reconciliation accepts the every-PR audit and rejects its omission", () => {
+  const loaded = manifest();
+  const host = "postgres17-deno2-node22-noinstall";
+  const context = { eventName: "pull_request", mode: "routed", changedPaths: ["supabase/functions/claim-link/index.ts"] };
+  const selection = selectSuites(loaded, expectedPrimarySuites(loaded, host), context);
+  assert.deepEqual(selection.suites.map((suite) => suite.id), ["issue-1614-onconflict-arbiter-audit"]);
+  const decision = selectionDocument(loaded, host, context.changedPaths, { source: {
+    eventName: "pull_request", baseSha: "a".repeat(40), headSha: "b".repeat(40),
+    mergeBaseSha: "a".repeat(40), pathSource: "local-git-three-dot-nul",
+  } });
+  const results = selection.suites.map((suite) => ({
+    id: suite.id, setupProfile: suite.setupProfile, commandFingerprint: suiteCommandFingerprint(suite),
+    expected: suite.steps.length, executed: suite.steps.length, status: "passed", ok: true, code: 0,
+  }));
+  const report = buildShardReport(host, selection.suites, results, null, 0);
+  report.routing = routingReport(context, selection);
+  assert.deepEqual(reconcilePhase3bReports(loaded, host, decision, report), []);
+
+  const omitted = buildShardReport(host, [], [], null, 0);
+  omitted.routing = { ...report.routing, classSelectedSuiteIds: [] };
+  const errors = reconcilePhase3bReports(loaded, host, decision, omitted);
+  assert.ok(errors.includes("primary-routing-mismatch"));
+  assert.ok(errors.includes("primary-identity-mismatch"));
 });
 
 test("#3643 G-1/G-3/G-9 and exact-command mutants are rejected", () => {
