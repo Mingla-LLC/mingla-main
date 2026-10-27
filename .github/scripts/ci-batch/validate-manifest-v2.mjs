@@ -173,19 +173,19 @@ const FOLDED_STEPS = SUITES_FOLDED_SINCE_SEAL.reduce((sum, item) => sum + item.s
 // wave is deliberately declared here before measurement; later waves extend
 // this declaration without changing any earlier-wave seal.
 export const PHASE3E_HOSTS = Object.freeze([
-  Object.freeze({ class: "postgres17-deno2-node20-noinstall", hostTimeoutMinutes: 180, primaryDeno: "v2.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.x","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":null,"classes":["postgres17-deno2-node20-noinstall"]}) }),
+  Object.freeze({ class: "postgres17-deno2-node20-noinstall", hostTimeoutMinutes: 180, primaryDeno: "v2.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.x","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"installs":[{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},{"cwd":"mingla-admin","invocation":{"kind":"argv","command":"npm","argv":["ci"]}}],"classes":["postgres17-deno2-node20-noinstall"]}) }),
   Object.freeze({ class: "postgres17-deno2714-node20-noinstall", hostTimeoutMinutes: 180, primaryDeno: "v2.7.14", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.7.14","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":null,"classes":["postgres17-deno2714-node20-noinstall"]}) }),
-  Object.freeze({ class: "postgres17-deno146-node22-noinstall", hostTimeoutMinutes: 180, primaryDeno: "1.46.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"22","deno":{"version":"1.46.x","action":"denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"}},"install":null,"classes":["postgres17-deno146-node22-noinstall"]}) }),
+  Object.freeze({ class: "postgres17-deno146-node22-noinstall", hostTimeoutMinutes: 180, primaryDeno: "1.46.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"22","deno":{"version":"1.46.x","action":"denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"}},"installs":[{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci","--ignore-scripts"]}},{"cwd":"app-mobile","invocation":{"kind":"argv","command":"npm","argv":["ci","--ignore-scripts"]}}],"classes":["postgres17-deno146-node22-noinstall"]}) }),
   Object.freeze({ class: "postgres17-deno295-node20-cli2982", hostTimeoutMinutes: 180, primaryDeno: "v2.9.5", primarySupabase: "2.98.2", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.9.5","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":null,"classes":["postgres17-deno295-node20-cli2982"]}) }),
-  Object.freeze({ class: "postgres17-node20-noinstall", hostTimeoutMinutes: 180, primaryDeno: "", profile: Object.freeze({"runtime":{"name":"node","version":"20"},"install":null,"classes":["postgres17-node20-noinstall"]}) }),
-  Object.freeze({ class: "postgres17-deno295-node20-noinstall", hostTimeoutMinutes: 180, primaryDeno: "v2.9.5", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.9.5","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":null,"classes":["postgres17-deno295-node20-noinstall"]}) }),
-  Object.freeze({ class: "postgres17-deno295-node20-pre1857", hostTimeoutMinutes: 180, primaryDeno: "v2.9.5", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.9.5","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":null,"classes":["postgres17-deno295-node20-pre1857"]}) }),
-  Object.freeze({ class: "postgres17-deno2-node22-noinstall", hostTimeoutMinutes: 180, primaryDeno: "v2.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"22","deno":{"version":"v2.x","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":null,"classes":["postgres17-deno2-node22-noinstall"]}) }),
+  Object.freeze({ class: "postgres17-node20-noinstall", hostTimeoutMinutes: 180, primaryDeno: "", profile: Object.freeze({"runtime":{"name":"node","version":"20"},"install":{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},"classes":["postgres17-node20-noinstall"]}) }),
+  Object.freeze({ class: "postgres17-deno295-node20-noinstall", hostTimeoutMinutes: 180, primaryDeno: "v2.9.5", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.9.5","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},"classes":["postgres17-deno295-node20-noinstall"]}) }),
+  Object.freeze({ class: "postgres17-deno295-node20-pre1857", hostTimeoutMinutes: 180, primaryDeno: "v2.9.5", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.9.5","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},"classes":["postgres17-deno295-node20-pre1857"]}) }),
+  Object.freeze({ class: "postgres17-deno2-node22-noinstall", hostTimeoutMinutes: 180, primaryDeno: "v2.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"22","deno":{"version":"v2.x","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"installs":[{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},{"cwd":"app-mobile","invocation":{"kind":"argv","command":"npm","argv":["ci"]}}],"classes":["postgres17-deno2-node22-noinstall"]}) }),
   Object.freeze({ class: "postgres17-deno2-node22-pre1931", hostTimeoutMinutes: 120, primaryDeno: "v2.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"22","deno":{"version":"v2.x","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":null,"classes":["postgres17-deno2-node22-pre1931"]}) }),
-  Object.freeze({ class: "postgres17-deno146-node20-dualdb", hostTimeoutMinutes: 180, primaryDeno: "1.46.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"1.46.x","action":"denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"}},"install":null,"classes":["postgres17-deno146-node20-dualdb"]}) }),
+  Object.freeze({ class: "postgres17-deno146-node20-dualdb", hostTimeoutMinutes: 180, primaryDeno: "1.46.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"1.46.x","action":"denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"}},"install":{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci","--ignore-scripts"]}},"classes":["postgres17-deno146-node20-dualdb"]}) }),
   Object.freeze({ class: "postgres17-deno146-node20-noinstall", hostTimeoutMinutes: 180, primaryDeno: "1.46.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"1.46.x","action":"denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"}},"install":null,"classes":["postgres17-deno146-node20-noinstall"]}) }),
   Object.freeze({ class: "postgres17-deno2-node20-pre2117", hostTimeoutMinutes: 120, primaryDeno: "v2.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.x","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":null,"classes":["postgres17-deno2-node20-pre2117"]}) }),
-  Object.freeze({ class: "postgres17-node22-noinstall", hostTimeoutMinutes: 180, primaryDeno: "", profile: Object.freeze({"runtime":{"name":"node","version":"22"},"install":null,"classes":["postgres17-node22-noinstall"]}) }),
+  Object.freeze({ class: "postgres17-node22-noinstall", hostTimeoutMinutes: 180, primaryDeno: "", profile: Object.freeze({"runtime":{"name":"node","version":"22"},"install":{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},"classes":["postgres17-node22-noinstall"]}) }),
 ]);
 export const SUITES_FOLDED_IN_POSTGRES_WAVE = Object.freeze([
   Object.freeze({ suite: "issue-1406-customer-patterns-performance-tests", issue: 1406, class: "postgres17-deno2-node20-noinstall", steps: 1 }),
@@ -196,46 +196,46 @@ export const SUITES_FOLDED_IN_POSTGRES_WAVE = Object.freeze([
   Object.freeze({ suite: "issue-875-customer-patterns-tests", issue: 875, class: "postgres17-deno2-node20-noinstall", steps: 1 }),
   Object.freeze({ suite: "issue-1447-rsvp-admission-tests", issue: 1447, class: "postgres17-deno2714-node20-noinstall", steps: 10 }),
   Object.freeze({ suite: "issue-1529-notification-country-code-tests", issue: 1529, class: "postgres17-deno2714-node20-noinstall", steps: 10 }),
-  Object.freeze({ suite: "issue-1719-unified-sharing", issue: 1719, class: "postgres17-deno146-node22-noinstall", steps: 29 }),
+  Object.freeze({ suite: "issue-1719-unified-sharing", issue: 1719, class: "postgres17-deno146-node22-noinstall", steps: 27 }),
   Object.freeze({ suite: "issue-1773-reservation-stay-ingest-tests", issue: 1773, class: "postgres17-deno295-node20-cli2982", steps: 5 }),
-  Object.freeze({ suite: "issue-1774-people-page-tests", issue: 1774, class: "postgres17-node20-noinstall", steps: 3 }),
-  Object.freeze({ suite: "issue-1775-csv-contact-import-tests", issue: 1775, class: "postgres17-deno295-node20-noinstall", steps: 7 }),
-  Object.freeze({ suite: "issue-1857-phone-country-authority-tests", issue: 1857, class: "postgres17-deno295-node20-pre1857", steps: 8 }),
+  Object.freeze({ suite: "issue-1774-people-page-tests", issue: 1774, class: "postgres17-node20-noinstall", steps: 2 }),
+  Object.freeze({ suite: "issue-1775-csv-contact-import-tests", issue: 1775, class: "postgres17-deno295-node20-noinstall", steps: 6 }),
+  Object.freeze({ suite: "issue-1857-phone-country-authority-tests", issue: 1857, class: "postgres17-deno295-node20-pre1857", steps: 7 }),
   Object.freeze({ suite: "issue-1902-rsvp-backend-safety-tests", issue: 1902, class: "postgres17-deno2714-node20-noinstall", steps: 10 }),
-  Object.freeze({ suite: "issue-1929-hidden-direct-checkout-tests", issue: 1929, class: "postgres17-deno2-node22-noinstall", steps: 9 }),
+  Object.freeze({ suite: "issue-1929-hidden-direct-checkout-tests", issue: 1929, class: "postgres17-deno2-node22-noinstall", steps: 7 }),
   Object.freeze({ suite: "issue-1931-private-event-access", issue: 1931, class: "postgres17-deno2-node22-pre1931", steps: 17 }),
   Object.freeze({ suite: "issue-1972-ari-event-lifecycle", issue: 1972, class: "postgres17-deno2-node20-noinstall", steps: 4 }),
   Object.freeze({ suite: "issue-1973-ari-experience-lifecycle", issue: 1973, class: "postgres17-deno2-node20-noinstall", steps: 3 }),
   Object.freeze({ suite: "issue-1974-ari-ticket-pricing", issue: 1974, class: "postgres17-deno2-node20-noinstall", steps: 4 }),
-  Object.freeze({ suite: "issue-1985-ari-task-state", issue: 1985, class: "postgres17-deno146-node20-dualdb", steps: 8 }),
-  Object.freeze({ suite: "issue-1995-contact-book-blast", issue: 1995, class: "postgres17-deno2-node20-noinstall", steps: 29 }),
+  Object.freeze({ suite: "issue-1985-ari-task-state", issue: 1985, class: "postgres17-deno146-node20-dualdb", steps: 7 }),
+  Object.freeze({ suite: "issue-1995-contact-book-blast", issue: 1995, class: "postgres17-deno2-node20-noinstall", steps: 28 }),
   Object.freeze({ suite: "issue-2009-published-event-visibility", issue: 2009, class: "postgres17-deno146-node20-noinstall", steps: 19 }),
-  Object.freeze({ suite: "issue-2015-app-network-bindings", issue: 2015, class: "postgres17-deno2-node20-noinstall", steps: 10 }),
+  Object.freeze({ suite: "issue-2015-app-network-bindings", issue: 2015, class: "postgres17-deno2-node20-noinstall", steps: 9 }),
   Object.freeze({ suite: "issue-2060-ari-reliability", issue: 2060, class: "postgres17-deno2-node22-noinstall", steps: 6 }),
   Object.freeze({ suite: "issue-2063-ari-brand-management", issue: 2063, class: "postgres17-deno146-node22-noinstall", steps: 6 }),
   Object.freeze({ suite: "issue-2117-offering-visibility-gate-tests", issue: 2117, class: "postgres17-deno2-node20-pre2117", steps: 14 }),
   Object.freeze({ suite: "issue-2150-free-resubmit-idempotent-tests", issue: 2150, class: "postgres17-deno2-node20-noinstall", steps: 10 }),
   Object.freeze({ suite: "issue-2160-multiday-multiselect-tests", issue: 2160, class: "postgres17-deno2-node20-noinstall", steps: 26 }),
-  Object.freeze({ suite: "issue-2217-confirmation-app-cta-tests", issue: 2217, class: "postgres17-deno2-node20-noinstall", steps: 9 }),
-  Object.freeze({ suite: "issue-2267-marketing-tenancy", issue: 2267, class: "postgres17-node20-noinstall", steps: 4 }),
-  Object.freeze({ suite: "issue-2323-free-order-claim-and-cta-tests", issue: 2323, class: "postgres17-node20-noinstall", steps: 7 }),
+  Object.freeze({ suite: "issue-2217-confirmation-app-cta-tests", issue: 2217, class: "postgres17-deno2-node20-noinstall", steps: 8 }),
+  Object.freeze({ suite: "issue-2267-marketing-tenancy", issue: 2267, class: "postgres17-node20-noinstall", steps: 3 }),
+  Object.freeze({ suite: "issue-2323-free-order-claim-and-cta-tests", issue: 2323, class: "postgres17-node20-noinstall", steps: 6 }),
   Object.freeze({ suite: "issue-2333-online-event-publish", issue: 2333, class: "postgres17-node20-noinstall", steps: 7 }),
   Object.freeze({ suite: "issue-2353-format-truth-and-edit-grant", issue: 2353, class: "postgres17-node20-noinstall", steps: 8 }),
-  Object.freeze({ suite: "issue-871-attendance-entitlement-tests", issue: 871, class: "postgres17-deno2-node20-noinstall", steps: 16 }),
+  Object.freeze({ suite: "issue-871-attendance-entitlement-tests", issue: 871, class: "postgres17-deno2-node20-noinstall", steps: 15 }),
   Object.freeze({ suite: "issue-1020-discover-geo-fallback-tests", issue: 1020, class: "postgres17-deno146-node20-noinstall", steps: 3 }),
   Object.freeze({ suite: "issue-1175-paystack-refunds-tests", issue: 1175, class: "postgres17-deno2-node20-noinstall", steps: 5 }),
   Object.freeze({ suite: "issue-1179-cancel-refund-fanout-tests", issue: 1179, class: "postgres17-deno2-node20-noinstall", steps: 4 }),
-  Object.freeze({ suite: "issue-1403-listing-insights-tests", issue: 1403, class: "postgres17-node20-noinstall", steps: 21 }),
-  Object.freeze({ suite: "issue-1421-venue-organic-insights-tests", issue: 1421, class: "postgres17-deno2-node20-noinstall", steps: 9 }),
-  Object.freeze({ suite: "issue-1463-permitted-staff-venue-submit-tests", issue: 1463, class: "postgres17-deno2-node22-noinstall", steps: 4 }),
-  Object.freeze({ suite: "issue-1469-stay-authoring-permissions", issue: 1469, class: "postgres17-node22-noinstall", steps: 4 }),
-  Object.freeze({ suite: "issue-1614-onconflict-arbiter-audit", issue: 1614, class: "postgres17-deno2-node22-noinstall", steps: 8 }),
+  Object.freeze({ suite: "issue-1403-listing-insights-tests", issue: 1403, class: "postgres17-node20-noinstall", steps: 20 }),
+  Object.freeze({ suite: "issue-1421-venue-organic-insights-tests", issue: 1421, class: "postgres17-deno2-node20-noinstall", steps: 8 }),
+  Object.freeze({ suite: "issue-1463-permitted-staff-venue-submit-tests", issue: 1463, class: "postgres17-deno2-node22-noinstall", steps: 3 }),
+  Object.freeze({ suite: "issue-1469-stay-authoring-permissions", issue: 1469, class: "postgres17-node22-noinstall", steps: 3 }),
+  Object.freeze({ suite: "issue-1614-onconflict-arbiter-audit", issue: 1614, class: "postgres17-deno2-node22-noinstall", steps: 7 }),
   Object.freeze({ suite: "issue-1810-guest-roster-export-compat-tests", issue: 1810, class: "postgres17-node20-noinstall", steps: 2 }),
   Object.freeze({ suite: "issue-1812-brand-people-export-search-tests", issue: 1812, class: "postgres17-node20-noinstall", steps: 1 }),
   Object.freeze({ suite: "issue-2101-named-buyer-checkout-tests", issue: 2101, class: "postgres17-deno2-node22-noinstall", steps: 8 }),
   Object.freeze({ suite: "issue-2136-free-checkout-contract-tests", issue: 2136, class: "postgres17-deno2-node20-noinstall", steps: 5 }),
   Object.freeze({ suite: "issue-2393-valid-marketing-test-fixtures", issue: 2393, class: "postgres17-node20-noinstall", steps: 4 }),
-  Object.freeze({ suite: "issue-873-guest-status-roster-tests", issue: 873, class: "postgres17-deno2-node20-noinstall", steps: 14 }),
+  Object.freeze({ suite: "issue-873-guest-status-roster-tests", issue: 873, class: "postgres17-deno2-node20-noinstall", steps: 13 }),
 ]);
 const PHASE3E_SUITE_IDS = new Set(SUITES_FOLDED_IN_POSTGRES_WAVE.map((item) => item.suite));
 const PHASE3E_HOST_CLASSES = new Set(PHASE3E_HOSTS.map((host) => host.class));
@@ -271,7 +271,7 @@ export function phase3dContractDigest(manifest) {
   return crypto.createHash("sha256").update(JSON.stringify(phase3dContractRows(manifest))).digest("hex");
 }
 // [TEST-MOD-APPROVED #3643] Final 48-suite Phase 3E command/runtime/routing seal.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "43a877247b85701f0caa64b0b6f936e195bfc79fa6daa561502699f58e77124a";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "bd763a1da4dbd812255efc7e39feb2302abbab75110e851c905c5161f6305b76";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -2356,7 +2356,12 @@ function validateRegistryInTrackedFilesScope(
       : PHASE3E_HOST_CLASSES.has(klass) && profile.runtime?.name === "node+deno"
         ? profile.runtime.nodeVersion : profile.runtime?.version;
     if (route.node !== profileNode) fail(errors, `class ${klass}: matrix runtime ${route.node} disagrees with setup profile runtime ${profileNode}`);
-    const expectsCache = profileInstallList(profile).some((install) => install.invocation.argv[0] === "ci") && profileInstallList(profile).length === 1;
+    // [#3643] Phase 3E setup installs run in the PostgreSQL host's reviewed
+    // setup lane, but those hosts deliberately keep the matrix cache fields
+    // empty: their primary Deno route is a separate sealed topology contract.
+    const expectsCache = !PHASE3E_HOST_CLASSES.has(klass)
+      && profileInstallList(profile).some((install) => install.invocation.argv[0] === "ci")
+      && profileInstallList(profile).length === 1;
     if ((expectsCache ? "npm" : "") !== route.cache) fail(errors, `class ${klass}: matrix cache route disagrees with exact setup profile`);
   }
 

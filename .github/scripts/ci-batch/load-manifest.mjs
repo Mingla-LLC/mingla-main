@@ -36,7 +36,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // Phase 3E suite watch the shared PostgreSQL setup/contract it depends on.
 // The four sourceSha256-only patches are deleted and that patch op is refused.
 // [TEST-MOD-APPROVED #3643] Re-sealed once for the terminal 48-suite Phase 3E fold.
-export const BOOTSTRAP_SHA256 = "6e76e60b4fe9425787a8f589130f768376e44d045adb8efbda41f3addcaf82be";
+export const BOOTSTRAP_SHA256 = "1bab914ba9b894deb77661b9a72778b7c5690e029548a07706fa6a437e6aaed3";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

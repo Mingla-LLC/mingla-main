@@ -157,8 +157,8 @@ test("a synthetic additive suite passes the full production loader, validator, r
   // the bootstrap; folding origins changes no legacy-origin count.
   assert.equal(views.rawBootstrap.suites.length, 153);
   assert.equal(views.patchedBootstrap.suites.length, 153);
-  assert.equal(views.rawBootstrap.commandCapabilities.commands.length, 742);
-  assert.equal(views.patchedBootstrap.commandCapabilities.commands.length, 742);
+  assert.equal(views.rawBootstrap.commandCapabilities.commands.length, 722);
+  assert.equal(views.patchedBootstrap.commandCapabilities.commands.length, 722);
   assert.equal(views.patchedBootstrap.legacyOrigins.length, 201);
   // [TEST-MOD-APPROVED #3682] Effective totals derive from the sealed
   // projection plus every trusted local descriptor, including this fixture.
