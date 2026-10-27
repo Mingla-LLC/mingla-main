@@ -87,7 +87,6 @@ import type {
   TripRevisionCursor,
 } from "../../services/tripsService";
 import {
-  readTripCoverRevision,
   readTripRevision,
   setTripPricingSwitches,
 } from "../../services/tripsService";
@@ -1393,26 +1392,9 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     markTripChanged(trip.id);
   }, [revision, trip.id, markTripChanged]);
 
-  // Issue #3801 — a video cover finishing processing is applied by the SERVER
-  // (`cover_video_apply_once`: webhook, apply endpoint or reaper), which moves
-  // the revision while the host is still in the wizard. The cover picker
-  // hands Step 1 the video only once the server reports it applied. The
-  // video's URL is remembered here and, inside the save queue and before the
-  // next save, the stored row is read: only when it holds exactly that video
-  // does the session take its revision. Anything else (the row holds another
-  // cover, or the revision did not move forward) is left alone, so a real edit
-  // made somewhere else is still refused with the reload message.
-  const pendingAppliedVideoUrlRef = useRef<string | null>(null);
-  const adoptAppliedVideoRevision = useCallback(async (): Promise<void> => {
-    const videoUrl = pendingAppliedVideoUrlRef.current;
-    if (videoUrl === null) return;
-    const stored = await readTripCoverRevision(trip.id);
-    pendingAppliedVideoUrlRef.current = null;
-    if (stored.coverMediaType !== "video" || stored.coverMediaUrl !== videoUrl) return;
-    if (!isRevisionAtLeast(stored.updatedAt, revision.current)) return;
-    revision.current = stored.updatedAt;
-    markTripChanged(trip.id);
-  }, [revision, trip.id, markTripChanged]);
+  // Issue #3801 — the server keeps a DRAFT's revision through its own cover
+  // video apply (migration 20271231303801), so a save after the apply carries
+  // the revision this session holds and is accepted; nothing is re-read here.
   // Issue #3801 — the cover this session last knew the server to hold (seeded
   // from the trip, moved by every save that sent the cover), and whether one of
   // the host's cover videos is still uploading or processing. See
@@ -1441,16 +1423,8 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
       // The host picked, replaced or removed the cover: that is the cover now.
       coverVideoInFlightRef.current = false;
     }
-    if (
-      patch.coverMediaType === "video" &&
-      typeof patch.coverMediaUrl === "string" &&
-      patch.coverMediaUrl.length > 0 &&
-      patch.coverMediaUrl !== step1Draft.coverMediaUrl
-    ) {
-      pendingAppliedVideoUrlRef.current = patch.coverMediaUrl;
-    }
     setStep1Draft((s) => ({ ...s, ...patch }));
-  }, [step1Draft.coverMediaUrl]);
+  }, []);
 
   const autosaveStep1 = useCallback(async (): Promise<void> => {
     const coverSave = decideTripCoverSave(
@@ -1679,7 +1653,6 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     try {
       await saveQueue.run(async () => {
         try {
-          await adoptAppliedVideoRevision();
           if (step === 1) await autosaveStep1();
           else if (step === 2) await autosaveStep2();
           else if (step === 3) await autosaveStep3();
@@ -1709,7 +1682,6 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     revision,
     trip.id,
     step,
-    adoptAppliedVideoRevision,
     autosaveStep1,
     autosaveStep2,
     autosaveStep3,
@@ -2153,7 +2125,6 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
         coverVideoInFlightRef.current,
       );
       const published = await saveQueue.run(async () => {
-        await adoptAppliedVideoRevision();
         return publishMutation.mutateAsync({
           eventId: trip.id,
           brandId: trip.brandId,
@@ -2264,7 +2235,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     }
   }, [publishMutation, router, step1Draft, step5Draft, trip.id, trip.brandId, trip.timezone, onPublished, showToast, invitePlan, bankSetupRoute,
     acceptTermsAfterServerRefusal, saveQueue, revision, surfaceRevisionConflict,
-    waitForSaveInFlight, adoptAppliedVideoRevision]);
+    waitForSaveInFlight]);
 
   // Suppress autosave-error toast surfacing via setPublishError; show via
   // the persistent banner in Step 5. Show toast for discard errors only.
