@@ -36,6 +36,17 @@ function reconstructBase(files) {
     `'Issue 873 Campaign','email','{"kind":"email"}','sending'`,
     "#873 fixture payload",
   );
+  // #4134 moved the roster's stale-state raises from 40001 to PT409; its four
+  // handlers are the only other allowlisted change.
+  const pt409Handler = "EXCEPTION WHEN sqlstate 'PT409' THEN";
+  assert.equal(
+    reconstructed.issue873.split(pt409Handler).length - 1,
+    4,
+    "#4134 PT409 handlers: expected exactly four",
+  );
+  reconstructed.issue873 = reconstructed.issue873
+    .split(pt409Handler)
+    .join("EXCEPTION WHEN serialization_failure THEN");
   reconstructed.orch1270 = replaceExactly(
     files.orch1270,
     `'ADV2','email', '{"kind":"email","subject":"ORCH-1270 double-send fixture","body_html":"ORCH-1270 double-send fixture"}', 'sending'`,

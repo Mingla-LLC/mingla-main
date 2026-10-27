@@ -561,7 +561,7 @@ describe("#3802 P-10: server answers are shown in plain words", () => {
     assert.equal(errorCopy(e.token, e.message), "Add one line saying why, so the next person knows.");
   });
   it("try_again is recognised by its token, whatever code it arrives with", () => {
-    for (const code of ["40001", "22023", "", undefined]) {
+    for (const code of ["PT409", "40001", "22023", "", undefined]) {
       const e = parseServerError({ code, message: "try_again: Another change to the same record happened at the same moment, so nothing was saved. Send the same request again." });
       assert.equal(e.token, "try_again");
       assert.ok(!errorCopy(e.token, e.message).includes("request"));

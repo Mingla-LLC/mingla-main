@@ -1957,14 +1957,14 @@ begin
   v_audit := pg_temp.x_audit();
   set local client_min_messages = error;
   v_got := pg_temp.x_as('growth', format($$select public.crm_records_bulk_create('hosts', %L, 'xfault-key-01')::text$$, v_items));
-  perform pg_temp.x_like('XA-20', 'a fault inside the list stops the request with a retry answer', v_got, 'ERR:40001:try_again:%');
+  perform pg_temp.x_like('XA-20', 'a fault inside the list stops the request with a retry answer', v_got, 'ERR:PT409:try_again:%');
   perform pg_temp.x_ok('XA-20', 'the answer says nothing about what went wrong inside', v_got !~* 'injected|trigger|relation|crm_records', v_got);
   perform pg_temp.x_eq('XA-20', 'nothing was saved, not even the items before the fault', pg_temp.x_snap(), v_snap);
   perform pg_temp.x_eq('XA-20', 'no audit row was written', pg_temp.x_audit()::text, v_audit::text);
   perform pg_temp.x_eq('XA-20', 'the request key was not kept',
     (select count(*)::text from public.crm_request_keys where request_key = 'xfault-key-01'), '0');
   v_got := pg_temp.x_as('growth', format($$select public.crm_records_bulk_create('hosts', %L, 'xfault-key-01')::text$$, v_items));
-  perform pg_temp.x_like('XA-20', 'while the fault lasts, the same request gets the same retry answer', v_got, 'ERR:40001:try_again:%');
+  perform pg_temp.x_like('XA-20', 'while the fault lasts, the same request gets the same retry answer', v_got, 'ERR:PT409:try_again:%');
   perform pg_temp.x_like('XA-20', 'a single add that hits the fault is not reported as the caller''s mistake',
     pg_temp.x_as('growth', $$select public.crm_record_create('hosts', '{"name":"Issue3802x Fault Single"}', 'xfault-key-02')::text$$), 'ERR:P0001:%');
   reset client_min_messages;

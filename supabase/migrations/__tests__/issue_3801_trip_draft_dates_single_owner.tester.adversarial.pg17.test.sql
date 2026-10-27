@@ -426,7 +426,7 @@ BEGIN
         'startAt', pg_temp.iso(v_other_start), 'endAt', pg_temp.iso(v_other_end)))),
       v_stale, gen_random_uuid());
     RAISE EXCEPTION 'D-01 a stale revision was allowed to rewrite the dates';
-  EXCEPTION WHEN sqlstate '40001' THEN
+  EXCEPTION WHEN sqlstate 'PT409' THEN
     IF SQLERRM <> 'trip_revision_conflict' THEN RAISE EXCEPTION 'D-02 stale revision raised %', SQLERRM; END IF;
   END;
   IF pg_temp.fingerprint(v_event) IS DISTINCT FROM v_before THEN
@@ -441,7 +441,7 @@ BEGIN
         'startAt', NULL, 'endAt', NULL))),
       NULL, gen_random_uuid());
     RAISE EXCEPTION 'D-04 a patch with no revision cleared the dates';
-  EXCEPTION WHEN sqlstate '40001' THEN NULL;
+  EXCEPTION WHEN sqlstate 'PT409' THEN NULL;
   END;
   IF pg_temp.fingerprint(v_event) IS DISTINCT FROM v_before THEN
     RAISE EXCEPTION 'D-05 a refused revision-less write still changed the draft';
@@ -488,7 +488,7 @@ BEGIN
   BEGIN
     PERFORM public.biz_publish_trip_command(v_event, v_stale, gen_random_uuid());
     RAISE EXCEPTION 'D-13 publish accepted a stale revision';
-  EXCEPTION WHEN sqlstate '40001' THEN NULL;
+  EXCEPTION WHEN sqlstate 'PT409' THEN NULL;
   END;
   IF pg_temp.fingerprint(v_event) IS DISTINCT FROM v_before THEN
     RAISE EXCEPTION 'D-14 a refused stale publish still changed the draft';

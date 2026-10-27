@@ -14,7 +14,7 @@ do $proof$
 declare owner_id constant uuid := '38020000-0000-4000-c300-000000000001'; owner_email constant text := 'issue3802ca-owner@test.local'; growth_id constant uuid := '38020000-0000-4000-c300-000000000002'; growth_email constant text := 'issue3802ca-growth@test.local'; answer jsonb; card_id uuid; key_id uuid:=gen_random_uuid();
 begin
   answer:=pg_temp.as_user(growth_id,growth_email,$q$select public.content_calendar_create('Guarded card','guardcreate1')::text$q$)::jsonb; card_id:=(answer#>>'{item,id}')::uuid;
-  perform pg_temp.ok(pg_temp.as_user(growth_id,growth_email,format($q$select public.content_calendar_update(%L,'{"notes":"wrong"}'::jsonb,99,'guardstale01')::text$q$,card_id)) like 'ERR:40001:stale_write:%','stale update refused');
+  perform pg_temp.ok(pg_temp.as_user(growth_id,growth_email,format($q$select public.content_calendar_update(%L,'{"notes":"wrong"}'::jsonb,99,'guardstale01')::text$q$,card_id)) like 'ERR:PT409:stale_write:%','stale update refused');
   perform pg_temp.ok(pg_temp.as_user(growth_id,growth_email,$q$select public.content_calendar_create('Changed','guardcreate1')::text$q$) like 'ERR:22023:request_key_reused:%','request key bound to full args');
   perform pg_temp.ok(pg_temp.as_user(growth_id,growth_email,format($q$select public.content_calendar_move(%L,'design',1,true,false,false,'guardskip001')::text$q$,card_id)) like 'ERR:22023:stage_order:%','forward skip refused');
   perform pg_temp.ok(pg_temp.as_user(growth_id,growth_email,format($q$select public.content_calendar_move(%L,'writing',1,false,false,false,'guardmove001')::text$q$,card_id)) not like 'ERR:%','move to writing');
