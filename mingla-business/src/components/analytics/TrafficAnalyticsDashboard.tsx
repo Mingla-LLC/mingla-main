@@ -881,7 +881,13 @@ export const TrafficAnalyticsDashboard: React.FC<
           animationType="slide"
           onRequestClose={onClearSelectedPage}
         >
-          <Pressable style={styles.sheetBackdrop} onPress={onClearSelectedPage}>
+          <Pressable
+            style={styles.sheetBackdrop}
+            onPress={onClearSelectedPage}
+            accessibilityRole="button"
+            accessibilityLabel="Close selected page details"
+          >
+            {/* orch-strict-grep-allow pressable-no-label — event containment only; the sheet content owns accessibility */}
             <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
               <View style={styles.sheetHandle} />
               {pageDetail}

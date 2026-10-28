@@ -295,6 +295,9 @@ const LiveBandCard: React.FC<{
     <Pressable
       onPress={() => startsSoon ? onOpenOffering(item) : onScanPress(item.id)}
       accessibilityRole="button"
+      accessibilityLabel={startsSoon
+        ? `Open ${offeringName(item)}`
+        : `${rsvp ? "Scan guests" : "Scan tickets"} for ${offeringName(item)}`}
       style={[
         styles.liveAction,
         startsSoon && styles.soonAction,
@@ -453,6 +456,7 @@ const LiveBand: React.FC<{
               key={item.key}
               onPress={() => setSelected(index)}
               accessibilityRole="tab"
+              accessibilityLabel={offeringName(item)}
               accessibilityState={{ selected: selected === index }}
               style={[styles.liveTab, selected === index && styles.liveTabSelected]}
             >

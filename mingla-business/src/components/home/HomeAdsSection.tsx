@@ -390,6 +390,7 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
             <Pressable
               onPress={openAds}
               accessibilityRole="button"
+              accessibilityLabel={viewAll}
               style={styles.viewAll}
               testID="home-ads-view-all"
             >
@@ -537,7 +538,12 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
             );
           })}
           {!isWideDesktop && activeCampaigns.length > 4 ? (
-            <Pressable onPress={openAds} style={styles.phoneViewAll}>
+            <Pressable
+              onPress={openAds}
+              accessibilityRole="button"
+              accessibilityLabel={viewAll}
+              style={styles.phoneViewAll}
+            >
               <Text style={styles.link}>{viewAll}</Text>
             </Pressable>
           ) : null}
