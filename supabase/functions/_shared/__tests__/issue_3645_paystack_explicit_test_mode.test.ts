@@ -3,11 +3,11 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  paystackChargeAuthorizationForTest,
   paystackInitializeTransaction,
   paystackVerifyTransaction,
   resolvePaystackSecretKeyForMode,
 } from "../paystack.ts";
-import { chargePaystackTestAuthorization } from "../installments/chargePaystackInstallment.ts";
 
 const ORIGINAL = {
   mode: Deno.env.get("PAYSTACK_MODE"),
@@ -99,7 +99,7 @@ Deno.test({
       });
       // [TEST-MOD-APPROVED #3645] Exercise the reviewed harness seam instead
       // of bypassing the sole Paystack installment rail owner.
-      await chargePaystackTestAuthorization(
+      await paystackChargeAuthorizationForTest(
         {
           authorizationCode: "AUTH_test",
           email: "test-buyer@usemingla.com",

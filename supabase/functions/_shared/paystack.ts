@@ -588,8 +588,10 @@ function constantTimeEqual(a: string, b: string): boolean {
 // POST /transaction/charge_authorization (docs-v2 api/transaction). Called
 // synchronously (no `queue`): Paystack has no charge.failed webhook and a
 // bank-approval request (`paused` + authorization_url) only arrives in this
-// response. The ONLY caller is _shared/installments/chargePaystackInstallment.ts.
-// The saved-card values are sent to Paystack and never logged or returned.
+// response. The ONLY production caller is
+// _shared/installments/chargePaystackInstallment.ts. The reviewed public proof
+// harness calls only the explicit TEST wrapper below. Saved-card values are
+// sent to Paystack and never logged or returned.
 // ───────────────────────────────────────────────────────────────────────────
 
 export interface PaystackChargeAuthorizationParams {
@@ -651,6 +653,17 @@ export async function paystackChargeAuthorization(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * TEST-provider proof seam. Explicit mode prevents a live runtime default from
+ * selecting live credentials; callers still own bounds and response masking.
+ */
+export function paystackChargeAuthorizationForTest(
+  params: PaystackChargeAuthorizationParams,
+  fetchImpl: typeof fetch = fetch,
+): Promise<PaystackChargeAuthorizationResponse> {
+  return paystackChargeAuthorization(params, fetchImpl, "test");
 }
 
 export type PaystackChargeClass =

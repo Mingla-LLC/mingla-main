@@ -106,7 +106,7 @@ if (process.argv.includes("--self-test")) {
     // explicit TEST seam; it must never call the raw provider primitive.
     {
       rel: "supabase/functions/paystack-checkout-create/handler.ts",
-      content: "await chargePaystackTestAuthorization(input);\n",
+      content: "await paystackChargeAuthorizationForTest(input);\n",
     },
     {
       rel: "supabase/functions/manual-charge-installment/index.ts",

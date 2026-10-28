@@ -1,7 +1,7 @@
 import { corsHeaders } from "../_shared/cors.ts";
-import { chargePaystackTestAuthorization } from "../_shared/installments/chargePaystackInstallment.ts";
 import {
   classifyPaystackChargeResponse,
+  paystackChargeAuthorizationForTest,
   type PaystackChargeAuthorizationParams,
   type PaystackChargeAuthorizationResponse,
   type PaystackInitializeParams,
@@ -30,7 +30,7 @@ const defaultDeps: PaystackTestHarnessDeps = {
   initialize: (params) =>
     paystackInitializeTransaction(params, { mode: "test" }),
   verify: (reference) => paystackVerifyTransaction(reference, { mode: "test" }),
-  chargeAuthorization: (params) => chargePaystackTestAuthorization(params),
+  chargeAuthorization: (params) => paystackChargeAuthorizationForTest(params),
 };
 
 function genReference(kind = "checkout"): string {
