@@ -19,6 +19,16 @@ Deno.test("#3645 new-sale copy uses stored host net without inventing a rate", (
     61_800,
   );
   assertEquals(storedHostNetCents(62_700, {}, null), null);
+  // #1318 — direct fallback parity for a Nigeria sale whose application-fee
+  // column is absent: passed VAT remains in the stored connected payout.
+  assertEquals(
+    storedHostNetCents(
+      204_250_000,
+      { connected_account_payout_cents: 195_700_000 },
+      null,
+    ),
+    195_700_000,
+  );
   assertEquals(
     storedHostNetCents(
       62_700,

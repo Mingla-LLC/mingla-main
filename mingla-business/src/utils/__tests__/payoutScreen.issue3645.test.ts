@@ -150,7 +150,7 @@ describe("#3645 payout-screen money truth", () => {
       serviceFeeBps: 300,
       switches: { passTax: false, passMinglaFee: false, passServiceFee: false },
     });
-    expect(buyersCover.youKeepFloorCents).toBe(2_000_000);
-    expect(hostCovers.youKeepFloorCents).toBe(1_910_000);
+    expect(buyersCover.youKeepCents).toBe(2_000_000);
+    expect(hostCovers.youKeepCents).toBe(1_910_000);
   });
 });
