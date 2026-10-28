@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-2829-LEGACY-HOST-CONVERGENCE | issue #2829 | This repair may activate at most one pending primary Mingla subdomain, and only when its brand entitlement, tenant, published site, current/last-good publication, artifact and canonical hostname are all mutually consistent.
 import {
   assert,
   assertEquals,

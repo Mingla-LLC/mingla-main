@@ -1,4 +1,5 @@
 -- #3645 reviewed Paystack installment activation (PG17, BEGIN ... ROLLBACK).
+-- MINGLA-INVARIANT: I-3645-PAYSTACK-INSTALLMENTS-ACTIVE | issue #3645 | Public and authoring capability for Paystack trip installments is true only through this service-role-only switch; provider TEST checkout plus reusable-card charge proof and Seth's activation approval gate production apply.
 
 BEGIN;
 

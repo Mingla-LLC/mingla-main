@@ -4,8 +4,6 @@ SET LOCAL lock_timeout = '10s';
 -- #2829 one-time convergence for a host whose CMS tenant and published
 -- artifact predate the multi-brand provisioning completion path.
 --
--- MINGLA-INVARIANT: I-2829-LEGACY-HOST-CONVERGENCE | issue #2829 | this repair may activate at most one pending primary Mingla subdomain, and only when its brand entitlement, tenant, published site, active/last-good publication, artifact and canonical hostname are all mutually consistent
---
 -- No brand, site or hostname is named. A future replay is a no-op after the
 -- eligible host is active. More than one candidate aborts the whole migration.
 LOCK TABLE public.brands,
