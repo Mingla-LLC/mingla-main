@@ -71,6 +71,10 @@ function isFreeOrder(order) {
 }
 
 const PROVIDER_NAME = { paystack: "Paystack", stripe: "Stripe" };
+const INSTALLMENT_METHOD_NAME = {
+  auto_card: "Automatic card",
+  pay_link: "Pay link",
+};
 
 // ── Maps ──────────────────────────────────────────────────────────────────────
 
@@ -429,8 +433,13 @@ function buildOrderSections(bundle, onViewSubscriber, money) {
           : installments.map((it) =>
               field(`#${it.ordinal}`, it, (inst) => (
                 <span className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{formatMoney(inst.amount_cents, inst.currency)}</span>
+                  <span className="font-medium">{formatMoney(inst.buyer_total_cents ?? inst.amount_cents, inst.currency)}</span>
                   <Badge variant={inst.status === "collected" ? "success" : inst.status === "failed" ? "error" : "warning"}>{inst.status}</Badge>
+                  <span className="text-xs text-[var(--color-text-tertiary)]">
+                    {PROVIDER_NAME[inst.provider] || inst.provider || "Provider unknown"}
+                    {" · "}
+                    {INSTALLMENT_METHOD_NAME[inst.collection_method] || inst.collection_method || "Method unknown"}
+                  </span>
                   {inst.due_at && <span className="text-xs text-[var(--color-text-tertiary)]">due {formatDateTime(inst.due_at)}</span>}
                 </span>
               )),

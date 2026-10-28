@@ -4,10 +4,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 export interface SiteNavLink {
-  role: string;
   label: string;
   href: string;
   current: boolean;
+  /** #2829 W2 — up to eight dropdown links (no grandchildren). */
+  children?: Array<Omit<SiteNavLink, "children">>;
 }
 
 /*
@@ -80,16 +81,48 @@ export function SiteNav({ links }: { links: SiteNavLink[] }) {
         data-open={open ? "true" : "false"}
       >
         <nav aria-label="Main navigation">
-          {links.map((link) => (
-            <Link
-              key={link.role}
-              href={link.href}
-              aria-current={link.current ? "page" : undefined}
-              onClick={close}
-            >
-              {link.label}
-            </Link>
-          ))}
+          {links.map((link) =>
+            link.children?.length ? (
+              /*
+               * #2829 W2 — a menu item with dropdown children. The parent
+               * stays a real link; the children are an ordinary list that is
+               * always in the HTML (crawlers, find-in-page, no-JS), shown on
+               * hover or keyboard focus on wide screens and indented in the
+               * phone panel. An item without children renders exactly as it
+               * always has.
+               */
+              <div className="nav-group" key={link.href}>
+                <Link
+                  href={link.href}
+                  aria-current={link.current ? "page" : undefined}
+                  onClick={close}
+                >
+                  {link.label}
+                </Link>
+                <ul className="nav-children" aria-label={`${link.label} pages`}>
+                  {link.children.map((child) => (
+                    <li key={child.href}>
+                      <Link
+                        href={child.href}
+                        aria-current={child.current ? "page" : undefined}
+                        onClick={close}
+                      >
+                        {child.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <Link
+                key={link.href}
+                href={link.href}
+                aria-current={link.current ? "page" : undefined}
+                onClick={close}
+              >
+                {link.label}
+              </Link>
+            ))}
         </nav>
       </div>
     </>

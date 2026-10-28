@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_2829_trip_guides_and_offerings_feed.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-2829-04-trip-guides-and-offerings-feed",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

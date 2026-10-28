@@ -91,6 +91,11 @@ import type {
   TripOfferingData,
   TripOfferingTier,
 } from "./tripOfferingTypes";
+// Issue #2829 W4 — the trip guide (added sections; absent guide → nothing new).
+import {
+  TRIP_GUIDE_ACTIVITY_LABEL,
+  type TripOfferingGuide,
+} from "./tripGuide";
 import {
   projectTripSchedule,
   tripTierPriceLabel,
@@ -109,7 +114,12 @@ if (
 }
 
 export interface TripOfferingBodyProps {
-  data: TripOfferingData;
+  /**
+   * Issue #2829 W4 — `guide` rides on the data each surface adapter builds
+   * (pg_public_trip_guide → toTripOfferingGuide). Absent or null → the body
+   * renders exactly as it did before the guide existed.
+   */
+  data: TripOfferingData & { guide?: TripOfferingGuide | null };
   brand: TripOfferingBrand;
   palette: ThemePalette;
   theme: ResolvedTheme;
@@ -200,6 +210,24 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
   const boldFamily = boldFontFamily(theme);
   const isDesktop = variant === "desktop";
   const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
+  // Issue #2829 W4 — which guide FAQ answers are open (all closed at first).
+  const [openFaqs, setOpenFaqs] = useState<Record<number, boolean>>({});
+  const guide = data.guide ?? null;
+  const toggleFaq = useCallback(
+    (index: number): void => {
+      if (!reduceMotion) {
+        LayoutAnimation.configureNext(
+          LayoutAnimation.create(
+            200,
+            LayoutAnimation.Types.easeInEaseOut,
+            LayoutAnimation.Properties.opacity,
+          ),
+        );
+      }
+      setOpenFaqs((open) => ({ ...open, [index]: !open[index] }));
+    },
+    [reduceMotion],
+  );
 
   const toggleAbout = useCallback((): void => {
     if (!reduceMotion) {
@@ -550,6 +578,53 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
         </View>
       ) : null}
 
+      {/* Issue #2829 W4 — guide: highlights, then the group size and how
+          active the trip is. Each renders only when the host filled it. */}
+      {guide !== null && guide.highlights.length > 0 ? (
+        <View style={styles.section} testID="trip-body-guide-highlights">
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
+            Highlights
+          </Text>
+          {guide.highlights.map((highlight, index) => (
+            <View key={`highlight-${index}`} style={styles.guideBulletRow}>
+              <View
+                style={[styles.guideBullet, { backgroundColor: palette.accent }]}
+              />
+              <Text style={[styles.guideBody, surface.secondaryText]}>
+                {highlight}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {guide !== null &&
+      (guide.groupSizeLabel !== null || guide.activityLevel !== null) ? (
+        <View style={styles.pillsRow} testID="trip-body-guide-group">
+          {guide.groupSizeLabel !== null ? (
+            <MetaPill
+              palette={palette}
+              font={boldFamily}
+              icon={<Users size={13} color={palette.accent} />}
+              label={guide.groupSizeLabel}
+            />
+          ) : null}
+          {guide.activityLevel !== null ? (
+            <MetaPill
+              palette={palette}
+              font={boldFamily}
+              icon={<Plane size={13} color={palette.accent} />}
+              label={`${TRIP_GUIDE_ACTIVITY_LABEL[guide.activityLevel]} activity`}
+            />
+          ) : null}
+        </View>
+      ) : null}
+
       {/* (7) Itinerary — shared DayByDay spine. */}
       {data.days.length > 0 ? (
         <View style={styles.section} testID="trip-body-itinerary">
@@ -601,6 +676,91 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             What&rsquo;s not included
           </Text>
           <ChipGroup chips={excludedChips} palette={palette} />
+        </View>
+      ) : null}
+
+      {/* Issue #2829 W4 — guide: what to prepare, good to know, questions. */}
+      {guide !== null && guide.whatToPrepare !== null ? (
+        <View style={styles.section} testID="trip-body-guide-prepare">
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
+            What to prepare
+          </Text>
+          <Text style={[styles.about, surface.secondaryText]}>
+            {guide.whatToPrepare}
+          </Text>
+        </View>
+      ) : null}
+      {guide !== null && guide.goodToKnow !== null ? (
+        <View style={styles.section} testID="trip-body-guide-good-to-know">
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
+            Good to know
+          </Text>
+          <Text style={[styles.about, surface.secondaryText]}>
+            {guide.goodToKnow}
+          </Text>
+        </View>
+      ) : null}
+      {guide !== null && guide.faqs.length > 0 ? (
+        <View style={styles.section} testID="trip-body-guide-faqs">
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
+            Questions
+          </Text>
+          {guide.faqs.map((faq, index) => {
+            const open = openFaqs[index] === true;
+            return (
+              <View
+                key={`faq-${index}`}
+                style={[styles.guideFaq, { borderColor: palette.panelBorder }]}
+              >
+                <Pressable
+                  onPress={() => toggleFaq(index)}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: open }}
+                  accessibilityLabel={faq.question}
+                  style={styles.guideFaqRow}
+                  testID={`trip-body-guide-faq-${index}`}
+                >
+                  <Text
+                    style={[
+                      styles.guideFaqQuestion,
+                      surface.primaryText,
+                      { fontFamily: boldFamily },
+                    ]}
+                  >
+                    {faq.question}
+                  </Text>
+                  {open ? (
+                    <Minus size={16} color={palette.accent} />
+                  ) : (
+                    <Plus size={16} color={palette.accent} />
+                  )}
+                </Pressable>
+                {open ? (
+                  <Text style={[styles.guideAnswer, surface.secondaryText]}>
+                    {faq.answer}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })}
         </View>
       ) : null}
 
@@ -1120,6 +1280,14 @@ const styles = StyleSheet.create({
   about: { fontSize: 16, lineHeight: 23 },
   aboutToggleRow: { flexDirection: "row", alignItems: "center", minHeight: 44 },
   aboutToggle: { fontSize: 14, fontWeight: "700" },
+  // Issue #2829 W4 — trip guide.
+  guideBulletRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginTop: 8 },
+  guideBullet: { width: 6, height: 6, borderRadius: 3, marginTop: 9 },
+  guideBody: { flex: 1, fontSize: 16, lineHeight: 23 },
+  guideFaq: { borderTopWidth: 1, paddingVertical: 4 },
+  guideFaqRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 48 },
+  guideFaqQuestion: { flex: 1, fontSize: 16, fontWeight: "700" },
+  guideAnswer: { fontSize: 16, lineHeight: 23, paddingBottom: 12 },
   // ---- brand ----
   brandCard: {
     borderRadius: 16,

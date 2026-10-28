@@ -1,0 +1,353 @@
+/**
+ * #2829 AD-2 — the site token model, named once for Studio, the builder, the
+ * runtime, the Business "Your look" screen and Ari.
+ *
+ * ONE OWNER PER TRUTH. A site's tokens are presentation and belong to the CMS
+ * (site settings, versioned with drafts, frozen into the artifact at publish).
+ * The Mingla brand theme used by brand and offering pages is a separate fact
+ * and is never mirrored here.
+ *
+ * Owners restyle COLOUR, TYPE FAMILY and SHAPE. Layout rhythm (type scale,
+ * spacing, shell width, shadows, scrims, motion curves) is the design's, which
+ * keeps every site accessible and fixable centrally.
+ *
+ * Every value an owner sets is stored and rendered EXACTLY. Mingla warns when
+ * text would be hard to read (readability.ts) but never changes a colour.
+ */
+import {
+  generateRamp,
+  isHex,
+  pickSteps,
+  RAMP_STEPS,
+  type Hex,
+  type Ramp,
+  type RampStep,
+} from "./colorRamp.ts";
+
+/** Roles that hold one colour. */
+export const SINGLE_COLOR_ROLES = [
+  "canvas",
+  "surface",
+  "surface_sunken",
+  "surface_deep",
+  "surface_inverse",
+  "ink_strong",
+  "ink_body",
+  "ink_prose",
+  "ink_quiet",
+  "ink_on_dark_body",
+  "ink_on_photo_body",
+  "ink_on_photo_quiet",
+  "accent_ink",
+  "highlight_on_dark",
+  "action",
+] as const;
+export type SingleColorRole = (typeof SINGLE_COLOR_ROLES)[number];
+
+/** Roles that hold a ramp, and which steps each carries. */
+export const RAMP_ROLE_STEPS = {
+  accent: RAMP_STEPS,
+  neutral: RAMP_STEPS,
+  highlight: [50, 200, 600, 700],
+  paper: [50, 100, 200, 400],
+  danger: [50, 600],
+  success: [50, 600],
+} as const satisfies Record<string, readonly RampStep[]>;
+export type RampRole = keyof typeof RAMP_ROLE_STEPS;
+export const RAMP_ROLES = Object.keys(RAMP_ROLE_STEPS) as RampRole[];
+export type RoleSteps<R extends RampRole> = (typeof RAMP_ROLE_STEPS)[R][number];
+export type RoleRamp<R extends RampRole> = Record<RoleSteps<R>, Hex>;
+
+/** Design-owned "r g b" triples used inside translucent scrims and shadows. */
+export const DESIGN_OWNED_RGB_ROLES = ["scrim_rgb", "shadow_rgb"] as const;
+export type DesignOwnedRgbRole = (typeof DESIGN_OWNED_RGB_ROLES)[number];
+const RGB_TRIPLE = /^(?:25[0-5]|2[0-4]\d|1?\d?\d) (?:25[0-5]|2[0-4]\d|1?\d?\d) (?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+
+export const RADIUS_PRESETS = ["design", "sharp", "soft", "round"] as const;
+export const BUTTON_SHAPES = ["design", "pill", "rounded", "square"] as const;
+export const MOTION_PRESETS = ["design", "calm", "lively", "none"] as const;
+export const HEADING_CASES = ["design", "uppercase", "none"] as const;
+export type RadiusPreset = (typeof RADIUS_PRESETS)[number];
+export type ButtonShape = (typeof BUTTON_SHAPES)[number];
+export type MotionPreset = (typeof MOTION_PRESETS)[number];
+export type HeadingCase = (typeof HEADING_CASES)[number];
+
+/** Multiplier applied to the design's own radii (pill stays pill). */
+export const RADIUS_SCALE: Readonly<Record<RadiusPreset, number>> = {
+  design: 1,
+  sharp: 0,
+  soft: 0.5,
+  round: 1.5,
+};
+/** Duration multiplier for the design's motion; `none` also follows reduced motion. */
+export const MOTION_SCALE: Readonly<Record<MotionPreset, number>> = {
+  design: 1,
+  calm: 1.6,
+  lively: 0.7,
+  none: 0,
+};
+
+export type ResolvedColors =
+  & Record<SingleColorRole, Hex>
+  & { [R in RampRole]: RoleRamp<R> }
+  & Record<DesignOwnedRgbRole, string>;
+
+export type ResolvedTokens = {
+  colors: ResolvedColors;
+  radius: RadiusPreset;
+  button_shape: ButtonShape;
+  motion: MotionPreset;
+  /** Resolved: never "design" in an artifact. */
+  heading_case: "uppercase" | "none";
+};
+
+export type RampDefault<R extends RampRole> = { seed: Hex; ramp: RoleRamp<R> };
+
+/** What a design supplies: every value explicit. */
+export type DesignTokenDefaults = {
+  colors:
+    & Record<SingleColorRole, Hex>
+    & { [R in RampRole]: RampDefault<R> }
+    & Record<DesignOwnedRgbRole, string>;
+  /** The design's own heading case ("design" resolves to this). */
+  heading_case: "uppercase" | "none";
+};
+
+export type RampOverride = { seed?: Hex; steps?: Partial<Record<RampStep, Hex>> };
+
+/** What an owner (or Ari, or Studio) may store. Unknown keys are refused. */
+export type OwnerTokenOverrides = {
+  colors?: Partial<Record<SingleColorRole, Hex>> & Partial<Record<RampRole, RampOverride>>;
+  radius?: RadiusPreset;
+  button_shape?: ButtonShape;
+  motion?: MotionPreset;
+  heading_case?: HeadingCase;
+};
+
+function plain(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Validates what an owner stored. Only token values of fixed types pass — no
+ * CSS strings, no unknown roles, no shorthand hex — so nothing an owner types
+ * can become arbitrary CSS on a published site (S-10). Throws
+ * `TOKENS_INVALID:<path>` naming the first bad field.
+ */
+export function assertOwnerTokenOverrides(value: unknown): asserts value is OwnerTokenOverrides {
+  const fail = (path: string): never => {
+    throw new Error(`TOKENS_INVALID:${path}`);
+  };
+  if (value == null) return;
+  if (!plain(value)) fail("tokens");
+  const top = value as Record<string, unknown>;
+  for (const key of Object.keys(top)) {
+    if (!["colors", "radius", "button_shape", "motion", "heading_case"].includes(key)) fail(key);
+  }
+  const oneOf = (key: string, allowed: readonly string[]) => {
+    if (top[key] !== undefined && !allowed.includes(String(top[key]))) fail(key);
+  };
+  oneOf("radius", RADIUS_PRESETS);
+  oneOf("button_shape", BUTTON_SHAPES);
+  oneOf("motion", MOTION_PRESETS);
+  oneOf("heading_case", HEADING_CASES);
+  if (top.colors === undefined) return;
+  if (!plain(top.colors)) fail("colors");
+  const colors = top.colors as Record<string, unknown>;
+  for (const [role, entry] of Object.entries(colors)) {
+    if ((SINGLE_COLOR_ROLES as readonly string[]).includes(role)) {
+      if (!isHex(entry)) fail(`colors.${role}`);
+      continue;
+    }
+    if (!(RAMP_ROLES as string[]).includes(role)) fail(`colors.${role}`);
+    if (!plain(entry)) fail(`colors.${role}`);
+    const ramp = entry as Record<string, unknown>;
+    for (const key of Object.keys(ramp)) {
+      if (key !== "seed" && key !== "steps") fail(`colors.${role}.${key}`);
+    }
+    if (ramp.seed !== undefined && !isHex(ramp.seed)) fail(`colors.${role}.seed`);
+    if (ramp.steps !== undefined) {
+      if (!plain(ramp.steps)) fail(`colors.${role}.steps`);
+      const allowedSteps = RAMP_ROLE_STEPS[role as RampRole] as readonly number[];
+      for (const [step, hex] of Object.entries(ramp.steps as Record<string, unknown>)) {
+        if (!allowedSteps.includes(Number(step)) || String(Number(step)) !== step || !isHex(hex)) {
+          fail(`colors.${role}.steps.${step}`);
+        }
+      }
+    }
+  }
+}
+
+/** Validates a design's defaults (used by designs.ts tests and the builder). */
+export function assertDesignTokenDefaults(value: DesignTokenDefaults): void {
+  for (const role of SINGLE_COLOR_ROLES) {
+    if (!isHex(value.colors[role])) throw new Error(`DESIGN_DEFAULT_INVALID:${role}`);
+  }
+  for (const role of RAMP_ROLES) {
+    const entry = value.colors[role] as RampDefault<RampRole>;
+    if (!isHex(entry.seed)) throw new Error(`DESIGN_DEFAULT_INVALID:${role}.seed`);
+    for (const step of RAMP_ROLE_STEPS[role]) {
+      if (!isHex((entry.ramp as Record<number, string>)[step])) {
+        throw new Error(`DESIGN_DEFAULT_INVALID:${role}.${step}`);
+      }
+    }
+    if (Object.keys(entry.ramp).length !== RAMP_ROLE_STEPS[role].length) {
+      throw new Error(`DESIGN_DEFAULT_INVALID:${role}`);
+    }
+  }
+  for (const role of DESIGN_OWNED_RGB_ROLES) {
+    if (!RGB_TRIPLE.test(value.colors[role])) throw new Error(`DESIGN_DEFAULT_INVALID:${role}`);
+  }
+}
+
+/**
+ * One ramp role resolved: the design's explicit ramp, or — when the owner set
+ * a different seed — the generated ramp; then the owner's exact steps on top.
+ * A seed EQUAL to the design's seed restores the design's explicit ramp, not
+ * the generated one, so restoring a colour is byte-exact.
+ */
+export function resolveRamp<R extends RampRole>(
+  role: R,
+  design: RampDefault<R>,
+  override: RampOverride | undefined,
+): RoleRamp<R> {
+  const steps = RAMP_ROLE_STEPS[role] as readonly RoleSteps<R>[];
+  const base: Record<number, Hex> = override?.seed && override.seed !== design.seed
+    ? pickSteps(generateRamp(override.seed), steps as readonly RampStep[])
+    : { ...(design.ramp as Record<number, Hex>) };
+  const out = {} as Record<number, Hex>;
+  for (const step of steps) out[step] = override?.steps?.[step as RampStep] ?? base[step];
+  return out as RoleRamp<R>;
+}
+
+/** Design defaults + owner overrides → the explicit tokens frozen into an artifact. */
+export function resolveTokens(
+  defaults: DesignTokenDefaults,
+  overrides: OwnerTokenOverrides | null | undefined,
+): ResolvedTokens {
+  const owner = overrides ?? {};
+  const colors = {} as Record<string, unknown>;
+  for (const role of SINGLE_COLOR_ROLES) colors[role] = owner.colors?.[role] ?? defaults.colors[role];
+  for (const role of RAMP_ROLES) {
+    colors[role] = resolveRamp(
+      role,
+      defaults.colors[role] as RampDefault<typeof role>,
+      owner.colors?.[role] as RampOverride | undefined,
+    );
+  }
+  for (const role of DESIGN_OWNED_RGB_ROLES) colors[role] = defaults.colors[role];
+  const headingCase = owner.heading_case && owner.heading_case !== "design"
+    ? owner.heading_case
+    : defaults.heading_case;
+  return {
+    colors: colors as ResolvedColors,
+    radius: owner.radius ?? "design",
+    button_shape: owner.button_shape ?? "design",
+    motion: owner.motion ?? "design",
+    heading_case: headingCase,
+  };
+}
+
+/** The resolved tokens of a design with nothing changed: what "Restore design defaults" returns. */
+export function designDefaultTokens(defaults: DesignTokenDefaults): ResolvedTokens {
+  return resolveTokens(defaults, {});
+}
+
+/** `ink_body` → `--c-ink-body`; `accent` 400 → `--c-accent-400`. */
+export function colorVar(role: string, step?: RampStep): string {
+  return `--c-${role.replace(/_/g, "-")}${step === undefined ? "" : `-${step}`}`;
+}
+
+/**
+ * Every CSS custom property the tokens define, in a fixed order. Design CSS
+ * may reference colours ONLY through these (a test fails on any colour literal
+ * in a design stylesheet), so every surface that uses a swatch changes with it.
+ */
+export const TOKEN_CSS_VARS: readonly string[] = [
+  ...SINGLE_COLOR_ROLES.map((role) => colorVar(role)),
+  ...RAMP_ROLES.flatMap((role) =>
+    (RAMP_ROLE_STEPS[role] as readonly RampStep[]).map((step) => colorVar(role, step))
+  ),
+  ...DESIGN_OWNED_RGB_ROLES.map((role) => colorVar(role)),
+  "--radius-scale",
+  "--button-radius",
+  "--motion-scale",
+  "--display-case",
+];
+
+const BUTTON_RADIUS: Readonly<Record<ButtonShape, string>> = {
+  design: "var(--design-button-radius)",
+  pill: "999px",
+  rounded: "10px",
+  square: "0px",
+};
+
+/**
+ * The declarations for `:root{…}`. Values are re-validated here (hex, rgb
+ * triple, closed enums) because they are interpolated into a style element:
+ * an artifact that somehow carried anything else emits nothing for it.
+ */
+export function tokenCssDeclarations(tokens: ResolvedTokens): string[] {
+  const out: string[] = [];
+  const colors = tokens.colors as unknown as Record<string, unknown>;
+  for (const role of SINGLE_COLOR_ROLES) {
+    const value = colors[role];
+    if (isHex(value)) out.push(`${colorVar(role)}:${value}`);
+  }
+  for (const role of RAMP_ROLES) {
+    const ramp = (colors[role] ?? {}) as Record<number, unknown>;
+    for (const step of RAMP_ROLE_STEPS[role] as readonly RampStep[]) {
+      if (isHex(ramp[step])) out.push(`${colorVar(role, step)}:${ramp[step]}`);
+    }
+  }
+  for (const role of DESIGN_OWNED_RGB_ROLES) {
+    const value = colors[role];
+    if (typeof value === "string" && RGB_TRIPLE.test(value)) out.push(`${colorVar(role)}:${value}`);
+  }
+  if ((RADIUS_PRESETS as readonly string[]).includes(tokens.radius)) {
+    out.push(`--radius-scale:${RADIUS_SCALE[tokens.radius]}`);
+  }
+  if ((BUTTON_SHAPES as readonly string[]).includes(tokens.button_shape)) {
+    out.push(`--button-radius:${BUTTON_RADIUS[tokens.button_shape]}`);
+  }
+  if ((MOTION_PRESETS as readonly string[]).includes(tokens.motion)) {
+    out.push(`--motion-scale:${MOTION_SCALE[tokens.motion]}`);
+  }
+  if (tokens.heading_case === "uppercase" || tokens.heading_case === "none") {
+    out.push(`--display-case:${tokens.heading_case}`);
+  }
+  return out;
+}
+
+/** Validates resolved tokens exactly as they must appear in an artifact. */
+export function assertResolvedTokens(value: unknown): asserts value is ResolvedTokens {
+  const fail = (path: string): never => {
+    throw new Error(`ARTIFACT_TOKENS_MISMATCH:${path}`);
+  };
+  if (!plain(value)) fail("tokens");
+  const tokens = value as Record<string, unknown>;
+  const keys = ["colors", "radius", "button_shape", "motion", "heading_case"];
+  if (Object.keys(tokens).some((key) => !keys.includes(key)) || Object.keys(tokens).length !== keys.length) fail("keys");
+  if (!(RADIUS_PRESETS as readonly string[]).includes(String(tokens.radius))) fail("radius");
+  if (!(BUTTON_SHAPES as readonly string[]).includes(String(tokens.button_shape))) fail("button_shape");
+  if (!(MOTION_PRESETS as readonly string[]).includes(String(tokens.motion))) fail("motion");
+  if (tokens.heading_case !== "uppercase" && tokens.heading_case !== "none") fail("heading_case");
+  if (!plain(tokens.colors)) fail("colors");
+  const colors = tokens.colors as Record<string, unknown>;
+  const expected = new Set<string>([...SINGLE_COLOR_ROLES, ...RAMP_ROLES, ...DESIGN_OWNED_RGB_ROLES]);
+  if (Object.keys(colors).length !== expected.size || Object.keys(colors).some((key) => !expected.has(key))) fail("colors");
+  for (const role of SINGLE_COLOR_ROLES) if (!isHex(colors[role])) fail(`colors.${role}`);
+  for (const role of RAMP_ROLES) {
+    const ramp = colors[role];
+    if (!plain(ramp)) fail(`colors.${role}`);
+    const steps = RAMP_ROLE_STEPS[role] as readonly number[];
+    const record = ramp as Record<string, unknown>;
+    if (Object.keys(record).length !== steps.length) fail(`colors.${role}`);
+    for (const step of steps) if (!isHex(record[step])) fail(`colors.${role}.${step}`);
+  }
+  for (const role of DESIGN_OWNED_RGB_ROLES) {
+    if (typeof colors[role] !== "string" || !RGB_TRIPLE.test(colors[role] as string)) fail(`colors.${role}`);
+  }
+}
+
+export type { Hex, Ramp, RampStep };

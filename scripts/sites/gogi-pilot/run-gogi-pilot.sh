@@ -12,13 +12,15 @@
 # Without --apply both steps report what they WOULD do and write nothing.
 set -euo pipefail
 
-SITE_ID="90f19f28-42e2-4eb9-b88b-02829bfcb045"
-BRAND_ID="733bc470-45e1-4684-8896-acd7e26074ff"
-TENANT_ID="1e2c8df0-19a3-4da9-a879-1408c891efdc"
-CONFIGURED_BY="1f3d2ddf-b741-4e2f-8884-d7222a660c7e"
+# #2829 — ids are REQUIRED inputs; nothing about a particular site, brand or
+# operator is defaulted in code.
+SITE_ID="${GOGI_SITE_ID:?set GOGI_SITE_ID}"
+BRAND_ID="${GOGI_BRAND_ID:?set GOGI_BRAND_ID}"
+TENANT_ID="${GOGI_TENANT_ID:?set GOGI_TENANT_ID}"
+CONFIGURED_BY="${GOGI_CONFIGURED_BY:?set GOGI_CONFIGURED_BY}"
 SOURCE="gogi-ingest-brief-2026-08-27"
 
-MEDIA_DIR="${GOGI_MEDIA_DIR:-/Users/sethogieva/Desktop/mingla-orchs/gogi-pilot-media}"
+MEDIA_DIR="${GOGI_MEDIA_DIR:?set GOGI_MEDIA_DIR}"
 HERO="${MEDIA_DIR}/assets/img/food/coconut-rice-hero.jpg"
 HERO_SHA256="134fc42cd5aefa96149cbcbf9790d18eabcb4f0c4e87edd7f0c8d757ed087d73"
 MANIFEST="${GOGI_MEDIA_MANIFEST:-${MEDIA_DIR}/media-manifest.json}"

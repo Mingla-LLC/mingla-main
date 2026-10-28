@@ -601,180 +601,434 @@ async function refundOneOrder(
     : { result: "refunded", refundId };
 }
 
-serve(async (req: Request): Promise<Response> => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
-  if (req.method !== "POST") {
-    return json({ error: "method_not_allowed" }, 405);
-  }
+export interface InstallmentRefundDeps {
+  createPaystackRefund: typeof createPaystackRefund;
+  stripeTicketRefund: typeof stripeTicketRefund;
+  executeTicketRefundWithFeeTruth: typeof executeTicketRefundWithFeeTruth;
+}
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return json({ error: "invalid_json" }, 400);
-  }
-  const eventId = typeof body.event_id === "string" ? body.event_id : "";
-  if (!eventId || !UUID_RE.test(eventId)) {
-    return json({ error: "event_id_required" }, 400);
-  }
-
-  if (!SUPABASE_URL || !SERVICE_KEY) {
-    return json({ error: "service_misconfigured" }, 500);
-  }
-  const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  // ── 1. Prepare (status-first guard + stop releases + atomic Stripe debt
-  //       conversion + enumerate). A non-cancelled event is a 409 no-op. ────────
-  const { data: prep, error: prepError } = await supabase.rpc(
-    "cancel_event_refund_prepare",
-    { p_event_id: eventId },
+/** Refund one collected instalment from event-cancel progress on its own rail. */
+export async function refundOneInstallment(
+  supabase: Supa,
+  eventId: string,
+  row: ProgressRow,
+  depsIn: Partial<InstallmentRefundDeps> = {},
+): Promise<RefundOutcome> {
+  const deps: InstallmentRefundDeps = {
+    createPaystackRefund,
+    stripeTicketRefund,
+    executeTicketRefundWithFeeTruth,
+    ...depsIn,
+  };
+  const installmentId = row.source_id;
+  const idemKey = `cancel_refund:${eventId}:inst:${installmentId}`;
+  const { data, error } = await supabase.rpc(
+    "issue_3645_cancel_refund_installment",
+    {
+      p_installment_id: installmentId,
+      p_reason: CANCELLATION_REFUND_REASON,
+      p_idempotency_key: idemKey,
+    },
   );
-  if (prepError) {
-    const msg = (prepError.message ?? "").toLowerCase();
-    if (msg.includes("event_not_cancelled")) {
-      return json({ error: "event_not_cancelled" }, 409);
+  if (error !== null || data === null) {
+    const detail = error?.message ?? "installment_refund_prepare_failed";
+    if (/installment_not_refundable|refund_amount_zero/i.test(detail)) {
+      return { result: "refunded", refundId: row.refund_id };
     }
-    if (msg.includes("event_not_found")) {
-      return json({ error: "event_not_found" }, 404);
+    return { result: "failed", error: detail, refundId: row.refund_id };
+  }
+  const pending = data as Record<string, unknown>;
+  const refundId = String(pending.refund_id);
+  const orderId = String(pending.order_id);
+  const amountCents = Number(pending.amount_cents);
+  const provider = String(pending.provider);
+  const sourceReference = typeof pending.source_reference === "string"
+    ? pending.source_reference
+    : null;
+  const providerTransactionId =
+    typeof pending.provider_transaction_id === "string"
+      ? pending.provider_transaction_id
+      : null;
+  const stripeChargeId = typeof pending.stripe_charge_id === "string"
+    ? pending.stripe_charge_id
+    : null;
+  const applicationFeeAmount = Number(
+    pending.application_fee_amount_cents ?? 0,
+  );
+  const isFull = pending.is_full_refund === true;
+  const connectedAccountId = typeof pending.connected_account_id === "string"
+    ? pending.connected_account_id
+    : null;
+
+  if (pending.idempotent_replay === true) {
+    const { data: existing } = await supabase.from("refunds")
+      .select("status").eq("id", refundId).maybeSingle();
+    if (existing?.status === "succeeded") {
+      await supabase.rpc("issue_3645_mark_installment_refunded", {
+        p_installment_id: installmentId,
+        p_refund_id: refundId,
+        p_amount_cents: amountCents,
+      });
+      return { result: "refunded", refundId };
     }
-    console.error(
-      "[event-cancel-refund-fanout] prepare failed",
-      prepError.message,
+  }
+  if (sourceReference === null) {
+    await supabase.rpc("admin_refund_order_commit", {
+      p_refund_id: refundId,
+      p_stripe_refund_id: null,
+      p_application_fee_refunded_cents: 0,
+      p_status: "failed",
+    });
+    return { result: "failed", error: "missing_payment_reference", refundId };
+  }
+
+  let providerRefundId: string | null = null;
+  let applicationFeeRefunded = 0;
+  if (provider === "paystack") {
+    const transaction = paystackRefundTransaction(
+      sourceReference,
+      providerTransactionId,
     );
-    return json({ error: "prepare_failed", detail: prepError.message }, 500);
-  }
-
-  // #3645 PR2 — cancel-review hold. While the run is awaiting_review NOTHING may
-  // refund: no RSVP source-refund preparation, no claim loop. An admin releases the
-  // batch (admin_release_event_cancel_refund_batch → pending) and the next
-  // invocation (client kickoff or the #1179 backstop cron) drains it.
-  if ((prep as Record<string, unknown> | null)?.run_status === "awaiting_review") {
-    const held = prep as Record<string, unknown>;
-    return json({
-      event_id: eventId,
-      run_status: "awaiting_review",
-      held: true,
-      total_objects: typeof held.total_objects === "number"
-        ? held.total_objects
-        : 0,
-      rsvp_pending_count: typeof held.rsvp_pending_count === "number"
-        ? held.rsvp_pending_count
-        : 0,
-      refunded: 0,
-      rsvp_refunds_prepared: 0,
-      failed_retryable: 0,
-      failed: 0,
-    });
-  }
-
-  // #3645 item 6 — tell hosts the held batch is moving (admin release → pending,
-  // or a drainable re-drive). Idempotent per event; fail-open so refunds continue.
-  if (shouldNotifyCancelRefundRelease(prep as Record<string, unknown> | null)) {
+    if (transaction === null) {
+      return {
+        result: "failed",
+        error: "missing_paystack_transaction",
+        refundId,
+      };
+    }
     try {
-      await notifyCancelRefundsReleased(supabase, eventId);
-    } catch (notifyError) {
-      console.warn(
-        "[event-cancel-refund-fanout] host release notify failed (non-fatal)",
-        notifyError instanceof Error ? notifyError.message : String(notifyError),
+      const refund = await deps.createPaystackRefund({
+        transaction,
+        merchantNote: `mingla_cancel_refund:${refundId}`,
+        amountSubunits: isFull ? undefined : amountCents,
+        currency: "NGN",
+      });
+      providerRefundId = refund.id;
+      const status = paystackRefundOutcomeStatus(refund.status);
+      await persistPaystackRefundOutcome(
+        () =>
+          supabase.rpc("record_paystack_refund_outcome", {
+            p_source_type: "order_installment",
+            p_source_id: installmentId,
+            p_local_refund_id: refundId,
+            p_transaction_reference: transaction,
+            p_merchant_note: `mingla_cancel_refund:${refundId}`,
+            p_provider_refund_id: refund.id,
+            p_amount_cents: amountCents,
+            p_status: status,
+          }),
+        "event-cancel-refund-fanout",
       );
+      if (status === "failed") {
+        await supabase.rpc("admin_refund_order_commit", {
+          p_refund_id: refundId,
+          p_stripe_refund_id: refund.id,
+          p_application_fee_refunded_cents: 0,
+          p_status: "failed",
+        });
+        return { result: "failed", error: "paystack_refund_failed", refundId };
+      }
+    } catch (caught) {
+      const detail = caught instanceof Error ? caught.message : String(caught);
+      if (isRetryablePaystackRefundError(caught)) {
+        return {
+          result: "failed_retryable",
+          error: `paystack_refund_retryable: ${detail}`,
+          refundId,
+        };
+      }
+      await supabase.rpc("admin_refund_order_commit", {
+        p_refund_id: refundId,
+        p_stripe_refund_id: null,
+        p_application_fee_refunded_cents: 0,
+        p_status: "failed",
+      });
+      return {
+        result: "failed",
+        error: isPaystackRefundBelowMinimumError(caught)
+          ? `paystack_refund_below_minimum: ${detail}`
+          : `paystack_refund_failed: ${detail}`,
+        refundId,
+      };
+    }
+  } else {
+    if (connectedAccountId === null) {
+      return { result: "failed", error: "missing_connected_account", refundId };
+    }
+    try {
+      const stripe = deps.stripeTicketRefund();
+      const feeTruth = await deps.executeTicketRefundWithFeeTruth({
+        supabase,
+        stripe,
+        refundId,
+        orderId,
+        paymentIntentId: sourceReference,
+        knownChargeId: stripeChargeId,
+        connectedAccountId,
+        expectedCurrency: String(pending.currency),
+        expectedApplicationFeeAmount: applicationFeeAmount,
+        requestedRefundAmount: amountCents,
+        requestFingerprint: idemKey,
+        providerIdempotencyKey: `cancel_refund:${refundId}`,
+        createBuyerRefund: () =>
+          stripe.refunds.create({
+            payment_intent: sourceReference,
+            amount: amountCents,
+            reason: "requested_by_customer",
+            refund_application_fee: applicationFeeAmount > 0,
+            metadata: {
+              mingla_refund_id: refundId,
+              mingla_order_id: orderId,
+              mingla_event_id: eventId,
+              mingla_installment_id: installmentId,
+              mingla_cancel_refund: "true",
+            },
+          }, {
+            idempotencyKey: `cancel_refund:${refundId}`,
+            stripeAccount: connectedAccountId,
+          }),
+      });
+      if (!isFeeTruthTerminalSuccess(feeTruth)) {
+        return { result: "failed_retryable", error: feeTruth.status, refundId };
+      }
+      providerRefundId = feeTruth.buyerRefundId;
+      applicationFeeRefunded = feeTruth.applicationFeeRefundedCents ?? 0;
+    } catch (caught) {
+      const detail = caught instanceof Error ? caught.message : String(caught);
+      return {
+        result: "failed_retryable",
+        error: `stripe_refund_retryable: ${detail}`,
+        refundId,
+      };
     }
   }
 
-  // RSVP contributions have no order. Prepare their typed source refunds after
-  // the same cancelled-event precondition, then let the shared sweep remain the
-  // correctness backstop if this best-effort kickoff cannot reach a provider.
-  const { data: rsvpOperations, error: rsvpPrepareError } = await supabase.rpc(
-    "prepare_event_cancel_rsvp_source_refunds",
-    { p_event_id: eventId },
+  const { data: committed, error: commitError } = await supabase.rpc(
+    "admin_refund_order_commit",
+    {
+      p_refund_id: refundId,
+      p_stripe_refund_id: providerRefundId,
+      p_application_fee_refunded_cents: applicationFeeRefunded,
+      p_status: "succeeded",
+    },
   );
-  if (rsvpPrepareError) {
-    console.error("event_cancel_rsvp_refund_prepare_failed", {
-      event_id: eventId,
-      error_code: "rsvp_prepare_failed",
+  if (provider === "paystack" && commitError === null) {
+    await supabase.rpc("issue_2097_finalize_not_applicable", {
+      p_refund_id: refundId,
+      p_provider: "paystack",
+      p_provider_refund_id: providerRefundId,
     });
-    return json({ error: "rsvp_prepare_failed" }, 500);
   }
-  let rsvpRefundsPrepared = 0;
-  for (const operation of (rsvpOperations ?? []) as SourceRefundOperation[]) {
-    rsvpRefundsPrepared++;
+  if (commitError !== null || committed === null) {
+    return {
+      result: "failed_retryable",
+      error: "commit_failed_after_provider_success",
+      refundId,
+    };
+  }
+  const { error: markError } = await supabase.rpc(
+    "issue_3645_mark_installment_refunded",
+    {
+      p_installment_id: installmentId,
+      p_refund_id: refundId,
+      p_amount_cents: amountCents,
+    },
+  );
+  if (markError !== null) {
+    return {
+      result: "failed_retryable",
+      error: "installment_refund_mark_failed",
+      refundId,
+    };
+  }
+  return { result: "refunded", refundId };
+}
+
+if (import.meta.main) {
+  serve(async (req: Request): Promise<Response> => {
+    if (req.method === "OPTIONS") {
+      return new Response("ok", { headers: corsHeaders });
+    }
+    if (req.method !== "POST") {
+      return json({ error: "method_not_allowed" }, 405);
+    }
+
+    let body: Record<string, unknown>;
     try {
-      await runSourceRefundOperation(supabase, operation);
-    } catch (caught) {
-      console.warn("event_cancel_rsvp_refund_deferred", {
-        refund_id: operation.id,
-        error_code: caught instanceof Error
-          ? caught.message.split(":")[0]
-          : "runner_failed",
+      body = await req.json();
+    } catch {
+      return json({ error: "invalid_json" }, 400);
+    }
+    const eventId = typeof body.event_id === "string" ? body.event_id : "";
+    if (!eventId || !UUID_RE.test(eventId)) {
+      return json({ error: "event_id_required" }, 400);
+    }
+
+    if (!SUPABASE_URL || !SERVICE_KEY) {
+      return json({ error: "service_misconfigured" }, 500);
+    }
+    const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    // ── 1. Prepare (status-first guard + stop releases + atomic Stripe debt
+    //       conversion + enumerate). A non-cancelled event is a 409 no-op. ────────
+    const { data: prep, error: prepError } = await supabase.rpc(
+      "cancel_event_refund_prepare",
+      { p_event_id: eventId },
+    );
+    if (prepError) {
+      const msg = (prepError.message ?? "").toLowerCase();
+      if (msg.includes("event_not_cancelled")) {
+        return json({ error: "event_not_cancelled" }, 409);
+      }
+      if (msg.includes("event_not_found")) {
+        return json({ error: "event_not_found" }, 404);
+      }
+      console.error(
+        "[event-cancel-refund-fanout] prepare failed",
+        prepError.message,
+      );
+      return json({ error: "prepare_failed", detail: prepError.message }, 500);
+    }
+
+    // #3645 PR2 — cancel-review hold. While the run is awaiting_review NOTHING may
+    // refund: no RSVP source-refund preparation, no claim loop. An admin releases the
+    // batch (admin_release_event_cancel_refund_batch → pending) and the next
+    // invocation (client kickoff or the #1179 backstop cron) drains it.
+    if (
+      (prep as Record<string, unknown> | null)?.run_status === "awaiting_review"
+    ) {
+      const held = prep as Record<string, unknown>;
+      return json({
+        event_id: eventId,
+        run_status: "awaiting_review",
+        held: true,
+        total_objects: typeof held.total_objects === "number"
+          ? held.total_objects
+          : 0,
+        rsvp_pending_count: typeof held.rsvp_pending_count === "number"
+          ? held.rsvp_pending_count
+          : 0,
+        refunded: 0,
+        rsvp_refunds_prepared: 0,
+        failed_retryable: 0,
+        failed: 0,
       });
     }
-  }
 
-  // ── 2. Drain: claim a batch, refund each object in its own try/catch, mark. ──
-  let refunded = 0;
-  let failedRetryable = 0;
-  let failed = 0;
-  // Bound total iterations defensively (each object is claimed at most once per
-  // invocation because a fresh lease excludes it from re-claim; the cap is a
-  // belt-and-suspenders stop for pathological states).
-  for (let iteration = 0; iteration < 10_000; iteration++) {
-    const { data: claimed, error: claimError } = await supabase.rpc(
-      "cancel_event_refund_claim",
-      { p_event_id: eventId, p_limit: CLAIM_BATCH },
-    );
-    if (claimError) {
-      console.error(
-        "[event-cancel-refund-fanout] claim failed",
-        claimError.message,
-      );
-      return json({ error: "claim_failed", detail: claimError.message }, 500);
-    }
-    const rows = (claimed ?? []) as ProgressRow[];
-    if (rows.length === 0) break;
-
-    for (const row of rows) {
-      const outcome = await refundOneOrder(supabase, eventId, row);
-      const markStatus = outcome.result;
-      const { error: markError } = await supabase.rpc(
-        "cancel_event_refund_mark",
-        {
-          p_progress_id: row.id,
-          p_status: markStatus,
-          p_refund_id: outcome.refundId,
-          p_error: outcome.result === "refunded" ? null : outcome.error,
-        },
-      );
-      if (markError) {
-        console.error(
-          "[event-cancel-refund-fanout] mark failed",
-          row.id,
-          markError.message,
+    // #3645 item 6 — tell hosts the held batch is moving (admin release → pending,
+    // or a drainable re-drive). Idempotent per event; fail-open so refunds continue.
+    if (
+      shouldNotifyCancelRefundRelease(prep as Record<string, unknown> | null)
+    ) {
+      try {
+        await notifyCancelRefundsReleased(supabase, eventId);
+      } catch (notifyError) {
+        console.warn(
+          "[event-cancel-refund-fanout] host release notify failed (non-fatal)",
+          notifyError instanceof Error
+            ? notifyError.message
+            : String(notifyError),
         );
       }
-      if (outcome.result === "refunded") refunded++;
-      else if (outcome.result === "failed_retryable") failedRetryable++;
-      else failed++;
     }
-  }
 
-  const { data: runRow } = await supabase
-    .from("event_cancel_refund_runs")
-    .select("status, total_objects, refunded_objects, failed_objects")
-    .eq("event_id", eventId)
-    .maybeSingle();
+    // RSVP contributions have no order. Prepare their typed source refunds after
+    // the same cancelled-event precondition, then let the shared sweep remain the
+    // correctness backstop if this best-effort kickoff cannot reach a provider.
+    const { data: rsvpOperations, error: rsvpPrepareError } = await supabase
+      .rpc(
+        "prepare_event_cancel_rsvp_source_refunds",
+        { p_event_id: eventId },
+      );
+    if (rsvpPrepareError) {
+      console.error("event_cancel_rsvp_refund_prepare_failed", {
+        event_id: eventId,
+        error_code: "rsvp_prepare_failed",
+      });
+      return json({ error: "rsvp_prepare_failed" }, 500);
+    }
+    let rsvpRefundsPrepared = 0;
+    for (const operation of (rsvpOperations ?? []) as SourceRefundOperation[]) {
+      rsvpRefundsPrepared++;
+      try {
+        await runSourceRefundOperation(supabase, operation);
+      } catch (caught) {
+        console.warn("event_cancel_rsvp_refund_deferred", {
+          refund_id: operation.id,
+          error_code: caught instanceof Error
+            ? caught.message.split(":")[0]
+            : "runner_failed",
+        });
+      }
+    }
 
-  return json({
-    event_id: eventId,
-    run_status: runRow?.status ??
-      (prep as Record<string, unknown>)?.run_status ??
-      "unknown",
-    total_objects: runRow?.total_objects ?? 0,
-    refunded,
-    rsvp_refunds_prepared: rsvpRefundsPrepared,
-    failed_retryable: failedRetryable,
-    failed,
+    // ── 2. Drain: claim a batch, refund each object in its own try/catch, mark. ──
+    let refunded = 0;
+    let failedRetryable = 0;
+    let failed = 0;
+    // Bound total iterations defensively (each object is claimed at most once per
+    // invocation because a fresh lease excludes it from re-claim; the cap is a
+    // belt-and-suspenders stop for pathological states).
+    for (let iteration = 0; iteration < 10_000; iteration++) {
+      const { data: claimed, error: claimError } = await supabase.rpc(
+        "cancel_event_refund_claim",
+        { p_event_id: eventId, p_limit: CLAIM_BATCH },
+      );
+      if (claimError) {
+        console.error(
+          "[event-cancel-refund-fanout] claim failed",
+          claimError.message,
+        );
+        return json({ error: "claim_failed", detail: claimError.message }, 500);
+      }
+      const rows = (claimed ?? []) as ProgressRow[];
+      if (rows.length === 0) break;
+
+      for (const row of rows) {
+        const outcome = row.source_type === "order_installment"
+          ? await refundOneInstallment(supabase, eventId, row)
+          : await refundOneOrder(supabase, eventId, row);
+        const markStatus = outcome.result;
+        const { error: markError } = await supabase.rpc(
+          "cancel_event_refund_mark",
+          {
+            p_progress_id: row.id,
+            p_status: markStatus,
+            p_refund_id: outcome.refundId,
+            p_error: outcome.result === "refunded" ? null : outcome.error,
+          },
+        );
+        if (markError) {
+          console.error(
+            "[event-cancel-refund-fanout] mark failed",
+            row.id,
+            markError.message,
+          );
+        }
+        if (outcome.result === "refunded") refunded++;
+        else if (outcome.result === "failed_retryable") failedRetryable++;
+        else failed++;
+      }
+    }
+
+    const { data: runRow } = await supabase
+      .from("event_cancel_refund_runs")
+      .select("status, total_objects, refunded_objects, failed_objects")
+      .eq("event_id", eventId)
+      .maybeSingle();
+
+    return json({
+      event_id: eventId,
+      run_status: runRow?.status ??
+        (prep as Record<string, unknown>)?.run_status ??
+        "unknown",
+      total_objects: runRow?.total_objects ?? 0,
+      refunded,
+      rsvp_refunds_prepared: rsvpRefundsPrepared,
+      failed_retryable: failedRetryable,
+      failed,
+    });
   });
-});
+}

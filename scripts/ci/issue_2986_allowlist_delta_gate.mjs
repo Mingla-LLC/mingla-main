@@ -153,6 +153,21 @@ const I3872P_BLOCK = [
 ].join("\n");
 const I3872P_NAMES = I3872P_SIGNATURES.map((signature) => signature.slice(0, signature.indexOf("(") + 1));
 
+// #2829 W4 — ninth binding amendment. The public trip-guide reader sits
+// directly after the public venue-menu sale reader. It returns guide copy only
+// for a public, non-private trip and NULL for every hidden/non-trip shape. This
+// amendment also advances the audited intended-public count by exactly one.
+const I2829_OLD_HEADER = I3697_NEW_HEADER;
+const I2829_NEW_HEADER =
+  "# Signature count: 198 (intended-public 29, internally-gated 108, predicate/read-helper 58, PostGIS 3).";
+const I2829_ANCHOR = I3872_SIGNATURES[2];
+const I2829_SIGNATURE = "pg_public_trip_guide(p_trip_id uuid)";
+const I2829_BLOCK = [
+  "# #2829 W4: one public trip's guide, gated by the same public/non-private trip predicate as the public offering read model; returns guide copy only and NULL for draft, private, deleted, or non-trip ids.",
+  I2829_SIGNATURE,
+].join("\n");
+const I2829_NAME = "pg_public_trip_guide(";
+
 const countExactLine = (source, expected) => source.split(/\r?\n/).filter((line) => line.trim() === expected).length;
 
 const expectedAfter2986 = (base) => {
@@ -287,15 +302,41 @@ const expectedAfter3872Public = (base) => {
   return base.replace(`${I3872P_ANCHOR}\n`, `${I3872P_ANCHOR}\n${I3872P_BLOCK}\n`);
 };
 
+// #2829 W4 — applied after the existing eight amendments. A settled base must
+// retain the exact comment, signature, placement, and count correction.
+const expectedAfter2829 = (base) => {
+  if (
+    countExactLine(base, I2829_SIGNATURE) === 1 &&
+    base.includes(`${I2829_ANCHOR}\n${I2829_BLOCK}\n`) &&
+    countExactLine(base, I2829_NEW_HEADER) === 1
+  ) {
+    return base;
+  }
+  if (base.includes(I2829_NAME) || base.includes("# #2829 W4:")) {
+    throw new Error("base contains a partial or lookalike #2829 W4 trip-guide reader");
+  }
+  if (countExactLine(base, I2829_OLD_HEADER) !== 1) {
+    throw new Error("base #2829 W4 count-header anchor is absent or duplicated");
+  }
+  if (countExactLine(base, I2829_ANCHOR) !== 1) {
+    throw new Error("base #2829 W4 insertion anchor is absent or duplicated");
+  }
+  return base
+    .replace(I2829_OLD_HEADER, I2829_NEW_HEADER)
+    .replace(`${I2829_ANCHOR}\n`, `${I2829_ANCHOR}\n${I2829_BLOCK}\n`);
+};
+
 export const expectedAllowlist = (base) =>
-  expectedAfter3872Public(
-    expectedAfter4111(
-    expectedAfter3872(
-      expectedAfter3682(
-        expectedAfter3697(expectedAfter3281(expectedAfter3426(expectedAfter2986(base)))),
+  expectedAfter2829(
+    expectedAfter3872Public(
+      expectedAfter4111(
+        expectedAfter3872(
+          expectedAfter3682(
+            expectedAfter3697(expectedAfter3281(expectedAfter3426(expectedAfter2986(base)))),
+          ),
+        ),
       ),
     ),
-  ),
   );
 
 export const validate = ({ baseAllowlist, currentAllowlist }) => {
@@ -308,7 +349,7 @@ export const validate = ({ baseAllowlist, currentAllowlist }) => {
   }
   if (expected && currentAllowlist !== expected) {
     failures.push(
-      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, #4111 brand-page enquiry readers, and #3872 R3/R4 public creator, Local and referral readers",
+      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, #4111 brand-page enquiry readers, #3872 R3/R4 public creator, Local and referral readers, and #2829 W4 public trip-guide reader",
     );
   }
   for (const signature of [
@@ -320,6 +361,7 @@ export const validate = ({ baseAllowlist, currentAllowlist }) => {
     ...I3872_SIGNATURES,
     ...I4111_SIGNATURES,
     ...I3872P_SIGNATURES,
+    I2829_SIGNATURE,
   ]) {
     if (countExactLine(currentAllowlist, signature) !== 1) failures.push(`signature must occur exactly once: ${signature}`);
   }
@@ -414,7 +456,7 @@ const runSelfTest = () => {
     ["#3697 lookalike overload", `${head}ad_pixel_public_config(p_country_code text, p_debug boolean)\n`, false],
     ["#3697 moved away from its anchor", head.replace(`${I3697_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3697_BLOCK}\n`), false],
     ["#3697 plus a forged neighbour", head.replace(`${I3697_BLOCK}\n`, `${I3697_BLOCK}\nforged_neighbour_function()\n`), false],
-    ["#3697 count not corrected", head.replace(I3697_NEW_HEADER, I3697_OLD_HEADER), false],
+    ["#3697 count not corrected", head.replace(I2829_NEW_HEADER, I3697_OLD_HEADER), false],
     // #3682 — the fifth amendment is exactly two aggregate-only readers and
     // their one product-decision comment.
     ["#3682 block missing", head.replace(`${I3682_BLOCK}\n`, ""), false],
@@ -441,17 +483,27 @@ const runSelfTest = () => {
     ["#3872 R3/R4 lookalike overload", `${head}referral_link_resolve(p_slug text, p_debug boolean)\n`, false],
     ["#3872 R3/R4 reader dropped", head.replace(`${I3872P_SIGNATURES[8]}\n`, ""), false],
     ["#3872 R3/R4 plus a forged neighbour", head.replace(`${I3872P_BLOCK}\n`, `${I3872P_BLOCK}\nforged_neighbour_function()\n`), false],
-    ["#4111 header edited", head.replace(I3697_NEW_HEADER, "# Signature count: 206 (intended-public 37, internally-gated 108, predicate/read-helper 58, PostGIS 3)."), false],
+    // #2829 W4 — the ninth amendment is exactly one public trip-guide reader,
+    // its decision comment, its placement, and the matching count correction.
+    ["#2829 W4 block missing", head.replace(`${I2829_BLOCK}\n`, ""), false],
+    ["#2829 W4 comment missing", head.replace(`${I2829_BLOCK.split("\n")[0]}\n`, ""), false],
+    ["#2829 W4 comment substituted", head.replace("# #2829 W4: one public trip's guide", "# #2829 W4: approved somehow"), false],
+    ["#2829 W4 signature changed", head.replace(I2829_SIGNATURE, "pg_public_trip_guide(trip_id uuid)"), false],
+    ["#2829 W4 lookalike overload", `${head}pg_public_trip_guide(p_trip_id uuid, p_debug boolean)\n`, false],
+    ["#2829 W4 moved away from its anchor", head.replace(`${I2829_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I2829_BLOCK}\n`), false],
+    ["#2829 W4 plus a forged neighbour", head.replace(`${I2829_BLOCK}\n`, `${I2829_BLOCK}\nforged_neighbour_function()\n`), false],
+    ["#2829 W4 count not corrected", head.replace(I2829_NEW_HEADER, I2829_OLD_HEADER), false],
+    ["#2829 W4 header edited", head.replace(I2829_NEW_HEADER, "# Signature count: 207 (intended-public 38, internally-gated 108, predicate/read-helper 58, PostGIS 3)."), false],
   ];
   for (const [name, candidate, shouldPass] of cases) {
     const passed = validate({ baseAllowlist: base, currentAllowlist: candidate }).length === 0;
     if (passed !== shouldPass) throw new Error(`self-test ${name} ${shouldPass ? "failed" : "was not rejected"}`);
   }
-  // Once a base carries all eight amendments, the ONLY accepted head is that
+  // Once a base carries all nine amendments, the ONLY accepted head is that
   // base, byte for byte.
   const settled = expectedAllowlist(base);
   if (validate({ baseAllowlist: settled, currentAllowlist: settled }).length !== 0) {
-    throw new Error("self-test settled base with all eight amendments failed");
+    throw new Error("self-test settled base with all nine amendments failed");
   }
   if (validate({ baseAllowlist: settled, currentAllowlist: `${settled}forged_after_settle()\n` }).length === 0) {
     throw new Error("self-test settled base accepted a new line");
@@ -470,7 +522,7 @@ const runReal = (baseSha) => {
   const failures = validate({ baseAllowlist, currentAllowlist });
   if (failures.length) throw new Error(failures.join("\n"));
   process.stdout.write(
-    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + #3872 R3/R4 public readers PASS\n",
+    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + #3872 R3/R4 public readers + #2829 W4 public trip-guide reader PASS\n",
   );
 };
 

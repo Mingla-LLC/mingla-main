@@ -12,6 +12,9 @@ vi.mock("./config", () => ({
   }),
 }));
 
+// #2829 W11 (A11) — removal also asks Core which publications it protects;
+// none here, so only the draft decides.
+vi.mock("./gateway", () => ({ readCoreRetentionProjection: async () => ({ protected_artifact_keys: [] }) }));
 vi.mock("./objectStore", () => ({
   deleteObject: async (bucket: string, key: string) => {
     storage.delete(`${bucket}:${key}`);

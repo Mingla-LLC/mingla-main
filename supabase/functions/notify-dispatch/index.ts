@@ -34,6 +34,7 @@ import {
 import { trustedReservationManageCta } from "../_shared/venueReservationManageLink.ts";
 // #4111 — consent provenance for the automatic transactional consent row.
 import { transactionalConsentSourceForCategory } from "../_shared/issue4111EnquiryNotifications.ts";
+import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 import {
   isQuietHours,
   LEGACY_QUIET_HOURS_CATEGORY,
@@ -379,6 +380,8 @@ type BusinessPreferenceType =
   | "business.low_inventory"
   | "business.refund_processed"
   | "business.dispute_opened"
+  | "business.installment_failed"
+  | "business.installment_at_risk"
   | "business.dispute_action_needed"
   | "business.payout_paid"
   | "business.payout_late"
@@ -417,6 +420,8 @@ const BUSINESS_NOTIFICATION_CHANNEL_DEFAULTS: Record<
   "business.low_inventory": { push: true, in_app: true },
   "business.refund_processed": { push: true, in_app: true },
   "business.dispute_opened": { push: true, in_app: true },
+  "business.installment_failed": { push: true, in_app: true },
+  "business.installment_at_risk": { push: true, in_app: true },
   "business.dispute_action_needed": { push: true, in_app: true },
   "business.payout_paid": { push: true, in_app: true },
   [PAYOUT_LATE_TYPE]: { push: true, in_app: true },
@@ -595,7 +600,9 @@ serve(async (req) => {
               channel,
               scope: "transactional",
               action: "granted",
-              source: transactionalConsentSourceForCategory(v2Input.category_key),
+              source: transactionalConsentSourceForCategory(
+                v2Input.category_key,
+              ),
               country_code: v2Input.country_code,
             });
           }
@@ -633,6 +640,10 @@ serve(async (req) => {
       emailCta,
       // #3720 Slice B — outbox drain re-drive after quiet-hours deferral.
       quietHoursRetry = false,
+      // #3645 — tokenized pay links are provider-transient and never become a
+      // notification row or quiet-hours outbox payload.
+      transientPayLinkPush = false,
+      oneSignalIdempotencyKey,
     } = payload;
 
     if ((!userId && !emailTo) || !type || !title || !body) {
@@ -662,6 +673,49 @@ serve(async (req) => {
         { success: false, reason: "email_idempotency_key_required" },
         400,
       );
+    }
+
+    if (transientPayLinkPush === true) {
+      const allowedType = type === "installment_pay_link" ||
+        type === "installment_approval_required";
+      let safePayLink = false;
+      if (typeof deepLink === "string") {
+        try {
+          const parsed = new URL(deepLink);
+          safePayLink = parsed.origin === PRODUCTION_BUSINESS_WEB_ORIGIN &&
+            /^\/pay\/[A-Za-z0-9_-]{43}$/.test(parsed.pathname) &&
+            parsed.search === "" && parsed.hash === "" &&
+            data && typeof data === "object" && !Array.isArray(data) &&
+            data.url === deepLink;
+        } catch {
+          safePayLink = false;
+        }
+      }
+      if (
+        !isExactServiceBearer(authHeader, SUPABASE_SERVICE_ROLE_KEY) ||
+        typeof userId !== "string" || userId.length === 0 ||
+        !allowedType || !safePayLink || emailTo ||
+        typeof oneSignalIdempotencyKey !== "string"
+      ) {
+        return jsonResponse({
+          success: false,
+          pushSent: false,
+          reason: "invalid_transient_pay_link_push",
+        }, 400);
+      }
+      const pushSent = await sendPush({
+        targetUserId: userId,
+        title,
+        body,
+        data: { ...data, type, deepLink },
+        launchUrl: deepLink,
+        oneSignalIdempotencyKey,
+      });
+      return jsonResponse({
+        success: pushSent,
+        pushSent,
+        reason: pushSent ? "provider_accepted" : "provider_not_accepted",
+      }, pushSent ? 200 : 503);
     }
 
     const emailPayload = emailTo

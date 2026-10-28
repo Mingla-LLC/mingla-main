@@ -1,0 +1,286 @@
+/**
+ * #2829 W5 — the site's own content collections, frozen into each publication:
+ * destinations, stories (with their categories) and testimonials.
+ *
+ * These are CMS content (the owner's words), never Mingla facts: a
+ * destination's "related trips" are Mingla offering ids resolved through the
+ * live feed at render (ids that no longer resolve simply disappear), and past
+ * trips are not a collection at all — they are ended Mingla trips read from
+ * the feed (amendment A1.3), so there is one owner for "what we have run".
+ *
+ * Testimonials reach a publication only when someone confirmed they are real
+ * (the builder filters on it; the artifact carries no unconfirmed quote and no
+ * internal source note). A testimonial shows exactly the reviewer's words:
+ * there is no rating, photograph or job title field to fill in.
+ *
+ * `assertSiteCollections` refuses unknown keys, markup, unsafe links, media
+ * that is not this artifact's, duplicate addresses and anything over the
+ * limits below.
+ */
+import type { MediaRef } from "./artifactV2.ts";
+import { assertRichText, type RichTextDoc } from "./richText.ts";
+import { isSlug } from "./routes.ts";
+import { boundedText, hasOnlyKeys, plainObject, UUID_RE } from "./safety.ts";
+
+export const MAX_DESTINATIONS = 200;
+export const MAX_STORIES = 500;
+export const MAX_CATEGORIES = 50;
+export const MAX_TESTIMONIALS = 200;
+export const MAX_DESTINATION_SEASONS = 4;
+export const MAX_SEASON_ACTIVITIES = 8;
+export const MAX_DID_YOU_KNOW = 12;
+export const MAX_RELATED_OFFERINGS = 12;
+export const MAX_COLLECTION_GALLERY = 24;
+export const MAX_TESTIMONIAL_QUOTE = 1200;
+
+export type EntrySeo = { title?: string; description?: string; noindex?: true };
+
+export type SiteDestination = {
+  id: string;
+  slug: string;
+  title: string;
+  country?: string;
+  featured_image?: MediaRef;
+  tagline?: string;
+  summary?: string;
+  /** The owner's own words, verbatim (never looked up or derived). */
+  facts?: { language?: string; currency?: string; religion?: string; timezone?: string };
+  story_heading?: string;
+  body?: RichTextDoc;
+  seasons?: Array<{ heading: string; body?: string; activities?: string[]; image?: MediaRef }>;
+  did_you_know?: string[];
+  /** Mingla offering ids; resolved through the live feed at render. */
+  related_offering_ids?: string[];
+  gallery?: MediaRef[];
+  seo?: EntrySeo;
+};
+
+export type SiteStory = {
+  id: string;
+  slug: string;
+  title: string;
+  /** YYYY-MM-DD, the day the owner says the story was published. */
+  published_at: string;
+  /** A category slug from `collections.categories`. */
+  category?: string;
+  featured_image?: MediaRef;
+  excerpt?: string;
+  content: RichTextDoc;
+  seo?: EntrySeo;
+};
+
+export type SiteCategory = { id: string; slug: string; title: string };
+
+export type SiteTestimonial = {
+  id: string;
+  /** The reviewer's words exactly as written (typos included). */
+  quote: string;
+  reviewer: string;
+  /** YYYY-MM-DD. */
+  review_date: string;
+  trip_name?: string;
+  /** A Mingla offering id (the trip the review is about), when known. */
+  related_offering_id?: string;
+};
+
+export type SiteCollections = {
+  destinations: SiteDestination[];
+  stories: SiteStory[];
+  categories: SiteCategory[];
+  testimonials: SiteTestimonial[];
+};
+
+export const EMPTY_SITE_COLLECTIONS: SiteCollections = Object.freeze({
+  destinations: [],
+  stories: [],
+  categories: [],
+  testimonials: [],
+}) as unknown as SiteCollections;
+
+export const COLLECTION_KEYS = ["destinations", "stories", "categories", "testimonials"] as const;
+
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A real calendar day written YYYY-MM-DD. */
+export function isCalendarDay(value: unknown): value is string {
+  if (typeof value !== "string" || !DAY_RE.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function fail(code = "ARTIFACT_COLLECTIONS_MISMATCH"): never {
+  throw new Error(code);
+}
+
+function textList(value: unknown, maxItems: number, maxLength: number): boolean {
+  return value === undefined ||
+    (Array.isArray(value) && value.length <= maxItems && value.every((item) => boundedText(item, maxLength, true)));
+}
+
+function idList(value: unknown, maxItems: number): boolean {
+  return value === undefined ||
+    (Array.isArray(value) && value.length <= maxItems && new Set(value).size === value.length &&
+      value.every((item) => typeof item === "string" && UUID_RE.test(item)));
+}
+
+function entrySeo(value: unknown): boolean {
+  return value === undefined ||
+    (plainObject(value) && hasOnlyKeys(value, ["title", "description", "noindex"]) &&
+      boundedText(value.title, 70) && boundedText(value.description, 170) &&
+      (value.noindex === undefined || value.noindex === true));
+}
+
+export type CollectionValidationContext = {
+  /** Validates one media record and that it belongs to this artifact. */
+  assertMedia: (value: unknown) => void;
+};
+
+function assertDestination(value: unknown, ctx: CollectionValidationContext): asserts value is SiteDestination {
+  if (
+    !plainObject(value) ||
+    !hasOnlyKeys(value, [
+      "id", "slug", "title", "country", "featured_image", "tagline", "summary", "facts", "story_heading", "body",
+      "seasons", "did_you_know", "related_offering_ids", "gallery", "seo",
+    ]) ||
+    typeof value.id !== "string" || !UUID_RE.test(value.id) ||
+    !isSlug(value.slug) ||
+    !boundedText(value.title, 120, true) ||
+    !boundedText(value.country, 80) ||
+    !boundedText(value.tagline, 200) ||
+    !boundedText(value.summary, 600) ||
+    !boundedText(value.story_heading, 120) ||
+    !textList(value.did_you_know, MAX_DID_YOU_KNOW, 400) ||
+    !idList(value.related_offering_ids, MAX_RELATED_OFFERINGS) ||
+    !entrySeo(value.seo)
+  ) fail();
+  if (value.facts !== undefined) {
+    const facts = value.facts;
+    if (
+      !plainObject(facts) || !hasOnlyKeys(facts, ["language", "currency", "religion", "timezone"]) ||
+      !boundedText(facts.language, 120) || !boundedText(facts.currency, 120) ||
+      !boundedText(facts.religion, 120) || !boundedText(facts.timezone, 120)
+    ) fail();
+  }
+  if (value.body !== undefined) assertRichText(value.body);
+  if (value.featured_image !== undefined) ctx.assertMedia(value.featured_image);
+  if (value.seasons !== undefined) {
+    if (!Array.isArray(value.seasons) || value.seasons.length > MAX_DESTINATION_SEASONS) fail();
+    for (const season of value.seasons as unknown[]) {
+      if (
+        !plainObject(season) || !hasOnlyKeys(season, ["heading", "body", "activities", "image"]) ||
+        !boundedText(season.heading, 120, true) || !boundedText(season.body, 1000) ||
+        !textList(season.activities, MAX_SEASON_ACTIVITIES, 120)
+      ) fail();
+      if (season.image !== undefined) ctx.assertMedia(season.image);
+    }
+  }
+  if (value.gallery !== undefined) {
+    if (!Array.isArray(value.gallery) || value.gallery.length > MAX_COLLECTION_GALLERY) fail();
+    for (const image of value.gallery as unknown[]) ctx.assertMedia(image);
+  }
+}
+
+function assertStory(value: unknown, ctx: CollectionValidationContext): asserts value is SiteStory {
+  if (
+    !plainObject(value) ||
+    !hasOnlyKeys(value, ["id", "slug", "title", "published_at", "category", "featured_image", "excerpt", "content", "seo"]) ||
+    typeof value.id !== "string" || !UUID_RE.test(value.id) ||
+    !isSlug(value.slug) ||
+    !boundedText(value.title, 160, true) ||
+    !isCalendarDay(value.published_at) ||
+    (value.category !== undefined && !isSlug(value.category)) ||
+    !boundedText(value.excerpt, 400) ||
+    !entrySeo(value.seo)
+  ) fail();
+  assertRichText(value.content);
+  if (value.featured_image !== undefined) ctx.assertMedia(value.featured_image);
+}
+
+function assertCategory(value: unknown): asserts value is SiteCategory {
+  if (
+    !plainObject(value) || !hasOnlyKeys(value, ["id", "slug", "title"]) ||
+    typeof value.id !== "string" || !UUID_RE.test(value.id) ||
+    !isSlug(value.slug) || !boundedText(value.title, 80, true)
+  ) fail();
+}
+
+function assertTestimonial(value: unknown): asserts value is SiteTestimonial {
+  if (
+    !plainObject(value) ||
+    !hasOnlyKeys(value, ["id", "quote", "reviewer", "review_date", "trip_name", "related_offering_id"]) ||
+    typeof value.id !== "string" || !UUID_RE.test(value.id) ||
+    !boundedText(value.quote, MAX_TESTIMONIAL_QUOTE, true) ||
+    !boundedText(value.reviewer, 80, true) ||
+    !isCalendarDay(value.review_date) ||
+    !boundedText(value.trip_name, 120) ||
+    (value.related_offering_id !== undefined &&
+      !(typeof value.related_offering_id === "string" && UUID_RE.test(value.related_offering_id)))
+  ) fail();
+}
+
+function uniqueBy<T>(rows: readonly T[], key: (row: T) => string): boolean {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const value = key(row);
+    if (seen.has(value)) return false;
+    seen.add(value);
+  }
+  return true;
+}
+
+/** Validates the frozen collections of a v2 artifact. */
+export function assertSiteCollections(value: unknown, ctx: CollectionValidationContext): asserts value is SiteCollections {
+  if (!plainObject(value) || !hasOnlyKeys(value, COLLECTION_KEYS) || COLLECTION_KEYS.some((key) => !Array.isArray(value[key]))) {
+    fail();
+  }
+  const record = value as Record<(typeof COLLECTION_KEYS)[number], unknown[]>;
+  if (
+    record.destinations.length > MAX_DESTINATIONS || record.stories.length > MAX_STORIES ||
+    record.categories.length > MAX_CATEGORIES || record.testimonials.length > MAX_TESTIMONIALS
+  ) fail();
+  for (const row of record.destinations) assertDestination(row, ctx);
+  for (const row of record.stories) assertStory(row, ctx);
+  for (const row of record.categories) assertCategory(row);
+  for (const row of record.testimonials) assertTestimonial(row);
+  const collections = value as SiteCollections;
+  if (
+    !uniqueBy(collections.destinations, (row) => row.slug) || !uniqueBy(collections.stories, (row) => row.slug) ||
+    !uniqueBy(collections.categories, (row) => row.slug) ||
+    !uniqueBy([...collections.destinations, ...collections.stories, ...collections.categories, ...collections.testimonials], (row) => row.id)
+  ) fail();
+  const categories = new Set(collections.categories.map((row) => row.slug));
+  if (collections.stories.some((story) => story.category !== undefined && !categories.has(story.category))) fail();
+}
+
+/** The detail addresses each collection serves (for the collision check). */
+export function collectionDetailSlugs(collections: SiteCollections): { destinations: string[]; stories: string[] } {
+  return {
+    destinations: collections.destinations.map((row) => row.slug),
+    stories: collections.stories.map((row) => row.slug),
+  };
+}
+
+/**
+ * Stories newest first (then by title), the order every list uses — unless the
+ * owner put them in their own order (#2829 W9r, `manual`), which the publish
+ * froze as the array order.
+ */
+export function storiesNewestFirst(stories: readonly SiteStory[], manual = false): SiteStory[] {
+  if (manual) return [...stories];
+  return [...stories].sort((a, b) =>
+    a.published_at === b.published_at ? a.title.localeCompare(b.title) : a.published_at < b.published_at ? 1 : -1
+  );
+}
+
+/** Testimonials newest first, unless the owner ordered them (#2829 W9r, `manual`). */
+export function testimonialsNewestFirst(rows: readonly SiteTestimonial[], manual = false): SiteTestimonial[] {
+  if (manual) return [...rows];
+  return [...rows].sort((a, b) => (a.review_date === b.review_date ? 0 : a.review_date < b.review_date ? 1 : -1));
+}
+
+/** "June 4, 2025" for a YYYY-MM-DD day (a calendar fact, never shifted by a timezone). */
+export function formatCalendarDay(day: string, language = "en-US"): string {
+  if (!isCalendarDay(day)) return "";
+  return new Intl.DateTimeFormat(language, { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" })
+    .format(new Date(`${day}T00:00:00Z`));
+}

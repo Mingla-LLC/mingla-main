@@ -37,7 +37,7 @@ import {
   validateManagementProjectResponse,
   validateManifest,
   validateObjectIdentity,
-  validatePilotDeactivationResponse,
+  validateRecoveryStateResponse,
   validateProtectionResponse,
   validateReadinessResponse,
   writePlainBundle,
@@ -320,14 +320,20 @@ async function readManagementBackup(env, fetchImpl, now, project) {
 // DEACTIVATING_RECOVERY_CODES in lib/sites-ops.mjs.
 const DEACTIVATING_BACKUP_CODES = DEACTIVATING_RECOVERY_CODES;
 
-export async function deactivatePilotForBackupFailure({
+/*
+ * #2829 — a backup that proves recovery readiness is violated ALERTS; it never
+ * takes a site down (Seth 2026-10-12 D1: hold-and-page). The old signed pilot
+ * deactivation is gone: Core records the recovery state and pages, and every
+ * published site keeps resolving.
+ */
+export async function alertForBackupFailure({
   env = process.env,
   fetchImpl = fetch,
   now = new Date(),
   error,
 } = {}) {
   if (!error || !DEACTIVATING_BACKUP_CODES.has(error.code)) return false;
-  return deactivatePilotForRecoveryFailure({ env, fetchImpl, now });
+  return alertRecoveryFailure({ env, fetchImpl, now });
 }
 
 function recoveryOperationId(env) {
@@ -337,7 +343,7 @@ function recoveryOperationId(env) {
     fail("INVALID_RECOVERY_RUN_IDENTITY");
   }
   const bytes = Buffer.from(sha256Bytes(Buffer.from(
-    `mingla-sites-recovery-deactivation\n${repository}\n${runId}`,
+    `mingla-sites-recovery-alert\n${repository}\n${runId}`,
   )).slice(0, 32), "hex");
   bytes[6] = (bytes[6] & 0x0f) | 0x50;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
@@ -345,14 +351,20 @@ function recoveryOperationId(env) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-export async function deactivatePilotForRecoveryFailure({
+/**
+ * Record a late/stale recovery state in Core (which pages) — signed for the
+ * site this job backs up, but it names nothing to switch off.
+ */
+export async function alertRecoveryFailure({
   env = process.env,
   fetchImpl = fetch,
   now = new Date(),
+  state = "stale",
 } = {}) {
+  if (!["late", "stale"].includes(state)) fail("INVALID_RECOVERY_STATE");
   const siteId = requireUuid(requiredEnv(env, "SITES_PILOT_SITE_ID"));
   const coreConfig = coreConfigFromEnv(env);
-  const path = `/internal/v1/sites/${siteId}/pilot-deactivation`;
+  const path = `/internal/v1/sites/${siteId}/recovery-state`;
   const value = await callCore(coreConfig, {
     siteId,
     operationId: recoveryOperationId(env),
@@ -360,14 +372,14 @@ export async function deactivatePilotForRecoveryFailure({
     path,
     payload: {
       schema_version: 1,
-      hostname: "gogi.sites.usemingla.com",
-      reason_code: "BACKUP_READINESS_FAILED",
+      state,
+      observed_at: now.toISOString().replace(/\.\d{3}Z$/, "Z"),
     },
     fetchImpl,
     now,
   });
-  validatePilotDeactivationResponse(value, siteId);
-  process.stdout.write("SITES_PILOT_DEACTIVATED reason=BACKUP_READINESS_FAILED\n");
+  validateRecoveryStateResponse(value, state);
+  process.stdout.write(`SITES_RECOVERY_ALERTED state=${state} sites_taken_offline=0\n`);
   return true;
 }
 
@@ -705,9 +717,9 @@ async function runBackupCli() {
   } catch (error) {
     if (error && DEACTIVATING_BACKUP_CODES.has(error.code)) {
       try {
-        await deactivatePilotForBackupFailure({ error });
+        await alertForBackupFailure({ error });
       } catch {
-        fail("PILOT_DEACTIVATION_FAILED");
+        fail("RECOVERY_ALERT_FAILED");
       }
     }
     throw error;
@@ -720,8 +732,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     ? runBackupCli()
     : action === "record-evidence"
       ? recordBackupEvidence()
-      : action === "deactivate"
-        ? deactivatePilotForRecoveryFailure()
+      // #2829 — the workflow still calls its old "deactivate" step by this
+      // name; it now records an alert and takes nothing down.
+      : action === "alert" || action === "deactivate"
+        ? alertRecoveryFailure()
       : Promise.reject(new Error("unsupported")))
     .catch(safeCliFailure);
 }

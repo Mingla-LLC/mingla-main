@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/installments/__tests__/issue_3645_paystack_installment_pricing.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3645-pi-10-paystack-installment-pricing",
+  "profile": "deno-1.46-stripe"
+}

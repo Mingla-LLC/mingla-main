@@ -16,7 +16,10 @@ export interface TripTierMetadataRow {
   tier_metadata?: unknown;
 }
 
-/** Only the currently supported effective provider may expose installments. */
+/**
+ * Stripe-only static hint retained for backward compatibility. New authoring
+ * code must use the server capability RPC because readiness is rollout-gated.
+ */
 export function tripInstallmentsSupported(effectiveProvider: unknown): boolean {
   return (
     typeof effectiveProvider === "string" &&

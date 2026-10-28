@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
-import { loadPublication, normalizePublicHost } from "../../../lib/publication";
+import {
+  loadPublication,
+  requestHost,
+  type ResolvedSite,
+} from "../../../lib/publication";
 import { runtimeConfig } from "../../../lib/config";
 import { signedCorePost } from "../../../lib/coreGateway";
 
@@ -66,19 +70,17 @@ function safeLines(value: unknown): Line[] | null {
 
 /** The venue this published site is allowed to order against, or null. */
 async function orderableVenue(): Promise<
-  { venueId: string; siteId: string } | null
+  { venueId: string; siteId: string; site: ResolvedSite } | null
 > {
   const incoming = await headers();
-  const host = normalizePublicHost(
-    incoming.get("x-forwarded-host") || incoming.get("host"),
-  );
-  const { artifact } = await loadPublication(host);
+  const host = requestHost(incoming);
+  const { artifact, resolution } = await loadPublication(host);
   for (const page of artifact.pages) {
     for (const block of page.blocks) {
       if (block.type !== "menu_board") continue;
       const venueId = (block as Record<string, unknown>).venue_id;
       if (typeof venueId === "string" && UUID.test(venueId)) {
-        return { venueId, siteId: artifact.site_id };
+        return { venueId, siteId: artifact.site_id, site: resolution };
       }
     }
   }
@@ -93,7 +95,7 @@ async function orderableVenue(): Promise<
  * missed attribution and nothing more.
  */
 async function bindAttribution(
-  siteId: string,
+  site: ResolvedSite,
   token: unknown,
   orderId: unknown,
 ): Promise<void> {
@@ -104,11 +106,11 @@ async function bindAttribution(
   try {
     await signedCorePost({
       edgeFunction: "brand-site-attribution",
-      path: `/internal/v1/sites/${siteId}/attribution/consume`,
-      siteId,
+      path: `/internal/v1/sites/${site.site_id}/attribution/consume`,
+      site,
       body: {
         action: "consume",
-        site_id: siteId,
+        site_id: site.site_id,
         token,
         order_id: orderId,
       },
@@ -132,7 +134,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: "invalid_request" }, { status: 400 });
   }
 
-  let venue: { venueId: string; siteId: string } | null;
+  let venue: { venueId: string; siteId: string; site: ResolvedSite } | null;
   try {
     venue = await orderableVenue();
   } catch {
@@ -199,7 +201,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
   if (mode === "create" && response.ok) {
     await bindAttribution(
-      venue.siteId,
+      venue.site,
       payload.siteAttributionToken,
       (result as Record<string, unknown>).orderId,
     );

@@ -98,6 +98,9 @@ const BOUNDARY: Record<string, () => unknown> = {
   "@mingla/offering-rendering/tripInstallmentCapability": () => ({
     tripInstallmentsSupported: () => false,
   }),
+  useTripInstallmentCapability: () => ({
+    useTripInstallmentCapability: () => ({ data: false }),
+  }),
   bankSetupReturn: () => jest.requireActual("../../../utils/bankSetupReturn"),
   react: () => React,
   "react-native": () => jest.requireActual("react-native"),

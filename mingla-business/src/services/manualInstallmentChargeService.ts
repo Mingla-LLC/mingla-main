@@ -1,7 +1,17 @@
 import { supabase } from "./supabase";
 
 export type ManualChargeInstallmentResult =
-  | { ok: true; chargeId?: string }
+  | {
+      ok: true;
+      chargeId?: string;
+      outcome?:
+        | "collected"
+        | "pay_link_sent"
+        | "approval_required"
+        | "unknown"
+        | "failed"
+        | "at_risk";
+    }
   | { ok: false; error: string };
 
 export async function manualChargeInstallment(input: {

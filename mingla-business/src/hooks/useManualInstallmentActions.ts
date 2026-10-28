@@ -56,7 +56,7 @@ function humanizeChargeNowReason(error: string): string {
 
 function humanizeReminderReason(error: string): string {
   if (error.toLowerCase().includes("rate limited")) {
-    return "Already sent a reminder in the past 24h. Try again later.";
+    return "You can resend once a day.";
   }
   if (error.toLowerCase().includes("not authorised") || error === "forbidden") {
     return "Not authorised.";
@@ -77,9 +77,16 @@ export function useChargeInstallmentNow(
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: orderInstallmentKeys.all });
       if (result.ok) {
+        const message = result.outcome === "pay_link_sent"
+          ? "Pay link sent to the buyer."
+          : result.outcome === "approval_required"
+            ? "The buyer's bank needs approval — we sent them a link."
+            : result.outcome === "unknown"
+              ? "We're confirming this payment. Check back in a few minutes."
+              : "Charge attempt sent. Status will refresh shortly.";
         options.onMessage({
           kind: "success",
-          message: "Charge attempt sent. Status will refresh shortly.",
+          message,
         });
       } else {
         options.onMessage({

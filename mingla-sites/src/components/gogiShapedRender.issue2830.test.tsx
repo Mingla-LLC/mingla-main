@@ -56,7 +56,7 @@ export const gogiShaped = {
 const OUT = process.env.SITE_PREVIEW_DIR ?? "";
 
 function page(html: string): string {
-  const css = fs.readFileSync(path.resolve(process.cwd(), "src/app/styles.css"), "utf8");
+  const css = fs.readFileSync(path.resolve(process.cwd(), "public/designs/legacy-v1.css"), "utf8");
   return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}
 .hero{background-image:linear-gradient(90deg,rgba(8,6,4,.86),rgba(8,6,4,.25)),url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Crect width='16' height='16' fill='%234a2c11'/%3E%3C/svg%3E");background-size:cover}
 .gallery img{background:#2a1c0e;min-height:200px;width:100%;object-fit:cover}
@@ -232,7 +232,7 @@ describe("#2830 a short gallery lays out as a strip", () => {
 
   it("neutralises the mosaic's tall first cell", () => {
     // Without this the first dish still spans two rows and the strip is ragged.
-    const styles = fs.readFileSync(path.resolve(process.cwd(), "src/app/styles.css"), "utf8");
+    const styles = fs.readFileSync(path.resolve(process.cwd(), "public/designs/legacy-v1.css"), "utf8");
     expect(/\.gallery-strip img:first-child\s*\{[^}]*grid-row:\s*auto/.test(styles)).toBe(true);
   });
 });

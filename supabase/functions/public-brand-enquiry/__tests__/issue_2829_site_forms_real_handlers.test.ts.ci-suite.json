@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/public-brand-enquiry/__tests__/issue_2829_site_forms_real_handlers.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-2829-site-forms-real-handlers",
+  "profile": "deno-2-unit"
+}

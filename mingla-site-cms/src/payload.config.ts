@@ -8,6 +8,7 @@ import { s3Storage } from "@payloadcms/storage-s3";
 import { buildConfig } from "payload";
 import sharp from "sharp";
 
+import { FontAssets } from "./collections/FontAssets";
 import { Footer } from "./collections/Footer";
 import { GatewayNonces } from "./collections/GatewayNonces";
 import { Media } from "./collections/Media";
@@ -15,11 +16,16 @@ import { Navigation } from "./collections/Navigation";
 import { Pages } from "./collections/Pages";
 import { PublicationJobs } from "./collections/PublicationJobs";
 import { SiteSettings } from "./collections/SiteSettings";
+import { Categories, Destinations, Stories, Testimonials } from "./collections/SiteContent";
 import { StudioUsers } from "./collections/StudioUsers";
 import { Tenants } from "./collections/Tenants";
+import { WorkLog } from "./collections/WorkLog";
+import { DesignCheckRuns } from "./collections/DesignCheckRuns";
+import { fontEndpoints } from "./endpoints/fontEndpoints";
 import { sitesEndpoints } from "./endpoints/sitesEndpoints";
+import { composeEndpoints } from "./endpoints/composeEndpoint";
+import { contentEndpoints } from "./endpoints/contentEndpoint";
 import { cmsConfig } from "./lib/config";
-import { MINGLA_BUSINESS_ORIGIN } from "./lib/origins";
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
@@ -38,10 +44,15 @@ export default buildConfig({
     pool: {
       connectionString: databaseConnectionUrl.toString(),
       max: config.databasePoolMax,
-      ssl: {
-        ca: supabaseRootCa,
-        rejectUnauthorized: true,
-      },
+      // #2829 — production keeps the pinned CA with full verification. Local
+      // mode (config.ts has already proven the database host is loopback)
+      // talks to the local Sites CMS stack, which has no TLS.
+      ssl: config.mode === "local"
+        ? false
+        : {
+          ca: supabaseRootCa,
+          rejectUnauthorized: true,
+        },
     },
     schemaName: "sites_cms",
     idType: "uuid",
@@ -56,9 +67,13 @@ export default buildConfig({
   graphQL: { disable: true },
   admin: {
     user: "studio-users",
+    // #2829 A8: Payload's default "gravatar" makes every Studio page request
+    // www.gravatar.com with a hash of the signed-in owner's email. No
+    // third-party request on an admin page: use Payload's built-in avatar.
+    avatar: "default",
     meta: {
       titleSuffix: "— Mingla Studio",
-      description: "Edit your Restaurant Website v1",
+      description: "Edit your website",
     },
     components: {
       Nav: "@/components/StudioNav#default",
@@ -74,7 +89,8 @@ export default buildConfig({
     graphQL: "/disabled-graphql",
     graphQLPlayground: "/disabled-graphql-playground",
   },
-  cors: [config.cmsOrigin, MINGLA_BUSINESS_ORIGIN],
+  // #2829 W9f — the configured Business origin (local Business web locally).
+  cors: [config.cmsOrigin, config.businessOrigin],
   csrf: [config.cmsOrigin],
   collections: [
     StudioUsers,
@@ -84,10 +100,18 @@ export default buildConfig({
     Navigation,
     Footer,
     SiteSettings,
+    Destinations,
+    Categories,
+    Stories,
+    Testimonials,
     PublicationJobs,
     GatewayNonces,
+    FontAssets,
+    // #2829 W9b — "Why it looks like this" and the design checks' results.
+    WorkLog,
+    DesignCheckRuns,
   ],
-  endpoints: sitesEndpoints,
+  endpoints: [...sitesEndpoints, ...fontEndpoints, ...composeEndpoints, ...contentEndpoints],
   plugins: [
     multiTenantPlugin({
       collections: {
@@ -96,7 +120,14 @@ export default buildConfig({
         navigation: {},
         footer: {},
         "site-settings": {},
+        // #2829 W5 — the site's content collections, scoped like pages.
+        destinations: {},
+        categories: {},
+        stories: {},
+        testimonials: {},
         "publication-jobs": {},
+        "work-log": {},
+        "design-check-runs": {},
       },
       tenantsSlug: "tenants",
       tenantsArrayField: { includeDefaultField: false },

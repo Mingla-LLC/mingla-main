@@ -38,7 +38,7 @@ import { RestaurantV1 } from "./RestaurantV1";
 import type { RestaurantArtifact, RestaurantBlock } from "../contracts/artifact";
 
 const CSS = fs.readFileSync(
-  path.resolve(process.cwd(), "src/app/styles.css"),
+  path.resolve(process.cwd(), "public/designs/legacy-v1.css"),
   "utf8",
 );
 

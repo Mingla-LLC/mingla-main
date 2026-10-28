@@ -61,6 +61,12 @@ export const radius = {
 // cap left dead right-side canvas / a "black bar" on wide monitors).
 export const venueRailWidth = 220 as const;
 
+/** #2829 W9r — the Website section's two-panel layout (DESIGN_SPEC §2, §5). */
+export const websiteRailWidth = 232 as const;
+export const websitePaneMaxWidth = 760 as const;
+export const websitePreviewWidth = 440 as const;
+export const websiteRailActive = "rgba(255, 255, 255, 0.09)" as const;
+
 // Issue #2737 — reservation calendar geometry. This is deliberately scoped to
 // the operator calendar so responsive density never becomes a second global
 // page-layout system.
@@ -606,6 +612,8 @@ export const text = {
   primary: "rgba(255, 255, 255, 0.96)",
   secondary: "rgba(255, 255, 255, 0.72)",
   tertiary: "rgba(255, 255, 255, 0.52)",
+  /** #2829 W9r — hints on cards, raised for margin (6.2:1 on a card). */
+  tertiaryOnCard: "rgba(255, 255, 255, 0.56)",
   quaternary: "rgba(255, 255, 255, 0.32)",
   inverse: "#ffffff",
 } as const;

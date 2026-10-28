@@ -229,6 +229,9 @@ export function mapOfferingWriteError(error) {
   if (msg.includes("not_found")) return "That record no longer exists.";
   if (msg.includes("already_cancelled")) return "This offering is already cancelled.";
   if (msg.includes("invalid_visibility")) return "Invalid visibility value.";
+  if (msg.includes("installment_capability_unavailable")) {
+    return "This trip's payment plan can't be offered with this host's payment setup. Hide the trip or remove the plan first.";
+  }
   // #1931 — Admin keeps synchronous Public <-> Hidden, but every transition ENTERING or
   // LEAVING Private is rejected non-mutatingly: those transitions need the two-phase
   // media preparation that only Mingla Business can drive (Amendment 2 §D). Admin UI

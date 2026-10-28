@@ -208,6 +208,9 @@ class WebhookFakeDb {
     if (name === "record_order_installment_provider_sale") {
       return Promise.resolve({ data: { ok: true }, error: null });
     }
+    if (name === "issue_3645_clear_at_risk_if_settled") {
+      return Promise.resolve({ data: { ok: true }, error: null });
+    }
     throw new Error(`unexpected rpc ${name}`);
   }
   from(_table: string) {
@@ -258,6 +261,10 @@ Deno.test("#4130 webhook: with no fee on the PaymentIntent, the brand override i
   assertEquals(
     db.rpcCalls.find((c) => c.name === "resolve_effective_take_rate_bps")?.args,
     { p_brand_id: "brand_4130" },
+  );
+  assertEquals(
+    db.rpcCalls.find((c) => c.name === "issue_3645_clear_at_risk_if_settled")?.args,
+    { p_order_id: "order_4130" },
   );
 });
 

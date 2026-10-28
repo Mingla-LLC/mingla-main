@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "brand-site-domains",
+  "verify_jwt": true,
+  "gateway_reason": "#2829 W8 — a brand's own website domain. Customer routes are signed-in users and every write is a rank-checked Core RPC; the 6-hourly sweep compares the service-role bearer in-code. The hosting-provider credentials are optional: without them the function refuses to attach and the sweep does nothing.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [
+      "SITES_LOCAL_PROBE_ORIGIN",
+      "VERCEL_SITES_API_TOKEN",
+      "VERCEL_SITES_PROJECT_ID",
+      "VERCEL_SITES_TEAM_ID"
+    ],
+    "required_bundle_fields": {},
+    "required_top_level": []
+  }
+}

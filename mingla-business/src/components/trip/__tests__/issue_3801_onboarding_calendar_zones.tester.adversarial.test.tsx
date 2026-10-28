@@ -53,6 +53,7 @@ import { afterAll, describe, expect, jest, test } from "@jest/globals";
 import * as designSystem from "../../../constants/designSystem";
 import * as calendarDate from "../../../utils/calendarDate";
 import { projectInstallmentSchedule } from "../../../utils/installmentScheduleProjection";
+import * as installmentScheduleRows from "../installmentScheduleRows";
 
 const TRIP_DIR = path.resolve(__dirname, "..");
 
@@ -296,7 +297,9 @@ type FormatDueDate = (inst: { dueAt: string; dueIsCalendarDate?: boolean }) => s
 type FormatScheduleDate = (iso: string, isCalendarDate: boolean) => string;
 
 const formatDueDate = privateFunction<FormatDueDate>(
-  "InstallmentScheduleDisplay.tsx",
+  // [TEST-MOD-APPROVED #3645] The pure row builder now owns schedule
+  // formatting; keep this timezone proof attached to that production owner.
+  "installmentScheduleRows.ts",
   "formatDueDate",
 );
 const formatScheduleDate = privateFunction<FormatScheduleDate>(
@@ -542,6 +545,7 @@ function realScheduleDisplay(): React.ComponentType<Record<string, unknown>> {
     GlassCard: () => ({ GlassCard: leaf("GlassCardProbe") }),
     installmentReassurance: () => ({ installmentReassuranceText: () => "" }),
     currencyGlyph: () => ({ withCurrencyGlyph: (value: string) => value }),
+    installmentScheduleRows: () => installmentScheduleRows,
   };
   const output = ts.transpileModule(
     fs.readFileSync(path.join(TRIP_DIR, "InstallmentScheduleDisplay.tsx"), "utf8"),

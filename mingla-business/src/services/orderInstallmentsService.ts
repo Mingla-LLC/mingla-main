@@ -28,10 +28,19 @@ export interface OrderInstallment {
   orderId: string;
   ordinal: number;
   amountCents: number;
+  amountChargedCents: number;
+  buyerTotalCents: number | null;
+  refundedAmountCents: number;
   currency: string;
   /** ISO 8601 UTC */
   dueAt: string;
   status: OrderInstallmentStatus;
+  provider: "stripe" | "paystack";
+  collectionMethod: "auto_card" | "pay_link";
+  buyerAction: "none" | "pay_link_sent" | "approval_required";
+  buyerActionAt: string | null;
+  paymentReference: string | null;
+  /** @deprecated Use paymentReference. */
   stripePaymentIntentId: string | null;
   stripeChargeId: string | null;
   collectedAt: string | null;
@@ -47,6 +56,7 @@ export interface OrderInstallmentForBrand extends OrderInstallment {
   orderTotalCents: number;
   orderAtRisk: boolean;
   orderAtRiskSince: string | null;
+  paymentCardLast4: string | null;
 }
 
 // Raw DB row shape (snake_case).
@@ -55,9 +65,15 @@ interface OrderInstallmentRow {
   order_id: string;
   ordinal: number;
   amount_cents: number;
+  buyer_total_cents: number | null;
+  refunded_amount_cents: number;
   currency: string;
   due_at: string;
   status: OrderInstallmentStatus;
+  provider: "stripe" | "paystack";
+  collection_method: "auto_card" | "pay_link";
+  buyer_action: "none" | "pay_link_sent" | "approval_required";
+  buyer_action_at: string | null;
   stripe_payment_intent_id: string | null;
   stripe_charge_id: string | null;
   collected_at: string | null;
@@ -75,6 +91,7 @@ interface OrderInstallmentBrandRow extends OrderInstallmentRow {
     at_risk: boolean;
     at_risk_since: string | null;
     event_id: string;
+    payment_card_last4: string | null;
   };
 }
 
@@ -84,9 +101,17 @@ function mapRow(row: OrderInstallmentRow): OrderInstallment {
     orderId: row.order_id,
     ordinal: row.ordinal,
     amountCents: row.amount_cents,
+    amountChargedCents: row.buyer_total_cents ?? row.amount_cents,
+    buyerTotalCents: row.buyer_total_cents,
+    refundedAmountCents: row.refunded_amount_cents,
     currency: row.currency,
     dueAt: row.due_at,
     status: row.status,
+    provider: row.provider,
+    collectionMethod: row.collection_method,
+    buyerAction: row.buyer_action,
+    buyerActionAt: row.buyer_action_at,
+    paymentReference: row.stripe_payment_intent_id,
     stripePaymentIntentId: row.stripe_payment_intent_id,
     stripeChargeId: row.stripe_charge_id,
     collectedAt: row.collected_at,
@@ -105,6 +130,7 @@ function mapBrandRow(row: OrderInstallmentBrandRow): OrderInstallmentForBrand {
     orderTotalCents: row.orders.total_cents,
     orderAtRisk: row.orders.at_risk,
     orderAtRiskSince: row.orders.at_risk_since,
+    paymentCardLast4: row.orders.payment_card_last4,
   };
 }
 
@@ -123,9 +149,15 @@ export async function fetchInstallmentsForOrder(
       order_id,
       ordinal,
       amount_cents,
+      buyer_total_cents,
+      refunded_amount_cents,
       currency,
       due_at,
       status,
+      provider,
+      collection_method,
+      buyer_action,
+      buyer_action_at,
       stripe_payment_intent_id,
       stripe_charge_id,
       collected_at,
@@ -168,9 +200,15 @@ export async function fetchInstallmentsForBrandTrips(
       order_id,
       ordinal,
       amount_cents,
+      buyer_total_cents,
+      refunded_amount_cents,
       currency,
       due_at,
       status,
+      provider,
+      collection_method,
+      buyer_action,
+      buyer_action_at,
       stripe_payment_intent_id,
       stripe_charge_id,
       collected_at,
@@ -184,7 +222,8 @@ export async function fetchInstallmentsForBrandTrips(
         total_cents,
         at_risk,
         at_risk_since,
-        event_id
+        event_id,
+        payment_card_last4
       )
     `,
     )

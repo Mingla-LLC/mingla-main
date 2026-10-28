@@ -1,5 +1,7 @@
 -- [TEST-MOD-APPROVED #3872] Production fixture excludes the three R1 discount,
 -- three referral, and one Creator capability; X3 and restoration move 145→152.
+-- #2829 W9b: the production fixture also excludes the twelve website designer
+-- capabilities; X3 and chain restoration move with the tip census 152→164.
 -- [TEST-MOD-APPROVED #1984] X3 expected abort moves with tip census 138→140.
 -- [TEST-MOD-APPROVED #1982] X3 expected abort moves with tip census 137→138.
 -- =====================================================================================
@@ -219,7 +221,20 @@ BEGIN
                           'ari.referrals.list',
                           'ari.referrals.create',
                           'ari.referrals.invite_promoters',
-                          'ari.creators.draft_gig_script');
+                          'ari.creators.draft_gig_script',
+                          -- #2829 W9b website designer (tip census only)
+                          'ari.sites.read_plan',
+                          'ari.sites.list_designs',
+                          'ari.sites.read_block_catalog',
+                          'ari.sites.read_tokens',
+                          'ari.sites.run_design_checks',
+                          'ari.sites.save_plan_answers',
+                          'ari.sites.create_draft',
+                          'ari.sites.propose_variant',
+                          'ari.sites.propose_copy',
+                          'ari.sites.propose_collection_entry',
+                          'ari.sites.confirm_review',
+                          'ari.sites.propose_trip_guide');
   INSERT INTO public.ari_cert_capability_requirements (capability_id, evidence_mode)
   VALUES ('ari.guests.set_approval', 'write');
   UPDATE public.ari_cert_capability_requirements SET evidence_mode = 'unsupported'
@@ -272,7 +287,7 @@ ROLLBACK TO SAVEPOINT x2;
 SAVEPOINT x3;
 INSERT INTO public.ari_cert_capability_requirements (capability_id, evidence_mode) VALUES ('ari.stray.unknown_capability', 'read');
 SELECT pg_temp.issue_3055_adv_expect_abort('T-3055-X3',
-  'issue_3055_preflight_requirements_disagree_with_live_finalizer: 153 requirement rows but ari_cert_finalize_run demands 152 capabilities',
+  'issue_3055_preflight_requirements_disagree_with_live_finalizer: 165 requirement rows but ari_cert_finalize_run demands 164 capabilities',
   true);
 ROLLBACK TO SAVEPOINT x3;
 
@@ -375,6 +390,8 @@ COMMIT;
 \ir ../20270824003697_issue_3697_ari_cert_capability_census.sql
 \ir ../20271216043872_issue_3872_r1_host_operations.sql
 \ir ../20271229003872_issue_3872_ari_cert_capability_census.sql
+-- #2829 W9b: tip census is now the website designer's (152→164), on top of #3872's.
+\ir ../20280119132829_issue_2829_ari_cert_capability_census.sql
 
 DO $restored$
 BEGIN

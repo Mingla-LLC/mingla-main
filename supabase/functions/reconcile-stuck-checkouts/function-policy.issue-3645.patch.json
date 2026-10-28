@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#3645",
+  "target": {
+    "kind": "function",
+    "name": "reconcile-stuck-checkouts"
+  },
+  "basePolicySha256": "3bf95f8e97e4cc451936dca2e9cd2d01e935003a08c2a218a9f5bd8c4de160b2",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "required_top_level",
+      "name": "RESEND_API_KEY",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "bd432723a48cad22839c2ff44025189544e543dadba2cb1fcdb168ef59e4cf8e",
+  "reason": "Issue #3645 lets checkout reconciliation emit the existing organiser outcome email after installment recovery, so its email-provider key must be classified."
+}

@@ -1,5 +1,29 @@
 import { isFontPairing, type FontPairing } from "./fontPairings";
+import { isFileVideoIntegrity } from "./generated/video.ts";
 
+const VIDEO_INTEGRITY_KEYS = ["bytes", "chunk_size", "chunk_digests", "duration_ms"];
+import {
+  MAX_BLOCKS_PER_PAGE,
+  MAX_NAV_CHILDREN,
+  MAX_NAV_ITEMS,
+  MAX_NAV_LABEL_LENGTH,
+  MAX_PAGES_PER_SITE,
+} from "./generated/limits.ts";
+import {
+  findPathCollisions,
+  hrefForPath,
+  isCollectionKind,
+  isPagePath,
+  isRedirectRules,
+  isSiteRoutes,
+  PAGE_KINDS,
+  type CollectionKind,
+  type PageKind,
+  type RedirectRule,
+  type SiteRoutes,
+} from "./generated/routes.ts";
+
+// #2829 — the v1 renderer only; sites-v2 lives in packages/site-contracts (W3).
 export const RENDERER_KEY = "restaurant-website-v1" as const;
 export const ARTIFACT_SCHEMA_VERSION = 1 as const;
 
@@ -13,6 +37,13 @@ export type MediaReference = {
   height: number;
   integrity: string;
   object_key: string;
+  /** #2829 W6 — a file video's size, chunk digests and length (see video.ts). */
+  bytes?: number;
+  chunk_size?: number;
+  chunk_digests?: string[];
+  duration_ms?: number;
+  /** #2829 W7b — extra picture renditions (v2 only; see site-contracts artifactV2). */
+  variants?: Array<{ name: "c400" | "c768" | "w1600"; url: string; width: number; height: number; integrity: string; object_key: string }>;
 };
 
 export type RestaurantBlock = {
@@ -28,6 +59,52 @@ export type RestaurantBlock = {
   [key: string]: unknown;
 };
 
+/** A page of a pre-#2829-W2 artifact: one of six fixed roles. Still rendered for rollback. */
+export type LegacyArtifactPage = {
+  /*
+   * #3149 wave 4 — `reservations` is the sixth and last role.
+   *
+   * A CLOSED union on purpose: a page role is a thing this renderer knows
+   * how to be, not a free label, and every cap below counts against it.
+   */
+  role: "home" | "about" | "menu" | "gallery" | "contact" | "reservations";
+  slug: string;
+  title: string;
+  enabled: boolean;
+  nav_label: string;
+  nav_order: number;
+  blocks: RestaurantBlock[];
+  seo?: { title?: string; description?: string };
+};
+
+/** #2829 W2 — a page of the page tree: its full address ("" = home). */
+export type TreeArtifactPage = {
+  /** Never present on a tree page; declared so `pages[number]["role"]` stays a valid type. */
+  role?: never;
+  path: string;
+  title: string;
+  enabled: boolean;
+  kind: PageKind;
+  collection?: CollectionKind;
+  blocks: RestaurantBlock[];
+  seo?: { title?: string; description?: string; noindex?: true };
+};
+
+export type NavLink = { label: string; href: string };
+export type TreeNavigation = {
+  items: Array<NavLink & { children?: NavLink[] }>;
+  header_cta?: NavLink;
+  wordmark?: string;
+};
+
+/** #2829 W2 — present exactly when the artifact uses the page tree. */
+export type SiteRoutesBlock = {
+  routes: SiteRoutes;
+  redirects: RedirectRule[];
+  language: string;
+  timezone?: string;
+};
+
 export type RestaurantArtifact = {
   schema_version: 1;
   site_id: string;
@@ -38,23 +115,15 @@ export type RestaurantArtifact = {
   source_revision_id: string;
   source_digest: string;
   generated_at: string;
-  pages: Array<{
-    /*
-     * #3149 wave 4 — `reservations` is the sixth and last role.
-     *
-     * A CLOSED union on purpose: a page role is a thing this renderer knows
-     * how to be, not a free label, and every cap below counts against it.
-     */
-    role: "home" | "about" | "menu" | "gallery" | "contact" | "reservations";
-    slug: string;
-    title: string;
-    enabled: boolean;
-    nav_label: string;
-    nav_order: number;
-    blocks: RestaurantBlock[];
-    seo?: { title?: string; description?: string };
-  }>;
-  navigation: { page_roles: string[] };
+  /*
+   * #2829 W2 — two forms. An artifact carrying `site_routes` is a page tree
+   * (pages have a `path`, navigation has `items`); one without it is the
+   * original six-role form, which every earlier publication uses and which
+   * keeps rendering so rollback to any of them works.
+   */
+  pages: LegacyArtifactPage[] | TreeArtifactPage[];
+  navigation: { page_roles: string[] } | TreeNavigation;
+  site_routes?: SiteRoutesBlock;
   footer: { address?: string; hours_summary?: string; legal_text?: string; links?: Array<{ label: string; href: string }> };
   site_settings: {
     display_name: string;
@@ -74,6 +143,7 @@ const SAFE_KEYS = new Set([
   "schema_version", "site_id", "brand_id", "renderer_key", "renderer_version",
   "publication_id", "source_revision_id", "source_digest", "generated_at",
   "pages", "navigation", "footer", "site_settings", "media", "commercial_references",
+  "site_routes",
 ]);
 const FORBIDDEN_TEXT =
   /<(?:script|style|iframe|svg)|\son[a-z]+\s*=|javascript:|data:|blob:|file:/i;
@@ -192,6 +262,29 @@ function plainObject(value: unknown): value is JsonObject {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+/*
+ * #2829 — media URLs are relative (`/media/<id>/...`). Artifacts published
+ * before #2829 carried absolute URLs on their own site's address; those are
+ * still accepted, but only on the artifact's OWN canonical origin (checked at
+ * the end of assertRestaurantArtifact), so no brand's artifact can point at
+ * another brand's host.
+ */
+const ABSOLUTE_MEDIA =
+  /^https:\/\/([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)\/media\//;
+let absoluteMediaHosts: Set<string> | null = null;
+
+function mediaUrlAccepted(url: string, id: string): boolean {
+  if (url.startsWith(`/media/${id}/`)) return true;
+  const match = ABSOLUTE_MEDIA.exec(url);
+  if (!match || !url.startsWith(`https://${match[1]}/media/${id}/`)) return false;
+  absoluteMediaHosts?.add(match[1]);
+  return true;
+}
+
+/** `https://<hostname>` with nothing else: the shape of a canonical origin. */
+const CANONICAL_ORIGIN =
+  /^https:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
 function assertMediaReference(value: unknown, siteId: string): void {
   if (
     !plainObject(value) ||
@@ -203,14 +296,16 @@ function assertMediaReference(value: unknown, siteId: string): void {
       "height",
       "integrity",
       "object_key",
+      // #2829 W6 — a video's chunk digests (optional on v1; v2 requires them).
+      "bytes",
+      "chunk_size",
+      "chunk_digests",
+      "duration_ms",
     ]) ||
     typeof value.id !== "string" ||
     !UUID.test(value.id) ||
     typeof value.url !== "string" ||
-    (!value.url.startsWith(`/media/${value.id}/`) &&
-      !value.url.startsWith(
-        `https://gogi.sites.usemingla.com/media/${value.id}/`,
-      )) ||
+    !mediaUrlAccepted(value.url, value.id) ||
     !boundedText(value.alt, 240) ||
     !Number.isInteger(value.width) ||
     !Number.isInteger(value.height) ||
@@ -237,13 +332,15 @@ function assertMediaReference(value: unknown, siteId: string): void {
   if (isVideo) {
     if (
       !value.url.endsWith("/video.mp4") ||
-      Number(value.width) !== 0 || Number(value.height) !== 0
+      Number(value.width) !== 0 || Number(value.height) !== 0 ||
+      (VIDEO_INTEGRITY_KEYS.some((key) => key in value) && !isFileVideoIntegrity(value))
     ) throw new Error("ARTIFACT_MEDIA_MISMATCH");
     return;
   }
   if (
     !value.object_key.endsWith(".webp") ||
-    Number(value.width) < 1 || Number(value.height) < 1
+    Number(value.width) < 1 || Number(value.height) < 1 ||
+    VIDEO_INTEGRITY_KEYS.some((key) => key in value)
   ) throw new Error("ARTIFACT_MEDIA_MISMATCH");
 }
 
@@ -728,6 +825,19 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
 }
 
 export function assertRestaurantArtifact(value: unknown): asserts value is RestaurantArtifact {
+  absoluteMediaHosts = new Set();
+  try {
+    assertRestaurantArtifactShape(value);
+    const canonical = (value as RestaurantArtifact).site_settings.seo?.canonical_url;
+    for (const host of absoluteMediaHosts) {
+      if (`https://${host}` !== canonical) throw new Error("ARTIFACT_MEDIA_MISMATCH");
+    }
+  } finally {
+    absoluteMediaHosts = null;
+  }
+}
+
+function assertRestaurantArtifactShape(value: unknown): asserts value is RestaurantArtifact {
   if (!plainObject(value) || Object.keys(value).some((key) => !SAFE_KEYS.has(key))) throw new Error("ARTIFACT_SCHEMA_MISMATCH");
   if (value.schema_version !== 1 || value.renderer_key !== RENDERER_KEY || !Number.isInteger(value.renderer_version) || Number(value.renderer_version) < 1) throw new Error("ARTIFACT_RENDERER_MISMATCH");
   for (const id of [value.site_id, value.brand_id, value.publication_id]) if (typeof id !== "string" || !UUID.test(id)) throw new Error("ARTIFACT_ID_MISMATCH");
@@ -738,59 +848,69 @@ export function assertRestaurantArtifact(value: unknown): asserts value is Resta
     !boundedText(value.generated_at, 40, true) ||
     !Number.isFinite(Date.parse(String(value.generated_at)))
   ) throw new Error("ARTIFACT_DIGEST_MISMATCH");
-  /*
-   * #3149 wave 4 — SIX, because there are six roles.
-   *
-   * This cap and the role union are the same statement counted two ways: gogi
-   * already uses all five of the old roles, so a site that added the sixth
-   * would have failed here with ARTIFACT_PAGES_MISMATCH and no clue why.
-   */
-  if (!Array.isArray(value.pages) || value.pages.length < 1 || value.pages.length > 6) throw new Error("ARTIFACT_PAGES_MISMATCH");
+  const tree = value.site_routes !== undefined;
   const roles = new Set<string>();
-  for (const page of value.pages as JsonObject[]) {
-    if (
-      !plainObject(page) ||
-      !hasOnlyKeys(page, [
-        "role",
-        "slug",
-        "title",
-        "enabled",
-        "nav_label",
-        "nav_order",
-        "blocks",
-        "seo",
-      ]) ||
-      !["home", "about", "menu", "gallery", "contact", "reservations"].includes(
-        String(page.role),
-      ) ||
-      roles.has(String(page.role)) ||
-      !boundedText(page.slug, 20, true) ||
-      !boundedText(page.title, 120, true) ||
-      typeof page.enabled !== "boolean" ||
-      !boundedText(page.nav_label, 40, true) ||
-      !Number.isInteger(page.nav_order) ||
-      // Six roles means six positions, 0 through 5. Left at 4 the sixth page
-      // is unplaceable and the failure reads as a bad page rather than a
-      // stale bound.
-      Number(page.nav_order) < 0 || Number(page.nav_order) > 5
-    ) throw new Error("ARTIFACT_PAGE_ROLE_MISMATCH");
-    roles.add(String(page.role));
+  const treePaths = new Set<string>();
+  if (tree) assertTreePages(value.pages, String(value.site_id), treePaths);
+  else {
+    /*
+     * #3149 wave 4 — SIX, because there are six roles.
+     *
+     * This cap and the role union are the same statement counted two ways: gogi
+     * already uses all five of the old roles, so a site that added the sixth
+     * would have failed here with ARTIFACT_PAGES_MISMATCH and no clue why.
+     */
+    if (!Array.isArray(value.pages) || value.pages.length < 1 || value.pages.length > 6) throw new Error("ARTIFACT_PAGES_MISMATCH");
+    for (const page of value.pages as JsonObject[]) {
+      if (
+        !plainObject(page) ||
+        !hasOnlyKeys(page, [
+          "role",
+          "slug",
+          "title",
+          "enabled",
+          "nav_label",
+          "nav_order",
+          "blocks",
+          "seo",
+        ]) ||
+        !["home", "about", "menu", "gallery", "contact", "reservations"].includes(
+          String(page.role),
+        ) ||
+        roles.has(String(page.role)) ||
+        !boundedText(page.slug, 20, true) ||
+        !boundedText(page.title, 120, true) ||
+        typeof page.enabled !== "boolean" ||
+        !boundedText(page.nav_label, 40, true) ||
+        !Number.isInteger(page.nav_order) ||
+        // Six roles means six positions, 0 through 5. Left at 4 the sixth page
+        // is unplaceable and the failure reads as a bad page rather than a
+        // stale bound.
+        Number(page.nav_order) < 0 || Number(page.nav_order) > 5
+      ) throw new Error("ARTIFACT_PAGE_ROLE_MISMATCH");
+      roles.add(String(page.role));
+      // The six-role form keeps its original 40-block cap; the page tree allows 60.
     if (!Array.isArray(page.blocks) || page.blocks.length > 40) throw new Error("ARTIFACT_BLOCKS_MISMATCH");
-    for (const block of page.blocks as JsonObject[]) {
-      if (!plainObject(block)) throw new Error("ARTIFACT_BLOCK_TYPE_MISMATCH");
-      assertRestaurantBlock(block, String(value.site_id));
+      // #2829 (#3164 residual) — a home page whose blocks all dropped would
+      // publish a header, a footer and nothing else; refuse it so the publish
+      // fails with a named reason and the last good site stays live.
+      if (page.role === "home" && page.blocks.length === 0) throw new Error("ARTIFACT_HOME_EMPTY");
+      for (const block of page.blocks as JsonObject[]) {
+        if (!plainObject(block)) throw new Error("ARTIFACT_BLOCK_TYPE_MISMATCH");
+        assertRestaurantBlock(block, String(value.site_id));
+      }
+      if (
+        page.seo != null &&
+        (!plainObject(page.seo) ||
+          !hasOnlyKeys(page.seo, ["title", "description"]) ||
+          !boundedText(page.seo.title, 70) ||
+          !boundedText(page.seo.description, 170))
+      ) {
+        throw new Error("ARTIFACT_PAGE_SEO_MISMATCH");
+      }
     }
-    if (
-      page.seo != null &&
-      (!plainObject(page.seo) ||
-        !hasOnlyKeys(page.seo, ["title", "description"]) ||
-        !boundedText(page.seo.title, 70) ||
-        !boundedText(page.seo.description, 170))
-    ) {
-      throw new Error("ARTIFACT_PAGE_SEO_MISMATCH");
-    }
+    if (!roles.has("home")) throw new Error("ARTIFACT_HOME_MISSING");
   }
-  if (!roles.has("home")) throw new Error("ARTIFACT_HOME_MISSING");
   if (!Array.isArray(value.media) || value.media.length > 500) throw new Error("ARTIFACT_MEDIA_MISMATCH");
   const mediaIds = new Set<string>();
   for (const item of value.media as JsonObject[]) {
@@ -870,8 +990,11 @@ export function assertRestaurantArtifact(value: unknown): asserts value is Resta
     ]) ||
     !boundedText(value.site_settings.seo.title, 70) ||
     !boundedText(value.site_settings.seo.description, 170) ||
-    value.site_settings.seo.canonical_url !==
-      "https://gogi.sites.usemingla.com"
+    // #2829 — any site's own origin; the runtime binds it to the host Core
+    // resolved (publication.ts) and the publish probe to the primary host.
+    typeof value.site_settings.seo.canonical_url !== "string" ||
+    value.site_settings.seo.canonical_url.length > 261 ||
+    !CANONICAL_ORIGIN.test(value.site_settings.seo.canonical_url)
   ) throw new Error("ARTIFACT_SETTINGS_MISMATCH");
   if (value.site_settings.seo.social_image != null) {
     assertMediaReference(
@@ -886,7 +1009,10 @@ export function assertRestaurantArtifact(value: unknown): asserts value is Resta
       throw new Error("ARTIFACT_MEDIA_MISMATCH");
     }
   }
-  if (
+  if (tree) {
+    assertTreeNavigation(value.navigation, value.pages as JsonObject[]);
+    assertSiteRoutes(value.site_routes, value.pages as JsonObject[]);
+  } else if (
     !plainObject(value.navigation) ||
     !hasOnlyKeys(value.navigation, ["page_roles"]) ||
     !Array.isArray(value.navigation.page_roles) ||
@@ -933,3 +1059,122 @@ export function assertRestaurantArtifact(value: unknown): asserts value is Resta
     ) throw new Error("ARTIFACT_COMMERCE_MISMATCH");
   }
 }
+
+/*
+ * #2829 W2 — THE PAGE TREE FORM.
+ *
+ * Up to 100 pages, each at a unique, shape-valid address up to three levels
+ * deep ("" is home and must exist and carry content). The same block rules as
+ * the six-role form apply to every page.
+ */
+function assertTreePages(pages: unknown, siteId: string, paths: Set<string>): void {
+  if (!Array.isArray(pages) || pages.length < 1 || pages.length > MAX_PAGES_PER_SITE) {
+    throw new Error("ARTIFACT_PAGES_MISMATCH");
+  }
+  for (const page of pages as JsonObject[]) {
+    if (
+      !plainObject(page) ||
+      !hasOnlyKeys(page, ["path", "title", "enabled", "kind", "collection", "blocks", "seo"]) ||
+      !isPagePath(page.path) ||
+      paths.has(page.path as string) ||
+      !boundedText(page.title, 120, true) ||
+      typeof page.enabled !== "boolean" ||
+      !(PAGE_KINDS as readonly unknown[]).includes(page.kind) ||
+      (page.kind === "collection_index"
+        ? !isCollectionKind(page.collection)
+        : page.collection !== undefined)
+    ) throw new Error("ARTIFACT_PAGE_PATH_MISMATCH");
+    paths.add(page.path as string);
+    if (!Array.isArray(page.blocks) || page.blocks.length > MAX_BLOCKS_PER_PAGE) {
+      throw new Error("ARTIFACT_BLOCKS_MISMATCH");
+    }
+    if (page.path === "" && (page.blocks.length === 0 || page.enabled !== true)) {
+      throw new Error("ARTIFACT_HOME_EMPTY");
+    }
+    for (const block of page.blocks as JsonObject[]) {
+      if (!plainObject(block)) throw new Error("ARTIFACT_BLOCK_TYPE_MISMATCH");
+      assertRestaurantBlock(block, siteId);
+    }
+    if (
+      page.seo !== undefined &&
+      (!plainObject(page.seo) ||
+        !hasOnlyKeys(page.seo, ["title", "description", "noindex"]) ||
+        !boundedText(page.seo.title, 70) ||
+        !boundedText(page.seo.description, 170) ||
+        (page.seo.noindex !== undefined && page.seo.noindex !== true))
+    ) throw new Error("ARTIFACT_PAGE_SEO_MISMATCH");
+  }
+  if (!paths.has("")) throw new Error("ARTIFACT_HOME_MISSING");
+}
+
+/** A menu link to a page must name a PUBLISHED page; an external one must be https. */
+function navLinkAccepted(link: unknown, livePaths: ReadonlySet<string>): boolean {
+  if (
+    !plainObject(link) ||
+    !boundedText(link.label, MAX_NAV_LABEL_LENGTH, true) ||
+    typeof link.href !== "string" ||
+    !isSafeHref(link.href)
+  ) return false;
+  if (link.href.startsWith("/")) return livePaths.has(link.href === "/" ? "" : link.href.slice(1));
+  return link.href.startsWith("https://");
+}
+
+function assertTreeNavigation(navigation: unknown, pages: JsonObject[]): void {
+  const live = new Set(pages.filter((page) => page.enabled === true).map((page) => String(page.path)));
+  if (
+    !plainObject(navigation) ||
+    !hasOnlyKeys(navigation, ["items", "header_cta", "wordmark"]) ||
+    !Array.isArray(navigation.items) ||
+    navigation.items.length > MAX_NAV_ITEMS ||
+    !boundedText(navigation.wordmark, 60) ||
+    (navigation.header_cta !== undefined &&
+      !(plainObject(navigation.header_cta) &&
+        hasOnlyKeys(navigation.header_cta, ["label", "href"]) &&
+        navLinkAccepted(navigation.header_cta, live)))
+  ) throw new Error("ARTIFACT_NAVIGATION_MISMATCH");
+  for (const item of navigation.items as JsonObject[]) {
+    if (
+      !plainObject(item) ||
+      !hasOnlyKeys(item, ["label", "href", "children"]) ||
+      !navLinkAccepted(item, live) ||
+      (item.children !== undefined &&
+        !(Array.isArray(item.children) &&
+          item.children.length >= 1 &&
+          item.children.length <= MAX_NAV_CHILDREN &&
+          item.children.every((child) =>
+            plainObject(child) && hasOnlyKeys(child, ["label", "href"]) && navLinkAccepted(child, live)
+          )))
+    ) throw new Error("ARTIFACT_NAVIGATION_MISMATCH");
+  }
+}
+
+/*
+ * Collection base paths, redirects, language and timezone — and, as defence
+ * in depth behind the builder's own refusal, no two things answering one
+ * address (ARTIFACT_PATH_COLLISION).
+ */
+function assertSiteRoutes(block: unknown, pages: JsonObject[]): void {
+  if (
+    !plainObject(block) ||
+    !hasOnlyKeys(block, ["routes", "redirects", "language", "timezone"]) ||
+    !isSiteRoutes(block.routes) ||
+    !isRedirectRules(block.redirects) ||
+    typeof block.language !== "string" ||
+    !/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(block.language) ||
+    block.language.length > 35 ||
+    (block.timezone !== undefined && !isIanaTimeZone(block.timezone))
+  ) throw new Error("ARTIFACT_ROUTES_MISMATCH");
+  const collisions = findPathCollisions({
+    pages: pages.filter((page) => page.enabled === true).map((page) => ({ path: String(page.path) })),
+    routes: block.routes,
+    redirects: block.redirects,
+  });
+  if (collisions.length) throw new Error("ARTIFACT_PATH_COLLISION");
+}
+
+/** `true` when the artifact uses the #2829 W2 page tree. */
+export function isTreeArtifact(artifact: RestaurantArtifact): boolean {
+  return artifact.site_routes !== undefined;
+}
+
+export { hrefForPath };

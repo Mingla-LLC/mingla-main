@@ -27,7 +27,7 @@ import path from "node:path";
 const read = (relative: string) =>
   fs.readFileSync(path.resolve(process.cwd(), relative), "utf8");
 
-const blocks = read("src/blocks/restaurantBlocks.ts");
+const blocks = read("src/blocks/siteBlocks.ts");
 const builder = read("src/lib/artifactBuilder.ts");
 const gateway = read("src/lib/gateway.ts");
 const migrationSource = read(
@@ -156,13 +156,14 @@ describe("#2830 the menu belongs to Mingla", () => {
     // blocks all dropped disables itself -- so the tab leaves the navigation
     // and the sitemap with it.
     expect(builder).toContain("if (!menuSections.length) return null;");
+    // #2829 W2 — the home page is the page with no slug (roles are gone).
     expect(builder).toContain(
-      'page.role === "home"\n        ? page.enabled\n        : page.enabled === true && rendered.length > 0',
+      "enabled: isHome ? page.enabled === true : page.enabled === true && rendered.length > 0",
     );
   });
 
   it("the home page is never auto-removed", () => {
-    expect(builder).toContain('page.role === "home"');
+    expect(builder).toContain("const isHome = isHomePage(page);");
   });
 
   it("never aggregates a uuid -- Postgres has no min(uuid)", () => {

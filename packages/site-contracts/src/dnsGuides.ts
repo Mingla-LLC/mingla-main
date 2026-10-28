@@ -1,0 +1,154 @@
+/**
+ * #2829 W8 (AD-10) — plain-English DNS steps for a brand's own domain.
+ *
+ * The owner's registrar is detected from the domain's NS records, so the
+ * steps can use the words that registrar's screens use. Every step carries the
+ * exact record values Mingla asks for. The steps never name Mingla's own
+ * infrastructure providers, and never ask the owner to change email (MX),
+ * existing TXT/SPF or nameserver records.
+ *
+ * Shared by the Business app (the guide screen) and the brand-site-domains
+ * edge function (the registrar it records).
+ */
+
+export const DNS_REGISTRARS = [
+  "cloudflare",
+  "godaddy",
+  "squarespace",
+  "wix",
+  "ionos",
+  "namecheap",
+  "unknown",
+] as const;
+export type DnsRegistrar = typeof DNS_REGISTRARS[number];
+
+export type DnsRecordType = "A" | "AAAA" | "CNAME" | "TXT";
+
+/** One record the owner adds. `name` is the full host name it applies to. */
+export interface DnsRecordRequest {
+  type: DnsRecordType;
+  name: string;
+  value: string;
+}
+
+export const DNS_REGISTRAR_LABELS: Readonly<Record<DnsRegistrar, string>> = {
+  cloudflare: "Cloudflare",
+  godaddy: "GoDaddy",
+  squarespace: "Squarespace",
+  wix: "Wix",
+  ionos: "IONOS",
+  namecheap: "Namecheap",
+  unknown: "your domain provider",
+};
+
+/** Nameserver suffixes per registrar (lowercase, no trailing dot). */
+const NS_SUFFIXES: ReadonlyArray<readonly [DnsRegistrar, readonly string[]]> = [
+  ["cloudflare", ["ns.cloudflare.com"]],
+  ["godaddy", ["domaincontrol.com"]],
+  // Squarespace took over Google Domains; both nameserver families land here.
+  ["squarespace", ["squarespacedns.com", "googledomains.com"]],
+  ["wix", ["wixdns.net"]],
+  ["ionos", ["ui-dns.com", "ui-dns.de", "ui-dns.org", "ui-dns.biz"]],
+  ["namecheap", ["registrar-servers.com"]],
+];
+
+function bareName(value: string): string {
+  return value.trim().toLowerCase().replace(/\.$/, "");
+}
+
+/** The registrar whose nameservers a domain uses; "unknown" otherwise. */
+export function detectRegistrar(nameservers: readonly string[] | null | undefined): DnsRegistrar {
+  if (!nameservers || nameservers.length === 0) return "unknown";
+  const names = nameservers.map(bareName);
+  for (const [registrar, suffixes] of NS_SUFFIXES) {
+    if (names.some((name) => suffixes.some((suffix) => name === suffix || name.endsWith(`.${suffix}`)))) {
+      return registrar;
+    }
+  }
+  return "unknown";
+}
+
+export function isDnsRegistrar(value: unknown): value is DnsRegistrar {
+  return typeof value === "string" && (DNS_REGISTRARS as readonly string[]).includes(value);
+}
+
+/**
+ * The "Host" / "Name" field the owner types for a record, relative to the
+ * domain they manage at the registrar (the apex). "@" is the apex itself.
+ */
+export function recordHostLabel(recordName: string, apexDomain: string): string {
+  const name = bareName(recordName);
+  const apex = bareName(apexDomain);
+  if (name === apex || name === "@" || name === "") return "@";
+  if (name.endsWith(`.${apex}`)) return name.slice(0, -(apex.length + 1));
+  return name;
+}
+
+export interface DnsGuide {
+  registrar: DnsRegistrar;
+  registrarLabel: string;
+  /** Ordered steps in plain English, each self-contained. */
+  steps: string[];
+  /** Shown under the steps: what is never changed, and how long it takes. */
+  notes: string[];
+}
+
+const RECORDS_PAGE: Readonly<Record<DnsRegistrar, string>> = {
+  cloudflare: "Open your domain in Cloudflare and choose DNS, then Records.",
+  godaddy: "Sign in to GoDaddy, open My Products, choose your domain, then DNS.",
+  squarespace: "Sign in to Squarespace, open Domains, choose your domain, then DNS settings.",
+  wix: "Sign in to Wix, open Domains, choose the three dots next to your domain, then Manage DNS records.",
+  ionos: "Sign in to IONOS, open Domains & SSL, choose your domain, then DNS.",
+  namecheap: "Sign in to Namecheap, open Domain List, choose Manage next to your domain, then Advanced DNS.",
+  unknown: "Sign in where you bought your domain and open its DNS settings (sometimes called DNS records or Zone editor).",
+};
+
+const ADD_BUTTON: Readonly<Record<DnsRegistrar, string>> = {
+  cloudflare: "Add record",
+  godaddy: "Add New Record",
+  squarespace: "Add record",
+  wix: "Add Record",
+  ionos: "Add record",
+  namecheap: "Add New Record",
+  unknown: "Add record",
+};
+
+/**
+ * The steps to add `records` for a domain whose apex (the part bought from
+ * the registrar) is `apexDomain`. Values are exact; nothing is abbreviated.
+ */
+export function dnsGuide(input: {
+  registrar: DnsRegistrar;
+  apexDomain: string;
+  records: readonly DnsRecordRequest[];
+}): DnsGuide {
+  const registrar = isDnsRegistrar(input.registrar) ? input.registrar : "unknown";
+  const steps: string[] = [RECORDS_PAGE[registrar]];
+  for (const record of input.records) {
+    const host = recordHostLabel(record.name, input.apexDomain);
+    const hostWords = host === "@" ? "@ (this means the domain itself)" : host;
+    steps.push(
+      `Choose ${ADD_BUTTON[registrar]}. Type: ${record.type}. Name (or Host): ${hostWords}. ` +
+        `Value (or Points to): ${record.value}. Save it.`,
+    );
+    if (record.type === "A" || record.type === "CNAME") {
+      steps.push(
+        `If there is already an ${record.type === "A" ? "A" : "A or CNAME"} record with the name ${hostWords}, ` +
+          "edit it to the value above (or delete the old one) so only Mingla's value is left.",
+      );
+    }
+  }
+  if (registrar === "cloudflare") {
+    steps.push("Set Proxy status to DNS only (the grey cloud) for these records, so your website's certificate can be issued.");
+  }
+  steps.push("Come back here and press Check now.");
+  return {
+    registrar,
+    registrarLabel: DNS_REGISTRAR_LABELS[registrar],
+    steps,
+    notes: [
+      "Leave your email (MX), other TXT and nameserver records exactly as they are. Mingla never needs them changed.",
+      "Changes usually show up within an hour, and can take up to a day.",
+    ],
+  };
+}

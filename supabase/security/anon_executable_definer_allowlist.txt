@@ -14,7 +14,7 @@
 # INVESTIGATION_ORCH-1392 bucket (definer_privilege_gate_inventory.csv). Format:
 # `proname(identity_args)` exactly as pg_get_function_identity_arguments renders.
 #
-# Signature count: 197 (intended-public 28, internally-gated 108, predicate/read-helper 58, PostGIS 3).
+# Signature count: 198 (intended-public 29, internally-gated 108, predicate/read-helper 58, PostGIS 3).
 # (#1931 recomputed this line from the file itself AFTER its one appended signature, by
 #  counting non-comment, non-blank lines per section. The previous value of 194/25/109/57
 #  was already stale by two against the 192 lines then present; the count is not gate-
@@ -43,6 +43,8 @@ pg_public_event_tier_pricing(p_event_id uuid)
 pg_public_event_display_prices(p_event_ids uuid[])
 # #3872 R1: current sale overlays for one public venue menu; returns item ids and price facts only, with no order or buyer data.
 pg_public_menu_item_sales(p_venue_id uuid)
+# #2829 W4: one public trip's guide, gated by the same public/non-private trip predicate as the public offering read model; returns guide copy only and NULL for draft, private, deleted, or non-trip ids.
+pg_public_trip_guide(p_trip_id uuid)
 pg_public_experience_by_slug(p_brand_slug text, p_experience_slug text)
 pg_public_experiences_by_brand(p_brand_slug text)
 # #3281 R3: buyer time-step remaining for public live experiences only. Returns

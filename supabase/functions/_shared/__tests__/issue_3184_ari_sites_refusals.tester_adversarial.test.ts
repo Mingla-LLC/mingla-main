@@ -232,6 +232,10 @@ async function withFixture<T>(
       }
       return Response.json(script.availability ?? { available: false });
     }
+    // #2829 W9b — "websites are opening brand by brand" records the interest.
+    if (path === "/rest/v1/rpc/brand_site_record_interest") {
+      return Response.json({ recorded: true, entitled: false });
+    }
     if (path === "/rest/v1/rpc/brand_site_internal_authorize") {
       return Response.json(script.internalAuthorize ?? null);
     }
@@ -287,35 +291,28 @@ function rawTool(name: string) {
   return found;
 }
 
+const CITES = [{ kind: "owner_words", quote: "We take small groups to Bali" }];
+
 const TOOL_ARGS: Record<string, Json> = {
   get_brand_site: { brand_id: BRAND_ID },
   list_site_pages: { brand_id: BRAND_ID, site_id: SITE_ID },
   get_site_page: { brand_id: BRAND_ID, site_id: SITE_ID, page_role: "home" },
-  propose_site_content_update: {
-    brand_id: BRAND_ID,
-    site_id: SITE_ID,
-    page_role: "home",
-    expected_revision: "rev-1",
-    changes: { title: "Dinner" },
-    change_summary: "Retitle",
-  },
-  propose_site_settings_update: {
-    brand_id: BRAND_ID,
-    site_id: SITE_ID,
-    expected_revision: "rev-1",
-    changes: { display_name: "Tester Kitchen" },
-    change_summary: "Rename",
-  },
-  attach_approved_site_media: {
-    brand_id: BRAND_ID,
-    site_id: SITE_ID,
-    page_role: "gallery",
-    expected_revision: "rev-1",
-    media_id: OPERATION_ID,
-    block_index: 0,
-    field: "images",
-    alt: "Dining room",
-  },
+  // #2829 W9b — the website designer's tools (typed proposals with a work-log entry).
+  get_site_plan: { brand_id: BRAND_ID },
+  list_site_designs: { brand_id: BRAND_ID },
+  get_block_catalog: { brand_id: BRAND_ID },
+  get_site_tokens: { brand_id: BRAND_ID, site_id: SITE_ID },
+  run_site_design_checks: { brand_id: BRAND_ID, site_id: SITE_ID },
+  save_site_plan_answers: { brand_id: BRAND_ID, expected_plan_revision: 1, answers: { offerings_selected: ["trips"] }, why: "Owner said trips", cites: CITES },
+  create_site_draft: { brand_id: BRAND_ID, why: "Plan approved", cites: CITES },
+  propose_site_composition: { brand_id: BRAND_ID, site_id: SITE_ID, expected_site_revision: DIGEST, menu: [{ page_path: "about", label: "About" }], why: "Menu", cites: CITES },
+  propose_block_variant: { brand_id: BRAND_ID, site_id: SITE_ID, page_path: "", expected_revision: "rev-1", block_index: 0, variant: "atelier", why: "Layout", cites: CITES },
+  propose_site_tokens: { brand_id: BRAND_ID, site_id: SITE_ID, expected_revision: "rev-1", design: "voyage", why: "Look", cites: CITES },
+  propose_site_copy: { brand_id: BRAND_ID, site_id: SITE_ID, page_path: "", expected_revision: "rev-1", title: "Home", why: "Copy", cites: CITES },
+  propose_site_imagery: { brand_id: BRAND_ID, site_id: SITE_ID, page_path: "", expected_revision: "rev-1", slots: [{ block_index: 0, slot: "media", media_id: OPERATION_ID }], why: "Photo", cites: CITES },
+  propose_site_collection_entry: { brand_id: BRAND_ID, site_id: SITE_ID, collection: "stories", operation: "create", data: { story: { title: "Bali" } }, why: "Story", cites: CITES },
+  confirm_site_review: { brand_id: BRAND_ID, site_id: SITE_ID, review_id: "review-1", expected_revision: "rev-1", statement: "I confirm this review is real and I have permission to show it" },
+  propose_trip_guide_update: { brand_id: BRAND_ID, trip_id: OPERATION_ID, expected_revision: "none", guide: { highlights: ["Surf"] }, why: "Guide", cites: CITES },
   validate_site_draft: { brand_id: BRAND_ID, site_id: SITE_ID },
   create_site_preview: {
     brand_id: BRAND_ID,
@@ -960,7 +957,11 @@ Deno.test({
         ),
       ];
       assertEquals(SITE_AGENT_TOOLS.length, Object.keys(TOOL_ARGS).length);
-      for (const tool of SITE_AGENT_TOOLS) {
+      // #2829 W9b — list_site_designs and get_block_catalog answer from the
+      // site-contracts copy without calling brand-site-control, so no
+      // control answer can reach them.
+      const LOCAL_READS = new Set(["list_site_designs", "get_block_catalog"]);
+      for (const tool of SITE_AGENT_TOOLS.filter((item) => !LOCAL_READS.has(item.name))) {
         const args = TOOL_ARGS[tool.name];
         assert(args, `no adversarial args for ${tool.name}`);
         for (const [label, control] of answers) {
@@ -1347,17 +1348,15 @@ Deno.test({
               client,
               USER_ID,
             ) as Json;
+            // #2829 W9b — not_available carries the honest reply and records
+            // the interest; not_set_up says Ari can create the draft.
             assertEquals(
               Object.keys(result),
-              [
-                "website_state",
-                "brand_id",
-                "can_create_from_chat",
-                "setup_role",
-                "setup_screen",
-              ],
+              availability.available
+                ? ["website_state", "brand_id", "can_create_from_chat", "create_tool", "setup_role", "setup_screen"]
+                : ["website_state", "brand_id", "can_create_from_chat", "reply", "interest_recorded", "setup_role", "setup_screen"],
             );
-            assertEquals(result.can_create_from_chat, false);
+            assertEquals(result.can_create_from_chat, availability.available);
             const navigation = replayNavigation(result);
             assertEquals(navigation, { handoffRoute: null, hasChoices: false });
             const allKeys = keysDeep(result);

@@ -1,10 +1,8 @@
 import { sha256 } from "./crypto";
 import { runtimeConfig } from "./config";
-import {
-  assertRestaurantArtifact,
-  type RestaurantArtifact,
-} from "../contracts/artifact";
+import { assertSiteArtifact, declaredSchema, type SiteArtifact } from "./siteArtifact";
 import { readPrivateObject } from "./storageReader";
+import type { SiteBinding } from "./coreGateway";
 
 /**
  * #2830 — load a PRIVATE PREVIEW artifact so the runtime can render it with the
@@ -31,6 +29,12 @@ const PREVIEW_KEY = new RegExp(
     "([0-9a-f]{64})\\.json$",
 );
 
+/** #2829 W3 — the header proxy.ts sets on /preview requests (the preview key), read by the layout. */
+export const PREVIEW_KEY_HEADER = "x-mingla-preview-key";
+
+/** Stands in for a preview's `preview-…` id while the contract checks the rest. */
+const PREVIEW_CONTRACT_ID = "00000000-0000-4000-8000-000000000000";
+
 export type PreviewArtifactKey = {
   key: string;
   siteId: string;
@@ -54,11 +58,12 @@ export function parsePreviewArtifactKey(
 
 export async function loadPreviewArtifact(
   parsed: PreviewArtifactKey,
-): Promise<RestaurantArtifact> {
+  hostSite: SiteBinding,
+): Promise<SiteArtifact> {
   const config = runtimeConfig();
-  // The pilot runtime serves exactly one site; a preview for any other site is
-  // not something this deployment is entitled to render.
-  if (parsed.siteId !== config.pilotSiteId) throw new Error("NOT_FOUND");
+  // #2829 — a preview renders only on its OWN site's host: the site in the
+  // key must be the site Core resolved for the host the request arrived on.
+  if (parsed.siteId !== hostSite.site_id) throw new Error("NOT_FOUND");
   // `no-store`, never `force-cache`: a draft changes between previews, and a
   // cached preview is the same lie in a different shape.
   const response = await readPrivateObject(
@@ -69,11 +74,23 @@ export async function loadPreviewArtifact(
   if (!response.ok) throw new Error("NOT_FOUND");
   const bytes = new Uint8Array(await response.arrayBuffer());
   if ((await sha256(bytes)) !== parsed.digest) throw new Error("NOT_FOUND");
-  const artifact: unknown = JSON.parse(new TextDecoder().decode(bytes));
-  assertRestaurantArtifact(artifact);
+  const artifact = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
   if (
-    artifact.site_id !== parsed.siteId ||
-    artifact.publication_id !== parsed.publicationId
+    artifact?.site_id !== parsed.siteId ||
+    artifact?.publication_id !== parsed.publicationId
   ) throw new Error("NOT_FOUND");
-  return artifact;
+  /*
+   * #2829 W2 — a preview's publication id is `preview-<32 hex>` by design (it
+   * is what keeps real publications out of this route), while the public
+   * contract requires a UUID publication id. Validating the bytes as they are
+   * refused EVERY preview (ARTIFACT_ID_MISMATCH → 404): the private preview
+   * never rendered. The id was matched against the key just above; the
+   * contract then validates everything else with a fixed placeholder id.
+   */
+  // #2829 W3 — either generation: a draft built by the v2 builder previews as
+  // v2; the contract it passes is the one its own declaration names.
+  const schema = declaredSchema(artifact);
+  if (schema === null) throw new Error("NOT_FOUND");
+  assertSiteArtifact({ ...artifact, publication_id: PREVIEW_CONTRACT_ID }, schema, bytes.byteLength);
+  return artifact as unknown as SiteArtifact;
 }

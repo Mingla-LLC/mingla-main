@@ -1,3 +1,5 @@
+> TEMPORARY(#2829): these files serve only v1 rollback artifacts (public/designs/legacy-v1.css). v2 sites serve their own fonts from /fonts/<digest>. Remove once every site has a v2 last-good publication.
+
 # Self-hosted webfonts
 
 These are served from the site's own origin, not from Google Fonts.

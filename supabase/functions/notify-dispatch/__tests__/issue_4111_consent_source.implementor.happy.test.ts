@@ -42,6 +42,9 @@ Deno.test("#4111 notify-dispatch writes the consent source from the category, no
   const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
   const insert = source.slice(source.indexOf('from("consent_records").insert('));
   const block = insert.slice(0, insert.indexOf("});"));
-  assert(block.includes("source: transactionalConsentSourceForCategory(v2Input.category_key)"), block);
+  assert(
+    /source:\s*transactionalConsentSourceForCategory\(\s*v2Input\.category_key,?\s*\)/.test(block),
+    block,
+  );
   assert(!block.includes('source: "reservation"'), "hard-coded reservation label came back");
 });

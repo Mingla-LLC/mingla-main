@@ -16,7 +16,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Field } from "payload";
-import { restaurantBlocks } from "../blocks/restaurantBlocks";
+import { siteBlocks as restaurantBlocks } from "../blocks/siteBlocks";
 import { sha256 } from "./crypto";
 
 const stored = new Map<string, Uint8Array>();
@@ -53,6 +53,8 @@ const tenant = {
   id: TENANT_ID,
   core_site_id: SITE_ID,
   core_brand_id: BRAND_ID,
+  // #2829 — builds need the primary address Core named for the tenant.
+  primary_hostname: "gogi.sites.usemingla.com",
 };
 
 const settings = {
@@ -214,10 +216,13 @@ describe("#3149 the Studio offers an eyebrow where a section has a heading", () 
     });
   }
 
-  for (const slug of ["hero", "divider", "spacer"]) {
+  // #2829 W7 — the travel hero sets a script line above its headline, so
+  // the hero is offered one now (AD-4); the travel page header, cards and
+  // contact tiles are drawn without one.
+  for (const slug of ["divider", "spacer", "page_header", "feature_cards", "contact_details"]) {
     it(`${slug} is NOT offered one`, () => {
-      // The hero already owns the page's one h1; the other two render no
-      // heading for a line to sit above.
+      // These render no heading line for an eyebrow to sit above (or, for the
+      // travel blocks, the design draws none there).
       expect(named(slug, "eyebrow")).toBeUndefined();
     });
   }
@@ -262,7 +267,8 @@ describe("#3149 the Studio offers an eyebrow where a section has a heading", () 
           ),
         ),
         parentIsLocalized: false,
-        validRelationships: ["media"],
+        // #2829 W5 — collection blocks point at the site's own content collections.
+        validRelationships: ["media", "destinations", "categories", "testimonials"],
       });
       for (const field of sanitized) {
         expect((field as { admin?: unknown }).admin).toBeTypeOf("object");
@@ -280,7 +286,8 @@ describe("#3149 the Studio offers an eyebrow where a section has a heading", () 
        * code does. Failing here when a new block type lands is the point — it
        * forces a decision about whether that block speaks in the brand's voice.
        */
-      const NO_HEADING = ["hero", "divider", "spacer", "marquee", "pull_quote"];
+      // #2829 W7 — hero gains one (AD-4); the travel page header, cards and contact tiles do not draw one.
+      const NO_HEADING = ["divider", "spacer", "marquee", "pull_quote", "page_header", "feature_cards", "contact_details"];
       if (!NO_HEADING.includes(block.slug)) {
         expect(found, `${block.slug}`).toBeDefined();
         expect(found!.admin?.description ?? "").toContain("above");
@@ -330,7 +337,7 @@ describe("#3149 the builder carries the eyebrow into the published artifact", ()
     expect(homeBlocks(artifact)[0]!.eyebrow).toBe("Photos");
   });
 
-  it("never puts an eyebrow on the hero, even with one stored", async () => {
+  it("carries the hero's eyebrow (#2829 W7) but never a stray field it does not have", async () => {
     /*
      * The public contract forbids unknown keys, so a hero carrying an eyebrow
      * would fail the whole publication closed. Studio does not offer the field
@@ -367,7 +374,7 @@ describe("#3149 the builder carries the eyebrow into the published artifact", ()
     ], [poster]);
     const hero = homeBlocks(artifact)[0]!;
     expect(hero.type).toBe("hero");
-    expect(Object.keys(hero)).not.toContain("eyebrow");
+    expect(hero.eyebrow).toBe("The place");
     expect(Object.keys(hero)).not.toContain("group_heading");
   });
 });
@@ -437,7 +444,14 @@ describe("#3149 group_heading rides the same rail", () => {
         state: "READY",
         detected_mime: "video/mp4",
         rendition_manifest: {
-          master: { digest: "a".repeat(64), key: `approved/${SITE_ID}/video-1/video.mp4` },
+          // #2829 W6 — approved videos record their per-1 MiB chunk digests.
+          master: {
+            digest: "a".repeat(64),
+            key: `approved/${SITE_ID}/video-1/video.mp4`,
+            bytes: 1024,
+            chunk_size: 1048576,
+            chunk_digests: ["c".repeat(64)],
+          },
         },
       },
       {

@@ -129,6 +129,14 @@ const SIMULATED_SAVE_DELAY_MS = 300;
 // feedback is visually registered.
 const POST_SAVE_NAV_DELAY_MS = 300;
 
+// #2829 W11 (R1 E15) — the website journey promises a visible 60-character
+// tagline limit. Brand edit is the single source the plan opens, so the limit
+// and counter live here rather than in a website-only copy of the field.
+export const WEBSITE_TAGLINE_MAX = 60;
+export function boundedWebsiteTagline(value: string): string {
+  return Array.from(value).slice(0, WEBSITE_TAGLINE_MAX).join("");
+}
+
 // Cycle 7 FX2 cover-hue tiles — MIRROR Cycle 3 CreatorStep4Cover.tsx
 // hue array verbatim. If the event-cover palette ever expands, brand
 // covers should follow (keep these arrays in sync).
@@ -771,14 +779,25 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               accessibilityLabel="Display name"
               clearable
             />
-            <Input
-              variant="text"
-              value={draft.tagline ?? ""}
-              onChangeText={(v) => setDraft({ ...draft, tagline: v })}
-              placeholder="Short tagline"
-              accessibilityLabel="Tagline"
-              clearable
-            />
+            <View>
+              <Input
+                variant="text"
+                value={draft.tagline ?? ""}
+                onChangeText={(v) => setDraft({ ...draft, tagline: boundedWebsiteTagline(v) })}
+                placeholder="Short tagline"
+                accessibilityLabel="Tagline"
+                maxLength={WEBSITE_TAGLINE_MAX}
+                testID="brand-tagline"
+                clearable
+              />
+              <Text
+                style={styles.taglineCounter}
+                accessibilityLabel={`${Array.from(draft.tagline ?? "").length} of ${WEBSITE_TAGLINE_MAX} characters`}
+                testID="brand-tagline-counter"
+              >
+                {Array.from(draft.tagline ?? "").length} / {WEBSITE_TAGLINE_MAX}
+              </Text>
+            </View>
             <InlineTextArea
               value={draft.bio ?? ""}
               onChangeText={(v) => setDraft({ ...draft, bio: v })}
@@ -886,7 +905,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               clearable
             />
             <Text style={styles.kindHint}>
-              Optional. We'll use this to pre-fill venues for any experiences you publish, and to show your address on your public page.
+              Optional. We&apos;ll use this to pre-fill venues for any experiences you publish, and to show your address on your public page.
             </Text>
           </View>
 
@@ -1288,6 +1307,14 @@ const styles = StyleSheet.create({
   },
   fieldsCol: {
     gap: spacing.sm,
+  },
+  taglineCounter: {
+    marginTop: 4,
+    paddingHorizontal: spacing.xs,
+    textAlign: "right",
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
   },
 
   kindHint: {

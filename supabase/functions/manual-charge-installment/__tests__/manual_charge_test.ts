@@ -10,12 +10,15 @@ const HELPER_SOURCE = await Deno.readTextFile(
   new URL("../../_shared/installments/createInstallmentPI.ts", import.meta.url),
 );
 const MIGRATION_SOURCE = await Deno.readTextFile(
-  new URL("../../../migrations/20260723000001_orch_0914_manual_charge_installment.sql", import.meta.url),
+  new URL(
+    "../../../migrations/20260723000001_orch_0914_manual_charge_installment.sql",
+    import.meta.url,
+  ),
 );
 
-Deno.test("ORCH-0914 manual charge calls auth RPC before shared PI helper", () => {
+Deno.test("#3645 manual charge calls auth RPC before provider-neutral helper", () => {
   const rpcIdx = FUNCTION_SOURCE.indexOf("biz_manual_charge_installment");
-  const helperIdx = FUNCTION_SOURCE.indexOf("createInstallmentPI({");
+  const helperIdx = FUNCTION_SOURCE.indexOf("chargeInstallment({");
   if (rpcIdx < 0 || helperIdx < 0 || rpcIdx > helperIdx) {
     throw new Error("manual-charge-installment must call RPC before helper");
   }
@@ -23,7 +26,7 @@ Deno.test("ORCH-0914 manual charge calls auth RPC before shared PI helper", () =
 
 Deno.test("ORCH-0914 manual charge preserves explicit at-risk override guard", () => {
   assertStringIncludes(FUNCTION_SOURCE, "atRiskOverride === true");
-  assertStringIncludes(FUNCTION_SOURCE, "override: { atRisk: atRiskOverride }");
+  assertStringIncludes(FUNCTION_SOURCE, "atRiskOverride,");
   assertStringIncludes(MIGRATION_SOURCE, "at_risk IS TRUE");
   assertStringIncludes(MIGRATION_SOURCE, "p_atrisk_override IS NOT TRUE");
 });

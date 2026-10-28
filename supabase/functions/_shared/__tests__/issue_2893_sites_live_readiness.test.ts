@@ -1,7 +1,6 @@
 import {
-  safePilotDeactivationReceipt,
-  validPilotDeactivation,
   validReadinessEvidence,
+  validRecoveryState,
 } from "../../brand-site-cms-callback/index.ts";
 import { verifySitesEnvelope } from "../sitesContracts.ts";
 import { signCoreRequest } from "../../../../scripts/sites/lib/sites-ops.mjs";
@@ -215,60 +214,43 @@ Deno.test("#2893 signed retention is bound through the Core projection", async (
   );
 });
 
-Deno.test("#2893 backup failure can only disable the exact bound Gogi pilot", async () => {
-  const valid = {
-    schema_version: 1,
-    hostname: "gogi.sites.usemingla.com",
-    reason_code: "BACKUP_READINESS_FAILED",
-  };
-  assert(validPilotDeactivation(valid), "exact deactivation body rejected");
+// #2829 converted this test: a backup failure used to DISABLE the single
+// bound pilot through a signed deactivation. That switch is gone (Seth
+// 2026-10-12 D1: hold-and-page, never take sites down). The replacement is a
+// recovery-state alert that names no host, brand or site to switch off.
+Deno.test("#2893 backup failure records an alert and can disable nothing", async () => {
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const valid = { schema_version: 1, state: "late", observed_at: now };
+  assert(validRecoveryState(valid), "exact recovery-state body rejected");
   assert(
-    !validPilotDeactivation({ ...valid, brand_id: crypto.randomUUID() }),
+    !validRecoveryState({ ...valid, hostname: "any.sites.usemingla.com" }),
+    "a host to switch off was accepted",
+  );
+  assert(
+    !validRecoveryState({ ...valid, brand_id: crypto.randomUUID() }),
     "customer-supplied brand accepted",
   );
   assert(
-    !validPilotDeactivation({
-      ...valid,
-      hostname: "other.sites.usemingla.com",
-    }),
-    "wrong host accepted",
-  );
-  assert(
-    !validPilotDeactivation({ ...valid, reason_code: "MANUAL_DISABLE" }),
-    "unapproved reason accepted",
-  );
-  assert(
-    safePilotDeactivationReceipt({
-      site_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      hostname: "gogi.sites.usemingla.com",
-      status: "disabled",
-      deactivated_at: "2026-08-31T12:00:00+00:00",
-      last_good_preserved: true,
-    }, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")?.deactivated_at ===
-      "2026-08-31T12:00:00.000Z",
-    "PostgreSQL offset timestamp receipt rejected",
+    !validRecoveryState({ ...valid, state: "disabled" }),
+    "unknown state accepted",
   );
 
   const callback = await Deno.readTextFile(
     new URL("../../brand-site-cms-callback/index.ts", import.meta.url),
   );
   const branch = callback.match(
-    /if \(deactivationMatch && req\.method === "POST"\) \{[\s\S]*?\n    \}/,
+    /if \(recoveryStateMatch && req\.method === "POST"\) \{[\s\S]*?\n    \}/,
   )?.[0] ?? "";
   for (
     const token of [
       "siteId !== envelope.site_id",
-      '.from("brand_site_service_config")',
-      '.eq("pilot_site_id", siteId)',
-      '"brand_site_deactivate_gogi_pilot"',
-      "p_operation_id: requireUuid(envelope.operation_id)",
-      "safePilotDeactivationReceipt(data, siteId)",
+      '"brand_site_record_recovery_state"',
+      "emitRecoveryAlert(",
     ]
-  ) assert(branch.includes(token), `deactivation callback lost ${token}`);
-  assert(
-    !branch.includes("parsed.brand"),
-    "callback accepts customer brand input",
-  );
+  ) assert(branch.includes(token), `recovery callback lost ${token}`);
+  for (const forbidden of ["deactivate", "pilot", "parsed.brand"]) {
+    assert(!branch.includes(forbidden), `recovery callback contains ${forbidden}`);
+  }
 });
 
 Deno.test("#2893 activation is forward-only, atomic, and service-only", async () => {

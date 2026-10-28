@@ -17,8 +17,15 @@ export const tripKeys = {
     [...tripKeys.details(), eventId] as const,
   soldCountsByTier: (eventId: string) =>
     [...tripKeys.detail(eventId), "soldCountsByTier"] as const,
+  installmentCapability: (brandId: string) =>
+    [...tripKeys.all, "installmentCapability", brandId] as const,
   public: (): readonly ["trips", "public"] =>
     [...tripKeys.all, "public"] as const,
   publicBySlug: (brandSlug: string, tripSlug: string) =>
     [...tripKeys.public(), brandSlug, tripSlug] as const,
+  // Issue #2829 W4 — the trip guide: the editor's read (team only) and the
+  // public read every surface draws the trip page from.
+  guide: (eventId: string) => [...tripKeys.detail(eventId), "guide"] as const,
+  publicGuide: (eventId: string) =>
+    [...tripKeys.public(), "guide", eventId] as const,
 };

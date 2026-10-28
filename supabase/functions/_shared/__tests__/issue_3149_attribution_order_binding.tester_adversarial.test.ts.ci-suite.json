@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3149_attribution_order_binding.tester_adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-2829-shared-issue-3149-attribution-order-binding-tester-adversarial",
+  "profile": "deno-2-unit"
+}

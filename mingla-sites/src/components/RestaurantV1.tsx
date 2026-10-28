@@ -1,11 +1,21 @@
 /* eslint-disable @next/next/no-img-element -- media is already sanitized, responsive, immutable, and integrity-checked by the controlled route. */
+// TEMPORARY(#2829): v1 rollback renderer — remove once every site has a v2 last-good publication.
 import Link from "next/link";
 import { Fragment } from "react";
-import type { RestaurantArtifact, RestaurantBlock } from "../contracts/artifact";
+import type {
+  LegacyArtifactPage,
+  RestaurantArtifact,
+  RestaurantBlock,
+  TreeArtifactPage,
+} from "../contracts/artifact";
 import {
+  headerCta,
+  headerWordmark,
   hrefForPage,
   homePage,
-  navigablePages,
+  routedPage,
+  siteNavigation,
+  sitePages,
   type ArtifactPage,
 } from "../lib/pageRouting";
 import {
@@ -487,7 +497,7 @@ function footerMenuLinks(
 ): { label: string; href: string }[] {
   if (!menuHref) return [];
   const seen = new Map<string, string>();
-  for (const page of artifact.pages) {
+  for (const page of sitePages(artifact)) {
     if (page.enabled !== true) continue;
     for (const block of page.blocks ?? []) {
       if (block.type !== "menu_board" && block.type !== "menu_preview") continue;
@@ -522,14 +532,17 @@ export function RestaurantV1({
   page,
 }: {
   artifact: RestaurantArtifact;
-  page?: ArtifactPage;
+  page?: ArtifactPage | LegacyArtifactPage | TreeArtifactPage;
 }) {
   const home = homePage(artifact);
-  const current = page ?? home;
+  const current = page ? routedPage(page) : home;
   if (!current) return null;
-  const isHome = current.role === "home";
+  const isHome = current.isHome;
   const context = { siteId: artifact.site_id, brandId: artifact.brand_id, publicationId: artifact.publication_id };
-  const navPages = navigablePages(artifact);
+  // #2829 W2 — the menu comes from the artifact's navigation (tree) or, for
+  // earlier publications, from every published page in menu order.
+  const navItems = siteNavigation(artifact);
+  const currentHref = hrefForPage(current);
   const primaryHeroIndex = current.blocks.findIndex((block) => block.type === "hero");
   const hoursLocation = firstBlock(current.blocks, "hours_location");
   const reservation = firstBlock(current.blocks, "venue_reservation");
@@ -559,7 +572,7 @@ export function RestaurantV1({
    * bag and its "Order now" keep pointing at the real menu rather than at the
    * page you are already on.
    */
-  const orderablePage = artifact.pages.find((page) =>
+  const orderablePage = sitePages(artifact).find((page) =>
     page.enabled === true &&
     (page.blocks ?? []).some(
       (block) => block.type === "menu_board" && typeof block.venue_id === "string",
@@ -569,7 +582,14 @@ export function RestaurantV1({
    * Only when there IS an orderable menu, and only if the page has not already
    * claimed the slot with a reservation or a menu link.
    */
-  const headerAction = primaryAction ?? (orderablePage
+  /*
+   * #2829 W2 — an owner-chosen header button wins; otherwise the page's own
+   * primary action, then the orderable menu, exactly as before.
+   */
+  const ownerCta = headerCta(artifact);
+  const headerAction = ownerCta
+    ? { href: ownerCta.href, label: ownerCta.label, kind: "contact" as const }
+    : primaryAction ?? (orderablePage
     ? {
       href: hrefForPage(orderablePage as ArtifactPage),
       label: "Order now",
@@ -670,7 +690,7 @@ export function RestaurantV1({
         className="brand-wordmark"
       />
     : null;
-  const footerColumns = <div className="footer-columns"><div className="footer-brand">{logo && isSafeHref(logo.url) ? <img src={logo.url} alt={artifact.site_settings.display_name} width={logo.width} height={logo.height} className="footer-wordmark" /> : <strong>{artifact.site_settings.display_name}</strong>}{artifact.site_settings.short_description ? <p>{artifact.site_settings.short_description}</p> : null}{iconLinks.length ? <ul className="footer-social">{iconLinks.map(({ link, icon }) => <li key={String(link.href)}><SafeLink href={link.href} className="social-button"><SocialGlyph name={icon} /><span className="sr-only">{link.label}</span></SafeLink></li>)}</ul> : null}</div><div><h2>Site</h2><nav aria-label="Footer navigation">{navPages.map((navPage) => <Link key={navPage.role} href={hrefForPage(navPage)}>{navPage.nav_label}</Link>)}</nav></div>{menuLinks.length ? <div><h2>Menu</h2><nav aria-label="Menu sections">{menuLinks.map((link) => <Link key={link.href} href={link.href}>{link.label}</Link>)}</nav></div> : null}<div className="footer-find"><h2>Find us</h2>{artifact.footer.address ? <p>{artifact.footer.address}</p> : null}{phoneLink ? <p><SafeLink href={phoneLink.href}>{phoneLink.label}</SafeLink></p> : null}{artifact.footer.hours_summary ? <p className="footer-hours">{artifact.footer.hours_summary}</p> : null}</div></div>;
+  const footerColumns = <div className="footer-columns"><div className="footer-brand">{logo && isSafeHref(logo.url) ? <img src={logo.url} alt={artifact.site_settings.display_name} width={logo.width} height={logo.height} className="footer-wordmark" /> : <strong>{artifact.site_settings.display_name}</strong>}{artifact.site_settings.short_description ? <p>{artifact.site_settings.short_description}</p> : null}{iconLinks.length ? <ul className="footer-social">{iconLinks.map(({ link, icon }) => <li key={String(link.href)}><SafeLink href={link.href} className="social-button"><SocialGlyph name={icon} /><span className="sr-only">{link.label}</span></SafeLink></li>)}</ul> : null}</div><div><h2>Site</h2><nav aria-label="Footer navigation">{navItems.map((item) => <Link key={item.href} href={item.href}>{item.label}</Link>)}</nav></div>{menuLinks.length ? <div><h2>Menu</h2><nav aria-label="Menu sections">{menuLinks.map((link) => <Link key={link.href} href={link.href}>{link.label}</Link>)}</nav></div> : null}<div className="footer-find"><h2>Find us</h2>{artifact.footer.address ? <p>{artifact.footer.address}</p> : null}{phoneLink ? <p><SafeLink href={phoneLink.href}>{phoneLink.label}</SafeLink></p> : null}{artifact.footer.hours_summary ? <p className="footer-hours">{artifact.footer.hours_summary}</p> : null}</div></div>;
   const factRail = <aside className="fact-rail" aria-label="Restaurant facts"><dl><div><dt>Visit</dt><dd>{address || "See restaurant details"}</dd></div><div><dt>Hours</dt><dd>{hours ? `${text(hours.day)} ${text(hours.value)}` : "See current opening hours"}</dd></div><div><dt>Contact</dt><dd>{contactLink && isSafeHref(contactLink.href) ? <SafeLink href={contactLink.href} context={context} ctaKind="contact">{contactLink.label}</SafeLink> : "Contact the restaurant"}</dd></div></dl></aside>;
-  return <CartScope siteId={artifact.site_id}><SiteTheme artifact={artifact} /><SiteRuntimeClient context={context} /><RevealOnScroll /><HeaderScrollState /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand" aria-label={brandWordmark ? `${artifact.site_settings.display_name} home` : undefined}>{brandWordmark ?? artifact.site_settings.display_name}</Link><SiteNav links={navPages.map((navPage) => ({ role: navPage.role, label: String(navPage.nav_label ?? ""), href: hrefForPage(navPage), current: navPage.role === current.role }))} />{orderablePage ? <HeaderCart menuHref={hrefForPage(orderablePage as ArtifactPage)} onMenuPage={orderablePage.role === current.role} /> : null}{headerAction ? <SafeLink href={headerAction.href} context={context} ctaKind={headerAction.kind} className="header-action accent">{headerAction.label}</SafeLink> : null}</header><main id="main" className={contentStartsUnderHeader ? "header-offset" : undefined}>{primaryHeroIndex < 0 ? <header className="page-header" style={isSafeHref(pageBackdrop) ? { backgroundImage: `url(${JSON.stringify(pageBackdrop).slice(1, -1)})` } : undefined}><div>{openPill}<h1>{current.title}</h1><nav className="crumbs" aria-label="Breadcrumb"><Link href="/">Home</Link><span aria-hidden="true">/</span><span aria-current="page">{current.title}</span></nav></div></header> : null}<div className="page-content">{groupReels(current.blocks).map((group, groupIndex) => group.kind === "reels" ? <section className="reel-grid" key={`reels-${groupIndex}`}>{reelGridHeading(group.reels[0]!.block)}<div className="reel-grid-films">{group.reels.map(({ block, index }) => <figure className="reel-card" key={`${block.type}-${index}`}><ReelVideo src={text(block.video_url)} poster={text(block.poster_url)} label={text(block.heading, "Film")} /><figcaption>{text(block.heading)}</figcaption></figure>)}</div>{reelGridCta(group.reels[0]!.block)}</section> : <Fragment key={`${group.block.type}-${group.index}`}><Block block={group.block} context={context} primaryHeading={group.index === primaryHeroIndex} facts={isHome && group.index === primaryHeroIndex ? factRail : undefined} pill={group.index === primaryHeroIndex ? openPill : undefined} /></Fragment>)}</div></main><footer className="footer">{footerColumns}<div className="footer-bar"><p>{artifact.footer.legal_text}</p><a href={MINGLA_CREDIT_HREF} target="_blank" rel="noopener noreferrer" className="footer-credit">Powered by Mingla<span className="sr-only"> (opens in a new tab)</span></a></div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></CartScope>;
+  return <CartScope siteId={artifact.site_id}><SiteTheme artifact={artifact} /><SiteRuntimeClient context={context} /><RevealOnScroll /><HeaderScrollState /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand" aria-label={brandWordmark ? `${artifact.site_settings.display_name} home` : undefined}>{brandWordmark ?? headerWordmark(artifact) ?? artifact.site_settings.display_name}</Link><SiteNav links={navItems.map((item) => ({ label: String(item.label ?? ""), href: item.href, current: item.href === currentHref, ...(item.children ? { children: item.children.map((child) => ({ label: child.label, href: child.href, current: child.href === currentHref })) } : {}) }))} />{orderablePage ? <HeaderCart menuHref={hrefForPage(orderablePage as ArtifactPage)} onMenuPage={orderablePage.path === current.path} /> : null}{headerAction ? <SafeLink href={headerAction.href} context={context} ctaKind={headerAction.kind} className="header-action accent">{headerAction.label}</SafeLink> : null}</header><main id="main" className={contentStartsUnderHeader ? "header-offset" : undefined}>{primaryHeroIndex < 0 ? <header className="page-header" style={isSafeHref(pageBackdrop) ? { backgroundImage: `url(${JSON.stringify(pageBackdrop).slice(1, -1)})` } : undefined}><div>{openPill}<h1>{current.title}</h1><nav className="crumbs" aria-label="Breadcrumb"><Link href="/">Home</Link><span aria-hidden="true">/</span><span aria-current="page">{current.title}</span></nav></div></header> : null}<div className="page-content">{groupReels(current.blocks).map((group, groupIndex) => group.kind === "reels" ? <section className="reel-grid" key={`reels-${groupIndex}`}>{reelGridHeading(group.reels[0]!.block)}<div className="reel-grid-films">{group.reels.map(({ block, index }) => <figure className="reel-card" key={`${block.type}-${index}`}><ReelVideo src={text(block.video_url)} poster={text(block.poster_url)} label={text(block.heading, "Film")} /><figcaption>{text(block.heading)}</figcaption></figure>)}</div>{reelGridCta(group.reels[0]!.block)}</section> : <Fragment key={`${group.block.type}-${group.index}`}><Block block={group.block} context={context} primaryHeading={group.index === primaryHeroIndex} facts={isHome && group.index === primaryHeroIndex ? factRail : undefined} pill={group.index === primaryHeroIndex ? openPill : undefined} /></Fragment>)}</div></main><footer className="footer">{footerColumns}<div className="footer-bar"><p>{artifact.footer.legal_text}</p><a href={MINGLA_CREDIT_HREF} target="_blank" rel="noopener noreferrer" className="footer-credit">Powered by Mingla<span className="sr-only"> (opens in a new tab)</span></a></div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></CartScope>;
 }

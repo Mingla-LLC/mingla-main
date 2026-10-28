@@ -21,6 +21,8 @@ export async function sendInstallmentReminder(input: {
   );
 
   if (error !== null) {
+    const context = (error as { context?: { status?: unknown } }).context;
+    if (context?.status === 429) throw new Error("rate limited");
     throw new Error(`send-installment-reminder failed: ${error.message}`);
   }
   if (data === null) {

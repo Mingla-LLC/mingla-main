@@ -439,8 +439,14 @@ describe("#3801 — the balance date (payment plan fixed_date)", () => {
       path.join(TRIP_DIR, "InstallmentScheduleDisplay.tsx"),
       "utf8",
     );
-    expect(display).toContain("label: formatDueDate(inst)");
-    expect(display).toMatch(
+    expect(display).toContain("buildInstallmentScheduleRows({ schedule");
+
+    const rowBuilder = fs.readFileSync(
+      path.join(TRIP_DIR, "installmentScheduleRows.ts"),
+      "utf8",
+    );
+    expect(rowBuilder).toContain("label: formatDueDate(inst)");
+    expect(rowBuilder).toMatch(
       /inst\.dueIsCalendarDate === true\) \{\s*const label = formatCalendarDate\(inst\.dueAt\)/,
     );
   });

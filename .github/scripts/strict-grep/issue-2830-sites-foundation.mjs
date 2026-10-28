@@ -18,6 +18,15 @@ const PATHS = {
     "supabase/migrations/__tests__/issue_3157_publish_public_reachability.test.sql",
   reachabilityDeno:
     "supabase/functions/_shared/__tests__/issue_3157_publish_public_reachability.test.ts",
+  // #2829 (SPEC A6) — the multi-brand migration that replaced the single
+  // Gogi pilot binding, and the SQL suite that proves its replacement
+  // behaviour (per-brand entitlement, owner offline, recovery alert).
+  multiBrandMigration: "supabase/migrations/20280119012829_issue_2829_sites_multi_brand_w1.sql",
+  multiBrandSql: "supabase/migrations/__tests__/issue_2829_sites_multi_brand.test.sql",
+  // #2829 W8 — the custom-domain migration re-creates both resolvers (the
+  // detaching window, every address of the site); its definitions are now the
+  // live ones, so the host-binding pins below hold for it too.
+  customDomainsMigration: "supabase/migrations/20280119082829_issue_2829_custom_domains.sql",
   deployWrapper: "scripts/ops/deploy-sites-edge-functions.sh",
   deployWrapperTest: "scripts/ops/__tests__/issue_2893_sites_edge_deploy_wrapper.test.mjs",
   security: "supabase/functions/_shared/sitesSecurity.ts",
@@ -32,13 +41,22 @@ const PATHS = {
   denoHappy: "supabase/functions/_shared/__tests__/issue_2830_sites_foundation_happy.test.ts",
   denoLive: "supabase/functions/_shared/__tests__/issue_2893_sites_live_readiness.test.ts",
   businessFlag: "mingla-business/src/config/featureFlags.ts",
-  businessRoute: "mingla-business/app/brand/[id]/website.tsx",
-  businessView: "mingla-business/src/components/sites/BrandWebsiteView.tsx",
+  // #2829 W9r — the redesigned Website section replaced the old route body and
+  // BrandWebsiteView: the controller owns availability, provisioning and the
+  // durable publication; the shell owns the zero signal and the redirect;
+  // Publish & history owns terminal recovery; Addresses and Overview are the
+  // other customer surfaces the neutrality pins cover.
+  businessRoute: "mingla-business/src/components/sites/website/useWebsiteController.ts",
+  businessView: "mingla-business/src/components/sites/website/WebsiteApp.tsx",
+  businessPublish: "mingla-business/src/components/sites/website/sections/PublishSection.tsx",
+  businessAddresses: "mingla-business/src/components/sites/website/sections/AddressesSection.tsx",
+  businessOverview: "mingla-business/src/components/sites/website/sections/OverviewSection.tsx",
   businessService: "mingla-business/src/services/brandSitesService.ts",
   businessJourney: "mingla-business/src/sites/websiteJourney.ts",
   businessEntry: "mingla-business/src/sites/brandWebsiteEntry.ts",
   businessProfile: "mingla-business/src/components/brand/BrandProfileView.tsx",
   businessReturn: "mingla-business/src/sites/studioReturn.ts",
+  businessContracts: "mingla-business/src/sites/contracts.ts",
   checkout: "supabase/functions/ticket-checkout-create/index.ts",
   cmsPackage: "mingla-site-cms/package.json",
   cmsConfig: "mingla-site-cms/src/lib/config.ts",
@@ -66,8 +84,14 @@ const PATHS = {
   publicConsentContract: "mingla-sites/src/lib/consent.ts",
   publicPublication: "mingla-sites/src/lib/publication.ts",
   publicArtifact: "mingla-sites/src/contracts/artifact.ts",
+  // #2829 A8: v1/v2 artifact accessors (the canonical address of either schema).
+  publicSiteArtifact: "mingla-sites/src/lib/siteArtifact.ts",
   publicRenderer: "mingla-sites/src/components/RestaurantV1.tsx",
-  publicStyles: "mingla-sites/src/app/styles.css",
+  // #2829 A8: the v1 stylesheet moved (still served for v1 publications and rollback).
+  publicStyles: "mingla-sites/public/designs/legacy-v1.css",
+  // #2829 A8: the atelier design draws gögi's look on v2; its colours come from the registry defaults.
+  atelierStyles: "mingla-sites/public/designs/atelier/1.css",
+  designRegistry: "packages/site-contracts/src/designs.ts",
   publicConsent: "mingla-sites/src/components/ConsentControl.tsx",
   publicEvents: "mingla-sites/src/app/api/events/route.ts",
   publicAttributionRoute: "mingla-sites/src/app/api/attribution/route.ts",
@@ -80,7 +104,21 @@ const PATHS = {
   // provider-inventory scanner's intentional literal-reference contract.
   secretWorkflow: [".github", "workflows", "supabase-secret-budget" + ".yml"].join("/"),
   webWorkflow: [".github", "workflows", "web-build-check" + ".yml"].join("/"),
+  // #2829 W11 — structural Sites rules moved here from mingla-business jest
+  // files (#1047: no new source-text pins in jest; structural rules belong in
+  // a strict-grep gate).
+  bizPreviewFrame: "mingla-business/src/sites/previewFrame.ts",
+  sitesOrigins: "mingla-sites/src/lib/origins.ts",
+  edgeBusinessOrigin: "supabase/functions/_shared/businessWebOrigin.ts",
+  bizPreviewPaneWeb: "mingla-business/src/components/sites/SitePreviewPane.web.tsx",
+  bizTripRoute: "mingla-business/app/t/[brandSlug]/[tripSlug].tsx",
+  bizTripGuideHook: "mingla-business/src/hooks/usePublicTripGuide.ts",
+  consumerTripScreen: "app-mobile/src/screens/Trip/ConsumerTripDetailScreen.tsx",
+  consumerTripData: "app-mobile/src/hooks/useConsumerTripOfferingData.ts",
 };
+// #2829 W11 — every Website section source, concatenated with file markers
+// (read by readFiles; no Website surface may say "restaurant").
+const WEBSITE_SECTION_DIR = "mingla-business/src/components/sites/website";
 
 const EXACT_CMS_DEPENDENCIES = {
   "@payloadcms/db-postgres": "3.92.0",
@@ -96,6 +134,8 @@ const EXACT_CMS_DEPENDENCIES = {
   react: "19.2.6",
   "react-dom": "19.2.6",
   sharp: "0.35.5",
+  // #2829 A8 decision (3): font metric fallbacks, pinned exactly.
+  "@capsizecss/metrics": "4.3.0",
 };
 const EXACT_PUBLIC_DEPENDENCIES = {
   // `next` floor-checked separately — see NEXT_ADVISORY_FLOOR.
@@ -110,20 +150,39 @@ const NEXT_MAJOR = 16;
 // advisory floor so a later safe patch does not make current main red again.
 const DOMPURIFY_ADVISORY_FLOOR = Object.freeze([3, 4, 17]);
 const DOMPURIFY_MAJOR = 3;
-const ARI_TOOLS = [
-  "get_brand_site",
-  "list_site_pages",
-  "get_site_page",
-  "propose_site_content_update",
-  "propose_site_settings_update",
-  "attach_approved_site_media",
-  "validate_site_draft",
-  "create_site_preview",
-  "publish_site",
-  "get_site_operation_status",
-  "list_site_versions",
-  "rollback_site",
-];
+// [TEST-MOD-APPROVED #2829] W9b retarget (A6 rules): the twelve-tool closed
+// registry, every tool at marketing manager, became the website designer's
+// closed registry generated from site-contracts: still an EXACT set, each tool
+// pinned to its role — publish and rollback now need a brand admin (rank 50,
+// I-PROPOSED-2829-04), as do the plan answers, the first draft and the
+// confirm-real card; trip guides need an event manager.
+const ARI_TOOL_ROLES = {
+  get_brand_site: "marketing_manager",
+  get_site_plan: "marketing_manager",
+  list_site_designs: "marketing_manager",
+  get_block_catalog: "marketing_manager",
+  get_site_tokens: "marketing_manager",
+  run_site_design_checks: "marketing_manager",
+  list_site_pages: "marketing_manager",
+  get_site_page: "marketing_manager",
+  validate_site_draft: "marketing_manager",
+  save_site_plan_answers: "brand_admin",
+  create_site_draft: "brand_admin",
+  propose_site_composition: "marketing_manager",
+  propose_block_variant: "marketing_manager",
+  propose_site_tokens: "marketing_manager",
+  propose_site_copy: "marketing_manager",
+  propose_site_imagery: "marketing_manager",
+  propose_site_collection_entry: "marketing_manager",
+  confirm_site_review: "brand_admin",
+  propose_trip_guide_update: "event_manager",
+  create_site_preview: "marketing_manager",
+  publish_site: "brand_admin",
+  get_site_operation_status: "marketing_manager",
+  list_site_versions: "marketing_manager",
+  rollback_site: "brand_admin",
+};
+const ARI_TOOLS = Object.keys(ARI_TOOL_ROLES);
 
 /** Slice one top-level GitHub Actions job block from a workflow YAML string. */
 function workflowJobSection(yaml, jobKey) {
@@ -145,6 +204,13 @@ function forbid(source, token, label, failures) {
   if (source.toLowerCase().includes(token.toLowerCase())) {
     failures.push(`${label}: forbidden ${token}`);
   }
+}
+/** One `CREATE OR REPLACE FUNCTION public.<name>(...) ... $$;` block, or "". */
+function sqlFunctionBody(source, name) {
+  return source.match(
+    // #2829 W8 — newer migrations close bodies with `$function$;`.
+    new RegExp(`CREATE OR REPLACE FUNCTION public\\.${name}\\([\\s\\S]*?\\n\\$(?:function)?\\$;`),
+  )?.[0] ?? "";
 }
 function json(source, label, failures) {
   try {
@@ -329,24 +395,130 @@ export function violations(files) {
     failures,
   );
 
+  // [TEST-MOD-APPROVED #2829] SPEC A6 retarget. #2829 removed the single Gogi
+  // pilot binding (activate/deactivate switch, pilot_* columns, literal
+  // brand/operator/host). Each assertion on that removed switch is replaced by
+  // the assertion on its replacement; the old → new table is in the #2829 PR.
   const liveSql = files.liveSql ?? "";
   for (const token of [
-    "missing evidence activated pilot",
-    "missing host evidence activated pilot",
-    "stale database backup activated pilot",
-    "stale manifest activated pilot",
-    "stale restore drill activated pilot",
-    "stale host probe activated pilot",
-    "wrong pilot binding activated",
-    "wrong publication evidence activated pilot",
-    "non-pending host activated pilot",
-    "deactivation did not fail safe or preserve last-good",
-    "host readiness operation did not replay after activation",
-    "deactivation operation did not replay exactly",
-    "deactivation operation accepted a different reason",
-    "non-pilot availability leaked Website state",
+    "stale database backup evidence recorded",
+    "wrong host readiness accepted",
+    "host readiness operation did not verify and replay",
+    "brand without Sites leaked Website state",
     "readiness receipt was mutable",
   ]) need(liveSql, token, "Core live-readiness SQL regression", failures);
+  const multiBrandSql = files.multiBrandSql ?? "";
+  for (const token of [
+    // missing evidence → a new site's first publish needs recovery evidence.
+    "first publish without recovery evidence",
+    "production accepted local_synthetic evidence",
+    // missing host evidence / wrong binding → a host is bound to its own label
+    // and site, and only provisioning activates it.
+    "provisioned subdomain not activated",
+    "subdomain host not bound to its label",
+    "host resolution crossed sites",
+    "host binding crossed sites",
+    "an unknown host resolved",
+    // non-pending host → suspended / revoked / deleted sites never resolve.
+    "a suspended site resolved",
+    "a soft-deleted brand''s site resolved",
+    "revocation wrong (site must hide, publications stay, others up)",
+    // stale evidence → alerts and keeps every site up (hold-and-page).
+    "stale recovery evidence took a site down or was not recorded",
+    "resolver gates on recovery evidence",
+    // #2829 W11 (A7) — full strength again for the three pins B1 had to move
+    // to source: stale manifest / restore drill / host probe evidence is
+    // refused behaviourally (never recorded), blocks a new site's first
+    // publish, and leaves the published site resolving.
+    "RAISE EXCEPTION 'stale manifest evidence recorded';",
+    "'object_manifest_verified_at', to_char((clock_timestamp() - interval '26 hours 1 second')",
+    "RAISE EXCEPTION 'stale restore drill evidence recorded';",
+    "'restore_drill_verified_at', to_char((clock_timestamp() - interval '100 days 1 second')",
+    "IF NOT v_failed THEN RAISE EXCEPTION 'first publish allowed on a stale %', v_case; END IF;",
+    "FOREACH v_case IN ARRAY ARRAY['manifest', 'restore_drill'] LOOP",
+    "RAISE EXCEPTION 'stale host probe accepted';",
+    "clock_timestamp() - interval '15 minutes 1 second', 'w1-cafe-nono.sites.usemingla.com',",
+    // deactivation fail-safe / exact replay → owner offline hides exactly one
+    // site, replays idempotently, and back online restores the same last-good.
+    "owner offline did not hide exactly that site",
+    "back online did not restore the same publication",
+    "offline/online not audited exactly once each",
+    // non-pilot availability → an ungranted brand gets nothing.
+    "ungranted brand reported available",
+    "an ungranted brand provisioned a site",
+    "revoked brand authorized for Studio",
+    // the binding is gone, and no single-tenant literal survives anywhere.
+    "pilot activation functions survived",
+    "single-tenant literal in current function definition(s): %",
+    // #3652 — a touch is spent only on a real order of its own brand.
+    "a touch was spent on an order it never verified",
+  ]) need(multiBrandSql, token, "Core multi-brand SQL regression", failures);
+
+  // The same freshness windows the pilot switch enforced now gate a NEW site's
+  // first publish, the evidence recorder, and host readiness.
+  const multiBrandMigration = files.multiBrandMigration ?? "";
+  const authorizeBody = sqlFunctionBody(multiBrandMigration, "brand_site_authorize_operation");
+  for (const token of [
+    "OR (p_kind IN ('publish','rollback') AND v_rank < 50)",
+    "OR NOT public.brand_site_entitled(v_site.brand_id) THEN",
+    "IF p_kind = 'publish' AND v_site.last_successful_publication_id IS NULL THEN",
+    "AND v_config.database_backup_verified_at > clock_timestamp() - interval '26 hours'",
+    "AND v_config.object_manifest_verified_at > clock_timestamp() - interval '26 hours'",
+    "AND v_config.restore_drill_verified_at > clock_timestamp() - interval '100 days'",
+    "OR (v_config.environment = 'local' AND v_latest_source = 'local_synthetic')",
+  ]) need(authorizeBody, token, "Core multi-brand first-publish readiness", failures);
+  const evidenceBody = sqlFunctionBody(multiBrandMigration, "brand_site_record_readiness_evidence");
+  for (const token of [
+    "OR v_database_at <= v_accepted_at - interval '26 hours'",
+    "OR v_manifest_at <= v_accepted_at - interval '26 hours' THEN",
+    "OR v_restore_at <= v_accepted_at - interval '100 days' THEN",
+  ]) need(evidenceBody, token, "Core multi-brand evidence freshness", failures);
+  need(
+    sqlFunctionBody(multiBrandMigration, "brand_site_record_host_readiness"),
+    "OR p_observed_at <= v_accepted_at - interval '15 minutes' THEN",
+    "Core multi-brand evidence freshness",
+    failures,
+  );
+  // deactivation reason code → the recovery alert accepts a closed state set,
+  // alters no site, and is service-only.
+  const recoveryBody = sqlFunctionBody(multiBrandMigration, "brand_site_record_recovery_state");
+  for (const token of [
+    "IF p_state IS NULL OR p_state NOT IN ('fresh','late','stale')",
+    "'sites_affected', 0);",
+    "'recovery_alert',",
+  ]) need(recoveryBody, token, "Core recovery alert", failures);
+  for (const token of ["UPDATE public.brand_site_hosts", "UPDATE public.brand_sites", "owner_offline_at"]) {
+    forbid(recoveryBody, token, "Core recovery alert takes nothing down", failures);
+  }
+  need(
+    multiBrandMigration,
+    "REVOKE ALL ON FUNCTION public.brand_site_record_recovery_state(text, timestamptz) FROM PUBLIC, anon, authenticated;",
+    "Core recovery alert",
+    failures,
+  );
+  // Request-scoped host binding: only granted, live, non-deleted brands resolve.
+  for (const source of [multiBrandMigration, files.customDomainsMigration ?? ""]) {
+    for (const name of ["brand_site_resolve_publication", "brand_site_resolve_host"]) {
+      const body = sqlFunctionBody(source, name);
+      for (const token of [
+        "ON entitlement.brand_id = site.brand_id AND entitlement.status = 'granted'",
+        "WHERE host.hostname = lower(p_hostname)",
+        "AND brand.deleted_at IS NULL",
+      ]) need(body, token, `Core host binding (${name})`, failures);
+    }
+    need(
+      sqlFunctionBody(source, "brand_site_resolve_publication"),
+      "AND site.owner_offline_at IS NULL",
+      "Core host binding (brand_site_resolve_publication)",
+      failures,
+    );
+  }
+  // #3652 — the SQL half of the order binding.
+  const consumeBody = sqlFunctionBody(multiBrandMigration, "brand_site_consume_attribution");
+  for (const token of [
+    "OR v_order.brand_id IS DISTINCT FROM v_touch.brand_id",
+    "OR v_order.venue_id IS DISTINCT FROM public.brand_site_orderable_venue(v_touch.site_id)",
+  ]) need(consumeBody, token, "Core #3652 order binding", failures);
 
   // #3157 — a publish certified itself green against a path the public could
   // not reach, and the kill switch left no audit row. Both halves are pinned.
@@ -399,12 +571,33 @@ export function violations(files) {
     "public check wrote no audit row",
     "publication columns did not record the public 404",
     "operation receipt did not carry the public check",
-    "activation wrote no audit row",
-    "deactivation wrote no audit row",
-    "a refused pilot call still wrote an audit row",
     "the public check annotation was rewritable",
     "public check accepted a different observation on one operation",
   ]) need(reachabilitySql, token, "Sites public reachability SQL regression", failures);
+  // [TEST-MOD-APPROVED #2829] SPEC A6 retarget: the pilot activate/deactivate
+  // audit rows went with the switch. What can now take a site dark (owner
+  // offline, entitlement grant/revoke) is audited, and a refused call is not:
+  // the grant count is exact after two refused calls on the same brand.
+  for (const token of [
+    "RAISE EXCEPTION 'grants were not audited';",
+    "WHERE action = 'entitlement.granted' AND brand_id IN (v_brand_a, v_brand_b, v_brand_c)) <> 3 THEN",
+    "a brand owner granted Sites to itself",
+    "offline/online not audited exactly once each",
+  ]) need(files.multiBrandSql ?? "", token, "Sites audit trail SQL regression", failures);
+  for (const routine of ["set_owner_offline", "admin_grant", "admin_revoke"]) {
+    const body = sqlFunctionBody(files.multiBrandMigration ?? "", `brand_site_${routine}`);
+    for (const token of ["INSERT INTO public.brand_site_audit_log(", "v_actor uuid := auth.uid();"]) {
+      need(body, token, `Sites ${routine} audit trail`, failures);
+    }
+  }
+  for (const routine of ["admin_grant", "admin_revoke"]) {
+    need(
+      sqlFunctionBody(files.multiBrandMigration ?? "", `brand_site_${routine}`),
+      "IF v_actor IS NULL OR NOT public.is_admin_user() THEN",
+      `Sites ${routine} audit trail`,
+      failures,
+    );
+  }
 
   const reachabilityDeno = files.reachabilityDeno ?? "";
   for (const token of [
@@ -496,12 +689,22 @@ export function violations(files) {
     'value.evidence_kind === "restore_drill"',
     '"brand_site_record_readiness_evidence"',
     '"brand_site_retention_protection"',
-    "/pilot-deactivation",
-    'value.reason_code === "BACKUP_READINESS_FAILED"',
-    '"brand_site_deactivate_gogi_pilot"',
-    '.eq("pilot_site_id", siteId)',
-    "safePilotDeactivationReceipt(data, siteId)",
+    // [TEST-MOD-APPROVED #2829] SPEC A6 retarget: the signed pilot
+    // deactivation became a recovery-state alert that names nothing to
+    // switch off, and every site-scoped route (incl. #3651 authorize) is bound
+    // to the site the envelope was signed for.
+    "/recovery-state$/",
+    'value.state === "fresh" || value.state === "late" ||',
+    'const RECOVERY_STATE_KEYS = [\n  "observed_at",\n  "schema_version",\n  "state",\n] as const;',
+    '"brand_site_record_recovery_state"',
+    "emitRecoveryAlert(String(parsed.state), requireUuid(envelope.operation_id));",
+    "sites_taken_offline: 0,",
+    "const siteId = requireUuid(authorizeMatch[1]);\n      if (siteId !== envelope.site_id) throw new Error(\"TENANT_MISMATCH\");",
+    "const siteId = requireUuid(recoveryStateMatch[1]);\n      if (siteId !== envelope.site_id) throw new Error(\"TENANT_MISMATCH\");",
   ]) need(files.callback ?? "", token, "ambiguous CMS callback", failures);
+  for (const token of ["brand_site_deactivate_gogi_pilot", "pilot_site_id", "pilot-deactivation"]) {
+    forbid(files.callback ?? "", token, "ambiguous CMS callback", failures);
+  }
   for (const forbidden of [
     "authorization:",
     "signature_b64:",
@@ -526,30 +729,37 @@ export function violations(files) {
   ) failures.push("slot 88: exact manifest contract missing");
 
   const ariTools = files.ariTools ?? "";
-  const toolNames = [...ariTools.matchAll(/publicationTool\("([^"]+)"\)|^\s*"((?:get|list|propose|attach|validate)_[^"]+)"/gm)]
+  const toolNames = [...ariTools.matchAll(/publicationTool\("([^"]+)"\)|^\s*"((?:get|list|propose|attach|validate|save|create|run|confirm)_[^"]+)"/gm)]
     .map((match) => match[1] || match[2])
     .filter((name, index, names) => name && names.indexOf(name) === index);
   for (const name of ARI_TOOLS) {
     need(ariTools, `"${name}"`, "Ari closed tool registry", failures);
-    need(files.ariAuthorization ?? "", `${name}: role("marketing_manager", "brand")`, "Ari authorization", failures);
+    need(files.ariAuthorization ?? "", `${name}: role("${ARI_TOOL_ROLES[name]}", "brand")`, "Ari authorization", failures);
   }
   if (
-    toolNames.length !== 12 ||
+    toolNames.length !== ARI_TOOLS.length ||
     toolNames.some((name) => !ARI_TOOLS.includes(name)) ||
     ARI_TOOLS.some((name) => !toolNames.includes(name))
-  ) failures.push("Ari closed tool registry: exact twelve-tool set drifted");
+  ) failures.push("Ari closed tool registry: exact tool set drifted");
 
   const flag = files.businessFlag ?? "";
   need(flag, "sites: readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, false)", "Business feature flag", failures);
   forbid(flag, "process.env[", "Business static feature flag", failures);
   const route = files.businessRoute ?? "";
   for (const token of [
-    "role.rank >= 20",
-    "role.rank < 20",
+    // [TEST-MOD-APPROVED #2829] SPEC A6 retarget (A5): the client rank copy
+    // (rank >= 20 to open, < 20 to redirect) became Core's per-brand
+    // availability answer (entitlement + live rank, pinned in the Core
+    // migration below); an error or a "no" redirects out.
+    "const availability = useBrandSiteAvailability(safeBrandId, canCheckAvailability);",
+    "const websiteAvailable: boolean | null = availability.isError\n    ? false",
+    "const capabilities = capabilitiesFrom(availability.data);",
+    "if (!capabilities.canCreate || provisionOperation === null) return;",
     "useBrandSitePreview",
     "usePublishBrandSite",
     "useRollbackBrandSite",
-    "isPreviewing={preview.isPending}",
+    // [TEST-MOD-APPROVED #2829] W9r retarget: the route's JSX prop became the controller's field.
+    "isPreviewing: preview.isPending",
     "loadPublicationOperation",
     "onReconcilePublication",
     "onResetFailedPublication",
@@ -562,13 +772,43 @@ export function violations(files) {
     "durable publication dispatch",
     failures,
   );
-  need(files.businessView ?? "", "if (props.rank < 20) return null;", "rank-10 zero signal", failures);
+  need(
+    files.businessView ?? "",
+    "if (!props.capabilities.canEdit && !canPublish && !canProvision) return null;",
+    "rank-10 zero signal",
+    failures,
+  );
+  forbid(route, "useCurrentBrandRole", "Business Website route", failures);
+  // Core owns the rank rule: rank-10 members get nothing, marketing manager
+  // (20) edits, brand admin/owner (50) creates and publishes, and an ungranted
+  // brand is unavailable to everyone.
+  const availabilityBody = sqlFunctionBody(
+    files.multiBrandMigration ?? "",
+    "brand_site_business_availability",
+  );
+  for (const token of [
+    "IF v_actor IS NULL OR v_rank < 20 THEN",
+    "IF NOT public.brand_site_entitled(p_brand_id) THEN",
+    "'can_create', v_rank >= 50,",
+    "'can_publish', v_rank >= 50,",
+    "'can_edit', v_rank >= 20,",
+  ]) need(availabilityBody, token, "rank-10 zero signal", failures);
+  need(
+    files.businessContracts ?? "",
+    "if (!availability || availability.available !== true) return NO_WEBSITE_CAPABILITIES;",
+    "rank-10 zero signal",
+    failures,
+  );
   for (const token of [
     "onResetFailedPublication",
     "View operation details",
     "View live website",
     'result_summary?.retryable === true',
-  ]) need(files.businessView ?? "", token, "terminal publication recovery", failures);
+    "Last good preserved",
+    "Check the same operation",
+  ]) need(files.businessPublish ?? "", token, "terminal publication recovery", failures);
+  // [TEST-MOD-APPROVED #2829] W9r: the redirect moved from the route into the shell.
+  need(files.businessView ?? "", "if (canCheckAvailability && websiteAvailable === false) {", "Business Website route", failures);
   for (const token of [
     'const PUBLICATION_OPERATION_PREFIX = "mingla:brand-site-publication:v1:"',
     "publicationOperationKey(",
@@ -602,16 +842,18 @@ export function violations(files) {
   for (const token of [
     "websiteAvailable === false",
     "websiteAvailable !== true",
-  ]) need(route, token, "direct Website route availability", failures);
+  ]) need(files.businessView ?? "", token, "direct Website route availability", failures);
   forbid(files.businessProfile ?? "", 'import("../../services/brandSitesService")', "Business eager bundle boundary", failures);
   forbid(files.businessProfile ?? "", 'import("../../sites/websiteJourney")', "Business eager bundle boundary", failures);
-  forbid(files.businessView ?? "", "Journey state", "customer-safe Website state", failures);
+  for (const source of [files.businessView, files.businessPublish, files.businessAddresses, files.businessOverview]) {
+    forbid(source ?? "", "Journey state", "customer-safe Website state", failures);
+  }
   for (const token of [
     "export const STUDIO_RETURN_RESULTS = [",
     "brandWebsiteReturnPath",
     "studioResult=",
   ]) need(files.businessReturn ?? "", token, "validated Business return owner", failures);
-  for (const source of [route, files.businessView ?? ""]) {
+  for (const source of [route, files.businessView ?? "", files.businessPublish ?? "", files.businessAddresses ?? "", files.businessOverview ?? ""]) {
     forbid(source, "custom domain", "deferred domain UI", failures);
     for (const provider of ["Vercel", "Payload", "Supabase", "Neon"]) {
       forbid(source, provider, "customer provider neutrality", failures);
@@ -684,12 +926,14 @@ export function violations(files) {
   ]) need(files.cmsEndpoints ?? "", token, "Studio gateway", failures);
   // [TEST-MOD-APPROVED #2893] The tenant-authorized media restore endpoint is
   // the ninth live Core authorization check; the previous eight remain.
+  // #2829 W6 — the three stream-video endpoints (capability, intent, status)
+  // are the tenth to twelfth; every earlier check remains.
   const studioAuthCalls = (files.cmsEndpoints ?? "").match(
     /requireAuthenticatedStudioRequest\(req\)/g,
   )?.length ?? 0;
-  if (studioAuthCalls !== 9) {
+  if (studioAuthCalls !== 12) {
     failures.push(
-      `Studio live authorization: expected 9 endpoint checks, found ${studioAuthCalls}`,
+      `Studio live authorization: expected 12 endpoint checks, found ${studioAuthCalls}`,
     );
   }
   for (const token of [
@@ -746,9 +990,11 @@ export function violations(files) {
   const protectedMediaFieldCount = (files.cmsMediaCollection ?? "").match(
     /access: systemFieldAccess/g,
   )?.length ?? 0;
-  if (protectedMediaFieldCount !== 14) {
+  // #2829 W6 — duration_ms, kind, stream_video_id, stream_url and
+  // stream_host are system fields too (14 -> 19); none is owner-writable.
+  if (protectedMediaFieldCount !== 19) {
     failures.push(
-      `custom media pipeline boundary: expected 14 read-protected system fields, found ${protectedMediaFieldCount}`,
+      `custom media pipeline boundary: expected 19 read-protected system fields, found ${protectedMediaFieldCount}`,
     );
   }
   for (const token of [
@@ -841,6 +1087,8 @@ export function violations(files) {
       "mingla-business/app/(tabs)/ari.tsx",
       "mingla-business/app/brand/[id]/website/ari.tsx",
       "mingla-business/app/brand/[id]/website.tsx",
+      // #2829 W9r — the Website section's shell is lazy-loaded by that route.
+      "mingla-business/src/components/sites/website/WebsiteApp.tsx",
     ].filter((file) => {
       let body = "";
       try {
@@ -905,7 +1153,20 @@ export function violations(files) {
     "MINGLA_RUNTIME_TO_CORE_CURRENT_KID",
     "MINGLA_RUNTIME_TO_CORE_CURRENT_KEY_B64",
     "await signedCorePost({",
-    "gogi.sites.usemingla.com",
+    // [TEST-MOD-APPROVED #2829] SPEC A6 retarget: the one hard-coded Gogi host
+    // became "any <label>.<suffix> host Core resolves", and the canonical
+    // address must be the resolved site's OWN primary host.
+    "if (!LABEL.test(first.slice(0, -tail.length))) throw new Error(\"NOT_FOUND\");",
+    // #2829 A8: v1 and v2 artifacts both bind canonical to the site's own
+    // address (accessor pinned below). W8 retarget (old -> new): canonical ==
+    // primary host became "canonical is the primary or one of THIS site's own
+    // addresses as Core lists them" (a brand's own domain can become the main
+    // address after publish); another site's address is still refused.
+    "!isOwnCanonical(siteCanonicalUrl(artifact), resolution)",
+    "if (canonical === canonicalOrigin(resolution)) return true;",
+    'if (typeof canonical !== "string" || !canonical.startsWith("https://")) return false;',
+    "return Array.isArray(resolution.site_hostnames) && resolution.site_hostnames.includes(host);",
+    "return `https://${resolution.primary_hostname}`;",
     "expectedKey",
     "await sha256(bytes)",
     "assertRestaurantArtifact",
@@ -930,6 +1191,10 @@ export function violations(files) {
     "<h1>{current.title}</h1>",
     "primaryHeading={group.index === primaryHeroIndex}",
   ]) need(publicCombined, token, "public last-good runtime", failures);
+  for (const token of [
+    "export function siteCanonicalUrl(artifact: SiteArtifact): string | undefined {\n  return siteSeo(artifact).canonical_url;\n}",
+    "return (isV2Artifact(artifact) ? artifact.seo : artifact.site_settings.seo) ?? {};",
+  ]) need(files.publicSiteArtifact ?? "", token, "public last-good runtime", failures);
   for (const forbidden of ["@payloadcms", "from \"payload\"", "postgresAdapter", "sharp(", "lexicalEditor"])
     forbid(publicCombined, forbidden, "public runtime isolation", failures);
   for (const token of [
@@ -945,22 +1210,56 @@ export function violations(files) {
     ".gallery > * {\n  min-width: 0;\n}",
     "@media (prefers-reduced-motion: reduce)",
   ]) need(files.publicStyles ?? "", token, "Restaurant Website v1 visual contract", failures);
+  // #2829 A8: the same visual contract, as atelier (v2) draws it: tokens in, the v1 values as defaults.
+  for (const token of [
+    "--ink: var(--c-canvas);",
+    "--gold: var(--c-accent-400);",
+    "--gold-hover: var(--c-accent-300);",
+    "min-width: 320px",
+    "min-height: 100svh",
+    "76svh",
+    '[data-design="atelier"] :where(a, button, summary) {\n  min-width: 44px;\n  min-height: 44px;\n}',
+    '[data-design="atelier"] .gallery {\n  display: grid;\n  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));',
+    '  [data-design="atelier"] .gallery {\n    grid-template-columns: repeat(2, minmax(0, 1fr));',
+    '[data-design="atelier"] .gallery > * {\n  min-width: 0;\n}',
+    "@media (prefers-reduced-motion: reduce)",
+  ]) need(files.atelierStyles ?? "", token, "Restaurant Website v1 visual contract (atelier)", failures);
+  for (const token of [
+    'canvas: "#101013",',
+    '300: "#dfb262",\n          400: "#cda052",',
+    'seed: "#cda052",',
+  ]) need(files.designRegistry ?? "", token, "Restaurant Website v1 visual contract (atelier defaults)", failures);
   for (const token of [
     'className="fact-rail"',
     "editorial-feature",
     "ConsentControl",
     "TrackedLink",
   ]) need(files.publicRenderer ?? "", token, "Restaurant Website v1 composition", failures);
+  // [TEST-MOD-APPROVED #2829] SPEC A6 retarget: host resolution is still a
+  // signed Core call, now signed with the host-resolution id and pinned to
+  // the host in the signed path; every other call is bound to the site Core
+  // resolved for THIS request (never the old single configured site id).
   need(
     files.publicPublication ?? "",
-    "await signedCorePost({",
+    'await signedHostResolution(hostname, "publication");',
     "public last-good runtime",
     failures,
   );
+  forbid(files.publicPublication ?? "", "gogi.sites.usemingla.com", "public last-good runtime", failures);
   for (const token of [
-    "input.siteId !== config.pilotSiteId",
+    "siteId === HOST_RESOLUTION_SITE_ID ||",
+    "!input.path.startsWith(`/internal/v1/sites/${siteId}/`) ||",
+    "(input.body.site_id !== undefined && input.body.site_id !== siteId)",
+    "path: `/internal/v1/hosts/${hostname}/${kind}`,",
+    "siteId: HOST_RESOLUTION_SITE_ID,",
     'throw new Error("SITE_SCOPE_MISMATCH")',
   ]) need(files.publicGateway ?? "", token, "public pilot signing boundary", failures);
+  forbid(files.publicGateway ?? "", "pilotSiteId", "public pilot signing boundary", failures);
+  // The Core half of the request-scoped binding.
+  for (const token of [
+    "routeMatch[1].toLowerCase() !== hostname",
+    "envelope.site_id !== SITES_HOST_RESOLUTION_SITE_ID &&\n      resolvedSiteId !== envelope.site_id",
+  ]) need(files.runtimeResolve ?? "", token, "public pilot signing boundary", failures);
   for (const token of [
     'cookieHeader.split(";")',
     'name === CONSENT_KEY && value === "granted"',
@@ -1046,7 +1345,11 @@ export function violations(files) {
   for (const token of [
     "readiness callback accepts only the two exact v1 bodies",
     "signed retention is bound through the Core projection",
-    "backup failure can only disable the exact bound Gogi pilot",
+    // [TEST-MOD-APPROVED #2829] SPEC A6 retarget (was: "backup failure can
+    // only disable the exact bound Gogi pilot").
+    "backup failure records an alert and can disable nothing",
+    "a host to switch off was accepted",
+    "unknown state accepted",
     "activation is forward-only, atomic, and service-only",
     "exact non-pruning four-function wrapper",
   ]) need(files.denoLive ?? "", token, "live-readiness strict regression", failures);
@@ -1054,16 +1357,67 @@ export function violations(files) {
     "site_attribution_token_digest",
     '.is("site_attribution_token_digest",',
   ]) need(files.checkout ?? "", token, "checkout first-touch handoff", failures);
+
+  // #2829 W11 — Sites structural rules (were source-text jest pins).
+  const previewPattern = /BUSINESS_PREVIEW_ORIGIN_PATTERN =\s*\/(.+)\/;/.exec(files.bizPreviewFrame ?? "")?.[1];
+  if (!previewPattern) failures.push("Sites preview frame: BUSINESS_PREVIEW_ORIGIN_PATTERN literal missing in the Business app");
+  else {
+    for (const key of ["sitesOrigins", "edgeBusinessOrigin"]) {
+      need(files[key] ?? "", previewPattern, "Sites preview frame origin pattern parity", failures);
+    }
+  }
+  need(files.bizPreviewPaneWeb ?? "", "src: previewUrlForFrame(url, ", "Sites web preview pane frames through previewUrlForFrame", failures);
+  for (const token of [
+    "const guideQuery = usePublicTripGuide(trip.id);",
+    "buildTripOfferingData(trip, payload.bookable !== false, allInByTicketType, guideQuery.data)",
+  ]) need(files.bizTripRoute ?? "", token, "trip guide on buyer web", failures);
+  need(files.bizTripGuideHook ?? "", 'supabase.rpc("pg_public_trip_guide"', "trip guide on buyer web", failures);
+  if (/useAuth\(|from "\.\.\/context\/AuthContext"/.test(files.bizTripGuideHook ?? "")) {
+    failures.push("trip guide on buyer web: the public guide hook must stay anon-tolerant (no useAuth)");
+  }
+  for (const token of [
+    "const tripGuide = useConsumerTripGuide(detail?.tripId ?? null);",
+    "buildConsumerTripOfferingData(detail, tierEnrichment, tripGuide)",
+  ]) need(files.consumerTripScreen ?? "", token, "trip guide on consumer iOS/Android", failures);
+  need(files.consumerTripData ?? "", 'supabase.rpc("pg_public_trip_guide"', "trip guide on consumer iOS/Android", failures);
+  for (const chunk of String(files.websiteSections ?? "").split("\n//@@FILE ").filter(Boolean)) {
+    const name = chunk.slice(0, chunk.indexOf("\n"));
+    const body = chunk.slice(chunk.indexOf("\n") + 1)
+      // The controller passes Core's validation shape through unchanged; it never renders.
+      .replace(/renderer: "Restaurant Website v1",/g, "");
+    if (/restaurant/i.test(body)) failures.push(`Website copy: ${name} says "restaurant"`);
+  }
+  if (String(files.websiteSections ?? "").split("\n//@@FILE ").filter(Boolean).length < 10) {
+    failures.push("Website copy: fewer than 10 Website section files were scanned");
+  }
   return failures;
 }
 
+function websiteSectionSources() {
+  const out = [];
+  const walk = (dir) => {
+    for (const name of fs.readdirSync(path.join(ROOT, dir)).sort()) {
+      const relative = `${dir}/${name}`;
+      if (fs.statSync(path.join(ROOT, relative)).isDirectory()) walk(relative);
+      else if (/\.tsx?$/.test(name) && !name.includes(".test.")) {
+        out.push(`\n//@@FILE ${relative}\n${fs.readFileSync(path.join(ROOT, relative), "utf8")}`);
+      }
+    }
+  };
+  walk(WEBSITE_SECTION_DIR);
+  return out.join("");
+}
+
 function readFiles() {
-  return Object.fromEntries(
-    Object.entries(PATHS).map(([key, relative]) => [
-      key,
-      fs.readFileSync(path.join(ROOT, relative), "utf8"),
-    ]),
-  );
+  return {
+    ...Object.fromEntries(
+      Object.entries(PATHS).map(([key, relative]) => [
+        key,
+        fs.readFileSync(path.join(ROOT, relative), "utf8"),
+      ]),
+    ),
+    websiteSections: websiteSectionSources(),
+  };
 }
 
 function selfTest() {
@@ -1075,12 +1429,14 @@ function selfTest() {
     ["denoLive", "activation is forward-only, atomic, and service-only", "activation is optional", "live-readiness strict regression"],
     ["liveMigration", "CREATE OR REPLACE FUNCTION public.brand_site_activate_gogi_pilot", "CREATE OR REPLACE FUNCTION public.brand_site_enable_unverified_pilot", "Core live-readiness repair"],
     ["callback", "/readiness-evidence", "/readiness-unverified", "ambiguous CMS callback"],
-    ["callback", "/pilot-deactivation", "/pilot-shutdown-removed", "ambiguous CMS callback"],
+    // [TEST-MOD-APPROVED #2829] SPEC A6: the four reversions below that name
+    // removed single-tenant behaviour now revert its replacement instead.
+    ["callback", "/recovery-state$/", "/recovery-state-removed$/", "ambiguous CMS callback"],
     ["businessProfile", "websiteContext !== null", "websiteContext === null", "non-pilot Website zero signal"],
     ["deployWrapper", "--use-api", "--use-docker", "Sites exact Edge deploy wrapper"],
     ["businessFlag", "readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, false)", "readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, true)", "Business feature flag"],
     ["businessFlag", "process.env.EXPO_PUBLIC_FF_SITES_ENABLED", 'process.env["EXPO_PUBLIC_FF_SITES_ENABLED"]', "Business static feature flag"],
-    ["businessRoute", "role.rank >= 20", "role.rank >= 10", "Business Website route"],
+    ["businessRoute", "const availability = useBrandSiteAvailability(safeBrandId, canCheckAvailability);", "const availability = useBrandSiteAvailability(safeBrandId, false);", "Business Website route"],
     ["businessRoute", "await persistPublicationOperation(operation);", "await persistPublicationPointer(operation);", "durable publication dispatch"],
     ["businessRoute", "!canResetFailedPublicationOperation(", "!canResetAnyPublicationOperation(", "Business Website route"],
     ["businessService", 'const PUBLICATION_OPERATION_PREFIX = "mingla:brand-site-publication:v1:"', 'const PUBLICATION_OPERATION_PREFIX = "mingla:brand-site-publication:"', "durable publication scope"],
@@ -1113,8 +1469,35 @@ function selfTest() {
     ["cmsMediaManager", "window.location.assign(result.return_url)", 'window.dispatchEvent(new CustomEvent("mingla:media-selected"))', "accessible Studio media manager"],
     ["cmsPreview", 'mobile: "320px"', 'mobile: "375px"', "complete preview chrome"],
     ["cmsStyles", "--studio-gold: #cda052", "--studio-gold: #d85a22", "approved Studio visual shell"],
-    ["publicPublication", "await signedCorePost({", "await unsignedCorePost({", "public last-good runtime"],
-    ["publicGateway", "input.siteId !== config.pilotSiteId", "input.siteId === config.pilotSiteId", "public pilot signing boundary"],
+    ["publicPublication", 'await signedHostResolution(hostname, "publication");', 'await unsignedHostResolution(hostname, "publication");', "public last-good runtime"],
+    ["publicGateway", "(input.body.site_id !== undefined && input.body.site_id !== siteId)", "(input.body.site_id !== undefined && input.body.site_id === siteId)", "public pilot signing boundary"],
+    // #2829 SPEC A6 — new replacement pins are wired.
+    ["callback", '"brand_site_record_recovery_state"', '"brand_site_deactivate_gogi_pilot"', "ambiguous CMS callback"],
+    ["callback", "const siteId = requireUuid(authorizeMatch[1]);\n      if (siteId !== envelope.site_id) throw new Error(\"TENANT_MISMATCH\");", "const siteId = requireUuid(authorizeMatch[1]);", "ambiguous CMS callback"],
+    ["businessView", "if (!props.capabilities.canEdit && !canPublish && !canProvision) return null;", "if (false) return null;", "rank-10 zero signal"],
+    ["multiBrandMigration", "'can_edit', v_rank >= 20,", "'can_edit', v_rank >= 10,", "rank-10 zero signal"],
+    ["multiBrandMigration", "OR NOT public.brand_site_entitled(v_site.brand_id) THEN", "THEN", "Core multi-brand first-publish readiness"],
+    ["multiBrandMigration", "OR v_restore_at <= v_accepted_at - interval '100 days' THEN", "OR v_restore_at <= v_accepted_at - interval '400 days' THEN", "Core multi-brand evidence freshness"],
+    ["multiBrandMigration", "IF p_state IS NULL OR p_state NOT IN ('fresh','late','stale')", "IF p_state IS NULL", "Core recovery alert"],
+    ["multiBrandMigration", "OR v_order.brand_id IS DISTINCT FROM v_touch.brand_id", "", "Core #3652 order binding"],
+    ["multiBrandSql", "owner offline did not hide exactly that site", "owner offline did something", "Core multi-brand SQL regression"],
+    // #2829 W11 — the structural rules moved from jest bite.
+    ["edgeBusinessOrigin", "mingla-business-", "mingla-biz-", "Sites preview frame origin pattern parity"],
+    ["bizPreviewPaneWeb", "src: previewUrlForFrame(url, ", "src: url, ", "Sites web preview pane frames through previewUrlForFrame"],
+    ["bizTripRoute", "const guideQuery = usePublicTripGuide(trip.id);", "const guideQuery = { data: null };", "trip guide on buyer web"],
+    ["consumerTripScreen", "buildConsumerTripOfferingData(detail, tierEnrichment, tripGuide)", "buildConsumerTripOfferingData(detail, tierEnrichment, null)", "trip guide on consumer iOS/Android"],
+    ["websiteSections", "\n//@@FILE ", "\n//@@FILE injected.tsx\nconst title = \"Restaurant website\";\n//@@FILE ", "Website copy"],
+    ["multiBrandSql", "RAISE EXCEPTION 'stale manifest evidence recorded';", "RAISE NOTICE 'stale manifest evidence recorded';", "Core multi-brand SQL regression"],
+    ["multiBrandSql", "RAISE EXCEPTION 'stale restore drill evidence recorded';", "RAISE NOTICE 'stale restore drill evidence recorded';", "Core multi-brand SQL regression"],
+    ["multiBrandSql", "RAISE EXCEPTION 'stale host probe accepted';", "RAISE NOTICE 'stale host probe accepted';", "Core multi-brand SQL regression"],
+    ["multiBrandSql", "clock_timestamp() - interval '15 minutes 1 second', 'w1-cafe-nono.sites.usemingla.com',", "clock_timestamp() - interval '1 minute', 'w1-cafe-nono.sites.usemingla.com',", "Core multi-brand SQL regression"],
+    ["multiBrandSql", "FOREACH v_case IN ARRAY ARRAY['manifest', 'restore_drill'] LOOP", "FOREACH v_case IN ARRAY ARRAY['manifest'] LOOP", "Core multi-brand SQL regression"],
+    ["multiBrandSql", "RAISE EXCEPTION 'grants were not audited';", "RAISE NOTICE 'grants were not audited';", "Sites audit trail SQL regression"],
+    ["publicGateway", "siteId === HOST_RESOLUTION_SITE_ID ||", "", "public pilot signing boundary"],
+    ["runtimeResolve", "routeMatch[1].toLowerCase() !== hostname", "false", "public pilot signing boundary"],
+    ["publicPublication", "!isOwnCanonical(siteCanonicalUrl(artifact), resolution)", "false", "public last-good runtime"],
+    ["publicPublication", "return Array.isArray(resolution.site_hostnames) && resolution.site_hostnames.includes(host);", "return true;", "public last-good runtime"],
+    ["publicSiteArtifact", "  return siteSeo(artifact).canonical_url;", "  return undefined;", "public last-good runtime"],
     ["publicConsentContract", 'name === CONSENT_KEY && value === "granted"', 'name.includes(CONSENT_KEY) && value.startsWith("granted")', "public exact consent cookie boundary"],
     ["attribution", "const envelope = await verifySitesEnvelope", "const envelope = await verifyUnsignedEnvelope", "signed attribution gateway"],
     ["publicRenderer", "<h1>{current.title}</h1>", '<h1>{"Page"}</h1>', "public last-good runtime"],
@@ -1124,13 +1507,22 @@ function selfTest() {
     ["publicStyles", ".gallery {\n  display: grid;\n  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));", ".gallery {\n  display: grid;\n  grid-template-columns: 1.5fr 1fr 1fr;", "Restaurant Website v1 visual contract"],
     ["publicStyles", "  .gallery {\n    grid-template-columns: repeat(2, minmax(0, 1fr));", "  .gallery {\n    grid-template-columns: 1fr 1fr;", "Restaurant Website v1 visual contract"],
     ["publicStyles", ".gallery > * {\n  min-width: 0;\n}", ".gallery > * {\n  min-width: auto;\n}", "Restaurant Website v1 visual contract"],
+    ["atelierStyles", "--gold: var(--c-accent-400);", "--gold: var(--c-accent-500);", "Restaurant Website v1 visual contract (atelier)"],
+    ["atelierStyles", '[data-design="atelier"] :where(a, button, summary) {\n  min-width: 44px;\n  min-height: 44px;\n}', '[data-design="atelier"] :where(a, button, summary) {\n  min-width: 32px;\n  min-height: 32px;\n}', "Restaurant Website v1 visual contract (atelier)"],
+    ["atelierStyles", '  [data-design="atelier"] .gallery {\n    grid-template-columns: repeat(2, minmax(0, 1fr));', '  [data-design="atelier"] .gallery {\n    grid-template-columns: 1fr 1fr;', "Restaurant Website v1 visual contract (atelier)"],
+    ["designRegistry", 'canvas: "#101013",', 'canvas: "#ffffff",', "Restaurant Website v1 visual contract (atelier defaults)"],
+    ["designRegistry", '300: "#dfb262",\n          400: "#cda052",', '300: "#dfb262",\n          400: "#d85a22",', "Restaurant Website v1 visual contract (atelier defaults)"],
     ["checkout", '.is("site_attribution_token_digest",', '.neq("site_attribution_token_digest",', "checkout first-touch handoff"],
     ["publicPackage", '"next": "16.4.2"', '"@payloadcms/next": "3.88.0",\n    "next": "16.4.2"', "production dependency isolation"],
     ["publicPackage", '"next": "16.4.2"', '"next": "16.3.7"', "next advisory floor"],
     ["cmsPackage", '"next": "16.4.2"', '"next": "15.5.0"', "next major must remain"],
     ["cmsPackage", '"dompurify": "3.4.17"', '"dompurify": "3.4.16"', "DOMPurify override"],
     ["publicPackage", '"dompurify": "3.4.17"', '"dompurify": "3.4.16"', "DOMPurify override"],
-    ["businessView", "Managed securely by Mingla.", "Configure custom domain", "deferred domain UI"],
+    // [TEST-MOD-APPROVED #2829] W9r: the Mingla address line now lives in Addresses.
+    ["businessAddresses", "Your website always keeps its Mingla address.", "Configure custom domain", "deferred domain UI"],
+    ["businessPublish", "result_summary?.retryable === true", "result_summary?.retryable !== false", "terminal publication recovery"],
+    ["businessView", "if (canCheckAvailability && websiteAvailable === false) {", "if (false) {", "Business Website route"],
+    ["businessOverview", "testID=\"overview-ari\"", "testID=\"overview-ari\" Journey state", "customer-safe Website state"],
     ["secretWorkflow", "final 90-name bundled-authority state", "final state", "existing secret CI lane"],
     ["webWorkflow", "mingla-sites-build:", "mingla-sites-removed:", "existing build CI lane"],
     // CMS job step name is unique; strip only that lane's --allowlist command.

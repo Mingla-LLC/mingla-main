@@ -273,7 +273,9 @@ export function phase3dContractDigest(manifest) {
 }
 // [TEST-MOD-APPROVED #3643] Final 48-suite Phase 3E command/runtime/routing seal.
 // #3643: include the two insights lanes' pre-fold live-provider routing scopes.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "ebaedee0a2fb2f16722a22ecf707c6d9dd390bb198674b9d14e81cf38ef7d7fb";
+// #2829/#3645: register the new Sites and installment migration/test inputs
+// selected by the three preserved full-history replay commands.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "9ece136ff15efc1a6644753204067646134d2ba4cfa1820dbc49220c803ace2b";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -576,6 +578,17 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
       // reviewed references; provider authority and count remain unchanged.
       "mingla-business/src/hooks/__tests__/useMenus.issue3564.implementor.test.ts",
       "mingla-business/src/hooks/__tests__/useMenus.issue3564.tester.adversarial.test.ts",
+    ]),
+  }),
+  Object.freeze({
+    // [#2829 W7c] The Sites design goldens were rendered on arm64, so their
+    // comparison runs in this retained provider's own arm64 job; the test pins
+    // that job's runner and that no x64 job runs the comparison. One reviewed
+    // reference-file delta on an already sealed provider, not a new provider.
+    issue: 2829,
+    workflow: "web-build-check.yml",
+    referenceFiles: Object.freeze([
+      "scripts/sites/__tests__/issue_2829_goldens_arm64_job.test.mjs",
     ]),
   }),
 ]);

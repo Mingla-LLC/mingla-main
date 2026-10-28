@@ -19,6 +19,9 @@ import type { BrandPlacePipelineState } from "../services/businessPlaceAuthoring
 // Brand record via utils/brandProfileCompleteness.ts and precomputes the
 // edit route; nothing Brand-shaped enters this module at runtime.
 import type { BusinessTodoProfileInput } from "./brandProfileCompleteness";
+// #2829 W9a — type-only: the website row is derived by the plan module,
+// which the boot path loads lazily (useWebsiteTodo).
+import type { WebsiteTodo } from "../sites/websiteTodo";
 
 /**
  * META-ORCH-1255 — one per-venue pipeline row for the `get_venue_live` band.
@@ -223,6 +226,12 @@ export interface BusinessTodoInput {
    * brand loads.
    */
   profile?: BusinessTodoProfileInput & { editRoute: string };
+  /**
+   * #2829 W9a — the website plan row ("Build your website" / "Finish your
+   * website · n of 8 done · next: …" / "Your website · Ask an admin to start
+   * it"), already decided from Core's plan answer. Absent or null → no row.
+   */
+  website?: WebsiteTodo | null;
   /**
    * Issue #1735 G-15 — Insights nudge rows. OPTIONAL so pre-1735
    * callers/tests compile + behave unchanged (absent ⇒ zero rows). Emitted
@@ -521,6 +530,36 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
       sublabel: "Publish it to go live",
       action: { kind: "route", route: input.draftRoute },
     });
+  }
+
+  // 5b — #2829 W9a — the website plan (design contract chapter 1: after
+  // getting paid, before profile polish). Vanishes after the first publish.
+  if (input.website) {
+    const website = input.website;
+    if (website.variant === "build") {
+      todos.push({
+        id: "website_build",
+        label: "Build your website",
+        sublabel: "Ari walks you through it · about 15 min",
+        action: { kind: "route", route: website.route },
+      });
+    } else if (website.variant === "finish") {
+      todos.push({
+        id: "website_build",
+        label: "Finish your website",
+        sublabel: website.nextLabel
+          ? `${website.done} of 8 done · next: ${website.nextLabel}`
+          : `${website.done} of 8 done`,
+        action: { kind: "route", route: website.route },
+      });
+    } else {
+      todos.push({
+        id: "website_build",
+        label: "Your website",
+        sublabel: "Ask an admin to start it",
+        action: { kind: "route", route: website.route },
+      });
+    }
   }
 
   // 6 — Brand profile (ORCH-1256). TAIL band, after finish_draft: profile

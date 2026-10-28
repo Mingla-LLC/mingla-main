@@ -1,0 +1,144 @@
+/**
+ * #2829 AD-2 — colour maths for site tokens: hex parsing, HSL, and the
+ * deterministic ramp an owner's seed colour regenerates.
+ *
+ * A ramp is eleven explicit hex values (50 … 950). Designs ship their ramps
+ * as literal values, so a design's defaults are exactly what its author
+ * drew. A seed regenerates a ramp from ONE colour by a fixed lightness ladder
+ * (saturation scaled per step), so the same seed always gives the same ramp on
+ * every machine. Setting a role's seed back to the design's own seed restores
+ * the design's explicit ramp — not the generated one — which is what makes
+ * "Restore design defaults" exact (see `resolveRamp` in tokens.ts).
+ *
+ * Mingla never alters an owner's colour: nothing here "nudges" a value toward
+ * better contrast. Readability is a warning (readability.ts), never an edit.
+ */
+
+export const RAMP_STEPS = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950] as const;
+export type RampStep = (typeof RAMP_STEPS)[number];
+export type Hex = string;
+export type Ramp = Record<RampStep, Hex>;
+
+const HEX6 = /^#[0-9a-f]{6}$/;
+
+/** A colour is exactly `#rrggbb`, lowercase. Anything else is refused, never coerced. */
+export function isHex(value: unknown): value is Hex {
+  return typeof value === "string" && HEX6.test(value);
+}
+
+/** Lowercases a 6-digit hex the owner typed in any case; null for anything else. */
+export function normalizeHex(value: unknown): Hex | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  return HEX6.test(trimmed) ? trimmed : null;
+}
+
+export type Rgb = { r: number; g: number; b: number };
+export type Hsl = { h: number; s: number; l: number };
+
+export function hexToRgb(hex: Hex): Rgb {
+  if (!isHex(hex)) throw new Error("COLOR_INVALID");
+  return {
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16),
+  };
+}
+
+export function rgbToHex({ r, g, b }: Rgb): Hex {
+  const channel = (value: number) =>
+    Math.min(255, Math.max(0, Math.round(value))).toString(16).padStart(2, "0");
+  return `#${channel(r)}${channel(g)}${channel(b)}`;
+}
+
+export function rgbToHsl({ r, g, b }: Rgb): Hsl {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const l = (max + min) / 2;
+  if (max === min) return { h: 0, s: 0, l };
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h: number;
+  if (max === rn) h = (gn - bn) / d + (gn < bn ? 6 : 0);
+  else if (max === gn) h = (bn - rn) / d + 2;
+  else h = (rn - gn) / d + 4;
+  return { h: h * 60, s, l };
+}
+
+export function hslToRgb({ h, s, l }: Hsl): Rgb {
+  if (s === 0) return { r: l * 255, g: l * 255, b: l * 255 };
+  const hue = ((h % 360) + 360) % 360 / 360;
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const toChannel = (t: number) => {
+    let x = t;
+    if (x < 0) x += 1;
+    if (x > 1) x -= 1;
+    if (x < 1 / 6) return p + (q - p) * 6 * x;
+    if (x < 1 / 2) return q;
+    if (x < 2 / 3) return p + (q - p) * (2 / 3 - x) * 6;
+    return p;
+  };
+  return {
+    r: toChannel(hue + 1 / 3) * 255,
+    g: toChannel(hue) * 255,
+    b: toChannel(hue - 1 / 3) * 255,
+  };
+}
+
+/** Fixed lightness target per step (0–1). Light steps first. */
+export const RAMP_LIGHTNESS: Readonly<Record<RampStep, number>> = {
+  50: 0.97,
+  100: 0.93,
+  200: 0.86,
+  300: 0.76,
+  400: 0.65,
+  500: 0.55,
+  600: 0.46,
+  700: 0.38,
+  800: 0.3,
+  900: 0.22,
+  950: 0.14,
+};
+
+/** Saturation multiplier per step: the extremes are calmer than the middle. */
+export const RAMP_SATURATION_SCALE: Readonly<Record<RampStep, number>> = {
+  50: 0.85,
+  100: 0.9,
+  200: 0.94,
+  300: 0.97,
+  400: 1,
+  500: 1,
+  600: 0.97,
+  700: 0.93,
+  800: 0.88,
+  900: 0.82,
+  950: 0.76,
+};
+
+/**
+ * The ramp a seed generates: the seed's hue, its saturation scaled per step,
+ * and the fixed lightness ladder. Pure and deterministic.
+ */
+export function generateRamp(seed: Hex): Ramp {
+  const { h, s } = rgbToHsl(hexToRgb(seed));
+  const ramp = {} as Ramp;
+  for (const step of RAMP_STEPS) {
+    ramp[step] = rgbToHex(hslToRgb({
+      h,
+      s: Math.min(1, s * RAMP_SATURATION_SCALE[step]),
+      l: RAMP_LIGHTNESS[step],
+    }));
+  }
+  return ramp;
+}
+
+/** A role that only carries some steps (highlight, paper, danger, success). */
+export function pickSteps<S extends RampStep>(ramp: Ramp, steps: readonly S[]): Record<S, Hex> {
+  const out = {} as Record<S, Hex>;
+  for (const step of steps) out[step] = ramp[step];
+  return out;
+}

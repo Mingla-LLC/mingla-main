@@ -221,6 +221,13 @@ jobs:
       - name: "#3827 — Host web typing keeps every letter"
         if: always()
         run: npx jest --config jest.issue3827.web.render.cjs --ci --maxWorkers=2
+      # #3872 guards the Promote overview polish: kit cards keep their inner
+      # padding on web (GlassCard), Send is its own button beside the
+      # Campaigns row, Try again refetches, and the picker marks its choice
+      # with a check, all through react-native-web.
+      - name: "#3872 — Promote overview and kit padding (web)"
+        if: always()
+        run: npx jest --config jest.issue3872promote.web.render.cjs --ci --maxWorkers=2
       # #4037 guards the host traffic analytics redesign: the Home analytics
       # tile and the brand / listing traffic dashboard mount at phone and wide
       # desktop widths, through every collecting, error and populated state.

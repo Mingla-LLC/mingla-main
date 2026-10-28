@@ -6,14 +6,14 @@ import { lstat, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
-export const GOGI_BRAND_ID = "733bc470-45e1-4684-8896-acd7e26074ff";
-export const GOGI_CONFIGURED_BY = "1f3d2ddf-b741-4e2f-8884-d7222a660c7e";
+// #2829 — the brand, the operator and the site's address are inputs
+// (`--brand-id`, `--configured-by`; the address is Core's primary host, which
+// Studio computes into site settings itself). No id or host is defaulted here.
 export const GOGI_SOURCE = "gogi-ingest-brief-2026-08-27";
 export const CMS_ORIGIN = "https://studio.sites.usemingla.com";
 
 const STUDIO_COOKIE = "__Host-mingla_studio";
 const STUDIO_CSRF_COOKIE = "__Host-mingla_studio_csrf";
-const CANONICAL_URL = "https://gogi.sites.usemingla.com";
 const MAX_BYTES = 20 * 1024 * 1024;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -373,7 +373,6 @@ function projectSettings(settings) {
     foreground_color: settings.foreground_color,
     accent_color: settings.accent_color,
     typography: settings.typography,
-    canonical_url: settings.canonical_url,
     seo_title: settings.seo_title,
     seo_description: settings.seo_description,
     social_image: settings.social_image,
@@ -1034,7 +1033,6 @@ export function seedDocuments(
       accent_color: GOGI_SEED_COPY.colors.accent,
       // Their own register: condensed uppercase display, as their site uses.
       typography: "condensed-display",
-      canonical_url: CANONICAL_URL,
       seo_title: "gögi — Where Lagos Comes to Eat",
       seo_description: GOGI_SEED_COPY.description,
       social_image: heroMediaId,
@@ -1058,7 +1056,6 @@ function baselineSettings() {
   return {
     display_name: "Gogi Restaurant",
     typography: "editorial-serif",
-    canonical_url: CANONICAL_URL,
     analytics_consent_mode: "optional",
   };
 }
@@ -1166,7 +1163,6 @@ export function priorSeedDocuments({ heroMediaId, homeId, contactId, tenantId })
       foreground_color: GOGI_SEED_COPY.colors.foreground,
       accent_color: GOGI_SEED_COPY.colors.accent,
       typography: "modern-sans",
-      canonical_url: CANONICAL_URL,
       seo_title: "gögi — Where Lagos Comes to Eat",
       seo_description: GOGI_SEED_COPY.description,
       social_image: heroMediaId,
@@ -1619,7 +1615,6 @@ export function priorSeedDocumentsWave3(
       accent_color: GOGI_SEED_COPY.colors.accent,
       // Their own register: condensed uppercase display, as their site uses.
       typography: "condensed-display",
-      canonical_url: CANONICAL_URL,
       seo_title: "gögi — Where Lagos Comes to Eat",
       seo_description: GOGI_SEED_COPY.description,
       social_image: heroMediaId,
@@ -1885,8 +1880,6 @@ export function validateOptions(raw) {
   if (![options.siteId, options.brandId, options.tenantId, options.configuredBy].every((id) => UUID.test(id))) {
     fail("INVALID_ID");
   }
-  if (options.brandId !== GOGI_BRAND_ID) fail("WRONG_GOGI_BRAND");
-  if (options.configuredBy !== GOGI_CONFIGURED_BY) fail("WRONG_CONFIGURED_BY");
   if (options.source !== GOGI_SOURCE) fail("UNSUPPORTED_SOURCE");
   if (!SHA256.test(options.heroSha256)) fail("INVALID_HERO_SHA256");
   return options;

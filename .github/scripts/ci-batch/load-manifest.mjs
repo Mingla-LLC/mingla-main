@@ -39,7 +39,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3643: re-sealed after retaining #1403/#1421's complete pre-fold routing.
 // #3643: isolate the foundation migration fixture and retire the stale discovery rewind.
 // #3643: keep the retained attendance TypeScript tests on Node 22.
-export const BOOTSTRAP_SHA256 = "d7a86a07d72f9ad2cbc34bb78a483556783ad12dc141f9a1c366864652bf7227";
+// #2829 W7c: re-sealed after the Sites goldens test became one reviewed
+// reference on the retained arm64 web-build provider.
+export const BOOTSTRAP_SHA256 = "d61dacec36bd802ab38aa98d0d1b12a3271b05aba22eb4d4508de2b88b7081ff";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

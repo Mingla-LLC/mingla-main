@@ -171,14 +171,14 @@ function deriveInstallmentRow(rows: OrderInstallmentForBrand[]): TravelerMoneyRo
   const head = sortedRows[0];
   const paidToDateCents = sortedRows
     .filter((row) => row.status === "collected")
-    .reduce((sum, row) => sum + row.amountCents, 0);
+    .reduce((sum, row) => sum + row.amountChargedCents, 0);
   const outstandingCents = Math.max(0, head.orderTotalCents - paidToDateCents);
   const nextInstallment = sortedRows
     .filter((row) => row.status === "scheduled" || row.status === "failed")
     .sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0] ?? null;
   const attempted = mostRecentAttempted(sortedRows);
   const totalInstallmentCents = sortedRows.reduce(
-    (sum, row) => sum + row.amountCents,
+    (sum, row) => sum + row.amountChargedCents,
     0,
   );
   const depositCents = Math.max(0, head.orderTotalCents - totalInstallmentCents);
@@ -202,7 +202,7 @@ function deriveInstallmentRow(rows: OrderInstallmentForBrand[]): TravelerMoneyRo
       installments: sortedRows.map((row) => ({
         ordinal: row.ordinal,
         pct: 0,
-        amountCents: row.amountCents,
+        amountCents: row.amountChargedCents,
         dueAt: row.dueAt,
       })),
     },
@@ -716,7 +716,33 @@ const StatusPill: React.FC<{ status: LastChargeStatus }> = ({ status }) => {
 
 function formatNextInstallment(row: TravelerMoneyRow): string {
   if (row.nextInstallment === null) return "—";
-  return `${formatMoneyDate(row.nextInstallment.dueAt)} · ${formatCurrency(row.nextInstallment.amountCents, row.nextInstallment.currency)}`;
+  return `${formatMoneyDate(row.nextInstallment.dueAt)} · ${formatCurrency(row.nextInstallment.amountChargedCents, row.nextInstallment.currency)}`;
+}
+
+function relativeActionTime(value: string | null): string {
+  if (value === null) return "";
+  const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
+  const hours = Math.floor(elapsed / (60 * 60 * 1000));
+  if (hours < 1) return "just now";
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function installmentMethodLine(inst: OrderInstallmentForBrand): string {
+  if (inst.buyerAction === "approval_required") {
+    return "Waiting for buyer to approve";
+  }
+  if (inst.collectionMethod === "auto_card") {
+    return inst.paymentCardLast4
+      ? `Automatic · card ending ${inst.paymentCardLast4}`
+      : "Automatic card";
+  }
+  if (inst.buyerAction === "pay_link_sent") {
+    const when = relativeActionTime(inst.buyerActionAt);
+    return `Pay link sent${when ? ` ${when}` : ""}`;
+  }
+  return `Pay link will be sent ${formatMoneyDate(inst.dueAt)}`;
 }
 
 const RowActions: React.FC<TravelerRowProps & { compact?: boolean }> = ({
@@ -728,6 +754,8 @@ const RowActions: React.FC<TravelerRowProps & { compact?: boolean }> = ({
 }) => {
   const recentReminder = useRecentReminderForOrder(row.orderId);
   const canCharge = row.nextInstallment !== null && !row.isPaidInFull;
+  const sendPayLink = row.nextInstallment?.collectionMethod === "pay_link" ||
+    row.nextInstallment?.buyerAction === "approval_required";
   const reminderDisabled = row.isPaidInFull ||
     recentReminder.data !== null ||
     recentReminder.isLoading ||
@@ -736,10 +764,12 @@ const RowActions: React.FC<TravelerRowProps & { compact?: boolean }> = ({
     ? "No reminder needed — paid in full"
     : recentReminder.data !== null
       ? "Already reminded in the past 24h"
-      : "Send reminder";
+      : sendPayLink
+        ? "Send pay link"
+        : "Send reminder";
   return (
     <View style={[styles.actionRow, compact && styles.actionRowCompact]}>
-      <Pressable
+      {!sendPayLink ? <Pressable
         onPress={() => {
           if (row.nextInstallment === null) return;
           if (row.orderAtRisk) {
@@ -761,7 +791,7 @@ const RowActions: React.FC<TravelerRowProps & { compact?: boolean }> = ({
         ]}
       >
         <Text style={styles.moneyRetryBtnText}>Charge now</Text>
-      </Pressable>
+      </Pressable> : null}
       <Pressable
         onPress={() => sendReminderMutation.mutate({ orderId: row.orderId })}
         disabled={reminderDisabled}
@@ -796,14 +826,14 @@ const ExpandedLedger: React.FC<TravelerRowProps> = ({
             key={inst.id}
             style={{ marginBottom: spacing.xs }}
             accessibilityRole="text"
-            accessibilityLabel={`Installment ${inst.ordinal}, ${formatCurrency(inst.amountCents, inst.currency)}, ${statusLabel(inst.status)}, due ${formatMoneyDate(inst.dueAt)}`}
+            accessibilityLabel={`Installment ${inst.ordinal}, ${formatCurrency(inst.amountChargedCents, inst.currency)}, ${installmentMethodLine(inst)}, ${statusLabel(inst.status)}, due ${formatMoneyDate(inst.dueAt)}`}
           >
             <View style={styles.moneyInstallmentRow}>
               <Text style={styles.moneyInstallmentLabel}>
                 Installment {inst.ordinal} · {formatMoneyDate(inst.dueAt)}
               </Text>
               <Text style={styles.moneyInstallmentAmount}>
-                {formatCurrency(inst.amountCents, inst.currency)}
+                {formatCurrency(inst.amountChargedCents, inst.currency)}
               </Text>
               <View style={[styles.moneyStatusPill, pillStyle.pill]}>
                 <Text style={[styles.moneyStatusPillText, pillStyle.text]}>
@@ -811,6 +841,9 @@ const ExpandedLedger: React.FC<TravelerRowProps> = ({
                 </Text>
               </View>
             </View>
+            <Text style={styles.moneyBookingMeta}>
+              {installmentMethodLine(inst)}
+            </Text>
             {inst.status === "failed" ? (
               <>
                 <Text style={styles.moneyFailureReason}>

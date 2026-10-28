@@ -1,4 +1,8 @@
-import { MINGLA_BUSINESS_ORIGIN } from "./origins";
+import {
+  businessPreviewFrameAncestor,
+  MINGLA_BUSINESS_ORIGIN,
+  MINGLA_STUDIO_ORIGIN,
+} from "./origins";
 
 /*
  * ONE builder for the whole runtime's Content-Security-Policy, so the public
@@ -33,20 +37,66 @@ export const PREVIEW_PATHNAME = "/preview";
  */
 export const MAP_FRAME_ORIGIN = "https://www.openstreetmap.org";
 
-export function frameAncestorsFor(pathname: string): string {
+export function frameAncestorsFor(
+  pathname: string,
+  { localMode = false, frameAncestor = null }: {
+    localMode?: boolean;
+    /** `?fa=` on /preview: honoured only for a Business Vercel preview origin. */
+    frameAncestor?: string | null;
+  } = {},
+): string {
   /*
-   * The private preview is the ONE route that may be framed, and only by
-   * Business web, so the Website workspace can show the draft beside the
-   * controls. The route is noindex and needs an unguessable artifact key, so
-   * framing grants no reach that visiting the URL did not already grant.
+   * The private preview is the ONE route that may be framed: by Business web
+   * (the Website workspace shows the draft beside the controls) and by Mingla
+   * Studio (its preview page frames the draft). frame-ancestors checks EVERY
+   * ancestor, so Business framing Studio's preview page needs both.
+   *
+   * #2829 W9f — Studio was missing, so every Studio preview was blank,
+   * production included. Local mode adds the loopback origins (local Business
+   * web and Studio on any port); production never carries a wildcard.
+   *
+   * The route is noindex and needs an unguessable artifact key, so framing
+   * grants no reach that visiting the URL did not already grant.
    */
-  return pathname === PREVIEW_PATHNAME
-    ? `'self' ${MINGLA_BUSINESS_ORIGIN}`
-    : "'none'";
+  if (pathname !== PREVIEW_PATHNAME) return "'none'";
+  const extra = businessPreviewFrameAncestor(frameAncestor);
+  return [
+    "'self'",
+    MINGLA_BUSINESS_ORIGIN,
+    MINGLA_STUDIO_ORIGIN,
+    ...(extra ? [extra] : []),
+    ...(localMode ? ["http://localhost:*", "http://127.0.0.1:*"] : []),
+  ].join(" ");
+}
+
+/*
+ * #2829 W6 (AD-9) — video plays from the site's own media route, plus a
+ * stream-video CDN host ONLY when this publication plays a stream video from
+ * a host on the runtime's allowlist (`SITES_VIDEO_CDN_HOSTS`). The caller
+ * passes those hosts; anything that is not a bare hostname is dropped.
+ */
+export function mediaSrcFor(streamHosts: readonly string[] = []): string {
+  const hosts = streamHosts.filter((host) => /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(host));
+  return ["media-src 'self'", ...hosts.map((host) => `https://${host}`)].join(" ");
 }
 
 export function buildCsp(
-  { nonce, pathname, dev = false }: { nonce: string; pathname: string; dev?: boolean },
+  { nonce, pathname, dev = false, streamHosts = [], localMode = false, frameAncestor = null }: {
+    nonce: string;
+    pathname: string;
+    /** #2829 W9f — `?fa=` from a /preview request (validated in frameAncestorsFor). */
+    frameAncestor?: string | null;
+    dev?: boolean;
+    streamHosts?: readonly string[];
+    /*
+     * #2829 — local mode serves plain http on `*.sites.localhost`. WebKit
+     * (Safari, the iOS Simulator) applies `upgrade-insecure-requests` to
+     * those hosts and fetches every script, stylesheet and video over https,
+     * which fails, leaving an unstyled, inert page. Only local mode drops the
+     * directive; every production policy keeps it.
+     */
+    localMode?: boolean;
+  },
 ): string {
   return [
     "default-src 'self'",
@@ -63,12 +113,13 @@ export function buildCsp(
     // a tightening. 'self' stays for CSP2 browsers that do not honour it.
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
     "connect-src 'self'",
+    mediaSrcFor(streamHosts),
     `frame-src 'self' ${MAP_FRAME_ORIGIN}`,
-    `frame-ancestors ${frameAncestorsFor(pathname)}`,
+    `frame-ancestors ${frameAncestorsFor(pathname, { localMode, frameAncestor })}`,
     "base-uri 'none'",
     "form-action 'self' https://usemingla.com https://www.usemingla.com",
     "object-src 'none'",
-    "upgrade-insecure-requests",
+    ...(localMode ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");
 }
 

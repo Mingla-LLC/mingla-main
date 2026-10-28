@@ -1,0 +1,259 @@
+/**
+ * #2829 AD-3 — the three font slots a site has, and the self-hosted files an
+ * artifact carries for them.
+ *
+ * An owner may choose ANY family in the Google Fonts catalogue for the
+ * display, body and (optional) accent script slots. A visitor's browser never
+ * contacts Google: at publish the builder downloads the woff2 files once,
+ * stores them content-addressed, and the artifact lists them as `font_assets`
+ * served from the site's own `/fonts/<digest>` route.
+ *
+ * Family names are interpolated into CSS, so they are a closed shape (letters,
+ * digits, spaces, hyphens) checked here and again at the point of emission.
+ */
+
+export const FONT_SLOT_KEYS = ["display", "body", "accent"] as const;
+export type FontSlotKey = (typeof FONT_SLOT_KEYS)[number];
+export type FontSource = "google" | "system";
+export type FontStyle = "normal" | "italic";
+
+export type FontSlot = {
+  family: string;
+  source: FontSource;
+  /** The weights the design draws this slot in (resolved to what the family has). */
+  weights: number[];
+  italic: boolean;
+};
+
+export type FontSlots = {
+  display: FontSlot;
+  body: FontSlot;
+  /** Optional script/accent face; null when the design or owner uses none. */
+  accent: FontSlot | null;
+};
+
+/** What an owner stores: a family per slot; weights come from the design. */
+export type OwnerFontChoice = { family: string; source: FontSource };
+export type OwnerFontOverrides = Partial<Record<"display" | "body", OwnerFontChoice>> & {
+  accent?: OwnerFontChoice | null;
+};
+
+/** One downloaded woff2 face, as recorded in an artifact. */
+export type FontAsset = {
+  family: string;
+  weight: number;
+  style: FontStyle;
+  /** CSS unicode-range exactly as Google declared it ("" = whole font). */
+  unicode_range: string;
+  /** SHA-256 of the woff2 bytes; the file is served at /fonts/<digest>. */
+  digest: string;
+  bytes: number;
+};
+
+/** Metric overrides for a "<Family> Fallback" face over a local system font. */
+export type FontFallback = {
+  family: string;
+  local: "Arial" | "Times New Roman";
+  size_adjust: string;
+  ascent_override: string;
+  descent_override: string;
+  line_gap_override: string;
+};
+
+export const MAX_FONT_ASSETS = 24;
+export const MAX_FONT_FILE_BYTES = 1.5 * 1024 * 1024;
+export const MAX_SITE_FONT_BYTES = 6 * 1024 * 1024;
+
+/** System families that need no download (always available or generic). */
+export const SYSTEM_FONT_FAMILIES = [
+  "system-ui",
+  "Georgia",
+  "Times New Roman",
+  "Arial",
+  "Helvetica",
+  "Verdana",
+] as const;
+
+const FAMILY = /^[A-Za-z0-9](?:[A-Za-z0-9 -]{0,62}[A-Za-z0-9])?$/;
+const DIGEST = /^[0-9a-f]{64}$/;
+const UNICODE_RANGE = /^(?:U\+[0-9A-F?]{1,6}(?:-[0-9A-F]{1,6})?)(?:, ?U\+[0-9A-F?]{1,6}(?:-[0-9A-F]{1,6})?)*$/i;
+const PERCENT = /^\d{1,3}(?:\.\d{1,4})?%$/;
+
+export function isFontFamilyName(value: unknown): value is string {
+  return typeof value === "string" && FAMILY.test(value) && !/ {2}/.test(value);
+}
+
+export function isFontWeight(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 100 && value <= 900 && value % 100 === 0;
+}
+
+function plain(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function assertSlot(value: unknown, path: string): asserts value is FontSlot {
+  const fail = (): never => {
+    throw new Error(`ARTIFACT_FONTS_MISMATCH:${path}`);
+  };
+  if (!plain(value)) fail();
+  const slot = value as Record<string, unknown>;
+  const keys = ["family", "source", "weights", "italic"];
+  if (Object.keys(slot).length !== keys.length || Object.keys(slot).some((key) => !keys.includes(key))) fail();
+  if (!isFontFamilyName(slot.family)) fail();
+  if (slot.source !== "google" && slot.source !== "system") fail();
+  if (slot.source === "system" && !(SYSTEM_FONT_FAMILIES as readonly string[]).includes(String(slot.family))) fail();
+  if (!Array.isArray(slot.weights) || slot.weights.length < 1 || slot.weights.length > 9) fail();
+  const weights = slot.weights as unknown[];
+  if (!weights.every(isFontWeight) || new Set(weights).size !== weights.length) fail();
+  if (typeof slot.italic !== "boolean") fail();
+}
+
+export function assertFontSlots(value: unknown): asserts value is FontSlots {
+  if (!plain(value)) throw new Error("ARTIFACT_FONTS_MISMATCH:fonts");
+  const slots = value as Record<string, unknown>;
+  if (Object.keys(slots).length !== 3 || Object.keys(slots).some((key) => !(FONT_SLOT_KEYS as readonly string[]).includes(key))) {
+    throw new Error("ARTIFACT_FONTS_MISMATCH:fonts");
+  }
+  assertSlot(slots.display, "display");
+  assertSlot(slots.body, "body");
+  if (slots.accent !== null) assertSlot(slots.accent, "accent");
+}
+
+export function assertFontAssets(value: unknown, slots: FontSlots): asserts value is FontAsset[] {
+  const fail = (path: string): never => {
+    throw new Error(`ARTIFACT_FONT_ASSETS_MISMATCH:${path}`);
+  };
+  if (!Array.isArray(value) || value.length > MAX_FONT_ASSETS) fail("font_assets");
+  const families = new Set(
+    [slots.display, slots.body, slots.accent]
+      .filter((slot): slot is FontSlot => slot !== null && slot.source === "google")
+      .map((slot) => slot.family),
+  );
+  let total = 0;
+  const seen = new Set<string>();
+  (value as unknown[]).forEach((entry, index) => {
+    if (!plain(entry)) fail(String(index));
+    const asset = entry as Record<string, unknown>;
+    const keys = ["family", "weight", "style", "unicode_range", "digest", "bytes"];
+    if (Object.keys(asset).length !== keys.length || Object.keys(asset).some((key) => !keys.includes(key))) fail(String(index));
+    if (!isFontFamilyName(asset.family) || !families.has(asset.family as string)) fail(`${index}.family`);
+    if (!isFontWeight(asset.weight)) fail(`${index}.weight`);
+    if (asset.style !== "normal" && asset.style !== "italic") fail(`${index}.style`);
+    if (typeof asset.unicode_range !== "string" || (asset.unicode_range !== "" && !UNICODE_RANGE.test(asset.unicode_range)) || asset.unicode_range.length > 2000) {
+      fail(`${index}.unicode_range`);
+    }
+    if (typeof asset.digest !== "string" || !DIGEST.test(asset.digest)) fail(`${index}.digest`);
+    if (typeof asset.bytes !== "number" || !Number.isInteger(asset.bytes) || asset.bytes < 1 || asset.bytes > MAX_FONT_FILE_BYTES) fail(`${index}.bytes`);
+    const key = `${asset.family}|${asset.weight}|${asset.style}|${asset.unicode_range}`;
+    if (seen.has(key)) fail(`${index}.duplicate`);
+    seen.add(key);
+    // A file shared by several faces (a variable font) counts once.
+    total += asset.bytes as number;
+  });
+  const unique = new Map((value as FontAsset[]).map((asset) => [asset.digest, asset.bytes]));
+  total = [...unique.values()].reduce((sum, bytes) => sum + bytes, 0);
+  if (total > MAX_SITE_FONT_BYTES) fail("total_bytes");
+}
+
+export function assertFontFallbacks(value: unknown, slots: FontSlots): asserts value is FontFallback[] {
+  const fail = (path: string): never => {
+    throw new Error(`ARTIFACT_FONT_FALLBACKS_MISMATCH:${path}`);
+  };
+  if (!Array.isArray(value) || value.length > 3) fail("font_fallbacks");
+  const families = new Set(
+    [slots.display, slots.body, slots.accent]
+      .filter((slot): slot is FontSlot => slot !== null && slot.source === "google")
+      .map((slot) => slot.family),
+  );
+  (value as unknown[]).forEach((entry, index) => {
+    if (!plain(entry)) fail(String(index));
+    const fallback = entry as Record<string, unknown>;
+    const keys = ["family", "local", "size_adjust", "ascent_override", "descent_override", "line_gap_override"];
+    if (Object.keys(fallback).length !== keys.length || Object.keys(fallback).some((key) => !keys.includes(key))) fail(String(index));
+    if (!isFontFamilyName(fallback.family) || !families.has(fallback.family as string)) fail(`${index}.family`);
+    if (fallback.local !== "Arial" && fallback.local !== "Times New Roman") fail(`${index}.local`);
+    for (const key of ["size_adjust", "ascent_override", "descent_override", "line_gap_override"]) {
+      if (typeof fallback[key] !== "string" || !PERCENT.test(fallback[key] as string)) fail(`${index}.${key}`);
+    }
+  });
+}
+
+/** Validates what an owner stored for fonts (Studio, Business, Ari). */
+export function assertOwnerFontOverrides(value: unknown): asserts value is OwnerFontOverrides {
+  const fail = (path: string): never => {
+    throw new Error(`FONTS_INVALID:${path}`);
+  };
+  if (value == null) return;
+  if (!plain(value)) fail("fonts");
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (!(FONT_SLOT_KEYS as readonly string[]).includes(key)) fail(key);
+    if (key === "accent" && entry === null) continue;
+    if (!plain(entry)) fail(key);
+    const choice = entry as Record<string, unknown>;
+    if (Object.keys(choice).some((field) => field !== "family" && field !== "source")) fail(key);
+    if (!isFontFamilyName(choice.family)) fail(`${key}.family`);
+    if (choice.source !== "google" && choice.source !== "system") fail(`${key}.source`);
+    if (choice.source === "system" && !(SYSTEM_FONT_FAMILIES as readonly string[]).includes(String(choice.family))) {
+      fail(`${key}.family`);
+    }
+  }
+}
+
+/** Nearest weight a family offers to the one a design wants (ties go heavier). */
+export function nearestWeight(wanted: number, available: readonly number[]): number {
+  let best = available[0]!;
+  for (const weight of available) {
+    const distance = Math.abs(weight - wanted);
+    const bestDistance = Math.abs(best - wanted);
+    if (distance < bestDistance || (distance === bestDistance && weight > best)) best = weight;
+  }
+  return best;
+}
+
+/**
+ * Design slots + owner choices → the slots frozen into an artifact. Weights
+ * stay the design's (layout rhythm is the design's), mapped onto what the
+ * chosen family actually offers. `availableWeights` returns null for a family
+ * outside the catalogue, which keeps the design's family for that slot.
+ */
+export function resolveFontSlots(
+  design: FontSlots,
+  owner: OwnerFontOverrides | null | undefined,
+  availableWeights: (family: string) => readonly number[] | null,
+): FontSlots {
+  const resolve = (base: FontSlot, choice: OwnerFontChoice | undefined): FontSlot => {
+    if (!choice || choice.family === base.family) return { ...base, weights: [...base.weights] };
+    if (choice.source === "system") return { family: choice.family, source: "system", weights: [...base.weights], italic: false };
+    const available = availableWeights(choice.family);
+    if (!available || available.length === 0) return { ...base, weights: [...base.weights] };
+    const weights = [...new Set(base.weights.map((weight) => nearestWeight(weight, available)))].sort((a, b) => a - b);
+    return { family: choice.family, source: "google", weights, italic: false };
+  };
+  const accentChoice = owner?.accent;
+  let accent: FontSlot | null = design.accent ? { ...design.accent, weights: [...design.accent.weights] } : null;
+  if (accentChoice === null) accent = null;
+  else if (accentChoice) {
+    accent = resolve(design.accent ?? { family: accentChoice.family, source: accentChoice.source, weights: [400], italic: false }, accentChoice);
+  }
+  return {
+    display: resolve(design.display, owner?.display),
+    body: resolve(design.body, owner?.body),
+    accent,
+  };
+}
+
+const GENERIC: Readonly<Record<string, string>> = {
+  serif: '"Times New Roman", Georgia, serif',
+  "sans-serif": "ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+  display: "ui-sans-serif, system-ui, sans-serif",
+  handwriting: "cursive",
+  monospace: "ui-monospace, monospace",
+};
+
+/** The CSS font-family value for a slot: the family, its metric fallback, then a generic stack. */
+export function fontStack(slot: FontSlot, category: string | null): string {
+  if (!isFontFamilyName(slot.family)) return GENERIC["sans-serif"]!;
+  const generic = GENERIC[category ?? "sans-serif"] ?? GENERIC["sans-serif"]!;
+  if (slot.source === "system") return `"${slot.family}", ${generic}`;
+  return `"${slot.family}", "${slot.family} Fallback", ${generic}`;
+}

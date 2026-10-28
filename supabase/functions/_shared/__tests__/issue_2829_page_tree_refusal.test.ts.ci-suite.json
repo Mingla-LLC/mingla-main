@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_2829_page_tree_refusal.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-2829-shared-page-tree-refusal",
+  "profile": "deno-2-unit"
+}

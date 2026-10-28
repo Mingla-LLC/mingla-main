@@ -8,10 +8,14 @@ import {
   canSelectStudioMedia,
   isStudioSessionEnded,
   isStudioMediaRecoverable,
+  isStudioVideoFile,
   loadStudioMediaLibrary,
+  loadStudioStreamCapability,
   removeUnusedStudioMedia,
+  studioMediaRemovalRefusal,
   restoreStudioMedia,
   uploadStudioMedia,
+  uploadStudioStreamVideo,
   validateStudioMediaFile,
   type StudioMediaLibrary,
   type StudioMediaProgress,
@@ -42,6 +46,8 @@ export default function StudioMediaManager() {
   const [busy, setBusy] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  // #2829 W6 — stream video when Core offers it; standard file video otherwise.
+  const [streamVideo, setStreamVideo] = useState(false);
 
   const refreshLibrary = useCallback(async () => {
     setLibraryError(null);
@@ -53,6 +59,16 @@ export default function StudioMediaManager() {
         "Media could not be refreshed. Your draft has not been changed.",
       );
     }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void loadStudioStreamCapability().then((available) => {
+      if (active) setStreamVideo(available);
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -73,7 +89,8 @@ export default function StudioMediaManager() {
   }, []);
 
   const start = async (candidate: File) => {
-    const validation = validateStudioMediaFile(candidate);
+    const video = isStudioVideoFile(candidate);
+    const validation = validateStudioMediaFile(candidate, { stream: video && streamVideo });
     setFile(candidate);
     setSuccess(null);
     if (validation) {
@@ -87,7 +104,9 @@ export default function StudioMediaManager() {
     }
     setBusy(true);
     try {
-      const result = await uploadStudioMedia(candidate, setProgress);
+      const result = video && streamVideo
+        ? await uploadStudioStreamVideo(candidate, setProgress)
+        : await uploadStudioMedia(candidate, setProgress);
       if (result.phase === "ready" && result.mediaId) {
         setSelectedMediaId(result.mediaId);
         await refreshLibrary();
@@ -98,8 +117,9 @@ export default function StudioMediaManager() {
         phase: "retryable_failed",
         progress: 0,
         mediaId: null,
-        message:
-          "The image could not be started. Check your connection and retry.",
+        message: video
+          ? "The video could not be started. Check your connection and retry."
+          : "The image could not be started. Check your connection and retry.",
       });
     } finally {
       setBusy(false);
@@ -174,9 +194,7 @@ export default function StudioMediaManager() {
       await refreshLibrary();
     } catch (error) {
       if (returnExpiredStudioSession(error)) return;
-      setLibraryError(
-        "That image is now used by the draft or could not be removed. Nothing was detached.",
-      );
+      setLibraryError(studioMediaRemovalRefusal(error));
     } finally {
       setBusy(false);
     }
@@ -216,10 +234,17 @@ export default function StudioMediaManager() {
         </Link>
       </header>
 
-      <section className="studio-media-rules" aria-label="Accepted image rules">
+      <section className="studio-media-rules" aria-label="Accepted image and video rules">
         <strong>JPEG, PNG or WebP</strong>
         <span>Up to 20 MB and 40 megapixels</span>
         <span>Metadata is removed during processing</span>
+        <strong>Video</strong>
+        <span>
+          {streamVideo
+            ? "MP4, MOV, M4V or WebM, up to 100 MB"
+            : "MP4 (H.264, fast start), up to 50 MB"}
+        </span>
+        <span>Hero background videos can be up to 15 seconds</span>
       </section>
 
       <section
@@ -235,14 +260,16 @@ export default function StudioMediaManager() {
           ref={picker}
           id="studio-media-picker"
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          accept={streamVideo
+            ? "image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/x-m4v,video/webm"
+            : "image/jpeg,image/png,image/webp,video/mp4"}
           hidden
           onChange={(event) => {
             const candidate = event.target.files?.item(0);
             if (candidate) void start(candidate);
           }}
         />
-        <h2>Drop an image here</h2>
+        <h2>Drop an image or video here</h2>
         <p>or choose one from this device</p>
         <button
           className="studio-primary-button"
@@ -250,7 +277,7 @@ export default function StudioMediaManager() {
           onClick={() => picker.current?.click()}
           disabled={busy}
         >
-          Choose images
+          Choose a file
         </button>
       </section>
 

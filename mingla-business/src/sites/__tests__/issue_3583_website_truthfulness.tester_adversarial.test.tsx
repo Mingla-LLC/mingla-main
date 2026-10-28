@@ -40,12 +40,6 @@ jest.mock("expo-router", () => ({
 jest.mock("expo-web-browser", () => ({ openAuthSessionAsync: jest.fn() }));
 
 const viewProps: Record<string, unknown>[] = [];
-jest.mock("../../components/sites/BrandWebsiteView", () => ({
-  BrandWebsiteView: (props: Record<string, unknown>) => {
-    viewProps.push(props);
-    return null;
-  },
-}));
 jest.mock("../../components/ui/SafeScreen", () => ({
   SafeScreen: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -94,10 +88,33 @@ jest.mock("../../components/ui/Icon", () => ({ Icon: () => null }));
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import Route from "../../../app/brand/[id]/website";
-const { BrandWebsiteView } = jest.requireActual(
-  "../../components/sites/BrandWebsiteView",
-) as typeof import("../../components/sites/BrandWebsiteView");
+import { useWebsiteController } from "../../components/sites/website/useWebsiteController";
+import { websiteNavGroups, type WebsiteNavInput } from "../websiteNav";
+/*
+ * #2829 W9r — the old route and its BrandWebsiteView are gone; the Website
+ * section's controller owns this logic now. This harness drives the REAL
+ * controller (real hooks, real service, mocked edge envelope) and records
+ * what it hands the sections, under the prop names these suites always read.
+ */
+function Route(): null {
+  const [panel, setPanel] = React.useState("overview");
+  const controller = useWebsiteController(BRAND, null, panel === "publish_review");
+  if (controller.websiteAvailable !== true) return null;
+  viewProps.push({
+    capabilities: controller.capabilities,
+    notice: controller.notice,
+    journeyState: controller.journeyState,
+    publicationOperationId: controller.publicationOperation?.operationId ?? null,
+    validation: controller.validation.data ?? null,
+    onSetPanel: setPanel,
+    onValidatePublish: () => { void controller.validation.refetch(); },
+    onPublish: controller.actions.publish,
+    onOpenStudio: () => controller.actions.openStudio(),
+    onPreview: () => controller.actions.openStudioPreview(""),
+    onPreviewPage: (pagePath: string) => controller.actions.openStudioPreview(pagePath),
+  });
+  return null;
+}
 import {
   deriveBusinessWebsiteState,
   websiteFailureNotice,
@@ -299,50 +316,6 @@ function renderedText(node: React.ReactElement): string {
   return parts.join(" ");
 }
 
-const VIEW_BASE = {
-  brandName: "Gogi Lagos",
-  site: SITE,
-  rank: 60,
-  isWideDesktop: false,
-  journeyState: 5 as const,
-  panel: "overview" as const,
-  notice: null,
-  isLoading: false,
-  isError: false,
-  isProvisioning: false,
-  isOpeningStudio: false,
-  isPreviewing: false,
-  isPublishing: false,
-  isRollingBack: false,
-  isValidating: false,
-  versions: [],
-  analytics: null,
-  validation: null,
-  validationFailure: null,
-  selectedVersion: null,
-  provisionOperationId: null,
-  provisionOperation: null,
-  provisionPollingTimedOut: false,
-  publicationOperationId: null,
-  publicationOperation: null,
-  publicationPollingTimedOut: false,
-  isReconciling: false,
-  onRetry: jest.fn(),
-  onSetPanel: jest.fn(),
-  onProvision: jest.fn(),
-  onReconcileProvision: jest.fn(),
-  onOpenStudio: jest.fn(),
-  onPreview: jest.fn(),
-  onViewLive: jest.fn(),
-  onOpenAri: jest.fn(),
-  onValidatePublish: jest.fn(),
-  onPublish: jest.fn(),
-  onSelectRollback: jest.fn(),
-  onRollback: jest.fn(),
-  onReconcilePublication: jest.fn(),
-  onResetFailedPublication: jest.fn(),
-};
-
 beforeEach(async () => {
   viewProps.length = 0;
   mockInvoke.mockReset();
@@ -508,6 +481,13 @@ describe("#3583 D3 adversarial — a website that is not there", () => {
     "rollback_review",
     "overview",
   ];
+  // #2829 W9r — the redesigned rail decides what is reachable (DESIGN_SPEC §1.2).
+  const NAV: WebsiteNavInput = {
+    hasSite: false, designLabel: null, designHasCollectionPages: true, designDirty: false, pagesInMenu: null,
+    counts: { destinations: 4, stories: 2, reviews: 3, past: 5 }, reviewsNeedingConfirmation: 1,
+    tripsTicked: true, unpublishedChanges: 3, domainNeedsAttention: true, plan: { done: 8, total: 8 }, offline: true,
+  };
+  const keys = (value: WebsiteNavInput) => websiteNavGroups(value).flatMap((group) => group.items.map((entry) => entry.key));
 
   it("a section open when the website disappears shows setup, not the section", () => {
     for (const panel of siteRequiring) {
@@ -521,41 +501,16 @@ describe("#3583 D3 adversarial — a website that is not there", () => {
         studioReturnResult: null,
       });
       expect(state).toBe(2);
-      const ids = testIds(
-        <BrandWebsiteView
-          {...VIEW_BASE}
-          site={null}
-          panel={panel}
-          journeyState={state}
-        />,
-      );
-      expect(ids).toContain("website-not-setup");
-      for (const dead of [
-        "website-versions",
-        "website-analytics",
-        "website-address",
-        "website-publish-review",
-        "website-rollback-review",
-      ]) {
-        expect(ids).not.toContain(dead);
-      }
     }
+    // Stale counts, changes and attention from before cannot bring a section back.
+    expect(keys(NAV)).toEqual(["overview", "plan"]);
   });
 
   it("nothing rendered without a website claims a website is live", () => {
-    for (const panel of siteRequiring) {
-      const text = renderedText(
-        <BrandWebsiteView
-          {...VIEW_BASE}
-          site={null}
-          panel={panel}
-          journeyState={2}
-          isWideDesktop
-        />,
-      );
-      expect(text).not.toMatch(/remains live/i);
-      expect(text).not.toMatch(/is live/i);
-    }
+    const source = fs.readFileSync(path.resolve(__dirname, "../../components/sites/website/sections/OverviewSection.tsx"), "utf8");
+    const noSite = source.slice(source.indexOf("function NoSiteOverview"), source.indexOf("export function partName"));
+    expect(noSite.length).toBeGreaterThan(100);
+    expect(noSite).not.toMatch(/remains live|is live|Live ·/i);
   });
 
   it("the fix did not overcorrect: setup review still works without a website", () => {
@@ -570,22 +525,13 @@ describe("#3583 D3 adversarial — a website that is not there", () => {
         studioReturnResult: null,
       }),
     ).toBe(3);
-    expect(
-      testIds(
-        <BrandWebsiteView
-          {...VIEW_BASE}
-          site={null}
-          panel="setup_review"
-          journeyState={3}
-        />,
-      ),
-    ).toContain("website-setup-review");
+    expect(keys(NAV)).toContain("plan");
   });
 
   it("a website that DOES exist keeps every rail destination", () => {
-    const ids = testIds(<BrandWebsiteView {...VIEW_BASE} isWideDesktop />);
-    for (const key of ["overview", "publish", "versions", "analytics", "address"]) {
-      expect(ids).toContain(`website-rail-${key}`);
+    const withSite = keys({ ...NAV, hasSite: true });
+    for (const key of ["overview", "pages", "design", "destinations", "stories", "reviews", "past", "publish", "addresses", "plan", "settings"]) {
+      expect(withSite).toContain(key);
     }
   });
 });

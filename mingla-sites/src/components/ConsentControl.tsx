@@ -10,7 +10,11 @@ import {
 
 type Consent = "granted" | "necessary" | null;
 
-export function ConsentControl({ siteId, brandId, publicationId }: { siteId: string; brandId: string; publicationId: string }) {
+/*
+ * #2829 W7 — `subject` names who is asking, so a travel brand's site does not
+ * say "this restaurant". It defaults to the original wording.
+ */
+export function ConsentControl({ siteId, brandId, publicationId, subject = "this restaurant" }: { siteId: string; brandId: string; publicationId: string; subject?: string }) {
   const [choice, setChoice] = useState<Consent>(null);
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
@@ -39,7 +43,7 @@ export function ConsentControl({ siteId, brandId, publicationId }: { siteId: str
   if (choice && !expanded) return <button className="consent-link" onClick={() => setExpanded(true)}>Analytics choices</button>;
   return (
     <aside className="consent" aria-label="Analytics choices">
-      <div><strong>Your choice</strong><p>Help this restaurant understand visits with optional, privacy-safe analytics. The website works either way.</p></div>
+      <div><strong>Your choice</strong><p>{`Help ${subject} understand visits with optional, privacy-safe analytics. The website works either way.`}</p></div>
       <div className="consent-actions"><button onClick={() => decide("necessary")}>Only necessary</button><button className="accent" onClick={() => decide("granted")}>Allow analytics</button></div>
     </aside>
   );

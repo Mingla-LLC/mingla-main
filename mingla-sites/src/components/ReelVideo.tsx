@@ -15,10 +15,23 @@ import { useRef, useState } from "react";
  * but it starts muted so the choice to hear it is theirs too.
  */
 export function ReelVideo(
-  { src, poster, label }: { src: string; poster: string; label: string },
+  { src, poster, label }: { src: string | null; poster: string; label: string },
 ) {
   const [playing, setPlaying] = useState(false);
   const ref = useRef<HTMLVideoElement | null>(null);
+
+  // #2829 W6 — no playable film (e.g. a stream host the runtime does not
+  // allow): the still alone, never a play button that does nothing.
+  if (!src) {
+    return (
+      <div
+        className="reel-poster"
+        role="img"
+        aria-label={label}
+        style={{ backgroundImage: `url(${JSON.stringify(poster).slice(1, -1)})` }}
+      />
+    );
+  }
 
   if (!playing) {
     return (
