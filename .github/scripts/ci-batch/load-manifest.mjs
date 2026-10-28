@@ -46,7 +46,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // the exact repair excluded from the deliberately filtered pre-#1931 replay.
 // #1318: re-sealed again after the VAT migration entered those three preserved
 // full-history replay authorities on top of the #3872 prerequisite repair.
-export const BOOTSTRAP_SHA256 = "8399c6f2db65d2d175993477253ee563c89d58ecd3bcc3c1359ca67deffbed6f";
+// #2829 / #3645: re-sealed after the two reviewed activation migrations and
+// their local proofs entered the same three preserved replay inventories.
+export const BOOTSTRAP_SHA256 = "3d0ffc14147b7990367f55ea14718b2600de19dfe23886c41d37efdc7f575ac0";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

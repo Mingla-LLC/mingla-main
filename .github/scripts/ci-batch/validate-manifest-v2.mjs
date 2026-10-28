@@ -280,7 +280,7 @@ export function phase3dContractDigest(manifest) {
 // filtered pre-#1931 replay excludes the exact repair beside both censuses.
 // #1318: register the VAT migration selected by the same full-history replay
 // commands on top of the #3872 prerequisite repair.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "93b998802551e7eead6df07eec060ec3bcc12b4f0d223dc4c8afbcf50f0e87a7";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "dd0bc6ed6d168081faf9d8baa5d516730b6cbaa712255fc212df5e84bd24c868";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
