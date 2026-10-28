@@ -91,6 +91,8 @@ export interface ExperiencePricingStepProps {
     passServiceFee: boolean;
   };
   takeRateBps: number;
+  paymentProvider?: "stripe" | "paystack" | null;
+  paymentCountry?: string | null;
   vatRegistered: boolean;
   onEditDefaults: () => void;
   onSetupVat: () => void;
@@ -142,6 +144,8 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
   setPricingSwitches,
   brandDefaults,
   takeRateBps,
+  paymentProvider,
+  paymentCountry,
   vatRegistered,
   onEditDefaults,
   onSetupVat,
@@ -471,6 +475,8 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
         previewBaseCents={Math.round(resolvedTotalMajor * 100)}
         currency={currency}
         effectiveTakeRateBps={takeRateBps}
+        paymentProvider={paymentProvider}
+        paymentCountry={paymentCountry}
         onEditDefaults={onEditDefaults}
         vatRegistered={vatRegistered}
         onSetupVat={onSetupVat}

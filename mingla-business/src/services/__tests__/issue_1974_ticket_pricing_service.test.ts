@@ -108,4 +108,70 @@ describe("#1974 shared Business pricing services", () => {
     );
     expect(rpcMock).not.toHaveBeenCalled();
   });
+
+  test("#1318 Nigeria configured VAT skips the Stripe registration preflight", async () => {
+    rpcMock.mockResolvedValue({
+      data: {
+        defaults: {
+          pass_tax: true,
+          pass_mingla_fee: false,
+          pass_service_fee: false,
+        },
+      },
+      error: null,
+    });
+
+    await expect(
+      setBrandPricingDefaults(
+        "brand-ng",
+        { passTax: true },
+        { paymentProvider: "paystack", paymentCountry: "NG" },
+      ),
+    ).resolves.toEqual({
+      passTax: true,
+      passMinglaFee: false,
+      passServiceFee: false,
+    });
+
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(rpcMock).toHaveBeenCalledWith(
+      "business_patch_brand_pricing_defaults",
+      {
+        p_brand_id: "brand-ng",
+        p_patch: { default_pass_tax: true },
+      },
+    );
+  });
+
+  test("#1318 event override uses the same configured-VAT bypass", async () => {
+    rpcMock.mockResolvedValue({
+      data: {
+        updated_at: "2027-01-01T00:01:00.000Z",
+        overrides: {
+          pass_tax: true,
+          pass_mingla_fee: null,
+          pass_service_fee: null,
+        },
+        resolved: {
+          pass_tax: true,
+          pass_mingla_fee: false,
+          pass_service_fee: false,
+        },
+      },
+      error: null,
+    });
+
+    await setEventPricingSwitches(
+      "event-ng",
+      { passTax: true },
+      { paymentProvider: "paystack", paymentCountry: "NG" },
+    );
+
+    expect(fromMock).not.toHaveBeenCalled();
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(rpcMock).toHaveBeenCalledWith("business_patch_pricing_switches", {
+      p_event_id: "event-ng",
+      p_patch: { pass_tax: true },
+    });
+  });
 });

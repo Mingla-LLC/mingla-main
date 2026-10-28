@@ -1997,6 +1997,8 @@ export const ExperienceCreatorWizard: React.FC<
               passServiceFee: brand.defaultPassServiceFee ?? false,
             }}
             takeRateBps={brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS}
+              paymentProvider={brand.paymentProvider}
+              paymentCountry={brand.paymentCountry}
               vatRegistered={
                 taxRegistration.data?.hasActiveRegistration === true
               }

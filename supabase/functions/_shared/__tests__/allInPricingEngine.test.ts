@@ -66,20 +66,18 @@ Deno.test("CASE 1 — PASS Mingla fee + PASS service fee → buyer £43.20", () 
     stripeTaxCalculationId: "taxcalc_test",
   });
   assertEquals(bd.buyer_total_cents, 4320); // £43.20
-  assertEquals(bd.application_fee_amount_cents, 200); // Mingla margin £2.00
+  assertEquals(bd.application_fee_amount_cents, 320); // 5% take + 3% service
   assertEquals(bd.components.mingla_fee_cents, 200);
   assertEquals(bd.components.service_fee_cents, 120);
   assertEquals(bd.passed.mingla_fee_cents, 200);
   assertEquals(bd.absorbed.mingla_fee_cents, 0);
-  // application_fee == mingla_fee, never the service fee (no double-charge).
+  // #3645: the application fee is the full take + service amount.
   assertEquals(
-    bd.application_fee_amount_cents === bd.components.mingla_fee_cents,
-    true,
+    bd.application_fee_amount_cents,
+    bd.components.mingla_fee_cents + bd.components.service_fee_cents,
   );
-  assertEquals(
-    bd.application_fee_amount_cents !== bd.components.service_fee_cents,
-    true,
-  );
+  // #1318: Mingla does not subtract tax it does not withhold or file.
+  assertEquals(bd.connected_account_payout_cents, 4000);
 });
 
 Deno.test("CASE 2 — ABSORB Mingla fee + PASS service fee → buyer £41.20, same Mingla margin", () => {
@@ -102,7 +100,8 @@ Deno.test("CASE 2 — ABSORB Mingla fee + PASS service fee → buyer £41.20, sa
   assertEquals(bd.buyer_total_cents, 4120); // £41.20 (£2.00 less than CASE 1)
   // Mingla margin IDENTICAL to CASE 1 — the rate sets the amount; the switch
   // only changes who bears it (the whole point of the switch).
-  assertEquals(bd.application_fee_amount_cents, 200);
+  assertEquals(bd.application_fee_amount_cents, 320);
+  assertEquals(bd.connected_account_payout_cents, 3800);
   assertEquals(bd.absorbed.mingla_fee_cents, 200); // brand ate it
   assertEquals(bd.passed.mingla_fee_cents, 0);
 });
@@ -172,7 +171,10 @@ Deno.test("[ORCH-1006] degrade-to-flat-absorb (T-02/T-10): tax 0, basis flat, to
     assertEquals(bd.components.tax_cents, 0);
     assertEquals(bd.buyer_total_cents, bd.buyer_subtotal_cents);
     assertEquals(bd.stripe_tax_calculation_id, null);
-    // The Mingla skim is still collected on the degrade path.
-    assertEquals(bd.application_fee_amount_cents, bd.components.mingla_fee_cents);
+    // The full flat take + service amount is still collected on the degrade path.
+    assertEquals(
+      bd.application_fee_amount_cents,
+      bd.components.mingla_fee_cents + bd.components.service_fee_cents,
+    );
   }
 });
