@@ -73,6 +73,8 @@ DECLARE
   v_today date;
   v_start timestamptz;
   v_end timestamptz;
+  v_start_iso text;
+  v_end_iso text;
   v_base_slug text;
   v_slug text;
   v_suffix integer := 2;
@@ -126,6 +128,8 @@ BEGIN
   -- departure day yields a one-day trip (the site shows the date alone).
   v_start := (p_start_date::timestamp) AT TIME ZONE p_timezone;
   v_end := ((v_end_date + 1)::timestamp - interval '1 minute') AT TIME ZONE p_timezone;
+  v_start_iso := to_char(v_start AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"');
+  v_end_iso := to_char(v_end AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"');
 
   v_base_slug := btrim(regexp_replace(lower(v_title), '[^a-z0-9]+', '-', 'g'), '-');
   IF v_base_slug = '' THEN v_base_slug := 'trip'; END IF;
@@ -150,8 +154,8 @@ BEGIN
     v_location,
     jsonb_build_object('business_trip', jsonb_strip_nulls(jsonb_build_object(
       'destinationLocationText', v_location,
-      'startAt', to_char(v_start AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-      'endAt', to_char(v_end AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+      'startAt', v_start_iso,
+      'endAt', v_end_iso
     ))),
     true,
     v_start

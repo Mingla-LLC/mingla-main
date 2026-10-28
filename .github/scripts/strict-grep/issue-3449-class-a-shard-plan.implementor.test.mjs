@@ -107,9 +107,11 @@ const EXPECTED_PLAN = Object.freeze({
   // [TEST-MOD-APPROVED #4063] Re-derived after the six claim/message gates.
   // [TEST-MOD-APPROVED #3643] Re-derived after the eleven folded strict-grep
   // executions moved from the host batch:A lane into CI-batch suites.
-  executions: 1043,
-  loadsSeconds: [156.9, 156.8, 156.8],
-  counts: [343, 346, 354],
+  // [TEST-MOD-APPROVED #3645] Re-derived after the three locally declared
+  // installment gates added six batch:A executions (self-test and plain).
+  executions: 1049,
+  loadsSeconds: [157.1, 157.0, 157.0],
+  counts: [345, 348, 356],
 });
 
 const tempDir = (label) =>
