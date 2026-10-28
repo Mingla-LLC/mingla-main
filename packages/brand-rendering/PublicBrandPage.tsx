@@ -93,7 +93,6 @@ import {
 import { hexToRgba } from "@mingla/offering-rendering/themePalette";
 
 import { spacing } from "./designTokens";
-import { MeasuredTextDisclosure } from "./MeasuredTextDisclosure";
 // #3188 — the socials-row sizing solver. A separate, pure, import-free module
 // (no React, no react-native) so the arithmetic can be pinned in the ALWAYS-RUN
 // required `mingla-business jest (full suite)` lane, which is a node/ts-jest
@@ -138,6 +137,11 @@ type SocialKind =
   | "threads";
 
 const BIO_CLAMP_LINES = 4;
+const DeferredMeasuredTextDisclosure = React.lazy(() =>
+  import("./MeasuredTextDisclosure").then((module) => ({
+    default: module.MeasuredTextDisclosure,
+  })),
+);
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -2366,14 +2370,27 @@ const ClampedBio: React.FC<{ text: string; palette: ThemePalette }> = ({
   text,
   palette,
 }) => (
-  <MeasuredTextDisclosure
-    text={text}
-    collapsedLines={BIO_CLAMP_LINES}
-    textStyle={[styles.bio, { color: palette.secondaryText }]}
-    toggleTextStyle={[styles.readMore, { color: palette.accent }]}
-    containerStyle={styles.bioWrap}
-    testID="public-brand-bio-disclosure"
-  />
+  <React.Suspense
+    fallback={
+      <View style={styles.bioWrap}>
+        <Text
+          numberOfLines={BIO_CLAMP_LINES}
+          style={[styles.bio, { color: palette.secondaryText }]}
+        >
+          {text}
+        </Text>
+      </View>
+    }
+  >
+    <DeferredMeasuredTextDisclosure
+      text={text}
+      collapsedLines={BIO_CLAMP_LINES}
+      textStyle={[styles.bio, { color: palette.secondaryText }]}
+      toggleTextStyle={[styles.readMore, { color: palette.accent }]}
+      containerStyle={styles.bioWrap}
+      testID="public-brand-bio-disclosure"
+    />
+  </React.Suspense>
 );
 
 const styles = StyleSheet.create({

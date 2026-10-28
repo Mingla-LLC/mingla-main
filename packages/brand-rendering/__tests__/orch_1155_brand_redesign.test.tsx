@@ -104,7 +104,7 @@ describe("ORCH-1155 public brand page — Direction-A redesign", () => {
   test("About pane holds tagline → measured bio disclosure, with no contact rows (#4111 D10)", () => {
     expect(brandPage).toContain("const AboutTab");
     expect(brandPage).toContain("ClampedBio");
-    expect(brandPage).toContain("<MeasuredTextDisclosure");
+    expect(brandPage).toContain("<DeferredMeasuredTextDisclosure");
     expect(brandPage).not.toContain("mailto:");
     expect(brandPage).not.toContain("tel:");
     // tagline/bio are NO LONGER above the tabs (only inside AboutTab via ClampedBio)

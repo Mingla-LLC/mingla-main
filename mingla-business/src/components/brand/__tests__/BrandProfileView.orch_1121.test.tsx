@@ -184,7 +184,7 @@ describe("ORCH-1121 — SECTION A hero (Direction 1) + preserved fallback", () =
   test("About-us eyebrow + measured read-more disclosure (overflow only)", () => {
     const src = viewSource();
     expect(src).toContain("ABOUT US");
-    expect(src).toContain("<MeasuredTextDisclosure");
+    expect(src).toContain("<DeferredMeasuredTextDisclosure");
     expect(src).toContain('testID="brand-profile-bio-disclosure"');
     expect(src).not.toMatch(/bioText\.length\s*>\s*160/);
   });

@@ -39,7 +39,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useReducedMotion } from "react-native-reanimated";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { MeasuredTextDisclosure } from "@mingla/brand-rendering/MeasuredTextDisclosure";
 
 import { brandKeys } from "../../hooks/useBrands";
 import { eventOrdersKeys } from "../../hooks/useEventOrders";
@@ -94,6 +93,12 @@ import { brandPhoneTelHref } from "@mingla/brand-rendering/brandPhoneHref";
 import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
 import { useSwitchAccount } from "../../hooks/useSwitchAccount";
+
+const DeferredMeasuredTextDisclosure = React.lazy(() =>
+  import("@mingla/brand-rendering/MeasuredTextDisclosure").then((module) => ({
+    default: module.MeasuredTextDisclosure,
+  })),
+);
 
 interface OperationsRow {
   icon: IconName;
@@ -854,19 +859,29 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             {hasBio ? (
               <>
                 <Text style={styles.heroAboutEyebrow}>ABOUT US</Text>
-                <MeasuredTextDisclosure
-                  text={bioText}
-                  collapsedLines={4}
-                  textStyle={styles.heroAboutBody}
-                  toggleTextStyle={styles.heroReadMoreText}
-                  toggleStyle={({ pressed }) => [
-                    styles.heroReadMore,
-                    pressed && styles.heroReadMorePressed,
-                  ]}
-                  hitSlop={8}
-                  onBeforeToggle={animateAboutDisclosure}
-                  testID="brand-profile-bio-disclosure"
-                />
+                <React.Suspense
+                  fallback={
+                    <View>
+                      <Text style={styles.heroAboutBody} numberOfLines={4}>
+                        {bioText}
+                      </Text>
+                    </View>
+                  }
+                >
+                  <DeferredMeasuredTextDisclosure
+                    text={bioText}
+                    collapsedLines={4}
+                    textStyle={styles.heroAboutBody}
+                    toggleTextStyle={styles.heroReadMoreText}
+                    toggleStyle={({ pressed }) => [
+                      styles.heroReadMore,
+                      pressed && styles.heroReadMorePressed,
+                    ]}
+                    hitSlop={8}
+                    onBeforeToggle={animateAboutDisclosure}
+                    testID="brand-profile-bio-disclosure"
+                  />
+                </React.Suspense>
               </>
             ) : (
               <Pressable

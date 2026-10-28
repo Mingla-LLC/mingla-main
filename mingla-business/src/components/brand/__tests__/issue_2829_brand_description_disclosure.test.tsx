@@ -135,12 +135,16 @@ test("public and operator brand surfaces share measured overflow ownership", () 
     ),
     "utf8",
   );
-
-  expect(publicPage).toContain("<MeasuredTextDisclosure");
+  expect(publicPage).toContain("<DeferredMeasuredTextDisclosure");
   expect(publicPage).toContain('testID="public-brand-bio-disclosure"');
   expect(publicPage).not.toMatch(/text\.length\s*>\s*220/);
+  expect(publicPage).toContain("React.lazy");
+  expect(publicPage).toContain('import("./MeasuredTextDisclosure")');
+  expect(publicPage).toContain("<React.Suspense");
 
-  expect(profile).toContain("<MeasuredTextDisclosure");
+  expect(profile).toContain("<DeferredMeasuredTextDisclosure");
   expect(profile).toContain('testID="brand-profile-bio-disclosure"');
   expect(profile).not.toMatch(/bioText\.length\s*>\s*160/);
+  expect(profile).toContain("React.lazy");
+  expect(profile).toContain("<React.Suspense");
 });
