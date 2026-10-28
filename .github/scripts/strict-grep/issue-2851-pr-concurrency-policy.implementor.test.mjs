@@ -1267,7 +1267,11 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   "aa77dac52a2b73cc05eda276c0238e16b038f7574735b2ea33c01a4f36e37036";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
-  "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
+  // [TEST-MOD-APPROVED #3493] Re-derived from the reviewed bytes after the
+  // bundle-baseline ratchet lane gained the exact main-push Business export
+  // proof and shared movement verdict. The lane remains outside PR
+  // cancellation and its concurrency classification is unchanged.
+  "e459d639489abf863f8dc8fa91d5c69c7754bd4440ae3aeca5ef94f376660880",
   // [TEST-MOD-APPROVED #2948] Index 2 is the edge-function deploy workflow —
   // named through DENIED's `liveWorkflow` helper above, never as a literal,
   // because a workflow filename in this file becomes a provider reference and
