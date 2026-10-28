@@ -346,10 +346,31 @@ const check = (files) => {
   );
   requirePattern(
     dashboard,
-    /data\.totals\.pageViews < 30\s*\?\s*"Collecting"/,
+    /const enoughTraffic\s*=\s*data\.captureStartedAt !== null\s*&&\s*data\.totals\.pageViews >= 30/,
     `${PATHS.dashboard}: honest collecting state for Mingla visitors missing`,
     failures,
   );
+  requirePattern(
+    dashboard,
+    /analyticsGridModules\(\{\s*showVisits:\s*enoughTraffic,/,
+    `${PATHS.dashboard}: collecting visitor modules must stay hidden`,
+    failures,
+  );
+  requirePattern(
+    dashboard,
+    /\.\.\.\(!enoughTraffic\s*\?\s*\[\s*`visits\$\{captureDate\(data\.captureStartedAt\)/,
+    `${PATHS.dashboard}: hidden visits are missing from the collecting summary`,
+    failures,
+  );
+  requirePattern(
+    dashboard,
+    /collecting\.length === 0 \? null : \([\s\S]*?`Still collecting: \$\{collecting\.join\(", "\)\}`/,
+    `${PATHS.dashboard}: single collecting summary line missing`,
+    failures,
+  );
+  if ((dashboard.match(/Still collecting:/g) ?? []).length !== 1) {
+    failures.push(`${PATHS.dashboard}: collecting summary must render exactly once`);
+  }
   requirePattern(
     dashboard,
     /currency === null \? "—"/,
@@ -725,14 +746,14 @@ if (process.argv.includes("--self-test")) {
       "honest no-source-mix-yet state",
     ],
     [
-      "fabricated Mingla visitors before traffic",
+      "exposed visitor modules before traffic is ready",
       PATHS.dashboard,
       (source) =>
         source.replace(
-          /data\.totals\.pageViews < 30\s*\?\s*"Collecting"/,
-          'data.totals.pageViews < 0 ? "0"',
+          "showVisits: enoughTraffic,",
+          "showVisits: true,",
         ),
-      "honest collecting state for Mingla visitors",
+      "collecting visitor modules must stay hidden",
     ],
     [
       "fabricated zero booking value",
