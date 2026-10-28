@@ -86,9 +86,12 @@ $vacuity$;
 -- [TEST-MOD-APPROVED #3643] The eleven #3872 push-only producers are observed by
 -- the full replay and are tracked separately from the country-aware writers,
 -- raising the writer catalog floor 25 -> 35.
+-- [TEST-MOD-APPROVED #2829] Sites adds four in-app/push-only producers whose
+-- owning PostgreSQL suites prove their recipient, payload, and trigger paths;
+-- none of their categories routes SMS, raising the writer floor 35 -> 39.
 -- (2) RATCHET — raised 12 -> 18 for #3988, 18 -> 19 for #4073, 19 -> 20 for
 --     the buyer venue-order receipt, 20 -> 22 for #4063 Wave 5, and
---     22 -> 25 for #4111 and 25 -> 35 for the #3872 push-only writers.
+--     22 -> 25 for #4111, 25 -> 35 for #3872, and 35 -> 39 for #2829.
 --     The floor is the number that ACTUALLY exists in the catalog, so a
 --     producer DISAPPEARING is caught as well as
 --     one appearing. At the old floor of 8 any of #3720's three new producers
@@ -99,9 +102,9 @@ DECLARE
   v_count integer;
 BEGIN
   SELECT count(*) INTO v_count FROM issue_1529_discovered_producers;
-  IF v_count < 35 THEN
+  IF v_count < 39 THEN
     RAISE EXCEPTION
-      'issue_1529_producer_floor_breached_expected_at_least_35_got_%', v_count;
+      'issue_1529_producer_floor_breached_expected_at_least_39_got_%', v_count;
   END IF;
 END;
 $ratchet$;
@@ -186,10 +189,14 @@ DECLARE
     'brand_enquiry_reply',
     'issue_4111_enquiry_nudge_sweep'
   ];
-  -- [TEST-MOD-APPROVED #3643] Full replay now observes the current #3872
-  -- push-only notification writers, which were invisible to the old
-  -- per-issue trigger path. They do not route SMS and need no country.
+  -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
+  -- are in-app/push-only. Their owning suites prove delivery behavior; none of
+  -- these categories routes SMS, so they intentionally need no country.
   push_only text[] := ARRAY[
+    'brand_site_domain_notify',
+    'brand_site_plan_reminder_sweep',
+    'brand_site_request_admin',
+    'brand_site_request_start',
     'issue_3872_enqueue_brand_referral_notice',
     'issue_3872_enqueue_gig_notice',
     'issue_3872_gig_interest_notice',

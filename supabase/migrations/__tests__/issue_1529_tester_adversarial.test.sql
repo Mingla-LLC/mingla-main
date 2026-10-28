@@ -274,9 +274,11 @@ BEGIN
   -- [TEST-MOD-APPROVED #3643] Raised to the live catalog measured on a fresh
   -- PostgreSQL 17 replay of every migration with the eleven #3872 push-only
   -- producers included: 47 functions touch the outbox.
-  IF v_count < 47 THEN
+  -- [TEST-MOD-APPROVED #2829] Four Sites push-only producers raise the exact
+  -- live catalog floor from 47 to 51 outbox-touching functions.
+  IF v_count < 51 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_47_got_%',
+      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_51_got_%',
       v_count;
   END IF;
 
@@ -288,9 +290,10 @@ BEGIN
   FROM issue_1529_adv_producers WHERE writes_outbox;
   -- [TEST-MOD-APPROVED #3643] The eleven #3872 push-only writers are deliberately
   -- outside the country-code bucket; the measured live writer count is 35.
-  IF v_count < 35 THEN
+  -- [TEST-MOD-APPROVED #2829] Four Sites push-only writers raise it to 39.
+  IF v_count < 39 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_producer_floor_breached_expected_at_least_35_got_%',
+      'issue_1529_adv_producer_floor_breached_expected_at_least_39_got_%',
       v_count;
   END IF;
 END;
@@ -334,9 +337,14 @@ DECLARE
     'issue_4111_enquiry_nudge_sweep',
     'create_support_ticket'
   ];
-  -- [TEST-MOD-APPROVED #3643] Current #3872 notification writers are
-  -- in-app/push-only and intentionally omit an SMS country.
+  -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
+  -- are in-app/push-only. Their owning suites prove delivery behavior; none of
+  -- these categories routes SMS, so they intentionally omit an SMS country.
   push_only text[] := ARRAY[
+    'brand_site_domain_notify',
+    'brand_site_plan_reminder_sweep',
+    'brand_site_request_admin',
+    'brand_site_request_start',
     'issue_3872_enqueue_brand_referral_notice',
     'issue_3872_enqueue_gig_notice',
     'issue_3872_gig_interest_notice',
