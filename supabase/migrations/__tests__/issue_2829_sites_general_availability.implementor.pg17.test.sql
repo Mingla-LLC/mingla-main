@@ -9,7 +9,8 @@ CREATE TEMP TABLE i2829_ga_fixture(
   backfill_brand_id uuid NOT NULL,
   future_brand_id uuid NOT NULL,
   restored_brand_id uuid NOT NULL,
-  revoked_brand_id uuid NOT NULL
+  revoked_brand_id uuid NOT NULL,
+  ephemeral_brand_id uuid NOT NULL
 ) ON COMMIT PRESERVE ROWS;
 
 BEGIN;
@@ -18,7 +19,8 @@ INSERT INTO i2829_ga_fixture VALUES (
   '28290000-0000-4000-8100-000000000201',
   '28290000-0000-4000-8100-000000000202',
   '28290000-0000-4000-8100-000000000203',
-  '28290000-0000-4000-8100-000000000204'
+  '28290000-0000-4000-8100-000000000204',
+  '28290000-0000-4000-8100-000000000205'
 );
 INSERT INTO auth.users(id, email)
 SELECT owner_id, 'sites-ga-2829@example.test' FROM i2829_ga_fixture;
@@ -143,6 +145,40 @@ BEGIN
 END;
 $behavior$;
 
+BEGIN;
+INSERT INTO public.brands(id, account_id, name, slug)
+SELECT ephemeral_brand_id, owner_id, 'Sites GA Ephemeral', 'sites-ga-ephemeral'
+FROM i2829_ga_fixture;
+DELETE FROM public.brands brand
+USING i2829_ga_fixture fixture
+WHERE brand.id = fixture.ephemeral_brand_id;
+COMMIT;
+
+DO $delete_semantics$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM public.brand_site_entitlements entitlement
+    JOIN i2829_ga_fixture fixture
+      ON fixture.ephemeral_brand_id = entitlement.brand_id
+  ) THEN
+    RAISE EXCEPTION 'brand delete left its default Sites entitlement behind';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.brand_site_audit_log audit
+    JOIN i2829_ga_fixture fixture
+      ON audit.resource_id = fixture.ephemeral_brand_id::text
+    WHERE audit.brand_id IS NULL
+      AND audit.action = 'entitlement.granted'
+      AND audit.actor_kind = 'system'
+  ) THEN
+    RAISE EXCEPTION 'brand delete did not retain a detached default-grant audit row';
+  END IF;
+END;
+$delete_semantics$;
+
 \ir ../20280206002829_issue_2829_sites_general_availability.sql
 
 DO $idempotent$
@@ -183,6 +219,11 @@ WHERE audit.brand_id IN (
   fixture.future_brand_id,
   fixture.restored_brand_id,
   fixture.revoked_brand_id
+)
+OR (
+  audit.brand_id IS NULL
+  AND audit.action = 'entitlement.granted'
+  AND audit.resource_id = fixture.ephemeral_brand_id::text
 );
 DELETE FROM public.brand_site_entitlements entitlement
 USING i2829_ga_fixture fixture

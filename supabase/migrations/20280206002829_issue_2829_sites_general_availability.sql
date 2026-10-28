@@ -13,6 +13,34 @@ LOCK TABLE public.brands,
   public.brand_site_audit_log
 IN SHARE ROW EXCLUSIVE MODE;
 
+-- The entitlement is brand-owned configuration and must not make an otherwise
+-- valid hard delete fail. Audit rows are retained, but their nullable brand
+-- reference is cleared; resource_id continues to preserve the deleted brand ID.
+ALTER TABLE public.brand_site_entitlements
+  DROP CONSTRAINT brand_site_entitlements_brand_id_fkey,
+  ADD CONSTRAINT brand_site_entitlements_brand_id_fkey
+    FOREIGN KEY (brand_id) REFERENCES public.brands(id) ON DELETE CASCADE;
+
+ALTER TABLE public.brand_site_audit_log
+  DROP CONSTRAINT brand_site_audit_log_scope_ck,
+  ADD CONSTRAINT brand_site_audit_log_scope_ck CHECK (
+    (site_id IS NOT NULL AND brand_id IS NOT NULL)
+    OR (site_id IS NULL AND brand_id IS NOT NULL AND action IN (
+      'entitlement.granted','entitlement.revoked',
+      'plan.saved','plan.taken_over','plan.start_requested','site.admin_requested'
+    ))
+    OR (site_id IS NULL AND brand_id IS NULL AND action IN (
+      'label.reserved',
+      'entitlement.granted','entitlement.revoked',
+      'plan.saved','plan.taken_over','plan.start_requested','site.admin_requested'
+    ))
+  );
+
+ALTER TABLE public.brand_site_audit_log
+  DROP CONSTRAINT brand_site_audit_log_brand_id_fkey,
+  ADD CONSTRAINT brand_site_audit_log_brand_id_fkey
+    FOREIGN KEY (brand_id) REFERENCES public.brands(id) ON DELETE SET NULL;
+
 CREATE OR REPLACE FUNCTION public.issue_2829_grant_default_site_entitlement()
 RETURNS trigger
 LANGUAGE plpgsql
