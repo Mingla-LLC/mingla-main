@@ -6,8 +6,10 @@
  * MINGLA-INVARIANT: I-3645-PS-2 | issue #3645 | saved card details are read only here, sent only to Paystack, and never logged, audited or returned
  * MINGLA-INVARIANT: I-3645-PS-3 | issue #3645 | the charge amount is the price locked at checkout (attempt amount); this module never prices
  *
- * The ONLY caller of paystackChargeAuthorization. Reached only through
- * chargeInstallment.ts. Charges with the email the card was saved with
+ * The ONLY caller of paystackChargeAuthorization. Production installment
+ * charges reach this owner through chargeInstallment.ts. The reviewed TEST
+ * proof harness also reaches this owner through the explicitly test-pinned
+ * helper below. Production charges use the email the card was saved with
  * (Paystack only honours that email), the attempt's locked all-in amount, and
  * the same split fields as the deposit for this brand.
  */
@@ -57,6 +59,18 @@ export function defaultChargePaystackDeps(
     ...defaultInstallmentWebhookDeps(),
     chargeAuthorization: (params) => paystackChargeAuthorization(params),
   };
+}
+
+/**
+ * TEST-provider proof seam. Keeping the raw provider primitive in this owner
+ * preserves the installment single-owner invariant, while the explicit mode
+ * prevents a live runtime default from selecting live credentials.
+ */
+export function chargePaystackTestAuthorization(
+  params: PaystackChargeAuthorizationParams,
+  fetchImpl: typeof fetch = fetch,
+): Promise<PaystackChargeAuthorizationResponse> {
+  return paystackChargeAuthorization(params, fetchImpl, "test");
 }
 
 interface ChargeContext {
