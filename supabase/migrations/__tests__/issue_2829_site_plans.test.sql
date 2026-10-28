@@ -59,7 +59,7 @@ BEGIN
   INSERT INTO public.brands(id, account_id, name, slug) VALUES
     (v_brand, v_owner, 'W9 Empty Brand', 'w9-empty-brand'),
     (v_full, v_other_owner, 'W9 Full Brand', 'w9-full-brand'),
-    (v_plain, v_other_owner, 'W9 Not Granted', 'w9-not-granted');
+    (v_plain, v_other_owner, 'W9 Explicitly Revoked', 'w9-not-granted');
   UPDATE public.brands SET description = 'Trips for people who travel alone.'
   WHERE id = v_full;
   UPDATE public.brands SET default_currency = 'USD' WHERE id IN (v_brand, v_full, v_plain);

@@ -76,7 +76,7 @@ describe("#2829 W9a Home to-do row", () => {
     expect(websiteTodoFor(BRAND, started)).toEqual({ variant: "finish", route: `/brand/${BRAND}/website/plan`, done: 3, nextLabel: "Choose your design" });
   });
 
-  it("marketing and event managers before a site: ask an admin; finance, scanners, not granted, paused, published: nothing", () => {
+  it("marketing and event managers before a site: ask an admin; finance, scanners, revoked, paused, published: nothing", () => {
     expect(websiteTodoFor(BRAND, answer({ rank: 20, can_manage: false }))?.variant).toBe("ask");
     expect(websiteTodoFor(BRAND, answer({ rank: 40, can_manage: false }))?.variant).toBe("ask");
     expect(websiteTodoFor(BRAND, answer({ rank: 30, can_manage: false }))).toBeNull();

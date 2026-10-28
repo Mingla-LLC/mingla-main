@@ -404,7 +404,7 @@ export function violations(files) {
     "stale database backup evidence recorded",
     "wrong host readiness accepted",
     "host readiness operation did not verify and replay",
-    "brand without Sites leaked Website state",
+    "entitled brand without a website got wrong availability",
     "readiness receipt was mutable",
   ]) need(liveSql, token, "Core live-readiness SQL regression", failures);
   const multiBrandSql = files.multiBrandSql ?? "";
@@ -783,8 +783,8 @@ export function violations(files) {
   );
   forbid(route, "useCurrentBrandRole", "Business Website route", failures);
   // Core owns the rank rule: rank-10 members get nothing, marketing manager
-  // (20) edits, brand admin/owner (50) creates and publishes, and an ungranted
-  // brand is unavailable to everyone.
+  // (20) edits, brand admin/owner (50) creates and publishes, and an explicitly
+  // revoked brand is unavailable to everyone.
   const availabilityBody = sqlFunctionBody(
     files.multiBrandMigration ?? "",
     "brand_site_business_availability",

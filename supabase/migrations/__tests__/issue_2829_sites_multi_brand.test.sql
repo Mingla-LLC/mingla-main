@@ -301,7 +301,7 @@ BEGIN
     (v_brand_a, v_owner, 'W1 Café Ñoño', 'w1-cafe-nono'),
     (v_brand_b, v_owner, 'W1 Second', 'w1-second'),
     (v_brand_c, v_owner, 'W1 Admin', 'admin'),
-    (v_brand_d, v_owner, 'W1 Never granted', 'w1-never');
+    (v_brand_d, v_owner, 'W1 Explicitly Revoked', 'w1-never');
   INSERT INTO public.brand_team_members(brand_id, user_id, role, accepted_at)
   SELECT b, u, r, now() FROM (VALUES
     (v_brand_a, v_admin_member, 'brand_admin'), (v_brand_a, v_marketing, 'marketing_manager'),

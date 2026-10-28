@@ -43,14 +43,10 @@ BEGIN
     (v_live, v_unaccepted, 'brand_admin', NULL, NULL),
     (v_live, v_marketing, 'marketing_manager', now(), NULL);
 
-  INSERT INTO public.brand_site_entitlements(
-    brand_id, status, source, granted_by, granted_at, revoked_by,
-    revoked_at, reason_code
-  ) VALUES
-    (v_live, 'granted', 'admin', v_owner, now(), NULL, NULL, 'rollout'),
-    (v_fresh, 'granted', 'admin', v_owner, now(), NULL, NULL, 'rollout'),
-    (v_revoked, 'revoked', 'admin', v_owner, now(), v_owner, now(), 'owner_request'),
-    (v_deleted, 'granted', 'admin', v_owner, now(), NULL, NULL, 'rollout');
+  UPDATE public.brand_site_entitlements
+  SET status = 'revoked', source = 'admin', revoked_by = v_owner,
+      revoked_at = now(), reason_code = 'owner_request'
+  WHERE brand_id = v_revoked;
   INSERT INTO public.brand_site_plans(
     brand_id, offerings_selected, started_by, updated_by, updated_at
   ) VALUES

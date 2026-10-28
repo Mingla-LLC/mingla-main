@@ -1,6 +1,6 @@
 -- #2829 W9b — Ari as the website designer, Core side (pg17, BEGIN ... ROLLBACK).
---  - "Websites are opening brand by brand": a member (rank >= 20) of a brand
---    WITHOUT Sites records interest once per day; a granted brand records
+--  - a member (rank >= 20) of a brand whose Sites access was explicitly
+--    revoked records interest once per day; an entitled brand records
 --    nothing; a scanner or a stranger cannot; only Mingla admins read it, and
 --    never through the table;
 --  - the content gate learns the two Publish-review reads (rank 20);
@@ -41,7 +41,7 @@ BEGIN
   INSERT INTO public.admin_users(email, role, status, accepted_at)
   VALUES ('w9b-mingla-admin@2829.invalid', 'admin', 'active', now());
   INSERT INTO public.brands(id, account_id, name, slug) VALUES
-    (v_brand, v_owner, 'W9b Waiting', 'w9b-waiting'),
+    (v_brand, v_owner, 'W9b Revoked', 'w9b-revoked'),
     (v_granted, v_granted_owner, 'W9b Granted', 'w9b-granted');
   UPDATE public.brands SET default_currency = 'USD' WHERE id IN (v_brand, v_granted);
   INSERT INTO public.brand_team_members(brand_id, user_id, role, accepted_at) VALUES
@@ -56,6 +56,7 @@ BEGIN
     v_mingla_admin, now(), v_mingla_admin, now());
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_mingla_admin)::text, true);
   PERFORM set_config('request.jwt.claim.sub', v_mingla_admin::text, true);
+  PERFORM public.brand_site_admin_revoke(v_brand, 'support', 'W9b negative fixture');
   PERFORM public.brand_site_admin_grant(v_granted, 'rollout', NULL);
 
   -- ── grants: the table is RPC-only ────────────────────────────────────────
@@ -68,12 +69,12 @@ BEGIN
     RAISE EXCEPTION 'anon can record interest';
   END IF;
 
-  -- ── a marketing manager of a brand without Sites: recorded once a day ───
+  -- ── a marketing manager of an explicitly revoked brand: recorded daily ─
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_marketing)::text, true);
   PERFORM set_config('request.jwt.claim.sub', v_marketing::text, true);
   v_result := public.brand_site_record_interest(v_brand, 'ari');
   IF v_result <> jsonb_build_object('recorded', true, 'entitled', false) THEN
-    RAISE EXCEPTION 'interest not recorded for a brand without Sites: %', v_result;
+    RAISE EXCEPTION 'interest not recorded for an explicitly revoked brand: %', v_result;
   END IF;
   PERFORM public.brand_site_record_interest(v_brand, 'ari');
   SELECT count(*) INTO v_count FROM public.brand_site_interest WHERE brand_id = v_brand;
