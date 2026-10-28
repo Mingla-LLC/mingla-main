@@ -1,8 +1,8 @@
 -- Issue #3645 / #4040 — trip payment plan capability and the publish belt (PG17).
 --
 -- Proves:
---   1. pg_trip_installments_supported: stripe → true, paystack → the switch
---      (false today), other/unknown → false.
+--   1. pg_trip_installments_supported: stripe → true, paystack → the switch,
+--      other/unknown → false. The suite exercises both switch states.
 --   2. #4040: with the switch OFF, a scheduled PUBLIC Paystack trip with a saved
 --      plan can be set to hidden through admin_set_offering_visibility (the exact
 --      production transition); hidden→public, private→public and
@@ -80,6 +80,9 @@ DECLARE
   v_other uuid := gen_random_uuid();
   r jsonb;
 BEGIN
+  -- Exercise the fail-closed state first even though production's reviewed
+  -- activation migration now leaves the switch on.
+  PERFORM pg_temp.i3645_switch(false);
   -- 1. Capability matrix.
   IF public.pg_trip_installments_supported((a->>'event')::uuid) IS NOT FALSE THEN
     RAISE EXCEPTION 'cap_1_paystack_must_follow_switch_off';

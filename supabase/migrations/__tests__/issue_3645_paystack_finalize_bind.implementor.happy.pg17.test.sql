@@ -17,8 +17,8 @@
 
 BEGIN;
 
--- The Paystack switch ships false; flip it inside this transaction only so
--- the #3859 session belt admits a Paystack plan session.
+-- Pin the Paystack switch on inside this transaction so the fixture stays
+-- explicit even if the surrounding activation contract changes later.
 CREATE OR REPLACE FUNCTION public.issue_3645_paystack_installments_enabled()
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
 AS $on$ SELECT true $on$;

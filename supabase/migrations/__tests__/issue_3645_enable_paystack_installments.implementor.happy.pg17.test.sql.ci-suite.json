@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3645_enable_paystack_installments.implementor.happy.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3645-activation-03-switch-on",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}
