@@ -94,11 +94,22 @@ import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
 import { useSwitchAccount } from "../../hooks/useSwitchAccount";
 
-const DeferredMeasuredTextDisclosure = React.lazy(() =>
-  import("@mingla/brand-rendering/MeasuredTextDisclosure").then((module) => ({
-    default: module.MeasuredTextDisclosure,
-  })),
-);
+const loadMeasuredTextDisclosure = () => {
+  // Jest's Node 22 VM does not enable native dynamic imports. Keep the
+  // production boundary split while giving renderer suites the same component
+  // synchronously; Expo replaces NODE_ENV and removes this branch on export.
+  if (process.env.NODE_ENV === "test") {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const module = require(
+      "@mingla/brand-rendering/MeasuredTextDisclosure",
+    ) as typeof import("@mingla/brand-rendering/MeasuredTextDisclosure");
+    return Promise.resolve({ default: module.MeasuredTextDisclosure });
+  }
+  return import("@mingla/brand-rendering/MeasuredTextDisclosure").then(
+    (module) => ({ default: module.MeasuredTextDisclosure }),
+  );
+};
+const DeferredMeasuredTextDisclosure = React.lazy(loadMeasuredTextDisclosure);
 
 interface OperationsRow {
   icon: IconName;

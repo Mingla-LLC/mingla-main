@@ -139,6 +139,7 @@ test("public and operator brand surfaces share measured overflow ownership", () 
   expect(publicPage).toContain('testID="public-brand-bio-disclosure"');
   expect(publicPage).not.toMatch(/text\.length\s*>\s*220/);
   expect(publicPage).toContain("React.lazy");
+  expect(publicPage).toContain('process.env.NODE_ENV === "test"');
   expect(publicPage).toContain('import("./MeasuredTextDisclosure")');
   expect(publicPage).toContain("<React.Suspense");
 
@@ -146,5 +147,6 @@ test("public and operator brand surfaces share measured overflow ownership", () 
   expect(profile).toContain('testID="brand-profile-bio-disclosure"');
   expect(profile).not.toMatch(/bioText\.length\s*>\s*160/);
   expect(profile).toContain("React.lazy");
+  expect(profile).toContain('process.env.NODE_ENV === "test"');
   expect(profile).toContain("<React.Suspense");
 });

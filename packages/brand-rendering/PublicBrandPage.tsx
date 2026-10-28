@@ -137,11 +137,22 @@ type SocialKind =
   | "threads";
 
 const BIO_CLAMP_LINES = 4;
-const DeferredMeasuredTextDisclosure = React.lazy(() =>
-  import("./MeasuredTextDisclosure").then((module) => ({
+const loadMeasuredTextDisclosure = () => {
+  // Jest's Node 22 VM does not enable native dynamic imports. Keep the
+  // production boundary split while giving renderer suites the same component
+  // synchronously; Expo replaces NODE_ENV and removes this branch on export.
+  if (process.env.NODE_ENV === "test") {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const module = require(
+      "./MeasuredTextDisclosure"
+    ) as typeof import("./MeasuredTextDisclosure");
+    return Promise.resolve({ default: module.MeasuredTextDisclosure });
+  }
+  return import("./MeasuredTextDisclosure").then((module) => ({
     default: module.MeasuredTextDisclosure,
-  })),
-);
+  }));
+};
+const DeferredMeasuredTextDisclosure = React.lazy(loadMeasuredTextDisclosure);
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
