@@ -347,6 +347,13 @@
     transition: none;
     transform: none;
   }
+  /* #4137: CSS is the first-paint backstop while the client reduced-motion
+     store hydrates. Neither the Host bento card nor its Trips figure may stay
+     in a Framer Motion hidden variant when motion is reduced. */
+  .cut-host-bento-card, .cut-host-trip-figure {
+    opacity: 1 !important;
+    transform: none !important;
+  }
   .cut-float-a, .cut-float-b, .cut-float-c { animation: none; }
 }
 

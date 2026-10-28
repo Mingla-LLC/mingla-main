@@ -10,6 +10,8 @@ const read = (relativePath) => fs.readFileSync(path.join(ROOT, relativePath), 'u
 
 const page = read('app/host/page.tsx')
 const grid = read('components/ui/aurora-bento-grid.tsx')
+const tripPlan = read('components/ui/trip-plan-card.tsx')
+const cutoutCss = read('components/cutout/cutout.css')
 const bentoContent = read('lib/design-preview/host-bento.ts')
 const packageJson = JSON.parse(read('package.json'))
 
@@ -23,6 +25,14 @@ assert.match(
   grid,
   /grid grid-cols-1 gap-4 lg:grid-cols-6 lg:auto-rows-\[14rem\]/,
   'the shared BentoGrid primitive must retain its default sizing contract',
+)
+assert.match(grid, /cut-host-bento-card/, 'the Host bento card must expose its reduced-motion first-paint fallback')
+assert.match(tripPlan, /useMinglaReducedMotion/, 'the Trips figure must use the marketing reduced-motion source of truth')
+assert.match(tripPlan, /cut-host-trip-figure/, 'the Trips figure must expose its reduced-motion first-paint fallback')
+assert.match(
+  cutoutCss,
+  /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.cut-host-bento-card, \.cut-host-trip-figure \{[\s\S]*opacity: 1 !important;[\s\S]*transform: none !important;/,
+  'reduced motion must force the Host bento and Trips figure visible without a hydration race',
 )
 assert.match(page, /<HostFigure id=\{card\.id\} ambient=\{card\.ambient\} photo=\{card\.photo\} \/>/, '#4137: Host figures must remain visible, with ambient motion and photos')
 assert.match(page, /mt-6 flex flex-wrap gap-2/, 'Host capability chips must keep their standard spacing and wrapping')

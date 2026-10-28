@@ -18,11 +18,12 @@
 
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
-import { motion, useReducedMotion } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { MoveDown, MoveRight } from 'lucide-react'
 
 import { cn } from '@/lib/cn'
 import type { HostImage } from '@/lib/design-preview/host-imagery'
+import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { useActiveInViewport } from '@/lib/use-active-in-viewport'
 import { DEFAULT_MARKET, TRIP_PLAN, detectMarket, type Market } from '@/lib/design-preview/market-price'
 
@@ -58,7 +59,7 @@ export function TripPlanCard({
   /** #4137: a travel photo behind the card, which floats over it. */
   photo?: HostImage
 }) {
-  const reduced = useReducedMotion()
+  const reduced = useMinglaReducedMotion()
   const { ref, active } = useActiveInViewport<HTMLDivElement>()
 
   // After mount, not during render: the server has no time zone, and reading
@@ -78,6 +79,7 @@ export function TripPlanCard({
       viewport={{ once: true, margin: '-40px' }}
       transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
       className={cn(
+        'cut-host-trip-figure',
         photo
           ? 'rounded-xl bg-[rgba(20,18,15,0.82)] p-3.5 ring-1 ring-inset ring-white/10 backdrop-blur-md'
           : 'rounded-xl bg-white/[0.05] p-4 ring-1 ring-inset ring-white/10',
