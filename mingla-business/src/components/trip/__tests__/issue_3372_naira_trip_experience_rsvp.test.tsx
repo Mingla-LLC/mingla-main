@@ -351,7 +351,26 @@ describe("#3372 Business host trip and experience amounts", () => {
         { ordinal: 1, pct: 35, amountCents: 10500000, dueAt: "2026-10-14T00:00:00Z" },
       ],
     });
-    const naira = await render(<InstallmentScheduleDisplay schedule={schedule("NGN")} variant="planner" />);
+    // [TEST-MOD-APPROVED #3645] NGN projections intentionally show percentages
+    // before a server quote. Supply the locked charges so this glyph regression
+    // still proves the real-money rendering path.
+    const naira = await render(
+      <InstallmentScheduleDisplay
+        schedule={schedule("NGN")}
+        variant="planner"
+        depositChargeCents={9000000}
+        lockedChargeSchedule={{
+          currency: "NGN",
+          payments: [{
+            ordinal: 1,
+            dueAt: "2026-10-14T00:00:00Z",
+            buyerTotalCents: 10500000,
+            feesCents: 0,
+            taxCents: 0,
+          }],
+        }}
+      />,
+    );
     expect(naira).toContain("₦90,000.00");
     expect(naira).toContain("₦105,000.00");
     expect(naira.filter((s) => NAIRA_CODE_PRICE.test(s))).toEqual([]);

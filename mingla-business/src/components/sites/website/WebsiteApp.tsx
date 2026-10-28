@@ -481,7 +481,7 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
         <Modal visible={previewSheet} animationType="slide" onRequestClose={() => setPreviewSheet(false)} presentationStyle="fullScreen">
           <SafeScreen style={{ backgroundColor: "#000000" }}>
             <View style={styles.phoneTopbar}>
-              <BackButton label="Close preview" icon="x" onPress={() => setPreviewSheet(false)} />
+              <BackButton label="Close preview" icon="close" onPress={() => setPreviewSheet(false)} />
               <Text style={styles.topTitle} role="heading" aria-level={1}>Draft preview</Text>
             </View>
             <ScrollView contentContainerStyle={styles.sheetBody}>
@@ -562,7 +562,7 @@ function LoadError(): React.ReactElement {
   );
 }
 
-function BackButton({ label, onPress, icon = "left" }: { label: string; onPress: () => void; icon?: "left" | "x" }): React.ReactElement {
+function BackButton({ label, onPress, icon = "left" }: { label: string; onPress: () => void; icon?: "left" | "close" }): React.ReactElement {
   return (
     <Pressable onPress={onPress} role="button" accessibilityRole="button" accessibilityLabel={label} style={styles.iconButton} testID="website-back">
       <WebsiteIcon name={icon} size={18} color={ui.t1} />
@@ -718,7 +718,7 @@ function FullScreenPreview({ grant, search }: { grant: PreviewGrantState; search
   return (
     <SafeScreen style={{ backgroundColor: "#050608" }}>
       <View style={styles.phoneTopbar}>
-        <BackButton label="Close full-screen preview" icon="x" onPress={close} />
+        <BackButton label="Close full-screen preview" icon="close" onPress={close} />
         <Text style={styles.topTitle} role="heading" aria-level={1}>Draft preview</Text>
       </View>
       <View style={styles.fullBody}>

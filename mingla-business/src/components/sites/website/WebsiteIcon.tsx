@@ -10,7 +10,7 @@ import { text as textTokens } from "../../../constants/designSystem";
 export type WebsiteIconName =
   | "home" | "pages" | "palette" | "pin" | "book" | "quote" | "clock" | "globe" | "plan" | "upload" | "cog"
   | "right" | "left" | "up" | "down" | "eye" | "eyeoff" | "plus" | "check" | "alert" | "lock" | "copy"
-  | "ext" | "spark" | "image" | "video" | "trash" | "search" | "x" | "pause" | "drag" | "download" | "power"
+  | "ext" | "spark" | "image" | "video" | "trash" | "search" | "x" | "close" | "pause" | "drag" | "download" | "power"
   | "msg" | "edit" | "monitor" | "tablet" | "phone" | "rotate" | "history";
 
 function shapes(name: WebsiteIconName): React.ReactNode {
@@ -43,7 +43,8 @@ function shapes(name: WebsiteIconName): React.ReactNode {
     case "video": return <><Rect x={3} y={5} width={13} height={14} rx={2} /><Path d="M16 10l5-3v10l-5-3" /></>;
     case "trash": return <Path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />;
     case "search": return <><Circle cx={11} cy={11} r={7} /><Path d="M20 20l-4-4" /></>;
-    case "x": return <Path d="M6 6l12 12M18 6L6 18" />;
+    case "x":
+    case "close": return <Path d="M6 6l12 12M18 6L6 18" />;
     case "pause": return <Path d="M9 5v14M15 5v14" />;
     case "drag": return <><Circle cx={9} cy={6} r={1} /><Circle cx={15} cy={6} r={1} /><Circle cx={9} cy={12} r={1} /><Circle cx={15} cy={12} r={1} /><Circle cx={9} cy={18} r={1} /><Circle cx={15} cy={18} r={1} /></>;
     case "download": return <><Path d="M12 4v12M7 11l5 5 5-5" /><Path d="M4 20h16" /></>;
