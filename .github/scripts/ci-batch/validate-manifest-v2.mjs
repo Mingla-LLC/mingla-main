@@ -278,7 +278,9 @@ export function phase3dContractDigest(manifest) {
 // #3872: register the Ari census prerequisite repair and its executable proofs
 // selected by those same preserved replay commands, while the deliberately
 // filtered pre-#1931 replay excludes the exact repair beside both censuses.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "32fa372eef0cc9a29f9b040ae4b5b08601c18ca92301a204b4b9d7fd8ed0a4f1";
+// #1318: register the VAT migration selected by the same full-history replay
+// commands on top of the #3872 prerequisite repair.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "93b998802551e7eead6df07eec060ec3bcc12b4f0d223dc4c8afbcf50f0e87a7";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
