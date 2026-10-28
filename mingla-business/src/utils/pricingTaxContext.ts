@@ -19,6 +19,8 @@ export function configuredVatRateBps(
 ): number | null {
   const provider = context.paymentProvider?.trim().toLowerCase();
   const country = context.paymentCountry?.trim().toUpperCase();
+  // orch-strict-grep-allow stripe-country-out-of-scope — NG is evaluated only
+  // on the Paystack configured-VAT rail; it is never offered to Stripe Connect.
   return provider === "paystack" && country === "NG"
     ? NIGERIA_VAT_RATE_BPS
     : null;
