@@ -275,7 +275,10 @@ export function phase3dContractDigest(manifest) {
 // #3643: include the two insights lanes' pre-fold live-provider routing scopes.
 // #2829/#3645: register the new Sites and installment migration/test inputs
 // selected by the three preserved full-history replay commands.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "9ece136ff15efc1a6644753204067646134d2ba4cfa1820dbc49220c803ace2b";
+// #3872: register the Ari census prerequisite repair and its executable proofs
+// selected by those same preserved replay commands, while the deliberately
+// filtered pre-#1931 replay excludes the exact repair beside both censuses.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "32fa372eef0cc9a29f9b040ae4b5b08601c18ca92301a204b4b9d7fd8ed0a4f1";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
