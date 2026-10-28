@@ -1,13 +1,13 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { classifyLinkStatus, collectBlogLinkReferences, isBlogNotReadyError, isPrivateAddress, validateLinkCheckUrl } from "./model.ts";
+import { classifyLinkStatus, collectBlogLinkReferences, isBlogNotReadyError, isPrivateAddress, resolveMarketingRevalidateSecret, validateLinkCheckUrl } from "./model.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-const MARKETING_ORIGIN = (Deno.env.get("MARKETING_ORIGIN") ?? "https://usemingla.com").replace(/\/+$/, "");
-const REVALIDATE_SECRET = Deno.env.get("MARKETING_REVALIDATE_SECRET") ?? "";
+const MARKETING_ORIGIN = "https://usemingla.com";
+const REVALIDATE_SECRET = resolveMarketingRevalidateSecret(Deno.env.get("AD_CONVERSION_TOKENS")) ?? "";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });

@@ -1,6 +1,14 @@
 import { assertEquals, assertThrows } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { blogDocumentReferences } from "../../../packages/blog-document/src/index.ts";
-import { classifyLinkStatus, collectBlogLinkReferences, isBlogNotReadyError, isPrivateAddress, validateLinkCheckUrl } from "./model.ts";
+import { classifyLinkStatus, collectBlogLinkReferences, isBlogNotReadyError, isPrivateAddress, resolveMarketingRevalidateSecret, validateLinkCheckUrl } from "./model.ts";
+
+Deno.test("#4137 admin-blog reads revalidation authority only from the governed credential bundle", () => {
+  const secret = "s".repeat(32);
+  assertEquals(resolveMarketingRevalidateSecret(JSON.stringify({ MARKETING_REVALIDATE_SECRET: secret })), secret);
+  for (const raw of [undefined, "", "{", "[]", JSON.stringify({}), JSON.stringify({ MARKETING_REVALIDATE_SECRET: "short" })]) {
+    assertEquals(resolveMarketingRevalidateSecret(raw), undefined);
+  }
+});
 
 Deno.test("#4137 admin-blog rejects SSRF destinations and non-https URLs", () => {
   for (const address of ["127.0.0.1", "10.1.2.3", "169.254.169.254", "192.168.1.1", "::1", "fe80::1"]) assertEquals(isPrivateAddress(address), true, address);

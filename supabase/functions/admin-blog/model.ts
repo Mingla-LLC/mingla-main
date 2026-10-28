@@ -2,6 +2,19 @@ export type BlogReferenceDocument = { version?: unknown; blocks?: unknown };
 export type LinkCheckReference = { url: string; source: string };
 
 const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+const MAX_CREDENTIAL_BUNDLE_BYTES = 48 * 1024;
+
+export function resolveMarketingRevalidateSecret(raw: string | undefined): string | undefined {
+  if (!raw || new TextEncoder().encode(raw).byteLength >= MAX_CREDENTIAL_BUNDLE_BYTES) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
+    const secret = (parsed as Record<string, unknown>).MARKETING_REVALIDATE_SECRET;
+    return typeof secret === "string" && secret.trim().length >= 32 ? secret : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export function collectBlogLinkReferences(
   document: BlogReferenceDocument,

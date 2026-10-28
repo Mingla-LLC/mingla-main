@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "admin-blog",
+  "verify_jwt": true,
+  "gateway_reason": "Authenticated Support writers check links; only publisher-capable staff may request public blog revalidation, with both roles repeated in-code.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [],
+    "required_bundle_fields": {
+      "AD_CONVERSION_TOKENS": [
+        "MARKETING_REVALIDATE_SECRET"
+      ]
+    },
+    "required_top_level": []
+  }
+}

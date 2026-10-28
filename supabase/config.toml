@@ -871,7 +871,3 @@ verify_jwt = true
 # handler compares that bearer in-code before touching the opaque cleanup queue.
 [functions.agent-attachment-cleanup]
 verify_jwt = false
-
-# #4137 — authenticated staff link checking and publisher-only revalidation.
-[functions.admin-blog]
-verify_jwt = true
