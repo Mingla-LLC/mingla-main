@@ -26,9 +26,13 @@ function runtimeEnv(name: 'NEXT_PUBLIC_SUPABASE_URL' | 'NEXT_PUBLIC_SUPABASE_ANO
 }
 function restUrl(): string { return runtimeEnv('NEXT_PUBLIC_SUPABASE_URL').replace(/\/$/, '') }
 
-// Image URLs use the BUILD-time project URL, the same value next.config.ts
-// puts in images.remotePatterns, so next/image always accepts them.
-const MEDIA_BASE = (process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://gqnoajqerqhnvulmnyvv.supabase.co').replace(/\/$/, '')
+// Read the media origin at runtime as well. The server-rendered metadata and
+// body must follow the database selected for this process (including preview
+// and release-test fixtures), rather than retaining the project URL from the
+// machine that produced the build.
+function mediaBase(): string {
+  return (runtimeEnv('NEXT_PUBLIC_SUPABASE_URL') || 'https://gqnoajqerqhnvulmnyvv.supabase.co').replace(/\/$/, '')
+}
 
 export const BLOG_PAGE_SIZE = 12
 export const BLOG_CACHE_TAG = 'blog'
@@ -125,7 +129,7 @@ export function blogDataConfigured(): boolean {
 
 /** Public URL of a blog-media object (never the billed /render/image endpoint, hold #1643). */
 export function blogMediaUrl(path: string): string {
-  return `${MEDIA_BASE}/storage/v1/object/public/blog-media/${path.split('/').map(encodeURIComponent).join('/')}`
+  return `${mediaBase()}/storage/v1/object/public/blog-media/${path.split('/').map(encodeURIComponent).join('/')}`
 }
 
 export function blogCardCoverSrc(card: BlogCard): string | null {
