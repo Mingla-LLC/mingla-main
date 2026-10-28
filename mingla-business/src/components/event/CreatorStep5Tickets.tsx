@@ -48,7 +48,7 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
-import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
+import { WhoCoversCostsSection } from "../pricing/LazyWhoCoversCostsSection";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";

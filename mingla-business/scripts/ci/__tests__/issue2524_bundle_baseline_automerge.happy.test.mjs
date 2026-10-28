@@ -955,7 +955,7 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
     assert.ok(sibling.size > 1, `the baseline's SIBLINGS are not excluded; got ${sibling.size}`);
   });
 
-  test("#3325 — a baseline-only merge re-runs #2099's SC-4 on main, and nothing about the budget moved", () => {
+  test("#3325/#3493 — a baseline-only merge and every Business PR run the same SC-4 verdict", () => {
     // Assembled, never literal — see the #2148 registry note at the top of this file.
     const name = ["issue-2099-pending-venue-identity-correction-tests", "yml"].join(".");
     const workflow = readFileSync(join(WORKFLOWS, name), "utf8");
@@ -977,33 +977,27 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
       "push to main must reuse that anchor, so the entry reaches the push trigger");
     assert.ok(startedBy(BASELINE_PATH, ["push"]).has(name), "a baseline-only push must start #2099");
 
-    // 2. On push, SC-4 measures unconditionally: the non-PR branch sets run=true
-    //    and exits before any changed-file listing is read.
-    const scope = workflow.slice(workflow.indexOf("id: sc4scope"), workflow.indexOf("SC-4 outer guard"));
-    assert.ok(scope.length > 0, "the SC-4 scope step is missing");
-    assert.match(scope,
-      /if \[ "\$\{\{ github\.event_name \}\}" != "pull_request" \]; then\n\s+echo "run=true" >> "\$GITHUB_OUTPUT"\n\s+echo "[^"\n]*"\n\s+exit 0\n\s+fi\n/,
-      "a push must reach the SC-4 measurement without consulting the PR file list");
-    assert.ok(scope.indexOf("exit 0") < scope.indexOf("pulls/"), "the push exit must precede the PR file listing");
+    // 2. Issue #3493 removed the pull-request scope skip. The existing universal
+    //    Web Build lane covers Business source and local workspace packages,
+    //    without making every such change run #2099's database/browser jobs.
+    const webBuild = ["web-build-check", "yml"].join(".");
+    assert.ok(startedBy("mingla-business/src/utils/pricingTaxContext.ts", ["pull_request"]).has(webBuild));
+    assert.ok(startedBy("packages/offering-rendering/index.ts", ["pull_request"]).has(webBuild));
 
-    // 3. On a pull request, a baseline-only change still skips the measurement:
-    //    the baseline is NOT one of SC-4's exact product paths (#2193 / #2855).
-    const productBlock = /sc4_product_paths=\(\n([\s\S]*?)\n\s+\)/.exec(scope);
-    assert.ok(productBlock, "SC-4's exact product-path list is missing");
-    const productPaths = [...productBlock[1].matchAll(/'([^']+)'/g)].map((match) => match[1]);
-    assert.equal(productPaths.length, 6, "SC-4 must stay scoped to its six product paths");
-    assert.ok(!productPaths.includes(BASELINE_PATH), "a baseline-only PR must never be charged #2099's budget");
-    assert.match(scope, /if \[ "\$path" = "\$product_path" \]; then/, "product paths must match by exact equality");
+    // 3. The boot job contains one unconditional export + verdict sequence.
+    //    There is no event-name branch or changed-file scope to disagree with
+    //    main after merge.
+    const bootStart = workflow.indexOf("  issue-2099-boot-payload-ceiling:");
+    const bootEnd = workflow.indexOf("  issue-2099-postgres-contract:", bootStart);
+    const guard = workflow.slice(bootStart, bootEnd);
+    assert.ok(guard.length > 0, "the boot-payload job is missing");
+    assert.doesNotMatch(guard, /sc4scope|steps\.sc4scope|github\.event_name/);
+    assert.match(guard,
+      /npm run web:export\n\s+node scripts\/ci\/bundle-baseline-movement\.mjs/);
+    assert.ok(!/continue-on-error|\|\| true/.test(guard), "SC-4 must stay fail-closed");
 
-    // 4. The fix is a TRIGGER, not a relaxation. SC-4 still reads the baseline at
-    //    run time and still fails above 1,024 B, and the shared ceiling mirror is
-    //    still derived from the budget source rather than copied.
-    const guard = workflow.slice(workflow.indexOf("SC-4 outer guard"));
-    assert.match(guard, /readFileSync\("\.\/scripts\/ci\/bundle-baseline\.json", "utf8"\)/);
-    assert.match(guard, /if \(delta > 1024\) \{/, "#2099's private tripwire must stay at 1,024 B");
-    assert.match(guard, /process\.exit\(1\);/);
-    assert.ok(!/continue-on-error|\|\| true/.test(guard.slice(0, guard.indexOf("issue-2099-postgres-contract"))),
-      "SC-4 must stay fail-closed");
+    // 4. The fix is not a ceiling or per-PR allowance relaxation; those remain
+    //    derived from their existing authorities.
     assertCeilingMirrorMatchesBudgetSource();
   });
 

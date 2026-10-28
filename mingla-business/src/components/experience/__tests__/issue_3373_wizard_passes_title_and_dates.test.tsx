@@ -177,7 +177,7 @@ jest.mock("../ExperienceCoverStep", () => ({
   },
 }));
 jest.mock("../ExperienceStopsStep", () => ({ ExperienceStopsStep: (): null => null }));
-jest.mock("../../pricing/WhoCoversCostsSection", () => ({
+jest.mock("../../pricing/LazyWhoCoversCostsSection", () => ({
   WhoCoversCostsSection: (): null => null,
 }));
 jest.mock("../../offering/StripeBlockedCard", () => ({ StripeBlockedCard: (): null => null }));

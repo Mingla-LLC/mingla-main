@@ -37,6 +37,37 @@ export const DEFERRED_SPECIFIERS = [
   "@expo-google-fonts/",
 ];
 
+/**
+ * One authority for meaningful movement around the recorded boot baseline.
+ *
+ * Issue #3493 found that pull requests could skip a private 1,024 B guard and
+ * then fail it only after merge, while the ratchet treated anything below
+ * 2,048 B as noise. Keeping both decisions on this value makes a +1,560 B
+ * movement receive the same verdict before and after merge.
+ */
+export const BASELINE_MOVEMENT_THRESHOLD_BYTES = 1_024;
+
+/**
+ * Fail-closed verdict for raw `__common` movement from the recorded baseline.
+ * The same pure decision is used by pull-request and main builds.
+ */
+export function assessCommonBaselineMovement(baselineRaw, measuredRaw) {
+  for (const [label, value] of [
+    ["baselineRaw", baselineRaw],
+    ["measuredRaw", measuredRaw],
+  ]) {
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      throw new Error(`${label} must be a positive safe integer, got ${String(value)}`);
+    }
+  }
+  const delta = measuredRaw - baselineRaw;
+  return {
+    ok: delta <= BASELINE_MOVEMENT_THRESHOLD_BYTES,
+    delta,
+    threshold: BASELINE_MOVEMENT_THRESHOLD_BYTES,
+  };
+}
+
 /** Compress with the settings a CDN would use for a static asset it serves repeatedly. */
 function compressedSizes(buf) {
   return {
