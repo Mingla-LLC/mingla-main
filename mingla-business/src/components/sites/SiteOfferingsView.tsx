@@ -93,6 +93,7 @@ export function SiteOfferingsView(props: SiteOfferingsViewProps): React.ReactEle
                     disabled={props.readOnly}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: on }}
+                    accessibilityLabel={`${chip} venue type`}
                     style={[styles.chip, on ? styles.chipOn : null]}
                     testID={`offer-descriptor-${chip}`}
                   >

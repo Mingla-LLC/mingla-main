@@ -39,31 +39,13 @@ import {
 import { GlassCard } from "../ui/GlassCard";
 import { installmentReassuranceText } from "../../copy/installmentReassurance";
 import type { InstallmentChargeSchedule } from "@mingla/offering-rendering/discountQuote";
-import { buildInstallmentScheduleRows } from "./installmentScheduleRows";
+import {
+  buildInstallmentScheduleRows,
+  type InstallmentScheduleDisplaySchedule,
+} from "./installmentScheduleRows";
 
 export { buildInstallmentScheduleRows } from "./installmentScheduleRows";
-
-export interface InstallmentScheduleDisplaySchedule {
-  fullPriceCents: number;
-  depositCents: number;
-  /** 3-letter ISO 4217 currency code from the trip. */
-  currency: string;
-  installments: {
-    ordinal: number;
-    pct: number;
-    amountCents: number;
-    /** ISO 8601 UTC. */
-    dueAt: string;
-    /**
-     * Issue #3801 — true when `dueAt` is a CALENDAR DATE pinned to UTC (a
-     * payment plan's `fixed_date`), not a moment. It is then shown as that
-     * day in every timezone. Absent/false = a real instant (an offset from the
-     * booking moment, or an order's stored due time), shown in the viewer's
-     * own timezone.
-     */
-    dueIsCalendarDate?: boolean;
-  }[];
-}
+export type { InstallmentScheduleDisplaySchedule } from "./installmentScheduleRows";
 
 export interface InstallmentScheduleDisplayProps {
   schedule: InstallmentScheduleDisplaySchedule | null;

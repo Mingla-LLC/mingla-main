@@ -459,6 +459,7 @@ export function ListRow({
       {chevronIcon ? (
         <Pressable
           onPress={onPress}
+          accessibilityLabel={label}
           accessible={false}
           focusable={false}
           accessibilityElementsHidden

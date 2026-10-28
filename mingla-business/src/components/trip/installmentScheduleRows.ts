@@ -2,7 +2,25 @@ import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import type { InstallmentChargeSchedule } from "@mingla/offering-rendering/discountQuote";
 
 import { formatCalendarDate } from "../../utils/calendarDate";
-import type { InstallmentScheduleDisplaySchedule } from "./InstallmentScheduleDisplay";
+
+export interface InstallmentScheduleDisplaySchedule {
+  fullPriceCents: number;
+  depositCents: number;
+  /** 3-letter ISO 4217 currency code from the trip. */
+  currency: string;
+  installments: {
+    ordinal: number;
+    pct: number;
+    amountCents: number;
+    /** ISO 8601 UTC. */
+    dueAt: string;
+    /**
+     * True when dueAt is a calendar date pinned to UTC rather than a moment.
+     * Calendar dates render as the same day in every timezone.
+     */
+    dueIsCalendarDate?: boolean;
+  }[];
+}
 
 export interface InstallmentScheduleDisplayRows {
   deposit: { label: string; amount: string };

@@ -128,6 +128,7 @@ export function SiteStoryView(props: SiteStoryViewProps): React.ReactElement {
                   disabled={props.readOnly}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: on }}
+                  accessibilityLabel={`Use ${chip.label} as the main action`}
                   style={[styles.chip, on ? styles.chipOn : null]}
                   testID={`story-action-${chip.label}`}
                 >
