@@ -6,8 +6,8 @@
  * MINGLA-INVARIANT: I-3645-PS-2 | issue #3645 | saved card details are read only here, sent only to Paystack, and never logged, audited or returned
  * MINGLA-INVARIANT: I-3645-PS-3 | issue #3645 | the charge amount is the price locked at checkout (attempt amount); this module never prices
  *
- * The ONLY caller of paystackChargeAuthorization. Reached only through
- * chargeInstallment.ts. Charges with the email the card was saved with
+ * The ONLY production caller of paystackChargeAuthorization. Reached only
+ * through chargeInstallment.ts. Charges use the email the card was saved with
  * (Paystack only honours that email), the attempt's locked all-in amount, and
  * the same split fields as the deposit for this brand.
  */

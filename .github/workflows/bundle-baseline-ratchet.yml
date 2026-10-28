@@ -52,9 +52,19 @@ jobs:
         working-directory: mingla-business
         run: npm ci
 
+      - name: "#3493 PR/main bundle-verdict parity regression"
+        working-directory: mingla-business
+        run: node --test scripts/ci/__tests__/issue3493_boot_payload_parity.happy.test.mjs
+
       - name: Export web bundle
         working-directory: mingla-business
         run: npx expo export -p web --output-dir /tmp/ratchet-web-build
+
+      - name: "#3493 enforce the shared baseline-movement verdict"
+        working-directory: mingla-business
+        run: >-
+          ORCH_1083_WEB_BUILD=/tmp/ratchet-web-build
+          node scripts/ci/bundle-baseline-movement.mjs
 
       - name: Compare against the recorded baseline
         id: compare

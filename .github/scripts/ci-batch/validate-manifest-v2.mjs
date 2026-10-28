@@ -283,7 +283,9 @@ export function phase3dContractDigest(manifest) {
 // exclusions for the deliberately pre-#1931 historical replay.
 // #1318: register the VAT migration selected by the same full-history replay
 // commands on top of the #4137 Blog additions.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "9ce33323487f3684ba06904278f710093ab70fbe5ea022eff287f8e317e06a51";
+// #2829 / #3645: register the two activation migrations selected by those
+// replay commands on top of the #4137 Blog and #1318 VAT additions.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "bc1bd75b6f0b1df1d104f60d00612fd4b7fe2946da6d1f6efdb6ff4e3818525b";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

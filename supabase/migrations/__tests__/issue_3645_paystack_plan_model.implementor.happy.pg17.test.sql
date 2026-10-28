@@ -9,7 +9,7 @@
 --   6. Saved card details are unreadable by anon/authenticated; the charge
 --      function is service_role only; the attempts view hides the reference.
 --   7. One unresolved attempt per instalment (partial unique index).
---   8. The readiness switch ships false.
+--   8. The reviewed readiness switch is active.
 --   9. The webhook inbox keeps only the masked card reference.
 
 BEGIN;
@@ -133,9 +133,9 @@ BEGIN
   EXCEPTION WHEN check_violation THEN NULL;
   END;
 
-  -- 8. Switch ships false.
-  IF public.issue_3645_paystack_installments_enabled() IS NOT FALSE THEN
-    RAISE EXCEPTION 'model_8_switch_must_ship_false';
+  -- 8. The reviewed switch is active after provider TEST proof.
+  IF public.issue_3645_paystack_installments_enabled() IS NOT TRUE THEN
+    RAISE EXCEPTION 'model_8_switch_must_be_active';
   END IF;
 END
 $test$;

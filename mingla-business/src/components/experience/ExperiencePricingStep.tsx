@@ -35,7 +35,7 @@ import { Input } from "../ui/Input";
 // never import ./RefundPolicyEditor statically here.
 import { LazyRefundPolicyEditor as RefundPolicyEditor } from "../trip/LazyRefundPolicyEditor";
 import type { RefundPolicy } from "../../services/refundPolicyService";
-import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
+import { WhoCoversCostsSection } from "../pricing/LazyWhoCoversCostsSection";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import type { PricingSwitchOverrides } from "../../services/pricingSwitchesService";
 import type {

@@ -48,6 +48,20 @@ jobs:
       - name: Install dependencies
         working-directory: mingla-business
         run: npm install
+      # Issue #3493 — this workflow has no product-path filter, so every pull
+      # request capable of changing the Business export reaches the exact same
+      # default export + movement verdict used on main by Bundle Baseline
+      # Ratchet. A baseline-only machine PR is the sole paths-ignore case and
+      # cannot change emitted application code.
+      - name: "#3493 PR/main bundle-verdict parity regression"
+        working-directory: mingla-business
+        run: node --test scripts/ci/__tests__/issue3493_boot_payload_parity.happy.test.mjs
+      - name: "#3493 export the main-parity boot payload"
+        working-directory: mingla-business
+        run: npm run web:export
+      - name: "#3493 enforce the shared baseline-movement verdict"
+        working-directory: mingla-business
+        run: node scripts/ci/bundle-baseline-movement.mjs
       - name: Build web bundle (fails on duplicate import/export + syntax errors)
         working-directory: mingla-business
         # [WORKFLOW-MOD-APPROVED #3009] Production enables only the separately

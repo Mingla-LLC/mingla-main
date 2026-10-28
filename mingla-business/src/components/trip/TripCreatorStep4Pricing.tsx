@@ -40,7 +40,7 @@ import { Icon } from "../ui/Icon";
 import { PaymentPlanEditor, type TripInstallmentSchedule } from "./PaymentPlanEditor";
 import { useRouter } from "expo-router";
 
-import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
+import { WhoCoversCostsSection } from "../pricing/LazyWhoCoversCostsSection";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";

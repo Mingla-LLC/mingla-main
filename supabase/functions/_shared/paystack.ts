@@ -46,9 +46,8 @@ export function resolvePaystackMode(): PaystackMode {
   return raw;
 }
 
-/** Resolve the Paystack SECRET key for the current mode, validating its prefix. */
-export function resolvePaystackSecretKey(): string {
-  const mode = resolvePaystackMode();
+/** Resolve the Paystack SECRET key for an explicit mode, validating its prefix. */
+export function resolvePaystackSecretKeyForMode(mode: PaystackMode): string {
   const suffix = mode === "live" ? "LIVE" : "TEST";
   const envVarName = `PAYSTACK_SECRET_KEY_${suffix}`;
   const value = Deno.env.get(envVarName);
@@ -62,6 +61,17 @@ export function resolvePaystackSecretKey(): string {
     );
   }
   return value;
+}
+
+/** Resolve the Paystack SECRET key for the configured runtime mode. */
+export function resolvePaystackSecretKey(): string {
+  return resolvePaystackSecretKeyForMode(resolvePaystackMode());
+}
+
+export interface PaystackRequestOptions {
+  /** An explicit mode is reserved for isolated provider-test harnesses. */
+  mode?: PaystackMode;
+  fetchImpl?: typeof fetch;
 }
 
 export interface PaystackInitializeParams {
@@ -86,8 +96,11 @@ export interface PaystackInitializeResult {
 /** POST /transaction/initialize — https://paystack.com/docs/api/transaction/#initialize */
 export async function paystackInitializeTransaction(
   params: PaystackInitializeParams,
+  options: PaystackRequestOptions = {},
 ): Promise<PaystackInitializeResult> {
-  const secret = resolvePaystackSecretKey();
+  const mode = options.mode ?? resolvePaystackMode();
+  const secret = resolvePaystackSecretKeyForMode(mode);
+  const fetchImpl = options.fetchImpl ?? fetch;
   const body: Record<string, unknown> = {
     email: params.email,
     amount: params.amountSubunits, // subunits (kobo) — base × 100
@@ -104,7 +117,7 @@ export async function paystackInitializeTransaction(
   if (params.bearer) body.bearer = params.bearer;
 
   const _t0 = Date.now();
-  const res = await fetch(`${PAYSTACK_BASE_URL}/transaction/initialize`, {
+  const res = await fetchImpl(`${PAYSTACK_BASE_URL}/transaction/initialize`, {
     method: "POST",
     headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -122,10 +135,13 @@ export async function paystackInitializeTransaction(
 /** GET /transaction/verify/:reference — https://paystack.com/docs/api/transaction/#verify */
 export async function paystackVerifyTransaction(
   reference: string,
+  options: PaystackRequestOptions = {},
 ): Promise<Record<string, unknown>> {
-  const secret = resolvePaystackSecretKey();
+  const mode = options.mode ?? resolvePaystackMode();
+  const secret = resolvePaystackSecretKeyForMode(mode);
+  const fetchImpl = options.fetchImpl ?? fetch;
   const _t0 = Date.now();
-  const res = await fetch(
+  const res = await fetchImpl(
     `${PAYSTACK_BASE_URL}/transaction/verify/${encodeURIComponent(reference)}`,
     { headers: { Authorization: `Bearer ${secret}` } },
   );
@@ -572,8 +588,10 @@ function constantTimeEqual(a: string, b: string): boolean {
 // POST /transaction/charge_authorization (docs-v2 api/transaction). Called
 // synchronously (no `queue`): Paystack has no charge.failed webhook and a
 // bank-approval request (`paused` + authorization_url) only arrives in this
-// response. The ONLY caller is _shared/installments/chargePaystackInstallment.ts.
-// The saved-card values are sent to Paystack and never logged or returned.
+// response. The ONLY production caller is
+// _shared/installments/chargePaystackInstallment.ts. The reviewed public proof
+// harness calls only the explicit TEST wrapper below. Saved-card values are
+// sent to Paystack and never logged or returned.
 // ───────────────────────────────────────────────────────────────────────────
 
 export interface PaystackChargeAuthorizationParams {
@@ -595,8 +613,9 @@ export type PaystackChargeAuthorizationResponse =
 export async function paystackChargeAuthorization(
   params: PaystackChargeAuthorizationParams,
   fetchImpl: typeof fetch = fetch,
+  mode: PaystackMode = resolvePaystackMode(),
 ): Promise<PaystackChargeAuthorizationResponse> {
-  const secret = resolvePaystackSecretKey();
+  const secret = resolvePaystackSecretKeyForMode(mode);
   const body: Record<string, unknown> = {
     authorization_code: params.authorizationCode,
     email: params.email,
@@ -634,6 +653,17 @@ export async function paystackChargeAuthorization(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * TEST-provider proof seam. Explicit mode prevents a live runtime default from
+ * selecting live credentials; callers still own bounds and response masking.
+ */
+export function paystackChargeAuthorizationForTest(
+  params: PaystackChargeAuthorizationParams,
+  fetchImpl: typeof fetch = fetch,
+): Promise<PaystackChargeAuthorizationResponse> {
+  return paystackChargeAuthorization(params, fetchImpl, "test");
 }
 
 export type PaystackChargeClass =

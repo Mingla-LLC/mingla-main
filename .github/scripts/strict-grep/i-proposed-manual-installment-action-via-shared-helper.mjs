@@ -102,6 +102,12 @@ if (process.argv.includes("--self-test")) {
       rel: PAYSTACK_OWNER_FILE_REL,
       content: "await paystackChargeAuthorization(input);\n",
     },
+    // [TEST-MOD-APPROVED #3645] The public proof harness may call the owner's
+    // explicit TEST seam; it must never call the raw provider primitive.
+    {
+      rel: "supabase/functions/paystack-checkout-create/handler.ts",
+      content: "await paystackChargeAuthorizationForTest(input);\n",
+    },
     {
       rel: "supabase/functions/manual-charge-installment/index.ts",
       content: "await chargeInstallment({ installmentId });\n",
