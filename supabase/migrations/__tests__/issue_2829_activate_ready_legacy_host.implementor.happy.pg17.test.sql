@@ -39,11 +39,6 @@ FROM i2829_activation_fixture;
 INSERT INTO public.brands(id, account_id, name, slug)
 SELECT brand_id, owner_id, 'Legacy Host 2829', 'legacy-host-2829'
 FROM i2829_activation_fixture;
-INSERT INTO public.brand_site_entitlements(
-  brand_id, status, source, granted_at, reason_code
-)
-SELECT brand_id, 'granted', 'rule', now(), 'rollout'
-FROM i2829_activation_fixture;
 INSERT INTO public.brand_sites(
   id, brand_id, renderer_key, renderer_version, status,
   payload_tenant_id, created_by

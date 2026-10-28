@@ -283,11 +283,12 @@ export function phase3dContractDigest(manifest) {
 // exclusions for the deliberately pre-#1931 historical replay.
 // #1318: register the VAT migration selected by the same full-history replay
 // commands on top of the #4137 Blog additions.
-// #2829 / #3645: register the two activation migrations selected by those
-// replay commands on top of the #4137 Blog and #1318 VAT additions.
+// #2829 / #3872: register the two activation migrations selected by those
+// replay commands on top of the #4137 Blog and #1318 VAT additions, and keep
+// #3872 out of the deliberately pre-foundation #1931 replay by exact filename.
 // #4037: register the Home Pulse lifetime-sales migration and its executable
 // proof selected by the same preserved full-history replay commands.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "556653f70e2920369af674d21defaa8dad02530bf6bbf1935e8ec4b682e46cb2";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "5a6bd0a12461ac830e598a8c36c7417856326526efca91c0f046c5a5e080c297";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

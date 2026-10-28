@@ -10,7 +10,7 @@ jest.mock("../../services/supabase", () => ({
 describe("#2893 Business Website availability projection", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it("returns zero Website signal for every non-pilot brand", async () => {
+  it("returns zero Website signal when Core denies a brand", async () => {
     const invoke = supabase.functions.invoke as jest.Mock;
     invoke.mockResolvedValueOnce({
       data: { ok: true, data: { available: false } },
@@ -29,7 +29,7 @@ describe("#2893 Business Website availability projection", () => {
     });
   });
 
-  it("keeps the compile-time switch broad and hides loading/error rows", () => {
+  it("defaults the general-availability switch on and hides loading/error rows", () => {
     const profile = fs.readFileSync(
       path.resolve(__dirname, "../../components/brand/BrandProfileView.tsx"),
       "utf8",
@@ -45,7 +45,7 @@ describe("#2893 Business Website availability projection", () => {
     );
 
     expect(flags).toContain(
-      "sites: readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, false)",
+      "sites: readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, true)",
     );
     expect(profile).toContain("websiteContext !== null");
     expect(profile).not.toContain("Checking website status…");

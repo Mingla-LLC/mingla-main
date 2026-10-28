@@ -306,6 +306,10 @@ test.describe('#3214 public page handoff to the Expo app', () => {
 
     const story = page.getByText(STORY_OPENING, { exact: false })
     await expect(story).toBeAttached({ timeout: 30_000 })
+    await expect(story).toHaveCount(1)
+    const storyDisclosure = page.getByTestId('public-brand-bio-disclosure-toggle')
+    await expect(storyDisclosure).toHaveText('Read more')
+    await expect(storyDisclosure).toHaveAttribute('aria-expanded', 'false')
     const measured = await layout(page)
     expect(measured.html).toBe(measured.viewport)
     expect(measured.root).toBe(measured.viewport)
@@ -327,6 +331,12 @@ test.describe('#3214 public page handoff to the Expo app', () => {
       await page.waitForTimeout(150)
     }
     await expect(story).toBeInViewport({ ratio: 0.9 })
+    await storyDisclosure.click()
+    await expect(storyDisclosure).toHaveText('Show less')
+    await expect(storyDisclosure).toHaveAttribute('aria-expanded', 'true')
+    await storyDisclosure.click()
+    await expect(storyDisclosure).toHaveText('Read more')
+    await expect(storyDisclosure).toHaveAttribute('aria-expanded', 'false')
     await attachScreenshot(page, 'issue3214-race-lost-scrolled')
 
     expect(harness.pageErrors.filter((message) => /Requiring unknown module/.test(message))).toEqual([])

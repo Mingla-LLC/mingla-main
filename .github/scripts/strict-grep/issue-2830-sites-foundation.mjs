@@ -404,7 +404,7 @@ export function violations(files) {
     "stale database backup evidence recorded",
     "wrong host readiness accepted",
     "host readiness operation did not verify and replay",
-    "brand without Sites leaked Website state",
+    "entitled brand without a website got wrong availability",
     "readiness receipt was mutable",
   ]) need(liveSql, token, "Core live-readiness SQL regression", failures);
   const multiBrandSql = files.multiBrandSql ?? "";
@@ -443,9 +443,9 @@ export function violations(files) {
     "owner offline did not hide exactly that site",
     "back online did not restore the same publication",
     "offline/online not audited exactly once each",
-    // non-pilot availability → an ungranted brand gets nothing.
-    "ungranted brand reported available",
-    "an ungranted brand provisioned a site",
+    // general availability still respects an explicit administrative revoke.
+    "explicitly revoked brand reported available",
+    "an explicitly revoked brand provisioned a site",
     "revoked brand authorized for Studio",
     // the binding is gone, and no single-tenant literal survives anywhere.
     "pilot activation functions survived",
@@ -580,7 +580,8 @@ export function violations(files) {
   // the grant count is exact after two refused calls on the same brand.
   for (const token of [
     "RAISE EXCEPTION 'grants were not audited';",
-    "WHERE action = 'entitlement.granted' AND brand_id IN (v_brand_a, v_brand_b, v_brand_c)) <> 3 THEN",
+    "WHERE action = 'entitlement.granted' AND actor_kind = 'admin'",
+    "AND brand_id IN (v_brand_a, v_brand_b, v_brand_c)) <> 3 THEN",
     "a brand owner granted Sites to itself",
     "offline/online not audited exactly once each",
   ]) need(files.multiBrandSql ?? "", token, "Sites audit trail SQL regression", failures);
@@ -743,7 +744,9 @@ export function violations(files) {
   ) failures.push("Ari closed tool registry: exact tool set drifted");
 
   const flag = files.businessFlag ?? "";
-  need(flag, "sites: readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, false)", "Business feature flag", failures);
+  // #2829 general availability: Sites defaults on while the statically read
+  // environment value remains the emergency kill switch.
+  need(flag, "sites: readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, true)", "Business feature flag", failures);
   forbid(flag, "process.env[", "Business static feature flag", failures);
   const route = files.businessRoute ?? "";
   for (const token of [
@@ -780,8 +783,8 @@ export function violations(files) {
   );
   forbid(route, "useCurrentBrandRole", "Business Website route", failures);
   // Core owns the rank rule: rank-10 members get nothing, marketing manager
-  // (20) edits, brand admin/owner (50) creates and publishes, and an ungranted
-  // brand is unavailable to everyone.
+  // (20) edits, brand admin/owner (50) creates and publishes, and an explicitly
+  // revoked brand is unavailable to everyone.
   const availabilityBody = sqlFunctionBody(
     files.multiBrandMigration ?? "",
     "brand_site_business_availability",
@@ -1434,7 +1437,7 @@ function selfTest() {
     ["callback", "/recovery-state$/", "/recovery-state-removed$/", "ambiguous CMS callback"],
     ["businessProfile", "websiteContext !== null", "websiteContext === null", "non-pilot Website zero signal"],
     ["deployWrapper", "--use-api", "--use-docker", "Sites exact Edge deploy wrapper"],
-    ["businessFlag", "readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, false)", "readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, true)", "Business feature flag"],
+    ["businessFlag", "readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, true)", "readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, false)", "Business feature flag"],
     ["businessFlag", "process.env.EXPO_PUBLIC_FF_SITES_ENABLED", 'process.env["EXPO_PUBLIC_FF_SITES_ENABLED"]', "Business static feature flag"],
     ["businessRoute", "const availability = useBrandSiteAvailability(safeBrandId, canCheckAvailability);", "const availability = useBrandSiteAvailability(safeBrandId, false);", "Business Website route"],
     ["businessRoute", "await persistPublicationOperation(operation);", "await persistPublicationPointer(operation);", "durable publication dispatch"],

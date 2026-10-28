@@ -13,7 +13,7 @@ describe("#3009 statically bundled Business feature flags", () => {
     process.env = ORIGINAL_ENV;
   });
 
-  test("the Sites pilot switch enables and disables at module evaluation", async () => {
+  test("the Sites kill switch enables and disables at module evaluation", async () => {
     process.env.EXPO_PUBLIC_FF_SITES_ENABLED = "true";
     const enabled = await import("../featureFlags");
     expect(enabled.isFeatureEnabled("sites")).toBe(true);

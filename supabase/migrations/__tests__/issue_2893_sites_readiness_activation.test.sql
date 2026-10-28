@@ -11,7 +11,8 @@
 -- assertions in issue_2829_sites_multi_brand.test.sql. What still applies is
 -- kept here: evidence validation and freshness bounds, host readiness bound to
 -- the site's own primary host, least-privilege grants, receipt immutability,
--- and "a brand without Sites gets a plain false".
+-- and "an entitled brand with no website can create one without leaking a
+-- fabricated site payload".
 
 \set ON_ERROR_STOP on
 BEGIN;
@@ -174,11 +175,15 @@ BEGIN
   -- only a new site's first publish and never public resolution; see
   -- issue_2829_sites_multi_brand.test.sql.)
 
-  -- Brands without Sites get a plain false and no site payload.
+  -- An entitled brand with no website can create one, but gets no fake site.
   PERFORM set_config('request.jwt.claim.sub', v_actor::text, true);
   v_result := public.brand_site_business_availability(v_other_brand);
-  IF v_result->>'available' <> 'false' OR v_result ? 'site' THEN
-    RAISE EXCEPTION 'brand without Sites leaked Website state: %', v_result;
+  IF v_result->>'available' <> 'true'
+    OR v_result->>'can_create' <> 'true'
+    OR v_result->>'can_publish' <> 'true'
+    OR v_result->>'can_edit' <> 'true'
+    OR v_result->'site' IS DISTINCT FROM 'null'::jsonb THEN
+    RAISE EXCEPTION 'entitled brand without a website got wrong availability: %', v_result;
   END IF;
 
   -- Immutable receipts cannot be forged after acceptance.

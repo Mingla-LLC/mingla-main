@@ -137,6 +137,22 @@ type SocialKind =
   | "threads";
 
 const BIO_CLAMP_LINES = 4;
+const loadMeasuredTextDisclosure = () => {
+  // Jest's Node 22 VM does not enable native dynamic imports. Keep the
+  // production boundary split while giving renderer suites the same component
+  // synchronously; Expo replaces NODE_ENV and removes this branch on export.
+  if (process.env.NODE_ENV === "test") {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const module = require(
+      "./MeasuredTextDisclosure"
+    ) as typeof import("./MeasuredTextDisclosure");
+    return Promise.resolve({ default: module.MeasuredTextDisclosure });
+  }
+  return import("./MeasuredTextDisclosure").then((module) => ({
+    default: module.MeasuredTextDisclosure,
+  }));
+};
+const DeferredMeasuredTextDisclosure = React.lazy(loadMeasuredTextDisclosure);
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -2364,32 +2380,29 @@ const AboutTab: React.FC<{
 const ClampedBio: React.FC<{ text: string; palette: ThemePalette }> = ({
   text,
   palette,
-}) => {
-  const [expanded, setExpanded] = useState<boolean>(false);
-  // Heuristic: a bio long enough to plausibly exceed 4 lines gets the toggle.
-  const couldClamp = text.length > 220;
-  return (
-    <View style={styles.bioWrap}>
-      <Text
-        style={[styles.bio, { color: palette.secondaryText }]}
-        numberOfLines={expanded ? undefined : BIO_CLAMP_LINES}
-      >
-        {text}
-      </Text>
-      {couldClamp ? (
-        <Pressable
-          onPress={() => setExpanded((v) => !v)}
-          accessibilityRole="button"
-          accessibilityLabel={expanded ? "Show less" : "Read more"}
+}) => (
+  <React.Suspense
+    fallback={
+      <View style={styles.bioWrap}>
+        <Text
+          numberOfLines={BIO_CLAMP_LINES}
+          style={[styles.bio, { color: palette.secondaryText }]}
         >
-          <Text style={[styles.readMore, { color: palette.accent }]}>
-            {expanded ? "Show less" : "Read more"}
-          </Text>
-        </Pressable>
-      ) : null}
-    </View>
-  );
-};
+          {text}
+        </Text>
+      </View>
+    }
+  >
+    <DeferredMeasuredTextDisclosure
+      text={text}
+      collapsedLines={BIO_CLAMP_LINES}
+      textStyle={[styles.bio, { color: palette.secondaryText }]}
+      toggleTextStyle={[styles.readMore, { color: palette.accent }]}
+      containerStyle={styles.bioWrap}
+      testID="public-brand-bio-disclosure"
+    />
+  </React.Suspense>
+);
 
 const styles = StyleSheet.create({
   // ---- identity ----
