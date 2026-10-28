@@ -44,7 +44,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3872: re-sealed after the census prerequisite migration and its two
 // self-registering SQL proofs entered the preserved replay inventories, with
 // the exact repair excluded from the deliberately filtered pre-#1931 replay.
-export const BOOTSTRAP_SHA256 = "d8fd72193cdfbc24eb245eb8f2a72162407932b4143630968d065cdcb13f52c4";
+// #4137: re-sealed again after the four Blog migrations and both executable
+// PostgreSQL suites entered the same preserved full-history inventories.
+export const BOOTSTRAP_SHA256 = "3edf5518c3096646292501e9c18ec490ba4a24a9c15aa7f33c0269ca28920c1b";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
