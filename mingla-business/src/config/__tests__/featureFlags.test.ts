@@ -14,9 +14,7 @@ describe("featureFlags", () => {
     process.env = ORIGINAL_ENV;
   });
 
-  // [TEST-MOD-APPROVED #2830] Sites is intentionally dark until the separately
-  // governed Gogi pilot enablement; the existing flag expectations are intact.
-  test("defaults: ari and marketing on; paystack, side toggle and Sites off", async () => {
+  test("defaults: ari, marketing and Sites on; paystack and side toggle off", async () => {
     delete process.env.EXPO_PUBLIC_FF_ARI_ENABLED;
     delete process.env.EXPO_PUBLIC_FF_MARKETING_SEND_ENABLED;
     delete process.env.EXPO_PUBLIC_FF_PAYSTACK_ENABLED;
@@ -27,15 +25,17 @@ describe("featureFlags", () => {
     expect(featureFlags.marketingSend).toBe(true);
     expect(featureFlags.paystack).toBe(false);
     expect(featureFlags.accountSideToggle).toBe(false);
-    expect(featureFlags.sites).toBe(false);
+    expect(featureFlags.sites).toBe(true);
   });
 
   test("EXPO_PUBLIC_FF_*=false disables feature", async () => {
     process.env.EXPO_PUBLIC_FF_ARI_ENABLED = "false";
     process.env.EXPO_PUBLIC_FF_MARKETING_SEND_ENABLED = "0";
+    process.env.EXPO_PUBLIC_FF_SITES_ENABLED = "off";
     const { isFeatureEnabled, isTabVisible } = await import("../featureFlags");
     expect(isFeatureEnabled("ari")).toBe(false);
     expect(isFeatureEnabled("marketingSend")).toBe(false);
+    expect(isFeatureEnabled("sites")).toBe(false);
     expect(isTabVisible("ari")).toBe(false);
     expect(isTabVisible("marketing")).toBe(false);
     expect(isTabVisible("home")).toBe(true);

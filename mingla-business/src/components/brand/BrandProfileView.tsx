@@ -492,8 +492,8 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         active = false;
       };
     }
-    // Stay completely absent while Core checks the per-brand pilot projection.
-    // Loading and failure are deliberately zero-signal for non-pilot brands.
+    // Stay completely absent while Core checks the per-brand entitlement.
+    // Loading, failure and an explicit revoke are deliberately zero-signal.
     setWebsiteContext(null);
     void import("../../sites/brandWebsiteEntry")
       .then(async ({ loadBrandWebsiteEntryContext }) => {

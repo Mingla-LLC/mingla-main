@@ -32,8 +32,8 @@ export const featureFlags: Readonly<Record<FeatureFlagKey, boolean>> = {
     process.env.EXPO_PUBLIC_FF_ACCOUNT_SIDE_TOGGLE,
     false,
   ),
-  /** #2830 — dark until the separately governed Gogi pilot enablement. */
-  sites: readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, false),
+  /** #2829 — generally available; the env value remains the emergency kill switch. */
+  sites: readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, true),
 };
 
 export function isFeatureEnabled(key: FeatureFlagKey): boolean {

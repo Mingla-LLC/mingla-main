@@ -39,7 +39,10 @@ export function verifyExport(root = buildRoot) {
   }
   if (
     !sources.some((source) =>
-      /sites:[A-Za-z_$][A-Za-z0-9_$]*\("true",!1\)/.test(source),
+      // The production-like export supplies the explicit string "true". The
+      // second argument is the source default and may be either boolean value;
+      // it is unreachable when that static build-time value is present.
+      /sites:[A-Za-z_$][A-Za-z0-9_$]*\("true",![01]\)/.test(source),
     )
   ) {
     throw new Error(

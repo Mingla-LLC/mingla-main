@@ -25,11 +25,6 @@ BEGIN
   ) VALUES
     (v_brand, v_admin, 'brand_admin', now()),
     (v_brand, v_marketing, 'marketing_manager', now());
-  INSERT INTO public.brand_site_entitlements(
-    brand_id, status, source, granted_by, granted_at, reason_code
-  ) VALUES (
-    v_brand, 'granted', 'admin', v_owner, now(), 'rollout'
-  );
   INSERT INTO public.brand_site_plans(
     brand_id, offerings_selected, started_by, updated_by, updated_at
   ) VALUES (

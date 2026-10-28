@@ -59,7 +59,7 @@ BEGIN
   INSERT INTO public.brands(id, account_id, name, slug) VALUES
     (v_brand, v_owner, 'W9 Empty Brand', 'w9-empty-brand'),
     (v_full, v_other_owner, 'W9 Full Brand', 'w9-full-brand'),
-    (v_plain, v_other_owner, 'W9 Not Granted', 'w9-not-granted');
+    (v_plain, v_other_owner, 'W9 Explicitly Revoked', 'w9-not-granted');
   UPDATE public.brands SET description = 'Trips for people who travel alone.'
   WHERE id = v_full;
   UPDATE public.brands SET default_currency = 'USD' WHERE id IN (v_brand, v_full, v_plain);
@@ -85,6 +85,7 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', v_mingla_admin::text, true);
   PERFORM public.brand_site_admin_grant(v_brand, 'rollout', NULL);
   PERFORM public.brand_site_admin_grant(v_full, 'rollout', NULL);
+  PERFORM public.brand_site_admin_revoke(v_plain, 'support', 'W9 negative fixture');
 
   -- ── grants ──────────────────────────────────────────────────────────────
   IF has_table_privilege('authenticated', 'public.brand_site_plans', 'SELECT')
@@ -100,17 +101,17 @@ BEGIN
     RAISE EXCEPTION 'a plan internal is reachable by anon or authenticated';
   END IF;
 
-  -- ── not granted: honest answer, no writes ───────────────────────────────
+  -- ── explicitly revoked: honest answer, no writes ────────────────────────
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_other_owner)::text, true);
   PERFORM set_config('request.jwt.claim.sub', v_other_owner::text, true);
   v_result := public.brand_site_plan_get(v_plain);
   IF (v_result->>'entitled')::boolean IS NOT FALSE OR v_result ? 'plan' THEN
-    RAISE EXCEPTION 'a brand without websites saw a plan';
+    RAISE EXCEPTION 'an explicitly revoked brand saw a plan';
   END IF;
   v_failed := false;
   BEGIN PERFORM public.brand_site_plan_save(v_plain, 0, '{"offerings_selected":[]}');
   EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM = 'sites_not_entitled'; END;
-  IF NOT v_failed THEN RAISE EXCEPTION 'a brand without websites saved a plan'; END IF;
+  IF NOT v_failed THEN RAISE EXCEPTION 'an explicitly revoked brand saved a plan'; END IF;
 
   -- ── full profile + live trips: opens at "Your look" ─────────────────────
   INSERT INTO public.events(id, brand_id, created_by, title, slug, visibility, status,

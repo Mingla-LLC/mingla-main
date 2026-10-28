@@ -301,7 +301,7 @@ BEGIN
     (v_brand_a, v_owner, 'W1 Café Ñoño', 'w1-cafe-nono'),
     (v_brand_b, v_owner, 'W1 Second', 'w1-second'),
     (v_brand_c, v_owner, 'W1 Admin', 'admin'),
-    (v_brand_d, v_owner, 'W1 Never granted', 'w1-never');
+    (v_brand_d, v_owner, 'W1 Explicitly Revoked', 'w1-never');
   INSERT INTO public.brand_team_members(brand_id, user_id, role, accepted_at)
   SELECT b, u, r, now() FROM (VALUES
     (v_brand_a, v_admin_member, 'brand_admin'), (v_brand_a, v_marketing, 'marketing_manager'),
@@ -331,8 +331,10 @@ BEGIN
   PERFORM public.brand_site_admin_grant(v_brand_a, 'rollout', 'W1 fixture');
   PERFORM public.brand_site_admin_grant(v_brand_b, 'rollout', NULL);
   PERFORM public.brand_site_admin_grant(v_brand_c, 'support', NULL);
+  PERFORM public.brand_site_admin_revoke(v_brand_d, 'support', 'W1 negative fixture');
   IF (SELECT count(*) FROM public.brand_site_audit_log
-      WHERE action = 'entitlement.granted' AND brand_id IN (v_brand_a, v_brand_b, v_brand_c)) <> 3 THEN
+      WHERE action = 'entitlement.granted' AND actor_kind = 'admin'
+        AND brand_id IN (v_brand_a, v_brand_b, v_brand_c)) <> 3 THEN
     RAISE EXCEPTION 'grants were not audited';
   END IF;
 
@@ -348,7 +350,7 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
   v_result := public.brand_site_business_availability(v_brand_d);
   IF v_result->>'available' <> 'false' THEN
-    RAISE EXCEPTION 'ungranted brand reported available';
+    RAISE EXCEPTION 'explicitly revoked brand reported available';
   END IF;
 
   -- ── provisioning gates ──────────────────────────────────────────────────
@@ -363,7 +365,7 @@ BEGIN
   v_failed := false;
   BEGIN PERFORM public.brand_site_provision(v_brand_d, gen_random_uuid(), repeat('1', 64));
   EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM = 'sites_forbidden'; END;
-  IF NOT v_failed THEN RAISE EXCEPTION 'an ungranted brand provisioned a site'; END IF;
+  IF NOT v_failed THEN RAISE EXCEPTION 'an explicitly revoked brand provisioned a site'; END IF;
 
   v_result := public.brand_site_propose_label(v_brand_a);
   IF v_result->>'label' <> 'w1-cafe-nono' OR v_result->>'hostname' <> 'w1-cafe-nono.sites.usemingla.com' THEN

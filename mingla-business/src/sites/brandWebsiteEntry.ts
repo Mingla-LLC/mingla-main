@@ -10,9 +10,9 @@ type EntrySite = {
   }[];
 };
 
-// #2829 — `available` is now per-brand: a Mingla admin granted Sites to this
-// brand (entitlement) and the member is rank 20+. The extra can_* flags are
-// read by the workspace, not by this one-line entry.
+// #2829 — `available` is per-brand: the brand has the default grant (or an
+// explicit admin grant) and the member is rank 20+. An explicit revoke still
+// wins. The extra can_* flags are read by the workspace, not this one-line entry.
 type EntryAvailability = {
   available: boolean;
   can_publish?: boolean;
