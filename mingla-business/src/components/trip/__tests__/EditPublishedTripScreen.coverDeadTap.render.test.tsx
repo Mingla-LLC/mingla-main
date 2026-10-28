@@ -87,6 +87,12 @@ jest.mock("../../../hooks/useTrips", () => ({
 jest.mock("../../../hooks/useTripHasWebPurchases", () => ({
   useTripHasWebPurchases: () => false,
 }));
+// Payment-plan capability is unrelated to this cover interaction. Disable it
+// at the hook boundary so this focused render harness does not load AuthContext
+// and its native Google-sign-in dependency.
+jest.mock("../../../hooks/useTripInstallmentCapability", () => ({
+  useTripInstallmentCapability: () => ({ data: false }),
+}));
 
 jest.mock("../../../services/tripChangeNotifier", () => ({
   notifyTripChanged: jest.fn(),

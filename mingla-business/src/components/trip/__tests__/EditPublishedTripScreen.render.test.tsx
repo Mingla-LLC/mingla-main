@@ -84,6 +84,12 @@ jest.mock("../../../hooks/useTrips", () => ({
 jest.mock("../../../hooks/useTripHasWebPurchases", () => ({
   useTripHasWebPurchases: () => false,
 }));
+// Payment-plan capability is outside this location-picker proof. Keep the
+// auth/native boundary out of this dormant render harness while preserving the
+// production screen path with capability disabled.
+jest.mock("../../../hooks/useTripInstallmentCapability", () => ({
+  useTripInstallmentCapability: () => ({ data: false }),
+}));
 
 // Trip-change notifier (fire-and-forget network) — no-op.
 jest.mock("../../../services/tripChangeNotifier", () => ({
