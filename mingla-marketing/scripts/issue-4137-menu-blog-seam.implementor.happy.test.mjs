@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// MINGLA-INVARIANT: I-4137-MENU-BLOG-GATED | issue #4137 | The Blog menu row and latest-story card are controlled by one seam and can never render independently.
 // #4137 wave 2 — implementor happy path (source, server render): the menu's
 // blog seam. AudienceMenuContent is rendered through react-dom/server with the
 // seam value swapped in this test only, so no test hook ships.

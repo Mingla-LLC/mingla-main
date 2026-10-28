@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// MINGLA-INVARIANT: I-4137-CITY-PLACE-MEDIA-LISTED-NO-SHARED-CACHE | issue #4137 | The city media route accepts listed places only and never places provider content in a shared cache.
 // #4137 wave 2 — implementor happy path (source): /api/city-place-media.
 //
 // Seth's 27 Oct 2026 decision means city pages no longer call this route (they

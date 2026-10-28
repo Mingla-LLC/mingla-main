@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// MINGLA-INVARIANT: I-4137-MARKETING-CTA-DEVICE-SEAM | issue #4137 | Every marketing CTA resolves through the shared device-aware destination seam with preserved attribution.
 // #4137 — implementor happy path for the device-aware CTA seam (source-only).
 //
 // I-4137-MARKETING-CTA-DEVICE-SEAM (machine-readable declaration):
