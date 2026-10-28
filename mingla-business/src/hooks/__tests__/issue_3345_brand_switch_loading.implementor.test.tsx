@@ -343,6 +343,9 @@ jest.mock("../../services/postHogService", () => ({
 jest.mock("../../components/brand/BrandDeleteSheet", () => ({ BrandDeleteSheet: () => null }));
 jest.mock("../../components/brand/BrandSwitcherSheet", () => ({ BrandSwitcherSheet: () => null }));
 jest.mock("../../components/home/BusinessTodoToggle", () => ({ BusinessTodoToggle: () => null }));
+jest.mock("../../components/home/BusinessPulsePanel", () => ({
+  BusinessPulsePanel: () => null,
+}));
 jest.mock("../../components/home/AnalyticsHomeTile", () => ({ AnalyticsHomeTile: () => null }));
 // [TEST-MOD-APPROVED #3682] Harness registration only — the follower tile is
 // another Home leaf, outside this suite's current-brand loading-state contract.
