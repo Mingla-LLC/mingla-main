@@ -743,7 +743,9 @@ export function violations(files) {
   ) failures.push("Ari closed tool registry: exact tool set drifted");
 
   const flag = files.businessFlag ?? "";
-  need(flag, "sites: readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, false)", "Business feature flag", failures);
+  // #2829 general availability: Sites defaults on while the statically read
+  // environment value remains the emergency kill switch.
+  need(flag, "sites: readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, true)", "Business feature flag", failures);
   forbid(flag, "process.env[", "Business static feature flag", failures);
   const route = files.businessRoute ?? "";
   for (const token of [
@@ -1434,7 +1436,7 @@ function selfTest() {
     ["callback", "/recovery-state$/", "/recovery-state-removed$/", "ambiguous CMS callback"],
     ["businessProfile", "websiteContext !== null", "websiteContext === null", "non-pilot Website zero signal"],
     ["deployWrapper", "--use-api", "--use-docker", "Sites exact Edge deploy wrapper"],
-    ["businessFlag", "readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, false)", "readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, true)", "Business feature flag"],
+    ["businessFlag", "readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, true)", "readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, false)", "Business feature flag"],
     ["businessFlag", "process.env.EXPO_PUBLIC_FF_SITES_ENABLED", 'process.env["EXPO_PUBLIC_FF_SITES_ENABLED"]', "Business static feature flag"],
     ["businessRoute", "const availability = useBrandSiteAvailability(safeBrandId, canCheckAvailability);", "const availability = useBrandSiteAvailability(safeBrandId, false);", "Business Website route"],
     ["businessRoute", "await persistPublicationOperation(operation);", "await persistPublicationPointer(operation);", "durable publication dispatch"],
