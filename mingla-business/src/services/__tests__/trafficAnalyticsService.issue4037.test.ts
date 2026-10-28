@@ -73,6 +73,7 @@ describe("#4037 traffic analytics contract", () => {
         pages: [
           {
             entity_type: "event",
+            listing_type: "rsvp",
             entity_id: EVENT_ID,
             title: "Autumn supper",
             page_views: 30,
@@ -99,9 +100,43 @@ describe("#4037 traffic analytics contract", () => {
     ]);
     expect(result.pages[0]).toMatchObject({
       entityId: EVENT_ID,
+      listingType: "rsvp",
       title: "Autumn supper",
       valueByCurrency: { GBP: 4500 },
     });
+  });
+
+  it("falls back for old page rows and fails closed on a mismatched listing type", () => {
+    const page = {
+      entity_type: "event",
+      entity_id: EVENT_ID,
+      title: "Autumn supper",
+      page_views: 30,
+      visitors: 22,
+      cta_total: 8,
+      checkout_starts: 4,
+      bookings: 3,
+      value_by_currency: { GBP: 4500 },
+    };
+    expect(
+      normalizeBrandTrafficRollup(
+        { ...base, brand_id: BRAND_ID, pages: [page] },
+        BRAND_ID,
+        "30d",
+      ).pages[0]?.listingType,
+    ).toBe("event");
+
+    expect(() =>
+      normalizeBrandTrafficRollup(
+        {
+          ...base,
+          brand_id: BRAND_ID,
+          pages: [{ ...page, listing_type: "venue" }],
+        },
+        BRAND_ID,
+        "30d",
+      ),
+    ).toThrow("brand_traffic_rollup returned an invalid contract");
   });
 
   it("fails closed when daily traffic does not reconcile to the total", () => {

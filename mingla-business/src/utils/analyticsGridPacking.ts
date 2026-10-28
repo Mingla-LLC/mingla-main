@@ -1,8 +1,8 @@
 export type AnalyticsGridModuleId =
-  | "hero"
   | "visits"
-  | "funnel"
+  | "activity"
   | "sources"
+  | "completed"
   | "pages"
   | "selectedPage"
   | "buttonTaps"
@@ -16,6 +16,9 @@ export interface AnalyticsGridModule {
 
 export interface AnalyticsGridOptions {
   showVisits: boolean;
+  showActivity: boolean;
+  showSources: boolean;
+  showCompleted: boolean;
   showPages: boolean;
   showSelectedPage: boolean;
   showButtonTaps: boolean;
@@ -27,15 +30,30 @@ export function analyticsGridModules(
   options: AnalyticsGridOptions,
 ): AnalyticsGridModule[] {
   return [
-    { id: "hero", width: 6 },
-    ...(options.showVisits ? [{ id: "visits" as const, width: 6 as const }] : []),
-    { id: "funnel", width: 6 },
-    ...(options.showVisits ? [{ id: "sources" as const, width: 6 as const }] : []),
+    ...(options.showVisits
+      ? [
+          {
+            id: "visits" as const,
+            width: options.showActivity ? (6 as const) : (12 as const),
+          },
+        ]
+      : []),
+    ...(options.showActivity
+      ? [{ id: "activity" as const, width: 6 as const }]
+      : []),
+    ...(options.showSources
+      ? [{ id: "sources" as const, width: 12 as const }]
+      : []),
+    ...(options.showCompleted
+      ? [{ id: "completed" as const, width: 12 as const }]
+      : []),
     ...(options.showPages
-      ? [{
-        id: "pages" as const,
-        width: options.showSelectedPage ? 7 as const : 12 as const,
-      }]
+      ? [
+          {
+            id: "pages" as const,
+            width: options.showSelectedPage ? (7 as const) : (12 as const),
+          },
+        ]
       : []),
     ...(options.showSelectedPage
       ? [{ id: "selectedPage" as const, width: 5 as const }]

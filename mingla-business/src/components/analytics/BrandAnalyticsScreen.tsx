@@ -207,17 +207,11 @@ const TrafficBrandAnalyticsScreen: React.FC<
   const initialLoading =
     (traffic.isLoading && traffic.data === undefined) ||
     (regulars.isLoading && regulars.data === undefined) ||
-    (patterns.isLoading && patterns.data === undefined) ||
-    (selectedPage !== null &&
-      selectedTraffic.isLoading &&
-      selectedTraffic.data === undefined);
+    (patterns.isLoading && patterns.data === undefined);
   const initialError =
     (traffic.isError && traffic.data === undefined) ||
     (regulars.isError && regulars.data === undefined) ||
-    (patterns.isError && patterns.data === undefined) ||
-    (selectedPage !== null &&
-      selectedTraffic.isError &&
-      selectedTraffic.data === undefined);
+    (patterns.isError && patterns.data === undefined);
 
   const topBar = (
     <View style={styles.topBarWrap}>
@@ -256,6 +250,32 @@ const TrafficBrandAnalyticsScreen: React.FC<
     );
   }
 
+  if (initialError) {
+    return (
+      <View style={styles.host}>
+        {topBar}
+        <View style={styles.authorization} testID="analytics-initial-error">
+          <Text style={styles.authorizationTitle} accessibilityRole="header">
+            Couldn&apos;t load analytics
+          </Text>
+          <Text style={styles.authorizationBody}>
+            Check your connection and try again.
+          </Text>
+          <Pressable
+            onPress={() => void refreshAll()}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.authorizationAction,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.authorizationActionText}>Retry</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   const body = (
     <View style={styles.content} testID="brand-analytics-content">
       <View style={styles.introRow}>
@@ -263,9 +283,9 @@ const TrafficBrandAnalyticsScreen: React.FC<
           <Text style={styles.screenTitle} accessibilityRole="header">
             Analytics
           </Text>
-          <Text
-            style={styles.intro}
-          >{`How people find and choose ${brand.displayName}.`}</Text>
+          <Text style={styles.intro}>
+            See how people reach your pages and take action.
+          </Text>
           <View
             accessibilityLiveRegion="polite"
             testID="analytics-refresh-announcement"
@@ -332,7 +352,9 @@ const TrafficBrandAnalyticsScreen: React.FC<
             : () => onOpenListingInsights(selectedPage.entityId!)
         }
         regularsModule={
-          regularsVisible ? <RegularsSection data={regulars.data!} /> : null
+          regularsVisible ? (
+            <RegularsSection data={regulars.data!} fillHeight={isWideDesktop} />
+          ) : null
         }
         customerPatternsModule={
           patternsVisible ? (

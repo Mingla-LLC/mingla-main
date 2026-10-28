@@ -31,6 +31,7 @@ import {
 } from "../../analytics/businessAnalyticsEvents";
 import { GlassCard } from "../ui/GlassCard";
 import { TopBar } from "../ui/TopBar";
+import { trafficOutcomeCopy } from "./trafficOutcomeCopy";
 
 const SOURCE_ORDER: {
   key: ListingInsightsSource;
@@ -48,7 +49,7 @@ const SOURCE_ORDER: {
 ];
 
 const introFor = (identity: ListingInsightsIdentity): string =>
-  `See how customers found and chose this ${identity.listingType}.`;
+  trafficOutcomeCopy(identity.listingType).intro;
 
 const CurrencyValues: React.FC<{
   values: Record<string, number>;
@@ -293,7 +294,7 @@ export const LegacyListingInsightsScreen: React.FC<
             style={styles.card}
           >
             <Text style={styles.sectionTitle} accessibilityRole="header">
-              Customers Mingla drove
+              Bookings through Mingla
             </Text>
             <Text style={styles.helper}>
               Bookings, RSVPs and paid booking value completed through Mingla
@@ -301,9 +302,9 @@ export const LegacyListingInsightsScreen: React.FC<
             </Text>
             <Text style={styles.window}>ALL TIME</Text>
             <Text style={styles.heroCount}>
-              {`Mingla drove ${formatCount(data.minglaDroveCount)} ${
+              {`${formatCount(data.minglaDroveCount)} ${
                 data.minglaDroveCount === 1 ? "customer" : "customers"
-              } for this listing`}
+              } booked or RSVP’d through Mingla for this listing`}
             </Text>
             {Object.keys(data.valueCents).length === 0 ? (
               <Text style={styles.empty}>No paid booking value yet</Text>
@@ -317,7 +318,7 @@ export const LegacyListingInsightsScreen: React.FC<
             style={styles.card}
           >
             <Text style={styles.sectionTitle} accessibilityRole="header">
-              Where customers came from
+              Booking sources
             </Text>
             <Text style={styles.window}>All time</Text>
             <Text style={styles.helper}>

@@ -540,7 +540,6 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
   const reduceMotion = useReducedMotionNative();
   const payout = useBrandPayoutScreen(canViewPayments ? brandId : null);
   const traffic30d = useBrandTrafficRollup(brandId, "30d", true);
-  const trafficAll = useBrandTrafficRollup(brandId, "all", canViewPayments);
   const followers = useBrandFollowerSummary(brandId);
   const startsSoon = liveItems.length === 0
     ? selectStartsSoon(upcomingItems)
@@ -631,24 +630,15 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
   const otherCurrencies = Object.entries(payoutData?.lifetimeSalesCents ?? {})
     .filter(([code, amount]) => code !== currency && amount > 0)
     .sort(([left], [right]) => left.localeCompare(right));
-  const minglaLifetime = trafficAll.data?.authorized === true
-    ? trafficAll.data.totals.valueMinglaBrought[currency] ?? 0
-    : 0;
-  const minglaCustomers = trafficAll.data?.authorized === true
-    ? trafficAll.data.totals.minglaCustomers
-    : 0;
   const moneyA11y = `Total lifetime revenue ${exactLifetime}. Coming to you ${formatCurrency(coming, currency, true)}. ${payoutStatus}. Open Payments`;
   const dataError =
     (canViewPayments && (payout.isError || payout.data === null)) ||
     traffic30d.isError || followers.isError ||
-    (canViewPayments && trafficAll.isError) ||
-    traffic30d.data?.authorized === false ||
-    (canViewPayments && trafficAll.data?.authorized === false);
+    traffic30d.data?.authorized === false;
   const retryAll = (): void => {
     void Promise.all([
       ...(canViewPayments ? [payout.refetch()] : []),
       traffic30d.refetch(),
-      ...(canViewPayments ? [trafficAll.refetch()] : []),
       followers.refetch(),
     ]);
   };
@@ -688,17 +678,6 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
             </Text>
             {lifetime === 0 ? (
               <Text style={styles.subline}>Your first sale will show here</Text>
-            ) : null}
-            {minglaLifetime > 0 ? (
-              <View style={styles.minglaLine}>
-                <View style={styles.minglaMarker} />
-                <Text style={styles.minglaCopy}>
-                  <Text style={styles.minglaAmount}>
-                    {formatCurrencyRound(minglaLifetime, currency, true)}
-                  </Text>
-                  {` came through Mingla · ${formatCount(minglaCustomers)} ${minglaCustomers === 1 ? "customer" : "customers"}`}
-                </Text>
-              </View>
             ) : null}
             {otherCurrencies.map(([code, amount]) => (
               <Text key={code} style={styles.subline}>
@@ -1001,20 +980,6 @@ const styles = StyleSheet.create({
   moneyAmountPhone: { fontSize: 38, lineHeight: 44, letterSpacing: -0.76 },
   moneySkeleton: { marginTop: spacing.sm },
   subline: { ...typography.bodySm, color: textTokens.secondary, marginTop: spacing.xs },
-  minglaLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    marginTop: spacing.sm,
-  },
-  minglaMarker: {
-    width: 8,
-    height: 8,
-    borderRadius: radius.sm,
-    backgroundColor: accent.warm,
-  },
-  minglaCopy: { ...typography.bodySm, color: textTokens.secondary, flexShrink: 1 },
-  minglaAmount: { color: textTokens.primary, fontWeight: "600" },
   moneyRow: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   moneyRowPhone: { minHeight: 44 },
   rowCopy: { flex: 1, minWidth: 0 },

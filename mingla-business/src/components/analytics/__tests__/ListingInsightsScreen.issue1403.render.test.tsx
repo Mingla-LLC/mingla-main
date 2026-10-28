@@ -113,7 +113,9 @@ describe("issue #1403 Listing Insights native render", () => {
     });
     const output = allText(tree!);
     expect(output).toContain("Summer Table");
-    expect(output).toContain("Mingla drove 2 customers for this listing");
+    expect(output).toContain(
+      "2 customers booked or RSVP’d through Mingla for this listing",
+    );
     expect(output).toContain("£12.00 booking value");
     expect(output).toContain("$25.00 booking value");
     expect(output).toContain("Ads");
@@ -155,7 +157,9 @@ describe("issue #1403 Listing Insights native render", () => {
       );
     });
     const output = allText(tree!);
-    expect(output).toContain("Mingla drove 0 customers for this listing");
+    expect(output).toContain(
+      "0 customers booked or RSVP’d through Mingla for this listing",
+    );
     expect(output).toContain("No paid booking value yet");
     expect(output).toContain("No source mix yet");
     expect(output).not.toContain("Couldn't load");

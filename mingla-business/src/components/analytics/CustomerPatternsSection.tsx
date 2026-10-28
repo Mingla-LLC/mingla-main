@@ -17,10 +17,15 @@ import { GlassCard } from "../ui/GlassCard";
 const PatternCard: React.FC<{
   title: string;
   view: CustomerPatternView;
-}> = ({ title, view }) => {
+  fillHeight: boolean;
+}> = ({ title, view, fillHeight }) => {
   const sample = `${view.sampleCommitments.toLocaleString("en-GB")} bookings & RSVPs across ${view.distinctDates.toLocaleString("en-GB")} dates`;
   return (
-    <GlassCard style={styles.card} contentStyle={styles.cardContent}>
+    <GlassCard
+      style={styles.card}
+      contentStyle={styles.cardContent}
+      fillHeight={fillHeight}
+    >
       <Text style={styles.cardTitle} accessibilityRole="header">
         {title}
       </Text>
@@ -117,7 +122,12 @@ export const CustomerPatternsSection: React.FC<{
       </Text>
       <View style={[styles.cardRow, isWideDesktop && styles.cardRowWide]}>
         {visible.map(([title, view]) => (
-          <PatternCard key={title} title={title} view={view} />
+          <PatternCard
+            key={title}
+            title={title}
+            view={view}
+            fillHeight={isWideDesktop}
+          />
         ))}
       </View>
     </View>

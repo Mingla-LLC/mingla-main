@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4037_analytics_listing_types.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4037-analytics-listing-types",
+  "profile": "deno-2-unit"
+}

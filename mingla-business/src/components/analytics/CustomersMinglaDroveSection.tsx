@@ -55,7 +55,7 @@ export const CustomersMinglaDroveSection: React.FC<{
   return (
     <View style={styles.section} testID="analytics-customers-section">
       <Text style={styles.heading} accessibilityRole="header">
-        Customers Mingla drove
+        Bookings through Mingla
       </Text>
       <Text style={styles.helper}>
         Bookings, RSVPs and paid booking value completed through Mingla.
@@ -78,7 +78,7 @@ export const CustomersMinglaDroveSection: React.FC<{
       <GlassCard>
         <View style={styles.titleLine}>
           <Text style={styles.subheading} accessibilityRole="header">
-            Where customers came from
+            Booking sources
           </Text>
           <Text style={styles.window}>All time</Text>
         </View>

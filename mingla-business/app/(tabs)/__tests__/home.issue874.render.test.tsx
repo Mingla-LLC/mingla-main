@@ -320,7 +320,7 @@ describe("issue #874 Home integration real render", () => {
     expect(panel[0]?.props.upcomingItems).toEqual(mockUpcoming.items);
   });
 
-  it("pull-to-refresh invalidates payout, 30-day traffic and all-time traffic", async () => {
+  it("pull-to-refresh invalidates payout and the Home 30-day traffic query", async () => {
     const screen = await render(<HomeTab />);
     const list = screen.getByTestId("home-mobile-scroll");
     const refreshControl = list.props.refreshControl as {
@@ -338,7 +338,7 @@ describe("issue #874 Home integration real render", () => {
     expect(mockInvalidateQueries).toHaveBeenCalledWith({
       queryKey: ["traffic-analytics", "brand", mockBrand.id, "30d"],
     });
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+    expect(mockInvalidateQueries).not.toHaveBeenCalledWith({
       queryKey: ["traffic-analytics", "brand", mockBrand.id, "all"],
     });
     expect(mockRecentRefresh).toHaveBeenCalledTimes(1);
