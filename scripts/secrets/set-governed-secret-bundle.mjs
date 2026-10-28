@@ -26,6 +26,22 @@ const SAFE_AD_FIELD = /^[A-Z][A-Z0-9_]{1,127}$/;
 const PRESENCE = new Set(["present", "intentionally_absent"]);
 const KID = /^[a-z0-9_-]{1,16}$/;
 const ONE_SIGNAL_TOKEN = /^[A-Za-z0-9_-]{43,128}$/;
+const SITES_KID = /^[A-Za-z0-9_.-]{8,64}$/;
+const SITES_PREFIXES = [
+  "core_to_cms",
+  "cms_to_core",
+  "runtime_to_core",
+];
+const SITES_FIELDS = [
+  "attribution_pepper_b64",
+  ...SITES_PREFIXES.flatMap((prefix) => [
+    `${prefix}_current_key_b64`,
+    `${prefix}_current_kid`,
+    `${prefix}_previous_key_b64`,
+    `${prefix}_previous_kid`,
+  ]),
+  "schema_version",
+].sort();
 
 export class BundleSetterError extends Error {
   constructor(code, publicNames = []) {
@@ -102,18 +118,24 @@ function validatePreviousPairing(fields, states, object) {
   }
 }
 
-function decodeCanonicalBase64(value, minimumBytes, maximumBytes, field) {
+function decodeCanonicalBase64(
+  value,
+  minimumBytes,
+  maximumBytes,
+  field,
+  errorCode = "ad_bundle_strict_parser_invalid",
+) {
   if (
     typeof value !== "string" ||
     !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
       .test(value)
-  ) throw new BundleSetterError("ad_bundle_strict_parser_invalid", [field]);
+  ) throw new BundleSetterError(errorCode, [field]);
   const decoded = Buffer.from(value, "base64");
   if (
     decoded.toString("base64") !== value ||
     decoded.byteLength < minimumBytes ||
     decoded.byteLength > maximumBytes
-  ) throw new BundleSetterError("ad_bundle_strict_parser_invalid", [field]);
+  ) throw new BundleSetterError(errorCode, [field]);
   return decoded;
 }
 
@@ -329,6 +351,86 @@ function validateDeliveryBundle(bundleObject) {
   };
 }
 
+function validateSitesBundle(bundleObject) {
+  if (
+    bundleObject.schema_version !== 1 ||
+    !exactSet(Object.keys(bundleObject), SITES_FIELDS)
+  ) throw new BundleSetterError("sites_bundle_shape_invalid");
+
+  const materials = [];
+  for (const prefix of SITES_PREFIXES) {
+    const currentKidField = `${prefix}_current_kid`;
+    const currentKeyField = `${prefix}_current_key_b64`;
+    const previousKidField = `${prefix}_previous_kid`;
+    const previousKeyField = `${prefix}_previous_key_b64`;
+    const currentKid = bundleObject[currentKidField];
+    const previousKid = bundleObject[previousKidField];
+    const previousKey = bundleObject[previousKeyField];
+
+    if (typeof currentKid !== "string" || !SITES_KID.test(currentKid)) {
+      throw new BundleSetterError("sites_bundle_strict_parser_invalid", [
+        currentKidField,
+      ]);
+    }
+    const currentMaterial = decodeCanonicalBase64(
+      bundleObject[currentKeyField],
+      32,
+      64,
+      currentKeyField,
+      "sites_bundle_strict_parser_invalid",
+    );
+    materials.push({ field: currentKeyField, value: currentMaterial });
+
+    if ((previousKid === null) !== (previousKey === null)) {
+      throw new BundleSetterError("sites_bundle_strict_parser_invalid", [
+        previousKidField,
+        previousKeyField,
+      ]);
+    }
+    if (previousKid !== null) {
+      if (
+        typeof previousKid !== "string" ||
+        !SITES_KID.test(previousKid) ||
+        previousKid === currentKid
+      ) {
+        throw new BundleSetterError("sites_bundle_strict_parser_invalid", [
+          currentKidField,
+          previousKidField,
+        ]);
+      }
+      const previousMaterial = decodeCanonicalBase64(
+        previousKey,
+        32,
+        64,
+        previousKeyField,
+        "sites_bundle_strict_parser_invalid",
+      );
+      materials.push({ field: previousKeyField, value: previousMaterial });
+    }
+  }
+
+  const pepper = decodeCanonicalBase64(
+    bundleObject.attribution_pepper_b64,
+    32,
+    64,
+    "attribution_pepper_b64",
+    "sites_bundle_strict_parser_invalid",
+  );
+  materials.push({ field: "attribution_pepper_b64", value: pepper });
+  for (let left = 0; left < materials.length; left += 1) {
+    for (let right = left + 1; right < materials.length; right += 1) {
+      if (materials[left].value.equals(materials[right].value)) {
+        throw new BundleSetterError("sites_bundle_strict_parser_invalid", [
+          materials[left].field,
+          materials[right].field,
+        ]);
+      }
+    }
+  }
+
+  return { absentPrevious: [], fieldNames: [...SITES_FIELDS] };
+}
+
 const GOOGLE_CALENDAR_FIELDS = [
   "calendar_client_id",
   "calendar_client_secret",
@@ -422,6 +524,8 @@ export function prepareGovernedBundle({
     result = validateGoogleBundle(bundleObject);
   } else if (bundleName === "MINGLA_DELIVERY_FLAGS_JSON") {
     result = validateDeliveryBundle(bundleObject);
+  } else if (bundleName === "MINGLA_SITES_SECURITY_JSON") {
+    result = validateSitesBundle(bundleObject);
   } else throw new BundleSetterError("bundle_not_supported", [bundleName]);
 
   if (!Array.isArray(authoritativeExistingFieldNames)) {
