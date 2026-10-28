@@ -94,6 +94,23 @@ import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
 import { useSwitchAccount } from "../../hooks/useSwitchAccount";
 
+const loadMeasuredTextDisclosure = () => {
+  // Jest's Node 22 VM does not enable native dynamic imports. Keep the
+  // production boundary split while giving renderer suites the same component
+  // synchronously; Expo replaces NODE_ENV and removes this branch on export.
+  if (process.env.NODE_ENV === "test") {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const module = require(
+      "@mingla/brand-rendering/MeasuredTextDisclosure",
+    ) as typeof import("@mingla/brand-rendering/MeasuredTextDisclosure");
+    return Promise.resolve({ default: module.MeasuredTextDisclosure });
+  }
+  return import("@mingla/brand-rendering/MeasuredTextDisclosure").then(
+    (module) => ({ default: module.MeasuredTextDisclosure }),
+  );
+};
+const DeferredMeasuredTextDisclosure = React.lazy(loadMeasuredTextDisclosure);
+
 interface OperationsRow {
   icon: IconName;
   label: string;
@@ -370,17 +387,14 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     setCoverMediaFailed(false);
   }, [coverMediaUrl]);
 
-  // ORCH-1121 — About-us read-more toggle (only shown when the bio is long
-  // enough to clip; see the render branch). TOP-LEVEL hook (ORCH-0710
-  // ordering): declared above the early returns.
-  const [aboutExpanded, setAboutExpanded] = useState<boolean>(false);
-  const toggleAboutExpanded = useCallback((): void => {
+  // #2829 — animate the measured About disclosure without owning a second
+  // expansion state in this screen.
+  const animateAboutDisclosure = useCallback((): void => {
     if (!reduceMotion) {
       LayoutAnimation.configureNext(
         LayoutAnimation.Presets.easeInEaseOut,
       );
     }
-    setAboutExpanded((prev) => !prev);
   }, [reduceMotion]);
 
   // ORCH-1121 — Recent Events live data. Brand-scoped query at TOP LEVEL
@@ -753,10 +767,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   const coverWidth = Math.max(0, windowWidth - spacing.md * 2);
   const COVER_H = Math.min(240, Math.max(176, Math.round((coverWidth * 9) / 16)));
 
-  // ORCH-1121 — show the About read-more toggle only when the bio is long
-  // enough to clip the 4-line collapsed paragraph (cheap length heuristic).
-  const aboutIsLong = hasBio && bioText.length > 160;
-
   // ORCH-1121 — has the events query settled into a genuine zero-result?
   const eventsSettledEmpty =
     !eventsLoading && !eventsError && brandEvents.length === 0;
@@ -860,30 +870,29 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             {hasBio ? (
               <>
                 <Text style={styles.heroAboutEyebrow}>ABOUT US</Text>
-                <Text
-                  style={styles.heroAboutBody}
-                  numberOfLines={aboutExpanded ? undefined : 4}
+                <React.Suspense
+                  fallback={
+                    <View>
+                      <Text style={styles.heroAboutBody} numberOfLines={4}>
+                        {bioText}
+                      </Text>
+                    </View>
+                  }
                 >
-                  {brand.bio}
-                </Text>
-                {aboutIsLong ? (
-                  <Pressable
-                    onPress={toggleAboutExpanded}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      aboutExpanded ? "Show less" : "Read more"
-                    }
-                    hitSlop={8}
-                    style={({ pressed }) => [
+                  <DeferredMeasuredTextDisclosure
+                    text={bioText}
+                    collapsedLines={4}
+                    textStyle={styles.heroAboutBody}
+                    toggleTextStyle={styles.heroReadMoreText}
+                    toggleStyle={({ pressed }) => [
                       styles.heroReadMore,
                       pressed && styles.heroReadMorePressed,
                     ]}
-                  >
-                    <Text style={styles.heroReadMoreText}>
-                      {aboutExpanded ? "Show less" : "Read more"}
-                    </Text>
-                  </Pressable>
-                ) : null}
+                    hitSlop={8}
+                    onBeforeToggle={animateAboutDisclosure}
+                    testID="brand-profile-bio-disclosure"
+                  />
+                </React.Suspense>
               </>
             ) : (
               <Pressable
