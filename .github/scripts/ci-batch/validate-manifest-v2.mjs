@@ -279,8 +279,9 @@ export function phase3dContractDigest(manifest) {
 // selected by those same preserved replay commands, while the deliberately
 // filtered pre-#1931 replay excludes the exact repair beside both censuses.
 // #4137: register the four Blog migrations and both declared PostgreSQL suites
-// selected by those same full-history replay commands.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "c5c1d6ab61bba4c4631dc117a0e39e9277330abc1c985ee42182d93ddbf0fa0f";
+// selected by those same full-history replay commands, with exact-filename
+// exclusions for the deliberately pre-#1931 historical replay.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "08c235323564d60797b9c4496c89ae7027780904d1645ab92d98c5a6744c13e8";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
