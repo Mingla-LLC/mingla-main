@@ -33,6 +33,10 @@ const UUID =
 const OTP = /^\d{6}$/;
 const MAX_BODY_BYTES = 8_192;
 const CLAIM_BASE = "https://usemingla.com/c/";
+const ALLOWED_WEB_ORIGINS = new Set([
+  "https://usemingla.com",
+  "https://host.usemingla.com",
+]);
 
 type RpcResult = {
   data: unknown;
@@ -62,7 +66,9 @@ function cors(req: Request): Record<string, string> {
   const origin = req.headers.get("origin");
   return {
     "Access-Control-Allow-Origin":
-      origin === "https://usemingla.com" ? origin : "https://usemingla.com",
+      origin !== null && ALLOWED_WEB_ORIGINS.has(origin)
+        ? origin
+        : "https://usemingla.com",
     "Access-Control-Allow-Headers":
       "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -87,7 +93,7 @@ function json(
 
 function allowedOrigin(req: Request): boolean {
   const origin = req.headers.get("origin");
-  return origin === null || origin === "https://usemingla.com";
+  return origin === null || ALLOWED_WEB_ORIGINS.has(origin);
 }
 
 export function parseClaimLinkBody(
