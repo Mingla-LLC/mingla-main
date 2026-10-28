@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 
+// SHARE-SEMANTIC-ROLE:content-transport
+
 // #4137 — Share: Copy link, WhatsApp, X and (where the device has one) the
 // native share sheet. No Instagram button: Instagram has no web share URL.
 export function BlogShare({ url, title }: { readonly url: string; readonly title: string }) {
@@ -20,6 +22,11 @@ export function BlogShare({ url, title }: { readonly url: string; readonly title
     }
   }
 
+  async function shareMore() {
+    // SHARE-CONTENT-CALL:transport
+    await navigator.share({ title, url })
+  }
+
   const button = 'cut-btn cut-btn-light focus-ring'
   return (
     <div className="blog-share" role="group" aria-label="Share this story">
@@ -28,7 +35,7 @@ export function BlogShare({ url, title }: { readonly url: string; readonly title
       <a className={button} href={`https://wa.me/?text=${encodeURIComponent(`${title} ${url}`)}`} target="_blank" rel="noopener noreferrer">WhatsApp</a>
       <a className={button} href={`https://x.com/intent/post?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title)}`} target="_blank" rel="noopener noreferrer">X</a>
       {canShare ? (
-        <button type="button" className={button} onClick={() => { navigator.share({ title, url }).catch(() => undefined) }}>More</button>
+        <button type="button" className={button} onClick={() => { void shareMore().catch(() => undefined) }}>More</button>
       ) : null}
       <input id="blog-share-url" className="sr-live" readOnly value={url} aria-hidden="true" tabIndex={-1} />
       <span className="sr-live" aria-live="polite">{status}</span>
