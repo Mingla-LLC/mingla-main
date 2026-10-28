@@ -112,6 +112,9 @@ const CLASSIFIED: Record<string, Row> = {
   'https://www.usemingla.com': { verdict: 'navigation', why: 'marketing apex link' },
   'https://biz.usemingla.com': { verdict: 'navigation', why: 'business web link' },
   'https://studio.sites.usemingla.com': { verdict: 'navigation', why: 'sites studio hand-off, opened as a navigation (/mingla/exchange?code=…)' },
+  // [TEST-MOD-APPROVED #3645] The anonymous instalment page validates this
+  // exact provider host, then leaves Mingla with window.location.assign.
+  'https://checkout.paystack.com': { verdict: 'navigation', why: 'Paystack-hosted payment or approval hand-off, opened only as a top-level navigation' },
   'https://apps.apple.com': { verdict: 'navigation', why: 'App Store link' },
   'https://play.google.com': { verdict: 'navigation', why: 'Play Store link' },
   'https://maps.apple.com': { verdict: 'navigation', why: 'maps deep link' },
