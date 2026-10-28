@@ -7,6 +7,18 @@
 \set ON_ERROR_STOP on
 BEGIN;
 
+DO $test$
+BEGIN
+  IF position(
+    'extensions.gen_random_bytes'
+    IN pg_get_functiondef('public.issue_4137_blog_create_preview_token(uuid)'::regprocedure)
+  ) = 0 THEN
+    RAISE EXCEPTION
+      'security: preview token entropy source must use the schema-qualified extension function';
+  END IF;
+END
+$test$;
+
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
 
 -- ── People ────────────────────────────────────────────────────────────────

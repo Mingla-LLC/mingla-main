@@ -572,7 +572,7 @@ BEGIN
   IF NOT public.issue_4137_blog_can_write(v_actor) THEN RAISE EXCEPTION 'blog_forbidden' USING ERRCODE='42501'; END IF;
   SELECT draft_version_id INTO v_version FROM public.blog_posts WHERE id=p_post_id AND deleted_at IS NULL;
   IF v_version IS NULL THEN RAISE EXCEPTION 'blog_post_not_found' USING ERRCODE='P0001'; END IF;
-  v_token:=rtrim(translate(encode(gen_random_bytes(32),'base64'),'+/','-_'),'=');
+  v_token:=rtrim(translate(encode(extensions.gen_random_bytes(32),'base64'),'+/','-_'),'=');
   INSERT INTO public.blog_preview_tokens(token_hash,post_id,version_id,created_by,expires_at)
   VALUES(encode(sha256(convert_to(v_token,'UTF8')),'hex'),p_post_id,v_version,v_actor,v_expires);
   RETURN jsonb_build_object('token',v_token,'expires_at',v_expires);
