@@ -47,6 +47,17 @@
   min-height: 44px; display: inline-flex; align-items: center; padding: 0 20px; border-radius: 999px;
   font-weight: 800; font-size: 15px; white-space: nowrap; text-decoration: none;
 }
+/* The shared dark CTA has a long five-step drop stack for large buttons. On a
+   44px category pill that spread reads as a square outline. Keep the same
+   moulded dark face, but give the selected tab the compact shadow footprint
+   used by its neighbouring light pills. */
+[data-cutout] .blog-tabs a[aria-current='page'] {
+  box-shadow:
+    0 -3px 0 0 #070605 inset,
+    0 1px 0 0 rgba(255, 255, 255, 0.30) inset,
+    0 2.77px 2.21px 0 rgba(20, 18, 15, 0.10),
+    0 3px 3px 0 rgba(20, 18, 15, 0.10);
+}
 [data-cutout] .blog-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 28px; list-style: none; padding: 0; margin: 0; }
 [data-cutout] .blog-card { display: block; color: var(--cut-ink); text-decoration: none; border-radius: 24px; }
 [data-cutout] .blog-card-meta { display: flex; gap: 8px; align-items: center; margin-top: 16px; font-size: 14px; font-weight: 800; }

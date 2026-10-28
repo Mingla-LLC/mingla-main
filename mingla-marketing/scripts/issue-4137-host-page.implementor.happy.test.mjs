@@ -47,8 +47,9 @@ function loadImagery() {
 function sourceContract() {
   const page = read('app/host/page.tsx')
   assert(page.includes(`lede="${NEW_LEDE}"`), '#4137 AC-H1: /host carries the new lede')
-  assert.match(page, /backdrop=\{<HostHeroWall \/>\}/, '#4137: the hero uses the photo wall')
-  assert.doesNotMatch(page, /world-hosts-create-(preview|poster)|video=|image="/, '#4137 AC-H1: the video plate is gone')
+  assert.match(page, /image="\/marketing\/host-hero\/world-hosts-create-poster\.jpg"/, '#4137: the approved legacy hero poster is restored')
+  assert.match(page, /video="\/marketing\/host-hero\/world-hosts-create-preview\.mp4"/, '#4137: the approved legacy hero video is restored')
+  assert.doesNotMatch(page, /HostHeroWall/, '#4137: the replacement photo wall is not mounted')
   assert.match(page, /<HostStartCta \/>/, '#4137 AC-S1: Start hosting card mounted')
   assert.doesNotMatch(page, /RootCityGrid|allCityHubsSearchReady/, '#4137 AC-S1: no city grid on /host')
   assert.doesNotMatch(page, /AriCreativeCard|gogi-site/, '#4137 AC-B5: the real-site screenshot is gone from /host')
@@ -57,8 +58,6 @@ function sourceContract() {
 
   const hero = read('components/cutout/hero.tsx')
   assert.doesNotMatch(hero, /<CutReveal variant="headline"/, '#4137 AC-H3: the h1 is not wrapped in a reveal')
-  const wall = read('components/cutout/host-hero-wall.tsx')
-  assert.match(wall, /priority=\{index === 0\}/, '#4137 AC-H2: only tile 1 is priority')
 
   const cards = read('components/ui/expanding-cards.tsx')
   assert.match(cards, /<button[\s\S]*?aria-expanded=\{active\}[\s\S]*?aria-controls=\{bodyId\}/, '#4137 AC-C1: each card has a real aria-expanded button')
@@ -131,17 +130,11 @@ function builtContract() {
 
   // AC-H1
   assert(text.includes(NEW_LEDE), '#4137 AC-H1: new lede in the server HTML')
-  assert(!html.includes('world-hosts-create-preview.mp4') && !html.includes('world-hosts-create-poster.jpg'), '#4137 AC-H1: no hero video')
+  assert(html.includes('world-hosts-create-preview.mp4') && html.includes('world-hosts-create-poster.jpg'), '#4137 AC-H1: approved legacy hero video and poster')
   assert(!text.includes(OLD_LEDE), '#4137 AC-H1: old lede gone')
 
-  // AC-H2
-  const wall = byClass(html, 'cut-hero-wall')
-  assert.match(wall, /^<div[^>]*aria-hidden="true"/, '#4137 AC-H2: the wall is aria-hidden')
-  const wallImgs = wall.match(/<img\b[^>]*>/g) ?? []
-  assert.equal(wallImgs.length, 6, '#4137 AC-H2: six wall images')
-  for (const img of wallImgs) assert.match(img, /alt=""/, '#4137 AC-H2: decorative alt')
-  assert.equal(wallImgs.filter((img) => /fetchpriority="high"/i.test(img)).length, 1, '#4137 AC-H2: exactly one high-priority tile')
-  assert.doesNotMatch(wall, /<figcaption|credit|Photo/i, '#4137 AC-H2: no captions or credits')
+  // AC-H2 — Seth's latest decision restores the established video treatment.
+  assert.doesNotMatch(html, /cut-hero-wall/, '#4137 AC-H2: replacement photo wall is absent')
 
   // AC-H3: neither the h1 nor the lede sits inside an inline opacity:0 wrapper.
   const h1At = html.search(/<h1\b/)
@@ -204,7 +197,7 @@ function builtContract() {
     .filter((src) => src && src.startsWith('/marketing/host/')))
   assert(used.size >= 25, `#4137 AC-I1: expected the /host photos in the HTML, found ${used.size}`)
   for (const src of used) assert(imagery.has(src), `#4137 AC-I1: ${src} is not in HOST_IMAGERY`)
-  assert.doesNotMatch(html, /place-photos|googleusercontent|maps\.googleapis|\/marketing\/host-icp\/|\/marketing\/host-hero\//, '#4137 AC-I1: forbidden image source')
+  assert.doesNotMatch(html, /place-photos|googleusercontent|maps\.googleapis|\/marketing\/host-icp\//, '#4137 AC-I1: forbidden image source')
   for (const name of BRAND_NAMES) assert(!new RegExp(`\\b${name}\\b`, 'i').test(text), `#4137 AC-I3: "${name}" on /host`)
 
   process.stdout.write('PASS #4137 /host built HTML (hero, Start hosting, live values, builder at rest, cards, imagery provenance)\n')
