@@ -41,7 +41,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3643: keep the retained attendance TypeScript tests on Node 22.
 // #2829 W7c: re-sealed after the Sites goldens test became one reviewed
 // reference on the retained arm64 web-build provider.
-export const BOOTSTRAP_SHA256 = "ff408f4d9b8132646c456fa2197725171614d9fe2a67f9c66339446d34e73c7b";
+// #3872: re-sealed after the census prerequisite migration and its two
+// self-registering SQL proofs entered the preserved replay inventories, with
+// the exact repair excluded from the deliberately filtered pre-#1931 replay.
+export const BOOTSTRAP_SHA256 = "d8fd72193cdfbc24eb245eb8f2a72162407932b4143630968d065cdcb13f52c4";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
