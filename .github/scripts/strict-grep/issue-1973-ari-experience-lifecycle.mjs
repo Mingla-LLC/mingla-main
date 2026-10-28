@@ -162,10 +162,11 @@ function check(s) {
   // [TEST-MOD-APPROVED #1984] Listing conversion + reservation metrics; 138→140 / 137→139.
   // [TEST-MOD-APPROVED #3697] Host Ads tools; 140→145 / 139→144.
   // [TEST-MOD-APPROVED #3872] Discounts, Referrals, and Creator tools; 145→152 / 144→151.
-  requireAll("152-capability certification proof", s.certificationTest, [
+  // [TEST-MOD-APPROVED #2829] Website designer tools; 152→164 / 151→163.
+  requireAll("164-capability certification proof", s.certificationTest, [
     "ari.experience.unpublish",
-    "ari_cert_missing_capabilities:151",
-    "expected exactly 152 certification requirements",
+    "ari_cert_missing_capabilities:163",
+    "expected exactly 164 certification requirements",
   ]);
   requireAll("public payload Edge proof", s.publicPayloadTest, [
     '"update_experience"',
@@ -272,7 +273,7 @@ if (process.argv.includes("--self-test")) {
     {
       ...sources,
       certificationTest: sources.certificationTest.replace(
-        "ari_cert_missing_capabilities:151",
+        "ari_cert_missing_capabilities:163",
         "accepted_obsolete_inventory",
       ),
     },
