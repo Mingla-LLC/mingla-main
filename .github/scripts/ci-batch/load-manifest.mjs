@@ -55,7 +55,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // availability migrations and their local proofs entered those inventories.
 // #4037: re-sealed after the Home Pulse lifetime-sales migration and its
 // executable proof entered those preserved replay inventories.
-export const BOOTSTRAP_SHA256 = "6b6d54e589f7848a9bd0380784f63ae90257d83631c3e718591faf464f0de1e5";
+// #4167: re-sealed after the #1532 route timeout widened from five to ten
+// minutes following two consecutive checkout/router timeouts.
+export const BOOTSTRAP_SHA256 = "2a3a59407b3c44b314713a66aa007510655f829825164215842e7989964a78e0";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

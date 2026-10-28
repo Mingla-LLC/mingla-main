@@ -87,7 +87,7 @@ jobs:
     if: ${{ github.event.pull_request.draft != true }}
     name: Route (issue 1532)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
       selected: ${{ steps.decide.outputs.selected }}
     steps:
