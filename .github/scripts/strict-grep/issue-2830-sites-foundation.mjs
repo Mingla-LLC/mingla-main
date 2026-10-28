@@ -21,12 +21,12 @@ const PATHS = {
   // #2829 (SPEC A6) — the multi-brand migration that replaced the single
   // Gogi pilot binding, and the SQL suite that proves its replacement
   // behaviour (per-brand entitlement, owner offline, recovery alert).
-  multiBrandMigration: "supabase/migrations/20271225002829_issue_2829_sites_multi_brand_w1.sql",
+  multiBrandMigration: "supabase/migrations/20280119012829_issue_2829_sites_multi_brand_w1.sql",
   multiBrandSql: "supabase/migrations/__tests__/issue_2829_sites_multi_brand.test.sql",
   // #2829 W8 — the custom-domain migration re-creates both resolvers (the
   // detaching window, every address of the site); its definitions are now the
   // live ones, so the host-binding pins below hold for it too.
-  customDomainsMigration: "supabase/migrations/20271229032829_issue_2829_custom_domains.sql",
+  customDomainsMigration: "supabase/migrations/20280119082829_issue_2829_custom_domains.sql",
   deployWrapper: "scripts/ops/deploy-sites-edge-functions.sh",
   deployWrapperTest: "scripts/ops/__tests__/issue_2893_sites_edge_deploy_wrapper.test.mjs",
   security: "supabase/functions/_shared/sitesSecurity.ts",
