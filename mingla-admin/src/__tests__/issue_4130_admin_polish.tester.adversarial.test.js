@@ -391,7 +391,7 @@ describe("T-DROOM and T-SUPP: who sees what", () => {
     const ids = (a, tabs) => communitySupportTabsForAccess(a, tabs).map((t) => t.id);
     assert.deepEqual(ids(acc.admin, SUPPORT_PAGE_TABS), SUPPORT_PAGE_TABS.map((t) => t.id));
     assert.deepEqual(ids(acc.admin, COMMUNITY_PAGE_TABS), COMMUNITY_PAGE_TABS.map((t) => t.id));
-    assert.deepEqual(ids(acc.support, SUPPORT_PAGE_TABS), ["support"]);
+    assert.deepEqual(ids(acc.support, SUPPORT_PAGE_TABS), ["support", "blog"]);
     const supportCommunity = ids(acc.support, COMMUNITY_PAGE_TABS);
     for (const adminOnly of ["announcements", "roadmap", "product"]) {
       assert.equal(supportCommunity.includes(adminOnly), false, `support teammate sees ${adminOnly}`);

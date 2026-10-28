@@ -39,6 +39,7 @@ export function communitySupportTabsForAccess(access, tabs) {
   }
   if (canSupport) {
     allowed.add("support");
+    allowed.add("blog");
     allowed.add("feature-guide");
     allowed.add("brand-groups");
   }

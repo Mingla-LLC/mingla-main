@@ -56,6 +56,7 @@ const ids = (tabs) => tabs.map((tab) => tab.id);
 const OLD_TAB_HOME = {
   support: ["support", null],
   email: ["support", "email"],
+  blog: ["support", "blog"],
   team: ["support", "team"],
   announcements: ["community", null],
   roadmap: ["community", "roadmap"],
@@ -114,7 +115,7 @@ describe("W6-2 Support and Community are real pages", () => {
   });
 
   it("each page reads and writes its own tab; the default tab has a bare address", () => {
-    assert.deepEqual(ids(SUPPORT_PAGE_TABS), ["support", "email", "team"]);
+    assert.deepEqual(ids(SUPPORT_PAGE_TABS), ["support", "email", "blog", "team"]);
     assert.equal(pageTabFromHash("#/support", "support"), "support");
     assert.equal(pageTabFromHash("#/support?tab=email", "support"), "email");
     assert.equal(pageTabFromHash("#/support?tab=roadmap", "support"), "support");
@@ -137,8 +138,8 @@ describe("W6-3 access is unchanged", () => {
   // What each person saw in the console before the split, content tabs only.
   const BEFORE = {
     admin: Object.keys(OLD_TAB_HOME).sort(),
-    supportTeammate: ["brand-groups", "enquiry-reports", "feature-guide", "ideas", "moderation", "questions", "support"],
-    supportOnly: ["brand-groups", "feature-guide", "support"],
+    supportTeammate: ["blog", "brand-groups", "enquiry-reports", "feature-guide", "ideas", "moderation", "questions", "support"],
+    supportOnly: ["blog", "brand-groups", "feature-guide", "support"],
     communityOnly: ["enquiry-reports", "ideas", "moderation", "questions"],
     salesOnly: [],
   };

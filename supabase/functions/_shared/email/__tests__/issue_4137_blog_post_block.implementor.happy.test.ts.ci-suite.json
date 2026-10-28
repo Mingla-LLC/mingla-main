@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/email/__tests__/issue_4137_blog_post_block.implementor.happy.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4137-05-email-blog-render",
+  "profile": "deno-1.46-stripe"
+}

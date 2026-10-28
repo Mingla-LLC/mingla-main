@@ -8,6 +8,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@mingla/blog-document": path.resolve(__dirname, "../packages/blog-document/src/index.ts"),
+    },
+  },
   build: {
     outDir: "dist",
   },

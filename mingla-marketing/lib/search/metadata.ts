@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import {
   NOINDEX_LIFECYCLES,
+  blogPostCanonicalUrl,
+  blogPostRouteContract,
   canonicalUrlForSearchRoute,
   requireRouteContract,
   type SearchReadyRouteContract,
@@ -124,6 +126,61 @@ export function helpVideoMetadata(record: HelpVideoRecord): Metadata {
       title,
       description: record.blurb,
       ...(poster ? { images: [poster] } : {}),
+    },
+  }
+}
+
+export interface BlogPostMetadataInput {
+  readonly slug: string
+  readonly title: string
+  readonly summary: string
+  readonly seoTitle: string | null
+  readonly seoDescription: string | null
+  readonly socialTitle: string | null
+  readonly socialDescription: string | null
+  readonly categoryLabel: string
+  readonly firstPublishedAt: string | null
+  readonly modifiedAt: string
+  readonly cover: { readonly url: string; readonly width: number; readonly height: number; readonly alt: string } | null
+}
+
+/**
+ * #4137 — metadata for one published blog post. Title, description and
+ * canonical come from blogPostRouteContract, the same derivation the sitemap
+ * uses. The title is absolute: the root template adds nothing.
+ */
+export function blogPostMetadata(post: BlogPostMetadataInput): Metadata {
+  const contract = blogPostRouteContract({
+    slug: post.slug,
+    title: post.seoTitle?.trim() || post.title,
+    description: post.seoDescription?.trim() || post.summary,
+    lastModified: post.modifiedAt,
+  })
+  const canonical = blogPostCanonicalUrl(post.slug)
+  const socialTitle = post.socialTitle?.trim() || post.title
+  const socialDescription = post.socialDescription?.trim() || post.summary
+  const images = post.cover ? [{ url: post.cover.url, width: post.cover.width, height: post.cover.height, alt: post.cover.alt }] : undefined
+  return {
+    title: { absolute: contract.title },
+    description: contract.description,
+    alternates: { canonical: canonical },
+    robots: { index: true, follow: true },
+    openGraph: {
+      type: 'article',
+      siteName: 'Mingla',
+      url: canonical,
+      title: socialTitle,
+      description: socialDescription,
+      ...(post.firstPublishedAt ? { publishedTime: post.firstPublishedAt } : {}),
+      modifiedTime: post.modifiedAt,
+      section: post.categoryLabel,
+      ...(images ? { images } : {}),
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: socialTitle,
+      description: socialDescription,
+      ...(post.cover ? { images: [post.cover.url] } : {}),
     },
   }
 }

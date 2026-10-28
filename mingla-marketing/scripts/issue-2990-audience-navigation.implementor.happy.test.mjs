@@ -31,7 +31,7 @@ assert.match(audienceMenu, /surface="explorer"[\s\S]*variant="primary"/)
 assert.match(audienceMenu, /surface="host"[\s\S]*variant="ink"/)
 assert.match(audienceMenu, /onExternalActivate=\{onDismiss\}/)
 assert.match(audienceMenu, /onDialogOpenChange=\{onChildDialogOpenChange\}/)
-assert.match(audienceMenu, /className="mt-auto flex flex-col gap-2\.5 pt-6"/)
+assert.match(audienceMenu, /className="cut-menu-ctas mt-auto flex flex-col gap-2\.5 pt-6"/, '#4137: the bottom CTAs stay bottom-aligned and sticky')
 process.stdout.write('PASS one shared audience owner, exact active map and ordered device-aware CTAs\n')
 
 for (const [name, source] of [['CutoutNav', cutoutNav], ['PageSystemNav', pageSystemNav]]) {

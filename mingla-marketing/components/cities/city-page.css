@@ -1,0 +1,255 @@
+/* #4137 wave 2 — the redesigned city page (release build). Every rule is scoped
+   to .city-page-v2 so the historical #2983 layout and its pinned CSS in
+   city-hubs.css are untouched. Tokens come from cutout.css; no new fonts. */
+
+.city-page-v2 { --city-v2-dark: #17110d; --city-v2-light: #fffdf9; --city-v2-line: #e7dfd1; }
+
+/* The menu bar floats over the dark hero. */
+.city-page-v2 .ps-nav { position: absolute; top: 8px; left: 0; right: 0; }
+@media (min-width: 640px) { .city-page-v2 .ps-nav { top: 12px; } }
+.city-page-v2 .city-lifecycle-notice { margin-top: 96px; }
+
+/* ---- Hero ---------------------------------------------------------------- */
+.city-page-v2 .city-v2-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: var(--cut-r-card);
+  background: #14120f;
+  color: #fff;
+}
+.city-page-v2 .city-v2-hero-photo { object-fit: cover; opacity: .55; z-index: -2; }
+.city-page-v2 .city-v2-hero-veil {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(20, 18, 15, .55) 0%, rgba(20, 18, 15, .2) 40%, rgba(20, 18, 15, .9) 100%);
+}
+.city-page-v2 .city-v2-hero-inner {
+  width: min(100%, 1152px);
+  margin: 0 auto;
+  padding: calc(96px + 72px) 48px 72px;
+}
+.city-page-v2 .city-v2-hero .city-breadcrumbs ol { margin: 0 0 8px; color: #e8dfd3; font-size: 14px; font-weight: 600; }
+.city-page-v2 .city-v2-hero .city-breadcrumbs a { color: #e8dfd3; }
+.city-page-v2 .city-v2-hero h1 {
+  max-width: 900px;
+  margin: 8px 0 18px;
+  font-family: var(--font-mochiy), sans-serif;
+  font-size: clamp(2.75rem, 6vw, 4.75rem);
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -.03em;
+  color: #fff;
+  text-wrap: balance;
+}
+.city-page-v2 .city-v2-hero-lede { max-width: 760px; margin: 0 0 28px; color: #e8dfd3; font-size: 1.25rem; line-height: 1.5; }
+.city-page-v2 .city-v2-hero-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.city-page-v2 .city-v2-hero .city-v2-hero-host {
+  background: rgba(255, 255, 255, .12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, .3);
+  box-shadow: none;
+}
+
+/* ---- Shared pills and headings -------------------------------------------- */
+.city-page-v2 .city-v2-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 800;
+}
+.city-page-v2 .city-v2-pill-ink { background: var(--cut-ink); color: var(--cut-accent); }
+.city-page-v2 .city-v2-pill-soft { background: #fde3cf; color: #7a3109; }
+.city-page-v2 .city-v2-pill-accent { background: var(--cut-accent); color: #17110d; }
+.city-page-v2 :is(.city-v2-places, .city-v2-plans) h2,
+.city-page-v2 .city-v2-host h2 {
+  margin: 14px 0 0;
+  font-family: var(--font-mochiy), sans-serif;
+  font-size: clamp(1.875rem, 4.2vw, 2.75rem);
+  line-height: 1.08;
+  letter-spacing: -.03em;
+  color: var(--cut-ink);
+  text-wrap: balance;
+}
+
+.city-page-v2 .city-v2-places,
+.city-page-v2 .city-v2-plans {
+  width: min(100%, 1216px);
+  margin: 0 auto;
+  padding: 72px 32px 24px;
+}
+.city-page-v2 .city-v2-plans { padding-block: 72px; scroll-margin-top: 24px; }
+
+/* ---- Category chips -------------------------------------------------------- */
+.city-page-v2 .city-v2-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 32px; }
+.city-page-v2 .city-v2-chips button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--city-v2-line);
+  border-radius: 999px;
+  background: var(--city-v2-light);
+  color: var(--cut-ink);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--cut-btn-light-shadow);
+}
+.city-page-v2 .city-v2-chips button[aria-pressed='true'] { background: var(--cut-ink); border-color: var(--cut-ink); color: #fff; }
+
+/* ---- Place grid ----------------------------------------------------------- */
+.city-page-v2 .city-v2-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (min-width: 480px) { .city-page-v2 .city-v2-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 768px) { .city-page-v2 .city-v2-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; } }
+@media (min-width: 1100px) { .city-page-v2 .city-v2-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.city-page-v2 .city-v2-grid[data-collapsed='true'] > li:nth-child(n+13) { display: none; }
+
+.city-page-v2 .city-v2-place-link { display: block; min-height: 44px; border-radius: var(--cut-r-tile); color: var(--cut-ink); text-decoration: none; }
+.city-page-v2 .city-v2-place-photo {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border-radius: var(--cut-r-tile);
+  background: var(--cut-card-sunken);
+  box-shadow: 0 7.77px 16px rgba(20, 18, 15, .06), 0 3px 3px rgba(20, 18, 15, .10);
+}
+.city-page-v2 .city-v2-place-media,
+.city-page-v2 .city-v2-place-media > img,
+.city-page-v2 .city-v2-photo-fallback { width: 100%; height: 100%; }
+.city-page-v2 .city-v2-place-media > img { display: block; object-fit: cover; transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1); }
+@media (pointer: fine) {
+  .city-page-v2 .city-v2-place-link:hover .city-v2-place-media > img { transform: scale(1.03); }
+}
+.city-page-v2 .city-v2-rank {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  max-width: calc(100% - 24px);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--city-v2-light);
+  color: var(--cut-ink);
+  font-size: 0.8125rem;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.city-page-v2 .city-v2-place h3 {
+  margin: 12px 0 0;
+  font-family: var(--font-mochiy), sans-serif;
+  font-size: 1.3125rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.city-page-v2 .city-v2-place-rating { margin: 4px 0 0; color: var(--cut-body); font-size: 0.875rem; }
+.city-page-v2 .city-v2-show-all-row { display: flex; justify-content: center; margin-top: 32px; }
+.city-page-v2 .city-v2-show-all {
+  min-height: 48px;
+  padding: 0 28px;
+  border: 1px solid var(--city-v2-line);
+  border-radius: 999px;
+  background: var(--city-v2-light);
+  color: var(--cut-ink);
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: var(--cut-btn-light-shadow);
+}
+
+/* The no-photo category tile: same box as a photo, so a swap never shifts. */
+.city-v2-photo-fallback {
+  display: grid;
+  place-items: center;
+  color: #7a3109;
+  background: #fde3cf;
+}
+.city-v2-photo-fallback[data-category='nature'] { background: #dfe9d6; color: #2f4a22; }
+.city-v2-photo-fallback[data-category='drinks'] { background: #ead9f0; color: #4e2a5c; }
+.city-v2-photo-fallback[data-category='brunch'] { background: #fbe8c8; color: #6b4210; }
+.city-v2-photo-fallback[data-category='fine_dining'] { background: #e9ddd2; color: #4a3020; }
+.city-v2-photo-fallback[data-category='theatre'],
+.city-v2-photo-fallback[data-category='movies'] { background: #dde3f0; color: #26345a; }
+.city-v2-photo-fallback[data-category='creative_arts'] { background: #f3dcdc; color: #5c2424; }
+.city-v2-photo-fallback[data-category='play'] { background: #d9eeec; color: #1f4d48; }
+.ps-detail-gallery .city-v2-photo-fallback { min-height: 240px; border-radius: inherit; }
+.ps-detail-gallery [data-place-media='stored'] > img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ---- Plans ---------------------------------------------------------------- */
+.city-page-v2 .city-v2-plan-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; margin: 28px 0 0; padding: 0; list-style: none; }
+@media (min-width: 768px) { .city-page-v2 .city-v2-plan-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.city-page-v2 .city-v2-plan {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  height: 100%;
+  padding: 12px;
+  border-radius: 24px;
+  background: var(--city-v2-light);
+  border: 1px solid var(--city-v2-line);
+  color: var(--cut-ink);
+}
+.city-page-v2 .city-v2-plan[data-tone='dark'] { background: var(--city-v2-dark); border-color: var(--city-v2-dark); color: #fff; }
+.city-page-v2 .city-v2-plan-tiles { display: grid; grid-template-columns: repeat(var(--tiles, 3), minmax(0, 1fr)); gap: 8px; }
+.city-page-v2 .city-v2-plan-tiles[data-count='2'] { --tiles: 2; }
+.city-page-v2 .city-v2-plan-tiles[data-count='1'] { --tiles: 1; }
+.city-page-v2 .city-v2-plan-tiles img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 14px; }
+.city-page-v2 .city-v2-plan-copy { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 8px 4px; }
+.city-page-v2 .city-v2-plan h3 { margin: 0; font-family: var(--font-mochiy), sans-serif; font-size: 1.375rem; font-weight: 800; }
+.city-page-v2 .city-v2-plan p { margin: 4px 0 0; color: #5d544b; font-size: 0.875rem; }
+.city-page-v2 .city-v2-plan[data-tone='dark'] p { color: #bfb4a6; }
+.city-page-v2 .city-v2-plan-open { position: static; }
+.city-page-v2 .city-v2-plan-open::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
+
+/* ---- Host band ------------------------------------------------------------ */
+.city-page-v2 .city-v2-host {
+  width: min(calc(100% - 64px), 1152px);
+  margin: 24px auto 72px;
+  padding: 56px 48px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  border-radius: 32px;
+  background: var(--city-v2-dark);
+  color: #fff;
+}
+.city-page-v2 .city-v2-host-copy { max-width: 620px; }
+.city-page-v2 .city-v2-host h2 { color: #fff; }
+.city-page-v2 .city-v2-host p { margin: 10px 0 0; color: #d9d0c4; font-size: 1.125rem; }
+
+/* ---- FAQ keeps its #2983 markup; give it the page width. ------------------ */
+.city-page-v2 .city-faq-section { width: min(100%, 1216px); margin: 0 auto; }
+
+/* ---- Phones --------------------------------------------------------------- */
+@media (max-width: 767px) {
+  .city-page-v2 .city-v2-hero { border-radius: var(--cut-r-media); }
+  .city-page-v2 .city-v2-hero-inner { padding: calc(72px + 64px) 16px 48px; }
+  .city-page-v2 .city-v2-places,
+  .city-page-v2 .city-v2-plans { padding-inline: 16px; }
+  .city-page-v2 .city-v2-host { width: calc(100% - 32px); padding: 32px 20px; border-radius: 24px; }
+  .city-page-v2 .city-v2-hero-actions > * { width: 100%; justify-content: center; }
+}
+
+/* ---- Reduced motion: no image scale, no transitions. ---------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .city-page-v2 *,
+  .city-page-v2 *::before,
+  .city-page-v2 *::after { transition: none !important; animation: none !important; }
+  .city-page-v2 .city-v2-place-link:hover .city-v2-place-media > img { transform: none; }
+}
+
+/* A transform would make the CTA the ::after's containing block and shrink the
+   card-wide hit area while hovering, so the plan CTA does not lift. */
+.city-page-v2 .city-v2-plan-open:hover,
+.city-page-v2 .city-v2-plan-open:active { transform: none; }

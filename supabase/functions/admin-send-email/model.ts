@@ -198,6 +198,14 @@ export function validateDocument(input: unknown): EmailContentBlock[] {
   if (!Array.isArray(input) || input.length === 0 || input.length > 100) {
     throw new Error("email_document_invalid");
   }
+  if (
+    input.filter((candidate) =>
+      candidate && typeof candidate === "object" &&
+      (candidate as Record<string, unknown>).type === "blog_post"
+    ).length > 3
+  ) {
+    throw new Error("email_block_blog_post_limit");
+  }
   return input.map((candidate, index) => {
     if (!candidate || typeof candidate !== "object") {
       throw new Error(`email_block_invalid:${index}`);
@@ -252,6 +260,43 @@ export function validateDocument(input: unknown): EmailContentBlock[] {
         link,
       };
     }
+    if (block.type === "blog_post") {
+      const postId = typeof block.postId === "string"
+        ? block.postId.trim()
+        : "";
+      const style = block.style;
+      const buttonText = typeof block.buttonText === "string"
+        ? block.buttonText.trim()
+        : "";
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+          .test(postId)
+      ) {
+        throw new Error(`email_block_blog_post_id_invalid:${index}`);
+      }
+      if (!new Set(["card", "row", "link"]).has(String(style))) {
+        throw new Error(`email_block_blog_post_style_invalid:${index}`);
+      }
+      if (
+        !buttonText || buttonText.length > 40 || /[{}\r\n]/.test(buttonText)
+      ) {
+        throw new Error(`email_block_blog_post_button_invalid:${index}`);
+      }
+      const snapshot = block.snapshot && typeof block.snapshot === "object"
+        ? block.snapshot as Extract<
+          EmailContentBlock,
+          { type: "blog_post" }
+        >["snapshot"]
+        : undefined;
+      return {
+        id,
+        type: "blog_post",
+        postId,
+        style: style as "card" | "row" | "link",
+        buttonText,
+        snapshot,
+      };
+    }
     throw new Error(`email_block_type_unsupported:${String(block.type)}`);
   });
 }
@@ -299,6 +344,8 @@ export function documentPlainText(document: EmailContentBlock[]): string {
   return document.map((block) => {
     if (block.type === "divider") return "────────";
     if (block.type === "image") return block.alt;
+    if (block.type === "blog_post") return block.snapshot?.title || "Blog post";
+    if (block.type === "blog_post_resolved") return block.title;
     return block.html
       .replace(/<br\s*\/?\s*>/gi, "\n")
       .replace(/<\/p>|<\/h2>|<\/h3>|<\/li>/gi, "\n")

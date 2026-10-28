@@ -132,6 +132,7 @@ export function parseFeatureGuide(body) {
  * consumers from each project's package.json, tsconfig paths and imports.
  */
 export const PACKAGE_CONSUMERS = {
+  "blog-document": ["mingla-admin", "mingla-marketing"],
   "brand-assets": ["mingla-admin", "mingla-business"],
   "brand-rendering": ["mingla-business"],
   "card-identity": ["mingla-business"],

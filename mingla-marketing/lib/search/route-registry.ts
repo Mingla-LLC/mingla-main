@@ -6,6 +6,7 @@ import {
 } from '../../content/cities/registry'
 import { CORE_PAGES } from '../../content/core-pages'
 import { HELP_VIDEOS, helpVideoPath } from '../../content/help/registry'
+import { BLOG_CATEGORIES, blogCategoryPath } from '../../content/blog/categories'
 
 export const ROUTE_LIFECYCLE_STATES = [
   'draft',
@@ -165,6 +166,17 @@ const SEARCH_READY_ROUTES = [
       'The terms for anyone who lists, sells, messages or advertises with Mingla Host: who you contract with, fees, payouts, refunds, Buyer data and disputes.',
     lastModified: '2026-10-01',
   },
+  // #4137 — the blog front page. Its categories and published posts are
+  // projected below (BLOG_CATEGORY_ROUTE_CONTRACTS, blogPostRouteContract).
+  {
+    id: 'blog-home',
+    match: { type: 'exact', pathname: '/blog' },
+    lifecycle: 'search_ready',
+    title: 'The Mingla blog: going out, date ideas and the host playbook',
+    description:
+      'Going out, date ideas and the playbook for hosts, from the people building Mingla. Plans you can save in one tap.',
+    lastModified: '2026-10-27',
+  },
 ] as const satisfies readonly SearchReadyRouteContract[]
 
 const CORE_PUBLIC_NOINDEX_ROUTES = Object.values(CORE_PAGES).filter((record) => record.lifecycle === 'public_noindex')
@@ -292,6 +304,55 @@ export const HELP_ROUTE_CONTRACTS: readonly RouteContract[] = HELP_VIDEOS.map((r
   lastModified: record.uploadedAt,
 } as RouteContract))
 
+// #4137 — one search contract per blog category, projected from the static
+// mirror of the database seed so category pages and the sitemap never need the
+// database to exist.
+export const BLOG_CATEGORY_ROUTE_CONTRACTS: readonly SearchReadyRouteContract[] = BLOG_CATEGORIES.map((record) => ({
+  id: `blog-category-${record.slug}`,
+  match: { type: 'exact' as const, pathname: blogCategoryPath(record.slug) },
+  lifecycle: 'search_ready' as const,
+  title: `${record.label}: stories from the Mingla blog`,
+  description: record.description,
+  lastModified: '2026-10-27' as const,
+}))
+
+// #4137 — WHY A PREFIX + NOINDEX FAMILY FOR /blog. Published posts live in the
+// database, not in this file, so they cannot be exact contracts at build time.
+// The family makes every other /blog path (staff previews, `?page=N` pages,
+// unknown slugs) resolve to a noindex owner; exact contracts (/blog and the
+// four categories) still win. A PUBLISHED post registers through
+// blogPostRouteContract below: the post page's metadata and the sitemap both
+// derive title, description and canonical from that one function.
+const BLOG_ROUTE_FAMILY = {
+  id: 'blog-post-family',
+  match: { type: 'prefix', pathname: '/blog' },
+  lifecycle: 'public_noindex',
+} as const satisfies RouteContract
+
+export interface BlogPostRouteRow {
+  readonly slug: string
+  readonly title: string
+  readonly description: string
+  readonly lastModified: string
+}
+
+export function blogPostCanonicalUrl(slug: string): string {
+  return canonicalMarketingUrl(`/blog/${slug}`)
+}
+
+/** The search contract of one published blog post (sitemap + post metadata). */
+export function blogPostRouteContract(row: BlogPostRouteRow): SearchReadyRouteContract {
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(row.slug)) throw new Error(`#4137 blog slug is not canonical: ${row.slug}`)
+  return {
+    id: `blog-post-${row.slug}`,
+    match: { type: 'exact', pathname: `/blog/${row.slug}` },
+    lifecycle: 'search_ready',
+    title: row.title,
+    description: row.description,
+    lastModified: row.lastModified.slice(0, 10) as SearchReadyRouteContract['lastModified'],
+  }
+}
+
 export const ROUTE_REGISTRY: readonly RouteContract[] = [
   ...SEARCH_READY_ROUTES,
   ...CORE_SEARCH_READY_ROUTES,
@@ -305,8 +366,10 @@ export const ROUTE_REGISTRY: readonly RouteContract[] = [
     match: { type: 'prefix' as const, pathname },
     lifecycle: 'public_noindex' as const,
   })),
+  BLOG_ROUTE_FAMILY,
   ...CITY_ROUTE_CONTRACTS,
   ...HELP_ROUTE_CONTRACTS,
+  ...BLOG_CATEGORY_ROUTE_CONTRACTS,
   ...REDIRECTED_ROUTES,
 ]
 

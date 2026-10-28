@@ -171,7 +171,9 @@ function sourceContract() {
   assert.match(hostBar, /city = 'Lagos'/)
   for (const route of ['event/create', 'trip/create', 'experience/create', 'venue/create']) assert(hostBar.includes(`host.usemingla.com/${route}`))
 
-  assert.match(deviceCta, /if \(!hydrated\)[\s\S]*href="\/download"/)
+  // #4137: DeviceCta renders through the DeviceLink seam, whose server href for Explorer is /download.
+  assert.match(deviceCta, /<DeviceLink\b/, '#4137: DeviceCta must render DeviceLink')
+  assert.doesNotMatch(deviceCta, /if \(!hydrated\)/, '#4137: no hydration-timed branch')
   assert.match(deviceCta, /captureDefaultAnalytics/)
   for (const event of ['city_hub_explorer_action', 'city_hub_host_action', 'city_hub_inventory_action', 'city_hub_switch_city', 'city_hub_view']) {
     assert(actions.includes(event) || hub.includes(event), `missing closed analytics event ${event}`)
@@ -202,12 +204,13 @@ function sourceContract() {
   assert.match(footer, /<PrivacyChoicesLink className="inline-flex min-h-11 min-w-11 items-center[^"]*"/)
 
   // #3371: the Explorer home is one non-scrolling screen again (Seth, 2026-09-14),
-  // so the root gate is inverted there; the Host root keeps its city grid below.
+  // so the root gate is inverted there. #4137: the Host root ends with the
+  // Start hosting card instead of the city grid.
   assert.doesNotMatch(explorerRoot, /showCityLaunch = allCityHubsSearchReady\(\)/)
   assert.doesNotMatch(explorerRoot, /<RootCityGrid\b/)
   assert.match(explorerRoot, /<CutoutShell dark noScroll>/)
-  assert.match(hostRoot, /showCityLaunch = allCityHubsSearchReady\(\)/)
-  assert.match(hostRoot, /<RootCityGrid surface="host"/)
+  assert.doesNotMatch(hostRoot, /<RootCityGrid\b/, '#4137: /host no longer mounts the city grid')
+  assert.match(hostRoot, /<HostStartCta\b/, '#4137: /host ends with the Start hosting card')
   assert(packageJson.scripts.build.includes('issue-2983-city-hubs.implementor.happy.test.mjs --source-only'))
   assert(packageJson.scripts.build.includes('next build && node scripts/issue-2983-city-hubs.implementor.happy.test.mjs --built-only'))
   assert(packageJson.scripts['test:city-hubs'].includes('issue-2983-city-hubs.implementor.happy.test.mjs'))

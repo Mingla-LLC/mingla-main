@@ -116,7 +116,8 @@ function wiringContract() {
   const scripts = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).scripts
   const own = `node --experimental-websocket scripts/${SELF} --built-only`
   const implementor = 'node --experimental-websocket scripts/issue-3371-explorer-home-one-screen.implementor.happy.test.mjs --built-only'
-  assert(scripts.build.endsWith(` && ${own} && ${implementor}`), 'the #3371 tester guard must run immediately before the #3371 implementor guard at the end of the build')
+  // #4137: only the #4137 release-build tests may follow the #3371 pair.
+  assert(new RegExp(`${(` && ${own} && ${implementor}`).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?: && node (?:--experimental-websocket )?scripts/issue-4137-[a-z-]+\\.implementor\\.happy\\.test\\.mjs --built-only)*$`).test(scripts.build), 'the #3371 tester guard must run immediately before the #3371 implementor guard at the end of the build')
   assert(scripts.build.lastIndexOf(own) > scripts.build.lastIndexOf('next build'), 'the #3371 tester guard must run against the final production build')
   assert.equal(scripts.build.split(own).length, 2, 'the #3371 tester guard must be wired exactly once')
 }
@@ -402,8 +403,10 @@ async function crawl(port) {
   const section = moduleAt >= 0 ? host.body.slice(moduleAt, host.body.indexOf('</section>', moduleAt)) : ''
   const hostCityLinks = [...new Set([...section.matchAll(/href="(\/cities\/[a-z0-9-]+)"/g)].map((match) => match[1]))]
   report.crawl.hostCityGrid = { present: moduleAt >= 0, links: hostCityLinks }
-  check(moduleAt >= 0, '/host lost its city grid')
-  check(hostCityLinks.length === 10, `/host city grid must link 10 city hubs (got ${hostCityLinks.length})`)
+  // #4137: /host now ends with the Start hosting card instead of the city grid
+  // (the city hubs stay reachable from the menu, footer and sitemap).
+  check(moduleAt < 0, '#4137: /host must not server-render the city grid')
+  check(/class="cut-start\b/.test(host.body), '#4137: /host must end with the Start hosting card')
   const hubStatuses = {}
   for (const hub of [...new Set([...hostCityLinks, ...sitemapPaths.filter((value) => value.startsWith('/cities/'))])]) {
     hubStatuses[hub] = (await request(port, hub)).status
@@ -433,7 +436,8 @@ const GEOMETRY = `(()=>{
   const clip=(el)=>{let t=-Infinity,b=Infinity;for(let n=el.parentElement;n&&n!==document.documentElement;n=n.parentElement){const s=getComputedStyle(n);if(s.overflowX!=='visible'||s.overflowY!=='visible'){const r=n.getBoundingClientRect();t=Math.max(t,r.top);b=Math.min(b,r.bottom)}}return {t,b}}
   const cards=[...deck.querySelectorAll('.group.absolute')].map(cell=>cell.firstElementChild).filter(card=>card&&alpha(card)>0.05).map(card=>{const r=card.getBoundingClientRect(),c=clip(card);return {top:Math.max(r.top,c.t),bottom:Math.min(r.bottom,c.b)}}).filter(r=>r.bottom>r.top)
   const cardTop=Math.min(...cards.map(r=>r.top)), cardBottom=Math.max(...cards.map(r=>r.bottom))
-  const actionEl=[...deck.querySelectorAll('a,button')].find(el=>el.textContent.trim()==='Use Mingla'&&el.getBoundingClientRect().width>0&&alpha(el)>0.05)
+  // #4137: the CTA ships both device labels and CSS shows one, so match the VISIBLE text.
+  const actionEl=[...deck.querySelectorAll('a,button')].find(el=>el.innerText.trim()==='Use Mingla'&&el.getBoundingClientRect().width>0&&alpha(el)>0.05)
   const action=actionEl?actionEl.getBoundingClientRect():null
   let hitCardTop=null
   if(action){ const cx=(action.left+action.right)/2; outer: for(let y=Math.ceil(action.bottom);y<Math.min(innerHeight,action.bottom+320);y+=1){ for(const x of [cx-70,cx,cx+70]){ const hit=document.elementsFromPoint(x,y).find(el=>!el.closest('.z-30')); if(hit&&hit.closest('.group.absolute')&&alpha(hit)>0.05){hitCardTop=y;break outer} } } }
@@ -492,7 +496,8 @@ async function geometry(page, base) {
 }
 
 // ---------------------------------------------------------------- 3. menu highlight and input
-const MENU_ITEMS = `[...document.querySelectorAll('[role="dialog"] nav[aria-label="Primary"] a')].map(a=>({label:a.textContent.trim(),href:a.getAttribute('href'),current:a.getAttribute('aria-current')}))`
+// #4137: labels ignore screen-reader-only suffixes (Careers ", opens in a new tab").
+const MENU_ITEMS = `[...document.querySelectorAll('[role="dialog"] nav[aria-label="Primary"] a')].map(a=>{const c=a.cloneNode(true);c.querySelectorAll('.sr-only').forEach(n=>n.remove());return {label:c.textContent.trim(),href:a.getAttribute('href'),current:a.getAttribute('aria-current')}})`
 const centerOf = (selector) => `(()=>{const el=document.querySelector(${JSON.stringify(selector)});if(!el)return null;const r=el.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()`
 const MENU_SETTLED = `(()=>{const d=document.querySelector('[role="dialog"]');if(!d||!d.querySelector('nav[aria-label="Primary"] a'))return false;const t=getComputedStyle(d).transform;return t==='none'||t==='matrix(1, 0, 0, 1, 0, 0)'})()`
 
@@ -533,7 +538,7 @@ async function menuHighlights(page, base, citySlug) {
   }
   const byRoute = (route) => report.menu.find((row) => row.route === route)
   const items = byRoute('/').items ?? []
-  check(JSON.stringify(items.map((item) => [item.label, item.href])) === JSON.stringify([['Explorer', '/'], ['Host', '/host'], ['Cities', '/cities'], [DESTINATION_LABEL, DESTINATION], ['About', '/about'], ['Free tools', '/tools']]), `menu must read Explorer, Host, Cities, ${DESTINATION_LABEL}, About, Free tools (got ${JSON.stringify(items.map((item) => item.label))})`)
+  check(JSON.stringify(items.map((item) => [item.label, item.href])) === JSON.stringify([['Explorer', '/'], ['Cities', '/cities'], [DESTINATION_LABEL, DESTINATION], ['Host', '/host'], ['Free tools', '/tools'], ['About', '/about'], ['Help', '/help'], ['Support', '/support'], ['Careers', 'https://career.usemingla.com']]), `#4137 menu must read Explorer, Cities, ${DESTINATION_LABEL}, Host, Free tools, About, Help, Support, Careers (got ${JSON.stringify(items.map((item) => item.label))})`)
   check(!report.menu.some((row) => row.items?.some((item) => isBannedRef(item.href))), 'a menu item still links to a retired path')
   const expected = { '/': 'Explorer', [DESTINATION]: DESTINATION_LABEL, '/host': 'Host', '/cities': 'Cities', [`/cities/${citySlug}`]: 'Cities', '/about': 'About' }
   for (const [route, label] of Object.entries(expected)) {
@@ -629,7 +634,7 @@ async function menuFlows(page, base) {
 // ---------------------------------------------------------------- 4. menu row alignment
 const MENU_ROWS = `(()=>{
   const dialog=document.querySelector('[role="dialog"]')
-  const rows=[...dialog.querySelectorAll('nav[aria-label="Primary"] a')].map((a)=>{
+  const rows=[...dialog.querySelectorAll('nav[aria-label="Primary"] a.cut-menu-item')].map((a)=>{
     const s=getComputedStyle(a),box=a.getBoundingClientRect(),svg=a.querySelector('svg'),icon=svg.getBoundingClientRect()
     const rects=[]
     for(const node of a.childNodes){ if(node.nodeType===3&&node.textContent.trim()){ const range=document.createRange(); range.selectNodeContents(node); for(const q of range.getClientRects()) if(q.width>0) rects.push(q) } }
@@ -674,8 +679,8 @@ async function menuAlignment(page, base) {
     report.menuAlignment.push(summary)
     process.stdout.write(`ALIGN ${LABEL} ${label} iconOffsets=${JSON.stringify(iconOffsets)} spread=${summary.iconLeftSpread} lines=${JSON.stringify(summary.lines)} truncated=${JSON.stringify(summary.truncated)} overflow closed/open=${closedOverflow}/${summary.openOverflow} lit=${JSON.stringify(summary.lit)}\n`)
 
-    check(rows.length === 6, `${label}: menu must render six rows (got ${rows.length})`)
-    check(summary.iconLeftSpread <= ALIGN_TOLERANCE, `${label}: the six icons do not share one left x (spread ${summary.iconLeftSpread}px: ${rows.map((row) => r1(row.iconLeft)).join(', ')})`)
+    check(rows.length === 5, `${label}: menu must render five rows, COMPANY items are chips (#4137) (got ${rows.length})`)
+    check(summary.iconLeftSpread <= ALIGN_TOLERANCE, `${label}: the row icons do not share one left x (spread ${summary.iconLeftSpread}px: ${rows.map((row) => r1(row.iconLeft)).join(', ')})`)
     check(iconOffsets.every((offset) => Math.abs(offset) <= ALIGN_TOLERANCE), `${label}: icons are not at the row padding-left (offsets ${iconOffsets.join(', ')}px)`)
     check(rows.every((row) => row.textLeft !== null && row.textLeft > row.iconLeft + row.iconWidth), `${label}: a label does not start after its icon`)
     check(summary.lines.every((lines) => lines === 1), `${label}: a menu label wraps (${rows.filter((row) => row.lines !== 1).map((row) => `${row.label}=${row.lines} lines`).join(', ')})`)

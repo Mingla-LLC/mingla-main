@@ -101,7 +101,39 @@ export type EmailContentBlock =
     alt: string;
     link?: string | null;
   }
-  | { id?: string; type: "divider" };
+  | { id?: string; type: "divider" }
+  | {
+    id?: string;
+    type: "blog_post";
+    postId: string;
+    style: "card" | "row" | "link";
+    buttonText: string;
+    snapshot?: {
+      slug: string;
+      title: string;
+      summary: string;
+      categoryLabel: string;
+      readMinutes: number;
+      coverUrl: string | null;
+      coverAlt: string;
+      versionId: string;
+    };
+  }
+  | {
+    id?: string;
+    type: "blog_post_resolved";
+    postId: string;
+    style: "card" | "row" | "link";
+    buttonText: string;
+    url: string;
+    title: string;
+    summary: string;
+    categoryLabel: string;
+    readMinutes: number;
+    coverUrl: string | null;
+    coverAlt: string;
+    versionId: string;
+  };
 
 export type EmailBodyInput =
   | TicketBodyInput

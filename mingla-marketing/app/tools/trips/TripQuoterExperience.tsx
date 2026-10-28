@@ -10,8 +10,8 @@ import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/cn'
 import { buttonClasses } from '@/components/ui/button'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
-import { detectClientPlatform } from '@/lib/device-platform'
-import { BUSINESS_ONELINK_URL, BUSINESS_WEB_URL } from '@/lib/store-links'
+import { DeviceLink } from '@/components/cutout/device-link'
+import { toolAttribution } from '@/lib/links-src'
 import {
   runTripQuoter,
   searchCities,
@@ -85,15 +85,6 @@ function RunningTheater({
     return () => clearTimeout(timer)
   }, [revealed, error])
 
-  // Device-aware "publish your trip" target — desktop → business web, mobile → app.
-  const [appHref, setAppHref] = useState(BUSINESS_WEB_URL)
-  useEffect(() => {
-    const p = detectClientPlatform()
-    if (p === 'ios' || p === 'android') {
-      setAppHref(`${BUSINESS_ONELINK_URL}?pid=tool_trips&c=tool_trips`)
-    }
-  }, [])
-
   if (error) {
     const rateLimited = error === 'rate_limited'
     return (
@@ -108,13 +99,15 @@ function RunningTheater({
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           {rateLimited ? (
-            <a
-              href={appHref}
-              onClick={() => captureMarketing('tool_ratelimit_cta_click', { tool: 'trips' })}
+            <DeviceLink
+              surface="host"
+              attribution={toolAttribution('tool_trips')}
+              sameTab
+              onActivate={() => captureMarketing('tool_ratelimit_cta_click', { tool: 'trips' })}
               className={buttonClasses({ variant: 'primary' })}
             >
               Publish your trip on Mingla
-            </a>
+            </DeviceLink>
           ) : (
             <button type="button" onClick={onRetry} className={buttonClasses({ variant: 'primary' })}>
               Try again

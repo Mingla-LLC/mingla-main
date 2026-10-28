@@ -11,13 +11,17 @@ interface CatalogueDetailProps {
   readonly cityName: string
   readonly backHref: string
   readonly onClose: () => void
+  /** #4137 city page: the in-category rank replaces the Mingla score block. */
+  readonly rankLabel?: string
+  /** #4137 city page: the stored place-pool thumbnail and its category tile fallback (Seth, 27 Oct 2026). */
+  readonly placePhoto?: Readonly<{ src: string | null; categorySlug: CataloguePlace['categorySlug'] }>
 }
 
 function scoreLabel(score: number): string {
   return Number.isInteger(score) ? score.toFixed(0) : score.toFixed(1)
 }
 
-export function CatalogueDetail({ item, cityName, backHref, onClose }: CatalogueDetailProps) {
+export function CatalogueDetail({ item, cityName, backHref, onClose, rankLabel, placePhoto }: CatalogueDetailProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const childDialogOpenRef = useRef(false)
   const isPlace = item.kind === 'place'
@@ -71,7 +75,7 @@ export function CatalogueDetail({ item, cityName, backHref, onClose }: Catalogue
         role="dialog"
         aria-modal="true"
         aria-labelledby="catalogue-detail-title"
-        aria-describedby={isPlace && item.aiBlended ? 'catalogue-ai-meaning' : undefined}
+        aria-describedby={isPlace && item.aiBlended && !rankLabel ? 'catalogue-ai-meaning' : undefined}
         tabIndex={-1}
       >
         <header className="ps-detail-header">
@@ -80,7 +84,9 @@ export function CatalogueDetail({ item, cityName, backHref, onClose }: Catalogue
         </header>
 
         <div className="ps-detail-gallery" data-count={isPlace ? 1 : Math.min(item.photoUrls.length, 3)}>
-          {isPlace ? <CurrentPlacePhoto googlePlaceId={item.googlePlaceId} name={item.name} cityName={cityName} eager /> : item.photoUrls.slice(0, 3).map((photo, index) => (
+          {isPlace ? (placePhoto
+            ? <CurrentPlacePhoto googlePlaceId={item.googlePlaceId} name={item.name} cityName={cityName} eager storedPhotoSrc={placePhoto.src} fallback="category" categorySlug={placePhoto.categorySlug} />
+            : <CurrentPlacePhoto googlePlaceId={item.googlePlaceId} name={item.name} cityName={cityName} eager />) : item.photoUrls.slice(0, 3).map((photo, index) => (
             <img key={photo} src={photo} alt={index === 0 ? `${item.title}, a Mingla ${cityName} plan` : ''} width="900" height="700" />
           ))}
         </div>
@@ -90,11 +96,17 @@ export function CatalogueDetail({ item, cityName, backHref, onClose }: Catalogue
           <h2 id="catalogue-detail-title">{isPlace ? item.name : item.title}</h2>
           {isPlace ? (
             <>
-              <div className="ps-detail-score">
-                <strong>Mingla score {scoreLabel(item.signalScore)}</strong>
-                {item.aiBlended ? <span><Sparkles aria-hidden="true" size={15} />AI-informed</span> : <span>Rules-informed</span>}
-              </div>
-              <p id={item.aiBlended ? 'catalogue-ai-meaning' : undefined}>The Mingla score is the stored ranking value used by Explorer for this category. AI contributes only where the score receipt says it was blended.</p>
+              {rankLabel ? (
+                <div className="ps-detail-score"><strong>{rankLabel}</strong></div>
+              ) : (
+                <>
+                  <div className="ps-detail-score">
+                    <strong>Mingla score {scoreLabel(item.signalScore)}</strong>
+                    {item.aiBlended ? <span><Sparkles aria-hidden="true" size={15} />AI-informed</span> : <span>Rules-informed</span>}
+                  </div>
+                  <p id={item.aiBlended ? 'catalogue-ai-meaning' : undefined}>The Mingla score is the stored ranking value used by Explorer for this category. AI contributes only where the score receipt says it was blended.</p>
+                </>
+              )}
               {item.rating && item.reviewCount ? <p className="ps-detail-rating"><Star aria-hidden="true" size={16} fill="currentColor" />{item.rating.toFixed(1)} from {item.reviewCount.toLocaleString()} Google reviews stored with this place.</p> : null}
               {item.oneLiner ? <p>{item.oneLiner}</p> : null}
               {item.address ? <address>{item.address}</address> : null}

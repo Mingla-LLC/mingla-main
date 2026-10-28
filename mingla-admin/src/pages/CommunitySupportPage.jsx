@@ -29,6 +29,7 @@ import { ReportedEnquiriesPanel } from "../components/community/ReportedEnquirie
 import { IdeasPanel } from "../components/community/IdeasPanel";
 import { QuestionsPanel } from "../components/community/QuestionsPanel";
 import { FailedPushBanner } from "../components/community/FailedPushBanner";
+import { BlogPanel } from "../components/blog/BlogPanel";
 import { CommunitySupportNavigation } from "../components/community/CommunitySupportNavigation";
 import { useAuth } from "../context/AuthContext";
 import { AREA } from "../lib/access";
@@ -113,6 +114,10 @@ export function SupportCommunityConsole({ pageId }) {
   // Support's Inbox badge is the inbox's own Open count, so it always matches.
   const onInboxCounts = useCallback((counts) => {
     setNavCounts((current) => (current.support === counts.open ? current : { ...current, support: counts.open }));
+  }, []);
+
+  const onBlogCounts = useCallback((inReview) => {
+    setNavCounts((current) => (current.blog === inReview ? current : { ...current, blog: inReview }));
   }, []);
 
   useEffect(() => {
@@ -238,6 +243,7 @@ export function SupportCommunityConsole({ pageId }) {
         <SupportDeskPage embedded canManageAgents={capabilities.isAdmin} onCounts={onInboxCounts} />
       )}
       {activeTab === "email" && <EmailPage embedded />}
+      {activeTab === "blog" && capabilities.canSupport && <BlogPanel onCounts={onBlogCounts} />}
       {activeTab === "team" && capabilities.isAdmin && <TeamRolesPanel canInvite={canInvite} refreshKey={peopleRefreshKey} />}
 
       {activeTab === "announcements" && <AnnouncementsPanel />}

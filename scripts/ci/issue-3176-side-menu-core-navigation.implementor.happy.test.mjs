@@ -18,13 +18,18 @@ function verify(
 ) {
   assert.doesNotMatch(menu, /allCoreTrustPagesSearchReady|allCityHubsSearchReady|explorerFallback|coreReady\s*\?/, 'approved navigation must not disappear behind an indexing-readiness gate')
 
+  // #4137 wave 2: grouped EXPLORE (Explorer, Cities, Going out), HOST (Host,
+  // Free tools) and COMPANY (About, Help, Support, Careers).
   const orderedLinks = [
     "href: '/', label: 'Explorer'",
-    "href: '/host', label: 'Host'",
     "href: '/cities', label: 'Cities'",
     "href: '/going-out', label: 'Going out'",
-    "href: '/about', label: 'About'",
+    "href: '/host', label: 'Host'",
     "href: '/tools', label: 'Free tools'",
+    "href: '/about', label: 'About'",
+    "href: '/help', label: 'Help'",
+    "href: '/support', label: 'Support'",
+    "href: 'https://career.usemingla.com', label: 'Careers'",
   ]
   let priorIndex = -1
   for (const link of orderedLinks) {
@@ -36,8 +41,12 @@ function verify(
   assert.doesNotMatch(menu, /label: 'Home'/, '#3371: Explorer is the home link, so the menu must not carry a separate Home item')
 
   assert.match(menu, /aria-current=\{active \? 'page' : undefined\}/, 'all menu links must expose their current route')
-  assert.match(menu, /const menuButtonClass = 'cut-btn flex min-h-14 w-full justify-start[^']*font-display text-base focus-ring'/, 'every primary menu destination must inherit the same full-width moulded button anatomy')
-  assert.match(menu, /supportingDestinations\.map\([\s\S]*\? `\$\{menuButtonClass\} cut-btn-brand text-white`[\s\S]*: `\$\{menuButtonClass\} cut-btn-light text-\[var\(--cut-ink\)\]`/, 'supporting destinations must use the same active and inactive button treatments as Explorer and Host')
+  assert.match(menu, /const menuButtonClass = 'cut-btn flex min-h-12 w-full justify-start[^']*font-display text-base focus-ring'/, 'every primary menu destination must inherit the same full-width moulded button anatomy (#4137: 48px rows)')
+  assert.match(menu, /const rowClass = \(active: boolean\) => active\s*\? `\$\{menuButtonClass\} cut-btn-brand text-white`\s*: `\$\{menuButtonClass\} cut-btn-light text-\[var\(--cut-ink\)\]`/, '#4137: every row must use the same active and inactive button treatments')
+  assert.match(menu, /exploreDestinations\.map\([\s\S]*className=\{rowClass\(active\)\}/, '#4137: EXPLORE rows must use the shared row treatment')
+  assert.match(menu, /hostDestinations\.map\([\s\S]*className=\{rowClass\(active\)\}/, '#4137: HOST rows must use the shared row treatment')
+  assert.match(menu, /companyDestinations\.map\([\s\S]*className=\{chipClass\((?:false|active)\)\}/, '#4137: COMPANY items must render as chips')
+  assert.match(menu, /const chipClass = [\s\S]*?cut-btn-brand text-white cut-menu-chip[\s\S]*cut-btn-light text-\[var\(--cut-ink\)\] cut-menu-chip/, '#4137: COMPANY chips must carry cut-menu-chip, brand when current')
   assert.match(menu, /label="Explore Your City"[\s\S]*label="Host Your City"/, 'device-aware audience actions must remain stacked at the bottom')
 
   const requiredFooterRoutes = ['/', '/going-out', '/cities', '/host', '/tools', '/help', '/about']

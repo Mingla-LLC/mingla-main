@@ -13,6 +13,7 @@ import {
   ListOrdered,
   Minus,
   Monitor,
+  Newspaper,
   Send,
   Smartphone,
   Sparkles,
@@ -27,12 +28,19 @@ import { Input } from "../ui/Input";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { Spinner } from "../ui/Spinner";
 import { useToast } from "../../context/ToastContext";
+import { EmailBlogPostPicker } from "./EmailBlogPostPicker";
 import {
   EMAIL_DRAFT_KEY,
   EMAIL_DRAFT_VERSION,
   LEGACY_EMAIL_DRAFT_KEYS,
   restoreDraftAudience,
 } from "../../lib/emailDraftAudience";
+import {
+  appendEmailBlogPost,
+  emailBlogPostValidationError,
+  refreshEmailBlogPostSnapshots,
+  swapEmailBlogPost,
+} from "../../lib/emailBlogPostBlocks";
 
 const TOKENS = [
   { value: "{first_name}", label: "First name", example: "Maya" },
@@ -113,10 +121,49 @@ function plainTextFromDocument(documentValue) {
   return documentValue.map((block) => {
     if (block.type === "divider") return "────────";
     if (block.type === "image") return block.alt;
+    if (block.type === "blog_post") return block.snapshot?.title || "Blog post";
     const node = document.createElement("div");
     node.innerHTML = block.html;
     return node.textContent || "";
   }).filter(Boolean).join("\n\n");
+}
+
+function BlogPostSnapshot({ block, preview = false }) {
+  const snapshot = block.snapshot || {};
+  const href = snapshot.slug ? `https://usemingla.com/blog/${snapshot.slug}` : "#";
+  const eyebrow = `${String(snapshot.categoryLabel || "Mingla").toUpperCase()} · ${Number(snapshot.readMinutes || 1)} MIN READ`;
+  if (block.style === "link") {
+    return (
+      <p className={`text-sm leading-6 ${preview ? "my-4" : ""}`}>
+        <a href={href} className="font-bold text-[#2d2926] no-underline">{snapshot.title || "Blog post"}</a>
+        <span className="text-[#756e68]"> · </span>
+        <a href={href} className="font-semibold text-[#c4471a]">{block.buttonText || "Add button text"}</a>
+      </p>
+    );
+  }
+  if (block.style === "row") {
+    return (
+      <div className="my-2 flex gap-3 rounded-xl border border-[#e6e0d9] bg-white p-3">
+        {snapshot.coverUrl && <img src={snapshot.coverUrl} alt={snapshot.coverAlt || ""} className="h-[72px] w-24 shrink-0 rounded-lg object-cover" />}
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-[#a8450e]">{eyebrow}</p>
+          <p className="mt-1 text-base font-extrabold leading-tight text-[#2d2926]">{snapshot.title || "Blog post"}</p>
+          <p className="mt-1.5 text-xs font-bold text-[#c4471a]">{block.buttonText || "Add button text"} →</p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="my-2 overflow-hidden rounded-2xl border border-[#e6e0d9] bg-white">
+      {snapshot.coverUrl && <img src={snapshot.coverUrl} alt={snapshot.coverAlt || ""} className="aspect-[2/1] w-full object-cover" />}
+      <div className="p-4">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-[#a8450e]">{eyebrow}</p>
+        <p className="mt-1.5 text-lg font-extrabold leading-tight text-[#2d2926]">{snapshot.title || "Blog post"}</p>
+        {snapshot.summary && <p className="mt-2 text-sm leading-6 text-[#756e68]">{snapshot.summary}</p>}
+        <span className="mt-3 inline-block rounded-full bg-[#c4471a] px-4 py-2 text-xs font-bold text-white">{block.buttonText || "Add button text"}</span>
+      </div>
+    </div>
+  );
 }
 
 function audienceFor(mode, selectedRecipient, filters) {
@@ -173,6 +220,7 @@ function LocalEmailPreview({ subject, documentValue }) {
               }
               return safeLink ? <a key={block.id} href={safeLink}>{image}</a> : <div key={block.id}>{image}</div>;
             }
+            if (block.type === "blog_post") return <BlogPostSnapshot key={block.id} block={block} preview />;
             return (
               <div
                 key={block.id}
@@ -222,6 +270,8 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
   const [templateName, setTemplateName] = useState("");
   const [templateSaving, setTemplateSaving] = useState(false);
   const [pendingTemplateDeleteId, setPendingTemplateDeleteId] = useState("");
+  const [blogPickerBlockId, setBlogPickerBlockId] = useState(null);
+  const [unavailableBlogPostIds, setUnavailableBlogPostIds] = useState(() => new Set());
   const subjectRef = useRef(null);
   const editorRefs = useRef(new Map());
   const imageInputRef = useRef(null);
@@ -232,9 +282,12 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
     () => audienceFor(audienceMode, selectedRecipient, filters),
     [audienceMode, selectedRecipient, filters],
   );
+  const blogPostIdsKey = useMemo(() => [...new Set(documentValue.filter((block) => block.type === "blog_post").map((block) => block.postId))].sort().join(","), [documentValue]);
 
   useEffect(() => {
-    if (openTemplateManager) setTemplateManagerOpen(true);
+    if (!openTemplateManager) return undefined;
+    const timer = setTimeout(() => setTemplateManagerOpen(true), 0);
+    return () => clearTimeout(timer);
   }, [openTemplateManager]);
 
   const setFilter = useCallback((key, value) => {
@@ -242,26 +295,29 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
   }, []);
 
   useEffect(() => {
-    try {
-      let raw = localStorage.getItem(DRAFT_KEY);
-      for (const legacyKey of LEGACY_EMAIL_DRAFT_KEYS) {
-        if (!raw) raw = localStorage.getItem(legacyKey);
-        localStorage.removeItem(legacyKey);
+    const timer = setTimeout(() => {
+      try {
+        let raw = localStorage.getItem(DRAFT_KEY);
+        for (const legacyKey of LEGACY_EMAIL_DRAFT_KEYS) {
+          if (!raw) raw = localStorage.getItem(legacyKey);
+          localStorage.removeItem(legacyKey);
+        }
+        const saved = JSON.parse(raw || "null");
+        if (!saved || ![1, EMAIL_DRAFT_VERSION].includes(saved.version)) return;
+        // A restored draft never pre-selects an Explorer-reaching audience.
+        const restored = restoreDraftAudience(saved, EMPTY_FILTERS);
+        setAudienceMode(restored.audienceMode);
+        setFilters(restored.filters);
+        if (restored.audienceMode === "person") setSelectedRecipient(saved.selectedRecipient);
+        if (typeof saved.subject === "string") setSubject(saved.subject);
+        if (Array.isArray(saved.document) && saved.document.length) setDocumentValue(saved.document);
+        if (["now", "later"].includes(saved.scheduleMode)) setScheduleMode(saved.scheduleMode);
+        if (typeof saved.scheduledLocal === "string") setScheduledLocal(saved.scheduledLocal);
+      } catch {
+        localStorage.removeItem(DRAFT_KEY);
       }
-      const saved = JSON.parse(raw || "null");
-      if (!saved || ![1, EMAIL_DRAFT_VERSION].includes(saved.version)) return;
-      // A restored draft never pre-selects an Explorer-reaching audience.
-      const restored = restoreDraftAudience(saved, EMPTY_FILTERS);
-      setAudienceMode(restored.audienceMode);
-      setFilters(restored.filters);
-      if (restored.audienceMode === "person") setSelectedRecipient(saved.selectedRecipient);
-      if (typeof saved.subject === "string") setSubject(saved.subject);
-      if (Array.isArray(saved.document) && saved.document.length) setDocumentValue(saved.document);
-      if (["now", "later"].includes(saved.scheduleMode)) setScheduleMode(saved.scheduleMode);
-      if (typeof saved.scheduledLocal === "string") setScheduledLocal(saved.scheduledLocal);
-    } catch {
-      localStorage.removeItem(DRAFT_KEY);
-    }
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -294,12 +350,36 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
   }, [callEdgeFunction]);
 
   useEffect(() => {
-    if (audienceMode !== "person" || selectedRecipient || recipientQuery.trim().length < 2) {
-      setRecipientMatches([]);
-      setRecipientSearching(false);
-      return;
-    }
+    if (!blogPostIdsKey) return undefined;
     let cancelled = false;
+    const ids = blogPostIdsKey.split(",");
+    callEdgeFunction({ action: "blog_posts", ids })
+      .then((result) => {
+        if (cancelled) return;
+        const posts = result.posts || [];
+        const available = new Map(posts.map((post) => [post.postId, post.available]));
+        setDocumentValue((current) => refreshEmailBlogPostSnapshots(current, posts).document);
+        setUnavailableBlogPostIds(new Set(ids.filter((id) => available.get(id) !== true)));
+      })
+      .catch((error) => {
+        if (error?.name === "SessionExpiredError") onSessionExpired?.();
+      });
+    return () => { cancelled = true; };
+    // Snapshot changes do not change this key, so this runs once per restored,
+    // loaded, added or swapped set of blog references.
+  }, [blogPostIdsKey, callEdgeFunction, onSessionExpired]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (audienceMode !== "person" || selectedRecipient || recipientQuery.trim().length < 2) {
+      const timer = setTimeout(() => {
+        if (!cancelled) {
+          setRecipientMatches([]);
+          setRecipientSearching(false);
+        }
+      }, 0);
+      return () => { cancelled = true; clearTimeout(timer); };
+    }
     const timer = setTimeout(() => {
       setRecipientSearching(true);
       callEdgeFunction({ action: "search_recipients", term: recipientQuery.trim() })
@@ -362,12 +442,6 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
       const next = current.filter((block) => block.id !== id);
       return next.length ? next : defaultDocument();
     });
-  }
-
-  function syncActiveEditor() {
-    if (!activeBlockId) return;
-    const editor = editorRefs.current.get(activeBlockId);
-    if (editor) updateBlock(activeBlockId, { html: editor.innerHTML });
   }
 
   function format(command, value = null) {
@@ -446,6 +520,18 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
 
   function addDivider() {
     setDocumentValue((current) => [...current, { id: blockId(), type: "divider" }, { id: blockId(), type: "rich_text", html: "<p><br></p>" }]);
+  }
+
+  function chooseBlogPost(post) {
+    setDocumentValue((current) => {
+      if (blogPickerBlockId) return swapEmailBlogPost(current, blogPickerBlockId, post);
+      if (current.filter((block) => block.type === "blog_post").length >= 3) {
+        addToast({ variant: "error", title: "Use up to 3 blog posts per email" });
+        return current;
+      }
+      return appendEmailBlogPost(current, post, blockId());
+    });
+    setBlogPickerBlockId(null);
   }
 
   async function uploadAsset(file) {
@@ -553,26 +639,47 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
     }
   }
 
-  function validationError(now) {
+  function validationError(now, candidateDocument = documentValue, unavailableIds = unavailableBlogPostIds) {
     if (!subject.trim()) return "Add a subject line";
-    if (!plainTextFromDocument(documentValue).trim()) return "Add email content";
+    if (!plainTextFromDocument(candidateDocument).trim()) return "Add email content";
+    const blogError = emailBlogPostValidationError(candidateDocument, unavailableIds);
+    if (blogError) return blogError;
     const allowedTokens = new Set([...TOKENS.map((token) => token.value.slice(1, -1)), "name"]);
-    const tokenValues = [subject, ...documentValue.flatMap((block) => block.type === "rich_text" ? [block.html] : block.type === "image" ? [block.alt] : [])];
+    const tokenValues = [subject, ...candidateDocument.flatMap((block) => block.type === "rich_text" ? [block.html] : block.type === "image" ? [block.alt] : [])];
     for (const value of tokenValues) {
       for (const match of value.matchAll(/\{([^{}]+)\}/g)) {
         if (!allowedTokens.has(match[1])) return `Remove unsupported personalization token {${match[1]}}`;
       }
     }
-    if (documentValue.some((block) => block.type === "image" && !block.alt.trim())) return "Add alt text to every image or GIF";
+    if (candidateDocument.some((block) => block.type === "image" && !block.alt.trim())) return "Add alt text to every image or GIF";
     if (audienceMode === "person" && !selectedRecipient?.profile_id) return "Choose an eligible Mingla recipient";
     if (scheduleMode === "later" && (!scheduledLocal || new Date(scheduledLocal).getTime() <= now)) return "Choose a future send time";
     if (!estimate || estimate.will_receive < 1) return "This audience has no eligible recipients";
     return null;
   }
 
-  function openReview(now) {
-    syncActiveEditor();
-    const error = validationError(now);
+  async function openReview(now) {
+    const activeEditor = activeBlockId ? editorRefs.current.get(activeBlockId) : null;
+    let candidateDocument = documentValue.map((block) => block.id === activeBlockId && activeEditor
+      ? { ...block, html: activeEditor.innerHTML }
+      : block);
+    let unavailableIds = unavailableBlogPostIds;
+    const ids = [...new Set(candidateDocument.filter((block) => block.type === "blog_post").map((block) => block.postId))];
+    if (ids.length) {
+      try {
+        const result = await callEdgeFunction({ action: "blog_posts", ids });
+        const refreshed = refreshEmailBlogPostSnapshots(candidateDocument, result.posts || []);
+        candidateDocument = refreshed.document;
+        unavailableIds = refreshed.unavailablePostIds;
+        setUnavailableBlogPostIds(unavailableIds);
+      } catch (refreshError) {
+        if (refreshError?.name === "SessionExpiredError") onSessionExpired?.();
+        addToast({ variant: "error", title: "Blog posts couldn't be checked", description: refreshError.message });
+        return;
+      }
+    }
+    setDocumentValue(candidateDocument);
+    const error = validationError(now, candidateDocument, unavailableIds);
     if (error) {
       addToast({ variant: "error", title: error });
       return;
@@ -812,6 +919,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
               <button type="button" title="Add image" onClick={() => imageInputRef.current?.click()} className="flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-background-primary)]"><ImageIcon className="h-4 w-4" /> Image</button>
               <button type="button" title="Add GIF" onClick={() => gifInputRef.current?.click()} className="flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-background-primary)]"><FileImage className="h-4 w-4" /> GIF</button>
               <button type="button" title="Add divider" onClick={addDivider} className="flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-background-primary)]"><Minus className="h-4 w-4" /> Divider</button>
+              <button type="button" title="Add blog post" onClick={() => setBlogPickerBlockId("")} className="flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-background-primary)]"><Newspaper className="h-4 w-4" /> Blog post</button>
               {uploading && <Spinner size="xs" />}
               <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(event) => uploadAsset(event.target.files?.[0])} />
               <input ref={gifInputRef} type="file" accept="image/gif" hidden onChange={(event) => uploadAsset(event.target.files?.[0])} />
@@ -841,7 +949,27 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
                       </div>
                     </div>
                   )}
-                  {documentValue.length > 1 && (
+                  {block.type === "blog_post" && (
+                    <div className="rounded-xl border border-[var(--gray-300)] bg-[var(--gray-50)] p-3">
+                      <div className="mb-3 flex flex-wrap items-center gap-2">
+                        <span className="mr-auto text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-text-tertiary)]">Blog post</span>
+                        <div className="flex rounded-lg bg-[var(--gray-200)] p-0.5" aria-label="Blog post layout">
+                          {[["card", "Card with cover"], ["row", "Compact row"], ["link", "Title link only"]].map(([style, label]) => (
+                            <button key={style} type="button" title={label} aria-pressed={block.style === style} onClick={() => updateBlock(block.id, { style })} className={`rounded-md px-2 py-1 text-[11px] font-semibold ${block.style === style ? "bg-white text-[var(--color-text-primary)] shadow-sm" : "text-[var(--color-text-secondary)]"}`}>{label}</button>
+                          ))}
+                        </div>
+                        <button type="button" onClick={() => setBlogPickerBlockId(block.id)} className="text-xs font-semibold text-[var(--color-brand-700)] hover:underline">Swap</button>
+                        <button type="button" aria-label="Remove blog post" onClick={() => removeBlock(block.id)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--color-text-tertiary)] hover:bg-red-50 hover:text-red-700"><X className="h-4 w-4" /></button>
+                      </div>
+                      {unavailableBlogPostIds.has(block.postId) && <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-800">This post is no longer published. Swap or remove it.</p>}
+                      <BlogPostSnapshot block={block} />
+                      <div className="mt-3">
+                        <Input label="Button text" maxLength={40} value={block.buttonText} onChange={(event) => updateBlock(block.id, { buttonText: event.target.value })} placeholder="Add button text" />
+                        <p className="mt-1.5 text-xs text-[var(--color-text-tertiary)]">Links to usemingla.com/blog/{block.snapshot?.slug || "…"}. Title, summary and cover come from the post and update if the post is edited before sending.</p>
+                      </div>
+                    </div>
+                  )}
+                  {block.type !== "blog_post" && documentValue.length > 1 && (
                     <button type="button" title="Remove block" onClick={() => removeBlock(block.id)} className="absolute -right-1 -top-1 hidden h-7 w-7 items-center justify-center rounded-full border border-[var(--gray-200)] bg-[var(--color-background-primary)] text-[var(--color-text-tertiary)] shadow-sm hover:text-red-600 group-hover:flex"><X className="h-3.5 w-3.5" /></button>
                   )}
                 </div>
@@ -913,6 +1041,14 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
           </div>
         </div>
       </aside>
+
+      <EmailBlogPostPicker
+        open={blogPickerBlockId !== null}
+        onClose={() => setBlogPickerBlockId(null)}
+        callEdgeFunction={callEdgeFunction}
+        existingPostIds={new Set(documentValue.filter((block) => block.type === "blog_post" && block.id !== blogPickerBlockId).map((block) => block.postId))}
+        onChoose={chooseBlogPost}
+      />
 
       <Modal open={linkOpen} onClose={() => setLinkOpen(false)} title="Add hyperlink" size="sm">
         <ModalBody>

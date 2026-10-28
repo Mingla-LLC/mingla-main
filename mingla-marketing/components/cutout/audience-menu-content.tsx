@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Compass, Footprints, Info, MapPinned, Store, Wrench } from 'lucide-react'
+import { Compass, Footprints, MapPinned, Newspaper, Store, Wrench } from 'lucide-react'
+import { BLOG_MENU_ENTRY } from '@/lib/blog/menu-entry'
 import { DeviceCta, type CutoutSurface } from './device-cta'
 
 const EXPLORER_PAGE_SYSTEM_PATHS = new Set([
@@ -30,6 +31,10 @@ function destinationIsCurrent(pathname: string, href: string): boolean {
   return pathname === href || (href !== '/' && pathname.startsWith(`${href}/`))
 }
 
+// #4137 wave 2 — the menu is grouped EXPLORE / HOST / COMPANY. The Blog row and
+// the Latest story card hang off ONE seam (lib/blog/menu-entry.ts) whose shipped
+// value is hidden: they appear only once the blog has a published post, so the
+// menu never links to an empty page (rule 9). Wave 3 owns that value.
 export function AudienceMenuContent({
   surface,
   onDismiss,
@@ -40,67 +45,118 @@ export function AudienceMenuContent({
   readonly onChildDialogOpenChange: (open: boolean) => void
 }) {
   const pathname = usePathname()
-  const audienceDestinations = [
+  const { blogVisible, showNewBadge, latest } = BLOG_MENU_ENTRY
+  const exploreDestinations = [
     { href: '/', label: 'Explorer', surface: 'explorer' as const, Icon: Compass },
-    { href: '/host', label: 'Host', surface: 'host' as const, Icon: Store },
-  ]
-  const supportingDestinations = [
     { href: '/cities', label: 'Cities', Icon: MapPinned },
     { href: '/going-out', label: 'Going out', Icon: Footprints },
-    { href: '/about', label: 'About', Icon: Info },
+  ]
+  const hostDestinations = [
+    { href: '/host', label: 'Host', surface: 'host' as const, Icon: Store },
     { href: '/tools', label: 'Free tools', Icon: Wrench },
   ]
-  const supportingDestinationIsCurrent = supportingDestinations.some(({ href }) => destinationIsCurrent(pathname, href))
+  const companyDestinations = [
+    { href: '/about', label: 'About' },
+    { href: '/help', label: 'Help' },
+    { href: '/support', label: 'Support' },
+    { href: 'https://career.usemingla.com', label: 'Careers', external: true as const },
+  ]
+  const linked = [
+    ...exploreDestinations.slice(1),
+    ...hostDestinations.slice(1),
+    ...companyDestinations.filter((destination) => !('external' in destination)),
+    ...(blogVisible ? [{ href: '/blog' }] : []),
+  ]
+  const supportingDestinationIsCurrent = linked.some(({ href }) => destinationIsCurrent(pathname, href))
   const activeSurface = supportingDestinationIsCurrent ? null : surfaceForPath(pathname) ?? surface
   // `cut-menu-item` is what actually left-aligns these rows: `.cut-btn` in
   // cutout.css centres its content and, being unlayered CSS, beats the
   // `justify-start` utility. See the #3371 rule beside `.cut-btn`.
-  const menuButtonClass = 'cut-btn flex min-h-14 w-full justify-start cut-menu-item gap-3.5 rounded-2xl px-5 font-display text-base focus-ring'
+  const menuButtonClass = 'cut-btn flex min-h-12 w-full justify-start cut-menu-item gap-3.5 rounded-2xl px-5 font-display text-base focus-ring'
+  const rowClass = (active: boolean) => active
+    ? `${menuButtonClass} cut-btn-brand text-white`
+    : `${menuButtonClass} cut-btn-light text-[var(--cut-ink)]`
+  const chipClass = (active: boolean) => active
+    ? 'cut-btn cut-btn-brand text-white cut-menu-chip focus-ring'
+    : 'cut-btn cut-btn-light text-[var(--cut-ink)] cut-menu-chip focus-ring'
+  const rowIsActive = (destination: { readonly href: string; readonly surface?: CutoutSurface }) => destination.surface
+    ? activeSurface === destination.surface
+    : destinationIsCurrent(pathname, destination.href)
 
   return (
     <>
-      <nav aria-label="Primary" className="flex flex-col gap-1.5">
-        {audienceDestinations.map(({ href, label, surface: destinationSurface, Icon }) => {
-          const active = activeSurface === destinationSurface
-          return (
-            <Link
-              key={href}
-              href={href}
-              aria-current={active ? 'page' : undefined}
-              onClick={onDismiss}
-              className={
-                active
-                  ? `${menuButtonClass} cut-btn-brand text-white`
-                  : `${menuButtonClass} cut-btn-light text-[var(--cut-ink)]`
+      <nav aria-label="Primary" className="flex flex-col">
+        <div role="group" aria-labelledby="menu-group-explore" className="flex flex-col gap-1.5">
+          <p className="cut-menu-group" id="menu-group-explore">Explore</p>
+          {exploreDestinations.map((destination) => {
+            const { href, label, Icon } = destination
+            const active = rowIsActive(destination)
+            return (
+              <Link key={href} href={href} aria-current={active ? 'page' : undefined} onClick={onDismiss} className={rowClass(active)}>
+                <Icon className="h-5 w-5 shrink-0" strokeWidth={1.9} aria-hidden="true" />
+                {label}
+              </Link>
+            )
+          })}
+          {blogVisible ? (() => {
+            const active = destinationIsCurrent(pathname, '/blog')
+            return (
+              <Link href="/blog" aria-current={active ? 'page' : undefined} onClick={onDismiss} className={rowClass(active)}>
+                <Newspaper className="h-5 w-5 shrink-0" strokeWidth={1.9} aria-hidden="true" />
+                Blog
+                {showNewBadge ? <span className="cut-menu-new">New</span> : null}
+              </Link>
+            )
+          })() : null}
+        </div>
+
+        <div role="group" aria-labelledby="menu-group-host" className="flex flex-col gap-1.5">
+          <p className="cut-menu-group" id="menu-group-host">Host</p>
+          {hostDestinations.map((destination) => {
+            const { href, label, Icon } = destination
+            const active = rowIsActive(destination)
+            return (
+              <Link key={href} href={href} aria-current={active ? 'page' : undefined} onClick={onDismiss} className={rowClass(active)}>
+                <Icon className="h-5 w-5 shrink-0" strokeWidth={1.9} aria-hidden="true" />
+                {label}
+              </Link>
+            )
+          })}
+        </div>
+
+        <div role="group" aria-labelledby="menu-group-company" className="flex flex-col gap-1.5">
+          <p className="cut-menu-group" id="menu-group-company">Company</p>
+          <ul className="cut-menu-chips">
+            {companyDestinations.map((destination) => {
+              const { href, label } = destination
+              if ('external' in destination) {
+                return (
+                  <li key={href}>
+                    <a href={href} target="_blank" rel="noopener noreferrer" onClick={onDismiss} className={chipClass(false)}>
+                      {label}<span className="sr-only">, opens in a new tab</span>
+                    </a>
+                  </li>
+                )
               }
-            >
-              <Icon className="h-5 w-5 shrink-0" strokeWidth={1.9} aria-hidden="true" />
-              {label}
-            </Link>
-          )
-        })}
-        <div className="my-2 border-t" style={{ borderColor: 'var(--cut-hairline)' }} />
-        {supportingDestinations.map(({ href, label, Icon }) => {
-          const active = destinationIsCurrent(pathname, href)
-          return (
-            <Link
-              key={href}
-              href={href}
-              aria-current={active ? 'page' : undefined}
-              onClick={onDismiss}
-              className={active
-                ? `${menuButtonClass} cut-btn-brand text-white`
-                : `${menuButtonClass} cut-btn-light text-[var(--cut-ink)]`
-              }
-            >
-              <Icon className="h-5 w-5 shrink-0" strokeWidth={1.9} aria-hidden="true" />
-              {label}
-            </Link>
-          )
-        })}
+              const active = destinationIsCurrent(pathname, href)
+              return (
+                <li key={href}>
+                  <Link href={href} aria-current={active ? 'page' : undefined} onClick={onDismiss} className={chipClass(active)}>{label}</Link>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
       </nav>
 
-      <div className="mt-auto flex flex-col gap-2.5 pt-6">
+      {blogVisible && latest ? (
+        <Link href={latest.href} className="cut-card cut-menu-story focus-ring" onClick={onDismiss}>
+          <img src={latest.coverSrc} alt="" width={latest.coverWidth} height={latest.coverHeight} loading="lazy" decoding="async" />
+          <span><small>Latest story</small><strong>{latest.title}</strong></span>
+        </Link>
+      ) : null}
+
+      <div className="cut-menu-ctas mt-auto flex flex-col gap-2.5 pt-6">
         <DeviceCta
           surface="explorer"
           location="side_menu_explorer"

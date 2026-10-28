@@ -268,3 +268,19 @@ export function getCityCatalogueSnapshot(slug: CityHubSlug, cityPath = `/cities/
 export function getLagosCatalogueSnapshot(cityPath = LEGACY_LAGOS_PATH) {
   return getCityCatalogueSnapshot('lagos', cityPath)
 }
+
+/**
+ * #4137 — every Google place ID the marketing site lists on a city page. The
+ * place-media route answers only for these, so it can never be used to make
+ * Google calls at Mingla's expense for places we do not list.
+ */
+export function listedGooglePlaceIds(): ReadonlySet<string> {
+  const document = catalogueDocument as unknown as {
+    readonly cities: Readonly<Record<string, Pick<GeneratedCityCatalogue, 'places'>>>
+  }
+  const ids = new Set<string>()
+  for (const city of Object.values(document.cities)) {
+    for (const place of city.places) ids.add(place.googlePlaceId)
+  }
+  return ids
+}

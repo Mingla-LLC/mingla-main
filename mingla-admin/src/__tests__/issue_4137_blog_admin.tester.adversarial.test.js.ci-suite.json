@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "mingla-admin/src/__tests__/issue_4137_blog_admin.tester.adversarial.test.js",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4137-07-blog-admin-adversarial",
+  "profile": "deno-1.46-stripe"
+}

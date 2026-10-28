@@ -26,6 +26,7 @@ const tabs = [
   "roadmap",
   "moderation",
   "support",
+  "blog",
   "email",
   "team",
   "availability",
@@ -65,7 +66,7 @@ Deno.test("full admins retain all tabs while scoped assignments see only safe ta
       .map((tab: { id: string }) => tab.id),
     // #4130 Wave 6: Availability is the header switch and Overview was
     // retired, so no area grants either as a tab any more.
-    ["support"],
+    ["support", "blog"],
   );
   assertEquals(
     communitySupportTabsForAccess(
@@ -84,7 +85,7 @@ Deno.test("full admins retain all tabs while scoped assignments see only safe ta
       ),
       tabs,
     ).map((tab: { id: string }) => tab.id),
-    ["moderation", "support"],
+    ["moderation", "support", "blog"],
   );
   // #4130 Wave 6: a page opens on its first tab the person may see; for
   // Support staff that is the inbox.

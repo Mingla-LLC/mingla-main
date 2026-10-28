@@ -1,0 +1,3 @@
+import { useState } from "react";
+import { Input } from "../ui/Input";
+export function BlogPlacePicker({api,onPick}) { const[q,setQ]=useState("");const[rows,setRows]=useState([]); async function search(value){setQ(value);if(value.trim().length>=2)setRows(await api.searchBlogLinkTargets(value,"place"));} return <div className="space-y-2"><Input label="Find a place" value={q} onChange={(e)=>void search(e.target.value)} />{rows.map((row)=><button type="button" key={row.id} onClick={()=>onPick(row)} className="block w-full rounded-lg border border-[var(--gray-200)] p-3 text-left"><strong>{row.name}</strong><small className="block text-[var(--color-text-secondary)]">{row.city} · {row.rating || "—"} · {row.review_count || 0} Google reviews</small></button>)}</div>; }
