@@ -3,6 +3,7 @@
 // MINGLA-INVARIANT: I-3682-NO-FAKE-FOLLOWER-COUNT | issue #3682 | User-visible follower totals must come from persisted relationship reads, never fixture or presentation defaults
 // Followers on host surfaces must come from the follower-count hooks; BrandStats
 // has no followers field. The gate fails closed on unreadable required inputs.
+// [TEST-MOD-APPROVED #4037] BusinessPulsePanel now owns the Home follower zone.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -15,7 +16,7 @@ const F = {
   switcher: "mingla-business/src/components/brand/BrandSwitcherSheet.tsx",
   publicBrand: "mingla-business/src/components/brand/PublicBrandPage.tsx",
   profileTile: "mingla-business/src/components/brand/FollowersKpiTile.tsx",
-  homeTile: "mingla-business/src/components/home/FollowersHomeTile.tsx",
+  homePulse: "mingla-business/src/components/home/BusinessPulsePanel.tsx",
   brandsService: "mingla-business/src/services/brandsService.ts",
   brandTypes: "mingla-business/src/types/brand.ts",
 };
@@ -60,7 +61,7 @@ function verify(root) {
     if (source[key].includes(text)) violations.push(`${F[key]}: forbidden ${reason}`);
   };
 
-  requireText("home", "<FollowersHomeTile", "real Followers home tile");
+  requireText("home", "<BusinessPulsePanel", "real Home Pulse follower surface");
   banText("home", "currentBrand.stats.followers", "fabricated Home followers");
 
   requireText("account", "Your brands", "Your brands list");
@@ -79,7 +80,7 @@ function verify(root) {
   banText("switcher", "brand.stats.followers", "switcher fabricated follower count");
 
   requireText("profileTile", "useBrandFollowerSummary(", "profile summary hook");
-  requireText("homeTile", "useBrandFollowerSummary(", "Home summary hook");
+  requireText("homePulse", "useBrandFollowerSummary(", "Home Pulse summary hook");
   requireText("brandsService", '.from("events")', "brand event-count read");
 
   for (const token of [
