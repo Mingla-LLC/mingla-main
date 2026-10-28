@@ -58,6 +58,7 @@ import { useTranslation } from 'react-i18next';
 import { useRouter } from "expo-router";
 import { PurchasesCard } from './profile/PurchasesCard';
 import { CreatorProgramsSection } from './profile/CreatorProgramsSection';
+import { AppVersionFooter } from './ui/AppVersionFooter';
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -667,7 +668,7 @@ function ProfilePage({
             <TouchableOpacity onPress={onSignOut} style={styles.signOutButton} activeOpacity={0.85}>
               <Text style={styles.signOutText}>{t('common:sign_out')}</Text>
             </TouchableOpacity>
-            <Text style={styles.metaText}>Mingla · v1.0.0</Text>
+            <AppVersionFooter appName="Mingla" />
           </GlassCard>
         </View>
       </KeyboardAwareScrollView>
@@ -801,14 +802,6 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     ...glass.profile.text.signOut,
-  },
-  // Meta (version)
-  metaText: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.32)',
-    textAlign: 'center',
-    marginTop: 14,
-    letterSpacing: 0.2,
   },
 });
 
