@@ -198,6 +198,14 @@ const bioField = (renderer: Renderer): Node => {
   return matches[0];
 };
 
+const taglineField = (renderer: Renderer): Node => {
+  const matches = renderer.root.findAll(
+    (node) => node.props.accessibilityLabel === "Tagline" && typeof node.props.onChangeText === "function",
+  );
+  expect(matches.length).toBeGreaterThan(0);
+  return matches[0];
+};
+
 describe("#3827 Edit brand Bio keeps every letter typed back to back", () => {
   test("120 back-to-back characters into Bio, beside an image cover: all land, no update-depth error", async () => {
     // Worktree trap: node_modules (and its @mingla/* links) may point at the
@@ -264,5 +272,27 @@ describe("#3827 Edit brand Bio keeps every letter typed back to back", () => {
     await TestRenderer.act(async () => {
       mounted.unmount();
     });
+  });
+
+  test("#2829 the tagline shows and enforces its 60-character website limit", async () => {
+    let renderer!: Renderer;
+    await TestRenderer.act(async () => {
+      renderer = TestRenderer.create(
+        <BrandEditView
+          brand={BRAND}
+          accountId="00000000-0000-4000-8000-000000003827"
+          onCancel={() => undefined}
+          onSave={async () => undefined}
+          onAfterSave={() => undefined}
+        />,
+      );
+    });
+    expect(taglineField(renderer).props.maxLength).toBe(60);
+    await TestRenderer.act(async () => {
+      (taglineField(renderer).props.onChangeText as (text: string) => void)("🌍".repeat(61));
+    });
+    expect(Array.from(String(taglineField(renderer).props.value))).toHaveLength(60);
+    expect(renderer.root.findAll((node) => node.props.accessibilityLabel === "60 of 60 characters")).toHaveLength(1);
+    await TestRenderer.act(async () => renderer.unmount());
   });
 });

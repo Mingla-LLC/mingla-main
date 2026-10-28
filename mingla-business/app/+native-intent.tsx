@@ -128,6 +128,7 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "notifications",
   "o",
   "partner",
+  "pay",
   "pending-brand-invite",
   "people",
   "promoting",

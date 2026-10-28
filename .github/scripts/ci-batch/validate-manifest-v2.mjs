@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 // module body touches the other's exports at evaluation time.
 import { compileOriginPattern, parseOriginPattern } from "./select-phase3b-suites.mjs";
 import { BOOTSTRAP_SHA256, loadEffectiveManifest, trustedRegistryViews } from "./load-manifest.mjs";
+import { POSTGRES_WAVE, postgresAdditionalDatabaseName, postgresDatabaseName } from "./postgres-batch-contract.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_ROOT = path.resolve(HERE, "../../..");
@@ -168,15 +169,87 @@ const PHASE3D_PROVIDER_NAMES = new Set([
 const PHASE3D_SUITE_IDS = new Set(SUITES_FOLDED_SINCE_SEAL.map((item) => item.suite));
 const PHASE3D_HOST_CLASSES = new Set(PHASE3D_HOSTS.map((host) => host.class));
 const FOLDED_STEPS = SUITES_FOLDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
+// #3643 Phase 3E owns a separate lock from frozen Phase 3B/3C/3D. The first
+// wave is deliberately declared here before measurement; later waves extend
+// this declaration without changing any earlier-wave seal.
+export const PHASE3E_HOSTS = Object.freeze([
+  Object.freeze({ class: "postgres17-deno2-node20-noinstall", hostTimeoutMinutes: 180, primaryDeno: "v2.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.x","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"installs":[{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},{"cwd":"mingla-admin","invocation":{"kind":"argv","command":"npm","argv":["ci"]}}],"classes":["postgres17-deno2-node20-noinstall"]}) }),
+  Object.freeze({ class: "postgres17-deno2714-node20-noinstall", hostTimeoutMinutes: 180, primaryDeno: "v2.7.14", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.7.14","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":null,"classes":["postgres17-deno2714-node20-noinstall"]}) }),
+  Object.freeze({ class: "postgres17-deno146-node22-noinstall", hostTimeoutMinutes: 180, primaryDeno: "1.46.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"22","deno":{"version":"1.46.x","action":"denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"}},"installs":[{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci","--ignore-scripts"]}},{"cwd":"app-mobile","invocation":{"kind":"argv","command":"npm","argv":["ci","--ignore-scripts"]}}],"classes":["postgres17-deno146-node22-noinstall"]}) }),
+  Object.freeze({ class: "postgres17-deno295-node20-cli2982", hostTimeoutMinutes: 180, primaryDeno: "v2.9.5", primarySupabase: "2.98.2", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.9.5","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":null,"classes":["postgres17-deno295-node20-cli2982"]}) }),
+  Object.freeze({ class: "postgres17-node20-noinstall", hostTimeoutMinutes: 180, primaryDeno: "", profile: Object.freeze({"runtime":{"name":"node","version":"20"},"install":{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},"classes":["postgres17-node20-noinstall"]}) }),
+  Object.freeze({ class: "postgres17-deno295-node20-noinstall", hostTimeoutMinutes: 180, primaryDeno: "v2.9.5", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.9.5","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},"classes":["postgres17-deno295-node20-noinstall"]}) }),
+  Object.freeze({ class: "postgres17-deno295-node20-pre1857", hostTimeoutMinutes: 180, primaryDeno: "v2.9.5", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.9.5","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},"classes":["postgres17-deno295-node20-pre1857"]}) }),
+  Object.freeze({ class: "postgres17-deno2-node22-noinstall", hostTimeoutMinutes: 180, primaryDeno: "v2.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"22","deno":{"version":"v2.x","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"installs":[{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},{"cwd":"app-mobile","invocation":{"kind":"argv","command":"npm","argv":["ci"]}}],"classes":["postgres17-deno2-node22-noinstall"],"toolExposures":[{"id":"tool:postgres17-deno2-node22-noinstall:jest-29.7.0","providerCwd":"mingla-business","consumerCwd":"app-mobile","packageName":"jest","executableName":"jest","version":"29.7.0","providerPackage":"mingla-business/node_modules/jest/package.json","providerExecutable":"mingla-business/node_modules/jest/bin/jest.js","consumerPackageLink":"app-mobile/node_modules/jest","consumerPackageLinkTarget":"../../mingla-business/node_modules/jest","consumerBinLink":"app-mobile/node_modules/.bin/jest","consumerBinLinkTarget":"../jest/bin/jest.js","authorityLock":"mingla-business/package-lock.json","authorityKey":"node_modules/jest"}]}) }),
+  Object.freeze({ class: "postgres17-deno2-node22-foundation2060", hostTimeoutMinutes: 180, primaryDeno: "v2.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"22","deno":{"version":"v2.x","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},"classes":["postgres17-deno2-node22-foundation2060"]}) }),
+  Object.freeze({ class: "postgres17-deno2-node22-pre1931", hostTimeoutMinutes: 120, primaryDeno: "v2.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"22","deno":{"version":"v2.x","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":null,"classes":["postgres17-deno2-node22-pre1931"]}) }),
+  Object.freeze({ class: "postgres17-deno146-node20-dualdb", hostTimeoutMinutes: 180, primaryDeno: "1.46.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"1.46.x","action":"denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"}},"install":{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci","--ignore-scripts"]}},"classes":["postgres17-deno146-node20-dualdb"]}) }),
+  Object.freeze({ class: "postgres17-deno146-node20-noinstall", hostTimeoutMinutes: 180, primaryDeno: "1.46.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"1.46.x","action":"denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"}},"install":null,"classes":["postgres17-deno146-node20-noinstall"]}) }),
+  Object.freeze({ class: "postgres17-deno2-node20-pre2117", hostTimeoutMinutes: 120, primaryDeno: "v2.x", profile: Object.freeze({"runtime":{"name":"node+deno","nodeVersion":"20","deno":{"version":"v2.x","action":"denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"}},"install":null,"classes":["postgres17-deno2-node20-pre2117"]}) }),
+  Object.freeze({ class: "postgres17-node22-noinstall", hostTimeoutMinutes: 180, primaryDeno: "", profile: Object.freeze({"runtime":{"name":"node","version":"22"},"install":{"cwd":"mingla-business","invocation":{"kind":"argv","command":"npm","argv":["ci"]}},"classes":["postgres17-node22-noinstall"]}) }),
+]);
+export const SUITES_FOLDED_IN_POSTGRES_WAVE = Object.freeze([
+  Object.freeze({ suite: "issue-1406-customer-patterns-performance-tests", issue: 1406, class: "postgres17-deno2-node20-noinstall", steps: 1 }),
+  Object.freeze({ suite: "issue-1858-explicit-brand-export-tests", issue: 1858, class: "postgres17-deno2-node20-noinstall", steps: 3 }),
+  Object.freeze({ suite: "issue-2160-tester-adversarial-tests", issue: 2160, class: "postgres17-deno2-node20-noinstall", steps: 3 }),
+  Object.freeze({ suite: "issue-2168-revocation-refund-handoff-tests", issue: 2168, class: "postgres17-deno2-node20-noinstall", steps: 2 }),
+  Object.freeze({ suite: "issue-2269-verified-phone-claim-tests", issue: 2269, class: "postgres17-deno2-node20-noinstall", steps: 8 }),
+  Object.freeze({ suite: "issue-875-customer-patterns-tests", issue: 875, class: "postgres17-deno2-node20-noinstall", steps: 1 }),
+  Object.freeze({ suite: "issue-1447-rsvp-admission-tests", issue: 1447, class: "postgres17-deno2714-node20-noinstall", steps: 10 }),
+  Object.freeze({ suite: "issue-1529-notification-country-code-tests", issue: 1529, class: "postgres17-deno2714-node20-noinstall", steps: 10 }),
+  Object.freeze({ suite: "issue-1719-unified-sharing", issue: 1719, class: "postgres17-deno146-node22-noinstall", steps: 27 }),
+  Object.freeze({ suite: "issue-1773-reservation-stay-ingest-tests", issue: 1773, class: "postgres17-deno295-node20-cli2982", steps: 5 }),
+  Object.freeze({ suite: "issue-1774-people-page-tests", issue: 1774, class: "postgres17-node20-noinstall", steps: 2 }),
+  Object.freeze({ suite: "issue-1775-csv-contact-import-tests", issue: 1775, class: "postgres17-deno295-node20-noinstall", steps: 6 }),
+  Object.freeze({ suite: "issue-1857-phone-country-authority-tests", issue: 1857, class: "postgres17-deno295-node20-pre1857", steps: 7 }),
+  Object.freeze({ suite: "issue-1902-rsvp-backend-safety-tests", issue: 1902, class: "postgres17-deno2714-node20-noinstall", steps: 10 }),
+  Object.freeze({ suite: "issue-1929-hidden-direct-checkout-tests", issue: 1929, class: "postgres17-deno2-node22-noinstall", steps: 7 }),
+  Object.freeze({ suite: "issue-1931-private-event-access", issue: 1931, class: "postgres17-deno2-node22-pre1931", steps: 17 }),
+  Object.freeze({ suite: "issue-1972-ari-event-lifecycle", issue: 1972, class: "postgres17-deno2-node20-noinstall", steps: 4 }),
+  Object.freeze({ suite: "issue-1973-ari-experience-lifecycle", issue: 1973, class: "postgres17-deno2-node20-noinstall", steps: 3 }),
+  Object.freeze({ suite: "issue-1974-ari-ticket-pricing", issue: 1974, class: "postgres17-deno2-node20-noinstall", steps: 4 }),
+  Object.freeze({ suite: "issue-1985-ari-task-state", issue: 1985, class: "postgres17-deno146-node20-dualdb", steps: 7 }),
+  Object.freeze({ suite: "issue-1995-contact-book-blast", issue: 1995, class: "postgres17-deno2-node20-noinstall", steps: 28 }),
+  Object.freeze({ suite: "issue-2009-published-event-visibility", issue: 2009, class: "postgres17-deno146-node20-noinstall", steps: 19 }),
+  Object.freeze({ suite: "issue-2015-app-network-bindings", issue: 2015, class: "postgres17-deno2-node20-noinstall", steps: 9 }),
+  Object.freeze({ suite: "issue-2060-ari-reliability", issue: 2060, class: "postgres17-deno2-node22-foundation2060", steps: 6 }),
+  Object.freeze({ suite: "issue-2063-ari-brand-management", issue: 2063, class: "postgres17-deno146-node22-noinstall", steps: 6 }),
+  Object.freeze({ suite: "issue-2117-offering-visibility-gate-tests", issue: 2117, class: "postgres17-deno2-node20-pre2117", steps: 14 }),
+  Object.freeze({ suite: "issue-2150-free-resubmit-idempotent-tests", issue: 2150, class: "postgres17-deno2-node20-noinstall", steps: 10 }),
+  Object.freeze({ suite: "issue-2160-multiday-multiselect-tests", issue: 2160, class: "postgres17-deno2-node20-noinstall", steps: 26 }),
+  Object.freeze({ suite: "issue-2217-confirmation-app-cta-tests", issue: 2217, class: "postgres17-deno2-node20-noinstall", steps: 8 }),
+  Object.freeze({ suite: "issue-2267-marketing-tenancy", issue: 2267, class: "postgres17-node20-noinstall", steps: 3 }),
+  Object.freeze({ suite: "issue-2323-free-order-claim-and-cta-tests", issue: 2323, class: "postgres17-node20-noinstall", steps: 6 }),
+  Object.freeze({ suite: "issue-2333-online-event-publish", issue: 2333, class: "postgres17-node20-noinstall", steps: 6 }),
+  Object.freeze({ suite: "issue-2353-format-truth-and-edit-grant", issue: 2353, class: "postgres17-node20-noinstall", steps: 8 }),
+  Object.freeze({ suite: "issue-871-attendance-entitlement-tests", issue: 871, class: "postgres17-deno2-node22-noinstall", steps: 15 }),
+  Object.freeze({ suite: "issue-1020-discover-geo-fallback-tests", issue: 1020, class: "postgres17-deno146-node20-noinstall", steps: 3 }),
+  Object.freeze({ suite: "issue-1175-paystack-refunds-tests", issue: 1175, class: "postgres17-deno2-node20-noinstall", steps: 5 }),
+  Object.freeze({ suite: "issue-1179-cancel-refund-fanout-tests", issue: 1179, class: "postgres17-deno2-node20-noinstall", steps: 4 }),
+  Object.freeze({ suite: "issue-1403-listing-insights-tests", issue: 1403, class: "postgres17-node20-noinstall", steps: 20 }),
+  Object.freeze({ suite: "issue-1421-venue-organic-insights-tests", issue: 1421, class: "postgres17-deno2-node20-noinstall", steps: 8 }),
+  Object.freeze({ suite: "issue-1463-permitted-staff-venue-submit-tests", issue: 1463, class: "postgres17-deno2-node22-noinstall", steps: 3 }),
+  Object.freeze({ suite: "issue-1469-stay-authoring-permissions", issue: 1469, class: "postgres17-node22-noinstall", steps: 3 }),
+  Object.freeze({ suite: "issue-1614-onconflict-arbiter-audit", issue: 1614, class: "postgres17-deno2-node22-noinstall", steps: 7 }),
+  Object.freeze({ suite: "issue-1810-guest-roster-export-compat-tests", issue: 1810, class: "postgres17-node20-noinstall", steps: 2 }),
+  Object.freeze({ suite: "issue-1812-brand-people-export-search-tests", issue: 1812, class: "postgres17-node20-noinstall", steps: 1 }),
+  Object.freeze({ suite: "issue-2101-named-buyer-checkout-tests", issue: 2101, class: "postgres17-deno2-node22-noinstall", steps: 8 }),
+  Object.freeze({ suite: "issue-2136-free-checkout-contract-tests", issue: 2136, class: "postgres17-deno2-node20-noinstall", steps: 5 }),
+  Object.freeze({ suite: "issue-2393-valid-marketing-test-fixtures", issue: 2393, class: "postgres17-node20-noinstall", steps: 4 }),
+  Object.freeze({ suite: "issue-873-guest-status-roster-tests", issue: 873, class: "postgres17-deno2-node20-noinstall", steps: 13 }),
+]);
+const PHASE3E_SUITE_IDS = new Set(SUITES_FOLDED_IN_POSTGRES_WAVE.map((item) => item.suite));
+const PHASE3E_HOST_CLASSES = new Set(PHASE3E_HOSTS.map((host) => host.class));
+const PHASE3E_STEPS = SUITES_FOLDED_IN_POSTGRES_WAVE.reduce((sum, item) => sum + item.steps, 0);
 const SEALED_SUITES = 84;
 const SEALED_CAPABILITIES = 240;
 const SEALED_ORIGINS = 200;
 const SEALED_PRIMARY_HOSTS = 55;
-const EXPECTED_SUITES = SEALED_SUITES + SUITES_ADDED_SINCE_SEAL.length + SUITES_FOLDED_SINCE_SEAL.length;
+const EXPECTED_SUITES = SEALED_SUITES + SUITES_ADDED_SINCE_SEAL.length + SUITES_FOLDED_SINCE_SEAL.length + SUITES_FOLDED_IN_POSTGRES_WAVE.length;
 const EXPECTED_ORIGINS = SEALED_ORIGINS + SUITES_ADDED_SINCE_SEAL.length;
-const EXPECTED_PRIMARY_HOSTS = SEALED_PRIMARY_HOSTS + SUITES_ADDED_SINCE_SEAL.length + SUITES_FOLDED_SINCE_SEAL.length;
+const EXPECTED_PRIMARY_HOSTS = SEALED_PRIMARY_HOSTS + SUITES_ADDED_SINCE_SEAL.length + SUITES_FOLDED_SINCE_SEAL.length + SUITES_FOLDED_IN_POSTGRES_WAVE.length;
 const EXPECTED_CAPABILITIES = SEALED_CAPABILITIES
-  + SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0) + FOLDED_STEPS;
+  + SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0) + FOLDED_STEPS + PHASE3E_STEPS;
 
 /**
  * [#3643] THE Phase 3D seal input, exported so the registry author and the
@@ -197,6 +270,31 @@ export function phase3dContractRows(manifest) {
 
 export function phase3dContractDigest(manifest) {
   return crypto.createHash("sha256").update(JSON.stringify(phase3dContractRows(manifest))).digest("hex");
+}
+// [TEST-MOD-APPROVED #3643] Final 48-suite Phase 3E command/runtime/routing seal.
+// #3643: include the two insights lanes' pre-fold live-provider routing scopes.
+// #2829/#3645: register the new Sites and installment migration/test inputs
+// selected by the three preserved full-history replay commands.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "9ece136ff15efc1a6644753204067646134d2ba4cfa1820dbc49220c803ace2b";
+export function phase3eContractRows(manifest) {
+  const capabilities = manifest.commandCapabilities?.commands || [];
+  const origins = manifest.legacyOrigins || [];
+  return (manifest.suites || []).filter((suite) => suite.migrationWave === POSTGRES_WAVE).map((suite) => ({
+    id: suite.id, origin: suite.origin, class: suite.class, lifecycle: suite.lifecycle, ownerIssue: suite.ownerIssue,
+    runtime: suite.runtime, setupProfile: suite.setupProfile, timeoutSeconds: suite.timeoutSeconds,
+    databaseName: suite.databaseName, isolation: suite.isolation,
+    originPaths: suite.originPaths, expectedFiles: suite.expectedFiles, envNames: suite.envNames,
+    templateReplay: suite.templateReplay || null,
+    additionalDatabases: suite.additionalDatabases || null,
+    portDatabaseAliases: suite.portDatabaseAliases || null,
+    steps: (suite.steps || []).map((step) => ({ name: step.name, originJob: step.originJob, cwd: step.cwd,
+      run: step.run, env: step.env || null, commandId: step.commandId })),
+    capabilities: capabilities.filter((capability) => capability.suiteId === suite.id),
+    workflowSha256: origins.find((item) => `.github/workflows/${item.stem}.${item.extension}` === suite.origin)?.workflowMetadata?.sourceSha256 ?? null,
+  }));
+}
+export function phase3eContractDigest(manifest) {
+  return crypto.createHash("sha256").update(JSON.stringify(phase3eContractRows(manifest))).digest("hex");
 }
 const PINNED_CHECKOUT = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683";
 const PINNED_SETUP_NODE = "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020";
@@ -284,30 +382,8 @@ const PHASE3C_AUTHORISED_ENV = Object.freeze([
     PAYSTACK_SECRET_KEY_TEST: "sk_test_issue1326_confirm_secret",
   }),
 ]);
-const LOCKED_PROVIDER_DISCOVERY_SHA256 = "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f";
-const LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256 = "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1";
-// [#2591] Providers that have legitimately appeared SINCE the seal, each
-// declared by name and by exact content and each reviewed on its own issue.
-//
-// LOCKED_PROVIDER_DISCOVERY_SHA256 is NOT re-frozen and the reconstructed length
-// stays 73. Nothing is added to the sealed world; what has been added since it is
-// declared here and SUBTRACTED before the digest is taken. Three properties fall
-// out of that, and all three are the reason this is stronger than moving the
-// literal would have been:
-//
-//   * an UNDECLARED new provider still breaks the seal — that tripwire is the
-//     whole point and it stays armed;
-//   * a declared addition whose referenceFiles drift still breaks it, because the
-//     subtraction is by exact content, never by name;
-//   * the blind-memo detection this file forbids by name at the trackedFiles
-//     scope survives intact: a memo that keeps reporting the pre-#2591 discovery
-//     means the declared addition is ABSENT, the presence assertion fails, and
-//     this goes RED naming it. Re-freezing the literal is precisely what would
-//     have destroyed that.
-//
-// Every count that moves because of an addition is DERIVED from this one set. A
-// second hand-typed number is how a value of 607 once landed where two sides had
-// independently said 606 and 603, auto-merged clean with no conflict marker.
+// Historical additions retained for callers that identify provider ownership.
+// Active validation compares registrations with the current discovered references.
 export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
   Object.freeze({
     // [#2899] Sites recovery is a new live workflow provider after the frozen
@@ -504,6 +580,17 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
       "mingla-business/src/hooks/__tests__/useMenus.issue3564.tester.adversarial.test.ts",
     ]),
   }),
+  Object.freeze({
+    // [#2829 W7c] The Sites design goldens were rendered on arm64, so their
+    // comparison runs in this retained provider's own arm64 job; the test pins
+    // that job's runner and that no x64 job runs the comparison. One reviewed
+    // reference-file delta on an already sealed provider, not a new provider.
+    issue: 2829,
+    workflow: "web-build-check.yml",
+    referenceFiles: Object.freeze([
+      "scripts/sites/__tests__/issue_2829_goldens_arm64_job.test.mjs",
+    ]),
+  }),
 ]);
 const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL_NAMES = new Set(
   PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL.map((item) => item.workflow),
@@ -512,9 +599,13 @@ const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL_NAMES = new Set(
 export function normalizeProviderReferenceFilesForSeal(
   discovered,
   declarations = PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL,
+  { allowedMissingWorkflows = new Set() } = {},
 ) {
   if (!Array.isArray(discovered) || !Array.isArray(declarations)) {
     throw new TypeError("provider reference seal normalization requires arrays");
+  }
+  if (!(allowedMissingWorkflows instanceof Set)) {
+    throw new TypeError("allowed missing provider workflows must be a Set");
   }
   const byWorkflow = new Map();
   for (const [index, item] of discovered.entries()) {
@@ -543,6 +634,9 @@ export function normalizeProviderReferenceFilesForSeal(
       throw new Error(`duplicate or empty provider reference delta: ${declaration.workflow}`);
     }
     const indices = byWorkflow.get(declaration.workflow) || [];
+    if (indices.length === 0 && allowedMissingWorkflows.has(declaration.workflow)) {
+      continue;
+    }
     if (indices.length !== 1) {
       throw new Error(`provider reference delta workflow must appear exactly once: ${declaration.workflow}`);
     }
@@ -1333,7 +1427,8 @@ output = {
       "secondaryNode" => entry["secondaryNode"]&.to_s, "secondaryDeno" => entry["secondaryDeno"]&.to_s,
       "tertiaryClass" => entry["tertiaryClass"]&.to_s, "tertiaryNode" => entry["tertiaryNode"]&.to_s,
       "tertiaryDeno" => entry["tertiaryDeno"]&.to_s, "tertiaryOrder" => entry["tertiaryOrder"]&.to_s,
-      "primaryDeno" => entry["primaryDeno"]&.to_s }
+      "primaryDeno" => entry["primaryDeno"]&.to_s,
+      "primarySupabase" => entry["primarySupabase"]&.to_s }
   end,
   "setupNode" => {
     "action" => setup_node["uses"]&.to_s,
@@ -1425,8 +1520,9 @@ export function validatePhase2Contract(manifestOrOptions, matrixSource) {
     fail(errors, "runnerContract must equal the exact Phase 2 isolation, process-group, timeout, result, and setup-evidence contract");
   }
   for (const suite of manifest.suites || []) {
-    if ("timeoutMinutes" in suite || !Number.isInteger(suite.timeoutSeconds) || suite.timeoutSeconds < 1 || suite.timeoutSeconds > 1500) {
-      fail(errors, `${suite.id}: timeoutSeconds must be an integer from 1 through 1500 and timeoutMinutes is forbidden`);
+    const maximumTimeoutSeconds = suite.migrationWave === POSTGRES_WAVE ? 2400 : 1500;
+    if ("timeoutMinutes" in suite || !Number.isInteger(suite.timeoutSeconds) || suite.timeoutSeconds < 1 || suite.timeoutSeconds > maximumTimeoutSeconds) {
+      fail(errors, `${suite.id}: timeoutSeconds must be an integer from 1 through ${maximumTimeoutSeconds} and timeoutMinutes is forbidden`);
     }
     if (suite.isolation !== "clean-worktree") fail(errors, `${suite.id}: isolation must be exactly clean-worktree`);
     const exactPhase3bEnv = suite.id === "issue-1902-public-event-lifecycle-tests"
@@ -1445,7 +1541,7 @@ export function validatePhase2Contract(manifestOrOptions, matrixSource) {
     const exactPhase3dEnv = PHASE3D_SUITE_IDS.has(suite.id) && suite.migrationWave === PHASE3D_WAVE && declaredPhase3dEnv.length > 0
       && JSON.stringify((suite.steps || []).filter((step) => step.env).map((step) => [step.commandId, step.env]))
         === JSON.stringify(declaredPhase3dEnv);
-    if (JSON.stringify(suite.envNames) !== "[]" && !exactPhase3cEnv) {
+    if (JSON.stringify(suite.envNames) !== "[]" && !exactPhase3cEnv && suite.migrationWave !== POSTGRES_WAVE) {
       fail(errors, `${suite.id}: assertion children may not receive repository or job environment capabilities`);
     }
     if ((suite.steps || []).some((step) => step.env && Object.keys(step.env).length) && !exactPhase3bEnv && !exactPhase3cEnv && !exactPhase3dEnv) {
@@ -1679,6 +1775,17 @@ export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
     const command = unit.invocation?.argv?.[1] ?? unit.run ?? step.invocation?.argv?.[1] ?? step.run ?? "";
     const commandTestMatch = [...command.matchAll(/(?:^|\s)--testMatch(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s]+))/g)]
       .map((match) => match[1] || match[2] || match[3]);
+    // #3643 Phase 3E preserves several SQL suites as a `find -name <glob>`
+    // followed by `psql -f "$test_file"`. The file variable is intentionally
+    // opaque to the generic token scanner, so resolve the declarative find
+    // selection itself. This remains a tracked-file inventory, not a shell
+    // execution or a guess about variable contents.
+    for (const match of command.matchAll(/\bfind\s+([A-Za-z0-9_.\/-]+)[^\n]*?(?:\\\n[^\n]*)*?\s-name\s+(?:'([^']+)'|"([^"]+)"|([^\s\\]+))/g)) {
+      const directory = path.normalize(path.join(cwd, match[1])).replaceAll(path.sep, "/");
+      const pattern = match[2] || match[3] || match[4];
+      const matcher = globToRegExp(`${directory}/${pattern}`);
+      for (const tracked of repositoryFiles) if (matcher.test(tracked)) found.add(tracked);
+    }
     for (const config of configPathsFromCommand(command)) {
       for (const selected of filesSelectedByJestConfig(config, cwd, root, commandTestMatch)) found.add(selected);
     }
@@ -1968,9 +2075,9 @@ function validateRegistryInTrackedFilesScope(
     // frozen value, an undeclared profile still breaks it, and a declared one that
     // drifts from its declaration is red by name.
     const sealedProfiles = { ...manifest.setupProfiles };
-    for (const host of PHASE3D_HOSTS) {
+    for (const host of [...PHASE3D_HOSTS, ...PHASE3E_HOSTS]) {
       if (JSON.stringify(sealedProfiles[host.class]) !== JSON.stringify(host.profile)) {
-        fail(errors, `Phase 3D setup profile ${host.class} is missing or differs from its PHASE3D_HOSTS declaration`);
+        fail(errors, `post-seal setup profile ${host.class} is missing or differs from its declared host contract`);
       }
       delete sealedProfiles[host.class];
     }
@@ -1991,6 +2098,13 @@ function validateRegistryInTrackedFilesScope(
     if (found.length !== 1 || found[0].steps?.length !== declared.steps || found[0].class !== declared.class
         || found[0].migrationWave !== PHASE3D_WAVE || found[0].ownerIssue !== `#${declared.issue}`) {
       fail(errors, `declared Phase 3D suite ${declared.suite} (#${declared.issue}) is missing or does not carry its declared class ${declared.class} and ${declared.steps} step(s)`);
+    }
+  }
+  for (const declared of SUITES_FOLDED_IN_POSTGRES_WAVE) {
+    const found = (bootstrap.suites || []).filter((suite) => suite.id === declared.suite);
+    if (found.length !== 1 || found[0].steps?.length !== declared.steps || found[0].class !== declared.class
+        || found[0].migrationWave !== POSTGRES_WAVE || found[0].ownerIssue !== `#${declared.issue}`) {
+      fail(errors, `declared Phase 3E suite ${declared.suite} (#${declared.issue}) is missing or does not carry its declared class ${declared.class} and ${declared.steps} step(s)`);
     }
   }
 
@@ -2024,7 +2138,7 @@ function validateRegistryInTrackedFilesScope(
     "ota-business-node20-19-install": [55, "phase3b-enablers-node20-deno2", "20", "v2.x", "", "", "", ""],
     // [#3643] Phase 3D's two rows are the only matrix rows it adds. They host
     // primary suites only: no secondary and no tertiary lane.
-    ...Object.fromEntries(PHASE3D_HOSTS.map((host) => [host.class, [host.hostTimeoutMinutes, "", "", "", "", "", "", ""]])),
+    ...Object.fromEntries([...PHASE3D_HOSTS, ...PHASE3E_HOSTS].map((host) => [host.class, [host.hostTimeoutMinutes, "", "", "", "", "", "", ""]])),
   };
   if (batchTopology.timeoutMinutes !== "${{ matrix.hostTimeoutMinutes }}") fail(errors, "batch timeout must be sourced from the exact integer matrix ceiling");
   for (const route of batchTopology.matrix || []) {
@@ -2036,9 +2150,12 @@ function validateRegistryInTrackedFilesScope(
     // [#3643] Exactly the Phase 3D rows select a primary Deno runtime, and each
     // selects exactly the version its declared profile runs. Every other row
     // leaves the field unset, so no sealed host gains a Deno install.
-    const phase3dHost = PHASE3D_HOSTS.find((host) => host.class === route.class);
-    if ((route.primaryDeno || "") !== (phase3dHost?.primaryDeno || "")
-        || (phase3dHost && (route.node !== phase3dHost.profile.runtime.nodeVersion || route.cache !== "" || route.cacheLock !== ""))) {
+    const primaryDenoHost = [...PHASE3D_HOSTS, ...PHASE3E_HOSTS].find((host) => host.class === route.class);
+    const primaryNode = primaryDenoHost?.profile.runtime?.name === "node"
+      ? primaryDenoHost.profile.runtime.version : primaryDenoHost?.profile.runtime?.nodeVersion;
+    if ((route.primaryDeno || "") !== (primaryDenoHost?.primaryDeno || "")
+        || (route.primarySupabase || "") !== (primaryDenoHost?.primarySupabase || "")
+        || (primaryDenoHost && (route.node !== primaryNode || route.cache !== "" || route.cacheLock !== ""))) {
       fail(errors, `${route.class}: Phase 3D primary Deno route drifted`);
     }
   }
@@ -2083,11 +2200,14 @@ function validateRegistryInTrackedFilesScope(
   const phase3dDeno = {
     "Select immutable primary Deno 1.46 runtime": ["denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d", "1.46.x"],
     "Select immutable primary Deno v2 runtime": ["denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed", "v2.x"],
+    "Select immutable primary Deno v2.7.14 runtime": ["denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed", "v2.7.14"],
+    "Select immutable primary Deno v2.9.5 runtime": ["denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed", "v2.9.5"],
   };
   const phase3dStepNames = (batchTopology.steps || []).map((step) => step.name || step.uses || "");
   const primarySetupIndex = (batchTopology.steps || []).findIndex((step) => step.uses === PINNED_SETUP_NODE && !step.name);
   const shardSetupIndex = phase3dStepNames.indexOf("Execute and record one typed shard setup");
-  for (const host of PHASE3D_HOSTS) {
+  for (const host of [...PHASE3D_HOSTS, ...PHASE3E_HOSTS]) {
+    if (!host.primaryDeno) continue;
     if (!Object.values(phase3dDeno).some(([action, selector]) => selector === host.primaryDeno && action === host.profile.runtime.deno.action)) {
       fail(errors, `${host.class}: Phase 3D host has no reviewed primary Deno selector for ${host.primaryDeno}`);
     }
@@ -2101,6 +2221,12 @@ function validateRegistryInTrackedFilesScope(
         || index < 0 || index < primarySetupIndex || index > shardSetupIndex) {
       fail(errors, `Phase 3D primary Deno runtime selector drifted: ${stepName}`);
     }
+  }
+  const primarySupabase = named["Select pinned primary Supabase CLI 2.98.2"];
+  const supabaseCondition = "always() && matrix.primarySupabase == '2.98.2' && steps.route.outputs.runPrimarySetup != 'false'";
+  if (primarySupabase?.uses !== "supabase/setup-cli@v1" || primarySupabase?.if !== supabaseCondition
+      || !resolvedMatrixSource.includes("          version: 2.98.2")) {
+    fail(errors, "Phase 3E Supabase CLI selector drifted from the reviewed 2.98.2 origin runtime");
   }
   // [#2439 SC-7.2] Setup ORDER is part of the profile. Exactly two mutually
   // exclusive setup-node steps exist, one before the Deno selectors and one
@@ -2150,7 +2276,7 @@ function validateRegistryInTrackedFilesScope(
       continue;
     }
     const expectedKeys = "installs" in profile
-      ? ["phase3b-lifecycle-node20-deno2", "phase3c-deno2x-app-node22"].includes(name)
+      ? ["phase3b-lifecycle-node20-deno2", "phase3c-deno2x-app-node22", "postgres17-deno2-node22-noinstall"].includes(name)
         ? ["runtime", "installs", "toolExposures", "classes"] : ["runtime", "installs", "classes"]
       : ["runtime", "install", "classes"];
     if (!sameStrings(Object.keys(profile), expectedKeys)) fail(errors, `setup profile ${name} has a malformed or unknown field`);
@@ -2162,7 +2288,8 @@ function validateRegistryInTrackedFilesScope(
     const denoRuntime = profile.runtime?.name === "node+deno" && ["20", "22"].includes(profile.runtime?.nodeVersion)
       && [["1.46.x", "denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"],
         ["v2.x", "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"],
-        ["v2.7.14", "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"]]
+        ["v2.7.14", "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"],
+        ["v2.9.5", "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"]]
         .some(([version, action]) => profile.runtime?.deno?.version === version && profile.runtime?.deno?.action === action);
     if (!nodeRuntime && !denoRuntime) {
       fail(errors, `setup profile ${name} must use an approved exact Node runtime schema`);
@@ -2217,9 +2344,17 @@ function validateRegistryInTrackedFilesScope(
     if (!profile) continue;
     // [#3643] A Phase 3D primary profile is node+deno, so its Node version lives
     // in `nodeVersion`; every sealed primary profile is plain node.
-    const profileNode = PHASE3D_HOST_CLASSES.has(klass) ? profile.runtime?.nodeVersion : profile.runtime?.version;
+    const profileNode = PHASE3D_HOST_CLASSES.has(klass)
+      ? profile.runtime?.nodeVersion
+      : PHASE3E_HOST_CLASSES.has(klass) && profile.runtime?.name === "node+deno"
+        ? profile.runtime.nodeVersion : profile.runtime?.version;
     if (route.node !== profileNode) fail(errors, `class ${klass}: matrix runtime ${route.node} disagrees with setup profile runtime ${profileNode}`);
-    const expectsCache = profileInstallList(profile).some((install) => install.invocation.argv[0] === "ci") && profileInstallList(profile).length === 1;
+    // [#3643] Phase 3E setup installs run in the PostgreSQL host's reviewed
+    // setup lane, but those hosts deliberately keep the matrix cache fields
+    // empty: their primary Deno route is a separate sealed topology contract.
+    const expectsCache = !PHASE3E_HOST_CLASSES.has(klass)
+      && profileInstallList(profile).some((install) => install.invocation.argv[0] === "ci")
+      && profileInstallList(profile).length === 1;
     if ((expectsCache ? "npm" : "") !== route.cache) fail(errors, `class ${klass}: matrix cache route disagrees with exact setup profile`);
   }
 
@@ -2239,16 +2374,18 @@ function validateRegistryInTrackedFilesScope(
   // are SUBTRACTED before the frozen digest is taken; they are bound instead by
   // the Phase 3D seal below. The sealed prefix therefore still hashes to the one
   // frozen value, and a Phase 3D command anywhere but the tail is red here.
-  const sealedCapabilityCount = EXPECTED_CAPABILITIES - FOLDED_STEPS;
+  const sealedCapabilityCount = EXPECTED_CAPABILITIES - FOLDED_STEPS - PHASE3E_STEPS;
   const sealedCapabilityCommands = bootstrapCapabilityCommands.slice(0, sealedCapabilityCount);
-  const phase3dCapabilityCommands = bootstrapCapabilityCommands.slice(sealedCapabilityCount);
+  const phase3dCapabilityCommands = bootstrapCapabilityCommands.slice(sealedCapabilityCount, sealedCapabilityCount + FOLDED_STEPS);
+  const phase3eCapabilityCommands = bootstrapCapabilityCommands.slice(sealedCapabilityCount + FOLDED_STEPS);
   const sealedCapabilityDigest = crypto.createHash("sha256").update(JSON.stringify(sealedCapabilityCommands)).digest("hex");
   if (bootstrapCapabilityRegistry?.schemaVersion !== 1 || bootstrapCapabilityRegistry?.expectedCommands !== EXPECTED_CAPABILITIES
       || bootstrapCapabilityCommands.length !== EXPECTED_CAPABILITIES || sealedCapabilityDigest !== LOCKED_SHADOW_CAPABILITY_SHA256
       || sealedCapabilityCommands.some((capability) => PHASE3D_SUITE_IDS.has(capability.suiteId))
       || phase3dCapabilityCommands.some((capability) => !PHASE3D_SUITE_IDS.has(capability.suiteId))
+      || phase3eCapabilityCommands.some((capability) => !PHASE3E_SUITE_IDS.has(capability.suiteId))
       || bootstrapCapabilityRegistryDigest !== bootstrapCapabilityRegistry?.registrySha256) {
-    fail(errors, `the ${EXPECTED_CAPABILITIES} assertion command capabilities must equal the locked Phase 1 + Phase 3A + Phase 3B + Phase 3C registry plus the declared post-seal additions, followed by the ${FOLDED_STEPS} Phase 3D commands`);
+    fail(errors, `the ${EXPECTED_CAPABILITIES} assertion command capabilities must equal the locked Phase 1 + Phase 3A + Phase 3B + Phase 3C registry plus the declared post-seal additions, followed by ${FOLDED_STEPS} Phase 3D and ${PHASE3E_STEPS} Phase 3E commands`);
   }
   const expectedEffectiveCommands = EXPECTED_CAPABILITIES + localSuites.reduce((sum, suite) => sum + (suite.steps?.length || 0), 0);
   if (capabilityRegistry?.schemaVersion !== 1 || capabilityRegistry?.expectedCommands !== expectedEffectiveCommands ||
@@ -2321,18 +2458,26 @@ function validateRegistryInTrackedFilesScope(
     // [#3643] A Phase 3D suite is a PRIMARY raw-shell suite like Phase 3A, but its
     // runtime is the node+deno object of the Phase 3D host it runs on.
     const phase3d = suite.migrationWave === PHASE3D_WAVE;
+    const phase3e = suite.migrationWave === POSTGRES_WAVE;
     if (phase3d !== PHASE3D_SUITE_IDS.has(suite.id)) fail(errors, `${suite.id}: Phase 3D membership must equal SUITES_FOLDED_SINCE_SEAL exactly`);
-    if (!phase3 && !phase3d && (suite.runtime?.name !== "node" || !["20", "22", "20.19.4"].includes(suite.runtime?.version))) fail(errors, `${suite.id}: runtime must use an approved exact Node version`);
+    if (phase3e !== PHASE3E_SUITE_IDS.has(suite.id)) fail(errors, `${suite.id}: Phase 3E membership must equal SUITES_FOLDED_IN_POSTGRES_WAVE exactly`);
+    if (!phase3 && !phase3d && !phase3e && (suite.runtime?.name !== "node" || !["20", "22", "20.19.4"].includes(suite.runtime?.version))) fail(errors, `${suite.id}: runtime must use an approved exact Node version`);
     const profileRuntime = manifest.setupProfiles?.[suite.setupProfile]?.runtime;
     const matrixRuntime = matrixRoutes.get(suite.class)?.node;
     const phase3dRoute = matrixRoutes.get(suite.class);
-    if ((!phase3 && !phase3d && (suite.runtime?.name !== profileRuntime?.name || suite.runtime?.version !== profileRuntime?.version || suite.runtime?.version !== matrixRuntime))
+    const phase3eNode = suite.runtime?.name === "node" ? suite.runtime?.version : suite.runtime?.nodeVersion;
+    const phase3eDeno = suite.runtime?.name === "node+deno" ? suite.runtime?.deno?.version : "";
+    if ((!phase3 && !phase3d && !phase3e && (suite.runtime?.name !== profileRuntime?.name || suite.runtime?.version !== profileRuntime?.version || suite.runtime?.version !== matrixRuntime))
         || (phase3 && (JSON.stringify(suite.runtime) !== JSON.stringify(profileRuntime) || suite.class !== suite.hostClass || !matrixRoutes.has(suite.hostClass)))
         || (phase3d && (JSON.stringify(suite.runtime) !== JSON.stringify(profileRuntime) || !PHASE3D_HOST_CLASSES.has(suite.class)
-          || isMigratedSuite(suite) || phase3dRoute?.node !== suite.runtime?.nodeVersion || phase3dRoute?.primaryDeno !== suite.runtime?.deno?.version))) {
+          || isMigratedSuite(suite) || phase3dRoute?.node !== suite.runtime?.nodeVersion || phase3dRoute?.primaryDeno !== suite.runtime?.deno?.version))
+        || (phase3e && (JSON.stringify(suite.runtime) !== JSON.stringify(profileRuntime) || !PHASE3E_HOST_CLASSES.has(suite.class)
+          || isMigratedSuite(suite) || phase3dRoute?.node !== phase3eNode || (phase3dRoute?.primaryDeno || "") !== phase3eDeno
+          || suite.databaseName !== postgresDatabaseName(suite.id)))) {
       fail(errors, `${suite.id}: suite, setup profile, and matrix runtime must agree exactly`);
     }
     if (!phase3d && PHASE3D_HOST_CLASSES.has(suite.class)) fail(errors, `${suite.id}: only Phase 3D suites may run on a Phase 3D host`);
+    if (!phase3e && PHASE3E_HOST_CLASSES.has(suite.class)) fail(errors, `${suite.id}: only Phase 3E suites may run on a Phase 3E host`);
     if (!suite.ownerIssue || !/^#\d+$/.test(suite.ownerIssue)) fail(errors, `${suite.id}: ownerIssue must be an issue token`);
     if (!suite.cwd || !fs.existsSync(path.join(root, suite.cwd))) fail(errors, `${suite.id}: cwd does not exist: ${suite.cwd}`);
     if (!suite.requiredContext?.trim()) fail(errors, `${suite.id}: requiredContext classification is missing`);
@@ -2363,18 +2508,21 @@ function validateRegistryInTrackedFilesScope(
         // [#3643] Phase 3D binds its reviewed env literal into the capability
         // digest the same way Phase 3B/3C do, so the registry cannot carry one
         // env while the capability authorised another.
-        const payload = phase3 || phase3d ? { cwd: step.cwd || ".", executable: invocation.command, argv: invocation.argv, env: step.env || null, compound: Boolean(step.children) }
+        const payload = phase3 || phase3d || phase3e ? { cwd: step.cwd || ".", executable: invocation.command, argv: invocation.argv, env: step.env || null, compound: Boolean(step.children) }
           : { cwd: step.cwd || ".", executable: invocation.command, argv: invocation.argv };
         const payloadSha256 = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
         if (capability.suiteId !== suite.id || capability.stepIndex !== index || capability.cwd !== payload.cwd
             || capability.executable !== payload.executable || JSON.stringify(capability.argv) !== JSON.stringify(payload.argv)
-            || (phase3d && (JSON.stringify(capability.env) !== JSON.stringify(payload.env) || capability.compound !== false || step.children !== undefined))
+            || ((phase3d || phase3e) && (JSON.stringify(capability.env) !== JSON.stringify(payload.env) || capability.compound !== false || step.children !== undefined))
             || capability.payloadSha256 !== payloadSha256) {
           fail(errors, `${suite.id}: step ${index} differs from its immutable executable/argv capability`);
         }
       }
     }
-    const derivedExpectedFiles = discoverExpectedFilesForSuite(suite, root);
+    const expectedFileCarrier = phase3e && suite.templateReplay
+      ? { ...suite, steps: [{ run: suite.templateReplay.run, cwd: suite.templateReplay.cwd }, ...suite.steps] }
+      : suite;
+    const derivedExpectedFiles = discoverExpectedFilesForSuite(expectedFileCarrier, root);
     const registeredExpectedFiles = phase3
       ? [...new Set([...(suite.expectedFiles || []), ...(suite.conditionalExpectedFiles || []).filter((file) => fs.existsSync(path.join(root, file)))])].sort()
       : suite.expectedFiles;
@@ -2776,6 +2924,78 @@ function validateRegistryInTrackedFilesScope(
       || phase3dProviderRecords.some((item) => item.transition !== "batched-provider")) {
     fail(errors, `Phase 3D must hold exactly the ${PHASE3D_PROVIDER_NAMES.size} reviewed provider records, each batched-provider`);
   }
+  // ==========================================================================
+  // [#3643] Phase 3E - routed PostgreSQL template-copy suites.
+  // ==========================================================================
+  const phase3eSuites = (manifest.suites || []).filter((suite) => suite.migrationWave === POSTGRES_WAVE);
+  if (JSON.stringify(phase3eSuites.map((suite) => suite.id)) !== JSON.stringify(SUITES_FOLDED_IN_POSTGRES_WAVE.map((item) => item.suite))) {
+    fail(errors, `Phase 3E must contain exactly the ${SUITES_FOLDED_IN_POSTGRES_WAVE.length} declared folded suites, in declaration order`);
+  }
+  const phase3eOuterCount = phase3eSuites.reduce((sum, suite) => sum + (suite.steps?.length || 0), 0);
+  if (phase3eOuterCount !== PHASE3E_STEPS) fail(errors, `Phase 3E must own exactly ${PHASE3E_STEPS} outer assertions, counted ${phase3eOuterCount}`);
+  const customTemplateIds = new Set([
+    "issue-1857-phone-country-authority-tests",
+    "issue-1931-private-event-access",
+    "issue-2060-ari-reliability",
+    "issue-2117-offering-visibility-gate-tests",
+  ]);
+  for (const suite of phase3eSuites) {
+    const declared = SUITES_FOLDED_IN_POSTGRES_WAVE.find((item) => item.suite === suite.id);
+    const origin = (manifest.legacyOrigins || []).find((item) => `.github/workflows/${item.stem}.${item.extension}` === suite.origin);
+    if (suite.lifecycle !== PHASE3B_TERMINAL_LIFECYCLE || !isPrimarySuite(suite) || suite.setupProfile !== suite.class
+        || suite.class !== declared?.class || suite.origin !== `.github/workflows/${suite.id}.yml`
+        || fs.existsSync(path.join(root, suite.origin)) || suite.databaseName !== postgresDatabaseName(suite.id)) {
+      fail(errors, `${suite.id}: Phase 3E suite must be a terminal primary suite on its declared host, with a deterministic database and absent origin`);
+    }
+    if (!origin || origin.disposition !== PHASE3B_TERMINAL_LIFECYCLE || origin.migrationWave !== POSTGRES_WAVE
+        || JSON.stringify(origin.replacementSuites) !== JSON.stringify([suite.id]) || !/^[0-9a-f]{64}$/.test(String(origin.workflowMetadata?.sourceSha256))) {
+      fail(errors, `${suite.id}: Phase 3E legacy origin must retain its final digest and point at exactly one replacement suite`);
+    }
+    for (const pattern of origin?.routing?.originPaths || []) {
+      if (!suite.originPaths.includes(pattern)) {
+        fail(errors, `${suite.id}: Phase 3E prior routing path is omitted: ${pattern}`);
+      }
+    }
+    if (suite.steps?.some((step) => step.retry !== undefined || step.children !== undefined || typeof step.originJob !== "string" || !step.originJob)) {
+      fail(errors, `${suite.id}: Phase 3E keeps exact single commands with an origin-job owner and no retry or leaf fields`);
+    }
+    const hasTemplateReplay = suite.templateReplay !== undefined;
+    if (hasTemplateReplay !== customTemplateIds.has(suite.id)
+        || (hasTemplateReplay && (typeof suite.templateReplay?.run !== "string" || !suite.templateReplay.run
+          || typeof suite.templateReplay?.originJob !== "string" || !suite.templateReplay.originJob
+          || phase3eSuites.filter((candidate) => candidate.class === suite.class).length !== 1))) {
+      fail(errors, `${suite.id}: custom migration replay ownership must equal the reviewed dedicated-host suites`);
+    }
+    const dualDatabase = suite.id === "issue-1985-ari-task-state";
+    const expectedVaultless = postgresAdditionalDatabaseName(suite.id, "vaultless");
+    if (dualDatabase !== (suite.additionalDatabases !== undefined)
+        || dualDatabase !== (suite.portDatabaseAliases !== undefined)
+        || (dualDatabase && (JSON.stringify(suite.additionalDatabases) !== JSON.stringify({ vaultless: expectedVaultless })
+          || JSON.stringify(suite.portDatabaseAliases) !== JSON.stringify({ "5433": "vaultless" })))) {
+      fail(errors, `${suite.id}: only #1985 may own the reviewed vaultless template copy and 5433 compatibility alias`);
+    }
+  }
+  const phase3eInheritedEnv = phase3eSuites.filter((suite) => suite.envNames?.length)
+    .map((suite) => [suite.id, suite.envNames]);
+  if (JSON.stringify(phase3eInheritedEnv) !== JSON.stringify([
+    ["issue-2117-offering-visibility-gate-tests", ["BASE_SHA"]],
+    ["issue-1403-listing-insights-tests", ["ISSUE_1403_BASE_REF"]],
+  ])) fail(errors, "Phase 3E inherited PR-base environment must have exactly the reviewed #2117 and #1403 owners");
+  const expectedPhase3eWave = { suiteCount: phase3eSuites.length, outerCommandCount: phase3eOuterCount,
+    hostCount: PHASE3E_HOSTS.length, migrationReplayCountPerHost: 1, lifecycle: PHASE3B_TERMINAL_LIFECYCLE };
+  if (JSON.stringify(manifest.migrationWaves?.[POSTGRES_WAVE]) !== JSON.stringify(expectedPhase3eWave)) {
+    fail(errors, "Phase 3E wave count/replay contract drifted");
+  }
+  const phase3eDigest = phase3eContractDigest(manifest);
+  if (manifest.phase3eContractSha256 !== LOCKED_PHASE3E_CONTRACT_SHA256 || phase3eDigest !== LOCKED_PHASE3E_CONTRACT_SHA256) {
+    fail(errors, `Phase 3E exact host/runtime/database/routing/command/workflow contract drifted (computed ${phase3eDigest})`);
+  }
+  const phase3eSuiteProviderCandidates = new Set(phase3eSuites.map((suite) => `${suite.id}.yml`));
+  const phase3eProviderRecords = (manifest.workflowProviders || []).filter((item) => phase3eSuiteProviderCandidates.has(item.workflow));
+  const phase3eProviderNames = new Set(phase3eProviderRecords.map((item) => item.workflow));
+  if (phase3eProviderRecords.some((item) => item.transition !== "batched-provider")) {
+    fail(errors, "Phase 3E provider records must transition to batched-provider when their wrappers are removed");
+  }
   const leafRegistry = manifest.phase3bLeafCapabilities;
   const leaves = leafRegistry?.leaves || [];
   if (leafRegistry?.schemaVersion !== 1 || leafRegistry?.expectedLeaves !== 40 || leaves.length !== 40
@@ -2840,7 +3060,9 @@ function validateRegistryInTrackedFilesScope(
     "ota-business-node20-19-install":1, "root-node20-yaml-no-save":1,
     // [#3643] The Phase 3D hosts carry exactly the suites folded onto them.
     ...Object.fromEntries(PHASE3D_HOSTS.map((host) => [host.class,
-      SUITES_FOLDED_SINCE_SEAL.filter((item) => item.class === host.class).length])) };
+      SUITES_FOLDED_SINCE_SEAL.filter((item) => item.class === host.class).length])),
+    ...Object.fromEntries(PHASE3E_HOSTS.map((host) => [host.class,
+      SUITES_FOLDED_IN_POSTGRES_WAVE.filter((item) => item.class === host.class).length])) };
   if (JSON.stringify(Object.entries(bootstrapPrimaryVector).sort()) !== JSON.stringify(Object.entries(expectedPrimaryVector).sort())
       || Object.values(bootstrapPrimaryVector).reduce((sum, count) => sum + count, 0) !== EXPECTED_PRIMARY_HOSTS) fail(errors, `primary lane must retain exactly the frozen ${SEALED_PRIMARY_HOSTS}-suite host vector plus ${SUITES_ADDED_SINCE_SEAL.length} declared addition(s) and ${SUITES_FOLDED_SINCE_SEAL.length} Phase 3D suite(s)`);
   const localPrimaryVector = Object.fromEntries((manifest.classes || []).map((klass) => [klass,
@@ -2863,9 +3085,10 @@ function validateRegistryInTrackedFilesScope(
   }
   // [#3643] Phase 3D adds exactly its declared hosts, each one matrix row and one
   // execution class; the sealed 14 / 29 are otherwise unchanged.
-  if (manifest.executionClasses?.length !== 29 + PHASE3D_HOSTS.length || manifest.classes?.length !== 14 + PHASE3D_HOSTS.length
-      || PHASE3D_HOSTS.some((host) => !manifest.classes?.includes(host.class) || !manifest.executionClasses?.includes(host.class))) {
-    fail(errors, `topology must remain 14 matrix hosts / 29 execution classes plus the ${PHASE3D_HOSTS.length} declared Phase 3D host(s)`);
+  const postSealHosts = [...PHASE3D_HOSTS, ...PHASE3E_HOSTS];
+  if (manifest.executionClasses?.length !== 29 + postSealHosts.length || manifest.classes?.length !== 14 + postSealHosts.length
+      || postSealHosts.some((host) => !manifest.classes?.includes(host.class) || !manifest.executionClasses?.includes(host.class))) {
+    fail(errors, `topology must remain 14 matrix hosts / 29 execution classes plus the ${postSealHosts.length} declared post-seal host(s)`);
   }
   const waveContract = manifest.migrationWaves?.[PHASE3B_WAVE];
   // [#2438 SC-13] Exactly two accepted forms — the shadow contract and the
@@ -2998,123 +3221,7 @@ function validateRegistryInTrackedFilesScope(
   for (const key of legacyKeys) if (!expectedOriginKeys.has(key)) fail(errors, `stale or invented origin in registry: ${key}`);
 
   const discoveredProviders = workflowProviders ?? discoverWorkflowProviders(root);
-  if (workflowProviders == null) {
-    let referenceNormalizedProviders = discoveredProviders;
-    try {
-      referenceNormalizedProviders = normalizeProviderReferenceFilesForSeal(discoveredProviders);
-    } catch (error) {
-      fail(errors, `provider reference delta normalization failed: ${error.message}`);
-    }
-    // [#2591] Subtract the declared additions before the seal is computed. Each
-    // must be PRESENT and BYTE-EQUAL to its declaration; anything else is RED.
-    const declaredAdditions = new Map(PROVIDERS_ADDED_SINCE_SEAL.map((item) => [item.workflow, item]));
-    const declaredSeen = new Set();
-    const sealedDiscovery = [];
-    for (const item of referenceNormalizedProviders) {
-      const declared = declaredAdditions.get(item.workflow);
-      if (!declared) { sealedDiscovery.push(item); continue; }
-      declaredSeen.add(item.workflow);
-      if (JSON.stringify(item.referenceFiles) !== JSON.stringify([...declared.referenceFiles])) {
-        fail(errors, `declared provider addition ${declared.workflow} (#${declared.issue}) has drifted: discovery reports ${JSON.stringify(item.referenceFiles)}, the declaration in PROVIDERS_ADDED_SINCE_SEAL says ${JSON.stringify([...declared.referenceFiles])}. The seal subtracts declared additions by exact content, never by name.`);
-      }
-    }
-    for (const declared of PROVIDERS_ADDED_SINCE_SEAL) {
-      if (declaredSeen.has(declared.workflow)) continue;
-      fail(errors, `declared provider addition ${declared.workflow} (#${declared.issue}) was NOT FOUND in discovery. Either the workflow or the sources that reference it are gone, or discovery is being served from a cache — a blind memo reporting the pre-addition world looks exactly like this, and that is why the seal subtracts a declared set instead of being re-frozen.`);
-    }
-    const discoveryDigest = crypto.createHash("sha256").update(JSON.stringify(sealedDiscovery)).digest("hex");
-    const phase3bProviders = sealedDiscovery.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow));
-    const phase3bDigest = crypto.createHash("sha256").update(JSON.stringify(phase3bProviders)).digest("hex");
-    // [#2438 SC-13] The authority expectation follows the wave's own atomic
-    // lifecycle, and there is exactly ONE frozen seal on both sides of it:
-    // LOCKED_PROVIDER_DISCOVERY_SHA256, the 73-record shadow authority.
-    //
-    // At SHADOW the twelve wrappers are live, so discovery must reproduce that
-    // seal directly and its Phase 3B subset must be the frozen six.
-    //
-    // At TERMINAL the twelve wrappers are deleted, so discovery can no longer
-    // see the six Phase 3B records at all. There is deliberately NO frozen
-    // terminal digest: a second literal would be a constant nobody can
-    // re-derive, and locking one is the fragility this contract already
-    // rejected elsewhere. Instead the shadow authority is RECONSTRUCTED at
-    // runtime — what terminal discovery still sees, plus the six records the
-    // registry carries for the deleted wrappers, re-sorted exactly as discovery
-    // sorts — and that reconstruction is checked against the one frozen seal.
-    // Deleting the twelve wrappers is the only way discovery can change here,
-    // because .github/workflows/** is excluded from the scan, so no other
-    // record's referenceFiles can move; if anything else drifted, the
-    // reconstruction cannot hash back to the seal and this fails closed.
-    //
-    // [#2439 SC-18.2(6)] Phase 3C extends the SAME reconstruction, one wave
-    // more. Its seventeen wrappers carry SEVEN of these records, so terminal
-    // discovery drops 67 -> 60 — MEASURED here from the tree, never predicted
-    // and never pinned. `workflowNames` above is read from the live directory,
-    // so once a wrapper file is gone no source text anywhere can put its record
-    // back; the seven are re-added from the registry exactly as the six Phase 3B
-    // ones are, and the union still has to hash to the single frozen
-    // 73-record shadow authority. There is still exactly ONE seal in this file.
-    if (phase3bTerminal) {
-      if (phase3bProviders.length !== 0) {
-        fail(errors, `Phase 3B provider authority drifted: terminal wrappers are deleted and must contribute no provider record, got ${phase3bProviders.length}`);
-      }
-      const phase3cDiscoveredProviders = sealedDiscovery.filter((item) => PHASE3C_PROVIDER_NAMES.has(item.workflow));
-      const expectedPhase3cDiscovered = phase3cTerminal ? 0 : PHASE3C_PROVIDER_NAMES.size;
-      if (phase3cDiscoveredProviders.length !== expectedPhase3cDiscovered) {
-        fail(errors, `Phase 3C provider authority drifted: expected ${expectedPhase3cDiscovered} discovered provider records at this lifecycle, got ${phase3cDiscoveredProviders.length}`);
-      }
-      // [#2591] The SAME reconstruction, one mechanism more — and this one is a
-      // REMOVAL, the mirror of PROVIDERS_ADDED_SINCE_SEAL. Deleting the nine
-      // Postgres wrappers drops the two records that #1172 and #1840 still
-      // contributed (their re-pointed tests name both the old wrapper and the new
-      // capability workflow, and `workflowNames` is read from the live directory,
-      // so the record dies with the file). MEASURED from the tree, 60 -> 58.
-      //
-      // The seal is NOT re-frozen. The two records are carried from the registry
-      // exactly as Phase 3B's six and Phase 3C's seven are, and the union still
-      // has to hash to the one frozen 73-record shadow authority. Carrying them
-      // cannot launder a change: the content must be byte-identical to the sealed
-      // world or the digest moves, and the disposition branch above has already
-      // proved each one's wrapper is absent and its provider exists. There is
-      // still exactly ONE seal in this file.
-      const consolidatedProviderNames = new Set(
-        (manifest.workflowProviders || [])
-          .filter((item) => item.transition === "consolidated-provider")
-          .map((item) => item.workflow),
-      );
-      // [#3643] Phase 3D's four records join the carried set on the same terms:
-      // their wrappers are deleted, so discovery drops them, and the registry
-      // carries them byte-identical so the union still hashes to the one seal.
-      const carriedNames = new Set([
-        ...PHASE3B_PROVIDER_NAMES,
-        ...(phase3cTerminal ? PHASE3C_PROVIDER_NAMES : []),
-        ...consolidatedProviderNames,
-        ...PHASE3D_PROVIDER_NAMES,
-      ]);
-      const carriedPhase3bProviders = (manifest.workflowProviders || [])
-        .filter((item) => carriedNames.has(item.workflow))
-        .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }));
-      const reconstructedShadow = [...sealedDiscovery, ...carriedPhase3bProviders]
-        .sort((a, b) => a.workflow.localeCompare(b.workflow));
-      const reconstructedDigest = crypto.createHash("sha256").update(JSON.stringify(reconstructedShadow)).digest("hex");
-      if (carriedPhase3bProviders.length !== carriedNames.size
-          || sealedDiscovery.length !== 73 - carriedNames.size
-          || reconstructedShadow.length !== 73
-          || reconstructedDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
-        fail(errors, `workflow provider authority drifted: terminal discovery plus the ${carriedPhase3bProviders.length} carried records must reconstruct the frozen 73/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${reconstructedShadow.length}/${reconstructedDigest} from ${sealedDiscovery.length} discovered (${discoveredProviders.length} before subtracting ${PROVIDERS_ADDED_SINCE_SEAL.length} declared addition(s))`);
-      }
-    } else {
-      if (sealedDiscovery.length !== 73 || discoveryDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
-        fail(errors, `workflow provider authority drifted: expected 73/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${sealedDiscovery.length}/${discoveryDigest}`);
-      }
-      if (phase3bProviders.length !== 6 || phase3bDigest !== LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256) {
-        fail(errors, `Phase 3B provider authority drifted: expected 6/${LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256}, got ${phase3bProviders.length}/${phase3bDigest}`);
-      }
-    }
-  }
   const registeredProviders = manifest.workflowProviders || [];
-  // [#2591] DERIVED from the one declared set, never hand-typed alongside it.
-  const expectedProviderCount = 91 + PROVIDERS_ADDED_SINCE_SEAL.length;
-  if (!Array.isArray(registeredProviders) || registeredProviders.length !== expectedProviderCount) fail(errors, `workflowProviders must contain exactly the amended 91 providers plus ${PROVIDERS_ADDED_SINCE_SEAL.length} declared addition(s) = ${expectedProviderCount}`);
   const providerKeys = new Set();
   const registeredByName = new Map();
   for (const item of registeredProviders) {

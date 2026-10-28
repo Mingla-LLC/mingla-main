@@ -45,7 +45,8 @@ const BRAND_ID = "733bc470-45e1-4684-8896-acd7e26074ff";
 // The brand's real site, as `get_brand_site` reported it at 10:46:37.
 const REAL_SITE_ID = "90f19f28-42e2-4eb9-b88b-02829bfcb045";
 // The About PAGE's id, as `get_site_page` reported it at 10:47:27. This is the
-// value the model then handed to propose_site_content_update as `site_id`.
+// value the model then handed to propose_site_content_update as `site_id`
+// (#2829 W9b: the typed successor of that draft edit is propose_site_copy).
 const PAGE_ID = "044ac3b7-913d-4b6b-bcb4-e7c8c3b68837";
 const OPERATION_ID = "7f88befc-661b-48ff-9797-60881e6c22b8";
 
@@ -174,6 +175,13 @@ async function withFixture<T>(
         authorized: true,
       });
     }
+    // #2829 W9b — designer edits also read the brand's own words (object read).
+    if (path === "/rest/v1/rpc/brand_site_offerings_feed") {
+      return Response.json({ offerings: [] });
+    }
+    if (path === "/rest/v1/brands" && (request.headers.get("accept") ?? "").includes("vnd.pgrst.object")) {
+      return Response.json({ id: BRAND_ID, name: "gögi", description: null, city: "Lagos" });
+    }
     if (path === "/rest/v1/brands") {
       return Response.json([{
         id: BRAND_ID,
@@ -228,16 +236,15 @@ function proposalArgs(siteId: string): Json {
   return {
     brand_id: BRAND_ID,
     site_id: siteId,
-    page_role: "about",
+    page_path: "about",
     expected_revision: "5",
-    change_summary: "Update SEO description on the About page",
-    changes: {
-      seo: {
-        title: "About gögi — a 24/7 food house in Lekki",
-        description:
-          "Open 24 hours in Lagos for burgers, rice bowls, shawarma, smoothies and cocktails.",
-      },
-    },
+    edits: [{
+      block_index: 0,
+      field: "heading",
+      value: "A food house in Lekki for burgers, rice bowls and cocktails",
+    }],
+    why: "The owner described the menu this way.",
+    cites: [{ kind: "owner_words", quote: "burgers, rice bowls, shawarma, smoothies and cocktails" }],
   };
 }
 
@@ -248,7 +255,7 @@ Deno.test({
   sanitizeResources: false,
   fn: async () => {
     await withFixture({}, async (client, recorded) => {
-      const result = await tool("propose_site_content_update").executor(
+      const result = await tool("propose_site_copy").executor(
         proposalArgs(PAGE_ID),
         client,
         USER_ID,
@@ -272,7 +279,7 @@ Deno.test({
       // not in the route, not in the envelope, not in the args the CMS reads.
       assertEquals(recorded.cms.length, 1);
       assertEquals(recorded.cms[0], {
-        action: "propose_site_content_update",
+        action: "propose_site_copy",
         siteIdInRoute: REAL_SITE_ID,
         siteIdInPayload: REAL_SITE_ID,
         siteIdInArgs: REAL_SITE_ID,
@@ -310,7 +317,7 @@ Deno.test({
   sanitizeResources: false,
   fn: async () => {
     await withFixture({}, async (client, recorded) => {
-      const result = await tool("propose_site_content_update").executor(
+      const result = await tool("propose_site_copy").executor(
         proposalArgs(REAL_SITE_ID),
         client,
         USER_ID,

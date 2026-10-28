@@ -335,6 +335,9 @@ const BOUNDARY: Record<string, () => unknown> = {
   "@mingla/offering-rendering/tripInstallmentCapability": () => ({
     tripInstallmentsSupported: () => false,
   }),
+  useTripInstallmentCapability: () => ({
+    useTripInstallmentCapability: () => ({ data: false }),
+  }),
   // #3645 — the bank-setup return target is pure and supplied REAL.
   bankSetupReturn: () => jest.requireActual("../../utils/bankSetupReturn"),
   // #3645 — pure, so it is supplied REAL: the order of "save, then publish".

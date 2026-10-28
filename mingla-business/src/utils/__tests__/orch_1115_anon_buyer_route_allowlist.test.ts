@@ -244,7 +244,7 @@ describe("ORCH-1115 T-8 (regression) — ORCH-1103 '/' loop guard intact", () =>
 });
 
 describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web + native both consult it", () => {
-  test("PUBLIC_BUYER_ROUTE_PREFIXES contains exactly the 12 spec'd prefixes", () => {
+  test("PUBLIC_BUYER_ROUTE_PREFIXES contains the complete reviewed prefix set", () => {
     expect([...PUBLIC_BUYER_ROUTE_PREFIXES]).toEqual([
       "/e/",
       "/t/",
@@ -260,6 +260,8 @@ describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web 
       "/attendance/claim/",
       // #4111 — the guest enquiry thread (/m/{token}) is anon by design.
       "/m/",
+      // #3645 — token-authenticated instalment pay/approve page.
+      "/pay/",
     ]);
   });
 

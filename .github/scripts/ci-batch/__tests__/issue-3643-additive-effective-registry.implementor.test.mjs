@@ -133,6 +133,11 @@ function addDetachedWorktree(label) {
 
 test("a synthetic additive suite passes the full production loader, validator, runner and selector path", () => {
   const root = addDetachedWorktree("full-validator");
+  const manifestPath = path.join(root, path.relative(ROOT, BOOTSTRAP_PATH));
+  const before = trustedRegistryViews(loadEffectiveManifest({
+    root, manifestPath, expectedSha: BOOTSTRAP_SHA256, discover: true,
+  }));
+  assert.ok(before);
   const declaration = descriptor();
   write(root, declaration.value.suite.expectedFiles[0], [
     'import test from "node:test";',
@@ -143,7 +148,6 @@ test("a synthetic additive suite passes the full production loader, validator, r
   writeJson(root, declaration.descriptorPath, declaration.value);
   execFileSync("git", ["add", declaration.descriptorPath, declaration.value.suite.expectedFiles[0]], { cwd: root });
 
-  const manifestPath = path.join(root, path.relative(ROOT, BOOTSTRAP_PATH));
   const { manifest, errors } = loadAndValidate(manifestPath, {
     root,
     expectedSha: BOOTSTRAP_SHA256,
@@ -153,13 +157,9 @@ test("a synthetic additive suite passes the full production loader, validator, r
 
   const views = trustedRegistryViews(manifest);
   assert.ok(views);
-  // [#3643] Phase 3D folded 20 suites / 93 commands into the bootstrap; it adds
-  // no origin, so legacyOrigins stays 201.
-  assert.equal(views.rawBootstrap.suites.length, 105);
-  assert.equal(views.patchedBootstrap.suites.length, 105);
-  assert.equal(views.rawBootstrap.commandCapabilities.commands.length, 334);
-  assert.equal(views.patchedBootstrap.commandCapabilities.commands.length, 334);
-  assert.equal(views.patchedBootstrap.legacyOrigins.length, 201);
+  // Adding a descriptor must leave both trusted bootstrap views unchanged.
+  assert.deepEqual(views.rawBootstrap, before.rawBootstrap);
+  assert.deepEqual(views.patchedBootstrap, before.patchedBootstrap);
   // [TEST-MOD-APPROVED #3682] Effective totals derive from the sealed
   // projection plus every trusted local descriptor, including this fixture.
   const localSuites = manifest.suites.filter((suite) => suite.localDescriptor);

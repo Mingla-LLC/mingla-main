@@ -5475,10 +5475,25 @@ const chargeInstallmentNow = writeTool(
     if (!isUuid(args.installment_id)) {
       throw new ToolError("INVALID_ARGS", "installment_id must be a uuid");
     }
-    return await invokeFn(client, "manual-charge-installment", {
+    const result = await invokeFn(client, "manual-charge-installment", {
       installmentId: args.installment_id,
       atRiskOverride: args.at_risk_override === true,
-    });
+    }) as Record<string, unknown>;
+    if (result.outcome === "pay_link_sent") {
+      return {
+        ...result,
+        message:
+          "No card on file for automatic charging — I sent the buyer a secure pay link.",
+      };
+    }
+    if (result.outcome === "approval_required") {
+      return {
+        ...result,
+        message:
+          "The buyer's bank asked them to approve; I sent them an approve link.",
+      };
+    }
+    return result;
   },
   "CHARGE",
 );
@@ -5567,7 +5582,8 @@ const listTripInstallments = writeTool(
     const { data, error } = await client
       .from("order_installments")
       .select(
-        `id, order_id, status, due_at, amount_cents, currency, ordinal,
+        `id, order_id, status, due_at, amount_cents, buyer_total_cents, currency, ordinal,
+         provider, collection_method, buyer_action,
          orders!inner ( event_id )`,
       )
       .eq("orders.event_id", eventId)
@@ -5591,9 +5607,17 @@ const listTripInstallments = writeTool(
         order_id: row.order_id,
         status: row.status,
         due_at: row.due_at,
-        amount_cents: row.amount_cents,
+        amount_cents: row.buyer_total_cents ?? row.amount_cents,
         currency: row.currency ?? null,
         ordinal: row.ordinal ?? null,
+        collection: row.collection_method === "auto_card"
+          ? "automatic card"
+          : "pay link",
+        waiting_for: row.buyer_action === "approval_required"
+          ? "buyer approval"
+          : row.buyer_action === "pay_link_sent"
+          ? "buyer payment"
+          : null,
       }));
     return { event_id: eventId, brand_id: brandId, installments };
   },

@@ -119,6 +119,16 @@ import {
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
 import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
+// Issue #3645 — each later Paystack payment priced at checkout by the deposit's
+// engine, shown to the buyer, persisted on the session and charged unchanged.
+import {
+  computePaystackInstallmentCharges,
+  installmentChargePlanJson,
+  installmentChargeScheduleEnvelope,
+  type PaystackInstallmentCharge,
+  PaystackInstallmentPricingError,
+  scheduledInstallmentsFrom,
+} from "../_shared/installments/paystackInstallmentPricing.ts";
 // #3645 — event_type → buyer-web surface path (trip / experience / event),
 // shared by the Paystack callback_url and the Stripe success/cancel URLs.
 import { buyerWebSurfacePath } from "./buyerWebSurfacePath.ts";
@@ -1675,6 +1685,38 @@ export const createTicketCheckoutCreateHandler = (
         }
       }
 
+      // Issue #3645 — a Paystack plan shows each later payment as its all-in
+      // naira amount (Stripe envelopes are unchanged: the field is absent).
+      let paystackPlanFields: Record<string, unknown> = {};
+      if (provider.provider === "paystack") {
+        const later = scheduledInstallmentsFrom(installmentQuote);
+        if (later !== null) {
+          let charges: PaystackInstallmentCharge[];
+          try {
+            charges = computePaystackInstallmentCharges({
+              installments: later,
+              switches,
+              effectiveTakeRateBps: pricing.effective_take_rate_bps,
+              takeRateSource: pricing.take_rate_source,
+              vatRateBps: pricing.vat_rate_bps ?? 0,
+            });
+          } catch (error) {
+            if (error instanceof PaystackInstallmentPricingError) {
+              throw new Error(error.code);
+            }
+            throw error;
+          }
+          paystackPlanFields = {
+            installmentChargeSchedule: installmentChargeScheduleEnvelope(
+              charges,
+              new Map(later.map((l) => [l.ordinal, l.dueAt])),
+            ),
+            planTotalBuyerCents: buyerTotalCents +
+              charges.reduce((sum, c) => sum + c.buyerTotalCents, 0),
+          };
+        }
+      }
+
       return {
         kind: "quote",
         ...quote,
@@ -1686,6 +1728,7 @@ export const createTicketCheckoutCreateHandler = (
         subtotalCents: dueTodayNetCents,
         totalCents: buyerTotalCents,
         referralAttribution,
+        ...paystackPlanFields,
       };
     };
 
@@ -1698,6 +1741,9 @@ export const createTicketCheckoutCreateHandler = (
         return jsonResponse(await buildTicketQuoteEnvelope(quote));
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
+        if (detail === "installment_amount_below_minimum") {
+          return jsonResponse({ error: "installment_amount_below_minimum" }, 409);
+        }
         if (detail.includes("discount_code_invalid")) {
           return jsonResponse(
             { error: "invalid_request", detail: "discount_code_invalid" },
@@ -3437,6 +3483,31 @@ export const createTicketCheckoutCreateHandler = (
         { shareMinor: referralShareOnCurrentPayment },
       );
 
+      // Issue #3645 — a payment plan: the deposit above is charged now (any
+      // method); each later payment's all-in price is locked here, before any
+      // provider claim, and persisted with the reference below.
+      let psInstallmentCharges: PaystackInstallmentCharge[] | null = null;
+      let psPlanDueAt = new Map<number, string>();
+      if (isInstallmentPlan) {
+        try {
+          const later = scheduledInstallmentsFrom(session.installmentSchedule);
+          if (later === null) throw new PaystackInstallmentPricingError("installment_amount_invalid");
+          psPlanDueAt = new Map(later.map((l) => [l.ordinal, l.dueAt]));
+          psInstallmentCharges = computePaystackInstallmentCharges({
+            installments: later,
+            switches: psSwitches,
+            effectiveTakeRateBps: pricing.effective_take_rate_bps,
+            takeRateSource: pricing.take_rate_source,
+            vatRateBps: pricing.vat_rate_bps ?? 0,
+          });
+        } catch (error) {
+          if (error instanceof PaystackInstallmentPricingError) {
+            return refuse({ error: error.code }, 409);
+          }
+          throw error;
+        }
+      }
+
       // #1930: one deterministic Paystack identity for the logical checkout.
       // Network ambiguity never rotates this reference to escape provider truth.
       const psRequestFingerprint = await sha256Hex(JSON.stringify({
@@ -3449,6 +3520,16 @@ export const createTicketCheckoutCreateHandler = (
         currency: psCurrency,
         applicationFee: psApplicationFeeCents,
         flow: "paystack_redirect",
+        // Issue #3645 — plan terms are part of the logical checkout identity.
+        ...(psInstallmentCharges !== null
+          ? {
+            installmentCharges: psInstallmentCharges.map((c) => [
+              c.ordinal,
+              c.buyerTotalCents,
+              c.applicationFeeCents,
+            ]),
+          }
+          : {}),
       }));
       let psClaim: TicketAttemptClaim;
       try {
@@ -3480,6 +3561,10 @@ export const createTicketCheckoutCreateHandler = (
           stripe_application_fee_amount_cents: psApplicationFeeCents,
           total_cents: psBuyerTotalCents, // the all-in NGN total the buyer is charged (kobo)
           status: "awaiting_web_redirect",
+          // Issue #3645 — the locked price of every later payment.
+          ...(psInstallmentCharges !== null
+            ? { installment_charge_plan: installmentChargePlanJson(psInstallmentCharges) }
+            : {}),
           updated_at: new Date().toISOString(),
         })
         .eq("id", checkoutSessionId);
@@ -3584,6 +3669,13 @@ export const createTicketCheckoutCreateHandler = (
             ...(orderedEventDateIds.length > 1
               ? { mingla_event_date_count: String(orderedEventDateIds.length) }
               : {}),
+            // Issue #3645 — a payment-plan deposit.
+            ...(psInstallmentCharges !== null
+              ? {
+                mingla_installment_plan_root: "true",
+                mingla_installment_count: String(psInstallmentCharges.length),
+              }
+              : {}),
           },
           // #1178 [ng-split-removal] — split to the organiser subaccount ONLY for
           // an UNSTAMPED brand that has a subaccount (pass it + the flat Mingla
@@ -3650,6 +3742,15 @@ export const createTicketCheckoutCreateHandler = (
         totalCents: psBuyerTotalCents,
         currency: "NGN",
         pricingBreakdown: psBreakdown,
+        // Issue #3645 — the locked amounts of the later payments.
+        ...(psInstallmentCharges !== null
+          ? {
+            installmentChargeSchedule: installmentChargeScheduleEnvelope(
+              psInstallmentCharges,
+              psPlanDueAt,
+            ),
+          }
+          : {}),
       });
     }
     // ===================================================================

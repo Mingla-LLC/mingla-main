@@ -113,22 +113,6 @@ export const ALWAYS_ON = Object.freeze([
   // A8 DERIVES this set by computation and fails if it drifts, so occurrence #4
   // fails the build instead of a CI run.
   Object.freeze({
-    path: liveWorkflow("issue", "1614", "onconflict", "arbiter", "audit"),
-    kind: "pin-protected",
-    issue: "#1614",
-    pin: "regex",
-    pinnedBy: ".github/scripts/__tests__/issue-1614-onconflict-arbiter-audit.test.mjs",
-    reason: "asserts /pull_request:\\s*\\n\\s*push:/ over its own trigger block; a types: insertion splits that match",
-  }),
-  Object.freeze({
-    path: liveWorkflow("issue", "2393", "valid", "marketing", "test", "fixtures"),
-    kind: "pin-protected",
-    issue: "#2148",
-    pin: "digest",
-    pinnedBy: ".github/scripts/strict-grep/issue-2148-ci-node-wave-shadow.tester.test.mjs",
-    reason: "the wave-shadow tester banks a sha256 of this workflow's exact bytes",
-  }),
-  Object.freeze({
     path: liveWorkflow("issue", "679", "brand", "follows", "rls", "proof"),
     kind: "pin-protected",
     issue: "#2148",

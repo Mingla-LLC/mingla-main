@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/event-cancel-refund-fanout/__tests__/issue_3645_event_cancel_installments.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3645-pi-23-event-cancel-installments",
+  "profile": "deno-1.46-stripe"
+}

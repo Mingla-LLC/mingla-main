@@ -2,9 +2,9 @@
 /**
  * I-PROPOSED-MANUAL-INSTALLMENT-ACTION-VIA-SHARED-HELPER strict-grep gate.
  *
- * ORCH-0914: installment PaymentIntent creation must live only in
- * supabase/functions/_shared/installments/createInstallmentPI.ts. Cron and
- * manual charge endpoints are callers, not independent Stripe creators.
+ * ORCH-0914 / #3645: provider calls have exactly two owners — Stripe in
+ * createInstallmentPI.ts and Paystack in chargePaystackInstallment.ts. Cron
+ * and manual endpoints call chargeInstallment.ts, never either rail directly.
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -27,9 +27,18 @@ const OWNER_FILE = join(
 // pure check(...) so it is behavior-preserving AND self-testable.
 const OWNER_FILE_REL =
   "supabase/functions/_shared/installments/createInstallmentPI.ts";
+const PAYSTACK_OWNER_FILE_REL =
+  "supabase/functions/_shared/installments/chargePaystackInstallment.ts";
+const PAYSTACK_PRIMITIVE_FILE_REL = "supabase/functions/_shared/paystack.ts";
 
 const PI_CREATE_RE = /paymentIntents\.create\s*\(/;
 const INSTALLMENT_MARKER_RE = /mingla_installment_id/;
+const PAYSTACK_CHARGE_RE = /paystackChargeAuthorization\s*\(/;
+const SHARED_ROUTER_RE = /\bchargeInstallment\b/;
+const ENTRYPOINTS = new Set([
+  "supabase/functions/manual-charge-installment/index.ts",
+  "supabase/functions/process-scheduled-installments/index.ts",
+]);
 const CONTEXT_LINES = 24;
 
 let filesScanned = 0;
@@ -44,6 +53,16 @@ let violations = 0;
  */
 function check(fileEntries, failures) {
   for (const { rel, content } of fileEntries) {
+    if (ENTRYPOINTS.has(rel) && !SHARED_ROUTER_RE.test(content)) {
+      failures.push({ rel, line: 1, reason: "entrypoint does not call chargeInstallment" });
+    }
+    if (
+      rel !== PAYSTACK_OWNER_FILE_REL &&
+      rel !== PAYSTACK_PRIMITIVE_FILE_REL &&
+      PAYSTACK_CHARGE_RE.test(content)
+    ) {
+      failures.push({ rel, line: 1, reason: "Paystack installment charge outside its owner" });
+    }
     if (rel === OWNER_FILE_REL) continue;
     const lines = content.split("\n");
     for (let idx = 0; idx < lines.length; idx += 1) {
@@ -52,7 +71,7 @@ function check(fileEntries, failures) {
       const end = Math.min(lines.length, idx + CONTEXT_LINES);
       const context = lines.slice(start, end).join("\n");
       if (!INSTALLMENT_MARKER_RE.test(context)) continue;
-      failures.push({ rel, line: idx + 1 });
+      failures.push({ rel, line: idx + 1, reason: "Stripe installment PI outside its owner" });
     }
   }
 }
@@ -79,6 +98,18 @@ if (process.argv.includes("--self-test")) {
       rel: "supabase/functions/ticket-checkout-create/index.ts",
       content: "const pi = await stripe.paymentIntents.create({ amount });\n",
     },
+    {
+      rel: PAYSTACK_OWNER_FILE_REL,
+      content: "await paystackChargeAuthorization(input);\n",
+    },
+    {
+      rel: "supabase/functions/manual-charge-installment/index.ts",
+      content: "await chargeInstallment({ installmentId });\n",
+    },
+    {
+      rel: "supabase/functions/process-scheduled-installments/index.ts",
+      content: "await chargeInstallment({ installmentId });\n",
+    },
   ]);
   if (f.length) self.push("GOOD (owner installment PI + non-owner plain PI) wrongly flagged");
 
@@ -103,13 +134,21 @@ if (process.argv.includes("--self-test")) {
   ]);
   if (f.length === 0) self.push("BAD2 (cron endpoint installment PI) not flagged");
 
+  f = run([
+    {
+      rel: "supabase/functions/manual-charge-installment/index.ts",
+      content: "await paystackChargeAuthorization({});\n",
+    },
+  ]);
+  if (f.length === 0) self.push("BAD3 (manual Paystack charge bypass) not flagged");
+
   if (self.length) {
     console.error("I-PROPOSED-MANUAL-INSTALLMENT-ACTION-VIA-SHARED-HELPER self-test FAIL:");
     self.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
   console.log(
-    "I-PROPOSED-MANUAL-INSTALLMENT-ACTION-VIA-SHARED-HELPER self-test PASS (3/3 cases).",
+    "I-PROPOSED-MANUAL-INSTALLMENT-ACTION-VIA-SHARED-HELPER self-test PASS (4/4 cases).",
   );
   process.exit(0);
 }
@@ -153,7 +192,7 @@ check(fileEntries, failures);
 violations = failures.length;
 for (const v of failures) {
   console.error(
-    `✗ ${v.rel}:${v.line} — installment PaymentIntent.create must route through _shared/installments/createInstallmentPI.ts`,
+    `✗ ${v.rel}:${v.line} — ${v.reason}`,
   );
 }
 

@@ -30,9 +30,12 @@ export function TrackedLink({
     ) return;
     event.preventDefault();
     const target = new URL(href);
-    await sendSiteEvent(context, "cta_click", {
+    // #2829 W10 — a Book / offering link is a "book click" (its own count on
+    // the owner's Website overview); other calls to action stay cta_click.
+    await sendSiteEvent(context, ctaKind === "offering" ? "book_click" : "cta_click", {
       cta_kind: ctaKind,
       offering_id: offeringId,
+      page_path: window.location.pathname,
     });
     try {
       const response = await fetch("/api/attribution", {
@@ -54,5 +57,7 @@ export function TrackedLink({
     }
     window.location.assign(target.toString());
   };
-  return <a href={href} className={className} onClick={onClick}>{children}</a>;
+  // data-offering-id: the offering-view observer (SiteRuntimeClient) counts a
+  // card once it is seen; data-mingla-tracked: never also an outbound click.
+  return <a href={href} className={className} onClick={onClick} data-mingla-tracked="1" data-offering-id={ctaKind === "offering" ? offeringId : undefined}>{children}</a>;
 }

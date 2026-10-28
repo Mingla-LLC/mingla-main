@@ -97,11 +97,13 @@ describe("#2830 Studio native/web return", () => {
   );
 
   it("routes Website previews through the fixed handoff instead of an opaque redirect call", () => {
+    // #2829 W9r — the Website section's controller owns the handoff now.
     const route = fs.readFileSync(
-      path.resolve(__dirname, "../../../app/brand/[id]/website.tsx"),
+      path.resolve(__dirname, "../../components/sites/website/useWebsiteController.ts"),
       "utf8",
     );
-    expect(route).toContain("openStudioHandoff(grant.preview_url, surface");
+    // #2829 W2 — the same fixed handoff, opened at the chosen page.
+    expect(route).toContain("openStudioHandoff(previewUrlForPage(grant.preview_url, pagePath), surface");
     expect(route).toContain("openNative: WebBrowser.openAuthSessionAsync");
     expect(route).not.toMatch(
       /WebBrowser\.openAuthSessionAsync\s*\(\s*grant\.preview_url/,

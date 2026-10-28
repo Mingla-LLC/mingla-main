@@ -22,6 +22,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
+import { TripGuideEditor } from "./TripGuideEditor";
 
 export interface InclusionDraft {
   kind: "included" | "excluded";
@@ -42,6 +43,12 @@ export interface TripCreatorStep3InclusionsProps {
   editMode?: {
     totalConfirmedOrders: number;
   };
+  /**
+   * Issue #2829 W4 — the trip's id. When present, the "Before you go" trip
+   * guide editor (highlights, what to prepare, FAQs…) shows under the lists.
+   */
+  eventId?: string;
+  onShowToast?: (message: string) => void;
 }
 
 const INPUT_BORDER = "rgba(255, 255, 255, 0.12)";
@@ -51,6 +58,8 @@ export const TripCreatorStep3Inclusions: React.FC<TripCreatorStep3InclusionsProp
   items,
   onChange,
   disabled,
+  eventId,
+  onShowToast,
 }) => {
   const [includedDraft, setIncludedDraft] = useState<string>("");
   const [excludedDraft, setExcludedDraft] = useState<string>("");
@@ -194,6 +203,13 @@ export const TripCreatorStep3Inclusions: React.FC<TripCreatorStep3InclusionsProp
           </Pressable>
         </View>
       </View>
+      {eventId !== undefined ? (
+        <TripGuideEditor
+          eventId={eventId}
+          disabled={disabled}
+          onShowToast={onShowToast}
+        />
+      ) : null}
     </View>
   );
 };

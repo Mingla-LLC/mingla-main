@@ -137,6 +137,10 @@ async function withSitesFixture(
     if (url.pathname === "/rest/v1/rpc/brand_site_business_availability") {
       return Response.json(fixture.availability);
     }
+    // #2829 W9b — "websites are opening brand by brand" records the interest.
+    if (url.pathname === "/rest/v1/rpc/brand_site_record_interest") {
+      return Response.json({ recorded: true, entitled: false });
+    }
     recorded.unexpected.push(`${request.method} ${url.pathname}`);
     return Response.json({ message: "unexpected fixture request" }, {
       status: 599,
@@ -167,10 +171,15 @@ async function withSitesFixture(
   }
 }
 
+// #2829 W9b — the honest reply now travels with the answer, and the interest
+// is recorded for Mingla admins; a granted brand without a site can have Ari
+// create the draft (create_site_draft, brand admins and owners).
 const NOT_AVAILABLE = {
   website_state: "not_available",
   brand_id: BRAND_ID,
   can_create_from_chat: false,
+  reply: "Websites are opening brand by brand, and this brand doesn\u2019t have one yet. We\u2019ve noted that you asked.",
+  interest_recorded: true,
   setup_role: null,
   setup_screen: null,
 };
@@ -178,7 +187,8 @@ const NOT_AVAILABLE = {
 const NOT_SET_UP = {
   website_state: "not_set_up",
   brand_id: BRAND_ID,
-  can_create_from_chat: false,
+  can_create_from_chat: true,
+  create_tool: "create_site_draft",
   setup_role: "brand_admin_or_owner",
   setup_screen: {
     name: "Website",
@@ -204,6 +214,7 @@ Deno.test({
         assertEquals(recorded.controlRoutes, [
           `/v1/brands/${BRAND_ID}/site`,
           `/v1/brands/${BRAND_ID}/site-availability`,
+          `/v1/brands/${BRAND_ID}/site-interest`,
         ]);
         assertEquals(recorded.unavailableWarnings, []);
         assertEquals(recorded.unexpected, []);
@@ -329,30 +340,35 @@ Deno.test({
 });
 
 Deno.test({
-  name: "#3184 T-I5 prompt carries the four no-website rules verbatim",
+  name: "#3184 T-I5 prompt carries the no-website rules verbatim (#2829 W9b: Ari builds the draft for granted brands)",
   // Pure prompt read, but Supabase Auth timers started by the fixture tests
   // above (or by an earlier file in the same deno test run) can complete
   // while this test runs, which the op sanitizer would misreport as a leak.
   sanitizeOps: false,
   sanitizeResources: false,
   fn: () => {
-    assertEquals(PROMPT_VERSION, "v23"); // [TEST-MOD-APPROVED #3697] prompt bumped for Host Ads video launch
+    assertEquals(PROMPT_VERSION, "v25"); // #2829 W11 completes the website journey entrances
     const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
     for (
       const line of [
-        '- You cannot create, set up, or provision a website: no tool does that. Never offer to create or set up a website, never ask the user to confirm creating one, never describe a website as something you will build, and never use the "coming in a future update" phrase for websites.',
+        "- If someone asks to build a website before they have a brand, make creating the brand part zero: use the existing create_brand proposal and wait for their confirmation.",
         "- For any request to create, start, or set up a website, and for any question about a brand's website, call get_brand_site for that brand first and answer from its result.",
-        '- If get_brand_site returns website_state "not_set_up": say plainly that this brand has no website yet and that a brand admin or owner sets one up on the brand\'s Website screen (Brand profile → Website). Do not propose content, settings, media, previews, or publishing until a website exists.',
-        '- If get_brand_site returns website_state "not_available": say plainly that Mingla websites aren\'t available for this brand right now. Do not point to a Website screen, do not promise a date, and do not suggest a workaround.',
+        '- If get_brand_site returns website_state "not_available": give its reply ("Websites are opening brand by brand…") plainly. Do not point to a Website screen, do not promise a date, and do not suggest a workaround.',
+        '- If get_brand_site returns website_state "not_set_up": a brand admin or owner can have you build it.',
+        "Never approve the plan for the owner.",
+        '"Review my website" means a short audit, not a rewrite:',
+        "When a brand publishes an offering type that is not selected in its website plan, offer to add that offering page.",
+        "A tiny logo warning means show or ask the owner to preview it at header size on both light and dark parts of the draft",
       ]
     ) {
       assertStringIncludes(prompt, line);
     }
     const websiteRules = prompt.slice(prompt.indexOf("WEBSITE RULES:"));
     assert(
-      websiteRules.indexOf("- You cannot create, set up, or provision") <
-        websiteRules.indexOf("- Read the current page or settings revision"),
+      websiteRules.indexOf('- If get_brand_site returns website_state "not_available"') <
+        websiteRules.indexOf("- Read the current revision before proposing"),
       "no-website rules must sit ahead of the edit rules",
     );
+    assert(!websiteRules.includes("You cannot create, set up, or provision a website"), "the retired no-create rule is back");
   },
 });

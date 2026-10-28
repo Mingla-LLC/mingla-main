@@ -38,6 +38,7 @@ const FILES = {
   // #1984 — census pin (138→140). #3055 remains the byte-identity twin of
   // [TEST-MOD-APPROVED #3872] R1-R3 Discounts, referrals, and gig-script
   // tools (145→152).
+  // #2829 W9b Ari as the website designer: twelve website capabilities (152→164).
   // #1981 and stays pinned below; do not rewrite applied/history migrations.
   censusMigration:
     "supabase/migrations/20270824003697_issue_3697_ari_cert_capability_census.sql",
@@ -52,7 +53,7 @@ const FILES = {
   setDigestMigration:
     "supabase/migrations/20270610002060_issue_2060_ari_cert_requirements_set_digest_post_2830.sql",
   rollback: "docs/runbooks/ARI_RELIABILITY_ROLLBACK.md",
-  workflow: ".github/workflows/issue-2060-ari-reliability.yml",
+
   crossRuntimeGuard:
     "supabase/migrations/__tests__/issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql",
   independentVerdictGuard:
@@ -234,12 +235,12 @@ export function checkContract(fixture) {
   );
   assert.equal(
     fixture.ledger.capabilities.length,
-    152,
-    "canonical ledger must stay exactly 152 rows",
+    164,
+    "canonical ledger must stay exactly 164 rows",
   );
   assert.equal(
     new Set(fixture.ledger.capabilities.map((row) => row.id)).size,
-    152,
+    164,
     "capability IDs must be unique",
   );
   for (const row of fixture.ledger.capabilities) {
@@ -255,12 +256,12 @@ export function checkContract(fixture) {
 
   assert.equal(
     fixture.schema.properties.capabilities.minItems,
-    152,
+    164,
     "evidence schema row floor",
   );
   assert.equal(
     fixture.schema.properties.capabilities.maxItems,
-    152,
+    164,
     "evidence schema row ceiling",
   );
   assert.ok(
@@ -476,8 +477,8 @@ export function checkContract(fixture) {
   need(
     fixture.certifier,
     [
-      "ledger.capabilities.length !== 152",
-      "rows.length === 152",
+      "ledger.capabilities.length !== 164",
+      "rows.length === 164",
       "`ledger_not_certifiable:${planned.capability_id}",
       "`status_laundering:${planned.capability_id}",
       "verified_zero_residue === true",
@@ -601,26 +602,7 @@ export function checkContract(fixture) {
     ],
     "rollback runbook",
   );
-  need(
-    fixture.workflow,
-    [
-      "issue_2060_ari_reliability_foundation.test.ts",
-      "issue_2060_ari_certification_foundation.test.ts",
-      "certify-capabilities.issue2060.test.mjs",
-      "agentReliability.issue2060.test.ts",
-      "issue_2060_ari_envelope_wire.implementor.test.ts",
-      "agentChatService.issue2060.wire.test.ts",
-      "deno check supabase/functions/_shared/agentReliability.ts",
-      "npx tsc --noEmit --pretty false",
-      "issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql",
-      "issue_2060_ari_certification_independent_verdict.tester.pg17.test.sql",
-      "issue_2060_ari_certification_canonical_digest.implementor.pg17.test.sql",
-      "certify-capabilities.issue2060.canonical-digest.implementor.test.mjs",
-      "certify-capabilities.issue2060.unicode-boundary.tester.adversarial.test.mjs",
-      "issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql",
-    ],
-    "CI workflow",
-  );
+
   need(
     fixture.crossRuntimeGuard,
     [
@@ -722,7 +704,7 @@ function selfTest() {
     good,
     (x) => {
       x.certifier = x.certifier.replace(
-        "ledger.capabilities.length !== 152",
+        "ledger.capabilities.length !== 164",
         "false",
       );
     },
@@ -748,26 +730,7 @@ function selfTest() {
     },
     "forward rollback",
   );
-  bad(
-    good,
-    (x) => {
-      x.workflow = x.workflow.replaceAll(
-        "agentReliability.issue2060.test.ts",
-        "missing.test.ts",
-      );
-    },
-    "CI wiring",
-  );
-  bad(
-    good,
-    (x) => {
-      x.workflow = x.workflow.replaceAll(
-        "issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql",
-        "missing-cross-runtime.test.sql",
-      );
-    },
-    "cross-runtime CI wiring",
-  );
+
   bad(
     good,
     (x) => {
@@ -897,16 +860,7 @@ function selfTest() {
     },
     "set-digest helper removed",
   );
-  bad(
-    good,
-    (x) => {
-      x.workflow = x.workflow.replaceAll(
-        "issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql",
-        "missing-unicode-boundary.test.sql",
-      );
-    },
-    "Unicode boundary CI wiring",
-  );
+
   bad(
     good,
     (x) => {
@@ -1012,6 +966,6 @@ if (process.argv.includes("--self-test")) selfTest();
 else {
   checkContract(readLive());
   console.log(
-    "issue-2060 Ari reliability foundation: PASS (152 capabilities; #2060 history remains 116)",
+    "issue-2060 Ari reliability foundation: PASS (164 capabilities; #2060 history remains 116)",
   );
 }

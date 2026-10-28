@@ -32,8 +32,10 @@ describe("template coverage", () => {
   // [TEST-MOD-APPROVED #3720] Community/support adds three Host inbox types.
   // [TEST-MOD-APPROVED #3872] Discount expiry, threshold and budget alerts add
   // three Host inbox types to the same exhaustive catalog.
-  test("25 business types include payout, Community, support, Brand groups, and discounts", () => {
-    expect(TYPES).toHaveLength(25);
+  // [TEST-MOD-APPROVED #3645] Late and debt-withheld payout states lift the
+  // exhaustive catalog from 25 to 27.
+  test("27 business types include payout, Community, support, Brand groups, and discounts", () => {
+    expect(TYPES).toHaveLength(27);
     expect(isBusinessNotificationType("business.new_follower")).toBe(false);
     expect(isBusinessNotificationType("business.order_paid")).toBe(true);
     expect(isBusinessNotificationType("business.payout_waiting_for_bank")).toBe(

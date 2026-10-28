@@ -288,11 +288,12 @@ export function audit(base, plans = effectiveSuites()) {
     // [TEST-MOD-APPROVED #1982] revoke_brand_invitation; 125→126.
     // [TEST-MOD-APPROVED #3872] R1 Discounts, R2 referrals, and R3 gig
     // script drafting; 133→140.
-    if (parsed.audit?.registered_tool_count !== 140) {
-      failures.push("ledger audit registered_tool_count is not 140");
+    // #2829 W9b website designer tools; 140→152.
+    if (parsed.audit?.registered_tool_count !== 152) {
+      failures.push("ledger audit registered_tool_count is not 152");
     }
-    if (mapped.length !== 140 || new Set(mapped).size !== 140) {
-      failures.push("ledger mapped tool census is not 140 unique tools");
+    if (mapped.length !== 152 || new Set(mapped).size !== 152) {
+      failures.push("ledger mapped tool census is not 152 unique tools");
     }
     if (
       !mapped.includes("update_rsvp") ||

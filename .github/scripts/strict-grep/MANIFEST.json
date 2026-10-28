@@ -3529,7 +3529,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-1447-rsvp-admission.mjs",
       "kind": "file",
-      "enforcement": "external:issue-1447-rsvp-admission-tests.yml",
+      "enforcement": "ci-batch:issue-1447-rsvp-admission-tests",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -3731,7 +3731,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-1775-csv-contact-import.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "ci-batch:issue-1775-csv-contact-import-tests",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -4006,7 +4006,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-1931-private-event-access.mjs",
       "kind": "file",
-      "enforcement": "external:issue-1931-private-event-access.yml",
+      "enforcement": "ci-batch:issue-1931-private-event-access",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -4112,7 +4112,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-1972-ari-event-lifecycle.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "ci-batch:issue-1972-ari-event-lifecycle",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -4140,7 +4140,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-1974-ari-ticket-pricing.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "ci-batch:issue-1974-ari-ticket-pricing",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -4166,7 +4166,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-1985-business-typecheck.mjs",
       "kind": "file",
-      "enforcement": "external:issue-1985-ari-task-state.yml",
+      "enforcement": "ci-batch:issue-1985-ari-task-state",
       "invocation": "node",
       "modes": [
         "plain"
@@ -4262,7 +4262,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-2009-published-event-visibility.mjs",
       "kind": "file",
-      "enforcement": "external:issue-2009-published-event-visibility.yml",
+      "enforcement": "ci-batch:issue-2009-published-event-visibility",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -4302,7 +4302,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-2024-people-page-layout.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "ci-batch:issue-1774-people-page-tests",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -4921,7 +4921,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-2492-replay-skip-closure.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "ci-batch:issue-1931-private-event-access",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -4933,7 +4933,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-2492-replay-skip-closure.tester.test.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "ci-batch:issue-1931-private-event-access",
       "invocation": "node --test",
       "modes": [
         "plain"
@@ -5091,7 +5091,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-871-attendance-entitlement.mjs",
       "kind": "file",
-      "enforcement": "external:issue-871-attendance-entitlement-tests.yml",
+    "enforcement": "ci-batch:issue-871-attendance-entitlement-tests",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -9669,7 +9669,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs",
       "kind": "file",
-      "enforcement": "external:issue-871-attendance-entitlement-tests.yml",
+      "enforcement": "ci-batch:issue-871-attendance-entitlement-tests",
       "invocation": "node",
       "modes": ["self-test", "plain"],
       "selfTest": "wired",
@@ -9678,7 +9678,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs",
       "kind": "file",
-      "enforcement": "external:issue-871-attendance-entitlement-tests.yml",
+      "enforcement": "ci-batch:issue-871-attendance-entitlement-tests",
       "invocation": "node",
       "modes": ["self-test", "plain"],
       "selfTest": "wired",
@@ -9687,7 +9687,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+    "enforcement": "batch:A",
       "invocation": "node",
       "modes": ["self-test", "plain"],
       "selfTest": "wired",

@@ -78,6 +78,7 @@ import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Toast } from "../../../src/components/ui/Toast";
 import { TripPaymentChoice } from "../../../src/components/trip/TripPaymentChoice";
+import { InstallmentScheduleDisplay } from "../../../src/components/trip/InstallmentScheduleDisplay";
 import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 
 import {
@@ -226,11 +227,15 @@ function CheckoutTripPaymentScreenContent({
     ({ line }) => planChoiceByTier[line.ticketTypeId] === "installments",
   );
   const isUsingInstallments = installmentPlanLines.length > 0;
-  const dueTodayCents = quote?.dueTodayNetCents ?? 0;
-  const futureInstallmentCount = installmentPlanLines.reduce(
-    (count, entry) => count + entry.schedule.installments.length,
-    0,
-  );
+  const payLinkPlan = quote?.installmentChargeSchedule;
+  const dueTodayCents = payLinkPlan !== undefined
+    ? (quote?.buyerTotalCents ?? 0)
+    : (quote?.dueTodayNetCents ?? 0);
+  const futureInstallmentCount = payLinkPlan?.payments.length ??
+    installmentPlanLines.reduce(
+      (count, entry) => count + entry.schedule.installments.length,
+      0,
+    );
 
   // ORCH-0880 [Tr5 Traveler Intake Forms] — flatten per-tier intake answers
   // (keyed by ticket_type_id in CartContext) into the array shape expected
@@ -888,6 +893,7 @@ function CheckoutTripPaymentScreenContent({
                 onChange={(choice) =>
                   setLinePaymentPlanChoice(line.ticketTypeId, choice)
                 }
+                showScheduleWhenInstallments={payLinkPlan === undefined}
               />
             </View>
           ))
@@ -899,6 +905,17 @@ function CheckoutTripPaymentScreenContent({
             depositPct={planLines[0].tier.installmentSchedule?.deposit_pct ?? 0}
             value={paymentPlanChoice}
             onChange={setPaymentPlanChoice}
+            showScheduleWhenInstallments={payLinkPlan === undefined}
+          />
+        ) : null}
+        {isUsingInstallments && payLinkPlan !== undefined && projectedSchedule !== null ? (
+          <InstallmentScheduleDisplay
+            schedule={projectedSchedule}
+            variant="buyer"
+            isProjection={false}
+            lockedChargeSchedule={payLinkPlan}
+            depositChargeCents={quote?.buyerTotalCents}
+            collection="auto_card_or_pay_link"
           />
         ) : null}
 
@@ -943,7 +960,11 @@ function CheckoutTripPaymentScreenContent({
           <View
             style={styles.planBanner}
             accessibilityRole="alert"
-            accessibilityLabel={`Payment plan active. You will be charged ${formatQuoteMoney(dueTodayCents, quote?.currency ?? totals.currency)} today. Future scheduled payments will use the same card.`}
+            accessibilityLabel={
+              payLinkPlan !== undefined
+                ? `Payment plan active. You'll be charged ${formatQuoteMoney(dueTodayCents, quote?.currency ?? totals.currency)} today. Your ${futureInstallmentCount} later ${futureInstallmentCount === 1 ? "payment is" : "payments are"} shown above. Pay by card to have them charged automatically, or we'll email you a secure link before each one.`
+                : `Payment plan active. You will be charged ${formatQuoteMoney(dueTodayCents, quote?.currency ?? totals.currency)} today. Future scheduled payments will use the same card.`
+            }
           >
             <Text style={styles.planBannerTitle}>Payment plan active</Text>
             <Text style={styles.planBannerBody}>
@@ -954,9 +975,16 @@ function CheckoutTripPaymentScreenContent({
                   quote?.currency ?? totals.currency,
                 )}
               </Text>{" "}
-              today. The {futureInstallmentCount} future scheduled payment
-              {futureInstallmentCount === 1 ? "" : "s"} will use the card you
-              enter next; each package&rsquo;s dates are shown above.
+              today. {payLinkPlan !== undefined ? (
+                <>Your {futureInstallmentCount} later payment
+                  {futureInstallmentCount === 1 ? " is" : "s are"} shown above.
+                  Pay by card to have them charged automatically, or we&rsquo;ll
+                  email you a secure link before each one.</>
+              ) : (
+                <>The {futureInstallmentCount} future scheduled payment
+                  {futureInstallmentCount === 1 ? "" : "s"} will use the card you
+                  enter next; each package&rsquo;s dates are shown above.</>
+              )}
             </Text>
           </View>
         ) : null}

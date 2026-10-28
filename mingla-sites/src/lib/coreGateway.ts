@@ -1,16 +1,24 @@
 import { hmacBase64, sha256 } from "./crypto";
 import { runtimeConfig } from "./config";
 
-export async function signedCorePost(input: {
+/**
+ * #2829 — the site id a HOST RESOLUTION is signed with (mirrors
+ * SITES_HOST_RESOLUTION_SITE_ID in supabase/functions/_shared/sitesContracts.ts).
+ * The runtime serves every brand, so it cannot know the site before Core
+ * answers; the signed path pins the hostname instead.
+ */
+export const HOST_RESOLUTION_SITE_ID = "00000000-0000-4000-8000-000000000000";
+
+/** The part of a resolved site a Core call is bound to. */
+export type SiteBinding = { readonly site_id: string };
+
+async function sign(input: {
   edgeFunction: "brand-site-runtime-resolve" | "brand-site-attribution";
   path: string;
   siteId: string;
   body: Record<string, unknown>;
 }): Promise<Response> {
   const config = runtimeConfig();
-  if (input.siteId !== config.pilotSiteId) {
-    throw new Error("SITE_SCOPE_MISMATCH");
-  }
   const serialized = JSON.stringify(input.body);
   const issuedAt = new Date();
   const unsigned = {
@@ -60,4 +68,43 @@ export async function signedCorePost(input: {
       cache: "no-store",
     },
   );
+}
+
+/**
+ * #2829 — a Core call on behalf of ONE resolved site. The site comes from the
+ * object Core resolved for this request's host, never from a caller-supplied
+ * string: the path must be that site's path and any `site_id` in the body must
+ * be that site, or the call is refused before anything is signed.
+ */
+export async function signedCorePost(input: {
+  edgeFunction: "brand-site-attribution" | "brand-site-runtime-resolve";
+  path: string;
+  site: SiteBinding;
+  body: Record<string, unknown>;
+}): Promise<Response> {
+  const siteId = input.site?.site_id;
+  if (
+    typeof siteId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(siteId) ||
+    siteId === HOST_RESOLUTION_SITE_ID ||
+    !input.path.startsWith(`/internal/v1/sites/${siteId}/`) ||
+    (input.body.site_id !== undefined && input.body.site_id !== siteId)
+  ) {
+    throw new Error("SITE_SCOPE_MISMATCH");
+  }
+  return sign({ ...input, siteId });
+}
+
+/** #2829 — ask Core which site (and publication) a host belongs to. */
+export async function signedHostResolution(
+  hostname: string,
+  kind: "publication" | "site" | "probe",
+): Promise<Response> {
+  return sign({
+    edgeFunction: "brand-site-runtime-resolve",
+    path: `/internal/v1/hosts/${hostname}/${kind}`,
+    siteId: HOST_RESOLUTION_SITE_ID,
+    body: { hostname },
+  });
 }

@@ -566,3 +566,182 @@ function constantTimeEqual(a: string, b: string): boolean {
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// Issue #3645 — later trip-instalment charges on a saved card.
+// POST /transaction/charge_authorization (docs-v2 api/transaction). Called
+// synchronously (no `queue`): Paystack has no charge.failed webhook and a
+// bank-approval request (`paused` + authorization_url) only arrives in this
+// response. The ONLY caller is _shared/installments/chargePaystackInstallment.ts.
+// The saved-card values are sent to Paystack and never logged or returned.
+// ───────────────────────────────────────────────────────────────────────────
+
+export interface PaystackChargeAuthorizationParams {
+  authorizationCode: string;
+  email: string;
+  amountSubunits: number; // kobo
+  currency?: string; // default NGN
+  reference: string;
+  metadata?: Record<string, unknown>;
+  subaccount?: string;
+  transactionChargeSubunits?: number;
+  timeoutMs?: number; // default 20s
+}
+
+export type PaystackChargeAuthorizationResponse =
+  | { kind: "response"; httpStatus: number; body: unknown }
+  | { kind: "network_error"; message: string };
+
+export async function paystackChargeAuthorization(
+  params: PaystackChargeAuthorizationParams,
+  fetchImpl: typeof fetch = fetch,
+): Promise<PaystackChargeAuthorizationResponse> {
+  const secret = resolvePaystackSecretKey();
+  const body: Record<string, unknown> = {
+    authorization_code: params.authorizationCode,
+    email: params.email,
+    amount: params.amountSubunits,
+    currency: params.currency ?? "NGN",
+    reference: params.reference,
+  };
+  if (params.metadata) body.metadata = JSON.stringify(params.metadata);
+  if (params.subaccount) body.subaccount = params.subaccount;
+  if (params.transactionChargeSubunits !== undefined) {
+    body.transaction_charge = params.transactionChargeSubunits;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), params.timeoutMs ?? 20_000);
+  const t0 = Date.now();
+  try {
+    const res = await fetchImpl(`${PAYSTACK_BASE_URL}/transaction/charge_authorization`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    void recordApiCall("paystack", res.ok, Date.now() - t0, res.status);
+    const text = await res.text();
+    let parsed: unknown = null;
+    try {
+      parsed = text.length > 0 ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    return { kind: "response", httpStatus: res.status, body: parsed };
+  } catch (err) {
+    const aborted = (err as { name?: string })?.name === "AbortError";
+    return { kind: "network_error", message: aborted ? "timeout" : "network_error" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export type PaystackChargeClass =
+  | {
+    outcome: "succeeded";
+    transactionId: string | null;
+    amountSubunits: number;
+    feesSubunits: number;
+    gatewayResponse: string | null;
+  }
+  | { outcome: "paused"; approvalUrl: string | null; gatewayResponse: string | null; transactionId: string | null }
+  | { outcome: "failed"; gatewayResponse: string; authorizationUnusable: boolean; transactionId: string | null }
+  | { outcome: "unknown"; gatewayResponse: string };
+
+const PAUSE_STATUSES = new Set(["send_otp", "send_pin", "send_birthday", "send_phone", "open_url"]);
+const STILL_RUNNING_STATUSES = new Set(["pending", "processing", "queued", "ongoing"]);
+const UNUSABLE_AUTHORIZATION = /authorization|not reusable|invalid/i;
+
+function str(v: unknown): string | null {
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+/** Pure classification of a charge_authorization answer (see SPEC §4.4.3 step 5). */
+export function classifyPaystackChargeResponse(
+  response: PaystackChargeAuthorizationResponse,
+): PaystackChargeClass {
+  if (response.kind === "network_error") {
+    return { outcome: "unknown", gatewayResponse: response.message };
+  }
+  const { httpStatus } = response;
+  const body = response.body;
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return { outcome: "unknown", gatewayResponse: `unparsable_${httpStatus}` };
+  }
+  const envelope = body as Record<string, unknown>;
+  const data = envelope.data !== null && typeof envelope.data === "object" && !Array.isArray(envelope.data)
+    ? envelope.data as Record<string, unknown>
+    : {};
+  const message = str(envelope.message);
+  const status = str(data.status);
+  const gateway = str(data.gateway_response) ?? message;
+  const transactionId = data.id === undefined || data.id === null ? null : String(data.id);
+  const approvalUrl = str(data.authorization_url);
+
+  if (httpStatus >= 500) {
+    return { outcome: "unknown", gatewayResponse: `http_${httpStatus}` };
+  }
+  if (httpStatus === 200 && envelope.status === true && status === "success") {
+    return {
+      outcome: "succeeded",
+      transactionId,
+      amountSubunits: Number(data.amount ?? 0),
+      feesSubunits: Number(data.fees ?? 0),
+      gatewayResponse: gateway,
+    };
+  }
+  if (data.paused === true || (status !== null && PAUSE_STATUSES.has(status)) ||
+    (status === "pending" && approvalUrl !== null)) {
+    return { outcome: "paused", approvalUrl, gatewayResponse: gateway, transactionId };
+  }
+  if (status === "failed" || (httpStatus === 400 && envelope.status === false)) {
+    const reason = gateway ?? "declined";
+    return {
+      outcome: "failed",
+      gatewayResponse: reason,
+      authorizationUnusable: UNUSABLE_AUTHORIZATION.test(reason),
+      transactionId,
+    };
+  }
+  if (status !== null && STILL_RUNNING_STATUSES.has(status)) {
+    return { outcome: "unknown", gatewayResponse: status };
+  }
+  return { outcome: "unknown", gatewayResponse: gateway ?? `http_${httpStatus}` };
+}
+
+/** Verify-by-reference outcome for reconciling an unresolved instalment attempt. */
+export type PaystackVerifyOutcome =
+  | { state: "success"; txn: Record<string, unknown> }
+  | { state: "failed"; txn: Record<string, unknown> }
+  | { state: "pending"; txn: Record<string, unknown> | null }
+  | { state: "not_found" };
+
+/**
+ * GET /transaction/verify/:reference without throwing on "not found", so a
+ * never-created charge can be told apart from a pending one. Any other error
+ * throws (the caller leaves the attempt unresolved and retries later).
+ */
+export async function paystackVerifyTransactionOutcome(
+  reference: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<PaystackVerifyOutcome> {
+  const secret = resolvePaystackSecretKey();
+  const t0 = Date.now();
+  const res = await fetchImpl(
+    `${PAYSTACK_BASE_URL}/transaction/verify/${encodeURIComponent(reference)}`,
+    { headers: { Authorization: `Bearer ${secret}` } },
+  );
+  void recordApiCall("paystack", res.ok, Date.now() - t0, res.status);
+  const json = await res.json().catch(() => ({})) as Record<string, unknown>;
+  if (res.status === 404 || (res.status === 400 && /not found/i.test(String(json?.message ?? "")))) {
+    return { state: "not_found" };
+  }
+  if (!res.ok || json?.status !== true) {
+    throw new Error(`Paystack verify failed (${res.status}): ${String(json?.message ?? "unknown error")}`);
+  }
+  const txn = (json.data ?? {}) as Record<string, unknown>;
+  const s = String(txn.status ?? "");
+  if (s === "success") return { state: "success", txn };
+  if (s === "failed" || s === "abandoned" || s === "reversed") return { state: "failed", txn };
+  return { state: "pending", txn };
+}

@@ -2,10 +2,25 @@
 // This module contains no environment reads and is safe to unit-test with
 // synthetic keys. The only Core credential reader is sitesSecurity.ts.
 
-export const SITES_RENDERER_KEY = "restaurant-website-v1" as const;
+// #2829 — every brand's site uses one of these renderers; there is no
+// single public host any more (hosts live in brand_site_hosts).
+export const SITES_RENDERER_KEYS = [
+  "restaurant-website-v1",
+  "sites-v2",
+] as const;
+export type SitesRendererKey = typeof SITES_RENDERER_KEYS[number];
+/** The renderer a newly provisioned site is created for. */
+export const SITES_PROVISION_RENDERER_KEY: SitesRendererKey = "sites-v2";
 export const SITES_RENDERER_VERSION = 1 as const;
 export const SITES_ARTIFACT_SCHEMA_VERSION = 1 as const;
-export const SITES_PUBLIC_HOST = "gogi.sites.usemingla.com" as const;
+/**
+ * #2829 — the site id a runtime signs a HOST RESOLUTION with. The runtime
+ * serves every site, so before resolving it cannot know which site a host
+ * belongs to; the signed path carries the hostname instead. Every call AFTER
+ * resolution is signed with the resolved site's real id.
+ */
+export const SITES_HOST_RESOLUTION_SITE_ID =
+  "00000000-0000-4000-8000-000000000000" as const;
 
 export const SITES_SAFE_CUSTOMER_CODES = [
   "FORBIDDEN",
@@ -104,6 +119,64 @@ export function sitesFailure(
       operation_id: operationId,
     },
   }, status);
+}
+
+/**
+ * #2829 W2 — refusals the OWNER can fix, passed through from the CMS.
+ *
+ * Studio refuses a draft in which two things would answer one address
+ * (PATH_COLLISION) or that holds more than 100 pages (PAGE_LIMIT_EXCEEDED).
+ * Neither is in the closed customer-code set, so they used to fall through to
+ * SERVICE_TEMPORARILY_UNAVAILABLE (503) — telling the owner to retry, and
+ * marking the operation ambiguous. They are answered as VALIDATION_FAILED
+ * (409, a code every client already handles) carrying a `reason_code` the
+ * Business app turns into a plain instruction. Anything else returns null.
+ */
+export const SITES_OWNER_FIXABLE_REASONS = {
+  PATH_COLLISION:
+    "Two parts of the website use the same address. Change one page's address, then try again.",
+  PAGE_LIMIT_EXCEEDED:
+    "The website has more than 100 pages. Remove some, then try again.",
+  // #2829 W9b — a site's first publish needs the design checks run on that draft.
+  DESIGN_CHECKS_REQUIRED:
+    "Run the design checks on this draft before its first publish. They only warn; nothing is blocked once they have run.",
+} as const;
+
+export function sitesOwnerFixableRefusal(
+  reportedCode: unknown,
+  operationId: string | null = null,
+): Response | null {
+  if (
+    typeof reportedCode !== "string" ||
+    !Object.prototype.hasOwnProperty.call(SITES_OWNER_FIXABLE_REASONS, reportedCode)
+  ) return null;
+  const reason = reportedCode as keyof typeof SITES_OWNER_FIXABLE_REASONS;
+  return sitesJson({
+    ok: false,
+    error: {
+      code: "VALIDATION_FAILED",
+      message: SITES_OWNER_FIXABLE_REASONS[reason],
+      retryable: false,
+      operation_id: operationId,
+      reason_code: reason,
+    },
+  }, 409);
+}
+
+/**
+ * #2829 — the hostname shape rule, mirrored by the
+ * `brand_site_hosts_hostname_shape_ck` CHECK in
+ * 20280119012829_issue_2829_sites_multi_brand_w1.sql (parity tested): lowercase,
+ * 4-253 characters, at least one dot, each label 1-63 of [a-z0-9-] not starting
+ * or ending with '-', no trailing dot, none of `*:/?#@`.
+ */
+export function isValidSiteHostname(value: unknown): value is string {
+  return typeof value === "string" &&
+    value === value.toLowerCase() &&
+    value.length >= 4 && value.length <= 253 &&
+    !/[*:/?#@]/.test(value) &&
+    !value.endsWith(".") &&
+    HOST_RE.test(value);
 }
 
 export function normalizeSitesHost(value: string): string | null {
@@ -332,4 +405,36 @@ export function requireSha256(value: unknown): string {
     throw new Error("VALIDATION_FAILED");
   }
   return value;
+}
+
+/**
+ * #2829 W3 — the generation fields of a publication result, or null for the
+ * original v1-only shape. Shape-checked here; Core checks the pairs.
+ */
+export function publicationGeneration(
+  parsed: Record<string, unknown>,
+): {
+  p_artifact_schema_version: number;
+  p_renderer_key: string;
+  p_design_key: string | null;
+  p_design_version: number | null;
+  p_font_warnings: unknown[] | null;
+} | null {
+  if (parsed.artifact_schema_version === undefined) return null;
+  const schema = parsed.artifact_schema_version;
+  if (schema !== 1 && schema !== 2) throw new Error("VALIDATION_FAILED");
+  if (typeof parsed.renderer_key !== "string") throw new Error("VALIDATION_FAILED");
+  const designKey = parsed.design_key ?? null;
+  const designVersion = parsed.design_version ?? null;
+  const warnings = parsed.font_warnings ?? null;
+  if (designKey !== null && typeof designKey !== "string") throw new Error("VALIDATION_FAILED");
+  if (designVersion !== null && !Number.isInteger(designVersion)) throw new Error("VALIDATION_FAILED");
+  if (warnings !== null && (!Array.isArray(warnings) || warnings.length > 3)) throw new Error("VALIDATION_FAILED");
+  return {
+    p_artifact_schema_version: schema,
+    p_renderer_key: parsed.renderer_key,
+    p_design_key: designKey as string | null,
+    p_design_version: designVersion as number | null,
+    p_font_warnings: warnings as unknown[] | null,
+  };
 }

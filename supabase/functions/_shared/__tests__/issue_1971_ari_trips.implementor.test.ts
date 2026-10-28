@@ -298,7 +298,7 @@ Deno.test("#1971 happy: the prompt advertises the trip graph and its revision ru
   // [TEST-MOD-APPROVED #1976] Prompt revision advanced for payout/tax connect-status ads.
   // [TEST-MOD-APPROVED #1980] Prompt revision advanced for marketing draft/growth report tools.
   // [TEST-MOD-APPROVED #1981] prompt v17→v18 for refund/cancel discovery (append-only auth).
-  assertEquals(PROMPT_VERSION, "v23"); // [TEST-MOD-APPROVED #3697] prompt bumped for Host Ads video launch
+  assertEquals(PROMPT_VERSION, "v25"); // #2829 W11 completes the website journey entrances
   const prompt = buildSystemPrompt(null, []);
   for (const name of ALL_TRIP_TOOLS) {
     assertStringIncludes(prompt, `- ${name} —`);

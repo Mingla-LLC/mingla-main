@@ -42,6 +42,8 @@ export type BusinessNotificationType =
   | "business.refund_processed"
   | "business.cancel_refunds_released"
   | "business.dispute_opened"
+  | "business.installment_failed"
+  | "business.installment_at_risk"
   | "business.dispute_action_needed"
   | "business.payout_paid"
   | "business.payout_late"
@@ -187,6 +189,32 @@ export const BUSINESS_NOTIFICATION_TEMPLATES: Record<
     severity: "warning",
     family: "risk",
     icon: "shield",
+    masterCategory: "paymentsTrust",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  "business.installment_failed": {
+    type: "business.installment_failed",
+    pushTitle: "Trip payment missed",
+    pushBody: "A {amount} instalment for {eventTitle} didn't go through. We'll try again on {nextDate}.",
+    inAppTitle: "Trip payment missed",
+    inAppBody: "A {amount} instalment for {eventTitle} didn't go through. We'll try again on {nextDate}.",
+    severity: "warning",
+    family: "risk",
+    icon: "receipt",
+    masterCategory: "paymentsTrust",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  "business.installment_at_risk": {
+    type: "business.installment_at_risk",
+    pushTitle: "Booking at risk",
+    pushBody: "{buyerName}'s booking for {eventTitle} is at risk after 3 missed payments. Review it in Trip Money.",
+    inAppTitle: "Booking at risk",
+    inAppBody: "{buyerName}'s booking for {eventTitle} is at risk after 3 missed payments. Review it in Trip Money.",
+    severity: "blocking",
+    family: "risk",
+    icon: "flag",
     masterCategory: "paymentsTrust",
     defaultPush: true,
     defaultInApp: true,

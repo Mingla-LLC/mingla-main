@@ -7,7 +7,6 @@
 \getenv sites_cms_migrator_password SITES_CMS_MIGRATOR_PASSWORD
 \getenv sites_cms_app_password SITES_CMS_APP_PASSWORD
 \getenv sites_runtime_reader_subject SITES_RUNTIME_READER_SUBJECT
-\getenv sites_pilot_site_id SITES_PILOT_SITE_ID
 
 SELECT
   length(:'sites_cms_migrator_password') >= 32
@@ -23,7 +22,6 @@ SELECT
 
 SELECT
   :'sites_runtime_reader_subject' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-  AND :'sites_pilot_site_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
   AS sites_scope_valid
 \gset
 \if :sites_scope_valid
@@ -167,22 +165,29 @@ VALUES
     'sites-media-quarantine',
     'sites-media-quarantine',
     false,
-    20971520,
-    ARRAY['image/jpeg', 'image/png', 'image/webp']::text[]
+    -- #2829 W6 (AD-9) — a site's file video may be up to 50 MiB (pictures
+    -- keep their 20 MiB cap in the CMS gate). MP4 only.
+    52428800,
+    ARRAY['image/jpeg', 'image/png', 'image/webp', 'video/mp4']::text[]
   ),
   (
     'sites-media-approved',
     'sites-media-approved',
     false,
-    20971520,
-    ARRAY['image/webp']::text[]
+    52428800,
+    -- #2829 AD-3 — self-hosted Google font files live here under fonts/.
+    -- #2829 W6 — approved file videos, master.mp4, live here too.
+    -- #2829 W11 — TrueType font previews for the Business app, fonts/<sha256>.ttf;
+    -- only Studio's signed links read them, never the runtime reader.
+    ARRAY['image/webp', 'font/woff2', 'font/ttf', 'video/mp4']::text[]
   ),
   (
     'sites-publication-artifacts',
     'sites-publication-artifacts',
     false,
     20971520,
-    ARRAY['application/json']::text[]
+    -- #2829 — site exports ("Download everything") are zips under exports/.
+    ARRAY['application/json', 'application/zip']::text[]
   ),
   (
     'sites-media-recovery',
@@ -199,9 +204,19 @@ SET
   allowed_mime_types = EXCLUDED.allowed_mime_types;
 
 -- The runtime user is provisioned through Supabase Auth outside this SQL. It
--- receives SELECT only through its exact JWT subject and exact pilot paths.
+-- receives SELECT only through its exact JWT subject and exact object paths.
+-- #2829 — the public runtime serves every entitled brand, so the path grammar
+-- names ANY site id (a uuid segment). Which site a request may read is bound
+-- per request in the runtime (the host Core resolved); this policy keeps the
+-- reader to published artifacts and approved renditions only.
+-- #2829 W2 — and to private PREVIEW artifacts (`preview-<32 hex>` in place of
+-- the publication id), which the runtime preview route reads with this same
+-- reader. Without it every preview was refused by storage (400) and the
+-- preview page answered 404. The runtime still binds a preview to its own
+-- host's site and its exact digest.
 DROP POLICY IF EXISTS sites_runtime_reader_pilot_select ON storage.objects;
-CREATE POLICY sites_runtime_reader_pilot_select
+DROP POLICY IF EXISTS sites_runtime_reader_select ON storage.objects;
+CREATE POLICY sites_runtime_reader_select
 ON storage.objects
 FOR SELECT
 TO authenticated
@@ -210,18 +225,23 @@ USING (
   AND (
     (
       bucket_id = 'sites-publication-artifacts'
-      AND name ~ (
-        '^publications/' || :'sites_pilot_site_id' ||
-        '/[0-9a-f-]{36}/[0-9a-f]{64}\.json$'
-      )
+      AND name ~ '^publications/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/([0-9a-f-]{36}|preview-[0-9a-f]{32})/[0-9a-f]{64}\.json$'
     )
     OR
     (
       bucket_id = 'sites-media-approved'
-      AND name ~ (
-        '^approved/' || :'sites_pilot_site_id' ||
-        '/[0-9a-f-]{36}/[0-9a-f]{64}/(master|320|640|960|1440|1920)\.webp$'
-      )
+      -- #2829 W6 — and an approved file video's master.mp4 (served with
+      -- byte ranges, each 1 MiB chunk verified by the runtime).
+      -- #2829 W7b — and a picture's extra renditions (c400, c768, w1600).
+      AND name ~ '^approved/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f-]{36}/[0-9a-f]{64}/((master|320|640|960|1440|1920|c400|c768|w1600)\.webp|master\.mp4)$'
+    )
+    OR
+    (
+      -- #2829 AD-3 — content-addressed font files (public open-source works,
+      -- shared by every site); the runtime serves only digests the request
+      -- host's own artifact lists.
+      bucket_id = 'sites-media-approved'
+      AND name ~ '^fonts/[0-9a-f]{64}\.woff2$'
     )
   )
 );
@@ -231,52 +251,44 @@ USING (
 -- cannot detect before the runtime reader is entrusted with a publication.
 WITH path_patterns AS (
   SELECT
-    '^publications/' || :'sites_pilot_site_id' ||
-      '/[0-9a-f-]{36}/[0-9a-f]{64}\.json$' AS artifact_pattern,
-    '^approved/' || :'sites_pilot_site_id' ||
-      '/[0-9a-f-]{36}/[0-9a-f]{64}/(master|320|640|960|1440|1920)\.webp$'
+    '^publications/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/([0-9a-f-]{36}|preview-[0-9a-f]{32})/[0-9a-f]{64}\.json$' AS artifact_pattern,
+    '^approved/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f-]{36}/[0-9a-f]{64}/((master|320|640|960|1440|1920|c400|c768|w1600)\.webp|master\.mp4)$'
       AS media_pattern,
-    overlay(
-      :'sites_pilot_site_id'
-      placing CASE WHEN left(:'sites_pilot_site_id', 1) = 'f' THEN 'e' ELSE 'f' END
-      from 1 for 1
-    ) AS wrong_site_id,
+    '^fonts/[0-9a-f]{64}\.woff2$' AS font_pattern,
+    repeat('a', 8) || '-' || repeat('a', 4) || '-4' || repeat('a', 3) ||
+      '-8' || repeat('a', 3) || '-' || repeat('a', 12) AS site_a,
+    repeat('b', 8) || '-' || repeat('b', 4) || '-4' || repeat('b', 3) ||
+      '-8' || repeat('b', 3) || '-' || repeat('b', 12) AS site_b,
     repeat('1', 8) || '-' || repeat('1', 4) || '-4' || repeat('1', 3) ||
       '-8' || repeat('1', 3) || '-' || repeat('1', 12) AS publication_id,
     repeat('2', 8) || '-' || repeat('2', 4) || '-4' || repeat('2', 3) ||
       '-8' || repeat('2', 3) || '-' || repeat('2', 12) AS media_id
 )
 SELECT
-  (
-    'publications/' || :'sites_pilot_site_id' ||
-      '/' || publication_id || '/' || repeat('a', 64) || '.json'
-  ) ~ artifact_pattern
-  AND NOT (
-    'publications/' || wrong_site_id || '/' || publication_id || '/' ||
-      repeat('a', 64) || '.json'
-  ) ~ artifact_pattern
-  AND NOT (
-    'publications/' || :'sites_pilot_site_id' ||
-      '/' || publication_id || '/' || repeat('a', 64) || '.jsonx'
-  ) ~ artifact_pattern
-  AND (
-    'approved/' || :'sites_pilot_site_id' ||
-      '/' || media_id || '/' || repeat('b', 64) || '/320.webp'
-  ) ~ media_pattern
-  AND NOT (
-    'approved/' || wrong_site_id || '/' || media_id || '/' ||
-      repeat('b', 64) || '/320.webp'
-  ) ~ media_pattern
-  AND NOT (
-    'approved/' || :'sites_pilot_site_id' ||
-      '/' || media_id || '/' || repeat('b', 64) || '/original.webp'
-  ) ~ media_pattern
-  AND NOT (
-    'quarantine/' || :'sites_pilot_site_id' || '/probe.webp'
-  ) ~ media_pattern
-  AND NOT (
-    'recovery/' || :'sites_pilot_site_id' || '/probe.json'
-  ) ~ artifact_pattern
+  ('publications/' || site_a || '/' || publication_id || '/' || repeat('a', 64) || '.json') ~ artifact_pattern
+  AND ('publications/' || site_b || '/' || publication_id || '/' || repeat('a', 64) || '.json') ~ artifact_pattern
+  AND NOT ('publications/../' || publication_id || '/' || repeat('a', 64) || '.json') ~ artifact_pattern
+  AND NOT ('publications/' || site_a || '/' || publication_id || '/' || repeat('a', 64) || '.jsonx') ~ artifact_pattern
+  AND NOT ('exports/' || site_a || '/' || publication_id || '.zip') ~ artifact_pattern
+  AND ('publications/' || site_a || '/preview-' || repeat('c', 32) || '/' || repeat('a', 64) || '.json') ~ artifact_pattern
+  AND NOT ('publications/' || site_a || '/preview-' || repeat('c', 31) || '/' || repeat('a', 64) || '.json') ~ artifact_pattern
+  AND NOT ('publications/' || site_a || '/preview-' || repeat('c', 32) || 'x/' || repeat('a', 64) || '.json') ~ artifact_pattern
+  AND NOT ('publications/' || site_a || '/drafts-' || repeat('c', 32) || '/' || repeat('a', 64) || '.json') ~ artifact_pattern
+  AND ('approved/' || site_a || '/' || media_id || '/' || repeat('b', 64) || '/320.webp') ~ media_pattern
+  AND ('approved/' || site_a || '/' || media_id || '/' || repeat('b', 64) || '/c768.webp') ~ media_pattern
+  AND NOT ('approved/' || site_a || '/' || media_id || '/' || repeat('b', 64) || '/c999.webp') ~ media_pattern
+  AND NOT ('approved/' || site_a || '/' || media_id || '/' || repeat('b', 64) || '/original.webp') ~ media_pattern
+  AND ('approved/' || site_a || '/' || media_id || '/' || repeat('b', 64) || '/master.mp4') ~ media_pattern
+  AND NOT ('approved/' || site_a || '/' || media_id || '/' || repeat('b', 64) || '/320.mp4') ~ media_pattern
+  AND NOT ('approved/' || site_a || '/' || media_id || '/' || repeat('b', 64) || '/master.mp4x') ~ media_pattern
+  AND NOT ('approved/' || site_a || 'x/' || media_id || '/' || repeat('b', 64) || '/320.webp') ~ media_pattern
+  AND NOT ('quarantine/' || site_a || '/probe.webp') ~ media_pattern
+  AND NOT ('recovery/' || site_a || '/probe.json') ~ artifact_pattern
+  AND ('fonts/' || repeat('d', 64) || '.woff2') ~ font_pattern
+  AND NOT ('fonts/' || repeat('d', 63) || '.woff2') ~ font_pattern
+  AND NOT ('fonts/../' || repeat('d', 64) || '.woff2') ~ font_pattern
+  AND NOT ('fonts/' || site_a || '/' || repeat('d', 64) || '.woff2') ~ font_pattern
+  AND NOT ('fonts/' || repeat('d', 64) || '.ttf') ~ font_pattern
   AS sites_runtime_reader_path_semantics_valid
 FROM path_patterns
 \gset
@@ -295,7 +307,7 @@ BEGIN
     FROM pg_policies
     WHERE schemaname = 'storage'
       AND tablename = 'objects'
-      AND policyname <> 'sites_runtime_reader_pilot_select'
+      AND policyname <> 'sites_runtime_reader_select'
       AND (
         roles && ARRAY['public', 'anon', 'authenticated']::name[]
         OR roles IS NULL
@@ -340,7 +352,8 @@ SELECT
   (SELECT count(*) FROM storage.buckets) = 4
   AND count(*) = 4
   AND bool_and(public = false)
-  AND bool_and(file_size_limit = 20971520)
+  -- #2829 W6 — the two media buckets take 50 MiB (file video); the others 20 MiB.
+  AND bool_and(file_size_limit = CASE WHEN id IN ('sites-media-quarantine', 'sites-media-approved') THEN 52428800 ELSE 20971520 END)
   AS sites_bucket_contract_valid
 FROM storage.buckets
 WHERE id IN (

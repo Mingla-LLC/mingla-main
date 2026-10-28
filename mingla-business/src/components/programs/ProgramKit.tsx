@@ -6,11 +6,13 @@ import React from "react";
 import {
   ActivityIndicator,
   Keyboard,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
   View,
+  type PressableStateCallbackType,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
@@ -29,6 +31,7 @@ import {
   semantic,
   spacing,
   text as textTokens,
+  typography,
 } from "../../constants/designSystem";
 import { ProgramBackBar } from "./ProgramBackBar";
 import {
@@ -209,11 +212,17 @@ export function ProgramLoading({
 
 export function SectionLabel({
   children,
+  wide = false,
 }: {
   children: React.ReactNode;
+  /** Desktop: a little more room above the label (12 instead of 8). */
+  wide?: boolean;
 }): React.ReactElement {
   return (
-    <Text style={styles.section} accessibilityRole="header">
+    <Text
+      style={[styles.section, wide && styles.sectionWide]}
+      accessibilityRole="header"
+    >
       {children}
     </Text>
   );
@@ -306,6 +315,12 @@ export function ListGroup({
   );
 }
 
+/** Web-only Pressable state (hover / keyboard focus), passed at runtime by react-native-web. */
+type WebPressableState = PressableStateCallbackType & {
+  hovered?: boolean;
+  focused?: boolean;
+};
+
 export function ListRow({
   icon,
   title,
@@ -316,6 +331,9 @@ export function ListRow({
   accessibilityLabel,
   leading,
   compact = false,
+  action,
+  tag,
+  testID,
 }: {
   icon?: IconName;
   title: string;
@@ -327,47 +345,203 @@ export function ListRow({
   leading?: React.ReactNode;
   /** One line for the title and one for the subtitle (list rows, not details). */
   compact?: boolean;
+  /**
+   * #3872 — a second control on the row (Send). Rendered as a SIBLING of the
+   * row's pressable area, never inside it: a button inside a button is
+   * invalid on web, screen readers flatten it, and one click can fire both.
+   */
+  action?: React.ReactNode;
+  /** #3872 — a short status tag after the title ("Needs setup"). */
+  tag?: { label: string; tone: StatusTagTone };
+  testID?: string;
 }): React.ReactElement {
-  const body = (
-    <View style={styles.row}>
+  // Compact rows with an icon tile are list rows people scan and tap: 64pt
+  // tall, a 40pt tile, 12pt between the pieces.
+  const roomy = compact && Boolean(icon) && !leading;
+  const label =
+    accessibilityLabel ?? (subtitle ? `${title}, ${subtitle}` : title);
+  const chevronIcon = chevron ? (
+    <Icon name="chevR" size={16} color={textTokens.tertiary} />
+  ) : null;
+  const rightNode =
+    typeof right === "string" ? (
+      <Text style={styles.rowRight}>{right}</Text>
+    ) : (
+      (right ?? null)
+    );
+  const content = (hovered: boolean): React.ReactElement => (
+    <>
       {leading ??
         (icon ? (
-          <View style={styles.rowIcon}>
-            <Icon name={icon} size={18} color={accent.warm} />
+          <View style={[styles.rowIcon, roomy && styles.rowIconRoomy]}>
+            <Icon name={icon} size={roomy ? 20 : 18} color={accent.warm} />
           </View>
         ) : null)}
       <View style={styles.rowText}>
-        <Text style={styles.rowTitle} numberOfLines={compact ? 1 : 2}>
-          {title}
-        </Text>
+        <View style={tag ? styles.rowTitleLine : null}>
+          <Text
+            style={[
+              styles.rowTitle,
+              tag && styles.rowTitleShrink,
+              hovered && styles.rowTitleHover,
+            ]}
+            numberOfLines={compact ? 1 : 2}
+          >
+            {title}
+          </Text>
+          {tag ? <StatusTag label={tag.label} tone={tag.tone} /> : null}
+        </View>
         {subtitle ? (
           <Text style={styles.rowSubtitle} numberOfLines={compact ? 1 : 3}>
             {subtitle}
           </Text>
         ) : null}
       </View>
-      {typeof right === "string" ? (
-        <Text style={styles.rowRight}>{right}</Text>
-      ) : (
-        (right ?? null)
-      )}
-      {chevron ? (
-        <Icon name="chevR" size={16} color={textTokens.tertiary} />
+    </>
+  );
+  const rowStyle = [styles.row, roomy && styles.rowRoomy];
+
+  if (!onPress) {
+    return (
+      <View style={rowStyle} testID={testID}>
+        {content(false)}
+        {rightNode}
+        {action ?? null}
+        {chevronIcon}
+      </View>
+    );
+  }
+
+  if (action === undefined || action === null) {
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        testID={testID}
+        style={(state: WebPressableState) => [
+          state.pressed ? styles.pressed : null,
+          state.focused && Platform.OS === "web" ? styles.focusRing : null,
+        ]}
+      >
+        {(state: WebPressableState) => (
+          <View style={rowStyle}>
+            {content(state.hovered === true)}
+            {rightNode}
+            {chevronIcon}
+          </View>
+        )}
+      </Pressable>
+    );
+  }
+
+  // With an action: [pressable icon + text][action][chevron]. The chevron
+  // still navigates (its own pressable, hidden from assistive tech so the
+  // row is ONE element for a screen reader, and the action is another).
+  return (
+    <View style={[rowStyle, styles.rowWithAction]} testID={testID}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        testID={testID !== undefined ? `${testID}-open` : undefined}
+        style={(state: WebPressableState) => [
+          styles.rowHit,
+          roomy && styles.rowHitRoomy,
+          state.pressed ? styles.pressed : null,
+          state.focused && Platform.OS === "web" ? styles.focusRing : null,
+        ]}
+      >
+        {(state: WebPressableState) => content(state.hovered === true)}
+      </Pressable>
+      {rightNode}
+      {action}
+      {chevronIcon ? (
+        <Pressable
+          onPress={onPress}
+          accessibilityLabel={label}
+          accessible={false}
+          focusable={false}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={styles.rowChevronHit}
+          testID={testID !== undefined ? `${testID}-chevron` : undefined}
+        >
+          {chevronIcon}
+        </Pressable>
       ) : null}
     </View>
   );
-  if (!onPress) return body;
+}
+
+/**
+ * #3872 — the small tinted button for a row's direct action (Send) and for
+ * Try again. 36pt tall with a hit area of at least 44pt. Tinted, never a
+ * solid orange fill with white text (2.9:1); on web hover it fills with the
+ * accent and switches to dark text (6.9:1).
+ */
+export function ProgramButton({
+  label,
+  icon,
+  onPress,
+  accessibilityLabel,
+  disabled = false,
+  testID,
+}: {
+  label: string;
+  icon?: IconName;
+  onPress: () => void;
+  accessibilityLabel?: string;
+  disabled?: boolean;
+  testID?: string;
+}): React.ReactElement {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? title}
-      style={({ pressed }) => (pressed ? styles.pressed : null)}
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ disabled }}
+      hitSlop={PROGRAM_BUTTON_HIT_SLOP}
+      testID={testID}
+      // react-native-web's Pressable ignores hitSlop, so on web the pressable
+      // itself is a transparent 44pt-tall box around the 36pt pill; the
+      // negative margin keeps its layout footprint at 36pt.
+      style={Platform.OS === "web" ? styles.buttonHitWeb : null}
     >
-      {body}
+      {(state: WebPressableState) => {
+        const color =
+          state.hovered && !disabled && Platform.OS === "web"
+            ? canvas.depth
+            : textTokens.primary;
+        return (
+          <View
+            style={[
+              styles.button,
+              state.hovered && !disabled && Platform.OS === "web"
+                ? styles.buttonHover
+                : null,
+              state.pressed ? styles.buttonPressed : null,
+              state.focused && Platform.OS === "web" ? styles.focusRing : null,
+              disabled ? styles.buttonDisabled : null,
+            ]}
+          >
+            {icon ? <Icon name={icon} size={16} color={color} /> : null}
+            <Text style={[styles.buttonText, { color }]} numberOfLines={1}>
+              {label}
+            </Text>
+          </View>
+        );
+      }}
     </Pressable>
   );
 }
+
+/** 36pt visual + 4pt above and below = a 44pt tap target. */
+/** The minimum tap target on every platform. */
+export const PROGRAM_TAP_TARGET = 44;
+
+export const PROGRAM_BUTTON_HIT_SLOP = { top: 4, bottom: 4, left: 8, right: 8 } as const;
 
 /**
  * Round 2: numbers sit in ONE strip of up to three (never a tile grid).
@@ -415,12 +589,14 @@ const TONE: Record<
   paused: { bg: semantic.warningTint, fg: semantic.warning },
 };
 
+export type StatusTagTone = keyof typeof TONE;
+
 export function StatusTag({
   label,
   tone,
 }: {
   label: string;
-  tone: keyof typeof TONE;
+  tone: StatusTagTone;
 }): React.ReactElement {
   const colors = TONE[tone];
   return (
@@ -613,17 +789,18 @@ const styles = StyleSheet.create({
   },
   sheetTitle: { color: textTokens.primary, fontSize: 20, fontWeight: "800" },
   loading: { paddingVertical: spacing.xl, alignItems: "center" },
+  // #3872 — the app's one section-label type (`typography.labelCap`), so a
+  // kit label matches the page labels beside it.
   section: {
+    ...typography.labelCap,
     color: textTokens.tertiary,
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 1.2,
     textTransform: "uppercase",
     marginTop: spacing.sm,
     // Blocks are PROGRAM_BLOCK_GAP apart; a label sits PROGRAM_LABEL_GAP above
     // its own card.
     marginBottom: PROGRAM_LABEL_GAP - PROGRAM_BLOCK_GAP,
   },
+  sectionWide: { marginTop: 12 },
   muted: { color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
   fieldError: {
     color: semantic.errorText,
@@ -653,8 +830,66 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: accent.tint,
   },
-  rowText: { flex: 1, gap: 2 },
-  rowTitle: { color: textTokens.primary, fontSize: 16, fontWeight: "600" },
+  rowRoomy: { gap: 12, paddingVertical: 12, minHeight: 64 },
+  rowWithAction: { paddingVertical: 0 },
+  rowHit: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: 10,
+    minHeight: PROGRAM_ROW_MIN_HEIGHT,
+  },
+  rowHitRoomy: { gap: 12, paddingVertical: 12, minHeight: 64 },
+  rowChevronHit: {
+    alignSelf: "stretch",
+    justifyContent: "center",
+    paddingLeft: 4,
+  },
+  rowIconRoomy: { width: 40, height: 40, borderRadius: radius.md },
+  rowText: { flex: 1, minWidth: 0, gap: 2 },
+  rowTitleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  rowTitle: {
+    color: textTokens.primary,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "600",
+  },
+  rowTitleShrink: { flexShrink: 1 },
+  rowTitleHover: {
+    textDecorationLine: "underline",
+    textDecorationColor: glass.border.profileElevated,
+  },
+  focusRing: {
+    outlineColor: accent.warm,
+    outlineWidth: 2,
+    outlineStyle: "solid",
+    outlineOffset: 2,
+    borderRadius: radius.md,
+  },
+  button: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    height: 36,
+    minWidth: 72,
+    paddingHorizontal: 16,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: accent.border,
+    backgroundColor: accent.tint,
+  },
+  buttonHitWeb: {
+    minHeight: PROGRAM_TAP_TARGET,
+    marginVertical: -(PROGRAM_TAP_TARGET - 36) / 2,
+    justifyContent: "center",
+  },
+  buttonHover: { backgroundColor: accent.warm, borderColor: accent.warm },
+  buttonPressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
+  buttonDisabled: { opacity: 0.6 },
+  buttonText: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
   rowSubtitle: { color: textTokens.secondary, fontSize: 13, lineHeight: 18 },
   rowRight: { color: textTokens.primary, fontSize: 15, fontWeight: "700" },
   empty: {

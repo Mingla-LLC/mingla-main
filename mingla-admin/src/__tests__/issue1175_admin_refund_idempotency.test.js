@@ -7,6 +7,7 @@ const serviceUrl = new URL("../services/adminMoneyActService.js", import.meta.ur
 const pageUrl = new URL("../pages/BusinessOrdersPage.jsx", import.meta.url);
 const serviceSource = readFileSync(serviceUrl, "utf8");
 const pageSource = readFileSync(pageUrl, "utf8");
+let serviceLoadId = 0;
 
 async function loadServiceWith(writeEdge) {
   globalThis.__issue1175WriteEdge = writeEdge;
@@ -17,7 +18,7 @@ async function loadServiceWith(writeEdge) {
       "const invokeAdminWriteEdge = globalThis.__issue1175WriteEdge;",
     ].join("\n"),
   );
-  return import(`data:text/javascript;base64,${Buffer.from(executableSource).toString("base64")}#${Date.now()}`);
+  return import(`data:text/javascript;base64,${Buffer.from(executableSource).toString("base64")}#${++serviceLoadId}`);
 }
 
 test("one mounted Admin refund intent reuses its exact key after a retryable failure", async () => {

@@ -63,7 +63,10 @@ import {
 // ORCH-0869 (Tr3) Stage 1b: installment-kind renderers. Routed via body.kind
 // from installmentWebhookHandlers.ts and process-scheduled-installments.
 import { renderInstallmentDunningEmail } from "../_shared/email/installmentDunningEmail.ts";
+import { renderInstallmentDuplicateRefundedEmail } from "../_shared/email/installmentDuplicateRefundedEmail.ts";
+import { renderInstallmentPayLinkEmail } from "../_shared/email/installmentPayLinkEmail.ts";
 import { renderInstallmentPlanPaidInFullEmail } from "../_shared/email/installmentPlanPaidInFullEmail.ts";
+import { renderInstallmentPreChargeNoticeEmail } from "../_shared/email/installmentPreChargeNoticeEmail.ts";
 import { renderWaitlistSpotOpenEmail } from "../_shared/email/templates/waitlistSpotOpen.ts";
 import { renderWaitlistSpotOpenSms } from "../_shared/sms/templates/waitlistSpotOpen.ts";
 import {
@@ -965,6 +968,7 @@ interface InstallmentEmailOrderJoin {
   currency: string;
   events: {
     title: string | null;
+    timezone?: string | null;
     brand_id: string;
     brands: {
       name: string | null;
@@ -991,6 +995,7 @@ async function fetchInstallmentEmailContext(
       currency,
       events!inner (
         title,
+        timezone,
         brand_id,
         brands!inner ( name, contact_email )
       )
@@ -1000,6 +1005,93 @@ async function fetchInstallmentEmailContext(
     .maybeSingle();
   if (error || data === null) return null;
   return data as unknown as InstallmentEmailOrderJoin;
+}
+
+async function handleInstallmentLifecycleEmail(
+  supabase: ReturnType<typeof serviceClient>,
+  orderId: string,
+  kind:
+    | "installment_pre_charge_notice"
+    | "installment_pay_link"
+    | "installment_duplicate_refunded",
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const installmentId = typeof body.installmentId === "string"
+    ? body.installmentId
+    : "";
+  if (installmentId === "") {
+    return jsonResponse({ error: "installment_id_required" }, 400);
+  }
+  const order = await fetchInstallmentEmailContext(supabase, orderId);
+  if (order === null) return jsonResponse({ error: "order_not_found" }, 404);
+  if (!order.buyer_email) {
+    return jsonResponse({ kind, skipped: "no_buyer_email" });
+  }
+  const { data: installment, error } = await supabase.from("order_installments")
+    .select("id,buyer_total_cents,amount_cents,currency,due_at")
+    .eq("id", installmentId).eq("order_id", orderId).maybeSingle();
+  if (error !== null || installment === null) {
+    return jsonResponse({ error: "installment_not_found" }, 404);
+  }
+  const row = installment as Record<string, unknown>;
+  const amountCents = Number(
+    body.amountCents ?? row.buyer_total_cents ?? row.amount_cents,
+  );
+  const currency = String(body.currency ?? row.currency ?? order.currency);
+  const tripTitle = order.events.title ?? "your trip";
+  const brandName = order.events.brands.name ?? "your host";
+  let rendered: { subject: string; html: string; text: string };
+  if (kind === "installment_pre_charge_notice") {
+    rendered = renderInstallmentPreChargeNoticeEmail({
+      buyerName: order.buyer_name,
+      tripTitle,
+      brandName,
+      amountCents,
+      currency,
+      dueAt: String(body.dueAt ?? row.due_at),
+      timezone: order.events.timezone ?? null,
+      cardLast4: typeof body.cardLast4 === "string" ? body.cardLast4 : null,
+    });
+  } else if (kind === "installment_pay_link") {
+    const url = typeof body.payUrl === "string" ? body.payUrl : "";
+    if (!url.startsWith("https://")) {
+      return jsonResponse({ error: "pay_url_required" }, 400);
+    }
+    rendered = renderInstallmentPayLinkEmail({
+      purpose: body.purpose === "approve" ? "approve" : "pay",
+      buyerName: order.buyer_name,
+      tripTitle,
+      brandName,
+      amountCents,
+      currency,
+      dueAt: String(row.due_at),
+      timezone: order.events.timezone ?? null,
+      url,
+    });
+  } else {
+    rendered = renderInstallmentDuplicateRefundedEmail({
+      buyerName: order.buyer_name,
+      tripTitle,
+      amountCents,
+      currency,
+    });
+  }
+  assertNotResendSandbox(EMAIL_SENDERS.system);
+  const sent = await sendResendEmailWithAttachment({
+    from: formatSenderHeader(EMAIL_SENDERS.system),
+    to: order.buyer_email,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    attachments: [],
+    replyTo: eventUpdateReplyTo(order.events.brands.contact_email),
+  });
+  return jsonResponse({
+    kind,
+    orderId,
+    installmentId,
+    providerMessageId: sent.id,
+  });
 }
 
 async function handleInstallmentDunning(
@@ -1175,6 +1267,13 @@ export const handler = async (req: Request): Promise<Response> => {
   }
   if (kind === "installment_plan_paid_in_full") {
     return await handleInstallmentPaidInFull(supabase, orderId);
+  }
+  if (
+    kind === "installment_pre_charge_notice" ||
+    kind === "installment_pay_link" ||
+    kind === "installment_duplicate_refunded"
+  ) {
+    return await handleInstallmentLifecycleEmail(supabase, orderId, kind, body);
   }
   if (kind !== null) {
     // Defensive: unknown kind. Surface as 400 so the caller's logs make the

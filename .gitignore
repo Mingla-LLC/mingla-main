@@ -147,3 +147,10 @@ class-a-shard-aggregate.json
 # machine-specific, regenerable, and paid for by every clone, every CI checkout
 # and every `git worktree add` — and this repo spawns a worktree per work item.
 .mtmp/
+
+# === #2829 local Sites stack (generated workdirs, keys, seed credentials) ===
+scripts/sites/local/.stacks/
+scripts/sites/local/.state/
+scripts/sites/local/.seed-credentials.local.json
+mingla-site-cms/local-supabase/supabase/.temp/
+mingla-site-cms/local-supabase/supabase/.branches/

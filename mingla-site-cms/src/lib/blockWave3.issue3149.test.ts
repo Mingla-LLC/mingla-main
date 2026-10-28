@@ -11,9 +11,8 @@
  * section, because a publish is all-or-nothing.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import path from "node:path";
 import type { Field } from "payload";
-import { restaurantBlocks } from "../blocks/restaurantBlocks";
+import { siteBlocks as restaurantBlocks } from "../blocks/siteBlocks";
 
 const stored = new Map<string, Uint8Array>();
 
@@ -47,19 +46,20 @@ import { buildPublicationArtifact, publicationDraftDigest } from "./artifactBuil
  * agree with itself forever while the real one moved.
  */
 const publicContract = async () =>
-  (await import(
-    /* @vite-ignore */ path.resolve(
-      process.cwd(),
-      "../mingla-sites/src/contracts/artifact.ts",
-    )
-  )) as { assertRestaurantArtifact: (value: unknown) => void };
+  (await import("../contracts/generated/artifactV2.ts").then((m) => ({ assertRestaurantArtifact: m.assertArtifactV2 }))) as { assertRestaurantArtifact: (value: unknown) => void };
 
 const TENANT_ID = "00000000-0000-4000-8000-000000000901";
 const SITE_ID = "00000000-0000-4000-8000-000000000902";
 const BRAND_ID = "00000000-0000-4000-8000-000000000903";
 const PUBLICATION_ID = "00000000-0000-4000-8000-000000000904";
 
-const tenant = { id: TENANT_ID, core_site_id: SITE_ID, core_brand_id: BRAND_ID };
+// #2829 — the canonical is the tenant's primary address (named by Core).
+const tenant = {
+  id: TENANT_ID,
+  core_site_id: SITE_ID,
+  core_brand_id: BRAND_ID,
+  primary_hostname: "gogi.sites.usemingla.com",
+};
 
 const settings = {
   id: "settings-1",
@@ -82,7 +82,7 @@ async function build(blocks: Record<string, unknown>[]) {
     role: "home",
     // The public contract requires one; the builder copies it through, so a
     // stub without it validates as a broken page rather than a broken block.
-    slug: "home",
+    slug: "" /* #2829 W2: home has no slug */,
     title: "Home",
     enabled: true,
     nav_label: "Home",
@@ -258,11 +258,13 @@ describe("#3149 the builder carries them into the published bytes", () => {
     const { artifact, serialized } = await build([STATS]);
     const block = homeBlocks(artifact)[0]!;
     expect("body" in block).toBe(false);
+    // #2829 W3 — v2 blocks also carry their layout (`variant`).
     expect(Object.keys(block).sort()).toEqual([
       "eyebrow",
       "heading",
       "items",
       "type",
+      "variant",
     ]);
     expect(serialized).not.toContain('"body":""');
     expect(serialized).not.toContain('"label":""');

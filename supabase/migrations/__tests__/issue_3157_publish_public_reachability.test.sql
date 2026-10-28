@@ -5,20 +5,22 @@
 -- brand_site_complete_publication to move the real live pointer, then calls
 -- brand_site_record_public_reachability over that real publication, then reads
 -- back the publication columns, the audit rows and the operation receipt. It
--- also drives brand_site_activate_gogi_pilot / brand_site_deactivate_gogi_pilot
--- through their full readiness chain and asserts BOTH that they now write audit
--- rows AND that every pre-existing precondition still refuses.
+-- (It also drove the pilot activate/deactivate switch; #2829 removed that switch
+-- in 20280119012829_issue_2829_sites_multi_brand_w1.sql, so those PART A
+-- assertions are converted below. Owner offline/online, entitlement grant and
+-- revoke are the replacements and are asserted, with their audit rows, in
+-- issue_2829_sites_multi_brand.test.sql.)
 --
--- Apply #2830, 20270613002893, 20270617002830 and 20270620003157 first, then
--- run with ON_ERROR_STOP=1. The transaction rolls every fixture back.
+-- Apply every migration first, then run with ON_ERROR_STOP=1. The transaction
+-- rolls every fixture back.
 
 \set ON_ERROR_STOP on
 BEGIN;
 
 DO $test$
 DECLARE
-  v_actor uuid := '1f3d2ddf-b741-4e2f-8884-d7222a660c7e'::uuid;
-  v_brand uuid := '733bc470-45e1-4684-8896-acd7e26074ff'::uuid;
+  v_actor uuid := gen_random_uuid();
+  v_brand uuid := gen_random_uuid();
   v_other_brand uuid := gen_random_uuid();
   v_site uuid := gen_random_uuid();
   v_pub_one uuid := gen_random_uuid();
@@ -62,13 +64,15 @@ BEGIN
   INSERT INTO public.brand_sites(
     id, brand_id, status, payload_tenant_id, created_by
   ) VALUES (v_site, v_brand, 'draft', gen_random_uuid()::text, v_actor);
-  INSERT INTO public.brand_site_hosts(site_id, hostname)
-  VALUES (v_site, 'gogi.sites.usemingla.com');
-
-  PERFORM public.brand_site_configure_pilot_binding(
-    v_brand, v_site, 'https://studio.sites.usemingla.com',
-    'https://gogi.sites.usemingla.com', v_actor, gen_random_uuid()
-  );
+  DELETE FROM public.brand_site_service_config;
+  INSERT INTO public.brand_site_service_config(
+    config_key, cms_origin, public_runtime_origin, public_host_suffix,
+    configured_by, configured_at, updated_by, updated_at
+  ) VALUES ('sites_v1', 'https://studio.sites.usemingla.com',
+    'https://www.sites.usemingla.com', 'sites.usemingla.com',
+    v_actor, now(), v_actor, now());
+  INSERT INTO public.brand_site_hosts(site_id, hostname, label)
+  VALUES (v_site, 'issue-3157-pilot.sites.usemingla.com', 'issue-3157-pilot');
 
   -- ---------------------------------------------------------------------
   -- Least privilege on the new routine, before anything else runs.
@@ -133,7 +137,7 @@ BEGIN
     OR (v_result->>'digest_ok')::boolean IS NOT FALSE
     OR (v_result->>'operation_annotated')::boolean IS NOT TRUE
     OR (v_result->>'live_pointer_changed')::boolean IS NOT FALSE
-    OR v_result->>'hostname' <> 'gogi.sites.usemingla.com' THEN
+    OR v_result->>'hostname' <> 'issue-3157-pilot.sites.usemingla.com' THEN
     RAISE EXCEPTION 'public reachability summary did not report the 404: %', v_result;
   END IF;
 
@@ -154,7 +158,7 @@ BEGIN
     OR v_audit.resource_kind <> 'publication'
     OR v_audit.resource_id <> v_pub_one::text
     OR v_audit.after_digest <> v_digest_one
-    OR v_audit.metadata->>'hostname' <> 'gogi.sites.usemingla.com'
+    OR v_audit.metadata->>'hostname' <> 'issue-3157-pilot.sites.usemingla.com'
     OR v_audit.metadata->>'publication_id' <> v_pub_one::text
     OR (v_audit.metadata->>'status_code')::integer <> 404
     OR (v_audit.metadata->>'reachable')::boolean IS NOT FALSE
@@ -177,7 +181,6 @@ BEGIN
     OR (SELECT last_successful_publication_id FROM public.brand_sites WHERE id = v_site) <> v_pub_one
     OR (SELECT status FROM public.brand_sites WHERE id = v_site) <> 'published'
     OR (SELECT status FROM public.brand_site_publications WHERE id = v_pub_one) <> 'published'
-    OR EXISTS (SELECT 1 FROM public.brand_site_service_config WHERE pilot_enabled)
     OR NOT EXISTS (
       SELECT 1 FROM public.brand_site_hosts
       WHERE site_id = v_site AND status = 'pending') THEN
@@ -345,186 +348,19 @@ BEGIN
     RAISE EXCEPTION 'a stale served digest was reported as agreeing: %', v_result;
   END IF;
 
-  -- ---------------------------------------------------------------------
-  -- PART A — activation. Preconditions first: a blocked activation must
-  -- still block, and must leave no audit row behind.
-  -- ---------------------------------------------------------------------
-  v_failed := false;
-  BEGIN
-    PERFORM public.brand_site_activate_gogi_pilot(
-      v_brand, v_site, 'gogi.sites.usemingla.com', gen_random_uuid());
-  EXCEPTION WHEN OTHERS THEN
-    v_failed := SQLERRM LIKE '%sites_readiness_blocked%';
-  END;
-  IF NOT v_failed THEN
-    RAISE EXCEPTION 'missing evidence activated pilot';
-  END IF;
-  v_failed := false;
-  BEGIN
-    PERFORM public.brand_site_activate_gogi_pilot(
-      v_other_brand, v_site, 'gogi.sites.usemingla.com', gen_random_uuid());
-  EXCEPTION WHEN OTHERS THEN
-    v_failed := SQLERRM LIKE '%sites_pilot_binding_mismatch%';
-  END;
-  IF NOT v_failed THEN
-    RAISE EXCEPTION 'wrong brand activated pilot';
-  END IF;
-  IF EXISTS (
-    SELECT 1 FROM public.brand_site_audit_log
-    WHERE action IN ('pilot.activated','pilot.deactivated')
-  ) THEN
-    RAISE EXCEPTION 'a refused pilot call still wrote an audit row';
-  END IF;
+  -- (#2829: PART A — the pilot activation/deactivation audit chain — was
+  -- removed with the switch itself. Nothing here can take a site dark any
+  -- more except an explicit owner/admin action, which is audited; see
+  -- issue_2829_sites_multi_brand.test.sql.)
 
-  PERFORM public.brand_site_record_readiness_evidence(
-    v_site, gen_random_uuid(), repeat('1', 64), jsonb_build_object(
-      'schema_version', 1, 'evidence_kind', 'nightly_backup',
-      'observed_at', to_char(clock_timestamp(), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-      'backup_retention_days', 7,
-      'database_backup_verified_at', to_char(clock_timestamp() - interval '1 minute', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-      'object_manifest_verified_at', to_char(clock_timestamp() - interval '30 seconds', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-      'manifest_digest', repeat('2', 64),
-      'backup_bundle_digest', repeat('3', 64),
-      'object_count', 0, 'object_bytes', 0
-    )
-  );
-  PERFORM public.brand_site_record_readiness_evidence(
-    v_site, gen_random_uuid(), repeat('4', 64), jsonb_build_object(
-      'schema_version', 1, 'evidence_kind', 'restore_drill',
-      'observed_at', to_char(clock_timestamp(), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-      'restore_drill_verified_at', to_char(clock_timestamp() - interval '1 minute', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-      'restore_drill_evidence_digest', repeat('5', 64),
-      'tenant_count', 1, 'document_count', 1,
-      'object_count', 0, 'object_bytes', 0
-    )
-  );
-  PERFORM public.brand_site_record_host_readiness(
-    v_site, v_host_operation, clock_timestamp(), 'gogi.sites.usemingla.com',
-    v_pub_three, v_digest_three, repeat('6', 64), repeat('e', 64)
-  );
-
-  -- The actor is now a real signed-in identity, so the audit row must name it.
+  -- The public check is still attributable through the customer projection.
   PERFORM set_config('request.jwt.claim.sub', v_actor::text, true);
-  v_result := public.brand_site_activate_gogi_pilot(
-    v_brand, v_site, 'gogi.sites.usemingla.com', v_activation_operation);
-  IF v_result->>'status' <> 'active' THEN
-    RAISE EXCEPTION 'activation did not report active: %', v_result;
-  END IF;
-  SELECT * INTO v_audit FROM public.brand_site_audit_log
-  WHERE action = 'pilot.activated';
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'activation wrote no audit row';
-  END IF;
-  IF v_audit.site_id <> v_site OR v_audit.brand_id <> v_brand
-    OR v_audit.actor_user_id <> v_actor
-    OR v_audit.actor_kind <> 'user'
-    OR v_audit.resource_kind <> 'service_config'
-    OR v_audit.resource_id <> 'sites_v1'
-    OR v_audit.operation_id <> v_activation_operation
-    OR v_audit.metadata->>'hostname' <> 'gogi.sites.usemingla.com'
-    OR v_audit.metadata->>'publication_id' <> v_pub_three::text
-    OR v_audit.metadata->>'status' <> 'active' THEN
-    RAISE EXCEPTION 'activation audit row is not attributable: %', to_jsonb(v_audit);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM public.brand_site_service_config WHERE pilot_enabled)
-    OR NOT EXISTS (
-      SELECT 1 FROM public.brand_site_hosts
-      WHERE site_id = v_site AND status = 'active') THEN
-    RAISE EXCEPTION 'activation did not enable the pilot';
-  END IF;
-
-  -- Replaying the same activation is free and must not duplicate the audit row.
-  v_replayed := public.brand_site_activate_gogi_pilot(
-    v_brand, v_site, 'gogi.sites.usemingla.com', v_activation_operation);
-  IF v_replayed <> v_result THEN
-    RAISE EXCEPTION 'activation did not replay exactly';
-  END IF;
-  SELECT count(*) INTO v_count FROM public.brand_site_audit_log
-  WHERE action = 'pilot.activated';
-  IF v_count <> 1 THEN
-    RAISE EXCEPTION 'activation replay duplicated the audit row (% rows)', v_count;
-  END IF;
-
-  -- ---------------------------------------------------------------------
-  -- PART A — deactivation. This is the call that took gogi dark.
-  -- ---------------------------------------------------------------------
-  SELECT active_publication_id INTO v_pointer
-  FROM public.brand_sites WHERE id = v_site;
-  v_result := public.brand_site_deactivate_gogi_pilot(
-    v_brand, v_site, 'gogi.sites.usemingla.com', v_deactivation_operation,
-    'MANUAL_DISABLE');
-  IF v_result->>'status' <> 'disabled'
-    OR EXISTS (SELECT 1 FROM public.brand_site_service_config WHERE pilot_enabled)
-    OR (SELECT active_publication_id FROM public.brand_sites WHERE id = v_site) <> v_pointer THEN
-    RAISE EXCEPTION 'deactivation did not fail safe or preserve last-good';
-  END IF;
-  SELECT * INTO v_audit FROM public.brand_site_audit_log
-  WHERE action = 'pilot.deactivated';
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'deactivation wrote no audit row';
-  END IF;
-  IF v_audit.site_id <> v_site OR v_audit.brand_id <> v_brand
-    OR v_audit.actor_user_id <> v_actor
-    OR v_audit.actor_kind <> 'user'
-    OR v_audit.resource_kind <> 'service_config'
-    OR v_audit.resource_id <> 'sites_v1'
-    OR v_audit.operation_id <> v_deactivation_operation
-    OR v_audit.metadata->>'hostname' <> 'gogi.sites.usemingla.com'
-    OR v_audit.metadata->>'publication_id' <> v_pointer::text
-    OR v_audit.metadata->>'reason_code' <> 'MANUAL_DISABLE'
-    OR v_audit.metadata->>'status' <> 'disabled'
-    OR (v_audit.metadata->>'last_good_preserved')::boolean IS NOT TRUE THEN
-    RAISE EXCEPTION 'deactivation audit row is not attributable: %', to_jsonb(v_audit);
-  END IF;
-
-  v_replayed := public.brand_site_deactivate_gogi_pilot(
-    v_brand, v_site, 'gogi.sites.usemingla.com', v_deactivation_operation,
-    'MANUAL_DISABLE');
-  IF v_replayed <> v_result THEN
-    RAISE EXCEPTION 'deactivation did not replay exactly';
-  END IF;
-  SELECT count(*) INTO v_count FROM public.brand_site_audit_log
-  WHERE action = 'pilot.deactivated';
-  IF v_count <> 1 THEN
-    RAISE EXCEPTION 'deactivation replay duplicated the audit row (% rows)', v_count;
-  END IF;
-
-  v_failed := false;
-  BEGIN
-    PERFORM public.brand_site_deactivate_gogi_pilot(
-      v_brand, v_site, 'gogi.sites.usemingla.com', v_deactivation_operation,
-      'BACKUP_READINESS_FAILED');
-  EXCEPTION WHEN OTHERS THEN
-    v_failed := SQLERRM LIKE '%sites_idempotency_conflict%';
-  END;
-  IF NOT v_failed THEN
-    RAISE EXCEPTION 'deactivation operation accepted a different reason';
-  END IF;
-
-  v_failed := false;
-  BEGIN
-    PERFORM public.brand_site_deactivate_gogi_pilot(
-      v_brand, v_site, 'gogi.sites.usemingla.com', gen_random_uuid(),
-      'lowercase_reason');
-  EXCEPTION WHEN OTHERS THEN
-    v_failed := SQLERRM LIKE '%sites_validation_failed%';
-  END;
-  IF NOT v_failed THEN
-    RAISE EXCEPTION 'deactivation accepted a malformed reason code';
-  END IF;
-  SELECT count(*) INTO v_count FROM public.brand_site_audit_log
-  WHERE action IN ('pilot.activated','pilot.deactivated');
-  IF v_count <> 2 THEN
-    RAISE EXCEPTION 'refused pilot calls leaked audit rows (% rows)', v_count;
-  END IF;
-
-  -- The whole point: the outage is now attributable end to end.
   IF (SELECT count(*) FROM public.brand_site_customer_audit(v_site)
-      WHERE action IN ('pilot.activated','pilot.deactivated','publication.public_check')) < 3 THEN
-    RAISE EXCEPTION 'the customer-facing audit projection cannot see the new rows';
+      WHERE action = 'publication.public_check') < 3 THEN
+    RAISE EXCEPTION 'the customer-facing audit projection cannot see the public checks';
   END IF;
 
-  RAISE NOTICE '#3157 publish public reachability + pilot audit PASS';
+  RAISE NOTICE '#3157 publish public reachability PASS';
 END;
 $test$;
 

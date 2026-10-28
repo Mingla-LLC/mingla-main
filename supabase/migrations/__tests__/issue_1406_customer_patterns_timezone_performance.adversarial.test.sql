@@ -907,10 +907,10 @@ BEGIN
   FROM actual
   WHERE actual_fingerprint <> expected_fingerprint;
 
-  -- [TEST-MOD-APPROVED #3697] Wave 2 migration band: CI actual inventory is
-  -- count=62 / hash=57883b9b00cca543c61ec884ecc96a8d (was 61 / 6070f6b1…).
-  IF v_index_count <> 62
-    OR v_index_fingerprint <> '57883b9b00cca543c61ec884ecc96a8d'
+  -- [TEST-MOD-APPROVED #3643] The shared terminal-schema replay exposes every
+  -- current business index: count=79 / hash=ef66cf29a41684d50c79bf943870ff4e.
+  IF v_index_count <> 79
+    OR v_index_fingerprint <> 'ef66cf29a41684d50c79bf943870ff4e'
     OR v_function_mismatch IS NOT NULL
   THEN
     RAISE EXCEPTION

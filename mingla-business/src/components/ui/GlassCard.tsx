@@ -115,8 +115,17 @@ export const GlassCard: React.FC<GlassCardProps> = ({
       {/* #1532 — the REAL parent of `children`. `contentStyle` lands here, so a
           card's `gap` / `flexDirection` / `alignItems` finally applies to the
           children instead of to a node with one out-of-flow sibling stack. */}
+      {/* #3872 — flattened, never an array. On react-native-web a
+          `StyleSheet.create` style compiles to a CSS class while a plain
+          object becomes an inline style, and inline wins: `[{ padding },
+          contentStyle]` zeroed every padding LONGHAND the caller set
+          (`paddingHorizontal`, `paddingVertical`, `paddingTop`, …), so list
+          rows and stat strips sat flush against the card edge on web. One
+          flattened object resolves left-to-right on every platform. Native
+          output is identical. Guarded by
+          `issue_3872_promote_glasscard_padding.web.render.test.tsx`. */}
       <View
-        style={[{ padding }, contentStyle]}
+        style={StyleSheet.flatten([{ padding }, contentStyle])}
         testID={testID !== undefined ? `${testID}-content` : undefined}
       >
         {children}

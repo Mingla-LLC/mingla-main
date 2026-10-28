@@ -151,6 +151,11 @@ const BOUNDARY: Record<string, () => unknown> = {
   "@mingla/offering-rendering/tripInstallmentCapability": () => ({
     tripInstallmentsSupported: () => false,
   }),
+  // [TEST-MOD-APPROVED #3859] This save-queue harness is not a provider
+  // capability test; keep the new query boundary deterministically disabled.
+  useTripInstallmentCapability: () => ({
+    useTripInstallmentCapability: () => ({ data: false }),
+  }),
   bankSetupReturn: () => jest.requireActual("../../../utils/bankSetupReturn"),
   react: () => React,
   "react-native": () => jest.requireActual("react-native"),

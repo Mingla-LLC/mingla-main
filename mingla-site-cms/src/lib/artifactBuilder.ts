@@ -4,6 +4,29 @@ import { emitCmsObservation } from "./observability";
 import { hmac, sha256 } from "./crypto";
 import { readCoreProjection } from "./gateway";
 import { readObject, writeObject } from "./objectStore";
+import { findAllTenantPages } from "./tenantPages";
+import { richTextToAst } from "./richTextToAst";
+import { contentForDigest, findTenantContent, shapeSiteCollections, siteDisplayOf, type TenantContent } from "./siteContent";
+import {
+  assertNoPathCollision,
+  isHomePage,
+  siteRouting,
+  tenantPagePaths,
+} from "./pageTree";
+import type { ArtifactV2 } from "../contracts/generated/artifactV2.ts";
+import { upgradeV1ToV2 } from "../contracts/generated/upgradeV1ToV2.ts";
+import { parseOfferingsFeed, type SiteOffering } from "../contracts/generated/offerings.ts";
+import { ATELIER, designFor, variantAfterDesignSwitch, type DesignDefinition } from "../contracts/generated/designs.ts";
+import { isBlockType } from "../contracts/generated/blocks.ts";
+import { resolveTokens } from "../contracts/generated/tokens.ts";
+import { resolveFontSlots } from "../contracts/generated/fontSlots.ts";
+import { catalogWeights } from "../contracts/generated/fontCatalog.ts";
+import { resolveSiteFonts, type FontPipelineDeps, type FontWarning } from "./fontAssets";
+import { payloadFontPipeline } from "./fontAssetStore";
+import { ownerFontsOf, ownerTokensOf } from "./siteLook";
+import { fileVideoIntegrity, fitsHero, isFileVideoRecord, isStreamVideoRecord, streamVideoRef } from "./siteVideoRefs";
+import type { FileVideoIntegrity, StreamVideoRef } from "../contracts/generated/video.ts";
+import { offeringCoverRenditions, MAX_COVER_SOURCE_BYTES, type CoverRenditionDeps } from "./offeringCoverRenditions";
 
 /*
  * #3149 wave 4 — where Mingla's own guest-facing flows live. Named once so a
@@ -41,13 +64,33 @@ export function stable(value: unknown): string {
   return JSON.stringify(value);
 }
 
+/** #2829 — the renderer the builder produces until the W3 sites-v2 builder. */
+export const V1_RENDERER_KEY = "restaurant-website-v1" as const;
+
+/** #2829 — `https://<tenant.primary_hostname>`, or undefined when unknown. */
+export function tenantCanonicalUrl(tenant: { primary_hostname?: unknown }): string | undefined {
+  const host = tenant?.primary_hostname;
+  return typeof host === "string" &&
+      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(host)
+    ? `https://${host}`
+    : undefined;
+}
+
 export async function publicationDraftDigest(input: {
   pages: unknown[];
   navigation: unknown | null;
   footer: unknown | null;
   settings: unknown;
   media: unknown[];
+  /**
+   * #2829 W5 — the destinations, stories, categories and testimonials the
+   * publish will freeze (siteContent.ts). Covered so an edit to any of them
+   * between preview/validate and publish is a REVISION_CONFLICT. Absent when
+   * the tenant has none, so earlier sites keep their digest.
+   */
+  content?: TenantContent;
 }): Promise<string> {
+  const content = contentForDigest(input.content);
   return sha256(stable({
     renderer_key: "restaurant-website-v1",
     renderer_version: 1,
@@ -56,6 +99,7 @@ export async function publicationDraftDigest(input: {
     footer: input.footer,
     settings: input.settings,
     media: input.media,
+    ...(content ? { content } : {}),
   }));
 }
 function id(value: unknown): string {
@@ -63,7 +107,7 @@ function id(value: unknown): string {
     ? String((value as AnyDoc).id)
     : String(value || "");
 }
-function lexicalText(value: unknown): string[] {
+export function lexicalText(value: unknown): string[] {
   const result: string[] = [];
   const walk = (node: unknown) => {
     if (!node || typeof node !== "object") return;
@@ -128,6 +172,54 @@ async function tenantRequest(
   };
 }
 
+/*
+ * #2829 W7c (A13.1) — where the builder reads a stored offering cover (Mingla's
+ * public cover storage on the configured Core origin, never a host from a
+ * request; no redirects; capped) and keeps its renditions (Sites storage).
+ */
+export function storageCoverRenditionDeps(): CoverRenditionDeps {
+  return {
+    async fetchCover(path) {
+      const encoded = path.split("/").map(encodeURIComponent).join("/");
+      const response = await fetch(`${cmsConfig().coreBaseUrl}/storage/v1/object/public/${encoded}`, { redirect: "manual", cache: "no-store" });
+      if (response.status !== 200) return null;
+      if (Number(response.headers.get("content-length") ?? "0") > MAX_COVER_SOURCE_BYTES) return null;
+      return { bytes: new Uint8Array(await response.arrayBuffer()), contentType: response.headers.get("content-type") ?? "" };
+    },
+    async readStored(key) {
+      try {
+        return await readObject(cmsConfig().approvedBucket, key);
+      } catch {
+        return null;
+      }
+    },
+    async writeStored(key, bytes) {
+      await writeObject(cmsConfig().approvedBucket, key, bytes, "image/webp");
+    },
+  };
+}
+
+/** #2829 W3 — what a build produced, and what Core must record about it. */
+export type BuiltPublication = {
+  artifact: ArtifactV2;
+  serialized: string;
+  artifactKey: string;
+  artifactDigest: string;
+  generation: { artifact_schema_version: 2; renderer_key: "sites-v2"; design_key: string; design_version: number };
+  fontWarnings: FontWarning[];
+};
+
+/**
+ * #2829 W3 — builds the v2 (`sites-v2`) artifact for a publish or preview.
+ *
+ * The page content is shaped exactly as before (the same block rules, menu
+ * projection and media manifest — the v1 shape is now an internal
+ * intermediate), then re-expressed as v2 under the site's design: each block
+ * carries its layout, the tokens are the design's defaults plus the owner's
+ * exact choices, and the chosen Google fonts are fetched once and listed as
+ * first-party files. No new publish produces a v1 artifact; rollback of an
+ * earlier v1 publication copies it unchanged (buildRollbackPublicationArtifact).
+ */
 export async function buildPublicationArtifact(
   req: PayloadRequest,
   input: {
@@ -137,8 +229,12 @@ export async function buildPublicationArtifact(
     sourceRevisionId: string;
     sourceDigest: string;
     generatedAt: string;
+    /** Where fonts are fetched and cached (tests pass an offline pipeline). */
+    fontPipeline?: FontPipelineDeps;
+    /** #2829 W7c — where offering covers are read and their renditions kept (tests pass fakes). */
+    coverRenditions?: CoverRenditionDeps;
   },
-) {
+): Promise<BuiltPublication> {
   const scopedReq = await tenantRequest(req, input.tenant);
   const query = { tenant: { equals: input.tenant.id } };
   const [
@@ -147,17 +243,11 @@ export async function buildPublicationArtifact(
     footerResult,
     settingsResult,
     mediaResult,
+    content,
   ] = await Promise.all([
-    req.payload.find({
-      collection: "pages",
-      where: query,
-      overrideAccess: false,
-      req: scopedReq,
-      depth: 0,
-      draft: true,
-      limit: 5,
-      sort: "nav_order",
-    }),
+    // #2829 — every page, never a capped read (the six-page bug).
+    findAllTenantPages(scopedReq, input.tenant.id)
+      .then((docs) => ({ docs })),
     req.payload.find({
       collection: "navigation",
       where: query,
@@ -194,17 +284,25 @@ export async function buildPublicationArtifact(
       limit: 500,
       sort: "id",
     }),
+    // #2829 W5 — every destination, story, category and testimonial.
+    findTenantContent(scopedReq, input.tenant.id),
   ]);
   const settings = settingsResult.docs[0] as AnyDoc | undefined;
-  const home = pagesResult.docs.find((page: AnyDoc) => page.role === "home");
+  // #2829 W3 — the site's design (atelier when none is chosen).
+  const design: DesignDefinition = designFor(settings?.design) ?? ATELIER;
+  const home = pagesResult.docs.find((page: AnyDoc) => isHomePage(page));
   if (!settings || !home || home.enabled !== true)
     throw new Error("VALIDATION_FAILED");
+  // #2829 W2 — every page's address from the tree (refuses a broken tree).
+  const pagePaths = tenantPagePaths(pagesResult.docs);
+  const routing = siteRouting(settings);
   const observedDraftDigest = await publicationDraftDigest({
     pages: pagesResult.docs,
     navigation: navigationResult.docs[0] ?? null,
     footer: footerResult.docs[0] ?? null,
     settings,
     media: mediaResult.docs,
+    content,
   });
   if (observedDraftDigest !== input.sourceDigest) {
     throw new Error("REVISION_CONFLICT");
@@ -212,14 +310,39 @@ export async function buildPublicationArtifact(
   const media = new Map(
     mediaResult.docs.map((item: AnyDoc) => [String(item.id), item]),
   );
-  const pageRoles = new Map(
-    pagesResult.docs.map((page: AnyDoc) => [String(page.id), page.role]),
-  );
+  // #2829 W6 (AD-9) — every file video's chunk digests and length, frozen
+  // into the publication so the runtime can answer byte ranges verified per
+  // chunk. Read from the approval record (or, for a video approved before W6,
+  // computed once here from its verified stored bytes).
+  const videoIntegrity = new Map<string, FileVideoIntegrity>();
+  for (const record of mediaResult.docs as AnyDoc[]) {
+    if (isFileVideoRecord(record)) {
+      videoIntegrity.set(
+        String(record.id),
+        await fileVideoIntegrity(record, (key) => readObject(cmsConfig().approvedBucket, key)),
+      );
+    }
+  }
+  const streamVideos = new Map<string, StreamVideoRef>();
+  // #2829 W4 — a grid with "Which dates" chosen is LIVE: its offerings come
+  // from Mingla's feed at request time, so only the original (fixed) grids
+  // still resolve their ids through the commercial projection.
+  const isLiveGrid = (block: AnyDoc) =>
+    block.blockType === "offering_grid" && typeof block.mode === "string" && block.mode.length > 0;
   const offeringIds = new Set<string>();
+  // #2829 W5 — the trips-we've-run ledger, reviews linked to trips and a
+  // destination's trips read the same live feed, so its snapshot is frozen too
+  // (the fallback when Core is unreachable).
+  let wantsFeed = content.destinations.some((doc: AnyDoc) => Array.isArray(doc.related_offerings) && doc.related_offerings.length > 0);
   for (const page of pagesResult.docs as AnyDoc[])
-    for (const block of page.blocks || [])
+    for (const block of page.blocks || []) {
+      if (isLiveGrid(block) || block.blockType === "offering_history" || (block.blockType === "testimonials" && block.from_collection === true)) {
+        wantsFeed = true;
+        continue;
+      }
       for (const row of block.offering_ids || [])
         if (row.offering_id) offeringIds.add(String(row.offering_id));
+    }
   // #2830 — does any page show the menu? Only then do we read one.
   let wantsMenu = false;
   for (const page of pagesResult.docs as AnyDoc[])
@@ -252,7 +375,8 @@ export async function buildPublicationArtifact(
   let menuVenueId: string | null = null;
   let venueSlug: string | null = null;
   let brandSlug: string | null = null;
-  if (offeringIds.size || wantsMenu || wantsVenue) {
+  let offeringsSnapshot: SiteOffering[] = [];
+  if (offeringIds.size || wantsMenu || wantsVenue || wantsFeed) {
     const projection = await readCoreProjection(
       `/internal/v1/sites/${input.tenant.core_site_id}/projection`,
       input.tenant.core_site_id,
@@ -260,7 +384,21 @@ export async function buildPublicationArtifact(
       [...offeringIds],
       wantsMenu,
       wantsVenue,
+      wantsFeed,
     );
+    /*
+     * #2829 W4 — the feed as it is at publish, frozen as the fallback the
+     * site renders from when Core cannot be reached. Ended and cancelled
+     * offerings are part of it and never fail a publish (R-13); the feed
+     * must be readable, though: no snapshot, no publish.
+     */
+    if (wantsFeed) {
+      try {
+        offeringsSnapshot = parseOfferingsFeed(projection.feed).offerings;
+      } catch {
+        throw new Error("VALIDATION_FAILED");
+      }
+    }
     commercial = Array.isArray(projection.offerings)
       ? (projection.offerings as AnyDoc[])
       : [];
@@ -329,9 +467,13 @@ export async function buildPublicationArtifact(
    */
   const videoReference = (record: AnyDoc) => {
     const master = record.rendition_manifest?.master;
+    const integrity = videoIntegrity.get(String(record.id));
+    if (!integrity) throw new Error("MEDIA_PROCESSING");
     return {
       id: String(record.id),
-      url: `https://gogi.sites.usemingla.com/media/${record.id}/video.mp4`,
+      // #2829 — relative: the runtime serves media on whichever host the
+      // site is reached on, so no brand's address is baked into an artifact.
+      url: `/media/${record.id}/video.mp4`,
       alt: "",
       // A video carries no rendered dimensions here; the poster supplies the
       // layout box. Zero is the honest value, not a guessed 1920x1080.
@@ -339,15 +481,36 @@ export async function buildPublicationArtifact(
       height: 0,
       integrity: String(master?.digest),
       object_key: String(master?.key),
+      bytes: integrity.bytes,
+      chunk_size: integrity.chunk_size,
+      chunk_digests: integrity.chunk_digests,
+      ...(integrity.duration_ms === undefined ? {} : { duration_ms: integrity.duration_ms }),
     };
   };
-  const isVideoRecord = (record: AnyDoc | undefined) =>
-    !!record && record.state === "READY" &&
-    record.detected_mime === "video/mp4";
+  const isVideoRecord = (record: AnyDoc | undefined) => isFileVideoRecord(record);
+  // #2829 W6 — a block's video: this site's file video, or a ready stream
+  // video (frozen into `stream_videos`). Anything else plays nothing.
   const renderVideo = (mediaId: unknown): string | null => {
     const record = media.get(id(mediaId));
+    if (isStreamVideoRecord(record)) {
+      const ref = streamVideoRef(record as AnyDoc);
+      streamVideos.set(ref.id, ref);
+      return ref.url;
+    }
     if (!isVideoRecord(record)) return null;
     return videoReference(record as AnyDoc).url;
+  };
+  const videoLength = (mediaId: unknown): unknown => {
+    const record = media.get(id(mediaId));
+    if (isStreamVideoRecord(record)) return record?.duration_ms;
+    return videoIntegrity.get(id(mediaId))?.duration_ms;
+  };
+  // A hero's background video: none while it is not ready (the still shows);
+  // refused when longer than 15 seconds.
+  const heroVideo = (mediaId: unknown): string | null => {
+    const url = renderVideo(mediaId);
+    if (url !== null && !fitsHero(videoLength(mediaId))) throw new Error("VALIDATION_FAILED");
+    return url;
   };
   const renderMedia = (mediaId: unknown, alt = "") => {
     const record = media.get(id(mediaId));
@@ -359,7 +522,7 @@ export async function buildPublicationArtifact(
       ) || record.rendition_manifest.renditions?.at(-1);
     return {
       id: String(record.id),
-      url: `https://gogi.sites.usemingla.com/media/${record.id}/${rendition?.target_width || 960}.webp`,
+      url: `/media/${record.id}/${rendition?.target_width || 960}.webp`,
       alt,
       width: Number(rendition?.width || record.width),
       height: Math.round(
@@ -370,6 +533,30 @@ export async function buildPublicationArtifact(
       object_key: String(rendition?.key),
     };
   };
+  /*
+   * #2829 W7b — the picture's extra renditions (4:3 crops, 1600 wide) for a
+   * design's `srcset`, on the site's media list only (blocks keep their one
+   * URL). Media approved before W7b has none and is served as before.
+   */
+  const withVariants = (ref: ReturnType<typeof renderMedia>, record: AnyDoc) => {
+    const rows = Array.isArray(record.rendition_manifest?.variants) ? record.rendition_manifest.variants as AnyDoc[] : [];
+    const variants = rows
+      .filter((row) => ["c400", "c768", "w1600"].includes(String(row.name)))
+      .map((row) => ({
+        name: String(row.name),
+        url: `/media/${record.id}/${row.name}.webp`,
+        width: Number(row.width),
+        height: Number(row.height),
+        integrity: String(row.digest),
+        object_key: String(row.key),
+      }));
+    return variants.length ? { ...ref, variants } : ref;
+  };
+  // #2829 W5 — the site's own content, frozen into this publication.
+  const siteCollections = shapeSiteCollections(content, (mediaId, alt) => renderMedia(mediaId, alt));
+  const destinationSlugById = new Map(siteCollections.destinations.map((row) => [row.id, row.slug]));
+  const categorySlugById = new Map(siteCollections.categories.map((row) => [row.id, row.slug]));
+  const publishedTestimonials = new Set(siteCollections.testimonials.map((row) => row.id));
   /*
    * #3149 — carry the brand's own eyebrow, or carry NOTHING.
    *
@@ -404,18 +591,33 @@ export async function buildPublicationArtifact(
     ...optionalText(raw.cta_label, "cta_label"),
     ...optionalText(raw.cta_href, "cta_href"),
   });
+  // #2829 W3 — every block carries its layout: the variant Studio stored when
+  // the design draws it, otherwise the design's default for that type.
   const blocks = (source: AnyDoc[]) =>
     source.map((raw) => {
+      const shaped = shapeBlock(raw);
+      return shaped && isBlockType(raw.blockType)
+        ? { ...shaped, variant: variantAfterDesignSwitch(design, raw.blockType, typeof raw.variant === "string" ? raw.variant : null) }
+        : shaped;
+    });
+  const shapeBlock = (raw: AnyDoc) => {
       const eyebrow = optionalText(raw.eyebrow, "eyebrow");
       switch (raw.blockType) {
         case "hero":
           return {
             type: "hero",
+            ...eyebrow,
             heading: raw.heading,
+            // #2829 W7 — the headline line by line, and the trip search.
+            ...((raw.heading_lines || []).some((row: AnyDoc) => typeof row.text === "string" && row.text.trim())
+              ? { heading_lines: (raw.heading_lines || []).filter((row: AnyDoc) => typeof row.text === "string" && row.text.trim()).map((row: AnyDoc) => ({ text: row.text })) }
+              : {}),
+            ...optionalFlag(raw.show_search, "show_search"),
             subheading: raw.subheading,
             media_url: renderMedia(raw.media, "").url,
-            // Optional, and never a replacement for the still above.
-            video_url: raw.video ? renderVideo(raw.video) : null,
+            // Optional, and never a replacement for the still above. A hero
+            // loop is at most 15 seconds (#2829 W6; refused on save too).
+            video_url: raw.video ? heroVideo(raw.video) : null,
             ctas: (raw.ctas || []).map((row: AnyDoc) => ({
               label: row.label,
               href: row.href,
@@ -426,7 +628,16 @@ export async function buildPublicationArtifact(
             type: "rich_text",
             ...eyebrow,
             heading: raw.heading,
-            paragraphs: lexicalText(raw.content).map((text) => ({ text })),
+            /*
+             * #2829 W7 — the writing keeps its structure (headings, lists,
+             * links, bold) as the safe rich-text tree; plain paragraphs only
+             * when the editor content has none of that to give.
+             */
+            ...(() => {
+              const tree = richTextToAst(raw.content);
+              return tree && tree.children.length ? { body: tree } : { paragraphs: lexicalText(raw.content).map((text) => ({ text })) };
+            })(),
+            ...optionalText(raw.width, "width"),
           };
         case "media_feature":
           return {
@@ -456,6 +667,29 @@ export async function buildPublicationArtifact(
             href: raw.href,
           };
         case "offering_grid":
+          // #2829 W4 — a live grid carries only its composition; picked
+          // offerings must be the brand's own (in its feed), whatever their
+          // state.
+          if (isLiveGrid(raw)) {
+            const known = new Set(offeringsSnapshot.map((offering) => offering.id));
+            const picked = (raw.offering_ids || []).map((row: AnyDoc) => String(row.offering_id));
+            if (picked.some((offeringId: string) => !known.has(offeringId))) throw new Error("VALIDATION_FAILED");
+            return {
+              type: "offering_grid",
+              ...eyebrow,
+              heading: raw.heading || undefined,
+              mode: raw.mode,
+              kind: raw.kind || "all",
+              ...(picked.length ? { offering_ids: picked.map((offeringId: string) => ({ id: offeringId })) } : {}),
+              ...(typeof raw.limit === "number" ? { limit: raw.limit } : {}),
+              ...(raw.show_filters === true ? { show_filters: true } : {}),
+              ...(raw.empty_text ? { empty_text: raw.empty_text } : {}),
+              ...optionalText(raw.intro, "intro"),
+              ...optionalCta(raw),
+              ...optionalText(raw.empty_cta_label, "empty_cta_label"),
+              ...optionalText(raw.empty_cta_href, "empty_cta_href"),
+            };
+          }
           return {
             type: "offering_grid",
             ...eyebrow,
@@ -631,7 +865,24 @@ export async function buildPublicationArtifact(
               value: row.value,
             })),
           };
-        case "testimonials":
+        case "testimonials": {
+          // #2829 W5 — reviews from the Testimonials collection (confirmed only).
+          if (raw.from_collection === true) {
+            const picked = (raw.testimonial_ids || [])
+              .map((row: AnyDoc) => id(row.testimonial))
+              .filter((testimonialId: string) => publishedTestimonials.has(testimonialId));
+            if (!publishedTestimonials.size || ((raw.testimonial_ids || []).length && !picked.length)) return null;
+            return {
+              type: "testimonials",
+              ...eyebrow,
+              ...optionalText(raw.heading, "heading"),
+              ...optionalText(raw.intro, "intro"),
+              from_collection: true,
+              ...(picked.length ? { testimonial_ids: picked.map((testimonialId: string) => ({ id: testimonialId })) } : {}),
+              ...optionalNumber(raw.limit, "limit"),
+              ...optionalCta(raw),
+            };
+          }
           return {
             type: "testimonials",
             ...eyebrow,
@@ -641,6 +892,7 @@ export async function buildPublicationArtifact(
               quote: row.quote,
             })),
           };
+        }
         case "faq":
           return {
             type: "faq",
@@ -714,6 +966,119 @@ export async function buildPublicationArtifact(
             place_label: raw.place_label,
             ...optionalText(raw.directions_url, "directions_url"),
           };
+        /*
+         * #2829 W5 — collection, history and form blocks. A list with nothing
+         * to show (no enabled destination, no story in the category, no
+         * confirmed review) is DROPPED like an empty menu, never published as
+         * a heading over nothing.
+         */
+        case "destination_grid": {
+          const picked = (raw.destinations || [])
+            .map((row: AnyDoc) => destinationSlugById.get(id(row.destination)))
+            .filter((slug: string | undefined): slug is string => Boolean(slug));
+          if (!siteCollections.destinations.length || ((raw.destinations || []).length && !picked.length)) return null;
+          return {
+            type: "destination_grid",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.intro, "intro"),
+            ...(picked.length ? { destinations: picked.map((slug: string) => ({ slug })) } : {}),
+            ...optionalCta(raw),
+          };
+        }
+        case "story_grid": {
+          const category = raw.category ? categorySlugById.get(id(raw.category)) : undefined;
+          if (raw.category && !category) return null;
+          if (!siteCollections.stories.some((story) => !category || story.category === category)) return null;
+          return {
+            type: "story_grid",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.intro, "intro"),
+            ...(category ? { category } : {}),
+            ...optionalNumber(raw.limit, "limit"),
+            ...optionalCta(raw),
+          };
+        }
+        case "offering_history":
+          return {
+            type: "offering_history",
+            ...eyebrow,
+            heading: raw.heading,
+            ...optionalText(raw.intro, "intro"),
+            kind: raw.kind || "trip",
+            ...(() => {
+              const only = [...new Set((raw.offering_ids || []).map((item: AnyDoc) => String(item.offering_id || "").toLowerCase()).filter(Boolean))];
+              return only.length ? { offering_ids: only.map((offeringId) => ({ id: offeringId })) } : {};
+            })(),
+            ...(() => {
+              const series = (raw.series || [])
+                .map((row: AnyDoc) => ({
+                  label: typeof row.label === "string" ? row.label.trim() : "",
+                  offering_ids: [...new Set((row.offering_ids || []).map((item: AnyDoc) => String(item.offering_id || "").toLowerCase()).filter(Boolean))]
+                    .map((offeringId) => ({ id: offeringId })),
+                }))
+                .filter((row: { label: string; offering_ids: unknown[] }) => row.label && row.offering_ids.length >= 2);
+              return series.length ? { series } : {};
+            })(),
+            ...(() => {
+              const linked = [...new Set((raw.linked_offering_ids || []).map((item: AnyDoc) => String(item.offering_id || "").toLowerCase()).filter(Boolean))];
+              return linked.length ? { linked_offering_ids: linked.map((offeringId) => ({ id: offeringId })) } : {};
+            })(),
+            ...optionalCta(raw),
+          };
+        case "contact_form":
+          return {
+            type: "contact_form",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.intro, "intro"),
+            ...optionalFlag(raw.show_phone, "show_phone"),
+            ...optionalText(raw.name_placeholder, "name_placeholder"),
+            ...optionalText(raw.email_placeholder, "email_placeholder"),
+            ...optionalText(raw.message_label, "message_label"),
+            ...optionalText(raw.message_placeholder, "message_placeholder"),
+            submit_label: raw.submit_label,
+            ...optionalText(raw.success_text, "success_text"),
+            ...optionalText(raw.fallback_email, "fallback_email"),
+          };
+        case "newsletter_signup":
+          return {
+            type: "newsletter_signup",
+            ...eyebrow,
+            heading: raw.heading,
+            ...optionalText(raw.body, "body"),
+            ...optionalText(raw.placeholder, "placeholder"),
+            button_label: raw.button_label,
+            ...optionalText(raw.small_print, "small_print"),
+          };
+        // #2829 W7 — the travel designs' page header, cards and contact tiles.
+        case "page_header":
+          return {
+            type: "page_header",
+            heading: raw.heading,
+            ...optionalText(raw.subheading, "subheading"),
+            ...(raw.media ? { media_url: renderMedia(raw.media, "").url } : {}),
+          };
+        case "feature_cards":
+          return {
+            type: "feature_cards",
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.intro, "intro"),
+            cards: (raw.cards || []).map((row: AnyDoc) => ({
+              title: row.title,
+              body: row.body,
+              ...optionalText(row.icon, "icon"),
+            })),
+          };
+        case "contact_details":
+          return {
+            type: "contact_details",
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.body, "body"),
+            ...optionalText(raw.email, "email"),
+            ...optionalText(raw.location, "location"),
+          };
         case "divider":
           return { type: "divider" };
         case "spacer":
@@ -721,8 +1086,98 @@ export async function buildPublicationArtifact(
         default:
           throw new Error("VALIDATION_FAILED");
       }
-    });
-  const artifact: AnyDoc = {
+  };
+  /*
+   * #3149 wave 4 — A DROPPED BLOCK MUST LEAVE NOTHING BEHIND. Four cases above
+   * return `null` to drop a block (a video whose file is not ready, a menu
+   * with no items, a menu taster with none); a `null` published as a block
+   * would fail the whole site with ARTIFACT_BLOCK_TYPE_MISMATCH.
+   *
+   * #2830 — A PAGE WITH NOTHING ON IT IS NOT A PAGE: a page whose blocks all
+   * dropped is published disabled, so its menu link and sitemap entry
+   * disappear. Home is exempt (a site must have one; an empty home is refused
+   * by the public contract with a named reason).
+   *
+   * #2829 W2 — pages are ordered by address (home first) so the bytes do not
+   * depend on the order pages were created in.
+   */
+  const renderedPages = (pagesResult.docs as AnyDoc[])
+    .map((page) => {
+      const rendered = blocks(page.blocks || []).filter(Boolean);
+      const isHome = isHomePage(page);
+      return {
+        page,
+        path: pagePaths.get(String(page.id)) ?? "",
+        rendered,
+        enabled: isHome ? page.enabled === true : page.enabled === true && rendered.length > 0,
+      };
+    })
+    .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
+  const livePaths = new Map(
+    renderedPages.filter((entry) => entry.enabled).map((entry) => [String(entry.page.id), entry.path]),
+  );
+  /*
+   * #2829 AD-5 — PATH_COLLISION. Two things that would answer one address
+   * (two pages, two collection base paths, a redirect away from a live page)
+   * refuse the publish before anything is written, so the last good site
+   * stays live.
+   */
+  assertNoPathCollision(pagesResult.docs, settings, new Set(livePaths.keys()));
+  const pageSeo = (seo: unknown) => {
+    const record = (seo ?? {}) as AnyDoc;
+    const out = {
+      ...optionalText(record.title, "title"),
+      ...optionalText(record.description, "description"),
+      ...optionalFlag(record.noindex, "noindex"),
+    };
+    return Object.keys(out).length ? { seo: out } : {};
+  };
+  /*
+   * #2829 W2 — the header menu. A link to a page resolves to that page's
+   * address; a link to a page that is not published (off, or emptied) is
+   * DROPPED rather than published as a dead link. External links must be
+   * secure web addresses.
+   */
+  const navTarget = (row: AnyDoc): string | null => {
+    if (row?.target_type === "url") {
+      const url = typeof row.url === "string" ? row.url : "";
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === "https:" && !parsed.username && !parsed.password ? url : null;
+      } catch {
+        return null;
+      }
+    }
+    const path = livePaths.get(id(row?.page));
+    return path === undefined ? null : path === "" ? "/" : `/${path}`;
+  };
+  const navLink = (row: AnyDoc) => {
+    const label = typeof row?.label === "string" ? row.label.trim() : "";
+    const href = navTarget(row);
+    return label && href ? { label, href } : null;
+  };
+  const navigationOf = (doc: AnyDoc | undefined) => {
+    const items = ((doc?.items as AnyDoc[] | undefined) ?? [])
+      .map((item) => {
+        const link = navLink(item);
+        if (!link) return null;
+        const children = ((item.children as AnyDoc[] | undefined) ?? [])
+          .map(navLink)
+          .filter(Boolean);
+        return children.length ? { ...link, children } : link;
+      })
+      .filter(Boolean);
+    const cta = doc?.header_cta ? navLink(doc.header_cta as AnyDoc) : null;
+    return {
+      items,
+      ...(cta ? { header_cta: cta } : {}),
+      ...optionalText(doc?.wordmark, "wordmark"),
+    };
+  };
+  // #2829 — no address, no build: a site publishes only under the primary
+  // host Core named for it (fails before anything is written).
+  if (!tenantCanonicalUrl(input.tenant)) throw new Error("INVALID_STATE");
+  const source: AnyDoc = {
     schema_version: 1,
     site_id: input.tenant.core_site_id,
     brand_id: input.tenant.core_brand_id,
@@ -732,74 +1187,57 @@ export async function buildPublicationArtifact(
     source_revision_id: input.sourceRevisionId,
     source_digest: input.sourceDigest,
     generated_at: input.generatedAt,
-    pages: (pagesResult.docs as AnyDoc[]).map((page) => {
-      /*
-       * #3149 wave 4 — A DROPPED BLOCK MUST LEAVE NOTHING BEHIND.
-       *
-       * Four cases above return `null` to drop a block: a video whose file is
-       * not ready, a menu with no items, and now a menu taster with none.
-       * Without this filter that `null` was PUBLISHED as a block, and the
-       * public contract rejects a non-object block outright — so "the block is
-       * dropped" actually meant "the entire site fails to publish with
-       * ARTIFACT_BLOCK_TYPE_MISMATCH", which is the opposite of what every
-       * comment around those returns promises.
-       *
-       * Proved by execution, not by reading: building a page of a hero plus a
-       * menu_board with no Mingla menu produced `["hero", null]`.
-       *
-       * It also makes the `rendered.length > 0` test below mean what it says.
-       * A page whose only block dropped counted ONE null and stayed enabled,
-       * so the "no Mingla menu means no Menu tab" rule never fired either.
-       */
-      const rendered = blocks(page.blocks || []).filter(Boolean);
-      /*
-       * #2830 — A PAGE WITH NOTHING ON IT IS NOT A PAGE.
-       *
-       * The Menu page is the case that forced this: its only block is the menu,
-       * and the menu is dropped when Mingla has none. Left `enabled`, the site
-       * would publish a Menu tab in the navigation and the sitemap that opens
-       * a page with a heading and nothing under it. A restaurant website with
-       * an empty Menu link is worse than one with no Menu link.
-       *
-       * Home is exempt: a site must have a homepage, and an empty one is a
-       * publish-time problem to surface, not a page to silently remove.
-       */
-      const enabled = page.role === "home"
-        ? page.enabled
-        : page.enabled === true && rendered.length > 0;
-      return {
-        role: page.role,
-        slug: page.slug,
-        title: page.title,
-        enabled,
-        nav_label: page.nav_label,
-        nav_order: page.nav_order,
-        blocks: rendered,
-        seo: page.seo,
-      };
-    }),
-    navigation: {
-      page_roles: ((navigationResult.docs[0] as AnyDoc)?.pages || [])
-        .map((page: unknown) => pageRoles.get(id(page)))
-        .filter(Boolean),
+    pages: renderedPages.map(({ page, path, rendered, enabled }) => ({
+      path,
+      title: page.title,
+      enabled,
+      kind: page.kind === "collection_index" ? "collection_index" : "standard",
+      ...(page.kind === "collection_index" && typeof page.collection_kind === "string"
+        ? { collection: page.collection_kind }
+        : {}),
+      blocks: rendered,
+      ...pageSeo(page.seo),
+    })),
+    navigation: navigationOf(navigationResult.docs[0] as AnyDoc | undefined),
+    site_routes: {
+      routes: routing.routes,
+      redirects: routing.redirects,
+      language: typeof settings.language === "string" && settings.language
+        ? settings.language
+        : "en",
+      ...optionalText(settings.timezone, "timezone"),
     },
     footer: (() => {
-      const footer = { ...((footerResult.docs[0] as AnyDoc) || {}) };
-      for (const key of [
-        "id",
-        "tenant",
-        "createdAt",
-        "updatedAt",
-        "_status",
-        "label",
-      ])
-        delete footer[key];
-      if (Array.isArray(footer.links)) {
-        footer.links = footer.links.map((row: AnyDoc) => ({
-          label: row.label,
-          href: row.href,
-        }));
+      /*
+       * #2829 W2 — an ALLOWLIST of what this artifact form carries, not a
+       * list of keys to delete: the footer collection grew fields (tagline,
+       * columns, socials, …) that the travel designs render from W3 on, and
+       * copying "everything but" published them into an artifact whose
+       * contract refuses unknown keys — every republish failed with
+       * ARTIFACT_FOOTER_MISMATCH and the last good site stayed live.
+       */
+      const source = (footerResult.docs[0] as AnyDoc) || {};
+      const footer: AnyDoc = {};
+      for (const key of ["address", "hours_summary", "legal_text", "links"]) {
+        if (source[key] !== undefined) footer[key] = source[key];
       }
+      const linksOf = (rows: unknown) => (Array.isArray(rows) ? rows : []).map((row: AnyDoc) => ({ label: row.label, href: row.href }));
+      if (Array.isArray(footer.links)) footer.links = linksOf(footer.links);
+      /*
+       * #2829 W7 — the travel footer the voyage design draws: tagline lines,
+       * location, email, link columns, socials and the copyright line. The
+       * builder's own credit field is not published: every site shows
+       * "Powered by Mingla" in that place (A1.1).
+       */
+      const tagline = (source.tagline_lines || []).map((row: AnyDoc) => row.text).filter((text: unknown) => typeof text === "string" && text.trim());
+      if (tagline.length) footer.tagline_lines = tagline;
+      if (typeof source.location === "string" && source.location) footer.location = source.location;
+      if (typeof source.email === "string" && source.email) footer.email = source.email;
+      const columns = (source.columns || []).map((column: AnyDoc) => ({ heading: column.heading, links: linksOf(column.links) }));
+      if (columns.length) footer.columns = columns;
+      const socials = (source.socials || []).map((row: AnyDoc) => ({ network: row.network, url: row.url }));
+      if (socials.length) footer.socials = socials;
+      if (typeof source.copyright === "string" && source.copyright) footer.copyright = source.copyright;
       return footer;
     })(),
     site_settings: {
@@ -808,16 +1246,12 @@ export async function buildPublicationArtifact(
       logo: settings.logo
         ? renderMedia(settings.logo, `${settings.display_name} logo`)
         : undefined,
-      colors: {
-        background: settings.background_color,
-        foreground: settings.foreground_color,
-        accent: settings.accent_color,
-      },
-      typography: settings.typography,
       seo: {
         title: settings.seo_title,
         description: settings.seo_description,
-        canonical_url: settings.canonical_url,
+        // #2829 — the tenant's own primary address (named by Core), never a
+        // stored or defaulted value. Missing → the contract refuses the build.
+        canonical_url: tenantCanonicalUrl(input.tenant),
         social_image: settings.social_image
           ? renderMedia(settings.social_image, "")
           : undefined,
@@ -825,16 +1259,69 @@ export async function buildPublicationArtifact(
     },
     // Videos take the video shape; everything else goes through the rendition
     // path. A video handed to renderMedia throws, because it has no widths.
-    media: [...media.values()].map((item) =>
-      isVideoRecord(item) ? videoReference(item) : renderMedia(item.id, "")
-    ),
+    media: [...media.values()]
+      .filter((item) => !isStreamVideoRecord(item))
+      .map((item) => isVideoRecord(item) ? videoReference(item) : withVariants(renderMedia(item.id, ""), item)),
     commercial_references: commercial.map((item) => ({
       kind: item.kind,
       id: item.id,
       url: item.url,
     })),
   };
+  // #2829 W3 — the shaped content, re-expressed as v2 under the design, with
+  // the owner's exact tokens and their fonts fetched once (a font that will
+  // not load falls back to the design's family with a warning, never a
+  // failed publish).
+  const slots = resolveFontSlots(design.fonts, ownerFontsOf(settings), catalogWeights);
+  const fonts = await resolveSiteFonts(input.fontPipeline ?? payloadFontPipeline(req), {
+    slots,
+    designFonts: design.fonts,
+  });
+  const artifact = upgradeV1ToV2(source, { fontAssets: fonts.assets, fontFallbacks: fonts.fallbacks });
+  artifact.offerings_snapshot = offeringsSnapshot;
+  // #2829 W7c (A13.1) — every snapshot cover's renditions, made once (absent when none).
+  if (offeringsSnapshot.some((offering) => offering.cover)) {
+    const covers = await offeringCoverRenditions(
+      input.tenant.core_site_id,
+      offeringsSnapshot,
+      input.coverRenditions ?? storageCoverRenditionDeps(),
+    );
+    if (covers.media.length) artifact.offering_media = covers.media;
+    for (const warning of covers.warnings) {
+      emitCmsObservation({
+        event: "mingla_sites_state",
+        metric: "publish.offering_cover_rendition_skipped",
+        request_id: crypto.randomUUID(),
+        operation_id: input.operationId,
+        site_id: String(input.tenant.core_site_id),
+        publication_id: input.publicationId,
+        direction: "cms_to_core",
+        route: "/publish",
+        state_transition: "cover_read->rendition_skipped",
+        latency_ms: 0,
+        retry_count: 0,
+        safe_error_code: warning.code,
+        status_code: null,
+        version: "sites-v1",
+      });
+    }
+  }
+  // #2829 W6 — stream videos a block plays (absent when there are none).
+  if (streamVideos.size) artifact.stream_videos = [...streamVideos.values()].sort((a, b) => a.id.localeCompare(b.id));
+  artifact.collections = siteCollections;
+  // #2829 W9r — hidden past trips and owner-ordered collections (absent when none).
+  const display = siteDisplayOf(settings, content);
+  if (display) artifact.site_display = display;
+  artifact.design = { key: design.key, version: design.version };
+  artifact.tokens = resolveTokens(design.tokens, ownerTokensOf(settings));
+  artifact.fonts = fonts.slots;
+  artifact.font_assets = fonts.assets;
+  artifact.font_fallbacks = fonts.fallbacks;
   const serialized = stable(artifact);
+  // The public contract (assertArtifactV2) is enforced where it always was:
+  // the runtime's candidate probe validates these exact bytes before Core
+  // moves the live pointer, so a refused artifact never goes live and the
+  // last good site stays.
   const digest = await sha256(serialized);
   const key = `publications/${input.tenant.core_site_id}/${input.publicationId}/${digest}.json`;
   await writeObject(
@@ -846,23 +1333,36 @@ export async function buildPublicationArtifact(
   const readback = await readObject(cmsConfig().artifactBucket, key);
   if ((await sha256(readback)) !== digest)
     throw new Error("ARTIFACT_DIGEST_MISMATCH");
-  return { artifact, serialized, artifactKey: key, artifactDigest: digest };
+  return {
+    artifact,
+    serialized,
+    artifactKey: key,
+    artifactDigest: digest,
+    generation: { artifact_schema_version: 2, renderer_key: "sites-v2", design_key: design.key, design_version: design.version },
+    fontWarnings: fonts.warnings,
+  };
 }
 
 export async function probePublicationCandidate(input: {
   siteId: string;
   brandId: string;
+  /** #2829 — the site's primary host; the probe checks the canonical against it. */
+  primaryHostname: string;
   publicationId: string;
   artifactKey: string;
   artifactDigest: string;
   rendererVersion: number;
+  /** #2829 W3 — the generation that was written (v2 for builds, v1 or v2 for rollbacks). */
+  artifactSchemaVersion: 1 | 2;
+  rendererKey: "restaurant-website-v1" | "sites-v2";
 }): Promise<Record<string, unknown>> {
   const config = cmsConfig();
   const body = JSON.stringify({
     site_id: input.siteId, brand_id: input.brandId,
     publication_id: input.publicationId, artifact_key: input.artifactKey,
-    artifact_digest: input.artifactDigest, artifact_schema_version: 1,
-    renderer_key: "restaurant-website-v1", renderer_version: input.rendererVersion,
+    artifact_digest: input.artifactDigest, artifact_schema_version: input.artifactSchemaVersion,
+    renderer_key: input.rendererKey, renderer_version: input.rendererVersion,
+    primary_hostname: input.primaryHostname,
   });
   const timestamp = new Date().toISOString();
   const nonce = crypto.randomUUID();
@@ -970,8 +1470,11 @@ export async function buildRollbackPublicationArtifact(input: {
     input.rollbackSource.source_revision_id !== input.sourceRevisionId ||
     input.rollbackSource.source_digest !== input.sourceDigest ||
     input.rollbackSource.status !== "published" ||
-    input.rollbackSource.artifact_schema_version !== 1 ||
-    input.rollbackSource.renderer_key !== "restaurant-website-v1" ||
+    // #2829 W3 — a rollback copies either generation exactly as it was.
+    !((input.rollbackSource.artifact_schema_version === 1 &&
+        input.rollbackSource.renderer_key === "restaurant-website-v1") ||
+      (input.rollbackSource.artifact_schema_version === 2 &&
+        input.rollbackSource.renderer_key === "sites-v2")) ||
     input.rollbackSource.renderer_version !== 1 ||
     !/^[0-9a-f]{64}$/.test(sourceArtifactDigest) ||
     sourceArtifactKey !==
@@ -993,10 +1496,12 @@ export async function buildRollbackPublicationArtifact(input: {
     sourceArtifact.publication_id !== input.rollbackSourcePublicationId ||
     sourceArtifact.source_revision_id !== input.sourceRevisionId ||
     sourceArtifact.source_digest !== input.sourceDigest ||
-    sourceArtifact.schema_version !== 1 ||
-    sourceArtifact.renderer_key !== "restaurant-website-v1" ||
+    !(input.rollbackSource.artifact_schema_version === 2
+      ? sourceArtifact.artifact_schema_version === 2 && sourceArtifact.renderer_key === "sites-v2"
+      : sourceArtifact.schema_version === 1 && sourceArtifact.renderer_key === "restaurant-website-v1") ||
     sourceArtifact.renderer_version !== 1
   ) throw new Error("VALIDATION_FAILED");
+  const schemaVersion = input.rollbackSource.artifact_schema_version === 2 ? 2 : 1;
   const artifact = {
     ...sourceArtifact,
     publication_id: input.publicationId,
@@ -1016,5 +1521,17 @@ export async function buildRollbackPublicationArtifact(input: {
   if (await sha256(readback) !== artifactDigest) {
     throw new Error("ARTIFACT_DIGEST_MISMATCH");
   }
-  return { artifact, serialized, artifactKey, artifactDigest };
+  const design = schemaVersion === 2 && sourceArtifact.design && typeof sourceArtifact.design === "object"
+    ? sourceArtifact.design as { key: string; version: number }
+    : null;
+  return {
+    artifact,
+    serialized,
+    artifactKey,
+    artifactDigest,
+    generation: schemaVersion === 2 && design
+      ? { artifact_schema_version: 2 as const, renderer_key: "sites-v2" as const, design_key: design.key, design_version: design.version }
+      : { artifact_schema_version: 1 as const, renderer_key: "restaurant-website-v1" as const, design_key: null, design_version: null },
+    fontWarnings: [] as FontWarning[],
+  };
 }

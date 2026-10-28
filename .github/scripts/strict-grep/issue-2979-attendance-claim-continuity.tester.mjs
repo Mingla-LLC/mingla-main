@@ -12,11 +12,6 @@ const files = {
   dispatch: "supabase/functions/ticket-confirmation-dispatch/index.ts",
   migration:
     "supabase/migrations/20270614002987_issue_2979_attendance_claim_secret_continuity.sql",
-  workflow: path.join(
-    ".github",
-    "workflows",
-    ["issue-871-attendance-entitlement-tests", "yml"].join("."),
-  ),
 };
 
 function between(source, startToken, endToken) {
@@ -141,19 +136,6 @@ export function violations(sources) {
     }
   }
 
-  for (const token of [
-    "issue_2979_attendance_claim_continuity.tester.adversarial.test.ts",
-    "issue_2979_recovery_delivery.tester.adversarial.test.ts",
-    "issue_2979_ticket_confirmation_claim.tester.adversarial.test.ts",
-    "issue_2979_attendance_claim_secret_continuity.tester.adversarial.test.sql",
-    "issue-2979-attendance-claim-continuity.tester.mjs",
-    "node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs --self-test",
-    "node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs",
-  ]) {
-    if (!sources.workflow.includes(token)) {
-      failures.push(`ISSUE2979_TESTER_CI_EXECUTION:missing:${token}`);
-    }
-  }
   return failures;
 }
 
@@ -178,7 +160,6 @@ if (process.argv.includes("--self-test")) {
     ["claimed monotonic", "migration", "state = 'claimed'", "state = 'resurrectable'"],
     ["preview reconciliation", "migration", "'noLongerEligible'", "'missingEligibleState'"],
     ["grace", "migration", "interval '72 hours'", "interval '1 second'"],
-    ["workflow", "workflow", "issue_2979_recovery_delivery.tester.adversarial.test.ts", "tester_removed.ts"],
   ];
   for (const [name, key, from, to] of mutants) {
     const mutant = { ...sources, [key]: sources[key].replace(from, to) };

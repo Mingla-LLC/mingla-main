@@ -292,6 +292,203 @@ jobs:
             tertiaryNode: ""
             tertiaryDeno: ""
             tertiaryOrder: ""
+          # #3643 Phase 3E. PostgreSQL suites remain individually routed, but a
+          # routed class pays for one service and one migration replay. Each
+          # suite then runs against its own template copy.
+          - class: postgres17-deno2-node20-noinstall
+            node: "20"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 180
+            primaryDeno: "v2.x"
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
+          - class: postgres17-deno2714-node20-noinstall
+            node: "20"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 180
+            primaryDeno: "v2.7.14"
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
+          - class: postgres17-deno146-node22-noinstall
+            node: "22"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 180
+            primaryDeno: "1.46.x"
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
+          - class: postgres17-deno295-node20-cli2982
+            node: "20"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 180
+            primaryDeno: "v2.9.5"
+            primarySupabase: "2.98.2"
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
+          - class: postgres17-node20-noinstall
+            node: "20"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 180
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
+          - class: postgres17-deno295-node20-noinstall
+            node: "20"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 180
+            primaryDeno: "v2.9.5"
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
+          - class: postgres17-deno295-node20-pre1857
+            node: "20"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 180
+            primaryDeno: "v2.9.5"
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
+          - class: postgres17-deno2-node22-noinstall
+            node: "22"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 180
+            primaryDeno: "v2.x"
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
+          - class: postgres17-deno2-node22-foundation2060
+            node: "22"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 180
+            primaryDeno: "v2.x"
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
+          - class: postgres17-deno2-node22-pre1931
+            node: "22"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 120
+            primaryDeno: "v2.x"
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
+          - class: postgres17-deno146-node20-dualdb
+            node: "20"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 180
+            primaryDeno: "1.46.x"
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
+          - class: postgres17-deno146-node20-noinstall
+            node: "20"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 180
+            primaryDeno: "1.46.x"
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
+          - class: postgres17-deno2-node20-pre2117
+            node: "20"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 120
+            primaryDeno: "v2.x"
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
+          - class: postgres17-node22-noinstall
+            node: "22"
+            cache: ""
+            cache-lock: ""
+            hostTimeoutMinutes: 180
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
+            tertiaryOrder: ""
+    services:
+      postgres:
+        image: ${{ startsWith(matrix.class, 'postgres17-') && 'supabase/postgres:17.4.1.075' || '' }}
+        env:
+          POSTGRES_PASSWORD: ${{ format('ci-batch-{0}-{1}', github.run_id, github.run_attempt) }} # ggignore -- ephemeral local service credential
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
     steps:
       # fetch-depth: 0 is REQUIRED, not incidental. Three batched suites
       # (#1881, #1532, #1996) run `git show <baseline>` / `git diff <baseline>` to
@@ -386,6 +583,21 @@ jobs:
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed
         with:
           deno-version: v2.x
+      - name: Select immutable primary Deno v2.7.14 runtime
+        if: always() && matrix.primaryDeno == 'v2.7.14' && steps.route.outputs.runPrimarySetup != 'false'
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed
+        with:
+          deno-version: v2.7.14
+      - name: Select immutable primary Deno v2.9.5 runtime
+        if: always() && matrix.primaryDeno == 'v2.9.5' && steps.route.outputs.runPrimarySetup != 'false'
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed
+        with:
+          deno-version: v2.9.5
+      - name: Select pinned primary Supabase CLI 2.98.2
+        if: always() && matrix.primarySupabase == '2.98.2' && steps.route.outputs.runPrimarySetup != 'false'
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.98.2
 
       # Setup is selected only from the reviewed typed profile registry. The runner
       # executes each exact argv capability once, then writes non-forgeable evidence
@@ -402,6 +614,13 @@ jobs:
       - name: Execute and record one typed shard setup
         if: always() && steps.route.outputs.runPrimarySetup != 'false'
         run: node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.class }}"
+
+      - name: Replay migrations once and clone routed PostgreSQL suite databases
+        if: always() && startsWith(matrix.class, 'postgres17-') && steps.route.outputs.runPrimarySetup != 'false'
+        env:
+          PG_BATCH_PORT: ${{ job.services.postgres.ports[5432] }}
+          PG_BATCH_PASSWORD: ${{ format('ci-batch-{0}-{1}', github.run_id, github.run_attempt) }} # ggignore -- same ephemeral service credential
+        run: node .github/scripts/ci-batch/postgres-batch.mjs --setup "${{ matrix.class }}"
 
       # The runner's own guarantees are load-bearing: it is the only thing standing
       # between "one job for many suites" and "one green lie". Prove it still bites
@@ -448,9 +667,18 @@ jobs:
           .github/scripts/ci-batch/__tests__/issue-3078-nightly-full-corpus.implementor.test.mjs
           .github/scripts/ci-batch/__tests__/issue-3078-scheduled-red-reaches-a-human.implementor.test.mjs
           .github/scripts/ci-batch/__tests__/issue-3262-scheduled-selection.implementor.test.mjs
+          .github/scripts/ci-batch/__tests__/issue-3643-postgres-template-batch.implementor.test.mjs
+
+      - name: Additive registry self-test
+        if: always() && matrix.class == 'node20-noinstall'
+        run: node --test .github/scripts/ci-batch/__tests__/issue-3643-additive-effective-registry.implementor.test.mjs
 
       - name: Run the ${{ matrix.class }} suites
         if: always()
+        env:
+          PG_BATCH_PASSWORD: ${{ format('ci-batch-{0}-{1}', github.run_id, github.run_attempt) }} # ggignore -- same ephemeral service credential
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          ISSUE_1403_BASE_REF: ${{ github.event.pull_request.base.sha || 'origin/main' }}
         run: node .github/scripts/ci-batch/run-suite-batch.mjs --run "${{ matrix.class }}"
 
       - name: Upload suite results

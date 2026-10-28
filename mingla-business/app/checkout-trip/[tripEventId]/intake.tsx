@@ -153,6 +153,7 @@ export default function TripIntakeScreen(): React.ReactElement {
   const {
     lines,
     buyer,
+    quote,
     intakeFormData,
     intakeUploadSessionId,
     setIntakeTierData,
@@ -580,6 +581,17 @@ export default function TripIntakeScreen(): React.ReactElement {
               schedule={projectedSchedule}
               variant="buyer"
               isProjection={true}
+              lockedChargeSchedule={quote?.installmentChargeSchedule}
+              depositChargeCents={
+                quote?.installmentChargeSchedule !== undefined
+                  ? quote.buyerTotalCents
+                  : undefined
+              }
+              collection={
+                quote?.installmentChargeSchedule !== undefined
+                  ? "auto_card_or_pay_link"
+                  : "auto_card"
+              }
             />
           </View>
         ) : null}

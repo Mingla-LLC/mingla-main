@@ -3,15 +3,20 @@ export type BrandSiteStatus =
 
 export interface BrandSiteHost {
   hostname: string;
-  status: "pending" | "active" | "suspended" | "retired";
+  status: "pending" | "verifying" | "active" | "detaching" | "suspended" | "retired";
   is_primary: boolean;
+  /** #2829 — `mingla_subdomain` (`<label>.sites.usemingla.com`) or a custom domain. */
+  kind?: "mingla_subdomain" | "custom_domain";
+  label?: string | null;
 }
 
 export interface BrandSiteOverview {
   id: string;
   brand_id: string;
-  renderer_key: "restaurant-website-v1";
+  renderer_key: "restaurant-website-v1" | "sites-v2";
   renderer_version: number;
+  /** #2829 — set while the owner/admin has taken the site offline. */
+  owner_offline_at?: string | null;
   status: BrandSiteStatus;
   active_publication_id: string | null;
   last_successful_publication_id: string | null;
@@ -39,6 +44,30 @@ export interface BrandSiteOverview {
   > | null;
 }
 
+/** #2829 — the address a site will get, shown before setup is confirmed. */
+export interface BrandSiteLabelProposal {
+  label: string;
+  hostname: string;
+  existing: boolean;
+}
+
+/** #2829 — what this member may do with the brand's website. */
+export interface BrandSiteAvailability {
+  available: boolean;
+  can_create: boolean;
+  can_publish: boolean;
+  can_edit: boolean;
+}
+
+/** #2829 — a "Download everything" export and its 24-hour link. */
+export interface BrandSiteExport {
+  operation_id: string;
+  status: "authorized" | "executing" | "succeeded" | "failed" | "ambiguous";
+  download_url: string | null;
+  expires_at: string | null;
+  bytes: number | null;
+}
+
 export interface StudioExchange {
   site_id: string;
   code: string;
@@ -51,12 +80,26 @@ export interface BrandSitePreview {
   source_revision: string;
   expires_at: string;
   preview_url: string;
+  /** #2829 W2 — every page of the draft; "" is the home page. */
+  pages?: BrandSitePreviewPage[];
+}
+
+export interface BrandSitePreviewPage {
+  path: string;
+  title: string;
+}
+
+/** #2829 W2 — the preview link opened at one page of the draft. */
+export function previewUrlForPage(previewUrl: string, path: string): string {
+  const clean = path.replace(/^\/+|\/+$/g, "");
+  if (!clean) return previewUrl;
+  return `${previewUrl}${previewUrl.includes("?") ? "&" : "?"}path=${encodeURIComponent(clean)}`;
 }
 
 export interface BrandSiteOperation {
   operation_id: string;
   site_id: string;
-  kind: "provision" | "editor_session" | "preview" | "publish" | "rollback" | "reconcile";
+  kind: "provision" | "editor_session" | "preview" | "publish" | "rollback" | "reconcile" | "offline" | "online" | "export";
   status: "authorized" | "executing" | "succeeded" | "failed" | "ambiguous";
   error_code: string | null;
   authorized_at: string;
@@ -139,6 +182,72 @@ export function deriveWebsiteJourneyState(
   return 5;
 }
 
+/**
+ * #2829 (A5) — what the signed-in member may do with this brand's website,
+ * exactly as Core answered (`site-availability`: entitlement + role, checked
+ * server-side; every route re-checks). One owner per truth: the workspace
+ * never derives these from a client-side copy of the role.
+ */
+export interface WebsiteCapabilities {
+  canCreate: boolean;
+  canPublish: boolean;
+  canEdit: boolean;
+}
+
+export const NO_WEBSITE_CAPABILITIES: WebsiteCapabilities = Object.freeze({
+  canCreate: false,
+  canPublish: false,
+  canEdit: false,
+});
+
+export function capabilitiesFrom(
+  availability: BrandSiteAvailability | null | undefined,
+): WebsiteCapabilities {
+  if (!availability || availability.available !== true) return NO_WEBSITE_CAPABILITIES;
+  return {
+    canCreate: availability.can_create === true,
+    canPublish: availability.can_publish === true,
+    canEdit: availability.can_edit === true,
+  };
+}
+
 export function primarySiteHost(site: BrandSiteOverview): BrandSiteHost | null {
   return site.brand_site_hosts.find((host) => host.is_primary) ?? null;
+}
+
+/** #2829 W8 — one record the owner adds at their registrar. */
+export interface BrandSiteDnsRecord {
+  type: "A" | "AAAA" | "CNAME" | "TXT";
+  name: string;
+  value: string;
+}
+
+/** #2829 W8 — one of the site's addresses (its Mingla subdomain or a domain the brand owns). */
+export interface BrandSiteDomainHost {
+  id: string;
+  hostname: string;
+  kind: "mingla_subdomain" | "custom_domain";
+  status: "pending" | "verifying" | "active" | "detaching" | "suspended";
+  is_primary: boolean;
+  is_apex: boolean;
+  /** The domain bought from the registrar (`www.brand.com` -> `brand.com`). */
+  apex: string | null;
+  dns_state: "unknown" | "pending" | "ok" | "misconfigured";
+  tls_state: "unknown" | "pending" | "issued" | "expiring" | "failed";
+  records: BrandSiteDnsRecord[];
+  registrar: string | null;
+  mx_missing: boolean;
+  misconfigured_since: string | null;
+  redirect_until: string | null;
+  last_checked_at: string | null;
+  activated_at: string | null;
+  created_at: string;
+}
+
+/** #2829 W8 — the brand's addresses; rank 20 reads, rank 50 manages. */
+export interface BrandSiteDomains {
+  site_id: string;
+  can_manage: boolean;
+  max_custom_domains: number;
+  hosts: BrandSiteDomainHost[];
 }

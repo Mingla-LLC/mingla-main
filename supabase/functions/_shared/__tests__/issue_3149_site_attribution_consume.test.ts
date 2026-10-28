@@ -162,6 +162,9 @@ async function signedRequest(
 
 type Seen = { path: string; search: string; body: unknown };
 
+/** #2829 — the touch and its order share one brand (#3652 binds both ends). */
+const TOUCH_BRAND = "bbbbbbbb-2222-4222-8222-222222222222";
+
 function installStubs(
   options: { touch: unknown; rpcFails?: boolean },
 ): { seen: Seen[]; restore: () => void } {
@@ -186,6 +189,11 @@ function installStubs(
         options.touch === null ? "null" : JSON.stringify(options.touch),
         { status: 200, headers: { "content-type": "application/json" } },
       );
+    }
+    // #2829 (#3652) — the consume path now reads the order to check its brand
+    // before spending; the fixture order belongs to the touch's brand.
+    if (url.pathname === "/rest/v1/venue_orders") {
+      return Response.json({ id: ORDER_ID, brand_id: TOUCH_BRAND });
     }
     if (url.pathname === "/rest/v1/rpc/brand_site_consume_attribution") {
       return options.rpcFails
@@ -221,7 +229,7 @@ Deno.test({
   sanitizeResources: false,
   fn: () =>
     withEnvironment(async () => {
-      const stubs = installStubs({ touch: { id: "touch-1" } });
+      const stubs = installStubs({ touch: { id: "touch-1", brand_id: TOUCH_BRAND } });
       try {
         const response = await handleBrandSiteAttribution(
           await signedRequest(CONSUME_PATH, {
@@ -312,7 +320,7 @@ Deno.test({
   sanitizeResources: false,
   fn: () =>
     withEnvironment(async () => {
-      const stubs = installStubs({ touch: { id: "touch-1" }, rpcFails: true });
+      const stubs = installStubs({ touch: { id: "touch-1", brand_id: TOUCH_BRAND }, rpcFails: true });
       try {
         const response = await handleBrandSiteAttribution(
           await signedRequest(CONSUME_PATH, {
@@ -338,7 +346,7 @@ Deno.test({
   sanitizeResources: false,
   fn: () =>
     withEnvironment(async () => {
-      const stubs = installStubs({ touch: { id: "touch-1" } });
+      const stubs = installStubs({ touch: { id: "touch-1", brand_id: TOUCH_BRAND } });
       try {
         // The issue path may not be used to consume.
         const wrongPath = await handleBrandSiteAttribution(

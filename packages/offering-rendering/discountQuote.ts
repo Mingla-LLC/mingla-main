@@ -54,6 +54,76 @@ export interface TicketQuoteNotice {
   remaining: number;
 }
 
+export interface InstallmentChargeSchedule {
+  currency: string;
+  payments: Array<{
+    ordinal: number;
+    dueAt: string;
+    buyerTotalCents: number;
+    feesCents: number;
+    taxCents: number;
+  }>;
+}
+
+export function decodeInstallmentChargeSchedule(
+  value: unknown,
+): InstallmentChargeSchedule | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const row = value as Record<string, unknown>;
+  if (
+    typeof row.currency !== "string" ||
+    !/^[A-Za-z]{3}$/.test(row.currency) ||
+    !Array.isArray(row.payments) ||
+    row.payments.length === 0
+  ) return undefined;
+  const payments: InstallmentChargeSchedule["payments"] = [];
+  const ordinals = new Set<number>();
+  for (const item of row.payments) {
+    if (item === null || typeof item !== "object" || Array.isArray(item)) {
+      return undefined;
+    }
+    const payment = item as Record<string, unknown>;
+    if (
+      !Number.isInteger(payment.ordinal) || Number(payment.ordinal) < 1 ||
+      ordinals.has(Number(payment.ordinal)) ||
+      typeof payment.dueAt !== "string" ||
+      !Number.isInteger(payment.buyerTotalCents) ||
+      !Number.isInteger(payment.feesCents) ||
+      !Number.isInteger(payment.taxCents) ||
+      Number(payment.buyerTotalCents) < 0 ||
+      Number(payment.feesCents) < 0 || Number(payment.taxCents) < 0 ||
+      !Number.isFinite(Date.parse(payment.dueAt))
+    ) return undefined;
+    ordinals.add(Number(payment.ordinal));
+    payments.push({
+      ordinal: Number(payment.ordinal),
+      dueAt: payment.dueAt,
+      buyerTotalCents: Number(payment.buyerTotalCents),
+      feesCents: Number(payment.feesCents),
+      taxCents: Number(payment.taxCents),
+    });
+  }
+  payments.sort((a, b) => a.ordinal - b.ordinal);
+  return { currency: row.currency.toUpperCase(), payments };
+}
+
+/** Sum only the server-locked charge envelope; this is display math, not repricing. */
+export function installmentPlanBuyerTotal(
+  depositBuyerTotalCents: unknown,
+  schedule: InstallmentChargeSchedule | undefined,
+): number | undefined {
+  if (
+    schedule === undefined || !Number.isInteger(depositBuyerTotalCents) ||
+    Number(depositBuyerTotalCents) < 0
+  ) return undefined;
+  return Number(depositBuyerTotalCents) + schedule.payments.reduce(
+    (sum, payment) => sum + payment.buyerTotalCents,
+    0,
+  );
+}
+
 export interface TicketQuote {
   kind: "quote";
   currency: string;
@@ -75,6 +145,8 @@ export interface TicketQuote {
   calculationId: string | null;
   subtotalCents: number;
   totalCents: number;
+  installmentChargeSchedule?: InstallmentChargeSchedule;
+  planTotalBuyerCents?: number;
 }
 
 export type CheckoutReviewDetail =

@@ -2,6 +2,7 @@ import { supabase } from "../services/supabase";
 
 type EntrySite = {
   status?: string;
+  owner_offline_at?: string | null;
   brand_site_hosts?: {
     hostname?: string;
     status?: string;
@@ -9,8 +10,12 @@ type EntrySite = {
   }[];
 };
 
+// #2829 — `available` is now per-brand: a Mingla admin granted Sites to this
+// brand (entitlement) and the member is rank 20+. The extra can_* flags are
+// read by the workspace, not by this one-line entry.
 type EntryAvailability = {
   available: boolean;
+  can_publish?: boolean;
   site?: EntrySite | null;
 };
 
@@ -20,6 +25,8 @@ type EntryEnvelope =
 
 function entryContext(site: EntrySite): string {
   if (site.status === "provisioning") return "Setting up…";
+  // #2829 — the owner/admin took it offline; say so before anything "live".
+  if (site.owner_offline_at) return "Offline";
   if (site.status === "draft") return "Draft ready";
   if (site.status === "publishing") return "Publishing…";
   if (site.status === "error") return "Publish needs attention";

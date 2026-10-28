@@ -177,6 +177,7 @@ import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import {
   buildConsumerTripOfferingBrand,
   buildConsumerTripOfferingData,
+  useConsumerTripGuide,
   type ConsumerTripTierEnrichment,
 } from "../../hooks/useConsumerTripOfferingData";
 import type { DiscoverTripRow } from "../../services/tripsDiscoveryService";
@@ -669,12 +670,14 @@ export default function ConsumerTripDetailScreen({
     return map;
   }, [ticketsQuery.data]);
 
+  // Issue #2829 W4 — the host's trip guide, added to the shared body.
+  const tripGuide = useConsumerTripGuide(detail?.tripId ?? null);
   const offeringData = useMemo<TripOfferingData>(
     () =>
       detail !== null
-        ? buildConsumerTripOfferingData(detail, tierEnrichment)
+        ? buildConsumerTripOfferingData(detail, tierEnrichment, tripGuide)
         : EMPTY_TRIP_OFFERING_DATA,
-    [detail, tierEnrichment],
+    [detail, tierEnrichment, tripGuide],
   );
   // META-ORCH-1174 Leg B3 — Reserve opens the cart DIRECTLY, seeded with the
   // SELECTED LINES (DEC-B). `lines` carries the §10 multi-package selection; we
@@ -745,24 +748,46 @@ export default function ConsumerTripDetailScreen({
         },
         qty,
       );
-      const note = formatTripTierInstallmentNote(
-        deposit,
-        tier.currency || detail.currency || "USD",
-        (value, currency) =>
-          (() => {
-            try {
-              return withCurrencyGlyph(
-                new Intl.NumberFormat(undefined, {
-                  style: "currency",
-                  currency: currency || "USD",
-                }).format(value),
-                currency,
-              );
-            } catch {
-              return `${value.toFixed(2)} ${currency}`;
-            }
-          })(),
-      );
+      const currency = tier.currency || detail.currency || "USD";
+      const note = currency.toUpperCase() === "NGN"
+        ? (() => {
+            const schedule = tier.installmentSchedule;
+            if (schedule === null || schedule === undefined) return null;
+            const later = schedule.installments.map((installment) => {
+              const due = installment.fixed_date !== undefined
+                ? new Date(`${installment.fixed_date}T12:00:00Z`)
+                : new Date(
+                    Date.now() +
+                      (installment.days_after_booking ?? 0) * 24 * 60 * 60 * 1000,
+                  );
+              const date = new Intl.DateTimeFormat(undefined, {
+                day: "numeric",
+                month: "short",
+              }).format(due);
+              return `${installment.pct}% on ${date}`;
+            });
+            return `${schedule.deposit_pct}% today${
+              later.length > 0 ? `, then ${later.join(", ")}` : ""
+            }`;
+          })()
+        : formatTripTierInstallmentNote(
+            deposit,
+            currency,
+            (value, formatCurrency) =>
+              (() => {
+                try {
+                  return withCurrencyGlyph(
+                    new Intl.NumberFormat(undefined, {
+                      style: "currency",
+                      currency: formatCurrency || "USD",
+                    }).format(value),
+                    formatCurrency,
+                  );
+                } catch {
+                  return `${value.toFixed(2)} ${formatCurrency}`;
+                }
+              })(),
+          );
       if (note !== null) map[tier.ticketTypeId] = note;
     }
     return map;

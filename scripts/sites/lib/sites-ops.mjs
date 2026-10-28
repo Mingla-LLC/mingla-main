@@ -668,17 +668,17 @@ export function validateReadinessResponse(value, siteId, evidenceKind) {
   return value;
 }
 
-export function validatePilotDeactivationResponse(value, siteId) {
+/** #2829 — Core's receipt for a recorded recovery alert (no host, no site). */
+export function validateRecoveryStateResponse(value, state) {
   exactKeys(value, [
-    "deactivated_at", "hostname", "last_good_preserved", "site_id", "status",
-  ], "CORE_DEACTIVATION_SCHEMA_INVALID");
+    "accepted_at", "observed_at", "previous_state", "sites_affected", "state",
+  ], "CORE_RECOVERY_STATE_SCHEMA_INVALID");
   if (
-    value.site_id !== requireUuid(siteId) ||
-    value.hostname !== "gogi.sites.usemingla.com" ||
-    value.status !== "disabled" ||
-    value.last_good_preserved !== true ||
-    !Number.isFinite(Date.parse(value.deactivated_at))
-  ) fail("CORE_DEACTIVATION_SCHEMA_INVALID");
+    value.state !== state ||
+    value.sites_affected !== 0 ||
+    !Number.isFinite(Date.parse(value.accepted_at)) ||
+    !Number.isFinite(Date.parse(value.observed_at))
+  ) fail("CORE_RECOVERY_STATE_SCHEMA_INVALID");
   return value;
 }
 
@@ -690,7 +690,7 @@ export function validateObjectIdentity(bucket, key, siteId, tenantId = null) {
     const recoveryPattern = new RegExp(
       `^recovery/${exactTenantId}/${exactSiteId}/` +
       "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/" +
-      "[0-9a-f]{64}/(master|320|640|960|1440|1920)\\.webp$",
+      "[0-9a-f]{64}/(master|320|640|960|1440|1920|c400|c768|w1600)\\.webp$",
       "i",
     );
     if (

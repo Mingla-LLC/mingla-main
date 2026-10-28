@@ -146,8 +146,9 @@ function check(s, manifest) {
   // [TEST-MOD-APPROVED #1984] listing conversion + reservation metrics (126 + 2 = 128).
   // [TEST-MOD-APPROVED #3697] Host Ads propose/approve/pause/end/report (128 + 5 = 133).
   // [TEST-MOD-APPROVED #3872] Discounts, R2 referrals, and guarded R3 gig
-  // script drafting extend the caller-bound denominator (133 + 7 = 140).
-  if (declarationCount !== 140) failures.push(`expected 140 declarations, got ${declarationCount}`);
+  // script drafting extend the caller-bound denominator (133 + 7 = 140;
+  // #2829 W9b website designer tools 140 → 152).
+  if (declarationCount !== 152) failures.push(`expected 152 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

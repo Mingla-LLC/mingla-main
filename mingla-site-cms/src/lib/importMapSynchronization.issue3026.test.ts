@@ -38,8 +38,14 @@ const expectedKeys = [
   "@payloadcms/richtext-lexical/client#ItalicFeatureClient",
   "@payloadcms/richtext-lexical/client#HeadingFeatureClient",
   "@payloadcms/richtext-lexical/client#ParagraphFeatureClient",
+  // #2829 W9r — quotes in story text (the Website section's rich text has them).
+  "@payloadcms/richtext-lexical/client#BlockquoteFeatureClient",
   "@/components/StudioNav#default",
   "@/components/StudioLogo#default",
+  // #2829 W3 — Studio's design, colour and font editors on Site settings.
+  "@/components/studio/DesignPicker#default",
+  "@/components/studio/TokenEditor#default",
+  "@/components/studio/FontPicker#default",
   "@payloadcms/storage-s3/client#S3ClientUploadHandler",
   "@payloadcms/next/rsc#CollectionCards",
 ].sort();

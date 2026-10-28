@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/offering-rendering/__tests__/issue_3645_installment_reassurance_shared.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3645-pi-20-installment-reassurance-shared",
+  "profile": "deno-1.46-stripe"
+}

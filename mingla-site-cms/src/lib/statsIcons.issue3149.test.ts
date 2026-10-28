@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { STATS_ICON_KEYS, statsIconOptions } from "./statsIcons";
-import { restaurantBlocks } from "../blocks/restaurantBlocks";
+import { siteBlocks as restaurantBlocks } from "../blocks/siteBlocks";
 
 /**
  * #3149 wave 4 — the editor's icon list and the published site's icon list are

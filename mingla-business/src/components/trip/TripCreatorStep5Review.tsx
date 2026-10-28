@@ -37,6 +37,7 @@ import {
 import type { Trip } from "../../services/tripsService";
 import { StripeBlockedCard } from "../offering/StripeBlockedCard";
 import { TripPreview, type TripPreviewBrand } from "./TripPreview";
+import { TripGuideReviewSections } from "./TripGuideReviewSections";
 import { resolveProviderNeutralPaidPublishGuardCopy } from "../../utils/paidPublishGuards";
 import { buildDraftPreviewSocialProof } from "../../utils/draftPreviewSocialProof";
 
@@ -170,6 +171,9 @@ export const TripCreatorStep5Review: React.FC<TripCreatorStep5ReviewProps> = ({
           socialProof={previewSocialProof}
         />
       </View>
+      {/* Issue #2829 (A9) — the "Before you go" guide as it will be published
+          with the trip: nothing is hidden before publish. */}
+      <TripGuideReviewSections eventId={trip.id} capacity={trip.businessTrip.capacity ?? null} />
       {onThemeChange !== undefined ? (
         <ThemeSheet
           visible={themeSheetOpen}

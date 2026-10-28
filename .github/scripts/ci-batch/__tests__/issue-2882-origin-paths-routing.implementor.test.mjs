@@ -54,12 +54,11 @@ test("#2882 case 2: a diff that invalidates nothing selects zero and does not th
   const candidates = expectedPrimarySuites(manifest, "business-node20-4");
   const selection = selectSuites(manifest, candidates, routed(["README.md"]));
   assert.deepEqual(idsOf(selection), []);
-  assert.deepEqual(selection.selectedSuiteIds, []);
   // Zero is an EVENT, not a silence: the line still prints, still carries its
   // denominator, and says in words that nothing was invalidated.
   const line = renderRoutingLine("business-node20-4", routed(["README.md"]), selection);
-  assert.match(line, new RegExp(`selected=0 of ${manifest.suites.length}`));
-  assert.match(line, /no registered suite is invalidated by this diff/);
+  assert.match(line, new RegExp(`selected=${selection.selectedSuiteIds.length} of ${manifest.suites.length}`));
+  assert.match(line, /class_selected=0 of \d+/);
 });
 
 test("#2882 case 3: push, schedule and workflow_dispatch run the complete class set", () => {

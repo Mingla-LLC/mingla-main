@@ -266,11 +266,12 @@ export function alertBody(verdict, runUrl) {
     "",
     formatVerdictLine(verdict),
     "",
+    // #2829 — recovery evidence alerts; it never takes a published site down.
     verdict.code === VERDICT_EXPIRED
-      ? "The public Sites runtime resolver no longer has recovery evidence inside its freshness budget. Every page on the pilot host is 404 until a successful backup run lands."
-      : "The public Sites runtime resolver gates every page request on recovery evidence that is close to expiring. A successful backup run must land before the headroom above reaches zero, or the pilot host starts returning 404 on every route.",
+      ? "Sites recovery evidence is outside its freshness budget. Every published site keeps serving; a NEW site's first publish is refused until a successful backup run lands."
+      : "Sites recovery evidence is close to expiring. Published sites are not affected; a NEW site's first publish will be refused once the headroom above reaches zero.",
     "",
-    `Recover by dispatching the backup workflow: \`gh workflow run ${DEFAULT_WORKFLOW_FILE}\`. Its restore runs into an ephemeral PostgreSQL service container and does not touch production data. The run must SUCCEED — a failed run triggers signed pilot deactivation.`,
+    `Recover by dispatching the backup workflow: \`gh workflow run ${DEFAULT_WORKFLOW_FILE}\`. Its restore runs into an ephemeral PostgreSQL service container and does not touch production data. A failed run records a recovery alert; it takes no site offline.`,
     "",
     `Watchdog run: ${runUrl}`,
   ].join("\n");
@@ -418,6 +419,34 @@ export async function postAlertOnce(verdict, {
   return { posted: true, reason: "REPORTED", marker };
 }
 
+/** #2829 — the Core recovery state a verdict means (null: nothing to record). */
+export function recoveryStateForVerdict(code) {
+  if (code === VERDICT_LATE) return "late";
+  if ([VERDICT_EXPIRED, VERDICT_NO_SUCCESS, VERDICT_UNPROVEN].includes(code)) return "stale";
+  return null;
+}
+
+/**
+ * #2829 — also record the state in Core (brand_site_record_recovery_state),
+ * which pages and shows it to Mingla admins. Optional: the watchdog stays
+ * credential-free, and records only when the CMS→Core signing variables are
+ * present in its environment. Recording never takes a site offline.
+ */
+export async function recordRecoveryStateInCore(verdict, { env, fetchImpl, now }) {
+  const state = recoveryStateForVerdict(verdict.code);
+  if (state === null) return { recorded: false, reason: "NOT_ALERTING" };
+  if (!env.MINGLA_CMS_TO_CORE_CURRENT_KEY_B64 || !env.SITES_CORE_BASE_URL || !env.SITES_PILOT_SITE_ID) {
+    return { recorded: false, reason: "CORE_SIGNING_NOT_CONFIGURED" };
+  }
+  try {
+    const { alertRecoveryFailure } = await import("./backup-sites-cms.mjs");
+    await alertRecoveryFailure({ env, fetchImpl, now, state });
+    return { recorded: true, reason: "RECORDED" };
+  } catch (error) {
+    return { recorded: false, reason: error?.code || "CORE_RECORD_FAILED" };
+  }
+}
+
 export async function runRecoveryFreshnessWatchdog({
   env = process.env,
   fetchImpl = fetch,
@@ -443,7 +472,9 @@ export async function runRecoveryFreshnessWatchdog({
   stdout.write(
     `SITES_RECOVERY_ALERT_DELIVERY posted=${alert.posted} reason=${alert.reason}\n`,
   );
-  return { verdict, alert };
+  const core = await recordRecoveryStateInCore(verdict, { env, fetchImpl, now });
+  stdout.write(`SITES_RECOVERY_STATE_RECORDED recorded=${core.recorded} reason=${core.reason}\n`);
+  return { verdict, alert, core };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

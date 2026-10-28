@@ -33,6 +33,22 @@ secret:
     - name: "AppsFlyer client dev key public fallback (app-mobile build config)"
       match: "W29Z6cqfWKvML3FdQAX27E"
 
+    # CI-only fixture values from the existing Deno/Paystack contract lanes.
+    # #3643 serializes those exact step environments into the batch manifest;
+    # they are intentionally non-functional test literals, not credentials.
+    - name: "Supabase service-role test fixture (CI only)"
+      match: "test-service-role-key-not-real"
+    - name: "Paystack test fixture for issue 1326 (CI only)"
+      match: "sk_test_issue1326_confirm_secret"
+    - name: "Paystack test fixture for issue 2198 return (CI only)"
+      match: "sk_test_issue2198_return_secret"
+    - name: "Paystack test fixture for issue 2198 sibling (CI only)"
+      match: "sk_test_issue2198_sibling_secret"
+    - name: "CI batch ephemeral database credential (expression form)"
+      match: "${{ format('ci-batch-{0}-{1}', github.run_id, github.run_attempt) }}"
+    - name: "CI batch ephemeral database credential (shell form)"
+      match: "ci-batch-${{ github.run_id }}-${{ github.run_attempt }}"
+
     # toward #3697 Wave 6 — deterministic PG17 fixture UUIDs. GitGuardian's
     # Generic High Entropy detector flagged one of these in PR #3814 as if it
     # were a live secret; they are issue-scoped test ids only (same class as

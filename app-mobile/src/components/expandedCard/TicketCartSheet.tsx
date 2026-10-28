@@ -69,6 +69,7 @@ import {
 // #3372 — naira reads "₦", not "NGN", in the cart (the shared #3341 rule).
 // Deep specifier, not the barrel, so suites that mock the barrel stay untouched.
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+import { installmentReassuranceText } from "@mingla/offering-rendering/installmentReassurance";
 
 // issue #2265 — TYPE ONLY. A value import here would pull the Stripe native SDK
 // into the cart sheet's module graph; `import type` is erased at compile time.
@@ -243,6 +244,17 @@ const formatCentsCurrency = (cents: number, currency: string): string => {
   } catch {
     return `${(cents / 100).toFixed(2)} ${currency}`;
   }
+};
+
+const formatInstallmentDueDate = (iso: string): string => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? iso
+    : new Intl.DateTimeFormat(undefined, {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }).format(date);
 };
 
 const isTicketSalesEnded = (ticket: PublicTicketProps): boolean => {
@@ -627,7 +639,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const quoteIsReady = quote !== null && !quoteIsLoading && !quoteQuery.isError;
   const isFreeQuote = quoteIsReady && quote.buyerTotalCents === 0;
   const showsDueToday =
-    quoteIsReady && quote.dueTodayNetCents < quote.buyerTotalCents;
+    quoteIsReady &&
+    (quote.installmentChargeSchedule !== undefined ||
+      quote.dueTodayNetCents < quote.buyerTotalCents);
 
   // META-ORCH-0991 Wave A — open/close is owned by BaseBottomSheet
   // (declarative `visible`). The prior sheetRef + snapToIndex/close effect is
@@ -1092,14 +1106,22 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         ? "Updating…"
         : quoteQuery.isError || quote === null
           ? "—"
-          : formatCentsCurrency(quote.buyerTotalCents, quote.currency);
+          : formatCentsCurrency(
+              quote.planTotalBuyerCents ?? quote.buyerTotalCents,
+              quote.currency,
+            );
   // The all-in Total is the single-line label when no plan; the upper line of the
   // two-line bar when paying over time.
   const subtotalLabelText = showsDueToday ? "Total" : "Subtotal";
   const dueTodayValueText =
     quote === null
       ? "—"
-      : formatCentsCurrency(quote.dueTodayNetCents, quote.currency);
+      : formatCentsCurrency(
+          quote.installmentChargeSchedule !== undefined
+            ? quote.buyerTotalCents
+            : quote.dueTodayNetCents,
+          quote.currency,
+        );
   const codeOutcome = quote?.codeOutcome ?? null;
   const appliedCodeDiscount =
     quote?.discounts.find((discount) => discount.kind === "code") ?? null;
@@ -1879,6 +1901,50 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           </View>
         ) : null}
 
+        {quote?.installmentChargeSchedule !== undefined ? (
+          <View style={styles.installmentQuoteCard}>
+            <Text style={styles.sectionLabel}>PAYMENT PLAN</Text>
+            <View style={styles.installmentQuoteRow}>
+              <Text style={styles.installmentQuoteLabel}>Today</Text>
+              <View style={styles.installmentQuoteAmountWrap}>
+                <Text style={styles.installmentQuoteAmount}>
+                  {formatCentsCurrency(quote.buyerTotalCents, quote.currency)}
+                </Text>
+                <Text style={styles.installmentQuoteFees}>Includes fees &amp; tax</Text>
+              </View>
+            </View>
+            {quote.installmentChargeSchedule.payments.map((payment) => (
+              <View key={payment.ordinal} style={styles.installmentQuoteRow}>
+                <Text style={styles.installmentQuoteLabel}>
+                  {formatInstallmentDueDate(payment.dueAt)}
+                </Text>
+                <View style={styles.installmentQuoteAmountWrap}>
+                  <Text style={styles.installmentQuoteAmount}>
+                    {formatCentsCurrency(payment.buyerTotalCents, quote.currency)}
+                  </Text>
+                  <Text style={styles.installmentQuoteFees}>Includes fees &amp; tax</Text>
+                </View>
+              </View>
+            ))}
+            <Text style={styles.installmentQuoteReassurance}>
+              {installmentReassuranceText({
+                depositFormatted: formatCentsCurrency(
+                  quote.buyerTotalCents,
+                  quote.currency,
+                ),
+                remainingFormatted: formatCentsCurrency(
+                  quote.installmentChargeSchedule.payments.reduce(
+                    (sum, payment) => sum + payment.buyerTotalCents,
+                    0,
+                  ),
+                  quote.currency,
+                ),
+                collection: "auto_card_or_pay_link",
+              })}
+            </Text>
+          </View>
+        ) : null}
+
         {/* ORCH-1025 — "What's included" breakdown. Replaces the retired
             billing-address + Calculate-tax form (CartTaxPreview). Shows the
             all-in total upfront with a tappable breakdown. Only the truthful,
@@ -2607,6 +2673,43 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "rgba(255, 255, 255, 0.45)",
     marginTop: 2,
+  },
+  installmentQuoteCard: {
+    marginTop: 18,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    gap: 12,
+  },
+  installmentQuoteRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 16,
+  },
+  installmentQuoteLabel: {
+    flex: 1,
+    fontSize: 14,
+    color: "rgba(255,255,255,0.68)",
+  },
+  installmentQuoteAmountWrap: { alignItems: "flex-end" },
+  installmentQuoteAmount: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.96)",
+  },
+  installmentQuoteFees: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.48)",
+    marginTop: 2,
+  },
+  installmentQuoteReassurance: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: "rgba(255,255,255,0.68)",
+    marginTop: 4,
   },
   // Sticky bottom bar
   stickyBar: {

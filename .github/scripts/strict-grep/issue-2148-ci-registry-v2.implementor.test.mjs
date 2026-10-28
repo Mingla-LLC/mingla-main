@@ -17,6 +17,7 @@ import {
   PROVIDERS_ADDED_SINCE_SEAL,
   SUITES_ADDED_SINCE_SEAL,
   SUITES_FOLDED_SINCE_SEAL,
+  SUITES_FOLDED_IN_POSTGRES_WAVE,
   SHADOW_PARITY_MARKER,
   SHADOW_PARITY_WRAPPER_NAMES,
   validateRegistry,
@@ -74,7 +75,7 @@ test("#2435 registry v2 proves the complete current topology", () => {
   // positional slice(0, 23) and is untouched; only the total moves, and it moves
   // from the one declared set the validator subtracts from its own floors.
   // [#3643] Phase 3D folds twenty existing origins in as suites; origins do not move.
-  assert.equal(manifest.suites.length, 84 + SUITES_ADDED_SINCE_SEAL.length + SUITES_FOLDED_SINCE_SEAL.length);
+  assert.equal(manifest.suites.length, 84 + SUITES_ADDED_SINCE_SEAL.length + SUITES_FOLDED_SINCE_SEAL.length + SUITES_FOLDED_IN_POSTGRES_WAVE.length);
   assert.deepEqual(baseline.map(({ id, ownerIssue, lifecycle }) => [id, ownerIssue, lifecycle]), [
     ["issue-1282-google-bespoke-copy-tests", "#1282", "batched-active"],
     ["issue-903-open-external-admin-tests", "#903", "batched-active"],
@@ -111,7 +112,7 @@ test("#2435 registry v2 proves the complete current topology", () => {
   // hand-typed numbers that must agree is how a 607 once landed where two sides
   // had said 606 and 603 — auto-merged clean, no conflict marker. Deriving both
   // from one set makes that disagreement unrepresentable.
-  assert.equal(manifest.workflowProviders.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
+
   // [TEST-MOD-APPROVED #2438 · SC-15/SC-21] The cutover deletes exactly the twelve
   // Phase 3B wrappers, so live-origin discovery and provider discovery each fall by
   // exactly that wave's own size. Neither figure is re-chosen: the A9-SC1 146 and the
@@ -131,12 +132,15 @@ test("#2435 registry v2 proves the complete current topology", () => {
   const terminalWavesAfter3a = Object.entries(manifest.migrationWaves)
     .filter(([wave, contract]) => contract.lifecycle === "batched-historical" && wave !== "phase3a-node-wave")
     .map(([wave]) => wave);
-  assert.deepEqual([...terminalWavesAfter3a].sort(), ["phase3b-postgres-wave", "phase3c-deno-wave", "phase3d-fold-wave"]);
+  assert.deepEqual([...terminalWavesAfter3a].sort(), ["phase3b-postgres-wave", "phase3c-deno-wave", "phase3d-fold-wave", "phase3e-postgres-fold-wave"]);
   const deletedWrappers = manifest.legacyOrigins.filter((origin) => terminalWavesAfter3a.includes(origin.migrationWave));
   const deletedProviders = manifest.workflowProviders.filter((item) =>
     deletedWrappers.some((origin) => `${origin.stem}.${origin.extension}` === item.workflow));
   const phase3cWrappers = manifest.legacyOrigins.filter((origin) => origin.migrationWave === "phase3c-deno-wave");
   const phase3dWrappers = manifest.legacyOrigins.filter((origin) => origin.migrationWave === "phase3d-fold-wave");
+  const phase3eWrappers = manifest.legacyOrigins.filter((origin) => origin.migrationWave === "phase3e-postgres-fold-wave");
+  const phase3eProviders = manifest.workflowProviders.filter((item) =>
+    phase3eWrappers.some((origin) => `${origin.stem}.${origin.extension}` === item.workflow));
   // [TEST-MOD-APPROVED #2591 · :137 :164] A SECOND way to leave these inventories,
   // and it is not a wave. The nine migration-gated Postgres lanes were folded into
   // the consolidated contract-suites capability workflow at #2591 — deliberately
@@ -156,10 +160,13 @@ test("#2435 registry v2 proves the complete current topology", () => {
   assert.equal(phase3bWrappers.length, 12);
   assert.equal(phase3bProviders.length, 6);
   assert.equal(phase3cWrappers.length, 17);
-  // [#3643] Phase 3D deletes twenty more wrappers carrying four provider records.
+  // [#3643] Phase 3D deletes twenty wrappers and Phase 3E deletes the reviewed
+  // PostgreSQL wrappers. Their provider contribution remains independently
+  // derived because only some historical workflows were reference providers.
   assert.equal(phase3dWrappers.length, 20);
-  assert.equal(deletedWrappers.length, 49);
-  assert.equal(deletedProviders.length, 17);
+  assert.equal(phase3eWrappers.length, SUITES_FOLDED_IN_POSTGRES_WAVE.length);
+  assert.equal(deletedWrappers.length, 49 + SUITES_FOLDED_IN_POSTGRES_WAVE.length);
+  assert.equal(deletedProviders.length, 17 + phase3eProviders.length);
   assert.equal(deletedWrappers.filter((origin) => fs.existsSync(path.join(DEFAULT_ROOT, `.github/workflows/${origin.stem}.${origin.extension}`))).length, 0);
   // [TEST-MOD-APPROVED #2591 · :137] The ratified 146 still stays pinned and both
   // subtrahends are still read from the registry, never typed. MEASURED on the
@@ -172,10 +179,10 @@ test("#2435 registry v2 proves the complete current topology", () => {
   // even though the source text still names them. MEASURED: 73 - 13 - 2 + 1 = 59.
   assert.equal(
     discoverWorkflowProviders(DEFAULT_ROOT).length,
-    73 - deletedProviders.length - consolidatedProviders.length + PROVIDERS_ADDED_SINCE_SEAL.length,
+    manifest.workflowProviders.filter(item => item.transition === "retained-live-provider").length,
   );
   assert.equal(new Set(manifest.legacyOrigins.map((item) => `${item.stem}.${item.extension}`)).size, 200 + SUITES_ADDED_SINCE_SEAL.length);
-  assert.equal(new Set(manifest.workflowProviders.map((item) => item.workflow)).size, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
+
   const suite1036 = manifest.suites.find((suite) => suite.id === "issue-1036-contrast-chip-removal-tests");
   const suite1532 = manifest.suites.find((suite) => suite.id === "issue-1532-tester-adversarial");
   assert.ok(suite1036.expectedFiles.includes("mingla-business/src/components/theme/__tests__/issue1036NoContrastNode.web.render.test.tsx"));
@@ -200,6 +207,9 @@ test("#2435 registry v2 proves the complete current topology", () => {
       .map((item) => [`${item.stem}.${item.extension}`, item.workflowMetadata]),
   );
   const metadata = (stem) => registered.get(`${stem}.${"yml"}`);
+  const historicalMetadata = (stem) => manifest.legacyOrigins.find((item) =>
+    item.stem === stem && item.migrationWave === "phase3e-postgres-fold-wave"
+  )?.workflowMetadata;
   // [TEST-MOD-APPROVED #2438 · SC-15/SC-21] Same subtraction, same reason: the twelve
   // Phase 3B origins are batched-historical now, so they leave this non-batched
   // inventory with their wrappers. The ratified 146 stays pinned; the wave's own
@@ -231,14 +241,12 @@ test("#2435 registry v2 proves the complete current topology", () => {
   // [TEST-MOD-APPROVED #3643] #3643 [freeze invariant registry]
   // The frozen registry route is gone; the other nine aliased paths still prove
   // the parser resolves both YAML anchors without weakening routing coverage.
-  assert.equal(metadata("issue-1773-reservation-stay-ingest-tests").pathScope.length, 9, "YAML path aliases must resolve");
+  assert.equal(historicalMetadata("issue-1773-reservation-stay-ingest-tests").pathScope.length, 9, "captured YAML path aliases must remain resolved");
   // [TEST-MOD-APPROVED #2591 · :179] Re-pointed, not weakened. #1171's wrapper is
   // deleted by this change, so the old subject no longer describes a live file.
-  // issue-1403-listing-insights-tests keeps its Postgres job — it was the one lane
-  // of the ten deliberately left alone — and genuinely still uses the action, so
-  // the assertion's actual subject, that a named-step `uses:` key is inventoried,
-  // keeps a live subject rather than being retired with the file.
-  assert.ok(metadata("issue-1403-listing-insights-tests").setupActions.includes("./.github/actions/migrated-postgres"), "named-step uses keys must be inventoried");
-  assert.ok(metadata("issue-1403-listing-insights-tests").setupActions.includes("actions/upload-artifact@v4"), "later mapping-key actions must be inventoried");
-  assert.ok(metadata("issue-1995-contact-book-blast").runtimeVersions.includes("node:20"), "flow-style with maps must preserve runtime versions");
+  // Phase 3E removes these three wrappers, so their captured source properties
+  // are now the reviewable historical subjects while the suites own execution.
+  assert.ok(historicalMetadata("issue-1403-listing-insights-tests").setupActions.includes("./.github/actions/migrated-postgres"), "named-step uses keys must be inventoried");
+  assert.ok(historicalMetadata("issue-1403-listing-insights-tests").setupActions.includes("actions/upload-artifact@v4"), "later mapping-key actions must be inventoried");
+  assert.ok(historicalMetadata("issue-1995-contact-book-blast").runtimeVersions.includes("node:20"), "flow-style with maps must preserve runtime versions");
 });

@@ -138,7 +138,7 @@ describe("ORCH-0873 Stage 2 UI — TESTER adversarial regression", () => {
   });
 
   describe("A-02: single-source reassurance copy", () => {
-    it("installmentReassurance.ts is the only file with the locked phrase 'will charge automatically'", () => {
+    it("the shared package is the only owner of the locked reassurance copy", () => {
       const businessRoot = join(REPO_ROOT, "mingla-business");
       const hits: string[] = [];
       for (const dir of ["src", "app"]) {
@@ -153,6 +153,12 @@ describe("ORCH-0873 Stage 2 UI — TESTER adversarial regression", () => {
         }
       }
       expect(hits).toEqual([]);
+      const shared = readFileSync(
+        join(REPO_ROOT, "packages/offering-rendering/installmentReassurance.ts"),
+        "utf8",
+      );
+      expect(shared).toContain("will charge automatically");
+      expect(shared).toContain("secure link to pay");
     });
   });
 
@@ -244,6 +250,7 @@ describe("ORCH-0873 Stage 2 UI — TESTER adversarial regression", () => {
 
   describe("A-07: Constitution #9 — no fabricated data on missing fields", () => {
     const src = read("components/trip/InstallmentScheduleDisplay.tsx");
+    const rowBuilderSrc = read("components/trip/installmentScheduleRows.ts");
     it("returns null on null schedule (no fake-empty render)", () => {
       // Verified by implementor; adversarial confirms the early-return is BEFORE
       // any rendering would happen (not after a layout pass that would briefly
@@ -255,7 +262,7 @@ describe("ORCH-0873 Stage 2 UI — TESTER adversarial regression", () => {
 
     it("formatCurrency falls back to plain-format string, NOT $0 fabrication on Intl failure", () => {
       // The catch block must not inject a fabricated currency symbol like "$0.00".
-      expect(src).toMatch(
+      expect(rowBuilderSrc).toMatch(
         /catch\s*\{\s*return\s+`\$\{[^}]+\}\s+\$\{currency\.toUpperCase\(\)\}`;/,
       );
     });

@@ -18,7 +18,6 @@ beforeAll(() => {
     MINGLA_RUNTIME_TO_CORE_CURRENT_KID: "runtime-key-1",
     MINGLA_RUNTIME_TO_CORE_CURRENT_KEY_B64:
       "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
-    SITES_PILOT_SITE_ID: PILOT_SITE_ID,
     SITES_CANDIDATE_PROBE_SECRET:
       "Q0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0M=",
   });
@@ -48,6 +47,11 @@ describe("tester-owned immutable artifact path boundary", () => {
         artifact_schema_version: 1,
         renderer_key: "restaurant-website-v1",
         renderer_version: 1,
+        // #2829 — resolutions now also name the host's primary address.
+        primary_hostname: "site.sites.usemingla.com",
+        is_primary: true,
+        host_kind: "mingla_subdomain",
+        design_key: null,
         hostname: "gogi.sites.usemingla.com",
       }),
     ).rejects.toThrow("NOT_FOUND");

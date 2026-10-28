@@ -106,27 +106,29 @@ describe("#2830 explicit Website journey owner", () => {
   });
 
   it("fails when internal state numbers leak into customer UI", () => {
-    const source = fs.readFileSync(
-      path.resolve(__dirname, "../../components/sites/BrandWebsiteView.tsx"),
-      "utf8",
-    );
+    // #2829 W9r — the redesigned Website section replaced BrandWebsiteView.
+    const dir = path.resolve(__dirname, "../../components/sites/website");
+    const files = ["WebsiteApp.tsx", "NoticeBanner.tsx", ...fs.readdirSync(path.join(dir, "sections")).map((name) => `sections/${name}`)];
+    const source = files.map((file) => fs.readFileSync(path.join(dir, file), "utf8")).join("\n");
     expect(source).not.toMatch(/Journey state|rank\s*[-:=]\s*10/i);
-    expect(source).toContain("website-publication-running");
-    expect(source).toContain("website-publication-failed");
-    expect(source).toContain("website-session-expired");
+    expect(source).toContain('testID="publish-progress"');
+    expect(source).toContain('testID="publish-failed"');
+    expect(source).toContain('testID="website-session-expired"');
   });
 
   it("keeps terminal failure reset explicit and never clears on generic navigation", () => {
+    // #2829 W9r — the controller owns it; the reset is only the explicit action.
     const route = fs.readFileSync(
-      path.resolve(__dirname, "../../../app/brand/[id]/website.tsx"),
+      path.resolve(__dirname, "../../components/sites/website/useWebsiteController.ts"),
       "utf8",
     );
     expect(route).toContain("onResetFailedPublication");
     expect(route).toContain("canResetFailedPublicationOperation");
-    expect(route).toContain('setPanel("publish_review")');
-    expect(route).toContain('setPanel(rollbackVersion ? "rollback_review" : "versions")');
-    expect(route).not.toMatch(
-      /nextPanel === "overview"[\s\S]{0,500}clearPublicationOperation/,
-    );
+    const reset = route.slice(route.indexOf("onResetFailedPublication: () => {"));
+    expect(reset.indexOf("canResetFailedPublicationOperation(")).toBeLessThan(reset.indexOf("clearPublicationOperation("));
+    // clearPublicationOperation runs only on a terminal receipt, an orphan, or the explicit reset.
+    expect(route.match(/clearPublicationOperation\(/g)).toHaveLength(3);
+    const shell = fs.readFileSync(path.resolve(__dirname, "../../components/sites/website/WebsiteApp.tsx"), "utf8");
+    expect(shell).not.toContain("clearPublicationOperation");
   });
 });

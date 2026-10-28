@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/paystack-webhook/__tests__/issue_3645_inbox_strips_authorization.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3645-pi-18-inbox-strips-authorization",
+  "profile": "deno-1.46-stripe"
+}

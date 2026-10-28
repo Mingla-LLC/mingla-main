@@ -372,7 +372,10 @@ describe("ORCH-0882 SC-9 — projection clarifier copy", () => {
     // Read the source to verify the literal clarifier text is present.
     // Calling the function directly here would require module resolution
     // setup; source-assertion mirrors the existing test pattern.
-    const src = read("src/copy/installmentReassurance.ts");
+    const src = readFileSync(
+      join(REPO_ROOT, "..", "packages/offering-rendering/installmentReassurance.ts"),
+      "utf8",
+    );
     expect(src).toContain("Dates assume you book today");
     expect(src).toContain("isProjection");
   });

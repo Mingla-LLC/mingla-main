@@ -47,6 +47,46 @@ const RELEASE_BOUND_EAS_PROFILES = [
 ];
 
 /**
+ * #2829 — loopback hosts the local Sites stack uses.
+ * @param {string | undefined} raw
+ * @returns {boolean}
+ */
+const isLoopbackUrl = (raw) => {
+  if (!raw) return false;
+  try {
+    const { hostname } = new URL(raw);
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "[::1]" ||
+      hostname.endsWith(".localhost")
+    );
+  } catch (_error) {
+    return false;
+  }
+};
+
+/**
+ * #2829 — fail any EAS or Vercel build that carries the local Sites overrides.
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {void}
+ */
+const assertNoLocalSitesOverridesInHostedBuild = (env) => {
+  const hostedBuild = env.EAS_BUILD_PROFILE ?? env.VERCEL_ENV;
+  if (hostedBuild === undefined) return;
+  if (env.EXPO_PUBLIC_SITES_LOCAL_STUDIO_ORIGIN) {
+    throw new Error(
+      `EXPO_PUBLIC_SITES_LOCAL_STUDIO_ORIGIN is a local-stack override and must not be set for the ${hostedBuild} build. [#2829]`,
+    );
+  }
+  if (isLoopbackUrl(env.EXPO_PUBLIC_SUPABASE_URL)) {
+    throw new Error(
+      `EXPO_PUBLIC_SUPABASE_URL points at a loopback host; the ${hostedBuild} build must use the hosted Supabase project. [#2829]`,
+    );
+  }
+};
+
+/**
  * @param {ExpoPluginEntry[] | undefined} plugins
  * @returns {ExpoPluginEntry[]}
  */
@@ -143,6 +183,13 @@ module.exports = ({ config }) => {
       `EXPO_PUBLIC_ONESIGNAL_APP_ID is required for the ${easBuildProfile} EAS_BUILD_PROFILE build — Host push delivery would be disabled. Store it as a Sensitive or Plain EAS variable, never Secret, so production OTAs can inline it. [#3720]`,
     );
   }
+
+  // #2829 — the local Sites stack (scripts/sites/local/run-business-web.sh)
+  // points Business web at a loopback Core and a loopback Studio. Those values
+  // are for a developer's own machine only: ANY EAS build (every profile) or
+  // Vercel build that sees them fails here instead of shipping an app that
+  // talks to 127.0.0.1.
+  assertNoLocalSitesOverridesInHostedBuild(process.env);
 
   const basePlugins = filterOptionalNativeStartupPlugins(config.plugins);
 

@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "goldens:render": "GOLDENS_RENDER_DIR=/tmp/mingla-sites-goldens-html vitest run e2e/goldens/render.test.tsx",
+    "goldens": "node e2e/goldens/goldens.mjs"
   },
   "dependencies": {
     "next": "16.4.2",
@@ -16,12 +18,15 @@
     "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.0",
     "@types/node": "24.3.0",
     "@types/react": "19.1.12",
     "@types/react-dom": "19.1.9",
     "eslint": "9.34.0",
     "eslint-config-next": "16.4.2",
     "jsdom": "26.1.0",
+    "pixelmatch": "7.2.0",
+    "pngjs": "7.0.0",
     "typescript": "5.9.2",
     "vitest": "5.0.5"
   },

@@ -1,7 +1,6 @@
 import type { TypedUser } from "payload";
 import { cmsConfig } from "./config";
 import { base64url, fromBase64url, hmac, timingSafeEqual } from "./crypto";
-import { MINGLA_BUSINESS_ORIGIN } from "./origins";
 
 export const STUDIO_COOKIE = "__Host-mingla_studio";
 export const STUDIO_CSRF_COOKIE = "__Host-mingla_studio_csrf";
@@ -10,7 +9,16 @@ export type StudioSession = {
   version: 1; site_id: string; brand_id: string; user_id: string; rank: number;
   tenant_id: string; issued_at: number; absolute_expires_at: number; idle_expires_at: number; nonce: string;
   return_surface: "web" | "native";
+  /** #2829 — the site's live address, from the signed Core grant. */
+  primary_hostname?: string | null;
 };
+
+/** #2829 — every renderer a Mingla site may use. */
+export const SITES_RENDERER_KEYS = ["restaurant-website-v1", "sites-v2"] as const;
+export type SitesRendererKey = typeof SITES_RENDERER_KEYS[number];
+export function isSitesRendererKey(value: unknown): value is SitesRendererKey {
+  return value === "restaurant-website-v1" || value === "sites-v2";
+}
 
 export type PreviewGrant = {
   version: 1;
@@ -22,7 +30,7 @@ export type PreviewGrant = {
   tenant_id: string;
   source_revision: string;
   source_digest: string;
-  renderer_key: "restaurant-website-v1";
+  renderer_key: SitesRendererKey;
   renderer_version: 1;
   issued_at: number;
   expires_at: number;
@@ -74,6 +82,10 @@ export async function decodeSession(value: string | null): Promise<StudioSession
   const now = Math.floor(Date.now() / 1000);
   if (session.version !== 1 || session.rank < 20 || session.absolute_expires_at <= now || session.idle_expires_at <= now) return null;
   if (session.return_surface !== "web" && session.return_surface !== "native") return null;
+  if (
+    session.primary_hostname != null &&
+    (typeof session.primary_hostname !== "string" || !/^[a-z0-9.-]{4,253}$/.test(session.primary_hostname))
+  ) return null;
   if (![session.site_id, session.brand_id, session.user_id, session.tenant_id].every((id) => /^[0-9a-f-]{36}$/i.test(id))) return null;
   return session;
 }
@@ -113,7 +125,7 @@ export async function decodePreviewGrant(value: string | null): Promise<PreviewG
     grant.version !== 1 ||
     grant.issuer !== "mingla-site-cms" ||
     grant.audience !== "mingla-studio-preview" ||
-    grant.renderer_key !== "restaurant-website-v1" ||
+    !isSitesRendererKey(grant.renderer_key) ||
     grant.renderer_version !== 1 ||
     (grant.return_surface !== "web" && grant.return_surface !== "native") ||
     grant.issued_at > now + 5 ||
@@ -158,7 +170,7 @@ export function studioReturnLocationFromContext(
   const suffix = result ? `&result=${encodeURIComponent(result)}` : "";
   return context.return_surface === "native"
     ? `mingla-business://website-return?brandId=${brandId}${suffix}`
-    : `${MINGLA_BUSINESS_ORIGIN}/brand/${brandId}/website${
+    : `${cmsConfig().businessOrigin}/brand/${brandId}/website${
       result ? `?studioResult=${encodeURIComponent(result)}` : ""
     }`;
 }
