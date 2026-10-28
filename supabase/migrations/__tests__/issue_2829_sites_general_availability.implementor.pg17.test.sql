@@ -1,4 +1,5 @@
 -- #2829 Sites general availability (PostgreSQL 17).
+-- MINGLA-INVARIANT: I-PROPOSED-2829-08 | issue #2829 | A missing Sites entitlement defaults to granted for a nondeleted brand, while an existing granted or revoked entitlement remains authoritative.
 -- Proves current-brand backfill, future-brand defaults, restore behavior,
 -- explicit-revoke precedence, audit evidence, and replay idempotency.
 

@@ -1,4 +1,5 @@
 -- #3872 Creator Program general availability (PostgreSQL 17).
+-- MINGLA-INVARIANT: I-PROPOSED-3872-11 | issue #3872 | Missing rollout state defaults to general availability for a nondeleted brand, pilots become generally available, and an explicit dark row remains authoritative.
 -- Proves current-brand backfill, future/restored default-on gates, explicit-dark precedence,
 -- audited flag ownership, Locals no-spend boundaries and replay idempotency.
 
