@@ -87,18 +87,18 @@ describe("#3697 Host Home Ads lifecycle", () => {
     ).toEqual(["attention", "new"]);
   });
 
-  it("renders Ads immediately after live offerings on desktop and mobile", () => {
+  it("renders Ads immediately after Business Pulse on desktop and mobile", () => {
     const source = fs.readFileSync(
       path.join(ROOT, "app/(tabs)/home.tsx"),
       "utf8",
     );
     const placements = source.match(
-      /\{renderLiveSection\(\)\}\s*<HomeAdsSection brandId=\{currentBrand\.id\} \/>/g,
+      /<BusinessPulsePanel[\s\S]*?onOpenOffering=\{handleOpenPulseOffering\}\s*\/>\s*<HomeAdsSection brandId=\{currentBrand\.id\} \/>/g,
     );
     expect(placements).toHaveLength(2);
   });
 
-  it("requires typed confirmation for destructive Home and detail actions", () => {
+  it("keeps destructive actions on ad details and removes them from Home", () => {
     const home = fs.readFileSync(
       path.join(ROOT, "src/components/home/HomeAdsSection.tsx"),
       "utf8",
@@ -107,11 +107,12 @@ describe("#3697 Host Home Ads lifecycle", () => {
       path.join(ROOT, "app/(tabs)/marketing/ads/[id].tsx"),
       "utf8",
     );
-    for (const source of [home, detail]) {
-      expect(source).toContain('variant="typeToConfirm"');
-      expect(source).toContain('"END" : "CANCEL"');
-    }
-    expect(home).toContain("homeAdDestructiveAction(campaign)");
+    expect(detail).toContain('variant="typeToConfirm"');
+    expect(detail).toContain('"END" : "CANCEL"');
+    expect(home).not.toContain('variant="typeToConfirm"');
+    expect(home).not.toContain("homeAdDestructiveAction(campaign)");
+    expect(home).toContain("homeAdCanPause(campaign)");
+    expect(home).toContain(">Fix</Text>");
   });
 
   it("refreshes Home Ads through the shared query-key authority", () => {

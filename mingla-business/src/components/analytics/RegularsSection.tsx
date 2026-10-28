@@ -15,7 +15,8 @@ export const formatRegularsCount = (count: number): string =>
 
 export const RegularsSection: React.FC<{ data: BrandRegularsRollup }> = ({
   data,
-}) => (
+}) =>
+  data.regularsCount === 0 ? null : (
   <View style={styles.section} testID="analytics-regulars-section">
     <View style={styles.titleLine}>
       <Text style={styles.heading} accessibilityRole="header">
@@ -29,47 +30,39 @@ export const RegularsSection: React.FC<{ data: BrandRegularsRollup }> = ({
     <Text style={styles.helper}>
       Customers who booked or RSVP&apos;d across more than one listing or reservation.
     </Text>
-    <GlassCard>
+    <GlassCard style={styles.card} contentStyle={styles.cardContent}>
       <Text style={styles.subheading} accessibilityRole="header">
         Top regulars
       </Text>
-      {data.topRegulars.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>No regulars yet</Text>
-          <Text style={styles.helper}>
-            Regulars appear after the same customer books or RSVPs across more
-            than one listing or reservation.
-          </Text>
-        </View>
-      ) : (
-        <View style={styles.rows}>
-          {data.topRegulars.map((regular, index) => (
-            <View
-              key={`${regular.maskedContact}-${index}`}
-              style={styles.row}
-              accessible
-              accessibilityLabel={`${regular.maskedContact}, ${regular.bookingsAndRsvps} bookings and RSVPs, across ${regular.listings} listings`}
-              {...phMaskProps()}
-            >
-              <Text style={styles.contact} {...phMaskProps()}>
-                {regular.maskedContact}
-              </Text>
-              <Text style={styles.detail}>
-                {`${regular.bookingsAndRsvps.toLocaleString("en-GB")} bookings & RSVPs`}
-              </Text>
-              <Text style={styles.detail}>
-                {`Across ${regular.listings.toLocaleString("en-GB")} listings`}
-              </Text>
-            </View>
-          ))}
-        </View>
-      )}
+      <View style={styles.rows}>
+        {data.topRegulars.map((regular, index) => (
+          <View
+            key={`${regular.maskedContact}-${index}`}
+            style={styles.row}
+            accessible
+            accessibilityLabel={`${regular.maskedContact}, ${regular.bookingsAndRsvps} bookings and RSVPs, across ${regular.listings} listings`}
+            {...phMaskProps()}
+          >
+            <Text style={styles.contact} {...phMaskProps()}>
+              {regular.maskedContact}
+            </Text>
+            <Text style={styles.detail}>
+              {`${regular.bookingsAndRsvps.toLocaleString("en-GB")} bookings & RSVPs`}
+            </Text>
+            <Text style={styles.detail}>
+              {`Across ${regular.listings.toLocaleString("en-GB")} listings`}
+            </Text>
+          </View>
+        ))}
+      </View>
     </GlassCard>
   </View>
 );
 
 const styles = StyleSheet.create({
-  section: { gap: spacing.sm },
+  section: { flex: 1, gap: spacing.sm },
+  card: { flex: 1 },
+  cardContent: { flex: 1 },
   titleLine: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -120,12 +113,5 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
-  },
-  empty: { marginTop: spacing.md, gap: spacing.xs },
-  emptyTitle: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: "600",
   },
 });

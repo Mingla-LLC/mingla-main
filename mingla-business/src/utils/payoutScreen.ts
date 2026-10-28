@@ -58,6 +58,7 @@ export interface PayoutScreenReleaseDTO {
 export interface BrandPayoutScreenDTO {
   currency: string | null;
   payoutsPaused: boolean;
+  lifetimeSalesCents: Record<string, number>;
   salesThisWeekCents: number;
   comingToYouCents: number;
   paidThisMonthCents: number;
@@ -104,6 +105,24 @@ const cents = (value: unknown): number => {
 const stringOrNull = (value: unknown): string | null =>
   typeof value === "string" && value.length > 0 ? value : null;
 
+const currencyMap = (value: unknown): Record<string, number> | null => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const parsed: Record<string, number> = {};
+  for (const [currency, amount] of Object.entries(value)) {
+    if (
+      !/^[A-Z]{3}$/.test(currency) ||
+      !Number.isSafeInteger(amount) ||
+      Number(amount) < 0
+    ) {
+      return null;
+    }
+    parsed[currency] = Number(amount);
+  }
+  return parsed;
+};
+
 const HOST_STATES: ReadonlySet<string> = new Set([
   "scheduled", "sending_today", "on_its_way", "paid", "waiting_for_bank",
   "late_on_us", "needs_you", "couldnt_send", "paused", "cancelled",
@@ -129,6 +148,8 @@ const LEDGER_STATES: ReadonlySet<PayoutReleaseStatus> = new Set([
 export function parseBrandPayoutScreen(raw: unknown): BrandPayoutScreenDTO | null {
   if (typeof raw !== "object" || raw === null) return null;
   const input = raw as Record<string, unknown>;
+  const lifetimeSalesCents = currencyMap(input.lifetime_sales_cents);
+  if (lifetimeSalesCents === null) return null;
   const rawReleases = Array.isArray(input.releases) ? input.releases : [];
   const releases = rawReleases.flatMap((value): PayoutScreenReleaseDTO[] => {
     if (typeof value !== "object" || value === null) return [];
@@ -202,6 +223,7 @@ export function parseBrandPayoutScreen(raw: unknown): BrandPayoutScreenDTO | nul
   return {
     currency: stringOrNull(input.currency),
     payoutsPaused: input.payouts_paused === true,
+    lifetimeSalesCents,
     salesThisWeekCents: cents(input.sales_this_week_cents),
     comingToYouCents: cents(input.coming_to_you_cents),
     paidThisMonthCents: cents(input.paid_this_month_cents),

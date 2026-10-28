@@ -28,15 +28,12 @@ import React, {
 } from "react";
 import {
   FlatList,
-  LayoutAnimation,
   Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  UIManager,
-  useWindowDimensions,
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -45,15 +42,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
 import { BusinessTodoToggle } from "../../src/components/home/BusinessTodoToggle";
-import { AnalyticsHomeTile } from "../../src/components/home/AnalyticsHomeTile";
-import { FollowersHomeTile } from "../../src/components/home/FollowersHomeTile";
+import { BusinessPulsePanel } from "../../src/components/home/BusinessPulsePanel";
 import { HomeAdsSection } from "../../src/components/home/HomeAdsSection";
-import {
-  LiveOfferingCard,
-  type LiveCardMetrics,
-} from "../../src/components/home/LiveOfferingCard";
-import { GlassCard } from "../../src/components/ui/GlassCard";
-import { Icon } from "../../src/components/ui/Icon";
+import type { LiveCardMetrics } from "../../src/components/home/LiveOfferingCard";
 import { Toast } from "../../src/components/ui/Toast";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { TopBar } from "../../src/components/ui/TopBar";
@@ -80,7 +71,7 @@ import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
 import { isCurrentBrandPending } from "../../src/utils/currentBrandPending";
 import { useBusinessTodos } from "../../src/hooks/useBusinessTodos";
-import { useBrandPayoutScreen } from "../../src/hooks/useBrandPayoutScreen";
+import { brandPayoutScreenKey } from "../../src/hooks/useBrandPayoutScreen";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { hostAdCampaignKeys } from "../../src/hooks/marketing/useHostAdCampaigns";
 import { useBusinessRecent } from "../../src/hooks/useBusinessRecentHome";
@@ -95,10 +86,8 @@ import {
 } from "../../src/hooks/useUpcomingForBrand";
 import {
   trafficAnalyticsKeys,
-  useBrandTrafficRollup,
 } from "../../src/hooks/useTrafficAnalytics";
 import { brandAnalyticsKeys } from "../../src/hooks/useBrandAnalytics";
-import { useLiveSectionCollapseStore } from "../../src/store/liveSectionCollapseStore";
 import type { LiveEvent } from "../../src/store/liveEventStore";
 import type { Trip } from "../../src/services/tripsService";
 // ORCH-0865 REWORK 5 — canonical routing helper, ban hardcoded /event/{id}
@@ -109,6 +98,7 @@ import {
 import type { BusinessRecentPointer } from "../../src/store/businessRecentStore";
 import { postHogService } from "../../src/services/postHogService";
 import { tripToLiveEvent } from "../../src/utils/tripToLiveEvent";
+import type { UpcomingItem } from "../../src/utils/upcomingBuilder";
 import type { BusinessTodo } from "../../src/utils/businessTodos";
 import {
   dispatchBusinessTodoAction,
@@ -117,7 +107,6 @@ import {
 
 import {
   currencyCodeOrNull,
-  formatCurrency,
 } from "../../src/utils/currency";
 // ORCH-1055 (META-ORCH-1048 sub-F): rank-10 scanners see a stripped-down
 // door-list surface instead of the brand-owner KPI dashboard. Importing
@@ -126,37 +115,6 @@ import {
 import { ScannerHome } from "../../src/components/scanners/ScannerHome";
 import { isScannerOnlyRank } from "../../src/utils/navTabGate";
 import { canViewBrandPayments } from "../../src/utils/brandPaymentsPermission";
-
-const HomeMoneyCard: React.FC<{
-  coming: string;
-  next: string;
-  salesWeek: string;
-  paidMonth: string;
-  warning: boolean;
-  onPress: () => void;
-}> = ({ coming, next, salesWeek, paidMonth, warning, onPress }) => (
-  <Pressable
-    onPress={onPress}
-    accessibilityRole="button"
-    accessibilityLabel={`Coming to you ${coming}. ${next}. Open Payments`}
-    style={({ pressed }) => [pressed ? styles.moneyCardPressed : null]}
-  >
-    <GlassCard variant="elevated" padding={spacing.md}>
-      <Text style={styles.moneyEyebrow}>COMING TO YOU</Text>
-      <Text style={styles.moneyAmount}>{coming}</Text>
-      <Text style={[styles.moneyNext, warning ? styles.moneyNextWarning : null]}>{next}</Text>
-      <View style={styles.moneyDivider} />
-      <View style={styles.moneyRow}>
-        <Text style={styles.moneyRowLabel}>Sales this week (what buyers paid)</Text>
-        <Text style={styles.moneyRowValue}>{salesWeek}</Text>
-      </View>
-      <View style={styles.moneyRow}>
-        <Text style={styles.moneyRowLabel}>Paid to your bank this month</Text>
-        <Text style={styles.moneyRowValue}>{paidMonth}</Text>
-      </View>
-    </GlassCard>
-  </Pressable>
-);
 
 // #3493 — BrandDeleteSheet loads on demand, through the same lazy owner as the
 // Account tab and Hub layout; a static import here kept it in `__common`.
@@ -171,32 +129,6 @@ const LazyUniversalCreatorSheet = React.lazy(async () => {
   const mod = await import("../../src/components/ui/UniversalCreatorSheet");
   return { default: mod.UniversalCreatorSheet };
 });
-
-// ORCH-1143 — LayoutAnimation requires this guard on Android or the live-section
-// accordion collapse won't animate (BusinessTodoToggle.tsx:38-43 precedent).
-if (
-  Platform.OS === "android" &&
-  UIManager.setLayoutAnimationEnabledExperimental !== undefined
-) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
-// ORCH-1143 — horizontal live-carousel sizing (§4.4-D). PEEK is the visible
-// sliver of the next card that signals "swipe for more"; CARD_MAX keeps the
-// card from over-stretching on wide phones/foldables.
-const LIVE_CARD_PEEK = 40;
-const LIVE_CARD_MAX = 360;
-
-// ORCH-1143 — inert metrics for the one-frame gap before sales resolve (the
-// card renders immediately; values fill in). Revenue "—" is honest until the
-// per-id summary lands; Scanned stays "—" forever (Constitution #9).
-const EMPTY_LIVE_CARD_METRICS: LiveCardMetrics = {
-  revenueLabel: "—",
-  soldValue: "0",
-  capacityLabel: "—",
-  capacity: null,
-  progress: 0,
-};
 
 interface ToastState {
   visible: boolean;
@@ -251,7 +183,7 @@ export default function HomeTab(): React.ReactElement {
   const router = useRouter();
   const params = useLocalSearchParams<{ recent?: string }>();
   const { isWideDesktop } = useResponsiveLayout();
-  const { user, isAuthReady } = useAuth();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const currentBrand = useCurrentBrand();
   const role = useCurrentBrandRole(currentBrand?.id ?? null);
@@ -259,63 +191,12 @@ export default function HomeTab(): React.ReactElement {
     role: role.role,
     accepted: role.accepted,
   });
-  const payoutScreen = useBrandPayoutScreen(
-    canViewPayouts ? currentBrand?.id ?? null : null,
-  );
-  const nextPayout = useMemo(
-    () => [...(payoutScreen.data?.releases.filter((release) =>
-      release.hostState !== "paid" && release.hostState !== "cancelled"
-    ) ?? [])]
-      .sort((left, right) => Date.parse(left.dueAt) - Date.parse(right.dueAt))[0] ?? null,
-    [payoutScreen.data?.releases],
-  );
-  const payoutCurrency = payoutScreen.data?.currency ?? null;
-  const nextPayoutDate = nextPayout === null
-    ? null
-    : new Date(nextPayout.dueAt).toLocaleDateString(undefined, {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-    });
-  const homeMoney = {
-    coming: payoutCurrency === null ? "—" : formatCurrency(payoutScreen.data?.comingToYouCents ?? 0, payoutCurrency, true),
-    salesWeek: payoutCurrency === null ? "—" : formatCurrency(payoutScreen.data?.salesThisWeekCents ?? 0, payoutCurrency, true),
-    paidMonth: payoutCurrency === null ? "—" : formatCurrency(payoutScreen.data?.paidThisMonthCents ?? 0, payoutCurrency, true),
-    next: payoutScreen.data?.payoutsPaused
-      ? "Payouts paused"
-      : nextPayout?.hostState === "waiting_for_bank"
-        ? "Add a bank to get paid"
-        : nextPayout?.hostState === "late_on_us"
-          ? `Late, on us · was due ${nextPayoutDate}`
-          : nextPayout?.hostState === "sending_today"
-            ? "Sending today"
-            : nextPayout?.hostState === "on_its_way"
-              ? "On its way to your bank"
-              : nextPayout?.hostState === "needs_you"
-                ? "Needs you · finish verification"
-                : nextPayout?.hostState === "couldnt_send"
-                  ? "Couldn’t send · check bank details"
-        : nextPayout === null
-          ? "New sales will appear here"
-          : `Next payout: ${nextPayoutDate}`,
-    warning: payoutScreen.data?.payoutsPaused === true || [
-      "waiting_for_bank",
-      "late_on_us",
-      "needs_you",
-      "couldnt_send",
-    ].includes(nextPayout?.hostState ?? ""),
-  };
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   // ORCH-1055: rank-10 scanners render the stripped-down ScannerHome
   // instead of the brand-owner KPI dashboard. Hook MUST be called every
   // render (rules-of-hooks); the early-return branches on the resolved
   // value below, after all sibling hooks have run.
   const callerRank = role.rank;
-  const analyticsPreview = useBrandTrafficRollup(
-    currentBrand?.id ?? null,
-    "30d",
-    isAuthReady && !role.isLoading && !isScannerOnlyRank(callerRank),
-  );
   const brandRecovery = useCurrentBrandRecovery();
   // issue #3345 — after a brand switch (or on a cold start) the selected brand's
   // record can still be on its way. That window is LOADING: it must never paint
@@ -378,6 +259,12 @@ export default function HomeTab(): React.ReactElement {
               queryClient.invalidateQueries({
                 queryKey: trafficAnalyticsKeys.brand(currentBrand.id, "30d"),
               }),
+              queryClient.invalidateQueries({
+                queryKey: trafficAnalyticsKeys.brand(currentBrand.id, "all"),
+              }),
+              queryClient.invalidateQueries({
+                queryKey: brandPayoutScreenKey(currentBrand.id),
+              }),
               // Keep the legacy cache fresh while older consumers are still
               // mounted behind the compatibility boundary.
               queryClient.invalidateQueries({
@@ -393,15 +280,6 @@ export default function HomeTab(): React.ReactElement {
       setIsRefreshing(false);
     }
   }, [currentBrand, queryClient, recent]);
-
-  const handleOpenAnalytics = useCallback((): void => {
-    router.push("/analytics?entry=home_tile" as never);
-  }, [router]);
-
-  const handleOpenPayments = useCallback((): void => {
-    if (currentBrand === null) return;
-    router.push(`/brand/${currentBrand.id}/payments` as never);
-  }, [currentBrand, router]);
 
   const handleOpenSwitcher = useCallback((): void => {
     setSheetVisible(true);
@@ -523,19 +401,19 @@ export default function HomeTab(): React.ReactElement {
   // home screen does NOT re-derive live status.
   const liveItems = upcoming.liveItems;
 
-  // ORCH-1143 — a LiveEvent-shaped view per live item (trips adapt via
-  // tripToLiveEvent) for per-card metrics. tripToLiveEvent never returns null
-  // for a non-null source, but we guard for type-safety.
+  // #4037 — an event-shaped view per non-draft item lets the Pulse band reuse
+  // the same sales authority for live and starts-soon offerings.
   const liveEventViews = useMemo<LiveEvent[]>(
     () =>
-      liveItems
+      upcoming.items
+        .filter((item) => item.kind !== "draft")
         .map((i) =>
           i.kind === "trip"
             ? tripToLiveEvent(i.source as Trip)
             : (i.source as LiveEvent),
         )
         .filter((v): v is LiveEvent => v !== null),
-    [liveItems],
+    [upcoming.items],
   );
 
   // Sales summary lookup for ALL event/experience items — both live AND upcoming —
@@ -706,40 +584,25 @@ export default function HomeTab(): React.ReactElement {
     [router, liveItems],
   );
 
-  // ORCH-1143 — live-section accordion collapse, persisted + hydration-gated
-  // (Constitution #14). Until `hasHydrated`, render the default (open) state and
-  // do NOT read `collapsed` for layout — prevents a flash-of-wrong-state on cold
-  // start. The toggle wraps the LayoutAnimation per the BusinessTodoToggle
-  // precedent (easeInEaseOut, ~300ms default, Android guard at module top).
-  const liveCollapsed = useLiveSectionCollapseStore((s) => s.collapsed);
-  const liveHasHydrated = useLiveSectionCollapseStore((s) => s.hasHydrated);
-  const toggleLiveCollapsed = useLiveSectionCollapseStore((s) => s.toggle);
-  const showLiveOpen = !liveHasHydrated || !liveCollapsed;
-  const handleToggleLiveSection = useCallback((): void => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    toggleLiveCollapsed();
-  }, [toggleLiveCollapsed]);
-
-  const windowDimensions = useWindowDimensions();
-  const liveCardWidth = useMemo(
-    () =>
-      Math.min(
-        Math.round(windowDimensions.width - spacing.md * 2 - LIVE_CARD_PEEK),
-        LIVE_CARD_MAX,
-      ),
-    [windowDimensions.width],
+  const handleOpenPulseOffering = useCallback(
+    (item: UpcomingItem): void => {
+      const source = item.source as LiveEvent;
+      const entityType = source.event_type === "rsvp"
+        ? "rsvp"
+        : item.kind === "experience"
+          ? "experience"
+          : item.kind === "trip"
+            ? "trip"
+            : "event";
+      const destination = routeForBusinessRecent({
+        id: item.id,
+        entityType,
+        destination: "detail",
+      });
+      if (destination !== null) router.push(destination as never);
+    },
+    [router],
   );
-
-  // ORCH-1038 — analytics tiles render ONLY when there is real data to show
-  // (no zero/empty placeholders); the to-do toggle carries guidance instead.
-  // ORCH-1143 — the live cards moved OUT of the KPI grid into their own
-  // accordion section above the locked pane; the "Last 7 days" KPI fallback now
-  // shows only when there is rev7d data (it no longer doubles as the live slot).
-  const hasLiveItems = liveItems.length > 0;
-  // ORCH-1143 SC-7 — the "Upcoming" section header + list render the non-live
-  // items only (live offerings are surfaced exclusively in the live carousel
-  // above). When every active item is live, the Upcoming section hides cleanly
-  // instead of showing an empty list.
 
   // ORCH-1038 — unified smart to-do list: derived from live state, ordered by
   // priority, auto-vanishing as conditions are met. Single source of truth shared
@@ -763,129 +626,6 @@ export default function HomeTab(): React.ReactElement {
     },
     [router],
   );
-
-  // ORCH-1143 — the "Live now" accordion section (header + body). Renders only
-  // when ≥1 offering is live. Header toggles whole-section collapse. Body:
-  // exactly 1 live → one full-width LiveOfferingCard (no carousel chrome);
-  // ≥2 live → a horizontal ScrollView of peek-width cards, each independently
-  // scannable, live-first start-ascending (ExperienceStopsGalleryTile house
-  // style). Hidden when collapsed (after hydration). Shared across the desktop
-  // pane and the mobile pane (above the locked zone, so the carousel's
-  // horizontal scroller stays outside the ORCH-0974 single-scroll lock).
-  const renderLiveSection = (): React.ReactElement | null => {
-    if (!hasLiveItems) return null;
-    return (
-      <View style={styles.liveSection}>
-        {/* ORCH-1143 §4.4-A (continuous-section fix, AUTHORITATIVE): ONE shared
-            `base` GlassCard surface wraps the WHOLE section — header row →
-            hairline divider → body — so the header and content read as one
-            continuous section parted by a divider, not two stacked cards (the
-            device-feedback fix's separate header GlassCard + separate elevated
-            body card read as "two different sections"; Seth rejected it). The
-            card uses padding={0} so each region controls its own inset and the
-            divider can run full-width inside the surface. Single-live content
-            renders FLAT (no own glass chrome) directly on this surface; the
-            carousel (≥2 live) parks discrete `elevated` cards under the divider
-            inside the same surface. The 16pt gutter still lives on the
-            liveSection wrapper View; Android opaque-glass is inherited from this
-            single base GlassCard. */}
-        <GlassCard variant="base" padding={0}>
-          <Pressable
-            onPress={handleToggleLiveSection}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: !liveCollapsed }}
-            accessibilityLabel={
-              liveItems.length === 1
-                ? `Live now, 1 offering, ${
-                    liveCollapsed ? "tap to expand" : "tap to collapse"
-                  }`
-                : `Live now, ${liveItems.length} offerings, ${
-                    liveCollapsed ? "tap to expand" : "tap to collapse"
-                  }`
-            }
-            style={({ pressed }) => [
-              styles.liveHeaderRow,
-              pressed && styles.liveHeaderRowPressed,
-            ]}
-            testID="home-live-section-header"
-          >
-            <View style={styles.liveHeaderLeft}>
-              <View style={styles.liveHeaderDot} />
-              <Text style={styles.liveHeaderTitle}>Live now</Text>
-              {liveItems.length > 1 ? (
-                <Text
-                  style={styles.liveHeaderCount}
-                >{`· ${liveItems.length}`}</Text>
-              ) : null}
-            </View>
-            {/* Chevron is decorative — the expanded/collapsed state lives on the
-                parent Pressable's accessibilityState. The contained circular
-                handle is the explicit "this is a dropdown" affordance; the Icon
-                renders an inert SVG (no accessibilityRole), so VoiceOver/TalkBack
-                announce only the header button. */}
-            <View style={styles.liveHeaderChevron}>
-              <Icon
-                name={showLiveOpen ? "chevU" : "chevD"}
-                size={18}
-                color={textTokens.secondary}
-              />
-            </View>
-          </Pressable>
-
-          {/* §4.4-A.3 — hairline divider (the seam that replaces the
-              inter-card gap), using the card's OWN border token so it reads as
-              an internal continuation of the card edge. Inset 16/16 so it does
-              not collide with the rounded corners. Rendered ONLY when open, so
-              a collapsed header sits alone as a clean rounded bar. */}
-          {showLiveOpen ? <View style={styles.liveSectionDivider} /> : null}
-
-          {/* §4.4-A.4/A.5 — body INSIDE the same surface, under the divider.
-              Single-live = flat content laid on the shared surface; carousel =
-              discrete elevated cards parked beneath the divider. */}
-          {showLiveOpen ? (
-            liveItems.length === 1 ? (
-              <View style={styles.liveSectionBody}>
-                <LiveOfferingCard
-                  flat
-                  item={liveItems[0]}
-                  metrics={
-                    liveMetricsById[liveItems[0].id] ?? EMPTY_LIVE_CARD_METRICS
-                  }
-                  onScanPress={handleScanPress}
-                  testID="home-live-card"
-                />
-              </View>
-            ) : (
-              <View style={styles.liveSectionCarouselBody}>
-                <ScrollView
-                  testID="home-live-carousel"
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  snapToInterval={liveCardWidth + spacing.md}
-                  snapToAlignment="start"
-                  decelerationRate="fast"
-                  contentContainerStyle={styles.liveCarouselContent}
-                  accessibilityLabel="Live offerings, swipe horizontally to see more"
-                >
-                  {liveItems.map((liveItem) => (
-                    <LiveOfferingCard
-                      key={liveItem.key}
-                      item={liveItem}
-                      metrics={
-                        liveMetricsById[liveItem.id] ?? EMPTY_LIVE_CARD_METRICS
-                      }
-                      onScanPress={handleScanPress}
-                      width={liveCardWidth}
-                    />
-                  ))}
-                </ScrollView>
-              </View>
-            )
-          ) : null}
-        </GlassCard>
-      </View>
-    );
-  };
 
   const renderRecentState = (): React.ReactElement | null => {
     if (recent.state === "loading") {
@@ -1005,13 +745,13 @@ export default function HomeTab(): React.ReactElement {
       {/* ORCH-1038 — unified smart to-do toggle, flush under the top bar, full
           top-bar width, on Home + Hub. Hides entirely when there is nothing to do. */}
       {isWideDesktop ? (
-      <View style={styles.todoWrap}>
-        <BusinessTodoToggle
-          todos={todos}
-          onAction={handleTodoAction}
-          testID="business-todo-toggle"
-        />
-      </View>
+        <View style={styles.todoWrap}>
+          <BusinessTodoToggle
+            todos={todos}
+            onAction={handleTodoAction}
+            testID="business-todo-toggle"
+          />
+        </View>
       ) : null}
 
       {isWideDesktop ? (
@@ -1020,7 +760,7 @@ export default function HomeTab(): React.ReactElement {
           scrollEnabled={false}
           contentContainerStyle={[styles.scroll, styles.desktopScroll]}
           showsVerticalScrollIndicator={false}
-            refreshControl={
+          refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
@@ -1033,31 +773,16 @@ export default function HomeTab(): React.ReactElement {
             ) : null
           ) : (
             <>
-              <View style={styles.desktopKpiGrid}>
-                {canViewPayouts ? (
-                  <View style={styles.desktopKpiCell}>
-                    <HomeMoneyCard {...homeMoney} onPress={handleOpenPayments} />
-                  </View>
-                ) : null}
-                <View style={styles.desktopKpiCell}>
-                  <AnalyticsHomeTile
-                    contract="traffic"
-                    data={analyticsPreview.data}
-                    isLoading={analyticsPreview.isLoading}
-                    isError={
-                      analyticsPreview.isError ||
-                      analyticsPreview.data?.authorized === false
-                    }
-                    onPress={handleOpenAnalytics}
-                    onRetry={() => void analyticsPreview.refetch()}
-                  />
-                </View>
-                <View style={styles.desktopKpiCell}>
-                  <FollowersHomeTile brandId={currentBrand.id} />
-                </View>
-              </View>
-
-              {renderLiveSection()}
+              <BusinessPulsePanel
+                brandId={currentBrand.id}
+                defaultCurrency={currentBrand.defaultCurrency ?? null}
+                canViewPayments={canViewPayouts}
+                liveItems={liveItems}
+                upcomingItems={upcoming.items}
+                liveMetricsById={liveMetricsById}
+                onScanPress={handleScanPress}
+                onOpenOffering={handleOpenPulseOffering}
+              />
               <HomeAdsSection brandId={currentBrand.id} />
 
               <View style={styles.desktopUpcomingPane}>
@@ -1098,15 +823,15 @@ export default function HomeTab(): React.ReactElement {
                 >
                   {renderRecentState()}
                   {recent.rows.slice(0, 10).map((row) => (
-                        <View
+                    <View
                       key={`${row.entityType}:${row.entityId}`}
-                          style={styles.desktopEventCell}
-                        >
+                      style={styles.desktopEventCell}
+                    >
                       <RecentRow
                         row={row}
                         onPress={() => handleOpenRecent(row)}
-                          />
-                        </View>
+                      />
+                    </View>
                   ))}
                 </ScrollView>
               </View>
@@ -1153,7 +878,7 @@ export default function HomeTab(): React.ReactElement {
             <View style={styles.mobileUpcomingSep} />
           )}
           ListHeaderComponent={
-        <>
+            <>
               <View style={styles.todoWrap}>
                 <BusinessTodoToggle
                   todos={todos}
@@ -1162,36 +887,26 @@ export default function HomeTab(): React.ReactElement {
                   testID="business-todo-toggle"
                 />
               </View>
-          <View style={styles.mobileKpiOuter}>
-            <View style={styles.mobileKpiStack}>
-              {canViewPayouts ? (
-                <HomeMoneyCard {...homeMoney} onPress={handleOpenPayments} />
-              ) : null}
-              <AnalyticsHomeTile
-                contract="traffic"
-                data={analyticsPreview.data}
-                isLoading={analyticsPreview.isLoading}
-                isError={
-                  analyticsPreview.isError ||
-                  analyticsPreview.data?.authorized === false
-                }
-                onPress={handleOpenAnalytics}
-                onRetry={() => void analyticsPreview.refetch()}
+              <BusinessPulsePanel
+                brandId={currentBrand.id}
+                defaultCurrency={currentBrand.defaultCurrency ?? null}
+                canViewPayments={canViewPayouts}
+                liveItems={liveItems}
+                upcomingItems={upcoming.items}
+                liveMetricsById={liveMetricsById}
+                onScanPress={handleScanPress}
+                onOpenOffering={handleOpenPulseOffering}
               />
-              <FollowersHomeTile brandId={currentBrand.id} />
-            </View>
-          </View>
-          {renderLiveSection()}
-          <HomeAdsSection brandId={currentBrand.id} />
+              <HomeAdsSection brandId={currentBrand.id} />
               <View style={styles.mobileRecentHeaderWrap}>
-            <View style={styles.mobileSectionHeaderRow}>
+                <View style={styles.mobileSectionHeaderRow}>
                   <Text accessibilityRole="header" style={styles.sectionTitle}>
                     Recent
                   </Text>
                   {recent.total > 10 ? (
                     <SeeAllRecentButton onPress={handleSeeAllEvents} />
-            ) : null}
-          </View>
+                  ) : null}
+                </View>
                 {recentBanner === null ? null : (
                   <View style={styles.recentBannerRow}>
                     <Text
@@ -1211,7 +926,7 @@ export default function HomeTab(): React.ReactElement {
                       </Pressable>
                     ) : null}
                   </View>
-            )}
+                )}
                 {renderRecentState()}
               </View>
             </>
@@ -1225,9 +940,9 @@ export default function HomeTab(): React.ReactElement {
               refreshing={isRefreshing || recent.isRefreshing}
               onRefresh={handleRefresh}
             />
-            }
-            showsVerticalScrollIndicator={false}
-          />
+          }
+          showsVerticalScrollIndicator={false}
+        />
         // orch-0974-lock-pane:end-mobile-populated
       )}
 
@@ -1291,54 +1006,6 @@ const HomeBrandLoading: React.FC = () => (
 );
 
 const styles = StyleSheet.create({
-  moneyCardPressed: { opacity: 0.82 },
-  moneyEyebrow: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: "700",
-    letterSpacing: 1.1,
-    color: textTokens.tertiary,
-  },
-  moneyAmount: {
-    marginTop: spacing.xs,
-    fontSize: 30,
-    lineHeight: 38,
-    fontWeight: "800",
-    fontVariant: ["tabular-nums"],
-    color: textTokens.primary,
-  },
-  moneyNext: {
-    marginTop: 2,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-  },
-  moneyNextWarning: { color: "#fcd34d" },
-  moneyDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: glass.border.profileBase,
-    marginVertical: spacing.sm,
-  },
-  moneyRow: {
-    minHeight: 32,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-  },
-  moneyRowLabel: {
-    flex: 1,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
-  },
-  moneyRowValue: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    fontWeight: "700",
-    fontVariant: ["tabular-nums"],
-    color: textTokens.primary,
-  },
   host: {
     flex: 1,
   },
@@ -1374,15 +1041,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: 0,
   },
-  desktopKpiGrid: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    flexShrink: 0,
-  },
-  desktopKpiCell: {
-    flex: 1,
-    minWidth: 0,
-  },
   desktopUpcomingPane: {
     flex: 1,
     minHeight: 0,
@@ -1405,18 +1063,7 @@ const styles = StyleSheet.create({
     // #1616 — `paddingTop` deliberately ABSENT (not `0`): `spacing` has no zero
     // token, and an absent key is honest where a `0` invites someone to
     // "restore" it. It was one of the three paddings that stacked to 56pt of
-    // dead space between the analytics card and the "Upcoming" header whenever
-    // `renderLiveSection()` returned null.
-  },
-  mobileKpiOuter: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    // #1616 — STAYS at spacing.md. This is the only separator between the KPI
-    // block and whatever follows it, which is the Live now card when one is
-    // present. Tightening it would collapse the analytics card onto the Live
-    // card, so the 32pt comes out of `mobileBody` + `mobileSectionHeaderRow`
-    // instead — both of which sit BELOW the Live section.
-    paddingBottom: spacing.md,
+    // dead space between the Home summary and the Recent header.
   },
   mobileNoVenueBody: {
     flex: 1,
@@ -1426,9 +1073,6 @@ const styles = StyleSheet.create({
   },
   lockedZone: {
     flexShrink: 0,
-  },
-  mobileKpiStack: {
-    gap: spacing.sm,
   },
   mobileSectionHeaderRow: {
     flexDirection: "row",
@@ -1507,101 +1151,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     color: textTokens.tertiary,
     textTransform: "uppercase",
-  },
-
-  // ORCH-1143 — "Live now" accordion section -------------------------------
-  // The hero render moved into the reusable <LiveOfferingCard>; these styles
-  // own only the section wrapper + the accordion header + the carousel.
-  liveSection: {
-    // ORCH-1143 §4.4-A (device-feedback fix): self-supply the full Home gutter
-    // (spacing.md = 16) because renderLiveSection() is rendered OUTSIDE the
-    // padded column, so the GlassCard header + card body line up flush with the
-    // To-do toggle above and the KPI/Upcoming column below.
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.md,
-  },
-  liveHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    // ORCH-1143 §4.4-A.2 (continuous-section fix): re-add the header inset
-    // because the enclosing GlassCard is now padding={0}. paddingHorizontal:16
-    // reinstates the gutter the card used to supply; paddingVertical:8 +
-    // minHeight:44 keeps the ≥44pt touch target while sitting tight to the
-    // divider.
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: 44,
-  },
-  liveHeaderRowPressed: {
-    opacity: 0.6,
-  },
-  // ORCH-1143 §4.4-A.3 — hairline seam between header and body, INSIDE the
-  // shared base surface. Uses glass.border.profileBase — the EXACT token the
-  // base GlassCard draws its own perimeter with — so it reads as an internal
-  // continuation of the card edge, not a foreign line. Inset 16/16 so it does
-  // not collide with the 16-radius corners.
-  liveSectionDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: glass.border.profileBase,
-    marginHorizontal: spacing.md,
-  },
-  // ORCH-1143 §4.4-A.4 — single-live body region inside the shared surface.
-  // Owns the flat card's inset (the flat LiveOfferingCard renders padding:0):
-  // 16 horizontal, 8 top (tight under the divider so content reads as belonging
-  // to the header), 16 bottom (comfortable base inset).
-  liveSectionBody: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-  },
-  // ORCH-1143 §4.4-A.5 — carousel body region: NO horizontal padding (the
-  // ScrollView contentContainerStyle owns the 16 left/right via
-  // liveCarouselContent); 8 top under the divider, 16 bottom.
-  liveSectionCarouselBody: {
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-  },
-  liveHeaderChevron: {
-    // ORCH-1143 §4.4-A: contained circular "dropdown handle" affordance.
-    width: 28,
-    height: 28,
-    borderRadius: radiusTokens.full,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
-  },
-  liveHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  liveHeaderDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 999,
-    backgroundColor: accent.warm,
-  },
-  liveHeaderTitle: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    fontWeight: "700",
-    color: textTokens.primary,
-  },
-  liveHeaderCount: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: "600",
-    color: textTokens.secondary,
-    marginLeft: 2,
-  },
-  liveCarouselContent: {
-    gap: spacing.md,
-    // ORCH-1143 §4.4-A.5 — add left inset: the enclosing GlassCard is now
-    // padding={0}, so the carousel must self-supply its 16pt left inset to
-    // align the first card's left edge with the divider's 16pt inset.
-    paddingLeft: spacing.md,
-    paddingRight: spacing.md,
   },
 
   // Section header ------------------------------------------------------

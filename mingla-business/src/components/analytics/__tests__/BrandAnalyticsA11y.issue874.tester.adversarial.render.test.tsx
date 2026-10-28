@@ -177,7 +177,7 @@ describe("issue #874 tester adversarial accessibility announcements", () => {
     mockRefetchPatterns.mockReset();
   });
 
-  it("makes every resolved customer-pattern state a polite live region", async () => {
+  it("hides unresolved patterns and announces a resolved pattern politely", async () => {
     const screen = await render(
       <CustomerPatternsSection
         data={{
@@ -190,15 +190,9 @@ describe("issue #874 tester adversarial accessibility announcements", () => {
       />,
     );
 
-    expect(
-      hasPoliteLiveRegionAncestor(screen.getByText("No booking pattern yet")),
-    ).toBe(true);
-    expect(
-      hasPoliteLiveRegionAncestor(screen.getByText("More data needed")),
-    ).toBe(true);
-    expect(
-      hasPoliteLiveRegionAncestor(screen.getByText("No clear pattern yet")),
-    ).toBe(true);
+    expect(screen.queryByText("No booking pattern yet")).toBeNull();
+    expect(screen.queryByText("More data needed")).toBeNull();
+    expect(screen.queryByText("No clear pattern yet")).toBeNull();
 
     await screen.rerender(
       <CustomerPatternsSection

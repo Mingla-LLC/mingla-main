@@ -4,12 +4,14 @@
  *
  * Enforces the proposed Home mobile lock-pane invariant:
  *   - populated mobile Home has exactly one scrolling surface: FlatList
- *   - Coming to you -> Analytics -> Live -> Recent order is preserved on wide and mobile
+ *   - Home Pulse -> Ads -> Recent order is preserved on wide and mobile
  *   - the removed Active events KPI cannot return
- *   - KPI/section-header styles and spacing contract remain explicit
- *   - pull-to-refresh stays on the FlatList and refreshes Analytics
+ *   - section-header styles and spacing contract remain explicit
+ *   - pull-to-refresh stays on the FlatList and refreshes Pulse authorities
  *   - Recent row rendering stays extracted to RecentRow/EventCoverMedia
  * [TEST-MOD-APPROVED #3645] The approved Home money card replaces Last 7 days.
+ * [TEST-MOD-APPROVED #4037] The approved Home Pulse panel replaces the money,
+ * Analytics, followers and Live-now surfaces as one responsive owner.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -21,6 +23,14 @@ const __dirname = dirname(__filename);
 const REPO_ROOT = join(__dirname, "..", "..", "..");
 
 const HOME_PATH = join(REPO_ROOT, "mingla-business", "app", "(tabs)", "home.tsx");
+const PULSE_PATH = join(
+  REPO_ROOT,
+  "mingla-business",
+  "src",
+  "components",
+  "home",
+  "BusinessPulsePanel.tsx",
+);
 const RECENT_ROW_PATH = join(
   REPO_ROOT,
   "mingla-business",
@@ -96,6 +106,7 @@ function extractStyleBlock(source, key) {
 }
 
 const homeSource = readRequired(HOME_PATH);
+const pulseSource = readRequired(PULSE_PATH);
 const recentRowSource = readRequired(RECENT_ROW_PATH);
 
 if (homeSource.length > 0) {
@@ -134,10 +145,8 @@ if (homeSource.length > 0) {
       );
     }
     assertOrdered("C8: mobile-order", scopedCode, [
-      ["conditional Coming to you", "{canViewPayouts ? ("],
-      ["Coming to you card", "<HomeMoneyCard"],
-      ["mobile Analytics tile", "<AnalyticsHomeTile"],
-      ["mobile Live section", "{renderLiveSection()}"],
+      ["mobile Home Pulse panel", "<BusinessPulsePanel"],
+      ["mobile Ads section", "<HomeAdsSection"],
       ["Recent header", "style={styles.mobileRecentHeaderWrap}"],
     ]);
   }
@@ -148,6 +157,10 @@ if (homeSource.length > 0) {
     "const showKpiGrid",
     "{showKpiGrid ?",
     'label="Active events"',
+    "<HomeMoneyCard",
+    "<AnalyticsHomeTile",
+    "<FollowersHomeTile",
+    "{renderLiveSection()}",
   ]) {
     if (homeCode.includes(forbidden)) {
       fail(
@@ -168,36 +181,35 @@ if (homeSource.length > 0) {
   } else {
     const wide = stripComments(homeSource.slice(wideStart, mobileStart));
     assertOrdered("C8: wide-order", wide, [
-      ["wide KPI row", "style={styles.desktopKpiGrid}"],
-      ["conditional Coming to you", "{canViewPayouts ? ("],
-      ["Coming to you card", "<HomeMoneyCard"],
-      ["wide Analytics tile", "<AnalyticsHomeTile"],
-      ["wide Live section", "{renderLiveSection()}"],
+      ["wide Home Pulse panel", "<BusinessPulsePanel"],
+      ["wide Ads section", "<HomeAdsSection"],
       ["wide Recent section", "style={styles.desktopUpcomingPane}"],
       ["independent desktop Recent scroll", 'testID="home-desktop-recent-scroll"'],
     ]);
   }
 
-  if (countToken(homeCode, "<AnalyticsHomeTile") !== 2) {
+  if (countToken(homeCode, "<BusinessPulsePanel") !== 2) {
     fail(
-      "C9: analytics-two-branches",
-      "Home must render exactly one AnalyticsHomeTile in each wide/mobile branch.",
+      "C9: pulse-two-branches",
+      "Home must render exactly one BusinessPulsePanel in each wide/mobile branch.",
     );
   }
-  if (!homeCode.includes('router.push("/analytics?entry=home_tile"')) {
+  if (!pulseSource.includes('router.push("/analytics?entry=home_tile"')) {
     fail(
       "C9: analytics-navigation",
-      "AnalyticsHomeTile must route to /analytics?entry=home_tile.",
+      "BusinessPulsePanel must route its visits zone to /analytics?entry=home_tile.",
     );
   }
-  if (
-    !homeCode.includes(
-      "brandAnalyticsKeys.minglaDrove(currentBrand.id)",
-    )
-  ) {
+  if (!homeCode.includes('trafficAnalyticsKeys.brand(currentBrand.id, "all")')) {
     fail(
-      "C10: analytics-refresh-key",
-      "Home refresh must invalidate the current brand's mingla-drove Analytics key.",
+      "C10: pulse-traffic-refresh-key",
+      "Home refresh must invalidate the current brand's all-time traffic key.",
+    );
+  }
+  if (!homeCode.includes("brandPayoutScreenKey(currentBrand.id)")) {
+    fail(
+      "C10: pulse-payout-refresh-key",
+      "Home refresh must invalidate the current brand's payout screen key.",
     );
   }
   if (!homeCode.includes("data={recent.rows.slice(0, 10)}")) {
@@ -210,7 +222,6 @@ if (homeSource.length > 0) {
   for (const styleKey of [
     "mobileBody",
     "lockedZone",
-    "mobileKpiStack",
     "mobileSectionHeaderRow",
   ]) {
     if (extractStyleBlock(homeSource, styleKey) === null) {
@@ -222,7 +233,6 @@ if (homeSource.length > 0) {
   }
 
   const sectionHeader = extractStyleBlock(homeSource, "mobileSectionHeaderRow");
-  const kpiStack = extractStyleBlock(homeSource, "mobileKpiStack");
   // #1616 [analytics card collapse] — the TOP half of this contract moved from
   // spacing.lg (24) to spacing.sm (8), on purpose. `mobileSectionHeaderRow`
   // .paddingTop was one of three paddings (`mobileKpiOuter.paddingBottom` 16 +
@@ -244,13 +254,6 @@ if (homeSource.length > 0) {
       "styles.mobileSectionHeaderRow must contain paddingTop: spacing.sm and paddingBottom: spacing.md.",
     );
   }
-  if (kpiStack === null || !kpiStack.includes("gap: spacing.sm")) {
-    fail(
-      "C3: spacing-contract-explicit",
-      "styles.mobileKpiStack must contain gap: spacing.sm.",
-    );
-  }
-
   if (!homeSource.includes("RecentRow")) {
     fail(
       "C5: recent-row-extracted",
@@ -276,6 +279,6 @@ if (violations === 0) {
 
 console.error(`[ORCH-0974] FAIL — ${violations} violation(s).`);
 console.error(
-  "See issue #2794 SPEC Amendment 6 for the current Home lock-pane contract.",
+  "See issue #4037 for the approved Home Pulse lock-pane contract.",
 );
 process.exit(1);

@@ -20,7 +20,7 @@ const PatternCard: React.FC<{
 }> = ({ title, view }) => {
   const sample = `${view.sampleCommitments.toLocaleString("en-GB")} bookings & RSVPs across ${view.distinctDates.toLocaleString("en-GB")} dates`;
   return (
-    <GlassCard style={styles.card}>
+    <GlassCard style={styles.card} contentStyle={styles.cardContent}>
       <Text style={styles.cardTitle} accessibilityRole="header">
         {title}
       </Text>
@@ -87,24 +87,42 @@ const PatternCard: React.FC<{
   );
 };
 
+export const visibleCustomerPatternCount = (
+  data: BrandCustomerPatternsRollup,
+): number => [data.days, data.dayparts, data.types].filter(
+  (view) => view.state === "winner" && view.winner !== null,
+).length;
+
 export const CustomerPatternsSection: React.FC<{
   data: BrandCustomerPatternsRollup;
   isWideDesktop: boolean;
-}> = ({ data, isWideDesktop }) => (
-  <View style={styles.section} testID="analytics-patterns-section">
-    <Text style={styles.heading} accessibilityRole="header">
-      Customer patterns
-    </Text>
-    <Text style={styles.context}>
-      Based on Mingla bookings and RSVPs from the last 180 days
-    </Text>
-    <View style={[styles.cardRow, isWideDesktop && styles.cardRowWide]}>
-      <PatternCard title="Days customers chose most" view={data.days} />
-      <PatternCard title="Times customers chose most" view={data.dayparts} />
-      <PatternCard title="Customers by offering type" view={data.types} />
+}> = ({ data, isWideDesktop }) => {
+  const candidates: [string, CustomerPatternView][] = [
+    ["Days customers chose most", data.days],
+    ["Times customers chose most", data.dayparts],
+    ["Customers by offering type", data.types],
+  ];
+  const visible = candidates.filter((entry) => {
+    const view = entry[1];
+    return view.state === "winner" && view.winner !== null;
+  });
+  if (visible.length === 0) return null;
+  return (
+    <View style={styles.section} testID="analytics-patterns-section">
+      <Text style={styles.heading} accessibilityRole="header">
+        Customer patterns
+      </Text>
+      <Text style={styles.context}>
+        Based on Mingla bookings and RSVPs from the last 180 days
+      </Text>
+      <View style={[styles.cardRow, isWideDesktop && styles.cardRowWide]}>
+        {visible.map(([title, view]) => (
+          <PatternCard key={title} title={title} view={view} />
+        ))}
+      </View>
     </View>
-  </View>
-);
+  );
+};
 
 const styles = StyleSheet.create({
   section: { gap: spacing.md },
@@ -122,6 +140,7 @@ const styles = StyleSheet.create({
   cardRow: { gap: spacing.md },
   cardRowWide: { flexDirection: "row" },
   card: { flex: 1, minWidth: 0 },
+  cardContent: { flex: 1 },
   cardTitle: {
     color: textTokens.primary,
     fontSize: typography.bodyLg.fontSize,

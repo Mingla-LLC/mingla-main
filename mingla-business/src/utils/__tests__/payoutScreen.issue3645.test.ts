@@ -101,6 +101,7 @@ describe("#3645 payout-screen money truth", () => {
   test("parser ignores raw provider fees and drops unrecognised ledger states", () => {
     const parsed = parseBrandPayoutScreen({
       currency: "ngn",
+      lifetime_sales_cents: { NGN: 6_270_000, USD: 400 },
       releases: [{
         id: "release-1",
         offering_name: "Jazz",
@@ -125,8 +126,26 @@ describe("#3645 payout-screen money truth", () => {
       }],
     });
     expect(parsed?.releases).toHaveLength(1);
+    expect(parsed?.lifetimeSalesCents).toEqual({ NGN: 6_270_000, USD: 400 });
     expect(parsed?.releases[0]).not.toHaveProperty("providerFeeCents");
     expect(parsed?.releases[0]?.netReleaseCents).toBe(6_180_000);
+  });
+
+  test.each([
+    [undefined],
+    [null],
+    [[]],
+    [{ ngn: 100 }],
+    [{ NGN: -1 }],
+    [{ NGN: 1.5 }],
+    [{ NGN: Number.MAX_SAFE_INTEGER + 1 }],
+    [{ NGN: "100" }],
+  ])("parser fails closed for malformed lifetime_sales_cents %#", (value) => {
+    expect(parseBrandPayoutScreen({
+      currency: "ngn",
+      lifetime_sales_cents: value,
+      releases: [],
+    })).toBeNull();
   });
 
   test("all actionable states have exactly one next-step kind", () => {

@@ -42,7 +42,10 @@ import {
 } from "./AnalyticsModuleState";
 import { TrafficAnalyticsDashboard } from "./LazyTrafficAnalyticsDashboard";
 import { RegularsSection } from "./RegularsSection";
-import { CustomerPatternsSection } from "./CustomerPatternsSection";
+import {
+  CustomerPatternsSection,
+  visibleCustomerPatternCount,
+} from "./CustomerPatternsSection";
 import { LegacyBrandAnalyticsScreen } from "./LegacyBrandAnalyticsScreen";
 
 interface BrandAnalyticsScreenProps {
@@ -105,14 +108,10 @@ const TrafficBrandAnalyticsScreen: React.FC<
 
   useEffect(() => {
     const pages = traffic.data?.pages ?? [];
-    if (pages.length === 0) {
-      setSelectedPage(null);
-      return;
-    }
     setSelectedPage((current) =>
       current !== null && pages.some((page) => samePage(page, current))
         ? current
-        : pages[0]!,
+        : null,
     );
   }, [traffic.data?.pages]);
 
@@ -198,6 +197,27 @@ const TrafficBrandAnalyticsScreen: React.FC<
     (regulars.isError && regulars.data !== undefined) ||
     (patterns.isError && patterns.data !== undefined) ||
     (selectedTraffic.isError && selectedTraffic.data !== undefined);
+  const regularsVisible =
+    regulars.data?.authorized === true && regulars.data.regularsCount > 0;
+  const patternCount =
+    patterns.data?.authorized === true
+      ? visibleCustomerPatternCount(patterns.data)
+      : 0;
+  const patternsVisible = patternCount > 0;
+  const initialLoading =
+    (traffic.isLoading && traffic.data === undefined) ||
+    (regulars.isLoading && regulars.data === undefined) ||
+    (patterns.isLoading && patterns.data === undefined) ||
+    (selectedPage !== null &&
+      selectedTraffic.isLoading &&
+      selectedTraffic.data === undefined);
+  const initialError =
+    (traffic.isError && traffic.data === undefined) ||
+    (regulars.isError && regulars.data === undefined) ||
+    (patterns.isError && patterns.data === undefined) ||
+    (selectedPage !== null &&
+      selectedTraffic.isError &&
+      selectedTraffic.data === undefined);
 
   const topBar = (
     <View style={styles.topBarWrap}>
@@ -288,9 +308,9 @@ const TrafficBrandAnalyticsScreen: React.FC<
           />
         )}
         data={traffic.data}
-        isLoading={traffic.isLoading}
-        isError={traffic.isError && traffic.data === undefined}
-        onRetry={() => void traffic.refetch()}
+        isLoading={initialLoading}
+        isError={initialError}
+        onRetry={() => void refreshAll()}
         range={range}
         onRangeChange={setRange}
         isWideDesktop={isWideDesktop}
@@ -303,6 +323,7 @@ const TrafficBrandAnalyticsScreen: React.FC<
           selectedTraffic.isError && selectedTraffic.data === undefined
         }
         onRetrySelectedPage={() => void selectedTraffic.refetch()}
+        onClearSelectedPage={() => setSelectedPage(null)}
         onOpenSelectedListing={
           selectedPage?.entityId === null ||
           selectedPage === null ||
@@ -310,38 +331,24 @@ const TrafficBrandAnalyticsScreen: React.FC<
             ? undefined
             : () => onOpenListingInsights(selectedPage.entityId!)
         }
-      />
-      <View
-        style={[styles.existingRow, isWideDesktop && styles.existingRowWide]}
-      >
-        <View style={styles.existingColumn}>
-          {regulars.data?.authorized === true ? (
-            <RegularsSection data={regulars.data} />
-          ) : regulars.isError ? (
-            <AnalyticsModuleError
-              title="Couldn't load regulars"
-              onRetry={() => void regulars.refetch()}
-            />
-          ) : (
-            <AnalyticsModuleSkeleton testID="analytics-regulars-loading" />
-          )}
-        </View>
-        <View style={styles.patternsColumn}>
-          {patterns.data?.authorized === true ? (
+        regularsModule={
+          regularsVisible ? <RegularsSection data={regulars.data!} /> : null
+        }
+        customerPatternsModule={
+          patternsVisible ? (
             <CustomerPatternsSection
-              data={patterns.data}
+              data={patterns.data!}
               isWideDesktop={isWideDesktop}
             />
-          ) : patterns.isError ? (
-            <AnalyticsModuleError
-              title="Couldn't load customer patterns"
-              onRetry={() => void patterns.refetch()}
-            />
-          ) : (
-            <AnalyticsModuleSkeleton testID="analytics-patterns-loading" />
-          )}
-        </View>
-      </View>
+          ) : null
+        }
+        regularsCollecting={
+          regulars.data?.authorized === true && !regularsVisible
+        }
+        customerPatternsCollecting={
+          patterns.data?.authorized === true && patternCount < 3
+        }
+      />
     </View>
   );
 
@@ -417,10 +424,6 @@ const styles = StyleSheet.create({
     lineHeight: typography.bodySm.lineHeight,
     marginTop: spacing.xs,
   },
-  existingRow: { gap: spacing.xl },
-  existingRowWide: { flexDirection: "row", alignItems: "flex-start" },
-  existingColumn: { flex: 1, minWidth: 0 },
-  patternsColumn: { flex: 2, minWidth: 0 },
   refreshButton: {
     minHeight: 44,
     minWidth: 72,

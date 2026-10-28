@@ -3,7 +3,7 @@ import path from "node:path";
 import { parse } from "@babel/parser";
 import traverse from "@babel/traverse";
 
-test("desktop ids identify the correct vertical Recent list and horizontal Live carousel", () => {
+test("desktop ids identify the vertical Recent list while Business Pulse owns live presentation", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "home.tsx"), "utf8");
   const ast = parse(source, {
     sourceType: "module",
@@ -32,10 +32,8 @@ test("desktop ids identify the correct vertical Recent list and horizontal Live 
     tag: "ScrollView",
     horizontal: false,
   });
-  expect(found.get("home-live-carousel")).toEqual({
-    tag: "ScrollView",
-    horizontal: true,
-  });
+  expect(found.has("home-live-carousel")).toBe(false);
+  expect(source.match(/<BusinessPulsePanel/g)).toHaveLength(2);
 });
 
 test("mobile no-brand branch retains the one FlatList owner and page-flow Todo", () => {

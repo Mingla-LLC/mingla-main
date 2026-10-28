@@ -36,6 +36,7 @@ export type HostAdCampaign = {
   primary_result_label: string;
   primary_result_count: number;
   cost_per_result_cents: number | null;
+  results_value_cents?: Record<string, number>;
   impressions: number;
   clicks: number;
   creative: {

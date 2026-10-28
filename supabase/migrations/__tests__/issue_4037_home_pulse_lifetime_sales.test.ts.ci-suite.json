@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4037_home_pulse_lifetime_sales.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4037-home-pulse-lifetime-sales",
+  "profile": "deno-2-unit"
+}

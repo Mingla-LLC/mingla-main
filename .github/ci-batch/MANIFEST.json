@@ -17645,6 +17645,7 @@
         "supabase/migrations/20280103003872_issue_3872_gig_pay.sql",
         "supabase/migrations/20280104003872_issue_3872_workspace_shoot_window.sql",
         "supabase/migrations/20280105003872_issue_3872_due_change.sql",
+        "supabase/migrations/20280106004037_issue_4037_home_pulse_lifetime_sales.sql",
         "supabase/migrations/20280110004130_issue_4130_work_views_and_team_pulse.sql",
         "supabase/migrations/20280111004130_issue_4130_mingla_money.sql",
         "supabase/migrations/20280112004130_issue_4130_messaging_limits_and_subscriptions.sql",
@@ -19269,6 +19270,7 @@
         "supabase/migrations/20280103003872_issue_3872_gig_pay.sql",
         "supabase/migrations/20280104003872_issue_3872_workspace_shoot_window.sql",
         "supabase/migrations/20280105003872_issue_3872_due_change.sql",
+        "supabase/migrations/20280106004037_issue_4037_home_pulse_lifetime_sales.sql",
         "supabase/migrations/20280110004130_issue_4130_work_views_and_team_pulse.sql",
         "supabase/migrations/20280111004130_issue_4130_mingla_money.sql",
         "supabase/migrations/20280112004130_issue_4130_messaging_limits_and_subscriptions.sql",
@@ -20259,6 +20261,8 @@
         "supabase/migrations/__tests__/issue_3988_support_email_alerts.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3988_support_email_alerts.tester2.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3988_support_email_alerts.tester2.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4037_home_pulse_lifetime_sales.test.ts",
+        "supabase/migrations/__tests__/issue_4037_home_pulse_lifetime_sales.test.ts.ci-suite.json",
         "supabase/migrations/__tests__/issue_4037_host_traffic.implementor.happy.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4037_host_traffic.implementor.happy.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4037_host_traffic.tester.adversarial.pg17.test.sql",
@@ -23934,6 +23938,7 @@
         "supabase/migrations/20280103003872_issue_3872_gig_pay.sql",
         "supabase/migrations/20280104003872_issue_3872_workspace_shoot_window.sql",
         "supabase/migrations/20280105003872_issue_3872_due_change.sql",
+        "supabase/migrations/20280106004037_issue_4037_home_pulse_lifetime_sales.sql",
         "supabase/migrations/20280110004130_issue_4130_work_views_and_team_pulse.sql",
         "supabase/migrations/20280111004130_issue_4130_mingla_money.sql",
         "supabase/migrations/20280112004130_issue_4130_messaging_limits_and_subscriptions.sql",
@@ -24924,6 +24929,8 @@
         "supabase/migrations/__tests__/issue_3988_support_email_alerts.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3988_support_email_alerts.tester2.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3988_support_email_alerts.tester2.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4037_home_pulse_lifetime_sales.test.ts",
+        "supabase/migrations/__tests__/issue_4037_home_pulse_lifetime_sales.test.ts.ci-suite.json",
         "supabase/migrations/__tests__/issue_4037_host_traffic.implementor.happy.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4037_host_traffic.implementor.happy.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4037_host_traffic.tester.adversarial.pg17.test.sql",
@@ -52305,5 +52312,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3",
-  "phase3eContractSha256": "bc1bd75b6f0b1df1d104f60d00612fd4b7fe2946da6d1f6efdb6ff4e3818525b"
+  "phase3eContractSha256": "556653f70e2920369af674d21defaa8dad02530bf6bbf1935e8ec4b682e46cb2"
 }
