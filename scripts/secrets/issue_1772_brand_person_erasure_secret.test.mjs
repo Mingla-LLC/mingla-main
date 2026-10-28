@@ -20,6 +20,10 @@ const EXPECTED_READERS = [
   "supabase/functions/_shared/adAppReadinessProviders/appsflyer.ts",
   "supabase/functions/_shared/governedAdSecret.ts",
   "supabase/functions/admin-ad-app-readiness/index.ts",
+  // [TEST-MOD-APPROVED #4137] Admin Blog reads the existing governed
+  // revalidation authority from the shared bundle; it adds no secret name.
+  "supabase/functions/admin-blog/index.ts",
+  "supabase/functions/admin-blog/model.ts",
   "supabase/functions/attendance-claim-backfill/index.ts",
   "supabase/functions/attendance-claim-link/index.ts",
   "supabase/functions/claim-attendance/index.ts",
@@ -55,6 +59,9 @@ const EXPECTED_FIELDS = [
   ["ATTENDANCE_CLAIM_PEPPER", "Platform Security", "secure_vault"],
   ["META_COMPETITOR_ACCESS_TOKEN", "Growth Engineering", "provider_dashboard_and_secure_vault"],
   ["META_COMPETITOR_IG_USER_ID", "Growth Engineering", "provider_dashboard"],
+  // [TEST-MOD-APPROVED #4137] Existing AD_CONVERSION_TOKENS envelope field
+  // used by the two Admin Blog readers above; no top-level secret is added.
+  ["MARKETING_REVALIDATE_SECRET", "Marketing Engineering", "secure_vault"],
   ["RESEND_WEBHOOK_SECRET", "Messaging Security", "secure_vault"],
   // #3392 — four appended envelope fields; no new secret name (still 88).
   ["VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KID", "Payments Engineering", "secure_vault"],
@@ -69,6 +76,8 @@ const EXPECTED_FIELDS = [
 // top-level name; the AD envelope and #1772's field are untouched.
 // [TEST-MOD-APPROVED #3645] The payout-release RAK is the 90th name; the AD
 // envelope and #1772 field remain byte-for-byte unchanged.
+// [TEST-MOD-APPROVED #4137] Admin Blog adds two governed-bundle readers while
+// preserving the 90-name envelope and every #1772 field and ordering guarantee.
 test("#1772 keeps the exact governed 90-name envelope with no direct erasure secret", () => {
   const names = manifest.secrets.map((entry) => entry.name);
   assert.equal(names.length, 90);
