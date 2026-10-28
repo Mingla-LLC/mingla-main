@@ -3,6 +3,9 @@
 -- Issue #3859 slice-1 implementor proof.
 -- Fails on revert: removing the capability helper/reader patch/authoring or
 -- publish trigger makes T-01, T-02, T-03, or T-04 fail. Every fixture rolls back.
+-- [TEST-MOD-APPROVED #3645] Production's reviewed activation now leaves the
+-- Paystack switch on. Each refusal case transactionally establishes the off
+-- state it is proving, then ROLLBACK restores the deployed state.
 
 CREATE OR REPLACE FUNCTION pg_temp.issue_3859_schedule(p_deposit integer)
 RETURNS jsonb
@@ -90,8 +93,24 @@ BEGIN
 END
 $fixture$;
 
+CREATE OR REPLACE FUNCTION pg_temp.issue_3859_force_paystack_unavailable()
+RETURNS void
+LANGUAGE plpgsql
+AS $switch$
+BEGIN
+  CREATE OR REPLACE FUNCTION public.issue_3645_paystack_installments_enabled()
+  RETURNS boolean
+  LANGUAGE sql
+  STABLE
+  SECURITY DEFINER
+  SET search_path = public, pg_temp
+  AS $off$ SELECT false $off$;
+END
+$switch$;
+
 -- T-01: supported is explicit; unavailable and unknown fail closed.
 BEGIN;
+SELECT pg_temp.issue_3859_force_paystack_unavailable();
 DO $t01$
 DECLARE f record;
 BEGIN
@@ -113,6 +132,7 @@ ROLLBACK;
 -- T-02: a legacy published schedule remains stored for Host/support but the
 -- canonical public reader removes both schedule-bearing fields.
 BEGIN;
+SELECT pg_temp.issue_3859_force_paystack_unavailable();
 DO $t02$
 DECLARE f record; v_tier jsonb; v_stored jsonb;
 BEGIN
@@ -140,6 +160,7 @@ ROLLBACK;
 -- T-03: unsupported authoring cannot add/edit/remove a schedule, but an unchanged
 -- legacy schedule can ride an unrelated metadata write without being deleted.
 BEGIN;
+SELECT pg_temp.issue_3859_force_paystack_unavailable();
 DO $t03$
 DECLARE
   f record;
@@ -199,6 +220,7 @@ ROLLBACK;
 
 -- T-04: an unsupported saved schedule cannot become effectively published.
 BEGIN;
+SELECT pg_temp.issue_3859_force_paystack_unavailable();
 DO $t04$
 DECLARE f record; v_raised boolean := false; v_status text;
 BEGIN

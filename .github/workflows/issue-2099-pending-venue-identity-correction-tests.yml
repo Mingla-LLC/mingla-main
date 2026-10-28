@@ -18,12 +18,11 @@ on:
       # them reddened this job; none of them ran it. It sat red on main for three
       # days and was carried past on #2887 as a proven-inherited failure.
       #
-      # Listing the validator is safe in a way listing MANIFEST.json was not when
-      # #2193 removed it below. #2193's objection was that a foreign trigger
-      # charged #2099's private 1,024 B __common budget for growth it did not
-      # cause; #2855 fixed that at the source by gating SC-4 on six exact product
-      # paths (see "SC-4 scope" in the boot-payload job). A foreign trigger now
-      # runs the contract jobs and skips the bundle measurement entirely.
+      # Listing the validator is safe. Issue #3493 removed the old six-file
+      # pull-request skip after it let a +1,560 B Business change merge green
+      # and turn main red. Universal Business PR/main measurement now lives in
+      # Web Build Check and Bundle Baseline Ratchet; whenever this issue-owned
+      # lane starts, its SC-4 job reuses that same verdict without another skip.
       #
       # The three frozen sibling migrations are listed for the same reason and
       # cost nothing: this guard asserts their venue foreign keys, so a change to
@@ -71,21 +70,13 @@ on:
       # merge changes this lane's verdict, but without this entry it started no run
       # here, so main-health kept reading the older red. main-health admits only
       # push and schedule runs, never a manual dispatch, so nothing else could
-      # clear it. The same anchor feeds pull_request: a baseline-only PR starts this
-      # workflow, and "SC-4 scope" finds none of its six product paths and skips the
-      # measurement, exactly as before. The contract jobs run and cannot be moved
-      # by a baseline value. Do NOT drop this entry, and never clear a red SC-4 by
-      # editing the baseline by hand.
+      # clear it. The same anchor feeds pull_request and push; whenever either
+      # starts this lane it executes the identical fail-closed measurement. Do
+      # NOT drop this entry, and never clear a red SC-4 by editing the baseline.
       - "mingla-business/scripts/ci/bundle-baseline.json"
-      # issue #2193 — MANIFEST.json is DELIBERATELY ABSENT from this filter.
-      # Registering a strict-grep gate edits it, which nearly every substantial PR
-      # does, so listing it here fired this workflow on unrelated branches. SC-4 then
-      # measured the WHOLE __common chunk and charged that foreign PR #2099's private
-      # 1,024 B budget — while the project allowance (PR_DELTA_ALLOWANCE.common in
-      # orch-1083-initial-bundle-budget.mjs) is 12,000 B. It blocked #2009 at a 1,205 B
-      # delta, a tenth of the real budget. Do NOT re-add it: #2099 owns no behaviour
-      # that a manifest-only change can break, and manifest parity is enforced by
-      # meta-1383-manifest-parity.mjs in the strict-grep workflow.
+      # MANIFEST.json remains absent because it is not a Business export input;
+      # manifest parity is enforced by meta-1383-manifest-parity.mjs. Universal
+      # bundle coverage is owned by the existing web-build and ratchet lanes.
   push:
     branches: [main]
     paths: *issue2099Paths
@@ -275,83 +266,19 @@ jobs:
           cache: npm
           cache-dependency-path: mingla-business/package-lock.json
       - run: npm --prefix mingla-business ci
-      # issue #2193 — SC-4 asserts a property of #2099'S OWN PRODUCT CODE: that the
-      # correction dialog and its service stay out of the eager chunk. Only a change to
-      # that code can violate it. But SC-4 measures the WHOLE __common chunk against a
-      # baseline that tracks main, so ANY branch reaching this job is charged #2099's
-      # private 1,024 B budget for growth it did not cause — while the project allowance
-      # (PR_DELTA_ALLOWANCE.common) is 12,000 B. Editing this workflow, or the shared gate
-      # manifest, is not a reason to weigh #2099's dialog. Scope the measurement to the
-      # only changes that can move it.
-      - name: "SC-4 scope — did this change touch #2099 product code?"
-        id: sc4scope
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "push to main — SC-4 measures main itself."
-            exit 0
-          fi
-          changed="$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
-            --paginate --jq '.[].filename')"
-          # Exact #2099 Mingla Business web product paths only. Names containing
-          # "2099" or "pending_venue" are not product-scope evidence.
-          sc4_product_paths=(
-            'mingla-business/app/venue/[venueId]/index.tsx'
-            'mingla-business/src/services/venueListingsService.ts'
-            'mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.web.tsx'
-            'mingla-business/src/components/venue/PendingVenueIdentityCorrectionDialog.web.tsx'
-            'mingla-business/src/services/pendingVenueIdentityCorrectionService.web.ts'
-            'mingla-business/src/components/venue/VenueListingContent.tsx'
-          )
-          run_sc4=false
-          while IFS= read -r path; do
-            for product_path in "${sc4_product_paths[@]}"; do
-              if [ "$path" = "$product_path" ]; then
-                run_sc4=true
-                break 2
-              fi
-            done
-          done <<< "$changed"
-          if [ "$run_sc4" = true ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "#2099 product code changed — measuring."
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "No #2099 product code in this change — SC-4 skipped (issue #2193)."
-          fi
-      - if: steps.sc4scope.outputs.run == 'true'
-        name: "SC-4 outer guard — #2099's __common delta against the run-time baseline"
+      - name: "#3493 PR/main bundle-verdict parity regression"
+        working-directory: mingla-business
+        run: node --test scripts/ci/__tests__/issue3493_boot_payload_parity.happy.test.mjs
+      # Issue #3493 — no event-name branch and no changed-file skip. The shared
+      # trigger above starts this job for every Business export input, and this
+      # exact build + verdict sequence runs on both pull_request and push.
+      - name: "SC-4 outer guard — __common delta against the run-time baseline"
         shell: bash
         working-directory: mingla-business
         run: |
           set -euo pipefail
           npm run web:export
-          node --input-type=module -e '
-            import { readFileSync } from "node:fs";
-            import { measureWebBuild } from "./scripts/ci/bundle-budget-lib.mjs";
-            // Read the baseline AT RUN TIME. Pinning the literal would red on
-            // main forever the moment any unrelated PR grows __common.
-            const baseline = JSON.parse(
-              readFileSync("./scripts/ci/bundle-baseline.json", "utf8"),
-            );
-            const measured = measureWebBuild("web-build");
-            const delta = measured.common.raw - baseline.common.raw;
-            console.log(
-              `__common raw: baseline ${baseline.common.raw} B -> this branch ${measured.common.raw} B (delta ${delta} B)`,
-            );
-            if (delta > 1024) {
-              console.error(
-                "issue-2099 FAIL: #2099 must not add more than 1,024 B to the eager __common chunk.\n" +
-                  "  The correction dialog and its service belong in an on-intent async chunk.\n" +
-                  "  Do NOT clear this by editing bundle-baseline.json or the tripwire."
-              );
-              process.exit(1);
-            }
-          '
+          node scripts/ci/bundle-baseline-movement.mjs
 
   issue-2099-postgres-contract:
     if: ${{ github.event.pull_request.draft != true }}

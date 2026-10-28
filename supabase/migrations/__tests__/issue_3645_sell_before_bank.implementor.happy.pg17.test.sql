@@ -1,9 +1,8 @@
 -- Issue #3645 PR6 — sell-before-bank charge readiness (PG17).
 -- Proves stamped Paystack hold-rail can collect without a subaccount, while
 -- unstamped Paystack without subaccount cannot; payout helper requires bank.
--- Also: writing instalments onto a scheduled trip for a Paystack brand is
--- refused before the older bank-specific belt because #3859 limits Explorer
--- installments to the server-confirmed supported provider capability.
+-- Also: after the reviewed Paystack capability activation, writing instalments
+-- for a bankless brand is still refused by the bank-readiness belt.
 
 BEGIN;
 
@@ -72,9 +71,8 @@ BEGIN
     RAISE EXCEPTION 'Stripe charges without payouts_enabled must NOT payout';
   END IF;
 
-  -- [TEST-MOD-APPROVED #3859] A bankless Paystack brand is now refused by the
-  -- provider-neutral capability belt before the older bank-specific belt.
-  -- The superseded exact-error assertion therefore described unreachable behavior.
+  -- The provider capability is active; the independent bank requirement for
+  -- later scheduled charges remains fail-closed.
   INSERT INTO public.events (
     id, brand_id, title, slug, event_type, status, currency
   ) VALUES (
@@ -101,14 +99,14 @@ BEGIN
     );
   EXCEPTION
     WHEN SQLSTATE 'P0001' THEN
-      IF SQLERRM = 'installment_capability_unavailable' THEN
+      IF SQLERRM = 'bank_required_for_installments' THEN
         v_raised := true;
       ELSE
         RAISE;
       END IF;
   END;
   IF NOT v_raised THEN
-    RAISE EXCEPTION 'scheduled trip + unsupported provider writing installments must raise installment_capability_unavailable';
+    RAISE EXCEPTION 'scheduled trip + missing bank must raise bank_required_for_installments';
   END IF;
 
   -- Recipient-only Paystack brand (no subaccount) must payout.

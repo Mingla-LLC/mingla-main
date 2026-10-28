@@ -241,7 +241,7 @@ jest.mock("../ui/GlassCard", () => ({
 jest.mock("../event/CreatorStep2When", () => ({ CreatorStep2When: (): null => null }));
 jest.mock("../experience/ExperienceCoverStep", () => ({ ExperienceCoverStep: (): null => null }));
 jest.mock("../experience/ExperienceStopsStep", () => ({ ExperienceStopsStep: (): null => null }));
-jest.mock("../pricing/WhoCoversCostsSection", () => ({
+jest.mock("../pricing/LazyWhoCoversCostsSection", () => ({
   WhoCoversCostsSection: (): null => null,
 }));
 jest.mock("../offering/StripeBlockedCard", () => ({ StripeBlockedCard: (): null => null }));

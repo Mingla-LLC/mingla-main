@@ -152,7 +152,7 @@ jest.mock("../../ui/GlassCard", () => ({
 jest.mock("../../event/CreatorStep2When", () => ({ CreatorStep2When: (): null => null }));
 jest.mock("../ExperienceCoverStep", () => ({ ExperienceCoverStep: (): null => null }));
 jest.mock("../ExperienceStopsStep", () => ({ ExperienceStopsStep: (): null => null }));
-jest.mock("../../pricing/WhoCoversCostsSection", () => ({
+jest.mock("../../pricing/LazyWhoCoversCostsSection", () => ({
   WhoCoversCostsSection: () =>
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     require("react").createElement("WhoCoversCostsSectionProbe", {}),

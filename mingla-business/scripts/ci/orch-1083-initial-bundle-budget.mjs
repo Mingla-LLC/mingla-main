@@ -76,6 +76,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DEFERRED_SPECIFIERS,
+  BASELINE_MOVEMENT_THRESHOLD_BYTES,
   measureWebBuild,
   fmtTriple,
   fmtDelta,
@@ -300,8 +301,8 @@ const SEED = {
   eager: { raw: 3_349_598, brotli: 660_678 },
 };
 
-// Below this, a shrink is measurement noise and not worth a ratchet PR.
-const RATCHET_NOTICE_THRESHOLD = 2_048;
+// The ratchet and PR/main parity guard share one movement authority (#3493).
+const RATCHET_NOTICE_THRESHOLD = BASELINE_MOVEMENT_THRESHOLD_BYTES;
 
 const MIN_CHUNKS = 3;
 

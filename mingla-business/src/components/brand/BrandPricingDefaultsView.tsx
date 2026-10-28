@@ -42,7 +42,7 @@ import {
   type BrandPricingDefaults,
   type PricingSwitchOverrides,
 } from "../../services/pricingSwitchesService";
-import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
+import { WhoCoversCostsSection } from "../pricing/LazyWhoCoversCostsSection";
 import { usesConfiguredVat } from "../../utils/pricingTaxContext";
 
 const EXAMPLE_ORDER_CENTS = 10000; // £100 illustrative order
