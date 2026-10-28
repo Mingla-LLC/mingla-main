@@ -264,8 +264,9 @@ BEGIN
     RAISE EXCEPTION 'saved gigs lack the pay: %',public.creator_saved_gigs();
   END IF;
 
-  -- #2: the brand's rollout gates the board and host writes.
-  DELETE FROM public.program_brand_rollouts WHERE brand_id='38723000-0000-4000-8000-0000000000b1' AND program='creator_gigs';
+  -- #2: an explicit dark hold gates the board and host writes under GA.
+  UPDATE public.program_brand_rollouts SET phase='dark', updated_at=clock_timestamp()
+  WHERE brand_id='38723000-0000-4000-8000-0000000000b1' AND program='creator_gigs';
   IF jsonb_array_length(public.creator_gig_board(NULL,NULL))<>0 THEN RAISE EXCEPTION '#2 board ignored rollout'; END IF;
   v_r:=public.gig_interest_send('38723000-0000-4000-8000-0000000000f2','38723000-0000-4000-8000-0000000000d3',30000,NULL);
   IF v_r->>'error' IS DISTINCT FROM 'gig_not_open' THEN RAISE EXCEPTION '#2 interest ignored rollout: %',v_r; END IF;
