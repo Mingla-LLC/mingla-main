@@ -9,6 +9,7 @@
 // NG assertion below throws. Removing computeConfigVat makes the module import
 // fail to resolve → every test errors. Both verified before the META-ORCH-1076
 // engine extension existed.
+// MINGLA-INVARIANT: I-1318-CONNECTED-PAYOUT-EXCLUDES-UNWITHHELD-TAX | issue #1318 | Connected-account payout is buyer total minus Mingla's application fee; Mingla never subtracts VAT it does not withhold or file.
 import {
   assertEquals,
   assertThrows,
@@ -98,7 +99,6 @@ Deno.test("NG all-in: base + passed fees + 7.5% VAT, in kobo (config_vat basis)"
     breakdown.application_fee_amount_cents,
     miglaFee + serviceFee,
   );
-  // MINGLA-INVARIANT: I-1318-CONNECTED-PAYOUT-EXCLUDES-UNWITHHELD-TAX | issue #1318 | Connected-account payout is buyer total minus Mingla's application fee; Mingla never subtracts VAT it does not withhold or file.
   assertEquals(
     breakdown.connected_account_payout_cents,
     buyerTotalCents - breakdown.application_fee_amount_cents,
