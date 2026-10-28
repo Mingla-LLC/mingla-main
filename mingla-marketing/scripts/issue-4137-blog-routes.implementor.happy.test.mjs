@@ -79,6 +79,10 @@ function sourceContract() {
 
   // Footer (AC-P12) and image host (no Google host).
   assert.match(read('components/cutout/footer.tsx'), /\{ href: '\/blog', label: 'Blog' \}/, '#4137 AC-P12: footer links to /blog')
+  const blogCss = read('components/blog/blog.css')
+  const selectedTabRule = blogCss.match(/\[data-cutout\] \.blog-tabs a\[aria-current='page'\] \{([\s\S]*?)\}/)?.[1] ?? ''
+  assert.match(selectedTabRule, /box-shadow:/, '#4137: selected category pill owns a compact shadow')
+  assert.doesNotMatch(selectedTabRule, /22\.34px|41\.78px|var\(--cut-btn-dark-shadow\)/, '#4137: selected category pill never inherits the large CTA shadow footprint')
   const nextConfig = read('next.config.ts')
   assert.match(nextConfig, /pathname: '\/storage\/v1\/object\/public\/blog-media\/\*\*'/)
   assert.doesNotMatch(nextConfig, /googleusercontent|googleapis/, '#4137: no Google host in the image optimiser')

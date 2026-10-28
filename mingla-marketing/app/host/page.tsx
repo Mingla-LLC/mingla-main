@@ -13,7 +13,6 @@ import {
 import { HOST_BENTO } from '@/lib/design-preview/host-bento'
 import { AriSiteBuilderDemo } from '@/components/ui/ari-site-builder-demo'
 import { HostFigure } from '@/components/ui/host-figures'
-import { HostHeroWall } from '@/components/cutout/host-hero-wall'
 import { HostStartCta } from '@/components/cutout/host-start-cta'
 import { ICP_CARDS } from '@/lib/design-preview/icp-cards'
 import { ExpandingCards, type CardItem } from '@/components/ui/expanding-cards'
@@ -47,7 +46,8 @@ export default function CutoutHostPage() {
         line1="Everything a"
         line2={<span className="cut-gradient-brand">host needs.</span>}
         lede="Get found by the people planning their night out. Mingla builds your website, sells your tickets, tables and stays, and keeps your guests coming back. All from one app."
-        backdrop={<HostHeroWall />}
+        image="/marketing/host-hero/world-hosts-create-poster.jpg"
+        video="/marketing/host-hero/world-hosts-create-preview.mp4"
         scrollTo="#tools"
         action={<DeviceCta surface="host" location="hero" variant="primary" size="lg" />}
       />
