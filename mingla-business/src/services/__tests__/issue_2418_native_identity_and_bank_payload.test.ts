@@ -1,11 +1,19 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 const mockReportNonFatal = jest.fn();
 const mockInvoke = jest.fn();
 const mockConstants: {
   nativeAppVersion: string | null;
   expoConfig: { version?: string } | null;
+  platform: {
+    ios?: { buildNumber?: unknown };
+    android?: { versionCode?: unknown };
+  } | null;
 } = {
   nativeAppVersion: "1.1.5",
   expoConfig: { version: "1.1.5" },
+  platform: { ios: { buildNumber: "123" } },
 };
 let mockPlatformOS: "ios" | "android" | "web" = "ios";
 
@@ -55,6 +63,7 @@ describe("#2418 native Host release identity", () => {
     mockReportNonFatal.mockClear();
     mockConstants.nativeAppVersion = "1.1.5";
     mockConstants.expoConfig = { version: "9.9.9" };
+    mockConstants.platform = { ios: { buildNumber: "123" } };
     mockPlatformOS = "ios";
   });
 
@@ -109,7 +118,60 @@ describe("#2418 native Host release identity", () => {
     mockPlatformOS = "web";
     identity = loadIdentity();
     expect(identity.getNativeAppVersionHeaders()).toEqual({});
+    expect(identity.getInstalledAppVersionDisplay("Mingla Host")).toBeNull();
     expect(mockReportNonFatal).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["ios", { ios: { buildNumber: "321" } }, "Mingla Host · v1.1.5 (321)"],
+    ["android", { android: { versionCode: 654 } }, "Mingla Host · v1.1.5 (654)"],
+  ] as const)(
+    "formats the installed %s version and build on one line",
+    (platform, nativePlatform, expectedText) => {
+      mockPlatformOS = platform;
+      mockConstants.platform = nativePlatform;
+      const identity = loadIdentity();
+
+      expect(identity.getInstalledAppVersionDisplay("Mingla Host")).toEqual({
+        text: expectedText,
+        accessibilityLabel:
+          platform === "ios"
+            ? "Mingla Host, version 1.1.5, build 321"
+            : "Mingla Host, version 1.1.5, build 654",
+      });
+    },
+  );
+
+  it.each([
+    ["ios", { ios: { buildNumber: "" } }],
+    ["ios", { ios: { buildNumber: " 321 " } }],
+    ["android", { android: { versionCode: 0 } }],
+    ["android", { android: { versionCode: Number.NaN } }],
+  ] as const)(
+    "hides the footer when %s native build metadata is invalid",
+    (platform, nativePlatform) => {
+      mockPlatformOS = platform;
+      mockConstants.platform = nativePlatform;
+
+      expect(
+        loadIdentity().getInstalledAppVersionDisplay("Mingla Host"),
+      ).toBeNull();
+    },
+  );
+});
+
+describe("#4160 Host version footer placement", () => {
+  it("keeps the installed identity after the Account settings card", () => {
+    const source = readFileSync(
+      resolve(__dirname, "../../../app/(tabs)/account.tsx"),
+      "utf8",
+    );
+    const footer = '<AppVersionFooter appName="Mingla Host" />';
+
+    expect(source).toContain(footer);
+    expect(source.lastIndexOf(footer)).toBeGreaterThan(
+      source.lastIndexOf('label="Delete account"'),
+    );
   });
 });
 
