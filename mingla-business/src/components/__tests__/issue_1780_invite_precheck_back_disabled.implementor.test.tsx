@@ -241,7 +241,7 @@ jest.mock("../ui/GlassCard", () => ({
 jest.mock("../event/CreatorStep2When", () => ({ CreatorStep2When: (): null => null }));
 jest.mock("../experience/ExperienceCoverStep", () => ({ ExperienceCoverStep: (): null => null }));
 jest.mock("../experience/ExperienceStopsStep", () => ({ ExperienceStopsStep: (): null => null }));
-jest.mock("../pricing/WhoCoversCostsSection", () => ({
+jest.mock("../pricing/LazyWhoCoversCostsSection", () => ({
   WhoCoversCostsSection: (): null => null,
 }));
 jest.mock("../offering/StripeBlockedCard", () => ({ StripeBlockedCard: (): null => null }));
@@ -334,6 +334,9 @@ const BOUNDARY: Record<string, () => unknown> = {
   // truthful provider-capability boundary is deterministically unsupported.
   "@mingla/offering-rendering/tripInstallmentCapability": () => ({
     tripInstallmentsSupported: () => false,
+  }),
+  useTripInstallmentCapability: () => ({
+    useTripInstallmentCapability: () => ({ data: false }),
   }),
   // #3645 — the bank-setup return target is pure and supplied REAL.
   bankSetupReturn: () => jest.requireActual("../../utils/bankSetupReturn"),

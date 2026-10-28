@@ -72,7 +72,7 @@ export const WIRED_FILES = [
   "mingla-business/src/components/experience/ExperiencePreview.tsx",
   "mingla-business/src/components/offering/ExperienceStopsGalleryTile.tsx",
   "mingla-business/src/components/rsvp/RsvpStep5Setup.tsx",
-  "mingla-business/src/components/trip/InstallmentScheduleDisplay.tsx",
+  "mingla-business/src/components/trip/installmentScheduleRows.ts",
   "mingla-business/src/components/trip/PaymentPlanEditor.tsx",
   "mingla-business/src/components/trip/RefundPreviewBody.tsx",
   "mingla-business/src/components/trip/RefundPreviewSheet.tsx",

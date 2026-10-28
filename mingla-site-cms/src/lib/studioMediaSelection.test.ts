@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   applyStudioMediaSelection,
-  referencedStudioMediaIds,
   studioMediaTargets,
 } from "./studioMediaSelection";
 
@@ -33,7 +32,6 @@ describe("#2830 Studio media draft binding", () => {
       decorativeOnly: true,
       currentMediaId: mediaA,
     });
-    expect(referencedStudioMediaIds([page])).toEqual(new Set([mediaA]));
   });
 
   it("writes the READY relationship and alt into the intended draft slot", () => {

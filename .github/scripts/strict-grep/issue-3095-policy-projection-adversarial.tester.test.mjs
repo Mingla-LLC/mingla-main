@@ -110,14 +110,14 @@ function batchedRuby(program) {
   return { cache, warm, exec, spawnCount: () => spawns };
 }
 
-const REVERT_ROWS_DECLARATION = /^  const revertRows = (\[\n[\s\S]*?^  \]);$/m;
+const REVERT_ROWS_DECLARATION = /^  const revertRowsIncludingFolded = (\[\n[\s\S]*?^  \]);$/m;
 const REVERT_ROWS_CONSUMER = /^  for \(const \[name, line\] of revertRows\) \{\n([\s\S]*?)^  \}$/m;
 
 function extractRevertTable(source) {
   const declaration = exactlyOne(source, REVERT_ROWS_DECLARATION, "named revertRows declaration");
   const consumer = exactlyOne(source, REVERT_ROWS_CONSUMER, "revertRows consuming loop");
   const rows = new Function("liveWorkflow", `return ${declaration[1]};`)(liveWorkflow);
-  assert.ok(Array.isArray(rows), "named revertRows declaration must evaluate to an array");
+  assert.ok(Array.isArray(rows), "named revertRowsIncludingFolded declaration must evaluate to an array");
   assert.ok(rows.every((row) => Array.isArray(row) && row.length === 2
     && row.every((value) => typeof value === "string")),
     "every named revertRows entry must be an exact [workflow, line] pair");
@@ -258,8 +258,9 @@ function getContext() {
   // (6) activity types on every non-exempt lane, and on the ruleset-required lanes
   const exempt = new Map(ALWAYS_ON.map((entry) => [entry.path, entry]));
   const gated = names.filter((name) => !exempt.has(name));
-  // [#3643] Phase 3D deleted twenty gated per-issue lanes (115 -> 95 gated).
-  assert.ok(gated.length >= 95, `the #2881 draft-gated set must stay populated, found ${gated.length}`);
+  // [#3643] The Phase 3D/3E folds retire the per-issue wrappers; the live
+  // workflow tree keeps 49 draft-gated lanes and the replacement CI batch.
+  assert.ok(gated.length >= 49, `the #2881 draft-gated set must stay populated, found ${gated.length}`);
   const typesTree = { ...sources };
   for (const name of gated) {
     const inline = countLines(sources[name], /^ {4}types: \[[^\]\n]*\]\n/);
@@ -314,8 +315,8 @@ test("#3095 tester harness runs the gate's own derivation and reproduces its pin
   bootstrapFails(gateSource.replace(extracted.declaration, ""), "missing declaration");
   bootstrapFails(gateSource.replace(extracted.declaration,
     `${extracted.declaration}\n${extracted.declaration}`), "duplicate declaration");
-  bootstrapFails(gateSource.replace("const revertRows =", "const renamedRows ="), "renamed declaration");
-  bootstrapFails(gateSource.replace("  const revertRows = [\n", "  const revertRows = [\n    MALFORMED_ROW,\n"),
+  bootstrapFails(gateSource.replace("const revertRowsIncludingFolded =", "const renamedRows ="), "renamed declaration");
+  bootstrapFails(gateSource.replace("  const revertRowsIncludingFolded = [\n", "  const revertRowsIncludingFolded = [\n    MALFORMED_ROW,\n"),
     "malformed declaration");
   bootstrapFails(gateSource.replace(extracted.consumer, ""), "missing consumer");
   bootstrapFails(gateSource.replace(extracted.consumer, `${extracted.consumer}\n${extracted.consumer}`),
@@ -434,7 +435,11 @@ test("every inverted revert row bites when its registered line is duplicated or 
   const ctx = getContext();
   const bites = (expectedCount) => (error) => error instanceof assert.AssertionError
     && /expected exactly one mutation target/.test(error.message) && error.actual === expectedCount && error.expected === 1;
-  for (const [name, line] of ctx.gate.rows) {
+  // The extracted table intentionally retains folded historical rows so the
+  // implementor's inventory cannot silently lose them. Only the live subset
+  // has a source in this checkout and can be driven through removeExactLine;
+  // the folded rows are covered by the registry's own deletion assertions.
+  for (const [name, line] of ctx.gate.rows.filter(([candidate]) => typeof ctx.sources[candidate] === "string")) {
     const source = ctx.sources[name];
     assert.equal(typeof source, "string", `${name}: revert row names a missing workflow`);
     assert.doesNotThrow(() => ctx.gate.removeExactLine(source, line, name));

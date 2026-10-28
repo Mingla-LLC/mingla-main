@@ -35,7 +35,7 @@ import { Input } from "../ui/Input";
 // never import ./RefundPolicyEditor statically here.
 import { LazyRefundPolicyEditor as RefundPolicyEditor } from "../trip/LazyRefundPolicyEditor";
 import type { RefundPolicy } from "../../services/refundPolicyService";
-import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
+import { WhoCoversCostsSection } from "../pricing/LazyWhoCoversCostsSection";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import type { PricingSwitchOverrides } from "../../services/pricingSwitchesService";
 import type {
@@ -91,6 +91,8 @@ export interface ExperiencePricingStepProps {
     passServiceFee: boolean;
   };
   takeRateBps: number;
+  paymentProvider?: "stripe" | "paystack" | null;
+  paymentCountry?: string | null;
   vatRegistered: boolean;
   onEditDefaults: () => void;
   onSetupVat: () => void;
@@ -142,6 +144,8 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
   setPricingSwitches,
   brandDefaults,
   takeRateBps,
+  paymentProvider,
+  paymentCountry,
   vatRegistered,
   onEditDefaults,
   onSetupVat,
@@ -471,6 +475,8 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
         previewBaseCents={Math.round(resolvedTotalMajor * 100)}
         currency={currency}
         effectiveTakeRateBps={takeRateBps}
+        paymentProvider={paymentProvider}
+        paymentCountry={paymentCountry}
         onEditDefaults={onEditDefaults}
         vatRegistered={vatRegistered}
         onSetupVat={onSetupVat}

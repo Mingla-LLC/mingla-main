@@ -173,7 +173,7 @@ import type { InclusionDraft } from "./TripCreatorStep3Inclusions";
 import type { EventCoverMediaType } from "../../store/draftEventStore";
 import type { EventCoverMediaProvider } from "../../types/eventCoverProvider";
 import type { OfferingGalleryImage } from "@mingla/offering-rendering";
-import { tripInstallmentsSupported } from "@mingla/offering-rendering/tripInstallmentCapability";
+import { useTripInstallmentCapability } from "../../hooks/useTripInstallmentCapability";
 
 // ---- Section configuration -----------------------------------------
 
@@ -761,7 +761,11 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const updateLiveTripMutation = useUpdateLiveTripFields();
-  const paymentPlansAvailable = tripInstallmentsSupported(paymentProvider);
+  // The prop stays for route compatibility while the server owns rollout
+  // readiness. Unknown/error is false inside the hook.
+  void paymentProvider;
+  const paymentPlansAvailable =
+    useTripInstallmentCapability(trip.brandId).data === true;
 
   // Local edit state — never persisted client-side; round-trip via RPC.
   const initialState = useMemo<LocalTripEditState>(
@@ -1931,6 +1935,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
               onChange={handleInclusionsChange}
               disabled={submitting}
               editMode={{ totalConfirmedOrders }}
+              // #2829 W4 — the trip guide saves on its own (additive; logged
+              // by Mingla), separate from the reasoned live-edit flow.
+              eventId={trip.id}
+              onShowToast={showToast}
             />
           );
         case "pricing": {
@@ -2126,6 +2134,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       handleDaysChange,
       handleInclusionsChange,
       handlePricingChange,
+      paymentPlansAvailable,
       handleCoverChange,
       submitting,
       totalConfirmedOrders,

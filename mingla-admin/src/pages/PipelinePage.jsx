@@ -1,11 +1,18 @@
 // Issue #3802 (Wave 1) — the Hosts and Creators boards (#/hosts, #/creators).
 //
+// Issue #4130 (Wave 4a): drawn inside Hosts and creators (#/outreach), which
+// passes the page tabs and the counts over every card (OutreachContext). The
+// list, sorted by due date, is the default; chips pick Due today / This week /
+// Stale / Replied, waiting on us; the board shows only the late stages
+// (Replied onward); phone numbers are hidden from card text; stale cards can
+// get a new due date in bulk (owner and admins, with a confirmation).
+//
 // One page, two pipelines. Everything it shows comes from the crm_* server
 // functions through the hooks below; this file never talks to the database
 // itself. The view, the filters and the open card live in the address, so a
 // reload or a pasted link shows exactly the same thing.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus } from "lucide-react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { CalendarClock, Plus } from "lucide-react";
 import { AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Drawer } from "../components/ui/Drawer";
@@ -44,6 +51,11 @@ import { PipelineOverlays } from "../components/crm/CrmLayer";
 import { AgentPromptStrip } from "../components/agent/AgentPromptStrip";
 import { HostNextContext, useHostNext } from "../hooks/useOpsWork";
 import { HOST_FILTERS, hostMissing, hostPassesFilter } from "../lib/opsModel";
+import { DUE_CHIPS, filterByDueChip, forDisplay, lateStageDef, lateStageIds, lateStageRange } from "../lib/outreachView";
+import { OutreachContext } from "../components/outreach/OutreachContext";
+import { FunnelStrip } from "../components/outreach/FunnelStrip";
+import { ResetDueModal } from "../components/outreach/ResetDueModal";
+import { resetStaleDue } from "../services/dashboardService";
 
 const UNDO_MS = 8000;
 const BLOCK_TITLES = {
@@ -56,6 +68,7 @@ const OFFLINE_WORDS = "You're offline. You can look around, but changes won't sa
 function PipelinePage({ pipeline, onTabChange }) {
   const { access } = useAuth();
   const { addToast, removeToast } = useToast();
+  const outreach = useContext(OutreachContext);
   const online = useOnline();
   const [search, setSearch] = useHashQuery(pipeline);
   const state = useMemo(() => parseCrmSearch(search), [search]);
@@ -131,7 +144,21 @@ function PipelinePage({ pipeline, onTabChange }) {
     [isHostBoard, state.filter, filtered, hostNext.byId]
   );
   const noNextCount = isHostBoard ? filtered.filter((r) => hostNext.byId[r.id]?.needs_next).length : 0;
-  const filtersOn = hasActiveFilters(state) || !!state.filter;
+  // #4130: the due chip, then what the list and board draw (phone numbers
+  // hidden from card text; the board holds only the late stages).
+  const dueShown = useMemo(() => filterByDueChip(shown, state.due, today), [shown, state.due, today]);
+  const listRecords = useMemo(() => dueShown.map(forDisplay), [dueShown]);
+  const boardDef = useMemo(() => (def ? lateStageDef(def) : def), [def]);
+  const boardRecords = useMemo(() => {
+    const late = new Set(lateStageIds(def));
+    return dueShown.filter((r) => late.has(r.stage)).map(forDisplay);
+  }, [dueShown, def]);
+  const counts = outreach?.summary?.data?.pipelines?.[pipeline] || null;
+  const isAdmin = canOpenPage(access, "overview");
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState("");
+  const filtersOn = hasActiveFilters(state) || !!state.filter || !!state.due;
 
   // ── Open card ───────────────────────────────────────────────────────────
   const [focus, setFocus] = useState(null); // { id, field }
@@ -483,7 +510,29 @@ function PipelinePage({ pipeline, onTabChange }) {
     if (cfg.error) cfg.retry();
     else pipe.refetch();
   };
-  const clearFilters = () => patch({ q: "", icp: "", region: "", mine: false, filter: "" }, { replace: true });
+  const clearFilters = () => patch({ q: "", icp: "", region: "", mine: false, filter: "", due: "" }, { replace: true });
+
+  // #4130: a new due date on the stale cards on screen (Stale chip), in bulk.
+  const staleOnScreen = state.due === "stale" ? dueShown : [];
+  const confirmReset = async (newDue) => {
+    setResetBusy(true);
+    setResetError("");
+    try {
+      const res = await resetStaleDue(pipeline, staleOnScreen.map((r) => r.id), newDue, today);
+      setResetOpen(false);
+      addToast({
+        variant: "success",
+        title: `${Number(res?.reset || 0).toLocaleString()} due ${Number(res?.reset) === 1 ? "date" : "dates"} moved to ${newDue}`,
+        description: Number(res?.skipped) > 0 ? `${res.skipped} had already changed, so they were left alone.` : undefined,
+      });
+      pipe.refetch();
+      outreach?.retrySummary?.();
+    } catch (err) {
+      setResetError(errorWords(err));
+    } finally {
+      setResetBusy(false);
+    }
+  };
   // "Fill in" from Needs attention opens the card on its first missing field.
   useEffect(() => {
     if (!state.fill || !openRecordInList) return;
@@ -501,10 +550,29 @@ function PipelinePage({ pipeline, onTabChange }) {
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
-        title={title}
-        description={`${canDrag ? "Drag a card to move it, or use the arrow on the card." : "Use the arrow on a card to move it."} Click a card to see and edit everything about it.`}
+        title={outreach ? "Hosts and creators" : title}
+        description={outreach
+          ? "Who to contact next, sorted by when it’s due. The board is kept for the small late stages."
+          : `${canDrag ? "Drag a card to move it, or use the arrow on the card." : "Use the arrow on a card to move it."} Click a card to see and edit everything about it.`}
         actions={addButton("primary", "md", addButtonRef)}
+        tabs={outreach?.tabs || null}
       />
+
+      {outreach && (
+        outreach.summary.status === "error" ? (
+          <AlertCard
+            variant="error"
+            title="Couldn't load the funnel and due counts"
+            action={<Button variant="secondary" size="sm" onClick={outreach.retrySummary}>Retry</Button>}
+          >
+            {loadErrorWords(outreach.summary.error)}
+          </AlertCard>
+        ) : counts && def ? (
+          <FunnelStrip def={def} stages={counts.stages} label={`${title} funnel`} />
+        ) : outreach.summary.status === "loading" ? (
+          <Skeleton height={96} style={{ borderRadius: 12 }} />
+        ) : null
+      )}
 
       {!online && (
         <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>
@@ -526,6 +594,32 @@ function PipelinePage({ pipeline, onTabChange }) {
         </AlertCard>
       ) : (
         <>
+          <div role="group" aria-label="Due" className="flex flex-wrap items-center gap-2">
+            {(DUE_CHIPS[pipeline] || []).map((chip) => {
+              const on = state.due === chip.id;
+              const n = counts ? counts[chip.key] : null;
+              return (
+                <button
+                  key={chip.id}
+                  type="button"
+                  aria-pressed={on}
+                  data-due-chip={chip.id}
+                  disabled={!ready}
+                  onClick={() => patch({ due: on ? "" : chip.id }, { replace: true })}
+                  className={`inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-[13px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] disabled:opacity-60 ${on ? "border-[var(--color-text-primary)] bg-[var(--color-text-primary)] text-[var(--color-background-primary)]" : "border-[var(--gray-300)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]"}`}
+                >
+                  {chip.label}
+                  {n != null && <span className="tabular-nums">· {Number(n).toLocaleString()}</span>}
+                </button>
+              );
+            })}
+            {isAdmin && state.due === "stale" && staleOnScreen.length > 0 && (
+              <Button variant="secondary" icon={CalendarClock} className="min-h-11" disabled={!ready || !online} onClick={() => { setResetError(""); setResetOpen(true); }}>
+                Reset {staleOnScreen.length.toLocaleString()} due {staleOnScreen.length === 1 ? "date" : "dates"}
+              </Button>
+            )}
+          </div>
+
           <PipelineToolbar
             state={state}
             def={def}
@@ -581,7 +675,7 @@ function PipelinePage({ pipeline, onTabChange }) {
                 )}
               </div>
             </div>
-          ) : shown.length === 0 ? (
+          ) : dueShown.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-[var(--gray-300)] bg-[var(--color-background-primary)] px-4 py-12 text-center">
               <p className="text-sm text-[var(--color-text-secondary)]">No {singular}s match.</p>
               <div className="flex flex-wrap justify-center gap-2">
@@ -596,7 +690,7 @@ function PipelinePage({ pipeline, onTabChange }) {
           ) : state.view === "list" ? (
             <PipelineList
               def={def}
-              records={shown}
+              records={listRecords}
               regions={config.regions}
               team={config.team}
               today={today}
@@ -605,14 +699,18 @@ function PipelinePage({ pipeline, onTabChange }) {
           ) : state.view === "region" ? (
             <PipelineByRegion
               def={def}
-              records={shown}
+              records={dueShown}
               regions={config.regions}
               onPickRegion={(slug) => patch({ region: slug, view: "board" })}
             />
           ) : (
+            <>
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              The board shows {lateStageRange(def)}. Earlier stages are in the list.
+            </p>
             <PipelineBoard
-              def={def}
-              records={shown}
+              def={boardDef}
+              records={boardRecords}
               regions={config.regions}
               team={config.team}
               today={today}
@@ -622,6 +720,7 @@ function PipelinePage({ pipeline, onTabChange }) {
               onOpen={openRecord}
               onMove={requestMove}
             />
+            </>
           )}
           </HostNextContext.Provider>
         </>
@@ -696,6 +795,20 @@ function PipelinePage({ pipeline, onTabChange }) {
           ) : null
         }
       />
+
+      {/* #4130: the bulk due-date reset asks first, in the shared Modal. */}
+      {resetOpen && (
+        <ResetDueModal
+          open
+          count={staleOnScreen.length}
+          singular={singular}
+          today={today}
+          busy={resetBusy}
+          error={resetError}
+          onConfirm={confirmReset}
+          onCancel={() => setResetOpen(false)}
+        />
+      )}
     </div>
   );
 }

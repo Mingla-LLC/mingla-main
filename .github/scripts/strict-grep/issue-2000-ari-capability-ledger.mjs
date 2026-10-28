@@ -178,6 +178,18 @@ ari.sites.publish
 ari.sites.read_operation
 ari.sites.list_versions
 ari.sites.rollback
+ari.sites.read_plan
+ari.sites.list_designs
+ari.sites.read_block_catalog
+ari.sites.read_tokens
+ari.sites.run_design_checks
+ari.sites.save_plan_answers
+ari.sites.create_draft
+ari.sites.propose_variant
+ari.sites.propose_copy
+ari.sites.propose_collection_entry
+ari.sites.confirm_review
+ari.sites.propose_trip_guide
 `.trim().split(/\s+/));
 
 // Independent classification authority established by the source-contract

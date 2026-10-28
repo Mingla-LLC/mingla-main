@@ -56,6 +56,12 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   "validate_site_draft",
   "get_site_operation_status",
   "list_site_versions",
+  // #2829 W9b — the website designer's reads assert the same authority inline.
+  "get_site_plan",
+  "list_site_designs",
+  "get_block_catalog",
+  "get_site_tokens",
+  "run_site_design_checks",
 ]);
 
 export interface AccessibleAgentBrand {

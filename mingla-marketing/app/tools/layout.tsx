@@ -1,6 +1,8 @@
 import Link from 'next/link'
+import '@/components/cutout/cutout.css'
 import { Footer } from '@/components/marketing/footer'
 import { ToolsBreadcrumb } from '@/components/marketing/tools-breadcrumb'
+import { ToolsAudienceMenu } from '@/components/marketing/tools-audience-menu'
 
 // #1003 [Venue Website Grader — growth tools, test cut] — the /tools shell.
 //
@@ -28,12 +30,15 @@ export default function ToolsLayout({ children }: { children: React.ReactNode })
               draggable={false}
             />
           </Link>
-          <Link
-            href="/host"
-            className="inline-flex min-h-10 items-center rounded-full border border-white/12 bg-white/8 px-4 text-sm font-semibold text-text-secondary transition hover:bg-white/12 hover:text-text-primary focus-ring"
-          >
-            Mingla Host
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/host"
+              className="inline-flex min-h-11 items-center rounded-full border border-white/12 bg-white/8 px-4 text-sm font-semibold text-text-secondary transition hover:bg-white/12 hover:text-text-primary focus-ring"
+            >
+              Mingla Host
+            </Link>
+            <ToolsAudienceMenu />
+          </div>
         </div>
       </header>
       <ToolsBreadcrumb />

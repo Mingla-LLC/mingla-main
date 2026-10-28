@@ -72,6 +72,7 @@ import {
 // The notice itself mounts in TripCheckoutFlow (the content flow), not here.
 import { usePublicTicketCheckoutRouteAccess } from "../../../src/hooks/usePublicTicketCheckoutRouteAccess";
 import { usePublicTripBySlug } from "../../../src/hooks/usePublicTripBySlug";
+import { usePublicTripGuide } from "../../../src/hooks/usePublicTripGuide";
 import { useTripTierAllIn } from "../../../src/hooks/useTripTierAllIn";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338;
 // anon-safe RPC — this is an anon buyer route, ungated per ORCH-1004).
@@ -518,9 +519,12 @@ const ResolvedTripPage: React.FC<{
   // META-ORCH-1174 Leg A — the ONE normalized body data + brand contract (one
   // build; the SAME object useTripOfferingState reads). The shared body never
   // touches the read hook.
+  // Issue #2829 W4 — the trip guide (public read). Loading or failed → no
+  // guide sections; the rest of the page never waits on it.
+  const guideQuery = usePublicTripGuide(trip.id);
   const data = useMemo(
-    () => buildTripOfferingData(trip, payload.bookable !== false, allInByTicketType),
-    [trip, payload.bookable, allInByTicketType],
+    () => buildTripOfferingData(trip, payload.bookable !== false, allInByTicketType, guideQuery.data),
+    [trip, payload.bookable, allInByTicketType, guideQuery.data],
   );
   const offeringBrand = useMemo(
     () => buildTripOfferingBrand(payload.brand),

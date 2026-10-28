@@ -24,7 +24,7 @@ const OBSERVED_RECORDING_PULLS = Object.freeze([
 ]);
 
 test("#3403 — every observed recording PR is accepted while the next check above the bounded room is rejected", () => {
-  assert.equal(CHECK_FANOUT_CEILING, 32, "26 measured checks plus #2885's six-check room is the bounded ceiling");
+  assert.equal(CHECK_FANOUT_CEILING, 47, "41 measured checks after #3643's fold plus #2885's six-check room is the bounded ceiling");
 
   for (const sample of OBSERVED_RECORDING_PULLS) {
     assert.deepEqual(
@@ -32,7 +32,7 @@ test("#3403 — every observed recording PR is accepted while the next check abo
       {
         ok: true,
         count: sample.checkRuns,
-        ceiling: 32,
+        ceiling: 47,
         reason: "FANOUT_SCOPED",
       },
       `recording PR #${sample.number} must not turn main red`,
@@ -40,27 +40,27 @@ test("#3403 — every observed recording PR is accepted while the next check abo
   }
 
   assert.deepEqual(
-    assessCheckFanout(33),
-    { ok: false, count: 33, ceiling: 32, reason: "FANOUT_REGRESSED" },
+    assessCheckFanout(48),
+    { ok: false, count: 48, ceiling: 47, reason: "FANOUT_REGRESSED" },
     "the correction must stay bounded: the first check above the six-check room is still a regression",
   );
 });
 
-test("#3403 — the operator summary tells the truth at the stable 26-check shape and at a real regression", () => {
+test("#3403 — the operator summary tells the truth at the stable 41-check shape and at a real regression", () => {
   const stable = renderSummary({
     state: "MERGED",
     reason: "GUARDS_SATISFIED",
-    checkCount: 26,
-    fanout: assessCheckFanout(26),
+    checkCount: 41,
+    fanout: assessCheckFanout(41),
   });
-  assert.match(stable, /checks reported on the candidate: 26 \(ceiling 32, FANOUT_SCOPED\)/);
+  assert.match(stable, /checks reported on the candidate: 41 \(ceiling 47, FANOUT_SCOPED\)/);
   assert.doesNotMatch(stable, /FANOUT_REGRESSED/, "the known-good production shape must not send a false alarm");
 
   const regression = renderSummary({
     state: "MERGED",
     reason: "GUARDS_SATISFIED",
-    checkCount: 33,
-    fanout: assessCheckFanout(33),
+    checkCount: 48,
+    fanout: assessCheckFanout(48),
   });
-  assert.match(regression, /checks reported on the candidate: 33 \(ceiling 32, FANOUT_REGRESSED\)/);
+  assert.match(regression, /checks reported on the candidate: 48 \(ceiling 47, FANOUT_REGRESSED\)/);
 });

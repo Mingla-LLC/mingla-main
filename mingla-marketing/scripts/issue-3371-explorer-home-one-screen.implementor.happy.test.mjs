@@ -66,18 +66,20 @@ function sourceContract(overrides = {}) {
   const source = (relative) => overrides[relative] ?? readRepo(relative)
 
   const menu = code(source(M('components/cutout/audience-menu-content.tsx')))
-  assert.deepEqual(destinations(menu, 'audienceDestinations'), [['/', 'Explorer'], ['/host', 'Host']], 'Explorer must open the home page, followed by Host')
+  // #4137 wave 2: the menu is grouped EXPLORE / HOST / COMPANY.
+  assert.deepEqual(destinations(menu, 'exploreDestinations'), [['/', 'Explorer'], ['/cities', 'Cities'], ['/going-out', 'Going out']], 'Explorer must open the home page, followed by Cities and Going out (#4137 EXPLORE group)')
+  assert.deepEqual(destinations(menu, 'hostDestinations'), [['/host', 'Host'], ['/tools', 'Free tools']], '#4137 HOST group must be Host, Free tools')
   assert.deepEqual(
-    destinations(menu, 'supportingDestinations'),
-    [['/cities', 'Cities'], ['/going-out', 'Going out'], ['/about', 'About'], ['/tools', 'Free tools']],
-    'supporting items must be exactly Cities, Going out, About, Free tools',
+    destinations(menu, 'companyDestinations'),
+    [['/about', 'About'], ['/help', 'Help'], ['/support', 'Support'], ['https://career.usemingla.com', 'Careers']],
+    '#4137 COMPANY items must be exactly About, Help, Support, Careers',
   )
   assert.doesNotMatch(menu, /label: 'Home'|\bHouse\b/, 'the menu must not carry a separate Home item or its icon')
   assert.doesNotMatch(menu, /label: '[^']*[Ee]xplorers?[^']*', Icon: (?!Compass)/, 'no supporting menu label may say explorer')
   assert.match(menu, /\{ href: '\/going-out', label: 'Going out', Icon: Footprints \}/, 'Going out must use the Footprints icon')
   assert.match(menu, /const menuButtonClass = '[^']*\bcut-btn\b[^']*\bcut-menu-item\b[^']*'/, 'every menu row must opt into the left-aligned cut-menu-item treatment')
   assert.match(menu, /label="Explore Your City"[\s\S]*label="Host Your City"/, 'bottom device CTAs must stay')
-  assert.doesNotMatch(menu.slice(menu.indexOf('<div className="mt-auto')), /cut-menu-item|menuButtonClass/, 'bottom CTAs must not receive the left-aligned row treatment')
+  assert.doesNotMatch(menu.slice(menu.indexOf('<div className="cut-menu-ctas')), /cut-menu-item|menuButtonClass/, 'bottom CTAs must not receive the left-aligned row treatment')
   const cutoutCss = source(M('components/cutout/cutout.css')).replace(/\/\*[\s\S]*?\*\//g, '')
   assert.match(cutoutCss, /\.cut-btn\s*\{[^}]*justify-content:\s*center;/, 'every other cut-btn must stay centred')
   assert.match(cutoutCss, /\.cut-btn\.cut-menu-item\s*\{\s*justify-content:\s*flex-start;\s*\}/, 'the menu rows must override the centred cut-btn justify with a scoped two-class rule')
@@ -94,7 +96,7 @@ function sourceContract(overrides = {}) {
   assert.doesNotMatch(home, /h-\[100svh\]/, 'the scrolling deck wrapper height must not return')
   assert.match(home, /location="hero_above_deck"/, 'the Use Mingla action must stay between headline and deck')
   assert.doesNotMatch(code(source(M('app/(explorer)/layout.tsx'))), /city-hubs\.css/, 'the one-screen home has no city module to style')
-  assert.match(code(source(M('app/host/page.tsx'))), /<RootCityGrid surface="host"/, 'the Host page keeps its city list')
+  assert.match(code(source(M('app/host/page.tsx'))), /<HostStartCta\b/, '#4137: the Host page ends with the Start hosting call to action')
 
   assert(fs.existsSync(path.join(REPO, M('app/(core)/going-out/page.tsx'))), '/going-out page must exist')
   assert(!fs.existsSync(path.join(REPO, M('app/(core)/explorer'))), 'the old /explorer page directory must be gone')
@@ -147,7 +149,9 @@ function sourceContract(overrides = {}) {
   const sourceCommand = `node scripts/${SELF} --source-only`
   const builtCommand = `node --experimental-websocket scripts/${SELF} --built-only`
   assert(scripts.build.includes(sourceCommand) && scripts.build.indexOf(sourceCommand) < scripts.build.indexOf('next build'), 'source guard must run before the first production build')
-  assert(scripts.build.endsWith(` && ${builtCommand}`) && scripts.build.lastIndexOf(builtCommand) > scripts.build.lastIndexOf('next build'), 'geometry guard must run against the final production build')
+  // #4137: only the #4137 release-build tests may follow it.
+  const releaseTail = scripts.build.slice(scripts.build.lastIndexOf(` && ${builtCommand}`) + ` && ${builtCommand}`.length)
+  assert(scripts.build.includes(` && ${builtCommand}`) && /^(?: && node (?:--experimental-websocket )?scripts\/issue-4137-[a-z-]+\.implementor\.happy\.test\.mjs --built-only)*$/.test(releaseTail) && scripts.build.lastIndexOf(builtCommand) > scripts.build.lastIndexOf('next build'), 'geometry guard must run against the final production build')
   assert.equal(scripts['test:issue-3371'], `node --experimental-websocket scripts/${SELF}`, 'focused command must remain available')
   process.stdout.write('PASS #3371 source: menu order/hrefs without Home, one-screen home without city grid, /going-out rename, registry redirect, footers, analytics and build wiring\n')
 }
@@ -169,14 +173,15 @@ const MENU_GEOMETRY = `(()=>{
   const card=dialog.firstElementChild
   const box=(el)=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height}}
   const textRects=(el)=>{const out=[];const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);for(let node=walker.nextNode();node;node=walker.nextNode()){if(!node.textContent.trim())continue;const range=document.createRange();range.selectNodeContents(node);for(const rect of range.getClientRects()){if(rect.width>0&&rect.height>0)out.push(rect)}}return out}
-  const items=[...dialog.querySelectorAll('nav[aria-label="Primary"] a')].map((a)=>{
+  const items=[...dialog.querySelectorAll('nav[aria-label="Primary"] a.cut-menu-item')].map((a)=>{
     const style=getComputedStyle(a),icon=a.querySelector('svg').getBoundingClientRect(),texts=textRects(a)
     return {label:a.textContent.trim(),current:a.getAttribute('aria-current'),box:box(a),paddingLeft:parseFloat(style.paddingLeft),paddingRight:parseFloat(style.paddingRight),
       iconLeft:icon.left,iconRight:icon.right,textLeft:Math.min(...texts.map((r)=>r.left)),textRight:Math.max(...texts.map((r)=>r.right)),
       lines:new Set(texts.map((r)=>Math.round(r.top))).size,scrollWidth:a.scrollWidth,clientWidth:a.clientWidth}
   })
-  const ctas=[...new Set(card.querySelectorAll('.mt-auto .cut-btn'))].map((button)=>{
-    const parts=[...textRects(button),...[...button.querySelectorAll('svg')].map((svg)=>svg.getBoundingClientRect())]
+  // #4137: the CTA ships all three device marks; only the visible one has a box.
+  const ctas=[...new Set(card.querySelectorAll('.cut-menu-ctas .cut-btn'))].map((button)=>{
+    const parts=[...textRects(button),...[...button.querySelectorAll('svg')].map((svg)=>svg.getBoundingClientRect()).filter((r)=>r.width>0)]
     const b=box(button),left=Math.min(...parts.map((r)=>r.left)),right=Math.max(...parts.map((r)=>r.right))
     return {label:button.textContent.trim(),centreOffset:(left+right)/2-(b.left+b.right)/2}
   })
@@ -189,7 +194,7 @@ function spread(values) {
 }
 
 function assertMenuAlignment(sample, label) {
-  assert.equal(sample.items.length, 6, `${label}: the menu must render six destinations`)
+  assert.equal(sample.items.length, 5, `${label}: the menu must render five destination rows (#4137: COMPANY items are chips)`)
   for (const item of sample.items) {
     const offset = item.iconLeft - (item.box.left + item.paddingLeft)
     assert(Math.abs(offset) <= ICON_TOLERANCE_PX, `${label}: "${item.label}" icon starts ${offset.toFixed(1)}px from its row's left padding (expected <=${ICON_TOLERANCE_PX}px; a centred row puts it far to the right)`)
@@ -197,7 +202,7 @@ function assertMenuAlignment(sample, label) {
     assert.equal(item.lines, 1, `${label}: "${item.label}" label wraps`)
     assert(item.scrollWidth <= item.clientWidth && item.textRight <= item.box.right - item.paddingRight + ICON_TOLERANCE_PX, `${label}: "${item.label}" label is truncated`)
   }
-  assert(spread(sample.items.map((item) => item.iconLeft)) <= ICON_TOLERANCE_PX, `${label}: the six icons do not share one left edge (${sample.items.map((item) => item.iconLeft.toFixed(1)).join(', ')})`)
+  assert(spread(sample.items.map((item) => item.iconLeft)) <= ICON_TOLERANCE_PX, `${label}: the row icons do not share one left edge (${sample.items.map((item) => item.iconLeft.toFixed(1)).join(', ')})`)
   for (const [key, read] of [['width', (item) => item.box.width], ['height', (item) => item.box.height], ['icon-to-text gap', (item) => item.textLeft - item.iconRight]]) {
     assert(spread(sample.items.map(read)) <= ICON_TOLERANCE_PX, `${label}: active and inactive rows differ in ${key}`)
   }
@@ -220,7 +225,7 @@ async function openMenuGeometry(page, url, width, height) {
   await page.send('Page.navigate', { url })
   await waitFor(() => page.evaluate(`location.pathname===${JSON.stringify(new URL(url).pathname)}&&document.readyState==='complete'&&!!document.querySelector('button[aria-label="Open menu"]')`), `${label}: page did not load`)
   await page.evaluate(`(async()=>{await document.fonts.ready;document.querySelector('button[aria-label="Open menu"]').click();return true})()`)
-  await waitFor(() => page.evaluate(`document.querySelectorAll('[role="dialog"] nav[aria-label="Primary"] a').length===6`), `${label}: side menu did not open`)
+  await waitFor(() => page.evaluate(`document.querySelectorAll('[role="dialog"] nav[aria-label="Primary"] a').length===9`), `${label}: side menu did not open`)
   let previous = null
   await waitFor(async () => {
     const left = await page.evaluate(`document.querySelector('[role="dialog"]').getBoundingClientRect().left`)
@@ -368,8 +373,8 @@ const SETTLED = `(()=>{
 
 async function openMenuItems(page) {
   await page.evaluate(`(()=>{document.querySelector('button[aria-label="Open menu"]').click();return true})()`)
-  await waitFor(() => page.evaluate(`document.querySelectorAll('[role="dialog"] nav[aria-label="Primary"] a').length===6`), 'side menu did not open')
-  return page.evaluate(`[...document.querySelectorAll('[role="dialog"] nav[aria-label="Primary"] a')].map((a)=>[a.textContent.trim(),a.getAttribute('href'),a.getAttribute('aria-current')])`)
+  await waitFor(() => page.evaluate(`document.querySelectorAll('[role="dialog"] nav[aria-label="Primary"] a').length===9`), 'side menu did not open')
+  return page.evaluate(`[...document.querySelectorAll('[role="dialog"] nav[aria-label="Primary"] a')].map((a)=>{const c=a.cloneNode(true);c.querySelectorAll('.sr-only').forEach((n)=>n.remove());return [c.textContent.trim(),a.getAttribute('href'),a.getAttribute('aria-current')]})`)
 }
 
 async function runtimeContract() {
@@ -397,7 +402,9 @@ async function runtimeContract() {
     assert.doesNotMatch(sitemap, /usemingla\.com\/explorer</, 'sitemap must not list the redirected path')
     assert.equal(sitemap.includes('usemingla.com/going-out<'), sitemap.includes('usemingla.com/about<'), '/going-out must share the core-page sitemap state')
     const host = (await request(serverPort, '/host')).body
-    assert.equal(host.includes('city-root-module'), sitemap.includes('/cities/lagos<'), 'the Host page keeps its city list whenever the city launch is live')
+    // #4137: /host ends with the Start hosting card; the city list moved off it.
+    assert(!host.includes('city-root-module'), '#4137: the Host page no longer renders the city list')
+    assert(host.includes('class="cut-start'), '#4137: the Host page ends with the Start hosting card')
     process.stdout.write('PASS #3371 runtime HTTP: 308 with query, /going-out title/H1, home without city guides, sitemap and Host list\n')
 
     if (process.env.VERCEL === '1') {
@@ -439,14 +446,16 @@ async function runtimeContract() {
     await page.send('Page.navigate', { url: `${base}/` })
     await waitFor(() => page.evaluate(SETTLED), 'home hero did not settle before the menu check')
     assert.deepEqual(await openMenuItems(page), [
-      ['Explorer', '/', 'page'], ['Host', '/host', null], ['Cities', '/cities', null],
-      ['Going out', '/going-out', null], ['About', '/about', null], ['Free tools', '/tools', null],
+      ['Explorer', '/', 'page'], ['Cities', '/cities', null], ['Going out', '/going-out', null],
+      ['Host', '/host', null], ['Free tools', '/tools', null], ['About', '/about', null],
+      ['Help', '/help', null], ['Support', '/support', null], ['Careers', 'https://career.usemingla.com', null],
     ], 'on / the menu must light Explorer only, with no Home item')
     await page.send('Page.navigate', { url: `${base}/explorer` })
     await waitFor(() => page.evaluate(`location.pathname==='/going-out'&&document.readyState==='complete'&&!!document.querySelector('button[aria-label="Open menu"]')`), 'browser did not follow /explorer to /going-out')
     assert.deepEqual(await openMenuItems(page), [
-      ['Explorer', '/', null], ['Host', '/host', null], ['Cities', '/cities', null],
-      ['Going out', '/going-out', 'page'], ['About', '/about', null], ['Free tools', '/tools', null],
+      ['Explorer', '/', null], ['Cities', '/cities', null], ['Going out', '/going-out', 'page'],
+      ['Host', '/host', null], ['Free tools', '/tools', null], ['About', '/about', null],
+      ['Help', '/help', null], ['Support', '/support', null], ['Careers', 'https://career.usemingla.com', null],
     ], 'on /going-out the menu must light Going out, not Explorer')
 
     for (const [width, height] of MENU_VIEWPORTS) {
@@ -497,7 +506,7 @@ function selfTest() {
   assert.notEqual(noOverride, css, 'self-test must remove the scoped justify override')
   assert.throws(() => sourceContract({ [cssPath]: noOverride }), /scoped two-class rule/, 'a missing justify override must prove RED')
   const centredRow = (index) => ({ label: `Row ${index}`, current: index === 0 ? 'page' : null, box: { left: 36, right: 259, width: 223, height: 56 }, paddingLeft: 20, paddingRight: 20, iconLeft: 36 + 20 + 50 - index * 4, iconRight: 36 + 20 + 70 - index * 4, textLeft: 36 + 20 + 84 - index * 4, textRight: 200, lines: 1, scrollWidth: 223, clientWidth: 223 })
-  const centredSample = { items: [0, 1, 2, 3, 4, 5].map(centredRow), ctas: [{ label: 'Explore Your City', centreOffset: 0 }, { label: 'Host Your City', centreOffset: 0 }], panel: { left: 65, right: 390 }, innerWidth: 390, scrollWidth: 390, cardScrollHeight: 700, cardClientHeight: 820, cardOverflowY: 'auto' }
+  const centredSample = { items: [0, 1, 2, 3, 4].map(centredRow), ctas: [{ label: 'Explore Your City', centreOffset: 0 }, { label: 'Host Your City', centreOffset: 0 }], panel: { left: 65, right: 390 }, innerWidth: 390, scrollWidth: 390, cardScrollHeight: 700, cardClientHeight: 820, cardOverflowY: 'auto' }
   assert.throws(() => assertMenuAlignment(centredSample, 'centred rows'), /icon starts 50\.0px from its row's left padding/, 'centred menu geometry must prove RED')
   const leftSample = { ...centredSample, items: centredSample.items.map((item) => ({ ...item, iconLeft: 56, iconRight: 76, textLeft: 90 })), ctas: [{ label: 'Explore Your City', centreOffset: -60 }, centredSample.ctas[1]] }
   assert.throws(() => assertMenuAlignment(leftSample, 'left CTA'), /bottom CTA "Explore Your City" is no longer centred/, 'a left-aligned bottom CTA must prove RED')

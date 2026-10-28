@@ -134,6 +134,9 @@ const EXPECTED: Record<string, Bucket> = {
   refund: "buyer-exempt",
   o: "buyer-exempt",
   booking: "buyer-exempt",
+  // [TEST-MOD-APPROVED #3645] `/pay/{token}` is the signed-out installment
+  // handoff already governed by the exact public-buyer allowlist.
+  pay: "buyer-exempt",
   // #4111 — /m/{token}, the signed-out guest's enquiry thread.
   m: "buyer-exempt",
   // [TEST-MOD-APPROVED #3827] `/g/{token}` proves possession through its

@@ -22,6 +22,8 @@ const READ_TABLES = [
 const READ_RPCS = [
   "admin_list_offerings", "admin_get_offering", "admin_list_event_orders",
   "admin_list_event_rsvps", "admin_list_venue_reservations",
+  // #4130 (Wave 3): the gate now also requires the Offerings board reads.
+  "admin_offerings_summary", "admin_list_offerings_board",
 ];
 const READ_ONLY_FILES = [
   "mingla-admin/src/services/offeringsService.js",

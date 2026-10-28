@@ -12,7 +12,8 @@ Deno.test("#3720 Support gets a read-only Feature Guide while Admin keeps eviden
   const page = read("pages/CommunitySupportPage.jsx");
   const access = read("lib/communitySupportAccess.js");
   const panel = read("components/community/FeatureGuidePanel.jsx");
-  assertStringIncludes(page, '{ id: "feature-guide", label: "Feature Guide" }');
+  // #4130 Wave 6: the tab lists live in lib/supportCommunityTabs.js.
+  assertStringIncludes(read("lib/supportCommunityTabs.js"), '{ id: "feature-guide", label: "Feature guide" }');
   assertStringIncludes(access, 'allowed.add("feature-guide")');
   assertStringIncludes(page, "<FeatureGuidePanel canManage={capabilities.isAdmin} />");
   assertStringIncludes(panel, "{canManage && <Button");

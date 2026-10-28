@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#2829",
+  "target": {
+    "kind": "function",
+    "name": "brand-site-cms-callback"
+  },
+  "basePolicySha256": "20d3568d7007541e7161f1c7f5d5562e85141f2332f9772749107ec180b717be",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "BUNNY_ACCOUNT_API_KEY",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "BUNNY_STREAM_API_KEY",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "BUNNY_STREAM_CDN_HOSTNAME",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "BUNNY_STREAM_LIBRARY_ID",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "SENTRY_DSN",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "SENTRY_ENVIRONMENT",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "43e6da8ec77574d978a8d1ac696a1b8cda65e9f551f4689b649cf8a690fd136f",
+  "reason": "Sites stream video (AD-9): the signed CMS to Core upload-intent and status routes use the shared Bunny Stream helpers, which read the existing Bunny secret names and the shared provider-call error reporting names when present; absent, stream video stays off and Studio uses standard file video hosting."
+}

@@ -30,8 +30,28 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3643 Wave 4: re-sealed after the 88 live workflow rows dropped their byte
 // fingerprint (sourceSha256) and gained their per-job timeouts; the validator
 // now checks those rows by property.
+// #3643 Phase 3E: re-sealed after PostgreSQL workflows moved behind the one
+// replay / one template-copy-per-suite execution class; Wave 1 also widens
+// #2269 routing to the two retained #871 assertions it executes and makes every
+// Phase 3E suite watch the shared PostgreSQL setup/contract it depends on.
 // The four sourceSha256-only patches are deleted and that patch op is refused.
-export const BOOTSTRAP_SHA256 = "aff419dda6ead6a71967b74e82a81ddc21f0bbb03e6ca4b0c7529e61fc7f9083";
+// [TEST-MOD-APPROVED #3643] Re-sealed once for the terminal 48-suite Phase 3E fold.
+// #3643: re-sealed after retaining #1403/#1421's complete pre-fold routing.
+// #3643: isolate the foundation migration fixture and retire the stale discovery rewind.
+// #3643: keep the retained attendance TypeScript tests on Node 22.
+// #2829 W7c: re-sealed after the Sites goldens test became one reviewed
+// reference on the retained arm64 web-build provider.
+// #3872: re-sealed after the census prerequisite migration and its two
+// self-registering SQL proofs entered the preserved replay inventories, with
+// the exact repair excluded from the deliberately filtered pre-#1931 replay.
+// #4137: re-sealed again after the four Blog migrations and both executable
+// PostgreSQL suites entered the same preserved full-history inventories, with
+// exact historical exclusions in the deliberately pre-#1931 replay.
+// #1318: re-sealed once more after the VAT migration entered those three
+// preserved replay authorities on top of the #4137 Blog additions.
+// #2829 / #3645: re-sealed after the two reviewed activation migrations and
+// their local proofs entered the same three preserved replay inventories.
+export const BOOTSTRAP_SHA256 = "a45704b11286b2253233cc78a37ad5b6f2b90b5025f8938645f9d1d25cf77b2c";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

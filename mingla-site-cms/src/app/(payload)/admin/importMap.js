@@ -11,6 +11,10 @@ import { ItalicFeatureClient as ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0
 import { HeadingFeatureClient as HeadingFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { ParagraphFeatureClient as ParagraphFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { AssignTenantFieldTrigger as AssignTenantFieldTrigger_1d0591e3cf4f332c83a86da13a0de59a } from '@payloadcms/plugin-multi-tenant/client'
+import { default as default_e2cccd84700d143679b71272281183b5 } from '@/components/studio/DesignPicker'
+import { default as default_830e5e9208569f031e420fb4b13c1f8f } from '@/components/studio/TokenEditor'
+import { default as default_9982bd0328edcb8e7d5de7755813745e } from '@/components/studio/FontPicker'
+import { BlockquoteFeatureClient as BlockquoteFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { default as default_44f0111d8bb7950bfa464d6884102207 } from '@/components/StudioNav'
 import { default as default_0997f060b8f77afae895b8212386d472 } from '@/components/StudioLogo'
 import { TenantSelector as TenantSelector_d6d5f193a167989e2ee7d14202901e62 } from '@payloadcms/plugin-multi-tenant/rsc'
@@ -33,6 +37,10 @@ export const importMap = {
   "@payloadcms/richtext-lexical/client#HeadingFeatureClient": HeadingFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "@payloadcms/richtext-lexical/client#ParagraphFeatureClient": ParagraphFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "@payloadcms/plugin-multi-tenant/client#AssignTenantFieldTrigger": AssignTenantFieldTrigger_1d0591e3cf4f332c83a86da13a0de59a,
+  "@/components/studio/DesignPicker#default": default_e2cccd84700d143679b71272281183b5,
+  "@/components/studio/TokenEditor#default": default_830e5e9208569f031e420fb4b13c1f8f,
+  "@/components/studio/FontPicker#default": default_9982bd0328edcb8e7d5de7755813745e,
+  "@payloadcms/richtext-lexical/client#BlockquoteFeatureClient": BlockquoteFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "@/components/StudioNav#default": default_44f0111d8bb7950bfa464d6884102207,
   "@/components/StudioLogo#default": default_0997f060b8f77afae895b8212386d472,
   "@payloadcms/plugin-multi-tenant/rsc#TenantSelector": TenantSelector_d6d5f193a167989e2ee7d14202901e62,

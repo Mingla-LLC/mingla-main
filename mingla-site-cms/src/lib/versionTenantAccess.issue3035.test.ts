@@ -12,6 +12,7 @@ import { Footer } from "../collections/Footer";
 import { Navigation } from "../collections/Navigation";
 import { Pages } from "../collections/Pages";
 import { SiteSettings } from "../collections/SiteSettings";
+import { Categories, Destinations, Stories, Testimonials } from "../collections/SiteContent";
 import {
   tenantRead,
   tenantVersionRead,
@@ -54,6 +55,11 @@ const rawVersionedCollections: CollectionConfig[] = [
   Navigation,
   Footer,
   SiteSettings,
+  // #2829 W5 — the site's content collections are versioned and tenant-scoped too.
+  Destinations,
+  Categories,
+  Stories,
+  Testimonials,
 ];
 const rawAccess = new Map(
   rawVersionedCollections.map((collection) => [
@@ -168,12 +174,16 @@ describe("#3035 tenant-scoped version access", () => {
       configuredCms.collections
         .filter((collection) => Boolean(collection.versions))
         .map(({ slug }) => slug),
-    ).toEqual(["pages", "navigation", "footer", "site-settings"]);
+    ).toEqual(["pages", "navigation", "footer", "site-settings", "destinations", "categories", "stories", "testimonials"]);
     expect(rawVersionedCollections.map(({ slug }) => slug)).toEqual([
       "pages",
       "navigation",
       "footer",
       "site-settings",
+      "destinations",
+      "categories",
+      "stories",
+      "testimonials",
     ]);
     for (const collection of rawVersionedCollections) {
       expect(collection.versions).toBeTruthy();

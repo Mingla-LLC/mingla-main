@@ -28,8 +28,10 @@ const SEARCH_READY_PATHS = [
   '/support',
   '/privacy-policy',
   '/terms-of-service',
-  // #3645 — the Organiser Terms, the last SEARCH_READY_ROUTES base contract.
+  // #3645 — the Organiser Terms.
   '/organiser-terms',
+  // #4137 — the blog front page, now the last SEARCH_READY_ROUTES base contract.
+  '/blog',
   // #3371 — the renamed Explorer core page. Core routes project after the base
   // contracts and before the help-video family, so it sits here in registry
   // emission order; its title carries a single Mingla mention.
@@ -60,6 +62,11 @@ const SEARCH_READY_PATHS = [
   '/help/referrals-and-earnings',
   '/help/become-a-mingla-creator',
   '/help/mingla-local-independent-reviews',
+  // #4137 — the four blog categories project after the help family.
+  '/blog/category/going-out',
+  '/blog/category/date-ideas',
+  '/blog/category/host-playbook',
+  '/blog/category/product-news',
 ]
 
 const releaseRouteScope = JSON.parse(
@@ -81,6 +88,8 @@ const SITEMAP_SEARCH_READY_PATHS = [
   '/help',
   ...releaseSearchReadyPaths.slice(helpInsertionIndex, organiserTermsInsertionIndex),
   '/organiser-terms',
+  // #4137 — '/blog' is the next base contract, inserted the same way.
+  '/blog',
   ...releaseSearchReadyPaths.slice(organiserTermsInsertionIndex),
   '/help/getting-the-apps',
   '/help/sign-up-and-create-a-brand',
@@ -108,6 +117,11 @@ const SITEMAP_SEARCH_READY_PATHS = [
   '/help/referrals-and-earnings',
   '/help/become-a-mingla-creator',
   '/help/mingla-local-independent-reviews',
+  // #4137 — the four blog categories project after the help family.
+  '/blog/category/going-out',
+  '/blog/category/date-ideas',
+  '/blog/category/host-playbook',
+  '/blog/category/product-news',
 ]
 
 const PUBLIC_NOINDEX_PATHS = [
@@ -379,6 +393,20 @@ async function main() {
     }
     pass('public-noindex routes and route families')
 
+    // #4137 — the blog's no-JavaScript next page is crawlable but never
+    // indexed and points at /blog; a staff preview with a bad token is a 404.
+    {
+      const response = await request(port, '/blog?page=2')
+      assert.equal(response.status, 200, '/blog?page=2 status')
+      const facts = pageFacts(response.body.toString('utf8'))
+      assert.match(facts.robots, /noindex/i, '/blog?page=2 noindex')
+      assert.equal(facts.canonical, canonicalFor('/blog'), '/blog?page=2 canonical')
+      const preview = await request(port, '/blog/preview/x')
+      assert.equal(preview.status, 404, '/blog/preview/x status')
+      assert.match(pageFacts(preview.body.toString('utf8')).robots, /noindex/i, '/blog/preview/x noindex')
+    }
+    pass('blog paging and preview probes')
+
     const robots = await request(port, '/robots.txt')
     assert.equal(robots.status, 200)
     assert.match(String(robots.headers['content-type']), /^text\/plain\b/)
@@ -407,12 +435,17 @@ async function main() {
     const sitemapBody = sitemap.body.toString('utf8')
     const locations = [...sitemapBody.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1])
     const lastModified = [...sitemapBody.matchAll(/<lastmod>([^<]+)<\/lastmod>/g)].map((match) => match[1])
+    // #4137 — the registry routes come first, exactly; after them the sitemap
+    // may list published blog posts (none without a database, as in CI).
     assert.deepEqual(
-      locations,
+      locations.slice(0, SITEMAP_SEARCH_READY_PATHS.length),
       SITEMAP_SEARCH_READY_PATHS.map((pathname) =>
         pathname === '/' ? `${APEX_ORIGIN}/` : canonicalFor(pathname),
       ),
     )
+    for (const location of locations.slice(SITEMAP_SEARCH_READY_PATHS.length)) {
+      assert.match(location, /^https:\/\/usemingla\.com\/blog\/[a-z0-9]+(-[a-z0-9]+)*$/, `sitemap extra ${location} is a blog post`)
+    }
     assert.equal(new Set(locations).size, locations.length)
     assert.equal(lastModified.length, locations.length)
     for (const value of lastModified) assert(new Date(value).getTime() <= Date.now(), `future lastmod ${value}`)

@@ -36,6 +36,9 @@ describe("#2830 media rejection copy", () => {
       "utf8",
     );
     expect(pipeline).toContain("const MAX_BYTES = 20 * 1024 * 1024");
-    expect(source).toContain("20MB");
+    expect(source).toContain("20 MB");
+    // #2829 W6 — a file video's own limit (MAX_FILE_VIDEO_BYTES, 50 MiB).
+    expect(pipeline).toContain("const MAX_VIDEO_BYTES = MAX_FILE_VIDEO_BYTES");
+    expect(source).toContain("50 MB");
   });
 });

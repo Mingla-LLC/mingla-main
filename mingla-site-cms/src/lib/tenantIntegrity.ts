@@ -29,6 +29,34 @@ export function requestTenant(req: PayloadRequest): string {
   return tenantId;
 }
 
+function tenantIdOf(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  return relationshipId(value);
+}
+
+/*
+ * #2829 — every tenant document belongs to the editor's own site. A create
+ * without a tenant (a Studio REST or tool call that does not carry Studio's
+ * tenant selector) is bound to the session's tenant instead of being stored
+ * as an orphan with no tenant, which no one can see or publish; naming another
+ * site's tenant, or moving a document to another site, is refused. Signed Core
+ * calls bind to the tenant Core named; the operator's server-side history
+ * import names its tenant in request context, which no HTTP request can set.
+ */
+export const bindRequestTenant: CollectionBeforeChangeHook = ({ data, originalDoc, operation, req }) => {
+  const importTenant = !req.user && typeof req.context?.minglaOperatorImportTenantId === "string"
+    ? req.context.minglaOperatorImportTenantId
+    : null;
+  const tenant = importTenant ?? requestTenant(req);
+  const named = tenantIdOf(data?.tenant);
+  if (named !== null && named !== tenant) throw new Error("FORBIDDEN");
+  if (operation === "update") {
+    const stored = tenantIdOf(originalDoc?.tenant);
+    if (stored !== null && stored !== tenant) throw new Error("FORBIDDEN");
+  }
+  return { ...data, tenant };
+};
+
 function isSignedCore(req: PayloadRequest): boolean {
   return req.context?.minglaSignedCore === true;
 }

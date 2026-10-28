@@ -51,11 +51,21 @@ export const Tenants: CollectionConfig = {
       options: ["provisioning", "active", "suspended"],
     },
     {
+      // #2829 — the site's live address, named by Core at provision time.
+      name: "primary_hostname",
+      type: "text",
+      maxLength: 253,
+      admin: { readOnly: true },
+    },
+    {
+      // #2829 — either renderer; new tenants are created for sites-v2.
       name: "renderer_key",
       type: "text",
       required: true,
-      defaultValue: "restaurant-website-v1",
+      defaultValue: "sites-v2",
       admin: { readOnly: true },
+      validate: (value: unknown) =>
+        value === "restaurant-website-v1" || value === "sites-v2" ? true : "Unknown renderer.",
     },
     {
       name: "renderer_version",

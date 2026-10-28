@@ -538,3 +538,15 @@ video {
 .careers-root .careers-md-li strong {
   font-weight: 700;
 }
+
+/* #4137 F-7 — device-aware CTA labels and marks, chosen from first paint.
+   <html data-platform> is set by the inline boot script (lib/device-platform-boot.ts)
+   before React hydrates. With no attribute (no JavaScript, bots, or before the
+   script) the computer label and arrow show, matching the computer href.
+   Global, not cutout.css: DeviceCta also renders on page-system and city routes. */
+[data-cta-mark] { display: inline-flex; align-items: center; }
+[data-cta-when="phone"], [data-cta-mark="ios"], [data-cta-mark="android"] { display: none; }
+html[data-platform="ios"] [data-cta-when="phone"], html[data-platform="android"] [data-cta-when="phone"] { display: inline; }
+html[data-platform="ios"] [data-cta-when="computer"], html[data-platform="android"] [data-cta-when="computer"] { display: none; }
+html[data-platform="ios"] [data-cta-mark="ios"], html[data-platform="android"] [data-cta-mark="android"] { display: inline-flex; }
+html[data-platform="ios"] [data-cta-mark="other"], html[data-platform="android"] [data-cta-mark="other"] { display: none; }

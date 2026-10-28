@@ -1,10 +1,16 @@
-// ORCH-1274 [Admin Money console — READ-ONLY] — Orders console.
+// ORCH-1274 [Admin Money console] — Orders console.
 //
 // Cross-brand order search/list → an order detail bundle (offering + brand +
 // buyer + amount + status + line items + installments + refunds + partner split
 // + pricing/tax breakdown). A "View subscriber" link opens the read-only
-// SubscriberContextCard when the order has a buyer_user_id. READ-ONLY: the
-// "Issue refund" action is rendered DISABLED with a WAVE-2 tag (SPEC §9).
+// SubscriberContextCard when the order has a buyer_user_id.
+//
+// #4130 Wave 2a: every order shows its ticket price, Mingla fee, what the buyer
+// paid and whether the host has been paid for it (admin_list_orders). The
+// status filter is the real one (pending, paid, failed, refunded, partial
+// refund, cancelled) plus Free and Host not paid. Discounts and margin are two
+// separate cards (admin_orders_overview). Free orders read "Free" and have no
+// refund button; the refund window names the brand's own provider.
 
 import { useState, useEffect, useCallback } from "react";
 import { Receipt } from "lucide-react";
@@ -14,7 +20,10 @@ import { SubscriberContextCard } from "../components/entity/SubscriberContextCar
 import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
-import { listOrders, getOrder, getDiscountMarginSummary } from "../services/adminMoneyService";
+import { listOrders, getOrder, getOrdersOverview } from "../services/adminMoneyService";
+import { formatMoneyMinor } from "../lib/moneyFormat";
+import { LoadError } from "../components/ui/LoadError";
+import { Skeleton } from "../components/ui/Skeleton";
 import {
   createAdminRefundIdempotencyKey,
   refundOrder,
@@ -31,9 +40,15 @@ function refundErrorCopy(code) {
     case "refund_exceeds_remaining": return "Amount exceeds what's left to refund.";
     case "line_overrefund": return "One or more items are already fully refunded.";
     case "stripe_declined": return "Stripe declined — no money moved.";
+    // #4130: Paystack refunds (admin-refund-order maps these for Paystack brands).
+    case "paystack_refund_failed": return "Paystack refused the refund — no money moved.";
+    case "paystack_refund_retryable": return "Paystack is busy — nothing was refunded yet. Try again in a few minutes.";
+    case "paystack_refund_below_minimum": return "The amount is below Paystack's smallest refund. Refund a larger amount or the full order.";
+    case "paystack_refund_duplicate_ambiguous": return "Paystack may already have a refund for this order. Check Refund operations before trying again.";
+    case "paystack_refund_transaction_state_ambiguous": return "Paystack could not confirm the payment's state. Check Refund operations before trying again.";
     case "order_not_refundable": return "This order can't be refunded.";
     case "missing_connected_account": return "This brand has no Stripe account to refund from.";
-    case "missing_payment_intent": return "This order has no Stripe charge to refund.";
+    case "missing_payment_intent": return "This order has no payment reference to refund.";
     case "reason_invalid_length": return "Reason must be 10–200 characters.";
     case "forbidden": return "Admin access required.";
     case "unauthorized": return "Your session expired — sign in again.";
@@ -42,34 +57,64 @@ function refundErrorCopy(code) {
   }
 }
 
-// ── Money formatter (cents + currency → string; never throws — I-1152 lesson) ──
+// ── Money formatter: the shared one (#4130; never falls back to USD) ─────────
 
 function formatMoney(cents, currency) {
-  if (cents == null) return "—";
-  const code = (currency || "").toUpperCase();
-  const amount = cents / 100;
-  try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: code || "USD" }).format(amount);
-  } catch {
-    return `${amount.toFixed(2)}${code ? ` ${code}` : ""}`;
-  }
+  return formatMoneyMinor(cents, currency);
 }
+
+/** #4130: a free order reads "Free", never "$0.00". */
+function isFreeOrder(order) {
+  return order?.is_free === true
+    || order?.payment_method === "free"
+    || Number(order?.buyer_total_cents ?? order?.total_cents ?? 0) === 0;
+}
+
+const PROVIDER_NAME = { paystack: "Paystack", stripe: "Stripe" };
+const INSTALLMENT_METHOD_NAME = {
+  auto_card: "Automatic card",
+  pay_link: "Pay link",
+};
 
 // ── Maps ──────────────────────────────────────────────────────────────────────
 
+// #4130: the statuses orders really take (orders.payment_status).
 const STATUS_VARIANT = {
   paid: "success",
-  confirmed: "success",
   refunded: "default",
-  partially_refunded: "warning",
-  disputed: "error",
+  partial_refund: "warning",
   failed: "warning",
   pending: "warning",
   cancelled: "default",
 };
+const STATUS_LABEL = {
+  paid: "Paid",
+  refunded: "Refunded",
+  partial_refund: "Partial refund",
+  failed: "Failed",
+  pending: "Pending",
+  cancelled: "Cancelled",
+};
 
-function statusBadge(status) {
-  return <Badge variant={STATUS_VARIANT[status] || "default"} dot>{status || "—"}</Badge>;
+function statusBadge(status, row) {
+  if (row && isFreeOrder(row) && status === "paid") return <Badge variant="default" dot>Free</Badge>;
+  return <Badge variant={STATUS_VARIANT[status] || "default"} dot>{STATUS_LABEL[status] || status || "—"}</Badge>;
+}
+
+const HOST_PAID = {
+  paid_out: { label: "Paid out", variant: "success" },
+  in_payout: { label: "In a payout", variant: "info" },
+  late: { label: "Late on Mingla", variant: "error" },
+  waiting_for_bank: { label: "Waiting for bank", variant: "warning" },
+  held: { label: "Held", variant: "warning" },
+  not_in_payout: { label: "Not in a payout", variant: "error" },
+};
+
+function hostPaidCell(value) {
+  if (value === "free") return <span className="text-[var(--color-text-muted)]">Free</span>;
+  const h = HOST_PAID[value];
+  if (!h) return <span className="text-[var(--color-text-muted)]">–</span>;
+  return <Badge variant={h.variant} dot>{h.label}</Badge>;
 }
 
 // ── List columns / filters / csv ──────────────────────────────────────────────
@@ -77,7 +122,7 @@ function statusBadge(status) {
 const COLUMNS = [
   {
     key: "created_at",
-    label: "Created",
+    label: "When",
     render: (val) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(val)}</span>,
   },
   {
@@ -92,25 +137,31 @@ const COLUMNS = [
   },
   {
     key: "event_title",
-    label: "Offering",
+    label: "Event · Brand",
     render: (val, row) => (
-      <span className="flex flex-wrap items-center gap-1.5">
-        <span className="truncate">{val || "—"}</span>
-        {row.event_type && <Badge variant="outline">{row.event_type}</Badge>}
-      </span>
+      <div className="min-w-0">
+        <span className="block truncate">{val || "—"}</span>
+        <span className="text-xs text-[var(--color-text-muted)] block truncate">{row.brand_name || ""}</span>
+      </div>
     ),
   },
   {
-    key: "brand_name",
-    label: "Brand",
-    render: (val) => val || <span className="text-[var(--color-text-muted)]">—</span>,
+    key: "ticket_cents",
+    label: "Ticket",
+    render: (val, row) => (isFreeOrder(row) ? "Free" : <span className="tabular-nums">{formatMoney(val, row.currency)}</span>),
   },
   {
-    key: "total_cents",
-    label: "Amount",
-    render: (val, row) => <span className="font-medium">{formatMoney(val, row.currency)}</span>,
+    key: "mingla_fee_cents",
+    label: "Mingla fee",
+    render: (val, row) => (isFreeOrder(row) || val == null ? <span className="text-[var(--color-text-muted)]">–</span> : <span className="tabular-nums">{formatMoney(val, row.currency)}</span>),
   },
-  { key: "payment_status", label: "Status", render: (val) => statusBadge(val) },
+  {
+    key: "buyer_paid_cents",
+    label: "Buyer paid",
+    render: (val, row) => (isFreeOrder(row) ? "Free" : <span className="font-medium tabular-nums">{formatMoney(val, row.currency)}</span>),
+  },
+  { key: "payment_status", label: "Status", render: (val, row) => statusBadge(val, row) },
+  { key: "host_paid", label: "Host paid?", render: (val) => hostPaidCell(val) },
   {
     key: "flags",
     label: "Flags",
@@ -124,21 +175,22 @@ const COLUMNS = [
   },
 ];
 
-const FILTERS = [
-  {
-    key: "status",
-    label: "Payment status",
-    options: [
-      { value: "paid", label: "Paid" },
-      { value: "pending", label: "Pending" },
-      { value: "failed", label: "Failed" },
-      { value: "refunded", label: "Refunded" },
-      { value: "partially_refunded", label: "Partially refunded" },
-      { value: "disputed", label: "Disputed" },
-      { value: "cancelled", label: "Cancelled" },
-    ],
-  },
-];
+// #4130: the statuses orders really take, plus Free and Host not paid.
+const STATUS_FILTER = {
+  key: "status",
+  label: "Status",
+  options: [
+    { value: "paid", label: "Paid" },
+    { value: "free", label: "Free" },
+    { value: "partial_refund", label: "Partial refund" },
+    { value: "refunded", label: "Refunded" },
+    { value: "failed", label: "Failed" },
+    { value: "cancelled", label: "Cancelled" },
+    { value: "pending", label: "Pending" },
+    { value: "host_not_paid", label: "Host not paid" },
+  ],
+};
+const FILTERS = [STATUS_FILTER];
 
 const CSV = {
   columns: [
@@ -147,15 +199,95 @@ const CSV = {
     { key: "buyer_email", label: "Buyer email" },
     { key: "buyer_phone", label: "Buyer phone" },
     { key: "brand_name", label: "Brand" },
-    { key: "event_title", label: "Offering" },
-    { key: "total_cents", label: "Total cents" },
+    { key: "event_title", label: "Event" },
     { key: "currency", label: "Currency" },
+    { key: "ticket_cents", label: "Ticket cents" },
+    { key: "mingla_fee_cents", label: "Mingla fee cents" },
+    { key: "buyer_paid_cents", label: "Buyer paid cents" },
     { key: "payment_status", label: "Status" },
-    { key: "stripe_payment_intent_id", label: "PaymentIntent id" },
+    { key: "host_paid", label: "Host paid" },
+    { key: "provider", label: "Provider" },
+    { key: "stripe_payment_intent_id", label: "Payment reference" },
     { key: "refunded_amount_cents", label: "Refunded cents" },
   ],
   filename: "orders",
 };
+
+function statusFromHash() {
+  const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
+  const v = params.get("status");
+  return STATUS_FILTER.options.some((o) => o.value === v) ? v : null;
+}
+
+function moneyList(items, key) {
+  const parts = (items ?? []).filter((i) => Number(i[key]) !== 0).map((i) => formatMoney(Number(i[key]), i.currency));
+  return parts.length ? parts.join(" · ") : null;
+}
+
+/** #4130: three cards — paid orders all time, discounts given, margin. Never mixed. */
+function OrdersOverviewCards() {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const to = new Date();
+      const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+      setData(await getOrdersOverview(from.toISOString(), to.toISOString()));
+    } catch (err) {
+      setData(null);
+      setError(err?.message || null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  if (error) return <LoadError title="Couldn't load the order totals" message={error} onRetry={load} retrying={loading} />;
+  if (!data) {
+    return (
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3" aria-busy="true">
+        {[0, 1, 2].map((i) => <Skeleton key={i} height={104} />)}
+      </div>
+    );
+  }
+  const paidCount = (data.paid_all_time ?? []).reduce((n, r) => n + Number(r.orders || 0), 0);
+  const discountCount = (data.discounts ?? []).reduce((n, r) => n + Number(r.orders || 0), 0);
+  const belowZero = (data.margin ?? []).reduce((n, r) => n + Number(r.below_zero || 0), 0);
+  const card = (label, value, sub) => (
+    <section className="rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-4" aria-label={label}>
+      <p className="text-xs text-[var(--color-text-tertiary)]">{label}</p>
+      <div className="mt-1 text-[22px] font-bold tabular-nums text-[var(--color-text-primary)]">{value}</div>
+      <div className="mt-0.5 text-xs text-[var(--color-text-secondary)]">{sub}</div>
+    </section>
+  );
+  return (
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      {card(
+        "Paid orders, all time",
+        <span>{paidCount.toLocaleString()} <span className="text-sm font-medium text-[var(--color-text-tertiary)]">+ {Number(data.free_orders_all_time || 0).toLocaleString()} free</span></span>,
+        moneyList(data.paid_all_time, "buyer_paid_cents") || "No paid orders yet",
+      )}
+      {card(
+        "Discounts given, last 30 days",
+        `${discountCount.toLocaleString()} ${discountCount === 1 ? "order" : "orders"}`,
+        moneyList(data.discounts, "discount_cents") ? `${moneyList(data.discounts, "discount_cents")} given away` : "No discounted orders in this period",
+      )}
+      {card(
+        "Mingla margin on sales, last 30 days",
+        moneyList(data.margin, "margin_cents") || "No sales in this period",
+        belowZero > 0
+          ? <span className="text-[var(--color-error-700)]">{belowZero} {belowZero === 1 ? "sale" : "sales"} below zero</span>
+          : "Fee minus card processing, per currency",
+      )}
+    </div>
+  );
+}
 
 // ── Hash helpers ──────────────────────────────────────────────────────────────
 
@@ -185,7 +317,7 @@ function jsonBlock(obj) {
   );
 }
 
-function buildOrderSections(bundle, onViewSubscriber) {
+function buildOrderSections(bundle, onViewSubscriber, money) {
   const order = bundle.order || {};
   const event = bundle.event || null;
   const brand = bundle.brand || null;
@@ -196,12 +328,25 @@ function buildOrderSections(bundle, onViewSubscriber) {
   const split = bundle.partner_split || null;
 
   const sections = [
+    // #4130: what the buyer paid, what Mingla kept, and whether the host was paid.
+    {
+      label: "Money",
+      fields: money
+        ? [
+            field("Provider", PROVIDER_NAME[money.provider] || "—"),
+            field("Ticket", null, () => (isFreeOrder(money) ? "Free" : formatMoney(money.ticket_cents, money.currency))),
+            field("Mingla fee", null, () => (money.mingla_fee_cents == null ? "—" : formatMoney(money.mingla_fee_cents, money.currency))),
+            field("Card processing Mingla paid", null, () => (money.processing_cents == null ? "—" : formatMoney(money.processing_cents, money.currency))),
+            field("Host paid?", null, () => hostPaidCell(money.host_paid)),
+          ]
+        : [noneField("Couldn't load the money summary for this order")],
+    },
     {
       label: "Order",
       fields: [
         field("Order id", order.id, (v) => <span className="font-mono text-xs break-all">{v}</span>),
         field("Status", null, () => statusBadge(order.payment_status)),
-        field("Amount", null, () => <span className="font-medium">{formatMoney(order.total_cents, order.currency)}</span>),
+        field("Amount", null, () => <span className="font-medium">{isFreeOrder(order) ? "Free" : formatMoney(order.total_cents, order.currency)}</span>),
         field("List subtotal", null, () => formatMoney(order.list_subtotal_cents ?? order.net_subtotal_cents ?? order.total_cents, order.currency)),
         field("Discount", null, () => order.discount_cents > 0 ? `−${formatMoney(order.discount_cents, order.currency)}` : "—"),
         field("Fees & tax", null, () => formatMoney((order.buyer_fees_cents ?? 0) + (order.tax_cents ?? 0), order.currency)),
@@ -212,7 +357,7 @@ function buildOrderSections(bundle, onViewSubscriber) {
           order.stripe_application_fee_amount_cents != null ? formatMoney(order.stripe_application_fee_amount_cents, order.currency) : "—",
         ),
         field("Payment method", order.payment_method),
-        field("PaymentIntent id", order.stripe_payment_intent_id, (v) => <span className="font-mono text-xs break-all">{v}</span>),
+        field("Payment reference", order.stripe_payment_intent_id, (v) => <span className="font-mono text-xs break-all">{v}</span>),
         field("Charge id", order.stripe_charge_id, (v) => <span className="font-mono text-xs break-all">{v}</span>),
         field("Created", order.created_at, (v) => formatDateTime(v)),
         field("Confirmed", order.confirmed_at, (v) => formatDateTime(v)),
@@ -288,8 +433,13 @@ function buildOrderSections(bundle, onViewSubscriber) {
           : installments.map((it) =>
               field(`#${it.ordinal}`, it, (inst) => (
                 <span className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{formatMoney(inst.amount_cents, inst.currency)}</span>
+                  <span className="font-medium">{formatMoney(inst.buyer_total_cents ?? inst.amount_cents, inst.currency)}</span>
                   <Badge variant={inst.status === "collected" ? "success" : inst.status === "failed" ? "error" : "warning"}>{inst.status}</Badge>
+                  <span className="text-xs text-[var(--color-text-tertiary)]">
+                    {PROVIDER_NAME[inst.provider] || inst.provider || "Provider unknown"}
+                    {" · "}
+                    {INSTALLMENT_METHOD_NAME[inst.collection_method] || inst.collection_method || "Method unknown"}
+                  </span>
                   {inst.due_at && <span className="text-xs text-[var(--color-text-tertiary)]">due {formatDateTime(inst.due_at)}</span>}
                 </span>
               )),
@@ -340,7 +490,7 @@ function buildOrderSections(bundle, onViewSubscriber) {
 
 // Mounted only while open (parent gates with `refundOpen &&`), so picks reset on
 // each open without a setState-in-effect.
-function RefundModal({ onClose, order, lineItems, onRefunded }) {
+function RefundModal({ onClose, order, lineItems, onRefunded, provider }) {
   const [qtys, setQtys] = useState({});
   const [idempotencyKey] = useState(createAdminRefundIdempotencyKey);
 
@@ -412,7 +562,7 @@ function RefundModal({ onClose, order, lineItems, onRefunded }) {
       open
       onClose={onClose}
       title="Issue refund"
-      description="Refunds move real money in Stripe LIVE mode. Pick the items, then type the exact total to confirm."
+      description={`Refunds move real money through ${PROVIDER_NAME[provider] || "the brand's payment provider"}. Pick the items, then type the exact total to confirm.`}
       confirmLabel="Refund"
       destructive
       confirmPhrase={confirmPhrase}
@@ -480,8 +630,8 @@ export function BusinessOrdersPage() {
   const [error, setError] = useState(null);
   const [subUserId, setSubUserId] = useState(null);
   const [refundOpen, setRefundOpen] = useState(false);
-  const [marginSummary, setMarginSummary] = useState([]);
-  const [marginError, setMarginError] = useState(false);
+  const [money, setMoney] = useState(null);
+  const [initialStatus] = useState(() => statusFromHash());
 
   useEffect(() => {
     const sync = () => setSelectedOrderId(orderIdFromHash());
@@ -489,25 +639,20 @@ export function BusinessOrdersPage() {
     return () => window.removeEventListener("hashchange", sync);
   }, []);
 
-  useEffect(() => {
-    const to = new Date();
-    const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
-    let active = true;
-    getDiscountMarginSummary(from.toISOString(), to.toISOString())
-      .then((rows) => {
-        if (active) setMarginSummary(rows);
-      })
-      .catch(() => {
-        if (active) setMarginError(true);
-      });
-    return () => { active = false; };
-  }, []);
 
   const loadOrder = useCallback(async (orderId) => {
     setLoading(true);
     setError(null);
     setBundle(null);
+    setMoney(null);
     try {
+      // #4130: the order's money row (provider, fee, host paid) from the list RPC.
+      try {
+        const found = await listOrders({ search: orderId, page: 0, pageSize: 5 });
+        setMoney(found.rows.find((r) => r.order_id === orderId) || null);
+      } catch {
+        setMoney(null); // the Money section says it couldn't load; the order still shows
+      }
       const { data, error: err } = await getOrder(orderId);
       if (err) {
         const msg = err.message || "";
@@ -544,7 +689,10 @@ export function BusinessOrdersPage() {
     const brand = bundle?.brand || null;
     const badges = [];
     if (bundle) {
-      badges.push({ label: order.payment_status || "—", variant: STATUS_VARIANT[order.payment_status] || "default" });
+      badges.push({
+        label: isFreeOrder(order) && order.payment_status === "paid" ? "Free" : STATUS_LABEL[order.payment_status] || order.payment_status || "—",
+        variant: STATUS_VARIANT[order.payment_status] || "default",
+      });
       if (order.currency) badges.push({ label: order.currency, variant: "default" });
     }
 
@@ -555,7 +703,7 @@ export function BusinessOrdersPage() {
           error={error}
           onRetry={() => loadOrder(selectedOrderId)}
           header={{
-            title: bundle ? formatMoney(order.total_cents, order.currency) : "Order",
+            title: bundle ? (isFreeOrder(order) ? "Free order" : formatMoney(order.total_cents, order.currency)) : "Order",
             subtitle: bundle ? (
               <span>
                 {brand?.name ? `${brand.name} · ` : ""}
@@ -566,9 +714,9 @@ export function BusinessOrdersPage() {
             backLabel: "Orders",
             onBack: backToList,
           }}
-          sections={bundle ? buildOrderSections(bundle, setSubUserId) : []}
+          sections={bundle ? buildOrderSections(bundle, setSubUserId, money) : []}
         />
-        {bundle && REFUNDABLE_STATUSES.includes(order.payment_status) && (
+        {bundle && REFUNDABLE_STATUSES.includes(order.payment_status) && !isFreeOrder(order) && (
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--gray-200)] pt-4">
             <Button variant="danger" size="md" onClick={() => setRefundOpen(true)}>
               Issue refund
@@ -581,6 +729,7 @@ export function BusinessOrdersPage() {
             order={order}
             lineItems={bundle?.line_items || []}
             onRefunded={() => loadOrder(selectedOrderId)}
+            provider={money?.provider}
           />
         )}
         <SubscriberContextCard open={subUserId != null} onClose={() => setSubUserId(null)} userId={subUserId} />
@@ -593,42 +742,19 @@ export function BusinessOrdersPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Orders"
-        description="Every order across the platform — buyer, offering, brand, amount, and status. Open one for the full money record. Read-only."
+        description="Every order, what the buyer paid, what Mingla kept and whether the host has been paid for it."
       />
 
-      <section className="rounded-xl border border-[var(--gray-200)] bg-[var(--color-surface)] p-4" aria-label="Discount margin summary">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="font-semibold text-[var(--color-text-primary)]">Discount margin · last 30 days</h2>
-            <p className="text-xs text-[var(--color-text-tertiary)]">Read-only platform view; buyer contact details are excluded.</p>
-          </div>
-          <Badge variant="outline">D38</Badge>
-        </div>
-        {marginError ? (
-          <p className="mt-3 text-sm text-[var(--color-text-tertiary)]">Couldn&apos;t load the margin summary.</p>
-        ) : marginSummary.length === 0 ? (
-          <p className="mt-3 text-sm text-[var(--color-text-tertiary)]">No discounted orders in this period.</p>
-        ) : (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {marginSummary.map((row) => (
-              <div key={row.currency} className="rounded-lg bg-[var(--gray-50)] p-3">
-                <p className="text-xs font-semibold uppercase text-[var(--color-text-tertiary)]">{row.currency}</p>
-                <p className="mt-1 font-semibold">{row.discountedOrderCount} discounted orders</p>
-                <p className="text-sm">Given: {formatMoney(row.discountCents, row.currency)}</p>
-                <p className="text-sm">Margin: {formatMoney(row.marginCents, row.currency)}</p>
-                {row.negativeMarginCount > 0 && <p className="text-sm text-red-700">{row.negativeMarginCount} below zero</p>}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <OrdersOverviewCards />
 
       <EntityListView
         title="All orders"
         columns={COLUMNS}
         fetchPage={listOrders}
-        searchPlaceholder="Buyer email, phone, name, PI id, or order id"
+        searchPlaceholder="Buyer, event, brand, payment reference or order id"
         filters={FILTERS}
+        filterVariant="chips"
+        initialFilters={initialStatus ? { status: initialStatus } : undefined}
         onRowClick={(row) => openOrder(row.order_id)}
         csv={CSV}
         emptyMessage="No orders match."

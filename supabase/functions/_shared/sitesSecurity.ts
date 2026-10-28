@@ -161,3 +161,83 @@ export function resolveRuntimeToCoreVerifier(): ReadonlyArray<{
 export function resolveSitesAttributionPepper(): Uint8Array {
   return decode(parsedEnvelope().attribution_pepper_b64);
 }
+
+/**
+ * #2829 W10 — a private share-preview link's token is never stored: Core
+ * keeps HMAC-SHA-256 under the Sites pepper, domain-separated from the
+ * attribution tokens that share the pepper. Lowercase hex.
+ */
+export async function sitesShareTokenDigest(token: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array(resolveSitesAttributionPepper()).buffer,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = new Uint8Array(
+    await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`share-preview:${token}`)),
+  );
+  return Array.from(mac).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** #2829 W10 — a share-preview token: 32 random bytes, base64url (43 characters). */
+export const SITES_SHARE_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
+
+export function newSitesShareToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  let raw = "";
+  for (const byte of bytes) raw += String.fromCharCode(byte);
+  return btoa(raw).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+// #2829 — environment guard (AD-12, amendment A2.3). A service config row
+// marked 'local' carries loopback origins; it is only ever valid inside a
+// developer's local Supabase stack. If such a row ever reached a hosted
+// project, Core would sign envelopes to a loopback origin, so a hosted
+// function refuses it. "Local" means the function's own SUPABASE_URL is the
+// local stack's gateway: loopback, or the local Docker gateway names the
+// Supabase CLI injects. A local row's CMS origin must itself be local
+// (loopback or the Docker host gateway, which edge functions inside Docker
+// use to reach Studio on the host); a production row's must never be.
+const LOCAL_SUPABASE_URL_RE =
+  /^http:\/\/(?:127\.0\.0\.1|localhost|kong|host\.docker\.internal)(?::[0-9]{2,5})?\/?$/;
+const LOCAL_ORIGIN_RE =
+  /^http:\/\/(?:127\.0\.0\.1|localhost|host\.docker\.internal):[0-9]{2,5}$/;
+const LOCAL_ONLY_HOST_RE = /(?:localhost|127\.0\.0\.1|host\.docker\.internal)/i;
+
+export function assertSitesEnvironmentAllowed(
+  environment: unknown,
+  supabaseUrl: string | undefined,
+  cmsOrigin?: unknown,
+): void {
+  // A row read before the #2829 column exists has no environment: production.
+  if (
+    environment === undefined || environment === null ||
+    environment === "production"
+  ) {
+    if (typeof cmsOrigin === "string" && LOCAL_ONLY_HOST_RE.test(cmsOrigin)) {
+      throw new Error("sites_environment_refused");
+    }
+    return;
+  }
+  if (
+    environment === "local" &&
+    typeof supabaseUrl === "string" &&
+    LOCAL_SUPABASE_URL_RE.test(supabaseUrl) &&
+    (cmsOrigin === undefined ||
+      (typeof cmsOrigin === "string" && LOCAL_ORIGIN_RE.test(cmsOrigin)))
+  ) return;
+  throw new Error("sites_environment_refused");
+}
+
+export function guardSitesEnvironment(
+  environment: unknown,
+  cmsOrigin: unknown,
+): void {
+  assertSitesEnvironmentAllowed(
+    environment,
+    Deno.env.get("SUPABASE_URL"),
+    cmsOrigin,
+  );
+}

@@ -143,7 +143,7 @@ export function BentoGridItem({
       }}
       whileHover={reduced ? undefined : { y: -4, transition: { duration: 0.2 } }}
       className={cn(
-        'group relative flex min-h-[13rem] flex-col justify-between overflow-hidden rounded-[var(--cut-r-card)] p-6 sm:p-7',
+        'cut-host-bento-card group relative flex min-h-[13rem] flex-col justify-between overflow-hidden rounded-[var(--cut-r-card)] p-6 sm:p-7',
         className,
       )}
       style={{

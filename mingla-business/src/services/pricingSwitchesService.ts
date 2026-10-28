@@ -24,6 +24,10 @@
  */
 
 import { supabase } from "./supabase";
+import {
+  usesConfiguredVat,
+  type PricingTaxContext,
+} from "../utils/pricingTaxContext";
 
 /** The three resolved (concrete boolean) pass/absorb switches. */
 export interface PricingSwitches {
@@ -96,8 +100,9 @@ export async function refreshBrandTaxRegistrationAttestation(
 export async function setEventPricingSwitches(
   eventId: string,
   switches: Partial<PricingSwitchOverrides>,
+  taxContext: PricingTaxContext = {},
 ): Promise<{ overrides: PricingSwitchOverrides; resolved: PricingSwitches; updatedAt: string }> {
-  if (switches.passTax === true) {
+  if (switches.passTax === true && !usesConfiguredVat(taxContext)) {
     // orch-strict-grep-allow events-type-filter — this canonical pricing command supports the exact event+experience set.
     const { data: event, error: eventError } = await supabase.from("events")
       .select("brand_id")
@@ -143,8 +148,9 @@ export async function setEventPricingSwitches(
 export async function setBrandPricingDefaults(
   brandId: string,
   defaults: Partial<BrandPricingDefaults>,
+  taxContext: PricingTaxContext = {},
 ): Promise<BrandPricingDefaults> {
-  if (defaults.passTax === true) {
+  if (defaults.passTax === true && !usesConfiguredVat(taxContext)) {
     await refreshBrandTaxRegistrationAttestation(brandId);
   }
   const patch: Record<string, boolean> = {};

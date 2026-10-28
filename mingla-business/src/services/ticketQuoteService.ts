@@ -1,4 +1,8 @@
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
+import {
+  decodeInstallmentChargeSchedule,
+  installmentPlanBuyerTotal,
+} from "@mingla/offering-rendering/discountQuote";
 
 import type {
   BuyerDetails,
@@ -49,7 +53,7 @@ export const quoteTicketCheckout = async (
   input: TicketQuoteInput,
 ): Promise<TicketQuote> => {
   const buyer = quoteBuyer(input.buyer);
-  return invokeTicketCheckoutRequest<TicketQuote>({
+  const quote = await invokeTicketCheckoutRequest<TicketQuote>({
     mode: "quote",
     eventId: input.eventId,
     buyer,
@@ -85,4 +89,18 @@ export const quoteTicketCheckout = async (
       : {}),
     ...(input.queued === true ? { queueContract: "queue_v1" } : {}),
   });
+  const schedule = decodeInstallmentChargeSchedule(
+    quote.installmentChargeSchedule,
+  );
+  const planTotalBuyerCents = installmentPlanBuyerTotal(
+    quote.buyerTotalCents,
+    schedule,
+  );
+  return {
+    ...quote,
+    ...(schedule === undefined
+      ? { installmentChargeSchedule: undefined }
+      : { installmentChargeSchedule: schedule }),
+    planTotalBuyerCents,
+  };
 };

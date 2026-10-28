@@ -112,7 +112,7 @@ describe("A-01: Pay-button same-source-of-truth (visible ↔ a11y)", () => {
 
 describe("A-02: no-fabrication mechanism (Constitution #9)", () => {
   test("InstallmentScheduleDisplay source uses ONLY Intl helpers for prop transformation", () => {
-    const src = read("src/components/trip/InstallmentScheduleDisplay.tsx");
+    const src = read("src/components/trip/installmentScheduleRows.ts");
     // Forbidden transformations on prop values: parseFloat, Number(),
     // .toFixed(), .slice(), .substr(), JSON.stringify, String()
     // wrapping prop values. These could silently distort the rendered
@@ -123,8 +123,9 @@ describe("A-02: no-fabrication mechanism (Constitution #9)", () => {
     // the PROP values (schedule.depositCents, schedule.installments[i]
     // .amountCents, schedule.installments[i].dueAt) in such helpers.
     //
-    // We assert by scanning the formatCurrency + formatDate locals —
-    // they should ONLY call Intl.* APIs, no other transformations.
+    // Formatting now lives in the pure row builder shared by the renderer
+    // and its regression tests. Assert that canonical implementation rather
+    // than requiring the helpers to remain in the React component file.
     //
     // formatCurrency body:
     expect(src).toMatch(
@@ -373,16 +374,17 @@ describe("A-09: pre-Stripe banner a11y label cites mixed-cart totals", () => {
   // aggregate rather than pretending every line shares one deposit schedule.
   test("banner accessibilityLabel references due today and the body carries the future count", () => {
     const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
-    // Find the banner block — must contain both data sources in its a11y
-    // label template. Catches a class of bug where the label hardcodes
-    // "2 payments" or fabricates the count.
+    // Find the banner block — both collection-mode branches must use the
+    // server-quoted due-now amount, and the pay-link branch must report the
+    // real later-payment count instead of fabricating a fixed number.
     const bannerRegion = src.match(
-      /accessibilityLabel=\{`Payment plan active[\s\S]+?`\}/,
+      /accessibilityLabel=\{[\s\S]*?Payment plan active[\s\S]+?\}\s*>/,
     );
     expect(bannerRegion).not.toBeNull();
     if (bannerRegion === null) return;
     const labelText = bannerRegion[0];
     expect(labelText).toContain("dueTodayCents");
+    expect(labelText).toContain("futureInstallmentCount");
     expect(labelText).toContain("Future scheduled payments");
     expect(src).toContain("futureInstallmentCount");
   });

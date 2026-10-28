@@ -432,7 +432,7 @@ async function verifyRuntime() {
       for (const phrase of ['City guide in review', 'Evidence before promotion', 'How this ', 'Sources checked', 'Local review', 'Next evergreen review']) {
         assert(!text.includes(phrase), `${pathname} renders internal lifecycle/evidence copy: ${phrase}`)
       }
-      assert.equal((hub.body.match(/class="ps-catalogue-card"/g) ?? []).length, 50, `${pathname} must retain its 50-place catalogue`)
+      assert.equal((hub.body.match(/data-city-place-card/g) ?? []).length, 50, `#4137: ${pathname} must retain its 50-place catalogue`)
     }
     await verifyNarrowHeroGeometry(port)
   } finally {

@@ -37,7 +37,12 @@ interface CutoutHeroProps {
   /** Exactly ONE action, and it is always the device-aware app CTA. */
   action: ReactNode
   /** Background photograph. Illustrative is fine; it is atmosphere. */
-  image: string
+  image?: string
+  /**
+   * #4137: a custom backdrop (the /host photo wall). Replaces the photo/video
+   * plate and its scrims; the backdrop brings its own veil.
+   */
+  backdrop?: ReactNode
   /** Optional video plate layered over the photo. */
   video?: string
   scrollTo?: string
@@ -52,6 +57,7 @@ export function CutoutHero({
   lede,
   action,
   image,
+  backdrop,
   video,
   scrollTo,
   footnote,
@@ -66,6 +72,9 @@ export function CutoutHero({
       )}
     >
       {/* The photographic plate. */}
+      {backdrop ? (
+        backdrop
+      ) : image ? (
       <div aria-hidden="true" className="absolute inset-0 overflow-hidden">
         {video ? (
           <CutoutHeroVideo src={video} poster={image} />
@@ -94,6 +103,7 @@ export function CutoutHero({
           }}
         />
       </div>
+      ) : null}
 
       <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center text-center">
         {eyebrow ? (
@@ -114,20 +124,21 @@ export function CutoutHero({
         </CutReveal>
         ) : null}
 
-        <CutReveal variant="headline" delay={0.08}>
-          <h1 className={cn('cut-display font-display', eyebrow && 'mt-7')}>
-            <span className="cut-gradient-text block">{line1}</span>
-            <span className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 sm:mt-4 sm:flex-nowrap">
-              {line2}
-            </span>
-          </h1>
-        </CutReveal>
+        {/* #4137: the headline and lede are visible in the server HTML (no
+            reveal wrapper), so they paint immediately and are the LCP. */}
+        <h1 className={cn('cut-display font-display', eyebrow && 'mt-7')}>
+          <span className="cut-gradient-text block">{line1}</span>
+          <span className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 sm:mt-4 sm:flex-nowrap">
+            {line2}
+          </span>
+        </h1>
 
-        <CutReveal delay={0.2}>
-          <p className="mt-8 max-w-2xl text-[1.0625rem] font-semibold leading-relaxed text-[var(--cut-ink)]/75 sm:text-lg">
-            {lede}
-          </p>
-        </CutReveal>
+        <p className={cn(
+          'mt-8 max-w-2xl text-[1.0625rem] font-semibold leading-relaxed sm:text-lg',
+          backdrop ? 'text-[var(--cut-ink)]/85' : 'text-[var(--cut-ink)]/75',
+        )}>
+          {lede}
+        </p>
 
         <CutReveal delay={0.3}>
           <div className="mt-10 flex justify-center">{action}</div>

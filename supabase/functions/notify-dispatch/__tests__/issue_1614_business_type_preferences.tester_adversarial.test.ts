@@ -22,7 +22,7 @@ Deno.test("preference lookup failure stops every durable or provider side effect
     "dispatchDurableLegacyEmail",
     lookupFailure,
   );
-  const pushDispatch = position("pushSent = await sendPush(");
+  const pushDispatch = SRC.indexOf("pushSent = await sendPush(", lookupFailure);
 
   assert(lookup < lookupFailure);
   assert(lookupFailure < notificationInsert);
@@ -73,15 +73,16 @@ Deno.test("in-app suppression and push veto are independent channel decisions", 
 // [TEST-MOD-APPROVED #3645] — #3645 PR10 added four organiser payout
 // visibility preference types; the allowlist was fifteen exact literal keys.
 // [TEST-MOD-APPROVED #3872] — R1 adds three Host discount lifecycle keys.
-Deno.test("only the locked eighteen exact Business literal types enter the new lookup", () => {
+// [TEST-MOD-APPROVED #3645] — instalment failure + at-risk add two payment keys.
+Deno.test("only the locked twenty exact Business literal types enter the new lookup", () => {
   assertStringIncludes(SRC, "if (userId && isBusinessPreferenceType(type))");
   assertStringIncludes(
     SRC,
     "Object.prototype.hasOwnProperty.call(\n    BUSINESS_NOTIFICATION_CHANNEL_DEFAULTS,\n    type,\n  )",
   );
   assertEquals(
-    (SRC.match(/^  "business\.[a-z0-9_]+": \{ push:/gm) ?? []).length,
-    18,
+    (SRC.match(/^ {2}"business\.[a-z0-9_]+": \{ push:/gm) ?? []).length,
+    20,
   );
   assertStringIncludes(SRC, '"business.payout_waiting_for_bank"');
   assertStringIncludes(SRC, '"business.payouts_paused"');
@@ -90,4 +91,6 @@ Deno.test("only the locked eighteen exact Business literal types enter the new l
   assertStringIncludes(SRC, '"business.discount_limit_80"');
   assertStringIncludes(SRC, '"business.discount_ended"');
   assertStringIncludes(SRC, '"business.discount_needs_attention"');
+  assertStringIncludes(SRC, '"business.installment_failed"');
+  assertStringIncludes(SRC, '"business.installment_at_risk"');
 });

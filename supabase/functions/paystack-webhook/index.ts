@@ -24,6 +24,7 @@
  *       https://paystack.com/docs/payments/webhooks/
  * Reference: Mingla_Artifacts/PAYSTACK_INTEGRATION_REFERENCE.md (Part 4).
  */
+import { inboxPayloadForPaystackEvent } from "./inboxPayload.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
@@ -175,7 +176,8 @@ serve(async (req) => {
       .insert({
         stripe_event_id: idempotencyKey,
         type: eventName,
-        payload: event,
+        // Issue #3645: store only the masked card reference.
+        payload: inboxPayloadForPaystackEvent(event),
         provider: "paystack",
         provider_event_type: eventName,
         provider_event_id: providerEventId,
@@ -215,6 +217,9 @@ serve(async (req) => {
           data,
           paystackVerifyTransaction,
         );
+        // Issue #3645: installment_collected / _refund_due / _replayed are
+        // processed money events with no order to confirm (no ticket email,
+        // no partner-split fan-out); they fall through to processed.
         if (result.status === "finalized" || result.status === "replayed") {
           finalizedOrderId = result.orderId ?? null;
           if (finalizedOrderId) {

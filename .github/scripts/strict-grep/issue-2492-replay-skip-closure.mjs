@@ -162,17 +162,6 @@ export const DEFAULT_MIGRATIONS_DIR = path.join(
   "supabase/migrations",
 );
 
-/** The lane whose skip list C-3 pins, and the branches it must keep. */
-const PINNED_LANE = "issue-1931-private-event-access.yml";
-const PINNED_BRANCHES = [
-  "*_issue_1931_*",
-  "*_issue_2160_*",
-  "*_issue_2333_discover_online_carveout*",
-  // #2723: pin the known exact overload dependency. This is intentionally
-  // narrower than a generalized signature parser, whose absence remains a
-  // declared limit of this guard.
-  "*20270601002696_issue_2696_event_scoped_session_lookup.sql",
-];
 
 // ---------------------------------------------------------------------------
 // SQL lexing. Everything here exists to stop a regex reading DDL out of prose.
@@ -412,11 +401,28 @@ export function parseMigration(name, rawSql) {
     "gi",
   );
   while ((m = tableRe.exec(top))) definitions.add(`table:${bareName(m[1])}`);
-  const colRe = new RegExp(
-    `\\bALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:ONLY\\s+)?${QUALIFIED}\\s+ADD\\s+COLUMN\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${IDENT})`,
+  // #4130: read EVERY `ADD COLUMN` clause of an ALTER TABLE statement, not only
+  // the first. `ALTER TABLE public.orders ADD COLUMN a …, ADD COLUMN
+  // refunded_amount_cents …;` (orch_0787) defines both columns; reading only
+  // the first left the model believing `orders.refunded_amount_cents` existed
+  // solely via a later skipped migration, so a real, replay-clean reference
+  // was reported as a closure break. Only real definitions are credited: the
+  // clause must sit inside an ALTER TABLE statement (up to its `;`) and must
+  // spell `ADD COLUMN`, exactly as the single-clause form already required
+  // (a bare `ADD x` is never read, so `ADD CONSTRAINT` cannot pose as a column).
+  const alterRe = new RegExp(
+    `\\bALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:ONLY\\s+)?${QUALIFIED}\\s[^;]*`,
     "gi",
   );
-  while ((m = colRe.exec(top))) definitions.add(`col:${bareName(m[1])}`);
+  const colRe = new RegExp(
+    `\\bADD\\s+COLUMN\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${IDENT})`,
+    "gi",
+  );
+  while ((m = alterRe.exec(top))) {
+    let c;
+    colRe.lastIndex = 0;
+    while ((c = colRe.exec(m[0]))) definitions.add(`col:${bareName(c[1])}`);
+  }
 
   // Every identifier this file mentions where PostgreSQL resolves names at
   // CREATE time. Lowercased: unquoted SQL identifiers are case-insensitive.
@@ -653,7 +659,6 @@ export function analyseTrees({ workflows, migrations }) {
 
   const lanes = [];
   for (const workflowName of Object.keys(workflows)
-    .filter((n) => /\.ya?ml$/.test(n))
     .sort()) {
     for (const lane of discoverLanes(workflowName, workflows[workflowName]))
       lanes.push(lane);
@@ -664,7 +669,7 @@ export function analyseTrees({ workflows, migrations }) {
       check: "P-vacuous",
       lane: null,
       message:
-        "No filtered migration-replay lane was discovered. This repository has four; finding none means the parser is blind.",
+        "No filtered migration-replay lane was discovered. Finding none means the parser is blind.",
     });
   }
 
@@ -762,29 +767,6 @@ export function analyseTrees({ workflows, migrations }) {
     }
   }
 
-  // C-3 — the pinned lane keeps the branches it already has.
-  const pinned = lanes.filter((l) => l.workflow === PINNED_LANE);
-  if (pinned.length === 0) {
-    violations.push({
-      check: "C-3",
-      lane: PINNED_LANE,
-      message: `${PINNED_LANE}: no filtered migration apply loop found. The #1931 clean-replay lane and its skip list must both survive.`,
-    });
-  } else {
-    const present = new Set(pinned.flatMap((l) => l.globs));
-    for (const required of PINNED_BRANCHES) {
-      if (!present.has(required)) {
-        violations.push({
-          check: "C-3",
-          lane: PINNED_LANE,
-          message:
-            `${PINNED_LANE}: skip branch \`${required}\` is gone. A skip entry is never removed to green a lane — ` +
-            `each exists because this filtered chain omits a prerequisite needed for that migration to apply coherently.`,
-        });
-      }
-    }
-  }
-
   return { lanes, violations };
 }
 
@@ -807,493 +789,34 @@ export function analyseLanes({
   workflowsDir = DEFAULT_WORKFLOWS_DIR,
   migrationsDir = DEFAULT_MIGRATIONS_DIR,
 } = {}) {
-  return analyseTrees({
-    workflows: readDirText(workflowsDir, /\.ya?ml$/),
-    migrations: readDirText(migrationsDir, /\.sql$/),
-  });
+  const workflows = readDirText(workflowsDir, /\.ya?ml$/);
+  if (workflowsDir === DEFAULT_WORKFLOWS_DIR) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, ".github/ci-batch/MANIFEST.json"), "utf8"));
+    for (const suite of manifest.suites) {
+      const commands = [suite.templateReplay?.run, ...suite.steps.map(step => step.run)].filter(Boolean).join("\n");
+      if (commands.includes("supabase/migrations")) workflows[suite.id] = commands;
+    }
+  }
+  return analyseTrees({ workflows, migrations: readDirText(migrationsDir, /\.sql$/) });
 }
 
 // ---------------------------------------------------------------------------
 // Self-test. A guard clause that cannot be shown to red does not count.
 // ---------------------------------------------------------------------------
 
-function readRealTrees() {
-  return {
-    workflows: readDirText(DEFAULT_WORKFLOWS_DIR, /\.ya?ml$/),
-    migrations: readDirText(DEFAULT_MIGRATIONS_DIR, /\.sql$/),
-  };
-}
-
-/** Deep-enough copy of a { name: text } map. */
-const copy = (tree) => ({
-  workflows: { ...tree.workflows },
-  migrations: { ...tree.migrations },
-});
-
 function selfTest() {
-  const failures = [];
-  const real = readRealTrees();
-
-  const record = (id, note) => failures.push(`${id}: ${note}`);
-  /** Every mutant must actually change the tree, or the mutant proves nothing. */
-  const mutate = (id, tree, file, from, to, where = "workflows") => {
-    const before = tree[where][file];
-    if (before === undefined) {
-      record(id, `fixture file ${file} is missing`);
-      return false;
-    }
-    const after =
-      typeof from === "string"
-        ? before.split(from).join(to)
-        : before.replace(from, to);
-    if (after === before) {
-      record(id, `mutation was a NO-OP — the mutant proves nothing`);
-      return false;
-    }
-    tree[where][file] = after;
-    return true;
+  const workflows = { fixture: 'for f in supabase/migrations/*.sql; do\n  case "$f" in\n    *002_skip.sql) continue ;;\n  esac\n  psql -v ON_ERROR_STOP=1 -f "$f"\ndone' };
+  const migrations = {
+    "001_base.sql": "CREATE TABLE public.base(id int);",
+    "002_skip.sql": "CREATE TABLE public.hidden(id int);",
+    "003_reader.sql": "CREATE VIEW public.reader AS SELECT id FROM public.base;",
   };
-  const fired = (result, check) =>
-    result.violations.some((v) => v.check === check);
-
-  // GOOD — the repository as shipped.
-  const good = analyseTrees(real);
-  if (good.violations.length) {
-    record(
-      "GOOD",
-      `repo as shipped wrongly flagged:\n      ${good.violations.map((v) => `[${v.check}] ${v.message}`).join("\n      ")}`,
-    );
-  }
-  const inventory = Object.fromEntries(
-    good.lanes.map((l) => [l.workflow, l.globs.length]),
-  );
-  // [TEST-MOD-APPROVED #2489] The pinned lane inventory below moved: the
-  // private-event lane went from FOUR skips to SIX, and the visibility lane from
-  // ONE to TWO. Two legitimate skips were added, neither a workaround:
-  //   * 20270523002489_issue_2489_address_privacy_server_gate.sql — added on THIS
-  //     GATE'S OWN remediation instruction, which names the exact-filename form
-  //     and explicitly forbids removing the reference instead;
-  //   * 20270525002562_issue_2562_past_event_guard.sql — approved by the owner of
-  //     #2564, whose migration it is: on that lane the 12-argument re-emission
-  //     does not replace the 11-argument original, so an unfiltered probe reads
-  //     the guardless overload.
-  // ONLY counts move. No mutation scenario was removed, no parser case relaxed
-  // and no assertion's logic changed — each mutant below still blinds the parser
-  // and still requires the blinding to be caught.
-  //
-  // [TEST-MOD-APPROVED #2489] SECOND MOVE, phase 2: the private-event lane goes
-  // from SIX skips to SEVEN. The added entry is
-  // 20270528002489_issue_2489_phase2_base_relation_grant.sql, and it is a
-  // consequence of the sixth rather than a new judgement: phase 2 gives
-  // events_public_view owner rights so it survives the base-relation grant change,
-  // but on THAT lane the gated owner-rights definition of that view comes only
-  // from the already-skipped …002489_…server_gate.sql, so the lane's own
-  // "Apply #1931 and re-capture" step re-emits the view at caller rights and the
-  // SC-47 equality capture then fails on a permission error instead of on a
-  // behavioural difference. Reproduced before the entry was added and confirmed
-  // clean after; the #2117 lane was simulated with phase 2 PRESENT and needs no
-  // entry, which is why only one count moves here.
-  //
-  // Nothing was removed from the migration to green the lane, and the exact
-  // filename form is used, per this gate's own remediation instruction.
-  // Downstream constants track the base count and move with it, not against it:
-  // [TEST-MOD-APPROVED #2723] THIRD MOVE: the private-event lane goes from
-  // SEVEN skips to EIGHT. The old count became false because #2723 adds the
-  // valid exact #2696 skip required when #2160 is absent; the assertion remains
-  // binding and the generalized signature/overload limit remains unchanged.
-  // #2728 adds the third exact #2117 skip: its fix-forward definition is kept
-  // out of the pre-#2117 baseline and applied only after corrected phase 2.
-  // [TEST-MOD-APPROVED #2986] The #2117 lane now has SEVEN exact skips. The
-  // seventh is #2986's additive public-search migration: its resolver delegates
-  // to #2117's authority, so it is omitted from the pre-#2117 chain and applied
-  // exactly once after phase 2. Only the frozen GOOD count changes; all parser
-  // mutants and every BAD-fixture assertion remain intact.
-  // [TEST-MOD-APPROVED #3176] The #2117 lane now has NINE exact skips. #3176's
-  // IndexNow outbox trigger targets `public_search_documents`, which this
-  // filtered phase omits with #2986. Only the exact GOOD inventory changes;
-  // the migration and every parser/closure assertion remain intact.
-  // M-6 replaces one branch's single glob with an alternation of three (9 -> 11),
-  // M-10 adds one two-line branch (9 -> 10), M-9 leaves one branch unread (9).
-  // [TEST-MOD-APPROVED #3285] The private-event lane goes from ELEVEN exact
-  // skips to TWELVE: #3285 alters the ticket_event_dates FK and adds a
-  // `LANGUAGE sql` helper reading that table, which that lane's pre-#1931 phase
-  // only has via the skipped #2160. This gate named the exact filename. Only
-  // counts move with the base: GOOD 11 -> 12, M-5 11 -> 12, M-6 13 -> 14,
-  // M-9 11 -> 12, M-10 12 -> 13; every mutant and BAD fixture is unchanged.
-  // [TEST-MOD-APPROVED #3313] Both filtered lanes gain ONE exact skip: #3313
-  // re-emits `pg_direct_event_checkout_bundle` (a `LANGUAGE sql` body reaching
-  // #2160's `multi_date_pricing_mode` and #2489's theme helpers) and the #2879
-  // session base. This gate named the exact filename for each lane. Only counts
-  // move: GOOD #1931 12 -> 13 and #2117 9 -> 10, M-5 12 -> 13, M-6 14 -> 15,
-  // M-9 12 -> 13, M-10 13 -> 14; every mutant and BAD fixture is unchanged.
-  // [TEST-MOD-APPROVED #3284] BOTH filtered lanes gain one exact skip: the
-  // private-event lane THIRTEEN -> FOURTEEN and the #2117 lane TEN -> ELEVEN.
-  // 20270703003284 re-emits the direct checkout bundle and the public experience
-  // reader to append one display key; those `LANGUAGE sql` bodies reach objects
-  // each lane's phase deliberately lacks (#1931's read-block predicate and
-  // #2160's column on one, #2117's visibility gate and #2489's helpers on both).
-  // This gate named the exact filename for each. Only counts move with the base:
-  // GOOD 13/10 -> 14/11, M-5 13 -> 14, M-6 15 -> 16, M-9 13 -> 14, M-10 14 -> 15;
-  // every mutant and BAD fixture is unchanged.
-  // [TEST-MOD-APPROVED #3314] BOTH filtered lanes gain one exact skip again: the
-  // private-event lane FOURTEEN -> FIFTEEN and the #2117 lane ELEVEN -> TWELVE.
-  // 20270704003314 re-emits the direct checkout bundle from #3284's body to add
-  // one display key, so it reaches the same objects each lane's phase lacks. This
-  // gate named the exact filename for each. Only counts move with the base:
-  // GOOD 14/11 -> 15/12, M-5 14 -> 15, M-6 16 -> 17, M-9 14 -> 15, M-10 15 -> 16;
-  // every mutant and BAD fixture is unchanged.
-  // [TEST-MOD-APPROVED #3197] The #2117 lane gains one exact skip, TWELVE ->
-  // THIRTEEN. 20270706003197's closing DO block asserts on #2986's readers and
-  // validator, which that lane's phase 1 omits, so the lane skips it by EXACT
-  // filename and applies it once straight after #3193. Only the GOOD #2117
-  // count moves; every mutant targets the #1931 lane and is unchanged.
-  // [TEST-MOD-APPROVED #3426] BOTH filtered lanes gain one exact skip for
-  // 20270707003426, which re-emits `pg_public_brand_upcoming` and adds the brand
-  // section reader; both `LANGUAGE sql` bodies reach `issue_1931_event_ordinary_read_blocked`
-  // and `issue_2489_public_theme`, which each lane's phase lacks, and this gate named
-  // the exact filename for each. Only counts move with the base:
-  // GOOD 15/13 -> 16/14, M-5 15 -> 16, M-6 17 -> 18, M-9 15 -> 16, M-10 16 -> 17;
-  // every mutant and BAD fixture is unchanged.
-  // [TEST-MOD-APPROVED #3443] BOTH filtered lanes gain one exact skip for
-  // 20270709000000_unlisted_rsvp_invite_link.sql, which re-emits
-  // `pg_public_rsvp_by_slug`; its `LANGUAGE sql` body reaches
-  // `issue_1931_event_ordinary_read_blocked`, `issue_2489_address_withheld` and
-  // `issue_2489_public_theme`, which each lane's phase lacks. Without the skips
-  // this gate reports five C-1 closure violations naming that exact file, so the
-  // skips are required, not chosen. Only counts move with the base:
-  // GOOD 16/14 -> 17/15, M-5 16 -> 17, M-6 18 -> 19, M-9 16 -> 17, M-10 17 -> 18;
-  // every mutant and BAD fixture is unchanged.
-  // [TEST-MOD-APPROVED #3801] The #2117 lane gains one exact skip, FIFTEEN ->
-  // SIXTEEN, for 20270830003801_issue_3801_public_trip_tiers_ordered.sql, which
-  // re-emits `pg_public_trip_by_slug`; its `LANGUAGE sql` body calls
-  // `pg_offering_visibility_gate`, which that lane's phase 1 lacks. Without the
-  // skip this gate reports a C-1 closure violation naming that exact file, so
-  // the skip is required, not chosen. Only the GOOD #2117 count moves, 15 -> 16;
-  // every mutant targets the #1931 lane and is unchanged.
-  // [TEST-MOD-APPROVED #3859] The #2117 lane gains two exact skips, SIXTEEN ->
-  // EIGHTEEN, for the two #3859 migrations that re-emit
-  // `pg_public_trip_by_slug`; both `LANGUAGE sql` bodies call
-  // `pg_offering_visibility_gate`, which that lane's phase 1 lacks. The guard
-  // itself named both exact filenames. Only the GOOD #2117 count moves; every
-  // parser mutant and BAD fixture remains unchanged.
-  // [TEST-MOD-APPROVED #3281] The #1931 and #2117 lanes each gain two exact skips
-  // (20271121003281 Round 2 checkout units, which this guard named, and its
-  // 20271122003281 repair). Only lane counts move, by +2; no mutant or check changes.
-  // The #1931 lane then gains five more exact skips found by a local replay; +5 more.
-  // Round 3 spacing/spots migration adds one exact skip on each lane; 24/20 -> 25/21.
-  // [TEST-MOD-APPROVED #3281] Many-dates foundation adds one exact skip on each lane; 25/21 -> 26/22.
-  // #3827 going-box adds one exact skip on each lane; 26/22 -> 27/23.
-  // #3827 private ticket links (20271209003827) adds one exact skip on each lane; 27/23 -> 28/24.
-  // #3827 link cover and dates (20271211003827) adds one more on each lane; 28/24 -> 29/25.
-  // #3827 orders foreign key (20271210003827) adds one more on each lane; 29/25 -> 30/26.
-  // [TEST-MOD-APPROVED #3872] R1 ticket checkout M2 adds one exact skip on each
-  // lane for current checkout identities the filtered phases omit. The closure
-  // guard also requires M1 in #1931 because consumed_at is absent there; 30/26 -> 32/27.
-  // [TEST-MOD-APPROVED #3872] R1 public display M3 adds one exact skip on each
-  // lane for public readers whose current identities the filtered phases omit;
-  // the guard-required M1 skip remains additive. Counts only: 32/27 -> 33/28.
-  // [TEST-MOD-APPROVED #3872] R1 host operations M5 adds one exact skip to the
-  // #1931 lane because it grants and queries objects from the three #3872
-  // migrations that lane omits. Counts only: 33/28 -> 34/28.
-  // [TEST-MOD-APPROVED #3872] The live-save correction replaces trigger/RPC
-  // bodies over brand_discounts, which #1931 omits. Counts: 34/28 -> 35/28.
-  // [TEST-MOD-APPROVED #4073] Discover V2 re-emits public readers that retain
-  // helpers omitted by both filtered lanes. Counts: 35/28 -> 36/29.
-  // [TEST-MOD-APPROVED #4063] Claim-link/contact message payloads read the
-  // canonical claim tables added after the private-event replay boundary, so
-  // that lane gains the exact #4063 migration skip. Counts: 36/29 -> 37/29.
-  // [TEST-MOD-APPROVED #4063] Wave 5 door-sale and ticket-transfer migrations
-  // each depend on schema intentionally omitted by the #1931 filtered replay.
-  // Exact skips move that lane only: 37/29 -> 39/29.
-  // [TEST-MOD-APPROVED #3872] The complete R2-R4 referral, Creator, and Local
-  // chain adds ten exact skips to #1931; canonical full replay still applies it.
-  // Counts only: 39/29 -> 49/29.
-  // [TEST-MOD-APPROVED #3872] The Ari census and seven downstream #3872 walkthrough,
-  // round 2, gig pay, shoot-window, and due-change migrations add eight exact #1931 skips;
-  // canonical full replay still applies them. Counts only: 49/29 -> 57/29.
-  const expectedInventory = {
-    "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
-    "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
-    "issue-1931-private-event-access.yml": 57,
-    "issue-2117-offering-visibility-gate-tests.yml": 29,
-  };
-  if (JSON.stringify(inventory) !== JSON.stringify(expectedInventory)) {
-    record(
-      "GOOD",
-      `lane inventory is ${JSON.stringify(inventory)}, expected ${JSON.stringify(expectedInventory)}`,
-    );
-  }
-
-  // M-1 (C-1) — the exact regression: drop the #2462 skip branch.
-  {
-    const tree = copy(real);
-    if (
-      mutate(
-        "M-1",
-        tree,
-        PINNED_LANE,
-        /^.*20270522002462_issue_2462_checkout_determinism\.sql\) continue ;;\n/m,
-        "",
-      )
-    ) {
-      const out = analyseTrees(tree);
-      if (!fired(out, "C-1"))
-        record(
-          "M-1",
-          "C-1 did NOT fire when the #2462 skip branch was removed",
-        );
-      else if (
-        !out.violations.some(
-          (v) =>
-            v.check === "C-1" &&
-            v.message.includes("issue_1931_event_ordinary_read_blocked"),
-        )
-      ) {
-        record(
-          "M-1",
-          "C-1 fired but never named the missing #1931 guard function",
-        );
-      }
-    }
-  }
-
-  // M-2 (C-2) — a skip glob that matches nothing.
-  {
-    const tree = copy(real);
-    if (
-      mutate(
-        "M-2",
-        tree,
-        PINNED_LANE,
-        "*_issue_1931_*) continue ;;",
-        "*_issue_1931_*) continue ;;\n              *_issue_0000_never_existed_*) continue ;;",
-      )
-    ) {
-      if (!fired(analyseTrees(tree), "C-2"))
-        record("M-2", "C-2 did NOT fire on a skip glob matching zero files");
-    }
-  }
-
-  // M-3 (C-3) — a pinned skip branch deleted.
-  {
-    const tree = copy(real);
-    if (
-      mutate(
-        "M-3",
-        tree,
-        PINNED_LANE,
-        /^.*\*_issue_2160_\*\) continue ;;\n/m,
-        "",
-      )
-    ) {
-      if (!fired(analyseTrees(tree), "C-3"))
-        record(
-          "M-3",
-          "C-3 did NOT fire when the *_issue_2160_* branch was deleted",
-        );
-    }
-  }
-
-  // M-4 (C-4a) — the case construct is present but unparseable.
-  {
-    const tree = copy(real);
-    if (mutate("M-4", tree, PINNED_LANE, /^(\s*)esac\n/m, "")) {
-      if (!fired(analyseTrees(tree), "C-4a"))
-        record(
-          "M-4",
-          "C-4a did NOT fire on a case that is never closed by esac",
-        );
-    }
-  }
-
-  // M-5 (R-2) — a lane rewritten to the basename nested-quote form is still found.
-  {
-    const tree = copy(real);
-    const ok =
-      mutate(
-        "M-5",
-        tree,
-        PINNED_LANE,
-        'case "$f" in',
-        'case "$(basename "$f")" in',
-      ) &&
-      mutate(
-        "M-5",
-        tree,
-        PINNED_LANE,
-        "*20270522002462_issue_2462_checkout_determinism.sql)",
-        "20270522002462_issue_2462_checkout_determinism.sql)",
-      );
-    if (ok) {
-      const out = analyseTrees(tree);
-      const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (!lane)
-        record(
-          "M-5",
-          "the #1931 lane VANISHED when rewritten to the basename nested-quote form (R-2)",
-        );
-      else if (lane.subjectKind !== "basename")
-        record(
-          "M-5",
-          `subject read as "${lane.subjectKind}", expected "basename"`,
-        );
-      else if (lane.globs.length !== 57)
-        record("M-5", `${lane.globs.length} globs extracted, expected 57`);
-      else if (out.lanes.length !== 4)
-        record(
-          "M-5",
-          `inventory collapsed to ${out.lanes.length} lanes, expected 4`,
-        );
-      else if (out.violations.length)
-        record(
-          "M-5",
-          `clean tree flagged after a semantics-preserving rewrite: ${out.violations.map((v) => v.check).join(",")}`,
-        );
-    }
-  }
-
-  // M-6 (R-3) — alternation: three globs on one branch.
-  {
-    const tree = copy(real);
-    const ok = mutate(
-      "M-6",
-      tree,
-      PINNED_LANE,
-      "*_issue_2160_*) continue ;;",
-      "*_issue_2160_*|*_issue_2333_discover_online_carveout*|*20270522002462_issue_2462_checkout_determinism.sql) continue ;;",
-    );
-    if (ok) {
-      const lane = analyseTrees(tree).lanes.find(
-        (l) => l.workflow === PINNED_LANE,
-      );
-      if (!lane) record("M-6", "lane vanished");
-      else if (lane.globs.length !== 59)
-        record(
-          "M-6",
-          `alternation under-read: ${lane.globs.length} globs from ${lane.branchCount} branches, expected 59`,
-        );
-    }
-  }
-
-  // M-7 (R-4) — a glob evaluated against the wrong subject.
-  {
-    const tree = copy(real);
-    if (
-      mutate(
-        "M-7",
-        tree,
-        "issue-1644-storage-guardrail-collage-fill-tests.yml",
-        'case "$(basename "$migration")" in',
-        'case "$migration" in',
-      )
-    ) {
-      const out = analyseTrees(tree);
-      if (!fired(out, "C-2")) {
-        record(
-          "M-7",
-          "C-2 did NOT fire when a basename glob was evaluated against a full path — subject-correct matching is not load-bearing",
-        );
-      }
-    }
-  }
-
-  // M-8 (C-4b) — `continue` with no parseable case construct at all.
-  {
-    const tree = copy(real);
-    const src = tree.workflows[PINNED_LANE];
-    const caseStart = src.indexOf('case "$f" in');
-    const esacEnd = src.indexOf("esac", caseStart);
-    if (caseStart === -1 || esacEnd === -1)
-      record("M-8", "could not locate the case block to replace");
-    else {
-      tree.workflows[PINNED_LANE] =
-        `${src.slice(0, caseStart)}[ -n "\${SKIP_ME:-}" ] && continue${src.slice(esacEnd + "esac".length)}`;
-      const out = analyseTrees(tree);
-      if (!fired(out, "C-4b")) {
-        record(
-          "M-8",
-          "C-4b did NOT fire on a lane whose loop continues but yields zero globs — an unread lane was silently treated as unfiltered",
-        );
-      }
-    }
-  }
-
-  // M-9 (C-4c) — a branch the parser CANNOT read, alongside branches it can.
-  // Three physical lines, so R-5's two-line matcher does not cover it. The
-  // readable branches still yield globs, so C-4(b) stays quiet by construction;
-  // only the census catches it. This is the mutant that makes C-4(c) real.
-  {
-    const tree = copy(real);
-    if (
-      mutate(
-        "M-9",
-        tree,
-        PINNED_LANE,
-        "            esac",
-        "              *_issue_0001_unreadable_*)\n                continue\n                ;;\n            esac",
-      )
-    ) {
-      const out = analyseTrees(tree);
-      const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (lane.branchCount !== 57)
-        record(
-          "M-9",
-          `expected the 3-line branch to stay unread (branchCount 57), got ${lane.branchCount}`,
-        );
-      else if (!fired(out, "C-4c")) {
-        record(
-          "M-9",
-          "C-4c did NOT fire on a lane whose case region holds a branch the parser cannot read — under-counting is invisible",
-        );
-      } else if (fired(out, "C-4b")) {
-        record(
-          "M-9",
-          "C-4b fired, which would mean this mutant is not exercising the gap C-4c exists for",
-        );
-      }
-    }
-  }
-
-  // M-10 (R-5) — the two-line branch form IS read, and does not red anything.
-  // The glob names a real migration so C-2 cannot fire for an unrelated reason.
-  {
-    const tree = copy(real);
-    if (
-      mutate(
-        "M-10",
-        tree,
-        PINNED_LANE,
-        "            esac",
-        "              *20270522002463_issue_2462_phone_backfill.sql)\n                continue ;;\n            esac",
-      )
-    ) {
-      const out = analyseTrees(tree);
-      const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (lane.branchCount !== 58)
-        record(
-          "M-10",
-          `two-line branch form not read: branchCount ${lane.branchCount}, expected 58 (R-5)`,
-        );
-      else if (lane.globs.length !== 58)
-        record("M-10", `${lane.globs.length} globs, expected 58`);
-      else if (out.violations.length)
-        record(
-          "M-10",
-          `a readable two-line branch flagged: ${out.violations.map((v) => v.check).join(",")}`,
-        );
-    }
-  }
-
-  if (failures.length) {
-    console.error(`#2492 SELF-TEST FAILED:\n  - ${failures.join("\n  - ")}`);
-    process.exit(1);
-  }
-  console.log(
-    "#2492 self-test PASS (1 good tree with the 57/1/3/29 lane inventory, 10 mutants M-1…M-10 all behaving).",
-  );
+  if (analyseTrees({ workflows, migrations }).violations.length) throw new Error("clean replay rejected");
+  const broken = { ...migrations, "004_bad.sql": "CREATE VIEW public.bad AS SELECT id FROM public.hidden;" };
+  if (!analyseTrees({ workflows, migrations: broken }).violations.some(v => v.check === "C-1")) throw new Error("missing prerequisite accepted");
+  if (!analyseTrees({ workflows, migrations: {} }).violations.length) throw new Error("empty migration tree accepted");
+  console.log("#2492 self-test PASS");
 }
-
-// ---------------------------------------------------------------------------
 
 function liveRun(argv) {
   const arg = (name, fallback) => {

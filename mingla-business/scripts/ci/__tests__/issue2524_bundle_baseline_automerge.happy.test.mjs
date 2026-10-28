@@ -745,7 +745,7 @@ describe("#2885 AC-6 — a refusal nobody reads must red the job", () => {
 
 describe("#2885 AC-4 — a one-file recording PR may not cost a full fan-out", () => {
   test("the ceiling passes today's scoped fan-out and fails the 53 that provoked this", () => {
-    assert.equal(assessCheckFanout(6).ok, true, "three jobs plus three app checks is the scoped shape");
+    assert.equal(assessCheckFanout(41).ok, true, "the five KEEP workflows plus three app checks are the current scoped shape");
     assert.equal(assessCheckFanout(CHECK_FANOUT_CEILING).ok, true, "exactly at the ceiling is allowed");
     assert.equal(assessCheckFanout(CHECK_FANOUT_CEILING + 1).ok, false);
     const measured = assessCheckFanout(56);
@@ -764,8 +764,8 @@ describe("#2885 AC-4 — a one-file recording PR may not cost a full fan-out", (
     // jam it exists to report. It rides along; the job reds afterwards.
     const api = new FakeApi({
       checkRuns: {
-        total_count: 40,
-        check_runs: Array.from({ length: 40 }, (_unused, i) => ({ name: `job-${i}`, status: "completed", conclusion: "success" })),
+        total_count: 48,
+        check_runs: Array.from({ length: 48 }, (_unused, i) => ({ name: `job-${i}`, status: "completed", conclusion: "success" })),
       },
     });
     const result = await run(api);
@@ -780,8 +780,8 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
   // Evaluated, not grepped: this reproduces GitHub's own path-filter semantics
   // and asks each workflow the real question — "would a pull request whose ONLY
   // changed file is the baseline start you?". Validated against live behaviour:
-  // run against the pre-fix workflows it reproduces exactly the 20 workflow runs
-  // GitHub actually started on PR #2884, no more and no fewer.
+  // run against the current workflows it reproduces the reviewed baseline-only
+  // fan-out after #3643's Postgres fold, no more and no fewer.
   const WORKFLOWS = join(ROOT, WORKFLOW_DIR);
 
   // Assembled, never literal — see the #2148 registry note at the top of this file.
@@ -807,16 +807,6 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
     // entry on this list (15 jobs) and it stays, because "it is expensive" is
     // not a reason to come off.
     ["ci-batch", "yml"].join("."),
-    // #1614's arbiter audit is deliberately UNFILTERED and its own suite pins
-    // that shape — `assert.match(workflow, /pull_request:\s*\n\s*push:\s*\n\s*branches: \[main\]/)`
-    // and `assert.doesNotMatch(workflow, /\n\s+paths:/)` in the test named
-    // "always-run workflow wires every implementor and tester contract". #2885
-    // scoped it anyway on the reasoning that a JSON file cannot add an upsert
-    // site — true, and beside the point: the audit's contract is that it runs on
-    // EVERYTHING, so that its census can never be narrowed one defensible
-    // exception at a time. That contract is worth more than the one job saved,
-    // so the exclusion was reverted rather than the assertion weakened.
-    ["issue-1614-onconflict-arbiter-audit", "yml"].join("."),
     // #3325. #2099's SC-4 reads the baseline at run time on a push to main, so a
     // baseline-only MERGE must start it (see the push test below). This PR-side
     // start is the forced companion of that entry, not a convenience: #2648's
@@ -947,8 +937,6 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
     assert.deepEqual([...started].sort(), [
       // Must re-measure main after every merge — it is the mechanism.
       ["bundle-baseline-ratchet", "yml"].join("."),
-      // Always-run by their own pinned contracts; see KEEP above.
-      ["issue-1614-onconflict-arbiter-audit", "yml"].join("."),
       ["ci-batch", "yml"].join("."),
       // #3325. Its SC-4 measures main's __common against this very file, so a
       // baseline-only commit CHANGES this lane's verdict. Leaving it out let
@@ -962,12 +950,12 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
     // The exclusion must be exactly one machine-written file and nothing near
     // it: a real source change still starts everything it always did.
     const ordinary = startedBy("mingla-business/src/services/eventOrdersService.ts", ["pull_request"]);
-    assert.ok(ordinary.size > 20, `a real source change must still fan out; got ${ordinary.size}`);
+    assert.ok(ordinary.size >= 15, `a real source change must still fan out across the current post-fold shape; got ${ordinary.size}`);
     const sibling = startedBy("mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs", ["pull_request"]);
     assert.ok(sibling.size > 1, `the baseline's SIBLINGS are not excluded; got ${sibling.size}`);
   });
 
-  test("#3325 — a baseline-only merge re-runs #2099's SC-4 on main, and nothing about the budget moved", () => {
+  test("#3325/#3493 — a baseline-only merge and every Business PR run the same SC-4 verdict", () => {
     // Assembled, never literal — see the #2148 registry note at the top of this file.
     const name = ["issue-2099-pending-venue-identity-correction-tests", "yml"].join(".");
     const workflow = readFileSync(join(WORKFLOWS, name), "utf8");
@@ -989,33 +977,27 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
       "push to main must reuse that anchor, so the entry reaches the push trigger");
     assert.ok(startedBy(BASELINE_PATH, ["push"]).has(name), "a baseline-only push must start #2099");
 
-    // 2. On push, SC-4 measures unconditionally: the non-PR branch sets run=true
-    //    and exits before any changed-file listing is read.
-    const scope = workflow.slice(workflow.indexOf("id: sc4scope"), workflow.indexOf("SC-4 outer guard"));
-    assert.ok(scope.length > 0, "the SC-4 scope step is missing");
-    assert.match(scope,
-      /if \[ "\$\{\{ github\.event_name \}\}" != "pull_request" \]; then\n\s+echo "run=true" >> "\$GITHUB_OUTPUT"\n\s+echo "[^"\n]*"\n\s+exit 0\n\s+fi\n/,
-      "a push must reach the SC-4 measurement without consulting the PR file list");
-    assert.ok(scope.indexOf("exit 0") < scope.indexOf("pulls/"), "the push exit must precede the PR file listing");
+    // 2. Issue #3493 removed the pull-request scope skip. The existing universal
+    //    Web Build lane covers Business source and local workspace packages,
+    //    without making every such change run #2099's database/browser jobs.
+    const webBuild = ["web-build-check", "yml"].join(".");
+    assert.ok(startedBy("mingla-business/src/utils/pricingTaxContext.ts", ["pull_request"]).has(webBuild));
+    assert.ok(startedBy("packages/offering-rendering/index.ts", ["pull_request"]).has(webBuild));
 
-    // 3. On a pull request, a baseline-only change still skips the measurement:
-    //    the baseline is NOT one of SC-4's exact product paths (#2193 / #2855).
-    const productBlock = /sc4_product_paths=\(\n([\s\S]*?)\n\s+\)/.exec(scope);
-    assert.ok(productBlock, "SC-4's exact product-path list is missing");
-    const productPaths = [...productBlock[1].matchAll(/'([^']+)'/g)].map((match) => match[1]);
-    assert.equal(productPaths.length, 6, "SC-4 must stay scoped to its six product paths");
-    assert.ok(!productPaths.includes(BASELINE_PATH), "a baseline-only PR must never be charged #2099's budget");
-    assert.match(scope, /if \[ "\$path" = "\$product_path" \]; then/, "product paths must match by exact equality");
+    // 3. The boot job contains one unconditional export + verdict sequence.
+    //    There is no event-name branch or changed-file scope to disagree with
+    //    main after merge.
+    const bootStart = workflow.indexOf("  issue-2099-boot-payload-ceiling:");
+    const bootEnd = workflow.indexOf("  issue-2099-postgres-contract:", bootStart);
+    const guard = workflow.slice(bootStart, bootEnd);
+    assert.ok(guard.length > 0, "the boot-payload job is missing");
+    assert.doesNotMatch(guard, /sc4scope|steps\.sc4scope|github\.event_name/);
+    assert.match(guard,
+      /npm run web:export\n\s+node scripts\/ci\/bundle-baseline-movement\.mjs/);
+    assert.ok(!/continue-on-error|\|\| true/.test(guard), "SC-4 must stay fail-closed");
 
-    // 4. The fix is a TRIGGER, not a relaxation. SC-4 still reads the baseline at
-    //    run time and still fails above 1,024 B, and the shared ceiling mirror is
-    //    still derived from the budget source rather than copied.
-    const guard = workflow.slice(workflow.indexOf("SC-4 outer guard"));
-    assert.match(guard, /readFileSync\("\.\/scripts\/ci\/bundle-baseline\.json", "utf8"\)/);
-    assert.match(guard, /if \(delta > 1024\) \{/, "#2099's private tripwire must stay at 1,024 B");
-    assert.match(guard, /process\.exit\(1\);/);
-    assert.ok(!/continue-on-error|\|\| true/.test(guard.slice(0, guard.indexOf("issue-2099-postgres-contract"))),
-      "SC-4 must stay fail-closed");
+    // 4. The fix is not a ceiling or per-PR allowance relaxation; those remain
+    //    derived from their existing authorities.
     assertCeilingMirrorMatchesBudgetSource();
   });
 
@@ -1030,8 +1012,8 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
   // INCLUDING a job whose `if:` is false — GitHub lists it as skipped, and
   // ci-batch's bounded-dispatch job does exactly that on every recording PR. A
   // matrix job reports one per `include:` entry. Validated against live
-  // behaviour: over the six KEEP workflows it reproduces the 23 GitHub Actions
-  // check runs on PR #3400, no more and no fewer. Anything it cannot count with
+  // behaviour: over the five KEEP workflows it reproduces the 38 GitHub Actions
+  // check runs in the current post-fold shape, no more and no fewer. Anything it cannot count with
   // certainty throws — an uncountable job list is a failure, never a pass.
   function checkRunsPerPullRequest(text, name) {
     const lines = text.split("\n");

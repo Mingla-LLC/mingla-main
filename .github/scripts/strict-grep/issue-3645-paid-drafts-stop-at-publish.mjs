@@ -20,7 +20,7 @@
 // Usage:
 //   node .github/scripts/strict-grep/issue-3645-paid-drafts-stop-at-publish.mjs
 //   node .github/scripts/strict-grep/issue-3645-paid-drafts-stop-at-publish.mjs --self-test
-// [TEST-MOD-APPROVED #3645] The approved pricing preview says "You get per ticket".
+// [TEST-MOD-APPROVED #1318] The approved pricing preview says "You keep".
 
 import fs from "node:fs";
 import path from "node:path";
@@ -450,8 +450,8 @@ const RULES = [
     "{hasPrice && currency === null ? (",
     "{COST_PREVIEW_NEEDS_CURRENCY_COPY}",
     ") : hasPrice ? (",
-    "<Text style={styles.previewHead}>You get per ticket</Text>",
-  ], "with no currency the sentence replaces the Buyer pays / You get per ticket figures"),
+    "<Text style={styles.previewHead}>You keep</Text>",
+  ], "with no currency the sentence replaces the Buyer pays / You keep figures"),
   sliceLacks("Ed-no-bare-amount", F.costBox,
     "{hasPrice && currency === null ? (", ") : hasPrice ? (", "money(",
     "no amount is shown without a currency"),

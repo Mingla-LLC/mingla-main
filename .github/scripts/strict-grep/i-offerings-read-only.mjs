@@ -52,6 +52,10 @@ const READ_RPCS = [
   "admin_list_event_orders",
   "admin_list_event_rsvps",
   "admin_list_venue_reservations",
+  // #4130 (Wave 3): the Offerings page's KPI row and list (one state per row,
+  // sold / going, deleted and staff/test brands hidden). STABLE, read-only.
+  "admin_offerings_summary",
+  "admin_list_offerings_board",
 ];
 
 // (c) the READ-ONLY service + page files (paths relative to repo root).

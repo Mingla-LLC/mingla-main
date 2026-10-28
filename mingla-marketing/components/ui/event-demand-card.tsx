@@ -23,10 +23,13 @@
 // ---------------------------------------------------------------
 
 import { useEffect, useState } from 'react'
+import Image from 'next/image'
 import { motion, useReducedMotion } from 'framer-motion'
 import { CloudRain } from 'lucide-react'
 
 import { cn } from '@/lib/cn'
+import type { HostImage } from '@/lib/design-preview/host-imagery'
+import { useActiveInViewport } from '@/lib/use-active-in-viewport'
 import { DEFAULT_MARKET, DOOR_PRICE, detectMarket, type Market } from '@/lib/design-preview/market-price'
 
 /** Half-hour buckets, 7pm through 4am. A night that builds late. */
@@ -42,8 +45,19 @@ const PEAK_TO = 17
 
 const HOURS = ['7pm', '10pm', '1am', '4am'] as const
 
-export function EventDemandCard({ className }: { className?: string }) {
+export function EventDemandCard({
+  className,
+  ambient = false,
+  photo,
+}: {
+  className?: string
+  /** #4137: bars "breathe" while on screen. Off by default (/internal/charts). */
+  ambient?: boolean
+  /** #4137: an 84px thumbnail beside the price block. */
+  photo?: HostImage
+}) {
   const reduced = useReducedMotion()
+  const { ref, active } = useActiveInViewport<HTMLDivElement>()
 
   // Resolved after mount, not during render: the server has no time zone, and
   // reading one during render would make the markup differ from the client's
@@ -52,7 +66,11 @@ export function EventDemandCard({ className }: { className?: string }) {
   useEffect(() => setMarket(detectMarket()), [])
 
   return (
-    <div className={cn('flex h-full flex-col gap-3.5', className)}>
+    <div
+      ref={ref}
+      data-ambient={ambient && !reduced && active ? 'on' : 'off'}
+      className={cn('flex h-full flex-col gap-3.5', className)}
+    >
       {/* The weather read, which is a real Events feature and the reason the
           shape of the night moves. */}
       <motion.div
@@ -68,7 +86,19 @@ export function EventDemandCard({ className }: { className?: string }) {
         </span>
       </motion.div>
 
-      <div>
+      <div className="flex items-center gap-3">
+        {photo ? (
+          <Image
+            src={photo.file}
+            alt={photo.alt}
+            width={84}
+            height={84}
+            sizes="84px"
+            loading="lazy"
+            className="h-[84px] w-[84px] shrink-0 rounded-2xl object-cover"
+          />
+        ) : null}
+        <div>
         <p
           data-market={market}
           className="font-dashboard text-[2rem] font-bold leading-none tracking-tight text-white tabular-nums"
@@ -78,6 +108,7 @@ export function EventDemandCard({ className }: { className?: string }) {
         <p className="mt-1.5 font-dashboard text-[0.8125rem] text-white/55">
           Suggested door price · peaks 10pm–1am
         </p>
+        </div>
       </div>
 
       {/* The graph. Bars rise from the floor, staggered, so the curve draws
@@ -96,17 +127,14 @@ export function EventDemandCard({ className }: { className?: string }) {
         >
           {DEMAND.map((height, i) => {
             const peak = i >= PEAK_FROM && i <= PEAK_TO
+            // #4137: the outer span carries the entrance; the inner one carries
+            // the ambient "breathe", so the two transforms never fight.
             return (
               <motion.span
                 key={i}
                 aria-hidden="true"
-                className={cn('flex-1 rounded-t-[3px]', peak ? '' : 'bg-white/[0.16]')}
-                style={{
-                  height: `${height * 100}%`,
-                  ...(peak
-                    ? { background: 'linear-gradient(180deg, #f0842f 0%, #dd6a16 100%)' }
-                    : null),
-                }}
+                className="flex flex-1"
+                style={{ height: `${height * 100}%` }}
                 variants={{
                   hidden: { y: '100%', opacity: 0 },
                   visible: {
@@ -115,7 +143,12 @@ export function EventDemandCard({ className }: { className?: string }) {
                     transition: { type: 'spring', stiffness: 120, damping: 14 },
                   },
                 }}
-              />
+              >
+                <span
+                  className={cn('cut-amb-bar flex-1 rounded-t-[3px]', peak ? '' : 'bg-white/[0.16]')}
+                  style={peak ? { background: 'linear-gradient(180deg, #f0842f 0%, #dd6a16 100%)' } : undefined}
+                />
+              </motion.span>
             )
           })}
         </motion.div>

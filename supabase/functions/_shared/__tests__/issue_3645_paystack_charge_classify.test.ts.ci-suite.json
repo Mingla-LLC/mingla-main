@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3645_paystack_charge_classify.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3645-pi-12-paystack-charge-classify",
+  "profile": "deno-1.46-stripe"
+}

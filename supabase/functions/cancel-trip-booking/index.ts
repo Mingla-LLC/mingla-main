@@ -698,8 +698,10 @@ serve(async (req: Request): Promise<Response> => {
         const { error: attemptError } = await supabase.rpc(
           "record_paystack_refund_outcome",
           {
-            p_source_type: "order",
-            p_source_id: orderId,
+            p_source_type: entry.installment_id === null
+              ? "order"
+              : "order_installment",
+            p_source_id: entry.installment_id ?? orderId,
             p_local_refund_id: refundId,
             p_transaction_reference: transaction,
             p_merchant_note: merchantNote,
@@ -722,8 +724,10 @@ serve(async (req: Request): Promise<Response> => {
         await persistPaystackRefundOutcome(
           () =>
             supabase.rpc("record_paystack_refund_outcome", {
-              p_source_type: "order",
-              p_source_id: orderId,
+              p_source_type: entry.installment_id === null
+                ? "order"
+                : "order_installment",
+              p_source_id: entry.installment_id ?? orderId,
               p_local_refund_id: refundId,
               p_transaction_reference: transaction,
               p_merchant_note: merchantNote,
@@ -733,6 +737,21 @@ serve(async (req: Request): Promise<Response> => {
             }),
           "cancel-trip-booking",
         );
+        if (entry.installment_id !== null) {
+          const { error: markError } = await supabase.rpc(
+            "issue_3645_mark_installment_refunded",
+            {
+              p_installment_id: entry.installment_id,
+              p_refund_id: refundId,
+              p_amount_cents: entry.refund_cents,
+            },
+          );
+          if (markError !== null) {
+            throw new Error(
+              `installment_refund_mark_failed: ${markError.message}`,
+            );
+          }
+        }
         stripeRefundIds.push(created.id);
         refundLineRowsToInsert.push({
           refund_id: refundId,
@@ -813,6 +832,21 @@ serve(async (req: Request): Promise<Response> => {
         break;
       }
       stripeRefundIds.push(result.id);
+      if (entry.installment_id !== null) {
+        const { error: markError } = await supabase.rpc(
+          "issue_3645_mark_installment_refunded",
+          {
+            p_installment_id: entry.installment_id,
+            p_refund_id: refundId,
+            p_amount_cents: entry.refund_cents,
+          },
+        );
+        if (markError !== null) {
+          throw new Error(
+            `installment_refund_mark_failed: ${markError.message}`,
+          );
+        }
+      }
       refundLineRowsToInsert.push({
         refund_id: refundId,
         order_line_item_id: primaryLineItem.id,

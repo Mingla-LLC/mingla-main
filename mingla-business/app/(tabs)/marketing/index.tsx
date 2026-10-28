@@ -1,10 +1,13 @@
 /**
  * Marketing → Overview (ORCH-0863 Phase B).
  *
- * #3872 round 2: opens with all promotion for a listing (picker, one strip,
- * Campaigns / Ads / Creators / Referrals rows — BlastPromotionOverview),
- * then the campaign delivery funnel + up to 3 recent campaigns + FAB.
- * `listingKind` / `listingId` route params preselect a listing.
+ * #3872: opens with promotion for the whole brand or one listing (scope
+ * picker, one strip, Campaigns / Ads / Creators / Referrals —
+ * BlastPromotionOverview), then the campaign delivery funnel + up to 3
+ * recent campaigns + FAB. `listingKind` / `listingId` route params preselect
+ * a listing. On wide desktop the promotion block lays itself out (capped at
+ * 1120, left-aligned on the canvas, compact bezel kept); this route only
+ * keeps it left-aligned.
  *
  * Constitution #9 enforced via strict-grep gate
  * `orch-0863-marketing-hub-phase-b.mjs` (no currency-symbol literal, no
@@ -86,6 +89,7 @@ export default function MarketingOverviewRoute(): React.ReactElement {
       <Suspense fallback={null}>
         <BlastPromotionOverview
           brandId={currentBrand.id}
+          brandName={currentBrand.displayName}
           initialListing={initialListing}
           onNewCampaign={handleNewCampaign}
         />

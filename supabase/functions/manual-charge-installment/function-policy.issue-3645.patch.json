@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#3645",
+  "target": {
+    "kind": "function",
+    "name": "manual-charge-installment"
+  },
+  "basePolicySha256": "831559060d159561c6cff06d1dde87196ec0d1fc9703d0964d55d07cf3ebac5f",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "required_top_level",
+      "name": "RESEND_API_KEY",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "required_top_level",
+      "name": "SENTRY_DSN",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "required_top_level",
+      "name": "SENTRY_ENVIRONMENT",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "bd432723a48cad22839c2ff44025189544e543dadba2cb1fcdb168ef59e4cf8e",
+  "reason": "Issue #3645 routes manual installment outcomes through the shared organiser notification and structured-error helpers, so the existing notification and monitoring secrets are explicit deployment requirements."
+}

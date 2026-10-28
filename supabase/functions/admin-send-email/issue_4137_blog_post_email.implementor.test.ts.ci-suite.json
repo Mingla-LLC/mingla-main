@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/admin-send-email/issue_4137_blog_post_email.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4137-06-email-blog-send",
+  "profile": "deno-1.46-stripe"
+}

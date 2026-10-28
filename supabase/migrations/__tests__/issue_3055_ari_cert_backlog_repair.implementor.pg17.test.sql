@@ -45,6 +45,8 @@
 -- [TEST-MOD-APPROVED #3872] Tip census is now 20271229003872 (145→152). B2 re-applies
 -- only the convergent R2-R3 census (no-op on tip). The (A) repair path applies
 -- #3055, #1982, #1984, #3697, #3872 R1, then the R2-R3 census so it converges on (B).
+-- #2829 W9b: tip census is now 20280119132829_issue_2829_ari_cert_capability_census.sql
+-- (152→164), applied after #3872's R2-R3 census; B2/A2 re-apply only the tip.
 -- [TEST-MOD-APPROVED #1982] Tip census was 20270704001982 (137→138). B2 re-applies
 -- only #1982 (no-op on tip). The (A) repair path applies #3055 then #1982 so it converges on (B).
 -- =====================================================================================
@@ -297,7 +299,21 @@ BEGIN
     'ari.referrals.list',
     'ari.referrals.create',
     'ari.referrals.invite_promoters',
-    'ari.creators.draft_gig_script');
+    'ari.creators.draft_gig_script',
+
+    -- #2829 W9b website designer tip census only; absent in production
+    'ari.sites.read_plan',
+    'ari.sites.list_designs',
+    'ari.sites.read_block_catalog',
+    'ari.sites.read_tokens',
+    'ari.sites.run_design_checks',
+    'ari.sites.save_plan_answers',
+    'ari.sites.create_draft',
+    'ari.sites.propose_variant',
+    'ari.sites.propose_copy',
+    'ari.sites.propose_collection_entry',
+    'ari.sites.confirm_review',
+    'ari.sites.propose_trip_guide');
   INSERT INTO public.ari_cert_capability_requirements (capability_id, evidence_mode)
   VALUES ('ari.guests.set_approval', 'write');
   UPDATE public.ari_cert_capability_requirements
@@ -333,20 +349,20 @@ BEGIN
 END;
 $b1$;
 
--- Tip census after #3872. Re-applying an older census on this tip would rewrite
--- finalize back and abort against fewer rows; B2 therefore proves the tip file
--- is the no-op.
--- [TEST-MOD-APPROVED #3872]
-\ir ../20271229003872_issue_3872_ari_cert_capability_census.sql
+-- Tip census after #2829 W9b (152 -> 164), applied on top of #3872's R2-R3
+-- census. Re-applying an older census on this tip would rewrite finalize back
+-- and abort against 164 rows; B2 therefore proves the tip file is the no-op.
+-- [TEST-MOD-APPROVED #3872] #2829 W9b: the tip census moved to 20280119132829_issue_2829_ari_cert_capability_census.sql.
+\ir ../20280119132829_issue_2829_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('B+repair');
-\ir ../20271229003872_issue_3872_ari_cert_capability_census.sql
+\ir ../20280119132829_issue_2829_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('B+repair+repair');
 
 DO $b2$
 BEGIN
   PERFORM pg_temp.issue_3055_assert_same('T-3055-B2 repair is not a no-op on the chain', 'B', 'B+repair');
   PERFORM pg_temp.issue_3055_assert_same('T-3055-B2 second repair on the chain changed state', 'B+repair', 'B+repair+repair');
-  RAISE NOTICE 'T-3055-B2 PASS: tip census #3872 applied twice to (B) changed nothing';
+  RAISE NOTICE 'T-3055-B2 PASS: tip census #2829 W9b applied twice to (B) changed nothing';
 END;
 $b2$;
 
@@ -436,11 +452,12 @@ ROLLBACK;
 \ir ../20270824003697_issue_3697_ari_cert_capability_census.sql
 \ir ../20271216043872_issue_3872_r1_host_operations.sql
 \ir ../20271229003872_issue_3872_ari_cert_capability_census.sql
+\ir ../20280119132829_issue_2829_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('A+repair');
--- Second pass is tip-only: re-applying older censuses on the post-#3872 tip
--- would rewrite finalize and abort against fewer rows (same constraint as B2).
--- [TEST-MOD-APPROVED #3872]
-\ir ../20271229003872_issue_3872_ari_cert_capability_census.sql
+-- Second pass is tip-only: re-applying older censuses on the post-#2829 W9b tip
+-- would rewrite finalize and abort against 164 rows (same constraint as B2).
+-- [TEST-MOD-APPROVED #3872] #2829 W9b: tip census moved.
+\ir ../20280119132829_issue_2829_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('A+repair+repair');
 
 DO $a2$
@@ -466,7 +483,7 @@ BEGIN
   RAISE NOTICE 'T-3055-A2 PASS: (A)+repair is identical to (B) on rows, digest, functions, trigger and every ari_cert_* catalog object';
 
   PERFORM pg_temp.issue_3055_assert_same('T-3055-A3 second repair on (A) changed state', 'A+repair', 'A+repair+repair');
-  RAISE NOTICE 'T-3055-A3 PASS: tip census #3872 applied again to (A) changed nothing';
+  RAISE NOTICE 'T-3055-A3 PASS: tip census #2829 W9b applied again to (A) changed nothing';
 
   v_rows := pg_temp.issue_3055_assert_ledger_agreement('T-3055-A4');
   RAISE NOTICE 'T-3055-A4 PASS: repaired set holds % requirement rows, id-for-id equal to the ledger', v_rows;

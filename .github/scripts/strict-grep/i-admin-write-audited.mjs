@@ -75,6 +75,10 @@ const ADMIN_WRITE_RPCS = [
   // admin_write_audit with a before/after metadata object (brand.payouts_pause /
   // brand.payouts_resume). Reverting 20270728003645 removes it → FAILS.
   "admin_set_brand_payouts_paused",
+  // ISSUE-4130 Wave 2a: mark "Mingla owes back" settled with a reference.
+  // Calls admin_write_audit (payout.owes_back_settle). Reverting
+  // 20280111004130 removes it → FAILS.
+  "admin_settle_owes_back",
 ];
 
 // Slice a plpgsql function body (between the first `$$` pair after its def).
@@ -203,7 +207,15 @@ if (process.argv.includes("--self-test")) {
     "raise exception 'not_authorized'; end if; " +
     "perform public.admin_write_audit('brand.payouts_pause','brand',p_brand_id::text,'r',jsonb_build_object('k','v')); " +
     "return '{}'::jsonb; end; $$;\n";
-  const registered = identity1276 + money1278 + offerings1277 + venueDetailsChange3386 + payoutPause3645;
+  // ISSUE-4130 Wave 2a: the audited owes-back settlement — registered above.
+  const owesBack4130 =
+    "create or replace function public.admin_settle_owes_back(p_currency text) returns jsonb " +
+    "language plpgsql security definer as $$ begin if not public.is_admin_user() then " +
+    "raise exception 'not_authorized'; end if; " +
+    "perform public.admin_write_audit('payout.owes_back_settle','payout_ledger_adjustment',p_currency,'r','{}'::jsonb); " +
+    "return '{}'::jsonb; end; $$;\n";
+  const registered = identity1276 + money1278 + offerings1277 + venueDetailsChange3386 + payoutPause3645 +
+    owesBack4130;
 
   // GOOD.
   let f = [];

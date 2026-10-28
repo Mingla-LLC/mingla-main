@@ -129,7 +129,8 @@ describe("brand_promotion_overview mapping", () => {
   it("words the strip and rows without raw values", () => {
     const overview = mapPromotionOverview(sample);
     expect(promotionStrip(overview)).toEqual([
-      { value: "$0", label: "Sold via promotion" },
+      // #3872 polish: a zero reads quiet.
+      { value: "$0", label: "Sold via promotion", tone: "muted" },
       { value: "12", label: "Link clicks" },
       { value: "$345", label: "Spent" },
     ]);

@@ -21,6 +21,9 @@ vi.mock("./config", () => ({
   }),
 }));
 
+// #2829 W11 (A11) — removal also asks Core which publications it protects;
+// none here, so only the draft decides.
+vi.mock("./gateway", () => ({ readCoreRetentionProjection: async () => ({ protected_artifact_keys: [] }) }));
 vi.mock("./objectStore", () => ({
   deleteObject: async (bucket: string, key: string) => {
     storage.deletes.push(`${bucket}:${key}`);
@@ -113,6 +116,10 @@ function requestFor(
     find: async (input: { collection: string }) => {
       if (input.collection === "pages") return { docs: [] };
       if (input.collection === "site-settings") return { docs: [] };
+      // #2829 W6 — navigation and footer are media holders too.
+      if (input.collection === "navigation" || input.collection === "footer") return { docs: [] };
+      // #2829 W5 — the content collections are part of the reference scan.
+      if (["destinations", "stories", "categories", "testimonials"].includes(input.collection)) return { docs: [] };
       throw new Error("UNEXPECTED_COLLECTION");
     },
     update: async (input: Record<string, unknown>) => {
@@ -218,8 +225,11 @@ describe("#2893 deterministic media recovery", () => {
       quarantine_key: quarantineKey,
     });
     expect(updates.some((data) => data.rendition_manifest)).toBe(true);
+    // Master + five widths + #2829 W7b's three named renditions (c400, c768,
+    // w1600): every approved output written is removed again.
     expect(storage.deletes.filter((identity) =>
-      identity.startsWith("approved-bucket:"))).toHaveLength(6);
+      identity.startsWith("approved-bucket:"))).toHaveLength(9);
+    expect(storage.deletes.filter((identity) => /\/(c400|c768|w1600)\.webp$/.test(identity))).toHaveLength(3);
   });
 
   it("copies and verifies every approved object before the READY row becomes TOMBSTONED", async () => {

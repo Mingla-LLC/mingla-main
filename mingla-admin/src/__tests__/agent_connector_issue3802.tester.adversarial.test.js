@@ -39,7 +39,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { listLane } from "../../../.github/scripts/ci-discovery/load-plan.mjs";
 import { AREA, PAGE_AREA_OVERRIDES, canOpenPage, homePageFor, resolveRoute, visibleNavGroups } from "../lib/access.js";
-import { NAV_GROUPS } from "../lib/constants.js";
+import { HEADER_PAGE_ITEMS, NAV_GROUPS } from "../lib/constants.js";
 import {
   AGENTS,
   KEY_PLACEHOLDER,
@@ -301,16 +301,11 @@ describe("#3802 TG-3: who may open My agent, for every combination of areas", ()
           const groups = visibleNavGroups(NAV_GROUPS, who);
           // [TEST-MOD-APPROVED ISSUE-3802] was: a "Help" group is shown only with
           // the page and holds only it. My agent is now the last item of System.
+          // #4130: My agent left the menu for the header's profile menu, which
+          // offers it exactly when the page may be opened (canOpenPage).
           const holders = groups.filter((g) => g.items.some((i) => i.id === "agent"));
-          assert.equal(holders.length, may ? 1 : 0, `${role}/${status}/${areas.join("+")}: My agent is in the menu only with the page`);
-          if (may) {
-            assert.equal(groups.at(-1).label, "System");
-            assert.equal(holders[0], groups.at(-1));
-            assert.equal(holders[0].items.at(-2).id, "agent");
-            assert.equal(holders[0].items.at(-1).id, "guide");
-          }
+          assert.equal(holders.length, 0, `${role}/${status}/${areas.join("+")}: My agent is not a menu entry`);
           assert.equal(groups.some((g) => g.items.length === 0), false, "no empty group is ever shown");
-          assert.equal(groups.flatMap((g) => g.items).filter((i) => i.id === "agent").length, may ? 1 : 0);
           combos += 1;
         }
       }
@@ -324,15 +319,18 @@ describe("#3802 TG-3: who may open My agent, for every combination of areas", ()
       assert.deepEqual(visibleNavGroups(NAV_GROUPS, nobody), [], JSON.stringify(nobody));
     }
   });
-  it("My agent is in the one menu list once, immediately before Guide in System", () => {
+  it("My agent is in the header once, and in no menu group (#4130)", () => {
     // [TEST-MOD-APPROVED ISSUE-3802] was: a "Help" group, last, after "Team".
     const labels = NAV_GROUPS.map((g) => g.label);
     assert.equal(labels.filter((l) => l === "System").length, 1);
     assert.equal(labels.at(-1), "System");
     assert.equal(labels.includes("Help"), false);
-    assert.deepEqual(NAV_GROUPS.at(-1).items.at(-2), { id: "agent", label: "My agent", icon: "Bot" });
-    assert.deepEqual(NAV_GROUPS.at(-1).items.at(-1), { id: "guide", label: "Guide", icon: "BookOpen" });
-    assert.equal(NAV_GROUPS.slice(0, -1).some((g) => g.items.some((i) => i.id === "agent")), false);
+    // #4130: My agent and Guide moved to the header (profile menu, ? help);
+    // they are listed once, in HEADER_PAGE_ITEMS, and in no menu group.
+    assert.deepEqual(HEADER_PAGE_ITEMS, [{ id: "agent", label: "My agent" }, { id: "guide", label: "Guide" }]);
+    assert.equal(NAV_GROUPS.some((g) => g.items.some((i) => i.id === "agent" || i.id === "guide")), false);
+    const HEADER_SRC = stripComments(read("components/layout/Header.jsx"));
+    assert.ok(HEADER_SRC.includes('canOpenPage(access, "agent")') && HEADER_SRC.includes('openPage("agent")'));
     const CONSTANTS = stripComments(read("lib/constants.js"));
     assert.equal(/TEAM_AGENT_NAV_ITEMS|teamNavGroups|teamAgentTitle/.test(CONSTANTS), false, "no second list of menu items exists beside the one list");
     for (const file of ["components/layout/Sidebar.jsx", "components/CommandPalette.jsx", "components/layout/AppShell.jsx", "App.jsx"]) {

@@ -10,7 +10,8 @@ Deno.test("#3720 Admin gives scoped Support staff the Brand groups tab", () => {
   const access = read("lib/communitySupportAccess.js");
   const page = read("pages/CommunitySupportPage.jsx");
   assertStringIncludes(access, 'allowed.add("brand-groups")');
-  assertStringIncludes(page, '{ id: "brand-groups", label: "Brand groups" }');
+  // #4130 Wave 6: the tab lists live in lib/supportCommunityTabs.js.
+  assertStringIncludes(read("lib/supportCommunityTabs.js"), '{ id: "brand-groups", label: "Brand groups" }');
   assertStringIncludes(page, '<BrandGroupsPanel />');
 });
 

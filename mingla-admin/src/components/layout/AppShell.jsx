@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
-import { NAV_ITEMS } from "../../lib/constants";
+import { HEADER_PAGE_ITEMS, NAV_ITEMS } from "../../lib/constants";
 import { useAuth } from "../../context/AuthContext";
 import { pageTitle } from "../../lib/access";
 import { DraftCountProvider, useDraftCounts } from "../../hooks/useDraftCounts";
@@ -29,7 +29,9 @@ export function AppShell({ activeTab, onTabChange, onOpenSearch, children }) {
     setMobileMenuOpen(true);
   }, []);
 
-  const currentTitle = pageTitle(activeTab, access, NAV_ITEMS);
+  // #4130 Wave 6: every page lights its own menu entry (Support and
+  // Community are real pages now, so no page stands in for another).
+  const currentTitle = pageTitle(activeTab, access, [...NAV_ITEMS, ...HEADER_PAGE_ITEMS]);
 
   return (
     <DraftCountProvider value={draftCounts}>

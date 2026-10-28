@@ -132,6 +132,7 @@ export function parseFeatureGuide(body) {
  * consumers from each project's package.json, tsconfig paths and imports.
  */
 export const PACKAGE_CONSUMERS = {
+  "blog-document": ["mingla-admin", "mingla-marketing"],
   "brand-assets": ["mingla-admin", "mingla-business"],
   "brand-rendering": ["mingla-business"],
   "card-identity": ["mingla-business"],
@@ -143,6 +144,9 @@ export const PACKAGE_CONSUMERS = {
   "scripts": [],
   "search-measurement": ["mingla-business", "mingla-marketing"],
   "sharing": ["mingla-business"],
+  // #2829 — the Sites contracts: mingla-business imports them by relative path;
+  // the runtime and Studio carry checked-in generated copies (site-contracts sync).
+  "site-contracts": ["mingla-business"],
   "theme-animations": ["mingla-business"],
   "video-upload": ["mingla-admin", "mingla-business"],
 };

@@ -23,6 +23,7 @@
 import { motion, useReducedMotion } from 'framer-motion'
 
 import { cn } from '@/lib/cn'
+import { useActiveInViewport } from '@/lib/use-active-in-viewport'
 
 interface Series {
   key: string
@@ -88,12 +89,26 @@ function bandPath(index: number): string {
 
 const PATHS = SERIES.map((_, i) => bandPath(i))
 const WITHOUT_Y = y(WITHOUT)
+/** #4137: the top series' upper edge, drawn as a white line in ambient mode. */
+const TOP_EDGE = `M${Array.from({ length: POINTS }, (_, i) => `${x(i)},${y(sumTo(i, SERIES.length))}`).join(' L')}`
 
-export function ReachMixCard({ className }: { className?: string }) {
+export function ReachMixCard({
+  className,
+  ambient = false,
+}: {
+  className?: string
+  /** #4137: the top edge "draws" on a loop while on screen. Off by default. */
+  ambient?: boolean
+}) {
   const reduced = useReducedMotion()
+  const { ref, active } = useActiveInViewport<HTMLDivElement>()
 
   return (
-    <div className={cn('flex h-full flex-col gap-3', className)}>
+    <div
+      ref={ref}
+      data-ambient={ambient && !reduced && active ? 'on' : 'off'}
+      className={cn('flex h-full flex-col gap-3', className)}
+    >
       <ul className="grid grid-cols-2 gap-x-4 gap-y-2 lg:grid-cols-4">
         {SERIES.map((s) => (
           <li key={s.key} className="flex items-start gap-2">
@@ -152,6 +167,17 @@ export function ReachMixCard({ className }: { className?: string }) {
               fill="none"
               vectorEffect="non-scaling-stroke"
             />
+            {ambient ? (
+              <path
+                className="cut-amb-draw"
+                d={TOP_EDGE}
+                stroke="#fff"
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                fill="none"
+                vectorEffect="non-scaling-stroke"
+              />
+            ) : null}
           </svg>
         </motion.div>
 

@@ -3,6 +3,7 @@
 import { escapeHtml } from "./escape.ts";
 import { SHELL_TOKENS } from "./shell.ts";
 import type { EmailContentBlock, GenericBodyInput } from "./types.ts";
+import { renderBlogPostBlockText } from "./blogPostBlock.ts";
 
 // ORCH-1329 — genericBody's only orange is the CTA button fill (white label),
 // so it uses the AA-safe BRAND_ORANGE_BUTTON (#C4471A), not decorative
@@ -121,6 +122,68 @@ function renderDocumentBlock(
           : image
       }</div>`,
       text: `${alt}${link ? `: ${link}` : ""}`,
+    };
+  }
+  if (block.type === "blog_post_resolved") {
+    const url = safeHttpsUrl(block.url);
+    const cover = block.coverUrl ? safeHttpsUrl(block.coverUrl) : null;
+    if (!url) return { html: "", text: "" };
+    const title = escapeHtml(block.title);
+    const summary = escapeHtml(block.summary);
+    const button = escapeHtml(block.buttonText);
+    const eyebrow = `${
+      escapeHtml(block.categoryLabel.toUpperCase())
+    } · ${block.readMinutes} MIN READ`;
+    const titleLink = `<a href="${
+      escapeHtml(url)
+    }" style="color:${BRAND_INK};text-decoration:none;font-weight:800;">${title}</a>`;
+    if (block.style === "link") {
+      return {
+        html:
+          `<p style="margin:16px 0;font-size:15px;line-height:1.6;color:${BRAND_INK};">${titleLink} · <a href="${
+            escapeHtml(url)
+          }" style="color:${BRAND_ORANGE_BUTTON};font-weight:700;">${button}</a></p>`,
+        text: renderBlogPostBlockText(block),
+      };
+    }
+    if (block.style === "row") {
+      const image = cover
+        ? `<td width="112" valign="top" style="padding-right:16px;"><img src="${
+          escapeHtml(cover)
+        }" width="96" height="72" alt="${
+          escapeHtml(block.coverAlt)
+        }" style="display:block;width:96px;height:72px;object-fit:cover;border-radius:10px;"></td>`
+        : "";
+      return {
+        html:
+          `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:18px 0;border:1px solid #E6E0D9;border-radius:12px;"><tr><td style="padding:14px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>${image}<td valign="top"><div style="font-size:11px;font-weight:700;color:#A8450E;text-transform:uppercase;">${eyebrow}</div><div style="margin-top:5px;font-size:17px;line-height:1.3;">${titleLink}</div><a href="${
+            escapeHtml(url)
+          }" style="display:inline-block;margin-top:8px;color:${BRAND_ORANGE_BUTTON};font-size:13px;font-weight:700;text-decoration:none;">${button} →</a></td></tr></table></td></tr></table>`,
+        text: renderBlogPostBlockText(block),
+      };
+    }
+    const image = cover
+      ? `<img src="${escapeHtml(cover)}" width="560" alt="${
+        escapeHtml(block.coverAlt)
+      }" style="display:block;width:100%;max-width:560px;height:auto;border:0;border-radius:12px 12px 0 0;">`
+      : "";
+    return {
+      html:
+        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;border:1px solid #E6E0D9;border-radius:16px;overflow:hidden;"><tr><td>${image}<div style="padding:20px;"><div style="font-size:12px;font-weight:700;color:#A8450E;text-transform:uppercase;">${eyebrow}</div><div style="margin-top:8px;font-size:20px;line-height:1.3;">${titleLink}</div>${
+          summary
+            ? `<p style="margin:9px 0 0;font-size:15px;line-height:1.55;color:${BRAND_MUTED};">${summary}</p>`
+            : ""
+        }<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;"><tr><td style="background:${BRAND_ORANGE_BUTTON};border-radius:999px;"><a href="${
+          escapeHtml(url)
+        }" style="display:inline-block;padding:11px 18px;color:#FFFFFF;font-size:14px;font-weight:700;text-decoration:none;">${button}</a></td></tr></table></div></td></tr></table>`,
+      text: renderBlogPostBlockText(block),
+    };
+  }
+  if (block.type === "blog_post") {
+    return {
+      html:
+        `<div style="margin:16px 0;padding:14px;border:1px solid #E6E0D9;border-radius:12px;color:${BRAND_MUTED};">This blog post isn't published, so it won't be sent.</div>`,
+      text: "This blog post isn't published, so it won't be sent.",
     };
   }
   const sanitized = sanitizeAdminRichText(block.html);

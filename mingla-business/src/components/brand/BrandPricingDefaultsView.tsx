@@ -42,7 +42,8 @@ import {
   type BrandPricingDefaults,
   type PricingSwitchOverrides,
 } from "../../services/pricingSwitchesService";
-import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
+import { WhoCoversCostsSection } from "../pricing/LazyWhoCoversCostsSection";
+import { usesConfiguredVat } from "../../utils/pricingTaxContext";
 
 const EXAMPLE_ORDER_CENTS = 10000; // £100 illustrative order
 
@@ -85,7 +86,10 @@ export const BrandPricingDefaultsView: React.FC<
       };
       setDefaults(resolved);
       setSaveError(null);
-      void setBrandPricingDefaults(brandId, resolved)
+      void setBrandPricingDefaults(brandId, resolved, {
+        paymentProvider: brand?.paymentProvider,
+        paymentCountry: brand?.paymentCountry,
+      })
         .then((saved) => {
           setDefaults(saved);
           void rqClient.invalidateQueries({
@@ -104,7 +108,14 @@ export const BrandPricingDefaultsView: React.FC<
           );
         });
     },
-    [brandId, canEdit, defaults, rqClient],
+    [
+      brand?.paymentCountry,
+      brand?.paymentProvider,
+      brandId,
+      canEdit,
+      defaults,
+      rqClient,
+    ],
   );
 
   if (brand === null || defaults === null) {
@@ -124,6 +135,7 @@ export const BrandPricingDefaultsView: React.FC<
     displayCurrency !== null
       ? formatCurrencyRound(EXAMPLE_ORDER_CENTS, displayCurrency, true)
       : String(Math.round(EXAMPLE_ORDER_CENTS / 100));
+  const configuredVat = usesConfiguredVat(brand);
 
   return (
     <ScrollView
@@ -146,11 +158,13 @@ export const BrandPricingDefaultsView: React.FC<
         previewBaseCents={EXAMPLE_ORDER_CENTS}
         currency={displayCurrency}
         effectiveTakeRateBps={brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS}
+        paymentProvider={brand.paymentProvider}
+        paymentCountry={brand.paymentCountry}
         vatRegistered={taxRegistration.data?.hasActiveRegistration === true}
         onSetupVat={() => router.push(`/brand/${brandId}/payments` as never)}
-        disabled={!canEdit || taxRegistration.isLoading}
+        disabled={!canEdit || (!configuredVat && taxRegistration.isLoading)}
         disabledReason={
-          role.isLoading || taxRegistration.isLoading
+          role.isLoading || (!configuredVat && taxRegistration.isLoading)
             ? "Checking your access and tax registration…"
             : role.isError
               ? "We couldn't verify your role. Refresh and try again."
@@ -159,7 +173,9 @@ export const BrandPricingDefaultsView: React.FC<
         footerOverride={
           <View style={styles.regionChip}>
             <Text style={styles.regionText}>
-              {`Example on a ${exampleOrder} order · VAT inclusive`}
+              {configuredVat
+                ? `Example on a ${exampleOrder} order · 7.5% VAT is added only when selected`
+                : `Example on a ${exampleOrder} order · VAT inclusive`}
             </Text>
           </View>
         }

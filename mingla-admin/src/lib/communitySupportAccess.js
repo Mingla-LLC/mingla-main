@@ -22,13 +22,14 @@ export function communitySupportCapabilities(access) {
   };
 }
 
+// #4130 Wave 6: the Support and Community pages both filter their tabs here;
+// a page opens on the first tab this leaves (lib/supportCommunityTabs.js).
 export function communitySupportTabsForAccess(access, tabs) {
   const { isAdmin, canSupport, canCommunity } = communitySupportCapabilities(access);
   if (isAdmin) return tabs;
 
   const allowed = new Set();
   if (canCommunity) {
-    allowed.add("overview");
     allowed.add("ideas");
     allowed.add("questions");
     allowed.add("moderation");
@@ -38,18 +39,9 @@ export function communitySupportTabsForAccess(access, tabs) {
   }
   if (canSupport) {
     allowed.add("support");
+    allowed.add("blog");
     allowed.add("feature-guide");
     allowed.add("brand-groups");
-    // Kept for old deep-link permission checks. The console no longer renders
-    // an Availability tab; presence lives in the page header.
-    allowed.add("availability");
   }
   return tabs.filter((tab) => allowed.has(tab.id));
-}
-
-export function defaultCommunitySupportTab(access) {
-  const { isAdmin, canSupport, canCommunity } = communitySupportCapabilities(access);
-  if (isAdmin || canCommunity) return "overview";
-  if (canSupport) return "support";
-  return null;
 }

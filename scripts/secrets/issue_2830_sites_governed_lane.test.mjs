@@ -5,6 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadEffectiveFunctionPolicy } from "../../.github/scripts/ci-discovery/function-policy.mjs";
+import { runGovernedBundleDeployment } from "./reconcile-governed-secrets.mjs";
+import {
+  BundleSetterError,
+  loadManifest,
+  prepareGovernedBundle,
+} from "./set-governed-secret-bundle.mjs";
 
 /**
  * #2830 — EVERY governed bundle must have a way to supply it.
@@ -28,6 +34,41 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 const contract = loadEffectiveFunctionPolicy().contract;
 const deployScript = read("scripts/deploy-supabase-functions.sh");
 const coordinator = read("scripts/secrets/reconcile-governed-secrets.mjs");
+const PROJECT_REF = "gqnoajqerqhnvulmnyvv";
+const MERGED_COMMIT = "a".repeat(40);
+
+function sitesInput() {
+  const manifest = loadManifest();
+  const record = manifest.secrets.find((entry) =>
+    entry.name === "MINGLA_SITES_SECURITY_JSON"
+  );
+  const fields = record.bundle_fields.map((field) => field.name).sort();
+  const material = (byte) => Buffer.alloc(32, byte).toString("base64");
+  return {
+    bundleName: "MINGLA_SITES_SECURITY_JSON",
+    bundleObject: {
+      attribution_pepper_b64: material(4),
+      cms_to_core_current_key_b64: material(2),
+      cms_to_core_current_kid: "cms-core-current",
+      cms_to_core_previous_key_b64: null,
+      cms_to_core_previous_kid: null,
+      core_to_cms_current_key_b64: material(1),
+      core_to_cms_current_kid: "core-cms-current",
+      core_to_cms_previous_key_b64: null,
+      core_to_cms_previous_kid: null,
+      runtime_to_core_current_key_b64: material(3),
+      runtime_to_core_current_kid: "runtime-core-current",
+      runtime_to_core_previous_key_b64: null,
+      runtime_to_core_previous_kid: null,
+      schema_version: 1,
+    },
+    authoritativeExistingFieldNames: fields,
+    attestations: Object.fromEntries(record.bundle_fields.map((field) => [
+      field.name,
+      { owner: field.owner, source_type: field.source_type },
+    ])),
+  };
+}
 
 function declaredBundles(policy = contract) {
   const names = new Set();
@@ -62,6 +103,87 @@ test("MINGLA_SITES_SECURITY_JSON is suppliable, specifically", () => {
   assert.match(deployScript, /--sites-input\)/);
   assert.match(coordinator, /value === "--sites-input"/);
   assert.match(coordinator, /bundleInputs\.MINGLA_SITES_SECURITY_JSON = loadSecureBundleInput/);
+});
+
+test("the Sites input is a complete strict wrapper the governed setter can prepare", () => {
+  const manifest = loadManifest();
+  const prepared = prepareGovernedBundle({ ...sitesInput(), manifest });
+  assert.equal(prepared.bundleName, "MINGLA_SITES_SECURITY_JSON");
+  assert.equal(prepared.schemaVersion, 1);
+  assert.deepEqual(
+    prepared.fieldNames,
+    manifest.secrets
+      .find((record) => record.name === "MINGLA_SITES_SECURITY_JSON")
+      .bundle_fields.map((field) => field.name)
+      .sort(),
+  );
+});
+
+test("the Sites parser fails closed on drift, half-rotation, malformed or reused material", () => {
+  const manifest = loadManifest();
+  const cases = [];
+
+  const extra = sitesInput();
+  extra.bundleObject.unreviewed = "field";
+  cases.push([extra, "sites_bundle_shape_invalid"]);
+
+  const halfRotation = sitesInput();
+  halfRotation.bundleObject.runtime_to_core_previous_key_b64 =
+    Buffer.alloc(32, 9).toString("base64");
+  cases.push([halfRotation, "sites_bundle_strict_parser_invalid"]);
+
+  const malformed = sitesInput();
+  malformed.bundleObject.cms_to_core_current_key_b64 = "not-base64";
+  cases.push([malformed, "sites_bundle_strict_parser_invalid"]);
+
+  const reused = sitesInput();
+  reused.bundleObject.attribution_pepper_b64 =
+    reused.bundleObject.core_to_cms_current_key_b64;
+  cases.push([reused, "sites_bundle_strict_parser_invalid"]);
+
+  for (const [input, code] of cases) {
+    assert.throws(
+      () => prepareGovernedBundle({ ...input, manifest }),
+      (error) => error instanceof BundleSetterError && error.code === code,
+    );
+  }
+});
+
+test("the same-process governed lane can apply and verify a Sites reader", () => {
+  const manifest = loadManifest();
+  const liveNames = manifest.secrets.map((record) => record.name);
+  const calls = [];
+  const result = runGovernedBundleDeployment({
+    projectRef: PROJECT_REF,
+    mergedCommit: MERGED_COMMIT,
+    selectedFunctions: ["brand-site-runtime-resolve"],
+    bundleInputs: { MINGLA_SITES_SECURITY_JSON: sitesInput() },
+    dependencies: {
+      audit: () => [],
+      gitState: () => ({
+        clean: true,
+        committedAtMs: Date.now(),
+        head: MERGED_COMMIT,
+        remoteMain: MERGED_COMMIT,
+      }),
+      listLiveNames: () => liveNames,
+      applyBundle({ prepared }) {
+        calls.push(`apply:${prepared.bundleName}`);
+        return prepared;
+      },
+      deploy: () => calls.push("deploy"),
+      verifyDeployed: () => calls.push("verify-source"),
+      verifyRemoteJwt: () => calls.push("verify-jwt"),
+    },
+  });
+  assert.deepEqual(calls, [
+    "apply:MINGLA_SITES_SECURITY_JSON",
+    "deploy",
+    "verify-source",
+    "verify-jwt",
+  ]);
+  assert.deepEqual(result.applied_bundles, ["MINGLA_SITES_SECURITY_JSON"]);
+  assert.deepEqual(result.deployed_functions, ["brand-site-runtime-resolve"]);
 });
 
 test("--sites-input engages the governed lane, like its siblings", () => {

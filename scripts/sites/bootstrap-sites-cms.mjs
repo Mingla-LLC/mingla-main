@@ -11,6 +11,11 @@ import {
   safeCliFailure,
   SitesOpsError,
 } from "./lib/sites-ops.mjs";
+import {
+  localDatabaseUrl,
+  localStorageEndpoint,
+  sitesLocalMode,
+} from "./lib/local-mode.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const SQL_PATH = resolve(SCRIPT_DIR, "bootstrap-sites-cms.sql");
@@ -55,16 +60,33 @@ function adminUrl(env, ref) {
   return raw;
 }
 
+// #2829 — local mode: the target is the local Sites CMS stack, reached only
+// on loopback as its `postgres` admin (the local stack's well-known password,
+// so the hosted-project length rule does not apply). Nothing else changes:
+// the same SQL, roles, buckets and runtime-reader policy are applied.
+function localAdminUrl(env) {
+  const endpoint = localStorageEndpoint(requiredEnv(env, "SUPABASE_S3_ENDPOINT"));
+  return localDatabaseUrl(requiredEnv(env, "SITES_CMS_ADMIN_DATABASE_URL"), {
+    user: "postgres",
+    storagePort: endpoint.port,
+    code: "INVALID_ADMIN_DATABASE_URL",
+  });
+}
+
 export function bootstrapSitesCms({ env = process.env, spawn = spawnSync } = {}) {
   for (const name of [
     "SITES_CMS_MIGRATOR_PASSWORD",
     "SITES_CMS_APP_PASSWORD",
     "SITES_RUNTIME_READER_SUBJECT",
-    "SITES_PILOT_SITE_ID",
   ]) requiredEnv(env, name);
   const ref = projectRef(env);
-  storageEndpoint(env, ref);
-  const directAdminUrl = adminUrl(env, ref);
+  let directAdminUrl;
+  if (sitesLocalMode(env)) {
+    directAdminUrl = localAdminUrl(env);
+  } else {
+    storageEndpoint(env, ref);
+    directAdminUrl = adminUrl(env, ref);
+  }
   const result = spawn(
     "psql",
     ["-X", "--no-psqlrc", "--file", SQL_PATH],

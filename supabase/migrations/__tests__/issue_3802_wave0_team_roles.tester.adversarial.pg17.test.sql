@@ -303,7 +303,10 @@ begin
       where p.prokind in ('f', 'p') and n.nspname !~ '^pg_temp' and p.prosrc ~* 'admin_team_members'),
     -- [TEST-MOD-APPROVED #3720] Wave 6 adds two read-only membership checks:
     -- the shared active-member predicate and the guarded Data room audit RPC.
-    'public.admin_team_activate_self,public.admin_team_directory,public.admin_team_guard_exclusive,public.admin_team_list,public.admin_team_my_access,public.admin_team_role,public.admin_team_set_member,public.issue_3720_active_team_member,public.issue_3720_log_data_room_access');
+    -- #4130: Team and roles (owner only) adds one read-only, owner-gated reader,
+    -- admin_team_last_active, for each teammate's last sign-in or admin action.
+    -- It writes nothing: the writer list above is unchanged.
+    'public.admin_team_activate_self,public.admin_team_directory,public.admin_team_guard_exclusive,public.admin_team_last_active,public.admin_team_list,public.admin_team_my_access,public.admin_team_role,public.admin_team_set_member,public.issue_3720_active_team_member,public.issue_3720_log_data_room_access');
   perform pg_temp.t3802x_check('X-1', 'no function builds a statement on the full-admin table at run time',
     (select count(*)::text from pg_proc p
       where p.prokind in ('f', 'p') and p.prolang = (select oid from pg_language where lanname = 'plpgsql')

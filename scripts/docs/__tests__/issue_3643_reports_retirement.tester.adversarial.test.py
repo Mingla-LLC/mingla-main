@@ -281,15 +281,21 @@ def generic_protections_remain_reachable(root: Path, failures: list[str]) -> Non
     )
     require(
         venue_test_path in venue_workflow,
-        "the exact product-path classifier must remain CI-reachable",
+        "the shared bundle-verdict regression must remain CI-reachable",
         failures,
     )
     venue_source = read(root, venue_test_path)
+    # [TEST-MOD-APPROVED #3493] The six-file classifier let a Business bundle
+    # change merge green and fail only on main. Preserve the replacement proof,
+    # including #3643's two non-product process-document fixtures.
     require(
-        'Deno.test("#2855 SC-4 classifier is exact-path product scope"' in venue_source
-        and "for (const productPath of EXPECTED_SC4_PRODUCT_PATHS)" in venue_source
-        and "for (const excludedPath of excludedPaths)" in venue_source,
-        "the #2855 classifier must keep positive exact paths and negative near matches",
+        'Deno.test("#2855/#3493 SC-4 reuses the universal verdict without a private scope skip"'
+        in venue_source
+        and 'CURRENT_DIFF_NON_PRODUCT_FIXTURE = "AGENTS.md"' in venue_source
+        and 'EXCLUDED_NON_PRODUCT_FIXTURE = "AGENTS.md"' in venue_source
+        and "for (const processDoc of [" in venue_source
+        and "bundle-baseline-movement\\.mjs" in venue_source,
+        "the #2855/#3493 guard must protect universal measurement and both non-product fixtures",
         failures,
     )
 

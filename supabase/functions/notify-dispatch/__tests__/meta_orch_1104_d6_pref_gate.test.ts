@@ -17,14 +17,22 @@ import { assert, assertStringIncludes } from "jsr:@std/assert@1";
 const SRC = await Deno.readTextFile("supabase/functions/notify-dispatch/index.ts");
 
 Deno.test("the dead channel/type/opt_in gate is gone (no silent no-op)", () => {
-  // The fixed gate must NOT read the non-existent row.channel / row.opt_in
-  // columns. Their presence means the dead gate survived.
+  const legacyStart = SRC.indexOf('.from("notification_preferences")');
+  const legacyEnd = SRC.indexOf("pushSent = await sendPush(", legacyStart);
   assert(
-    !/row\.channel\s*===\s*"push"/.test(SRC),
+    legacyStart >= 0 && legacyEnd > legacyStart,
+    "legacy notification preference gate must remain inspectable",
+  );
+  const legacyPreferenceGate = SRC.slice(legacyStart, legacyEnd);
+  // The fixed gate must NOT read the non-existent row.channel / row.opt_in
+  // columns. Scope this to the legacy notification_preferences path: the
+  // separate Business type-preference table legitimately has those columns.
+  assert(
+    !/row\.channel\s*===\s*"push"/.test(legacyPreferenceGate),
     "notify-dispatch still reads the non-existent notification_preferences.channel column",
   );
   assert(
-    !/row\.opt_in\s*===\s*false/.test(SRC),
+    !/row\.opt_in\s*===\s*false/.test(legacyPreferenceGate),
     "notify-dispatch still reads the non-existent notification_preferences.opt_in column",
   );
 });

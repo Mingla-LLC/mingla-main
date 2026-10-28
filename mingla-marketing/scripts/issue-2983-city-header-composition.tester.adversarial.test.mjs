@@ -399,7 +399,8 @@ async function menuJourney(page, base, route) {
   await navigate(page, base, route)
   await click(page, '.ps-menu-button')
   await waitFor(() => page.evaluate(`!!document.querySelector('#page-system-audience-menu')&&document.querySelector('#page-system-audience-menu').contains(document.activeElement)`), 'side menu did not own focus')
-  const exploreSelector = '#page-system-audience-menu button[aria-haspopup="dialog"]'
+  // #4137: the Explorer CTA is now one <a href="/download"> that opens the QR on a computer once hydrated.
+  const exploreSelector = '#page-system-audience-menu a[aria-haspopup="dialog"]'
   await click(page, exploreSelector)
   await waitFor(() => page.evaluate(`!![...document.querySelectorAll('[role="dialog"]')].find(n=>n.textContent.includes('Scan to get Mingla'))`), 'nested QR did not open')
   await waitFor(() => page.evaluate(`document.activeElement?.getAttribute('aria-label')==='Close'`), 'nested QR did not take focus')

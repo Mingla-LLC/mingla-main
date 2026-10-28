@@ -13,6 +13,27 @@ const securityHeaders = [
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
 ]
 
+// #4137 — blog images are served from the public `blog-media` bucket and go
+// through next/image (optimised on Vercel, never Supabase's billed
+// /render/image, hold #1643). The host follows NEXT_PUBLIC_SUPABASE_URL so a
+// local stack works too; production falls back to the authority project.
+// No Google host is listed: place photos can never go through the optimiser.
+function blogMediaPattern() {
+  const fallback = 'https://gqnoajqerqhnvulmnyvv.supabase.co'
+  let url: URL
+  try {
+    url = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || fallback)
+  } catch {
+    url = new URL(fallback)
+  }
+  return {
+    protocol: url.protocol.replace(':', '') as 'http' | 'https',
+    hostname: url.hostname,
+    ...(url.port ? { port: url.port } : {}),
+    pathname: '/storage/v1/object/public/blog-media/**',
+  }
+}
+
 const config: NextConfig = {
   reactStrictMode: true,
   devIndicators: false,
@@ -27,6 +48,7 @@ const config: NextConfig = {
     remotePatterns: [
       { protocol: 'https', hostname: 'images.unsplash.com' },
       { protocol: 'https', hostname: 'framerusercontent.com' },
+      blogMediaPattern(),
     ],
   },
   experimental: {

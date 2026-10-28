@@ -165,8 +165,8 @@
     },
     "capabilities": {
       "type": "array",
-      "minItems": 152,
-      "maxItems": 152,
+      "minItems": 164,
+      "maxItems": 164,
       "items": {
         "type": "object",
         "required": [

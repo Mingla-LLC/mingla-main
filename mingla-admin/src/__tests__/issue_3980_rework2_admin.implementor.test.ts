@@ -130,7 +130,15 @@ Deno.test("#3980 rework 2: Calendar chip titles wrap by whole words, two lines, 
   assertNotMatch(page, /hyphens-auto|overflow-wrap:anywhere|break-all|break-words hyphens/);
   // [TEST-MOD-APPROVED #3980] synced Wave 3 (R6): month items are a dot and a title (MonthGrid); words keep whole.
   assertMatch(page, /const WORDS = "break-normal \[overflow-wrap:normal\] hyphens-none";/);
-  assertNotMatch(page, /break-words/);
+  // #4130: the runway's "Make a Work card?" dialog lets its instruction text
+  // and its error line break a long unbroken token (a pasted link) so the small
+  // dialog never scrolls sideways. That is the one allowed use, on those two
+  // lines only; every title, chip and list on the page still keeps whole words.
+  const cardDialog = page.slice(page.indexOf('title="Make a Work card?"'), page.indexOf("</Modal>", page.indexOf('title="Make a Work card?"')));
+  assertEquals((cardDialog.match(/break-words/g) || []).length, 2);
+  assertMatch(cardDialog, /<p className="break-words">\{item\.instructions\}<\/p>/);
+  assertMatch(cardDialog, /<p role="alert" className="break-words [^"]*">\{cardProblem\}<\/p>/);
+  assertNotMatch(page.replace(cardDialog, ""), /break-words/);
   const chip = page.slice(page.indexOf("function ChipWords"), page.indexOf("function useCoarsePointer"));
   assertMatch(chip, /line-clamp-2/);
   assertMatch(chip, /split\(\/\\s\+\/\)/);

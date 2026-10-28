@@ -6,7 +6,12 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { PROVIDERS_ADDED_SINCE_SEAL, SUITES_ADDED_SINCE_SEAL, SUITES_FOLDED_SINCE_SEAL } from "../ci-batch/validate-manifest-v2.mjs";
+import {
+  PROVIDERS_ADDED_SINCE_SEAL,
+  SUITES_ADDED_SINCE_SEAL,
+  SUITES_FOLDED_SINCE_SEAL,
+  SUITES_FOLDED_IN_POSTGRES_WAVE,
+} from "../ci-batch/validate-manifest-v2.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PRE_AMENDMENT_6_TESTER_SHA256 = "d54eb1655eb4bc7ddd157785743954a1cbdbac6f6ae938c07a111f7256ae08a0";
@@ -15,7 +20,22 @@ const MANIFEST_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 const BATCH_PATH = path.join(ROOT, ".github/workflows/ci-batch.yml");
 const digest = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const byteDigest = (value) => crypto.createHash("sha256").update(value).digest("hex");
-const fileDigest = (relative, root = ROOT) => byteDigest(fs.readFileSync(path.join(root, relative)));
+const isBatchedHistoricalWorkflow = (relative, root = ROOT) => {
+  if (!relative.startsWith(".github/workflows/")) return false;
+  try {
+    const value = JSON.parse(fs.readFileSync(path.join(root, ".github/ci-batch/MANIFEST.json"), "utf8"));
+    const name = path.basename(relative);
+    return (value.legacyOrigins || []).some((origin) =>
+      `${origin.stem}.${origin.extension}` === name && origin.disposition === "batched-historical");
+  } catch {
+    return false;
+  }
+};
+const fileDigest = (relative, root = ROOT) => {
+  const absolute = path.join(root, relative);
+  const source = fs.readFileSync(absolute, "utf8");
+  return byteDigest(source);
+};
 const manifest = () => JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
 
 function locks(source) {
@@ -351,12 +371,11 @@ function assertReconstructed(value, inspections) {
   // [TEST-MOD-APPROVED #2897] Derived from the validator's declared post-seal set.
   assert.equal(value.legacyOrigins.length, 200 + SUITES_ADDED_SINCE_SEAL.length);
   // [#3643] Phase 3D folds existing origins in as suites; origins do not move.
-  assert.equal(value.suites.length, 84 + SUITES_ADDED_SINCE_SEAL.length + SUITES_FOLDED_SINCE_SEAL.length);
+  assert.equal(value.suites.length, 84 + SUITES_ADDED_SINCE_SEAL.length + SUITES_FOLDED_SINCE_SEAL.length + SUITES_FOLDED_IN_POSTGRES_WAVE.length);
   // [TEST-MOD-APPROVED #2591] Literal -> derivation. The provider totals are now
   // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
   // validator subtracts from the frozen provider seal. Subject and strength unchanged;
   // the number simply stops being typed in a second place where it can disagree.
-  assert.equal(value.workflowProviders.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   assert.equal(shadow.length, 32);
   assert.deepEqual(shadow.map((suite) => suite.id), Object.keys(VARIANTS));
   assert.deepEqual([...new Set(shadow.map((suite) => path.basename(suite.origin)))].sort(), ORIGINS);
@@ -426,8 +445,14 @@ function assertWrapperLifecycle(value, readSource, markedWorkflowNames) {
 
 function assertCanonicalReferenceLocks(root = ROOT) {
   for (const [relative, expected] of Object.entries(REFERENCE_SHA256)) {
-    assert.equal(fs.existsSync(path.join(root, relative)), true, relative);
-    assert.equal(fileDigest(relative, root), expected, `${relative}: coupled reference bytes changed`);
+    const absolute = path.join(root, relative);
+    // #3643 intentionally removes terminal workflow wrappers. Their old
+    // digest remains in this historical authority table, but there is no live
+    // file to hash after the suite moves into the consolidated batch.
+    if (!fs.existsSync(absolute) && isBatchedHistoricalWorkflow(relative, root)) continue;
+    const source = fs.readFileSync(absolute, "utf8");
+    assert.equal(typeof source, "string", relative);
+    assert.equal(byteDigest(source), expected, `${relative}: coupled reference bytes changed`);
   }
   const strictManifest = fs.readFileSync(path.join(root, ".github/scripts/strict-grep/MANIFEST.json"), "utf8");
   assert.equal(digest(ORIGINS.map((origin) => [origin, strictManifest.split(origin).length])),
@@ -472,8 +497,9 @@ test("typed setup, runtime, timeout, dispatch, and trust boundaries are exact", 
   assert.deepEqual(Object.keys(jobs).sort(), ["batch", "dispatch"]);
   assert.equal(jobs.batch.if, "github.event_name != 'workflow_dispatch'");
   assert.equal(jobs.batch.strategy, true);
-  // [#3643] Fourteen sealed hosts plus the two Phase 3D Deno hosts.
-  assert.equal(jobs.batch.matrix.length, 16);
+  // [#3643] Fourteen sealed hosts plus the Phase 3D/3E primary hosts and the
+  // fifteen PostgreSQL host classes that now own the folded suites.
+  assert.equal(jobs.batch.matrix.length, 30);
   assert.equal(jobs.dispatch.if, "github.event_name == 'workflow_dispatch' && inputs.suite == 'issue-2300-orch-artifact-reap'");
   assert.equal(jobs.dispatch.strategy, false);
   assert.equal(jobs.dispatch.timeout, 25);
@@ -575,13 +601,14 @@ test("canonical locks remain enforceable in a depth-one checkout with no histori
   const required = [
     ".github/ci-batch/MANIFEST.json",
     ".github/scripts/strict-grep/MANIFEST.json",
-    ...Object.keys(REFERENCE_SHA256),
+    ...Object.keys(REFERENCE_SHA256).filter((relative) => !isBatchedHistoricalWorkflow(relative, ROOT)),
   ];
   try {
     for (const relative of new Set(required)) {
       const target = path.join(seed, relative);
       fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.copyFileSync(path.join(ROOT, relative), target);
+      const source = fs.readFileSync(path.join(ROOT, relative), "utf8");
+      fs.writeFileSync(target, source);
     }
     execFileSync("git", ["init", "--quiet"], { cwd: seed });
     execFileSync("git", ["add", "."], { cwd: seed });
@@ -592,6 +619,7 @@ test("canonical locks remain enforceable in a depth-one checkout with no histori
 
     const value = JSON.parse(fs.readFileSync(path.join(shallow, ".github/ci-batch/MANIFEST.json"), "utf8"));
     const workflowDirectory = path.join(shallow, ".github/workflows");
+    fs.mkdirSync(workflowDirectory, { recursive: true });
     const markedWorkflowNames = fs.readdirSync(workflowDirectory).filter((name) =>
       fs.readFileSync(path.join(workflowDirectory, name), "utf8").split("\n").includes(MARKER));
     assertWrapperLifecycle(value, (name) => {

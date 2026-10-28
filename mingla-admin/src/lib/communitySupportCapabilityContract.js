@@ -1,6 +1,10 @@
 /**
  * #3988 — the Community & Support tab contract.
  *
+ * #4130 Wave 6: the tabs now sit on two pages, Support and Community
+ * (lib/supportCommunityTabs.js); every row keeps its area. The Overview tab
+ * was retired (its ticket count disagreed with the inbox).
+ *
  * One row per tab: the access area that shows it, the panel file that renders
  * it, and every server RPC / Edge Function that panel reaches (directly or
  * through the service functions it imports). The server computes each area
@@ -17,14 +21,6 @@ const COMMUNITY = "community_support_community";
 const SUPPORT = "community_support_support";
 
 export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
-  overview: Object.freeze({
-    // Admins see the counts dashboard; teammates see their own role cards.
-    area: COMMUNITY,
-    panel: "components/community/OverviewPanel.jsx",
-    adminOnlyRpcs: Object.freeze(["issue_3720_admin_overview"]),
-    rpcs: Object.freeze(["issue_3720_admin_overview"]),
-    functions: Object.freeze([]),
-  }),
   announcements: Object.freeze({
     area: ADMIN,
     panel: "components/community/AnnouncementsPanel.jsx",
@@ -135,6 +131,31 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     panel: "pages/EmailPage.jsx",
     rpcs: Object.freeze([]),
     functions: Object.freeze([]),
+  }),
+  blog: Object.freeze({
+    area: SUPPORT,
+    panel: "components/blog/BlogPanel.jsx",
+    rpcs: Object.freeze([
+      "issue_4137_blog_create_post",
+      "issue_4137_blog_create_preview_token",
+      "issue_4137_blog_delete_media",
+      "issue_4137_blog_delete_post",
+      "issue_4137_blog_featured_now",
+      "issue_4137_blog_get_post",
+      "issue_4137_blog_list_media",
+      "issue_4137_blog_list_posts",
+      "issue_4137_blog_my_permissions",
+      "issue_4137_blog_publish",
+      "issue_4137_blog_register_media",
+      "issue_4137_blog_request_changes",
+      "issue_4137_blog_save_draft",
+      "issue_4137_blog_search_link_targets",
+      "issue_4137_blog_set_featured",
+      "issue_4137_blog_submit_for_review",
+      "issue_4137_blog_unpublish",
+      "issue_4137_blog_update_media",
+    ]),
+    functions: Object.freeze(["admin-blog"]),
   }),
   team: Object.freeze({
     area: ADMIN,

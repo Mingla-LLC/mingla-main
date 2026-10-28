@@ -27,7 +27,7 @@ test("#1928 server freshness and immediate recheck demotion never preserve green
 
 test("#1928 consolidated IA removes competing card while preserving exact backend evidence",()=>{
   const page=read("src/pages/AdEnginePage.jsx"),panel=read("src/components/app-readiness/AppDownloadReadinessPanel.jsx"),service=read("src/services/adEngineService.js");
-  assert.ok(page.indexOf("<AdConnectionsPanel />")<page.indexOf("<AppDownloadReadinessPanel />"));assert.ok(page.indexOf("<AppDownloadReadinessPanel />")<page.indexOf("Governed campaign operations"));assert.doesNotMatch(page,/<AppIdentityReadinessPanel/);
+  assert.ok(page.indexOf("<AdConnectionsPanel />")<page.indexOf("<AppDownloadReadinessPanel />"));assert.ok(page.indexOf("<AppDownloadReadinessPanel />")<page.indexOf("governed-campaign-operations-heading")); // #4130: heading copy is now plain English; anchor on the section idassert.doesNotMatch(page,/<AppIdentityReadinessPanel/);
   assert.match(panel,/targetKey\(appKey,os\)/);assert.match(panel,/controllers\.current\[outgoing\]\?\.abort\(\)/);assert.match(service,/admin-ad-app-readiness/);assert.match(service,/admin-ad-app-identity-preflight/);
   assert.doesNotMatch(panel,/localStorage|sessionStorage|indexedDB|Campaign ready|App install ready|Growth ready|Ready to launch/i);
 });

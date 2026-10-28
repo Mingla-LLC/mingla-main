@@ -308,10 +308,13 @@ export async function listBrands({ search, sortKey, sortDir, filters = {}, page 
 // ── Brand detail (composed sub-reads) ─────────────────────────────────────────
 
 // NB: the brand "kind" column is intentionally NOT selected (META-ORCH-0972 — no admin kind display).
+// #4130: the coordinates are lat/lng and the photo is profile_photo_url; the old
+// names (latitude, longitude, profile_media_url) do not exist, so every brand
+// detail failed to load.
 const BRAND_DETAIL_COLS =
   "id,account_id,name,slug,description,venue_category,claim_status,verified_at,verified_by," +
-  "rejection_reason,marked_called_at,duplicate_of_brand_id,city,country_code,latitude,longitude," +
-  "cover_media_url,profile_media_url,theme_color,theme_font,theme_animation,social_links,custom_links," +
+  "rejection_reason,marked_called_at,duplicate_of_brand_id,city,country_code,lat,lng," +
+  "cover_media_url,profile_photo_url,theme_color,theme_font,theme_animation,social_links,custom_links," +
   "pricing_currency,default_currency,pricing_region,take_rate_bps_override,payment_provider,payment_country," +
   "stripe_connect_id,stripe_charges_enabled,stripe_payouts_enabled,paystack_subaccount_code," +
   "deleted_at,created_at";
@@ -468,4 +471,45 @@ function pickOne(res, label) {
 
 function logDegrade(label, error) {
   console.warn(`[identityReadService] ${label} read degraded:`, error?.message || error);
+}
+
+// ── Brands board (#4130 Wave 3) ───────────────────────────────────────────────
+
+/** KPI tiles for the Brands page. Throws on error (the page shows Retry). */
+export async function getBrandsSummary() {
+  const { data, error } = await supabase.rpc("admin_brands_summary");
+  if (error) throw new Error(error.message || "Couldn't load the brand counts.");
+  return data || {};
+}
+
+// EntityListView sort key + direction -> admin_list_brands_board p_sort.
+const BRAND_BOARD_SORTS = {
+  created_at: { asc: "created_asc", desc: "created_desc" },
+  name: { asc: "name_asc", desc: "name_desc" },
+  live_offerings: { asc: "live_offerings_desc", desc: "live_offerings_desc" },
+  followers: { asc: "followers_desc", desc: "followers_desc" },
+};
+
+export function brandBoardSortParam(sortKey, sortDir) {
+  const entry = Object.hasOwn(BRAND_BOARD_SORTS, sortKey || "") ? BRAND_BOARD_SORTS[sortKey] : null;
+  if (!entry) return "created_desc";
+  return sortDir === "asc" ? entry.asc : entry.desc;
+}
+
+/**
+ * One page of brands with owner name, payment readiness, live offerings and
+ * followers. Deleted and staff/test brands only when `filters.show === "all"`.
+ * EntityListView contract: { rows, total }; throws on error.
+ */
+export async function listBrandsBoard({ search, sortKey, sortDir, filters = {}, page = 0, pageSize = 25 }) {
+  const { data, error } = await supabase.rpc("admin_list_brands_board", {
+    p_search: search && search.trim() ? search.trim() : null,
+    p_show_hidden: filters.show === "all",
+    p_payments: filters.payments || null,
+    p_sort: brandBoardSortParam(sortKey, sortDir),
+    p_limit: pageSize,
+    p_offset: page * pageSize,
+  });
+  if (error) throw new Error(error.message || "Couldn't load brands.");
+  return { rows: Array.isArray(data?.rows) ? data.rows : [], total: Number(data?.total) || 0 };
 }

@@ -246,7 +246,7 @@ async function runtimeContract() {
         assert.equal(crawlerResponse.status, 200, `${pathname} crawler status`)
         assert.equal(visibleText(await crawlerResponse.text()), baseline, `${pathname} crawler/direct material-text parity`)
       }
-      if (pathname.startsWith('/cities/')) assert.equal((baselineHtml.match(/class="ps-catalogue-card"/g) ?? []).length, 50, `${pathname} must retain 50 cards`)
+      if (pathname.startsWith('/cities/')) assert.equal((baselineHtml.match(/data-city-place-card/g) ?? []).length, 50, `#4137: ${pathname} must retain 50 cards`)
     }
     const directoryHtml = await (await request(appPort, '/cities')).text()
     const links = [...directoryHtml.matchAll(/<a\b[^>]*href="(\/cities\/[^"]+)"[^>]*>/g)].map((match) => match[1])

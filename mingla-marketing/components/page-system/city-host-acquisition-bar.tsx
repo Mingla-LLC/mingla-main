@@ -3,6 +3,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUpRight, X } from 'lucide-react'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { DeviceLink } from '@/components/cutout/device-link'
+import { siteAttribution } from '@/lib/links-src'
+
+// #4137 OQ-3: these create links are device-aware. A computer keeps the exact
+// create page on host.usemingla.com (`hostComputerHref`); a phone gets the
+// attributed Mingla Host install, through the one CTA seam.
+const HOST_ACTION_ATTRIBUTION = siteAttribution('business_hero')
 
 export const HOST_DESTINATIONS = [
   { label: 'Host an event', href: 'https://host.usemingla.com/event/create', destinationType: 'event' },
@@ -80,9 +87,16 @@ export function CityHostAcquisitionBar({
         <strong>Bring something to {city}</strong>
         <nav aria-label="Create with Mingla Host" className="ps-host-acquisition-desktop">
           {HOST_DESTINATIONS.map((destination) => (
-            <a key={destination.href} href={destination.href} onClick={() => captureHostAction(destination.destinationType)}>
+            <DeviceLink
+              key={destination.href}
+              surface="host"
+              attribution={HOST_ACTION_ATTRIBUTION}
+              hostComputerHref={destination.href}
+              sameTab
+              onActivate={() => captureHostAction(destination.destinationType)}
+            >
               {destination.label}<ArrowUpRight aria-hidden="true" size={14} />
-            </a>
+            </DeviceLink>
           ))}
         </nav>
         <button
@@ -107,9 +121,16 @@ export function CityHostAcquisitionBar({
             </header>
             <nav aria-label="Hosting choices">
               {HOST_DESTINATIONS.map((destination) => (
-                <a key={destination.href} href={destination.href} onClick={() => captureHostAction(destination.destinationType)}>
+                <DeviceLink
+                  key={destination.href}
+                  surface="host"
+                  attribution={HOST_ACTION_ATTRIBUTION}
+                  hostComputerHref={destination.href}
+                  sameTab
+                  onActivate={() => captureHostAction(destination.destinationType)}
+                >
                   <span>{destination.label}</span><ArrowUpRight aria-hidden="true" size={18} />
-                </a>
+                </DeviceLink>
               ))}
             </nav>
           </div>

@@ -189,7 +189,7 @@ jest.mock("../../../hooks/useWizardHardwareBack", () => ({
     mockBackConfigs.push(config);
   },
 }));
-jest.mock("../../pricing/WhoCoversCostsSection", () => ({
+jest.mock("../../pricing/LazyWhoCoversCostsSection", () => ({
   WhoCoversCostsSection: (): null => null,
 }));
 jest.mock("../../offering/StripeBlockedCard", () => ({ StripeBlockedCard: (): null => null }));

@@ -51,6 +51,14 @@ import {
   applyAdCreditTopUpFromPaystackCharge,
 } from "./adCreditWebhook.ts";
 import { isAdCreditPaystackReference } from "./adCreditStripe.ts";
+// Issue #3645 — later trip-instalment charges (`mingla-inst-` references) and
+// the plan bind after a plan deposit finalizes.
+import {
+  handleInstallmentPaystackCharge,
+  type InstallmentWebhookDeps,
+  isInstallmentPaystackReference,
+  paystackAuthorizationFromVerifiedTxn,
+} from "./installments/paystackInstallmentWebhook.ts";
 
 // Verifier is injected so tests can stub the network call deterministically.
 export type PaystackVerifier = (
@@ -81,7 +89,12 @@ export interface PaystackChargeResult {
     | "venue_order_replayed"
     // toward #3697 Wave 7c — Ads credit NGN top-up
     | "ad_credit_finalized"
-    | "ad_credit_failed";
+    | "ad_credit_failed"
+    // Issue #3645 — trip instalment charges (no order is minted; never a ticket
+    // confirmation or a partner-split fan-out).
+    | "installment_collected"
+    | "installment_refund_due"
+    | "installment_replayed";
   orderId?: string;
   /** ORCH-1331 — verified txn paid_at (ISO), plumbed to the partner-split
    * fan-out so the partner relationship pins at sale time. Additive/optional. */
@@ -102,6 +115,7 @@ export async function handlePaystackChargeSuccess(
   supabase: SupabaseClient,
   data: Record<string, unknown>,
   verify: PaystackVerifier,
+  installmentDeps: Partial<InstallmentWebhookDeps> = {},
 ): Promise<PaystackChargeResult> {
   const reference = typeof data?.reference === "string" ? data.reference : "";
   if (!reference) {
@@ -273,11 +287,37 @@ export async function handlePaystackChargeSuccess(
     };
   }
 
+  // Issue #3645 — a later trip-instalment payment. Its reference is minted per
+  // attempt (never a session reference); the verified txn above is the only
+  // truth used. Amount + currency are checked against the attempt by the
+  // resolver; a success on an instalment already paid or no longer due is
+  // refunded automatically.
+  if (isInstallmentPaystackReference(reference)) {
+    const outcome = await handleInstallmentPaystackCharge(
+      supabase,
+      reference,
+      txn,
+      installmentDeps,
+    );
+    switch (outcome.status) {
+      case "orphan":
+        return { status: "orphan" };
+      case "amount_mismatch":
+        return { status: "amount_mismatch" };
+      case "installment_refund_due":
+        return { status: "installment_refund_due" };
+      case "installment_replayed":
+        return { status: "installment_replayed" };
+      default:
+        return { status: "installment_collected" };
+    }
+  }
+
   // 3. Lookup the session by the persisted reference.
   const { data: session, error: sessionError } = await supabase
     .from("ticket_checkout_sessions")
     .select(
-      "id, status, order_id, total_cents, currency, reversal_state, brand_id, buyer_user_id",
+      "id, status, order_id, total_cents, currency, reversal_state, brand_id, buyer_user_id, installment_schedule, installment_charge_plan",
     )
     .eq("stripe_payment_intent_id", reference)
     .maybeSingle();
@@ -365,6 +405,20 @@ export async function handlePaystackChargeSuccess(
   // Idempotent fast-path: already finalized → return the order (mirrors the
   // finalize RPC's order_id early-return; cheap short-circuit).
   if (session.order_id) {
+    // Issue #3645 — a crash between finalize and the plan bind heals on replay.
+    if (session.installment_schedule !== null && session.installment_schedule !== undefined) {
+      const { count, error: unboundError } = await supabase
+        .from("order_installments")
+        .select("id", { count: "exact", head: true })
+        .eq("order_id", String(session.order_id))
+        .is("plan_bound_at", null);
+      if (unboundError) {
+        throw new Error(`paystack_plan_unbound_lookup_failed: ${unboundError.message}`);
+      }
+      if ((count ?? 0) > 0) {
+        await bindPaystackPlan(supabase, String(session.order_id), txn, reference);
+      }
+    }
     return { status: "replayed", orderId: String(session.order_id), paidAtIso };
   }
 
@@ -462,9 +516,10 @@ export async function handlePaystackChargeSuccess(
       p_stripe_charge_id: txnId,
       p_stripe_payment_method_type: channel,
       p_qr_token_pepper: qrTokenPepper(),
-      // Paystack Phase 1 has no installment plans — single full payment only
+      // Issue #3645 — a session carrying a schedule is a payment-plan deposit
       // (ORCH-0921 gate: finalize callers must pass p_installment_plan_root).
-      p_installment_plan_root: false,
+      p_installment_plan_root: session.installment_schedule !== null &&
+        session.installment_schedule !== undefined,
     },
   );
   if (finalizeError || !finalized) {
@@ -481,6 +536,12 @@ export async function handlePaystackChargeSuccess(
   }
 
   const orderId = String((finalized as Record<string, unknown>).orderId ?? "");
+
+  // Issue #3645 — lock each later payment's price and keep a reusable card (if
+  // the deposit produced one). Throws so the inbox retries; bind is idempotent.
+  if ((finalized as Record<string, unknown>).installmentPlanRoot === true && orderId) {
+    await bindPaystackPlan(supabase, orderId, txn, reference);
+  }
 
   // ISSUE-865 WP-B — ad-conversion CAPI send for the Paystack/NGN arm (this is
   // the ONLY finalize for Paystack orders — never reachable from the Stripe
@@ -512,6 +573,23 @@ export async function handlePaystackChargeSuccess(
   }
 
   return { status: "finalized", orderId, paidAtIso };
+}
+
+// Issue #3645 — the card details come from the VERIFIED transaction only and are
+// never logged.
+async function bindPaystackPlan(
+  supabase: SupabaseClient,
+  orderId: string,
+  txn: Record<string, unknown>,
+  reference: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("issue_3645_paystack_plan_bind", {
+    p_order_id: orderId,
+    p_authorization: paystackAuthorizationFromVerifiedTxn(txn, reference),
+  });
+  if (error) {
+    throw new Error(`paystack_plan_bind_failed: ${error.message}`);
+  }
 }
 
 async function markSessionFailed(

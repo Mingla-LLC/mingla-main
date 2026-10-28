@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const read = (path) => fs.readFileSync(path, "utf8");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
 const sources = {
   migration: read(
     "supabase/migrations/20270505001973_issue_1973_ari_experience_lifecycle.sql",
@@ -25,7 +28,6 @@ const sources = {
   precisionTest: read(
     "supabase/migrations/__tests__/issue_1973_experience_public_payload_and_precision.implementor.pg17.test.sql",
   ),
-  workflow: read(".github/workflows/issue-1973-ari-experience-lifecycle.yml"),
 };
 
 function check(s) {
@@ -160,10 +162,11 @@ function check(s) {
   // [TEST-MOD-APPROVED #1984] Listing conversion + reservation metrics; 138→140 / 137→139.
   // [TEST-MOD-APPROVED #3697] Host Ads tools; 140→145 / 139→144.
   // [TEST-MOD-APPROVED #3872] Discounts, Referrals, and Creator tools; 145→152 / 144→151.
-  requireAll("152-capability certification proof", s.certificationTest, [
+  // [TEST-MOD-APPROVED #2829] Website designer tools; 152→164 / 151→163.
+  requireAll("164-capability certification proof", s.certificationTest, [
     "ari.experience.unpublish",
-    "ari_cert_missing_capabilities:151",
-    "expected exactly 152 certification requirements",
+    "ari_cert_missing_capabilities:163",
+    "expected exactly 164 certification requirements",
   ]);
   requireAll("public payload Edge proof", s.publicPayloadTest, [
     '"update_experience"',
@@ -179,13 +182,7 @@ function check(s) {
     "public manage-stops shape lost canonical precision",
     "partial public update fabricated a timezone",
   ]);
-  requireAll("workflow", s.workflow, [
-    "issue_1973_create_draft_followup.implementor.test.ts",
-    "deno fmt --check",
-    "agentToolAuthorization.ts",
-    "issue_1973_experience_receipt_payload.implementor.test.ts",
-    "issue_1973_experience_public_payload_and_precision.implementor.pg17.test.sql",
-  ]);
+
   for (const [label, parser] of [["play", s.play], ["menu", s.menu]]) {
     requireAll(label, parser, [
       "biz_brand_effective_rank_for_caller",
@@ -276,7 +273,7 @@ if (process.argv.includes("--self-test")) {
     {
       ...sources,
       certificationTest: sources.certificationTest.replace(
-        "ari_cert_missing_capabilities:151",
+        "ari_cert_missing_capabilities:163",
         "accepted_obsolete_inventory",
       ),
     },

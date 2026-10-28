@@ -88,10 +88,19 @@ test("#2438 primary routing freezes 55 established suites and counts additive lo
     "business-node20-3":5, "business-node20-4":5, "business-node22-ignore-scripts":3, "cross-root-node22-ignore-scripts":1,
     "node20-19-noinstall":1, "node20-noinstall":14 + SUITES_ADDED_SINCE_SEAL.length, "node22-noinstall":10, "ota-app-node20-19-install":1,
     "ota-business-node20-19-install":1, "root-node20-yaml-no-save":1,
-    // [#3643] The two Phase 3D hosts carry the twenty folded suites, 15 + 5.
-    "deno146-node20-noinstall":15, "deno2x-node22-noinstall":5 });
+    // [#3643] The two Phase 3D hosts carry twenty folded suites, and the
+    // fourteen Phase 3E Postgres hosts carry the forty-eight Postgres suites.
+    "deno146-node20-noinstall":15, "deno2x-node22-noinstall":5,
+    "postgres17-deno2-node20-noinstall":19, "postgres17-deno2714-node20-noinstall":3,
+    "postgres17-deno146-node22-noinstall":2, "postgres17-deno295-node20-cli2982":1,
+    "postgres17-node20-noinstall":9, "postgres17-deno295-node20-noinstall":1,
+    "postgres17-deno295-node20-pre1857":1, "postgres17-deno2-node22-noinstall":5,
+    "postgres17-deno2-node22-foundation2060":1,
+    "postgres17-deno2-node22-pre1931":1, "postgres17-deno146-node20-dualdb":1,
+    "postgres17-deno146-node20-noinstall":2, "postgres17-deno2-node20-pre2117":1,
+    "postgres17-node22-noinstall":1 });
   assert.equal(expectedPrimarySuites(manifest, null).length,
-    55 + SUITES_ADDED_SINCE_SEAL.length + 20 + Object.values(localByClass).reduce((sum, count) => sum + count, 0));
+    55 + SUITES_ADDED_SINCE_SEAL.length + 20 + 48 + Object.values(localByClass).reduce((sum, count) => sum + count, 0));
   assert.equal(expectedPrimarySuites(manifest, null).some((suite) => phase3b.has(suite.id)), false);
 });
 

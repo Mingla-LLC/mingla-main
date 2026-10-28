@@ -11,8 +11,8 @@ import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/cn'
 import { buttonClasses } from '@/components/ui/button'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
-import { detectClientPlatform } from '@/lib/device-platform'
-import { BUSINESS_ONELINK_URL, BUSINESS_WEB_URL } from '@/lib/store-links'
+import { DeviceLink } from '@/components/cutout/device-link'
+import { toolAttribution } from '@/lib/links-src'
 import {
   runPricingAudit,
   searchCities,
@@ -83,14 +83,6 @@ function RunningTheater({
     return () => clearTimeout(timer)
   }, [revealed, error])
 
-  const [appHref, setAppHref] = useState(BUSINESS_WEB_URL)
-  useEffect(() => {
-    const p = detectClientPlatform()
-    if (p === 'ios' || p === 'android') {
-      setAppHref(`${BUSINESS_ONELINK_URL}?pid=tool_pricing&c=tool_pricing`)
-    }
-  }, [])
-
   if (error) {
     const rateLimited = error === 'rate_limited'
     return (
@@ -105,13 +97,15 @@ function RunningTheater({
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           {rateLimited ? (
-            <a
-              href={appHref}
-              onClick={() => captureMarketing('tool_ratelimit_cta_click', { tool: 'experiences' })}
+            <DeviceLink
+              surface="host"
+              attribution={toolAttribution('tool_pricing')}
+              sameTab
+              onActivate={() => captureMarketing('tool_ratelimit_cta_click', { tool: 'experiences' })}
               className={buttonClasses({ variant: 'primary' })}
             >
               Relaunch on Mingla
-            </a>
+            </DeviceLink>
           ) : (
             <button type="button" onClick={onRetry} className={buttonClasses({ variant: 'primary' })}>
               Try again

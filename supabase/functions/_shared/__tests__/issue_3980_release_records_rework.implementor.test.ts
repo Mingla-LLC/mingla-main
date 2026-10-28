@@ -236,6 +236,7 @@ Deno.test("#3980 rework D1: only Vercel's own report decides a web deploy", () =
 // D10
 // ---------------------------------------------------------------------------
 Deno.test("#3980 rework D10: a change in packages/ reaches the web projects that build it", () => {
+  assertEquals(webProjects(["packages/blog-document/src/index.ts"]), ["mingla-admin", "mingla-marketing"]);
   assertEquals(webProjects(["packages/location-input/src/index.ts"]), ["mingla-business"]);
   assertEquals(webProjects(["packages/brand-assets/logo.svg"]), ["mingla-admin", "mingla-business"]);
   assertEquals(webProjects(["packages/search-measurement/src/x.ts"]), ["mingla-business", "mingla-marketing"]);

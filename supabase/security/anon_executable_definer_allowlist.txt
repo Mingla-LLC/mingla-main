@@ -14,7 +14,7 @@
 # INVESTIGATION_ORCH-1392 bucket (definer_privilege_gate_inventory.csv). Format:
 # `proname(identity_args)` exactly as pg_get_function_identity_arguments renders.
 #
-# Signature count: 197 (intended-public 28, internally-gated 108, predicate/read-helper 58, PostGIS 3).
+# Signature count: 204 (intended-public 31, internally-gated 108, predicate/read-helper 62, PostGIS 3).
 # (#1931 recomputed this line from the file itself AFTER its one appended signature, by
 #  counting non-comment, non-blank lines per section. The previous value of 194/25/109/57
 #  was already stale by two against the 192 lines then present; the count is not gate-
@@ -25,6 +25,10 @@
 # === INTENDED-PUBLIC READS (power anonymous public pages / checkout / signup) — INVESTIGATION F-8 / SPEC §4.4 ===
 # #3697: one non-sensitive country-mode scalar; exposes no country inventory and defaults on_arrival.
 ad_pixel_public_config(p_country_code text)
+# #4137: published-post embeds expose only the same allow-listed public place/event facts as the post page; no host identity or draft fields.
+blog_public_post_embeds(p_slug text)
+# #4137: one high-entropy, expiring preview token resolves one immutable review payload; the token is non-enumerable and returns no staff identity.
+blog_public_preview(p_token text)
 check_username_availability(check_username text)
 is_username_available(p_username text)
 # #1384: static active currency metadata is required before sign-in and carries no user or brand data.
@@ -43,6 +47,8 @@ pg_public_event_tier_pricing(p_event_id uuid)
 pg_public_event_display_prices(p_event_ids uuid[])
 # #3872 R1: current sale overlays for one public venue menu; returns item ids and price facts only, with no order or buyer data.
 pg_public_menu_item_sales(p_venue_id uuid)
+# #2829 W4: one public trip's guide, gated by the same public/non-private trip predicate as the public offering read model; returns guide copy only and NULL for draft, private, deleted, or non-trip ids.
+pg_public_trip_guide(p_trip_id uuid)
 pg_public_experience_by_slug(p_brand_slug text, p_experience_slug text)
 pg_public_experiences_by_brand(p_brand_slug text)
 # #3281 R3: buyer time-step remaining for public live experiences only. Returns
@@ -236,6 +242,11 @@ is_muted_by(muter uuid, target uuid)
 is_session_creator(p_session_id uuid, p_user_id uuid)
 is_session_participant(p_session_id uuid, p_user_id uuid)
 is_support_staff(p_user_id uuid)
+# #4137: RLS predicate helpers return one boolean over caller-supplied public row/id inputs so anonymous policies can enforce published-only visibility; they expose no row payload.
+issue_4137_blog_media_is_public(p_media_id uuid)
+issue_4137_blog_post_is_public(p_post blog_posts)
+issue_4137_blog_post_visible(p_status text, p_deleted_at timestamp with time zone, p_published_version_id uuid, p_publish_at timestamp with time zone, p_take_down_at timestamp with time zone)
+issue_4137_blog_version_is_public(p_version_id uuid)
 partner_can_accept_brand(p_brand_id uuid, p_partner_account_id uuid)
 pg_aggregate_collab_prefs(p_session_id uuid)
 pg_brand_can_charge(p_brand_id uuid)

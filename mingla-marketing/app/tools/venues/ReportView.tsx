@@ -19,7 +19,8 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { cn } from '@/lib/cn'
 import { buttonClasses } from '@/components/ui/button'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
-import { BUSINESS_ONELINK_URL } from '@/lib/store-links'
+import { DeviceLink } from '@/components/cutout/device-link'
+import { toolAttribution } from '@/lib/links-src'
 import {
   submitGrowthToolsGate,
   type GraderCompetitionEffort,
@@ -29,13 +30,11 @@ import {
   type SignalStatus,
 } from '@/lib/growth-tools-submit'
 
-// The app-gate destination: the business OneLink carrying tool attribution.
-// buildOneLinkHref's campaign union is closed (bio/site campaigns only), so the
-// query is constructed directly on the imported SSOT base.
-const APP_GATE_HREF = `${BUSINESS_ONELINK_URL}?${new URLSearchParams({
-  pid: 'tool_venues',
-  c: 'tool_venues',
-}).toString()}`
+// #4137: the app gate goes through the one CTA seam. A phone gets the business
+// OneLink with `?pid=tool_venues&c=tool_venues` (byte-identical to the old
+// hand-built href); a computer, which cannot install the app, now gets the host
+// web app instead of a OneLink.
+const APP_GATE_ATTRIBUTION = toolAttribution('tool_venues')
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -954,11 +953,10 @@ export function ReportView({
                       Grades, fixes, your competitor head-to-head, and your homepage
                       redesigned — we&rsquo;ll email you a private link to the full report.
                     </p>
-                    <a
-                      href={APP_GATE_HREF}
-                      target="_blank"
-                      rel="noopener"
-                      onClick={() =>
+                    <DeviceLink
+                      surface="host"
+                      attribution={APP_GATE_ATTRIBUTION}
+                      onActivate={() =>
                         captureMarketing('tool_gate_app_click', {
                           tool: 'venues',
                           run_id: runId,
@@ -968,7 +966,7 @@ export function ReportView({
                       className={buttonClasses({ variant: 'primary', className: 'mt-5 w-full' })}
                     >
                       View on Mingla app
-                    </a>
+                    </DeviceLink>
                     {!emailOpen ? (
                       <button
                         type="button"

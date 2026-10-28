@@ -26,7 +26,8 @@ const access = (...areas: string[]) => ({
 Deno.test("a sub-capability alone cannot open any Admin page", () => {
   for (const area of [SUPPORT_OPERATIONS_AREA, COMMUNITY_OPERATIONS_AREA]) {
     const candidate = access(area);
-    for (const page of ["community-support", "overview", "admin", "email", "__proto__", "constructor"]) {
+    // #4130 Wave 6: the Support and Community pages carry the console's access.
+    for (const page of ["community-support", "support", "community", "overview", "admin", "email", "__proto__", "constructor"]) {
       assertEquals(canOpenPage(candidate, page), false, `${area} unexpectedly opened ${page}`);
     }
   }
@@ -54,13 +55,15 @@ Deno.test("hash manipulation cannot add a forbidden tab", () => {
     access(COMMUNITY_SUPPORT_AREA, SUPPORT_OPERATIONS_AREA),
     tabs,
   ).map((tab: { id: string }) => tab.id);
-  assertEquals(supportTabs, ["support", "availability"]);
+  // #4130 Wave 6: Availability is the Support header switch, not a tab, and
+  // Overview was retired; neither is granted by any area any more.
+  assertEquals(supportTabs, ["support"]);
 
   const communityTabs = communitySupportTabsForAccess(
     access(COMMUNITY_SUPPORT_AREA, COMMUNITY_OPERATIONS_AREA),
     tabs,
   ).map((tab: { id: string }) => tab.id);
-  assertEquals(communityTabs, ["overview"]);
+  assertEquals(communityTabs, []);
 });
 
 Deno.test("full-admin tabs still depend only on the original admin_console area", () => {

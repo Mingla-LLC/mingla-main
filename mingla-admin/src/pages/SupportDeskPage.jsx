@@ -3,7 +3,7 @@
  *
  * A queue of support_tickets (mirroring the Users / Claims table) + a ticket
  * detail (left = the conversation thread; right = ticket meta + actions).
- * Who is on Support is managed in Community & Support → People and roles
+ * Who is on Support is managed in Support → People and roles
  * (#3988); Admins get a link there from this desk.
  *
  * Auth: the admin web client authenticates with the anon key under RLS. The
@@ -43,7 +43,7 @@ import { logAdminAction } from "../lib/auditLog";
 import { extractFunctionError } from "../lib/edgeFunctionError";
 import { timeAgo, formatDateTime } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
-import { Segmented, Select } from "../components/crm/fields";
+import { Select } from "../components/crm/fields";
 import {
   InternalTicketModal,
   NextUpdateModal,
@@ -57,18 +57,14 @@ import {
   updateInternalSupportThread,
 } from "../services/supportProductWorkflowService";
 import { listSupportStaffRoster } from "../services/communityService";
-import { isActiveUnassignedTicket } from "../lib/supportTicketMetrics";
+import {
+  SUPPORT_INBOX_FILTERS,
+  supportInboxCounts,
+  supportInboxRows,
+} from "../lib/supportTicketMetrics";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STATUS_TABS = [
-  { id: "all", label: "All" },
-  { id: "new", label: "New" },
-  { id: "open", label: "Open" },
-  { id: "pending", label: "Pending" },
-  { id: "resolved", label: "Resolved" },
-  { id: "closed", label: "Closed" },
-];
 
 const STATUS_BADGE = {
   new: "info",
@@ -187,13 +183,14 @@ function hasActiveNextUpdate(ticket) {
 }
 
 // #3988 — Support access is granted in People and roles, not from this desk.
-const MANAGE_SUPPORT_PEOPLE_HREF = "#/community-support?tab=team";
+// #4130 Wave 6: People and roles is a tab of the Support page.
+const MANAGE_SUPPORT_PEOPLE_HREF = "#/support?tab=team";
 const MANAGE_SUPPORT_PEOPLE_CLASS =
   "inline-flex min-h-[32px] items-center px-2 text-sm font-medium text-[var(--color-brand-700)] underline-offset-2 hover:underline";
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function SupportDeskPage({ embedded = false, canManageAgents = true } = {}) {
+export function SupportDeskPage({ embedded = false, canManageAgents = true, onCounts } = {}) {
   const { addToast } = useToast();
   const { session, signOut } = useAuth();
   const mountedRef = useRef(true);
@@ -219,8 +216,8 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
   const [productSignals, setProductSignals] = useState([]);
   const [profilesById, setProfilesById] = useState({}); // user_id → { ...profile, segment }
   const [brandsById, setBrandsById] = useState({});       // brand_id → { id, name }
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [unassignedOnly, setUnassignedOnly] = useState(false);
+  // #4130 Wave 6: the inbox opens on the work still waiting.
+  const [inboxFilter, setInboxFilter] = useState(SUPPORT_INBOX_FILTERS[0].id);
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueError, setQueueError] = useState(null);
 
@@ -554,18 +551,18 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
 
   // ─── Derived ──────────────────────────────────────────────────────────────────
 
-  const unassignedCount = useMemo(
-    () => tickets.filter(isActiveUnassignedTicket).length,
-    [tickets],
-  );
 
+  // #4130 Wave 6: the filter counts and the list come from the same rows,
+  // so a count always matches what the inbox shows.
+  const inboxCounts = useMemo(() => supportInboxCounts(tickets), [tickets]);
+  const unassignedCount = inboxCounts.unassigned;
   const visibleTickets = useMemo(
-    () => tickets.filter((ticket) => (
-      (statusFilter === "all" || ticket.status === statusFilter)
-      && (!unassignedOnly || isActiveUnassignedTicket(ticket))
-    )),
-    [tickets, statusFilter, unassignedOnly],
+    () => supportInboxRows(tickets, inboxFilter),
+    [tickets, inboxFilter],
   );
+  useEffect(() => {
+    if (!queueLoading && !queueError) onCounts?.(inboxCounts);
+  }, [inboxCounts, queueLoading, queueError, onCounts]);
 
   const selectedSignal = useMemo(() => {
     if (!selectedTicket) return null;
@@ -660,29 +657,29 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
         </div>
       )}
 
-      {/* Status filter tabs + unassigned toggle */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Segmented
-          label="Support status"
-          options={STATUS_TABS.map((tab) => ({ value: tab.id, label: tab.label }))}
-          value={statusFilter}
-          onChange={setStatusFilter}
-        />
-        <label className="ml-2 flex items-center gap-2 text-sm text-[var(--color-text-secondary)] cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={unassignedOnly}
-            onChange={(e) => setUnassignedOnly(e.target.checked)}
-            className="h-4 w-4 rounded border-[var(--gray-300)] accent-[var(--color-brand-500)] cursor-pointer"
-          />
-          Unassigned only
-        </label>
+      {/* #4130 Wave 6: what the inbox shows, each with its count */}
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Show tickets">
+        {SUPPORT_INBOX_FILTERS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={inboxFilter === option.id}
+            onClick={() => setInboxFilter(option.id)}
+            className={`min-h-9 rounded-full px-3 py-1.5 text-sm font-medium ${
+              inboxFilter === option.id
+                ? "bg-[var(--color-brand-500)] text-white"
+                : "border border-[var(--gray-200)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-50)]"
+            }`}
+          >
+            {option.label} · {queueLoading || queueError ? "–" : inboxCounts[option.id]}
+          </button>
+        ))}
       </div>
 
       {/* Queue */}
       <SectionCard
         title={`Support inbox (${visibleTickets.length})`}
-        subtitle="Live customer chats and staff-created work, newest activity first"
+        subtitle={inboxFilter === "resolved" || inboxFilter === "all" ? "Live customer chats and staff-created work, newest activity first" : "Live customer chats and staff-created work, longest waiting first"}
         noPadding
       >
         {queueLoading ? (
@@ -697,9 +694,11 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
           <div className="flex flex-col items-center gap-2 py-12">
             <LifeBuoy className="h-10 w-10 text-[var(--gray-300)]" />
             <p className="text-sm text-[var(--color-text-tertiary)]">
-              {statusFilter === "all" && !unassignedOnly
-                ? "No support work yet."
-                : "No tickets match this filter."}
+              {inboxFilter === "all"
+                ? "No support work yet. New chats from hosts and explorers show up here."
+                : inboxFilter === "open"
+                  ? "Nothing is waiting. New chats from hosts and explorers show up here."
+                  : "No tickets match this filter."}
             </p>
           </div>
         ) : (

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/offering-rendering/__tests__/issue_3645_installment_charge_schedule_decode.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3645-pi-19-installment-charge-schedule-decode",
+  "profile": "deno-1.46-stripe"
+}

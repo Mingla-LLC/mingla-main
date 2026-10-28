@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -9,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
 const ALLOWLIST_PATH = "supabase/security/anon_executable_definer_allowlist.txt";
-const WORKFLOW_PATH = ".github/workflows/issue-2117-offering-visibility-gate-tests.yml";
+const RETIRED_WORKFLOW_PATH = ".github/workflows/issue-2117-offering-visibility-gate-tests.yml";
 const OLD_HEADER = "# Signature count: 193 (intended-public 24, internally-gated 108, predicate/read-helper 58, PostGIS 3).";
 const NEW_HEADER = "# Signature count: 196 (intended-public 27, internally-gated 108, predicate/read-helper 58, PostGIS 3).";
 const ANCHOR = "pg_published_trips_public(p_destination_query text, p_departure_query text, p_date_from timestamp with time zone, p_date_to timestamp with time zone, p_min_price_cents integer, p_max_price_cents integer, p_group_size_min integer, p_group_size_max integer, p_sort text, p_limit integer, p_offset integer)";
@@ -20,15 +21,6 @@ const EXACT_BLOCK = [
   "list_public_search_sitemap()",
 ].join("\n");
 const SIGNATURES = ["resolve_public_search_document(p_path text)", "list_public_search_sitemap()"];
-const LIVE_GATE_LINE = "run: bash scripts/ci/security_definer_anon_gate.sh";
-const SELF_TEST_TOKEN = "node scripts/ci/issue_2986_allowlist_delta_gate.mjs --self-test";
-const REAL_GATE_TOKEN = "node scripts/ci/issue_2986_allowlist_delta_gate.mjs --base-sha \"$BASE_SHA\"";
-const MIGRATION_FILE = "20270614002986_issue_2986_public_search_documents.sql";
-const MIGRATION_PATH = `supabase/migrations/${MIGRATION_FILE}`;
-const PHASE_TWO_TOKEN = "Canonical migration replay — phase 2 (#2117)";
-const TESTER_SUITE_TOKEN = "#2117 tester adversarial suite";
-const EXACT_SKIP_LINE = `*${MIGRATION_FILE}) continue ;;`;
-const EXACT_APPLY_LINE = `-f ${MIGRATION_PATH}`;
 
 // #3426 — the second binding amendment, and the only other one. Exactly ONE
 // intended-public reader (the brand page's date-decided sections) plus its one
@@ -160,6 +152,53 @@ const I3872P_BLOCK = [
   I3872P_SIGNATURES[8],
 ].join("\n");
 const I3872P_NAMES = I3872P_SIGNATURES.map((signature) => signature.slice(0, signature.indexOf("(") + 1));
+
+// #2829 W4 — ninth binding amendment. The public trip-guide reader sits
+// directly after the public venue-menu sale reader. It returns guide copy only
+// for a public, non-private trip and NULL for every hidden/non-trip shape. This
+// amendment also advances the audited intended-public count by exactly one.
+const I2829_OLD_HEADER = I3697_NEW_HEADER;
+const I2829_NEW_HEADER =
+  "# Signature count: 198 (intended-public 29, internally-gated 108, predicate/read-helper 58, PostGIS 3).";
+const I2829_ANCHOR = I3872_SIGNATURES[2];
+const I2829_SIGNATURE = "pg_public_trip_guide(p_trip_id uuid)";
+const I2829_BLOCK = [
+  "# #2829 W4: one public trip's guide, gated by the same public/non-private trip predicate as the public offering read model; returns guide copy only and NULL for draft, private, deleted, or non-trip ids.",
+  I2829_SIGNATURE,
+].join("\n");
+const I2829_NAME = "pg_public_trip_guide(";
+
+// #4137 — tenth binding amendment. Two anonymous Blog readers expose only a
+// published post's already-public embed facts or one non-enumerable preview,
+// and four boolean helpers let RLS enforce published-only visibility without
+// returning row payloads. The audited count advances by exactly six.
+const I4137_OLD_HEADER = I2829_NEW_HEADER;
+const I4137_NEW_HEADER =
+  "# Signature count: 204 (intended-public 31, internally-gated 108, predicate/read-helper 62, PostGIS 3).";
+const I4137_PUBLIC_ANCHOR = I3697_SIGNATURE;
+const I4137_PUBLIC_SIGNATURES = [
+  "blog_public_post_embeds(p_slug text)",
+  "blog_public_preview(p_token text)",
+];
+const I4137_PUBLIC_BLOCK = [
+  "# #4137: published-post embeds expose only the same allow-listed public place/event facts as the post page; no host identity or draft fields.",
+  I4137_PUBLIC_SIGNATURES[0],
+  "# #4137: one high-entropy, expiring preview token resolves one immutable review payload; the token is non-enumerable and returns no staff identity.",
+  I4137_PUBLIC_SIGNATURES[1],
+].join("\n");
+const I4137_PREDICATE_ANCHOR = "is_support_staff(p_user_id uuid)";
+const I4137_PREDICATE_SIGNATURES = [
+  "issue_4137_blog_media_is_public(p_media_id uuid)",
+  "issue_4137_blog_post_is_public(p_post blog_posts)",
+  "issue_4137_blog_post_visible(p_status text, p_deleted_at timestamp with time zone, p_published_version_id uuid, p_publish_at timestamp with time zone, p_take_down_at timestamp with time zone)",
+  "issue_4137_blog_version_is_public(p_version_id uuid)",
+];
+const I4137_PREDICATE_BLOCK = [
+  "# #4137: RLS predicate helpers return one boolean over caller-supplied public row/id inputs so anonymous policies can enforce published-only visibility; they expose no row payload.",
+  ...I4137_PREDICATE_SIGNATURES,
+].join("\n");
+const I4137_NAMES = [...I4137_PUBLIC_SIGNATURES, ...I4137_PREDICATE_SIGNATURES]
+  .map((signature) => signature.slice(0, signature.indexOf("(") + 1));
 
 const countExactLine = (source, expected) => source.split(/\r?\n/).filter((line) => line.trim() === expected).length;
 
@@ -295,18 +334,74 @@ const expectedAfter3872Public = (base) => {
   return base.replace(`${I3872P_ANCHOR}\n`, `${I3872P_ANCHOR}\n${I3872P_BLOCK}\n`);
 };
 
+// #2829 W4 — applied after the existing eight amendments. A settled base must
+// retain the exact comment, signature, placement, and count correction.
+const expectedAfter2829 = (base) => {
+  if (
+    countExactLine(base, I2829_SIGNATURE) === 1 &&
+    base.includes(`${I2829_ANCHOR}\n${I2829_BLOCK}\n`) &&
+    (countExactLine(base, I2829_NEW_HEADER) === 1 || countExactLine(base, I4137_NEW_HEADER) === 1)
+  ) {
+    return base;
+  }
+  if (base.includes(I2829_NAME) || base.includes("# #2829 W4:")) {
+    throw new Error("base contains a partial or lookalike #2829 W4 trip-guide reader");
+  }
+  if (countExactLine(base, I2829_OLD_HEADER) !== 1) {
+    throw new Error("base #2829 W4 count-header anchor is absent or duplicated");
+  }
+  if (countExactLine(base, I2829_ANCHOR) !== 1) {
+    throw new Error("base #2829 W4 insertion anchor is absent or duplicated");
+  }
+  return base
+    .replace(I2829_OLD_HEADER, I2829_NEW_HEADER)
+    .replace(`${I2829_ANCHOR}\n`, `${I2829_ANCHOR}\n${I2829_BLOCK}\n`);
+};
+
+const expectedAfter4137 = (base) => {
+  if (
+    [...I4137_PUBLIC_SIGNATURES, ...I4137_PREDICATE_SIGNATURES]
+      .every((signature) => countExactLine(base, signature) === 1) &&
+    base.includes(`${I4137_PUBLIC_ANCHOR}\n${I4137_PUBLIC_BLOCK}\n`) &&
+    base.includes(`${I4137_PREDICATE_ANCHOR}\n${I4137_PREDICATE_BLOCK}\n`) &&
+    countExactLine(base, I4137_NEW_HEADER) === 1
+  ) {
+    return base;
+  }
+  if (I4137_NAMES.some((name) => base.includes(name)) || base.includes("# #4137:")) {
+    throw new Error("base contains a partial or lookalike #4137 Blog reader set");
+  }
+  if (countExactLine(base, I4137_OLD_HEADER) !== 1) {
+    throw new Error("base #4137 count-header anchor is absent or duplicated");
+  }
+  if (countExactLine(base, I4137_PUBLIC_ANCHOR) !== 1) {
+    throw new Error("base #4137 public-reader anchor is absent or duplicated");
+  }
+  if (countExactLine(base, I4137_PREDICATE_ANCHOR) !== 1) {
+    throw new Error("base #4137 predicate-reader anchor is absent or duplicated");
+  }
+  return base
+    .replace(I4137_OLD_HEADER, I4137_NEW_HEADER)
+    .replace(`${I4137_PUBLIC_ANCHOR}\n`, `${I4137_PUBLIC_ANCHOR}\n${I4137_PUBLIC_BLOCK}\n`)
+    .replace(`${I4137_PREDICATE_ANCHOR}\n`, `${I4137_PREDICATE_ANCHOR}\n${I4137_PREDICATE_BLOCK}\n`);
+};
+
 export const expectedAllowlist = (base) =>
-  expectedAfter3872Public(
-    expectedAfter4111(
-    expectedAfter3872(
-      expectedAfter3682(
-        expectedAfter3697(expectedAfter3281(expectedAfter3426(expectedAfter2986(base)))),
+  expectedAfter4137(
+    expectedAfter2829(
+      expectedAfter3872Public(
+        expectedAfter4111(
+          expectedAfter3872(
+            expectedAfter3682(
+              expectedAfter3697(expectedAfter3281(expectedAfter3426(expectedAfter2986(base)))),
+            ),
+          ),
+        ),
       ),
     ),
-  ),
   );
 
-export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
+export const validate = ({ baseAllowlist, currentAllowlist }) => {
   const failures = [];
   let expected = "";
   try {
@@ -316,7 +411,7 @@ export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
   }
   if (expected && currentAllowlist !== expected) {
     failures.push(
-      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, #4111 brand-page enquiry readers, and #3872 R3/R4 public creator, Local and referral readers",
+      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, #4111 brand-page enquiry readers, #3872 R3/R4 public creator, Local and referral readers, #2829 W4 public trip-guide reader, and #4137 Blog readers",
     );
   }
   for (const signature of [
@@ -328,22 +423,12 @@ export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
     ...I3872_SIGNATURES,
     ...I4111_SIGNATURES,
     ...I3872P_SIGNATURES,
+    I2829_SIGNATURE,
+    ...I4137_PUBLIC_SIGNATURES,
+    ...I4137_PREDICATE_SIGNATURES,
   ]) {
     if (countExactLine(currentAllowlist, signature) !== 1) failures.push(`signature must occur exactly once: ${signature}`);
   }
-  if (countExactLine(workflow, LIVE_GATE_LINE) !== 1) failures.push("the live ORCH-1392 anon-definer gate was removed, duplicated, or bypassed");
-  if (!workflow.includes(SELF_TEST_TOKEN)) failures.push("the #2986 negative-control self-test is not registered in #2117 CI");
-  if (!workflow.includes(REAL_GATE_TOKEN)) failures.push("the #2986 real base-delta check is not registered in #2117 CI");
-  if (countExactLine(workflow, EXACT_SKIP_LINE) !== 1) failures.push("#2986 must have one exact-filename phase-1 skip");
-  if (countExactLine(workflow, EXACT_APPLY_LINE) !== 1) failures.push("#2986 must have one exact post-phase-2 migration apply");
-  const phaseTwoIndex = workflow.indexOf(PHASE_TWO_TOKEN);
-  const testerSuiteIndex = workflow.indexOf(TESTER_SUITE_TOKEN);
-  const applyIndex = workflow.indexOf(EXACT_APPLY_LINE);
-  if (phaseTwoIndex < 0 || applyIndex < phaseTwoIndex) failures.push("#2986 migration apply must occur after #2117 phase 2");
-  if (testerSuiteIndex < 0 || applyIndex < testerSuiteIndex) failures.push("#2986 migration apply must not contaminate the frozen #2117 executable suites");
-  if (/\*[^\n)]*2986[^\n)]*\*\)\s*continue\s*;;/.test(workflow)) failures.push("#2986 phase-1 skip must not use a wildcard issue match");
-  const migrationMentions = workflow.split(/\r?\n/).filter((line) => line.includes("2986") && /\.sql|continue\s*;;|-f\s+/.test(line));
-  if (migrationMentions.length !== 2) failures.push("#2986 migration ordering has an additional, renamed, or duplicated command");
   return failures;
 };
 
@@ -356,117 +441,151 @@ const fixtureBase = () => [
   I3872_ANCHOR,
   I3281_ANCHOR,
   "place_discovery_range_for_viewer(p_place_pool_id uuid)",
+  I4137_PREDICATE_ANCHOR,
   I3872P_ANCHOR,
   "",
 ].join("\n");
 
-const fixtureWorkflow = () => [
-  `              ${EXACT_SKIP_LINE}`,
-  `      - name: "${PHASE_TWO_TOKEN}"`,
-  `      - name: "${TESTER_SUITE_TOKEN}"`,
-  `            ${EXACT_APPLY_LINE}`,
-  `      ${LIVE_GATE_LINE}`,
-  `          ${SELF_TEST_TOKEN}`,
-  `          ${REAL_GATE_TOKEN}`,
-  "",
-].join("\n");
+const runPostFoldBaseRegression = (allowlist) => {
+  const root = mkdtempSync(resolve(tmpdir(), "allowlist-post-fold-"));
+  const script = resolve(root, "scripts/ci/issue_2986_allowlist_delta_gate.mjs");
+  const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+  try {
+    mkdirSync(dirname(script), { recursive: true });
+    mkdirSync(dirname(resolve(root, ALLOWLIST_PATH)), { recursive: true });
+    writeFileSync(script, readFileSync(fileURLToPath(import.meta.url)));
+    writeFileSync(resolve(root, ALLOWLIST_PATH), allowlist);
+    git("init", "--quiet");
+    git("add", ".");
+    git("-c", "user.name=CI fixture", "-c", "user.email=fixture@example.invalid",
+      "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--quiet", "-m", "Post-fold base fixture");
+    const base = git("rev-parse", "HEAD").trim();
+    if (git("ls-tree", "--name-only", base, "--", RETIRED_WORKFLOW_PATH).trim()) {
+      throw new Error("post-fold fixture unexpectedly contains the retired workflow");
+    }
+    const invoke = () => spawnSync(process.execPath, [script, "--base-sha", base],
+      { cwd: root, encoding: "utf8", timeout: 10_000 });
+    const clean = invoke();
+    if (clean.status !== 0) throw new Error(`post-fold base was refused: ${clean.stderr}`);
+    writeFileSync(resolve(root, ALLOWLIST_PATH), `${allowlist}forged_after_fold()\n`);
+    const forged = invoke();
+    if (forged.status === 0 || !forged.stderr.includes("allowlist delta")) {
+      throw new Error("post-fold base did not reject an unauthorized anonymous reader");
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+};
 
 const runSelfTest = () => {
   const base = fixtureBase();
   const head = expectedAllowlist(base);
-  const workflow = fixtureWorkflow();
   const cases = [
-    ["canonical exact pair", head, workflow, true],
-    ["third function", `${head}forged_third_function()\n`, workflow, false],
-    ["signature removed", head.replace(`${SIGNATURES[0]}\n`, ""), workflow, false],
-    ["signature changed", head.replace(SIGNATURES[0], "resolve_public_search_document(path text)"), workflow, false],
-    ["lookalike overload", `${head}resolve_public_search_document(p_path text, p_debug boolean)\n`, workflow, false],
-    ["comment substitution", head.replace("# #2986: exact Host-relative path only;", "# approved somehow:"), workflow, false],
-    ["unrelated baseline edit", head.replace("place_discovery_range_for_viewer", "changed_baseline_reader"), workflow, false],
-    ["live gate removed", head, workflow.replace(`      ${LIVE_GATE_LINE}\n`, ""), false],
-    ["live gate bypassed", head, workflow.replace(LIVE_GATE_LINE, `run: true # ${LIVE_GATE_LINE}`), false],
-    ["migration skip renamed", head, workflow.replace(MIGRATION_FILE, `renamed_${MIGRATION_FILE}`), false],
-    ["migration skip missing", head, workflow.replace(`              ${EXACT_SKIP_LINE}\n`, ""), false],
-    ["migration apply duplicated", head, `${workflow}            ${EXACT_APPLY_LINE}\n`, false],
-    ["migration wildcard skip", head, workflow.replace(EXACT_SKIP_LINE, "*2986*) continue ;;"), false],
-    ["migration applied early", head, workflow.replace(`      - name: "${PHASE_TWO_TOKEN}"\n      - name: "${TESTER_SUITE_TOKEN}"\n            ${EXACT_APPLY_LINE}`, `            ${EXACT_APPLY_LINE}\n      - name: "${PHASE_TWO_TOKEN}"\n      - name: "${TESTER_SUITE_TOKEN}"`), false],
-    ["migration contaminates tester suite", head, workflow.replace(`      - name: "${TESTER_SUITE_TOKEN}"\n            ${EXACT_APPLY_LINE}`, `            ${EXACT_APPLY_LINE}\n      - name: "${TESTER_SUITE_TOKEN}"`), false],
-    ["additional issue migration", head, workflow.replace(EXACT_SKIP_LINE, `${EXACT_SKIP_LINE}\n              *20270614002987_issue_2986_extra.sql) continue ;;`), false],
+    ["canonical exact pair", head, true],
+    ["third function", `${head}forged_third_function()\n`, false],
+    ["signature removed", head.replace(`${SIGNATURES[0]}\n`, ""), false],
+    ["signature changed", head.replace(SIGNATURES[0], "resolve_public_search_document(path text)"), false],
+    ["lookalike overload", `${head}resolve_public_search_document(p_path text, p_debug boolean)\n`, false],
+    ["comment substitution", head.replace("# #2986: exact Host-relative path only;", "# approved somehow:"), false],
+    ["unrelated baseline edit", head.replace("place_discovery_range_for_viewer", "changed_baseline_reader"), false],
     // #3426 — the second amendment is exactly one reader and one comment.
-    ["#3426 reader missing", head.replace(`${I3426_BLOCK}\n`, ""), workflow, false],
-    ["#3426 comment missing", head.replace(`${I3426_BLOCK.split("\n")[0]}\n`, ""), workflow, false],
-    ["#3426 comment substituted", head.replace("# #3426: one date-decided section", "# #3426: approved somehow"), workflow, false],
-    ["#3426 signature changed", head.replace(I3426_SIGNATURE, I3426_SIGNATURE.replace("p_section text", "p_section_name text")), workflow, false],
-    ["#3426 lookalike overload", `${head}pg_public_brand_offering_section(p_brand_slug text, p_section text)\n`, workflow, false],
-    ["#3426 moved away from its anchor", head.replace(`${I3426_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3426_BLOCK}\n`), workflow, false],
-    ["#3426 plus a forged neighbour", head.replace(`${I3426_BLOCK}\n`, `${I3426_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
+    ["#3426 reader missing", head.replace(`${I3426_BLOCK}\n`, ""), false],
+    ["#3426 comment missing", head.replace(`${I3426_BLOCK.split("\n")[0]}\n`, ""), false],
+    ["#3426 comment substituted", head.replace("# #3426: one date-decided section", "# #3426: approved somehow"), false],
+    ["#3426 signature changed", head.replace(I3426_SIGNATURE, I3426_SIGNATURE.replace("p_section text", "p_section_name text")), false],
+    ["#3426 lookalike overload", `${head}pg_public_brand_offering_section(p_brand_slug text, p_section text)\n`, false],
+    ["#3426 moved away from its anchor", head.replace(`${I3426_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3426_BLOCK}\n`), false],
+    ["#3426 plus a forged neighbour", head.replace(`${I3426_BLOCK}\n`, `${I3426_BLOCK}\nforged_neighbour_function()\n`), false],
     // #3281 R3 — the third amendment is exactly one reader and its comment.
-    ["#3281 reader missing", head.replace(`${I3281_BLOCK}\n`, ""), workflow, false],
-    ["#3281 comment missing", head.replace(`${I3281_BLOCK.split("\n")[0]}\n`, ""), workflow, false],
-    ["#3281 comment substituted", head.replace("# #3281 R3: buyer time-step remaining", "# #3281 R3: approved somehow"), workflow, false],
-    ["#3281 signature changed", head.replace(I3281_SIGNATURE, I3281_SIGNATURE.replace("p_ticket_type_id uuid", "p_ticket uuid")), workflow, false],
-    ["#3281 lookalike overload", `${head}pg_experience_slot_availability(p_event_id uuid)\n`, workflow, false],
-    ["#3281 moved away from its anchor", head.replace(`${I3281_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3281_BLOCK}\n`), workflow, false],
-    ["#3281 plus a forged neighbour", head.replace(`${I3281_BLOCK}\n`, `${I3281_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
+    ["#3281 reader missing", head.replace(`${I3281_BLOCK}\n`, ""), false],
+    ["#3281 comment missing", head.replace(`${I3281_BLOCK.split("\n")[0]}\n`, ""), false],
+    ["#3281 comment substituted", head.replace("# #3281 R3: buyer time-step remaining", "# #3281 R3: approved somehow"), false],
+    ["#3281 signature changed", head.replace(I3281_SIGNATURE, I3281_SIGNATURE.replace("p_ticket_type_id uuid", "p_ticket uuid")), false],
+    ["#3281 lookalike overload", `${head}pg_experience_slot_availability(p_event_id uuid)\n`, false],
+    ["#3281 moved away from its anchor", head.replace(`${I3281_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3281_BLOCK}\n`), false],
+    ["#3281 plus a forged neighbour", head.replace(`${I3281_BLOCK}\n`, `${I3281_BLOCK}\nforged_neighbour_function()\n`), false],
     // #3872 R1 — the fourth amendment is exactly three readers and three comments.
-    ["#3872 reader set missing", head.replace(`${I3872_BLOCK}\n`, ""), workflow, false],
-    ["#3872 comment missing", head.replace(`${I3872_BLOCK.split("\n")[0]}\n`, ""), workflow, false],
-    ["#3872 comment substituted", head.replace("# #3872 R1: public event tiers", "# #3872 R1: approved somehow"), workflow, false],
-    ["#3872 signature changed", head.replace(I3872_SIGNATURES[0], "pg_public_event_tier_pricing(p_event uuid)"), workflow, false],
-    ["#3872 lookalike overload", `${head}pg_public_event_tier_pricing(p_event_id uuid, p_debug boolean)\n`, workflow, false],
-    ["#3872 moved away from its anchor", head.replace(`${I3872_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3872_BLOCK}\n`), workflow, false],
-    ["#3872 plus a forged neighbour", head.replace(`${I3872_BLOCK}\n`, `${I3872_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
+    ["#3872 reader set missing", head.replace(`${I3872_BLOCK}\n`, ""), false],
+    ["#3872 comment missing", head.replace(`${I3872_BLOCK.split("\n")[0]}\n`, ""), false],
+    ["#3872 comment substituted", head.replace("# #3872 R1: public event tiers", "# #3872 R1: approved somehow"), false],
+    ["#3872 signature changed", head.replace(I3872_SIGNATURES[0], "pg_public_event_tier_pricing(p_event uuid)"), false],
+    ["#3872 lookalike overload", `${head}pg_public_event_tier_pricing(p_event_id uuid, p_debug boolean)\n`, false],
+    ["#3872 moved away from its anchor", head.replace(`${I3872_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3872_BLOCK}\n`), false],
+    ["#3872 plus a forged neighbour", head.replace(`${I3872_BLOCK}\n`, `${I3872_BLOCK}\nforged_neighbour_function()\n`), false],
     // #3697 — the fourth amendment is exactly one reader, one comment and the
     // matching count correction.
-    ["#3697 reader missing", head.replace(`${I3697_BLOCK}\n`, ""), workflow, false],
-    ["#3697 comment missing", head.replace(`${I3697_BLOCK.split("\n")[0]}\n`, ""), workflow, false],
-    ["#3697 comment substituted", head.replace("# #3697: one non-sensitive country-mode scalar", "# #3697: approved somehow"), workflow, false],
-    ["#3697 signature changed", head.replace(I3697_SIGNATURE, "ad_pixel_public_config(country_code text)"), workflow, false],
-    ["#3697 lookalike overload", `${head}ad_pixel_public_config(p_country_code text, p_debug boolean)\n`, workflow, false],
-    ["#3697 moved away from its anchor", head.replace(`${I3697_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3697_BLOCK}\n`), workflow, false],
-    ["#3697 plus a forged neighbour", head.replace(`${I3697_BLOCK}\n`, `${I3697_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
-    ["#3697 count not corrected", head.replace(I3697_NEW_HEADER, I3697_OLD_HEADER), workflow, false],
+    ["#3697 reader missing", head.replace(`${I3697_BLOCK}\n`, ""), false],
+    ["#3697 comment missing", head.replace(`${I3697_BLOCK.split("\n")[0]}\n`, ""), false],
+    ["#3697 comment substituted", head.replace("# #3697: one non-sensitive country-mode scalar", "# #3697: approved somehow"), false],
+    ["#3697 signature changed", head.replace(I3697_SIGNATURE, "ad_pixel_public_config(country_code text)"), false],
+    ["#3697 lookalike overload", `${head}ad_pixel_public_config(p_country_code text, p_debug boolean)\n`, false],
+    ["#3697 moved away from its anchor", head.replace(`${I3697_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3697_BLOCK}\n`), false],
+    ["#3697 plus a forged neighbour", head.replace(`${I3697_BLOCK}\n`, `${I3697_BLOCK}\nforged_neighbour_function()\n`), false],
+    ["#3697 count not corrected", head.replace(I4137_NEW_HEADER, I3697_OLD_HEADER), false],
     // #3682 — the fifth amendment is exactly two aggregate-only readers and
     // their one product-decision comment.
-    ["#3682 block missing", head.replace(`${I3682_BLOCK}\n`, ""), workflow, false],
-    ["#3682 comment missing", head.replace(`${I3682_BLOCK.split("\n")[0]}\n`, ""), workflow, false],
-    ["#3682 comment substituted", head.replace("# #3682: aggregate-only brand follower counts", "# #3682: approved somehow"), workflow, false],
-    ["#3682 signature changed", head.replace(I3682_SIGNATURES[0], "get_brand_follower_count(brand_id uuid)"), workflow, false],
-    ["#3682 lookalike overload", `${head}get_brand_follower_count(p_brand_id uuid, p_debug boolean)\n`, workflow, false],
-    ["#3682 moved away from its anchor", head.replace(`${I3682_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3682_BLOCK}\n`), workflow, false],
-    ["#3682 plus a forged neighbour", head.replace(`${I3682_BLOCK}\n`, `${I3682_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
+    ["#3682 block missing", head.replace(`${I3682_BLOCK}\n`, ""), false],
+    ["#3682 comment missing", head.replace(`${I3682_BLOCK.split("\n")[0]}\n`, ""), false],
+    ["#3682 comment substituted", head.replace("# #3682: aggregate-only brand follower counts", "# #3682: approved somehow"), false],
+    ["#3682 signature changed", head.replace(I3682_SIGNATURES[0], "get_brand_follower_count(brand_id uuid)"), false],
+    ["#3682 lookalike overload", `${head}get_brand_follower_count(p_brand_id uuid, p_debug boolean)\n`, false],
+    ["#3682 moved away from its anchor", head.replace(`${I3682_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3682_BLOCK}\n`), false],
+    ["#3682 plus a forged neighbour", head.replace(`${I3682_BLOCK}\n`, `${I3682_BLOCK}\nforged_neighbour_function()\n`), false],
     // #4111 — the sixth amendment is exactly two brand-page readers and their
     // one comment, directly after the #3682 block, with no header change.
-    ["#4111 block missing", head.replace(`${I4111_BLOCK}\n`, ""), workflow, false],
-    ["#4111 comment missing", head.replace(`${I4111_BLOCK.split("\n")[0]}\n`, ""), workflow, false],
-    ["#4111 comment substituted", head.replace("# #4111: signed-out brand pages need", "# #4111: approved somehow"), workflow, false],
-    ["#4111 signature changed", head.replace(I4111_SIGNATURES[0], "brand_enquiry_public_profile(brand_id uuid)"), workflow, false],
-    ["#4111 lookalike overload", `${head}issue_4111_brand_takes_enquiries(p_brand_id uuid, p_debug boolean)\n`, workflow, false],
-    ["#4111 moved away from its anchor", head.replace(`${I4111_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I4111_BLOCK}\n`), workflow, false],
-    ["#4111 plus a forged neighbour", head.replace(`${I4111_BLOCK}\n`, `${I4111_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
+    ["#4111 block missing", head.replace(`${I4111_BLOCK}\n`, ""), false],
+    ["#4111 comment missing", head.replace(`${I4111_BLOCK.split("\n")[0]}\n`, ""), false],
+    ["#4111 comment substituted", head.replace("# #4111: signed-out brand pages need", "# #4111: approved somehow"), false],
+    ["#4111 signature changed", head.replace(I4111_SIGNATURES[0], "brand_enquiry_public_profile(brand_id uuid)"), false],
+    ["#4111 lookalike overload", `${head}issue_4111_brand_takes_enquiries(p_brand_id uuid, p_debug boolean)\n`, false],
+    ["#4111 moved away from its anchor", head.replace(`${I4111_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I4111_BLOCK}\n`), false],
+    ["#4111 plus a forged neighbour", head.replace(`${I4111_BLOCK}\n`, `${I4111_BLOCK}\nforged_neighbour_function()\n`), false],
     // #3872 R3/R4 — the seventh amendment is exactly the commented public
     // block after the PostGIS tail, with no header change.
-    ["#3872 R3/R4 block missing", head.replace(`${I3872P_BLOCK}\n`, ""), workflow, false],
-    ["#3872 R3/R4 comment substituted", head.replace("# === #3872 Creator Program public surfaces", "# === approved somehow"), workflow, false],
-    ["#3872 R3/R4 signature changed", head.replace(I3872P_SIGNATURES[0], "gig_ratings_public(creator_account_id uuid)"), workflow, false],
-    ["#3872 R3/R4 lookalike overload", `${head}referral_link_resolve(p_slug text, p_debug boolean)\n`, workflow, false],
-    ["#3872 R3/R4 reader dropped", head.replace(`${I3872P_SIGNATURES[8]}\n`, ""), workflow, false],
-    ["#3872 R3/R4 plus a forged neighbour", head.replace(`${I3872P_BLOCK}\n`, `${I3872P_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
-    ["#4111 header edited", head.replace(I3697_NEW_HEADER, "# Signature count: 206 (intended-public 37, internally-gated 108, predicate/read-helper 58, PostGIS 3)."), workflow, false],
+    ["#3872 R3/R4 block missing", head.replace(`${I3872P_BLOCK}\n`, ""), false],
+    ["#3872 R3/R4 comment substituted", head.replace("# === #3872 Creator Program public surfaces", "# === approved somehow"), false],
+    ["#3872 R3/R4 signature changed", head.replace(I3872P_SIGNATURES[0], "gig_ratings_public(creator_account_id uuid)"), false],
+    ["#3872 R3/R4 lookalike overload", `${head}referral_link_resolve(p_slug text, p_debug boolean)\n`, false],
+    ["#3872 R3/R4 reader dropped", head.replace(`${I3872P_SIGNATURES[8]}\n`, ""), false],
+    ["#3872 R3/R4 plus a forged neighbour", head.replace(`${I3872P_BLOCK}\n`, `${I3872P_BLOCK}\nforged_neighbour_function()\n`), false],
+    // #2829 W4 — the ninth amendment is exactly one public trip-guide reader,
+    // its decision comment, its placement, and the matching count correction.
+    ["#2829 W4 block missing", head.replace(`${I2829_BLOCK}\n`, ""), false],
+    ["#2829 W4 comment missing", head.replace(`${I2829_BLOCK.split("\n")[0]}\n`, ""), false],
+    ["#2829 W4 comment substituted", head.replace("# #2829 W4: one public trip's guide", "# #2829 W4: approved somehow"), false],
+    ["#2829 W4 signature changed", head.replace(I2829_SIGNATURE, "pg_public_trip_guide(trip_id uuid)"), false],
+    ["#2829 W4 lookalike overload", `${head}pg_public_trip_guide(p_trip_id uuid, p_debug boolean)\n`, false],
+    ["#2829 W4 moved away from its anchor", head.replace(`${I2829_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I2829_BLOCK}\n`), false],
+    ["#2829 W4 plus a forged neighbour", head.replace(`${I2829_BLOCK}\n`, `${I2829_BLOCK}\nforged_neighbour_function()\n`), false],
+    ["#2829 W4 count not corrected", head.replace(I4137_NEW_HEADER, I2829_OLD_HEADER), false],
+    ["#2829 W4 header edited", head.replace(I4137_NEW_HEADER, "# Signature count: 207 (intended-public 38, internally-gated 108, predicate/read-helper 58, PostGIS 3)."), false],
+    // #4137 — the tenth amendment is exactly two public Blog readers, four
+    // boolean RLS helpers, their decision comments, placement, and count.
+    ["#4137 public block missing", head.replace(`${I4137_PUBLIC_BLOCK}\n`, ""), false],
+    ["#4137 predicate block missing", head.replace(`${I4137_PREDICATE_BLOCK}\n`, ""), false],
+    ["#4137 public comment missing", head.replace(`${I4137_PUBLIC_BLOCK.split("\n")[0]}\n`, ""), false],
+    ["#4137 predicate comment missing", head.replace(`${I4137_PREDICATE_BLOCK.split("\n")[0]}\n`, ""), false],
+    ["#4137 signature changed", head.replace(I4137_PUBLIC_SIGNATURES[0], "blog_public_post_embeds(slug text)"), false],
+    ["#4137 lookalike overload", `${head}blog_public_preview(p_token text, p_debug boolean)\n`, false],
+    ["#4137 helper dropped", head.replace(`${I4137_PREDICATE_SIGNATURES[3]}\n`, ""), false],
+    ["#4137 public block moved", head.replace(`${I4137_PUBLIC_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I4137_PUBLIC_BLOCK}\n`), false],
+    ["#4137 predicate block moved", head.replace(`${I4137_PREDICATE_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I4137_PREDICATE_BLOCK}\n`), false],
+    ["#4137 count not corrected", head.replace(I4137_NEW_HEADER, I4137_OLD_HEADER), false],
   ];
-  for (const [name, candidate, candidateWorkflow, shouldPass] of cases) {
-    const passed = validate({ baseAllowlist: base, currentAllowlist: candidate, workflow: candidateWorkflow }).length === 0;
+  for (const [name, candidate, shouldPass] of cases) {
+    const passed = validate({ baseAllowlist: base, currentAllowlist: candidate }).length === 0;
     if (passed !== shouldPass) throw new Error(`self-test ${name} ${shouldPass ? "failed" : "was not rejected"}`);
   }
-  // Once a base carries all eight amendments, the ONLY accepted head is that
+  // Once a base carries all ten amendments, the ONLY accepted head is that
   // base, byte for byte.
   const settled = expectedAllowlist(base);
-  if (validate({ baseAllowlist: settled, currentAllowlist: settled, workflow }).length !== 0) {
-    throw new Error("self-test settled base with all eight amendments failed");
+  if (validate({ baseAllowlist: settled, currentAllowlist: settled }).length !== 0) {
+    throw new Error("self-test settled base with all ten amendments failed");
   }
-  if (validate({ baseAllowlist: settled, currentAllowlist: `${settled}forged_after_settle()\n`, workflow }).length === 0) {
+  if (validate({ baseAllowlist: settled, currentAllowlist: `${settled}forged_after_settle()\n` }).length === 0) {
     throw new Error("self-test settled base accepted a new line");
   }
+  runPostFoldBaseRegression(settled);
   process.stdout.write("#2986 allowlist delta gate self-test PASS\n");
 };
 
@@ -475,11 +594,12 @@ const runReal = (baseSha) => {
   const root = resolve(SCRIPT_DIR, "../..");
   const baseAllowlist = execFileSync("git", ["show", `${baseSha}:${ALLOWLIST_PATH}`], { cwd: root, encoding: "utf8" });
   const currentAllowlist = readFileSync(resolve(root, ALLOWLIST_PATH), "utf8");
-  const workflow = readFileSync(resolve(root, WORKFLOW_PATH), "utf8");
-  const failures = validate({ baseAllowlist, currentAllowlist, workflow });
+  // Registration and replay order are enforced by the live batch contract.
+  // This gate compares the immutable base allowlist with the proposed one.
+  const failures = validate({ baseAllowlist, currentAllowlist });
   if (failures.length) throw new Error(failures.join("\n"));
   process.stdout.write(
-    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + #3872 R3/R4 public readers + frozen #2117 live gate PASS\n",
+    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + #3872 R3/R4 public readers + #2829 W4 public trip-guide reader + #4137 Blog readers PASS\n",
   );
 };
 

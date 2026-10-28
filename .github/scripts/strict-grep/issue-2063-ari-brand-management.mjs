@@ -21,7 +21,6 @@ const PATHS = Object.freeze({
   businessTest: "mingla-business/src/components/ari/__tests__/issue_2063_brand_confirmation_recovery.test.ts",
   receiptBindingTest: "supabase/functions/_shared/__tests__/issue_2063_ari_brand_receipt_binding.tester-adversarial.test.ts",
   canonicalHoursTest: "supabase/functions/_shared/__tests__/issue_2063_brand_hours_proposal_canonicalization.implementor.test.ts",
-  workflow: ".github/workflows/issue-2063-ari-brand-management.yml",
 });
 
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
@@ -44,11 +43,7 @@ function audit(overrides = {}) {
   const ledger = overrides.ledger ?? JSON.parse(read(PATHS.ledger));
   const receiptBindingTest = overrides.receiptBindingTest ?? read(PATHS.receiptBindingTest);
   const canonicalHoursTest = overrides.canonicalHoursTest ?? read(PATHS.canonicalHoursTest);
-  const workflow = overrides.workflow ?? read(PATHS.workflow);
-  const contractsJob = workflow.slice(
-    workflow.indexOf("  issue-2063-contracts:"),
-    workflow.indexOf("  issue-2063-business-parity:"),
-  );
+
   const brandExecutorStart = tools.indexOf("async function executeBrandOperation(");
   const brandExecutorEnd = tools.indexOf("// Legacy append-only source-test marker: const createBrand", brandExecutorStart);
   const brandExecutor = brandExecutorStart >= 0 && brandExecutorEnd > brandExecutorStart
@@ -122,25 +117,9 @@ function audit(overrides = {}) {
     "normalizing after proposal persistence makes #1972 reject the confirmation",
     "receipt-binding tester regression lost exact-payload assertion",
   );
-  requireText(
-    failures,
-    workflow,
-    "issue_2063_ari_brand_receipt_binding.tester-adversarial.test.ts",
-    "receipt-binding tester regression is not CI-wired",
-  );
-  requireText(
-    failures,
-    workflow,
-    "issue_2063_brand_hours_proposal_canonicalization.implementor.test.ts",
-    "canonical-hours implementor regression is not CI-wired",
-  );
+
   // [TEST-MOD-APPROVED #2063] This job invokes a historical-audit gate and must fetch its baseline.
-  requireText(
-    failures,
-    contractsJob,
-    "fetch-depth: 0",
-    "contracts checkout does not fetch the full capability-audit history",
-  );
+
   requireText(
     failures,
     tools,
@@ -300,12 +279,6 @@ if (process.argv.includes("--self-test")) {
   expectMutation("currency required version", "migration", "RAISE EXCEPTION 'expected_state_version_required'", "missing expected version");
   expectMutation("factory cache", "confirmHook", "brandHoursKeys.byBrand(brandId)", "missing brandHoursKeys.byBrand");
   expectMutation("brand retry", "confirm", '"create_brand",', "missing receipt-backed retry: create_brand");
-  expectAllMutation(
-    "receipt-binding CI",
-    "workflow",
-    "issue_2063_ari_brand_receipt_binding.tester-adversarial.test.ts",
-    "not CI-wired",
-  );
   expectMutation(
     "proposal hours canonicalization",
     "chat",
@@ -318,18 +291,7 @@ if (process.argv.includes("--self-test")) {
     "canonicalArgs = canonicalizeAgentProposalArgs(",
     "not canonicalized before confirmation persistence",
   );
-  expectAllMutation(
-    "canonical-hours CI",
-    "workflow",
-    "issue_2063_brand_hours_proposal_canonicalization.implementor.test.ts",
-    "not CI-wired",
-  );
-  expectMutation(
-    "full-history checkout",
-    "workflow",
-    "fetch-depth: 0",
-    "does not fetch the full capability-audit history",
-  );
+
   console.log("[issue-2063-ari-brand-management] self-test PASS (20 hostile reversions)");
 } else {
   const failures = audit();

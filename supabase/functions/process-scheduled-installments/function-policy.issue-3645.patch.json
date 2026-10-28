@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#3645",
+  "target": {
+    "kind": "function",
+    "name": "process-scheduled-installments"
+  },
+  "basePolicySha256": "6ec064e6b009b4e110b60edd2d2be5e8d2c41ad8461aac4af0c882f8a8ca719d",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "required_top_level",
+      "name": "RESEND_API_KEY",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "required_top_level",
+      "name": "SENTRY_DSN",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "required_top_level",
+      "name": "SENTRY_ENVIRONMENT",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "0c349a9f24af355fc392b4dc4110b3cda36b29bb8394484fc5abaef8eceaaa60",
+  "reason": "Issue #3645 routes scheduled collection outcomes through the shared organiser notification and structured-error helpers, so the existing notification and monitoring secrets are explicit deployment requirements."
+}

@@ -11,6 +11,12 @@ import {
 } from "../_shared/email/index.ts";
 import { signUnsubscribeToken } from "../_shared/marketingTokens.ts";
 import {
+  BlogPostBlockError,
+  listBlogPostOptions,
+  resolveBlogPostBlocks,
+  snapshotsFromResolved,
+} from "../_shared/email/blogPostBlock.ts";
+import {
   assertSupportedPersonalization,
   type AudienceDefinition,
   documentPlainText,
@@ -27,6 +33,7 @@ import {
 } from "./model.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 
@@ -306,7 +313,7 @@ async function sendViaResend(input: {
   }
 }
 
-async function createCampaign(
+export async function createCampaign(
   supabase: ServiceClient,
   userId: string,
   raw: Record<string, unknown>,
@@ -322,6 +329,17 @@ async function createCampaign(
   const document = validateDocument(
     raw.document ?? legacyBodyDocument(String(raw.body ?? "")),
   );
+  const resolvedBlog = await resolveBlogPostBlocks(
+    supabase,
+    document,
+    SUPABASE_URL,
+  );
+  if (resolvedBlog.missing.length) {
+    throw new Error(
+      `email_block_blog_post_not_published:${resolvedBlog.missing[0]}`,
+    );
+  }
+  const storedDocument = snapshotsFromResolved(document, resolvedBlog.document);
   const assetPrefix = `${
     SUPABASE_URL.replace(/\/+$/, "")
   }/storage/v1/object/public/admin-email-assets/`;
@@ -333,7 +351,7 @@ async function createCampaign(
     throw new Error("email_image_asset_bucket_required");
   }
   assertSupportedPersonalization(subject, document);
-  if (!documentPlainText(document).replace(/─/g, "").trim()) {
+  if (!documentPlainText(resolvedBlog.document).replace(/─/g, "").trim()) {
     throw new Error("email_document_empty");
   }
   const audience = normalizeAudience(raw.audience);
@@ -366,8 +384,8 @@ async function createCampaign(
     .from("admin_email_log")
     .insert({
       subject,
-      body: documentPlainText(document),
-      body_document: versionedDocument(document),
+      body: documentPlainText(resolvedBlog.document),
+      body_document: versionedDocument(storedDocument),
       from_name: ADMIN_SENDER.name,
       from_email: ADMIN_SENDER.address,
       recipient_type: audience.mode === "person" ? "individual" : "bulk",
@@ -455,13 +473,30 @@ async function claimCampaignById(
   return queued;
 }
 
-async function processClaimedCampaign(
+export async function processClaimedCampaign(
   supabase: ServiceClient,
   campaign: CampaignRecord,
 ) {
-  const document = validateDocument(
+  const references = validateDocument(
     campaign.body_document ?? legacyBodyDocument(campaign.body),
   );
+  const resolvedBlog = await resolveBlogPostBlocks(
+    supabase,
+    references,
+    SUPABASE_URL,
+  );
+  if (resolvedBlog.missing.length) {
+    await supabase.from("admin_email_log").update({
+      status: "failed",
+      last_error: `blog_post_not_published:${resolvedBlog.missing[0]}`,
+      completed_at: new Date().toISOString(),
+    }).eq("id", campaign.id);
+    return {
+      ok: false,
+      error: `blog_post_not_published:${resolvedBlog.missing[0]}`,
+    };
+  }
+  const document = resolvedBlog.document;
   const { data: deliveries, error: claimError } = await supabase.rpc(
     "claim_admin_email_delivery_batch",
     {
@@ -599,7 +634,7 @@ async function processDueCampaign(supabase: ServiceClient) {
   return await processClaimedCampaign(supabase, campaign);
 }
 
-serve(async (req) => {
+export async function handler(req: Request) {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -610,6 +645,10 @@ serve(async (req) => {
     }
     const token = authHeader.replace(/^Bearer\s+/i, "");
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const userSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
     const body = await req.json() as Record<string, unknown>;
     const action = String(body.action ?? "");
 
@@ -739,6 +778,43 @@ serve(async (req) => {
       });
     }
 
+    if (action === "blog_posts") {
+      const query = typeof body.query === "string"
+        ? body.query.slice(0, 100)
+        : "";
+      const ids = Array.isArray(body.ids)
+        ? body.ids.filter((value): value is string =>
+          typeof value === "string" && UUID_PATTERN.test(value)
+        ).slice(0, 20)
+        : [];
+      let staffPosts: any[] = [];
+      if (!ids.length) {
+        const { data, error } = await userSupabase.rpc(
+          "issue_4137_blog_list_posts",
+          { p_status: null, p_query: query || null, p_limit: 20, p_offset: 0 },
+        );
+        if (error) {
+          throw new BlogPostBlockError(
+            /42P01|PGRST20[245]|does not exist/i.test(
+                `${error.code ?? ""} ${error.message ?? ""}`,
+              )
+              ? "blog_not_ready"
+              : "blog_post_query_failed",
+            error.message,
+          );
+        }
+        staffPosts = Array.isArray(data?.posts) ? data.posts : [];
+      }
+      return jsonResponse({
+        posts: await listBlogPostOptions(supabase, {
+          query,
+          ids,
+          staffPosts,
+          supabaseUrl: SUPABASE_URL,
+        }),
+      });
+    }
+
     if (action === "preview") {
       const subject = typeof body.subject === "string" && body.subject.trim()
         ? body.subject.trim()
@@ -748,6 +824,11 @@ serve(async (req) => {
           legacyBodyDocument(String(body.body ?? "Preview content")),
       );
       assertSupportedPersonalization(subject, document);
+      const resolvedBlog = await resolveBlogPostBlocks(
+        supabase,
+        document,
+        SUPABASE_URL,
+      );
       const sample = {
         email: "member@example.com",
         first_name: "Maya",
@@ -771,7 +852,7 @@ serve(async (req) => {
           variant: "admin_compose",
           title: personalizeText(subject, sample),
           paragraphs: [],
-          document: personalizeDocument(document, sample),
+          document: personalizeDocument(resolvedBlog.document, sample),
         },
         sender: ADMIN_SENDER,
       });
@@ -852,10 +933,14 @@ serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status =
-      /invalid|required|unsupported|not_cancellable|email_block|email_document|recipient_email|no_eligible/
-          .test(message)
+      error instanceof BlogPostBlockError && error.code === "blog_not_ready"
+        ? 503
+        : /invalid|required|unsupported|not_cancellable|email_block|email_document|recipient_email|no_eligible/
+            .test(message)
         ? 400
         : 500;
     return jsonResponse({ error: message }, status);
   }
-});
+}
+
+if (import.meta.main) serve(handler);

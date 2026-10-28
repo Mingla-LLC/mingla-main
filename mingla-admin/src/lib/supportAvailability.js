@@ -1,5 +1,5 @@
 /**
- * #3720 — the "Available for support" switch in the Community & Support header.
+ * #3720 — the "Available for support" switch in the Support page header (#4130 Wave 6).
  *
  * Changing availability can fail (most often because Support is not turned on
  * for the signed-in teammate, which the RPC refuses with `not_support_staff`). The switch must then stay where it was and say why in
@@ -9,7 +9,7 @@
  */
 
 export const NOT_ON_SUPPORT_ROSTER_MESSAGE =
-  "Support isn't turned on for you yet. Ask an Owner or Admin to turn it on in Community & Support → People and roles.";
+  "Support isn't turned on for you yet. Ask an Owner or Admin to turn it on in Support → People and roles.";
 export const AVAILABLE_ON_MESSAGE =
   "You're available. Hosts see Support is online and you'll get alerts.";
 export const AVAILABLE_OFF_MESSAGE =

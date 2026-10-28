@@ -1,11 +1,19 @@
-// ORCH-1274 [Admin Money console — READ-ONLY] — Money ledger.
+// ORCH-1274 [Admin Money console] — Money ledger.
 //
-// One page, four in-page tabs — Refunds · Disputes · Payouts · Platform revenue —
-// each an independent EntityListView over its own admin_* read-RPC. The disputes
-// tab surfaces an evidence-due countdown and opens a dispute detail (linked order
-// + collapsible raw event). Every list renders a clean empty state on the live
-// (mostly-0-row) data. Money movement stays read-only; the Payees tab permits
-// only audited referral-risk hold and clear decisions.
+// Every payout, refund, dispute and debt, row by row. Totals and profit live
+// on Mingla money. #4130 Wave 2a:
+//   - Payouts is the first tab; the fee badge is the fee as a share of the
+//     ticket price, with an "older pricing" label below 4%;
+//   - "Mingla owes back" can be marked settled (admin_settle_owes_back, with
+//     a reference and a reason, inside a confirmation);
+//   - Stripe and Paystack disputes share one tab, evidence due first;
+//   - the old Platform revenue tab (Stripe application fees only, so it
+//     missed all naira revenue) is replaced by a link to Mingla money;
+//   - the payout totals show an error with Retry instead of vanishing;
+//   - the Refunds filter includes Cancelled.
+//   - #4130 + #3872: the Payees tab (referral rewards, gig fees, Local
+//     months) is the one place money is changed besides settle: audited
+//     referral-risk hold and clear decisions only.
 
 import { useState, useEffect, useCallback } from "react";
 import { Landmark } from "lucide-react";
@@ -16,8 +24,11 @@ import { Tabs } from "../components/ui/Tabs";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { StayOperationsPanel } from "../components/stay/StayOperationsPanel";
-import { listRefunds, listDisputes, getDispute, listPaystackDisputes, listPayouts, getPayoutSummary, listRevenueLog, listOrganiserPayoutDebts, listPayeeLedger } from "../services/adminMoneyService";
-import { annotateDispute, setReferralMemberPayoutHold } from "../services/adminMoneyActService";
+import { listRefunds, getDispute, listAllDisputes, listPayouts, getPayoutSummary, listOrganiserPayoutDebts, listPayeeLedger } from "../services/adminMoneyService";
+import { annotateDispute, settleOwesBack, setReferralMemberPayoutHold } from "../services/adminMoneyActService";
+import { payoutFeeBadge } from "../lib/minglaMoney";
+import { LoadError } from "../components/ui/LoadError";
+import { Skeleton } from "../components/ui/Skeleton";
 import { PaystackDisputeDetail } from "../components/money/PaystackDisputeDetail";
 import { deadlineCountdown } from "../lib/paystackDisputeEvidence";
 import { reconcileTicketRefund } from "../services/adminRefundReconciliationService";
@@ -43,13 +54,28 @@ function formatCurrencyMap(values) {
   return entries.map(([currency, cents]) => formatMoney(Number(cents), currency)).join(" + ");
 }
 
-function PayoutMetric({ title, value, sub, alert = false }) {
+function PayoutMetric({ title, value, sub, alert = false, action = null }) {
   return (
     <div className={`rounded-xl border p-4 ${alert ? "border-[var(--color-error-300)] bg-[var(--color-error-50)]" : "border-[var(--gray-200)] bg-white"}`}>
       <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">{title}</p>
       <p className={`mt-1 text-xl font-semibold ${alert ? "text-[var(--color-error-700)]" : "text-[var(--color-text-primary)]"}`}>{value}</p>
       {sub ? <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{sub}</p> : null}
+      {action ? <div className="mt-2">{action}</div> : null}
     </div>
+  );
+}
+
+/**
+ * #4130: the fee as a share of the ticket price, labelled "older pricing"
+ * below 4%, and "mixed pricing" when the payout holds sales on both.
+ */
+function FeeCell({ fee, ticket, currency, pricing }) {
+  const badge = payoutFeeBadge(fee, ticket, pricing);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <span className="tabular-nums">{formatMoney(fee, currency)}</span>
+      {badge ? <Badge variant={badge.mixed ? "warning" : badge.older ? "default" : "success"}>{badge.text}</Badge> : null}
+    </span>
   );
 }
 
@@ -79,7 +105,17 @@ function PayoutDetailDrawer({ payout, onClose }) {
           {Number(payout.refunded_cents) > 0 ? line("Refunds", `−${formatMoney(payout.refunded_cents, payout.currency)}`) : null}
           {Number(payout.disputed_cents) > 0 ? line("Disputes", `−${formatMoney(payout.disputed_cents, payout.currency)}`) : null}
           {debt > 0 ? line("Refund after an earlier payout", `−${formatMoney(debt, payout.currency)}`) : null}
-          {line(payout.older_pricing ? "Mingla fee · older pricing" : "Mingla fee · 4.5%", `−${formatMoney(payout.mingla_fee_cents, payout.currency)}`)}
+          {line("Ticket price", formatMoney(payout.ticket_cents, payout.currency))}
+          {line(
+            (() => {
+              // #4130: the real share of the ticket price, never a hard-coded 4.5%.
+              const badge = payoutFeeBadge(payout.mingla_fee_cents, payout.ticket_cents, payout.pricing);
+              if (!badge) return "Mingla fee";
+              if (badge.mixed) return `Mingla fee · ${badge.share.label} of ticket, mixed pricing`;
+              return badge.older ? `Mingla fee · ${badge.share.label} of ticket, older pricing` : `Mingla fee · ${badge.share.label} of ticket`;
+            })(),
+            `−${formatMoney(payout.mingla_fee_cents, payout.currency)}`,
+          )}
           {line("Card processing", "Mingla pays")}
           {payout.provider === "stripe" ? line("Stripe automatic-tax fee (~0.5%)", "Paid by host") : null}
           {line("Host gets", formatMoney(payout.host_gets_cents, payout.currency))}
@@ -89,7 +125,7 @@ function PayoutDetailDrawer({ payout, onClose }) {
         </div>
         {Number(payout.transfer_fee_credit_owed_cents) > 0 ? (
           <p className="mt-3 rounded-lg border border-[var(--color-error-300)] bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-700)]">
-            Mingla owes back {formatMoney(payout.transfer_fee_credit_owed_cents, payout.currency)}. It is added to the host&apos;s next payout.
+            Mingla owes this host back {formatMoney(payout.transfer_fee_credit_owed_cents, payout.currency)} in transfer fees it held. Mark it settled on this tab once it is repaid.
           </p>
         ) : null}
         <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
@@ -149,71 +185,51 @@ const REFUND_CSV = {
   filename: "refunds",
 };
 
+// #4130: Stripe and Paystack disputes in one list (listAllDisputes merges both).
+// Paystack = Mingla is merchant of record, so its clock is Mingla's internal
+// review deadline; Stripe's is the evidence-due date.
+function disputeDueCell(due, row) {
+  if (row.closed) return <span className="text-[var(--color-text-muted)]">—</span>;
+  if (row.provider === "paystack") {
+    const { overdue, label } = deadlineCountdown(due);
+    const late = overdue && !row.evidence_reviewed_at;
+    return <span className={late ? "text-[#b91c1c] font-medium" : "text-[var(--color-text-secondary)]"}>{label}</span>;
+  }
+  return evidenceDue(due);
+}
 const DISPUTE_COLUMNS = [
-  { key: "created_at", label: "Created", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
+  { key: "created_at", label: "Opened", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
+  { key: "provider", label: "Provider", render: (v) => <Badge variant="default">{v === "paystack" ? "Paystack" : "Stripe"}</Badge> },
   { key: "brand_name", label: "Brand", render: brandCell },
-  { key: "stripe_charge_id", label: "Charge id", render: (v) => (v ? <span className="font-mono text-xs break-all">{v}</span> : <span className="text-[var(--color-text-muted)]">—</span>) },
-  { key: "amount", label: "Amount", render: (v, row) => <span className="font-medium">{formatMoney(v, row.currency)}</span> },
+  { key: "reference", label: "Reference", render: (v) => (v ? <span className="font-mono text-xs break-all">{v}</span> : <span className="text-[var(--color-text-muted)]">—</span>) },
+  { key: "amount_cents", label: "Amount", render: (v, row) => <span className="font-medium">{formatMoney(v, row.currency)}</span> },
   {
-    key: "status",
+    key: "state",
     label: "Status",
-    render: (v) => {
-      const variant =
-        v === "won" ? "success" : v === "lost" ? "default" : v === "under_review" ? "warning" : "error";
-      return <Badge variant={variant} dot>{v || "—"}</Badge>;
+    render: (v, row) => {
+      const variant = row.closed ? "default" : v === "needs_review" || v === "needs_response" || v === "warning_needs_response" ? "error" : "warning";
+      return <Badge variant={variant} dot>{(v || "—").replaceAll("_", " ")}</Badge>;
     },
   },
   { key: "reason", label: "Reason", render: (v) => v || <span className="text-[var(--color-text-muted)]">—</span> },
-  { key: "evidence_due_by", label: "Evidence due", render: (v) => evidenceDue(v) },
+  { key: "due_at", label: "Evidence due", render: disputeDueCell },
 ];
 const DISPUTE_CSV = {
   columns: [
-    { key: "created_at", label: "Created" }, { key: "brand_name", label: "Brand" }, { key: "stripe_charge_id", label: "Charge id" },
-    { key: "amount", label: "Amount cents" }, { key: "currency", label: "Currency" }, { key: "status", label: "Status" },
-    { key: "reason", label: "Reason" }, { key: "evidence_due_by", label: "Evidence due" }, { key: "stripe_dispute_id", label: "Dispute id" },
+    { key: "created_at", label: "Opened" }, { key: "provider", label: "Provider" }, { key: "brand_name", label: "Brand" },
+    { key: "reference", label: "Reference" }, { key: "amount_cents", label: "Amount cents" }, { key: "currency", label: "Currency" },
+    { key: "state", label: "Status" }, { key: "reason", label: "Reason" }, { key: "due_at", label: "Evidence due" },
   ],
   filename: "disputes",
 };
 
-// #3645 WS5 — Paystack disputes (Paystack = Mingla MoR; the evidence clock is
-// Mingla's). Sorted by internal deadline; the countdown is red once overdue.
-function internalDeadlineCell(due, row) {
-  if (row.is_resolved) return <span className="text-[var(--color-text-muted)]">—</span>;
-  const { overdue, label } = deadlineCountdown(due);
-  const late = overdue && !row.evidence_reviewed_at;
-  return <span className={late ? "text-[#b91c1c] font-medium" : "text-[var(--color-text-secondary)]"}>{label}</span>;
-}
-const PAYSTACK_DISPUTE_COLUMNS = [
-  { key: "created_at", label: "Opened", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
-  { key: "brand_name", label: "Brand", render: brandCell },
-  { key: "transaction_reference", label: "Reference", render: (v) => (v ? <span className="font-mono text-xs break-all">{v}</span> : <span className="text-[var(--color-text-muted)]">—</span>) },
-  { key: "amount_cents", label: "Amount", render: (v, row) => <span className="font-medium">{formatMoney(v, row.currency)}</span> },
-  { key: "status", label: "Paystack status", render: (v) => v || "—" },
-  {
-    key: "evidence_state",
-    label: "Evidence",
-    render: (v) => <Badge variant={v === "needs_review" ? "warning" : v === "resolved" ? "default" : "success"} dot>{(v || "—").replace("_", " ")}</Badge>,
-  },
-  { key: "internal_deadline_at", label: "Review due", render: internalDeadlineCell },
-];
-const PAYSTACK_DISPUTE_CSV = {
-  columns: [
-    { key: "created_at", label: "Opened" }, { key: "brand_name", label: "Brand" }, { key: "transaction_reference", label: "Reference" },
-    { key: "amount_cents", label: "Amount cents" }, { key: "currency", label: "Currency" }, { key: "status", label: "Paystack status" },
-    { key: "evidence_state", label: "Evidence state" }, { key: "internal_deadline_at", label: "Internal deadline" },
-    { key: "response_due_by", label: "Paystack deadline" }, { key: "paystack_dispute_id", label: "Dispute id" },
-  ],
-  filename: "paystack-disputes",
-};
-
 const PAYOUT_COLUMNS = [
   { key: "brand_name", label: "Brand", render: brandCell },
-  { key: "provider", label: "Rail", render: (v) => <Badge variant="default">{v || "—"}</Badge> },
-  { key: "sales_count", label: "Sales", render: (v) => Number(v || 0).toLocaleString() },
-  { key: "gross_cents", label: "Buyers paid", render: (v, row) => <span className="font-medium">{formatMoney(v, row.currency)}</span> },
-  { key: "mingla_fee_cents", label: "Mingla fee", render: (v, row) => formatMoney(v, row.currency) },
-  { key: "host_gets_cents", label: "Host gets", render: (v, row) => <span className="font-medium">{formatMoney(v, row.currency)}</span> },
-  { key: "sent_to_bank_cents", label: "Sent to bank", render: (v, row) => formatMoney(v, row.currency) },
+  { key: "provider", label: "Rail", render: (v) => <Badge variant="default">{v === "paystack" ? "Paystack" : v === "stripe" ? "Stripe" : v || "—"}</Badge> },
+  { key: "ticket_cents", label: "Ticket price", render: (v, row) => <span className="tabular-nums">{formatMoney(v, row.currency)}</span> },
+  { key: "mingla_fee_cents", label: "Mingla fee", render: (v, row) => <FeeCell fee={v} ticket={row.ticket_cents} currency={row.currency} pricing={row.pricing} /> },
+  { key: "gross_cents", label: "Buyer paid", render: (v, row) => <span className="font-medium tabular-nums">{formatMoney(v, row.currency)}</span> },
+  { key: "sent_to_bank_cents", label: "Sent to bank", render: (v, row) => <span className="tabular-nums">{formatMoney(v, row.currency)}</span> },
   { key: "due_at", label: "Due", render: (v) => (v ? formatDateTime(v) : "—") },
   { key: "status", label: "Status", render: (v) => <Badge variant={v === "paid" ? "success" : ["late_on_us", "couldnt_send", "needs_you"].includes(v) ? "error" : "warning"} dot>{(v || "—").replaceAll("_", " ")}</Badge> },
   { key: "why", label: "Why", render: (v) => v || <span className="text-[var(--color-text-muted)]">—</span> },
@@ -222,30 +238,13 @@ const PAYOUT_COLUMNS = [
 const PAYOUT_CSV = {
   columns: [
     { key: "id", label: "Payout id" }, { key: "brand_name", label: "Brand" }, { key: "provider", label: "Rail" },
-    { key: "sales_count", label: "Sales" },
+    { key: "sales_count", label: "Sales" }, { key: "ticket_cents", label: "Ticket price cents" },
     { key: "gross_cents", label: "Buyers paid cents" }, { key: "mingla_fee_cents", label: "Mingla fee cents" },
     { key: "host_gets_cents", label: "Host gets cents" }, { key: "sent_to_bank_cents", label: "Sent to bank cents" },
     { key: "currency", label: "Currency" }, { key: "due_at", label: "Due" }, { key: "status", label: "Status" },
     { key: "why", label: "Why" }, { key: "transfer_fee_credit_owed_cents", label: "Mingla owes back cents" },
   ],
   filename: "payouts",
-};
-
-const REVENUE_COLUMNS = [
-  { key: "created_at", label: "Created", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
-  { key: "brand_name", label: "Brand", render: brandCell },
-  { key: "amount_cents", label: "Amount (app fee)", render: (v, row) => <span className="font-medium">{formatMoney(v, row.currency)}</span> },
-  { key: "currency", label: "Currency", render: (v) => v || <span className="text-[var(--color-text-muted)]">—</span> },
-  { key: "refunded", label: "Refunded", render: (v) => <Badge variant={v ? "warning" : "default"} dot>{v ? "Yes" : "No"}</Badge> },
-  { key: "stripe_application_fee_id", label: "App-fee id", render: (v) => (v ? <span className="font-mono text-xs break-all">{v}</span> : <span className="text-[var(--color-text-muted)]">—</span>) },
-];
-const REVENUE_CSV = {
-  columns: [
-    { key: "created_at", label: "Created" }, { key: "brand_name", label: "Brand" }, { key: "amount_cents", label: "Amount cents" },
-    { key: "currency", label: "Currency" }, { key: "refunded", label: "Refunded" }, { key: "refunded_amount_cents", label: "Refunded cents" },
-    { key: "stripe_application_fee_id", label: "App-fee id" },
-  ],
-  filename: "platform-revenue",
 };
 
 // #3645 PR9 — organiser payout debt (READ-ONLY). What each brand owes after a
@@ -355,16 +354,21 @@ const PAYEE_CSV = {
   filename: "payee-ledger",
 };
 
+// #4130: Payouts first; one Disputes tab for both providers; the old Platform
+// revenue tab is a link to Mingla money.
 const TABS = [
+  { id: "payouts", label: "Payouts" },
   { id: "refunds", label: "Refunds" },
   { id: "disputes", label: "Disputes" },
-  { id: "paystack_disputes", label: "Paystack disputes" },
-  { id: "payouts", label: "Payouts" },
+  // #4130 + #3872: everyone Mingla pays besides hosts.
   { id: "payees", label: "Payees" },
   { id: "debts", label: "Organiser debts" },
-  { id: "revenue", label: "Platform revenue" },
   { id: "stay", label: "Stay reconciliation" },
+  { id: "revenue", label: "Revenue → Mingla money" },
 ];
+// Old addresses keep working.
+const TAB_ALIASES = { paystack_disputes: "disputes" };
+const PAYOUT_STATUSES = ["scheduled", "sending_today", "on_its_way", "paid", "waiting_for_bank", "late_on_us", "needs_you", "couldnt_send", "paused"];
 
 // ── Hash helpers ──────────────────────────────────────────────────────────────
 
@@ -372,8 +376,13 @@ function hashParams() {
   return new URLSearchParams(window.location.hash.split("?")[1] || "");
 }
 function tabFromHash() {
-  const t = hashParams().get("tab");
-  return TABS.some((x) => x.id === t) ? t : "refunds";
+  const raw = hashParams().get("tab");
+  const t = TAB_ALIASES[raw] || raw;
+  return TABS.some((x) => x.id === t) && t !== "revenue" ? t : "payouts";
+}
+function payoutStatusFromHash() {
+  const v = hashParams().get("status");
+  return PAYOUT_STATUSES.includes(v) ? v : null;
 }
 function disputeIdFromHash() {
   return hashParams().get("disputeId");
@@ -476,16 +485,52 @@ export function BusinessMoneyLedgerPage() {
   const [note, setNote] = useState("");
   const [markReviewed, setMarkReviewed] = useState(false);
   const [payoutSummary, setPayoutSummary] = useState(null);
+  const [summaryError, setSummaryError] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const [selectedPayout, setSelectedPayout] = useState(null);
+  const [settleCurrency, setSettleCurrency] = useState(null);
+  const [settleReference, setSettleReference] = useState("");
+  const [payoutListKey, setPayoutListKey] = useState(0);
+  const [initialPayoutStatus] = useState(() => payoutStatusFromHash());
+
+  // #4130: a failed load shows an error with Retry, never blank cards.
+  const loadPayoutSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    setSummaryError(null);
+    try {
+      setPayoutSummary(await getPayoutSummary());
+    } catch (err) {
+      setPayoutSummary(null);
+      setSummaryError(err?.message || null);
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, []);
   const [selectedPayee, setSelectedPayee] = useState(null);
   const [payeeRefreshKey, setPayeeRefreshKey] = useState(0);
 
   useEffect(() => {
-    if (activeTab !== "payouts") return;
-    let live = true;
-    void getPayoutSummary().then((value) => { if (live) setPayoutSummary(value); }).catch(() => { if (live) setPayoutSummary(null); });
-    return () => { live = false; };
-  }, [activeTab]);
+    if (activeTab !== "payouts") return undefined;
+    const timer = window.setTimeout(() => void loadPayoutSummary(), 0);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, loadPayoutSummary]);
+
+  const runSettle = useCallback(async ({ reason }) => {
+    const reference = settleReference.trim();
+    if (reference.length < 3) throw new Error("Add the payment reference Mingla used to repay the hosts.");
+    const { error: err } = await settleOwesBack({ currency: settleCurrency, reference, reason });
+    if (err) {
+      const msg = err.message || "";
+      if (msg.includes("not_authorized")) throw new Error("Admin access required.");
+      if (msg.includes("nothing_to_settle")) throw new Error("Nothing is owed back in this currency any more.");
+      if (msg.includes("reference_required")) throw new Error("Add the payment reference (3 to 200 characters).");
+      if (msg.includes("reason_required")) throw new Error("A reason is required.");
+      throw new Error(msg || "Couldn't mark this settled.");
+    }
+    setSettleReference("");
+    await loadPayoutSummary();
+    setPayoutListKey((k) => k + 1);
+  }, [settleCurrency, settleReference, loadPayoutSummary]);
 
   useEffect(() => {
     const sync = () => {
@@ -498,6 +543,10 @@ export function BusinessMoneyLedgerPage() {
   }, []);
 
   const changeTab = useCallback((tabId) => {
+    if (tabId === "revenue") {
+      window.location.hash = "#/mingla-money";
+      return;
+    }
     window.location.hash = `#/business-money-ledger?tab=${tabId}`;
     setActiveTab(tabId);
   }, []);
@@ -508,12 +557,12 @@ export function BusinessMoneyLedgerPage() {
   }, []);
 
   const openPaystackDispute = useCallback((id) => {
-    window.location.hash = `#/business-money-ledger?tab=paystack_disputes&paystackDisputeId=${id}`;
+    window.location.hash = `#/business-money-ledger?tab=disputes&paystackDisputeId=${id}`;
     setPaystackDisputeId(id);
   }, []);
 
   const backToPaystackDisputes = useCallback(() => {
-    window.location.hash = "#/business-money-ledger?tab=paystack_disputes";
+    window.location.hash = "#/business-money-ledger?tab=disputes";
     setPaystackDisputeId(null);
   }, []);
 
@@ -675,9 +724,9 @@ export function BusinessMoneyLedgerPage() {
         columns={REFUND_COLUMNS}
         fetchPage={listRefunds}
         searchPlaceholder="Search refund id, charge id, or order id"
-        filters={[{ key: "status", label: "Status", options: [{ value: "succeeded", label: "Succeeded" }, { value: "pending", label: "Pending" }, { value: "failed", label: "Failed" }] }]}
+        filters={[{ key: "status", label: "Status", options: [{ value: "succeeded", label: "Succeeded" }, { value: "pending", label: "Pending" }, { value: "failed", label: "Failed" }, { value: "cancelled", label: "Cancelled" }] }]}
         csv={REFUND_CSV}
-        emptyMessage="No refunds yet."
+        emptyMessage="No refunds yet. When a buyer is refunded on Stripe or Paystack it appears here with the fee Mingla gave back."
         emptyIcon={Landmark}
       />
     );
@@ -687,35 +736,25 @@ export function BusinessMoneyLedgerPage() {
         key="disputes"
         title="Disputes"
         columns={DISPUTE_COLUMNS}
-        fetchPage={listDisputes}
-        searchPlaceholder="Search dispute id or charge id"
-        filters={[{ key: "status", label: "Status", options: [{ value: "needs_response", label: "Needs response" }, { value: "warning_needs_response", label: "Warning: needs response" }, { value: "under_review", label: "Under review" }, { value: "won", label: "Won" }, { value: "lost", label: "Lost" }] }]}
-        onRowClick={(row) => openDispute(row.id)}
+        fetchPage={listAllDisputes}
+        searchPlaceholder="Search dispute id, charge id or transaction reference"
+        filters={[
+          { key: "status", label: "Status", options: [{ value: "open", label: "Open" }, { value: "closed", label: "Closed" }] },
+          { key: "provider", label: "Provider", options: [{ value: "stripe", label: "Stripe" }, { value: "paystack", label: "Paystack" }] },
+        ]}
+        onRowClick={(row) => (row.provider === "paystack" ? openPaystackDispute(row.id) : openDispute(row.id))}
         csv={DISPUTE_CSV}
-        emptyMessage="No disputes yet."
+        emptyMessage="No disputes on Stripe or Paystack. Chargebacks from both providers appear here, evidence due first."
         emptyIcon={Landmark}
-      />
-    );
-  } else if (activeTab === "paystack_disputes") {
-    listView = (
-      <EntityListView
-        key="paystack_disputes"
-        title="Paystack disputes"
-        columns={PAYSTACK_DISPUTE_COLUMNS}
-        fetchPage={listPaystackDisputes}
-        searchPlaceholder="Search Paystack dispute id or transaction reference"
-        filters={[{ key: "status", label: "Evidence", options: [{ value: "needs_review", label: "Needs review" }, { value: "reviewed", label: "Reviewed" }, { value: "exported", label: "Exported" }, { value: "submitted_stub", label: "Submitted (stub)" }, { value: "resolved", label: "Resolved" }] }]}
-        onRowClick={(row) => openPaystackDispute(row.id)}
-        csv={PAYSTACK_DISPUTE_CSV}
-        emptyMessage="No Paystack disputes yet."
-        emptyIcon={Landmark}
+        rowKey={(row) => row.key}
       />
     );
   } else if (activeTab === "payouts") {
     listView = (
       <EntityListView
-        key="payouts"
+        key={`payouts-${payoutListKey}`}
         title="Payouts"
+        initialFilters={initialPayoutStatus ? { status: initialPayoutStatus } : undefined}
         columns={PAYOUT_COLUMNS}
         fetchPage={listPayouts}
         searchPlaceholder="Search payout id"
@@ -733,7 +772,7 @@ export function BusinessMoneyLedgerPage() {
         filterVariant="chips"
         onRowClick={setSelectedPayout}
         csv={PAYOUT_CSV}
-        emptyMessage="No payouts yet."
+        emptyMessage="No payouts match. Each sale's payout appears here about 24 hours after payment."
         emptyIcon={Landmark}
       />
     );
@@ -779,51 +818,98 @@ export function BusinessMoneyLedgerPage() {
         searchPlaceholder="Search brand name, slug, debt id or origin release id"
         filters={[{ key: "status", label: "Status", options: [{ value: "open", label: "Open" }, { value: "closed", label: "Closed" }, { value: "converted", label: "Converted" }] }]}
         csv={DEBT_CSV}
-        emptyMessage="No organiser debts."
+        emptyMessage="No organiser debts. A debt appears when a host owes Mingla after a refund or dispute."
         emptyIcon={Landmark}
       />
     );
   } else if (activeTab === "stay") {
     listView = <StayOperationsPanel key="stay" />;
-  } else {
-    listView = (
-      <EntityListView
-        key="revenue"
-        title="Platform revenue"
-        columns={REVENUE_COLUMNS}
-        fetchPage={listRevenueLog}
-        searchPlaceholder="Search app-fee id or account id"
-        csv={REVENUE_CSV}
-        emptyMessage="No platform revenue yet."
-        emptyIcon={Landmark}
-      />
-    );
   }
+
+  const owedEntries = Object.entries(payoutSummary?.transfer_fee_credits_owed_by_currency ?? {}).filter(([, v]) => Number(v) > 0);
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title={activeTab === "payouts" ? "Money ledger · Payouts" : activeTab === "payees" ? "Money ledger · Payees" : "Money ledger"}
         description={activeTab === "payouts"
-          ? "Every sale's payout from the release ledger, across Stripe and Paystack. Each sale is due about 24 hours after payment."
+          ? "Every sale's payout from the release ledger, across Stripe and Paystack. Each sale is due about 24 hours after payment. Totals and profit live on Mingla money."
           : activeTab === "payees"
           ? "Everyone Mingla pays: referral rewards, gig fees and Local months, with recoveries, payout readiness and risk holds. Provider transfer fees come out of the payee's reward; they are not charged to the buyer or host."
-          : "Refunds, disputes, payouts, platform-fee revenue, and provider-evidence Stay reconciliation across every brand."}
+          : "Every payout, refund, dispute and debt, row by row. Totals and profit live on Mingla money."}
         tabs={<Tabs tabs={TABS} activeTab={activeTab} onChange={changeTab} />}
       />
 
+      {activeTab === "payouts" && summaryError ? (
+        <LoadError title="Couldn't load the payout totals" message={summaryError} onRetry={loadPayoutSummary} retrying={summaryLoading} />
+      ) : null}
+      {activeTab === "payouts" && !payoutSummary && !summaryError ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-busy="true">
+          {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} height={96} />)}
+        </div>
+      ) : null}
       {activeTab === "payouts" && payoutSummary ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Payout summary">
-          <PayoutMetric title="Due next 24h" value={formatCurrencyMap(payoutSummary.due_next_24h_by_currency)} />
-          <PayoutMetric title="Late on us" value={`${payoutSummary.late_count ?? 0}`} sub={payoutSummary.oldest_late_due_at ? `Oldest due ${formatDateTime(payoutSummary.oldest_late_due_at)}` : "None late"} alert={(payoutSummary.late_count ?? 0) > 0} />
-          <PayoutMetric title="Waiting bank" value={`${payoutSummary.waiting_for_bank_count ?? 0}`} />
-          <PayoutMetric title="Paid last 24h" value={formatCurrencyMap(payoutSummary.paid_last_24h_by_currency)} />
-          <PayoutMetric title="Mingla owes back" value={formatCurrencyMap(payoutSummary.transfer_fee_credits_owed_by_currency)} alert={Object.values(payoutSummary.transfer_fee_credits_owed_by_currency ?? {}).some((v) => Number(v) > 0)} />
+          <PayoutMetric title="Due next 24 hours" value={formatCurrencyMap(payoutSummary.due_next_24h_by_currency) === "—" ? "None" : formatCurrencyMap(payoutSummary.due_next_24h_by_currency)} />
+          <PayoutMetric
+            title="Late on Mingla"
+            value={(payoutSummary.late_count ?? 0) > 0 ? formatCurrencyMap(payoutSummary.late_by_currency) : "None"}
+            sub={payoutSummary.oldest_late_due_at ? `${payoutSummary.late_count} · oldest due ${formatDateTime(payoutSummary.oldest_late_due_at)}` : "None late"}
+            alert={(payoutSummary.late_count ?? 0) > 0}
+          />
+          <PayoutMetric
+            title="Waiting for host bank"
+            value={(payoutSummary.waiting_for_bank_count ?? 0) > 0 ? formatCurrencyMap(payoutSummary.waiting_for_bank_by_currency) : "None"}
+            sub={`${payoutSummary.waiting_for_bank_count ?? 0} waiting for the host to add a bank`}
+          />
+          <PayoutMetric
+            title="Paid last 24 hours"
+            value={formatCurrencyMap(payoutSummary.paid_last_24h_by_currency) === "—" ? "None" : formatCurrencyMap(payoutSummary.paid_last_24h_by_currency)}
+            sub={payoutSummary.paid_last_24h_count != null ? `${payoutSummary.paid_last_24h_count} payouts` : undefined}
+          />
+          <PayoutMetric
+            title="Mingla owes back"
+            value={owedEntries.length ? formatCurrencyMap(payoutSummary.transfer_fee_credits_owed_by_currency) : "Nothing owed"}
+            sub={owedEntries.length ? "Transfer fees Mingla held back from hosts" : "Marked settled credits no longer count"}
+            alert={owedEntries.length > 0}
+            action={owedEntries.length ? (
+              <div className="flex flex-wrap gap-1.5">
+                {owedEntries.map(([currency, cents]) => (
+                  <Button key={currency} variant="secondary" size="sm" onClick={() => setSettleCurrency(currency)}>
+                    Mark {formatMoney(Number(cents), currency)} settled
+                  </Button>
+                ))}
+              </div>
+            ) : null}
+          />
         </div>
       ) : null}
 
       {listView}
       <PayoutDetailDrawer payout={selectedPayout} onClose={() => setSelectedPayout(null)} />
+      <HighRiskActionModal
+        open={settleCurrency != null}
+        onClose={() => { setSettleCurrency(null); setSettleReference(""); }}
+        title={settleCurrency ? `Mark ${formatMoney(Number(payoutSummary?.transfer_fee_credits_owed_by_currency?.[settleCurrency] ?? 0), settleCurrency)} settled?` : "Mark settled"}
+        description="Use this once Mingla has paid hosts back the transfer fees it held. It records who settled it, when, and the payment reference, and the amount stops counting as owed. No money moves."
+        confirmLabel="Mark settled"
+        onConfirm={runSettle}
+        successMessage="Marked settled."
+      >
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="settle-reference" className="text-xs font-medium text-[var(--color-text-secondary)]">
+            Payment reference (required)
+          </label>
+          <input
+            id="settle-reference"
+            type="text"
+            value={settleReference}
+            onChange={(e) => setSettleReference(e.target.value)}
+            placeholder="The transfer reference Mingla used to repay the hosts"
+            className="h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]"
+          />
+        </div>
+      </HighRiskActionModal>
       <HighRiskActionModal
         open={!!selectedPayee}
         onClose={() => setSelectedPayee(null)}

@@ -7,6 +7,8 @@ import {
   subscribeMarketingConsent,
 } from '@/components/marketing/posthog-provider'
 import { DeviceCta, type CutoutSurface } from '@/components/cutout/device-cta'
+import { DeviceLink } from '@/components/cutout/device-link'
+import { siteAttribution } from '@/lib/links-src'
 import { HOST_DESTINATIONS } from '@/components/page-system/city-host-acquisition-bar'
 import { ArrowUpRight } from 'lucide-react'
 import type { CityHubAnalyticsEvent, CityHubDestinationType } from '@/lib/city-hub-analytics'
@@ -107,15 +109,19 @@ export function CityHostCreationLinks(identity: CityAnalyticsIdentity) {
     <ul className="city-host-links">
       {HOST_DESTINATIONS.map((destination) => (
         <li key={destination.href}>
-          <a
-            href={destination.href}
-            onClick={() => captureMarketing(
+          {/* #4137 OQ-3: phone → Mingla Host install; computer → this create page. */}
+          <DeviceLink
+            surface="host"
+            attribution={siteAttribution('business_hero')}
+            hostComputerHref={destination.href}
+            sameTab
+            onActivate={() => captureMarketing(
               'city_hub_host_action',
               cityProperties(identity, destination.destinationType),
             )}
           >
             {destination.label}<ArrowUpRight aria-hidden="true" size={15} />
-          </a>
+          </DeviceLink>
         </li>
       ))}
     </ul>

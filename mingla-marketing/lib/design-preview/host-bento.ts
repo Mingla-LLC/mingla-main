@@ -9,6 +9,8 @@
 // our own audit and is never rendered.
 // ---------------------------------------------------------------
 
+import { hostImage, type HostImage } from './host-imagery'
+
 export interface BentoCard {
   id: string
   title: string
@@ -26,6 +28,13 @@ export interface BentoCard {
    * 'use client' figure registry to ask.
    */
   figure?: boolean
+  /**
+   * #4137: the tile's photograph (slots T1–T4, provenance in host-imagery.ts).
+   * The website tile has its own demo images and the AI brain has none.
+   */
+  photo?: HostImage
+  /** #4137: the figure gets gentle looping motion while on screen. */
+  ambient?: boolean
   source: string
 }
 
@@ -42,6 +51,8 @@ export const HOST_BENTO: readonly BentoCard[] = [
   },
   {
     id: 'events',
+    photo: hostImage('T1'),
+    ambient: true,
     title: 'Events',
     body: 'Create events with AI reading the demand before you price them.',
     points: ['Demand forecast', 'Weather', 'Ticket scanning', 'Guest lists'],
@@ -53,6 +64,8 @@ export const HOST_BENTO: readonly BentoCard[] = [
   },
   {
     id: 'trips',
+    photo: hostImage('T2'),
+    ambient: true,
     title: 'Trips',
     body: 'Host trips and let the group plan them together.',
     points: ['Group chat', 'Instalments', 'Itineraries'],
@@ -64,6 +77,8 @@ export const HOST_BENTO: readonly BentoCard[] = [
   },
   {
     id: 'venue',
+    photo: hostImage('T3'),
+    ambient: true,
     title: 'Venue management',
     body: 'Run a restaurant or a club from one place.',
     points: ['Reservations', 'Table ordering', 'Menu intelligence', 'Demand forecast'],
@@ -75,6 +90,8 @@ export const HOST_BENTO: readonly BentoCard[] = [
   },
   {
     id: 'marketing',
+    photo: hostImage('T4'),
+    ambient: true,
     title: 'Marketing',
     body: 'Reach the people who already came, and the ones who should.',
     points: ['Email', 'SMS', 'CRM nurturing'],
@@ -86,6 +103,7 @@ export const HOST_BENTO: readonly BentoCard[] = [
   },
   {
     id: 'brain',
+    ambient: true,
     title: "Mingla's AI brain",
     body: 'Ari is the brain underneath: it runs your ads, earns you mentions, gets guests sharing, and keeps your site and list working. Four ways in, all at once.',
     points: ['Performance ads', 'Local targeting', 'Ask Ari anything'],

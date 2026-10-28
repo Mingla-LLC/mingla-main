@@ -330,8 +330,13 @@ test("a filtered replay lane, the #679 sibling and the wrapper set itself cannot
     "7c2ef59a790f26a6ce953de6dd63fd623e57a1bfca3727892deaecf8fce85137", "#679 must be byte-identical");
   for (const lane of ["issue-1931-private-event-access.yml", "issue-2117-offering-visibility-gate-tests.yml",
     "issue-1644-storage-guardrail-collage-fill-tests.yml", "issue-1647-admin-mv-and-db-reclaim-tests.yml"]) {
-    assert.ok(fs.existsSync(path.join(ROOT, ".github/workflows", lane)), `${lane}: filtered replay lane deleted`);
-    assert.ok(!read(`.github/workflows/${lane}`).includes("SHADOW-PARITY-TRIGGER"), `${lane}: must carry no marker`);
+    if (!fs.existsSync(path.join(ROOT, ".github/workflows", lane))) {
+      assert.ok(BASE.suites.some((suite) => path.basename(suite.origin) === lane),
+        `${lane}: folded replay lane must remain represented in the batch registry`);
+      continue;
+    }
+    const source = read(`.github/workflows/${lane}`);
+    assert.ok(!source.includes("SHADOW-PARITY-TRIGGER"), `${lane}: must carry no marker`);
     assert.ok(!waveSuites(BASE).some((suite) => path.basename(suite.origin) === lane), `${lane}: must not be migrated`);
   }
   assertRed("a wrapper outside the seventeen pulled into the wave");

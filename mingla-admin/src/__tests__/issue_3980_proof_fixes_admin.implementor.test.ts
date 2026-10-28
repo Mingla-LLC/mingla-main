@@ -16,6 +16,8 @@
 import { assert, assertEquals, assertMatch, assertNotMatch } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { cardAnchorWords } from "../lib/opsModel.js";
 import { removePerson } from "../lib/peopleField.js";
+// #4130: App rewrites retired addresses through this map before the Agent log check.
+import { redirectHash } from "../lib/adminRoutes.js";
 
 const SRC = new URL("../", import.meta.url);
 const ROOT = new URL("../../../", import.meta.url);
@@ -53,11 +55,13 @@ Deno.test("#3980 P2-1: a fresh #/agent-log lands on Work > Agent activity before
   const run = (hash: string) => {
     const location = { hash, pathname: "/", search: "" };
     const window = { location, history: { replaceState: (_s: unknown, _t: string, url: string) => { location.hash = url; } } };
-    return new Function("window", "AGENT_LOG_REDIRECT", body)(window, redirect) as string;
+    return new Function("window", "AGENT_LOG_REDIRECT", "redirectHash", body)(window, redirect, redirectHash) as string;
   };
   assertEquals(run("#/agent-log"), "#/work-board?tab=activity");
   assertEquals(run("#/agent-log?card=1"), "#/work-board?tab=activity");
-  assertEquals(run("#/support"), "#/community-support?tab=support");
+  // #4130 Wave 6: #/support is a page again; the old console redirects by tab.
+  assertEquals(run("#/support"), "#/support");
+  assertEquals(run("#/community-support?tab=support"), "#/support");
   assertEquals(run("#/work-board?tab=board"), "#/work-board?tab=board");
   // The address is read through getTabFromHash, which canonicalizes first.
   assertMatch(fnSource(app, "getTabFromHash"), /canonicalizeLegacyCommunityHashes\(\);[\s\S]*requestedPageId\(\)/);
@@ -107,7 +111,8 @@ Deno.test("#3980 P3: names, tabs, calendar targets, guide notices and staff draf
   // P3-1: one long word is cut inside the chip with the full name on hover.
   assertMatch(code("components/people/PeopleField.jsx"), /<span title=\{name\} className="min-w-0 truncate">\{name\}<\/span>/);
   // P3-2: the Work tabs wrap at 375 px instead of running off the screen.
-  assertMatch(code("pages/WorkBoardPage.jsx"), /<Segmented label="Work tabs" wrap /);
+  // #4130: the Work views (Board, Today, This week, This month) still wrap at 375 px.
+  assertMatch(code("pages/WorkBoardPage.jsx"), /<Segmented label="Work view" wrap /);
   // P3-3: the narrow calendar's dot button is a 44 px target.
   assertMatch(code("pages/ContentCalendarPage.jsx"), /data-calendar-day-dense=\{key\}[\s\S]*?-mx-1 flex min-h-11 w-\[calc\(100%\+0\.5rem\)\]/);
   // P3-5 and P3-8, in the migrations.

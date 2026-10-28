@@ -28,7 +28,6 @@
  * way.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import path from "node:path";
 
 const stored = new Map<string, Uint8Array>();
 
@@ -80,12 +79,7 @@ vi.mock("./objectStore", () => ({
 import { buildPublicationArtifact, publicationDraftDigest } from "./artifactBuilder";
 
 const publicContract = async () =>
-  (await import(
-    /* @vite-ignore */ path.resolve(
-      process.cwd(),
-      "../mingla-sites/src/contracts/artifact.ts",
-    )
-  )) as { assertRestaurantArtifact: (value: unknown) => void };
+  (await import("../contracts/generated/artifactV2.ts").then((m) => ({ assertRestaurantArtifact: m.assertArtifactV2 }))) as { assertRestaurantArtifact: (value: unknown) => void };
 
 const TENANT_ID = "00000000-0000-4000-8000-000000000901";
 const SITE_ID = "00000000-0000-4000-8000-000000000902";
@@ -93,7 +87,13 @@ const BRAND_ID = "00000000-0000-4000-8000-000000000903";
 const PUBLICATION_ID = "00000000-0000-4000-8000-000000000904";
 const MEDIA_ID = "00000000-0000-4000-8000-000000000c01";
 
-const tenant = { id: TENANT_ID, core_site_id: SITE_ID, core_brand_id: BRAND_ID };
+// #2829 — the canonical is the tenant's primary address (named by Core).
+const tenant = {
+  id: TENANT_ID,
+  core_site_id: SITE_ID,
+  core_brand_id: BRAND_ID,
+  primary_hostname: "gogi.sites.usemingla.com",
+};
 
 const mediaRecord = {
   id: MEDIA_ID,
@@ -144,7 +144,7 @@ async function build(blocks: Record<string, unknown>[]) {
     id: "page-home",
     tenant: TENANT_ID,
     role: "home",
-    slug: "home",
+    slug: "" /* #2829 W2: home has no slug */,
     title: "Home",
     enabled: true,
     nav_label: "Home",

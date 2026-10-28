@@ -10,7 +10,7 @@ const LOCAL_DECLARATION_PREFIX = "// MINGLA-" + "INVARIANT: ";
 const files = {
   migration: "supabase/migrations/20270326001858_issue_1858_explicit_brand_export.sql",
   edge: "supabase/functions/brand-people-export/index.ts",
-  workflow: ".github/workflows/issue-1858-explicit-brand-export-tests.yml",
+  workflow: ".github/ci-batch/MANIFEST.json",
   gate: ".github/scripts/strict-grep/issue-1858-explicit-brand-export.mjs",
 };
 
@@ -37,7 +37,11 @@ export function inspect(source) {
 }
 
 function readSources() {
-  return Object.fromEntries(Object.entries(files).map(([key, value]) => [key, fs.readFileSync(path.join(root, value), "utf8")]));
+  const source = Object.fromEntries(Object.entries(files).map(([key, value]) => [key, fs.readFileSync(path.join(root, value), "utf8")]));
+  const registry = JSON.parse(source.workflow);
+  const suite = registry.suites.find((item) => item.id === "issue-1858-explicit-brand-export-tests");
+  source.workflow = suite ? suite.steps.map((step) => step.run).join("\n") : "";
+  return source;
 }
 
 function selfTest(source) {

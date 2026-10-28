@@ -63,6 +63,27 @@ export const PAGE_AREA_OVERRIDES = {
   guide: AREA.CRM,
 };
 
+// Issue #4130 (Wave 0) — a page that replaced older pages is open to whoever
+// could open any of them (the union, never wider), and each of its tabs only
+// to whoever could open the page that tab shows. The old ids keep their area
+// above: they are how this union is worked out. Support and Community
+// (#4130 Wave 6) were split from the Community & Support console, so they
+// carry its access exactly; each tab inside stays gated by its own area
+// (lib/communitySupportAccess.js). Kept in step with PAGE_HUB_TABS in lib/adminRoutes.js (tested).
+export const PAGE_ACCESS_UNION = Object.freeze({
+  outreach: Object.freeze(["hosts", "creators"]),
+  inbound: Object.freeze(["beta-leads", "tool-leads"]),
+  people: Object.freeze(["users", "business-people"]),
+  brands: Object.freeze(["business-brands", "brand-sites", "business-venues", "claims"]),
+  placepool: Object.freeze(["placepool", "launch-cities", "signals", "deck-tuner"]),
+  "platform-health": Object.freeze(["api-health", "stripe-mode", "queue-health"]),
+  settings: Object.freeze(["settings", "place-intelligence-trial"]),
+  // #4130 (Seth): Team and roles is the owner's again (team_manage only);
+  // Careers is its own page with its own access, so it is not merged here.
+  support: Object.freeze(["community-support"]),
+  community: Object.freeze(["community-support"]),
+});
+
 export const TEAM_NAV_GROUP = {
   label: null,
   items: [{ id: "home", label: "Home", icon: "Home" }],
@@ -92,7 +113,12 @@ export function areaForPage(pageId) {
     : AREA.ADMIN_CONSOLE;
 }
 
-export function canOpenPage(access, pageId) {
+/**
+ * May this person open the page as it stood before #4130 merged pages? A hub
+ * uses this for each of its tabs: a tab is shown only to whoever could open
+ * the old page it shows.
+ */
+export function canOpenOwnPage(access, pageId) {
   if (!access || access.status !== "active" || !Array.isArray(access.areas)) return false;
   if (access.areas.includes(areaForPage(pageId))) return true;
   const additional =
@@ -100,6 +126,13 @@ export function canOpenPage(access, pageId) {
       ? PAGE_ADDITIONAL_AREAS[pageId]
       : [];
   return additional.some((area) => access.areas.includes(area));
+}
+
+export function canOpenPage(access, pageId) {
+  if (typeof pageId === "string" && Object.hasOwn(PAGE_ACCESS_UNION, pageId)) {
+    return PAGE_ACCESS_UNION[pageId].some((oldId) => canOpenOwnPage(access, oldId));
+  }
+  return canOpenOwnPage(access, pageId);
 }
 
 /** Where this person lands: their role home, else the dashboard, else nowhere. */

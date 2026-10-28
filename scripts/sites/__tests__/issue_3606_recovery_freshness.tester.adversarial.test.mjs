@@ -310,12 +310,14 @@ test("#3606 one late generation pages once, and an escalation pages again", asyn
   assert.equal(already.posted.length, 1);
 
   // The page has to be actionable on its own, at 3am, by someone who has not
-  // read this issue: it names the recovery command and warns that a failed run
-  // deactivates the pilot.
+  // read this issue: it names the recovery command. #2829 converted the rest:
+  // a failed run no longer deactivates anything and sites no longer 404 on
+  // late evidence, so the page must say sites stay up instead.
   const body = alertBody(expired, "https://github.com/x/y/actions/runs/1");
   assert.ok(body.includes("gh workflow run sites-backup-restore.yml"));
-  assert.ok(body.includes("deactivation"));
-  assert.ok(body.includes("404"));
+  assert.ok(body.includes("keeps serving"));
+  assert.ok(body.includes("takes no site offline"));
+  assert.equal(body.includes("404"), false);
 });
 
 test("#3606 a healthy budget pages nobody", async () => {

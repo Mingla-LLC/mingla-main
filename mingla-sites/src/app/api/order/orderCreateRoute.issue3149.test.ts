@@ -18,17 +18,18 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { headers, loadPublication, normalizePublicHost, runtimeConfig, signedCorePost } = vi
+const { headers, loadPublication, requestHost, runtimeConfig, signedCorePost } = vi
   .hoisted(() => ({
     headers: vi.fn(),
     loadPublication: vi.fn(),
-    normalizePublicHost: vi.fn(),
+    requestHost: vi.fn(),
     runtimeConfig: vi.fn(),
     signedCorePost: vi.fn(),
   }));
 
 vi.mock("next/headers", () => ({ headers }));
-vi.mock("../../../lib/publication", () => ({ loadPublication, normalizePublicHost }));
+// #2829 — the route reads its host through requestHost (generic across brands).
+vi.mock("../../../lib/publication", () => ({ loadPublication, requestHost }));
 vi.mock("../../../lib/config", () => ({ runtimeConfig }));
 vi.mock("../../../lib/coreGateway", () => ({ signedCorePost }));
 
@@ -61,17 +62,21 @@ const createBody = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/** #2829 — the site the host resolved to; Core calls are bound to it. */
+const RESOLUTION = { site_id: SITE_ID };
+
 beforeEach(() => {
   vi.clearAllMocks();
   forwarded = [];
   coreReply = { ok: true, status: 200, body: { kind: "preview", totalCents: 1700000 } };
   headers.mockResolvedValue(new Headers({ host: "gogi.sites.usemingla.com" }));
-  normalizePublicHost.mockImplementation((value: string | null) => value ?? "");
+  requestHost.mockImplementation((value: Headers) => value.get("host") ?? "");
   loadPublication.mockResolvedValue({
     artifact: {
       site_id: SITE_ID,
       pages: [{ blocks: [{ type: "menu_board", venue_id: VENUE_ID }] }],
     },
+    resolution: RESOLUTION,
   });
   runtimeConfig.mockReturnValue({ coreBaseUrl: "https://core.invalid" });
   signedCorePost.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
@@ -192,6 +197,7 @@ describe("#3149 the route hands the basket to the venue-order rail", () => {
   it("refuses to order when the published site names no venue", async () => {
     loadPublication.mockResolvedValue({
       artifact: { site_id: SITE_ID, pages: [{ blocks: [{ type: "gallery" }] }] },
+      resolution: RESOLUTION,
     });
     const response = await post(createBody());
     expect(response.status).toBe(409);
@@ -211,7 +217,7 @@ describe("#3149 the site is credited for the sale it produced", () => {
     expect(signedCorePost).toHaveBeenCalledWith({
       edgeFunction: "brand-site-attribution",
       path: `/internal/v1/sites/${SITE_ID}/attribution/consume`,
-      siteId: SITE_ID,
+      site: RESOLUTION,
       body: { action: "consume", site_id: SITE_ID, token: TOKEN, order_id: ORDER_ID },
     });
   });

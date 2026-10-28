@@ -40,23 +40,30 @@ const growth = { email: "g@test.local", role: "growth", status: "active", areas:
 const partner = { email: "p@test.local", role: "partner", status: "active", areas: ["role_home", "crm", "beta_leads"] };
 const nocrm = { email: "x@test.local", role: "growth", status: "active", areas: ["role_home"] };
 
+// #4130: Wave 0 menu. Needs you is retired into Work (first column); Work
+// sits in Home; the boards, leads, Calendar and Team dashboard in Outreach.
 Deno.test("#3980 the Pipeline menu: To review, Work board, Agent log, Calendar, in order", () => {
-  const pipeline = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Pipeline");
+  const home = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Home");
   assertEquals(
-    pipeline?.items.map((i: { id: string; label: string; icon: string }) => `${i.id}:${i.label}:${i.icon}`),
+    home?.items.map((i: { id: string; label: string; icon: string }) => `${i.id}:${i.label}:${i.icon}`),
+    ["overview:Dashboard:LayoutDashboard", "work-board:Work:SquareKanban", "notifications:Notifications:Bell"],
+  );
+  const outreach = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Outreach");
+  assertEquals(
+    outreach?.items.map((i: { id: string; label: string; icon: string }) => `${i.id}:${i.label}:${i.icon}`),
     [
-      "hosts:Hosts:Handshake",
-      "creators:Creators:Sparkles",
-      // [TEST-MOD-APPROVED #3872] walkthrough W4: Creator gigs left Pipeline for the Programs group.
-      // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar together; the Agent log is a tab on Work.
-      "drafts:Needs you:FileText",
-      "work-board:Work:SquareKanban",
+      "outreach:Hosts and creators:Handshake",
+      // #4130 + #3872: the Creator Program pages sit under Hosts and creators.
+      "program-creators:Creators:BadgeCheck",
+      "program-gigs:Gigs:Clapperboard",
+      "program-locals:Mingla Locals:MapPin",
+      "program-disputes:Disputes:Scale",
+      "inbound:Inbound leads:Inbox",
       "content-calendar:Calendar:CalendarClock",
-      "beta-leads:Beta Leads:Inbox",
-      "tool-leads:Tool Leads:Wrench",
       "team-dashboard:Team dashboard:BarChart3",
     ],
   );
+  assert(!NAV_GROUPS.some((g: { items: { id: string }[] }) => g.items.some((i) => i.id === "drafts")));
 });
 
 Deno.test("#3980 every pipeline teammate opens the Work board and Agent log; nobody else", () => {
@@ -81,7 +88,8 @@ Deno.test("#3980 the pages are registered and their icons exist in the one icon 
   assertMatch(map, /\bSquareKanban,/);
   // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): the Agent log left the menu, so its icon is no longer registered.
   assertNotMatch(map, /\bScrollText,/);
-  assertMatch(sidebar, /item\.id === "drafts" \? reviewCount\.total/);
+  // #4130: the count moved to Work and holds only this person's own waiting cards.
+  assertMatch(sidebar, /item\.id === "work-board" \? reviewCount\.cards/);
 });
 
 Deno.test("#3980 opsService.js is the only browser caller of ops_ functions", () => {

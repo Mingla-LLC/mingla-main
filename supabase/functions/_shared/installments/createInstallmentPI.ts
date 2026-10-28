@@ -15,19 +15,23 @@ import {
 import { stripeTicketCheckout } from "../stripe.ts";
 import { writeAudit } from "../audit.ts";
 import { applicationFeeWithReferralShare } from "../attribution.ts";
+import {
+  MAX_RETRY_ATTEMPTS,
+  nextRetryAtAfterFailure,
+} from "./installmentRetrySchedule.ts";
+import {
+  installmentFeeCents,
+  resolveInstallmentFeeRate,
+} from "./installmentFeeRate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-// #3645 flat 4.5% platform cut (take-rate + service fee); installments inherit.
-export const MINGLA_APPLICATION_FEE_RATE = 0.045 as const;
-export const MAX_RETRY_ATTEMPTS = 3 as const;
-
-// Retry cadence (per SPEC §3.2.1 + Open Polish §9): Day-3 then Day-7 then at-risk.
-const RETRY_INTERVAL_HOURS_BY_RETRY_COUNT = {
-  1: 72,
-  2: 168,
-} as const;
+// #3645 platform cut (take-rate + service fee); installments inherit the
+// brand's effective rate (#4130: an override applies here too).
+// Retry dates are anchored to due_at (+3d, +7d, at risk on the third); the
+// shared rule lives in installmentRetrySchedule.ts. Re-exported for callers.
+export { MAX_RETRY_ATTEMPTS };
 
 export type InstallmentRow = {
   id: string;
@@ -82,15 +86,9 @@ export type CreateInstallmentPIInput = {
   brand?: BrandRow;
   stripeAccount?: StripeAccount;
   dryRun?: boolean;
+  /** Tests only: a stand-in Stripe client. Production uses stripeTicketCheckout(). */
+  stripe?: ReturnType<typeof stripeTicketCheckout>;
 };
-
-function nextRetryAtFor(retryCount: number): string | null {
-  const hours = RETRY_INTERVAL_HOURS_BY_RETRY_COUNT[
-    retryCount as keyof typeof RETRY_INTERVAL_HOURS_BY_RETRY_COUNT
-  ];
-  if (hours === undefined) return null;
-  return new Date(Date.now() + hours * 3600 * 1000).toISOString();
-}
 
 function serviceClient(): SupabaseClient {
   if (SUPABASE_URL === undefined || SUPABASE_SERVICE_ROLE_KEY === undefined) {
@@ -297,9 +295,13 @@ export async function createInstallmentPI(
     return { ok: true, outcome: "collected", reason: "dry_run" };
   }
 
-  const stripe = stripeTicketCheckout();
-  const minglaApplicationFeeAmountCents = Math.round(
-    installment.amount_cents * MINGLA_APPLICATION_FEE_RATE,
+  const stripe = input.stripe ?? stripeTicketCheckout();
+  // #4130 + #3872: the brand's own effective rate sets Mingla's fee; the
+  // referral share is then carved out of it unchanged.
+  const feeRate = await resolveInstallmentFeeRate(supabase, brand.id);
+  const minglaApplicationFeeAmountCents = installmentFeeCents(
+    installment.amount_cents,
+    feeRate,
   );
   const referralShareMinor = Number(installment.referral_share_minor ?? 0);
   if (
@@ -509,7 +511,9 @@ export async function createInstallmentPI(
     }`.slice(0, 500);
     const nextRetryCount = installment.retry_count + 1;
     const willBeAtRisk = nextRetryCount >= MAX_RETRY_ATTEMPTS;
-    const nextRetryAt = willBeAtRisk ? null : nextRetryAtFor(nextRetryCount);
+    const nextRetryAt = willBeAtRisk
+      ? null
+      : nextRetryAtAfterFailure(installment.due_at, nextRetryCount);
 
     await supabase
       .from("order_installments")

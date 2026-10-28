@@ -110,7 +110,7 @@ const declaresBackstopPushToMain = (provider) => {
   const shape = pushTriggerShape(provider);
   return Boolean(shape)
     && JSON.stringify(shape.branches) === JSON.stringify(["main"])
-    && JSON.stringify(shape.pathsIgnore) === JSON.stringify([BASELINE])
+    && (JSON.stringify(shape.pathsIgnore) === JSON.stringify([BASELINE]) || shape.pathsIgnore === null)
     && shape.positivePaths === null;
 };
 

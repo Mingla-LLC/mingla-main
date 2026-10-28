@@ -9,8 +9,8 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { fetchEventPreview, type EventPreviewRender } from '@/lib/growth-tools-submit'
-import { detectClientPlatform } from '@/lib/device-platform'
-import { BUSINESS_ONELINK_URL, BUSINESS_WEB_URL } from '@/lib/store-links'
+import { DeviceLink } from '@/components/cutout/device-link'
+import { toolAttribution } from '@/lib/links-src'
 
 // Design tokens duplicated from packages/offering-rendering/designTokens.ts — the
 // exact values the real event page renders with.
@@ -73,14 +73,6 @@ export function EventPreviewClient() {
   const sample = params.get('sample') === '1'
   const [render, setRender] = useState<EventPreviewRender | null>(sample ? SAMPLE : null)
   const [failed, setFailed] = useState(false)
-
-  const [publishHref, setPublishHref] = useState(BUSINESS_WEB_URL)
-  useEffect(() => {
-    const platform = detectClientPlatform()
-    if (platform === 'ios' || platform === 'android') {
-      setPublishHref(`${BUSINESS_ONELINK_URL}?pid=tool_events&c=tool_events`)
-    }
-  }, [])
 
   useEffect(() => {
     if (sample) return
@@ -260,9 +252,9 @@ export function EventPreviewClient() {
           <p style={{ margin: '8px auto 0', maxWidth: 420, fontSize: 14, color: T.text2 }}>
             List it on Mingla and we’ll put it in front of people planning their week.
           </p>
-          <a href={publishHref} style={{ display: 'inline-flex', marginTop: 16, minHeight: 44, alignItems: 'center', padding: '0 24px', borderRadius: 999, background: T.accent, color: T.inverse, fontWeight: 800, textDecoration: 'none' }}>
+          <DeviceLink surface="host" attribution={toolAttribution('tool_events')} sameTab style={{ display: 'inline-flex', marginTop: 16, minHeight: 44, alignItems: 'center', padding: '0 24px', borderRadius: 999, background: T.accent, color: T.inverse, fontWeight: 800, textDecoration: 'none' }}>
             List it on Mingla
-          </a>
+          </DeviceLink>
         </div>
       </div>
     </div>

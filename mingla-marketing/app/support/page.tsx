@@ -1,14 +1,18 @@
 import Link from 'next/link'
+import '@/components/cutout/cutout.css'
+import { CutoutNav } from '@/components/cutout'
 import { searchRouteMetadata } from '@/lib/search/metadata'
 
 export const metadata = searchRouteMetadata('/support')
 
 export default function SupportPage() {
   return (
-    <main
-      id="main"
-      className="relative min-h-screen overflow-hidden bg-[#08090b] px-5 py-8 text-text-primary sm:px-8 sm:py-10"
-    >
+    <>
+      <CutoutNav surface="explorer" homeHref="/" />
+      <main
+        id="main"
+        className="relative min-h-screen overflow-hidden bg-[#08090b] px-5 py-8 text-text-primary sm:px-8 sm:py-10"
+      >
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_18%_12%,rgba(235,120,37,0.18),transparent_32%),radial-gradient(ellipse_at_84%_18%,rgba(255,255,255,0.08),transparent_28%),linear-gradient(180deg,#08090b_0%,#0d0d10_58%,#07080a_100%)]" />
         <div className="absolute inset-0 opacity-[0.09] [background-image:linear-gradient(rgba(235,120,37,0.22)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.14)_1px,transparent_1px)] [background-size:72px_72px]" />
@@ -95,6 +99,7 @@ export default function SupportPage() {
           </div>
         </article>
       </div>
-    </main>
+      </main>
+    </>
   )
 }

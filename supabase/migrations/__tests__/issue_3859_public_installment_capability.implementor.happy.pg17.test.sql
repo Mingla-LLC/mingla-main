@@ -3,6 +3,9 @@
 -- Issue #3859 rolling-compatibility proof. The saved Host schedule survives,
 -- while the canonical buyer payload exposes only a boolean capability and masks
 -- the schedule whenever that capability is unavailable.
+-- [TEST-MOD-APPROVED #3645] The reviewed activation leaves Paystack available.
+-- This transaction forces the switch off only for the historical masking arm;
+-- ROLLBACK restores the deployed state.
 
 BEGIN;
 
@@ -79,6 +82,14 @@ BEGIN
      OR NOT ((v_tier -> 'tierMetadata') ? 'installments') THEN
     RAISE EXCEPTION 'supported public capability/schedule mismatch: %', v_payload;
   END IF;
+
+  CREATE OR REPLACE FUNCTION public.issue_3645_paystack_installments_enabled()
+  RETURNS boolean
+  LANGUAGE sql
+  STABLE
+  SECURITY DEFINER
+  SET search_path = public, pg_temp
+  AS $off$ SELECT false $off$;
 
   UPDATE public.brands SET payment_provider = 'paystack' WHERE id = v_brand;
   v_payload := public.pg_public_trip_by_slug(v_brand_slug, v_trip_slug)::jsonb;

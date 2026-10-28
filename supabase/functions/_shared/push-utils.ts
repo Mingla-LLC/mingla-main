@@ -74,6 +74,8 @@ export interface PushPayload {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  /** Provider launch URL. Kept outside Mingla's durable notification rows. */
+  launchUrl?: string;
   // META-ORCH-1074 Sub-A: which OneSignal application to deliver through.
   // Defaults to "consumer" when omitted so every existing consumer call-site
   // is byte-stable. notify-dispatch sets this from resolveOneSignalApp(type).
@@ -288,6 +290,7 @@ export async function sendPush(
     headings: { en: payload.title },
     contents: { en: payload.body },
     data: payload.data ?? {},
+    ...(payload.launchUrl && { url: payload.launchUrl }),
     ...(payload.oneSignalIdempotencyKey && {
       idempotency_key: payload.oneSignalIdempotencyKey,
     }),

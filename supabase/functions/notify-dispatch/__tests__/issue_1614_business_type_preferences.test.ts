@@ -12,6 +12,8 @@ const TYPES = [
   "low_inventory",
   "refund_processed",
   "dispute_opened",
+  "installment_failed",
+  "installment_at_risk",
   "dispute_action_needed",
   "payout_paid",
   "payout_failed",
@@ -27,7 +29,7 @@ const TYPES = [
   "team_member_joined",
 ];
 
-Deno.test("all eighteen Business types have independent locked channel defaults", () => {
+Deno.test("all twenty Business types have independent locked channel defaults", () => {
   for (const leaf of TYPES) {
     const expectedPush = leaf === "team_member_joined" ? "false" : "true";
     assertStringIncludes(
@@ -37,7 +39,7 @@ Deno.test("all eighteen Business types have independent locked channel defaults"
   }
   assertEquals(
     (SRC.match(/"business\.[a-z0-9_]+": \{ push:/g) ?? []).length,
-    18,
+    20,
   );
 });
 

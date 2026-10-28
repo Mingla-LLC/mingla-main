@@ -17,7 +17,11 @@ import {
   studioMediaGrantRequest,
 } from "./studioRequestAuth";
 
-vi.mock("./gateway", () => ({ callCore: vi.fn(async () => ({ status: "authorized" })) }));
+vi.mock("./gateway", () => ({
+  callCore: vi.fn(async () => ({ status: "authorized" })),
+  // #2829 W11 (A11): no protected publication shows the media here.
+  readCoreRetentionProjection: vi.fn(async () => ({ protected_artifact_keys: [] })),
+}));
 vi.mock("./objectStore", () => ({
   deleteObject: vi.fn(async () => undefined),
   presignedQuarantinePut: vi.fn(async () => ({ url: "", headers: {} })),
@@ -270,9 +274,17 @@ describe("#2830 live Studio request authority", () => {
     const relationshipReads = calls.filter((call) => call.operation === "find");
     const mediaUpdate = calls.find((call) => call.operation === "update")!;
     expect(mediaRead.req.context).toMatchObject({ minglaMediaGrant: true });
+    // #2829 W5 — the content collections are scanned too, on the ordinary request.
     expect(relationshipReads.map((call) => call.collection)).toEqual([
       "pages",
+      "destinations",
+      "stories",
+      "categories",
+      "testimonials",
       "site-settings",
+      // #2829 W6 — every tenant collection that can hold media is scanned.
+      "navigation",
+      "footer",
     ]);
     for (const call of relationshipReads) {
       expect(call.req).toBe(ordinaryRequest);

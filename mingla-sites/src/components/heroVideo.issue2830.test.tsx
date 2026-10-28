@@ -52,7 +52,7 @@ const html = () =>
 const hero = fs.readFileSync(
   path.resolve(process.cwd(), "src/components/HeroVideo.tsx"), "utf8");
 const css = fs.readFileSync(
-  path.resolve(process.cwd(), "src/app/styles.css"), "utf8");
+  path.resolve(process.cwd(), "public/designs/legacy-v1.css"), "utf8");
 
 describe("#2830 hero video", () => {
   it("the POSTER is server-rendered, so the headline never waits on the video", () => {

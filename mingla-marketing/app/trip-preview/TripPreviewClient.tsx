@@ -9,8 +9,8 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { fetchTripPreview, type TripPreviewRender } from '@/lib/growth-tools-submit'
-import { detectClientPlatform } from '@/lib/device-platform'
-import { BUSINESS_ONELINK_URL, BUSINESS_WEB_URL } from '@/lib/store-links'
+import { DeviceLink } from '@/components/cutout/device-link'
+import { toolAttribution } from '@/lib/links-src'
 
 // Design tokens duplicated from packages/offering-rendering/designTokens.ts.
 const T = {
@@ -82,14 +82,6 @@ export function TripPreviewClient() {
   const sample = params.get('sample') === '1'
   const [render, setRender] = useState<TripPreviewRender | null>(sample ? SAMPLE : null)
   const [failed, setFailed] = useState(false)
-
-  const [publishHref, setPublishHref] = useState(BUSINESS_WEB_URL)
-  useEffect(() => {
-    const platform = detectClientPlatform()
-    if (platform === 'ios' || platform === 'android') {
-      setPublishHref(`${BUSINESS_ONELINK_URL}?pid=tool_trips&c=tool_trips`)
-    }
-  }, [])
 
   useEffect(() => {
     if (sample) return
@@ -354,9 +346,9 @@ export function TripPreviewClient() {
             List it on Mingla and give your travellers a real place to book — checkout, deposits and
             pay-over-time built in.
           </p>
-          <a href={publishHref} style={{ display: 'inline-flex', marginTop: 16, minHeight: 44, alignItems: 'center', padding: '0 24px', borderRadius: 999, background: T.accent, color: T.inverse, fontWeight: 800, textDecoration: 'none' }}>
+          <DeviceLink surface="host" attribution={toolAttribution('tool_trips')} sameTab style={{ display: 'inline-flex', marginTop: 16, minHeight: 44, alignItems: 'center', padding: '0 24px', borderRadius: 999, background: T.accent, color: T.inverse, fontWeight: 800, textDecoration: 'none' }}>
             List it on Mingla
-          </a>
+          </DeviceLink>
         </div>
       </div>
     </div>

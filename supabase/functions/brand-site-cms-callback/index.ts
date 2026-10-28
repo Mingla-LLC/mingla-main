@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   normalizeSitesHost,
+  publicationGeneration,
   requireSha256,
   requireUuid,
   sitesJson,
@@ -10,6 +11,7 @@ import {
 } from "../_shared/sitesContracts.ts";
 import { resolveCmsToCoreVerifier } from "../_shared/sitesSecurity.ts";
 import { observeSitesRequest } from "../_shared/sitesObservability.ts";
+import { bunnyBinding, handleSiteVideoRoute, serviceVideoStore } from "./siteVideos.ts";
 
 function decodeEnvelope(value: string | null): unknown {
   if (value === null || value.length > 16_384) {
@@ -46,11 +48,12 @@ const RESTORE_DRILL_KEYS = [
   "schema_version",
   "tenant_count",
 ] as const;
-const PILOT_DEACTIVATION_KEYS = [
-  "hostname",
-  "reason_code",
+const RECOVERY_STATE_KEYS = [
+  "observed_at",
   "schema_version",
+  "state",
 ] as const;
+const EVIDENCE_SOURCES = new Set(["scheduled_job", "local_synthetic"]);
 
 function exactKeys(
   value: Record<string, unknown>,
@@ -105,38 +108,49 @@ export function validReadinessEvidence(
   return false;
 }
 
-export function validPilotDeactivation(
+/*
+ * #2829 — a late or stale backup ALERTS; it never takes a site down
+ * (Seth 2026-10-12 D1: a failing recovery check means hold-and-page). This
+ * replaces the old signed pilot deactivation. The body carries only the
+ * observed state; nothing in it can name a host, a brand or a site to switch
+ * off, because there is no longer any switch to throw.
+ */
+export function validRecoveryState(
   value: Record<string, unknown>,
+  now = Date.now(),
 ): boolean {
-  return exactKeys(value, PILOT_DEACTIVATION_KEYS) &&
+  const observed = utcTimestamp(value.observed_at);
+  return exactKeys(value, RECOVERY_STATE_KEYS) &&
     value.schema_version === 1 &&
-    value.hostname === "gogi.sites.usemingla.com" &&
-    value.reason_code === "BACKUP_READINESS_FAILED";
+    (value.state === "fresh" || value.state === "late" ||
+      value.state === "stale") &&
+    observed !== null && observed <= now + 5 * 60_000 &&
+    observed > now - 7 * 24 * 60 * 60_000;
 }
 
-export function safePilotDeactivationReceipt(
-  value: unknown,
-  siteId: string,
-): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const result = value as Record<string, unknown>;
-  const deactivatedAt = typeof result.deactivated_at === "string"
-    ? Date.parse(result.deactivated_at)
-    : Number.NaN;
-  if (
-    result.site_id !== siteId ||
-    result.hostname !== "gogi.sites.usemingla.com" ||
-    result.status !== "disabled" ||
-    result.last_good_preserved !== true ||
-    !Number.isFinite(deactivatedAt)
-  ) return null;
-  return {
-    site_id: siteId,
-    hostname: "gogi.sites.usemingla.com",
-    status: "disabled",
-    deactivated_at: new Date(deactivatedAt).toISOString(),
-    last_good_preserved: true,
-  };
+export function emitRecoveryAlert(
+  state: string,
+  operationId: string,
+): void {
+  // The alert IS the response to a late backup: a structured line the
+  // observability sink pages on (console locally). Sites stay up.
+  console.warn(JSON.stringify({
+    event: "mingla_sites_alert",
+    metric: `recovery.${state}`,
+    request_id: crypto.randomUUID(),
+    operation_id: operationId,
+    site_id: null,
+    publication_id: null,
+    direction: "cms_to_core",
+    route: "/internal/v1/sites/:site_id/recovery-state",
+    state_transition: `recovery_check->${state}_recorded`,
+    latency_ms: 0,
+    retry_count: 0,
+    safe_error_code: state === "fresh" ? null : "SERVICE_TEMPORARILY_UNAVAILABLE",
+    status_code: null,
+    version: "sites-v1",
+    sites_taken_offline: 0,
+  }));
 }
 
 /*
@@ -394,6 +408,41 @@ async function handleBrandSiteCmsCallbackRequest(
       }
       return sitesJson({ ok: true, data });
     }
+    // #2829 W9a — Studio reports the owner saved the site's look (design,
+    // colours, fonts): "Your look" on the website plan ticks from this, never
+    // from the client. Bound to the envelope's site like every other route.
+    const lookSavedMatch = path.match(
+      /^\/internal\/v1\/sites\/([^/]+)\/look-saved$/,
+    );
+    if (lookSavedMatch) {
+      const siteId = requireUuid(lookSavedMatch[1]);
+      if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
+      const designKey = typeof parsed.design_key === "string" ? parsed.design_key : "";
+      const { data, error } = await service.rpc("brand_site_record_look_saved", {
+        p_site_id: siteId,
+        p_design_key: designKey,
+      });
+      return error
+        ? sitesJson({ ok: false, error: { code: "VALIDATION_FAILED" } }, 409)
+        : sitesJson({ ok: true, data });
+    }
+    // #2829 W10 — Studio built a preview of this site's draft: it becomes the
+    // preview the site's private share links show. Bound to the envelope's
+    // site; Core checks the object key names that site.
+    const previewArtifactMatch = path.match(
+      /^\/internal\/v1\/sites\/([^/]+)\/preview-artifacts$/,
+    );
+    if (previewArtifactMatch) {
+      const siteId = requireUuid(previewArtifactMatch[1]);
+      if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
+      const { data, error } = await service.rpc("brand_site_record_preview_artifact", {
+        p_site_id: siteId,
+        p_artifact_key: typeof parsed.artifact_key === "string" ? parsed.artifact_key : "",
+      });
+      return error
+        ? sitesJson({ ok: false, error: { code: "VALIDATION_FAILED" } }, 409)
+        : sitesJson({ ok: true, data });
+    }
     if (provisionMatch) {
       const siteId = requireUuid(provisionMatch[1]);
       if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
@@ -507,10 +556,27 @@ async function handleBrandSiteCmsCallbackRequest(
             : null;
         }
       }
+      // #2829 W4 — the live offerings feed, frozen into the publication as
+      // the site's fallback snapshot (`offerings_snapshot`) when Core cannot
+      // be reached at request time. Read only when the builder asks for it.
+      let feed: unknown = null;
+      if (includes.has("feed")) {
+        const feedResult = await service.rpc("brand_site_offerings_feed", {
+          p_site_id: siteId,
+        });
+        if (feedResult.error || !feedResult.data) {
+          return sitesJson(
+            { ok: false, error: { code: "VALIDATION_FAILED" } },
+            409,
+          );
+        }
+        feed = feedResult.data;
+      }
       return sitesJson({
         ok: true,
         data: {
           offerings: data ?? [],
+          feed,
           menu,
           menu_venue_id: menuVenueId,
           venue_slug: venueSlug,
@@ -524,8 +590,8 @@ async function handleBrandSiteCmsCallbackRequest(
     const readinessMatch = path.match(
       /^\/internal\/v1\/sites\/([^/]+)\/readiness-evidence$/,
     );
-    const deactivationMatch = path.match(
-      /^\/internal\/v1\/sites\/([^/]+)\/pilot-deactivation$/,
+    const recoveryStateMatch = path.match(
+      /^\/internal\/v1\/sites\/([^/]+)\/recovery-state$/,
     );
     const publicationSourceMatch = path.match(
       /^\/internal\/v1\/sites\/([^/]+)\/publications\/([^/]+)\/source$/,
@@ -562,7 +628,14 @@ async function handleBrandSiteCmsCallbackRequest(
     if (readinessMatch && req.method === "POST") {
       const siteId = requireUuid(readinessMatch[1]);
       if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
-      if (!validReadinessEvidence(parsed)) {
+      // #2829 — `evidence_source` travels beside the evidence; Core refuses
+      // `local_synthetic` unless its service row is a local one.
+      const { evidence_source: evidenceSource, ...evidence } = parsed;
+      if (
+        (evidenceSource !== undefined &&
+          !EVIDENCE_SOURCES.has(String(evidenceSource))) ||
+        !validReadinessEvidence(evidence)
+      ) {
         return sitesJson(
           { ok: false, error: { code: "VALIDATION_FAILED" } },
           400,
@@ -574,7 +647,8 @@ async function handleBrandSiteCmsCallbackRequest(
           p_site_id: siteId,
           p_operation_id: requireUuid(envelope.operation_id),
           p_body_digest: await sitesSha256Hex(raw),
-          p_evidence: parsed,
+          p_evidence: evidence,
+          p_evidence_source: evidenceSource ?? "scheduled_job",
         },
       );
       if (error) {
@@ -586,49 +660,30 @@ async function handleBrandSiteCmsCallbackRequest(
       }
       return sitesJson({ ok: true, data });
     }
-    if (deactivationMatch && req.method === "POST") {
-      const siteId = requireUuid(deactivationMatch[1]);
+    if (recoveryStateMatch && req.method === "POST") {
+      const siteId = requireUuid(recoveryStateMatch[1]);
       if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
-      if (!validPilotDeactivation(parsed)) {
+      if (!validRecoveryState(parsed)) {
         return sitesJson(
           { ok: false, error: { code: "VALIDATION_FAILED" } },
           400,
         );
       }
-      const { data: config, error: configError } = await service
-        .from("brand_site_service_config")
-        .select("pilot_brand_id")
-        .eq("config_key", "sites_v1")
-        .eq("pilot_site_id", siteId)
-        .maybeSingle();
-      if (configError || !config?.pilot_brand_id) {
+      const { data, error } = await service.rpc(
+        "brand_site_record_recovery_state",
+        {
+          p_state: parsed.state,
+          p_observed_at: parsed.observed_at,
+        },
+      );
+      emitRecoveryAlert(String(parsed.state), requireUuid(envelope.operation_id));
+      if (error) {
         return sitesJson(
           { ok: false, error: { code: "INVALID_STATE" } },
           409,
         );
       }
-      const { data, error } = await service.rpc(
-        "brand_site_deactivate_gogi_pilot",
-        {
-          p_brand_id: requireUuid(config.pilot_brand_id),
-          p_site_id: siteId,
-          p_hostname: parsed.hostname,
-          p_operation_id: requireUuid(envelope.operation_id),
-          p_reason_code: parsed.reason_code,
-        },
-      );
-      if (error) {
-        const conflict = error.message.includes("idempotency");
-        return sitesJson({
-          ok: false,
-          error: { code: conflict ? "IDEMPOTENCY_CONFLICT" : "INVALID_STATE" },
-        }, 409);
-      }
-      const receipt = safePilotDeactivationReceipt(data, siteId);
-      return receipt ? sitesJson({ ok: true, data: receipt }) : sitesJson(
-        { ok: false, error: { code: "INVALID_STATE" } },
-        409,
-      );
+      return sitesJson({ ok: true, data });
     }
     const publicationMatch = path.match(
       /^\/internal\/v1\/sites\/([^/]+)\/publication-results$/,
@@ -639,12 +694,21 @@ async function handleBrandSiteCmsCallbackRequest(
     if (publicationFailureMatch) {
       const siteId = requireUuid(publicationFailureMatch[1]);
       if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
+      // #2829 W2 — an owner-fixable refusal names itself (closed list; Core
+      // refuses anything else). Absent → the original 3-argument call.
+      const reasonCode = parsed.failure_code === "PATH_COLLISION" ||
+          parsed.failure_code === "PAGE_LIMIT_EXCEEDED" ||
+          // #2829 W9b — a first publish waits until the design checks ran.
+          parsed.failure_code === "DESIGN_CHECKS_REQUIRED"
+        ? parsed.failure_code
+        : null;
       const { data, error } = await service.rpc(
         "brand_site_fail_publication",
         {
           p_site_id: siteId,
           p_operation_id: requireUuid(envelope.operation_id),
           p_publication_id: requireUuid(parsed.publication_id),
+          ...(reasonCode ? { p_reason_code: reasonCode } : {}),
         },
       );
       if (error) {
@@ -661,6 +725,10 @@ async function handleBrandSiteCmsCallbackRequest(
       if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
       const publicationId = requireUuid(parsed.publication_id);
       const operationId = requireUuid(envelope.operation_id);
+      // #2829 W3 — the CMS names the generation it wrote (v2 + design, or v1
+      // for a rollback) and any font fallbacks; Core validates and records
+      // them. A completion without them is the original v1 call.
+      const generation = publicationGeneration(parsed);
       const { data, error } = await service.rpc(
         "brand_site_complete_publication",
         {
@@ -672,6 +740,7 @@ async function handleBrandSiteCmsCallbackRequest(
           p_artifact_key: String(parsed.artifact_key ?? ""),
           p_artifact_digest: requireSha256(parsed.artifact_digest),
           p_probe_summary: parsed.probe_summary ?? {},
+          ...(generation ?? {}),
         },
       );
       if (error) {
@@ -690,6 +759,7 @@ async function handleBrandSiteCmsCallbackRequest(
             .select("hostname")
             .eq("site_id", site)
             .eq("is_primary", true)
+            .eq("status", "active")
             .is("retired_at", null)
             .order("created_at", { ascending: true })
             .limit(1)
@@ -729,10 +799,15 @@ async function handleBrandSiteCmsCallbackRequest(
       /^\/internal\/v1\/sites\/([^/]+)\/authorize$/,
     );
     if (authorizeMatch) {
+      // #3651 — the URL site must be the site the envelope was signed for,
+      // exactly like every other site-scoped route; the CMS signs with its
+      // tenant's own core_site_id, so a tenant can only ask about itself.
+      const siteId = requireUuid(authorizeMatch[1]);
+      if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
       const { data, error } = await service.rpc(
         "brand_site_internal_authorize",
         {
-          p_site_id: requireUuid(authorizeMatch[1]),
+          p_site_id: siteId,
           p_user_id: requireUuid(parsed.user_id),
           p_min_rank: Number(parsed.min_rank ?? 20),
         },
@@ -740,6 +815,23 @@ async function handleBrandSiteCmsCallbackRequest(
       return error
         ? sitesJson({ ok: false, error: { code: "FORBIDDEN" } }, 403)
         : sitesJson({ ok: true, data });
+    }
+    // #2829 W6 (AD-9) — stream videos (Bunny through Core); inert when Bunny
+    // is not configured. Site-bound like every route above.
+    if (/^\/internal\/v1\/sites\/[^/]+\/videos\//.test(path)) {
+      try {
+        const video = await handleSiteVideoRoute(
+          { method: req.method, path, body: parsed, envelopeSiteId: envelope.site_id },
+          { store: serviceVideoStore(service), bunny: bunnyBinding() },
+        );
+        if (video) return video;
+      } catch (error) {
+        if (error instanceof Error && error.message === "TENANT_MISMATCH") throw error;
+        if (error instanceof Error && error.message === "VALIDATION_FAILED") {
+          return sitesJson({ ok: false, error: { code: "VALIDATION_FAILED" } }, 400);
+        }
+        return sitesJson({ ok: false, error: { code: "SERVICE_TEMPORARILY_UNAVAILABLE" } }, 503);
+      }
     }
     return sitesJson({ ok: false, error: { code: "NOT_FOUND" } }, 404);
   } catch (error) {

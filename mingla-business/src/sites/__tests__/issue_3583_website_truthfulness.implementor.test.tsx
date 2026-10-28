@@ -38,12 +38,6 @@ jest.mock("expo-router", () => ({
 jest.mock("expo-web-browser", () => ({ openAuthSessionAsync: jest.fn() }));
 
 const viewProps: Record<string, unknown>[] = [];
-jest.mock("../../components/sites/BrandWebsiteView", () => ({
-  BrandWebsiteView: (props: Record<string, unknown>) => {
-    viewProps.push(props);
-    return null;
-  },
-}));
 jest.mock("../../components/ui/SafeScreen", () => ({
   SafeScreen: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -89,18 +83,39 @@ jest.mock("../../components/ui/GlassCard", () => ({
   }) => require("react").createElement("mock-card", { testID }, children),
 }));
 jest.mock("../../components/ui/Icon", () => ({ Icon: () => null }));
+jest.mock("../../components/sites/website/WebsiteIcon", () => ({ WebsiteIcon: () => null }));
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import Route from "../../../app/brand/[id]/website";
+import { useWebsiteController } from "../../components/sites/website/useWebsiteController";
+import { NoticeBanner } from "../../components/sites/website/NoticeBanner";
+import { WebsiteProvider } from "../../components/sites/website/WebsiteContext";
+import { websiteNavGroups, type WebsiteNavInput } from "../websiteNav";
 /*
- * The ROUTE suites replace the view with a prop recorder (above), so the real
- * component has to be pulled past that mock. Its own children — Button,
- * GlassCard, Icon — stay mocked, exactly as the #2830 view suites render it.
+ * #2829 W9r — the old route and its BrandWebsiteView are gone; the Website
+ * section's controller owns this logic now. This harness drives the REAL
+ * controller (real hooks, real service, mocked edge envelope) and records
+ * what it hands the sections, under the prop names these suites always read.
  */
-const { BrandWebsiteView } = jest.requireActual(
-  "../../components/sites/BrandWebsiteView",
-) as typeof import("../../components/sites/BrandWebsiteView");
+function Route(): null {
+  const [panel, setPanel] = React.useState("overview");
+  const controller = useWebsiteController(BRAND, null, panel === "publish_review");
+  if (controller.websiteAvailable !== true) return null;
+  viewProps.push({
+    capabilities: controller.capabilities,
+    notice: controller.notice,
+    journeyState: controller.journeyState,
+    publicationOperationId: controller.publicationOperation?.operationId ?? null,
+    validation: controller.validation.data ?? null,
+    onSetPanel: setPanel,
+    onValidatePublish: () => { void controller.validation.refetch(); },
+    onPublish: controller.actions.publish,
+    onOpenStudio: () => controller.actions.openStudio(),
+    onPreview: () => controller.actions.openStudioPreview(""),
+    onPreviewPage: (pagePath: string) => controller.actions.openStudioPreview(pagePath),
+  });
+  return null;
+}
 import { deriveBusinessWebsiteState, websiteFailureNotice } from "../websiteJourney";
 import type { WorkspaceNoticeDetail } from "../websiteJourney";
 import type { BrandSiteOverview } from "../contracts";
@@ -274,50 +289,6 @@ function renderedText(node: React.ReactElement): string {
   return parts.join(" ");
 }
 
-const VIEW_BASE = {
-  brandName: "Gogi Lagos",
-  site: SITE,
-  rank: 60,
-  isWideDesktop: false,
-  journeyState: 5 as const,
-  panel: "overview" as const,
-  notice: null,
-  isLoading: false,
-  isError: false,
-  isProvisioning: false,
-  isOpeningStudio: false,
-  isPreviewing: false,
-  isPublishing: false,
-  isRollingBack: false,
-  isValidating: false,
-  versions: [],
-  analytics: null,
-  validation: null,
-  validationFailure: null,
-  selectedVersion: null,
-  provisionOperationId: null,
-  provisionOperation: null,
-  provisionPollingTimedOut: false,
-  publicationOperationId: null,
-  publicationOperation: null,
-  publicationPollingTimedOut: false,
-  isReconciling: false,
-  onRetry: jest.fn(),
-  onSetPanel: jest.fn(),
-  onProvision: jest.fn(),
-  onReconcileProvision: jest.fn(),
-  onOpenStudio: jest.fn(),
-  onPreview: jest.fn(),
-  onViewLive: jest.fn(),
-  onOpenAri: jest.fn(),
-  onValidatePublish: jest.fn(),
-  onPublish: jest.fn(),
-  onSelectRollback: jest.fn(),
-  onRollback: jest.fn(),
-  onReconcilePublication: jest.fn(),
-  onResetFailedPublication: jest.fn(),
-};
-
 beforeEach(async () => {
   viewProps.length = 0;
   mockInvoke.mockReset();
@@ -367,8 +338,10 @@ describe("#3583 D1 — a refused step surfaces a real, actionable message", () =
       code: "SERVICE_TEMPORARILY_UNAVAILABLE",
       message: "Website tools are temporarily unavailable. Please try again.",
     });
-    const node = <BrandWebsiteView {...VIEW_BASE} notice={failed} />;
-    expect(testIds(node)).toContain("website-failure");
+    // #2829 W9r — the Website section shows the notice in one banner.
+    const controller = { notice: failed, journeyState: 5, isOpeningStudio: false, actions: { dismissNotice: jest.fn(), openStudio: jest.fn() } };
+    const node = <WebsiteProvider value={{ controller } as never}><NoticeBanner /></WebsiteProvider>;
+    expect(testIds(node)).toContain("website-notice");
     const text = renderedText(node);
     expect(text).toContain(
       "Website tools are temporarily unavailable. Please try again.",
@@ -516,27 +489,23 @@ describe("#3583 D3 — no website means no sections", () => {
     ).toBe(3);
   });
 
-  it("the desktop rail offers only Overview before a website exists", () => {
-    const ids = testIds(
-      <BrandWebsiteView
-        {...VIEW_BASE}
-        site={null}
-        journeyState={2}
-        isWideDesktop
-      />,
-    );
-    expect(ids).toContain("website-rail-overview");
-    for (const dead of ["publish", "versions", "analytics", "address"]) {
-      expect(ids).not.toContain(`website-rail-${dead}`);
-    }
+  it("the rail offers only Overview (and the setup plan that makes one) before a website exists", () => {
+    // #2829 W9r — the redesigned rail (DESIGN_SPEC §1.2 keeps this #3583 rule).
+    const input: WebsiteNavInput = {
+      hasSite: false, designLabel: null, designHasCollectionPages: true, designDirty: false, pagesInMenu: null,
+      counts: { destinations: null, stories: null, reviews: null, past: null }, reviewsNeedingConfirmation: 0,
+      tripsTicked: true, unpublishedChanges: 0, domainNeedsAttention: false, plan: { done: 2, total: 8 }, offline: false,
+    };
+    const keys = (value: WebsiteNavInput) => websiteNavGroups(value).flatMap((group) => group.items.map((entry) => entry.key));
+    expect(keys(input)).toEqual(["overview", "plan"]);
+    for (const live of ["publish", "addresses", "settings", "pages", "design"]) expect(keys({ ...input, hasSite: true })).toContain(live);
   });
 
-  it("an unreadable analytics panel never claims the website is live", () => {
-    const text = renderedText(
-      <BrandWebsiteView {...VIEW_BASE} journeyState={23} analytics={null} />,
-    );
-    expect(text).not.toMatch(/remains live/i);
-    expect(text).toMatch(/analytics/i);
+  it("no Website section claims the website remains live", () => {
+    const dir = path.resolve(__dirname, "../../components/sites/website/sections");
+    for (const file of fs.readdirSync(dir)) {
+      expect(fs.readFileSync(path.join(dir, file), "utf8")).not.toMatch(/remains live/i);
+    }
   });
 });
 

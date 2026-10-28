@@ -73,7 +73,9 @@ Deno.test("#3720 mention UI uses one RPC and email is explicitly opt-in", async 
   ]);
   assertMatch(drawer, /Mention teammates/);
   assertMatch(service, /content_calendar_comment_add_with_mentions/);
-  assertMatch(page, /Email is off until you opt in here/);
+  // #4130: the old line contradicted itself ("every alert starts on" and
+  // "email is off until you opt in"); mention email is still opt-in.
+  assertMatch(page, /Mentions email you only after you switch them on here\./);
   assertMatch(
     migration,
     /p_category_key = 'admin[.]team_mention' AND p_channel = 'email'/,
@@ -82,9 +84,12 @@ Deno.test("#3720 mention UI uses one RPC and email is explicitly opt-in", async 
 });
 
 Deno.test("#3720 Data room browser code receives only brokered manifest and document bytes", async () => {
-  const [service, page, edge] = await Promise.all([
+  // #4130: the documents list moved into the Data room's Documents tab
+  // (components/dataRoom/DataRoomDocuments.jsx); the page renders it.
+  const [service, pageShell, documentsTab, edge] = await Promise.all([
     read("services/teamCollaborationService.js"),
     read("pages/DataRoomPage.jsx"),
+    read("components/dataRoom/DataRoomDocuments.jsx"),
     Deno.readTextFile(
       new URL(
         "../../../supabase/functions/admin-data-room/index.ts",
@@ -93,6 +98,8 @@ Deno.test("#3720 Data room browser code receives only brokered manifest and docu
     ),
   ]);
   assertMatch(service, /invokeWithRefresh\("admin-data-room"/);
+  assertMatch(pageShell, /<DataRoomDocuments \/>/);
+  const page = `${pageShell}\n${documentsTab}`;
   assertMatch(page, /Every room and document open is recorded/);
   assertNotMatch(
     `${service}\n${page}`,

@@ -13,6 +13,7 @@ import {
   communitySupportTabsForAccess,
 } from "../lib/communitySupportAccess.js";
 import { COMMUNITY_SUPPORT_TAB_CONTRACT } from "../lib/communitySupportCapabilityContract.js";
+import { COMMUNITY_PAGE_TABS, SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
 
 // #3988 — every Community & Support tab is shown by exactly the area whose
 // server predicate also guards that tab's RPCs (I-3988-TAB-AREA-EQUALS-RPC-GUARD,
@@ -46,12 +47,28 @@ function exportedBody(service: string, name: string): string | null {
 /** RPCs and Edge Functions a panel reaches directly or via imported service / lib functions. */
 async function reachedBy(panel: string): Promise<Reached> {
   const reached: Reached = { rpcs: new Set(), functions: new Set() };
-  const source = await read(panel);
+  let source = await read(panel);
+  // #4137: Blog is a component family. Walking the whole directory keeps the
+  // contract accurate as editor/list/media components grow, instead of making
+  // BlogPanel import implementation details it never renders itself.
+  if (panel.startsWith("components/blog/")) {
+    const directory = new URL("components/blog/", SRC);
+    for await (const entry of Deno.readDir(directory)) {
+      if (entry.isFile && entry.name.endsWith(".jsx") && entry.name !== panel.split("/").at(-1)) {
+        source += `\n${await Deno.readTextFile(new URL(entry.name, directory))}`;
+      }
+    }
+  }
   callsIn(source, reached);
   const panelDir = new URL(panel, SRC);
   for (const m of source.matchAll(/import\s*\{([^}]*)\}\s*from\s*"([^"]*(?:services|lib)\/[A-Za-z]+)"/g)) {
     const module = await Deno.readTextFile(new URL(`${m[2]}.js`, panelDir)).catch(() => null);
     if (module === null) continue;
+    if (m[2].endsWith("/blogService")) {
+      callsIn(module, reached);
+      for (const rpcCall of module.matchAll(/\brpc\(\s*"([a-z0-9_]+)"/g)) reached.rpcs.add(rpcCall[1]);
+      continue;
+    }
     for (const name of m[1].split(",").map((part) => part.trim()).filter(Boolean)) {
       const body = exportedBody(module, name);
       if (body) callsIn(body, reached);
@@ -60,11 +77,13 @@ async function reachedBy(panel: string): Promise<Reached> {
   return reached;
 }
 
-Deno.test("every rendered tab has exactly one contract row, and no row is orphaned", async () => {
-  const page = await read("pages/CommunitySupportPage.jsx");
-  const block = page.match(/const COMMUNITY_SUPPORT_TABS = \[([\s\S]*?)\];/)?.[1] ?? "";
-  const tabIds = [...block.matchAll(/id: "([a-z-]+)"/g)].map((m) => m[1]);
+// #4130 Wave 6: the tabs are split over the Support and Community pages
+// (lib/supportCommunityTabs.js, which both pages render); Overview was
+// retired, so its row went with it.
+Deno.test("every rendered tab has exactly one contract row, and no row is orphaned", () => {
+  const tabIds = [...SUPPORT_PAGE_TABS, ...COMMUNITY_PAGE_TABS].map((tab) => tab.id);
   assert(tabIds.length >= 12, "tab list parsed");
+  assertEquals(new Set(tabIds).size, tabIds.length, "no tab is on both pages");
   assertEquals([...tabIds].sort(), Object.keys(COMMUNITY_SUPPORT_TAB_CONTRACT).sort());
 });
 

@@ -110,6 +110,9 @@ const BOUNDARY: Record<string, () => unknown> = {
   "@mingla/offering-rendering/tripInstallmentCapability": () => ({
     tripInstallmentsSupported: () => false,
   }),
+  useTripInstallmentCapability: () => ({
+    useTripInstallmentCapability: () => ({ data: false }),
+  }),
   // #3645 — REAL: the bank-setup return target is pure.
   bankSetupReturn: () => jest.requireActual("../../../utils/bankSetupReturn"),
   react: () => React,

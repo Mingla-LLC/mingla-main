@@ -16,6 +16,7 @@ import { CityCatalogue } from '@/components/page-system/city-catalogue'
 import type { CataloguePlace, CataloguePlan, ExplorerCategorySlug } from '@/content/page-system/shared'
 import { CityDeviceAction, CityHostCreationLinks, CityHubImpression, CityTrackedLink } from './city-actions'
 import { historicalCityBuildEnabled } from '@/lib/search/historical-city-build'
+import { CityPage } from './city-page'
 
 export interface CityHubCatalogue {
   readonly places: readonly CataloguePlace[]
@@ -59,7 +60,7 @@ function EvidenceLinks({
   )
 }
 
-function CityLifecycleNotice({ record }: { readonly record: CityHubRecord }) {
+export function CityLifecycleNotice({ record }: { readonly record: CityHubRecord }) {
   const lifecycle = cityHubEffectiveLifecycle(record)
   const historical = historicalCityBuildEnabled()
   if (lifecycle === 'search_ready') return null
@@ -173,7 +174,7 @@ function CityHostUtility({ record }: { readonly record: CityHubRecord }) {
   )
 }
 
-function CityFaq({ record }: { readonly record: CityHubRecord }) {
+export function CityFaq({ record }: { readonly record: CityHubRecord }) {
   return (
     <CutoutSection className="city-section city-faq-section" aria-label={`${record.city} questions`}>
       <div className="city-section-heading"><p className="city-eyebrow">Useful before you go</p><h2>{record.city} questions, answered.</h2></div>
@@ -287,6 +288,9 @@ export function RootCityGrid({ surface }: { readonly surface: 'explorer' | 'host
 }
 
 export function CityHub({ record, catalogue: suppliedCatalogue }: { readonly record: CityHubRecord; readonly catalogue?: CityHubCatalogue }) {
+  // #4137 wave 2: the release build renders the redesigned city page; the
+  // historical #2983 lane below keeps its pinned layout.
+  if (!historicalCityBuildEnabled() && suppliedCatalogue) return <CityPage record={record} catalogue={suppliedCatalogue} />
   // The historical #2983 append-only guard builds one explicit compatibility
   // artifact. The unflagged release build always receives the real catalogue.
   const catalogue = historicalCityBuildEnabled() && record.slug !== 'lagos' ? undefined : suppliedCatalogue

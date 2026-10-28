@@ -20,15 +20,13 @@
 -- data survives. The RPC is SECURITY DEFINER and STABLE, so no auth context is needed
 -- (the existing #1020 suites call it the same way).
 --
--- EVERY BEHAVIOURAL CASE EXECUTES THE REAL RPC (issue #2113 — a check that only greps
--- a definition carries no information). D-00 is a catalogue seal that runs IN ADDITION
--- to, never instead of, the executed queries.
+-- Every behavioral case executes the real RPC.
 --
 -- FAILS-ON-REVERT (delete the fix, do not comment it out):
 --   * delete the third OR arm from 20270427002335 → D-01, D-02, D-04 and D-08 fail
---     (the online event is returned by no market again), and D-00 fails.
+--     (the online event is returned by no market again).
 --   * WIDEN the arm to a bare `e.is_online IS TRUE` (the naive version — it compiles
---     and passes D-01/D-02/D-04) → D-03 and D-09 fail, and D-00 fails.
+--     and passes D-01/D-02/D-04) → D-03 and D-09 fail.
 --
 -- ══ THE REGRESSION GATE — READ BEFORE CHANGING ANYTHING HERE ══
 -- `is_online` is written `draft.format === "online" || draft.format === "hybrid"`
@@ -45,45 +43,8 @@
 
 \set ON_ERROR_STOP on
 
--- ─── D-00: catalogue seal — the carve-out is format-scoped, not bare is_online ───────
--- Read off the LIVE installed definition, not off the migration text, so a hand-edit
--- applied straight to a database is caught too. A seal, not the proof; the proof is
--- D-01 … D-12, which execute the RPC.
-DO $$
-DECLARE
-  d text;
-  d_code text;
-BEGIN
-  d := pg_get_functiondef(
-    'public.pg_discover_business_events(text[],timestamptz,timestamptz,text[],text[],text[],integer,integer,double precision,double precision,double precision)'::regprocedure);
-
-  -- Comments are stripped first: the migration deliberately EXPLAINS the is_online
-  -- trap in prose right above the arm, and the projection legitimately emits
-  -- `is_online` as a column. The scan is over executable code only.
-  d_code := regexp_replace(d, '--[^' || chr(10) || ']*', '', 'g');
-
-  IF position('''business_event''->>''format''' in d_code) = 0 THEN
-    RAISE EXCEPTION 'D-00 FAIL: pg_discover_business_events has no theme.business_event.format carve-out — the online arm is missing or is not format-scoped';
-  END IF;
-
-  -- The trap: the carve-out must pair is_online with the format test. A bare
-  -- `e.is_online IS TRUE` arm that is NOT immediately conjoined with the format test
-  -- is the naive version.
-  IF position('e.is_online IS TRUE' in d_code) = 0 THEN
-    RAISE EXCEPTION 'D-00 FAIL: the online arm lost its e.is_online conjunct (a stale theme key alone must never widen the feed)';
-  END IF;
-  IF position(
-       'e.is_online IS TRUE' || chr(10) ||
-       '              AND lower(btrim(' || chr(10) ||
-       '                COALESCE(e.theme->''business_event''->>''format'', ''''),' || chr(10) ||
-       '                E'' \t\n\r\f\v'' || chr(160)' || chr(10) ||
-       '              )) = ''online'''
-       in d_code) = 0 THEN
-    RAISE EXCEPTION 'D-00 FAIL: e.is_online is not conjoined with format = online — is_online is TRUE for HYBRID too (serverDraftEventMapper.ts:708)';
-  END IF;
-
-  RAISE NOTICE 'D-00 PASS: the discovery carve-out is format-scoped (is_online AND format = online), not bare is_online';
-END $$;
+-- The executed cases below protect online and hybrid discovery behavior.
+-- #4073 moved filtering into a shared reader; SQL formatting is not a contract.
 
 -- ─── D-01 (SC-7 / T-8): an ONLINE-ONLY event surfaces in a market that is not its own
 BEGIN;
@@ -671,5 +632,5 @@ END $$;
 ROLLBACK;
 
 DO $$ BEGIN
-  RAISE NOTICE 'issue #2333 S3 implementor probe: D-00 … D-09 all PASS';
+  RAISE NOTICE 'issue #2333 S3 implementor probe: D-01 … D-09 all PASS';
 END $$;

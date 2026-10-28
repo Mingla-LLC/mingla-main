@@ -539,6 +539,20 @@ class InstallmentFakeDb {
       }
       return Promise.resolve({ data: { ok: true }, error: null });
     }
+    // #4130: with no application_fee_amount on the PaymentIntent, the fee
+    // falls back to the brand's effective rate (here the platform default).
+    if (name === "resolve_effective_take_rate_bps") {
+      return Promise.resolve({
+        data: [{
+          effective_take_rate_bps: 150,
+          take_rate_source: "platform_default",
+        }],
+        error: null,
+      });
+    }
+    if (name === "issue_3645_clear_at_risk_if_settled") {
+      return Promise.resolve({ data: { ok: true }, error: null });
+    }
     throw new Error(`unexpected installment RPC: ${name}`);
   }
 }
@@ -579,8 +593,17 @@ Deno.test("installment payment_intent.succeeded with only latest_charge (live AP
     db.installmentUpdates[0].stripe_charge_id,
     "ch_3InstallmentLive",
   );
-  assertEquals(db.rpcCalls.length, 1);
-  assertEquals(db.rpcCalls[0].name, "record_order_installment_provider_sale");
+  // #4130: the rate read is not a money write; exactly one sale is recorded.
+  const saleCalls = db.rpcCalls.filter((call) =>
+    call.name === "record_order_installment_provider_sale"
+  );
+  assertEquals(saleCalls.length, 1);
+  assertEquals(saleCalls[0].args.p_application_fee_amount_cents, 113);
+  const clearCalls = db.rpcCalls.filter((call) =>
+    call.name === "issue_3645_clear_at_risk_if_settled"
+  );
+  assertEquals(clearCalls.length, 1);
+  assertEquals(clearCalls[0].args.p_order_id, "order_123");
   const audit = db.inserts.find((row) => row.table === "audit_log");
   assertEquals(
     (audit?.payload.after as Record<string, unknown>).stripe_charge_id,

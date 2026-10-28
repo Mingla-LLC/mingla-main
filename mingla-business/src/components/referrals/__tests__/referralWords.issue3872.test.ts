@@ -51,7 +51,7 @@ describe("referral words", () => {
     );
     expect(
       offerSummary(offer({ audience: "buyers", rewardKind: "voucher" }), "USD"),
-    ).toBe("Every buyer earns · 10% back as a voucher · all listings");
+    ).toBe("Every buyer earns · 10% back as a voucher · whole brand");
     expect(
       offerSummary(offer({ status: "ended", endsAt: "2026-09-30" }), "USD"),
     ).toMatch(/^Ended Sep 30/);

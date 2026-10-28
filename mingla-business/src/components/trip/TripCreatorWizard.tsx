@@ -108,7 +108,7 @@ import {
   isExtraGuestCountError,
 } from "../../constants/guestListPrivacy";
 import type { ThemeInput } from "@mingla/offering-rendering";
-import { tripInstallmentsSupported } from "@mingla/offering-rendering/tripInstallmentCapability";
+import { useTripInstallmentCapability } from "../../hooks/useTripInstallmentCapability";
 import {
   normalizeThemeOverrides,
   patchOfferingTheme,
@@ -980,9 +980,8 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
 
   // #3859 — capability is separate from payout readiness. Unknown is false;
   // provider names never reach Host copy. Saved schedules stay in draft state.
-  const paymentPlansAvailable = tripInstallmentsSupported(
-    brand.paymentProvider,
-  );
+  const paymentPlansAvailable =
+    useTripInstallmentCapability(trip.brandId).data === true;
   const tripHasUnsupportedInstallments = useMemo(
     () =>
       !paymentPlansAvailable &&
@@ -2588,6 +2587,9 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               items={inclusionsDraft}
               onChange={setInclusionsDraft}
               disabled={submitting}
+              // #2829 W4 — "Before you go" trip guide editor under the lists.
+              eventId={trip.id}
+              onShowToast={showToast}
             />
           ) : null}
           {step === 4 ? (

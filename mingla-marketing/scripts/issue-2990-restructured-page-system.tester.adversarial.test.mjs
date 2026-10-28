@@ -63,7 +63,9 @@ function sourceContract() {
   assert.match(hostGuide, /desktopLabel="Use Mingla Host on web"/)
   assert.match(hostGuide, /variant="ink"/)
   assert.doesNotMatch(hostGuide, /<figcaption|heroMedia\.caption/)
-  assert.match(deviceCta, /label \?\? \(onPhone \? phoneLabel : desktopLabel\) \?\? defaultText/)
+  // #4137 F-7: the device label is chosen by CSS from both rendered spans, never by post-hydration state.
+  assert.match(deviceCta, /data-cta-when="phone"/, '#4137: phone label span')
+  assert.match(deviceCta, /data-cta-when="computer"/, '#4137: computer label span')
   assert.doesNotMatch(hostFamily, /caption:|illustrative concept image|not a real/i)
   assert.match(hostHeroMedia, /Loading the Mingla Host preview image\./)
   assert.doesNotMatch(hostHeroMedia, /<figcaption|Loading the illustrative|fictional event-hall|not a real/i)

@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import StudioSafeReturn from "../../../../components/StudioSafeReturn";
-import { MINGLA_BUSINESS_ORIGIN } from "../../../../lib/origins";
+import { cmsConfig } from "../../../../lib/config";
 import {
   cookieValue,
   decodeSessionReturnContext,
@@ -15,7 +15,7 @@ export default async function SessionExpired() {
   );
   const returnUrl = context
     ? studioReturnLocationFromContext(context, "session_expired")
-    : MINGLA_BUSINESS_ORIGIN;
+    : cmsConfig().businessOrigin;
   return (
     <StudioSafeReturn
       returnUrl={returnUrl}

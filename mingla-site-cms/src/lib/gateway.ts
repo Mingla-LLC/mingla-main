@@ -195,6 +195,9 @@ export async function readCoreProjection(
   // #3149 wave 5 — and ask for the venue slugs only when a page actually
   // carries a booking button, on the same principle.
   includeVenue = false,
+  // #2829 W4 — and the live offerings feed only when a page has a live
+  // offering grid (it becomes the publication's fallback snapshot).
+  includeFeed = false,
 ): Promise<Record<string, unknown>> {
   const body = "";
   const envelope = await signCmsRequest({
@@ -210,6 +213,7 @@ export async function readCoreProjection(
   // silently drop the other.
   if (includeMenu) query.append("include", "menu");
   if (includeVenue) query.append("include", "venue");
+  if (includeFeed) query.append("include", "feed");
   const response = await fetch(
     `${cmsConfig().coreBaseUrl}/functions/v1/brand-site-cms-callback${path}?${query}`,
     {
@@ -290,5 +294,28 @@ export async function readCorePublicationSource(
   if (!response.ok || !result?.ok || !result.data) {
     throw new Error("CORE_UNAVAILABLE");
   }
+  return result.data as Record<string, unknown>;
+}
+
+/**
+ * #2829 W6 — a signed GET to a site-scoped Core route; the data, or the
+ * route's own error code.
+ */
+export async function getCore(
+  path: string,
+  siteId: string,
+  operationId: string,
+): Promise<Record<string, unknown>> {
+  const envelope = await signCmsRequest({ siteId, operationId, method: "GET", path, body: "" });
+  const response = await fetch(
+    `${cmsConfig().coreBaseUrl}/functions/v1/brand-site-cms-callback${path}`,
+    {
+      method: "GET",
+      headers: { "x-mingla-sites-envelope": Buffer.from(JSON.stringify(envelope)).toString("base64") },
+      cache: "no-store",
+    },
+  );
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.ok) throw new Error(String(result?.error?.code || "CORE_UNAVAILABLE"));
   return result.data as Record<string, unknown>;
 }

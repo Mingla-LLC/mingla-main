@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/installments/__tests__/issue_4130_installment_fee_rate.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4130-w2b-installment-fee-rate",
+  "profile": "deno-1.46-stripe"
+}

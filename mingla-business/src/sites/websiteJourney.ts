@@ -96,6 +96,8 @@ const FAILURE_NEXT_STEP: Record<string, string> = {
   MEDIA_REJECTED: "Replace that image in Studio, then try again.",
   MEDIA_PROCESSING: "Wait for that image to finish preparing, then try again.",
   SERVICE_TEMPORARILY_UNAVAILABLE: "Try again in a moment.",
+  PATH_COLLISION: "Give one of those pages a different address in Studio, then publish again.",
+  PAGE_LIMIT_EXCEEDED: "Remove some pages in Studio, then publish again.",
   SITE_UNAVAILABLE:
     "Reopen the Website workspace so Mingla can load this website again.",
 };
@@ -127,7 +129,21 @@ export function websiteFailureNotice(input: {
   message: string | null;
 }): WorkspaceNoticeDetail {
   const code = input.code;
-  if (code === "UNAUTHORIZED" || code === "FORBIDDEN") {
+  /*
+   * #2829 (A5) — FORBIDDEN is Core refusing an action this member's role
+   * cannot take (publish, roll back, take offline, export, set up), so the
+   * honest answer names who can. UNAUTHORIZED is a lost session or removed
+   * access, which keeps the original wording.
+   */
+  if (code === "FORBIDDEN") {
+    return {
+      kind: "unauthorized",
+      title: "Ask a brand admin",
+      body: "Only brand admins and owners can do this.",
+      reference: code,
+    };
+  }
+  if (code === "UNAUTHORIZED") {
     return {
       kind: "unauthorized",
       title: "Website access changed",

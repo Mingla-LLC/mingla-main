@@ -76,20 +76,24 @@ const LEDGER_PATH = path.join(ROOT, "docs/contracts/ari-capability-ledger.json")
 // (133→136 / 145→148). registered_unverified 132→135.
 // [TEST-MOD-APPROVED #3872] R2 referral list/create/invite and R3 guarded gig
 // script drafting (136→140 / 148→152). registered_unverified 135→139.
+// #2829 W9b Ari as the website designer: twelve new website tools, three
+// website capabilities remapped to their typed replacements (140→152 tools /
+// 152→164 capabilities). registered_unverified 139→151.
 const EXPECTED_TOOL_NAMES = [
   "approve_ad_plan",
-  "attach_approved_site_media",
   "cancel_campaign",
   "cancel_event",
   "cancel_order",
   "cancel_trip_booking",
   "charge_installment_now",
+  "confirm_site_review",
   "create_brand",
   "create_discount",
   "create_event",
   "create_experience",
   "create_referral_offer",
   "create_rsvp",
+  "create_site_draft",
   "create_site_preview",
   "create_stay_reservation",
   "create_support_ticket",
@@ -110,6 +114,7 @@ const EXPECTED_TOOL_NAMES = [
   "end_event_sales",
   "export_brand_people",
   "get_ad_campaign_report",
+  "get_block_catalog",
   "get_brand_analytics",
   "get_brand_balances_reports",
   "get_brand_site",
@@ -124,6 +129,8 @@ const EXPECTED_TOOL_NAMES = [
   "get_reservation_metrics",
   "get_site_operation_status",
   "get_site_page",
+  "get_site_plan",
+  "get_site_tokens",
   "get_tax_status",
   "get_trip_order_money",
   "get_venue_listing_status",
@@ -140,6 +147,7 @@ const EXPECTED_TOOL_NAMES = [
   "list_partner_brand_links",
   "list_partner_splits",
   "list_referral_offers",
+  "list_site_designs",
   "list_site_pages",
   "list_site_versions",
   "list_trip_installments",
@@ -173,8 +181,13 @@ const EXPECTED_TOOL_NAMES = [
   "pause_ad_campaign",
   "pause_discount",
   "propose_ad_plan",
-  "propose_site_content_update",
-  "propose_site_settings_update",
+  "propose_block_variant",
+  "propose_site_collection_entry",
+  "propose_site_composition",
+  "propose_site_copy",
+  "propose_site_imagery",
+  "propose_site_tokens",
+  "propose_trip_guide_update",
   "publish_event",
   "publish_experience",
   "publish_rsvp",
@@ -191,6 +204,8 @@ const EXPECTED_TOOL_NAMES = [
   "revoke_scanner_invitation",
   "rollback_site",
   "run_growth_tool",
+  "run_site_design_checks",
+  "save_site_plan_answers",
   "schedule_campaign",
   "send_campaign_now",
   "send_installment_reminder",
@@ -220,19 +235,19 @@ const EXPECTED_TOOL_NAMES = [
 ];
 
 const EXPECTED = Object.freeze({
-  capabilityCount: 152,
+  capabilityCount: 164,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 139,
+    registered_unverified: 151,
     broken: 0,
     guided_handoff: 8,
     unsupported: 0,
     in_flight: 5,
   }),
-  idDigest: "8ec23b77f79ee63671deb8df9601889084f9e1e2d5635e7e5b8bb0ce8c8895fb",
-  statusDigest: "d98096d4afc01681541fbf89800502b5b41c99bdf5fa9c797b68cb6613848df0",
-  mappingDigest: "70ace5b73f859dab50a393d69e2e6fd54c83bb5516dcb407cd0c64ea619763be",
-  sourceRefDigest: "3d1c480a697239da8e71f0d1b290320b9bc65ce481422597611807b02b7056a4",
+  idDigest: "cb7fd21cdedc8d0758514fb5e6953b0b02be80617a77b34bc3bdc420de6334e2",
+  statusDigest: "8da566d1ee678881026709c2d3bd272e56619337bf7fd3e57ade96282b380fa1",
+  mappingDigest: "b37172b5bbd04291849eca2d179c01cced51320d0e300058fc9392e1c152a84a",
+  sourceRefDigest: "942f38682d0efed7380148410104e102ee3a8e5aca5ccad56bf59ea0d3dc089a",
 });
 
 function readLedger() {
@@ -258,9 +273,9 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("140-tool set changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("152-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
-    failures.push("0/139/0/8/0/5 classification changed");
+    failures.push("0/151/0/8/0/5 classification changed");
   }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");

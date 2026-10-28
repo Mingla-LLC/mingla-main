@@ -48,7 +48,7 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
-import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
+import { WhoCoversCostsSection } from "../pricing/LazyWhoCoversCostsSection";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";
@@ -69,6 +69,7 @@ const TicketTierEditSheet = React.lazy(() =>
 import { errorForKey, type StepBodyProps } from "./types";
 import { isPerNightCapacity } from "../../utils/perNightCapacity";
 import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
+import { usesConfiguredVat } from "../../utils/pricingTaxContext";
 
 // ---- Main component (Step 5 body) -----------------------------------
 
@@ -418,19 +419,23 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
           effectiveTakeRateBps={
             brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS
           }
+          paymentProvider={brand.paymentProvider}
+          paymentCountry={brand.paymentCountry}
           locked={pricingLocked}
-          disabled={!canEditTicketPrice || taxRegistration.isLoading}
+          disabled={
+            !canEditTicketPrice ||
+            (!usesConfiguredVat(brand) && taxRegistration.isLoading)
+          }
           disabledReason={
-            taxRegistration.isLoading
+            !usesConfiguredVat(brand) && taxRegistration.isLoading
               ? "Checking your tax registration…"
               : "A finance manager or above can change pricing settings."
           }
           onEditDefaults={() =>
             router.push(`/brand/${brand.id}/pricing-defaults` as never)
           }
-          // Surface 4 — VAT row is interactive only when the brand has an
-          // active Stripe tax registration; otherwise it shows the "Set up
-          // VAT" nudge. The engine independently fail-closes at checkout.
+          // Surface 4 — Stripe markets require an active registration. The
+          // configured Nigeria rail is interactive without a Stripe detour.
           vatRegistered={taxRegistration.data?.hasActiveRegistration === true}
           onSetupVat={() => router.push("/connect-tax-registrations" as never)}
         />
