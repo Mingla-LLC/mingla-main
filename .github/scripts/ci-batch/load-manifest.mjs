@@ -42,8 +42,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #2829 W7c: re-sealed after the Sites goldens test became one reviewed
 // reference on the retained arm64 web-build provider.
 // #3872: re-sealed after the census prerequisite migration and its two
-// self-registering SQL proofs entered the preserved replay inventories.
-export const BOOTSTRAP_SHA256 = "3b44330bd22e3be00d40149d4135d9d660b16d3620c65c5c203bdc2ed89083b4";
+// self-registering SQL proofs entered the preserved replay inventories, with
+// the exact repair excluded from the deliberately filtered pre-#1931 replay.
+export const BOOTSTRAP_SHA256 = "d8fd72193cdfbc24eb245eb8f2a72162407932b4143630968d065cdcb13f52c4";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
