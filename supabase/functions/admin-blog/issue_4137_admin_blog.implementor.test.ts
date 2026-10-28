@@ -25,7 +25,7 @@ Deno.test("#4137 admin-blog link walker stays in parity with the shared referenc
   ] };
   const shared = blogDocumentReferences(document);
   const local = collectBlogLinkReferences(document).map((item) => item.url);
-  assertEquals(shared.urls.sort(), ["https://example.com/a", "https://www.youtube.com/watch?v=abc123"].sort());
-  assertEquals(local.filter((url) => shared.urls.includes(url)).sort(), shared.urls.sort());
+  assertEquals([...shared.urls].sort(), ["https://example.com/a", "https://www.youtube.com/watch?v=abc123"].sort());
+  assertEquals(local.filter((url) => shared.urls.includes(url)).sort(), [...shared.urls].sort());
   assertEquals(local.sort(), ["https://example.com/a", "https://usemingla.com/help", "https://usemingla.com/host", "https://www.youtube.com/watch?v=abc123", "https://usemingla.com/cities/raleigh-nc"].sort());
 });

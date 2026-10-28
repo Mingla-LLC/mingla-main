@@ -94,7 +94,7 @@ Deno.test("#4137 picker options use staff title search results and expose unavai
   assertEquals(options[0].title, "Title matched by staff RPC");
   assertEquals(options[0].available, false);
   assertEquals(options[0].state, "scheduled");
-  assertStringIncludes(options[0].reason, "Can be added once it's published.");
+  assertStringIncludes(options[0].reason ?? "", "Can be added once it's published.");
 });
 
 Deno.test("#4137 all three email-safe styles escape values and use safe https links", async () => {

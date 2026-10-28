@@ -18,9 +18,9 @@ Deno.test("#4137 Blog sits beside Email and follows the Support capability", () 
   const support = { status: "active", role: "growth", areas: [SUPPORT_OPERATIONS_AREA] };
   const community = { status: "active", role: "growth", areas: ["community_support_community"] };
   const admin = { status: "active", role: "admin", areas: [AREA.ADMIN_CONSOLE] };
-  assertEquals(communitySupportTabsForAccess(support, SUPPORT_PAGE_TABS).map((tab) => tab.id), ["support", "blog"]);
+  assertEquals(communitySupportTabsForAccess(support, SUPPORT_PAGE_TABS).map((tab: { id: string }) => tab.id), ["support", "blog"]);
   assertEquals(communitySupportTabsForAccess(community, SUPPORT_PAGE_TABS), []);
-  assertEquals(communitySupportTabsForAccess(admin, SUPPORT_PAGE_TABS).map((tab) => tab.id), ["support", "email", "blog", "team"]);
+  assertEquals(communitySupportTabsForAccess(admin, SUPPORT_PAGE_TABS).map((tab: { id: string }) => tab.id), ["support", "email", "blog", "team"]);
 });
 
 Deno.test("#4137 block reducer inserts, moves, removes and restores without mutation", () => {
