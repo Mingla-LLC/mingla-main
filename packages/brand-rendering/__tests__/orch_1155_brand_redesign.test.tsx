@@ -101,10 +101,10 @@ describe("ORCH-1155 public brand page — Direction-A redesign", () => {
   // [TEST-MOD-APPROVED #4111] D10 (Seth, 2026-10-25): the brand's email and
   // phone leave the public brand page; guests use the foot's Message card. The
   // About pane is tagline → bio only, and no mailto:/tel: link remains.
-  test("About pane holds tagline → bio (clamp + Read more), with no contact rows (#4111 D10)", () => {
+  test("About pane holds tagline → measured bio disclosure, with no contact rows (#4111 D10)", () => {
     expect(brandPage).toContain("const AboutTab");
     expect(brandPage).toContain("ClampedBio");
-    expect(brandPage).toContain("Read more");
+    expect(brandPage).toContain("<MeasuredTextDisclosure");
     expect(brandPage).not.toContain("mailto:");
     expect(brandPage).not.toContain("tel:");
     // tagline/bio are NO LONGER above the tabs (only inside AboutTab via ClampedBio)

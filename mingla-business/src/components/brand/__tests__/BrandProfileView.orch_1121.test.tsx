@@ -181,12 +181,12 @@ describe("ORCH-1121 — SECTION A hero (Direction 1) + preserved fallback", () =
     expect(src).toContain("heroLocation");
   });
 
-  test("About-us eyebrow + read-more toggle (long bios only)", () => {
+  test("About-us eyebrow + measured read-more disclosure (overflow only)", () => {
     const src = viewSource();
     expect(src).toContain("ABOUT US");
-    expect(src).toContain("aboutIsLong");
-    expect(src).toMatch(/bioText\.length\s*>\s*160/);
-    expect(src).toContain("setAboutExpanded");
+    expect(src).toContain("<MeasuredTextDisclosure");
+    expect(src).toContain('testID="brand-profile-bio-disclosure"');
+    expect(src).not.toMatch(/bioText\.length\s*>\s*160/);
   });
 
   test("verified badge is NOT invented (Brand has no verified field)", () => {

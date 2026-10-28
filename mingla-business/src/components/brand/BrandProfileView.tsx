@@ -39,6 +39,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useReducedMotion } from "react-native-reanimated";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { MeasuredTextDisclosure } from "@mingla/brand-rendering/MeasuredTextDisclosure";
 
 import { brandKeys } from "../../hooks/useBrands";
 import { eventOrdersKeys } from "../../hooks/useEventOrders";
@@ -370,17 +371,14 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     setCoverMediaFailed(false);
   }, [coverMediaUrl]);
 
-  // ORCH-1121 — About-us read-more toggle (only shown when the bio is long
-  // enough to clip; see the render branch). TOP-LEVEL hook (ORCH-0710
-  // ordering): declared above the early returns.
-  const [aboutExpanded, setAboutExpanded] = useState<boolean>(false);
-  const toggleAboutExpanded = useCallback((): void => {
+  // #2829 — animate the measured About disclosure without owning a second
+  // expansion state in this screen.
+  const animateAboutDisclosure = useCallback((): void => {
     if (!reduceMotion) {
       LayoutAnimation.configureNext(
         LayoutAnimation.Presets.easeInEaseOut,
       );
     }
-    setAboutExpanded((prev) => !prev);
   }, [reduceMotion]);
 
   // ORCH-1121 — Recent Events live data. Brand-scoped query at TOP LEVEL
@@ -753,10 +751,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   const coverWidth = Math.max(0, windowWidth - spacing.md * 2);
   const COVER_H = Math.min(240, Math.max(176, Math.round((coverWidth * 9) / 16)));
 
-  // ORCH-1121 — show the About read-more toggle only when the bio is long
-  // enough to clip the 4-line collapsed paragraph (cheap length heuristic).
-  const aboutIsLong = hasBio && bioText.length > 160;
-
   // ORCH-1121 — has the events query settled into a genuine zero-result?
   const eventsSettledEmpty =
     !eventsLoading && !eventsError && brandEvents.length === 0;
@@ -860,30 +854,19 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             {hasBio ? (
               <>
                 <Text style={styles.heroAboutEyebrow}>ABOUT US</Text>
-                <Text
-                  style={styles.heroAboutBody}
-                  numberOfLines={aboutExpanded ? undefined : 4}
-                >
-                  {brand.bio}
-                </Text>
-                {aboutIsLong ? (
-                  <Pressable
-                    onPress={toggleAboutExpanded}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      aboutExpanded ? "Show less" : "Read more"
-                    }
-                    hitSlop={8}
-                    style={({ pressed }) => [
-                      styles.heroReadMore,
-                      pressed && styles.heroReadMorePressed,
-                    ]}
-                  >
-                    <Text style={styles.heroReadMoreText}>
-                      {aboutExpanded ? "Show less" : "Read more"}
-                    </Text>
-                  </Pressable>
-                ) : null}
+                <MeasuredTextDisclosure
+                  text={bioText}
+                  collapsedLines={4}
+                  textStyle={styles.heroAboutBody}
+                  toggleTextStyle={styles.heroReadMoreText}
+                  toggleStyle={({ pressed }) => [
+                    styles.heroReadMore,
+                    pressed && styles.heroReadMorePressed,
+                  ]}
+                  hitSlop={8}
+                  onBeforeToggle={animateAboutDisclosure}
+                  testID="brand-profile-bio-disclosure"
+                />
               </>
             ) : (
               <Pressable

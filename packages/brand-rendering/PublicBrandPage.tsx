@@ -93,6 +93,7 @@ import {
 import { hexToRgba } from "@mingla/offering-rendering/themePalette";
 
 import { spacing } from "./designTokens";
+import { MeasuredTextDisclosure } from "./MeasuredTextDisclosure";
 // #3188 — the socials-row sizing solver. A separate, pure, import-free module
 // (no React, no react-native) so the arithmetic can be pinned in the ALWAYS-RUN
 // required `mingla-business jest (full suite)` lane, which is a node/ts-jest
@@ -2364,32 +2365,16 @@ const AboutTab: React.FC<{
 const ClampedBio: React.FC<{ text: string; palette: ThemePalette }> = ({
   text,
   palette,
-}) => {
-  const [expanded, setExpanded] = useState<boolean>(false);
-  // Heuristic: a bio long enough to plausibly exceed 4 lines gets the toggle.
-  const couldClamp = text.length > 220;
-  return (
-    <View style={styles.bioWrap}>
-      <Text
-        style={[styles.bio, { color: palette.secondaryText }]}
-        numberOfLines={expanded ? undefined : BIO_CLAMP_LINES}
-      >
-        {text}
-      </Text>
-      {couldClamp ? (
-        <Pressable
-          onPress={() => setExpanded((v) => !v)}
-          accessibilityRole="button"
-          accessibilityLabel={expanded ? "Show less" : "Read more"}
-        >
-          <Text style={[styles.readMore, { color: palette.accent }]}>
-            {expanded ? "Show less" : "Read more"}
-          </Text>
-        </Pressable>
-      ) : null}
-    </View>
-  );
-};
+}) => (
+  <MeasuredTextDisclosure
+    text={text}
+    collapsedLines={BIO_CLAMP_LINES}
+    textStyle={[styles.bio, { color: palette.secondaryText }]}
+    toggleTextStyle={[styles.readMore, { color: palette.accent }]}
+    containerStyle={styles.bioWrap}
+    testID="public-brand-bio-disclosure"
+  />
+);
 
 const styles = StyleSheet.create({
   // ---- identity ----
