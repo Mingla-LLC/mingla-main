@@ -1,5 +1,4 @@
 -- #4137 wave 4 — role-guarded staff workflow for the Mingla blog.
--- MINGLA-INVARIANT: I-4137-BLOG-WRITES-VIA-RPC-ROLE-GUARDED | issue #4137 | writers save and submit; only publishers publish, feature, unpublish or delete; direct table writes remain unavailable.
 -- Static SQL only (#1860 C7). Optimistic conflicts use PT409 (#4134).
 
 BEGIN;

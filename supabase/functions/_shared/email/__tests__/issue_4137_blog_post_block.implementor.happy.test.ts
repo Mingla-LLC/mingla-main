@@ -1,4 +1,3 @@
-// MINGLA-INVARIANT: I-4137-EMAIL-BLOG-RESOLVED-SERVER-SIDE | issue #4137 | client snapshots are ignored; preview/create/send render the current public database version.
 import {
   assertEquals,
   assertStringIncludes,

@@ -1,5 +1,4 @@
 // #4137 Wave 4 — Admin Blog placement, role gates, editor reducer and link-target parity.
-// MINGLA-INVARIANT: I-4137-BLOG-WRITES-VIA-RPC-ROLE-GUARDED | issue #4137 | the Blog tab follows the Support area while publisher controls remain server-authorized.
 import { assert, assertEquals, assertMatch } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { blogBlockReducer, convertBlogBlock } from "../lib/blogEditorState.js";
 import { BLOG_CITY_TARGETS, BLOG_MARKETING_PAGE_TARGETS } from "../lib/blogLinkTargets.js";

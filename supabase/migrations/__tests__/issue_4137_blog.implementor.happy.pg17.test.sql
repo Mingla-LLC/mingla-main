@@ -1,7 +1,4 @@
 -- #4137 wave 3 — the blog's data model, RLS and public reads, executable PostgreSQL 17 proof.
--- MINGLA-INVARIANT: I-4137-BLOG-PUBLIC-READS-PUBLISHED-ONLY | issue #4137 | anon reads only public posts and only their published version; drafts, review notes and licence references never reach anon.
--- MINGLA-INVARIANT: I-4137-BLOG-WRITES-VIA-RPC-ROLE-GUARDED | issue #4137 | writer = is_support_staff, publisher = Owner/Admin or an enabled Support lead; anon and authenticated hold no table write grant.
--- MINGLA-INVARIANT: I-4137-BLOG-NO-HOST-IDENTITY | issue #4137 | blog embeds return only allow-listed place and event facts: never a brand field, event cover, event title, description or location text.
 --
 -- Covers AC-DB1 through AC-DB13, including role-guarded staff workflow,
 -- optimistic conflicts, readiness, frozen published versions and featuring.

@@ -1,6 +1,4 @@
 -- #4137 wave 3 — the Mingla blog: tables, predicates, RLS and grants.
--- MINGLA-INVARIANT: I-4137-BLOG-PUBLIC-READS-PUBLISHED-ONLY | issue #4137 | anon reads only public posts and only their published version; drafts, review notes and licence references never reach anon.
--- MINGLA-INVARIANT: I-4137-BLOG-WRITES-VIA-RPC-ROLE-GUARDED | issue #4137 | writer = is_support_staff, publisher = Owner/Admin or an enabled Support lead; anon and authenticated hold no table write grant.
 --
 -- Additive only. Touches no #3988 function: their bodies are snapshotted at
 -- the start and compared before COMMIT (same proof as #3988 itself).
