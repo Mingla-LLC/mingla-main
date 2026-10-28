@@ -77,7 +77,7 @@ const EXPECTED_FIELDS = [
 // [TEST-MOD-APPROVED #3645] The payout-release RAK is the 90th name; the AD
 // envelope and #1772 field remain byte-for-byte unchanged.
 // [TEST-MOD-APPROVED #4137] Admin Blog adds two governed-bundle readers while
-// preserving the 90-name envelope and every #1772 field and ordering guarantee.
+// preserving all 90 top-level names and every #1772 field and ordering guarantee.
 test("#1772 keeps the exact governed 90-name envelope with no direct erasure secret", () => {
   const names = manifest.secrets.map((entry) => entry.name);
   assert.equal(names.length, 90);
