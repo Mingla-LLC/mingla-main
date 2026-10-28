@@ -19,6 +19,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ConfirmDialog } from "../../src/components/ui/ConfirmDialog";
+import { AppVersionFooter } from "../../src/components/ui/AppVersionFooter";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
 import type { IconName } from "../../src/components/ui/Icon";
@@ -472,6 +473,8 @@ export default function AccountTab(): React.ReactElement {
             ) : null}
           </View>
         </GlassCard>
+
+        <AppVersionFooter appName="Mingla Host" />
 
         {/* Cycle 17e-A: dev-seed/wipe buttons removed per Decision 8 = C.
             Operators create real brands via BrandSwitcherSheet → useCreateBrand. */}

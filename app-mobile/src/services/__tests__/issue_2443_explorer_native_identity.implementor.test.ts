@@ -1,11 +1,19 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import type { AppVersionPolicy } from "../appVersionPolicy";
 
 const mockConstants: {
   nativeAppVersion: unknown;
   expoConfig: { version?: unknown } | null;
+  platform: {
+    ios?: { buildNumber?: unknown };
+    android?: { versionCode?: unknown };
+  } | null;
 } = {
   nativeAppVersion: "1.1.6",
   expoConfig: { version: "1.1.6" },
+  platform: { ios: { buildNumber: "123" } },
 };
 let mockPlatformOS: "ios" | "android" | "web" = "ios";
 
@@ -62,6 +70,7 @@ describe("#2443 Explorer installed native identity", () => {
   beforeEach(() => {
     mockConstants.nativeAppVersion = "1.1.6";
     mockConstants.expoConfig = { version: "9.9.9" };
+    mockConstants.platform = { ios: { buildNumber: "123" } };
     mockPlatformOS = "ios";
     warnSpy = jest.spyOn(console, "warn").mockImplementation(() => undefined);
   });
@@ -83,6 +92,41 @@ describe("#2443 Explorer installed native identity", () => {
         "X-Mingla-App-Version": "1.1.6",
       });
       expect(warnSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["ios", { ios: { buildNumber: "123" } }, "Mingla · v1.1.6 (123)"],
+    ["android", { android: { versionCode: 456 } }, "Mingla · v1.1.6 (456)"],
+  ] as const)(
+    "formats the installed %s version and build on one line",
+    (platform, nativePlatform, expectedText) => {
+      mockPlatformOS = platform;
+      mockConstants.platform = nativePlatform;
+      const identity = loadIdentity();
+
+      expect(identity.getInstalledAppVersionDisplay("Mingla")).toEqual({
+        text: expectedText,
+        accessibilityLabel:
+          platform === "ios"
+            ? "Mingla, version 1.1.6, build 123"
+            : "Mingla, version 1.1.6, build 456",
+      });
+    },
+  );
+
+  it.each([
+    ["ios", { ios: { buildNumber: null } }],
+    ["ios", { ios: { buildNumber: " 123 " } }],
+    ["android", { android: { versionCode: 0 } }],
+    ["android", { android: { versionCode: 1.5 } }],
+  ] as const)(
+    "hides the footer when %s native build metadata is invalid",
+    (platform, nativePlatform) => {
+      mockPlatformOS = platform;
+      mockConstants.platform = nativePlatform;
+
+      expect(loadIdentity().getInstalledAppVersionDisplay("Mingla")).toBeNull();
     },
   );
 
@@ -151,6 +195,7 @@ describe("#2443 Explorer installed native identity", () => {
       const identity = loadIdentity();
 
       expect(identity.getInstalledNativeVersion()).toBeNull();
+      expect(identity.getInstalledAppVersionDisplay("Mingla")).toBeNull();
       expect(identity.getNativeAppVersionHeaders()).toEqual({});
       expect(warnSpy).not.toHaveBeenCalled();
     },
@@ -197,5 +242,20 @@ describe("#2443 Explorer installed native identity", () => {
       phase: "required",
       decision: { state: "required", minimumVersion: "1.1.7" },
     });
+  });
+});
+
+describe("#4160 Explorer version footer placement", () => {
+  it("keeps the installed identity after the Profile account actions", () => {
+    const source = readFileSync(
+      resolve(__dirname, "../../components/ProfilePage.tsx"),
+      "utf8",
+    );
+    const footer = '<AppVersionFooter appName="Mingla" />';
+
+    expect(source).toContain(footer);
+    expect(source.lastIndexOf(footer)).toBeGreaterThan(
+      source.lastIndexOf("styles.signOutButton"),
+    );
   });
 });
