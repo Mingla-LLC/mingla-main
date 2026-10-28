@@ -8,6 +8,7 @@ import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 
 import { useLocalSearchParams } from "expo-router";
 
 import { Button } from "../../src/components/ui/Button";
+import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import {
   accent,
   canvas,
@@ -227,10 +228,12 @@ export default function InstallmentPayPage(): React.ReactElement {
   }, [load, page, start, token]);
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <View style={styles.wordmark}><Text style={styles.wordmarkText}>Mingla</Text></View>
-      {content}
-    </ScrollView>
+    <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+        <View style={styles.wordmark}><Text style={styles.wordmarkText}>Mingla</Text></View>
+        {content}
+      </ScrollView>
+    </SafeScreen>
   );
 }
 
