@@ -443,9 +443,9 @@ export function violations(files) {
     "owner offline did not hide exactly that site",
     "back online did not restore the same publication",
     "offline/online not audited exactly once each",
-    // non-pilot availability → an ungranted brand gets nothing.
-    "ungranted brand reported available",
-    "an ungranted brand provisioned a site",
+    // general availability still respects an explicit administrative revoke.
+    "explicitly revoked brand reported available",
+    "an explicitly revoked brand provisioned a site",
     "revoked brand authorized for Studio",
     // the binding is gone, and no single-tenant literal survives anywhere.
     "pilot activation functions survived",
@@ -580,7 +580,8 @@ export function violations(files) {
   // the grant count is exact after two refused calls on the same brand.
   for (const token of [
     "RAISE EXCEPTION 'grants were not audited';",
-    "WHERE action = 'entitlement.granted' AND brand_id IN (v_brand_a, v_brand_b, v_brand_c)) <> 3 THEN",
+    "WHERE action = 'entitlement.granted' AND actor_kind = 'admin'",
+    "AND brand_id IN (v_brand_a, v_brand_b, v_brand_c)) <> 3 THEN",
     "a brand owner granted Sites to itself",
     "offline/online not audited exactly once each",
   ]) need(files.multiBrandSql ?? "", token, "Sites audit trail SQL regression", failures);
