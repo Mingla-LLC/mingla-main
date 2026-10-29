@@ -203,6 +203,7 @@ BEGIN
            revision = c.revision + 1,
            updated_at = now()
      WHERE c.capability_key = ANY (NEW.feature_guide)
+       AND c.claimed_status <> 'retired'
        AND (c.source_changed_at IS NULL OR c.source_changed_at < NEW.merged_at)
     RETURNING c.id, c.revision, c.capability_key
   )
@@ -259,6 +260,16 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'invalid_commits: Every commit needs a SHA, time, optional first parent and boolean head marker.' USING ERRCODE = '22023';
   END IF;
+  -- Enrich a row that an older bridge already saw without treating it as a
+  -- newly inserted commit. The legacy return contract reports only new SHAs.
+  UPDATE public.ops_main_commits existing
+     SET pr = COALESCE(existing.pr,
+              CASE WHEN jsonb_typeof(c->'pr') = 'number' AND (c->>'pr') ~ '^[0-9]{1,7}$'
+                         AND (c->>'pr')::integer > 0 THEN (c->>'pr')::integer END),
+         first_parent_sha = COALESCE(existing.first_parent_sha, NULLIF(c->>'first_parent_sha', ''))
+    FROM jsonb_array_elements(p_commits) c
+   WHERE existing.sha = c->>'sha';
+
   INSERT INTO public.ops_main_commits (sha, committed_at, subject, author_login, pr, first_parent_sha)
   SELECT c->>'sha', (c->>'committed_at')::timestamptz,
          left(regexp_replace(COALESCE(c->>'subject', ''), '[[:cntrl:]]', ' ', 'g'), 300),
@@ -267,9 +278,7 @@ BEGIN
               THEN (c->>'pr')::integer END,
          NULLIF(c->>'first_parent_sha', '')
     FROM jsonb_array_elements(p_commits) c
-  ON CONFLICT (sha) DO UPDATE SET
-    pr = COALESCE(public.ops_main_commits.pr, EXCLUDED.pr),
-    first_parent_sha = COALESCE(public.ops_main_commits.first_parent_sha, EXCLUDED.first_parent_sha);
+  ON CONFLICT (sha) DO NOTHING;
   GET DIAGNOSTICS v_n = ROW_COUNT;
   SELECT c->>'sha' INTO v_head FROM jsonb_array_elements(p_commits) c
    WHERE c->>'is_head' = 'true' LIMIT 1;
@@ -381,6 +390,7 @@ AS $$
 DECLARE
   i jsonb; d jsonb; v_ingested integer := 0; v_invalid integer := 0; v_completed integer[] := ARRAY[]::integer[]; v_pr integer;
   v_was boolean; v_new boolean; v_url text; v_slot text; v_ok boolean;
+  v_tests text[];
 BEGIN
   PERFORM public.ops_service_only();
   IF p_records IS NULL OR jsonb_typeof(p_records) <> 'array' OR jsonb_array_length(p_records) > 100 THEN
@@ -424,6 +434,20 @@ BEGIN
     END IF;
     BEGIN
       v_pr := (d->>'pr')::integer;
+      -- Preserve Bridge B's bounded test-file citations. The reconciliation
+      -- extends the release-record contract; it does not replace this proof.
+      v_tests := ARRAY(
+        SELECT x
+          FROM jsonb_array_elements_text(
+                 CASE WHEN jsonb_typeof(d->'test_files') = 'array'
+                      THEN d->'test_files' ELSE '[]'::jsonb END
+               ) WITH ORDINALITY t(x, o)
+         WHERE t.o <= 50
+           AND char_length(x) <= 300
+           AND x ~ '^[A-Za-z0-9._/@+-]+$'
+           AND x !~ '(^|/)[.][.](/|$)'
+         ORDER BY t.o
+      );
       v_url := CASE WHEN jsonb_typeof(i->'comment_url') = 'string'
                          AND i->>'comment_url' ~ '^https://github[.]com/Mingla-LLC/mingla-main/(issues|pull)/[0-9]+#issuecomment-[0-9]+$'
                     THEN i->>'comment_url' END;
@@ -432,7 +456,8 @@ BEGIN
       SELECT x.complete INTO v_was FROM public.ops_release_records x WHERE x.pr = v_pr;
       v_new := NOT FOUND;
       INSERT INTO public.ops_release_records AS r (pr, title, pr_url, merged_at, merge_sha, merged_by_login, author_login, issues,
-        migrations_added, edge_functions, web_projects, deploy_marker, deploy, feature_guide, feature_guide_reason, live_check, problems, comment_urls)
+        migrations_added, edge_functions, web_projects, deploy_marker, deploy, feature_guide, feature_guide_reason, live_check, problems, comment_urls,
+        test_files)
       VALUES (v_pr, left(d->>'title', 300), d->>'pr_url', (d->>'merged_at')::timestamptz, d->>'merge_sha',
         NULLIF(left(d->>'merged_by', 39), ''), NULLIF(left(d->>'author', 39), ''), d->'issues',
         ARRAY(SELECT x FROM jsonb_array_elements_text(d->'migrations_added') x ORDER BY x),
@@ -444,7 +469,8 @@ BEGIN
         CASE WHEN jsonb_typeof(d->'live_check') = 'object' THEN jsonb_build_object('text', left(d->'live_check'->>'text', 500),
           'by_login', left(d->'live_check'->>'by_login', 39), 'url', left(d->'live_check'->>'url', 300), 'at', d->'live_check'->>'at') END,
         ARRAY(SELECT left(x, 60) FROM jsonb_array_elements_text(d->'problems') x),
-        CASE WHEN v_url IS NOT NULL THEN jsonb_build_object(v_slot, v_url) ELSE '{}'::jsonb END)
+        CASE WHEN v_url IS NOT NULL THEN jsonb_build_object(v_slot, v_url) ELSE '{}'::jsonb END,
+        v_tests)
       ON CONFLICT (pr) DO UPDATE SET title = EXCLUDED.title, merged_at = EXCLUDED.merged_at, merge_sha = EXCLUDED.merge_sha,
         merged_by_login = EXCLUDED.merged_by_login, author_login = EXCLUDED.author_login, issues = EXCLUDED.issues,
         migrations_added = EXCLUDED.migrations_added, edge_functions = EXCLUDED.edge_functions, web_projects = EXCLUDED.web_projects,
@@ -454,7 +480,9 @@ BEGIN
         live_check = EXCLUDED.live_check,
         problems = ARRAY(SELECT p FROM unnest(EXCLUDED.problems) p WHERE p NOT IN ('feature_guide_missing','feature_guide_invalid'))
           || ARRAY(SELECT p FROM unnest(r.problems) p WHERE p IN ('feature_guide_missing','feature_guide_invalid')),
-        comment_urls = r.comment_urls || EXCLUDED.comment_urls, updated_at = now();
+        comment_urls = r.comment_urls || EXCLUDED.comment_urls,
+        test_files = EXCLUDED.test_files,
+        updated_at = now();
       IF v_new THEN
         PERFORM public.ops_log_write('system@usemingla.com', 'system', 'release_record', 'info', NULL, 'release', NULL,
           format('Release record of PR #%s read from GitHub: %s', v_pr, left(d->>'title', 200)), jsonb_build_object('pr', v_pr));
@@ -468,6 +496,16 @@ BEGIN
       v_invalid := v_invalid + 1;
     END;
   END LOOP;
+  -- Keep Bridge B synchronous for a release record that becomes complete in
+  -- this call. The periodic reconcile remains the retry path for incomplete
+  -- evidence and records captured before this migration is applied.
+  IF cardinality(v_completed) > 0 THEN
+    BEGIN
+      PERFORM public.ops_release_guide_apply();
+    EXCEPTION WHEN others THEN
+      RAISE WARNING 'ops_release_records_ingest: Feature Guide step stopped (% %)', SQLSTATE, SQLERRM;
+    END;
+  END IF;
   RETURN jsonb_build_object('ingested', v_ingested, 'invalid', v_invalid, 'completed', to_jsonb(v_completed));
 END;
 $$;

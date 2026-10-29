@@ -551,32 +551,34 @@ $b4$;
 do $b2$
 declare v text; v_rev int; v_ev int; v_obs timestamptz;
 begin
-  -- An unknown key keeps the record incomplete; its known sibling stays as it was.
+  -- [TEST-MOD-APPROVED #4179] An unknown key keeps the record incomplete;
+  -- the known sibling is invalidated immediately but cannot turn Live.
   v := pg_temp.t3980w2t_ingest(pg_temp.t3980w2t_record(96501, '{"feature_guide":["w2t-guide-unknown-sibling","w2t-guide-no-such-entry"]}'));
   perform pg_temp.t3980w2t_check('B2', 'a Feature Guide line naming an unknown key keeps the record incomplete and names the key',
     (select complete::text || ':' || array_to_string(problems, ',') from public.ops_release_records where pr = 96501),
     'false:unknown_feature_guide_key:w2t-guide-no-such-entry');
   perform pg_temp.t3980w2t_reconcile();
   perform pg_temp.t3980w2t_check('B2', 'and its known sibling is not turned Live',
-    (select claimed_status || ':' || revision from public.product_capabilities where capability_key = 'w2t-guide-unknown-sibling'), 'planned:1');
+    (select claimed_status || ':' || revision from public.product_capabilities where capability_key = 'w2t-guide-unknown-sibling'), 'planned:2');
 
-  -- Evidence the record cannot prove: a deploy on a change with no deploy, a migration on a change with none.
+  -- [TEST-MOD-APPROVED #4179] Evidence the record cannot prove leaves the
+  -- named capability invalidated and records the missing proof per key.
   v := pg_temp.t3980w2t_ingest(pg_temp.t3980w2t_record(96502, '{"feature_guide":["w2t-guide-deploy","w2t-guide-migration"],"web_projects":[],"deploy":{"web":{},"edge":"none"}}'));
   perform pg_temp.t3980w2t_check('B2', 'a docs-only record completes', pg_temp.t3980w2t_get(v, 'completed'), '[96502]');
-  perform pg_temp.t3980w2t_check('B2', 'an entry needing a deployment or a migration the record does not prove is not changed and gets no evidence',
+  perform pg_temp.t3980w2t_check('B2', 'an entry needing a deployment or migration is invalidated but gets no unproved evidence',
     (select string_agg(capability_key || '=' || claimed_status || ':' || revision || ':'
                          || (select count(*) from public.product_capability_evidence e where e.capability_id = c.id), ',' order by capability_key)
        from public.product_capabilities c where capability_key in ('w2t-guide-deploy', 'w2t-guide-migration')),
-    'w2t-guide-deploy=planned:1:0,w2t-guide-migration=planned:1:0');
+    'w2t-guide-deploy=planned:2:0,w2t-guide-migration=planned:2:0');
   perform pg_temp.t3980w2t_check('B2', 'and the record names what each misses',
-    (select string_agg(k->>'key' || ':' || (k->'missing'->>0), ',' order by k->>'key') from public.ops_release_records r, jsonb_array_elements(r.guide_result->'keys') k
+    (select string_agg(k->>'key' || ':' || (k->'details'->'missing'->>0), ',' order by k->>'key') from public.ops_release_records r, jsonb_array_elements(r.guide_result->'keys') k
       where r.pr = 96502), 'w2t-guide-deploy:no deployment evidence,w2t-guide-migration:no migration evidence');
 
-  -- A live check that points outside the repository proves nothing.
+  -- [TEST-MOD-APPROVED #4179] A live check that points outside the repository proves nothing.
   v := pg_temp.t3980w2t_ingest(pg_temp.t3980w2t_record(96503, '{"feature_guide":["w2t-guide-live-check"],"live_check":{"text":"Looks fine","by_login":"oz-gh","url":"https://evil.example/Mingla-LLC/mingla-main/issues/1#issuecomment-1","at":"2026-10-20T08:00:00Z"}}'));
   perform pg_temp.t3980w2t_check('B2', 'a live check linking outside the repository does not count as live check evidence',
     (select claimed_status from public.product_capabilities where capability_key = 'w2t-guide-live-check') || '/'
-      || (select k->'missing'->>0 from public.ops_release_records r, jsonb_array_elements(r.guide_result->'keys') k where r.pr = 96503),
+      || (select k->'details'->'missing'->>0 from public.ops_release_records r, jsonb_array_elements(r.guide_result->'keys') k where r.pr = 96503),
     'planned/no live check evidence');
 
   -- A live check dated in the future is recorded as now, so it never expires late.
@@ -591,11 +593,12 @@ begin
       join public.product_capabilities c on c.id = e.capability_id where c.capability_key = 'w2t-guide-proven' and e.evidence_kind = 'live_check' and e.is_current),
     'true:true');
 
-  -- An entry already Live is untouched by a record that cannot prove it; a retired entry stays retired.
+  -- [TEST-MOD-APPROVED #4179] A source change invalidates an already-live
+  -- entry even when the record cannot yet prove it; a retired entry stays retired.
   select revision into v_rev from public.product_capabilities where capability_key = 'w2t-guide-already';
   v := pg_temp.t3980w2t_ingest(pg_temp.t3980w2t_record(96505, '{"feature_guide":["w2t-guide-already","w2t-guide-retired"]}'));
-  perform pg_temp.t3980w2t_check('B2', 'an entry already Live that the record cannot fully prove keeps its status, revision and evidence',
-    (select claimed_status || ':' || (revision = v_rev)::text || ':' || (select count(*) from public.product_capability_evidence e where e.capability_id = c.id)
+  perform pg_temp.t3980w2t_check('B2', 'an entry already Live keeps its claim but advances revision without inventing evidence',
+    (select claimed_status || ':' || (revision = v_rev + 1)::text || ':' || (select count(*) from public.product_capability_evidence e where e.capability_id = c.id)
        from public.product_capabilities c where capability_key = 'w2t-guide-already'), 'live:true:0');
   perform pg_temp.t3980w2t_check('B2', 'a retired entry is left retired',
     (select claimed_status || ':' || revision from public.product_capabilities where capability_key = 'w2t-guide-retired') || '/'
@@ -614,7 +617,8 @@ begin
       || ((select count(*) from public.product_truth_audit a join public.product_capabilities c on c.id = a.capability_id where c.capability_key = 'w2t-guide-proven') = v_ev)::text,
     'live/true');
 
-  -- The revision guard: an admin's editor opened before the flip is refused after it.
+  -- [TEST-MOD-APPROVED #4179] The revision guard: invalidation and the
+  -- completed release each advance the revision, so a stale editor is refused.
   select revision into v_rev from public.product_capabilities where capability_key = 'w2t-guide-revision';
   perform pg_temp.t3980w2t_ingest(pg_temp.t3980w2t_record(96506, '{"feature_guide":["w2t-guide-revision"]}'));
   v := pg_temp.t3980w2t_person('admin', format($q$select public.issue_3720_save_feature_capability('w2t-guide-revision', %s, 'W2T entry an admin is editing',
@@ -623,7 +627,7 @@ begin
     array['source','release_record','live_check'], null)::text$q$, v_rev));
   perform pg_temp.t3980w2t_like('B2', 'an admin saving with the revision from before the flip is refused, so the flip is never overwritten', v, 'ERR:PT409:stale_revision%');
   perform pg_temp.t3980w2t_check('B2', 'and the entry stays Live',
-    (select claimed_status || ':' || (revision = v_rev + 1)::text from public.product_capabilities where capability_key = 'w2t-guide-revision'), 'live:true');
+    (select claimed_status || ':' || (revision = v_rev + 2)::text from public.product_capabilities where capability_key = 'w2t-guide-revision'), 'live:true');
 end;
 $b2$;
 

@@ -1,6 +1,6 @@
 -- Issue #3980 synced program, Wave 2 -- the bridges, on the fully replayed
 -- PG17 schema.
--- MINGLA-INVARIANT: I-3980-LIVE-ONLY-WITH-EVIDENCE | issue #3980 | A Feature Guide entry turns Live from a release record only when every evidence kind it requires is current and verified; an incomplete record changes nothing and says what is missing.
+-- [TEST-MOD-APPROVED #4179] MINGLA-INVARIANT: I-3980-LIVE-ONLY-WITH-EVIDENCE | issue #3980 | A Feature Guide entry turns Live from a release record only when every evidence kind it requires is current and verified; an incomplete record can invalidate named source truth but never turns it Live and says what is missing.
 -- MINGLA-INVARIANT: I-3980-HOSTS-TOLD-ONLY-BY-SETH | issue #3980 | Bridge drafts for the roadmap and announcements are created as drafts only, and nothing reaches hosts until the owner or an admin publishes it.
 --
 -- What it proves (each check is recorded and reported together):
@@ -20,8 +20,8 @@
 --        approval closes itself after a person publishes
 --   B2   a complete record turns an entry Live with the evidence it proves
 --        (D-16); an entry still missing a required kind is not changed and
---        the record lists what is missing; an incomplete record changes
---        nothing; Support teammates are told
+--        the record lists what is missing; an incomplete record invalidates
+--        named source truth but turns nothing Live; Support teammates are told
 --   B3   a ticket shows its engineering status for Support, refused for a
 --        teammate without Support
 --
@@ -463,24 +463,25 @@ begin
   select revision into v_rev_route from public.product_capabilities where capability_key = 'w2-guide-route';
   select count(*) into v_ev_before from public.product_capability_evidence e join public.product_capabilities c on c.id = e.capability_id
    where c.capability_key like 'w2-guide-%';
-  -- An incomplete record (no live check yet) changes nothing.
+  -- [TEST-MOD-APPROVED #4179] An incomplete record (no live check yet)
+  -- invalidates named source truth immediately but cannot turn it Live.
   perform pg_temp.t3980w2_ingest(pg_temp.t3980w2_record(97002, '{"issues":[{"number":5401,"relation":"toward"}],"feature_guide":["w2-guide-waiting"],"live_check":null,"problems":["live_check_missing"]}'), 5401);
   perform pg_temp.t3980w2_as('service', 'select public.ops_reconcile()::text');
-  perform pg_temp.t3980w2_check('B2', 'an incomplete record changes nothing',
+  perform pg_temp.t3980w2_check('B2', 'an incomplete record invalidates source truth but turns nothing Live',
     (select claimed_status || ':' || revision from public.product_capabilities where capability_key = 'w2-guide-waiting')
       || '/' || (select count(*)::text from public.product_capability_evidence e join public.product_capabilities c on c.id = e.capability_id
                   where c.capability_key = 'w2-guide-waiting')
       || '/' || (select (guide_applied_at is null)::text from public.ops_release_records where pr = 97002),
-    'planned:1/0/true');
+    'planned:2/0/true');
 
   -- A complete record names two entries; one requires a route it cannot prove.
   v := pg_temp.t3980w2_ingest(pg_temp.t3980w2_record(97001, '{"issues":[{"number":5401,"relation":"fixes"}],"feature_guide":["w2-guide-proven","w2-guide-route"]}'), 5401);
   perform pg_temp.t3980w2_check('B2', 'the record completes', pg_temp.t3980w2_get(v, 'completed'), '[97001]');
-  perform pg_temp.t3980w2_check('B2', 'the proven entry is Live, effectively Live, at the next revision, due in 90 days',
+  perform pg_temp.t3980w2_check('B2', 'the proven entry is Live, effectively Live, after invalidation and release revisions, due in 90 days',
     (select claimed_status || ':' || public.issue_3720_feature_guide_effective_status(id) || ':' || revision || ':'
             || (verification_due_at between now() + interval '89 days' and now() + interval '91 days')::text
        from public.product_capabilities where capability_key = 'w2-guide-proven'),
-    'live:Live:2:true');
+    'live:Live:3:true');
   perform pg_temp.t3980w2_check('B2', 'with the evidence the record proves (D-16), and nothing else',
     (select string_agg(e.evidence_kind || '=' || e.evidence_url, ' ' order by e.evidence_kind)
        from public.product_capability_evidence e join public.product_capabilities c on c.id = e.capability_id
@@ -494,17 +495,17 @@ begin
   perform pg_temp.t3980w2_check('B2', 'the live check expires 90 days after it was done',
     (select (e.expires_at - e.observed_at)::text from public.product_capability_evidence e join public.product_capabilities c on c.id = e.capability_id
       where c.capability_key = 'w2-guide-proven' and e.evidence_kind = 'live_check' and e.is_current), '90 days');
-  perform pg_temp.t3980w2_check('B2', 'audited as Bridge B: six evidence rows and one save',
+  perform pg_temp.t3980w2_check('B2', 'audited as the replacement Bridge B: six evidence rows and one save',
     (select count(*) filter (where a.action = 'evidence_recorded')::text || '/' || count(*) filter (where a.action = 'capability_saved')::text
        from public.product_truth_audit a join public.product_capabilities c on c.id = a.capability_id
-      where c.capability_key = 'w2-guide-proven' and a.metadata->>'source' = 'issue_3980_bridge_b' and a.metadata->>'pr' = '97001'), '6/1');
-  perform pg_temp.t3980w2_check('B2', 'the entry missing a required route is not changed at all',
-    (select claimed_status || ':' || (revision = v_rev_route)::text from public.product_capabilities where capability_key = 'w2-guide-route')
+      where c.capability_key = 'w2-guide-proven' and a.metadata->>'source' = 'issue_4179_bridge_b' and a.metadata->>'pr' = '97001'), '6/1');
+  perform pg_temp.t3980w2_check('B2', 'the entry missing a required route is invalidated without unproved evidence',
+    (select claimed_status || ':' || (revision = v_rev_route + 1)::text from public.product_capabilities where capability_key = 'w2-guide-route')
       || '/' || (select count(*)::text from public.product_capability_evidence e join public.product_capabilities c on c.id = e.capability_id
                   where c.capability_key = 'w2-guide-route'),
     'planned:true/0');
   perform pg_temp.t3980w2_check('B2', 'and the record says what is missing',
-    (select string_agg(k->>'key' || ':' || (k->>'result') || coalesce(':' || (k->'missing'->>0), ''), ',' order by k->>'key')
+    (select string_agg(k->>'key' || ':' || (k->>'result') || coalesce(':' || (k->'details'->'missing'->>0), ''), ',' order by k->>'key')
        from public.ops_release_records r, jsonb_array_elements(r.guide_result->'keys') k where r.pr = 97001),
     'w2-guide-proven:live,w2-guide-route:incomplete:no route evidence');
   perform pg_temp.t3980w2_check('B2', 'the log says both, in words',
@@ -521,7 +522,7 @@ begin
   perform pg_temp.t3980w2_as('service', 'select public.ops_reconcile()::text');
   perform pg_temp.t3980w2_check('B2', 'a record is applied once',
     (select count(*)::text from public.product_truth_audit a join public.product_capabilities c on c.id = a.capability_id
-      where c.capability_key = 'w2-guide-proven' and a.action = 'capability_saved' and a.metadata->>'source' = 'issue_3980_bridge_b'), '1');
+      where c.capability_key = 'w2-guide-proven' and a.action = 'capability_saved' and a.metadata->>'source' = 'issue_4179_bridge_b'), '1');
   v := pg_temp.t3980w2_person('support', $q$select public.ops_feature_guide_release('w2-guide-proven')::text$q$);
   perform pg_temp.t3980w2_check('B2', 'Support reads which PR shipped it and the result',
     pg_temp.t3980w2_get(v, 'record', 'pr') || ':' || pg_temp.t3980w2_get(v, 'result', 'result'), '97001:live');

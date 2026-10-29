@@ -26,8 +26,8 @@
 --               preview said (the same decision as brand auto-link), leaves
 --               the others alone, never links a Lost card, needs a request
 --               key and replays safely
---   W4-GUIDE    the Feature Guide text: new titles, one revision and one
---               audit row each from this change, statuses unchanged, no
+--   W4-GUIDE    the Feature Guide text: current titles, one historical
+--               revision and audit row each from this change, statuses unchanged, no
 --               evidence added, no old names or old state words, the new
 --               planned entry Release records and the synced system
 --
@@ -483,20 +483,26 @@ $bconf$;
 do $guide$
 declare v_bad text;
 begin
-  perform pg_temp.w4_check('W4-GUIDE', 'the new titles',
+  -- [TEST-MOD-APPROVED #4179] Later reconciliations legitimately revised
+  -- this copy. Assert the current catalog and the immutable #3980 audit.
+  perform pg_temp.w4_check('W4-GUIDE', 'the current titles',
     (select string_agg(capability_key || '=' || title, ' | ' order by capability_key) from public.product_capabilities
       where capability_key in ('staff-drafts', 'staff-work-board', 'staff-agent-log', 'staff-release-records')),
-    'staff-agent-log=Agent activity: what every connected agent is doing | staff-drafts=Needs you: messages to send, spend and publish approvals | staff-release-records=Release records and the synced system | staff-work-board=Work: plan, assign and close team work with agents');
-  perform pg_temp.w4_check('W4-GUIDE', 'one audit row from this change per entry, at the entry''s revision',
+    'staff-agent-log=Agent activity: what every connected agent is doing | staff-drafts=Messages, spend and publish decisions inside Work | staff-release-records=Release records and the synced system | staff-work-board=Work: Board, Today, This week and This month');
+  perform pg_temp.w4_check('W4-GUIDE', 'one historical audit row from this change per entry',
     (select count(*)::text from public.product_capabilities c
       where c.capability_key in ('staff-drafts','staff-work-board','staff-agent-log','staff-content-calendar','staff-crm','staff-team-roles','staff-my-agent','staff-release-records')
         and (select count(*) from public.product_truth_audit a where a.capability_id = c.id and a.metadata->>'source' = 'issue_3980_synced_guide'
-               and (a.metadata->>'revision')::integer = c.revision and a.metadata->>'issue' = '3980' and a.action = 'capability_saved') = 1), '8');
-  perform pg_temp.w4_check('W4-GUIDE', 'each existing entry went up exactly one revision from the previous saved one',
+               and a.metadata->>'issue' = '3980' and a.action = 'capability_saved') = 1), '8');
+  perform pg_temp.w4_check('W4-GUIDE', 'each existing entry went up exactly one revision when #3980 saved it',
     (select count(*)::text from public.product_capabilities c
       where c.capability_key in ('staff-drafts','staff-work-board','staff-agent-log','staff-content-calendar','staff-crm','staff-team-roles','staff-my-agent')
-        and c.revision = 1 + (select max((a.metadata->>'revision')::integer) from public.product_truth_audit a
-                               where a.capability_id = c.id and coalesce(a.metadata->>'source', '') <> 'issue_3980_synced_guide' and a.metadata ? 'revision')), '7');
+        and exists (select 1 from public.product_truth_audit saved
+                     where saved.capability_id = c.id and saved.metadata->>'source' = 'issue_3980_synced_guide'
+                       and saved.action = 'capability_saved'
+                       and (saved.metadata->>'revision')::integer = 1 + coalesce((select max((prior.metadata->>'revision')::integer)
+                         from public.product_truth_audit prior where prior.capability_id = c.id and prior.id < saved.id
+                           and prior.action = 'capability_saved' and prior.metadata ? 'revision'), 0))), '7');
   perform pg_temp.w4_check('W4-GUIDE', 'statuses are unchanged: all seven Live, the new one planned at revision 1 with the evidence it will need',
     (select string_agg(capability_key || ':' || claimed_status, ',' order by capability_key) from public.product_capabilities
       where capability_key in ('staff-drafts','staff-work-board','staff-agent-log','staff-content-calendar','staff-crm','staff-team-roles','staff-my-agent','staff-release-records'))
@@ -511,13 +517,13 @@ begin
      and (concat_ws(' ', title, outcome_summary, how_to, limitations, support_wording) ~ 'To review'
           or concat_ws(' ', title, outcome_summary, how_to, limitations, support_wording) ~* '(full launch|organic only|plan this launch|\mtight\M|\mmissed\M|follow the on-screen|complete this job through|verified test|brand groups)');
   perform pg_temp.w4_check('W4-GUIDE', 'no old names, old state words or template wording', coalesce(v_bad, 'none'), 'none');
-  perform pg_temp.w4_like('W4-GUIDE', 'Needs you: step 1 and the owner''s tab',
-    (select how_to from public.product_capabilities where capability_key = 'staff-drafts'), '1. In Mingla Admin, open Pipeline > Needs you.%What hosts are told (owner and admins)%');
-  perform pg_temp.w4_like('W4-GUIDE', 'Work: auto cards may have no owner',
-    (select limitations from public.product_capabilities where capability_key = 'staff-work-board'), '%Cards made by Mingla from events may have no owner until someone takes them.%');
-  perform pg_temp.w4_like('W4-GUIDE', 'Work: Board, the drawer, Needs attention, Agent activity, GitHub and steps from events',
+  perform pg_temp.w4_like('W4-GUIDE', 'Human decisions now open and close with proof inside Work',
+    (select how_to from public.product_capabilities where capability_key = 'staff-drafts'), 'Open Home > Work%Review and copy a waiting message%Close the card with proof%');
+  perform pg_temp.w4_like('W4-GUIDE', 'Work cards require ownership, due dates and closeout proof',
+    (select limitations from public.product_capabilities where capability_key = 'staff-work-board'), '%Every card still needs a clear outcome, owner and due date.%Agents cannot perform human-only send%closeout requires proof%');
+  perform pg_temp.w4_like('W4-GUIDE', 'Work exposes the four planning views and card closeout',
     (select how_to from public.product_capabilities where capability_key = 'staff-work-board'),
-    '1. In Mingla Admin, open Pipeline > Work.%Needs you, To do, In progress and Done this week%panel on the right%Planned, In Progress, In Review, Shipped or Live%Needs attention%"from the timeline"%Agent activity%');
+    'Open Home > Work.%Board%Today%This week%This month%Open a card%close with proof%');
   perform pg_temp.w4_like('W4-GUIDE', 'Agent activity: where it lives, chat names and the 24-hour rule',
     (select how_to || ' || ' || limitations from public.product_capabilities where capability_key = 'staff-agent-log'),
     '1. In Mingla Admin, open Pipeline > Work > Agent activity.%chat''s name%last 24 hours%');
@@ -529,7 +535,7 @@ begin
     '%next event%"No next event"%"Go live soon"%links the brand by itself%Promo moment%every week or every month%host card for every new brand%');
   perform pg_temp.w4_like('W4-GUIDE', 'Team and roles: names and GitHub usernames',
     (select how_to || ' || ' || limitations from public.product_capabilities where capability_key = 'staff-team-roles'),
-    '%GitHub username%Every active teammate role can use Work, Needs you and Calendar.%');
+    '%GitHub username%Every active teammate role can use Work and Calendar.%');
   perform pg_temp.w4_like('W4-GUIDE', 'My agent: the chat name and the routine',
     (select how_to from public.product_capabilities where capability_key = 'staff-my-agent'), '%"Log this chat''s work"%chat "Hosts sweep"%');
   perform pg_temp.w4_check('W4-GUIDE', 'Release records: outcome and support wording as written',

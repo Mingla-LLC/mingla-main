@@ -287,7 +287,13 @@ begin
   v := pg_temp.t3980w_sync();
   perform pg_temp.t3980w_check('D5', 'day 59: the migrations card is open',
     (select status from public.ops_work_cards where auto_key = 'eng_migrations:pr-95002'), 'todo');
-  update public.ops_release_records set merged_at = now() - interval '61 days', problems = problems || 'feature_guide_missing'::text, feature_guide = null where pr = 95002;
+  -- [TEST-MOD-APPROVED #4179] A release record's Feature Guide
+  -- classification is immutable once present. The engineering-card fixture
+  -- needs only the recorded problem; it must not erase the classification.
+  update public.ops_release_records
+     set merged_at = now() - interval '61 days',
+         problems = problems || 'feature_guide_missing'::text
+   where pr = 95002;
   for v_n in 1..2 loop v := pg_temp.t3980w_sync(); end loop;
   perform pg_temp.t3980w_check('D5', 'day 61 with the version still not in the ledger: the card stays open, never closed as applied',
     (select status || '/' || coalesce(close_reason, 'none') from public.ops_work_cards where auto_key = 'eng_migrations:pr-95002'), 'todo/none');
