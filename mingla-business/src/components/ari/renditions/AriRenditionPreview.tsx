@@ -1389,6 +1389,7 @@ const AriRenditionBlocks: React.FC<{
                   key={choice.id}
                   disabled={interactionLocked}
                   onPress={() => onSelect(choice.id, block.selection === "multiple")}
+                  accessibilityLabel={choice.label}
                   accessibilityRole={block.selection === "multiple" ? "checkbox" : "radio"}
                   accessibilityState={block.selection === "multiple"
                     ? { checked: selected, disabled: interactionLocked }
@@ -1649,6 +1650,7 @@ export const AriRenditionCard: React.FC<{
                     key={choice.id}
                     disabled={interactionLocked}
                     onPress={() => selectOption(choice.id)}
+                    accessibilityLabel={choice.label}
                     accessibilityRole="radio"
                     accessibilityState={{
                       selected,
@@ -1719,6 +1721,7 @@ export const AriRenditionCard: React.FC<{
                   key={chip.id}
                   disabled={interactionLocked}
                   onPress={() => selectOption(chip.id)}
+                  accessibilityLabel={chip.label}
                   accessibilityRole={isMulti ? "checkbox" : "radio"}
                   accessibilityState={
                     isMulti
@@ -1919,6 +1922,7 @@ export const AriRenditionPreview: React.FC<{
                   <Pressable
                     key={choice.title}
                     onPress={NOOP}
+                    accessibilityLabel={choice.title}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: choice.selected }}
                     style={({ pressed }) => [
@@ -1973,6 +1977,7 @@ export const AriRenditionPreview: React.FC<{
               <Pressable
                 key={chip}
                 onPress={NOOP}
+                accessibilityLabel={chip}
                 accessibilityRole="button"
                 accessibilityState={{
                   selected:
@@ -2007,6 +2012,7 @@ export const AriRenditionPreview: React.FC<{
             {model.primaryAction ? (
               <Pressable
                 onPress={NOOP}
+                accessibilityLabel={model.primaryAction}
                 accessibilityRole="button"
                 style={({ pressed }) => [
                   styles.primaryButton,
@@ -2021,6 +2027,7 @@ export const AriRenditionPreview: React.FC<{
             {model.secondaryAction ? (
               <Pressable
                 onPress={NOOP}
+                accessibilityLabel={model.secondaryAction}
                 accessibilityRole="button"
                 style={({ pressed }) => [
                   styles.secondaryButton,
@@ -2035,6 +2042,7 @@ export const AriRenditionPreview: React.FC<{
             {model.dangerAction ? (
               <Pressable
                 onPress={NOOP}
+                accessibilityLabel={model.dangerAction}
                 accessibilityRole="button"
                 style={({ pressed }) => [
                   styles.dangerButton,

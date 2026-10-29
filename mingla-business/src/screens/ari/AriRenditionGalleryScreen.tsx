@@ -294,6 +294,7 @@ export const AriRenditionGalleryScreen: React.FC = () => {
               <Pressable
                 key={item}
                 onPress={() => setGroup(item)}
+                accessibilityLabel={`${item} renditions (${count})`}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: active }}
                 style={({ pressed }) => [
