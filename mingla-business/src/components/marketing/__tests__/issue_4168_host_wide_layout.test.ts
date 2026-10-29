@@ -29,6 +29,21 @@ describe("#4168 Host wide-screen design contract", () => {
     expect(layout).not.toContain("UniversalCreatorSheet");
   });
 
+  it("keeps lazy program registration from hoisting the action owner into __common", () => {
+    for (const file of [
+      "src/components/creators/CreatorsHomeView.tsx",
+      "src/components/creators/screens/CreatorResultsScreen.tsx",
+      "src/components/creators/screens/CreatorRosterScreen.tsx",
+      "src/components/referrals/ReferralHomeView.tsx",
+    ]) {
+      const contents = source(file);
+      expect(contents).toContain("MarketingBrandSwitcherContext");
+      expect(contents).not.toContain("MarketingActionContext");
+    }
+    expect(source("src/components/people/MarketingBrandSwitcherContext.tsx"))
+      .toContain("useMarketingActionRegistration");
+  });
+
   it("keeps Roadmap as stable Now, Next and Later lanes with hidden scrollbar chrome", () => {
     const panel = source("src/components/support/CommunityTabPanel.tsx");
     expect(panel).toContain('const LANE_ORDER = ["now", "next", "later"] as const');

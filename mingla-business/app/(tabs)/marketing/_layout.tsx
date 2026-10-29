@@ -18,6 +18,7 @@ import { MarketingSubNav } from "../../../src/components/marketing/MarketingSubN
 import {
   MarketingActionProvider,
   useMarketingAction,
+  useMarketingActionRegistrar,
 } from "../../../src/components/marketing/MarketingActionContext";
 import { MarketingActionButton } from "../../../src/components/marketing/MarketingActionButton";
 import { MarketingBrandSwitcherProvider } from "../../../src/components/people/MarketingBrandSwitcherContext";
@@ -37,6 +38,23 @@ function MarketingActionSurfaces({ hidden }: { hidden: boolean }): React.ReactEl
   const bottom = useStickyFooterOffset();
   if (hidden || isWideDesktop) return null;
   return <MarketingActionButton action={action} floating bottom={bottom} />;
+}
+
+function MarketingSlot({
+  openBrandSwitcher,
+}: {
+  openBrandSwitcher: () => void;
+}): React.ReactElement {
+  const registerAction = useMarketingActionRegistrar();
+  const shell = React.useMemo(
+    () => [openBrandSwitcher, registerAction] as const,
+    [openBrandSwitcher, registerAction],
+  );
+  return (
+    <MarketingBrandSwitcherProvider value={shell}>
+      <Slot />
+    </MarketingBrandSwitcherProvider>
+  );
 }
 
 export default function MarketingTabLayout(): React.ReactElement {
@@ -114,9 +132,7 @@ export default function MarketingTabLayout(): React.ReactElement {
       </View>
       <MarketingActionProvider>
         {hideActions ? null : <MarketingSubNav />}
-        <MarketingBrandSwitcherProvider value={handleOpenSwitcher}>
-          <Slot />
-        </MarketingBrandSwitcherProvider>
+        <MarketingSlot openBrandSwitcher={handleOpenSwitcher} />
         <MarketingActionSurfaces hidden={hideActions} />
       </MarketingActionProvider>
       {brandSheetVisible ? (

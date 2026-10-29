@@ -95,14 +95,10 @@ export function useMarketingAction(): MarketingAction {
   return value.action;
 }
 
-/** Register a stateful local action while the owning tab is mounted. */
-export function useMarketingActionRegistration(
-  action: MarketingAction | null,
-): void {
+export function useMarketingActionRegistrar(): MarketingActionContextValue["register"] {
   const value = React.useContext(MarketingActionContext);
-  const register = value?.register;
-  React.useEffect(() => {
-    if (!register || !action) return undefined;
-    return register(action);
-  }, [action, register]);
+  if (!value) {
+    throw new Error("useMarketingActionRegistrar must be used inside MarketingActionProvider");
+  }
+  return value.register;
 }

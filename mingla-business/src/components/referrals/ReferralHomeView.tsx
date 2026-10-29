@@ -69,7 +69,7 @@ import {
   SummaryLine,
   programStyles,
 } from "../programs/ProgramKit";
-import { useMarketingActionRegistration } from "../marketing/MarketingActionContext";
+import { useMarketingActionRegistration } from "../people/MarketingBrandSwitcherContext";
 import { ReferralOfferSheet } from "./ReferralOfferSheet";
 import {
   memberStatusWords,

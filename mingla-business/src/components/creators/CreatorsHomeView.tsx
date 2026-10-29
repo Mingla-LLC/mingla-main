@@ -27,7 +27,7 @@ import {
   StatusTag,
   programStyles,
 } from "../programs/ProgramKit";
-import { useMarketingActionRegistration } from "../marketing/MarketingActionContext";
+import { useMarketingActionRegistration } from "../people/MarketingBrandSwitcherContext";
 import {
   creatorGigsService,
   type HostHome,

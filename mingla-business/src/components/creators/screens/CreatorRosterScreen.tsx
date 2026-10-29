@@ -27,7 +27,7 @@ import {
   StatusTag,
   StatStrip,
 } from "../../../components/programs/ProgramKit";
-import { useMarketingActionRegistration } from "../../../components/marketing/MarketingActionContext";
+import { useMarketingActionRegistration } from "../../people/MarketingBrandSwitcherContext";
 import { blastHubHref } from "../../../components/marketing/marketingSubNavTabs";
 import { useProgramParams } from "../../../components/programs/useProgramParams";
 import {
