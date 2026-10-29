@@ -440,6 +440,11 @@ const ERROR_WORDS = {
   invalid_currency: "Use a three-letter currency code, like USD.",
   invalid_range: "The highest amount can't be below the lowest.",
   invalid_rate: "Enter a monthly rate above 0.",
+  media_type_unsupported: "Choose a JPG, PNG, GIF, WebP, HEIC, MP4, MOV, M4V, 3GP or WebM file.",
+  media_size_invalid: "Choose a photo or video between 1 byte and 25 MB.",
+  media_message_shape_invalid: "That photo or video is missing required file details.",
+  media_upload_unavailable: "The upload could not be verified. Choose the file and try again.",
+  media_unavailable: "That photo or video is no longer available.",
 };
 
 /** Any thrown error or {ok:false,error} -> one plain sentence. Never raw server text. */

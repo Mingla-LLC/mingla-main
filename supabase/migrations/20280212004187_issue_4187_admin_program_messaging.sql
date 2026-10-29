@@ -38,7 +38,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS conversations_one_program_thread_per_person
 COMMENT ON COLUMN public.conversations.program_kind IS
   '#4187 managed Mingla program thread subtype. NULL for every ordinary chat; local or creator only for the one Admin-created team thread owned by program_target_user_id.';
 COMMENT ON COLUMN public.conversations.program_target_user_id IS
-  '#4187 recipient of a managed Local/Creator program thread. Conversation creation is Admin-only through admin_program_message_send.';
+  '#4187 recipient of a managed Local/Creator program thread. Conversation creation is Admin-only through the program messaging RPCs.';
 
 -- The existing conversation INSERT policy permits ordinary signed-in people
 -- to create their own chats. Program markers are privileged: without this
@@ -247,6 +247,14 @@ BEGIN
           'is_from_recipient', recent.sender_id = p_target_user_id,
           'content', recent.content,
           'message_type', recent.message_type,
+          'file_url', recent.file_url,
+          'file_name', recent.file_name,
+          'file_size', recent.file_size,
+          'thumb_path', recent.thumb_path,
+          'media_width', recent.media_width,
+          'media_height', recent.media_height,
+          'media_duration_ms', recent.media_duration_ms,
+          'media_expired_at', recent.media_expired_at,
           'client_id', recent.client_id,
           'created_at', recent.created_at
         )
@@ -270,14 +278,88 @@ BEGIN
 END;
 $function$;
 
+-- Browser uploads need their canonical conversation folder before the message
+-- row can be written. Preparing creates/reuses the conversation and adds only
+-- the Admin actor as a participant, which authorizes the existing #4114
+-- message-attachments INSERT policy. The recipient is not added until a
+-- durable message is sent, so an abandoned upload never creates a visible
+-- empty thread in Explorer.
+CREATE OR REPLACE FUNCTION public.admin_program_media_prepare(
+  p_program_kind text,
+  p_target_user_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_team_name text;
+  v_conversation_id uuid;
+BEGIN
+  IF v_actor IS NULL OR NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'admin_only' USING ERRCODE = '42501';
+  END IF;
+  IF p_program_kind NOT IN ('local', 'creator')
+     OR NOT public.issue_4187_program_target_exists(p_program_kind, p_target_user_id) THEN
+    RAISE EXCEPTION 'program_recipient_unavailable' USING ERRCODE = '22023';
+  END IF;
+
+  v_team_name := CASE p_program_kind
+    WHEN 'local' THEN 'Mingla Local team'
+    ELSE 'Mingla Creator team'
+  END;
+
+  INSERT INTO public.conversations(
+    type,
+    linked_entity_type,
+    name,
+    created_by,
+    is_enabled,
+    is_broadcast_only,
+    program_kind,
+    program_target_user_id
+  ) VALUES (
+    'group',
+    'direct',
+    v_team_name,
+    v_actor,
+    true,
+    false,
+    p_program_kind,
+    p_target_user_id
+  )
+  ON CONFLICT (program_kind, program_target_user_id)
+    WHERE program_kind IS NOT NULL AND program_target_user_id IS NOT NULL
+  DO UPDATE SET updated_at = public.conversations.updated_at
+  RETURNING id INTO v_conversation_id;
+
+  INSERT INTO public.conversation_participants(conversation_id, user_id)
+  VALUES (v_conversation_id, v_actor)
+  ON CONFLICT (conversation_id, user_id) DO NOTHING;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'conversation_id', v_conversation_id
+  );
+END;
+$function$;
+
 -- The first send atomically creates the managed group, adds the recipient and
 -- sender, writes one idempotent message, and records the Admin actor in the
 -- existing audit log. A retry with the same client id returns the first row.
+DROP FUNCTION IF EXISTS public.admin_program_message_send(text, uuid, text, uuid);
 CREATE OR REPLACE FUNCTION public.admin_program_message_send(
   p_program_kind text,
   p_target_user_id uuid,
   p_content text,
-  p_client_id uuid
+  p_client_id uuid,
+  p_message_type text DEFAULT 'text',
+  p_file_url text DEFAULT NULL,
+  p_file_name text DEFAULT NULL,
+  p_file_size bigint DEFAULT NULL,
+  p_media_width integer DEFAULT NULL,
+  p_media_height integer DEFAULT NULL,
+  p_media_duration_ms integer DEFAULT NULL
 ) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = public, pg_temp
@@ -288,6 +370,9 @@ DECLARE
   v_team_name text;
   v_conversation_id uuid;
   v_message public.messages%ROWTYPE;
+  v_storage_owner uuid;
+  v_storage_mime text;
+  v_storage_size bigint;
 BEGIN
   IF v_actor IS NULL OR NOT public.is_admin_user() THEN
     RAISE EXCEPTION 'admin_only' USING ERRCODE = '42501';
@@ -300,8 +385,32 @@ BEGIN
     RAISE EXCEPTION 'client_id_required' USING ERRCODE = '22023';
   END IF;
   p_content := btrim(COALESCE(p_content, ''));
-  IF char_length(p_content) < 1 OR char_length(p_content) > 4000 THEN
+  p_message_type := lower(btrim(COALESCE(p_message_type, 'text')));
+  p_file_name := NULLIF(btrim(COALESCE(p_file_name, '')), '');
+  IF char_length(p_content) > 4000 THEN
     RAISE EXCEPTION 'message_length_invalid' USING ERRCODE = '22023';
+  END IF;
+  IF p_message_type = 'text' THEN
+    IF char_length(p_content) < 1
+       OR p_file_url IS NOT NULL
+       OR p_file_name IS NOT NULL
+       OR p_file_size IS NOT NULL
+       OR p_media_width IS NOT NULL
+       OR p_media_height IS NOT NULL
+       OR p_media_duration_ms IS NOT NULL THEN
+      RAISE EXCEPTION 'text_message_shape_invalid' USING ERRCODE = '22023';
+    END IF;
+  ELSIF p_message_type IN ('image', 'video') THEN
+    IF p_file_url IS NULL
+       OR p_file_name IS NULL
+       OR char_length(p_file_name) > 255
+       OR p_file_size IS NULL
+       OR p_file_size < 1
+       OR p_file_size > 26214400 THEN
+      RAISE EXCEPTION 'media_message_shape_invalid' USING ERRCODE = '22023';
+    END IF;
+  ELSE
+    RAISE EXCEPTION 'program_message_type_invalid' USING ERRCODE = '22023';
   END IF;
 
   v_team_name := CASE p_program_kind
@@ -339,11 +448,50 @@ BEGIN
     (v_conversation_id, v_actor)
   ON CONFLICT (conversation_id, user_id) DO NOTHING;
 
+  IF p_message_type IN ('image', 'video') THEN
+    IF public.issue_4114_chat_attachment_conversation(p_file_url) IS DISTINCT FROM v_conversation_id THEN
+      RAISE EXCEPTION 'attachment_path_outside_conversation' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT
+      object_row.owner,
+      lower(COALESCE(object_row.metadata ->> 'mimetype', '')),
+      CASE
+        WHEN COALESCE(object_row.metadata ->> 'size', '') ~ '^[0-9]+$'
+          THEN (object_row.metadata ->> 'size')::bigint
+        ELSE NULL
+      END
+    INTO v_storage_owner, v_storage_mime, v_storage_size
+    FROM storage.objects object_row
+    WHERE object_row.bucket_id = 'message-attachments'
+      AND object_row.name = p_file_url
+    LIMIT 1;
+
+    IF v_storage_owner IS DISTINCT FROM v_actor
+       OR v_storage_size IS NULL
+       OR v_storage_size IS DISTINCT FROM p_file_size
+       OR v_storage_size > 26214400
+       OR (p_message_type = 'image' AND v_storage_mime NOT IN (
+         'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'
+       ))
+       OR (p_message_type = 'video' AND v_storage_mime NOT IN (
+         'video/mp4', 'video/quicktime', 'video/x-m4v', 'video/3gpp', 'video/webm'
+       )) THEN
+      RAISE EXCEPTION 'media_upload_unavailable' USING ERRCODE = '22023';
+    END IF;
+  END IF;
+
   INSERT INTO public.messages(
     conversation_id,
     sender_id,
     content,
     message_type,
+    file_url,
+    file_name,
+    file_size,
+    media_width,
+    media_height,
+    media_duration_ms,
     client_id,
     sender_display_name_snapshot,
     sender_role_snapshot
@@ -351,7 +499,13 @@ BEGIN
     v_conversation_id,
     v_actor,
     p_content,
-    'text',
+    p_message_type,
+    p_file_url,
+    p_file_name,
+    p_file_size,
+    p_media_width,
+    p_media_height,
+    p_media_duration_ms,
     p_client_id,
     v_team_name,
     'Mingla'
@@ -366,7 +520,11 @@ BEGIN
     FROM public.messages message
     WHERE message.conversation_id = v_conversation_id
       AND message.client_id = p_client_id;
-    IF v_message.id IS NULL OR v_message.sender_id IS DISTINCT FROM v_actor THEN
+    IF v_message.id IS NULL
+       OR v_message.sender_id IS DISTINCT FROM v_actor
+       OR v_message.content IS DISTINCT FROM p_content
+       OR v_message.message_type IS DISTINCT FROM p_message_type
+       OR v_message.file_url IS DISTINCT FROM p_file_url THEN
       RAISE EXCEPTION 'message_idempotency_conflict' USING ERRCODE = '23505';
     END IF;
   ELSE
@@ -385,6 +543,8 @@ BEGIN
       jsonb_build_object(
         'conversation_id', v_conversation_id,
         'message_id', v_message.id,
+        'message_type', p_message_type,
+        'has_attachment', p_file_url IS NOT NULL,
         'character_count', char_length(p_content)
       ),
       v_actor
@@ -402,6 +562,14 @@ BEGIN
       'is_from_recipient', false,
       'content', v_message.content,
       'message_type', v_message.message_type,
+      'file_url', v_message.file_url,
+      'file_name', v_message.file_name,
+      'file_size', v_message.file_size,
+      'thumb_path', v_message.thumb_path,
+      'media_width', v_message.media_width,
+      'media_height', v_message.media_height,
+      'media_duration_ms', v_message.media_duration_ms,
+      'media_expired_at', v_message.media_expired_at,
       'client_id', v_message.client_id,
       'created_at', v_message.created_at
     )
@@ -450,10 +618,12 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.admin_program_local_people() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.admin_program_conversation_thread(text, uuid) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.admin_program_message_send(text, uuid, text, uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.admin_program_media_prepare(text, uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.admin_program_message_send(text, uuid, text, uuid, text, text, text, bigint, integer, integer, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_program_local_people() TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.admin_program_conversation_thread(text, uuid) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.admin_program_message_send(text, uuid, text, uuid) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.admin_program_media_prepare(text, uuid) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.admin_program_message_send(text, uuid, text, uuid, text, text, text, bigint, integer, integer, integer) TO authenticated, service_role;
 
 NOTIFY pgrst, 'reload schema';
 COMMIT;

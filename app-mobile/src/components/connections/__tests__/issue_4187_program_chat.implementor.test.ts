@@ -1,7 +1,7 @@
 // @ts-nocheck — Deno-runtime suite; app-mobile's broad tsc sweep includes
 // Deno suites and unrelated packages that are not configured for that command.
 //
-// MINGLA-INVARIANT: I-4187-PROGRAM-CHAT-CANONICAL | issue #4187 | Admin program messages render in the canonical Explorer Chats list as an official managed thread, retain official sender snapshots, allow text replies, and do not expose the member/leave/attachment controls.
+// MINGLA-INVARIANT: I-4187-PROGRAM-CHAT-CANONICAL | issue #4187 | Admin program messages render in the canonical Explorer Chats list as an official managed thread, retain official sender snapshots, allow persistent text/photo/video replies on the canonical media rail, and do not expose member/leave/view-once/file controls.
 import { buildBrowseItems, chatAvatarSpec, chatKind, matchesChatFilter } from "../chatListModel.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -32,7 +32,7 @@ Deno.test("#4187 official program chats appear in All as a square Mingla thread"
   equals(chatAvatarSpec({ kind: "program", currentUserId: "local", label: program.name, participants: program.participants }).shape, "square", "official team avatar");
 });
 
-Deno.test("#4187 Explorer presents an official managed thread with text-only replies", () => {
+Deno.test("#4187 Explorer presents an official managed thread with durable photo and video replies", () => {
   const components = new URL("../../", import.meta.url);
   const src = new URL("../../../", import.meta.url);
   const connections = Deno.readTextFileSync(new URL("ConnectionsPage.tsx", components));
@@ -40,7 +40,10 @@ Deno.test("#4187 Explorer presents an official managed thread with text-only rep
   const info = Deno.readTextFileSync(new URL("chat/GroupInfoSheet.tsx", components));
   const service = Deno.readTextFileSync(new URL("services/messagingService.ts", src));
   const copy = JSON.parse(Deno.readTextFileSync(new URL("i18n/locales/en/chat.json", src)));
-  assert(connections.includes("allowAttachments={!activeChat.programKind}"), "program chat disables attachment composer");
+  assert(connections.includes("allowAttachments"), "program chat keeps the attachment composer");
+  assert(connections.includes("allowViewOnce={!activeChat.programKind}"), "program chat disables disappearing media");
+  assert(connections.includes("allowFiles={!activeChat.programKind}"), "program chat limits attachments to photos and videos");
+  assert(connections.includes("handleSendMedia(items, caption, viewOnce, replyToId)"), "program media uses the canonical upload handler");
   assert(message.includes("chat:programTeamSubtitle"), "official subtitle is wired");
   equals(copy.programTeamSubtitle, "Official Mingla program team", "official subtitle is visible");
   assert(message.includes("managed={isProgramChat}"), "managed state reaches group info");

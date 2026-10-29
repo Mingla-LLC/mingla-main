@@ -57,6 +57,8 @@ DECLARE
   v_local constant uuid := '41870000-0000-4000-8000-000000000004';
   v_outsider constant uuid := '41870000-0000-4000-8000-000000000005';
   v_client constant uuid := '41870000-0000-4000-8000-000000000010';
+  v_media_client constant uuid := '41870000-0000-4000-8000-000000000011';
+  v_media_path text;
   v_result jsonb;
   v_retry jsonb;
   v_conversation uuid;
@@ -80,6 +82,14 @@ BEGIN
   END;
   IF NOT v_failed THEN RAISE EXCEPTION 'non-Admin sent a program message'; END IF;
 
+  v_failed := false;
+  BEGIN
+    PERFORM public.admin_program_media_prepare('creator', v_creator);
+  EXCEPTION WHEN insufficient_privilege THEN
+    v_failed := SQLERRM = 'admin_only';
+  END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'non-Admin prepared a program media upload'; END IF;
+
   PERFORM pg_temp.issue_4187_act(v_admin_one);
 
   -- Opening an unused recipient creates no ghost conversation.
@@ -99,10 +109,26 @@ BEGIN
     RAISE EXCEPTION 'Local applicant missing from durable message directory';
   END IF;
 
-  -- First send creates one canonical group and one message.
-  v_result := public.admin_program_message_send('creator', v_creator, 'Welcome to the Creator program.', v_client);
+  -- Media prepare creates/reuses the canonical folder but does not expose an
+  -- empty thread to the recipient before a durable message exists.
+  v_result := public.admin_program_media_prepare('creator', v_creator);
   v_conversation := (v_result->>'conversation_id')::uuid;
-  IF v_conversation IS NULL OR v_result->'message'->>'content' <> 'Welcome to the Creator program.' THEN
+  IF v_conversation IS NULL
+     OR NOT EXISTS (
+       SELECT 1 FROM public.conversation_participants
+       WHERE conversation_id = v_conversation AND user_id = v_admin_one
+     )
+     OR EXISTS (
+       SELECT 1 FROM public.conversation_participants
+       WHERE conversation_id = v_conversation AND user_id = v_creator
+     ) THEN
+    RAISE EXCEPTION 'media prepare exposed an empty thread: %', v_result;
+  END IF;
+
+  -- First send reuses that canonical group and writes one message.
+  v_result := public.admin_program_message_send('creator', v_creator, 'Welcome to the Creator program.', v_client);
+  IF (v_result->>'conversation_id')::uuid IS DISTINCT FROM v_conversation
+     OR v_result->'message'->>'content' <> 'Welcome to the Creator program.' THEN
     RAISE EXCEPTION 'first send failed: %', v_result;
   END IF;
   IF NOT EXISTS (
@@ -137,11 +163,58 @@ BEGIN
     RAISE EXCEPTION 'retry duplicated message or audit: first %, retry %', v_result, v_retry;
   END IF;
 
+  -- Admin media must be the Admin-owned object in this conversation's
+  -- canonical private bucket folder. The same client id remains idempotent.
+  v_media_path := v_conversation::text || '/' || v_media_client::text || '.jpg';
+  INSERT INTO storage.objects(bucket_id, name, owner, metadata)
+  VALUES (
+    'message-attachments',
+    v_media_path,
+    v_admin_one,
+    jsonb_build_object('size', 8, 'mimetype', 'image/jpeg')
+  );
+  v_result := public.admin_program_message_send(
+    'creator', v_creator, 'Reference photo', v_media_client,
+    'image', v_media_path, 'reference.jpg', 8, 1200, 800, NULL
+  );
+  IF v_result->'message'->>'message_type' <> 'image'
+     OR v_result->'message'->>'file_url' <> v_media_path
+     OR (v_result->'message'->>'file_size')::bigint <> 8 THEN
+    RAISE EXCEPTION 'Admin image message failed: %', v_result;
+  END IF;
+  v_retry := public.admin_program_message_send(
+    'creator', v_creator, 'Reference photo', v_media_client,
+    'image', v_media_path, 'reference.jpg', 8, 1200, 800, NULL
+  );
+  IF v_retry->'message'->>'id' IS DISTINCT FROM v_result->'message'->>'id'
+     OR (SELECT count(*) FROM public.messages WHERE conversation_id = v_conversation AND client_id = v_media_client) <> 1 THEN
+    RAISE EXCEPTION 'Admin image retry duplicated the message';
+  END IF;
+
+  INSERT INTO storage.objects(bucket_id, name, owner, metadata)
+  VALUES (
+    'message-attachments',
+    v_conversation::text || '/41870000-0000-4000-8000-000000000012.jpg',
+    v_outsider,
+    jsonb_build_object('size', 8, 'mimetype', 'image/jpeg')
+  );
+  v_failed := false;
+  BEGIN
+    PERFORM public.admin_program_message_send(
+      'creator', v_creator, '', '41870000-0000-4000-8000-000000000012',
+      'image', v_conversation::text || '/41870000-0000-4000-8000-000000000012.jpg',
+      'claimed.jpg', 8, NULL, NULL, NULL
+    );
+  EXCEPTION WHEN invalid_parameter_value THEN
+    v_failed := SQLERRM = 'media_upload_unavailable';
+  END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'Admin claimed another uploader''s media object'; END IF;
+
   -- Another Admin can open the shared thread and becomes a participant for
   -- RLS-filtered Realtime and incoming-reply notifications.
   PERFORM pg_temp.issue_4187_act(v_admin_two);
   v_retry := public.admin_program_conversation_thread('creator', v_creator);
-  IF jsonb_array_length(v_retry->'messages') <> 1
+  IF jsonb_array_length(v_retry->'messages') <> 2
      OR NOT EXISTS (
        SELECT 1 FROM public.conversation_participants
        WHERE conversation_id = v_conversation AND user_id = v_admin_two
@@ -209,12 +282,28 @@ BEGIN
   FROM public.conversations
   WHERE program_kind = 'creator' AND program_target_user_id = v_creator;
 
-  IF (SELECT count(*) FROM public.messages WHERE conversation_id = v_conversation) <> 1 THEN
-    RAISE EXCEPTION 'recipient cannot read the Admin message';
+  IF (SELECT count(*) FROM public.messages WHERE conversation_id = v_conversation) <> 2 THEN
+    RAISE EXCEPTION 'recipient cannot read the Admin text and image';
   END IF;
 
   INSERT INTO public.messages(conversation_id, sender_id, content, message_type, client_id)
   VALUES (v_conversation, v_creator, 'Thanks — I received it.', 'text', gen_random_uuid());
+
+  INSERT INTO storage.objects(bucket_id, name, owner, metadata)
+  VALUES (
+    'message-attachments',
+    v_conversation::text || '/41870000-0000-4000-8000-000000000020.mp4',
+    v_creator,
+    jsonb_build_object('size', 12, 'mimetype', 'video/mp4')
+  );
+  INSERT INTO public.messages(
+    conversation_id, sender_id, content, message_type, client_id,
+    file_url, file_name, file_size, media_width, media_height, media_duration_ms
+  ) VALUES (
+    v_conversation, v_creator, 'My reply video', 'video', gen_random_uuid(),
+    v_conversation::text || '/41870000-0000-4000-8000-000000000020.mp4',
+    'reply.mp4', 12, 1080, 1920, 2000
+  );
 
   BEGIN
     PERFORM public.leave_group_conversation(v_conversation);
@@ -235,9 +324,19 @@ BEGIN
   v_result := public.admin_program_conversation_thread(
     'creator', '41870000-0000-4000-8000-000000000003'
   );
-  IF jsonb_array_length(v_result->'messages') <> 2
-     OR v_result->'messages'->1->>'content' <> 'Thanks — I received it.'
-     OR (v_result->'messages'->1->>'is_from_recipient')::boolean IS DISTINCT FROM true THEN
+  IF jsonb_array_length(v_result->'messages') <> 4
+     OR NOT EXISTS (
+       SELECT 1 FROM jsonb_array_elements(v_result->'messages') message
+       WHERE message->>'content' = 'Thanks — I received it.'
+         AND (message->>'is_from_recipient')::boolean IS TRUE
+     )
+     OR NOT EXISTS (
+       SELECT 1 FROM jsonb_array_elements(v_result->'messages') message
+       WHERE message->>'message_type' = 'video'
+         AND message->>'file_name' = 'reply.mp4'
+         AND message->>'file_url' LIKE '%/41870000-0000-4000-8000-000000000020.mp4'
+         AND (message->>'is_from_recipient')::boolean IS TRUE
+     ) THEN
     RAISE EXCEPTION 'Admin cannot see recipient reply: %', v_result;
   END IF;
 END;
@@ -247,8 +346,10 @@ DO $grants$
 BEGIN
   IF has_function_privilege('anon', 'public.admin_program_local_people()', 'execute')
      OR has_function_privilege('anon', 'public.admin_program_conversation_thread(text,uuid)', 'execute')
-     OR has_function_privilege('anon', 'public.admin_program_message_send(text,uuid,text,uuid)', 'execute')
-     OR NOT has_function_privilege('authenticated', 'public.admin_program_message_send(text,uuid,text,uuid)', 'execute') THEN
+     OR has_function_privilege('anon', 'public.admin_program_media_prepare(text,uuid)', 'execute')
+     OR has_function_privilege('anon', 'public.admin_program_message_send(text,uuid,text,uuid,text,text,text,bigint,integer,integer,integer)', 'execute')
+     OR NOT has_function_privilege('authenticated', 'public.admin_program_media_prepare(text,uuid)', 'execute')
+     OR NOT has_function_privilege('authenticated', 'public.admin_program_message_send(text,uuid,text,uuid,text,text,text,bigint,integer,integer,integer)', 'execute') THEN
     RAISE EXCEPTION 'program message RPC grants drifted';
   END IF;
 END;

@@ -376,8 +376,12 @@ interface MessageInterfaceProps {
    * chat media service.
    */
   onSendMedia?: (items: PickedChatMedia[], caption: string, viewOnce: boolean, replyToId?: string) => void;
-  /** Managed program threads are text-only in v1 so Admin can review every reply. */
+  /** Whether the chat composer exposes its attachment control. */
   allowAttachments?: boolean;
+  /** Managed program threads keep photo/video replies durable for Admin review. */
+  allowViewOnce?: boolean;
+  /** Managed program threads accept photo/video replies, not arbitrary files. */
+  allowFiles?: boolean;
   /** Issue #4114 Wave 4: 0..1 upload progress of media sends, by client id. */
   uploadProgress?: Record<string, number>;
   /** Issue #4114 Wave 4: cancel a media send while it uploads. */
@@ -483,6 +487,8 @@ export default function MessageInterface({
   messages,
   onSendMedia,
   allowAttachments = true,
+  allowViewOnce = true,
+  allowFiles = true,
   uploadProgress,
   onCancelUpload,
   onRetryMessage,
@@ -1391,7 +1397,7 @@ export default function MessageInterface({
   const handleSendPickedMedia = () => {
     if (pendingMedia.length === 0 || !onSendMedia) return;
     const media = pendingMedia;
-    const viewOnce = attachViewOnce;
+    const viewOnce = allowViewOnce && attachViewOnce;
     sendCoordinator.requestSend({
       read: chatController.readText,
       allowEmpty: true,
@@ -3243,6 +3249,8 @@ export default function MessageInterface({
             items={pendingMedia}
             viewOnce={attachViewOnce}
             onToggleViewOnce={setAttachViewOnce}
+            allowViewOnce={allowViewOnce}
+            allowFiles={allowFiles}
             recipientName={isGroupChat ? null : cleanName(friend.name || friend.username || "")}
             picking={isPickingMedia}
             onCamera={() => void handlePickCamera()}
@@ -3328,8 +3336,8 @@ export default function MessageInterface({
             </>
           )}
           <View style={styles.inputContainer}>
-          {/* Attachment Menu — program replies stay text-only in v1 so the
-              Admin program panel can review every reply. */}
+          {/* Attachment Menu — official program chats use this same canonical
+              media rail, with view-once and arbitrary files disabled. */}
           {allowAttachments ? <View style={styles.attachmentContainer}>
             <TouchableOpacity
               onPress={() => setShowAttachmentMenu(!showAttachmentMenu)}

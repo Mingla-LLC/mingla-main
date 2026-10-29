@@ -56,12 +56,117 @@ export function getProgramConversation(programKind, targetUserId) {
   });
 }
 
-export async function sendProgramMessage({ programKind, targetUserId, content, clientId }) {
+const PROGRAM_MEDIA_BUCKET = "message-attachments";
+const PROGRAM_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+const PROGRAM_MEDIA_MIME = new Map([
+  ["image/jpeg", { kind: "image", extension: "jpg" }],
+  ["image/png", { kind: "image", extension: "png" }],
+  ["image/gif", { kind: "image", extension: "gif" }],
+  ["image/webp", { kind: "image", extension: "webp" }],
+  ["image/heic", { kind: "image", extension: "heic" }],
+  ["image/heif", { kind: "image", extension: "heif" }],
+  ["video/mp4", { kind: "video", extension: "mp4" }],
+  ["video/quicktime", { kind: "video", extension: "mov" }],
+  ["video/x-m4v", { kind: "video", extension: "m4v" }],
+  ["video/3gpp", { kind: "video", extension: "3gp" }],
+  ["video/webm", { kind: "video", extension: "webm" }],
+]);
+
+export function validateProgramMedia(file) {
+  const media = file ? PROGRAM_MEDIA_MIME.get(String(file.type || "").toLowerCase()) : null;
+  if (!media) throw new ProgramWriteError({ error: "media_type_unsupported" });
+  if (!Number.isFinite(file.size) || file.size < 1 || file.size > PROGRAM_MEDIA_MAX_BYTES) {
+    throw new ProgramWriteError({ error: "media_size_invalid" });
+  }
+  return media;
+}
+
+export function prepareProgramMediaConversation(programKind, targetUserId) {
+  return write("admin_program_media_prepare", {
+    p_program_kind: programKind,
+    p_target_user_id: targetUserId,
+  });
+}
+
+export async function uploadProgramMedia({ conversationId, clientId, file }) {
+  const media = validateProgramMedia(file);
+  const path = `${conversationId}/${clientId}.${media.extension}`;
+  const bucket = supabase.storage.from(PROGRAM_MEDIA_BUCKET);
+  const { error } = await bucket.upload(path, file, {
+    cacheControl: "3600",
+    contentType: file.type,
+    upsert: false,
+  });
+  if (error) {
+    // A response can be lost after Storage commits the bytes. A retry keeps
+    // the same client id/path; only an actual duplicate is treated as landed.
+    if (!/already exists|duplicate/i.test(String(error.message || ""))) throw error;
+    const { data: proof, error: proofError } = await bucket.createSignedUrl(path, 60);
+    if (proofError || !proof?.signedUrl) throw error;
+  }
+  return {
+    path,
+    kind: media.kind,
+    fileName: String(file.name || `${media.kind}.${media.extension}`).slice(0, 255),
+    fileSize: file.size,
+  };
+}
+
+export async function getProgramMediaUrl(path) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  const { data, error } = await supabase.storage.from(PROGRAM_MEDIA_BUCKET).createSignedUrl(path, 600);
+  if (error) throw error;
+  return data?.signedUrl ?? null;
+}
+
+export async function downloadProgramMedia(path, fileName) {
+  if (!path) throw new ProgramWriteError({ error: "media_unavailable" });
+  let blob;
+  if (/^https?:\/\//i.test(path)) {
+    const response = await fetch(path);
+    if (!response.ok) throw new ProgramWriteError({ error: "media_unavailable" });
+    blob = await response.blob();
+  } else {
+    const { data, error } = await supabase.storage.from(PROGRAM_MEDIA_BUCKET).download(path);
+    if (error) throw error;
+    blob = data;
+  }
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName || "mingla-message-media";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function sendProgramMessage({
+  programKind,
+  targetUserId,
+  content,
+  clientId,
+  messageType = "text",
+  fileUrl = null,
+  fileName = null,
+  fileSize = null,
+  mediaWidth = null,
+  mediaHeight = null,
+  mediaDurationMs = null,
+}) {
   const result = await write("admin_program_message_send", {
     p_program_kind: programKind,
     p_target_user_id: targetUserId,
     p_content: content,
     p_client_id: clientId,
+    p_message_type: messageType,
+    p_file_url: fileUrl,
+    p_file_name: fileName,
+    p_file_size: fileSize,
+    p_media_width: mediaWidth,
+    p_media_height: mediaHeight,
+    p_media_duration_ms: mediaDurationMs,
   });
 
   // The message row is already durable at this point. Push is deliberately a
@@ -75,7 +180,7 @@ export async function sendProgramMessage({ programKind, targetUserId, content, c
         senderId: user.id,
         conversationId: result.conversation_id,
         messageId: result.message.id,
-        messagePreview: result.message.content,
+        messagePreview: result.message.content || (result.message.message_type === "image" ? "Photo" : "Video"),
       },
     });
     if (notification.error) {

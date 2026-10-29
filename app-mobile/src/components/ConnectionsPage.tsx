@@ -4449,7 +4449,9 @@ function ConnectionsPageRefactored({
           onSendMedia={(items, caption, viewOnce, replyToId) => {
             void handleSendMedia(items, caption, viewOnce, replyToId);
           }}
-          allowAttachments={!activeChat.programKind}
+          allowAttachments
+          allowViewOnce={!activeChat.programKind}
+          allowFiles={!activeChat.programKind}
           uploadProgress={mediaUploadProgress}
           onCancelUpload={handleCancelMediaUpload}
           onRetryMessage={handleRetryMessage}

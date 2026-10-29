@@ -27,6 +27,7 @@ test("#4187 Admin calls only the server-authorized program messaging RPCs", () =
   for (const rpc of [
     "admin_program_local_people",
     "admin_program_conversation_thread",
+    "admin_program_media_prepare",
     "admin_program_message_send",
   ]) assert.match(service, new RegExp(`"${rpc}"`));
   assert.match(service, /type: "message"/);
@@ -35,9 +36,22 @@ test("#4187 Admin calls only the server-authorized program messaging RPCs", () =
 });
 
 test("#4187 a saved message is visibly described as an Explorer Chats conversation", () => {
-  assert.match(panel, /They receive this in Explorer Chats and can reply there\./);
+  assert.match(panel, /Text, photos and videos appear in Explorer Chats\. Replies arrive here\./);
   assert.match(panel, /The thread appears in \{name\}'s Chats after the first message\./);
   assert.match(panel, /Send to Chats/);
   assert.match(panel, /retryRef\.current/);
   assert.match(panel, /postgres_changes/);
+});
+
+test("#4187 Admin media uses the private canonical chat bucket with preview, playback and download", () => {
+  assert.match(service, /PROGRAM_MEDIA_BUCKET = "message-attachments"/);
+  assert.match(service, /prepareProgramMediaConversation/);
+  assert.match(service, /uploadProgramMedia/);
+  assert.match(service, /createSignedUrl/);
+  assert.match(service, /downloadProgramMedia/);
+  assert.match(panel, /Add photo or video/);
+  assert.match(panel, /accept="image\/jpeg[^"]*video\/webm"/);
+  assert.match(panel, /<video src=\{url\} controls/);
+  assert.match(panel, /downloadProgramMedia\(message\.file_url/);
+  assert.match(panel, /"Downloading…" : "Download"/);
 });
