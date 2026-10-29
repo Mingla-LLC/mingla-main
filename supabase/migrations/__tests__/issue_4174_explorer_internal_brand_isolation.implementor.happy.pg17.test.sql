@@ -119,9 +119,11 @@ BEGIN
     (v_page->>'total')::integer=0 AND v_page->'items'='[]'::jsonb,
     'an explicit internal-brand decision immediately removes otherwise eligible inventory');
 
-  UPDATE public.admin_internal_brands
-  SET is_internal=false,reason='#4174 explicit real-brand override'
-  WHERE brand_id=v_lantern_brand;
+  INSERT INTO public.admin_internal_brands(
+    brand_id,is_internal,reason,marked_by
+  ) VALUES(
+    v_lantern_brand,false,'#4174 explicit real-brand override','pg17'
+  );
   v_page:=public.discover_v2_items(
     'events',ARRAY['#4174 Isolation City'],0,0,50,'UTC','{}'::jsonb,0,20);
   PERFORM pg_temp.t4174_assert(

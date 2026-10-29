@@ -60,8 +60,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4173: re-sealed after the Brand group roster migration and its local
 // PostgreSQL proof entered the three preserved full-history inventories.
 // #4174: re-sealed after the Explorer internal-brand isolation migration
-// entered the same three preserved full-history inventories.
-export const BOOTSTRAP_SHA256 = "58be831b8630f5e33c0e3d62b78161aac5ab156fe4b615a416de1dac3567d0a3";
+// entered the same three preserved full-history inventories, with exact
+// exclusions beside #4073 in the deliberately filtered historical replays.
+export const BOOTSTRAP_SHA256 = "45459397eea0be3c77c246a4e2829a60e3bec7d25d8d9df46cc3269237337af5";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

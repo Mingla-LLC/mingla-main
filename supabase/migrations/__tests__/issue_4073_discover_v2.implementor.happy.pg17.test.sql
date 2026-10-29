@@ -76,6 +76,14 @@ BEGIN
     v_brand,v_owner,'I4073 recurrence','i4073-recurrence-'||v_brand,'USD',
     'ACCT_i4073_recurrence',now(),now()
   );
+  -- The owner deliberately uses a reserved fixture address. The brand itself
+  -- represents public supply, so record the canonical brand-level override
+  -- instead of weakening the production internal-account classifier.
+  INSERT INTO public.admin_internal_brands(
+    brand_id,is_internal,reason,marked_by
+  ) VALUES(
+    v_brand,false,'#4073 public Discover fixture','pg17'
+  );
   PERFORM pg_temp.t4073_assert(public.pg_brand_can_collect(v_brand),
     'paid-sale fixture satisfies the production collection gate');
   UPDATE public.feature_flags SET is_enabled=true WHERE flag_key='discounts_enabled';

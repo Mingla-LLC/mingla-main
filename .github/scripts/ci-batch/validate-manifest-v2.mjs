@@ -291,8 +291,9 @@ export function phase3dContractDigest(manifest) {
 // #4173: register the Brand group roster migration and its declared local
 // PostgreSQL proof selected by the same preserved replay commands.
 // #4174: register the Explorer internal-brand isolation migration and its
-// declared local PostgreSQL proof selected by those replay commands.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "86f4c935ebc8b74fd1e415bc8aa321e83c1aeaf908341b3fdc31a67dd77fdcb8";
+// declared local PostgreSQL proof selected by those replay commands, with
+// exact exclusions beside #4073 in the filtered historical replays.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "bc578a2d03a3ea25980dcc0efa6414e2efbe87890087f0406fa5d469abadec7d";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

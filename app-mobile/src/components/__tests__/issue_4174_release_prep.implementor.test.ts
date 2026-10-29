@@ -4,6 +4,7 @@ import {
   assertMatch,
   assertStringIncludes,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
+import { normalizePayoutBanks } from "../../services/payoutBanks.ts";
 
 const read = (path: string): Promise<string> =>
   Deno.readTextFile(new URL(path, import.meta.url));
@@ -54,7 +55,27 @@ Deno.test("#4174 — native permission copy describes the features that request 
   assertMatch(explorerPlist.NSMicrophoneUsageDescription, /sound.*videos.*chats/i);
   assertMatch(hostPlist.NSCameraUsageDescription, /tickets.*photos or videos.*event covers.*brand group chats/i);
   assertMatch(hostPlist.NSMicrophoneUsageDescription, /sound.*videos.*event covers.*brand group chats/i);
-  assertEquals("NSLocationWhenInUseUsageDescription" in hostPlist, false);
+  assertMatch(hostPlist.NSLocationWhenInUseUsageDescription, /location.*marketing.*services/i);
+});
+
+Deno.test("#4174 — Nigerian payout banks render one choice per Paystack bank code", () => {
+  const banks = [
+    { code: "044", name: "Access Bank" },
+    { code: "50572", name: "OPay" },
+    { code: "50572", name: "OPay duplicate row" },
+    { code: " 058 ", name: " Guaranty Trust Bank " },
+    { code: "", name: "Missing code" },
+    { code: "999", name: "   " },
+    { code: null, name: "Malformed provider row" },
+    { code: 123, name: "Wrong code type" },
+  ];
+
+  assertEquals(normalizePayoutBanks(banks), [
+    { code: "044", name: "Access Bank" },
+    { code: "50572", name: "OPay" },
+    { code: "058", name: "Guaranty Trust Bank" },
+  ]);
+  assertEquals(banks[1], { code: "50572", name: "OPay" });
 });
 
 Deno.test("#4174 — claim links are registered for iOS and Android", async () => {
