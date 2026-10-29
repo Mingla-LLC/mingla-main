@@ -357,7 +357,7 @@ describe("issue #874 Home integration real render", () => {
     expect(mockPush).not.toHaveBeenCalledWith("/(tabs)/hub");
   });
 
-  it("pull-to-refresh invalidates payout and the Home 30-day traffic query", async () => {
+  it("pull-to-refresh invalidates payout and both Home traffic queries", async () => {
     const screen = await render(<HomeTab />);
     const list = screen.getByTestId("home-mobile-scroll");
     const refreshControl = list.props.refreshControl as {
@@ -375,7 +375,7 @@ describe("issue #874 Home integration real render", () => {
     expect(mockInvalidateQueries).toHaveBeenCalledWith({
       queryKey: ["traffic-analytics", "brand", mockBrand.id, "30d"],
     });
-    expect(mockInvalidateQueries).not.toHaveBeenCalledWith({
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
       queryKey: ["traffic-analytics", "brand", mockBrand.id, "all"],
     });
     expect(mockRecentRefresh).toHaveBeenCalledTimes(1);
