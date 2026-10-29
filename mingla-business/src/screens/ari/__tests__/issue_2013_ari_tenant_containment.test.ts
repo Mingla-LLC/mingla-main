@@ -43,6 +43,7 @@ import {
   sendAgentMessage,
   type AgentConversation,
 } from "../../../services/agentChatService";
+import { currentAriUiCapabilities } from "../../../services/ariUiCapabilitiesService";
 import { ConversationDrawer } from "../../../components/ari/ConversationDrawer";
 import { useConversationList } from "../../../hooks/useConversationList";
 
@@ -116,6 +117,7 @@ describe("#2013 Ari tenant-containment UI behavior", () => {
       client_timezone: "Africa/Lagos",
       locale: "en-NG",
       brand_id: "brand-a",
+      ari_ui: currentAriUiCapabilities(),
     });
 
     expect(mockInvoke).toHaveBeenCalledWith("agent-chat", {

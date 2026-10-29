@@ -42,7 +42,7 @@ import {
 } from "../../constants/designSystem";
 import { shouldUseRealBlur } from "../../utils/glassBlur";
 import { resolveSheetMaxHeight } from "./aiDisclosureSheetLayout";
-import { Button } from "../ui/Button";
+import { AriPremiumButton as Button } from "./AriPremiumButton";
 import { AriOrb } from "./AriOrb";
 
 export interface AiDisclosureModalProps {

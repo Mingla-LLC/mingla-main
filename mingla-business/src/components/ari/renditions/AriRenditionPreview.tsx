@@ -28,7 +28,7 @@ import {
   text as textTokens,
 } from "../../../constants/designSystem";
 import { AriOrb } from "../AriOrb";
-import { Button } from "../../ui/Button";
+import { AriPremiumButton as Button } from "../AriPremiumButton";
 import type {
   AriRenditionFixture,
   AriRenditionKind,

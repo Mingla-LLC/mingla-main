@@ -77,7 +77,13 @@ describe("#3355 Ari rendition foundation", () => {
       path.join(root, "src/components/ui/Button.tsx"),
       "utf8",
     );
-    expect(preview).toContain('import { Button } from "../../ui/Button"');
+    const ariButton = fs.readFileSync(
+      path.join(root, "src/components/ari/AriPremiumButton.tsx"),
+      "utf8",
+    );
+    expect(preview).toContain(
+      'import { AriPremiumButton as Button } from "../AriPremiumButton"',
+    );
     expect(preview).toContain("<Button");
     expect(preview).toMatch(
       /action\.style ===\s*"danger"\s*\?\s*"destructiveOutline"/,
@@ -86,14 +92,14 @@ describe("#3355 Ari rendition foundation", () => {
     expect(preview).not.toContain("LinearGradient");
     expect(preview).toContain("edgeEffect={");
     expect(preview).toContain('? "animatedGradient"');
-    expect(button).toContain(
-      'export type ButtonEdgeEffect = "animatedGradient"',
-    );
-    expect(button).toContain("const EDGE_GRADIENTS");
-    expect(button).toContain('require("expo-linear-gradient")');
-    expect(button).toContain("withRepeat(");
-    expect(button).toContain("duration: loading ? 1300 : 3600");
-    expect(button).toContain("if (disabled || reduceMotion)");
+    expect(ariButton).toContain('import {\n  Button,');
+    expect(ariButton).toContain('edgeEffect?: "animatedGradient"');
+    expect(ariButton).toContain("const EDGE_GRADIENTS");
+    expect(ariButton).toContain("withRepeat(");
+    expect(ariButton).toContain("duration: loading ? 1300 : 3600");
+    expect(ariButton).toContain("if (disabled || reduceMotion)");
+    expect(button).not.toContain("ButtonEdgeEffect");
+    expect(button).not.toContain("EDGE_GRADIENTS");
     expect(preview).not.toMatch(
       /primaryButtonText:\s*\{[^}]*textTokens\.inverse/s,
     );
@@ -127,7 +133,9 @@ describe("#3355 Ari rendition foundation", () => {
       path.join(root, "src/components/ari/AiDisclosureModal.tsx"),
       "utf8",
     );
-    expect(disclosure).toContain('import { Button } from "../ui/Button"');
+    expect(disclosure).toContain(
+      'import { AriPremiumButton as Button } from "./AriPremiumButton"',
+    );
     expect(disclosure).toContain("Meet Ari.");
     expect(disclosure).toContain("Ari can plan, research, and prepare work.");
     expect(disclosure).toMatch(/Sources stay\s+visible/);
@@ -161,7 +169,7 @@ describe("#3355 Ari rendition foundation", () => {
     expect(gallery).not.toContain("DISCLOSURE_OPTIONS");
     expect(gallery).not.toContain("designOption={disclosureOption}");
     expect(gallery).toContain(
-      'import { Button } from "../../components/ui/Button"',
+      'import { AriPremiumButton as Button } from "../../components/ari/AriPremiumButton"',
     );
     expect(gallery).toContain('label="Orange"');
     expect(gallery).toContain('label="Black"');

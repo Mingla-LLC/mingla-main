@@ -15,32 +15,28 @@
  * `:focus-visible`).
  */
 
-import React, { forwardRef, useCallback, useEffect, useState } from "react";
+import React, { forwardRef, useCallback } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type {
   AccessibilityRole,
   AccessibilityState,
   GestureResponderEvent,
-  LayoutChangeEvent,
   PressableStateCallbackType,
   StyleProp,
   TextStyle,
   ViewStyle,
 } from "react-native";
 import Animated, {
-  Easing,
-  cancelAnimation,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
-  withRepeat,
   withTiming,
 } from "react-native-reanimated";
-import type { LinearGradientProps } from "expo-linear-gradient";
 
 import {
   accent,
   durations,
+  easings,
   glass,
   radius as radiusTokens,
   semantic,
@@ -73,7 +69,6 @@ export type ButtonVariant =
   | "destructiveOutline";
 export type ButtonSize = "sm" | "md" | "lg";
 export type ButtonShape = "pill" | "square";
-export type ButtonEdgeEffect = "animatedGradient";
 
 const CHECKABLE_ACCESSIBILITY_ROLES: ReadonlySet<AccessibilityRole> = new Set([
   "checkbox",
@@ -120,12 +115,6 @@ export interface ButtonProps {
    * muted colour. Omit → the icon follows the resolved label colour.
    */
   iconColor?: string;
-  /**
-   * #3355 — optional premium perimeter motion. The button fill stays on the
-   * canonical variant token; only the clipped 1.5 px edge animates. This is
-   * opt-in so existing Button call sites remain visually unchanged.
-   */
-  edgeEffect?: ButtonEdgeEffect;
 }
 
 const SIZE_HEIGHT: Record<ButtonSize, number> = { sm: 36, md: 44, lg: 52 };
@@ -209,85 +198,6 @@ const VARIANT_TOKENS: Record<ButtonVariant, VariantTokens> = {
 };
 
 const PRESS_TIMING = { duration: durations.fast } as const;
-const EDGE_WIDTH = 1.5;
-
-const EDGE_GRADIENTS: Record<
-  ButtonVariant,
-  readonly [string, string, string, string, string, string, string]
-> = {
-  primary: [
-    "#a74317",
-    "#eb7825",
-    "#fff7ef",
-    "#ffb27b",
-    "#54210e",
-    "#eb7825",
-    "#a74317",
-  ],
-  secondary: [
-    "#4b5058",
-    "#f7f7f8",
-    "#eb7825",
-    "#777e88",
-    "#15171b",
-    "#f7f7f8",
-    "#4b5058",
-  ],
-  ghost: [
-    "#55230e",
-    "#eb7825",
-    "#fff7ef",
-    "#ffb27b",
-    "#55230e",
-    "#eb7825",
-    "#55230e",
-  ],
-  destructive: [
-    "#7f1d1d",
-    "#ef4444",
-    "#fff1f2",
-    "#fb7185",
-    "#450a0a",
-    "#ef4444",
-    "#7f1d1d",
-  ],
-  step: [
-    "#111318",
-    "#eb7825",
-    "#ffffff",
-    "#8b929c",
-    "#111318",
-    "#eb7825",
-    "#111318",
-  ],
-  destructiveOutline: [
-    "#7f1d1d",
-    "#ef4444",
-    "#fff1f2",
-    "#fb7185",
-    "#450a0a",
-    "#ef4444",
-    "#7f1d1d",
-  ],
-};
-
-const EDGE_SOLID_BACKGROUNDS: Record<ButtonVariant, string> = {
-  primary: accent.warm,
-  secondary: "#111318",
-  ghost: "#111318",
-  destructive: semantic.error,
-  step: "#F5F5F6",
-  destructiveOutline: "#111318",
-};
-
-const EDGE_SOLID_HOVERS: Record<ButtonVariant, string> = {
-  primary: "#f0843a",
-  secondary: "#1b1e23",
-  ghost: "#1b1e23",
-  destructive: "#f25656",
-  step: "#FFFFFF",
-  destructiveOutline: "#1b1e23",
-};
 
 export const Button = forwardRef<
   React.ElementRef<typeof Pressable>,
@@ -313,43 +223,14 @@ export const Button = forwardRef<
     style,
     labelStyle,
     iconColor,
-    edgeEffect,
   },
   forwardedRef,
 ) {
   const scale = useSharedValue(1);
   const opacity = useSharedValue(1);
-  const edgeProgress = useSharedValue(0);
-  const [edgeWidth, setEdgeWidth] = useState(0);
   const reduceMotion = useReducedMotion();
   const tokens = VARIANT_TOKENS[variant];
   const interactive = !disabled && !loading;
-  const hasAnimatedEdge = edgeEffect === "animatedGradient";
-
-  useEffect(() => {
-    if (!hasAnimatedEdge) {
-      edgeProgress.value = 0;
-      return;
-    }
-
-    cancelAnimation(edgeProgress);
-    if (disabled || reduceMotion) {
-      edgeProgress.value = 0.5;
-      return;
-    }
-
-    edgeProgress.value = 0;
-    edgeProgress.value = withRepeat(
-      withTiming(1, {
-        duration: loading ? 1300 : 3600,
-        easing: Easing.linear,
-      }),
-      -1,
-      true,
-    );
-
-    return () => cancelAnimation(edgeProgress);
-  }, [disabled, edgeProgress, hasAnimatedEdge, loading, reduceMotion]);
 
   // ORCH-1162 Bug 3 — optional brand-accent override (primary variant only).
   // Label color auto-resolves for WCAG legibility on arbitrary hues; the web
@@ -393,6 +274,7 @@ export const Button = forwardRef<
         await onPress(event);
       } catch (error) {
         if (__DEV__) {
+          // eslint-disable-next-line no-console
           console.error("[Button] onPress threw:", error);
         }
       }
@@ -404,14 +286,6 @@ export const Button = forwardRef<
     transform: [{ scale: scale.value }],
     opacity: opacity.value,
   }));
-  const edgeSweepStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: edgeWidth * edgeProgress.value }],
-  }));
-
-  const handleEdgeLayout = useCallback((event: LayoutChangeEvent): void => {
-    const nextWidth = Math.round(event.nativeEvent.layout.width);
-    setEdgeWidth((current) => (current === nextWidth ? current : nextWidth));
-  }, []);
 
   const containerHeight = SIZE_HEIGHT[size];
   const containerRadius =
@@ -437,21 +311,13 @@ export const Button = forwardRef<
     // ordinary text sizes (the content is smaller than the floor) and lets the
     // pill GROW instead of cropping when the label genuinely needs the room.
     // The 44 pt minimum touch target is preserved either way.
-    minHeight: hasAnimatedEdge
-      ? Math.max(1, containerHeight - EDGE_WIDTH * 2)
-      : containerHeight,
+    minHeight: containerHeight,
     paddingHorizontal: SIZE_PADDING_X[size],
-    borderRadius: hasAnimatedEdge
-      ? Math.max(0, containerRadius - EDGE_WIDTH)
-      : containerRadius,
-    backgroundColor: disabled
-      ? DISABLED_BACKGROUND
-      : hasAnimatedEdge
-        ? (brandBg ?? EDGE_SOLID_BACKGROUNDS[variant])
-        : effectiveBg,
+    borderRadius: containerRadius,
+    backgroundColor: disabled ? DISABLED_BACKGROUND : effectiveBg,
     borderColor: disabled ? DISABLED_BORDER : tokens.border,
     borderWidth: disabled ? 1 : (tokens.borderWidth ?? 0),
-    alignSelf: fullWidth || hasAnimatedEdge ? "stretch" : "auto",
+    alignSelf: fullWidth ? "stretch" : "auto",
     opacity: disabled ? 0.6 : 1,
   };
 
@@ -472,22 +338,16 @@ export const Button = forwardRef<
     const hovered = pressableState.hovered === true;
     const focused = pressableState.focused === true;
 
-    const core = (
+    return (
       <Animated.View
         style={[
           styles.container,
           containerStaticStyle,
           hovered && Platform.OS === "web"
-            ? {
-                backgroundColor: hasAnimatedEdge
-                  ? EDGE_SOLID_HOVERS[variant]
-                  : effectiveHoverBg,
-              }
+            ? { backgroundColor: effectiveHoverBg }
             : null,
-          !hasAnimatedEdge && focused && Platform.OS === "web"
-            ? styles.focusRing
-            : null,
-          !hasAnimatedEdge ? animatedStyle : null,
+          focused && Platform.OS === "web" ? styles.focusRing : null,
+          animatedStyle,
         ]}
       >
         <View style={styles.content}>
@@ -532,55 +392,6 @@ export const Button = forwardRef<
         </View>
       </Animated.View>
     );
-
-    if (!hasAnimatedEdge) return core;
-
-    // Keep the native gradient module off Button's default boot/test path.
-    // Metro still resolves this static module id into native + web bundles,
-    // but it is evaluated only for the opt-in #3355 treatment.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { LinearGradient } = require("expo-linear-gradient") as {
-      LinearGradient: React.ComponentType<LinearGradientProps>;
-    };
-    const measuredWidth = Math.max(edgeWidth, 160);
-    return (
-      <Animated.View
-        onLayout={handleEdgeLayout}
-        style={[
-          styles.edgeShell,
-          {
-            minHeight: containerHeight,
-            borderRadius: containerRadius,
-            alignSelf: fullWidth ? "stretch" : "auto",
-            opacity: disabled ? 0.6 : 1,
-          },
-          focused && Platform.OS === "web" ? styles.focusRing : null,
-          animatedStyle,
-        ]}
-        testID={testID ? `${testID}-edge` : undefined}
-      >
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.edgeGradientTrack,
-            {
-              left: -measuredWidth,
-              width: measuredWidth * 3,
-            },
-            edgeSweepStyle,
-          ]}
-        >
-          <LinearGradient
-            colors={EDGE_GRADIENTS[variant]}
-            locations={[0, 0.16, 0.3, 0.48, 0.65, 0.82, 1]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-        </Animated.View>
-        {core}
-      </Animated.View>
-    );
   };
 
   return (
@@ -615,18 +426,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-  },
-  edgeShell: {
-    position: "relative",
-    justifyContent: "center",
-    padding: EDGE_WIDTH,
-    overflow: "hidden",
-    backgroundColor: "#24272d",
-  },
-  edgeGradientTrack: {
-    position: "absolute",
-    top: -24,
-    bottom: -24,
   },
   content: {
     flexDirection: "row",

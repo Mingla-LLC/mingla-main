@@ -27,7 +27,7 @@ import { AriOrb } from "../../components/ari/AriOrb";
 import { AiDisclosureModal } from "../../components/ari/AiDisclosureModal";
 import { InputBar } from "../../components/ari/InputBar";
 import { MessageList } from "../../components/ari/MessageList";
-import { Button } from "../../components/ui/Button";
+import { AriPremiumButton as Button } from "../../components/ari/AriPremiumButton";
 import type { AgentMessage } from "../../services/agentChatService";
 import {
   ARI_RENDITION_FIXTURES,
