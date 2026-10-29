@@ -260,6 +260,9 @@ export default function HomeTab(): React.ReactElement {
                 queryKey: trafficAnalyticsKeys.brand(currentBrand.id, "30d"),
               }),
               queryClient.invalidateQueries({
+                queryKey: trafficAnalyticsKeys.brand(currentBrand.id, "all"),
+              }),
+              queryClient.invalidateQueries({
                 queryKey: brandPayoutScreenKey(currentBrand.id),
               }),
               // Keep the legacy cache fresh while older consumers are still

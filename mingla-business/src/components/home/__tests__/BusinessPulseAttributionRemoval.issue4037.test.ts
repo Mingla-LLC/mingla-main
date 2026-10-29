@@ -13,12 +13,12 @@ describe("#4037 Home Pulse attribution correction", () => {
     expect(source).not.toContain("valueMinglaBrought");
   });
 
-  it("does not invalidate the removed Home-only all-time traffic query", () => {
+  it("keeps both traffic authorities fresh when Home refreshes", () => {
     const source = read("app/(tabs)/home.tsx");
     expect(source).toContain(
       'trafficAnalyticsKeys.brand(currentBrand.id, "30d")',
     );
-    expect(source).not.toContain(
+    expect(source).toContain(
       'trafficAnalyticsKeys.brand(currentBrand.id, "all")',
     );
   });
