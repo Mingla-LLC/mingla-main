@@ -1,6 +1,7 @@
 import * as WebBrowser from 'expo-web-browser';
 import { countryToCurrencyMap } from './countryCurrencyService';
 import { programEdge } from './programApi';
+import { normalizePayoutBanks, type PayoutBank } from './payoutBanks';
 import { ProgramActionError } from './programResult';
 
 /**
@@ -112,7 +113,9 @@ export const payoutService = {
     if (!url) throw new ProgramActionError('country_unsupported');
     await WebBrowser.openAuthSessionAsync(url, returnUrl);
   },
-  banks: async () => (await programEdge<{ banks?: Array<{ name: string; code: string }> }>('payee-account-paystack-recipient', { action: 'list_banks' })).banks ?? [],
+  banks: async (): Promise<PayoutBank[]> => normalizePayoutBanks(
+    (await programEdge<{ banks?: Array<{ name?: unknown; code?: unknown }> }>('payee-account-paystack-recipient', { action: 'list_banks' })).banks ?? [],
+  ),
   checkAccount: (input: { accountNumber: string; bankCode: string }) => programEdge<{ account_name: string; account_number_masked: string }>('payee-account-paystack-recipient', { action: 'resolve_account', account_number: input.accountNumber, bank_code: input.bankCode }),
   saveAccount: (input: { accountNumber: string; bankCode: string; bankName: string }) => programEdge('payee-account-paystack-recipient', { action: 'create_recipient', account_number: input.accountNumber, bank_code: input.bankCode, bank_name: input.bankName }),
 };

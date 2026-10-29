@@ -48,7 +48,11 @@ jest.mock("@tanstack/react-query", () => ({
     refetch: async () => ({ data: mockPreview, error: null }),
   }),
 }), { virtual: true });
-jest.mock("@mingla/payments-native", () => ({ useStripePaymentSheet: () => ({ initPaymentSheet: mockInit, presentPaymentSheet: mockPresent, isPaymentSheetSupported: true }) }), { virtual: true });
+jest.mock("@mingla/payments-native", () => ({
+  isStripeGooglePayTestEnv: (publishableKey: string | null | undefined) =>
+    publishableKey?.trim().startsWith("pk_test_") === true,
+  useStripePaymentSheet: () => ({ initPaymentSheet: mockInit, presentPaymentSheet: mockPresent, isPaymentSheetSupported: true }),
+}), { virtual: true });
 jest.mock("@stripe/stripe-react-native", () => ({ initStripe: jest.fn() }), { virtual: true });
 jest.mock("expo-web-browser", () => ({ openBrowserAsync: (...args: any[]) => mockOpen(...args) }), { virtual: true });
 jest.mock("expo-haptics", () => ({ impactAsync: jest.fn(), notificationAsync: jest.fn(), ImpactFeedbackStyle: { Medium: "medium" }, NotificationFeedbackType: { Success: "success" } }), { virtual: true });

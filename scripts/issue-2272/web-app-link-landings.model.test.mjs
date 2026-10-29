@@ -120,6 +120,7 @@ const AASA_PROBE = {
   '/board/*': '/board/9F3KQ2',
   '/orders/*': '/orders/0a0870b0-c117-4707-bdf4-21fc64bebcab/chat',
   '/chat/*': '/chat/0a0870b0-c117-4707-bdf4-21fc64bebcab',
+  '/c/*': '/c/AB12CD34EF',
 }
 
 test('M3 every path the live AASA claims is actually served on the apex', () => {
@@ -164,16 +165,18 @@ test('M3 every path the live AASA claims is actually served on the apex', () => 
  * If you are here because this went red: that is the guard working. Do not
  * update the hash to make it green unless #2245 is the issue you are on.
  *
- * MOVED ONCE, by #2245 — the issue this guard names. The AASA hash below is the
- * post-withdrawal file: `/board/*` removed, `/invite/*` `/s/*` `/p/*`
- * `/orders/*` `/chat/*` kept. `assetlinks.json` is UNCHANGED (it carries signing
- * fingerprints, not paths; Android's path claims live in
- * `app-mobile/app.json` intentFilters, which #2245 also edited).
- * Re-measured 2026-08-18 on branch `2245-deep-link-claims`.
+ * MOVED ONCE by #2245 to withdraw `/board/*`, then deliberately extended by
+ * #4174 with `/c/*` after the claim-code parser, Android intent filter, cold
+ * route and browser fallback were all in place. The probe above proves the
+ * fallback is served; `declared-app-links-resolve.deno.test.ts` proves the
+ * claimed URL reaches the native claim destination. `assetlinks.json` is
+ * unchanged (it carries signing fingerprints, not paths; Android's path claims
+ * live in `app-mobile/app.json` intentFilters).
+ * Re-measured 2026-10-29 on branch `4174-release-120`.
  */
 const WELL_KNOWN_SHA256 = {
   'mingla-marketing/public/.well-known/apple-app-site-association':
-    'ab073f2ba6fe15ecca92032b1a8bae951f3310f8a297d27014e29709d89122b9',
+    '28ea7d19c78b05e41c334f2844e99c136499ea478774aceaec1624bc8c2f5ec2',
   'mingla-marketing/public/.well-known/assetlinks.json':
     '0d06749397a049f621089c0c377d4dbaf4c9803703b265d44b9828a029312a4d',
 }

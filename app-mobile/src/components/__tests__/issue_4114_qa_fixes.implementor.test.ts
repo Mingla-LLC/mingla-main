@@ -71,7 +71,7 @@ Deno.test("QA2a a failed view-once load re-signs once, then gives up", async () 
   assert(/const phase = mediaLoadPhase\(url, loadState\);/.test(photo), "a new url starts over by derivation");
   const video = strip(await read("components/chat/ChatVideoPlayerModal.tsx"));
   assert(/if \(next === "error"\) onLoadErrorRef\.current\?\.\(\);/.test(video), "video error tells the parent");
-  assert(/<Player key=\{url\}/.test(video), "a new url gets a new player");
+  assert(/<Player\s+key=\{url\}/.test(video), "a new url gets a new player");
 });
 
 Deno.test("QA2b the received view-once bubble uses the dark received tokens", async () => {

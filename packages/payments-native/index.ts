@@ -9,6 +9,7 @@
 export { StripeNativeProvider } from "./StripeNativeProvider";
 export { useStripePaymentSheet } from "./useStripePaymentSheet";
 export { normalizePaymentSheetResult, isPaymentSheetErrorCode } from "./normalizePaymentSheetResult";
+export { isStripeGooglePayTestEnv } from "./googlePayEnvironment";
 export type {
   PaymentSheetInitInput,
   PaymentSheetResult,

@@ -23,7 +23,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useStripePaymentSheet } from "@mingla/payments-native";
+import {
+  isStripeGooglePayTestEnv,
+  useStripePaymentSheet,
+} from "@mingla/payments-native";
 import type { PaymentSheetInitInput } from "@mingla/payments-native";
 import { initStripe } from "@stripe/stripe-react-native";
 import * as WebBrowser from "expo-web-browser";
@@ -75,9 +78,6 @@ const RETURN_URL = `${URL_SCHEME}://stripe-redirect`;
 const STATUS_POLL_INTERVAL_MS = 4000;
 const SETTLE_POLL_INTERVAL_MS = 1500;
 const SETTLE_POLL_MAX_ATTEMPTS = 17;
-
-const isGooglePayTestEnv = (): boolean =>
-  process.env.EAS_BUILD_PROFILE !== "production";
 
 export interface ConsumerVenueOrderingInput {
   brandSlug: string;
@@ -506,7 +506,7 @@ export function useConsumerVenueOrdering(
           },
           googlePay: {
             merchantCountryCode: "US",
-            testEnv: isGooglePayTestEnv(),
+            testEnv: isStripeGooglePayTestEnv(created.publishableKey),
             currencyCode: created.currency.toLowerCase(),
           },
         };

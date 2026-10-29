@@ -57,6 +57,7 @@
       }
     },
     "production": {
+      "environment": "production",
       "autoIncrement": true,
       "channel": "production",
       "env": {
@@ -66,15 +67,19 @@
       }
     },
     "production-apk": {
+      "extends": "production",
       "autoIncrement": false,
-      "channel": "production",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "false",
-        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "4505e476-6b2a-424d-906f-d751614980bf",
-        "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com"
+      }
+    },
+    "production-simulator": {
+      "extends": "production",
+      "environment": "production",
+      "autoIncrement": false,
+      "ios": {
+        "simulator": true,
+        "buildConfiguration": "Release"
       }
     }
   },

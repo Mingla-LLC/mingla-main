@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/__tests__/googlePayEnvironment.issue4174.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4174-google-pay-environment",
+  "profile": "deno-2-unit",
+  "permissions": ["net", "read"]
+}

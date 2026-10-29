@@ -21,6 +21,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BUSINESS_ROOT = path.resolve(HERE, "..");
 const REPO_ROOT = path.resolve(BUSINESS_ROOT, "..");
 const APP_JSON = path.join(BUSINESS_ROOT, "app.json");
+const CONSUMER_APP_JSON = path.join(REPO_ROOT, "app-mobile/app.json");
 const APPEARANCE_PLUGIN = path.join(
   BUSINESS_ROOT,
   "plugins/withForcedLightAppearance.js",
@@ -213,10 +214,12 @@ function pickerRegistry() {
   return sites;
 }
 
-test("Host declares fixed Light and keeps the 1.1.6 runtime/version contract", () => {
+test("Host declares fixed Light and keeps the shared appVersion runtime contract", () => {
   const config = JSON.parse(read(APP_JSON)).expo;
+  const consumerConfig = JSON.parse(read(CONSUMER_APP_JSON)).expo;
   assert.equal(config.userInterfaceStyle, "light");
-  assert.equal(config.version, "1.1.6");
+  assert.match(config.version, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
+  assert.equal(config.version, consumerConfig.version);
   assert.deepEqual(config.ios.runtimeVersion, { policy: "appVersion" });
   assert.deepEqual(config.android.runtimeVersion, { policy: "appVersion" });
 });

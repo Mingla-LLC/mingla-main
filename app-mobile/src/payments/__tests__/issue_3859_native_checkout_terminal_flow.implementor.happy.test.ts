@@ -32,6 +32,8 @@ jest.mock("expo-web-browser", () => ({
   WebBrowserResultType: { LOCKED: "locked" },
 }));
 jest.mock("@mingla/payments-native", () => ({
+  isStripeGooglePayTestEnv: (publishableKey: string | null | undefined) =>
+    publishableKey?.trim().startsWith("pk_test_") === true,
   useStripePaymentSheet: () => ({
     initPaymentSheet: (...args: unknown[]) => mockInitPaymentSheet(...args),
     presentPaymentSheet: (...args: unknown[]) => mockPresentPaymentSheet(...args),

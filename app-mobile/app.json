@@ -2,7 +2,7 @@
   "expo": {
     "name": "Mingla",
     "slug": "mingla",
-    "version": "1.1.6",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -18,14 +18,14 @@
       "bundleIdentifier": "com.mingla.app.v2",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Mingla needs location access to find experiences near you and provide location-based recommendations.",
-        "NSCameraUsageDescription": "Mingla uses the camera so you can take a photo to set as your profile picture or share in a chat — for example, snapping a photo to send in a group plan conversation.",
+        "NSCameraUsageDescription": "Mingla uses the camera so you can take profile photos and record photos or videos to share in direct and group chats — for example, recording a video to send in a group plan conversation.",
         "NSPhotoLibraryUsageDescription": "Mingla uses your photo library so you can choose existing photos or videos to set as your profile picture or share in chats — for example, picking a saved photo to send in a direct or group message.",
         "NSCalendarsUsageDescription": "Mingla adds events you book or RSVP to — like a dinner reservation or a ticketed show — to your calendar so you get a reminder before they start. This is only used when you tap Add to Calendar.",
         "NSCalendarsFullAccessUsageDescription": "Mingla adds events you book or RSVP to — like a dinner reservation or a ticketed show — to your calendar so you get a reminder before they start. This is only used when you tap Add to Calendar.",
         "NSCalendarsWriteOnlyAccessUsageDescription": "Mingla adds events you book or RSVP to — like a dinner reservation or a ticketed show — to your calendar so you get a reminder before they start. This is only used when you tap Add to Calendar.",
         "NSRemindersUsageDescription": "Mingla adds a reminder for an event you choose to save — like a dinner reservation or a ticketed show — so you get a heads-up before it starts. This is only used when you tap Add to Calendar.",
         "NSRemindersFullAccessUsageDescription": "Mingla adds a reminder for an event you choose to save — like a dinner reservation or a ticketed show — so you get a heads-up before it starts. This is only used when you tap Add to Calendar.",
-        "NSMicrophoneUsageDescription": "Mingla needs microphone access to record voice reviews about your experiences.",
+        "NSMicrophoneUsageDescription": "Mingla uses the microphone to include sound when you record videos to share in direct and group chats.",
         "ITSAppUsesNonExemptEncryption": false,
         "NSAdvertisingAttributionReportEndpoint": "https://appsflyer-skadnetwork.com/",
         "SKAdNetworkItems": [
@@ -89,6 +89,11 @@
               "scheme": "https",
               "host": "usemingla.com",
               "pathPrefix": "/chat"
+            },
+            {
+              "scheme": "https",
+              "host": "usemingla.com",
+              "pathPrefix": "/c/"
             }
           ],
           "category": [

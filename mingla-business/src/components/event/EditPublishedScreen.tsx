@@ -999,7 +999,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
               if (router.canGoBack()) {
                 router.back();
               } else {
-                router.replace(`/(tabs)/events` as never);
+                router.replace(`/(tabs)/hub/events` as never);
               }
             },
           };

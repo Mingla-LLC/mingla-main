@@ -113,7 +113,11 @@ expectRed(
   "strict Explorer version drift fails",
   {
     ...live,
-    appJson: live.appJson.replace('"version": "1.1.6"', '"version": "v1.1.6"'),
+    appJson: (() => {
+      const appJson = JSON.parse(live.appJson);
+      appJson.expo.version = `v${appJson.expo.version}`;
+      return JSON.stringify(appJson);
+    })(),
   },
   /strict SemVer/,
 );

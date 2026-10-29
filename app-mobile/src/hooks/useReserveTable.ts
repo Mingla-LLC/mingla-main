@@ -1,5 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useStripePaymentSheet } from "@mingla/payments-native";
+import {
+  isStripeGooglePayTestEnv,
+  useStripePaymentSheet,
+} from "@mingla/payments-native";
 import type { PaymentSheetInitInput } from "@mingla/payments-native";
 import { initStripe } from "@stripe/stripe-react-native";
 import * as WebBrowser from "expo-web-browser";
@@ -43,9 +46,6 @@ export type ReserveOutcome =
   | { outcome: "failed"; message: string };
 
 const MERCHANT_DISPLAY_NAME = "Mingla";
-
-const isStripeGooglePayTestEnv = (): boolean =>
-  process.env.EAS_BUILD_PROFILE !== "production";
 
 // Bounded poll for the Paystack confirm (the webhook is the truth; the redirect
 // is unreliable). ~25s budget at 1.5s intervals — mirrors nativeCheckoutFlow.
@@ -140,7 +140,7 @@ export const useReserveTable = (
         },
         googlePay: {
           merchantCountryCode: "US",
-          testEnv: isStripeGooglePayTestEnv(),
+          testEnv: isStripeGooglePayTestEnv(created.publishableKey),
           currencyCode: created.currency.toLowerCase(),
         },
       };

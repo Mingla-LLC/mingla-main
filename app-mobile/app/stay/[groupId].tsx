@@ -2,15 +2,19 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { initStripe } from "@stripe/stripe-react-native";
-import { useStripePaymentSheet } from "@mingla/payments-native";
+import {
+  isStripeGooglePayTestEnv,
+  useStripePaymentSheet,
+} from "@mingla/payments-native";
 import { StayReservationDetail } from "@mingla/brand-rendering/StayReservationDetail";
 import {
   createThemePalette,
@@ -46,6 +50,7 @@ const applePayItems = (
 
 export default function StayReservationRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const params = useLocalSearchParams<{ groupId?: string | string[] }>();
   const raw = Array.isArray(params.groupId) ? params.groupId[0] : params.groupId;
   const groupId = typeof raw === "string" && UUID.test(raw) ? raw : null;
@@ -57,6 +62,13 @@ export default function StayReservationRoute(): React.ReactElement {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const groupViewFired = useRef(false);
+  const close = (): void => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/" as never);
+    }
+  };
 
   useEffect(() => {
     const group = query.data;
@@ -73,7 +85,15 @@ export default function StayReservationRoute(): React.ReactElement {
 
   if (groupId === null) {
     return (
-      <View style={styles.invalid}>
+      <View style={[styles.invalid, { paddingTop: insets.top + 12 }]}>
+        <Pressable
+          onPress={close}
+          style={[styles.invalidClose, { top: insets.top + 8 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Close stay reservation"
+        >
+          <Text style={styles.closeText}>Close</Text>
+        </Pressable>
         <Text style={styles.invalidTitle}>Stay reservation not found</Text>
       </View>
     );
@@ -110,7 +130,7 @@ export default function StayReservationRoute(): React.ReactElement {
         },
         googlePay: {
           merchantCountryCode: "US",
-          testEnv: process.env.EAS_BUILD_PROFILE !== "production",
+          testEnv: isStripeGooglePayTestEnv(payment.publishableKey),
           currencyCode: payment.currencyCode.toLowerCase(),
         },
       });
@@ -161,7 +181,17 @@ export default function StayReservationRoute(): React.ReactElement {
         { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 32 },
       ]}
     >
-      <Text style={[styles.eyebrow, { color: palette.accent }]}>MINGLA STAY</Text>
+      <View style={styles.header}>
+        <Text style={[styles.eyebrow, { color: palette.accent }]}>MINGLA STAY</Text>
+        <Pressable
+          onPress={close}
+          style={styles.close}
+          accessibilityRole="button"
+          accessibilityLabel="Close stay reservation"
+        >
+          <Text style={[styles.closeText, { color: palette.primaryText }]}>Close</Text>
+        </Pressable>
+      </View>
       <StayReservationDetail
         group={query.data ?? null}
         loading={query.isLoading}
@@ -238,12 +268,16 @@ export default function StayReservationRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   host: { flex: 1 },
   content: { paddingHorizontal: 18, gap: 16 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   eyebrow: { fontSize: 11, fontWeight: "900", letterSpacing: 1.4 },
+  close: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 },
+  closeText: { color: "#ffffff", fontSize: 15, fontWeight: "800" },
   invalid: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#0c0e12",
   },
+  invalidClose: { position: "absolute", right: 18, minHeight: 44, justifyContent: "center" },
   invalidTitle: { color: "#ffffff", fontSize: 20, fontWeight: "800" },
 });
