@@ -8,6 +8,8 @@
  * redirects home in any production bundle.
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — redirect-only route renders no screen chrome
+
 import React from "react";
 import { Redirect } from "expo-router";
 
