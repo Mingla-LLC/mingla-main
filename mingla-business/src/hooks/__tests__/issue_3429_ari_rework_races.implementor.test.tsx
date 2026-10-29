@@ -8,7 +8,9 @@ const { create, act } = require("react-test-renderer") as {
   act: (callback: () => void | Promise<void>) => void | Promise<void>;
 };
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mockSendAgentMessage = jest.fn();
 const mockFetchMessages = jest.fn(async () => []);
@@ -35,13 +37,16 @@ jest.mock("react-native", () => ({
 jest.mock("../../components/ui/useShareNetworkState", () => ({
   useShareNetworkState: () => true,
 }));
-jest.mock("../../context/AuthContext", () => ({ useAuth: () => ({ isAuthReady: true }) }));
+jest.mock("../../context/AuthContext", () => ({
+  useAuth: () => ({ isAuthReady: true }),
+}));
 jest.mock("../../services/agentChatService", () => ({
   fetchMessages: () => mockFetchMessages(),
   sendAgentMessage: (request: unknown) => mockSendAgentMessage(request),
 }));
 jest.mock("../../services/ariTurnService", () => ({
-  fetchAriTurnStatus: (clientTurnId: string) => mockFetchAriTurnStatus(clientTurnId),
+  fetchAriTurnStatus: (clientTurnId: string) =>
+    mockFetchAriTurnStatus(clientTurnId),
   retryAriTurn: (clientTurnId: string) => mockRetryAriTurn(clientTurnId),
   stopAriTurn: (clientTurnId: string) => mockStopAriTurn(clientTurnId),
   subscribeAriTurnActivity: () => jest.fn(),
@@ -54,7 +59,11 @@ jest.mock("../../services/ariAttachmentService", () => ({
   discardAriAttachment: jest.fn(),
 }));
 
-import { useAgentChat, type UseAgentChatResult } from "../useAgentChat";
+import {
+  ARI_ACTIVE_TURN_RECONCILE_MS,
+  useAgentChat,
+  type UseAgentChatResult,
+} from "../useAgentChat";
 import { isCurrentAriTurnEpoch } from "../../services/agentReliability";
 
 function deferred<T>() {
@@ -127,17 +136,24 @@ describe("#3429 executable delivery races", () => {
         attempt_status: "completed",
         conversation_title: "A",
       });
-    await act(async () => { create(<Probe brandId="brand-a" />); });
-    await act(async () => { await latest!.sendMessage("Use the report", [attachment]); });
+    await act(async () => {
+      create(<Probe brandId="brand-a" />);
+    });
+    await act(async () => {
+      await latest!.sendMessage("Use the report", [attachment]);
+    });
     expect(latest!.errorCode).toBe("TENANT_SCOPE_UNAVAILABLE");
-    await act(async () => { await latest!.retryTenantRecovery(); });
+    await act(async () => {
+      await latest!.retryTenantRecovery();
+    });
 
     expect(mockSendAgentMessage).toHaveBeenCalledTimes(2);
-    const [first, second] = mockSendAgentMessage.mock.calls.map(([request]) => request as Record<string, unknown>);
+    const [first, second] = mockSendAgentMessage.mock.calls.map(
+      ([request]) => request as Record<string, unknown>,
+    );
     expect(second.client_turn_id).toBe(first.client_turn_id);
     expect(second.attachment_ids).toEqual(["attachment-server"]);
   });
-
 });
 
 function textResponse(clientTurnId: string, conversationId = "conversation-a") {
@@ -197,16 +213,25 @@ describe("#3429 useAgentChat deferred transport behavior", () => {
   it("does not dispatch a duplicate retry while the original send remains pending", async () => {
     const pending = deferred<ReturnType<typeof textResponse>>();
     mockSendAgentMessage.mockImplementationOnce(() => pending.promise);
-    await act(async () => { create(<Probe brandId="brand-a" />); });
+    await act(async () => {
+      create(<Probe brandId="brand-a" />);
+    });
 
     let original!: Promise<unknown>;
-    act(() => { original = latest!.sendMessage("Plan the launch"); });
+    act(() => {
+      original = latest!.sendMessage("Plan the launch");
+    });
     await flush();
-    const request = mockSendAgentMessage.mock.calls[0][0] as Record<string, unknown>;
+    const request = mockSendAgentMessage.mock.calls[0][0] as Record<
+      string,
+      unknown
+    >;
     const clientTurnId = request.client_turn_id as string;
 
     let retryResult: unknown;
-    await act(async () => { retryResult = await latest!.retryTurn(clientTurnId); });
+    await act(async () => {
+      retryResult = await latest!.retryTurn(clientTurnId);
+    });
     expect(retryResult).toBeNull();
     expect(mockRetryAriTurn).not.toHaveBeenCalled();
     expect(mockSendAgentMessage).toHaveBeenCalledTimes(1);
@@ -216,6 +241,43 @@ describe("#3429 useAgentChat deferred transport behavior", () => {
       await original;
     });
     expect(mockSendAgentMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps reconciling an unsettled turn until a killed worker is terminal", async () => {
+    jest.useFakeTimers();
+    const pending = deferred<ReturnType<typeof textResponse>>();
+    mockSendAgentMessage.mockImplementationOnce(() => pending.promise);
+    mockFetchAriTurnStatus.mockImplementation(
+      async (clientTurnId): Promise<unknown> =>
+        canonicalStatus(clientTurnId, "failed"),
+    );
+    await act(async () => {
+      create(<Probe brandId="brand-a" />);
+    });
+
+    let original!: Promise<unknown>;
+    act(() => {
+      original = latest!.sendMessage("Recover this interrupted turn");
+    });
+    await flush();
+    expect(latest!.isSending).toBe(true);
+    expect(mockFetchAriTurnStatus).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(ARI_ACTIVE_TURN_RECONCILE_MS);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockFetchAriTurnStatus).toHaveBeenCalledTimes(1);
+    expect(latest!.isSending).toBe(false);
+    expect(latest!.activeTurn?.errorCode).toBe("PROVIDER_UNAVAILABLE");
+
+    await act(async () => {
+      pending.reject(new Error("worker disappeared"));
+      await original;
+    });
+    jest.useRealTimers();
   });
 
   it.each(["failed", "stopped"] as const)(
@@ -232,23 +294,42 @@ describe("#3429 useAgentChat deferred transport behavior", () => {
           order.push("retry-dispatch");
           return textResponse(request.client_turn_id as string);
         });
-      mockFetchAriTurnStatus.mockImplementation(async (clientTurnId): Promise<unknown> =>
-        canonicalStatus(clientTurnId, terminalStatus));
-      await act(async () => { create(<Probe brandId="brand-a" />); });
-      await act(async () => { await latest!.sendMessage("Retry this safely"); });
-      const first = mockSendAgentMessage.mock.calls[0][0] as Record<string, unknown>;
+      mockFetchAriTurnStatus.mockImplementation(
+        async (clientTurnId): Promise<unknown> =>
+          canonicalStatus(clientTurnId, terminalStatus),
+      );
+      await act(async () => {
+        create(<Probe brandId="brand-a" />);
+      });
+      await act(async () => {
+        await latest!.sendMessage("Retry this safely");
+      });
+      const first = mockSendAgentMessage.mock.calls[0][0] as Record<
+        string,
+        unknown
+      >;
       const clientTurnId = first.client_turn_id as string;
 
-      mockRetryAriTurn.mockImplementationOnce(async (retriedId): Promise<unknown> => {
-        order.push("retry-control");
-        expect(retriedId).toBe(clientTurnId);
-        return { ...canonicalStatus(clientTurnId, "accepted", 2), accepted: true };
+      mockRetryAriTurn.mockImplementationOnce(
+        async (retriedId): Promise<unknown> => {
+          order.push("retry-control");
+          expect(retriedId).toBe(clientTurnId);
+          return {
+            ...canonicalStatus(clientTurnId, "accepted", 2),
+            accepted: true,
+          };
+        },
+      );
+      await act(async () => {
+        await latest!.retryTurn(clientTurnId);
       });
-      await act(async () => { await latest!.retryTurn(clientTurnId); });
 
       expect(order).toEqual(["retry-control", "retry-dispatch"]);
       expect(mockSendAgentMessage).toHaveBeenCalledTimes(2);
-      const second = mockSendAgentMessage.mock.calls[1][0] as Record<string, unknown>;
+      const second = mockSendAgentMessage.mock.calls[1][0] as Record<
+        string,
+        unknown
+      >;
       expect(second.client_turn_id).toBe(clientTurnId);
     },
   );
@@ -258,14 +339,23 @@ describe("#3429 useAgentChat deferred transport behavior", () => {
     mockSendAgentMessage.mockImplementationOnce(() => pending.promise);
     mockStopAriTurn.mockRejectedValue(new Error("transport unavailable"));
     mockFetchAriTurnStatus.mockRejectedValue(new Error("status unavailable"));
-    await act(async () => { create(<Probe brandId="brand-a" />); });
+    await act(async () => {
+      create(<Probe brandId="brand-a" />);
+    });
 
     let original!: Promise<unknown>;
-    act(() => { original = latest!.sendMessage("Stop if I ask"); });
+    act(() => {
+      original = latest!.sendMessage("Stop if I ask");
+    });
     await flush();
-    const request = mockSendAgentMessage.mock.calls[0][0] as Record<string, unknown>;
+    const request = mockSendAgentMessage.mock.calls[0][0] as Record<
+      string,
+      unknown
+    >;
     const clientTurnId = request.client_turn_id as string;
-    await act(async () => { await latest!.stopTurn(clientTurnId); });
+    await act(async () => {
+      await latest!.stopTurn(clientTurnId);
+    });
 
     expect(mockStopAriTurn).toHaveBeenCalledTimes(3);
     expect(latest!.activeTurn).toMatchObject({
@@ -285,15 +375,26 @@ describe("#3429 useAgentChat deferred transport behavior", () => {
   it("reconciliation records canonical acceptance and failed terminal status", async () => {
     const pending = deferred<ReturnType<typeof textResponse>>();
     mockSendAgentMessage.mockImplementationOnce(() => pending.promise);
-    await act(async () => { create(<Probe brandId="brand-a" />); });
+    await act(async () => {
+      create(<Probe brandId="brand-a" />);
+    });
 
     let original!: Promise<unknown>;
-    act(() => { original = latest!.sendMessage("Reconcile this turn"); });
+    act(() => {
+      original = latest!.sendMessage("Reconcile this turn");
+    });
     await flush();
-    const request = mockSendAgentMessage.mock.calls[0][0] as Record<string, unknown>;
+    const request = mockSendAgentMessage.mock.calls[0][0] as Record<
+      string,
+      unknown
+    >;
     const clientTurnId = request.client_turn_id as string;
-    mockFetchAriTurnStatus.mockResolvedValue(canonicalStatus(clientTurnId, "failed"));
-    await act(async () => { await latest!.reconcileActiveTurns(); });
+    mockFetchAriTurnStatus.mockResolvedValue(
+      canonicalStatus(clientTurnId, "failed"),
+    );
+    await act(async () => {
+      await latest!.reconcileActiveTurns();
+    });
 
     expect(latest!.activeTurn).toMatchObject({
       clientTurnId,
@@ -303,7 +404,9 @@ describe("#3429 useAgentChat deferred transport behavior", () => {
       reconciling: false,
     });
     expect(latest!.messages).toHaveLength(1);
-    expect(latest!.messages[0].content).toMatchObject({ local_delivery: "failed" });
+    expect(latest!.messages[0].content).toMatchObject({
+      local_delivery: "failed",
+    });
 
     await act(async () => {
       pending.resolve(textResponse(clientTurnId));
@@ -314,15 +417,26 @@ describe("#3429 useAgentChat deferred transport behavior", () => {
   it("reconciliation keeps a canonically accepted attempt active without inventing completion", async () => {
     const pending = deferred<ReturnType<typeof textResponse>>();
     mockSendAgentMessage.mockImplementationOnce(() => pending.promise);
-    await act(async () => { create(<Probe brandId="brand-a" />); });
+    await act(async () => {
+      create(<Probe brandId="brand-a" />);
+    });
 
     let original!: Promise<unknown>;
-    act(() => { original = latest!.sendMessage("Confirm acceptance only"); });
+    act(() => {
+      original = latest!.sendMessage("Confirm acceptance only");
+    });
     await flush();
-    const request = mockSendAgentMessage.mock.calls[0][0] as Record<string, unknown>;
+    const request = mockSendAgentMessage.mock.calls[0][0] as Record<
+      string,
+      unknown
+    >;
     const clientTurnId = request.client_turn_id as string;
-    mockFetchAriTurnStatus.mockResolvedValue(canonicalStatus(clientTurnId, "accepted"));
-    await act(async () => { await latest!.reconcileActiveTurns(); });
+    mockFetchAriTurnStatus.mockResolvedValue(
+      canonicalStatus(clientTurnId, "accepted"),
+    );
+    await act(async () => {
+      await latest!.reconcileActiveTurns();
+    });
 
     expect(latest!.activeTurn).toMatchObject({
       clientTurnId,
@@ -342,14 +456,23 @@ describe("#3429 useAgentChat deferred transport behavior", () => {
     const pending = deferred<ReturnType<typeof textResponse>>();
     mockSendAgentMessage.mockImplementationOnce(() => pending.promise);
     let renderer!: Renderer;
-    await act(async () => { renderer = create(<Probe brandId="brand-a" />); });
+    await act(async () => {
+      renderer = create(<Probe brandId="brand-a" />);
+    });
 
     let original!: Promise<unknown>;
-    act(() => { original = latest!.sendMessage("Old brand turn"); });
+    act(() => {
+      original = latest!.sendMessage("Old brand turn");
+    });
     await flush();
-    const request = mockSendAgentMessage.mock.calls[0][0] as Record<string, unknown>;
+    const request = mockSendAgentMessage.mock.calls[0][0] as Record<
+      string,
+      unknown
+    >;
     const clientTurnId = request.client_turn_id as string;
-    await act(async () => { renderer.update(<Probe brandId="brand-b" />); });
+    await act(async () => {
+      renderer.update(<Probe brandId="brand-b" />);
+    });
 
     await act(async () => {
       pending.resolve(textResponse(clientTurnId, "old-brand-conversation"));

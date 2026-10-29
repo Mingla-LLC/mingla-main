@@ -16,9 +16,9 @@ import {
   geminiGenerateContentUrl,
 } from "./geminiModel.ts";
 
-const GEMINI_API_URL = geminiGenerateContentUrl();
 const MAX_MALFORMED_RETRIES = 2;
 const MAX_OUTPUT_TOKENS = 1500;
+const LOCAL_MAX_OUTPUT_TOKENS = 384;
 const TEMPERATURE = 0.3;
 
 export interface GeminiToolDef {
@@ -69,6 +69,9 @@ export interface GeminiToolCall {
 
 export interface GeminiResult {
   textResponse?: string;
+  /** Every function call emitted in provider order. */
+  toolCalls: GeminiToolCall[];
+  /** Compatibility alias for the legacy single-call path. */
   toolCall?: GeminiToolCall;
   usage: GeminiUsage;
   finishReason: string;
@@ -76,7 +79,13 @@ export interface GeminiResult {
 }
 
 export interface GeminiError extends Error {
-  kind: "config" | "http" | "malformed" | "empty" | "schema";
+  kind:
+    | "config"
+    | "http"
+    | "malformed"
+    | "empty"
+    | "schema"
+    | "unsupported_input";
   status?: number;
   detail?: string;
 }
@@ -475,10 +484,37 @@ export async function callGemini(args: {
   systemPrompt: string;
   contents: GeminiContentMessage[];
   tools: GeminiToolDef[];
+  /**
+   * #3355 evaluation-only override. Runtime callers omit this. A candidate is
+   * accepted only when the operator has explicitly listed it in the local
+   * ARI_EVAL_GEMINI_MODEL_ALLOWLIST secret, so a user request can never steer
+   * production traffic to an arbitrary provider model.
+   */
+  evaluationModelId?: string;
 }): Promise<GeminiResult> {
   // Compile before secret lookup or network access so provider-contract drift
   // fails locally, deterministically, and without exposing request data.
   const functionDeclarations = compileGeminiToolDeclarations(args.tools);
+
+  // #3355 local verification lane. It is opt-in, accepts only an uncredentialed
+  // loopback Ollama endpoint, and never becomes a silent production fallback.
+  // Production remains pinned to the isolated Gemini key below.
+  const localModel = localModelConfig();
+  if (localModel) {
+    if (
+      args.evaluationModelId && args.evaluationModelId !== localModel.modelId
+    ) {
+      throw makeError(
+        "config",
+        "The requested evaluation model is not the configured local Ari model.",
+      );
+    }
+    return await callLocalOllama(localModel, {
+      systemPrompt: args.systemPrompt,
+      contents: args.contents,
+      toolDefinitions: args.tools,
+    });
+  }
 
   // GEMINI_API_KEY_ARI is the ONLY accepted secret. No fallbacks — Ari
   // gets its own isolated quota by design. If this key is missing, the
@@ -490,6 +526,20 @@ export async function callGemini(args: {
       "config",
       "GEMINI_API_KEY_ARI is not configured in this Supabase project. Operator must add it via Project Settings → Edge Functions → Secrets.",
     );
+  }
+  let requestUrl = geminiGenerateContentUrl();
+  if (args.evaluationModelId) {
+    const allowed = new Set(
+      (Deno.env.get("ARI_EVAL_GEMINI_MODEL_ALLOWLIST") ?? "")
+        .split(",").map((value) => value.trim()).filter(Boolean),
+    );
+    if (!allowed.has(args.evaluationModelId)) {
+      throw makeError(
+        "config",
+        "Evaluation model is not in ARI_EVAL_GEMINI_MODEL_ALLOWLIST.",
+      );
+    }
+    requestUrl = geminiGenerateContentUrl(args.evaluationModelId);
   }
 
   // issue #3605 — one chokepoint, both shape rules. Every caller of callGemini
@@ -541,7 +591,7 @@ export async function callGemini(args: {
     attempt++;
 
     const _t0 = Date.now();
-    const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+    const response = await fetch(`${requestUrl}?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
@@ -598,7 +648,7 @@ export async function callGemini(args: {
 
     // Successful candidate — extract either a tool call or text
     const parts = candidate?.content?.parts ?? [];
-    let toolCall: GeminiToolCall | undefined;
+    const toolCalls: GeminiToolCall[] = [];
     let textParts: string[] = [];
     for (const part of parts) {
       if ("functionCall" in part && part.functionCall) {
@@ -611,16 +661,17 @@ export async function callGemini(args: {
           : typeof part.functionCall.thoughtSignature === "string"
           ? part.functionCall.thoughtSignature
           : undefined;
-        toolCall = {
+        toolCalls.push({
           name: part.functionCall.name,
           args: (part.functionCall.args ?? {}) as Record<string, unknown>,
           ...(signature ? { thoughtSignature: signature } : {}),
-        };
+        });
       } else if ("text" in part && typeof part.text === "string") {
         textParts.push(part.text);
       }
     }
 
+    const toolCall = toolCalls.at(-1);
     if (!toolCall && textParts.length === 0) {
       // Empty response — final attempt
       if (attempt <= MAX_MALFORMED_RETRIES) continue;
@@ -631,6 +682,7 @@ export async function callGemini(args: {
 
     return {
       textResponse: textParts.length > 0 ? textParts.join("") : undefined,
+      toolCalls,
       toolCall,
       usage: lastUsage,
       finishReason: lastFinishReason,
@@ -673,4 +725,208 @@ interface GeminiResponse {
   };
 }
 
-export const ARI_MODEL_VERSION = GEMINI_MODEL_ID;
+interface OllamaToolCall {
+  function?: {
+    name?: string;
+    arguments?: Record<string, unknown>;
+  };
+}
+
+interface OllamaMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  images?: string[];
+  tool_name?: string;
+  tool_calls?: OllamaToolCall[];
+}
+
+interface OllamaResponse {
+  message?: {
+    content?: string;
+    tool_calls?: OllamaToolCall[];
+  };
+  done_reason?: string;
+  prompt_eval_count?: number;
+  eval_count?: number;
+}
+
+function localModelConfig(): { baseUrl: string; modelId: string } | null {
+  if (Deno.env.get("ARI_LOCAL_MODEL_ENABLED") !== "true") return null;
+
+  const rawBaseUrl = Deno.env.get("ARI_LOCAL_MODEL_BASE_URL") ??
+    "http://host.docker.internal:11434";
+  let parsed: URL;
+  try {
+    parsed = new URL(rawBaseUrl);
+  } catch {
+    throw makeError("config", "ARI_LOCAL_MODEL_BASE_URL is invalid.");
+  }
+  const allowedHosts = new Set([
+    "host.docker.internal",
+    "127.0.0.1",
+    "localhost",
+  ]);
+  if (
+    parsed.protocol !== "http:" || !allowedHosts.has(parsed.hostname) ||
+    parsed.username || parsed.password || parsed.search || parsed.hash ||
+    (parsed.port && parsed.port !== "11434")
+  ) {
+    throw makeError(
+      "config",
+      "Ari's local model endpoint must be an uncredentialed loopback Ollama URL on port 11434.",
+    );
+  }
+  const modelId = (Deno.env.get("ARI_LOCAL_MODEL_ID") ?? "qwen3:4b-instruct")
+    .trim();
+  if (!/^[A-Za-z0-9._:-]{1,80}$/.test(modelId)) {
+    throw makeError("config", "ARI_LOCAL_MODEL_ID is invalid.");
+  }
+  return { baseUrl: parsed.origin, modelId };
+}
+
+function toOllamaMessages(
+  systemPrompt: string,
+  contents: GeminiContentMessage[],
+): OllamaMessage[] {
+  const unsupportedInlineData = contents.some((content) =>
+    content.parts.some((part) =>
+      "inlineData" in part &&
+      !part.inlineData.mimeType.toLowerCase().startsWith("image/")
+    )
+  );
+  if (unsupportedInlineData) {
+    // Ollama's chat wire format accepts image bytes, but not audio, video, or
+    // arbitrary document bytes. Silently dropping those parts would let Ari
+    // answer as though it had inspected evidence it never received.
+    throw makeError(
+      "unsupported_input",
+      "Ari’s current local test model can’t read this attachment type. The upload is safe and still here; use the production multimodal model or attach an image or text file for this local test.",
+    );
+  }
+  const messages: OllamaMessage[] = [{
+    role: "system",
+    content: systemPrompt,
+  }];
+
+  for (const content of contents) {
+    const text = content.parts.flatMap((part) =>
+      "text" in part ? [part.text] : []
+    ).join("\n").trim();
+    const images = content.parts.flatMap((part) =>
+      "inlineData" in part && part.inlineData.mimeType.startsWith("image/")
+        ? [part.inlineData.data]
+        : []
+    );
+    const toolCalls = content.parts.flatMap((part) =>
+      "functionCall" in part
+        ? [{
+          function: {
+            name: part.functionCall.name,
+            arguments: part.functionCall.args,
+          },
+        }]
+        : []
+    );
+    const toolResponses = content.parts.flatMap((part) =>
+      "functionResponse" in part
+        ? [{
+          role: "tool" as const,
+          content: JSON.stringify(part.functionResponse.response),
+          tool_name: part.functionResponse.name,
+        }]
+        : []
+    );
+
+    if (toolCalls.length > 0 || (content.role === "model" && text)) {
+      messages.push({
+        role: "assistant",
+        content: text,
+        ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+      });
+    } else if (content.role === "user" && (text || images.length > 0)) {
+      messages.push({
+        role: "user",
+        content: text,
+        ...(images.length > 0 ? { images } : {}),
+      });
+    }
+    messages.push(...toolResponses);
+  }
+  return messages;
+}
+
+async function callLocalOllama(
+  config: { baseUrl: string; modelId: string },
+  args: {
+    systemPrompt: string;
+    contents: GeminiContentMessage[];
+    toolDefinitions: GeminiToolDef[];
+  },
+): Promise<GeminiResult> {
+  const response = await fetch(`${config.baseUrl}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: config.modelId,
+      stream: false,
+      // Qwen3's smaller local variants default to a hidden reasoning pass.
+      // The Ari loop already owns explicit planning and tool observations, so
+      // disabling that pass preserves the worker budget without weakening the
+      // production Gemini lane.
+      think: false,
+      keep_alive: "1h",
+      messages: toOllamaMessages(args.systemPrompt, args.contents),
+      tools: args.toolDefinitions.map((definition) => ({
+        type: "function",
+        function: {
+          name: definition.name,
+          description: definition.description,
+          parameters: definition.parameters,
+        },
+      })),
+      options: {
+        temperature: TEMPERATURE,
+        num_predict: LOCAL_MAX_OUTPUT_TOKENS,
+      },
+    }),
+  });
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => "")).slice(0, 500);
+    throw makeError("http", `Local Ari model HTTP ${response.status}`, {
+      status: response.status,
+      detail,
+    });
+  }
+  const payload = await response.json() as OllamaResponse;
+  const toolCalls = (payload.message?.tool_calls ?? []).flatMap((call) => {
+    const name = call.function?.name;
+    if (!name) return [];
+    return [{
+      name,
+      args: call.function?.arguments ?? {},
+    }];
+  });
+  const textResponse = payload.message?.content?.trim() || undefined;
+  if (!textResponse && toolCalls.length === 0) {
+    throw makeError("empty", "The local Ari model returned no usable content.");
+  }
+  const promptTokens = payload.prompt_eval_count ?? 0;
+  const completionTokens = payload.eval_count ?? 0;
+  return {
+    textResponse,
+    toolCalls,
+    toolCall: toolCalls.at(-1),
+    usage: {
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: promptTokens + completionTokens,
+    },
+    finishReason: payload.done_reason ?? "stop",
+    attemptCount: 1,
+  };
+}
+
+export const ARI_MODEL_VERSION = Deno.env.get("ARI_LOCAL_MODEL_ENABLED") ===
+    "true"
+  ? `local:${Deno.env.get("ARI_LOCAL_MODEL_ID") ?? "qwen3:4b-instruct"}`
+  : GEMINI_MODEL_ID;

@@ -194,6 +194,54 @@ describe("#3355 Ari production rendition runtime", () => {
     expect(text).toContain("Accessed");
     expect(text).toContain("Evidence");
     expect(text).toContain("Ari is assembling verified details");
+    expect(text).toContain("Open source");
+    expect(text).not.toContain("https://example.com/source/");
+    act(() => renderer!.unmount());
+  });
+
+  it("renders cited URLs as semantic links without exposing raw tracking text", () => {
+    const parsed = parseAriRendition({
+      schema_version: 2,
+      rendition_id: "research:clean-link",
+      kind: "research",
+      title: "Verified source",
+      body: "Open the public source for the complete evidence.",
+      state: "ready",
+      blocks: [
+        {
+          type: "sources",
+          version: 1,
+          id: "sources",
+          items: [
+            {
+              id: "official",
+              label: "Lantern Room events",
+              publisher: "lanternroom.com",
+              url: "https://lanternroom.com/events",
+              accessed_at: "2026-10-29T18:00:00.000Z",
+            },
+          ],
+        },
+      ],
+    });
+    expect(parsed).not.toBeNull();
+    let renderer: Renderer;
+    act(() => {
+      renderer = create(<AriRenditionCard rendition={parsed!} />);
+    });
+    const text = allText(renderer!.toJSON());
+    expect(text).toContain("Open source ↗");
+    expect(text).not.toContain("https://lanternroom.com/events");
+    const links = renderer!.root.findAll(
+      (node) => node.props.accessibilityRole === "link",
+    );
+    // react-test-renderer exposes both the Pressable composite and its native
+    // host with the same accessibility props. Assert one semantic label rather
+    // than coupling the contract to that renderer implementation detail.
+    expect(links.length).toBeGreaterThanOrEqual(1);
+    expect(new Set(links.map((link) => link.props.accessibilityLabel))).toEqual(
+      new Set(["Open Lantern Room events from lanternroom.com"]),
+    );
     act(() => renderer!.unmount());
   });
 
@@ -269,24 +317,122 @@ describe("#3355 Ari production rendition runtime", () => {
     };
     const parsed = parseAriRendition(withFutureBlock);
     expect(parsed?.schema_version).toBe(2);
-    if (!parsed || parsed.schema_version !== 2) throw new Error("v2 rendition missing");
+    if (!parsed || parsed.schema_version !== 2)
+      throw new Error("v2 rendition missing");
     expect(parsed.blocks).toEqual(safe.blocks);
     expect(parsed.body).toBe(safe.body);
+  });
+
+  it("removes internal diagnostic slugs and redundant Done labels from persisted threads", () => {
+    const parsed = parseAriRendition({
+      schema_version: 2,
+      rendition_id: "legacy:research-failure",
+      kind: "plan",
+      title: "The plan is ready to resume",
+      body: "The verified work is preserved.",
+      state: "error",
+      graphic: "research",
+      blocks: [
+        {
+          type: "timeline",
+          version: 1,
+          id: "steps",
+          items: [
+            {
+              id: "read-brand",
+              label: "Read brand information",
+              detail: "Completed in 120 ms",
+              state: "done",
+            },
+            {
+              id: "research",
+              label: "Search public sources",
+              detail: "RESEARCH_NOT_CONFIGURED (TOOL_FAILED)",
+              state: "active",
+            },
+          ],
+        },
+        {
+          type: "callout",
+          version: 1,
+          id: "blocked",
+          tone: "warning",
+          title: "What needs attention",
+          body: "Search public sources: RESEARCH_NOT_CONFIGURED",
+        },
+      ],
+    });
+    expect(parsed).not.toBeNull();
+    let renderer: Renderer;
+    act(() => {
+      renderer = create(<AriRenditionCard rendition={parsed!} />);
+    });
+    const rendered = allText(renderer!.toJSON());
+    expect(rendered).toContain("Public research is temporarily unavailable");
+    expect(rendered).not.toMatch(/RESEARCH_NOT_CONFIGURED|TOOL_FAILED/);
+    expect(rendered).not.toMatch(/\bDone\b/);
+    expect(rendered).not.toContain("6 sources checked");
+    expect(rendered).toContain("No public source verified");
+    expect(rendered).toContain("Needs attention");
+    expect(rendered).toContain("Completed in 120 ms");
+    act(() => renderer!.unmount());
+  });
+
+  it("never promises sources below when a ready research plan has none", () => {
+    const parsed = parseAriRendition({
+      schema_version: 2,
+      rendition_id: "run:no-public-source",
+      kind: "plan",
+      title: "Launch plan ready",
+      body: "The plan uses saved Mingla information.",
+      state: "ready",
+      graphic: "research",
+      blocks: [
+        {
+          type: "timeline",
+          version: 1,
+          id: "steps",
+          items: [
+            {
+              id: "research",
+              label: "Verify the public presence",
+              detail: "No official public source was verified.",
+              state: "active",
+            },
+          ],
+        },
+      ],
+    });
+    let renderer: Renderer;
+    act(() => {
+      renderer = create(<AriRenditionCard rendition={parsed!} />);
+    });
+    const rendered = allText(renderer!.toJSON());
+    expect(rendered).toContain("No public source verified");
+    expect(rendered).not.toContain("Sources and freshness appear below");
+    act(() => renderer!.unmount());
   });
 
   it("renders the complete generic block vocabulary without fixture allowlisting", () => {
     const renderedTypes = new Set(
       ARI_RENDITION_FIXTURES.flatMap((fixture) =>
-        buildAriRenditionExample(fixture).rendition.blocks.map((block) => block.type)),
+        buildAriRenditionExample(fixture).rendition.blocks.map(
+          (block) => block.type,
+        ),
+      ),
     );
     expect(renderedTypes).toEqual(new Set(ARI_RENDITION_BLOCK_TYPES));
 
-    const future = buildAriRenditionExample(ARI_RENDITION_FIXTURES[0]).rendition;
-    expect(parseAriRendition({
-      ...future,
-      rendition_id: "server:future-capability-2040",
-      kind: "future-capability",
-    })).not.toBeNull();
+    const future = buildAriRenditionExample(
+      ARI_RENDITION_FIXTURES[0],
+    ).rendition;
+    expect(
+      parseAriRendition({
+        ...future,
+        rendition_id: "server:future-capability-2040",
+        kind: "future-capability",
+      }),
+    ).not.toBeNull();
   });
 
   it("keeps typed destructive confirmation locked until the exact phrase", () => {
@@ -294,16 +440,20 @@ describe("#3355 Ari production rendition runtime", () => {
       (item) => item.id === "high-risk",
     )!;
     const rendition = buildAriRenditionExample(fixture).rendition;
-    const inputIndex = rendition.blocks.findIndex((block) => block.type === "input");
+    const inputIndex = rendition.blocks.findIndex(
+      (block) => block.type === "input",
+    );
     const inputBlock = rendition.blocks[inputIndex];
     expect(inputBlock?.type).toBe("input");
-    if (!inputBlock || inputBlock.type !== "input") throw new Error("input block missing");
+    if (!inputBlock || inputBlock.type !== "input")
+      throw new Error("input block missing");
     const field = { ...inputBlock.field, value: "" };
     const confirmationPhrase = field.confirmationPhrase!;
     const interactiveRendition = {
       ...rendition,
       blocks: rendition.blocks.map((block, index) =>
-        index === inputIndex ? { ...inputBlock, field } : block),
+        index === inputIndex ? { ...inputBlock, field } : block,
+      ),
     };
     const interactions: AriRenditionInteraction[] = [];
     let renderer: Renderer;

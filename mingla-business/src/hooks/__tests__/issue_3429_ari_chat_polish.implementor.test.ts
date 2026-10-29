@@ -19,7 +19,10 @@ jest.mock("../../components/ui/useShareNetworkState", () => ({
 }));
 
 import { reconcileAgentDeliveryMessages } from "../useAgentChat";
-import { ariFileType, normalizePickedAriFile } from "../../services/ariAttachmentService";
+import {
+  ariFileType,
+  normalizePickedAriFile,
+} from "../../services/ariAttachmentService";
 
 const SRC = path.resolve(__dirname, "../..");
 
@@ -44,36 +47,66 @@ describe("#3429 one owner and multi-file contract", () => {
     const secondLocal = message("local-second", "Plan this", secondId);
     const firstServer = message("server-first", "Plan this", firstId);
 
-    expect(reconcileAgentDeliveryMessages(
-      [firstServer],
-      [firstLocal, secondLocal],
-      [],
-      true,
-    )).toEqual([firstServer, secondLocal]);
+    expect(
+      reconcileAgentDeliveryMessages(
+        [firstServer],
+        [firstLocal, secondLocal],
+        [],
+        true,
+      ),
+    ).toEqual([firstServer, secondLocal]);
   });
 
-  it("accepts only the approved image/document types and preserves file context", () => {
-    expect([
-      "image/jpeg",
-      "image/png",
-      "image/webp",
-      "image/heic",
-      "image/heif",
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "text/plain",
-      "text/csv",
-    ].map(ariFileType)).toEqual([
-      "image", "image", "image", "image", "image",
-      "pdf", "docx", "text", "csv",
+  it("accepts approved images, documents, voice notes, and videos and preserves file context", () => {
+    expect(
+      [
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/heic",
+        "image/heif",
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/plain",
+        "text/csv",
+        "audio/mpeg",
+        "audio/mp4",
+        "audio/wav",
+        "audio/webm",
+        "video/mp4",
+        "video/quicktime",
+        "video/webm",
+      ].map(ariFileType),
+    ).toEqual([
+      "image",
+      "image",
+      "image",
+      "image",
+      "image",
+      "pdf",
+      "docx",
+      "text",
+      "csv",
+      "audio",
+      "audio",
+      "audio",
+      "audio",
+      "video",
+      "video",
+      "video",
     ]);
     expect(ariFileType("image/gif")).toBeNull();
-    expect(normalizePickedAriFile({
-      uri: "file:///fixture/report.csv",
-      name: "report.csv",
-      mimeType: null,
-      size: 42,
-    }, "local-3429")).toMatchObject({
+    expect(
+      normalizePickedAriFile(
+        {
+          uri: "file:///fixture/report.csv",
+          name: "report.csv",
+          mimeType: null,
+          size: 42,
+        },
+        "local-3429",
+      ),
+    ).toMatchObject({
       localId: "local-3429",
       name: "report.csv",
       mimeType: "text/csv",
@@ -81,16 +114,49 @@ describe("#3429 one owner and multi-file contract", () => {
       sizeBytes: 42,
       state: "preparing",
     });
+    expect(
+      normalizePickedAriFile(
+        {
+          uri: "file:///fixture/briefing.m4a",
+          name: "briefing.m4a",
+          mimeType: null,
+          size: 84,
+        },
+        "local-voice",
+      ),
+    ).toMatchObject({
+      mimeType: "audio/mp4",
+      fileType: "audio",
+    });
+    expect(
+      normalizePickedAriFile(
+        {
+          uri: "file:///fixture/walkthrough.mp4",
+          name: "walkthrough.mp4",
+          mimeType: null,
+          size: 96,
+        },
+        "local-video",
+      ),
+    ).toMatchObject({
+      mimeType: "video/mp4",
+      fileType: "video",
+    });
   });
 });
 
 describe("#3429 approved cross-surface polish remains shared", () => {
-  const read = (relative: string): string => fs.readFileSync(path.join(SRC, relative), "utf8");
+  const read = (relative: string): string =>
+    fs.readFileSync(path.join(SRC, relative), "utf8");
 
   it("uses the shared main/Website thread owner, activity, attachment tray, and composer", () => {
     const screen = read("screens/ari/AriChatScreen.tsx");
-    expect(screen).toContain('const surface = websiteSplit ? "website" as const : "main" as const');
-    expect(screen).toContain("useAgentChat(null, selectedBrandId, persistConversationSelection)");
+    expect(screen).toMatch(
+      /const surface = websiteSplit \? \(?"website" as const\)? : \(?"main" as const\)?/,
+    );
+    expect(screen).toMatch(
+      /useAgentChat\(\s*null,\s*selectedBrandId,\s*persistConversationSelection,?\s*\)/,
+    );
     expect(screen).toContain("chat.setSurface(surface)");
     expect(screen).toContain("<MessageList");
     expect(screen).toContain("<AriActivity");
@@ -119,7 +185,9 @@ describe("#3429 approved cross-surface polish remains shared", () => {
   });
 
   it("keeps contextual quick replies while removing only screen-level samples", () => {
-    expect(read("components/ari/MessageList.tsx")).toContain("<QuickReplyChips");
+    expect(read("components/ari/MessageList.tsx")).toContain(
+      "<QuickReplyChips",
+    );
     const screen = read("screens/ari/AriChatScreen.tsx");
     expect(screen).not.toContain("chips={[");
     expect(screen).not.toContain("Try asking Ari");
@@ -139,7 +207,8 @@ describe("#3429 approved cross-surface polish remains shared", () => {
       "Ari is working on the approved action…",
       "Ari is retrying…",
       "Ari is finishing up…",
-    ]) expect(activity).toContain(copy);
+    ])
+      expect(activity).toContain(copy);
     expect(activity).toContain("15_000");
   });
 });

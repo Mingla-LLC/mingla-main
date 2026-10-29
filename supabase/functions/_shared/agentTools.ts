@@ -26,6 +26,11 @@ import {
 } from "./agentToolHelpers.ts";
 import { secureAgentTools } from "./agentToolAuthorization.ts";
 import { SITE_AGENT_READ_ONLY, SITE_AGENT_TOOLS } from "./agentSiteTools.ts";
+import {
+  ARI_10X_AGENT_STATE,
+  ARI_10X_READ_ONLY,
+  ARI_10X_TOOLS,
+} from "./agentAri10xTools.ts";
 
 export { ToolError } from "./agentToolHelpers.ts";
 
@@ -332,8 +337,65 @@ const createEvent: AgentToolDefinition = {
       music_genres: { type: "array", items: { type: "string" } },
       tickets: {
         type: "array",
-        items: { type: "object" },
-        description: "Optional canonical ticket draft rows",
+        description:
+          "Optional canonical ticket draft rows. Preserve an explicitly requested guest limit: for example, 'for 20 guests' should create a limited tier with capacity 20 rather than silently dropping the number.",
+        items: {
+          type: "object",
+          required: [
+            "id",
+            "name",
+            "capacity",
+            "isFree",
+            "isUnlimited",
+            "visibility",
+          ],
+          properties: {
+            id: {
+              type: "string",
+              description:
+                "Stable draft-only identifier, such as ari-general-admission",
+            },
+            name: { type: "string", description: "Ticket or guest tier name" },
+            description: { type: "string", nullable: true },
+            priceGbp: {
+              type: "number",
+              nullable: true,
+              description:
+                "Major-unit price; null for a free tier. The canonical currency is supplied separately.",
+            },
+            currency: {
+              type: "string",
+              nullable: true,
+              description: "ISO 4217 currency, or null to inherit the event",
+            },
+            capacity: {
+              type: "integer",
+              minimum: 1,
+              nullable: true,
+              description:
+                "Maximum guests for this tier. Must carry a requested guest limit exactly.",
+            },
+            isFree: { type: "boolean" },
+            isUnlimited: { type: "boolean" },
+            visibility: {
+              type: "string",
+              enum: ["public", "hidden", "disabled"],
+            },
+            displayOrder: { type: "integer", minimum: 0 },
+            approvalRequired: { type: "boolean" },
+            passwordProtected: { type: "boolean" },
+            password: { type: "string", nullable: true },
+            waitlistEnabled: { type: "boolean" },
+            minPurchaseQty: { type: "integer", minimum: 1 },
+            maxPurchaseQty: { type: "integer", minimum: 1, nullable: true },
+            allowTransfers: { type: "boolean" },
+            availableAt: {
+              type: "string",
+              enum: ["online", "door", "both"],
+            },
+          },
+          additionalProperties: false,
+        },
       },
     },
   },
@@ -1604,6 +1666,7 @@ export const AGENT_TOOLS: AgentTool[] = secureAgentTools([
   manageBrandDiscoveryCurrency,
   ...DOMAIN_TOOLS,
   ...SITE_AGENT_TOOLS,
+  ...ARI_10X_TOOLS,
 ]);
 
 export function findTool(name: string): AgentTool | undefined {
@@ -1617,7 +1680,13 @@ export const READ_ONLY_TOOL_NAMES = new Set<string>([
   "list_events",
   ...DOMAIN_READ_ONLY,
   ...SITE_AGENT_READ_ONLY,
+  ...ARI_10X_READ_ONLY,
 ]);
+
+/** Reversible Ari-owned state that may advance inside the bounded loop. */
+export function isAgentStateToolCall(toolName: string): boolean {
+  return ARI_10X_AGENT_STATE.has(toolName);
+}
 
 /** Server-owned call classification for tools with both read and write actions. */
 export function isReadOnlyAgentToolCall(

@@ -1,6 +1,6 @@
 {
-  "UNSUPPORTED_TYPE": "That file isn’t supported. Add a JPG, PNG, WebP, HEIC, PDF, DOCX, TXT, or CSV file up to 10 MB.",
-  "MIME_MISMATCH": "That file isn’t supported. Add a JPG, PNG, WebP, HEIC, PDF, DOCX, TXT, or CSV file up to 10 MB.",
+  "UNSUPPORTED_TYPE": "That file isn’t supported. Add an image, PDF, DOCX, TXT, CSV, audio, or video file up to 10 MB.",
+  "MIME_MISMATCH": "That file isn’t supported. Add an image, PDF, DOCX, TXT, CSV, audio, or video file up to 10 MB.",
   "FILE_TOO_LARGE": "That file is larger than 10 MB. Choose a smaller file.",
   "DUPLICATE_FILE": "{filename} is already attached.",
   "CONTEXT_LIMIT_EXCEEDED": "Ari couldn’t use this file because it contains too much information for one message. Remove it and attach a shorter version.",

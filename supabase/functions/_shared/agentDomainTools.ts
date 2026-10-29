@@ -5899,11 +5899,18 @@ const inviteBrandMember = writeTool(
     role: {
       type: "string",
       enum: [
+        "brand_owner",
         "brand_admin",
         "event_manager",
         "finance_manager",
         "marketing_manager",
       ],
+    },
+    outgoing_disposition: {
+      type: "string",
+      enum: ["leave", "stay"],
+      description:
+        "For a brand-owner handoff only: whether the current owner leaves the team after acceptance or stays as an admin.",
     },
   },
   ["brand_id", "email", "name", "role"],
@@ -5921,6 +5928,13 @@ const inviteBrandMember = writeTool(
       invitee_email: args.email,
       invitee_name: name,
       role: args.role,
+      ...(args.role === "brand_owner"
+        ? {
+          outgoing_disposition: args.outgoing_disposition === "stay"
+            ? "stay"
+            : "leave",
+        }
+        : {}),
     });
   },
 );
@@ -7996,7 +8010,19 @@ const getOperatorSnapshot = writeTool(
     if (!brandId && brands.length === 1) brandId = brands[0].id;
     let offerings: unknown[] = [];
     let canCollect: unknown = null;
+    let brandProfile: Record<string, unknown> | null = null;
     if (brandId) {
+      const { data: profile, error: profileError } = await client
+        .from("brands")
+        .select(
+          "id,name,slug,description,kind,address,city,country_code,default_currency,profile_photo_url,cover_media_url,contact_email,contact_phone,social_links,custom_links,theme_color,theme_font,theme_animation,enquiries_enabled,payment_provider,payment_country,payout_country",
+        )
+        .eq("id", brandId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (profileError) {
+        throw new ToolError("RPC_FAILED", profileError.message);
+      }
       const { data: ev } = await client
         .from("events")
         .select("id, title, status, event_type")
@@ -8008,9 +8034,53 @@ const getOperatorSnapshot = writeTool(
       canCollect = await callRpc(client, "pg_brand_can_collect", {
         p_brand_id: brandId,
       }).catch(() => null);
+      if (profile) {
+        const missing = [
+          ["description", profile.description],
+          ["profile photo", profile.profile_photo_url],
+          ["cover", profile.cover_media_url],
+          ["phone number", profile.contact_phone],
+          [
+            "social links",
+            profile.social_links &&
+            typeof profile.social_links === "object" &&
+            Object.keys(profile.social_links).length > 0,
+          ],
+        ].flatMap(([label, value]) => value ? [] : [label]);
+        brandProfile = {
+          id: profile.id,
+          name: profile.name,
+          slug: profile.slug,
+          description: profile.description,
+          kind: profile.kind,
+          address: profile.address,
+          city: profile.city,
+          country_code: profile.country_code,
+          default_currency: profile.default_currency,
+          social_links: profile.social_links ?? {},
+          custom_links: profile.custom_links ?? [],
+          theme: {
+            color: profile.theme_color,
+            font: profile.theme_font,
+            animation: profile.theme_animation,
+          },
+          enquiries_enabled: profile.enquiries_enabled === true,
+          payment_provider: profile.payment_provider,
+          payment_country: profile.payment_country ?? profile.payout_country,
+          readiness: {
+            profile_photo: Boolean(profile.profile_photo_url),
+            cover: Boolean(profile.cover_media_url),
+            contact_email: Boolean(profile.contact_email),
+            contact_phone: Boolean(profile.contact_phone),
+            social_links: !missing.includes("social links"),
+          },
+          genuinely_missing: missing,
+        };
+      }
     }
     return {
       brands,
+      selected_brand: brandProfile,
       offerings,
       payout_ready: canCollect === true ||
         (canCollect as any)?.can_collect === true,

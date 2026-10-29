@@ -49,9 +49,15 @@ import {
   updateAriRequest,
 } from "../_shared/agentReliabilityHttp.ts";
 import {
+  buildGenericProposalRendition,
   buildToolReceiptRendition,
   parseAriUiCapabilities,
 } from "../_shared/ariRendition.ts";
+import {
+  continueAfterApprovedAction,
+  type PostApprovalContinuation,
+} from "../_shared/agentPostApproval.ts";
+import { sanitizeAriUserFacingDiagnostics } from "../_shared/agentSanitization.ts";
 
 interface RequestBody {
   action: "confirm" | "cancel";
@@ -67,6 +73,7 @@ type Response_ =
     tool_name: string;
     result: unknown;
     followup_text?: string;
+    next_pending_action_id?: string;
     task_state_revision?: number;
   }
   | { kind: "cancelled"; pending_action_id: string }
@@ -611,6 +618,7 @@ async function handleConfirmAction(args: {
   } = args;
 
   let conversationTask: { row: ConversationTaskRow; state: TaskStateV1 } | null;
+  let conversationBrandName: string | null = null;
   try {
     conversationTask = await loadConversationTask(
       userClient,
@@ -622,10 +630,10 @@ async function handleConfirmAction(args: {
         userClient,
         userId,
       );
-      requireAccessibleAgentBrand(
+      conversationBrandName = requireAccessibleAgentBrand(
         accessibleBrands,
         conversationTask.row.brand_id,
-      );
+      ).name;
       if (
         conversationTask.state.active_task &&
         conversationTask.state.active_task.brand_id !==
@@ -1263,10 +1271,75 @@ async function handleConfirmAction(args: {
     return errorResponse(202, decision.code, "reconciliation required");
   }
 
-  const followupText = buildFollowupText(tool.name, result);
+  let continuation: PostApprovalContinuation | null = null;
+  const deterministicEventTaskFinished = tool.name === "create_event" &&
+    conversationTask?.state.active_task?.intent === "create_event";
+  if (pending.conversation_id && !deterministicEventTaskFinished) {
+    const { data: loopEnabled, error: loopFlagError } = await userClient.rpc(
+      "ari_agent_loop_enabled",
+    );
+    if (!loopFlagError && loopEnabled === true) {
+      try {
+        continuation = await continueAfterApprovedAction({
+          client: userClient,
+          serviceClient: pendingStateClient,
+          userId,
+          conversationId: pending.conversation_id,
+          toolName: tool.name,
+          result,
+        });
+        if (continuation?.kind === "proposal") {
+          const nextTool = findTool(continuation.toolName);
+          if (!nextTool) {
+            continuation = null;
+          } else {
+            continuation.toolArgs = canonicalizeAgentProposalArgs(
+              nextTool.name,
+              continuation.toolArgs,
+            );
+            await authorizeAgentTool(
+              nextTool,
+              continuation.toolArgs,
+              userClient,
+              userId,
+            );
+          }
+        }
+      } catch (error) {
+        console.error(JSON.stringify({
+          event: "ari_post_approval_continuation_failed",
+          tool_name: tool.name,
+          error_code: error instanceof ToolError ? error.code : "UNAVAILABLE",
+        }));
+        continuation = null;
+      }
+    }
+  }
+  const continuationHasScopeFailure =
+    continuation?.observations.some((item) =>
+      item.error && [
+        "BRAND_ACCESS_DENIED",
+        "TENANT_SCOPE_UNAVAILABLE",
+        "PERMISSION_DENIED",
+      ].includes(item.error.code)
+    ) ?? false;
+  // The structured event receipt is itself the canonical completion proof.
+  // A weak continuation model must not append an unrelated research or scope
+  // error after a successful event write; a genuine next protected proposal
+  // is still persisted separately below.
+  const rawFollowupText = tool.name === "create_event"
+    ? undefined
+    : continuationHasScopeFailure
+    ? buildFollowupText(tool.name, result)
+    : continuation?.text ?? buildFollowupText(tool.name, result);
+  const followupText = rawFollowupText
+    ? sanitizeAriUserFacingDiagnostics(rawFollowupText)
+    : undefined;
   const rendition = buildToolReceiptRendition({
     toolName: tool.name,
     result,
+    toolArgs: finalArgs,
+    brandName: conversationBrandName,
     pendingActionId: pending.id,
     capabilities: ariUiCapabilities,
     completedAt: new Date().toISOString(),
@@ -1326,12 +1399,75 @@ async function handleConfirmAction(args: {
     );
   }
 
+  let nextPendingActionId: string | undefined;
+  if (continuation?.kind === "proposal" && pending.conversation_id) {
+    nextPendingActionId = crypto.randomUUID();
+    const nextAssistantMessageId = crypto.randomUUID();
+    const { error: nextPendingError } = await pendingStateClient.from(
+      "agent_pending_actions",
+    ).insert({
+      id: nextPendingActionId,
+      user_id: userId,
+      conversation_id: pending.conversation_id,
+      related_brand_id: pending.related_brand_id,
+      source: "ari_chat",
+      tool_name: continuation.toolName,
+      tool_args: continuation.toolArgs,
+      status: "pending",
+      server_proposed_at: new Date().toISOString(),
+    });
+    if (!nextPendingError) {
+      const nextRendition = buildGenericProposalRendition({
+        toolName: continuation.toolName,
+        toolArgs: continuation.toolArgs,
+        pendingActionId: nextPendingActionId,
+        capabilities: ariUiCapabilities,
+      });
+      const { error: nextMessageError } = await pendingStateClient.from(
+        "agent_messages",
+      ).insert({
+        id: nextAssistantMessageId,
+        conversation_id: pending.conversation_id,
+        user_id: userId,
+        role: "assistant",
+        content: {
+          text: "",
+          ...(nextRendition
+            ? { structured: { rendition: nextRendition } }
+            : {}),
+        },
+        tool_calls: {
+          tool_name: continuation.toolName,
+          args: continuation.toolArgs,
+          pending_action_id: nextPendingActionId,
+        },
+        prompt_version: TENANT_CONTEXT_VERSION,
+        model_version: ARI_MODEL_VERSION,
+      });
+      if (nextMessageError) {
+        await pendingStateClient.from("agent_pending_actions")
+          .update({
+            status: "cancelled",
+            failure_reason: "CONTINUATION_MESSAGE_FAILED",
+          })
+          .eq("id", nextPendingActionId)
+          .eq("status", "pending");
+        nextPendingActionId = undefined;
+      }
+    } else {
+      nextPendingActionId = undefined;
+    }
+  }
+
   return jsonResponse(200, {
     kind: "executed",
     pending_action_id: pending.id,
     tool_name: tool.name,
     result,
     followup_text: followupText,
+    ...(nextPendingActionId
+      ? { next_pending_action_id: nextPendingActionId }
+      : {}),
     ...(nextTaskRevision !== undefined
       ? { task_state_revision: nextTaskRevision }
       : {}),

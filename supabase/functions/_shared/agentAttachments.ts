@@ -43,10 +43,26 @@ export const ARI_ATTACHMENT_MIMES = Object.freeze(
     "text/plain",
     "text/csv",
     "application/csv",
+    "audio/mpeg",
+    "audio/mp4",
+    "audio/x-m4a",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/webm",
+    "video/mp4",
+    "video/quicktime",
+    "video/webm",
   ] as const,
 );
 
-export type AriAttachmentFileType = "image" | "pdf" | "docx" | "text" | "csv";
+export type AriAttachmentFileType =
+  | "image"
+  | "pdf"
+  | "docx"
+  | "text"
+  | "csv"
+  | "audio"
+  | "video";
 export type AriAttachmentFailureCode =
   | "UNSUPPORTED_TYPE"
   | "FILE_TOO_LARGE"
@@ -180,6 +196,93 @@ export function fileTypeForDeclaredMime(
   }
   if (mime === "text/plain") return "text";
   if (["text/csv", "application/csv"].includes(mime)) return "csv";
+  if (
+    [
+      "audio/mpeg",
+      "audio/mp4",
+      "audio/x-m4a",
+      "audio/wav",
+      "audio/x-wav",
+      "audio/webm",
+    ].includes(mime)
+  ) return "audio";
+  if (["video/mp4", "video/quicktime", "video/webm"].includes(mime)) {
+    return "video";
+  }
+  return null;
+}
+
+function asciiAt(bytes: Uint8Array, offset: number, length: number): string {
+  if (offset < 0 || offset + length > bytes.length) return "";
+  return String.fromCharCode(...bytes.slice(offset, offset + length));
+}
+
+/**
+ * #3355 media verification. Audio and video are never decoded in Edge; the
+ * bounded, private bytes are projected to the model only after their container
+ * signature agrees with the declared media family. ISO-BMFF and WebM may carry
+ * audio or video, so their declared family is retained after the container is
+ * proved. This blocks renamed executables while preserving common voice-note
+ * and short-video formats.
+ */
+export function detectAriMediaMime(
+  bytes: Uint8Array,
+  declaredMimeValue: string,
+): { mime: string; fileType: "audio" | "video"; container: string } | null {
+  const declaredMime = normalizedDeclaredMime(declaredMimeValue);
+  const declaredType = fileTypeForDeclaredMime(declaredMime);
+  if (declaredType !== "audio" && declaredType !== "video") return null;
+
+  if (
+    startsWithBytes(bytes, [0x49, 0x44, 0x33]) ||
+    (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0)
+  ) {
+    return declaredType === "audio" && declaredMime === "audio/mpeg"
+      ? { mime: "audio/mpeg", fileType: "audio", container: "mpeg_audio" }
+      : null;
+  }
+  if (
+    asciiAt(bytes, 0, 4) === "RIFF" && asciiAt(bytes, 8, 4) === "WAVE"
+  ) {
+    return declaredType === "audio" &&
+        ["audio/wav", "audio/x-wav"].includes(declaredMime)
+      ? { mime: "audio/wav", fileType: "audio", container: "wave" }
+      : null;
+  }
+  if (startsWithBytes(bytes, [0x1a, 0x45, 0xdf, 0xa3])) {
+    if (declaredMime === "audio/webm") {
+      return { mime: "audio/webm", fileType: "audio", container: "webm" };
+    }
+    if (declaredMime === "video/webm") {
+      return { mime: "video/webm", fileType: "video", container: "webm" };
+    }
+    return null;
+  }
+  if (bytes.length >= 16 && asciiAt(bytes, 4, 4) === "ftyp") {
+    const brand = asciiAt(bytes, 8, 4).toLowerCase();
+    if (
+      declaredType === "audio" &&
+      ["audio/mp4", "audio/x-m4a"].includes(declaredMime)
+    ) {
+      return {
+        mime: "audio/mp4",
+        fileType: "audio",
+        container: `iso_bmff:${brand.trim() || "unknown"}`,
+      };
+    }
+    if (declaredType === "video" && declaredMime === "video/quicktime") {
+      return brand === "qt  "
+        ? { mime: "video/quicktime", fileType: "video", container: "quicktime" }
+        : null;
+    }
+    if (declaredType === "video" && declaredMime === "video/mp4") {
+      return brand === "qt  " ? null : {
+        mime: "video/mp4",
+        fileType: "video",
+        container: `iso_bmff:${brand.trim() || "unknown"}`,
+      };
+    }
+  }
   return null;
 }
 
@@ -2261,9 +2364,10 @@ async function verifyPdf(bytes: Uint8Array): Promise<{ pageCount: number }> {
         streamObjectNumber,
       ),
   );
-  const parsed = parsedXref ?? (classicXref
-    ? parseClassicPdfXref(latin, xrefOffset)
-    : parsePdfXrefStream(latin, xrefOffset, streams));
+  const parsed = parsedXref ??
+    (classicXref
+      ? parseClassicPdfXref(latin, xrefOffset)
+      : parsePdfXrefStream(latin, xrefOffset, streams));
   return { pageCount: validatePdfPageTree(latin, parsed.root, parsed.entries) };
 }
 
@@ -2291,6 +2395,7 @@ export async function verifyAriAttachment(
   let derivativeText: string | null = null;
   const processingMetadata: Record<string, string | number | boolean> = {};
   const imageMime = await detectImage(bytes);
+  const media = detectAriMediaMime(bytes, declaredMime);
 
   if (imageMime !== null) {
     verifiedMime = imageMime;
@@ -2308,6 +2413,10 @@ export async function verifyAriAttachment(
     derivativeText = extracted.text;
     processingMetadata.package_entries = extracted.entries;
     processingMetadata.text_chars = extracted.text.length;
+  } else if (media !== null) {
+    verifiedMime = media.mime;
+    fileType = media.fileType;
+    processingMetadata.container = media.container;
   } else if (declaredType === "text" || declaredType === "csv") {
     let text: string;
     try {
@@ -2327,7 +2436,9 @@ export async function verifyAriAttachment(
   const compatible = declaredMime === verifiedMime ||
     (verifiedMime === "image/heic" && declaredMime === "image/heif") ||
     (verifiedMime === "image/heif" && declaredMime === "image/heic") ||
-    (verifiedMime === "text/csv" && declaredMime === "application/csv");
+    (verifiedMime === "text/csv" && declaredMime === "application/csv") ||
+    (verifiedMime === "audio/wav" && declaredMime === "audio/x-wav") ||
+    (verifiedMime === "audio/mp4" && declaredMime === "audio/x-m4a");
   if (!compatible || declaredType !== fileType) {
     throw new AriAttachmentError("MIME_MISMATCH");
   }

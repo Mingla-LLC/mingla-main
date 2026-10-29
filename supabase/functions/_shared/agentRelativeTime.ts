@@ -254,6 +254,68 @@ function parseUserTime(text: string): string | null {
   return twentyFour ? `${pad(Number(twentyFour[1]))}:${twentyFour[2]}` : null;
 }
 
+const MONTH_NUMBER: Readonly<Record<string, number>> = Object.freeze({
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  may: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
+});
+
+function validExplicitDate(
+  year: number,
+  month: number,
+  day: number,
+): string | null {
+  const candidate = `${year}-${pad(month)}-${pad(day)}`;
+  return parseLocalDate(candidate) ? candidate : null;
+}
+
+/** Accept the explicit calendar forms a host naturally types after Ari asks
+ * for a date. Relative-time support must not force them to restate a concrete
+ * future date as "next Saturday". */
+function parseExplicitDate(text: string): string | null {
+  const iso = text.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/);
+  if (iso) {
+    return validExplicitDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+  }
+  const monthPattern =
+    "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+  const monthFirst = text.match(
+    new RegExp(
+      `\\b(${monthPattern})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,\\s*|\\s+)(20\\d{2})\\b`,
+      "i",
+    ),
+  );
+  if (monthFirst) {
+    return validExplicitDate(
+      Number(monthFirst[3]),
+      MONTH_NUMBER[monthFirst[1].slice(0, 3).toLowerCase()],
+      Number(monthFirst[2]),
+    );
+  }
+  const dayFirst = text.match(
+    new RegExp(
+      `\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthPattern})(?:,\\s*|\\s+)(20\\d{2})\\b`,
+      "i",
+    ),
+  );
+  return dayFirst
+    ? validExplicitDate(
+      Number(dayFirst[3]),
+      MONTH_NUMBER[dayFirst[2].slice(0, 3).toLowerCase()],
+      Number(dayFirst[1]),
+    )
+    : null;
+}
+
 function displayChoice(
   instant: Date,
   timezone: string,
@@ -480,7 +542,7 @@ export function resolveRelativeTime(
     };
   }
 
-  let date: string | null = null;
+  let date: string | null = parseExplicitDate(text);
   let precision: TemporalPrecision = "date";
   if (/\btomorrow\b/i.test(text)) date = addLocalDays(today, 1);
   else if (/\btoday\b/i.test(text)) date = today;

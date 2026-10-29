@@ -192,7 +192,10 @@ Deno.test("#1985 I-7 proposal contains only resolved brand, title and start time
   assertEquals(Object.keys(ready.proposal?.tool_args ?? {}).sort(), [
     "brand_id",
     "start_at",
+    "timezone",
     "title",
+    "visibility",
+    "when_mode",
   ]);
   assertEquals(ready.proposal?.tool_args.brand_id, BRAND.id);
 });
@@ -235,4 +238,54 @@ Deno.test("#1985 I-8 confirmation outcomes reconcile state without replaying a w
     assertEquals(reconciled.last_completed_step?.outcome, outcome);
     assertEquals(reconciled.active_task?.pending_action_id, undefined);
   }
+});
+
+Deno.test("#3355 a concrete calendar answer advances instead of repeating the date question", () => {
+  const initial = planEventTurn(
+    parseTaskState({
+      schema_version: 1,
+      status: "idle",
+      active_task: null,
+      interruption_stack: [],
+      pending_question: null,
+      last_completed_step: null,
+    }),
+    "Create a private dinner event named Autumn Table.",
+    context("q-autumn-date"),
+  );
+  assert(initial.choices);
+  const advanced = applyStoredChoice({
+    state: initial.state,
+    choices: initial.choices,
+    optionIds: [],
+    freeText: "November 14, 2026 at 7:00 PM local time.",
+    context: context("q-autumn-ready"),
+  });
+  assertEquals(advanced.proposal?.tool_name, "create_event");
+  assertEquals(
+    advanced.proposal?.tool_args.start_at,
+    "2026-11-14T18:00:00.000Z",
+  );
+  assertEquals(advanced.state.pending_question, null);
+  assertEquals(advanced.proposal?.tool_args.when_mode, "single");
+  assertEquals(advanced.proposal?.tool_args.visibility, "private");
+  assertEquals(advanced.proposal?.tool_args.timezone, "Africa/Lagos");
+});
+
+Deno.test("#3355 title extraction stops before an explicit date phrase", () => {
+  const planned = planEventTurn(
+    parseTaskState({
+      schema_version: 1,
+      status: "idle",
+      active_task: null,
+      interruption_stack: [],
+      pending_question: null,
+      last_completed_step: null,
+    }),
+    "Create a private dinner event called Autumn Table on November 14, 2026 at 7:00 PM local time.",
+    context("q-autumn-one-turn"),
+  );
+  assertEquals(planned.proposal?.tool_name, "create_event");
+  assertEquals(planned.proposal?.tool_args.title, "Autumn Table");
+  assertEquals(planned.proposal?.tool_args.visibility, "private");
 });

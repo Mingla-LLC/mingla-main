@@ -112,20 +112,18 @@ describe("ORCH-1057 adversarial · Item A — Ember Send invariants", () => {
 
   it("ADV-8 the send glyph is ArrowUp, never a paper-plane Send/SendHorizontal", () => {
     expect(inputBar).not.toMatch(/\bSendHorizontal\b/);
-    expect(inputBar).not.toMatch(/import\s*\{[^}]*\bSend\b[^}]*\}\s*from\s*["']lucide-react-native["']/);
+    expect(inputBar).not.toMatch(
+      /import\s*\{[^}]*\bSend\b[^}]*\}\s*from\s*["']lucide-react-native["']/,
+    );
     expect(inputBar).toContain("ArrowUp");
   });
 });
 
 describe("ORCH-1057 adversarial · Item C — empty-state hierarchy invariant", () => {
-  it("ADV-6 the hint uses the low-emphasis tertiary token, not primary/secondary", () => {
-    // The hint glyph color must be tertiary.
-    expect(emptyState).toMatch(/<Plus[^>]*color=\{textTokens\.tertiary\}/);
-    // The hint TEXT style must resolve to tertiary, not primary/secondary.
-    const hintTextBlock = emptyState.slice(emptyState.indexOf("hintText:"));
-    expect(hintTextBlock).toMatch(/color:\s*textTokens\.tertiary/);
-    expect(hintTextBlock).not.toMatch(/color:\s*textTokens\.(primary|secondary)/);
-    // The hint must NOT be re-promoted to a real button affordance.
+  it("ADV-6 keeps the hero free of duplicate composer guidance", () => {
+    expect(emptyState).not.toContain("hintText:");
+    expect(emptyState).not.toContain("hintChip:");
+    expect(emptyState).not.toContain("files and context");
     expect(emptyState).not.toContain("onPress");
   });
 });
@@ -137,16 +135,11 @@ describe("ORCH-1057 adversarial · hard guard — first-run guidance byte-stable
   // removal ("SAMPLE_PROMPTS" and 'Try asking Ari' must be absent from the
   // screen). ADV-7's protection is that the first-run guidance copy cannot
   // drift silently, so it now pins the copy that replaced it, byte for byte.
-  it("ADV-7 keeps the first-run hint copy EXACTLY as shipped", () => {
-    expect(emptyState).toContain("Tap ");
-    // [TEST-MOD-APPROVED #3429] REWORK-2 R-3: "byte-stable" has to mean the
-    // bytes users see. As a bare substring this passed on the source comment or
-    // the accessibilityLabel alone, so ADV-7 could not detect a change to the
-    // shipped sentence at all. Anchored to the rendered <Text>, it can.
-    expect(emptyState).toContain(
-      '<Text style={styles.hintText}> to attach context</Text>',
-    );
-    expect(emptyState).toContain('accessibilityLabel="Tap the plus button to attach context"');
+  it("ADV-7 keeps the first-run hero outcome-led and uncluttered", () => {
+    expect(emptyState).toContain("What should we tackle?");
+    expect(emptyState).toContain("I&apos;ll make a plan, use the right tools");
+    expect(emptyState).not.toContain("files and context");
+    expect(emptyState).not.toContain("hintRow");
     expect(chatScreen).not.toContain("SAMPLE_PROMPTS");
   });
 

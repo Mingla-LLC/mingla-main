@@ -512,6 +512,7 @@ export function createEventTaskState(args: {
   brief: EventBrief;
   title?: string;
   intent?: "create_event" | "create_rsvp";
+  capacity?: number;
 }): TaskStateV1 {
   const state: TaskStateV1 = {
     schema_version: TASK_STATE_SCHEMA_VERSION,
@@ -532,6 +533,16 @@ export function createEventTaskState(args: {
           : missingSlot(),
         start_at: missingSlot(),
         timezone: missingSlot(),
+        ...(args.capacity
+          ? {
+            capacity: resolvedSlot(
+              args.capacity,
+              "user",
+              args.nowIso,
+              `${args.capacity} guests`,
+            ),
+          }
+          : {}),
       },
       brief: args.brief,
     },
@@ -651,6 +662,8 @@ const CREATE_EVENT_OPTIONAL_ARG_KEYS = [
   "is_online",
   "online_url",
   "visibility",
+  "when_mode",
+  "tickets",
 ] as const;
 const CREATE_EVENT_EDIT_ARG_KEYS = new Set([
   "brand_id",
@@ -728,7 +741,24 @@ export function replaceCreateEventProposalArgs(args: {
       typeof value === "string" && value.length <= MAX_STATE_STRING,
     visibility: (value) =>
       typeof value === "string" &&
-      ["draft", "public", "unlisted"].includes(value),
+      ["draft", "private", "public", "unlisted"].includes(value),
+    when_mode: (value) =>
+      typeof value === "string" &&
+      ["single", "multi_date", "recurring"].includes(value),
+    tickets: (value) =>
+      Array.isArray(value) && value.length <= 24 && value.every((ticket) => {
+        if (!isRecord(ticket)) return false;
+        const capacity = ticket.capacity;
+        return typeof ticket.id === "string" && ticket.id.length > 0 &&
+          typeof ticket.name === "string" && ticket.name.length > 0 &&
+          (capacity === null ||
+            (typeof capacity === "number" && Number.isInteger(capacity) &&
+              capacity > 0 && capacity <= 5000)) &&
+          typeof ticket.isFree === "boolean" &&
+          typeof ticket.isUnlimited === "boolean" &&
+          typeof ticket.visibility === "string" &&
+          ["public", "hidden", "disabled"].includes(ticket.visibility);
+      }),
   };
   for (const key of CREATE_EVENT_OPTIONAL_ARG_KEYS) {
     const value = args.toolArgs[key];
@@ -893,19 +923,63 @@ export function assertCreateEventProposal(
   const brandId = slots.brand_id.value;
   const title = slots.title.value;
   const startAt = slots.start_at.value;
+  const timezone = slots.timezone.value;
   if (typeof brandId !== "string" || brandId !== state.active_task.brand_id) {
     throw new TaskStateError(
       "TASK_STATE_INVALID",
       "create_event brand slot conflicts with task scope",
     );
   }
-  if (typeof title !== "string" || typeof startAt !== "string") {
+  if (
+    typeof title !== "string" || typeof startAt !== "string" ||
+    typeof timezone !== "string" || !isValidIanaTimezone(timezone)
+  ) {
     throw new TaskStateError(
       "TASK_STATE_INVALID",
       "create_event proposal values are invalid",
     );
   }
-  return { brand_id: brandId, title, start_at: startAt };
+  const visibility = state.active_task.brief.concepts.includes("private")
+    ? "private"
+    : state.active_task.brief.concepts.includes("unlisted")
+    ? "unlisted"
+    : state.active_task.brief.concepts.includes("public")
+    ? "public"
+    : "private";
+  const capacity = slots.capacity?.status === "resolved"
+    ? Number(slots.capacity.value)
+    : null;
+  const tickets = Number.isInteger(capacity) && Number(capacity) > 0
+    ? [{
+      id: "ari-general-admission",
+      name: "General admission",
+      description: null,
+      priceGbp: null,
+      currency: null,
+      capacity,
+      isFree: true,
+      isUnlimited: false,
+      visibility: "public",
+      displayOrder: 0,
+      approvalRequired: false,
+      passwordProtected: false,
+      password: null,
+      waitlistEnabled: false,
+      minPurchaseQty: 1,
+      maxPurchaseQty: null,
+      allowTransfers: true,
+      availableAt: "both",
+    }]
+    : undefined;
+  return {
+    brand_id: brandId,
+    title,
+    start_at: startAt,
+    timezone,
+    when_mode: "single",
+    visibility,
+    ...(tickets ? { tickets } : {}),
+  };
 }
 
 export function assertCreateRsvpProposal(

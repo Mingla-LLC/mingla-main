@@ -297,6 +297,170 @@ function graphicFor(toolName: string): AriRenditionV2["graphic"] | undefined {
   return undefined;
 }
 
+const UUID_VALUE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function receiptScalar(value: unknown, humanizeValue = false): string | null {
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  const text = boundedText(value, 220);
+  if (!text || UUID_VALUE.test(text) || /^https?:\/\//i.test(text)) return null;
+  return humanizeValue ? humanize(text) : text;
+}
+
+function genericReceiptRows(
+  result: unknown,
+): { label: string; value: string }[] {
+  const top = record(result);
+  if (!top) return [];
+  const candidates: Record<string, unknown>[] = [top];
+  for (
+    const key of ["event", "brand", "experience", "tier", "campaign", "page"]
+  ) {
+    const nested = record(top[key]);
+    if (nested) candidates.push(nested);
+  }
+  const rows: { label: string; value: string }[] = [];
+  const seen = new Set<string>();
+  for (const source of candidates) {
+    for (
+      const key of [
+        "title",
+        "name",
+        "status",
+        "visibility",
+        "state",
+        "currency",
+        "amount",
+        "total",
+        "quantity",
+        "count",
+      ]
+    ) {
+      if (seen.has(key)) continue;
+      const value = receiptScalar(
+        source[key],
+        ["status", "visibility", "state"].includes(key),
+      );
+      if (!value) continue;
+      seen.add(key);
+      rows.push({ label: humanize(key), value });
+      if (rows.length >= 6) return rows;
+    }
+  }
+  return rows;
+}
+
+function formatEventSchedule(
+  startAt: unknown,
+  timezone: unknown,
+): string | null {
+  const start = boundedText(startAt, 80);
+  const zone = boundedText(timezone, 100);
+  if (!start || !zone) return null;
+  const instant = new Date(start);
+  if (Number.isNaN(instant.getTime())) return null;
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    }).format(instant);
+  } catch {
+    return null;
+  }
+}
+
+function eventReceiptPresentation(args: {
+  result: unknown;
+  toolArgs?: Record<string, unknown>;
+  brandName?: string | null;
+}): {
+  title: string;
+  body: string;
+  blocks: Record<string, unknown>[];
+} | null {
+  const event = record(record(args.result)?.event);
+  if (!event) return null;
+  const title = receiptScalar(event.title ?? args.toolArgs?.title);
+  if (!title) return null;
+  const businessDraft = record(record(event.theme)?.business_draft);
+  const when = record(businessDraft?.when);
+  const timezone = receiptScalar(
+    when?.timezone ?? event.timezone ?? args.toolArgs?.timezone,
+  );
+  const schedule = formatEventSchedule(args.toolArgs?.start_at, timezone);
+  const requestedVisibility = receiptScalar(
+    businessDraft?.requestedVisibility ?? args.toolArgs?.visibility,
+    true,
+  );
+  const resultTicketRows = Array.isArray(businessDraft?.tickets)
+    ? businessDraft.tickets
+    : [];
+  const confirmedTicketRows = Array.isArray(args.toolArgs?.tickets)
+    ? args.toolArgs.tickets
+    : [];
+  // Some create paths return the event row before the compatibility draft is
+  // read back. An empty result array must not erase admission that the host
+  // explicitly reviewed and confirmed in the protected proposal.
+  const ticketRows = resultTicketRows.length > 0
+    ? resultTicketRows
+    : confirmedTicketRows;
+  const limitedCapacity = ticketRows.reduce((total, raw) => {
+    const ticket = record(raw);
+    const capacity = ticket?.capacity;
+    return typeof capacity === "number" && Number.isInteger(capacity) &&
+        capacity > 0
+      ? total + capacity
+      : total;
+  }, 0);
+  const allFree = ticketRows.length > 0 &&
+    ticketRows.every((raw) => record(raw)?.isFree === true);
+  const rows: { label: string; value: string }[] = [
+    { label: "Event", value: title },
+    { label: "Status", value: "Draft — not published" },
+    ...(schedule ? [{ label: "Date and time", value: schedule }] : []),
+    ...(args.brandName
+      ? [{ label: "Brand", value: args.brandName.slice(0, 120) }]
+      : []),
+    ...(requestedVisibility
+      ? [{
+        label: "Visibility",
+        value: `${requestedVisibility} when published`,
+      }]
+      : []),
+    ...(limitedCapacity > 0
+      ? [{
+        label: "Admission",
+        value: `${limitedCapacity} guests${allFree ? " · Free" : ""}`,
+      }]
+      : []),
+  ];
+  return {
+    title: `“${title}” is saved as a draft`,
+    body:
+      "This is the event now recorded in Mingla. It is still private to the host workspace until you choose to publish it.",
+    blocks: [
+      { type: "key_value", version: 1, id: "event-receipt", rows },
+      {
+        type: "callout",
+        version: 1,
+        id: "next-step",
+        tone: "default",
+        title: "Next",
+        body: ticketRows.length > 0
+          ? "Add the remaining event details and cover before publishing."
+          : "Add the remaining event details, tickets and cover before publishing.",
+      },
+    ],
+  };
+}
+
 function stableRenditionId(prefix: string, toolName: string): string {
   const safe = toolName.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(
     0,
@@ -332,38 +496,45 @@ export function buildToolReadRendition(args: {
 export function buildToolReceiptRendition(args: {
   toolName: string;
   result: unknown;
+  toolArgs?: Record<string, unknown>;
+  brandName?: string | null;
   pendingActionId: string;
   capabilities: AriUiCapabilitiesV2 | null;
   completedAt?: string;
   envValue?: string;
 }): AriRenditionV2 | null {
   if (!canRenderAriV2(args.capabilities, args.envValue)) return null;
-  const completedAt = boundedText(args.completedAt, 80) ??
-    new Date().toISOString();
+  const eventPresentation = args.toolName === "create_event"
+    ? eventReceiptPresentation(args)
+    : null;
+  const genericRows = genericReceiptRows(args.result);
   return {
     schema_version: 2,
     // The receipt identity links the premium card to the canonical tool row so
     // clients can render exactly one completion representation.
     rendition_id: `receipt:${args.pendingActionId}`,
     kind: "receipt",
-    eyebrow: "Completed",
-    title: humanize(args.toolName),
-    body:
-      "The confirmed action completed once and the canonical result is recorded.",
+    eyebrow: eventPresentation ? "Event draft" : "Saved in Mingla",
+    title: eventPresentation?.title ?? humanize(args.toolName),
+    body: eventPresentation?.body ??
+      "The saved result below was read back from Mingla.",
     tone: "success",
     state: "submitted",
     ...(graphicFor(args.toolName)
       ? { graphic: graphicFor(args.toolName) }
       : {}),
-    blocks: [
-      ...resultBlocks(args.result, completedAt),
+    blocks: eventPresentation?.blocks ?? [
+      ...(genericRows.length > 0
+        ? [{ type: "key_value", version: 1, id: "receipt", rows: genericRows }]
+        : []),
       {
         type: "callout",
         version: 1,
-        id: "receipt",
+        id: "canonical-result",
         tone: "success",
-        title: "Receipt",
-        body: "The confirmed request was finalized safely.",
+        title: "Recorded in Mingla",
+        body:
+          "This reflects the canonical saved result. Internal identifiers are available only in the engineering trace.",
       },
     ].slice(0, MAX_BLOCKS),
   };

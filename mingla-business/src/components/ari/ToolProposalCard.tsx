@@ -47,7 +47,10 @@ import { adCreativeCoverTarget, type CoverTarget } from "../ui/coverTarget";
 import { useBrandCascadePreview } from "../../hooks/useBrands";
 import { useAdVideoFitSummary } from "../../hooks/useAdVideoFitSummary";
 import { randomId } from "../../utils/randomId";
-import { ariAdOwnerKey, isValidAdCreativeOwnerKey } from "../../services/eventCoverVideoEdgeContract";
+import {
+  ariAdOwnerKey,
+  isValidAdCreativeOwnerKey,
+} from "../../services/eventCoverVideoEdgeContract";
 import type { ConfirmOutcome } from "./toolProposalTypes";
 
 // Premium proposal-card metrics — tighter than the default kit values.
@@ -287,7 +290,11 @@ function formatAdMoneyCents(cents: unknown, currency: unknown): string | null {
     : `${formatted} · verified settlement currency on save`;
 }
 
-function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
+function fieldsFor(
+  toolName: string,
+  args: Record<string, unknown>,
+  brandNamesById: Record<string, string>,
+): Field[] {
   const out: Field[] = [];
   const context =
     args.__proposal_context !== null &&
@@ -296,28 +303,50 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
       : {};
 
   if (toolName === "create_discount") {
-    if (typeof args.name === "string") out.push({ label: "Discount", value: args.name });
-    if (typeof args.kind === "string") out.push({ label: "Type", value: args.kind.replace(/_/g, " ") });
-    if (typeof args.code === "string") out.push({ label: "Code", value: args.code });
-    if (typeof args.value_bps === "number") out.push({ label: "Value", value: `${args.value_bps / 100}% off` });
-    if (typeof args.value_minor === "number") out.push({ label: "Value", value: `${args.value_minor} minor units` });
-    if (typeof args.scope_kind === "string") out.push({ label: "Scope", value: args.scope_kind.replace(/_/g, " ") });
-    if (typeof args.combines_with === "string") out.push({ label: "Combines with", value: args.combines_with.replace(/_/g, " ") });
+    if (typeof args.name === "string")
+      out.push({ label: "Discount", value: args.name });
+    if (typeof args.kind === "string")
+      out.push({ label: "Type", value: args.kind.replace(/_/g, " ") });
+    if (typeof args.code === "string")
+      out.push({ label: "Code", value: args.code });
+    if (typeof args.value_bps === "number")
+      out.push({ label: "Value", value: `${args.value_bps / 100}% off` });
+    if (typeof args.value_minor === "number")
+      out.push({ label: "Value", value: `${args.value_minor} minor units` });
+    if (typeof args.scope_kind === "string")
+      out.push({ label: "Scope", value: args.scope_kind.replace(/_/g, " ") });
+    if (typeof args.combines_with === "string")
+      out.push({
+        label: "Combines with",
+        value: args.combines_with.replace(/_/g, " "),
+      });
   }
   if (toolName === "pause_discount") {
-    if (typeof args.discount_id === "string") out.push({ label: "Discount", value: args.discount_id });
-    out.push({ label: "Effect", value: "Stops new uses; existing orders keep their price" });
+    if (typeof args.discount_id === "string")
+      out.push({ label: "Discount", value: args.discount_id });
+    out.push({
+      label: "Effect",
+      value: "Stops new uses; existing orders keep their price",
+    });
   }
   if (toolName === "create_referral_offer") {
-    if (typeof args.name === "string") out.push({ label: "Offer", value: args.name });
-    if (typeof args.audience === "string") out.push({ label: "Who earns", value: args.audience.replace(/_/g, " ") });
-    if (typeof args.reward_kind === "string") out.push({ label: "Reward", value: args.reward_kind });
-    if (typeof args.share_bps === "number") out.push({ label: "Cash share", value: `${args.share_bps / 100}%` });
-    if (typeof args.scope_kind === "string") out.push({ label: "Scope", value: args.scope_kind });
+    if (typeof args.name === "string")
+      out.push({ label: "Offer", value: args.name });
+    if (typeof args.audience === "string")
+      out.push({ label: "Who earns", value: args.audience.replace(/_/g, " ") });
+    if (typeof args.reward_kind === "string")
+      out.push({ label: "Reward", value: args.reward_kind });
+    if (typeof args.share_bps === "number")
+      out.push({ label: "Cash share", value: `${args.share_bps / 100}%` });
+    if (typeof args.scope_kind === "string")
+      out.push({ label: "Scope", value: args.scope_kind });
   }
   if (toolName === "invite_promoters") {
     const members = Array.isArray(args.members) ? args.members : [];
-    out.push({ label: "Promoters", value: `${members.length} email${members.length === 1 ? "" : "s"}` });
+    out.push({
+      label: "Promoters",
+      value: `${members.length} email${members.length === 1 ? "" : "s"}`,
+    });
     out.push({ label: "Invite", value: "Private link expires after 14 days" });
   }
 
@@ -475,7 +504,7 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
     const brandId = typeof args.brand_id === "string" ? args.brand_id : "";
     out.push({
       label: "Brand",
-      value: brandId ? `${brandId.slice(0, 8)}…` : "Selected brand",
+      value: brandNamesById[brandId] ?? "Selected brand",
     });
     if (typeof args.page_role === "string") {
       out.push({ label: "Page", value: args.page_role.replace(/_/g, " ") });
@@ -615,11 +644,32 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
     if (typeof args.brand_id === "string") {
       out.push({
         label: "Brand",
-        value: String(args.brand_id).slice(0, 8) + "…",
+        value: brandNamesById[args.brand_id] ?? "Selected brand",
       });
     }
     if (typeof args.visibility === "string") {
       out.push({ label: "Visibility", value: args.visibility });
+    }
+    if (Array.isArray(args.tickets)) {
+      const limitedCapacity = args.tickets.reduce<number>((total, raw) => {
+        if (typeof raw !== "object" || raw === null) return total;
+        const capacity = (raw as Record<string, unknown>).capacity;
+        return typeof capacity === "number" && Number.isInteger(capacity)
+          ? total + capacity
+          : total;
+      }, 0);
+      if (limitedCapacity > 0) {
+        const allFree = args.tickets.every(
+          (raw) =>
+            typeof raw === "object" &&
+            raw !== null &&
+            (raw as Record<string, unknown>).isFree === true,
+        );
+        out.push({
+          label: "Admission",
+          value: `${limitedCapacity} guests${allFree ? " · Free" : ""}`,
+        });
+      }
     }
   }
   if (toolName === "create_brand" || toolName === "update_brand") {
@@ -878,7 +928,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const [adVideoPatch, setAdVideoPatch] =
     useState<CoverPatch>(EMPTY_COVER_PATCH);
   const adOwnerKey =
-    typeof proposalId === "string" && isValidAdCreativeOwnerKey(ariAdOwnerKey(proposalId))
+    typeof proposalId === "string" &&
+    isValidAdCreativeOwnerKey(ariAdOwnerKey(proposalId))
       ? ariAdOwnerKey(proposalId)
       : null;
   const [typedName, setTypedName] = useState("");
@@ -1079,13 +1130,18 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   // #3040 AD-04 — the same per-platform fit sentence Host Ads shows, from the
   // same server-computed fit, for the video this proposal will run.
   const adVideoFitSummary = useAdVideoFitSummary(
-    isAdPlanCreativeProposal && typeof args.brand_id === "string" ? args.brand_id : null,
-    isAdPlanCreativeProposal && typeof editedArgs.creative_library_id === "string"
+    isAdPlanCreativeProposal && typeof args.brand_id === "string"
+      ? args.brand_id
+      : null,
+    isAdPlanCreativeProposal &&
+      typeof editedArgs.creative_library_id === "string"
       ? editedArgs.creative_library_id
       : null,
   );
   const adVideoTarget: CoverTarget | null =
-    isAdPlanCreativeProposal && typeof args.brand_id === "string" && adOwnerKey !== null
+    isAdPlanCreativeProposal &&
+    typeof args.brand_id === "string" &&
+    adOwnerKey !== null
       ? adCreativeCoverTarget(args.brand_id, adOwnerKey)
       : null;
 
@@ -1121,11 +1177,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
         setProposalError(outcome.error);
       }
       return outcome;
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Couldn't complete that action — try again.";
+    } catch {
+      const message = "Couldn't complete that action — try again.";
       setProposalError(message);
       return { ok: false, error: message };
     }
@@ -1168,12 +1221,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
       }
       // If the commit failed (outcome.ok false) the screen toast already shows;
       // the card stays put with the Add-cover affordance still live.
-    } catch (error) {
-      setProposalError(
-        error instanceof Error
-          ? error.message
-          : "Couldn't complete that action — try again.",
-      );
+    } catch {
+      setProposalError("Couldn't complete that action — try again.");
     } finally {
       setCreatingForCover(false);
     }
@@ -1181,9 +1230,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
 
   // ORCH-1103 REWORK 3 — closing the picker no longer auto-resolves the card.
   // After a create-and-attach commit the card stays in its committed state
-  // (cover band reflecting the chosen cover, "Done" the single live action) so
-  // the user can review or change the cover before finishing. Tapping "Done"
-  // (handleDone) is the one path that resolves the pending action and renders
+  // (cover band reflecting the chosen cover, plus one result action) so the
+  // user can review or change the cover before finishing. Viewing the result
+  // is the one path that resolves the pending action and renders
   // the receipt — exactly once. (On UPDATE there is no committed state; the
   // picker close just dismisses the sheet, the proposal is still pending and is
   // confirmed via the normal Confirm button.)
@@ -1207,7 +1256,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   // the user finish. It MUST NOT expose any control that re-confirms the
   // executed action — re-confirming returns a 400 "Cannot confirm — current
   // status: executed". So after commit the primary Confirm + Edit + Cancel are
-  // replaced by a single "Done" affordance; the only other live control is the
+  // replaced by a single result affordance; the only other live control is the
   // cover band (attach). This makes an already-executed re-confirm impossible
   // from the UI (P1 headline defect).
   const committed = createdBrandId !== null;
@@ -1381,9 +1430,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           </>
         ) : isMoneyConfirm && moneyPhrase ? (
           <>
-            {fieldsFor(toolName, liveArgs).length > 0 ? (
+            {fieldsFor(toolName, liveArgs, brandNamesById).length > 0 ? (
               <View style={styles.fields}>
-                {fieldsFor(toolName, liveArgs).map((f, i) => (
+                {fieldsFor(toolName, liveArgs, brandNamesById).map((f, i) => (
                   <View key={i} style={styles.fieldRow}>
                     <Text style={styles.fieldLabel}>{f.label}</Text>
                     <Text
@@ -1504,9 +1553,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           />
         ) : (
           !isTypeConfirm &&
-          fieldsFor(toolName, liveArgs).length > 0 && (
+          fieldsFor(toolName, liveArgs, brandNamesById).length > 0 && (
             <View style={styles.fields}>
-              {fieldsFor(toolName, liveArgs).map((f, i) => (
+              {fieldsFor(toolName, liveArgs, brandNamesById).map((f, i) => (
                 <View key={i} style={styles.fieldRow}>
                   <Text style={styles.fieldLabel}>{f.label}</Text>
                   <Text
@@ -1529,8 +1578,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
 
         <View style={styles.actions}>
           {/* ORCH-1103 REWORK 3 — POST-COMMIT (create-and-attach minted the
-              brand): the pending action is EXECUTED. The ONLY action is "Done"
-              (finish + render the receipt). No Cancel / Edit / Confirm — every
+              brand): the pending action is EXECUTED. The only action opens the
+              result receipt. No Cancel / Edit / Confirm — every
               one of those would re-touch the executed action. The cover band
               above stays live so the user can still attach/change a cover. */}
           {committed ? (
@@ -1550,7 +1599,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                   styles.btnDisabled,
               ]}
               accessibilityRole="button"
-              accessibilityLabel="Done"
+              accessibilityLabel="View result"
               accessibilityState={{
                 disabled:
                   isExecuting ||
@@ -1558,7 +1607,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                   coverUploadState !== "idle",
               }}
             >
-              <Text style={styles.confirmText}>Done</Text>
+              <Text style={styles.confirmText}>View result</Text>
             </Pressable>
           ) : (
             <>
