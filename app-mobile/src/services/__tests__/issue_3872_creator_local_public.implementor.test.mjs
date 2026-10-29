@@ -44,6 +44,7 @@ test("#3872 Local videos render on profiles and place cards without exposing pri
   assert.match(placeLocal, /publicCreatorMedia/);
   assert.match(placeLocal, /CreatorMediaPlayerModal/);
   assert.match(player, /<WebView/);
+  assert.match(player, /https:\/\/player\.mediadelivery\.net/);
   assert.doesNotMatch(placeLocal, /openBrowserAsync/);
   assert.match(localService, /media_job_ids/);
   assert.doesNotMatch(
@@ -57,6 +58,14 @@ test("#3872 public review views emit surface-only analytics", () => {
   assert.match(publicLocal, /surface:\s*["']profile["']/);
   assert.match(placeLocal, /local_review_viewed/);
   assert.match(placeLocal, /surface:\s*["']place_card["']/);
+});
+
+test("#4182 the place-card Local review follows the expanded-card content grid", () => {
+  assert.match(placeLocal, /content:\s*\{\s*paddingHorizontal:\s*SPINE\.gutter/);
+  assert.match(placeLocal, /width:\s*["']100%["'][\s\S]*aspectRatio:\s*16\s*\/\s*9/);
+  assert.match(placeLocal, /label=\{`Watch \$\{review\.name\}'s visit`\}/);
+  assert.doesNotMatch(placeLocal, /Independent visits|This place did not buy or approve/);
+  assert.doesNotMatch(placeLocal, /styles\.videoPad|styles\.note/);
 });
 
 test("#4182 only the applicant signs the published Local agreement before activation", () => {

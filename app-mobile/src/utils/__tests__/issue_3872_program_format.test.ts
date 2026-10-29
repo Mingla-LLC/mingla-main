@@ -24,6 +24,7 @@ import {
   moneyInputValue,
   moneyStateWord,
   parseMoneyInput,
+  persistedDayString,
   toDayString,
 } from '../programFormat.ts';
 
@@ -57,6 +58,13 @@ test('#3872 dates read "Nov 14" and ranges "Nov 14–16", never ISO', () => {
   assert.equal(formatDateRange('2026-11-20', '2026-11-20', NOW, 'en-US'), 'Nov 20');
   assert.doesNotMatch(formatDateRange('2026-11-14', '2026-11-16', NOW, 'en-US'), /2026-/);
   assert.equal(toDayString(new Date(2026, 10, 4)), '2026-11-04');
+});
+
+test('#4182 persisted visit days do not shift to the previous day by time zone', () => {
+  assert.equal(persistedDayString('2026-10-29T00:00:00+00:00'), '2026-10-29');
+  assert.equal(persistedDayString('2026-10-29 00:00:00+00'), '2026-10-29');
+  assert.equal(persistedDayString('2026-10-29'), '2026-10-29');
+  assert.equal(persistedDayString('not-a-date'), null);
 });
 
 test('#3872 relative due text and countdowns', () => {

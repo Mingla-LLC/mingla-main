@@ -116,6 +116,22 @@ export function toDayString(date: Date): string {
   return `${date.getFullYear()}-${m}-${d}`;
 }
 
+/**
+ * A persisted calendar-day value → "2026-11-14" without moving it across
+ * time zones. Postgres can serialize a `date` cast into a timestamptz as
+ * midnight UTC; parsing that instant in a negative offset would show the
+ * previous day even though the person selected the correct calendar date.
+ */
+export function persistedDayString(value: string | Date | null | undefined): string | null {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const leadingDay = /^(\d{4}-\d{2}-\d{2})(?:$|T|\s)/.exec(value);
+    if (leadingDay) return leadingDay[1];
+  }
+  const parsed = parseDay(value);
+  return parsed ? toDayString(parsed) : null;
+}
+
 function monthShort(date: Date, locale?: string): string {
   try { return new Intl.DateTimeFormat(locale, { month: 'short' }).format(date); }
   catch { return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][date.getMonth()]; }

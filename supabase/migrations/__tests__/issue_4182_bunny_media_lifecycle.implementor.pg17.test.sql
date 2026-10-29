@@ -126,12 +126,15 @@ BEGIN
   INSERT INTO public.local_city_programs(
     city_id,seats,is_open,monthly_usd_minor,monthly_rate_minor,payout_currency,updated_by
   ) VALUES(v_city,2,true,15000,15000,'USD',v_admin);
-  INSERT INTO public.local_agreement_versions(
-    version,document_url,document_sha256,effective_at,is_current,created_by
-  ) VALUES(
-    'local-4182-v1','https://mingla.example/legal/local-4182-v1',repeat('a',64),
-    now()-interval '1 day',true,v_admin
-  );
+  IF NOT EXISTS(
+    SELECT 1 FROM public.local_agreement_versions
+    WHERE version='local-ng-1.0'
+      AND document_url='https://usemingla.com/local-agreement'
+      AND document_sha256='65d2ac74f256dc9bf013aa56afced7f15210083854e471e89f8d7ddce255a954'
+      AND is_current AND effective_at<=now() AND retired_at IS NULL
+  ) THEN
+    RAISE EXCEPTION '#4182 production Local agreement was not published exactly';
+  END IF;
   INSERT INTO public.local_applications(
     id,user_id,city_id,handles,sample_links,why
   ) VALUES(
@@ -168,7 +171,7 @@ BEGIN
   END IF;
 
   v_answer:=public.local_application_decide(v_application,'agreement_pending',NULL);
-  IF v_answer->>'agreement_version'<>'local-4182-v1'
+  IF v_answer->>'agreement_version'<>'local-ng-1.0'
     OR (SELECT status FROM public.local_applications WHERE id=v_application)<>'agreement_pending'
     OR (SELECT agreement_due_at FROM public.local_applications WHERE id=v_application)<=now() THEN
     RAISE EXCEPTION '#4182 signing invitation did not reserve the current agreement: %',v_answer;
@@ -196,11 +199,11 @@ BEGIN
     'sub',v_applicant,'email','issue-4182-local@test.local','role','authenticated'
   )::text,true);
   v_answer:=public.local_landing();
-  IF v_answer->'agreement'->>'version'<>'local-4182-v1'
+  IF v_answer->'agreement'->>'version'<>'local-ng-1.0'
     OR v_answer->'applications'->0->>'status'<>'agreement_pending' THEN
     RAISE EXCEPTION '#4182 applicant could not read the assigned agreement: %',v_answer;
   END IF;
-  v_answer:=public.local_agreement_sign(v_application,'local-4182-v1','Amina Applicant');
+  v_answer:=public.local_agreement_sign(v_application,'local-ng-1.0','Amina Applicant');
   IF v_answer->>'status'<>'accepted' THEN
     RAISE EXCEPTION '#4182 applicant signature did not activate the seat: %',v_answer;
   END IF;
@@ -209,16 +212,16 @@ BEGIN
   IF v_acceptance IS NULL OR NOT EXISTS(
     SELECT 1 FROM public.local_agreement_acceptances a
     WHERE a.id=v_acceptance AND a.application_id=v_application
-      AND a.user_id=v_applicant AND a.agreement_version='local-4182-v1'
-      AND a.document_url='https://mingla.example/legal/local-4182-v1'
-      AND a.document_sha256=repeat('a',64)
+      AND a.user_id=v_applicant AND a.agreement_version='local-ng-1.0'
+      AND a.document_url='https://usemingla.com/local-agreement'
+      AND a.document_sha256='65d2ac74f256dc9bf013aa56afced7f15210083854e471e89f8d7ddce255a954'
       AND a.signature_name='Amina Applicant' AND a.accepted_at IS NOT NULL
   ) THEN
     RAISE EXCEPTION '#4182 exact applicant signature evidence was not retained';
   END IF;
 
   -- Replay is idempotent and never creates a second acceptance.
-  PERFORM public.local_agreement_sign(v_application,'local-4182-v1','Amina Applicant');
+  PERFORM public.local_agreement_sign(v_application,'local-ng-1.0','Amina Applicant');
   IF (SELECT count(*) FROM public.local_agreement_acceptances WHERE application_id=v_application)<>1 THEN
     RAISE EXCEPTION '#4182 signature replay duplicated acceptance evidence';
   END IF;
@@ -238,7 +241,7 @@ BEGIN
   BEGIN
     UPDATE public.local_agreement_versions
     SET document_url='https://mingla.example/legal/rewritten'
-    WHERE version='local-4182-v1';
+    WHERE version='local-ng-1.0';
   EXCEPTION WHEN OTHERS THEN
     v_failed:=SQLERRM='local_agreement_version_immutable';
   END;
@@ -269,7 +272,7 @@ BEGIN
   v_failed:=false;
   BEGIN
     PERFORM public.local_agreement_sign(
-      v_expired_application,'local-4182-v1','Expired Applicant'
+      v_expired_application,'local-ng-1.0','Expired Applicant'
     );
   EXCEPTION WHEN OTHERS THEN
     v_failed:=SQLERRM='local_agreement_invitation_expired';
@@ -289,6 +292,108 @@ BEGIN
   END IF;
 END
 $agreement$;
+
+DO $social_review$
+DECLARE
+  v_admin constant uuid := '41820000-0000-4000-8000-000000000101';
+  v_applicant constant uuid := '41820000-0000-4000-8000-000000000102';
+  v_city constant uuid := '41820000-0000-4000-8000-000000000104';
+  v_place constant uuid := '41820000-0000-4000-8000-000000000201';
+  v_month constant uuid := '41820000-0000-4000-8000-000000000202';
+  v_media constant uuid := '41820000-0000-4000-8000-000000000203';
+  v_local uuid;
+  v_answer jsonb;
+  v_failed boolean;
+BEGIN
+  SELECT id INTO v_local FROM public.locals WHERE user_id=v_applicant;
+  INSERT INTO public.place_pool(id,name,lat,lng,city_id,is_active,is_servable)
+  VALUES(v_place,'Issue 4182 social review place',6.5,3.4,v_city,true,true);
+  INSERT INTO public.local_months(
+    id,local_id,month,place_id,status,picked_at,confirmed_at,visited_at,submitted_at
+  ) VALUES(
+    v_month,v_local,date_trunc('month',current_date)::date,v_place,'submitted',
+    now(),now(),now(),now()
+  );
+  INSERT INTO public.creator_media_jobs(
+    id,client_operation_id,owner_kind,owner_id,purpose,local_month_id,
+    bunny_video_id,status,ready_at,created_at
+  ) VALUES(
+    v_media,gen_random_uuid(),'local',v_applicant,'local_review',v_month,
+    '4182-social-review','ready',now(),now()
+  );
+  INSERT INTO public.local_reviews(
+    local_month_id,rating,title,body,visited_on,spend_band,media_job_ids,
+    social_post_url,disclosure_ack
+  ) VALUES(
+    v_month,5,'A useful Local review',repeat('A useful first-hand Local review. ',12),
+    current_date,'moderate',ARRAY[v_media],
+    'https://www.instagram.com/p/issue4182',true
+  );
+
+  PERFORM set_config('request.jwt.claim.sub',v_applicant::text,true);
+  PERFORM set_config('request.jwt.claims',json_build_object(
+    'sub',v_applicant,'email','issue-4182-local@test.local','role','authenticated'
+  )::text,true);
+  v_failed:=false;
+  BEGIN
+    PERFORM public.local_social_check_admin_confirm(v_month,true,true,true,true);
+  EXCEPTION WHEN OTHERS THEN
+    v_failed:=SQLERRM='admin_only';
+  END;
+  IF NOT v_failed THEN
+    RAISE EXCEPTION '#4182 a Local could approve their own social proof';
+  END IF;
+
+  PERFORM set_config('request.jwt.claim.sub',v_admin::text,true);
+  PERFORM set_config('request.jwt.claims',json_build_object(
+    'sub',v_admin,'email','issue-4182-admin@test.local','role','authenticated'
+  )::text,true);
+  v_failed:=false;
+  BEGIN
+    PERFORM public.local_review_decide(v_month,'approve','{}');
+  EXCEPTION WHEN OTHERS THEN
+    v_failed:=SQLERRM='social_check_required';
+  END;
+  IF NOT v_failed THEN
+    RAISE EXCEPTION '#4182 Admin approval was not locked before social review';
+  END IF;
+
+  v_failed:=false;
+  BEGIN
+    PERFORM public.local_social_check_admin_confirm(v_month,true,true,false,true);
+  EXCEPTION WHEN OTHERS THEN
+    v_failed:=SQLERRM='local_social_check_incomplete';
+  END;
+  IF NOT v_failed THEN
+    RAISE EXCEPTION '#4182 an incomplete social checklist was accepted';
+  END IF;
+
+  v_answer:=public.local_social_check_admin_confirm(v_month,true,true,true,true);
+  IF v_answer->>'status'<>'passed'
+    OR (SELECT social_check_status FROM public.local_reviews WHERE local_month_id=v_month)<>'passed'
+    OR (SELECT social_check_detail->>'reviewed_by' FROM public.local_reviews WHERE local_month_id=v_month)<>v_admin::text
+    OR NOT EXISTS(
+      SELECT 1 FROM public.local_events
+      WHERE local_month_id=v_month AND kind='local_social_post_checked'
+    ) THEN
+    RAISE EXCEPTION '#4182 social review did not retain its Admin audit evidence: %',v_answer;
+  END IF;
+
+  v_answer:=public.local_review_decide(v_month,'approve','{}');
+  IF v_answer->>'status'<>'published'
+    OR (SELECT status FROM public.local_months WHERE id=v_month)<>'published' THEN
+    RAISE EXCEPTION '#4182 completed social review did not unlock publish: %',v_answer;
+  END IF;
+
+  IF has_function_privilege(
+    'anon','public.local_social_check_admin_confirm(uuid,boolean,boolean,boolean,boolean)','EXECUTE'
+  ) OR NOT has_function_privilege(
+    'authenticated','public.local_social_check_admin_confirm(uuid,boolean,boolean,boolean,boolean)','EXECUTE'
+  ) THEN
+    RAISE EXCEPTION '#4182 social review function privileges are not fail-closed';
+  END IF;
+END
+$social_review$;
 
 ROLLBACK;
 

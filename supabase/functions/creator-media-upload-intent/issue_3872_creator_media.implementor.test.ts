@@ -8,6 +8,7 @@ import {
   creatorPlaybackUrl,
   deleteCreatorVideo,
   evaluateCreatorMediaCapacity,
+  readCreatorMediaCapacity,
 } from "../_shared/creatorMedia.ts";
 import { selectCreatorMediaReap } from "../creator-media-reaper/index.ts";
 import { createCreatorMediaWebhookHandler } from "../creator-media-webhook/index.ts";
@@ -171,6 +172,52 @@ Deno.test("#4182 creator media preflight requires every signed MP4 rendition", (
   );
 });
 
+Deno.test("#4182 creator media preflight reads CDN token protection from the authoritative pull zone", async () => {
+  const urls: string[] = [];
+  const fetchImpl = (input: string | URL | Request): Promise<Response> => {
+    const url = String(input);
+    urls.push(url);
+    if (url.endsWith("/videolibrary/4182")) {
+      return Promise.resolve(new Response(JSON.stringify({
+        StorageUsage: 10,
+        TrafficUsage: 20,
+        PullZoneId: 99182,
+        EnabledResolutions: "240p,360p,480p,720p,1080p",
+        EnableMP4Fallback: true,
+        KeepOriginalFiles: false,
+        EnableTokenAuthentication: null,
+        PlayerTokenAuthenticationEnabled: true,
+        AllowDirectPlay: true,
+      }), { status: 200 }));
+    }
+    if (url.endsWith("/pullzone/99182")) {
+      return Promise.resolve(new Response(JSON.stringify({
+        ZoneSecurityEnabled: true,
+      }), { status: 200 }));
+    }
+    return Promise.resolve(new Response(null, { status: 404 }));
+  };
+  const result = await readCreatorMediaCapacity({
+    libraryId: "4182",
+    apiKey: "library-key",
+    accountApiKey: "account-key",
+    cdnHostname: "creator.example.test",
+    tokenKey: "token-key",
+    webhookKey: "webhook-key",
+    storageCapBytes: 100,
+    trafficCapBytes: 100,
+  }, fetchImpl as typeof fetch);
+  assertEquals(result, {
+    blocked: false,
+    reason: "under_cap",
+    usedPercent: 20,
+  });
+  assertEquals(urls, [
+    "https://api.bunny.net/videolibrary/4182",
+    "https://api.bunny.net/pullzone/99182",
+  ]);
+});
+
 Deno.test("#4182 creator media config resolves from the governed shared credential bundle", () => {
   const names = [
     "CREATOR_BUNNY_ACCOUNT_API_KEY",
@@ -299,8 +346,11 @@ Deno.test("#3872 creator media playback grants are signed and expire after one h
     now,
   );
   assertEquals(playback?.expiresAt, "2026-10-26T13:00:00.000Z");
+  assertEquals(
+    playback?.url,
+    "https://player.mediadelivery.net/embed/3872/00000000-3872-4000-8000-000000000099?token=15e336c746ba010e7598265dbf75884bf61a3a5e891be3e3fc4dd1d813def08b&expires=1793019600",
+  );
   assertEquals(playback?.url.includes("token-secret"), false);
-  assertEquals(playback?.url.includes("token="), true);
 });
 
 Deno.test("#4182 approved-master grants sign one MP4 path for fifteen minutes", async () => {

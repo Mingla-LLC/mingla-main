@@ -26,7 +26,14 @@ test("#4182 Local approval requires private playback plus a human review attesta
   assert.match(serviceSource, /functions\.invoke\([\s\S]*"creator-media-status"/);
   assert.match(panelSource, /<iframe[\s\S]*src=\{grant\.url\}/);
   assert.match(panelSource, /I watched every submitted video/);
-  assert.match(panelSource, /disabled=\{!allMediaLoaded \|\| !watchedAllMedia\}/);
+  assert.match(panelSource, /disabled=\{!allMediaLoaded \|\| !watchedAllMedia \|\| !socialReady\}/);
+  assert.match(panelSource, /Check the public post/);
+  assert.match(panelSource, /It uses the submitted review video/);
+  assert.match(panelSource, /It is posted by the applicant's submitted account/);
+  assert.match(panelSource, /It includes a clear paid partnership or ad disclosure/);
+  assert.match(panelSource, /It tags or invites @usemingla as a collaborator/);
+  assert.match(panelSource, /confirmLocalSocialPost/);
+  assert.match(serviceSource, /local_social_check_admin_confirm/);
   assert.match(panelSource, /No submitted video is attached\.[\s\S]*This review cannot be\s+approved\./);
 });
 
@@ -50,6 +57,7 @@ test("#4182 Admin uses the approved operations workspace instead of stacked deci
   assert.match(panelSource, /tab === "city-programs"/);
   assert.match(panelSource, /Current picks/);
   assert.match(panelSource, /Local payouts/);
+  assert.match(panelSource, /!item\.share_status && rowError\[key\]/);
   assert.match(panelSource, /Loading Mingla Locals/);
   assert.match(panelSource, /Try again/);
 });
@@ -58,6 +66,6 @@ test("#4182 Admin review is private playback only and never offers a Local video
   assert.match(panelSource, /Private Bunny video/);
   assert.match(panelSource, /Admin-only signed playback\. Download is unavailable\./);
   assert.match(panelSource, /expiring Admin-only grant/);
-  assert.match(panelSource, /Approval stays locked until every submitted video is loaded/);
+  assert.match(panelSource, /Approval unlocks after every submitted video is loaded and watched/);
   assert.doesNotMatch(panelSource, /downloadLocal|downloadReview|Download video/);
 });

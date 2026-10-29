@@ -14,9 +14,9 @@ ALTER TABLE public.creator_media_jobs
   ADD COLUMN IF NOT EXISTS purge_outcome text,
   ADD COLUMN IF NOT EXISTS purge_failure_code text;
 
--- The agreement is published by a reviewed legal/release change, never typed
--- by an Admin while deciding one person's application. No version is seeded
--- here because the approved document and digest are release inputs.
+-- The agreement is published by this reviewed release, never typed by an Admin
+-- while deciding one person's application. The immutable version, URL and
+-- canonical digest below are the signing authority for every applicant.
 CREATE TABLE public.local_agreement_versions (
   version text PRIMARY KEY CHECK(char_length(btrim(version)) BETWEEN 1 AND 80),
   document_url text NOT NULL CHECK(document_url~'^https://[^[:space:]]+$'),
@@ -30,6 +30,19 @@ CREATE TABLE public.local_agreement_versions (
 );
 CREATE UNIQUE INDEX local_agreement_one_current_uq
   ON public.local_agreement_versions(is_current) WHERE is_current;
+
+-- Production authority for the applicant signing screen. The marketing route
+-- publishes the exact canonical copy whose digest is pinned here; changing a
+-- word requires a new version and fingerprint, never an in-place rewrite.
+INSERT INTO public.local_agreement_versions(
+  version,document_url,document_sha256,effective_at,is_current
+) VALUES(
+  'local-ng-1.0',
+  'https://usemingla.com/local-agreement',
+  '65d2ac74f256dc9bf013aa56afced7f15210083854e471e89f8d7ddce255a954',
+  '2026-10-29T00:00:00Z'::timestamptz,
+  true
+);
 
 ALTER TABLE public.local_applications
   ADD COLUMN agreement_version text REFERENCES public.local_agreement_versions(version) ON DELETE RESTRICT,
@@ -720,6 +733,57 @@ GRANT EXECUTE ON FUNCTION public.issue_4182_creator_media_reap_candidates(timest
 -- Approval is server-gated on the same ready media that Admin just reviewed.
 -- The UI adds the human watch attestation; this guard prevents publishing a
 -- row whose Bunny asset disappeared or failed after submission.
+CREATE OR REPLACE FUNCTION public.local_social_check_admin_confirm(
+  p_local_month_id uuid,
+  p_video_matches boolean,
+  p_account_matches boolean,
+  p_has_disclosure boolean,
+  p_has_mingla_collab boolean
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+DECLARE v_month public.local_months;
+BEGIN
+  IF NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'admin_only' USING ERRCODE='42501';
+  END IF;
+  SELECT * INTO v_month FROM public.local_months
+    WHERE id=p_local_month_id FOR UPDATE;
+  IF NOT FOUND OR v_month.status<>'submitted' OR NOT EXISTS(
+    SELECT 1 FROM public.local_reviews r
+    WHERE r.local_month_id=v_month.id AND nullif(btrim(r.social_post_url),'') IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'local_social_post_not_reviewable' USING ERRCODE='55000';
+  END IF;
+  IF NOT coalesce(p_video_matches,false)
+    OR NOT coalesce(p_account_matches,false)
+    OR NOT coalesce(p_has_disclosure,false)
+    OR NOT coalesce(p_has_mingla_collab,false) THEN
+    RAISE EXCEPTION 'local_social_check_incomplete' USING ERRCODE='22023';
+  END IF;
+  UPDATE public.local_reviews SET
+    social_check_status='passed',
+    social_check_detail=jsonb_build_object(
+      'method','admin_manual_review',
+      'reviewed_by',auth.uid(),
+      'reviewed_at',clock_timestamp(),
+      'video_matches',true,
+      'account_matches',true,
+      'has_disclosure',true,
+      'has_mingla_collab',true
+    )
+  WHERE local_month_id=v_month.id;
+  INSERT INTO public.local_events(local_id,local_month_id,actor,kind,data)
+  VALUES(v_month.local_id,v_month.id,'admin','local_social_post_checked',
+    jsonb_build_object('reviewed_by',auth.uid(),'method','admin_manual_review'));
+  RETURN jsonb_build_object('ok',true,'status','passed');
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.local_social_check_admin_confirm(uuid,boolean,boolean,boolean,boolean)
+  FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.local_social_check_admin_confirm(uuid,boolean,boolean,boolean,boolean)
+  TO authenticated,service_role;
+
 CREATE OR REPLACE FUNCTION public.local_review_decide(
   p_local_month_id uuid,p_decision text,p_reasons text[] DEFAULT '{}'
 ) RETURNS jsonb

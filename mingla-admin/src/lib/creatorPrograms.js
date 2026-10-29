@@ -433,6 +433,8 @@ const ERROR_WORDS = {
   invalid_refund_bps: "Enter a refund between 1% and 99%.",
   seats_below_active_locals: "Seats can't be fewer than the active and reserved Local seats.",
   social_check_required: "The social post must pass its check before you approve.",
+  local_social_post_not_reviewable: "This social post is no longer ready for review. Refresh the list.",
+  local_social_check_incomplete: "Check every social-post requirement before marking it complete.",
   media_unavailable: "This video cannot be played right now. Do not approve the review yet.",
   review_media_unavailable: "A submitted video is unavailable. Do not publish this review yet.",
   local_month_not_reviewable: "This review was already decided. Refresh the list.",

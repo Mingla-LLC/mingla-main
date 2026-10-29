@@ -33,7 +33,10 @@ export function CreatorMediaPlayerModal({
           <WebView
             key={url}
             source={{ uri: url }}
-            originWhitelist={["https://iframe.mediadelivery.net"]}
+            originWhitelist={[
+              "https://player.mediadelivery.net",
+              "https://iframe.mediadelivery.net",
+            ]}
             style={styles.player}
             allowsInlineMediaPlayback
             mediaPlaybackRequiresUserAction

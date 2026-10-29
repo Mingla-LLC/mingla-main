@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { localProgramService } from '../../src/services/localProgramService';
 import { chooseAndUploadCreatorMedia, creatorMediaStatus, isPickerCancel } from '../../src/services/creatorMediaService';
 import { programErrorText } from '../../src/services/programResult';
-import { parseDay, toDayString } from '../../src/utils/programFormat';
+import { parseDay, persistedDayString } from '../../src/utils/programFormat';
 import { SPEND_BANDS } from '../../src/components/local/localWords';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoading, ProgramNotice, ProgramRow, ProgramScreen, programStyles as s } from '../../src/components/programs/ProgramUi';
 import { CheckRow, Chip, DateField, StarsInput } from '../../src/components/programs/ProgramPickers';
@@ -30,7 +30,7 @@ export default function LocalReviewScreen(): React.ReactElement {
   const home = useQuery({ queryKey: ['local', 'home'], queryFn: () => localProgramService.home() });
   const month = home.data?.months.find((m) => m.id === monthId) ?? (home.data?.current_month?.id === monthId ? home.data.current_month : null);
   const names = useQuery({ queryKey: ['local', 'place-name', month?.place_id], queryFn: () => localProgramService.placeNames([month!.place_id!]), enabled: Boolean(month?.place_id) });
-  const visitedDefault = month?.visited_at ? toDayString(parseDay(month.visited_at)!) : null;
+  const visitedDefault = persistedDayString(month?.visited_at);
   const [visitedOn, setVisitedOn] = useState<string | null>(null);
   const [rating, setRating] = useState(0);
   const [title, setTitle] = useState('');

@@ -3,7 +3,7 @@
 // a write that answers {ok:false, error} is thrown as a failure so a page can
 // never show a success for it.
 
-import { supabase } from "../lib/supabase";
+import { invokeWithRefresh, supabase } from "../lib/supabase";
 
 export class ProgramWriteError extends Error {
   constructor(result) {
@@ -123,8 +123,18 @@ export function decideLocalReview(localMonthId, decision, reasons) {
   });
 }
 
+export function confirmLocalSocialPost(localMonthId, checks) {
+  return write("local_social_check_admin_confirm", {
+    p_local_month_id: localMonthId,
+    p_video_matches: Boolean(checks.videoMatches),
+    p_account_matches: Boolean(checks.accountMatches),
+    p_has_disclosure: Boolean(checks.hasDisclosure),
+    p_has_mingla_collab: Boolean(checks.hasMinglaCollab),
+  });
+}
+
 export async function getCreatorMediaPlayback(jobId) {
-  const { data, error } = await supabase.functions.invoke("creator-media-status", {
+  const { data, error } = await invokeWithRefresh("creator-media-status", {
     body: { jobId },
   });
   if (error) throw new ProgramWriteError({ error: "media_unavailable" });
@@ -143,7 +153,7 @@ export function voidLocalMonth(localMonthId, reason) {
 }
 
 export async function prepareLocalPayout(localMonthId) {
-  const { data, error } = await supabase.functions.invoke("local-payout", { body: { local_month_id: localMonthId } });
+  const { data, error } = await invokeWithRefresh("local-payout", { body: { local_month_id: localMonthId } });
   if (error) throw new ProgramWriteError({ error: "write_failed" });
   if (data && data.ok === false) throw new ProgramWriteError(data);
   return data;

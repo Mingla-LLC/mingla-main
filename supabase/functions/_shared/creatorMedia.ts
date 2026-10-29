@@ -180,6 +180,44 @@ export async function readCreatorMediaCapacity(
   if (body === null) {
     return { blocked: true, reason: "usage_unreadable", usedPercent: null };
   }
+  // Bunny applies Stream CDN token authentication on the library's backing
+  // pull zone. The video-library API currently returns
+  // EnableTokenAuthentication=null even when the pull zone is protected, so
+  // treating that nullable mirror as provider truth would permanently block a
+  // correctly configured library. Verify the authoritative pull-zone setting
+  // before allowing an upload.
+  const pullZoneId = Number(body.PullZoneId);
+  if (!Number.isInteger(pullZoneId) || pullZoneId <= 0) {
+    return { blocked: true, reason: "settings_invalid", usedPercent: null };
+  }
+  let pullZoneResponse: Response;
+  try {
+    pullZoneResponse = await fetchWithTimeout(
+      `${ACCOUNT_HOST}/pullzone/${pullZoneId}`,
+      {
+        headers: {
+          AccessKey: config.accountApiKey,
+          accept: "application/json",
+        },
+      },
+      BUNNY_TIMEOUTS_MS.usage,
+      fetchImpl,
+    );
+  } catch {
+    return { blocked: true, reason: "usage_unreadable", usedPercent: null };
+  }
+  if (!pullZoneResponse.ok) {
+    return { blocked: true, reason: "usage_unreadable", usedPercent: null };
+  }
+  let pullZoneBody: Record<string, unknown> | null = null;
+  try {
+    pullZoneBody = await pullZoneResponse.json();
+  } catch {
+    pullZoneBody = null;
+  }
+  if (pullZoneBody === null) {
+    return { blocked: true, reason: "usage_unreadable", usedPercent: null };
+  }
   return evaluateCreatorMediaCapacity({
     storageUsage: body.StorageUsage,
     trafficUsage: body.TrafficUsage,
@@ -188,7 +226,7 @@ export async function readCreatorMediaCapacity(
     enabledResolutions: body.EnabledResolutions,
     mp4Fallback: body.EnableMP4Fallback,
     keepOriginalFiles: body.KeepOriginalFiles,
-    tokenAuthentication: body.EnableTokenAuthentication,
+    tokenAuthentication: pullZoneBody.ZoneSecurityEnabled,
     playerTokenAuthentication: body.PlayerTokenAuthenticationEnabled,
     allowDirectPlay: body.AllowDirectPlay,
   });
@@ -328,9 +366,11 @@ export async function creatorPlaybackUrl(
     !/^[0-9a-f-]{20,}$/i.test(videoId)
   ) return null;
   const expires = Math.floor(nowMs / 1000) + 3600;
-  const token = await sha256Hex(`${videoId}${config.tokenKey}${expires}`);
+  // Bunny embed-view tokens are SHA-256(key + video ID + expiry). Keep the
+  // signing key server-side and return only the finished, short-lived URL.
+  const token = await sha256Hex(`${config.tokenKey}${videoId}${expires}`);
   return {
-    url: `https://iframe.mediadelivery.net/embed/${
+    url: `https://player.mediadelivery.net/embed/${
       encodeURIComponent(config.libraryId)
     }/${encodeURIComponent(videoId)}?token=${token}&expires=${expires}`,
     expiresAt: new Date(expires * 1000).toISOString(),
