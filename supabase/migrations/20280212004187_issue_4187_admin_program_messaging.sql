@@ -366,7 +366,7 @@ SET search_path = public, pg_temp
 AS $function$
 DECLARE
   v_actor uuid := auth.uid();
-  v_actor_email text := COALESCE(auth.jwt() ->> 'email', 'unknown-admin');
+  v_actor_email text;
   v_team_name text;
   v_conversation_id uuid;
   v_message public.messages%ROWTYPE;
@@ -377,6 +377,11 @@ BEGIN
   IF v_actor IS NULL OR NOT public.is_admin_user() THEN
     RAISE EXCEPTION 'admin_only' USING ERRCODE = '42501';
   END IF;
+  SELECT COALESCE(NULLIF(btrim(profile.email), ''), 'unknown-admin')
+    INTO v_actor_email
+  FROM public.profiles AS profile
+  WHERE profile.id = v_actor;
+  v_actor_email := COALESCE(v_actor_email, 'unknown-admin');
   IF p_program_kind NOT IN ('local', 'creator')
      OR NOT public.issue_4187_program_target_exists(p_program_kind, p_target_user_id) THEN
     RAISE EXCEPTION 'program_recipient_unavailable' USING ERRCODE = '22023';

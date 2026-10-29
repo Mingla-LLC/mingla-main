@@ -71,7 +71,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4182 / #4187: re-sealed after the Local/Creator media lifecycle and Admin
 // program-messaging migrations plus their registered PostgreSQL proofs entered
 // the three preserved full-history replay inventories.
-export const BOOTSTRAP_SHA256 = "f05a88a457d36a888adf3d88703231441507964c26b8fedc321adde14f66fb7b";
+export const BOOTSTRAP_SHA256 = "5ebad60ba413e946c55a14daa709012ef3e35781a44b3d1f1986f0124f0492e5";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

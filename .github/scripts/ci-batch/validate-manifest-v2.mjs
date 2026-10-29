@@ -299,7 +299,7 @@ export function phase3dContractDigest(manifest) {
 // same inventories so every preserved selector remains exact.
 // #4182 / #4187: register the Local/Creator lifecycle and Admin program-chat
 // migrations plus their declared PostgreSQL proofs in those inventories.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "40b7f5dd8ad57575709c2f82590f28dfedf178fe9fcbb3d841da499c1da9f1ad";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "06a8bbc24aed0586eb0bbe97e1b775582481dab46007dbb8aa25973333027410";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

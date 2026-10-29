@@ -80,7 +80,12 @@ Deno.test("#4114 group pushes keep the 5-minute bucket per recipient", () => {
 
 Deno.test("#4114 notify-message passes the message id into the DM fan-out", () => {
   const source = Deno.readTextFileSync(new URL("../index.ts", import.meta.url));
-  assert(source.includes('import { unifiedMessageIdempotencyKey } from "./messageKeys.ts";'), "uses the shared key");
+  // [TEST-MOD-APPROVED #4187] The official program-chat title helper now
+  // shares this module; the #4114 contract remains the named key import.
+  assert(
+    /import\s*\{[^}]*\bunifiedMessageIdempotencyKey\b[^}]*\}\s*from\s*"\.\/messageKeys\.ts";/.test(source),
+    "uses the shared key",
+  );
   assert(!/`dm:\$\{senderId\}:\$\{conversationId\}:\$\{messageTimestamp\}`/.test(source), "no inline per-call DM key");
   const fanOut = source.slice(source.indexOf("async function handleUnifiedMessage("), source.indexOf("async function handleUnifiedMention("));
   assert(/messageId\?: string,\s*\): Promise<\{ notified: number \}>/.test(fanOut), "the fan-out takes the message id");
