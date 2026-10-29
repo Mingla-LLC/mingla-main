@@ -57,6 +57,8 @@ export interface GlassCardProps {
    * / `justifyContent` / `rowGap` / `columnGap` / `flexWrap` can do anything.
    */
   contentStyle?: StyleProp<ViewStyle>;
+  /** Stretch the outer, clip and content layers to an equal-height row. */
+  fillHeight?: boolean;
 }
 
 export type GlassCardRadius = GlassChromeRadius;
@@ -97,6 +99,7 @@ export const GlassCard: React.FC<GlassCardProps> = ({
   testID,
   style,
   contentStyle,
+  fillHeight = false,
 }) => {
   const tokens = VARIANT_TOKENS[variant];
   const resolvedRadius: GlassChromeRadius = radius ?? tokens.defaultRadius;
@@ -110,6 +113,7 @@ export const GlassCard: React.FC<GlassCardProps> = ({
       shadow={tokens.shadow}
       radius={resolvedRadius}
       testID={testID}
+      fillHeight={fillHeight}
       style={[styles.card, { borderRadius: radiusTokens[resolvedRadius] }, style]}
     >
       {/* #1532 — the REAL parent of `children`. `contentStyle` lands here, so a
@@ -125,7 +129,11 @@ export const GlassCard: React.FC<GlassCardProps> = ({
           output is identical. Guarded by
           `issue_3872_promote_glasscard_padding.web.render.test.tsx`. */}
       <View
-        style={StyleSheet.flatten([{ padding }, contentStyle])}
+        style={StyleSheet.flatten([
+          { padding },
+          fillHeight && styles.fillHeight,
+          contentStyle,
+        ])}
         testID={testID !== undefined ? `${testID}-content` : undefined}
       >
         {children}
@@ -138,6 +146,7 @@ const styles = StyleSheet.create({
   card: {
     overflow: "visible",
   },
+  fillHeight: { flex: 1 },
 });
 
 export default GlassCard;

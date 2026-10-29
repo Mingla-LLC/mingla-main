@@ -69,7 +69,7 @@ describe("issue #874 Analytics Home tile real render", () => {
 
   it("keeps its action and footprint while loading", async () => {
     const loading = await renderExpanded({ data: undefined, isLoading: true });
-    expect(loading.getByText("Customers Mingla drove you")).toBeTruthy();
+    expect(loading.getByText("Bookings through Mingla")).toBeTruthy();
     expect(loading.getByText("Open")).toBeTruthy();
   });
 
@@ -91,7 +91,7 @@ describe("issue #874 Analytics Home tile real render", () => {
 describe("issue #1616 Analytics Home tile collapses by default", () => {
   it("renders collapsed on mount — no window, no figures, no Open row", async () => {
     const screen = await renderTile();
-    expect(screen.getByText("Customers Mingla drove you")).toBeTruthy();
+    expect(screen.getByText("Bookings through Mingla")).toBeTruthy();
     expect(screen.queryByText("Last 30 days")).toBeNull();
     expect(screen.queryByText("2 customers")).toBeNull();
     expect(screen.queryByText("Open")).toBeNull();
@@ -101,7 +101,7 @@ describe("issue #1616 Analytics Home tile collapses by default", () => {
     const screen = await renderTile();
     const card = screen.getByTestId("analytics-home-tile");
     expect(card.props.accessibilityLabel).toBe(
-      "Expand analytics, Customers Mingla drove you",
+      "Expand analytics, Bookings through Mingla",
     );
     expect(card.props.accessibilityLabel).not.toContain("Open Analytics");
     expect(card.props.accessibilityState.expanded).toBe(false);
@@ -136,7 +136,7 @@ describe("issue #1616 Analytics Home tile collapses by default", () => {
     const second = await renderTile();
     expect(second.queryByText("Last 30 days")).toBeNull();
     expect(second.getByTestId("analytics-home-tile").props.accessibilityLabel).toBe(
-      "Expand analytics, Customers Mingla drove you",
+      "Expand analytics, Bookings through Mingla",
     );
   });
 

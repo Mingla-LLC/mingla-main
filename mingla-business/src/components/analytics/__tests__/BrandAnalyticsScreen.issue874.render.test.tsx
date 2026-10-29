@@ -159,7 +159,9 @@ describe("issue #874 Analytics screen real RN render", () => {
       />,
     );
     expect(screen.getByText("Analytics")).toBeTruthy();
-    expect(screen.getByText("See how customers find and choose Smoke & Rhythm.")).toBeTruthy();
+    expect(
+      screen.getByText("See how people reach your pages and take action."),
+    ).toBeTruthy();
     expect(screen.getByTestId("analytics-totals-loading")).toBeTruthy();
     expect(screen.getByTestId("analytics-regulars-loading")).toBeTruthy();
     expect(screen.getByTestId("analytics-patterns-loading")).toBeTruthy();
@@ -177,7 +179,7 @@ describe("issue #874 Analytics screen real RN render", () => {
         onBackToHome={jest.fn()}
       />,
     );
-    expect(screen.getByText("Customers Mingla drove")).toBeTruthy();
+    expect(screen.getByText("Bookings through Mingla")).toBeTruthy();
     expect(screen.getByText("Couldn't load regulars")).toBeTruthy();
     expect(screen.queryByText("Customer patterns")).toBeNull();
     fireEvent.press(screen.getByText("Retry"));
@@ -216,7 +218,7 @@ describe("issue #874 Analytics screen real RN render", () => {
       />,
     );
     expect(screen.getByText("Analytics unavailable")).toBeTruthy();
-    expect(screen.queryByText("Customers Mingla drove")).toBeNull();
+    expect(screen.queryByText("Bookings through Mingla")).toBeNull();
     fireEvent.press(screen.getByText("Back to Home"));
     expect(onBackToHome).toHaveBeenCalledTimes(1);
   });

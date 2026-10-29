@@ -70,7 +70,7 @@ const CARD_TESTID = "analytics-home-tile";
 const CHEVRON_TESTID = "analytics-home-tile-chevron";
 const ROOT_TESTID = "analytics-home-tile-root";
 const LOADING_TESTID = "analytics-home-loading";
-const COLLAPSED_LABEL = "Expand analytics, Customers Mingla drove you";
+const COLLAPSED_LABEL = "Expand analytics, Bookings through Mingla";
 
 const data = {
   brandId: "brand-1616",

@@ -470,7 +470,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
             <ActionTile
               icon="chart"
               label="Insights"
-              sub="Customers Mingla drove"
+              sub="Visits, actions and bookings"
               accessibilityLabel={`Open Insights for ${event.name}`}
               onPress={() =>
                 router.push(`/insights/${event.id}?entry=detail_action` as never)

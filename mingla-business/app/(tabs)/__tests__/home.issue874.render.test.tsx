@@ -1,6 +1,12 @@
 import React from "react";
-import { act, render } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 import HomeTab from "../home";
+
+jest.mock("react", () => {
+  const actual = jest.requireActual("react");
+  return { ...actual, lazy: () => "UniversalCreatorSheet" };
+});
 
 // [TEST-MOD-APPROVED #2794] The approved Recent workspace supersedes this
 // lane's former Last-7/Live/Upcoming composition contract.
@@ -61,6 +67,7 @@ const mockRecentRow = {
   localDraft: false,
 };
 let mockIsWideDesktop = false;
+let mockRecentState: "empty" | "populated" = "populated";
 let mockUpcoming = {
   items: [mockLive("live-1"), mockUpcomingItem],
   liveItems: [mockLive("live-1")],
@@ -115,9 +122,9 @@ jest.mock("../../../src/hooks/marketing/useHostAdCampaigns", () => ({
 }));
 jest.mock("../../../src/hooks/useBusinessRecent", () => ({
   useBusinessRecent: () => ({
-    rows: [mockRecentRow],
-    total: 1,
-    state: "populated",
+    rows: mockRecentState === "empty" ? [] : [mockRecentRow],
+    total: mockRecentState === "empty" ? 0 : 1,
+    state: mockRecentState,
     isRefreshing: false,
     isLoadingMore: false,
     hasPageError: false,
@@ -263,6 +270,7 @@ const findNodes = (
 describe("issue #874 Home integration real render", () => {
   beforeEach(() => {
     mockIsWideDesktop = false;
+    mockRecentState = "populated";
     mockUpcoming = {
       items: [mockLive("live-1"), mockUpcomingItem],
       liveItems: [mockLive("live-1")],
@@ -320,7 +328,36 @@ describe("issue #874 Home integration real render", () => {
     expect(panel[0]?.props.upcomingItems).toEqual(mockUpcoming.items);
   });
 
-  it("pull-to-refresh invalidates payout, 30-day traffic and all-time traffic", async () => {
+  it("keeps the desktop top section and Recent on one compact rhythm", async () => {
+    mockIsWideDesktop = true;
+    const screen = await render(<HomeTab />);
+    const content = screen.getByTestId("home-desktop-content");
+    expect(
+      StyleSheet.flatten(content.props.contentContainerStyle).gap,
+    ).toBeUndefined();
+  });
+
+  it("opens the create modal from the Recent empty state", async () => {
+    mockRecentState = "empty";
+    const screen = await render(<HomeTab />);
+
+    expect(screen.getByText("Create something")).toBeTruthy();
+    expect(screen.queryByText("Browse your work")).toBeNull();
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId("recent-state-cta"));
+    });
+
+    expect(
+      findNodes(
+        screen.root as unknown as TestNode,
+        (node) => node.type === "UniversalCreatorSheet",
+      ),
+    ).toHaveLength(1);
+    expect(mockPush).not.toHaveBeenCalledWith("/(tabs)/hub");
+  });
+
+  it("pull-to-refresh invalidates payout and both Home traffic queries", async () => {
     const screen = await render(<HomeTab />);
     const list = screen.getByTestId("home-mobile-scroll");
     const refreshControl = list.props.refreshControl as {

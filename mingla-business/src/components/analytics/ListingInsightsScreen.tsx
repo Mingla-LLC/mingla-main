@@ -32,6 +32,7 @@ import {
 } from "../../analytics/businessAnalyticsEvents";
 import { TopBar } from "../ui/TopBar";
 import { LegacyListingInsightsScreen } from "./LegacyListingInsightsScreen";
+import { listingInsightsIntro } from "./listingInsightsIntro";
 
 interface TrafficListingInsightsScreenProps {
   identity: UseQueryResult<ListingInsightsIdentity, Error>;
@@ -229,9 +230,9 @@ const TrafficListingInsightsScreen: React.FC<
                 {title}
               </Text>
               {identity.data === undefined ? null : (
-                <Text
-                  style={styles.intro}
-                >{`How people find and choose this ${identity.data.listingType}.`}</Text>
+                <Text style={styles.intro}>
+                  {listingInsightsIntro(identity.data.listingType)}
+                </Text>
               )}
               <View accessibilityLiveRegion="polite">
                 {announcement === null ? null : (
@@ -300,6 +301,7 @@ const TrafficListingInsightsScreen: React.FC<
             range={range}
             onRangeChange={setRange}
             isWideDesktop={isWideDesktop}
+            listingType={identity.data?.listingType}
           />
         </View>
       </ScrollView>

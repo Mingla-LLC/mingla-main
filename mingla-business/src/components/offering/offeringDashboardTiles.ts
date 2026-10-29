@@ -62,7 +62,7 @@ const LISTING_INSIGHTS_TILE: OfferingTileDef = {
   label: "Insights",
   requiresPublicPage: false,
   route: ({ id }) => `/insights/${id}?entry=detail_action`,
-  sub: "Customers Mingla drove",
+  sub: "Visits, actions and bookings",
   accessibilityLabel: "Open Insights",
 };
 

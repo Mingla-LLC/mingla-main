@@ -13,6 +13,12 @@
       "package": "braces",
       "reason": "Advisory range is <=3.0.3 with firstPatchedVersion null; npm latest is still 3.0.3 (Dependabot security_update_not_found). Tracked on #2830.",
       "addedForIssue": 2830
+    },
+    {
+      "ghsa": "GHSA-x8rm-f576-gq67",
+      "package": "graphql-scalars",
+      "reason": "Latest @payloadcms/graphql 3.92.1 still pins graphql-scalars 1.22.2; patched 2.0.1 is a transitive major without a compatible Payload release. Tracked on #2830.",
+      "addedForIssue": 2830
     }
   ]
 }

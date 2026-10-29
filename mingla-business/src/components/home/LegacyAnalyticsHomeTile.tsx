@@ -68,7 +68,7 @@ interface AnalyticsHomeTileProps {
 // row shows no data, so it has nothing to be loading or wrong about. It must NOT
 // contain "Open Analytics" — the collapsed row does not open Analytics.
 const COLLAPSED_ACCESSIBILITY_LABEL =
-  "Expand analytics, Customers Mingla drove you";
+  "Expand analytics, Bookings through Mingla";
 
 const customerLabel = (count: number): string =>
   `${count.toLocaleString("en-GB")} ${count === 1 ? "customer" : "customers"}`;
@@ -147,7 +147,7 @@ export const LegacyAnalyticsHomeTile: React.FC<AnalyticsHomeTileProps> = ({
             <Text style={styles.eyebrow}>ANALYTICS</Text>
           </View>
           <Text style={styles.title} accessibilityRole="header">
-            Customers Mingla drove you
+            Bookings through Mingla
           </Text>
           {expanded ? (
             <>

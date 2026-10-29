@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4037-PARTIAL-NO-CONVERSION | issue #4037 | A partial traffic window shows visits, sources, pages and actions but no conversion path or rate; known completed outcomes remain a separate fact.
 import React from "react";
 import { fireEvent, render } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
@@ -52,6 +53,7 @@ const totals = {
 
 const page = {
   entityType: "event" as const,
+  listingType: "event" as const,
   entityId: "11111111-1111-4111-8111-111111111111",
   title: "Saturday rooftop supper",
   pageViews: 48,
@@ -112,7 +114,7 @@ describe("#4037 host traffic dashboard render contract", () => {
     jest.clearAllMocks();
   });
 
-  it("uses four grid skeletons and one retryable error banner", () => {
+  it("uses a two-half, one-full skeleton grid and one retryable error banner", () => {
     const loading = render(
       <TrafficAnalyticsDashboard
         {...baseProps}
@@ -124,7 +126,8 @@ describe("#4037 host traffic dashboard render contract", () => {
     );
     expect(
       loading.getAllByTestId(/^traffic-analytics-loading-\d$/).length,
-    ).toBe(4);
+    ).toBe(3);
+    expect(loading.getByText("30 days")).toBeTruthy();
     loading.unmount();
 
     const failed = render(
@@ -136,7 +139,9 @@ describe("#4037 host traffic dashboard render contract", () => {
         pages={[]}
       />,
     );
-    expect(failed.getAllByText("Couldn't load traffic analytics")).toHaveLength(1);
+    expect(failed.getAllByText("Couldn't load traffic analytics")).toHaveLength(
+      1,
+    );
     fireEvent.press(failed.getByText("Retry"));
     expect(baseProps.onRetry).toHaveBeenCalledTimes(1);
   });
@@ -163,11 +168,17 @@ describe("#4037 host traffic dashboard render contract", () => {
     expect(
       screen.getByText("Tracking began 21 Oct; this range is partial."),
     ).toBeTruthy();
-    expect(screen.getByText("Still collecting: visits (since 21 Oct)")).toBeTruthy();
-    expect(screen.getAllByText("6").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        "Still collecting: visit trend, source mix, conversion path",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("6 bookings and RSVPs")).toBeTruthy();
+    expect(screen.getByText("COMPLETED SO FAR")).toBeTruthy();
     expect(screen.queryByText("Visits per day")).toBeNull();
     expect(screen.queryByText("Where visitors came from")).toBeNull();
     expect(screen.queryByText("Your pages")).toBeNull();
+    expect(screen.queryByText("Activity in this period")).toBeNull();
   });
 
   it("renders the complete phone hierarchy, chart labels and page drill-down", () => {
@@ -188,12 +199,20 @@ describe("#4037 host traffic dashboard render contract", () => {
         onOpenSelectedListing={onOpenSelectedListing}
       />,
     );
-    expect(screen.getByText("VALUE MINGLA BROUGHT")).toBeTruthy();
+    expect(screen.queryByText("VALUE MINGLA BROUGHT")).toBeNull();
     expect(screen.getByText("Visits per day")).toBeTruthy();
-    expect(screen.getAllByText("From visit to sale")).toHaveLength(1);
+    expect(screen.getAllByText("Activity in this period")).toHaveLength(1);
     expect(screen.getAllByText("Where visitors came from")).toHaveLength(1);
     expect(screen.getByText("Your pages")).toBeTruthy();
+    expect(
+      screen.getByText("Each page uses its real completed outcome."),
+    ).toBeTruthy();
     expect(screen.getAllByText("Button taps").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        "Actions are grouped by intent; they are not treated as funnel steps.",
+      ),
+    ).toBeTruthy();
     expect(
       screen.getByLabelText(
         "Visits per day, 30 days, 48 total, highest 30 on 21 Oct",
@@ -201,22 +220,26 @@ describe("#4037 host traffic dashboard render contract", () => {
     ).toBeTruthy();
     expect(
       screen.getByLabelText(
-        "From visit to sale, Page visits 48, Button taps 18, Checkouts started 8, Bookings 6",
+        "Activity in this period, Page visits 48, Booking or RSVP taps 6, Checkouts started · paid only 8, Completed bookings and RSVPs 6",
       ),
     ).toBeTruthy();
     expect(
-      screen.getByLabelText("50 percent of visitors came from Mingla"),
+      screen.getByLabelText("Mingla sources, 50 percent of visitors"),
     ).toBeTruthy();
     expect(
       screen.getAllByLabelText(
-        "Button taps, Buy or book 6, Share 4, Save 5, Directions 6, Website or call 15, Opened another page 0",
+        "Button taps, Primary actions 6, Share 4, Save 5, Directions 6, Website or call 15, Opened another page 0",
       ).length,
     ).toBeGreaterThan(0);
+    expect(screen.getByText("Visitors")).toBeTruthy();
+    expect(screen.getByText("Booking taps")).toBeTruthy();
+    expect(screen.queryByText("£240")).toBeNull();
+    expect(screen.queryByText("Checkouts started")).toBeNull();
 
     fireEvent.press(screen.getByText("7 days"));
     expect(onRangeChange).toHaveBeenCalledWith("7d");
     fireEvent.press(
-      screen.getByLabelText("Saturday rooftop supper, 48 visits, 6 sold"),
+      screen.getByLabelText("Saturday rooftop supper, 48 visits, 6 bookings"),
     );
     expect(onSelectPage).toHaveBeenCalledWith(page);
     fireEvent.press(screen.getByText("Open listing insights ›"));
@@ -243,6 +266,51 @@ describe("#4037 host traffic dashboard render contract", () => {
     ).toBe("75%");
   });
 
+  it("labels RSVP, venue and brand page rows by their real outcomes", () => {
+    const rsvpPage = {
+      ...page,
+      listingType: "rsvp" as const,
+      title: "Community night",
+      bookings: 9,
+    };
+    const venuePage = {
+      ...page,
+      entityType: "venue" as const,
+      listingType: "venue" as const,
+      entityId: "33333333-3333-4333-8333-333333333333",
+      title: "Garden venue",
+      bookings: 4,
+    };
+    const brandPage = {
+      ...page,
+      entityType: "brand" as const,
+      listingType: "brand" as const,
+      entityId: null,
+      title: "Brand page",
+      bookings: 0,
+    };
+    const screen = render(
+      <TrafficAnalyticsDashboard
+        {...baseProps}
+        data={brandData}
+        isLoading={false}
+        isError={false}
+        pages={[rsvpPage, venuePage, brandPage]}
+        onSelectPage={jest.fn()}
+      />,
+    );
+    expect(
+      screen.getByLabelText("Community night, 48 visits, 9 RSVPs"),
+    ).toBeTruthy();
+    expect(
+      screen.getByLabelText("Garden venue, 48 visits, 4 reservations"),
+    ).toBeTruthy();
+    expect(screen.getByLabelText("Brand page, 48 visits")).toBeTruthy();
+    expect(screen.getByText("RSVP · 18.8% visit → RSVP")).toBeTruthy();
+    expect(screen.getByText("Venue · 8.3% visit → reservation")).toBeTruthy();
+    expect(screen.getAllByText("Brand page").length).toBeGreaterThan(0);
+  });
+
   it("shows the tracking start for all-time and preserves the desktop three-row content", () => {
     const screen = render(
       <TrafficAnalyticsDashboard
@@ -263,9 +331,64 @@ describe("#4037 host traffic dashboard render contract", () => {
       />,
     );
     expect(screen.getByText("Since tracking started 1 Oct")).toBeTruthy();
+    expect(screen.getByText("Still collecting: conversion path")).toBeTruthy();
     expect(screen.getByText("Your pages")).toBeTruthy();
     expect(screen.getAllByText("Button taps").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Where visitors came from")).toHaveLength(1);
+    expect(screen.queryByText("Activity in this period")).toBeNull();
+    expect(screen.getByText("Event · Tracking window is partial")).toBeTruthy();
+  });
+
+  it.each([
+    ["event", "From visit to booking", "Booking taps", "Bookings"],
+    ["experience", "From visit to booking", "Booking taps", "Bookings"],
+    ["trip", "From visit to booking", "Booking taps", "Bookings"],
+    ["rsvp", "From visit to RSVP", "RSVP taps", "RSVPs"],
+    ["venue", "From visit to reservation", "Reservation taps", "Reservations"],
+  ] as const)(
+    "uses truthful %s listing outcomes",
+    (listingType, pathTitle, actionLabel, outcomeLabel) => {
+      const screen = render(
+        <TrafficAnalyticsDashboard
+          {...baseProps}
+          data={entityData}
+          isLoading={false}
+          isError={false}
+          listingType={listingType}
+        />,
+      );
+      expect(screen.getByText(pathTitle)).toBeTruthy();
+      expect(screen.getAllByText(actionLabel).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(outcomeLabel).length).toBeGreaterThan(0);
+      expect(screen.queryByText("From visit to sale")).toBeNull();
+      screen.unmount();
+    },
+  );
+
+  it("stretches both cards in each desktop row without fixed heights", () => {
+    const screen = render(
+      <TrafficAnalyticsDashboard
+        {...baseProps}
+        data={brandData}
+        isLoading={false}
+        isError={false}
+        isWideDesktop
+      />,
+    );
+    for (const id of ["traffic-visits-card", "traffic-activity-card"]) {
+      const chrome = screen.getByTestId(id);
+      const cardContent = screen.getByTestId(`${id}-content`);
+      const chromeContent = cardContent.parent;
+      const clip = chromeContent?.parent;
+      expect(StyleSheet.flatten(chrome.props.style).flex).toBe(1);
+      expect(StyleSheet.flatten(chrome.props.style).height).toBeUndefined();
+      expect(StyleSheet.flatten(chromeContent?.props.style).flex).toBe(1);
+      expect(StyleSheet.flatten(clip?.props.style).flex).toBe(1);
+    }
+    expect(
+      StyleSheet.flatten(screen.getByTestId("traffic-grid-row-0").props.style)
+        .alignItems,
+    ).toBe("stretch");
   });
 
   it("hides button taps until two tap types have data and uses one collecting line", () => {

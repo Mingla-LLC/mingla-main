@@ -296,6 +296,10 @@ function selfTest() {
   // Allowlist file shape
   const { ids } = loadAllowlist(DEFAULT_ALLOWLIST);
   assert(ids.has("GHSA-VFJ7-8CJW-P6XM"), "T4 default allowlist contains GHSA-vfj7");
+  assert(
+    ids.has("GHSA-X8RM-F576-GQ67"),
+    "T4 default allowlist contains the Payload-blocked graphql-scalars advisory",
+  );
 
   let threw = false;
   try {

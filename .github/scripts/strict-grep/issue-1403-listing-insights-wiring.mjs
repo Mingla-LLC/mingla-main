@@ -19,8 +19,8 @@ const PATHS = {
   screen:
     "mingla-business/src/components/analytics/ListingInsightsScreen.tsx",
   // #4037 — the live listing Insights screen renders the traffic dashboard;
-  // the #1403 promises (what Mingla drove, where customers came from, honest
-  // empty states) are enforced where they now render.
+  // listing-specific outcomes, source mix, and honest hidden-empty states are
+  // enforced where they now render.
   dashboard:
     "mingla-business/src/components/analytics/TrafficAnalyticsDashboard.tsx",
   listingService:
@@ -149,7 +149,7 @@ const check = (files) => {
     );
     requirePattern(
       source,
-      /sub="Customers Mingla drove"/,
+      /sub="Visits, actions and bookings"/,
       `${manualPath}: exact Insights supporting copy missing`,
       failures,
     );
@@ -310,21 +310,15 @@ const check = (files) => {
   if (sourceCard === "") {
     failures.push(`${PATHS.dashboard}: SourceCard component not found`);
   }
-  // Promise 1 — what Mingla drove: the server's Mingla-attributed value and
-  // customer count, never a client-side estimate.
-  requirePattern(
-    dashboard,
-    /VALUE MINGLA BROUGHT[\s\S]*?money\(current\.cents, current\.currency\)/,
-    `${PATHS.dashboard}: what Mingla drove (value Mingla brought) missing`,
-    failures,
-  );
-  requirePattern(
-    dashboard,
-    /label="Customers from Mingla"\s*value=\{count\(data\.totals\.minglaCustomers\)\}/,
-    `${PATHS.dashboard}: what Mingla drove (customers from Mingla) missing`,
-    failures,
-  );
-  // Promise 2 — where customers came from: a per-source mix from the server rows.
+  // #4037 clarity pass — the legacy revenue/customer attribution summary is
+  // misleading here. Analytics starts with observable visits and actions.
+  if (/VALUE MINGLA BROUGHT|What Mingla brought you/i.test(dashboard)) {
+    failures.push(`${PATHS.dashboard}: legacy attributed-value summary remains`);
+  }
+  if (/Customers from Mingla|came through Mingla/i.test(dashboard)) {
+    failures.push(`${PATHS.dashboard}: legacy attributed-customer summary remains`);
+  }
+  // Where visitors came from: a per-source mix from the server rows.
   requirePattern(
     sourceCard,
     /Where visitors came from[\s\S]*?\{data\.sources\.map\(\(row\)/,
@@ -337,13 +331,8 @@ const check = (files) => {
     `${PATHS.dashboard}: source mix card is not rendered`,
     failures,
   );
-  // Promise 3 — honest empty states instead of fabricated zeros.
-  requirePattern(
-    sourceCard,
-    /Where visitors came from\s*<\/Text>\s*\{!hasTraffic \? \(\s*<Text[^>]*>\s*\{collectingCopy\(data\.captureStartedAt\)\}/,
-    `${PATHS.dashboard}: honest no-source-mix-yet state missing`,
-    failures,
-  );
+  // Honest empty states: modules without enough evidence stay out of the grid,
+  // and one collecting line explains what is pending.
   requirePattern(
     dashboard,
     /const enoughTraffic\s*=\s*data\.captureStartedAt !== null\s*&&\s*data\.totals\.pageViews >= 30/,
@@ -352,14 +341,14 @@ const check = (files) => {
   );
   requirePattern(
     dashboard,
-    /analyticsGridModules\(\{\s*showVisits:\s*enoughTraffic,/,
-    `${PATHS.dashboard}: collecting visitor modules must stay hidden`,
+    /analyticsGridModules\(\{\s*showVisits:\s*enoughTraffic,\s*showActivity:\s*showCompleteWindow,\s*showSources:\s*enoughTraffic,\s*showCompleted:\s*!enoughTraffic && completed !== null,/,
+    `${PATHS.dashboard}: empty visitor, action, source, or completed modules are not hidden`,
     failures,
   );
   requirePattern(
     dashboard,
-    /\.\.\.\(!enoughTraffic\s*\?\s*\[\s*`visits\$\{captureDate\(data\.captureStartedAt\)/,
-    `${PATHS.dashboard}: hidden visits are missing from the collecting summary`,
+    /\.\.\.\(!enoughTraffic\s*\?\s*\["visit trend", "source mix", "conversion path"\]\s*:\s*!data\.windowComplete\s*\?\s*\["conversion path"\]/,
+    `${PATHS.dashboard}: hidden modules are missing from the collecting summary`,
     failures,
   );
   requirePattern(
@@ -373,8 +362,8 @@ const check = (files) => {
   }
   requirePattern(
     dashboard,
-    /currency === null \? "—"/,
-    `${PATHS.dashboard}: honest no-booking-value state missing`,
+    /const completed\s*=\s*data\.totals\.bookings > 0 \? \([\s\S]*?<CompletedCard[\s\S]*?bookings=\{data\.totals\.bookings\}/,
+    `${PATHS.dashboard}: completed-outcome card must require a real non-zero outcome`,
     failures,
   );
   if (!dashboard.includes("Visits show here as people open your pages.")) {
@@ -707,20 +696,16 @@ if (process.argv.includes("--self-test")) {
   // #4037 re-scope — each traffic-dashboard promise must still catch a regression.
   const dashboardCases = [
     [
-      "dropped Mingla value",
+      "reintroduced legacy Mingla value",
       PATHS.dashboard,
-      (source) => source.replace("VALUE MINGLA BROUGHT", "VALUE"),
-      "value Mingla brought",
+      (source) => source.replace("COMPLETED SO FAR", "VALUE MINGLA BROUGHT"),
+      "legacy attributed-value summary",
     ],
     [
-      "dropped Mingla customer count",
+      "reintroduced legacy Mingla customer count",
       PATHS.dashboard,
-      (source) =>
-        source.replace(
-          "value={count(data.totals.minglaCustomers)}",
-          "value={count(data.totals.bookings)}",
-        ),
-      "customers from Mingla",
+      (source) => source.replace("COMPLETED SO FAR", "Customers from Mingla"),
+      "legacy attributed-customer summary",
     ],
     [
       "dropped source mix",
@@ -736,14 +721,10 @@ if (process.argv.includes("--self-test")) {
       "source mix card is not rendered",
     ],
     [
-      "fabricated source mix before traffic",
+      "exposed source mix before traffic",
       PATHS.dashboard,
-      (source) =>
-        source.replace(
-          /(Where visitors came from[\s\S]*?)\{!hasTraffic \? \(/,
-          "$1{false ? (",
-        ),
-      "honest no-source-mix-yet state",
+      (source) => source.replace("showSources: enoughTraffic,", "showSources: true,"),
+      "empty visitor, action, source, or completed modules",
     ],
     [
       "exposed visitor modules before traffic is ready",
@@ -753,13 +734,13 @@ if (process.argv.includes("--self-test")) {
           "showVisits: enoughTraffic,",
           "showVisits: true,",
         ),
-      "collecting visitor modules must stay hidden",
+      "empty visitor, action, source, or completed modules",
     ],
     [
-      "fabricated zero booking value",
+      "rendered a zero completed-outcome card",
       PATHS.dashboard,
-      (source) => source.replace('currency === null ? "—"', 'currency === null ? "0"'),
-      "honest no-booking-value state",
+      (source) => source.replace("data.totals.bookings > 0 ?", "data.totals.bookings >= 0 ?"),
+      "completed-outcome card must require a real non-zero outcome",
     ],
     [
       "screen not rendering the dashboard",

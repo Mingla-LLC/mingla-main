@@ -221,7 +221,7 @@ const TrafficAnalyticsHomeTile: React.FC<TrafficAnalyticsHomeTileProps> = ({
     : "Analytics unavailable";
   const accessibilityLabel = expanded
     ? `Open Analytics, ${summary}`
-    : `Expand analytics, What Mingla brought you, ${summary}`;
+    : "Expand analytics, Bookings through Mingla";
 
   return (
     <View style={styles.root} testID="analytics-home-tile-root">
@@ -244,7 +244,7 @@ const TrafficAnalyticsHomeTile: React.FC<TrafficAnalyticsHomeTileProps> = ({
             <Text style={styles.headerEyebrow}>ANALYTICS</Text>
           </View>
           <Text style={styles.title} accessibilityRole="header">
-            What Mingla brought you
+            Bookings through Mingla
           </Text>
           {isLoading ? (
             <View
@@ -268,7 +268,7 @@ const TrafficAnalyticsHomeTile: React.FC<TrafficAnalyticsHomeTileProps> = ({
             ) : valid ? (
               <View style={styles.expandedBody}>
                 <Text style={styles.eyebrow}>
-                  WHAT MINGLA BROUGHT YOU · 30 DAYS
+                  BOOKINGS THROUGH MINGLA · 30 DAYS
                 </Text>
                 <View style={styles.valueRow}>
                   <Text style={styles.bigValue}>

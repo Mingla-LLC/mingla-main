@@ -1,6 +1,7 @@
 -- Issue #4037 — host traffic capture and rollups: implementor happy-path proof.
 -- Fails on revert of 20271210004037_issue_4037_host_traffic_analytics.sql.
 -- MINGLA-INVARIANT: I-4037-TRAFFIC-BRAND-DAY | issue #4037 | A visit's day bucket is fixed at write time in the brand timezone (payout account country, then brand address or main venue, then the brand's own events, then UTC); the visitor salt rotates at the brand's local midnight; brand-wide visitors count once per brand-day under their first source; bookings and value come only from completed orders, reservations and RSVPs.
+-- MINGLA-INVARIANT: I-4037-PAGE-OUTCOME-KIND | issue #4037 | Every brand analytics page row names an additive listing_type consistent with entity_type, distinguishing RSVP events so clients label bookings, RSVPs and venue reservations without guessing.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -273,11 +274,12 @@ BEGIN
     AND (SELECT sum((c ->> 'count')::int) FROM jsonb_array_elements(v -> 'ctas') c) = 1,
     'H5 every tap type listed and summing to button taps');
   PERFORM pg_temp.t4037_assert((
-    SELECT array_agg((p ->> 'entity_type') || ':' || (p ->> 'title') || ':' || (p ->> 'page_views')
+    SELECT array_agg((p ->> 'entity_type') || ':' || (p ->> 'listing_type') || ':' || (p ->> 'title') || ':' || (p ->> 'page_views')
                      || ':' || (p ->> 'visitors') || ':' || (p ->> 'bookings'))
     FROM jsonb_array_elements(v -> 'pages') p
-  ) = ARRAY['event:Rooftop Supper:3:2:2', 'brand:Issue 4037 London:1:1:0', 'event:Garden RSVP:0:1:1'],
-    'H5 pages sorted by visits, brand page listed (decision 3)');
+  ) = ARRAY['event:event:Rooftop Supper:3:2:2', 'brand:brand:Issue 4037 London:1:1:0',
+            'event:rsvp:Garden RSVP:0:1:1'],
+    'H5 pages sorted by visits with truthful listing types and brand page listed (decision 3)');
   PERFORM pg_temp.t4037_assert(v ->> 'capture_started_at' IS NOT NULL
     AND (v ->> 'window_complete')::boolean = false, 'H5 capture start honesty');
 

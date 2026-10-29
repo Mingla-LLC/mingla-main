@@ -676,8 +676,8 @@ export default function HomeTab(): React.ReactElement {
           title="Nothing recent yet"
           description="Open a venue, event, experience, trip, or draft and it’ll show up here."
           cta={{
-            label: "Browse your work",
-            onPress: () => router.push("/(tabs)/hub" as never),
+            label: "Create something",
+            onPress: () => setIsUniversalCreatorOpen(true),
           }}
         />
       );
@@ -756,6 +756,7 @@ export default function HomeTab(): React.ReactElement {
 
       {isWideDesktop ? (
         <ScrollView
+          testID="home-desktop-content"
           style={styles.desktopOuterScroll}
           scrollEnabled={false}
           contentContainerStyle={[styles.scroll, styles.desktopScroll]}
@@ -1028,7 +1029,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.lg,
     paddingBottom: spacing.xl * 4,
-    gap: spacing.md,
   },
   desktopOuterScroll: {
     flex: 1,

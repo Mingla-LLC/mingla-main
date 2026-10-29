@@ -77,6 +77,7 @@ const data: BrandTrafficRollup = {
   pages: [
     {
       entityType: "event",
+      listingType: "event",
       entityId: "22222222-2222-4222-8222-222222222222",
       title: "Rooftop supper",
       pageViews: 1_200,
@@ -91,7 +92,7 @@ const data: BrandTrafficRollup = {
   windowComplete: true,
 };
 
-describe("#4037 What Mingla brought you Home tile", () => {
+describe("#4037 Bookings through Mingla legacy Home tile", () => {
   it("shows the full traffic summary before expansion and the contracted detail after", () => {
     const onPress = jest.fn();
     const screen = render(
@@ -103,13 +104,16 @@ describe("#4037 What Mingla brought you Home tile", () => {
         onPress={onPress}
       />,
     );
-    expect(screen.getByText("What Mingla brought you")).toBeTruthy();
+    expect(screen.getByText("Bookings through Mingla")).toBeTruthy();
+    expect(
+      screen.getByLabelText("Expand analytics, Bookings through Mingla"),
+    ).toBeTruthy();
     expect(
       screen.getByText("£4,180 · 96 customers · 4,820 visits · 30 days"),
     ).toBeTruthy();
 
     fireEvent.press(screen.getByTestId("analytics-home-tile"));
-    expect(screen.getByText("WHAT MINGLA BROUGHT YOU · 30 DAYS")).toBeTruthy();
+    expect(screen.getByText("BOOKINGS THROUGH MINGLA · 30 DAYS")).toBeTruthy();
     expect(screen.getByText("96 customers")).toBeTruthy();
     expect(screen.getByText("Top page: Rooftop supper")).toBeTruthy();
     expect(

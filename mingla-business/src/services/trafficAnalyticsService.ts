@@ -3,10 +3,12 @@ import { DATA_FETCH_TIMEOUT_MS, withTimeout } from "../utils/withTimeout";
 import {
   TRAFFIC_CTA_TYPES,
   TRAFFIC_ENTITY_TYPES,
+  TRAFFIC_LISTING_TYPES,
   TRAFFIC_RANGES,
   TRAFFIC_SOURCES,
   type TrafficCtaType,
   type TrafficEntityType,
+  type TrafficListingType,
   type TrafficRange,
   type TrafficSource,
 } from "../constants/trafficAnalyticsContract";
@@ -14,10 +16,17 @@ import {
 export {
   TRAFFIC_CTA_TYPES,
   TRAFFIC_ENTITY_TYPES,
+  TRAFFIC_LISTING_TYPES,
   TRAFFIC_RANGES,
   TRAFFIC_SOURCES,
 };
-export type { TrafficCtaType, TrafficEntityType, TrafficRange, TrafficSource };
+export type {
+  TrafficCtaType,
+  TrafficEntityType,
+  TrafficListingType,
+  TrafficRange,
+  TrafficSource,
+};
 
 export interface TrafficTotals {
   pageViews: number;
@@ -58,6 +67,8 @@ export interface TrafficCtaRow {
 
 export interface TrafficPageRow {
   entityType: TrafficEntityType;
+  /** Actual listing kind. `event` entities may be ordinary events or RSVPs. */
+  listingType: TrafficListingType;
   entityId: string | null;
   title: string;
   pageViews: number;
@@ -178,6 +189,26 @@ const entityTypeOrThrow = (
     return contractError(rpcName);
   }
   return entityType as TrafficEntityType;
+};
+
+const listingTypeOrThrow = (
+  value: unknown,
+  fallback: TrafficEntityType,
+  rpcName: RpcName,
+): TrafficListingType => {
+  // Backward compatible while the additive RPC field reaches production.
+  if (value === undefined) return fallback;
+  const listingType = stringOrThrow(value, rpcName);
+  if (!TRAFFIC_LISTING_TYPES.includes(listingType as TrafficListingType)) {
+    return contractError(rpcName);
+  }
+  if (
+    (fallback === "event" && !["event", "rsvp"].includes(listingType)) ||
+    (fallback !== "event" && listingType !== fallback)
+  ) {
+    return contractError(rpcName);
+  }
+  return listingType as TrafficListingType;
 };
 
 const totalsOrThrow = (value: unknown, rpcName: RpcName): TrafficTotals => {
@@ -394,6 +425,7 @@ export function normalizeBrandTrafficRollup(
     seen.add(key);
     const normalized: TrafficPageRow = {
       entityType,
+      listingType: listingTypeOrThrow(page.listing_type, entityType, rpcName),
       entityId,
       title: stringOrThrow(page.title, rpcName),
       pageViews: countOrThrow(page.page_views, rpcName),

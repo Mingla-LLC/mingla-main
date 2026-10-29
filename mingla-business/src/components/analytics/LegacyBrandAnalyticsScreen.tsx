@@ -164,7 +164,7 @@ export const LegacyBrandAnalyticsScreen: React.FC<
       <View style={styles.introRow}>
         <View style={styles.introCopy}>
           <Text style={styles.intro} accessibilityRole="header">
-            {`See how customers find and choose ${brand.displayName}.`}
+            See how people reach your pages and take action.
           </Text>
           <View
             accessibilityLiveRegion="polite"

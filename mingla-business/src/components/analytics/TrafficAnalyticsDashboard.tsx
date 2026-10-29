@@ -1,6 +1,5 @@
 import React from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import Svg, {
   Circle,
   Defs,
@@ -30,30 +29,24 @@ import type {
   BrandTrafficRollup,
   EntityTrafficRollup,
   TrafficCtaType,
+  TrafficListingType,
   TrafficPageRow,
   TrafficRange,
   TrafficRollupBase,
   TrafficSource,
 } from "../../services/trafficAnalyticsService";
-import { formatCurrencyRound } from "../../utils/currency";
 import {
   analyticsGridModules,
   packAnalyticsGrid,
   type AnalyticsGridModuleId,
 } from "../../utils/analyticsGridPacking";
-import {
-  formatTrafficDelta,
-  trafficDeltaAccessibilityLabel,
-  trafficDeltaTone,
-  visibleDelta,
-  visitToPaidRate,
-} from "../../utils/trafficAnalyticsMath";
-import { visibleFunnelSteps } from "./trafficFunnel";
+import { visitToPaidRate } from "../../utils/trafficAnalyticsMath";
 import {
   AnalyticsModuleError,
   AnalyticsModuleSkeleton,
 } from "./AnalyticsModuleState";
 import { GlassCard } from "../ui/GlassCard";
+import { primaryActionCount, trafficOutcomeCopy } from "./trafficOutcomeCopy";
 
 const RANGE_LABELS: Record<TrafficRange, string> = {
   "7d": "7 days",
@@ -71,19 +64,10 @@ const SOURCE_LABELS: Record<TrafficSource, string> = {
   direct_unknown: "Direct or unknown",
 };
 
-const PAGE_TYPE_LABELS: Record<TrafficPageRow["entityType"], string> = {
-  event: "Event",
-  brand: "Brand",
-  trip: "Trip",
-  experience: "Experience",
-  venue: "Venue",
-};
-
-const CTA_GROUPS: readonly {
+const SECONDARY_CTA_GROUPS: readonly {
   label: string;
   keys: readonly TrafficCtaType[];
 }[] = [
-  { label: "Buy or book", keys: ["buy", "book", "rsvp"] },
   { label: "Share", keys: ["share"] },
   { label: "Save", keys: ["save"] },
   { label: "Directions", keys: ["directions"] },
@@ -122,38 +106,6 @@ const collectingCopy = (value: string | null): string => {
   return date === null
     ? "Collecting visits. Visits show here as people open your pages."
     : `Collecting since ${date}. Visits show here as people open your pages.`;
-};
-
-const primaryValue = (
-  values: Record<string, number>,
-  primaryCurrency: string | null,
-): { currency: string | null; cents: number } => {
-  if (primaryCurrency !== null) {
-    return { currency: primaryCurrency, cents: values[primaryCurrency] ?? 0 };
-  }
-  const first = Object.entries(values)[0];
-  return first === undefined
-    ? { currency: null, cents: 0 }
-    : { currency: first[0], cents: first[1] };
-};
-
-const money = (cents: number, currency: string | null): string =>
-  currency === null ? "—" : formatCurrencyRound(cents, currency, true);
-
-const DeltaPill: React.FC<{ value: number | null }> = ({ value }) => {
-  if (value === null) return null;
-  const neutral = trafficDeltaTone(value) === "neutral";
-  return (
-    <View
-      style={[styles.deltaPill, neutral && styles.deltaPillNeutral]}
-      accessibilityLabel={trafficDeltaAccessibilityLabel(value)}
-      testID={neutral ? "traffic-delta-neutral" : "traffic-delta-positive"}
-    >
-      <Text style={[styles.deltaText, neutral && styles.deltaTextNeutral]}>
-        {formatTrafficDelta(value)}
-      </Text>
-    </View>
-  );
 };
 
 export const TrafficRangeControl: React.FC<{
@@ -212,58 +164,6 @@ const MiniStat: React.FC<{ label: string; value: string }> = ({
   </View>
 );
 
-const HeroCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
-  const current = primaryValue(
-    data.totals.valueMinglaBrought,
-    data.totals.primaryCurrency,
-  );
-  const prior = primaryValue(data.prior.valueMinglaBrought, current.currency);
-  const delta = visibleDelta(
-    current.cents,
-    prior.cents,
-    data.totals.bookings,
-    data.prior.bookings,
-    5,
-  );
-  const minglaBookings = data.sources
-    .filter((row) => MINGLA_SOURCES.has(row.source))
-    .reduce((sum, row) => sum + row.bookings, 0);
-  const minglaPercent = percentage(minglaBookings, data.totals.bookings);
-  const others = Object.entries(data.totals.valueMinglaBrought).filter(
-    ([currency]) => currency !== current.currency,
-  );
-  return (
-    <LinearGradient
-      colors={trafficAnalytics.heroGradient}
-      style={styles.heroCard}
-      testID="traffic-hero-card"
-    >
-      <Text style={styles.eyebrow}>VALUE MINGLA BROUGHT</Text>
-      <View style={styles.heroValueRow}>
-        <Text style={styles.heroValue}>
-          {money(current.cents, current.currency)}
-        </Text>
-        <DeltaPill value={delta} />
-      </View>
-      {others.map(([currency, cents]) => (
-        <Text key={currency} style={styles.otherCurrency}>
-          {`+ ${formatCurrencyRound(cents, currency, true)} in ${currency}`}
-        </Text>
-      ))}
-      <Text style={styles.heroSentence}>
-        {`${minglaPercent}% of your bookings came from people Mingla sent: the Mingla app, Mingla ads and search.`}
-      </Text>
-      <View style={[styles.miniRow, styles.heroFooter]}>
-        <MiniStat
-          label="Customers from Mingla"
-          value={count(data.totals.minglaCustomers)}
-        />
-        <MiniStat label="Bookings" value={count(data.totals.bookings)} />
-      </View>
-    </LinearGradient>
-  );
-};
-
 const chartPath = (
   values: number[],
   width: number,
@@ -299,7 +199,10 @@ const shortDay = (day: string): string => {
   }).format(date);
 };
 
-const TrendCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
+const TrendCard: React.FC<{
+  data: TrafficRollupBase;
+  fillHeight: boolean;
+}> = ({ data, fillHeight }) => {
   const hasTraffic =
     data.captureStartedAt !== null && data.totals.pageViews >= 30;
   const values = data.daily.map((point) => point.pageViews);
@@ -314,6 +217,8 @@ const TrendCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
       padding={spacing.lg}
       style={styles.card}
       contentStyle={styles.cardContent}
+      fillHeight={fillHeight}
+      testID="traffic-visits-card"
     >
       <View style={styles.titleRow}>
         <Text style={styles.cardTitle} accessibilityRole="header">
@@ -321,6 +226,7 @@ const TrendCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
         </Text>
         <Text style={styles.totalAtRight}>{count(data.totals.pageViews)}</Text>
       </View>
+      <Text style={styles.cardNote}>Page opens in the selected period</Text>
       {!hasTraffic ? (
         <Text style={styles.collecting}>
           {collectingCopy(data.captureStartedAt)}
@@ -388,63 +294,86 @@ const TrendCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
   );
 };
 
-const FunnelCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
-  const hasTraffic =
-    data.captureStartedAt !== null && data.totals.pageViews >= 30;
-  const visible = visibleFunnelSteps(data.totals, hasTraffic);
+const ActivityCard: React.FC<{
+  data: TrafficRollupBase;
+  listingType: TrafficListingType;
+  fillHeight: boolean;
+}> = ({ data, listingType, fillHeight }) => {
+  const copy = trafficOutcomeCopy(listingType);
+  const rows = [
+    { label: "Page visits", value: data.totals.pageViews },
+    {
+      label: copy.actionLabel,
+      value: primaryActionCount(data.ctas, listingType),
+    },
+    ...(copy.showsCheckout
+      ? [
+          {
+            label:
+              listingType === "brand"
+                ? "Checkouts started · paid only"
+                : "Checkouts started",
+            value: data.totals.checkoutStarts,
+          },
+        ]
+      : []),
+    { label: copy.outcomeLabel, value: data.totals.bookings },
+  ];
+  const basis = Math.max(rows[0]?.value ?? 0, 1);
   return (
     <GlassCard
       variant="elevated"
       padding={spacing.lg}
       style={styles.card}
       contentStyle={styles.cardContent}
+      fillHeight={fillHeight}
+      testID="traffic-activity-card"
     >
       <Text style={styles.cardTitle} accessibilityRole="header">
-        From visit to sale
+        {copy.pathTitle}
+      </Text>
+      <Text style={styles.cardNote}>
+        {listingType === "brand"
+          ? "Counts are separate facts, not one universal funnel."
+          : "Only the primary action appears in this path."}
       </Text>
       <View
         style={styles.funnel}
         accessibilityRole="image"
-        accessibilityLabel={`From visit to sale, ${visible
-          .map((step) => `${step.label} ${count(step.value)}`)
+        accessibilityLabel={`${copy.pathTitle}, ${rows
+          .map((row) => `${row.label} ${count(row.value)}`)
           .join(", ")}`}
       >
-        {visible.map((step, index) => {
-          const previous = index === 0 ? null : visible[index - 1]!;
-          return (
-            <View
-              key={step.label}
-              testID={`traffic-funnel-${step.label.toLowerCase().replaceAll(" ", "-")}`}
-            >
-              {previous === null || previous.value === 0 ? null : (
-                <Text
-                  style={styles.continueText}
-                >{`${percentage(step.value, previous.value)}% continue`}</Text>
-              )}
-              <View style={styles.funnelLabelRow}>
-                <Text style={styles.funnelLabel}>{step.label}</Text>
-                <Text style={styles.funnelCount}>{count(step.value)}</Text>
-              </View>
-              <View style={styles.track}>
-                <View
-                  style={[
-                    styles.funnelFill,
-                    { width: `${step.widthPercent}%` },
-                  ]}
-                />
-              </View>
+        {rows.map((row) => (
+          <View
+            key={row.label}
+            testID={`traffic-activity-${row.label.toLowerCase().replaceAll(" ", "-")}`}
+          >
+            <View style={styles.funnelLabelRow}>
+              <Text style={styles.funnelLabel}>{row.label}</Text>
+              <Text style={styles.funnelCount}>{count(row.value)}</Text>
             </View>
-          );
-        })}
+            <View style={styles.track}>
+              <View
+                style={[
+                  styles.funnelFill,
+                  {
+                    width: `${Math.min(100, Math.max(4, (row.value / basis) * 100))}%`,
+                  },
+                ]}
+              />
+            </View>
+          </View>
+        ))}
       </View>
     </GlassCard>
   );
 };
 
-const SourceCard: React.FC<{ data: TrafficRollupBase; scoped?: boolean }> = ({
-  data,
-  scoped = false,
-}) => {
+const SourceCard: React.FC<{
+  data: TrafficRollupBase;
+  fillHeight: boolean;
+}> = ({ data, fillHeight }) => {
   const hasTraffic =
     data.captureStartedAt !== null && data.totals.pageViews >= 30;
   const total = data.sources.reduce((sum, row) => sum + row.visitors, 0);
@@ -457,9 +386,14 @@ const SourceCard: React.FC<{ data: TrafficRollupBase; scoped?: boolean }> = ({
       padding={spacing.lg}
       style={styles.card}
       contentStyle={styles.cardContent}
+      fillHeight={fillHeight}
+      testID="traffic-sources-card"
     >
       <Text style={styles.cardTitle} accessibilityRole="header">
         Where visitors came from
+      </Text>
+      <Text style={styles.cardNote}>
+        Visitors are counted once per day under their first source.
       </Text>
       {!hasTraffic ? (
         <Text style={styles.collecting}>
@@ -470,7 +404,7 @@ const SourceCard: React.FC<{ data: TrafficRollupBase; scoped?: boolean }> = ({
           <View
             style={styles.sourceBar}
             accessibilityRole="image"
-            accessibilityLabel={`${percentage(mingla, total)} percent of visitors came from Mingla`}
+            accessibilityLabel={`Mingla sources, ${percentage(mingla, total)} percent of visitors`}
           >
             {data.sources.map((row) => (
               <View
@@ -491,9 +425,7 @@ const SourceCard: React.FC<{ data: TrafficRollupBase; scoped?: boolean }> = ({
             ]}
           />
           <Text style={styles.broughtLine}>
-            {scoped
-              ? `${percentage(mingla, total)}% of this page's visitors came from Mingla`
-              : `Brought by Mingla: ${percentage(mingla, total)}% of visitors`}
+            {`Mingla sources · ${percentage(mingla, total)}% of visitors`}
           </Text>
           <View style={styles.sourceRows}>
             {TRAFFIC_SOURCES.map((source) => {
@@ -529,13 +461,50 @@ const SourceCard: React.FC<{ data: TrafficRollupBase; scoped?: boolean }> = ({
   );
 };
 
+const CompletedCard: React.FC<{
+  bookings: number;
+  listingType: TrafficListingType;
+  fillHeight: boolean;
+}> = ({ bookings, listingType, fillHeight }) => {
+  const copy = trafficOutcomeCopy(listingType);
+  return (
+    <GlassCard
+      variant="elevated"
+      padding={spacing.lg}
+      style={styles.card}
+      contentStyle={styles.cardContent}
+      fillHeight={fillHeight}
+      testID="traffic-completed-so-far"
+    >
+      <Text style={styles.eyebrow}>COMPLETED SO FAR</Text>
+      <Text style={styles.completedValue}>
+        {`${count(bookings)} ${copy.outcomeLower}`}
+      </Text>
+      <Text style={styles.cardNote}>
+        This outcome is already known. A conversion rate will appear only after
+        the visit window is comparable.
+      </Text>
+    </GlassCard>
+  );
+};
+
 const PageListCard: React.FC<{
   pages: TrafficPageRow[];
   selected: TrafficPageRow | null;
   onSelect: (page: TrafficPageRow) => void;
   captureStartedAt: string | null;
   enoughTraffic: boolean;
-}> = ({ pages, selected, onSelect, captureStartedAt, enoughTraffic }) => {
+  windowComplete: boolean;
+  fillHeight: boolean;
+}> = ({
+  pages,
+  selected,
+  onSelect,
+  captureStartedAt,
+  enoughTraffic,
+  windowComplete,
+  fillHeight,
+}) => {
   const max = Math.max(...pages.map((page) => page.pageViews), 1);
   return (
     <GlassCard
@@ -543,9 +512,14 @@ const PageListCard: React.FC<{
       padding={spacing.lg}
       style={styles.card}
       contentStyle={styles.cardContent}
+      fillHeight={fillHeight}
+      testID="traffic-pages-card"
     >
       <Text style={styles.cardTitle} accessibilityRole="header">
         Your pages
+      </Text>
+      <Text style={styles.cardNote}>
+        Each page uses its real completed outcome.
       </Text>
       {!enoughTraffic ? (
         <Text style={styles.collecting}>
@@ -555,6 +529,8 @@ const PageListCard: React.FC<{
         <View style={styles.pageRows}>
           {pages.map((page) => {
             const rate = visitToPaidRate(page.bookings, page.pageViews);
+            const copy = trafficOutcomeCopy(page.listingType);
+            const isBrandPage = page.listingType === "brand";
             const active =
               selected?.entityType === page.entityType &&
               selected.entityId === page.entityId;
@@ -563,7 +539,13 @@ const PageListCard: React.FC<{
                 key={`${page.entityType}:${page.entityId ?? "brand"}`}
                 onPress={() => onSelect(page)}
                 accessibilityRole="button"
-                accessibilityLabel={`${page.title}, ${count(page.pageViews)} visits, ${count(page.bookings)} sold`}
+                accessibilityLabel={[
+                  page.title,
+                  `${count(page.pageViews)} visits`,
+                  ...(!isBrandPage
+                    ? [`${count(page.bookings)} ${copy.outcomeLower}`]
+                    : []),
+                ].join(", ")}
                 style={({ pressed }) => [
                   styles.pageRow,
                   active && styles.pageRowSelected,
@@ -574,15 +556,23 @@ const PageListCard: React.FC<{
                   <Text style={styles.pageTitle} numberOfLines={1}>
                     {page.title}
                   </Text>
-                  <Text
-                    style={styles.pageMeta}
-                  >{`${PAGE_TYPE_LABELS[page.entityType]} · ${rate === null ? "—" : `${rate.toFixed(1)}%`} visit → paid`}</Text>
+                  <Text style={styles.pageMeta}>
+                    {isBrandPage
+                      ? "Brand page"
+                      : !windowComplete
+                        ? `${copy.pageTypeLabel} · Tracking window is partial`
+                        : `${copy.pageTypeLabel} · ${rate === null ? "—" : `${rate.toFixed(1)}%`} visit → ${copy.outcomeSingular}`}
+                  </Text>
                 </View>
                 <View style={styles.pageRight}>
-                  <Text style={styles.pageVisits}>{count(page.pageViews)}</Text>
-                  <Text
-                    style={styles.pageSold}
-                  >{`${count(page.bookings)} sold`}</Text>
+                  <Text style={styles.pageVisits}>
+                    {`${count(page.pageViews)} visits`}
+                  </Text>
+                  {isBrandPage ? null : (
+                    <Text style={styles.pageSold}>
+                      {`${count(page.bookings)} ${copy.outcomeLower}`}
+                    </Text>
+                  )}
                 </View>
                 <View style={styles.pageMeterTrack}>
                   <View
@@ -608,7 +598,16 @@ const PageDetailCard: React.FC<{
   isError: boolean;
   onRetry: () => void;
   onOpenListing?: () => void;
-}> = ({ page, data, isLoading, isError, onRetry, onOpenListing }) => {
+  fillHeight: boolean;
+}> = ({
+  page,
+  data,
+  isLoading,
+  isError,
+  onRetry,
+  onOpenListing,
+  fillHeight,
+}) => {
   if (page === null) return null;
   if (isError)
     return (
@@ -620,32 +619,29 @@ const PageDetailCard: React.FC<{
   if (isLoading || data === undefined) {
     return <AnalyticsModuleSkeleton testID="analytics-page-detail-loading" />;
   }
-  const current = primaryValue(
-    page.valueByCurrency,
-    data.totals.primaryCurrency,
-  );
+  const copy = trafficOutcomeCopy(page.listingType);
   return (
     <GlassCard
       variant="elevated"
       padding={spacing.lg}
       style={styles.card}
       contentStyle={styles.cardContent}
+      fillHeight={fillHeight}
+      testID="traffic-page-detail-card"
     >
-      <Text style={styles.eyebrow}>
-        {PAGE_TYPE_LABELS[page.entityType].toUpperCase()}
-      </Text>
+      <Text style={styles.eyebrow}>{copy.pageTypeLabel.toUpperCase()}</Text>
       <Text style={styles.detailTitle} numberOfLines={2}>
         {page.title}
       </Text>
-      <Text style={styles.detailValue}>
-        {money(current.cents, current.currency)}
-      </Text>
       <View style={styles.miniRow}>
         <MiniStat label="Visitors" value={count(data.totals.visitors)} />
-        <MiniStat label="Button taps" value={count(data.totals.buttonTaps)} />
         <MiniStat
-          label="Checkouts started"
-          value={count(data.totals.checkoutStarts)}
+          label={copy.actionLabel}
+          value={count(primaryActionCount(data.ctas, page.listingType))}
+        />
+        <MiniStat
+          label={copy.outcomeLabel}
+          value={count(data.totals.bookings)}
         />
       </View>
       {onOpenListing === undefined ? null : (
@@ -661,8 +657,20 @@ const PageDetailCard: React.FC<{
   );
 };
 
-const ButtonTapsCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
-  const values = CTA_GROUPS.map((group) => ({
+const ButtonTapsCard: React.FC<{
+  data: TrafficRollupBase;
+  listingType: TrafficListingType;
+  fillHeight: boolean;
+}> = ({ data, listingType, fillHeight }) => {
+  const copy = trafficOutcomeCopy(listingType);
+  const groups = [
+    {
+      label: listingType === "brand" ? "Primary actions" : copy.actionLabel,
+      keys: copy.primaryCtas,
+    },
+    ...SECONDARY_CTA_GROUPS,
+  ];
+  const values = groups.map((group) => ({
     label: group.label,
     count: group.keys.reduce(
       (sum, key) =>
@@ -677,10 +685,14 @@ const ButtonTapsCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
       padding={spacing.lg}
       style={styles.card}
       contentStyle={styles.cardContent}
+      fillHeight={fillHeight}
       testID="traffic-button-taps-card"
     >
       <Text style={styles.cardTitle} accessibilityRole="header">
         Button taps
+      </Text>
+      <Text style={styles.cardNote}>
+        Actions are grouped by intent; they are not treated as funnel steps.
       </Text>
       <View
         style={styles.tapGrid}
@@ -697,7 +709,9 @@ const ButtonTapsCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
               <View
                 style={[
                   styles.tapFill,
-                  { width: `${Math.max(3, (row.count / max) * 100)}%` },
+                  {
+                    width: `${Math.min(100, Math.max(3, (row.count / max) * 100))}%`,
+                  },
                 ]}
               />
             </View>
@@ -709,13 +723,7 @@ const ButtonTapsCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
 };
 
 export const visibleButtonTapTypeCount = (data: TrafficRollupBase): number =>
-  CTA_GROUPS.filter((group) =>
-    group.keys.reduce(
-      (sum, key) =>
-        sum + (data.ctas.find((row) => row.type === key)?.count ?? 0),
-      0,
-    ) > 0
-  ).length;
+  data.ctas.filter((row) => row.count > 0).length;
 
 export interface TrafficAnalyticsDashboardProps {
   data: BrandTrafficRollup | EntityTrafficRollup | undefined;
@@ -725,6 +733,8 @@ export interface TrafficAnalyticsDashboardProps {
   range: TrafficRange;
   onRangeChange: (range: TrafficRange) => void;
   isWideDesktop: boolean;
+  /** Omit for brand analytics; listing insights must pass the real listing kind. */
+  listingType?: TrafficListingType;
   pages?: TrafficPageRow[];
   selectedPage?: TrafficPageRow | null;
   onSelectPage?: (page: TrafficPageRow) => void;
@@ -750,6 +760,7 @@ export const TrafficAnalyticsDashboard: React.FC<
   range,
   onRangeChange,
   isWideDesktop,
+  listingType,
   pages,
   selectedPage = null,
   onSelectPage,
@@ -781,36 +792,72 @@ export const TrafficAnalyticsDashboard: React.FC<
     );
   }
   if (isLoading || data === undefined) {
+    const loadingModules = [6, 6, 12] as const;
     return (
-      <View style={[styles.loadingGrid, isWideDesktop && styles.loadingGridWide]}>
-        {Array.from({ length: 4 }, (_, index) => (
-          <View key={index} style={isWideDesktop ? styles.loadingCell : undefined}>
-            <AnalyticsModuleSkeleton
-              testID={`traffic-analytics-loading-${index}`}
-            />
-          </View>
-        ))}
+      <View style={styles.dashboard}>
+        <TrafficRangeControl value={range} onChange={onRangeChange} />
+        <View
+          style={[styles.loadingGrid, isWideDesktop && styles.loadingGridWide]}
+        >
+          {loadingModules.map((width, index) => (
+            <View
+              key={index}
+              style={
+                isWideDesktop
+                  ? [styles.loadingCell, width === 12 && styles.loadingCellFull]
+                  : undefined
+              }
+            >
+              <AnalyticsModuleSkeleton
+                testID={`traffic-analytics-loading-${index}`}
+              />
+            </View>
+          ))}
+        </View>
       </View>
     );
   }
   const enoughTraffic =
     data.captureStartedAt !== null && data.totals.pageViews >= 30;
+  const resolvedListingType = listingType ?? "brand";
+  const showCompleteWindow = enoughTraffic && data.windowComplete;
   const brandPages = pages ?? [];
-  const hero = <HeroCard data={data} />;
-  const trend = <TrendCard data={data} />;
-  const funnel = <FunnelCard data={data} />;
-  const sources = <SourceCard data={data} scoped={pages === undefined} />;
-  const taps = <ButtonTapsCard data={data} />;
+  const trend = <TrendCard data={data} fillHeight={isWideDesktop} />;
+  const activity = (
+    <ActivityCard
+      data={data}
+      listingType={resolvedListingType}
+      fillHeight={isWideDesktop}
+    />
+  );
+  const sources = <SourceCard data={data} fillHeight={isWideDesktop} />;
+  const completed =
+    data.totals.bookings > 0 ? (
+      <CompletedCard
+        bookings={data.totals.bookings}
+        listingType={resolvedListingType}
+        fillHeight={isWideDesktop}
+      />
+    ) : null;
+  const taps = (
+    <ButtonTapsCard
+      data={data}
+      listingType={resolvedListingType}
+      fillHeight={isWideDesktop}
+    />
+  );
   const pageList =
-    !enoughTraffic || pages === undefined || onSelectPage === undefined
-      ? null
-      : (
+    !enoughTraffic ||
+    pages === undefined ||
+    onSelectPage === undefined ? null : (
       <PageListCard
         pages={brandPages}
         selected={selectedPage}
         onSelect={onSelectPage}
         captureStartedAt={data.captureStartedAt}
         enoughTraffic={enoughTraffic}
+        windowComplete={data.windowComplete}
+        fillHeight={isWideDesktop}
       />
     );
   const pageDetail =
@@ -822,14 +869,15 @@ export const TrafficAnalyticsDashboard: React.FC<
         isError={selectedPageError}
         onRetry={onRetrySelectedPage}
         onOpenListing={onOpenSelectedListing}
+        fillHeight={isWideDesktop}
       />
     );
   const showTaps = visibleButtonTapTypeCount(data) >= 2;
   const nodes: Partial<Record<AnalyticsGridModuleId, React.ReactNode>> = {
-    hero,
     visits: trend,
-    funnel,
+    activity,
     sources,
+    completed,
     pages: pageList,
     selectedPage: pageDetail,
     buttonTaps: taps,
@@ -838,17 +886,25 @@ export const TrafficAnalyticsDashboard: React.FC<
   };
   const modules = analyticsGridModules({
     showVisits: enoughTraffic,
-    showPages: pageList !== null,
-    showSelectedPage: isWideDesktop && pageDetail !== null,
-    showButtonTaps: showTaps,
-    showRegulars: regularsModule !== undefined && regularsModule !== null,
+    showActivity: showCompleteWindow,
+    showSources: enoughTraffic,
+    showCompleted: !enoughTraffic && completed !== null,
+    showPages: enoughTraffic && pageList !== null,
+    showSelectedPage: enoughTraffic && isWideDesktop && pageDetail !== null,
+    showButtonTaps: enoughTraffic && showTaps,
+    showRegulars:
+      enoughTraffic && regularsModule !== undefined && regularsModule !== null,
     showCustomerPatterns:
-      customerPatternsModule !== undefined && customerPatternsModule !== null,
+      enoughTraffic &&
+      customerPatternsModule !== undefined &&
+      customerPatternsModule !== null,
   });
   const collecting = [
     ...(!enoughTraffic
-      ? [`visits${captureDate(data.captureStartedAt) === null ? "" : ` (since ${captureDate(data.captureStartedAt)})`}`]
-      : []),
+      ? ["visit trend", "source mix", "conversion path"]
+      : !data.windowComplete
+        ? ["conversion path"]
+        : []),
     ...(regularsCollecting ? ["regulars"] : []),
     ...(customerPatternsCollecting ? ["booking patterns"] : []),
   ];
@@ -861,20 +917,27 @@ export const TrafficAnalyticsDashboard: React.FC<
           {`Still collecting: ${collecting.join(", ")}`}
         </Text>
       )}
-      {isWideDesktop ? packAnalyticsGrid(modules).map((row, rowIndex) => (
-        <View key={rowIndex} style={styles.gridRow}>
-          {row.map((module) => (
-            <View key={module.id} style={[styles.gridCell, { flex: module.width }]}>
-              {nodes[module.id]}
+      {isWideDesktop
+        ? packAnalyticsGrid(modules).map((row, rowIndex) => (
+            <View
+              key={rowIndex}
+              style={styles.gridRow}
+              testID={`traffic-grid-row-${rowIndex}`}
+            >
+              {row.map((module) => (
+                <View
+                  key={module.id}
+                  style={[styles.gridCell, { flex: module.width }]}
+                >
+                  {nodes[module.id]}
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
-      )) : modules
-        .filter((module) => module.id !== "selectedPage")
-        .map((module) => (
-          <View key={module.id}>{nodes[module.id]}</View>
-        ))}
-      {!isWideDesktop && pageDetail !== null ? (
+          ))
+        : modules
+            .filter((module) => module.id !== "selectedPage")
+            .map((module) => <View key={module.id}>{nodes[module.id]}</View>)}
+      {!isWideDesktop && enoughTraffic && pageDetail !== null ? (
         <Modal
           visible
           transparent
@@ -888,7 +951,10 @@ export const TrafficAnalyticsDashboard: React.FC<
             accessibilityLabel="Close selected page details"
           >
             {/* orch-strict-grep-allow pressable-no-label — event containment only; the sheet content owns accessibility */}
-            <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
+            <Pressable
+              style={styles.sheet}
+              onPress={(event) => event.stopPropagation()}
+            >
               <View style={styles.sheetHandle} />
               {pageDetail}
             </Pressable>
@@ -904,6 +970,7 @@ const styles = StyleSheet.create({
   loadingGrid: { gap: spacing.md },
   loadingGridWide: { flexDirection: "row", flexWrap: "wrap", gap: spacing.lg },
   loadingCell: { flexGrow: 1, flexBasis: "46%", minWidth: 0 },
+  loadingCellFull: { flexBasis: "100%" },
   errorBanner: {
     minHeight: 48,
     paddingHorizontal: spacing.md,
@@ -959,14 +1026,6 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.68 },
   card: { minWidth: 0, flex: 1 },
   cardContent: { flex: 1 },
-  heroCard: {
-    minWidth: 0,
-    flex: 1,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: accent.border,
-    padding: spacing.lg,
-  },
   eyebrow: {
     color: textTokens.tertiary,
     fontSize: typography.labelCap.fontSize,
@@ -974,56 +1033,12 @@ const styles = StyleSheet.create({
     fontWeight: typography.labelCap.fontWeight,
     letterSpacing: typography.labelCap.letterSpacing,
   },
-  heroValueRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  heroValue: {
-    color: textTokens.primary,
-    fontSize: typography.display.fontSize,
-    lineHeight: typography.display.lineHeight,
-    fontWeight: typography.display.fontWeight,
-    fontVariant: ["tabular-nums"],
-  },
-  deltaPill: {
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    backgroundColor: trafficAnalytics.positiveDeltaTint,
-  },
-  deltaText: {
-    color: trafficAnalytics.positiveDelta,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: "700",
-  },
-  deltaPillNeutral: {
-    backgroundColor: trafficAnalytics.neutralDeltaTint,
-  },
-  deltaTextNeutral: {
-    color: trafficAnalytics.neutralDelta,
-  },
-  otherCurrency: {
-    color: textTokens.secondary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-  },
-  heroSentence: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    marginTop: spacing.md,
-  },
   miniRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.md,
     marginTop: spacing.lg,
   },
-  heroFooter: { marginTop: "auto", paddingTop: spacing.lg },
   miniStat: { flexGrow: 1, flexBasis: 112, minWidth: 0 },
   miniValue: {
     color: textTokens.primary,
@@ -1050,6 +1065,20 @@ const styles = StyleSheet.create({
     lineHeight: typography.h3.lineHeight,
     fontWeight: typography.h3.fontWeight,
   },
+  cardNote: {
+    color: textTokens.secondary,
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    marginTop: spacing.xs,
+  },
+  completedValue: {
+    color: textTokens.primary,
+    fontSize: typography.h2.fontSize,
+    lineHeight: typography.h2.lineHeight,
+    fontWeight: typography.h2.fontWeight,
+    marginTop: spacing.sm,
+    fontVariant: ["tabular-nums"],
+  },
   totalAtRight: {
     color: textTokens.primary,
     fontSize: typography.bodyLg.fontSize,
@@ -1075,12 +1104,6 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
   },
   funnel: { gap: spacing.xs, marginTop: spacing.md },
-  continueText: {
-    color: textTokens.tertiary,
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    marginVertical: spacing.xs,
-  },
   funnelLabelRow: {
     flexDirection: "row",
     justifyContent: "space-between",

@@ -13,9 +13,10 @@ import { GlassCard } from "../ui/GlassCard";
 export const formatRegularsCount = (count: number): string =>
   `${count.toLocaleString("en-GB")} ${count === 1 ? "regular" : "regulars"}`;
 
-export const RegularsSection: React.FC<{ data: BrandRegularsRollup }> = ({
-  data,
-}) =>
+export const RegularsSection: React.FC<{
+  data: BrandRegularsRollup;
+  fillHeight?: boolean;
+}> = ({ data, fillHeight = false }) =>
   data.regularsCount === 0 ? null : (
   <View style={styles.section} testID="analytics-regulars-section">
     <View style={styles.titleLine}>
@@ -30,7 +31,11 @@ export const RegularsSection: React.FC<{ data: BrandRegularsRollup }> = ({
     <Text style={styles.helper}>
       Customers who booked or RSVP&apos;d across more than one listing or reservation.
     </Text>
-    <GlassCard style={styles.card} contentStyle={styles.cardContent}>
+    <GlassCard
+      style={styles.card}
+      contentStyle={styles.cardContent}
+      fillHeight={fillHeight}
+    >
       <Text style={styles.subheading} accessibilityRole="header">
         Top regulars
       </Text>

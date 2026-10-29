@@ -1,7 +1,7 @@
 /**
  * #4037 decision 7 (comment 6325156309) — a decline above the thresholds is
- * shown with its sign in the neutral secondary treatment, on the Analytics
- * hero and on the Home tile. It is never hidden and never painted green.
+ * remains available to the legacy Home tile. The repeated Analytics hero was
+ * removed by the approved clarity correction and must not return.
  */
 import React from "react";
 import { fireEvent, render } from "@testing-library/react-native";
@@ -68,7 +68,7 @@ const colourOf = (node: { props: { style: unknown } }): unknown =>
   )?.color;
 
 describe("#4037 decision 7 — declines are shown neutrally", () => {
-  it("Analytics hero shows a signed decline in the neutral treatment", () => {
+  it("does not repeat attributed value or deltas in Analytics", () => {
     const screen = render(
       <TrafficAnalyticsDashboard
         data={rollup(40_000, 50_000)}
@@ -82,17 +82,13 @@ describe("#4037 decision 7 — declines are shown neutrally", () => {
         onSelectPage={jest.fn()}
       />,
     );
-    const pill = screen.getByTestId("traffic-delta-neutral");
-    expect(pill.props.accessibilityLabel).toBe(
-      "Down 20 percent versus prior period",
-    );
-    const label = screen.getByText("-20.0%");
-    expect(colourOf(label)).toBe(trafficAnalytics.neutralDelta);
-    expect(colourOf(label)).not.toBe(trafficAnalytics.positiveDelta);
+    expect(screen.queryByText("VALUE MINGLA BROUGHT")).toBeNull();
+    expect(screen.queryByText("£400")).toBeNull();
+    expect(screen.queryByTestId("traffic-delta-neutral")).toBeNull();
     expect(screen.queryByTestId("traffic-delta-positive")).toBeNull();
   });
 
-  it("Analytics hero keeps the positive treatment for a rise", () => {
+  it("does not restore the removed Analytics hero for a rise", () => {
     const screen = render(
       <TrafficAnalyticsDashboard
         data={rollup(60_000, 50_000)}
@@ -106,10 +102,8 @@ describe("#4037 decision 7 — declines are shown neutrally", () => {
         onSelectPage={jest.fn()}
       />,
     );
-    expect(screen.getByTestId("traffic-delta-positive")).toBeTruthy();
-    expect(colourOf(screen.getByText("+20.0%"))).toBe(
-      trafficAnalytics.positiveDelta,
-    );
+    expect(screen.queryByText("VALUE MINGLA BROUGHT")).toBeNull();
+    expect(screen.queryByTestId("traffic-delta-positive")).toBeNull();
   });
 
   it("Home tile shows the same decline, neutrally", () => {

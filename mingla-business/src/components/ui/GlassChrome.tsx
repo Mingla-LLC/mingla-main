@@ -52,6 +52,8 @@ export interface GlassChromeProps {
   shadow?: StyleProp<ViewStyle>;
   testID?: string;
   style?: StyleProp<ViewStyle>;
+  /** Make every chrome layer fill a stretching parent row. Defaults to false. */
+  fillHeight?: boolean;
 }
 
 const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
@@ -73,6 +75,7 @@ export const GlassChrome: React.FC<GlassChromeProps> = ({
   shadow = shadows.glassChrome,
   testID,
   style,
+  fillHeight = false,
 }) => {
   const { width: windowWidth } = useWindowDimensions();
   const intensityValue = blurIntensityTokens[intensity];
@@ -88,10 +91,13 @@ export const GlassChrome: React.FC<GlassChromeProps> = ({
       style={[
         { borderRadius },
         shadow,
+        fillHeight && styles.fillHeight,
         style,
       ]}
     >
-      <View style={[styles.clip, { borderRadius }]}>
+      <View
+        style={[styles.clip, fillHeight && styles.fillHeight, { borderRadius }]}
+      >
         {/* L1 — Blur base */}
         {blurOk ? (
           <BlurView
@@ -128,13 +134,16 @@ export const GlassChrome: React.FC<GlassChromeProps> = ({
           pointerEvents="none"
         />
         {/* Content */}
-        <View style={styles.content}>{children}</View>
+        <View style={[styles.content, fillHeight && styles.fillHeight]}>
+          {children}
+        </View>
       </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  fillHeight: { flex: 1 },
   clip: {
     overflow: "hidden",
     // ORCH-1190 — the clip layer (and the content inside it) MUST fill the
