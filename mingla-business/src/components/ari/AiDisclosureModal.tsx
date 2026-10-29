@@ -9,12 +9,21 @@
  *     ScrollView-wrapped Pressable swallowed taps when the content fit
  *     without scrolling.
  *   - Sheet wrapped in BlurView for true liquid-glass feel.
- *   - Compact three-ring Ari identity and a decision-first trust hierarchy.
- *   - Solid, shadow-free actions: no decorative gradients or glow.
+ *   - Compact three-ring Ari identity and one decision-first trust promise.
+ *   - One boundary and one action: no nested cards or competing choices.
  */
 
 import React, { useEffect } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import Animated, {
@@ -25,7 +34,6 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
-  ariPalette,
   glass,
   radius,
   spacing,
@@ -34,29 +42,13 @@ import {
 } from "../../constants/designSystem";
 import { shouldUseRealBlur } from "../../utils/glassBlur";
 import { resolveSheetMaxHeight } from "./aiDisclosureSheetLayout";
-import { AriActionButton } from "./AriActionButton";
+import { Button } from "../ui/Button";
 import { AriOrb } from "./AriOrb";
 
 export interface AiDisclosureModalProps {
   visible: boolean;
   onAccept: () => void;
 }
-
-const TrustRow: React.FC<{ number: string; title: string; detail: string }> = ({
-  number,
-  title,
-  detail,
-}) => (
-  <View style={styles.trustRow}>
-    <View style={styles.trustNumber}>
-      <Text style={styles.trustNumberText}>{number}</Text>
-    </View>
-    <View style={styles.trustCopy}>
-      <Text style={styles.trustTitle}>{title}</Text>
-      <Text style={styles.trustDetail}>{detail}</Text>
-    </View>
-  </View>
-);
 
 // META-ORCH-1002 Sub-D / ORCH-1100: on Android expo-blur renders a thin
 // near-transparent view, and on phone web (< 768px) the blur-kill media rule
@@ -72,7 +64,12 @@ const TrustRow: React.FC<{ number: string; title: string; detail: string }> = ({
 const SheetBackdropSurface: React.FC = () => {
   const { width: windowWidth } = useWindowDimensions();
   if (!shouldUseRealBlur(windowWidth)) {
-    return <View pointerEvents="none" style={[styles.surfaceFill, styles.opaqueSheet]} />;
+    return (
+      <View
+        pointerEvents="none"
+        style={[styles.surfaceFill, styles.opaqueSheet]}
+      />
+    );
   }
   return (
     <BlurView
@@ -123,7 +120,12 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
       // the sheet (was a no-op → reviewer could get trapped).
       onRequestClose={onAccept}
     >
-      <Animated.View style={[styles.scrim, scrimStyle]}>
+      <Animated.View
+        style={[
+          styles.scrim,
+          Platform.OS === "web" ? styles.webScrimVisible : scrimStyle,
+        ]}
+      >
         {/* ORCH-1248 (Apple 2.1a): full-bleed backdrop tap-to-dismiss behind the
             sheet. Sits UNDER the sheet in z-order so it only receives taps on the
             dimmed area around the sheet, never the sheet's own content. Every
@@ -164,37 +166,17 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
             >
               <View style={styles.hero}>
                 <View style={styles.orbWrap}>
-                  <AriOrb size="lg" decorative={false} accessibilityLabel="Ari" />
+                  <AriOrb
+                    size="md"
+                    decorative={false}
+                    accessibilityLabel="Ari"
+                  />
                 </View>
-                <Text style={styles.eyebrow}>MINGLA INTELLIGENCE</Text>
-                <Text style={styles.title}>Meet Ari, your Mingla copilot.</Text>
+                <Text style={styles.title}>Meet Ari.</Text>
                 <Text style={styles.body}>
-                  Ask Ari to plan, research, and prepare work across your business. You stay in
-                  control of every consequential change.
-                </Text>
-              </View>
-              <View style={styles.trustList}>
-                <TrustRow
-                  number="1"
-                  title="You approve important changes"
-                  detail="Ari shows what will happen before creating, publishing, sending, or spending."
-                />
-                <TrustRow
-                  number="2"
-                  title="Memory stays under your control"
-                  detail="Conversations and brand context are saved, editable, and deletable in Settings."
-                />
-                <TrustRow
-                  number="3"
-                  title="Research shows its evidence"
-                  detail="Sources, uncertainty, and blocked pages stay visible instead of being guessed."
-                />
-              </View>
-              <View style={styles.boundaryCard}>
-                <Text style={styles.boundaryTitle}>Important</Text>
-                <Text style={styles.boundaryCopy}>
-                  Ari can make mistakes and is not a financial, legal, or tax advisor. Double-check
-                  decisions that matter.
+                  Ari can plan, research, and prepare work. Sources stay
+                  visible, and you approve anything important. Ari can make
+                  mistakes, so double-check decisions that matter.
                 </Text>
               </View>
             </ScrollView>
@@ -209,10 +191,13 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
                 { paddingBottom: Math.max(insets.bottom, spacing.lg) },
               ]}
             >
-              <AriActionButton
+              <Button
                 onPress={onAccept}
                 label="Start with Ari"
                 variant="primary"
+                size="lg"
+                fullWidth
+                edgeEffect="animatedGradient"
                 accessibilityLabel="Acknowledge and continue to Ari"
               />
             </View>
@@ -228,6 +213,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(8, 9, 12, 0.65)",
     justifyContent: "flex-end",
+  },
+  webScrimVisible: {
+    // Reanimated's shared-value effect can remain at its initial opacity during
+    // a React Native Web Modal mount. The Modal already owns the web entrance
+    // transition, so keep the scrim visibly deterministic there.
+    opacity: 1,
   },
   sheetWrap: {
     // ORCH-1246 (Apple 2.1a): maxHeight is a POINT cap (see SHEET_MAX_HEIGHT)
@@ -295,21 +286,14 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.xl,
     paddingTop: spacing.lg,
-    gap: spacing.lg,
+    paddingBottom: spacing.md,
+    gap: spacing.md,
   },
   hero: {
     alignItems: "center",
   },
   orbWrap: {
     alignItems: "center",
-    marginBottom: spacing.md,
-  },
-  eyebrow: {
-    color: ariPalette.flame,
-    fontSize: 10,
-    lineHeight: 14,
-    fontWeight: "800",
-    letterSpacing: 1.35,
     marginBottom: spacing.sm,
   },
   title: {
@@ -326,69 +310,6 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     textAlign: "center",
     maxWidth: 420,
-  },
-  trustList: {
-    borderWidth: 1,
-    borderColor: "#32383e",
-    borderRadius: radius.lg,
-    backgroundColor: "#171a1f",
-    overflow: "hidden",
-  },
-  trustRow: {
-    minHeight: 74,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.md,
-    padding: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#30353b",
-  },
-  trustNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#8b4a2d",
-    backgroundColor: "#2a1d18",
-  },
-  trustNumberText: {
-    color: "#f49a66",
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "800",
-  },
-  trustCopy: { flex: 1, minWidth: 0, gap: 3 },
-  trustTitle: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: "700",
-  },
-  trustDetail: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-  },
-  boundaryCard: {
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: "#3b4147",
-    backgroundColor: "#1d2126",
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
-  boundaryTitle: {
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    fontWeight: "700",
-  },
-  boundaryCopy: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
   },
   footer: {
     paddingHorizontal: spacing.xl,

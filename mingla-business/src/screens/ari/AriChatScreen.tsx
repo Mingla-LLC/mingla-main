@@ -52,6 +52,10 @@ import { StreamingText } from "../../components/ari/StreamingText";
 import { AriActivity } from "../../components/ari/AriActivity";
 import { AriAttachmentTray } from "../../components/ari/AriAttachmentCards";
 import { AriAttachmentSourceSheet } from "../../components/ari/AriAttachmentSourceSheet";
+import {
+  ariRenditionCopyText,
+  buildAriRenditionSubmission,
+} from "../../components/ari/renditions/ariRenditionProtocol";
 import { Toast } from "../../components/ui/Toast";
 import { useShareNetworkState } from "../../components/ui/useShareNetworkState";
 import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
@@ -826,6 +830,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 requestAnimationFrame(() => composerInputRef.current?.focus());
                 return;
               }
+              if (behavior.type === "submit") {
+                void handleSend(buildAriRenditionSubmission(interaction));
+                return;
+              }
               if (behavior.type === "route") {
                 router.push(behavior.route as never);
                 return;
@@ -834,6 +842,22 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 void Linking.openURL(behavior.url).catch(() => {
                   setLocalError("That link could not be opened. Copy it and try again.");
                 });
+                return;
+              }
+              if (behavior.type === "confirm") {
+                if (chat.pendingAction?.pending_action_id !== behavior.pending_action_id) {
+                  setLocalError("This proposal is no longer active. Ask Ari to prepare it again.");
+                  return;
+                }
+                void handleConfirm();
+                return;
+              }
+              if (behavior.type === "cancel") {
+                if (chat.pendingAction?.pending_action_id !== behavior.pending_action_id) {
+                  setLocalError("This proposal is no longer active.");
+                  return;
+                }
+                void handleCancelProposal();
                 return;
               }
               if (behavior.command === "stop" && chat.activeTurn) {
@@ -855,7 +879,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 return;
               }
               if (behavior.command === "copy") {
-                const copy = interaction.rendition.code ??
+                const copy = ariRenditionCopyText(interaction.rendition) ??
                   (interaction.fieldValue || interaction.rendition.body);
                 void Clipboard.setStringAsync(copy).catch(() => {
                   setLocalError("That text could not be copied. Select it and copy manually.");

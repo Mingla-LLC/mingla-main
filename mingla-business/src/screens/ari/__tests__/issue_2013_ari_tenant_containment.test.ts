@@ -120,6 +120,13 @@ describe("#2013 Ari tenant-containment UI behavior", () => {
 
     expect(mockInvoke).toHaveBeenCalledWith("agent-chat", {
       body: {
+        ari_ui: expect.objectContaining({
+          protocol_version: 2,
+          max_schema_version: 2,
+          block_version: 1,
+          action_version: 1,
+          platform: "web",
+        }),
         conversation_id: "conversation-a",
         message: "Continue planning",
         client_turn_id: "00000000-0000-4000-8000-000000002013",

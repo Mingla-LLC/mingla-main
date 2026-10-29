@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3355_ari_rendition_protocol.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3355-ari-rendition-protocol",
+  "profile": "deno-2-unit"
+}

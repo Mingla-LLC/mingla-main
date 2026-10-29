@@ -27,6 +27,7 @@ import { AriOrb } from "../../components/ari/AriOrb";
 import { AiDisclosureModal } from "../../components/ari/AiDisclosureModal";
 import { InputBar } from "../../components/ari/InputBar";
 import { MessageList } from "../../components/ari/MessageList";
+import { Button } from "../../components/ui/Button";
 import type { AgentMessage } from "../../services/agentChatService";
 import {
   ARI_RENDITION_FIXTURES,
@@ -39,6 +40,10 @@ import {
   buildAriRenditionExample,
   type AriRenditionInteraction,
 } from "../../components/ari/renditions/AriRenditionPreview";
+import {
+  ariRenditionCopyText,
+  buildAriRenditionSubmission,
+} from "../../components/ari/renditions/ariRenditionProtocol";
 
 function harnessMessage(
   id: string,
@@ -58,11 +63,14 @@ function harnessMessage(
   };
 }
 
-function buildThreadMessages(fixtures: readonly AriRenditionFixture[]): AgentMessage[] {
+function buildThreadMessages(
+  fixtures: readonly AriRenditionFixture[],
+): AgentMessage[] {
   return fixtures.flatMap((fixture, index) => {
     const example = buildAriRenditionExample(fixture);
     const ordinal = String(index + 1).padStart(2, "0");
-    const userMessage = example.userMessage ??
+    const userMessage =
+      example.userMessage ??
       `Show me the ${fixture.title.toLowerCase()} state.`;
     return [
       harnessMessage(
@@ -81,9 +89,14 @@ function buildThreadMessages(fixtures: readonly AriRenditionFixture[]): AgentMes
   });
 }
 
-const AriProductionThread: React.FC<{ fixtures: readonly AriRenditionFixture[] }> = ({ fixtures }) => {
+const AriProductionThread: React.FC<{
+  fixtures: readonly AriRenditionFixture[];
+}> = ({ fixtures }) => {
   const router = useRouter();
-  const contractMessages = useMemo(() => buildThreadMessages(fixtures), [fixtures]);
+  const contractMessages = useMemo(
+    () => buildThreadMessages(fixtures),
+    [fixtures],
+  );
   const [draft, setDraft] = useState("");
   const [extraMessages, setExtraMessages] = useState<AgentMessage[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -106,6 +119,10 @@ const AriProductionThread: React.FC<{ fixtures: readonly AriRenditionFixture[] }
       setDraft(behavior.message);
       return;
     }
+    if (behavior.type === "submit") {
+      sendLocalTurn(buildAriRenditionSubmission(interaction));
+      return;
+    }
     if (behavior.type === "route") {
       router.push(behavior.route as never);
       return;
@@ -114,8 +131,15 @@ const AriProductionThread: React.FC<{ fixtures: readonly AriRenditionFixture[] }
       void Linking.openURL(behavior.url);
       return;
     }
+    if (behavior.type === "confirm" || behavior.type === "cancel") {
+      setNotice(
+        `${behavior.type === "confirm" ? "Confirmed" : "Cancelled"} ${behavior.pending_action_id.slice(0, 8)}…`,
+      );
+      return;
+    }
     if (behavior.command === "copy") {
-      const copy = interaction.rendition.code ??
+      const copy =
+        ariRenditionCopyText(interaction.rendition) ??
         (interaction.fieldValue || interaction.rendition.body);
       void Clipboard.setStringAsync(copy);
     } else if (behavior.command === "resume") {
@@ -143,7 +167,10 @@ const AriProductionThread: React.FC<{ fixtures: readonly AriRenditionFixture[] }
   };
 
   return (
-    <View style={styles.thread} accessibilityLabel="Production Ari rendition thread">
+    <View
+      style={styles.thread}
+      accessibilityLabel="Production Ari rendition thread"
+    >
       <View style={styles.threadHeader}>
         <AriOrb size="sm" decorative />
         <View style={styles.threadHeaderCopy}>
@@ -170,12 +197,16 @@ const AriProductionThread: React.FC<{ fixtures: readonly AriRenditionFixture[] }
           })}
           onCancel={() => undefined}
           onSeedMessage={setDraft}
-          onRenditionAction={(_message, interaction) => handleInteraction(interaction)}
+          onRenditionAction={(_message, interaction) =>
+            handleInteraction(interaction)
+          }
         />
       </View>
 
       {notice ? (
-        <Text style={styles.notice} accessibilityLiveRegion="polite">{notice}</Text>
+        <Text style={styles.notice} accessibilityLiveRegion="polite">
+          {notice}
+        </Text>
       ) : null}
 
       <View style={styles.composer}>
@@ -196,21 +227,33 @@ export const AriRenditionGalleryScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const [group, setGroup] = useState<AriRenditionGroup | "All">("All");
   const [showDisclosure, setShowDisclosure] = useState(false);
+  const [buttonSample, setButtonSample] = useState(
+    "Press a sample to feel the spring response.",
+  );
   const visible = useMemo(
-    () => group === "All"
-      ? ARI_RENDITION_FIXTURES
-      : ARI_RENDITION_FIXTURES.filter((fixture) => fixture.group === group),
+    () =>
+      group === "All"
+        ? ARI_RENDITION_FIXTURES
+        : ARI_RENDITION_FIXTURES.filter((fixture) => fixture.group === group),
     [group],
   );
 
   return (
-    <View style={[styles.host, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View
+      style={[
+        styles.host,
+        { paddingTop: insets.top, paddingBottom: insets.bottom },
+      ]}
+    >
       <View style={styles.header}>
         <Pressable
           onPress={() => router.back()}
           accessibilityRole="button"
           accessibilityLabel="Close Ari rendition thread"
-          style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+          style={({ pressed }) => [
+            styles.closeButton,
+            pressed && styles.pressed,
+          ]}
         >
           <Text style={styles.closeButtonText}>‹ Close</Text>
         </Pressable>
@@ -223,7 +266,10 @@ export const AriRenditionGalleryScreen: React.FC = () => {
             </Text>
           </View>
         </View>
-        <View style={styles.localBadge} accessibilityLabel="Development preview only">
+        <View
+          style={styles.localBadge}
+          accessibilityLabel="Development preview only"
+        >
           <Text style={styles.localBadgeText}>LOCAL</Text>
         </View>
       </View>
@@ -238,9 +284,12 @@ export const AriRenditionGalleryScreen: React.FC = () => {
         >
           {(["All", ...ARI_RENDITION_GROUPS] as const).map((item) => {
             const active = group === item;
-            const count = item === "All"
-              ? ARI_RENDITION_TOTAL
-              : ARI_RENDITION_FIXTURES.filter((fixture) => fixture.group === item).length;
+            const count =
+              item === "All"
+                ? ARI_RENDITION_TOTAL
+                : ARI_RENDITION_FIXTURES.filter(
+                    (fixture) => fixture.group === item,
+                  ).length;
             return (
               <Pressable
                 key={item}
@@ -253,8 +302,19 @@ export const AriRenditionGalleryScreen: React.FC = () => {
                   pressed && styles.pressed,
                 ]}
               >
-                <Text style={[styles.filterText, active && styles.filterTextActive]}>{item}</Text>
-                <Text style={[styles.filterCount, active && styles.filterTextActive]}>{count}</Text>
+                <Text
+                  style={[styles.filterText, active && styles.filterTextActive]}
+                >
+                  {item}
+                </Text>
+                <Text
+                  style={[
+                    styles.filterCount,
+                    active && styles.filterTextActive,
+                  ]}
+                >
+                  {count}
+                </Text>
               </Pressable>
             );
           })}
@@ -262,27 +322,91 @@ export const AriRenditionGalleryScreen: React.FC = () => {
       </View>
 
       <View style={styles.stage}>
+        <View
+          style={styles.approvalPanel}
+          accessibilityLabel="Simplified first-use sheet preview"
+        >
+          <View style={styles.approvalHeadingRow}>
+            <View style={styles.approvalHeadingCopy}>
+              <Text style={styles.approvalEyebrow}>
+                FIRST-USE SHEET · SIMPLIFIED
+              </Text>
+              <Text style={styles.approvalTitle}>One clear introduction</Text>
+              <Text style={styles.approvalMeta}>
+                One promise, one boundary, one action. No nested boxes or
+                competing choices.
+              </Text>
+            </View>
+            <Button
+              label="Preview simplified sheet"
+              variant="primary"
+              size="sm"
+              edgeEffect="animatedGradient"
+              onPress={() => setShowDisclosure(true)}
+              accessibilityLabel="Preview simplified first-use sheet"
+            />
+          </View>
+          <View
+            style={styles.motionLab}
+            accessibilityLabel="Animated Mingla button samples"
+          >
+            <View style={styles.motionLabCopy}>
+              <Text style={styles.motionLabEyebrow}>ANIMATED EDGE · LIVE</Text>
+              <Text style={styles.motionLabNote}>{buttonSample}</Text>
+            </View>
+            <View style={styles.motionLabButtons}>
+              <Button
+                label="Orange"
+                size="sm"
+                variant="primary"
+                edgeEffect="animatedGradient"
+                onPress={() =>
+                  setButtonSample("Orange primary · press and release verified")
+                }
+              />
+              <Button
+                label="Black"
+                size="sm"
+                variant="secondary"
+                edgeEffect="animatedGradient"
+                onPress={() =>
+                  setButtonSample(
+                    "Black secondary · press and release verified",
+                  )
+                }
+              />
+              <Button
+                label="White"
+                size="sm"
+                variant="step"
+                edgeEffect="animatedGradient"
+                onPress={() =>
+                  setButtonSample("White step · press and release verified")
+                }
+              />
+            </View>
+          </View>
+        </View>
+
         <View style={styles.stageCopy}>
           <Text style={styles.stageTitle}>
-            {group === "All" ? "Every rendition and state" : `${group} renditions`}
+            {group === "All"
+              ? "Every rendition and state"
+              : `${group} renditions`}
           </Text>
           <View style={styles.stageActions}>
             <Text style={styles.stageMeta}>
-              Scroll, tap choices and actions, edit fields, then send a real local turn.
+              Scroll, tap choices and actions, edit fields, then send a real
+              local turn.
             </Text>
-            <Pressable
-              onPress={() => setShowDisclosure(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Preview first-use Ari sheet"
-              style={({ pressed }) => [styles.sheetPreviewButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.sheetPreviewButtonText}>Preview first-use sheet</Text>
-            </Pressable>
           </View>
         </View>
         <AriProductionThread fixtures={visible} />
       </View>
-      <AiDisclosureModal visible={showDisclosure} onAccept={() => setShowDisclosure(false)} />
+      <AiDisclosureModal
+        visible={showDisclosure}
+        onAccept={() => setShowDisclosure(false)}
+      />
     </View>
   );
 };
@@ -301,7 +425,12 @@ const styles = StyleSheet.create({
     backgroundColor: canvas.depth,
   },
   closeButton: { minWidth: 64, minHeight: 44, justifyContent: "center" },
-  closeButtonText: { color: ariPalette.flame, fontSize: 14, lineHeight: 20, fontWeight: "700" },
+  closeButtonText: {
+    color: ariPalette.flame,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "700",
+  },
   headerIdentity: {
     flex: 1,
     flexDirection: "row",
@@ -310,7 +439,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   headerCopy: { gap: 1 },
-  headerTitle: { color: textTokens.primary, fontSize: 15, lineHeight: 20, fontWeight: "700" },
+  headerTitle: {
+    color: textTokens.primary,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "700",
+  },
   headerMeta: { color: ariThread.tertiaryText, fontSize: 11, lineHeight: 15 },
   localBadge: {
     minHeight: 30,
@@ -319,13 +453,23 @@ const styles = StyleSheet.create({
     backgroundColor: "#2b211b",
     paddingHorizontal: spacing.sm,
   },
-  localBadgeText: { color: ariPalette.gold, fontSize: 10, lineHeight: 14, fontWeight: "800", letterSpacing: 1 },
+  localBadgeText: {
+    color: ariPalette.gold,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
   filterRail: {
     borderBottomWidth: 1,
     borderBottomColor: glass.border.profileBase,
     backgroundColor: canvas.depth,
   },
-  filters: { gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  filters: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
   filter: {
     minHeight: 40,
     flexDirection: "row",
@@ -337,9 +481,22 @@ const styles = StyleSheet.create({
     backgroundColor: ariThread.composerSurface,
     paddingHorizontal: spacing.md,
   },
-  filterActive: { backgroundColor: textTokens.primary, borderColor: textTokens.primary },
-  filterText: { color: textTokens.primary, fontSize: 12, lineHeight: 17, fontWeight: "600" },
-  filterCount: { color: ariThread.tertiaryText, fontSize: 10, lineHeight: 14, fontWeight: "700" },
+  filterActive: {
+    backgroundColor: textTokens.primary,
+    borderColor: textTokens.primary,
+  },
+  filterText: {
+    color: textTokens.primary,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "600",
+  },
+  filterCount: {
+    color: ariThread.tertiaryText,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: "700",
+  },
   filterTextActive: { color: canvas.depth },
   stage: {
     flex: 1,
@@ -350,6 +507,70 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     gap: spacing.sm,
   },
+  approvalPanel: {
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: glass.border.profileElevated,
+    backgroundColor: canvas.depth,
+    paddingTop: spacing.md,
+    overflow: "hidden",
+  },
+  approvalHeadingRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  approvalHeadingCopy: { flex: 1, minWidth: 250, gap: 2 },
+  approvalEyebrow: {
+    color: ariPalette.flame,
+    fontSize: 9,
+    lineHeight: 13,
+    fontWeight: "800",
+    letterSpacing: 1.1,
+  },
+  approvalTitle: {
+    color: textTokens.primary,
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+  },
+  approvalMeta: { color: ariThread.tertiaryText, fontSize: 11, lineHeight: 16 },
+  motionLab: {
+    minHeight: 62,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: glass.border.profileBase,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  motionLabCopy: { flex: 1, minWidth: 230, gap: 1 },
+  motionLabEyebrow: {
+    color: ariPalette.flame,
+    fontSize: 9,
+    lineHeight: 13,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  motionLabNote: {
+    color: ariThread.tertiaryText,
+    fontSize: 10,
+    lineHeight: 15,
+  },
+  motionLabButtons: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
   stageCopy: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -357,7 +578,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.sm,
   },
-  stageTitle: { color: textTokens.primary, fontSize: 16, lineHeight: 22, fontWeight: "700" },
+  stageTitle: {
+    color: textTokens.primary,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "700",
+  },
   stageActions: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -366,21 +592,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   stageMeta: { color: ariThread.tertiaryText, fontSize: 11, lineHeight: 16 },
-  sheetPreviewButton: {
-    minHeight: 36,
-    justifyContent: "center",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#3b4248",
-    backgroundColor: "#20242a",
-    paddingHorizontal: spacing.md,
-  },
-  sheetPreviewButtonText: {
-    color: textTokens.primary,
-    fontSize: 11,
-    lineHeight: 16,
-    fontWeight: "700",
-  },
   thread: {
     flex: 1,
     width: "100%",
@@ -401,7 +612,12 @@ const styles = StyleSheet.create({
     borderBottomColor: "#2b3036",
   },
   threadHeaderCopy: { flex: 1, gap: 1 },
-  threadTitle: { color: textTokens.primary, fontSize: 15, lineHeight: 20, fontWeight: "700" },
+  threadTitle: {
+    color: textTokens.primary,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "700",
+  },
   threadMeta: { color: ariThread.tertiaryText, fontSize: 11, lineHeight: 15 },
   liveBadge: {
     flexDirection: "row",
@@ -413,7 +629,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#61c78f" },
-  liveBadgeText: { color: "#78d8a6", fontSize: 9, lineHeight: 12, fontWeight: "800", letterSpacing: 0.7 },
+  liveBadgeText: {
+    color: "#78d8a6",
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: "800",
+    letterSpacing: 0.7,
+  },
   threadBody: { flex: 1, minHeight: 0 },
   notice: {
     color: ariPalette.gold,

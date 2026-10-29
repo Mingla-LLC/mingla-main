@@ -225,6 +225,24 @@ export const MessageList: React.FC<MessageListProps> = ({
   // First pass builds the visible rows; a second pass annotates each bubble
   // with grouping flags (hideOrb / tail) by comparing it to its visible
   // bubble neighbours of the same speaker.
+  const receiptPendingActionIds = new Set<string>();
+  const renditionsByMessageId = new Map<string, ReturnType<typeof parseAriRendition>>();
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    const rendition = parseAriRendition(
+      (message.content as { structured?: { rendition?: unknown } })?.structured
+        ?.rendition,
+    );
+    if (!rendition) continue;
+    renditionsByMessageId.set(message.id, rendition);
+    if (
+      rendition.schema_version === 2 && rendition.kind === "receipt" &&
+      rendition.rendition_id.startsWith("receipt:")
+    ) {
+      receiptPendingActionIds.add(rendition.rendition_id.slice("receipt:".length));
+    }
+  }
+
   const raw: ListItem[] = [];
   for (const m of messages) {
     if (m.role === "assistant" && m.tool_calls && !(m.content as any)?.text) {
@@ -255,6 +273,14 @@ export const MessageList: React.FC<MessageListProps> = ({
     ) {
       continue; // suppressed while the live card owns this action
     }
+    if (
+      m.role === "tool" &&
+      receiptPendingActionIds.has(
+        String((m.tool_results as { pending_action_id?: unknown } | null)?.pending_action_id ?? ""),
+      )
+    ) {
+      continue; // negotiated premium receipt owns the completed representation
+    }
     if (m.role === "tool") {
       // Tool-result ribbon — not a bubble, never grouped.
       raw.push({
@@ -270,8 +296,15 @@ export const MessageList: React.FC<MessageListProps> = ({
     const text = (m.content as any)?.text ?? "";
     const attachments = (m.content as { attachments?: unknown[] })?.attachments ?? [];
     const rendition = m.role === "assistant" && !dismissedRenditionIds.has(m.id)
-      ? parseAriRendition((m.content as { structured?: { rendition?: unknown } })?.structured?.rendition)
+      ? renditionsByMessageId.get(m.id) ?? null
       : null;
+    if (
+      rendition?.schema_version === 2 && rendition.kind === "receipt" &&
+      pendingAction?.pending_action_id ===
+        rendition.rendition_id.slice("receipt:".length)
+    ) {
+      continue; // keep create/attach proposal exclusive until its lifecycle clears
+    }
     if (!text && attachments.length === 0 && !rendition) continue;
     raw.push({
       kind: "message",
@@ -504,7 +537,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         const text = (m.content as any)?.text ?? "";
         const attachments = ((m.content as { attachments?: unknown }).attachments ?? []) as import("../../services/ariAttachmentService").AriSentAttachment[];
         const rendition = m.role === "assistant" && !dismissedRenditionIds.has(m.id)
-          ? parseAriRendition((m.content as { structured?: { rendition?: unknown } })?.structured?.rendition)
+          ? renditionsByMessageId.get(m.id) ?? null
           : null;
         const AriRenditionCard = rendition ? getAriRenditionCard() : null;
         if (!text && attachments.length === 0 && !rendition) return null;

@@ -7,8 +7,15 @@
  * and unwraps nested domain payloads so existing UI kinds keep working.
  */
 
+import Constants from "expo-constants";
+import { Platform } from "react-native";
+
 import { supabase } from "./supabase";
 import type { AriSentAttachment } from "./ariAttachmentService";
+import {
+  buildAriUiCapabilities,
+  type AriUiCapabilitiesV2,
+} from "../components/ari/renditions/ariRenditionProtocol";
 // Type-only cite keeps #2060 gates happy without pulling the recovery registry
 // into the web boot chunk (ORCH-1083). Runtime assert below is structural.
 import type { AriResponseEnvelope } from "./agentReliability";
@@ -126,6 +133,20 @@ const OPERATION_STATES = new Set([
   "expired",
   "reconciliation_required",
 ]);
+
+export function currentAriUiCapabilities(): AriUiCapabilitiesV2 {
+  const appVersion = Constants.expoConfig?.version ?? null;
+  const configuredRuntime = Constants.expoConfig?.runtimeVersion;
+  const runtimeVersion = typeof configuredRuntime === "string"
+    ? configuredRuntime
+    // Host uses runtimeVersion policy=appVersion on both native platforms.
+    : appVersion;
+  return buildAriUiCapabilities({
+    platform: Platform.OS,
+    appVersion,
+    runtimeVersion,
+  });
+}
 
 /**
  * Structural envelope assert for the shared chat client. The exhaustive
@@ -270,7 +291,7 @@ async function extractError(error: unknown, fallback: string): Promise<{ code: s
 
 export async function sendAgentMessage(args: SendMessageArgs): Promise<AgentChatResponse> {
   const { data, error } = await supabase.functions.invoke<unknown>("agent-chat", {
-    body: args,
+    body: { ...args, ari_ui: currentAriUiCapabilities() },
   });
   if (error) {
     const typed = await extractError(error, "Ari couldn't respond — try again");
@@ -288,7 +309,7 @@ export async function sendAgentMessage(args: SendMessageArgs): Promise<AgentChat
 export async function confirmAgentAction(args: ConfirmActionArgs): Promise<AgentConfirmResponse> {
   const { data, error } = await supabase.functions.invoke<unknown>(
     "agent-confirm-action",
-    { body: { action: "confirm", ...args } },
+    { body: { action: "confirm", ...args, ari_ui: currentAriUiCapabilities() } },
   );
   if (error) {
     const typed = await extractError(error, "Couldn't complete that action — try again");
@@ -308,7 +329,7 @@ export async function cancelAgentAction(
 ): Promise<AgentConfirmResponse> {
   const { data, error } = await supabase.functions.invoke<unknown>(
     "agent-confirm-action",
-    { body: { action: "cancel", pending_action_id } },
+    { body: { action: "cancel", pending_action_id, ari_ui: currentAriUiCapabilities() } },
   );
   if (error) {
     const typed = await extractError(error, "Couldn't cancel — try again");
