@@ -218,17 +218,17 @@ Deno.test("#3980 PR links phases: before landing never fails, reminder week, blo
   assertMatch(before.words, /opened before the check landed/);
   const week = prLinksVerdict({ ...missing, author: { login: "seth", type: "User" }, createdAt: "2026-10-23T00:00:00Z", landedAt: landed, now: "2026-10-25T00:00:00Z" });
   assertEquals([week.phase, week.ok], ["reminder", true]);
-  assertMatch(week.words, /^This PR needs two lines in its description before it merges: an issue link \("toward #123" or "Fixes #123", or "Issue: none, <reason>"\) and a "Feature Guide:" line \(entry keys or "none"\)\. Missing: an issue link; a "Feature Guide:" line\. From 29 Oct this check blocks merging\. After you edit the description, push a commit or re-run this check\.$/);
+  assertMatch(week.words, /^This PR needs two lines in its description before it merges: an issue link \("toward #123" or "Fixes #123", or "Issue: none, <reason>"\) and a "Feature Guide:" line \(entry keys or "none — <reason>"\)\. Missing: an issue link; a "Feature Guide:" line\. From 29 Oct this check blocks merging\. After you edit the description, push a commit or re-run this check\.$/);
   const after = prLinksVerdict({ ...missing, author: { login: "seth", type: "User" }, createdAt: "2026-10-30T00:00:00Z", landedAt: landed, now: "2026-10-30T01:00:00Z" });
   assertEquals([after.phase, after.ok], ["blocking", false]);
-  const fixed = prLinksVerdict({ title: "toward #3980: x", body: "Feature Guide: none", author: { login: "seth", type: "User" }, createdAt: "2026-10-30T00:00:00Z", landedAt: landed, now: "2026-10-30T01:00:00Z" });
+  const fixed = prLinksVerdict({ title: "toward #3980: x", body: "Feature Guide: none — CI-only change", author: { login: "seth", type: "User" }, createdAt: "2026-10-30T00:00:00Z", landedAt: landed, now: "2026-10-30T01:00:00Z" });
   assertEquals([fixed.phase, fixed.ok, fixed.words], ["blocking", true, "Issue and Feature Guide lines found. Thank you."]);
   const bot = prLinksVerdict({ ...missing, author: { login: "dependabot[bot]", type: "Bot" }, createdAt: "2026-10-30T00:00:00Z", landedAt: landed, now: "2026-10-30T01:00:00Z" });
   assertEquals([bot.phase, bot.ok, bot.comment], ["exempt", true, false]);
   const unknown = prLinksVerdict({ ...missing, author: { login: "seth", type: "User" }, createdAt: "2026-10-30T00:00:00Z", landedAt: null, now: "2026-12-30T01:00:00Z" });
   assertEquals([unknown.phase, unknown.ok], ["reminder", true]);
   assertMatch(unknown.words, /could not read when this check landed/);
-  const none = prLinksVerdict({ title: "Bump", body: "Issue: none, routine dependency bump\nFeature Guide: none", author: { login: "seth", type: "User" }, createdAt: "2026-10-30T00:00:00Z", landedAt: landed, now: "2026-11-30T01:00:00Z" });
+  const none = prLinksVerdict({ title: "Bump", body: "Issue: none, routine dependency bump\nFeature Guide: none — dependency metadata only", author: { login: "seth", type: "User" }, createdAt: "2026-10-30T00:00:00Z", landedAt: landed, now: "2026-11-30T01:00:00Z" });
   assertEquals(none.ok, true);
 });
 
@@ -241,6 +241,7 @@ Deno.test("#3980 the workflow and scripts never run pull request code or interpo
   assertMatch(wf, /pull_request_target:/);
   assert(!/ref:\s*\$\{\{\s*github\.event\.pull_request\.head/.test(wf), "never checks out the pull request head");
   assertEquals((wf.match(/persist-credentials: false/g) ?? []).length, 2);
+  assert(wf.includes("docs/contracts/feature-guide-impact.json"));
   for (const script of ["pr-links.mjs", "record.mjs", "lib.mjs"]) {
     const src = read(`.github/scripts/release-records/${script}`);
     assert(!/child_process|\beval\(|new Function\(/.test(src), script);

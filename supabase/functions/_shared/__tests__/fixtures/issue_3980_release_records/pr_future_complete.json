@@ -3,7 +3,7 @@
   "pull_request": {
     "number": 4200,
     "title": "Small change",
-    "body": "Issue: toward #3980\nFeature Guide: none",
+    "body": "Issue: toward #3980\nFeature Guide: none — CI-only fixture change",
     "created_at": "2099-01-01T00:00:00Z",
     "user": {
       "login": "someone",

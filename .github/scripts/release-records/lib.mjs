@@ -17,9 +17,11 @@ export const WEB_PROJECTS = [
   "mingla-sites",
 ];
 export const MAX_ISSUES = 10;
-// #1553: a release may legitimately affect a broad capability surface. Keep
-// a defensive payload ceiling without forcing truthful classifications to
-// omit entries (the #4179 reconciliation names 33).
+// #4179: one release can legitimately move a wide capability surface (the
+// exhaustive #4178 audit named 15; the reconciliation itself names 32). The
+// old 20-key ceiling silently forced incomplete release records. Keep a
+// defensive payload ceiling, then let the impact/catalog gate prove that
+// every key is real.
 export const MAX_GUIDE_KEYS = 500;
 export const REMINDER_DAYS = 7;
 export const EDGE_SUPERSESSION_CONTEXT = "mingla/edge-deploy-supersession";
@@ -105,11 +107,22 @@ export function invalidGuideWords(guide) {
   return `${what}; a key is lower-case letters, digits and single hyphens, as in the pull request template`;
 }
 
-/** The "Feature Guide:" line: keys, none, missing, or invalid with the bad keys. */
+/**
+ * The "Feature Guide:" line: keys, none with an optional reason, missing, or
+ * invalid with the bad keys. Bare `none` remains readable for historical
+ * release records; the PR gate requires a reason for every new no-effect
+ * classification.
+ */
 export function parseFeatureGuide(body) {
   const v = fieldLine(body, "Feature Guide");
   if (v === null || v === "") return { kind: "missing" };
-  if (/^none\.?$/i.test(v)) return { kind: "none" };
+  const none = /^none\b[\s,:;\-\u2013\u2014]*(.*)$/i.exec(v);
+  if (none) {
+    const reason = none[1].replace(/[.;]+$/, "").trim();
+    return reason.length >= 3
+      ? { kind: "none", reason: reason.slice(0, 500) }
+      : { kind: "none" };
+  }
   const parts = v.split(/[\s,]+/).map((p) => p.replace(/[.;]+$/, "")).filter(Boolean);
   const bad = parts.filter((p) => !KEY.test(p));
   if (bad.length > 0 || parts.length > MAX_GUIDE_KEYS) {
@@ -121,6 +134,151 @@ export function parseFeatureGuide(body) {
     };
   }
   return { kind: "keys", keys: [...new Set(parts)] };
+}
+
+const PRODUCT_PATH = /^(?:app-mobile|mingla-admin|mingla-business|mingla-marketing|mingla-site-cms|mingla-sites|packages|supabase\/functions|supabase\/migrations)\//;
+const NON_PRODUCT_PATH = /(?:^|\/)(?:__tests__|fixtures)\/|(?:[._](?:test|spec)\.[^/]+$)|[.]ci-suite[.]json$/;
+const CATALOG_REF_FIELDS = new Set(["source_path", "test_path", "migration_path"]);
+const CATALOG_REFS_FIELDS = new Set(["claim_refs", "source_refs"]);
+
+export function isFeatureGuideProductPath(path) {
+  const value = String(path ?? "");
+  return PRODUCT_PATH.test(value) && !NON_PRODUCT_PATH.test(value);
+}
+
+function addCatalogObject(out, value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const key = typeof value.capability_key === "string" && KEY.test(value.capability_key)
+    ? value.capability_key
+    : null;
+  if (key) {
+    const refs = out.get(key) ?? new Set();
+    for (const [name, raw] of Object.entries(value)) {
+      if (CATALOG_REF_FIELDS.has(name) && typeof raw === "string" && raw.trim()) refs.add(raw.trim());
+      if (CATALOG_REFS_FIELDS.has(name) && Array.isArray(raw)) {
+        for (const ref of raw) {
+          if (typeof ref === "string" && ref.trim()) refs.add(ref.trim());
+        }
+      }
+    }
+    out.set(key, refs);
+  }
+  for (const nested of Object.values(value)) {
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) addCatalogObject(out, nested);
+  }
+}
+
+/**
+ * Build the versioned capability/path catalog from JSON dollar-quotes in the
+ * reviewed SQL migrations. Invalid or unrelated dollar-quotes are ignored;
+ * a key is admitted only from a JSON object with a valid capability_key.
+ */
+export function featureGuideCatalogFromSql(sqlTexts) {
+  const out = new Map();
+  const block = /\$([A-Za-z_][A-Za-z0-9_]*)\$([\s\S]*?)\$\1\$/g;
+  for (const sql of sqlTexts ?? []) {
+    for (const match of String(sql ?? "").matchAll(block)) {
+      const raw = match[2].trim();
+      if (!raw.startsWith("[") && !raw.startsWith("{")) continue;
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        continue;
+      }
+      const values = Array.isArray(parsed) ? parsed : [parsed];
+      for (const value of values) addCatalogObject(out, value);
+    }
+  }
+  return new Map([...out].map(([key, refs]) => [key, [...refs].sort()]));
+}
+
+/** Exact product-path ownership added after the historical SQL evidence catalog. */
+export function featureGuideCatalogFromContract(text) {
+  const parsed = JSON.parse(String(text ?? ""));
+  if (parsed?.version !== 1 || !Array.isArray(parsed.mappings)) throw new Error("feature_guide_contract_invalid");
+  const out = new Map();
+  for (const item of parsed.mappings) {
+    if (!item || typeof item !== "object" || !KEY.test(String(item.capability_key ?? "")) || !Array.isArray(item.paths)) {
+      throw new Error("feature_guide_contract_mapping_invalid");
+    }
+    const paths = item.paths.map((path) => String(path).trim());
+    if (paths.length === 0 || paths.some((path) => !isFeatureGuideProductPath(path))) {
+      throw new Error("feature_guide_contract_path_invalid");
+    }
+    const refs = out.get(item.capability_key) ?? new Set();
+    for (const path of paths) refs.add(path);
+    out.set(item.capability_key, refs);
+  }
+  return new Map([...out].map(([key, refs]) => [key, [...refs].sort()]));
+}
+
+export function mergeFeatureGuideCatalogs(...catalogs) {
+  const out = new Map();
+  for (const catalog of catalogs) {
+    for (const [key, paths] of catalog ?? []) {
+      const refs = out.get(key) ?? new Set();
+      for (const path of paths ?? []) refs.add(path);
+      out.set(key, refs);
+    }
+  }
+  return new Map([...out].map(([key, refs]) => [key, [...refs].sort()]));
+}
+
+/**
+ * Fail-closed PR impact verdict. Exact catalog references must all be named;
+ * any other product-owned path still forbids `none`. A key must already be
+ * in the base catalog or be defined by a changed migration in this PR.
+ */
+export function featureGuideImpactVerdict({
+  guide,
+  paths,
+  baseCatalog,
+  prCatalog,
+  declaredKeys = /** @type {Iterable<string> | null} */ (null),
+  knownKeys = /** @type {Iterable<string> | null} */ (null),
+}) {
+  const changed = [...new Set((paths ?? []).map(String))];
+  const productPaths = changed.filter(isFeatureGuideProductPath);
+  const catalog = mergeFeatureGuideCatalogs(baseCatalog, prCatalog);
+  const known = new Set(knownKeys ?? catalog.keys());
+  const expected = new Set();
+  for (const [key, refs] of catalog) {
+    if ((refs ?? []).some((ref) => productPaths.includes(ref))) expected.add(key);
+  }
+  const declared = [...(declaredKeys ?? prCatalog?.keys?.() ?? [])];
+  for (const key of declared) expected.add(key);
+  if (guide?.kind === "missing" || guide?.kind === "invalid") {
+    return { ok: false, problems: ["Feature Guide classification is missing or invalid"], expected: [...expected] };
+  }
+  if (guide?.kind === "none") {
+    const problems = [];
+    if (!guide.reason) problems.push("Feature Guide: none needs a concrete reason");
+    if (productPaths.length > 0) problems.push("product-owned paths changed, so at least one capability key is required");
+    if (expected.size > 0) problems.push(`catalog-owned paths require: ${[...expected].sort().join(", ")}`);
+    return { ok: problems.length === 0, problems, expected: [...expected].sort(), productPaths };
+  }
+  const keys = new Set(guide?.keys ?? []);
+  const problems = [];
+  const unknown = [...keys].filter((key) => !known.has(key)).sort();
+  const omitted = [...expected].filter((key) => !keys.has(key)).sort();
+  const unmapped = productPaths.filter((path) => {
+    if (/^supabase\/migrations\/[^/]+[.]sql$/.test(path) && declared.length > 0) return false;
+    return ![...keys].some((key) => (catalog.get(key) ?? []).includes(path));
+  }).sort();
+  if (unknown.length > 0) problems.push(`unknown capability keys: ${unknown.join(", ")}`);
+  if (omitted.length > 0) problems.push(`catalog-owned paths omitted: ${omitted.join(", ")}`);
+  if (unmapped.length > 0) problems.push(`product paths have no named catalog owner: ${unmapped.join(", ")}`);
+  if (productPaths.length > 0 && keys.size === 0) problems.push("product-owned paths require at least one capability key");
+  return {
+    ok: problems.length === 0,
+    problems,
+    expected: [...expected].sort(),
+    productPaths,
+    unknown,
+    omitted,
+    unmapped,
+  };
 }
 
 /**
@@ -537,7 +695,7 @@ export function mergeRecordData(fresh, previous) {
   const theirs = after(previous.live_check) ? previous.live_check : null;
   const live = !mine ? theirs : !theirs ? mine : Date.parse(theirs.at) > Date.parse(mine.at) ? theirs : mine;
   const out = { ...fresh };
-  const paired = new Set(["live_check", "problems", "migrations_applied_state", "migrations_status", "feature_guide", "feature_guide_bad"]);
+  const paired = new Set(["live_check", "problems", "migrations_applied_state", "migrations_status", "feature_guide", "feature_guide_reason", "feature_guide_bad"]);
   for (const k of Object.keys(previous)) {
     if (paired.has(k)) continue;
     const v = forwardField(fresh[k], previous[k]);
@@ -549,6 +707,7 @@ export function mergeRecordData(fresh, previous) {
   }
   if (isPendingValue(fresh.feature_guide) && Array.isArray(previous.feature_guide)) {
     out.feature_guide = previous.feature_guide;
+    out.feature_guide_reason = previous.feature_guide_reason ?? null;
     if (Array.isArray(previous.feature_guide_bad)) out.feature_guide_bad = previous.feature_guide_bad;
     else delete out.feature_guide_bad;
   }
@@ -577,7 +736,9 @@ export function renderRecord(data) {
     ? `"${visible(data.live_check.text)}" by @${visible(data.live_check.by_login, 39)}, ${visible(data.live_check.url, 300)}`
     : 'pending: add a comment starting with "Live check:"';
   const guide = Array.isArray(data.feature_guide)
-    ? (data.feature_guide.length > 0 ? data.feature_guide.join(", ") : "none")
+    ? (data.feature_guide.length > 0
+      ? data.feature_guide.join(", ")
+      : `none${data.feature_guide_reason ? ` — ${visible(data.feature_guide_reason, 500)}` : ""}`)
     : 'missing: add a "Feature Guide:" line to the PR description';
   const missing = recordMissing(data);
   return [
@@ -642,6 +803,7 @@ export function prLinksVerdict({ title, body, author, createdAt, landedAt, now }
   if (parseIssueRefs(title, body).length === 0 && field.kind !== "none") missing.push("an issue link");
   const guide = parseFeatureGuide(body);
   if (guide.kind === "missing") missing.push('a "Feature Guide:" line');
+  if (guide.kind === "none" && !guide.reason) missing.push('a reason after "Feature Guide: none"');
   // Never repeat the pull request's own words here: the comment is posted by
   // the bot, so echoed text could mention people or carry links and images.
   // Say how many entries are wrong and where the rule is written.
@@ -664,7 +826,7 @@ export function prLinksVerdict({ title, body, author, createdAt, landedAt, now }
     ? "This PR was opened before the check landed, so it never blocks this PR."
     : `From ${dayMonth(blocksFrom)} this check blocks merging.`;
   const words =
-    'This PR needs two lines in its description before it merges: an issue link ("toward #123" or "Fixes #123", or "Issue: none, <reason>") and a "Feature Guide:" line (entry keys or "none"). ' +
+    'This PR needs two lines in its description before it merges: an issue link ("toward #123" or "Fixes #123", or "Issue: none, <reason>") and a "Feature Guide:" line (entry keys or "none — <reason>"). ' +
     `Missing: ${missing.join("; ")}. ${when} After you edit the description, push a commit or re-run this check.`;
   return { ok: phase !== "blocking", missing, phase, words, comment: true };
 }

@@ -68,7 +68,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          sparse-checkout: .github/scripts/release-records
+          sparse-checkout: |
+            .github/scripts/release-records
+            docs/contracts/feature-guide-impact.json
+            supabase/migrations
         env:
           FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       - uses: actions/setup-node@v4

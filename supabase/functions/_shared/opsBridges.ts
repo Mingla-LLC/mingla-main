@@ -47,6 +47,7 @@ export type GitHubCommit = {
   sha?: string;
   commit?: { message?: string; committer?: { date?: string }; author?: { date?: string } };
   author?: { login?: string } | null;
+  parents?: { sha?: string }[];
 };
 
 /** The GitHub reads and the one status write the bridges need. */
@@ -132,6 +133,7 @@ const later = (a: string | null, b: string | null | undefined): string | null =>
 export type BridgeResult = {
   release_records: Json;
   main_commits: Json;
+  feature_guide_coverage: Json | null;
   statuses_posted: number;
   engineering_cards: Json | null;
   github_follow: { followed: number; applied: number; changed: number[]; batches: number; refused: string | null };
@@ -153,6 +155,7 @@ export async function runReleaseBridges(
   const result: BridgeResult = {
     release_records: { ingested: 0, invalid: 0, completed: [] },
     main_commits: { inserted: 0 },
+    feature_guide_coverage: null,
     statuses_posted: 0,
     engineering_cards: null,
     github_follow: { followed: 0, applied: 0, changed: [], batches: 0, refused: null },
@@ -224,6 +227,8 @@ export async function runReleaseBridges(
           subject: String(c.commit?.message ?? "").split("\n")[0].slice(0, 300),
           author_login: c.author?.login ?? null,
           pr,
+          first_parent_sha: c.parents?.[0]?.sha ?? null,
+          is_head: rows.length === 0,
         });
         newest = later(newest, at);
       }
@@ -240,6 +245,22 @@ export async function runReleaseBridges(
   } catch (error) {
     result.failed += 1;
     log({ fn: "ops-bridges", event: "main_commits_failed", code: String((error as Error)?.message ?? "") });
+  }
+
+  // #4179: release records and the first-parent chain are independent reads
+  // and can arrive in either order. Reconcile after both on every run; the
+  // database advances only a contiguous, reasoned, catalog-valid prefix.
+  try {
+    const coverage = await admin.rpc("ops_feature_guide_coverage_reconcile");
+    if (coverage.error) throw new Error("FEATURE_GUIDE_COVERAGE_FAILED");
+    result.feature_guide_coverage = (coverage.data ?? null) as Json | null;
+  } catch (error) {
+    result.failed += 1;
+    log({
+      fn: "ops-bridges",
+      event: "feature_guide_coverage_failed",
+      code: String((error as Error)?.message ?? ""),
+    });
   }
 
   // 3. The migrations status each merge commit should carry.

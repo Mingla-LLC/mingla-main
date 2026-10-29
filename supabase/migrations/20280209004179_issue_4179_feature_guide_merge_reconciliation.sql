@@ -1,9 +1,9 @@
 -- Issue #4179 — reconcile the Feature Guide with every first-parent merge
--- after the last full content pass (#3982) through release-prep merge #4178.
+-- after the last full content pass (#3982) through Ari rendition merge #4176.
 --
 -- Baseline: c604fb6931ecb00c939ead8023198a7648bba606 (#3982)
--- Reviewed head: c93ccb5b76ce90d638dbff7aaabf5b0eb2336994 (#4178)
--- Reviewed merges: 143 (95 capability-affecting, 48 no Feature Guide effect)
+-- Reviewed head: 896d0482f669d9e0d9f407c6b05a7bc5617010d7 (#4176)
+-- Reviewed merges: 144 (95 capability-affecting, 49 no Feature Guide effect)
 --
 -- A merge is not the same thing as a live release. This migration corrects
 -- shipped wording and records four previously missing capabilities, but it
@@ -11,8 +11,10 @@
 -- closed to Needs review until a current release record and live check are
 -- applied through the audited Feature Guide evidence path.
 --
--- INVARIANT: {"id":"I-4179-FEATURE-GUIDE-EVERY-MERGE","rule":"Every first-parent merge after #3982 through #4178 is classified exactly once as an existing capability, a new capability, or no Feature Guide effect; every referenced capability exists after this migration."}
+-- INVARIANT: {"id":"I-4179-FEATURE-GUIDE-EVERY-MERGE","rule":"Every first-parent merge after #3982 through #4176 is classified exactly once as an existing capability, a new capability, or no Feature Guide effect; every referenced capability exists after this migration."}
 -- INVARIANT: {"id":"I-4179-FEATURE-GUIDE-REWRITES-FAIL-CLOSED","rule":"Rewriting Feature Guide truth never carries forward release, deployment, app-release, feature-flag, or live-check proof as current; changed entries remain Needs review until current production evidence is recorded."}
+-- INVARIANT: {"id":"I-4179-FEATURE-GUIDE-COVERAGE-WATERMARK","rule":"The Feature Guide is current only when a contiguous first-parent main chain reaches the observed head and every merge has either catalog-valid capability keys or a concrete no-effect reason; any gap makes otherwise-Live entries Needs review."}
+-- INVARIANT: {"id":"I-4179-FEATURE-GUIDE-PER-KEY-RETRY","rule":"A release record naming a capability immediately invalidates older verification for that capability, and the record is not fully applied until every named key independently reaches Live or Retired; unknown or incomplete keys remain retryable."}
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
@@ -27,6 +29,608 @@ BEGIN
   END IF;
 END;
 $foundation$;
+
+-- Future merges carry an immutable, reasoned classification. A capability's
+-- previous release evidence stops proving Live as soon as a newer classified
+-- merge names it; the complete evidence packet promotes that revision again.
+ALTER TABLE public.product_capabilities
+  ADD COLUMN source_changed_at timestamptz,
+  ADD COLUMN source_changed_sha text,
+  ADD COLUMN source_changed_pr integer;
+ALTER TABLE public.product_capabilities
+  ADD CONSTRAINT product_capabilities_source_changed_sha_check
+    CHECK (source_changed_sha IS NULL OR source_changed_sha ~ '^[0-9a-f]{40}$'),
+  ADD CONSTRAINT product_capabilities_source_changed_pr_check
+    CHECK (source_changed_pr IS NULL OR source_changed_pr > 0);
+
+ALTER TABLE public.ops_release_records
+  ADD COLUMN feature_guide_reason text;
+ALTER TABLE public.ops_release_records
+  ADD CONSTRAINT ops_release_records_feature_guide_reason_check
+    CHECK (feature_guide_reason IS NULL OR char_length(btrim(feature_guide_reason)) BETWEEN 3 AND 500);
+
+ALTER TABLE public.ops_main_commits
+  ADD COLUMN first_parent_sha text;
+ALTER TABLE public.ops_main_commits
+  ADD CONSTRAINT ops_main_commits_first_parent_sha_check
+    CHECK (first_parent_sha IS NULL OR first_parent_sha ~ '^[0-9a-f]{40}$');
+
+CREATE TABLE public.ops_release_guide_keys (
+  pr integer NOT NULL REFERENCES public.ops_release_records(pr) ON DELETE CASCADE,
+  capability_key text NOT NULL CHECK (
+    capability_key ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+    AND char_length(capability_key) <= 80
+  ),
+  merge_sha text NOT NULL CHECK (merge_sha ~ '^[0-9a-f]{40}$'),
+  merged_at timestamptz NOT NULL,
+  invalidated_at timestamptz,
+  applied_at timestamptz,
+  last_attempt_at timestamptz,
+  result text NOT NULL DEFAULT 'pending'
+    CHECK (result IN ('pending','unknown_key','incomplete','live','retired')),
+  details jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(details) = 'object'),
+  PRIMARY KEY (pr, capability_key)
+);
+
+CREATE TABLE public.ops_feature_guide_coverage (
+  singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+  baseline_sha text NOT NULL CHECK (baseline_sha ~ '^[0-9a-f]{40}$'),
+  audited_through_sha text NOT NULL CHECK (audited_through_sha ~ '^[0-9a-f]{40}$'),
+  observed_head_sha text NOT NULL CHECK (observed_head_sha ~ '^[0-9a-f]{40}$'),
+  state text NOT NULL CHECK (state IN ('current','pending','gap')),
+  blocked_sha text CHECK (blocked_sha IS NULL OR blocked_sha ~ '^[0-9a-f]{40}$'),
+  blocked_pr integer CHECK (blocked_pr IS NULL OR blocked_pr > 0),
+  blocked_reason text,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CHECK ((state = 'current') = (audited_through_sha = observed_head_sha)),
+  CHECK ((state = 'gap') = (blocked_sha IS NOT NULL))
+);
+INSERT INTO public.ops_feature_guide_coverage(
+  baseline_sha, audited_through_sha, observed_head_sha, state
+) VALUES (
+  '896d0482f669d9e0d9f407c6b05a7bc5617010d7',
+  '896d0482f669d9e0d9f407c6b05a7bc5617010d7',
+  '896d0482f669d9e0d9f407c6b05a7bc5617010d7',
+  'current'
+);
+
+ALTER TABLE public.ops_release_guide_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ops_feature_guide_coverage ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.ops_release_guide_keys FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON public.ops_feature_guide_coverage FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.ops_release_guide_keys TO service_role;
+GRANT ALL ON public.ops_feature_guide_coverage TO service_role;
+
+CREATE OR REPLACE FUNCTION public.issue_3720_feature_guide_effective_status(
+  p_capability_id uuid
+) RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN c.claimed_status = 'planned' THEN 'Planned'
+    WHEN c.claimed_status = 'retired' THEN 'Retired'
+    WHEN EXISTS (
+      SELECT 1 FROM public.ops_feature_guide_coverage coverage
+       WHERE coverage.singleton AND coverage.state <> 'current'
+    ) THEN 'Needs review'
+    WHEN EXISTS (
+      SELECT 1 FROM public.ops_release_guide_keys pending
+       WHERE pending.capability_key = c.capability_key
+         AND pending.applied_at IS NULL
+    ) THEN 'Needs review'
+    WHEN c.source_changed_at IS NOT NULL
+     AND (c.last_verified_at IS NULL OR c.last_verified_at < c.source_changed_at) THEN 'Needs review'
+    WHEN c.verification_due_at IS NULL OR c.verification_due_at <= now() THEN 'Needs review'
+    WHEN EXISTS (
+      SELECT 1
+        FROM public.product_capability_evidence e
+       WHERE e.capability_id = c.id
+         AND e.is_current
+         AND (e.verdict = 'conflict' OR (e.expires_at IS NOT NULL AND e.expires_at <= now()))
+    ) THEN 'Needs review'
+    WHEN EXISTS (
+      SELECT 1
+        FROM unnest(c.required_evidence_kinds) required(kind)
+       WHERE NOT EXISTS (
+         SELECT 1
+           FROM public.product_capability_evidence e
+          WHERE e.capability_id = c.id
+            AND e.evidence_kind = required.kind
+            AND e.is_current
+            AND e.verdict = 'verified'
+            AND (e.expires_at IS NULL OR e.expires_at > now())
+       )
+    ) THEN 'Needs review'
+    ELSE 'Live'
+  END
+  FROM public.product_capabilities c
+  WHERE c.id = p_capability_id
+$$;
+
+CREATE FUNCTION public.issue_4179_feature_guide_freshness() RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE v_actor uuid := auth.uid(); v public.ops_feature_guide_coverage;
+BEGIN
+  IF v_actor IS NULL OR NOT (public.is_admin_user() OR public.is_support_staff(v_actor)) THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+  SELECT * INTO v FROM public.ops_feature_guide_coverage WHERE singleton;
+  RETURN jsonb_build_object(
+    'state', v.state,
+    'audited_through_sha', v.audited_through_sha,
+    'observed_head_sha', v.observed_head_sha,
+    'blocked_sha', v.blocked_sha,
+    'blocked_pr', v.blocked_pr,
+    'blocked_reason', v.blocked_reason,
+    'updated_at', v.updated_at
+  );
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.issue_4179_feature_guide_freshness() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.issue_4179_feature_guide_freshness() TO authenticated, service_role;
+
+CREATE FUNCTION public.issue_4179_capture_release_guide_keys() RETURNS trigger
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND OLD.feature_guide IS NOT NULL
+     AND NEW.feature_guide IS DISTINCT FROM OLD.feature_guide THEN
+    RAISE EXCEPTION 'feature_guide_classification_immutable: PR #% was already classified.', NEW.pr
+      USING ERRCODE = '22023';
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.feature_guide IS NOT DISTINCT FROM OLD.feature_guide
+     AND EXISTS (SELECT 1 FROM public.ops_release_guide_keys existing WHERE existing.pr = NEW.pr) THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.feature_guide IS NULL OR cardinality(NEW.feature_guide) = 0 THEN
+    RETURN NEW;
+  END IF;
+  INSERT INTO public.ops_release_guide_keys(pr, capability_key, merge_sha, merged_at)
+  SELECT NEW.pr, key, NEW.merge_sha, NEW.merged_at
+    FROM unnest(NEW.feature_guide) key
+  ON CONFLICT (pr, capability_key) DO NOTHING;
+
+  WITH changed AS (
+    UPDATE public.product_capabilities c
+       SET source_changed_at = NEW.merged_at,
+           source_changed_sha = NEW.merge_sha,
+           source_changed_pr = NEW.pr,
+           verification_due_at = LEAST(COALESCE(c.verification_due_at, NEW.merged_at), NEW.merged_at),
+           revision = c.revision + 1,
+           updated_at = now()
+     WHERE c.capability_key = ANY (NEW.feature_guide)
+       AND (c.source_changed_at IS NULL OR c.source_changed_at < NEW.merged_at)
+    RETURNING c.id, c.revision, c.capability_key
+  )
+  INSERT INTO public.product_truth_audit(action, capability_id, metadata)
+  SELECT 'capability_saved', id,
+         jsonb_build_object('source','issue_4179_release_invalidation','pr',NEW.pr,
+           'merge_sha',NEW.merge_sha,'capability_key',capability_key,'revision',revision)
+    FROM changed;
+
+  UPDATE public.ops_release_guide_keys k
+     SET invalidated_at = COALESCE(k.invalidated_at, now()),
+         result = CASE WHEN c.id IS NULL THEN 'unknown_key' ELSE 'pending' END,
+         details = CASE WHEN c.id IS NULL THEN jsonb_build_object('missing','catalog entry') ELSE '{}'::jsonb END
+    FROM (SELECT key FROM unnest(NEW.feature_guide) key) named
+    LEFT JOIN public.product_capabilities c ON c.capability_key = named.key
+   WHERE k.pr = NEW.pr AND k.capability_key = named.key;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER issue_4179_capture_release_guide_keys
+AFTER INSERT OR UPDATE OF feature_guide ON public.ops_release_records
+FOR EACH ROW EXECUTE FUNCTION public.issue_4179_capture_release_guide_keys();
+REVOKE EXECUTE ON FUNCTION public.issue_4179_capture_release_guide_keys() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4179_capture_release_guide_keys() TO service_role;
+
+-- The release record for this migration can arrive before the production
+-- ledger applies it. Re-touch only post-baseline rows so the new trigger
+-- captures that race; older records are already covered by the audited head.
+UPDATE public.ops_release_records
+   SET feature_guide = feature_guide
+ WHERE merged_at > '2026-10-29T08:49:31Z'::timestamptz
+   AND feature_guide IS NOT NULL;
+UPDATE public.ops_bridge_cursors
+   SET at = LEAST(at, '2026-10-29T08:49:30Z'::timestamptz), updated_at = now()
+ WHERE name = 'main_commits';
+
+CREATE OR REPLACE FUNCTION public.ops_main_commits_ingest(p_commits jsonb) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v_n integer; v_head text;
+BEGIN
+  PERFORM public.ops_service_only();
+  IF p_commits IS NULL OR jsonb_typeof(p_commits) <> 'array' OR jsonb_array_length(p_commits) > 100 THEN
+    RAISE EXCEPTION 'invalid_commits: Send a list of at most 100 commits.' USING ERRCODE = '22023';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(p_commits) c
+     WHERE jsonb_typeof(c) <> 'object'
+        OR c->>'sha' !~ '^[0-9a-f]{40}$'
+        OR c->>'committed_at' !~ '^\d{4}-\d{2}-\d{2}T'
+        OR (c->'first_parent_sha' IS NOT NULL AND c->>'first_parent_sha' !~ '^[0-9a-f]{40}$')
+        OR (c->'is_head' IS NOT NULL AND jsonb_typeof(c->'is_head') <> 'boolean')
+  ) THEN
+    RAISE EXCEPTION 'invalid_commits: Every commit needs a SHA, time, optional first parent and boolean head marker.' USING ERRCODE = '22023';
+  END IF;
+  INSERT INTO public.ops_main_commits (sha, committed_at, subject, author_login, pr, first_parent_sha)
+  SELECT c->>'sha', (c->>'committed_at')::timestamptz,
+         left(regexp_replace(COALESCE(c->>'subject', ''), '[[:cntrl:]]', ' ', 'g'), 300),
+         NULLIF(left(c->>'author_login', 39), ''),
+         CASE WHEN jsonb_typeof(c->'pr') = 'number' AND (c->>'pr') ~ '^[0-9]{1,7}$' AND (c->>'pr')::integer > 0
+              THEN (c->>'pr')::integer END,
+         NULLIF(c->>'first_parent_sha', '')
+    FROM jsonb_array_elements(p_commits) c
+  ON CONFLICT (sha) DO UPDATE SET
+    pr = COALESCE(public.ops_main_commits.pr, EXCLUDED.pr),
+    first_parent_sha = COALESCE(public.ops_main_commits.first_parent_sha, EXCLUDED.first_parent_sha);
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  SELECT c->>'sha' INTO v_head FROM jsonb_array_elements(p_commits) c
+   WHERE c->>'is_head' = 'true' LIMIT 1;
+  IF v_head IS NOT NULL THEN
+    UPDATE public.ops_feature_guide_coverage
+       SET observed_head_sha = v_head,
+           state = CASE WHEN audited_through_sha = v_head THEN 'current' ELSE 'pending' END,
+           blocked_sha = NULL,
+           blocked_pr = NULL,
+           blocked_reason = NULL,
+           updated_at = now()
+     WHERE singleton;
+  END IF;
+  RETURN jsonb_build_object('inserted', v_n, 'observed_head_sha', v_head);
+END;
+$$;
+
+CREATE FUNCTION public.ops_feature_guide_coverage_reconcile() RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  v public.ops_feature_guide_coverage; m public.ops_main_commits; r public.ops_release_records;
+  v_current text; v_reason text; v_state text; v_boss text := public.ops_owner_email();
+  v_res jsonb; w public.ops_work_cards;
+BEGIN
+  PERFORM public.ops_service_only();
+  SELECT * INTO v FROM public.ops_feature_guide_coverage WHERE singleton FOR UPDATE;
+  v_current := v.audited_through_sha;
+  v_state := CASE WHEN v_current = v.observed_head_sha THEN 'current' ELSE 'pending' END;
+  LOOP
+    SELECT * INTO m FROM public.ops_main_commits c
+     WHERE c.first_parent_sha = v_current
+     ORDER BY c.committed_at, c.sha LIMIT 1;
+    EXIT WHEN NOT FOUND;
+    v_reason := NULL;
+    IF m.pr IS NULL THEN
+      v_reason := 'direct_push_has_no_pull_request';
+    ELSE
+      SELECT * INTO r FROM public.ops_release_records x
+       WHERE x.pr = m.pr AND x.merge_sha = m.sha;
+      IF NOT FOUND THEN
+        v_reason := 'release_record_missing';
+      ELSIF r.feature_guide IS NULL THEN
+        v_reason := 'feature_guide_classification_missing';
+      ELSIF cardinality(r.feature_guide) = 0 AND NULLIF(btrim(r.feature_guide_reason), '') IS NULL THEN
+        v_reason := 'no_effect_reason_missing';
+      ELSIF EXISTS (
+        SELECT 1 FROM unnest(r.feature_guide) key
+         WHERE NOT EXISTS (SELECT 1 FROM public.product_capabilities c WHERE c.capability_key = key)
+      ) THEN
+        v_reason := 'unknown_feature_guide_key';
+      END IF;
+    END IF;
+    IF v_reason IS NOT NULL THEN
+      v_state := 'gap';
+      UPDATE public.ops_feature_guide_coverage SET
+        audited_through_sha = v_current, state = 'gap', blocked_sha = m.sha,
+        blocked_pr = m.pr, blocked_reason = v_reason, updated_at = now()
+       WHERE singleton;
+      EXIT;
+    END IF;
+    v_current := m.sha;
+    v_state := CASE WHEN v_current = v.observed_head_sha THEN 'current' ELSE 'pending' END;
+    UPDATE public.ops_feature_guide_coverage SET
+      audited_through_sha = v_current, state = v_state, blocked_sha = NULL,
+      blocked_pr = NULL, blocked_reason = NULL, updated_at = now()
+     WHERE singleton;
+    EXIT WHEN v_current = v.observed_head_sha;
+  END LOOP;
+
+  SELECT * INTO v FROM public.ops_feature_guide_coverage WHERE singleton;
+  IF v.state = 'pending' THEN
+    UPDATE public.ops_feature_guide_coverage SET state = 'gap',
+      blocked_sha = observed_head_sha, blocked_pr = NULL,
+      blocked_reason = 'first_parent_chain_missing', updated_at = now()
+     WHERE singleton;
+    SELECT * INTO v FROM public.ops_feature_guide_coverage WHERE singleton;
+  END IF;
+  IF v.state = 'gap' THEN
+    v_res := public.ops_auto_card_upsert(
+      'feature_guide_gap:sha-' || left(v.blocked_sha, 12),
+      jsonb_build_object(
+        'title', left(format('Feature Guide coverage stopped at %s', left(v.blocked_sha, 9)), 160),
+        'instructions', left(format('The Feature Guide cannot prove every main merge after %s. Resolve %s for %s, then let the five-minute bridge reconcile again.', left(v.audited_through_sha, 9), replace(v.blocked_reason, '_', ' '), CASE WHEN v.blocked_pr IS NULL THEN 'the direct push' ELSE 'PR #' || v.blocked_pr END), 4000),
+        'done_means', 'The Feature Guide freshness state is current at the observed main head.',
+        'owners', CASE WHEN v_boss IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(v_boss) END,
+        'watchers', '[]'::jsonb,
+        'due_on', public.ops_today(NULL)
+      ), 'task', NULL
+    );
+  ELSE
+    FOR w IN SELECT * FROM public.ops_work_cards card
+      WHERE card.auto_key LIKE 'feature\_guide\_gap:%' ESCAPE '\'
+        AND card.status <> 'done' AND card.archived_at IS NULL
+      FOR UPDATE LOOP
+      PERFORM public.ops_auto_card_close(w.id, 'Feature Guide merge coverage is current.',
+        jsonb_build_array(jsonb_build_object('text','Audited through ' || v.audited_through_sha)));
+    END LOOP;
+  END IF;
+  RETURN to_jsonb(v);
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.ops_feature_guide_coverage_reconcile() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ops_feature_guide_coverage_reconcile() TO service_role;
+
+CREATE OR REPLACE FUNCTION public.ops_release_records_ingest(p_records jsonb) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  i jsonb; d jsonb; v_ingested integer := 0; v_invalid integer := 0; v_completed integer[] := ARRAY[]::integer[]; v_pr integer;
+  v_was boolean; v_new boolean; v_url text; v_slot text; v_ok boolean;
+BEGIN
+  PERFORM public.ops_service_only();
+  IF p_records IS NULL OR jsonb_typeof(p_records) <> 'array' OR jsonb_array_length(p_records) > 100 THEN
+    RAISE EXCEPTION 'invalid_records: Send a list of at most 100 release records.' USING ERRCODE = '22023';
+  END IF;
+  FOR i IN SELECT e FROM jsonb_array_elements(p_records) e LOOP
+    d := CASE WHEN jsonb_typeof(i) = 'object' THEN i->'data' END;
+    v_ok := d IS NOT NULL AND jsonb_typeof(d) = 'object'
+      AND d->>'v' = '1' AND d->>'repo' = 'Mingla-LLC/mingla-main'
+      AND jsonb_typeof(d->'pr') = 'number' AND (d->>'pr') ~ '^[0-9]{1,7}$'
+      AND jsonb_typeof(d->'title') = 'string' AND char_length(d->>'title') BETWEEN 1 AND 300
+      AND d->>'pr_url' ~ '^https://github[.]com/Mingla-LLC/mingla-main/pull/[0-9]+$'
+      AND d->>'pr_url' = 'https://github.com/Mingla-LLC/mingla-main/pull/' || (d->>'pr')
+      AND jsonb_typeof(d->'merged_at') = 'string' AND d->>'merged_at' ~ '^\d{4}-\d{2}-\d{2}T'
+      AND d->>'merge_sha' ~ '^[0-9a-f]{40}$'
+      AND jsonb_typeof(d->'issues') = 'array' AND jsonb_array_length(d->'issues') <= 10
+      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(d->'issues') x
+                       WHERE jsonb_typeof(x) <> 'object' OR jsonb_typeof(x->'number') <> 'number' OR (x->>'number') !~ '^[0-9]{1,7}$'
+                          OR x->>'relation' NOT IN ('toward','fixes'))
+      AND jsonb_typeof(d->'migrations_added') = 'array'
+      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(d->'migrations_added') x WHERE jsonb_typeof(x) <> 'string' OR x #>> '{}' !~ '^[0-9]{14}$')
+      AND jsonb_typeof(d->'edge_functions') = 'array'
+      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(d->'edge_functions') x WHERE jsonb_typeof(x) <> 'string' OR char_length(x #>> '{}') > 80)
+      AND jsonb_typeof(d->'web_projects') = 'array'
+      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(d->'web_projects') x
+                       WHERE NOT (x #>> '{}') = ANY (ARRAY['mingla-admin','mingla-business','mingla-marketing','mingla-site-cms','mingla-sites']))
+      AND jsonb_typeof(d->'deploy_marker') = 'boolean'
+      AND jsonb_typeof(d->'deploy') = 'object'
+      AND (d->'feature_guide' IS NULL OR jsonb_typeof(d->'feature_guide') IN ('array','null'))
+      AND (jsonb_typeof(d->'feature_guide') IS DISTINCT FROM 'array' OR (jsonb_array_length(d->'feature_guide') <= 500
+           AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(d->'feature_guide') x WHERE jsonb_typeof(x) <> 'string' OR (x #>> '{}') !~ '^[a-z0-9]+(?:-[a-z0-9]+)*$')))
+      AND (d->'feature_guide_reason' IS NULL OR jsonb_typeof(d->'feature_guide_reason') = 'null'
+           OR (jsonb_typeof(d->'feature_guide_reason') = 'string'
+             AND char_length(btrim(d->>'feature_guide_reason')) BETWEEN 3 AND 500))
+      AND (jsonb_typeof(d->'feature_guide') IS DISTINCT FROM 'array' OR jsonb_array_length(d->'feature_guide') = 0 OR d->'feature_guide_reason' IS NULL)
+      AND (d->'live_check' IS NULL OR jsonb_typeof(d->'live_check') IN ('object','null'))
+      AND jsonb_typeof(d->'problems') = 'array';
+    IF NOT v_ok THEN
+      v_invalid := v_invalid + 1;
+      CONTINUE;
+    END IF;
+    BEGIN
+      v_pr := (d->>'pr')::integer;
+      v_url := CASE WHEN jsonb_typeof(i->'comment_url') = 'string'
+                         AND i->>'comment_url' ~ '^https://github[.]com/Mingla-LLC/mingla-main/(issues|pull)/[0-9]+#issuecomment-[0-9]+$'
+                    THEN i->>'comment_url' END;
+      v_slot := CASE WHEN jsonb_typeof(i->'issue_number') = 'number' AND (i->>'issue_number') ~ '^[0-9]{1,7}$' AND (i->>'issue_number')::integer <> v_pr
+                     THEN i->>'issue_number' ELSE 'pr' END;
+      SELECT x.complete INTO v_was FROM public.ops_release_records x WHERE x.pr = v_pr;
+      v_new := NOT FOUND;
+      INSERT INTO public.ops_release_records AS r (pr, title, pr_url, merged_at, merge_sha, merged_by_login, author_login, issues,
+        migrations_added, edge_functions, web_projects, deploy_marker, deploy, feature_guide, feature_guide_reason, live_check, problems, comment_urls)
+      VALUES (v_pr, left(d->>'title', 300), d->>'pr_url', (d->>'merged_at')::timestamptz, d->>'merge_sha',
+        NULLIF(left(d->>'merged_by', 39), ''), NULLIF(left(d->>'author', 39), ''), d->'issues',
+        ARRAY(SELECT x FROM jsonb_array_elements_text(d->'migrations_added') x ORDER BY x),
+        ARRAY(SELECT x FROM jsonb_array_elements_text(d->'edge_functions') x),
+        ARRAY(SELECT x FROM jsonb_array_elements_text(d->'web_projects') x),
+        (d->>'deploy_marker')::boolean, d->'deploy',
+        CASE WHEN jsonb_typeof(d->'feature_guide') = 'array' THEN ARRAY(SELECT x FROM jsonb_array_elements_text(d->'feature_guide') x) END,
+        CASE WHEN jsonb_typeof(d->'feature_guide_reason') = 'string' THEN left(btrim(d->>'feature_guide_reason'), 500) END,
+        CASE WHEN jsonb_typeof(d->'live_check') = 'object' THEN jsonb_build_object('text', left(d->'live_check'->>'text', 500),
+          'by_login', left(d->'live_check'->>'by_login', 39), 'url', left(d->'live_check'->>'url', 300), 'at', d->'live_check'->>'at') END,
+        ARRAY(SELECT left(x, 60) FROM jsonb_array_elements_text(d->'problems') x),
+        CASE WHEN v_url IS NOT NULL THEN jsonb_build_object(v_slot, v_url) ELSE '{}'::jsonb END)
+      ON CONFLICT (pr) DO UPDATE SET title = EXCLUDED.title, merged_at = EXCLUDED.merged_at, merge_sha = EXCLUDED.merge_sha,
+        merged_by_login = EXCLUDED.merged_by_login, author_login = EXCLUDED.author_login, issues = EXCLUDED.issues,
+        migrations_added = EXCLUDED.migrations_added, edge_functions = EXCLUDED.edge_functions, web_projects = EXCLUDED.web_projects,
+        deploy_marker = EXCLUDED.deploy_marker, deploy = EXCLUDED.deploy,
+        feature_guide = COALESCE(r.feature_guide, EXCLUDED.feature_guide),
+        feature_guide_reason = CASE WHEN r.feature_guide IS NULL THEN EXCLUDED.feature_guide_reason ELSE r.feature_guide_reason END,
+        live_check = EXCLUDED.live_check,
+        problems = ARRAY(SELECT p FROM unnest(EXCLUDED.problems) p WHERE p NOT IN ('feature_guide_missing','feature_guide_invalid'))
+          || ARRAY(SELECT p FROM unnest(r.problems) p WHERE p IN ('feature_guide_missing','feature_guide_invalid')),
+        comment_urls = r.comment_urls || EXCLUDED.comment_urls, updated_at = now();
+      IF v_new THEN
+        PERFORM public.ops_log_write('system@usemingla.com', 'system', 'release_record', 'info', NULL, 'release', NULL,
+          format('Release record of PR #%s read from GitHub: %s', v_pr, left(d->>'title', 200)), jsonb_build_object('pr', v_pr));
+      END IF;
+      IF public.ops_release_recompute(v_pr) AND NOT COALESCE(v_was, false) THEN
+        v_completed := v_completed || v_pr;
+      END IF;
+      v_ingested := v_ingested + 1;
+    EXCEPTION WHEN others THEN
+      RAISE WARNING 'ops_release_records_ingest: record skipped (% %)', SQLSTATE, SQLERRM;
+      v_invalid := v_invalid + 1;
+    END;
+  END LOOP;
+  RETURN jsonb_build_object('ingested', v_ingested, 'invalid', v_invalid, 'completed', to_jsonb(v_completed));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.ops_release_guide_apply() RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  c_actor constant text := 'system@usemingla.com'; c_repo constant text := 'https://github.com/Mingla-LLC/mingla-main/';
+  r public.ops_release_records; k public.ops_release_guide_keys; v_k text; cap public.product_capabilities;
+  v_new jsonb; v_kind text; v_missing text[]; v_results jsonb; v_record_url text;
+  v_live_at timestamptz; v_live_url text; v_deploy text; v_test text; v_ev uuid; e jsonb; v_rev integer;
+  v_live integer := 0; v_incomplete integer := 0; v_records integer := 0; v_watchers text[];
+  v_res jsonb; v_boss text := public.ops_owner_email();
+BEGIN
+  FOR r IN SELECT x.* FROM public.ops_release_records x
+            WHERE x.complete
+              AND EXISTS (SELECT 1 FROM public.ops_release_guide_keys pending
+                           WHERE pending.pr = x.pr AND pending.applied_at IS NULL)
+            ORDER BY x.merged_at, x.pr FOR UPDATE LOOP
+    v_results := '[]'::jsonb;
+    v_record_url := (SELECT u.value FROM jsonb_each_text(r.comment_urls) u ORDER BY (u.key = 'pr'), u.key LIMIT 1);
+    v_live_url := CASE WHEN r.live_check->>'url' ~ '^https://github[.]com/Mingla-LLC/mingla-main/(issues|pull)/[0-9]+#issuecomment-[0-9]+$'
+                       THEN r.live_check->>'url' END;
+    v_live_at := LEAST(COALESCE(public.ops_try_timestamptz(r.live_check->>'at'), r.completed_at, now()), now());
+    SELECT string_agg(d, '; ') INTO v_deploy FROM (
+      SELECT w.key || ' READY' AS d FROM jsonb_each_text(COALESCE(r.deploy->'web', '{}'::jsonb)) w WHERE w.value = 'ready'
+      UNION ALL SELECT 'edge functions ' || array_to_string(r.edge_functions, ', ') || ' deployed' WHERE r.deploy->>'edge' = 'deployed') z;
+    v_test := (SELECT t FROM unnest(r.test_files) WITH ORDINALITY u(t, o) ORDER BY u.o LIMIT 1);
+
+    FOR k IN SELECT pending.* FROM public.ops_release_guide_keys pending
+              WHERE pending.pr = r.pr AND pending.applied_at IS NULL
+              ORDER BY pending.capability_key FOR UPDATE LOOP
+      v_k := k.capability_key;
+      SELECT * INTO cap FROM public.product_capabilities pc WHERE pc.capability_key = v_k FOR UPDATE;
+      IF NOT FOUND THEN
+        UPDATE public.ops_release_guide_keys SET result = 'unknown_key', last_attempt_at = now(),
+          details = jsonb_build_object('missing','catalog entry') WHERE pr = r.pr AND capability_key = v_k;
+        v_results := v_results || jsonb_build_array(jsonb_build_object('key', v_k, 'result', 'unknown_key'));
+        CONTINUE;
+      END IF;
+      IF cap.claimed_status = 'retired' THEN
+        UPDATE public.ops_release_guide_keys SET result = 'retired', applied_at = now(), last_attempt_at = now(),
+          details = '{}'::jsonb WHERE pr = r.pr AND capability_key = v_k;
+        v_results := v_results || jsonb_build_array(jsonb_build_object('key', v_k, 'title', cap.title, 'result', 'retired'));
+        CONTINUE;
+      END IF;
+
+      v_new := '[]'::jsonb;
+      IF v_record_url IS NOT NULL THEN
+        v_new := v_new || jsonb_build_array(jsonb_build_object('kind', 'release_record', 'url', v_record_url, 'at', COALESCE(r.completed_at, now()),
+          'details', format('Release record of PR #%s (merge %s) is complete.', r.pr, left(r.merge_sha, 9))));
+      END IF;
+      v_new := v_new || jsonb_build_array(jsonb_build_object('kind', 'pull_request', 'url', r.pr_url, 'at', r.merged_at,
+        'details', format('PR #%s merged %s UTC.', r.pr, to_char(r.merged_at AT TIME ZONE 'UTC', 'FMDD Mon YYYY HH24:MI'))));
+      IF cardinality(r.migrations_added) > 0 AND r.migrations_added <@ r.migrations_applied THEN
+        v_new := v_new || jsonb_build_array(jsonb_build_object('kind', 'migration', 'url', r.pr_url || '/files', 'at', r.merged_at,
+          'details', format('Migrations %s are in the production ledger.', array_to_string(r.migrations_added, ', '))));
+      END IF;
+      IF v_deploy IS NOT NULL THEN
+        v_new := v_new || jsonb_build_array(jsonb_build_object('kind', 'deployment', 'url', c_repo || 'commit/' || r.merge_sha, 'at', r.merged_at,
+          'details', format('Deployed: %s.', v_deploy)));
+      END IF;
+      IF v_live_url IS NOT NULL THEN
+        v_new := v_new || jsonb_build_array(jsonb_build_object('kind', 'live_check', 'url', v_live_url, 'at', v_live_at,
+          'expires_at', v_live_at + interval '90 days',
+          'details', left(format('Live check by @%s: %s', COALESCE(NULLIF(r.live_check->>'by_login', ''), 'a teammate'),
+                                 COALESCE(NULLIF(btrim(r.live_check->>'text'), ''), 'checked in production.')), 2000)));
+      END IF;
+      -- A named capability was dirtied by this merge. Its source citation
+      -- must therefore move to this exact merge even when older source proof
+      -- is still current.
+      v_new := v_new || jsonb_build_array(jsonb_build_object('kind', 'source', 'url', c_repo || 'commit/' || r.merge_sha, 'at', r.merged_at,
+        'details', format('Merge commit of PR #%s.', r.pr)));
+      IF 'test' = ANY (cap.required_evidence_kinds) AND v_test IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM public.product_capability_evidence pe WHERE pe.capability_id = cap.id AND pe.evidence_kind = 'test'
+                            AND pe.is_current AND pe.verdict = 'verified' AND (pe.expires_at IS NULL OR pe.expires_at > now())) THEN
+        v_new := v_new || jsonb_build_array(jsonb_build_object('kind', 'test', 'url', c_repo || 'blob/' || r.merge_sha || '/' || v_test, 'at', r.merged_at,
+          'details', left(format('Test changed by PR #%s: %s', r.pr, v_test), 2000)));
+      END IF;
+
+      v_missing := ARRAY(
+        SELECT 'no ' || replace(req.kind, '_', ' ') || ' evidence' FROM unnest(cap.required_evidence_kinds) WITH ORDINALITY req(kind, o)
+         WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_new) nw WHERE nw->>'kind' = req.kind
+                              AND (nw->>'expires_at' IS NULL OR (nw->>'expires_at')::timestamptz > now()))
+           AND NOT EXISTS (SELECT 1 FROM public.product_capability_evidence pe WHERE pe.capability_id = cap.id AND pe.evidence_kind = req.kind
+                              AND pe.is_current AND pe.verdict = 'verified' AND (pe.expires_at IS NULL OR pe.expires_at > now()))
+         ORDER BY req.o)
+        || ARRAY(
+        SELECT replace(pe.evidence_kind, '_', ' ') || ' evidence is ' || CASE WHEN pe.verdict = 'conflict' THEN 'in conflict' ELSE 'out of date' END
+          FROM public.product_capability_evidence pe
+         WHERE pe.capability_id = cap.id AND pe.is_current AND (pe.verdict = 'conflict' OR (pe.expires_at IS NOT NULL AND pe.expires_at <= now()))
+           AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_new) nw WHERE nw->>'kind' = pe.evidence_kind)
+         ORDER BY pe.evidence_kind);
+      IF cardinality(v_missing) > 0 THEN
+        UPDATE public.ops_release_guide_keys SET result = 'incomplete', last_attempt_at = now(),
+          details = jsonb_build_object('missing', to_jsonb(v_missing)) WHERE pr = r.pr AND capability_key = v_k;
+        v_results := v_results || jsonb_build_array(jsonb_build_object('key', v_k, 'title', cap.title, 'result', 'incomplete',
+          'status', cap.claimed_status, 'missing', to_jsonb(v_missing)));
+        PERFORM public.ops_log_write(c_actor, 'system', 'guide_incomplete', 'info', NULL, 'release', NULL,
+          format('%s stays %s: %s (PR #%s).', cap.title, initcap(cap.claimed_status), array_to_string(v_missing, ', '), r.pr),
+          jsonb_build_object('pr', r.pr, 'key', v_k, 'missing', to_jsonb(v_missing)));
+        v_incomplete := v_incomplete + 1;
+        CONTINUE;
+      END IF;
+
+      FOR e IN SELECT x FROM jsonb_array_elements(v_new) x LOOP
+        v_kind := e->>'kind';
+        UPDATE public.product_capability_evidence pe SET is_current = false
+         WHERE pe.capability_id = cap.id AND pe.evidence_kind = v_kind AND pe.is_current;
+        INSERT INTO public.product_capability_evidence (capability_id, evidence_kind, evidence_url, verdict, details, observed_at, expires_at, recorded_by)
+        VALUES (cap.id, v_kind, e->>'url', 'verified', e->>'details', (e->>'at')::timestamptz, (e->>'expires_at')::timestamptz, NULL)
+        RETURNING id INTO v_ev;
+        INSERT INTO public.product_truth_audit (actor_user_id, action, capability_id, evidence_id, metadata)
+        VALUES (NULL, 'evidence_recorded', cap.id, v_ev, jsonb_build_object('source', 'issue_4179_bridge_b', 'pr', r.pr,
+          'evidence_kind', v_kind, 'verdict', 'verified'));
+      END LOOP;
+      UPDATE public.product_capabilities pc SET claimed_status = 'live', verification_due_at = now() + interval '90 days',
+             last_verified_at = now(), revision = pc.revision + 1, updated_at = now()
+       WHERE pc.id = cap.id RETURNING pc.revision INTO v_rev;
+      INSERT INTO public.product_truth_audit (actor_user_id, action, capability_id, metadata)
+      VALUES (NULL, 'capability_saved', cap.id, jsonb_build_object('source', 'issue_4179_bridge_b', 'pr', r.pr, 'revision', v_rev,
+        'claimed_status', 'live'));
+      UPDATE public.ops_release_guide_keys SET result = 'live', applied_at = now(), last_attempt_at = now(),
+        details = jsonb_build_object('evidence', (SELECT jsonb_agg(x->>'kind') FROM jsonb_array_elements(v_new) x))
+       WHERE pr = r.pr AND capability_key = v_k;
+      PERFORM public.ops_log_write(c_actor, 'system', 'guide_live', 'ok', NULL, 'release', NULL,
+        format('%s is Live in the Feature Guide (PR #%s).', cap.title, r.pr), jsonb_build_object('pr', r.pr, 'key', v_k));
+      v_results := v_results || jsonb_build_array(jsonb_build_object('key', v_k, 'title', cap.title, 'result', 'live',
+        'evidence', (SELECT jsonb_agg(x->>'kind') FROM jsonb_array_elements(v_new) x)));
+      v_live := v_live + 1;
+      BEGIN
+        v_watchers := ARRAY(SELECT d.email FROM public.admin_team_directory() d
+                              JOIN auth.users u ON lower(btrim(u.email)) = d.email
+                             WHERE d.status = 'active' AND d.email IS DISTINCT FROM v_boss AND public.is_support_staff(u.id)
+                             GROUP BY d.email ORDER BY d.email LIMIT 10);
+        v_res := public.ops_auto_card_upsert(format('guide_live:%s:pr-%s', v_k, r.pr), jsonb_build_object(
+          'title', left(format('Feature Guide: %s is Live', cap.title), 160),
+          'instructions', left(format('%s turned Live in the Feature Guide from the release record of PR #%s. When a host asks, answer with the entry''s support wording.', cap.title, r.pr), 4000),
+          'done_means', 'Support knows the entry is Live.',
+          'owners', CASE WHEN v_boss IS NOT NULL THEN jsonb_build_array(v_boss) ELSE '[]'::jsonb END,
+          'watchers', to_jsonb(v_watchers), 'due_on', public.ops_today(NULL)), 'task', NULL);
+        IF v_res->>'status' = 'added' THEN
+          PERFORM public.ops_auto_card_close((v_res->>'id')::uuid, format('%s is Live in the Feature Guide.', cap.title),
+            jsonb_build_array(jsonb_build_object('text', 'Release record: ' || COALESCE(v_record_url, r.pr_url))));
+        END IF;
+      EXCEPTION WHEN others THEN RAISE WARNING 'ops_release_guide_apply: telling Support about % stopped (% %)', v_k, SQLSTATE, SQLERRM;
+      END;
+    END LOOP;
+
+    UPDATE public.ops_release_records x SET
+      guide_applied_at = CASE WHEN EXISTS (SELECT 1 FROM public.ops_release_guide_keys pending
+                                           WHERE pending.pr = r.pr AND pending.applied_at IS NULL) THEN NULL ELSE now() END,
+      guide_result = jsonb_build_object('keys', COALESCE((SELECT jsonb_agg(jsonb_build_object(
+        'key', state.capability_key, 'result', state.result, 'details', state.details
+      ) ORDER BY state.capability_key) FROM public.ops_release_guide_keys state WHERE state.pr = r.pr), '[]'::jsonb)),
+      updated_at = now()
+     WHERE x.pr = r.pr;
+    v_records := v_records + 1;
+  END LOOP;
+  RETURN jsonb_build_object('records', v_records, 'live', v_live, 'incomplete', v_incomplete);
+END;
+$$;
 
 -- The compact ledger is deliberately executable. The structural regression
 -- test compares this exact set with git's first-parent range above, including
@@ -138,7 +742,7 @@ $merge_review$::jsonb) AS row(pr integer, disposition text, capability_keys json
       3990,4000,4002,4004,4007,4016,4019,4014,4024,4031,4032,4033,
       4030,4041,4050,4051,4025,4059,4065,4067,4075,4057,4088,4083,
       4090,4094,4096,4105,4109,4115,4116,4117,4124,4127,4129,4132,
-      4133,4136,4142,4140,4146,4147,4152,4153,4154,4161,4163,4181
+      4133,4136,4142,4140,4146,4147,4152,4153,4154,4161,4163,4181,4176
     ]::integer[]) pr
 )
 SELECT * FROM impact UNION ALL SELECT * FROM no_effect;
@@ -194,10 +798,10 @@ SELECT count(*)::integer AS live_rows
 DO $preflight$
 DECLARE v_missing text;
 BEGIN
-  IF (SELECT count(*) FROM issue_4179_merge_review) <> 143
-     OR (SELECT count(DISTINCT pr) FROM issue_4179_merge_review) <> 143
+  IF (SELECT count(*) FROM issue_4179_merge_review) <> 144
+     OR (SELECT count(DISTINCT pr) FROM issue_4179_merge_review) <> 144
      OR (SELECT count(*) FROM issue_4179_merge_review WHERE disposition <> 'no_effect') <> 95
-     OR (SELECT count(*) FROM issue_4179_merge_review WHERE disposition = 'no_effect') <> 48 THEN
+     OR (SELECT count(*) FROM issue_4179_merge_review WHERE disposition = 'no_effect') <> 49 THEN
     RAISE EXCEPTION 'issue4179_merge_review_cardinality';
   END IF;
   IF EXISTS (
@@ -261,8 +865,8 @@ INSERT INTO public.product_truth_audit(action, capability_id, metadata)
 SELECT 'capability_saved', id,
        jsonb_build_object('source','issue_4179_feature_guide_merge_reconciliation',
          'issue',4179,'baseline','c604fb6931ecb00c939ead8023198a7648bba606',
-         'reviewed_head','c93ccb5b76ce90d638dbff7aaabf5b0eb2336994',
-         'reviewed_merges',143,'revision',revision)
+         'reviewed_head','896d0482f669d9e0d9f407c6b05a7bc5617010d7',
+         'reviewed_merges',144,'revision',revision)
   FROM saved;
 
 WITH inserted AS (
@@ -285,28 +889,28 @@ INSERT INTO public.product_truth_audit(action, capability_id, metadata)
 SELECT 'capability_saved', id,
        jsonb_build_object('source','issue_4179_feature_guide_merge_reconciliation',
          'issue',4179,'baseline','c604fb6931ecb00c939ead8023198a7648bba606',
-         'reviewed_head','c93ccb5b76ce90d638dbff7aaabf5b0eb2336994',
-         'reviewed_merges',143,'revision',revision,'new',true)
+         'reviewed_head','896d0482f669d9e0d9f407c6b05a7bc5617010d7',
+         'reviewed_merges',144,'revision',revision,'new',true)
   FROM inserted;
 
 -- Static proof for the four new entries. Release, deployment, app-release and
 -- live-check evidence are intentionally absent until a person verifies them.
 WITH evidence(capability_key, kind, url, details, observed_at) AS (
   VALUES
-    ('account-app-updates','source','https://github.com/Mingla-LLC/mingla-main/blob/c93ccb5b76ce90d638dbff7aaabf5b0eb2336994/app-mobile/src/services/appVersionPolicy.ts','Reviewed Explorer update-policy source at the reconciliation head.','2026-10-29T08:49:31Z'::timestamptz),
-    ('account-app-updates','test','https://github.com/Mingla-LLC/mingla-main/blob/c93ccb5b76ce90d638dbff7aaabf5b0eb2336994/app-mobile/src/services/__tests__/issue_2075_app_version_policy.test.ts','Store-floor and update-policy regression proof.','2026-10-29T08:49:31Z'),
-    ('brand-customer-enquiries','source','https://github.com/Mingla-LLC/mingla-main/blob/c93ccb5b76ce90d638dbff7aaabf5b0eb2336994/mingla-business/src/services/publicEnquiryService.ts','Reviewed public enquiry source at the reconciliation head.','2026-10-29T08:49:31Z'),
-    ('brand-customer-enquiries','test','https://github.com/Mingla-LLC/mingla-main/blob/c93ccb5b76ce90d638dbff7aaabf5b0eb2336994/app-mobile/src/components/brandEnquiry/__tests__/issue_4111_explorer_enquiry_model.implementor.happy.test.ts','Customer-enquiry model regression proof.','2026-10-29T08:49:31Z'),
+    ('account-app-updates','source','https://github.com/Mingla-LLC/mingla-main/blob/896d0482f669d9e0d9f407c6b05a7bc5617010d7/app-mobile/src/services/appVersionPolicy.ts','Reviewed Explorer update-policy source at the reconciliation head.','2026-10-29T08:49:31Z'::timestamptz),
+    ('account-app-updates','test','https://github.com/Mingla-LLC/mingla-main/blob/896d0482f669d9e0d9f407c6b05a7bc5617010d7/app-mobile/src/services/__tests__/issue_2075_app_version_policy.test.ts','Store-floor and update-policy regression proof.','2026-10-29T08:49:31Z'),
+    ('brand-customer-enquiries','source','https://github.com/Mingla-LLC/mingla-main/blob/896d0482f669d9e0d9f407c6b05a7bc5617010d7/mingla-business/src/services/publicEnquiryService.ts','Reviewed public enquiry source at the reconciliation head.','2026-10-29T08:49:31Z'),
+    ('brand-customer-enquiries','test','https://github.com/Mingla-LLC/mingla-main/blob/896d0482f669d9e0d9f407c6b05a7bc5617010d7/app-mobile/src/components/brandEnquiry/__tests__/issue_4111_explorer_enquiry_model.implementor.happy.test.ts','Customer-enquiry model regression proof.','2026-10-29T08:49:31Z'),
     ('brand-customer-enquiries','pull_request','https://github.com/Mingla-LLC/mingla-main/pull/4131','Reviewed newsletter and customer-enquiry merge.','2026-10-26T20:50:26Z'),
-    ('brand-customer-enquiries','migration','https://github.com/Mingla-LLC/mingla-main/blob/c93ccb5b76ce90d638dbff7aaabf5b0eb2336994/supabase/migrations/20271221004111_issue_4111_brand_enquiries_schema.sql','Customer-enquiry schema migration at the reconciliation head.','2026-10-29T08:49:31Z'),
-    ('staff-mingla-money','source','https://github.com/Mingla-LLC/mingla-main/blob/c93ccb5b76ce90d638dbff7aaabf5b0eb2336994/mingla-admin/src/pages/MinglaMoneyPage.jsx','Reviewed Mingla money Admin source at the reconciliation head.','2026-10-29T08:49:31Z'),
-    ('staff-mingla-money','test','https://github.com/Mingla-LLC/mingla-main/blob/c93ccb5b76ce90d638dbff7aaabf5b0eb2336994/mingla-admin/src/__tests__/issue_4130_w2a_money.implementor.test.js','Admin money regression proof.','2026-10-29T08:49:31Z'),
+    ('brand-customer-enquiries','migration','https://github.com/Mingla-LLC/mingla-main/blob/896d0482f669d9e0d9f407c6b05a7bc5617010d7/supabase/migrations/20271221004111_issue_4111_brand_enquiries_schema.sql','Customer-enquiry schema migration at the reconciliation head.','2026-10-29T08:49:31Z'),
+    ('staff-mingla-money','source','https://github.com/Mingla-LLC/mingla-main/blob/896d0482f669d9e0d9f407c6b05a7bc5617010d7/mingla-admin/src/pages/MinglaMoneyPage.jsx','Reviewed Mingla money Admin source at the reconciliation head.','2026-10-29T08:49:31Z'),
+    ('staff-mingla-money','test','https://github.com/Mingla-LLC/mingla-main/blob/896d0482f669d9e0d9f407c6b05a7bc5617010d7/mingla-admin/src/__tests__/issue_4130_w2a_money.implementor.test.js','Admin money regression proof.','2026-10-29T08:49:31Z'),
     ('staff-mingla-money','pull_request','https://github.com/Mingla-LLC/mingla-main/pull/4145','Reviewed Admin business-operations merge.','2026-10-27T11:27:00Z'),
-    ('staff-mingla-money','migration','https://github.com/Mingla-LLC/mingla-main/blob/c93ccb5b76ce90d638dbff7aaabf5b0eb2336994/supabase/migrations/20280111004130_issue_4130_mingla_money.sql','Mingla money schema migration at the reconciliation head.','2026-10-29T08:49:31Z'),
-    ('web-blog','source','https://github.com/Mingla-LLC/mingla-main/blob/c93ccb5b76ce90d638dbff7aaabf5b0eb2336994/mingla-marketing/app/blog/page.tsx','Reviewed public Blog source at the reconciliation head.','2026-10-29T08:49:31Z'),
-    ('web-blog','test','https://github.com/Mingla-LLC/mingla-main/blob/c93ccb5b76ce90d638dbff7aaabf5b0eb2336994/mingla-admin/src/__tests__/issue_4137_blog_admin.implementor.test.ts','Admin Blog regression proof.','2026-10-29T08:49:31Z'),
+    ('staff-mingla-money','migration','https://github.com/Mingla-LLC/mingla-main/blob/896d0482f669d9e0d9f407c6b05a7bc5617010d7/supabase/migrations/20280111004130_issue_4130_mingla_money.sql','Mingla money schema migration at the reconciliation head.','2026-10-29T08:49:31Z'),
+    ('web-blog','source','https://github.com/Mingla-LLC/mingla-main/blob/896d0482f669d9e0d9f407c6b05a7bc5617010d7/mingla-marketing/app/blog/page.tsx','Reviewed public Blog source at the reconciliation head.','2026-10-29T08:49:31Z'),
+    ('web-blog','test','https://github.com/Mingla-LLC/mingla-main/blob/896d0482f669d9e0d9f407c6b05a7bc5617010d7/mingla-admin/src/__tests__/issue_4137_blog_admin.implementor.test.ts','Admin Blog regression proof.','2026-10-29T08:49:31Z'),
     ('web-blog','pull_request','https://github.com/Mingla-LLC/mingla-main/pull/4156','Reviewed public and staff Blog merge.','2026-10-28T12:25:50Z'),
-    ('web-blog','migration','https://github.com/Mingla-LLC/mingla-main/blob/c93ccb5b76ce90d638dbff7aaabf5b0eb2336994/supabase/migrations/20280120004137_issue_4137_blog_schema.sql','Blog schema migration at the reconciliation head.','2026-10-29T08:49:31Z')
+    ('web-blog','migration','https://github.com/Mingla-LLC/mingla-main/blob/896d0482f669d9e0d9f407c6b05a7bc5617010d7/supabase/migrations/20280120004137_issue_4137_blog_schema.sql','Blog schema migration at the reconciliation head.','2026-10-29T08:49:31Z')
 ), retired AS (
   UPDATE public.product_capability_evidence e
      SET is_current = false

@@ -8,6 +8,7 @@ import { Spinner } from "../ui/Spinner";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { useToast } from "../../context/ToastContext";
 import {
+  getFeatureGuideFreshness,
   listFeatureGuide,
   recordFeatureEvidence,
   saveFeatureCapability,
@@ -164,6 +165,7 @@ export function FeatureGuidePanel({ canManage = false }) {
   const { addToast } = useToast();
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState([]);
+  const [freshness, setFreshness] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -179,8 +181,17 @@ export function FeatureGuidePanel({ canManage = false }) {
   const load = useCallback(async (nextQuery = "") => {
     setLoading(true);
     try {
-      const data = await listFeatureGuide(nextQuery);
+      const [guideResult, coverageResult] = await Promise.allSettled([
+        listFeatureGuide(nextQuery),
+        getFeatureGuideFreshness(),
+      ]);
+      if (guideResult.status === "rejected") throw guideResult.reason;
+      const data = guideResult.value;
+      const coverage = coverageResult.status === "fulfilled"
+        ? coverageResult.value
+        : { state: "unavailable" };
       setRows(data || []);
+      setFreshness(coverage || { state: "unavailable" });
       setSelectedId((current) =>
         (data || []).some((row) => row.capability_id === current)
           ? current
@@ -290,6 +301,15 @@ export function FeatureGuidePanel({ canManage = false }) {
       <p className="text-sm text-[var(--color-text-secondary)]">
         Answers come from reviewed evidence. Missing, expired, or conflicting proof is shown as Needs review until evidence is applied.
       </p>
+
+      {freshness && freshness.state !== "current" && (
+        <SectionCard title="Feature Guide coverage needs review">
+          <p className="text-sm text-[var(--color-warning-700)]">
+            The merge audit is {freshness?.state || "unavailable"}. All otherwise-Live entries fail closed to Needs review until the first-parent main chain is classified through {String(freshness?.observed_head_sha || "the observed head").slice(0, 9)}.
+            {freshness?.blocked_pr ? ` The first blocked merge is PR #${freshness.blocked_pr}.` : ""}
+          </p>
+        </SectionCard>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         {STATUS_FILTERS.map(([status, label]) => <Button key={status} size="sm" variant={statusFilter === status ? "primary" : "secondary"} onClick={() => setStatusFilter(status)}>{label} ({counts[status] || 0})</Button>)}
