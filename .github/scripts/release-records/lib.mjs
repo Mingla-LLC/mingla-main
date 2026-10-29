@@ -17,7 +17,10 @@ export const WEB_PROJECTS = [
   "mingla-sites",
 ];
 export const MAX_ISSUES = 10;
-export const MAX_GUIDE_KEYS = 20;
+// #1553: a release may legitimately affect a broad capability surface. Keep
+// a defensive payload ceiling without forcing truthful classifications to
+// omit entries (the #4179 reconciliation names 33).
+export const MAX_GUIDE_KEYS = 500;
 export const REMINDER_DAYS = 7;
 export const EDGE_SUPERSESSION_CONTEXT = "mingla/edge-deploy-supersession";
 export const WEB_SUPERSESSION_CONTEXT = "mingla/web-deploy-supersession";

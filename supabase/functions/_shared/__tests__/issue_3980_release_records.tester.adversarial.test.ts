@@ -612,7 +612,8 @@ Deno.test("#3980 tester G4: issue links in prose, comments and other repositorie
   assertEquals(nums("", "toward " + Array.from({ length: 50 }, (_, i) => `#${i + 1}`).join(", ")).length, 10);
   assertEquals(parseFeatureGuide("Feature Guide: staff-work-board,staff-agent-log."), { kind: "keys", keys: ["staff-work-board", "staff-agent-log"] });
   assertEquals(parseFeatureGuide("Feature Guide: Staff-Work-Board").kind, "invalid");
-  assertEquals(parseFeatureGuide("Feature Guide: " + Array.from({ length: 21 }, (_, i) => `k${i}`).join(", ")).kind, "invalid");
+  assertEquals(parseFeatureGuide("Feature Guide: " + Array.from({ length: 33 }, (_, i) => `k${i}`).join(", ")).kind, "keys");
+  assertEquals(parseFeatureGuide("Feature Guide: " + Array.from({ length: 501 }, (_, i) => `k${i}`).join(", ")).kind, "invalid");
   assertEquals(parseFeatureGuide("<!-- Feature Guide: none -->").kind, "missing");
   const v = prLinksVerdict({ title: "x", body: "Issue: none\nFeature Guide: none", author: "someone", createdAt: "2026-11-05T00:00:00Z", landedAt: LANDED, now: "2026-11-06T00:00:00Z" });
   assertEquals([v.ok, v.missing], [false, ["an issue link"]], "\"Issue: none\" without a reason is not an answer");
