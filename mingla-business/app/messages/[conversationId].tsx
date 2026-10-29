@@ -5,12 +5,12 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   useWindowDimensions,
   View,
   type LayoutChangeEvent,
+  type NativeScrollEvent,
   type NativeSyntheticEvent,
   type StyleProp,
   type TextInputSelectionChangeEventData,
@@ -24,6 +24,7 @@ import { BrandGroupSignalModal } from "../../src/components/messages/BrandGroupS
 import { BrandGroupFilePreviewModal } from "../../src/components/messages/BrandGroupFilePreviewModal";
 import { BrandGroupFileUploadSheet } from "../../src/components/messages/BrandGroupFileUploadSheet";
 import { BrandGroupMediaBubble } from "../../src/components/messages/BrandGroupMediaBubble";
+import { BrandGroupPeoplePanel, BrandGroupPeopleSheet } from "../../src/components/messages/BrandGroupPeoplePanel";
 import { BrandEnquiryCard } from "../../src/components/messages/BrandEnquiryCard";
 import { Button } from "../../src/components/ui/Button";
 import { Icon } from "../../src/components/ui/Icon";
@@ -52,6 +53,7 @@ import { liftedBottomSpacer } from "../../src/wrappers/keyboardClearance";
 import { useKeyboardHeight } from "../../src/wrappers/useKeyboardHeight";
 import {
   listBrandGroupMentionCandidates,
+  listBrandGroupMembers,
   listBrandGroupMessages,
   markBrandGroupRead,
   sendBrandGroupMessage,
@@ -68,6 +70,7 @@ import {
   type BrandGroupMentionCandidate,
   type SelectedBrandGroupMention,
 } from "../../src/utils/brandGroupMentions";
+import { isNearLatestBrandGroupMessage } from "../../src/utils/brandGroupScroll";
 
 const LazyBrandGroupMediaPanel = React.lazy(async () => {
   const module = await import("../../src/components/messages/BrandGroupMediaPanel");
@@ -170,11 +173,37 @@ function BrandGroupThreadScreen(): React.ReactElement {
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const [panelViewerItems, setPanelViewerItems] = useState<BrandGroupMediaRow[] | null>(null);
   const [mediaPanelOpen, setMediaPanelOpen] = useState(requestedGallery === "1");
+  const [peopleSheetOpen, setPeopleSheetOpen] = useState(false);
+  const [desktopDetailTab, setDesktopDetailTab] = useState<"people" | "media">(
+    requestedGallery === "1" ? "media" : "people",
+  );
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
+  const autoFollowLatest = useRef(requestedFocusMessageId === null);
+  const didInitialLatestScroll = useRef(false);
   const composerRef = useRef<TextInput>(null);
   const messageOffsets = useRef<Map<string, number>>(new Map());
   const handledFocusMessageId = useRef<string | null>(null);
+  const memberQuery = useQuery({
+    queryKey: conversationId
+      ? ["brandGroupMembers", conversationId]
+      : ["brandGroupMembers", "disabled"],
+    enabled: Boolean(isAuthReady && user?.id && conversationId),
+    queryFn: async () => {
+      if (!conversationId) throw new Error("brand_group_conversation_required");
+      const result = await listBrandGroupMembers(conversationId);
+      if (result.error) throw new Error(result.error);
+      return result.members;
+    },
+    staleTime: 60_000,
+  });
+  const members = (memberQuery.data ?? []).filter((member) =>
+    typeof member?.user_id === "string"
+    && typeof member?.display_name === "string"
+    && typeof member?.email === "string"
+    && typeof member?.role === "string"
+  );
+  const memberError = memberQuery.error ? "Couldn’t load people right now. Try again." : null;
   const fileIds = useMemo(() => messages.flatMap((message) => message.file_id ? [message.file_id] : []), [messages]);
   const fileMetaEnabled = Boolean(isAuthReady && user?.id && conversationId && fileIds.length > 0);
   const fileMetaQuery = useQuery({
@@ -270,7 +299,16 @@ function BrandGroupThreadScreen(): React.ReactElement {
   }, [refresh]);
 
   useEffect(() => {
-    if (requestedGallery === "1") setMediaPanelOpen(true);
+    autoFollowLatest.current = requestedFocusMessageId === null;
+    didInitialLatestScroll.current = false;
+    messageOffsets.current.clear();
+  }, [conversationId, requestedFocusMessageId]);
+
+  useEffect(() => {
+    if (requestedGallery === "1") {
+      setMediaPanelOpen(true);
+      setDesktopDetailTab("media");
+    }
   }, [requestedGallery]);
 
   useEffect(() => {
@@ -292,7 +330,8 @@ function BrandGroupThreadScreen(): React.ReactElement {
 
   const openMedia = useCallback(() => {
     if (!conversationId) return;
-    setMediaPanelOpen((value) => !value);
+    setDesktopDetailTab("media");
+    setMediaPanelOpen(true);
   }, [conversationId]);
 
   const closeMedia = useCallback(() => {
@@ -303,6 +342,7 @@ function BrandGroupThreadScreen(): React.ReactElement {
   }, [conversationId, requestedGallery, router]);
 
   const showInChat = useCallback(async (messageId: string): Promise<void> => {
+    autoFollowLatest.current = false;
     let merged = messages;
     for (let page = 0; page < 10 && !merged.some((message) => message.id === messageId); page += 1) {
       const before = merged[0]?.created_at ?? null;
@@ -318,6 +358,7 @@ function BrandGroupThreadScreen(): React.ReactElement {
     }
     if (merged !== messages) setMessages(merged);
     setMediaPanelOpen(false);
+    setDesktopDetailTab("people");
     setHighlightedMessageId(messageId);
     setTimeout(() => {
       const y = messageOffsets.current.get(messageId);
@@ -337,6 +378,24 @@ function BrandGroupThreadScreen(): React.ReactElement {
     [messages, selectedIds],
   );
 
+  const followLatestMessage = useCallback(() => {
+    if (loading || !autoFollowLatest.current || requestedFocusMessageId) return;
+    scrollRef.current?.scrollToEnd({ animated: didInitialLatestScroll.current });
+    didInitialLatestScroll.current = true;
+  }, [loading, requestedFocusMessageId]);
+
+  const updateLatestMessageProximity = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      autoFollowLatest.current = isNearLatestBrandGroupMessage({
+        contentHeight: contentSize.height,
+        viewportHeight: layoutMeasurement.height,
+        offsetY: contentOffset.y,
+      });
+    },
+    [],
+  );
+
   async function send(): Promise<void> {
     if (!conversationId || !composer.trim() || sending) return;
     setSending(true);
@@ -354,6 +413,7 @@ function BrandGroupThreadScreen(): React.ReactElement {
       setMentionCandidates([]);
       setReplyTo(null);
       setSelectedIds([]);
+      autoFollowLatest.current = true;
       await refresh();
     } catch (cause) {
       Alert.alert("Message not sent", cause instanceof Error ? cause.message : "Try again.");
@@ -447,33 +507,43 @@ function BrandGroupThreadScreen(): React.ReactElement {
         <Pressable accessibilityRole="button" accessibilityLabel="Back to Messages" onPress={() => router.back()} style={styles.iconButton}>
           <Icon name="arrowL" size={18} color={textTokens.primary} />
         </Pressable>
-        <View style={styles.headerCopy}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${group?.brand_name || "Brand group"}, ${group?.member_count ?? members.length} teammates. Show people`}
+          accessibilityState={{ expanded: isWideDesktop ? desktopDetailTab === "people" : peopleSheetOpen }}
+          onPress={() => {
+            if (isWideDesktop) {
+              setDesktopDetailTab("people");
+              setMediaPanelOpen(false);
+            } else setPeopleSheetOpen(true);
+          }}
+          style={styles.peopleTrigger}
+        >
           <Text style={styles.title} numberOfLines={1}>{group?.brand_name || "Brand group"}</Text>
-          <Text style={styles.subtitle} numberOfLines={1}>{group ? `${group.member_count} brand teammates · Mingla Support can help here` : "Official Brand group"}</Text>
-        </View>
+          <View style={styles.memberPeek}>
+            {members.length > 0 ? (
+              <View style={styles.avatarStack} accessibilityElementsHidden>
+                {members.slice(0, 3).map((member) => (
+                  <View key={member.user_id} style={styles.headerAvatar}>
+                    <Text style={styles.headerAvatarText}>{member.display_name.trim().charAt(0).toUpperCase()}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            <Text style={styles.subtitle} numberOfLines={1}>{group ? `${group.member_count} teammates · tap to see people` : "Official Brand group"}</Text>
+          </View>
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t("chat.media_a11y")}
           accessibilityState={{ expanded: isWideDesktop ? mediaPanelOpen : undefined }}
           hitSlop={5}
           onPress={openMedia}
-          style={[styles.mediaButton, mediaPanelOpen && styles.mediaButtonActive]}
+          style={[styles.mediaButton, desktopDetailTab === "media" && styles.mediaButtonActive]}
         >
           <Icon name="grid" size={16} color={textTokens.primary} />
           <Text style={styles.mediaButtonText}>{t("chat.media")}</Text>
         </Pressable>
-        <View style={styles.muteControl}>
-          <Text style={styles.muteLabel}>Mute notifications</Text>
-          <Switch
-            value={group?.muted ?? false}
-            onValueChange={() => void toggleMute()}
-            disabled={!group || muteBusy}
-            trackColor={{ false: "rgba(255,255,255,0.12)", true: accent.warm }}
-            thumbColor="#ffffff"
-            accessibilityLabel="Mute notifications"
-            accessibilityState={{ checked: group?.muted ?? false, disabled: !group || muteBusy }}
-          />
-        </View>
       </View>
 
       {group?.muted ? (
@@ -516,7 +586,17 @@ function BrandGroupThreadScreen(): React.ReactElement {
           <Button label="Retry" variant="secondary" onPress={() => void refresh()} />
         </View>
       ) : (
-        <ScrollView ref={scrollRef} style={styles.messages} contentContainerStyle={styles.messagesContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          ref={scrollRef}
+          style={styles.messages}
+          contentContainerStyle={styles.messagesContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          onContentSizeChange={followLatestMessage}
+          onScroll={updateLatestMessageProximity}
+          scrollEventThrottle={16}
+          testID="brand-group-message-scroll"
+        >
           {messages.length === 0 ? (
             <View style={styles.empty}><Text style={styles.stateText}>This is the official Brand group. Start the first conversation here.</Text></View>
           ) : messages.map((message) => {
@@ -651,21 +731,63 @@ function BrandGroupThreadScreen(): React.ReactElement {
         </View>
       </View>
       </View>
-      {isWideDesktop && mediaPanelOpen && conversationId ? (
-        <React.Suspense fallback={<View style={styles.mediaPanelLoading}><ActivityIndicator color={accent.warm} /></View>}>
-          <LazyBrandGroupMediaPanel
-            compact
-            conversationId={conversationId}
-            groupName={group?.brand_name ?? "Brand group"}
-            renderThumbnail={renderMediaThumbnail}
-            onOpenItems={(items, fileId) => {
-              setPanelViewerItems(items);
-              setPreviewFileId(fileId);
-            }}
-          />
-        </React.Suspense>
+      {isWideDesktop && conversationId ? (
+        <View style={styles.detailsRail}>
+          {desktopDetailTab === "people" ? (
+            <BrandGroupPeoplePanel
+              groupName={group?.brand_name ?? "Brand group"}
+              members={members}
+              loading={memberQuery.isLoading}
+              error={memberError}
+              muted={group?.muted ?? false}
+              muteBusy={!group || muteBusy}
+              onToggleMute={() => void toggleMute()}
+              onShowMedia={() => {
+                setDesktopDetailTab("media");
+                setMediaPanelOpen(true);
+              }}
+            />
+          ) : (
+            <View style={styles.mediaRail}>
+              <View style={styles.railTabs} accessibilityRole="tablist">
+                <Pressable accessibilityRole="tab" accessibilityState={{ selected: false }} onPress={() => { setDesktopDetailTab("people"); setMediaPanelOpen(false); }} style={styles.railTab}>
+                  <Text style={styles.railTabText}>People · {members.length || "—"}</Text>
+                </Pressable>
+                <View accessibilityRole="tab" accessibilityState={{ selected: true }} style={[styles.railTab, styles.railTabActive]}>
+                  <Text style={styles.railTabTextActive}>Media</Text>
+                </View>
+              </View>
+              <React.Suspense fallback={<View style={styles.mediaPanelLoading}><ActivityIndicator color={accent.warm} /></View>}>
+                <LazyBrandGroupMediaPanel
+                  compact
+                  conversationId={conversationId}
+                  groupName={group?.brand_name ?? "Brand group"}
+                  renderThumbnail={renderMediaThumbnail}
+                  onOpenItems={(items, fileId) => {
+                    setPanelViewerItems(items);
+                    setPreviewFileId(fileId);
+                  }}
+                />
+              </React.Suspense>
+            </View>
+          )}
+        </View>
       ) : null}
       </KeyboardAvoidingView>
+
+      {!isWideDesktop ? (
+        <BrandGroupPeopleSheet
+          visible={peopleSheetOpen}
+          groupName={group?.brand_name ?? "Brand group"}
+          members={members}
+          loading={memberQuery.isLoading}
+          error={memberError}
+          muted={group?.muted ?? false}
+          muteBusy={!group || muteBusy}
+          onToggleMute={() => void toggleMute()}
+          onClose={() => setPeopleSheetOpen(false)}
+        />
+      ) : null}
 
       <BrandGroupSignalModal
         visible={signalSourceId !== null}
@@ -713,14 +835,24 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: glass.border.profileBase },
   iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: glass.border.profileBase, backgroundColor: glass.tint.profileBase },
   headerCopy: { flex: 1, minWidth: 0 },
+  peopleTrigger: { flex: 1, minWidth: 0, minHeight: 44, justifyContent: "center" },
   title: { color: textTokens.primary, fontSize: 18, fontWeight: "800" },
-  subtitle: { color: textTokens.tertiary, fontSize: 12, marginTop: 2 },
+  memberPeek: { minWidth: 0, flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
+  avatarStack: { flexDirection: "row", paddingLeft: 5 },
+  headerAvatar: { width: 21, height: 21, marginLeft: -5, alignItems: "center", justifyContent: "center", borderRadius: 11, borderWidth: 2, borderColor: canvas.profile, backgroundColor: "#473c38" },
+  headerAvatarText: { color: "#ffffff", fontSize: 7, fontWeight: "900" },
+  subtitle: { flexShrink: 1, color: textTokens.tertiary, fontSize: 11 },
   mediaButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, borderRadius: 22, borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", backgroundColor: "rgba(255,255,255,0.08)" },
   mediaButtonActive: { borderColor: "rgba(235,120,37,0.7)", shadowColor: accent.warm, shadowOpacity: 0.35, shadowRadius: 10 },
   mediaButtonText: { color: textTokens.primary, fontSize: 13, fontWeight: "700" },
-  mediaPanelLoading: { width: 340, alignItems: "center", justifyContent: "center", borderLeftWidth: 1, borderLeftColor: glass.border.profileBase },
-  muteControl: { minHeight: 44, alignItems: "flex-end", justifyContent: "center", gap: 2 },
-  muteLabel: { color: textTokens.secondary, fontSize: 11, fontWeight: "700" },
+  detailsRail: { width: 340, minWidth: 300, maxWidth: "36%", borderLeftWidth: 1, borderLeftColor: glass.border.profileBase, backgroundColor: canvas.profile },
+  mediaRail: { flex: 1, minHeight: 0 },
+  railTabs: { minHeight: 56, flexDirection: "row", gap: 4, alignItems: "center", paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: glass.border.profileBase },
+  railTab: { minHeight: 40, flex: 1, alignItems: "center", justifyContent: "center", borderRadius: radius.full },
+  railTabActive: { borderWidth: 1, borderColor: "rgba(235,120,37,0.38)", backgroundColor: "rgba(235,120,37,0.10)" },
+  railTabText: { color: textTokens.tertiary, fontSize: 12, fontWeight: "700" },
+  railTabTextActive: { color: textTokens.primary, fontSize: 12, fontWeight: "800" },
+  mediaPanelLoading: { flex: 1, alignItems: "center", justifyContent: "center" },
   mutedNote: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: "rgba(235,120,37,0.08)", borderBottomWidth: 1, borderBottomColor: "rgba(235,120,37,0.25)" },
   mutedNoteText: { color: textTokens.secondary, fontSize: 12, textAlign: "center" },
   actorBar: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: glass.border.profileBase },

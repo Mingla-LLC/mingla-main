@@ -82,7 +82,10 @@ function GuidePlayer({ guide, userId, onClose }: { guide: HelpVideoRecord; userI
       active = false;
       timeSubscription.remove();
       endSubscription.remove();
-      if (!isVideoPlayerReleasedForReload(player)) player.pause();
+      // #4173 — useVideoPlayer owns the native object's unmount/release. A
+      // close can race Expo's release before this cleanup runs, so calling
+      // pause here can target a released NativeSharedObject and crash the
+      // screen. Unmounting VideoView stops playback without touching it again.
     };
   }, [guide.slug, player, userId]);
 

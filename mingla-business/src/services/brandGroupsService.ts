@@ -37,6 +37,13 @@ export interface BrandGroupMessage {
   card_payload?: { kind: "brand_enquiry_card"; enquiry_id: string | null; topic_label: string | null } | null;
 }
 
+export interface BrandGroupMember {
+  user_id: string;
+  display_name: string;
+  email: string;
+  role: string;
+}
+
 function errorMessage(error: { message?: string } | null, fallback: string): string | null {
   return error ? error.message || fallback : null;
 }
@@ -143,6 +150,18 @@ export async function listBrandGroupMentionCandidates(
   });
   return {
     candidates: (data ?? []) as BrandGroupMentionCandidate[],
+    error: errorMessage(error, "Couldn't load Brand group teammates"),
+  };
+}
+
+export async function listBrandGroupMembers(
+  conversationId: string,
+): Promise<{ members: BrandGroupMember[]; error: string | null }> {
+  const { data, error } = await supabase.rpc("issue_4173_list_brand_group_members", {
+    p_conversation_id: conversationId,
+  });
+  return {
+    members: (data ?? []) as BrandGroupMember[],
     error: errorMessage(error, "Couldn't load Brand group teammates"),
   };
 }

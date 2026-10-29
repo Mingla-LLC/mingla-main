@@ -21,8 +21,9 @@ describe("#3720 Wave 3 Guides and Brand-group files", () => {
       "send-a-campaign-to-a-group",
     ];
     expect(expected.map((slug) => source.indexOf(`\"${slug}\"`))).toEqual([...expected.map((slug) => source.indexOf(`\"${slug}\"`))].sort((a, b) => a - b));
-    expect(source).toContain("View more");
-    expect(source).toContain("Search the full Mingla Host video library");
+    expect(source).toContain("View more videos");
+    expect(source).toContain("ESSENTIAL_GUIDES");
+    expect(source).not.toContain("Search the full Mingla Host video library");
   });
 
   it("parses VTT captions for the in-app caption and transcript surfaces", () => {

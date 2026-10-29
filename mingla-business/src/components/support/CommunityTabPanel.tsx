@@ -1,6 +1,6 @@
 /** #3720 Host Community sections: Announcements, Roadmap, Ideas, Questions. */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -8,6 +8,9 @@ import {
   StyleSheet,
   Text,
   View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 
 import {
@@ -29,6 +32,7 @@ import type {
 } from "../../services/communityService";
 import { communityMarkdownToPlainText } from "../../utils/communityMarkdown";
 import { truncateRoadmapBlurb } from "../../utils/roadmapBlurb";
+import { selectedCommunityTabOffset, type HorizontalFrame } from "../../utils/communityTabReveal";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { BrandSwitch } from "../ui/BrandSwitch";
 import { Button } from "../ui/Button";
@@ -119,6 +123,28 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
   const { markRead } = useMarkAnnouncementRead();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [prefToast, setPrefToast] = useState<string | null>(null);
+  const sectionScrollRef = useRef<ScrollView>(null);
+  const sectionFrames = useRef(new Map<CommunitySectionId, HorizontalFrame>());
+  const sectionViewportWidth = useRef(0);
+  const sectionContentWidth = useRef(0);
+  const sectionOffset = useRef(0);
+
+  const revealActiveSection = useCallback((animated: boolean) => {
+    const tab = sectionFrames.current.get(activeSection);
+    if (!tab || sectionViewportWidth.current <= 0) return;
+    const nextOffset = selectedCommunityTabOffset({
+      tab,
+      viewportWidth: sectionViewportWidth.current,
+      currentOffset: sectionOffset.current,
+      contentWidth: sectionContentWidth.current,
+    });
+    if (nextOffset === null) return;
+    sectionScrollRef.current?.scrollTo({ x: nextOffset, animated });
+  }, [activeSection]);
+
+  useEffect(() => {
+    revealActiveSection(true);
+  }, [revealActiveSection]);
 
   useEffect(() => {
     if (targetSection === "roadmap") onSectionChange("roadmap");
@@ -145,7 +171,10 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
     lane,
     cards: roadmap.data.filter((card) => card.lane === lane),
   }));
-  const laneWidth = Math.max(280, Math.min(360, width > 0 ? width - 48 : 320));
+  const laneWidth = Math.max(
+    132,
+    Math.min(220, width > 0 ? (width - 48 - spacing.sm) / 2 : 156),
+  );
   const unreadCount = announcements.data.filter((item) => item.read_at === null).length;
 
   const handleEmailToggle = useCallback(async (next: boolean): Promise<void> => {
@@ -158,17 +187,41 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
       {showSectionTabs ? (
         <View style={styles.sectionChrome}>
           <ScrollView
+            ref={sectionScrollRef}
             horizontal
             style={styles.sectionScroller}
             contentContainerStyle={styles.sectionTabs}
             showsHorizontalScrollIndicator={false}
             accessibilityRole="tablist"
+            onLayout={(event: LayoutChangeEvent) => {
+              sectionViewportWidth.current = event.nativeEvent.layout.width;
+              revealActiveSection(false);
+            }}
+            onContentSizeChange={(contentWidth) => {
+              sectionContentWidth.current = contentWidth;
+              revealActiveSection(false);
+            }}
+            onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
+              sectionOffset.current = event.nativeEvent.contentOffset.x;
+            }}
+            scrollEventThrottle={16}
           >
             {COMMUNITY_SECTIONS.map((section) => {
               const selected = section.id === activeSection;
               const showUnread = section.id === "announcements" && unreadCount > 0;
               return (
-                <Pressable key={section.id} accessibilityRole="tab" accessibilityLabel={section.label} accessibilityState={{ selected }} onPress={() => onSectionChange(section.id)} style={[styles.sectionTab, selected && styles.sectionTabActive]}>
+                <Pressable
+                  key={section.id}
+                  accessibilityRole="tab"
+                  accessibilityLabel={section.label}
+                  accessibilityState={{ selected }}
+                  onPress={() => onSectionChange(section.id)}
+                  onLayout={(event: LayoutChangeEvent) => {
+                    sectionFrames.current.set(section.id, event.nativeEvent.layout);
+                    if (selected) revealActiveSection(false);
+                  }}
+                  style={[styles.sectionTab, selected && styles.sectionTabActive]}
+                >
                   <Text style={[styles.sectionTabText, selected && styles.sectionTabTextActive]}>{section.label}</Text>
                   {showUnread ? <View style={styles.unreadDot} /> : null}
                 </Pressable>
@@ -273,7 +326,7 @@ const styles = StyleSheet.create({
   sectionChrome: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   sectionScroller: { flex: 1, minWidth: 0 },
   sectionTabs: { flexDirection: "row", gap: spacing.xs, paddingBottom: spacing.xs },
-  sectionTab: { minHeight: 40, minWidth: 116, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 999, borderWidth: 1, borderColor: glass.border.profileElevated, paddingHorizontal: spacing.sm },
+  sectionTab: { minHeight: 44, minWidth: 108, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 999, borderWidth: 1, borderColor: glass.border.profileElevated, paddingHorizontal: spacing.sm },
   sectionTabActive: { backgroundColor: accent.tint, borderColor: accent.border },
   sectionTabText: { color: textTokens.tertiary, fontSize: 12, fontWeight: "700" },
   sectionTabTextActive: { color: textTokens.primary },
