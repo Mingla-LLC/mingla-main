@@ -51,4 +51,7 @@ Deno.test("#4187 Explorer presents an official managed thread with durable photo
   assert(info.includes("!managed ? <TouchableOpacity"), "leave control is hidden for managed chat");
   assert(service.includes("lastMessageRaw.sender_display_name_snapshot"), "chat list preserves official sender snapshot");
   assert(service.includes("message.sender_display_name_snapshot"), "opened messages preserve official sender snapshot");
+  const migration = Deno.readTextFileSync(new URL("../../../../../supabase/migrations/20280212004187_issue_4187_admin_program_messaging.sql", import.meta.url));
+  assert(migration.includes("conversation.program_target_user_id=auth.uid()"), "recipient program threads enter the canonical access batch");
+  assert(migration.includes("lifecycle.hidden_at IS NULL"), "program chat access respects the recipient's hidden lifecycle state");
 });

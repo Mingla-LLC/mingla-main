@@ -616,6 +616,69 @@ BEGIN
 END;
 $function$;
 
+-- The canonical Explorer chat list intentionally keeps only rows returned by
+-- list_connection_conversation_access(). Program threads are not friend,
+-- content-share, or collaboration-session conversations, so teach that one
+-- batch authority about the managed subtype instead of bypassing the access
+-- filter in the client. The recipient retains the same private lifecycle
+-- controls (archive, pin, mark unread, hide) as every other chat.
+CREATE OR REPLACE FUNCTION public.list_connection_conversation_access()
+RETURNS TABLE(
+  conversation_id uuid,
+  archived_at timestamptz,
+  pinned_at timestamptz,
+  marked_unread_at timestamptz,
+  live_session_id uuid,
+  live_session_status text
+)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path=public,pg_temp
+AS $function$
+  WITH access AS (
+    SELECT DISTINCT c.conversation_id,lifecycle.archived_at,lifecycle.pinned_at,lifecycle.marked_unread_at
+    FROM public.content_share_recipient_candidates(auth.uid(),true,false) c
+    LEFT JOIN public.conversation_participant_lifecycle lifecycle
+      ON lifecycle.conversation_id=c.conversation_id AND lifecycle.user_id=auth.uid()
+    WHERE c.target_kind IN ('direct','group') AND c.conversation_id IS NOT NULL
+    UNION
+    SELECT conversation.id,lifecycle.archived_at,lifecycle.pinned_at,lifecycle.marked_unread_at
+    FROM public.conversation_participants mine
+    JOIN public.conversations conversation ON conversation.id=mine.conversation_id
+    JOIN public.collaboration_sessions session ON session.id=conversation.session_id
+    LEFT JOIN public.conversation_participant_lifecycle lifecycle
+      ON lifecycle.conversation_id=mine.conversation_id AND lifecycle.user_id=mine.user_id
+    WHERE mine.user_id=auth.uid() AND lifecycle.hidden_at IS NULL
+      AND conversation.type='group' AND conversation.linked_entity_type='session'
+      AND conversation.is_enabled IS TRUE AND session.created_by=auth.uid()
+      AND session.is_active IS TRUE AND session.archived_at IS NULL
+      AND session.status='pending'
+    UNION
+    SELECT conversation.id,lifecycle.archived_at,lifecycle.pinned_at,lifecycle.marked_unread_at
+    FROM public.conversation_participants mine
+    JOIN public.conversations conversation ON conversation.id=mine.conversation_id
+    LEFT JOIN public.conversation_participant_lifecycle lifecycle
+      ON lifecycle.conversation_id=mine.conversation_id AND lifecycle.user_id=mine.user_id
+    WHERE mine.user_id=auth.uid() AND lifecycle.hidden_at IS NULL
+      AND conversation.program_kind IN ('local','creator')
+      AND conversation.program_target_user_id=auth.uid()
+      AND conversation.type='group' AND conversation.linked_entity_type='direct'
+      AND conversation.is_enabled IS TRUE
+  )
+  SELECT access.conversation_id,access.archived_at,access.pinned_at,access.marked_unread_at,
+    live.id,live.status
+  FROM access
+  LEFT JOIN LATERAL (
+    SELECT cs.id,cs.status
+    FROM public.collaboration_sessions cs
+    WHERE cs.conversation_id=access.conversation_id
+      AND cs.status IN ('pending','active','voting','locked')
+    ORDER BY cs.created_at DESC
+    LIMIT 1
+  ) live ON true;
+$function$;
+REVOKE ALL ON FUNCTION public.list_connection_conversation_access() FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.list_connection_conversation_access() TO authenticated,service_role;
+
 REVOKE ALL ON FUNCTION public.admin_program_local_people() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.admin_program_conversation_thread(text, uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.admin_program_media_prepare(text, uuid) FROM PUBLIC, anon;

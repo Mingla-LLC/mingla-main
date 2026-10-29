@@ -285,6 +285,13 @@ BEGIN
   IF (SELECT count(*) FROM public.messages WHERE conversation_id = v_conversation) <> 2 THEN
     RAISE EXCEPTION 'recipient cannot read the Admin text and image';
   END IF;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.list_connection_conversation_access() access
+    WHERE access.conversation_id = v_conversation
+  ) THEN
+    RAISE EXCEPTION 'recipient program thread is missing from the canonical Explorer chat list';
+  END IF;
 
   INSERT INTO public.messages(conversation_id, sender_id, content, message_type, client_id)
   VALUES (v_conversation, v_creator, 'Thanks — I received it.', 'text', gen_random_uuid());
