@@ -1,5 +1,4 @@
 import { supabase } from "./supabase";
-import type { BrandGroupMentionCandidate } from "../utils/brandGroupMentions";
 
 export interface BrandGroupSummary {
   conversation_id: string;
@@ -35,13 +34,6 @@ export interface BrandGroupMessage {
   file_mime: string | null;
   /** #4111 — only on brand_enquiry_card messages: the enquiry to open. Never a guest name. */
   card_payload?: { kind: "brand_enquiry_card"; enquiry_id: string | null; topic_label: string | null } | null;
-}
-
-export interface BrandGroupMember {
-  user_id: string;
-  display_name: string;
-  email: string;
-  role: string;
 }
 
 function errorMessage(error: { message?: string } | null, fallback: string): string | null {
@@ -137,33 +129,6 @@ export async function setBrandGroupPushPrefEnabled(
       updated_at: new Date().toISOString(),
     });
   if (error) throw new Error(error.message || "Couldn't save Brand group notifications");
-}
-
-export async function listBrandGroupMentionCandidates(
-  conversationId: string,
-  query: string,
-): Promise<{ candidates: BrandGroupMentionCandidate[]; error: string | null }> {
-  const { data, error } = await supabase.rpc("issue_3988_list_brand_group_mention_candidates", {
-    p_conversation_id: conversationId,
-    p_query: query,
-    p_limit: 4,
-  });
-  return {
-    candidates: (data ?? []) as BrandGroupMentionCandidate[],
-    error: errorMessage(error, "Couldn't load Brand group teammates"),
-  };
-}
-
-export async function listBrandGroupMembers(
-  conversationId: string,
-): Promise<{ members: BrandGroupMember[]; error: string | null }> {
-  const { data, error } = await supabase.rpc("issue_4173_list_brand_group_members", {
-    p_conversation_id: conversationId,
-  });
-  return {
-    members: (data ?? []) as BrandGroupMember[],
-    error: errorMessage(error, "Couldn't load Brand group teammates"),
-  };
 }
 
 export async function sendBrandGroupMessage(input: {

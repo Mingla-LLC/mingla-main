@@ -52,13 +52,12 @@ import { DONE_BAR_OCCUPIED, ScrollView } from "../../src/wrappers/SmartScrollVie
 import { liftedBottomSpacer } from "../../src/wrappers/keyboardClearance";
 import { useKeyboardHeight } from "../../src/wrappers/useKeyboardHeight";
 import {
-  listBrandGroupMentionCandidates,
-  listBrandGroupMembers,
   listBrandGroupMessages,
   markBrandGroupRead,
   sendBrandGroupMessage,
   type BrandGroupMessage,
 } from "../../src/services/brandGroupsService";
+import { listBrandGroupMembers, listBrandGroupMentionCandidates } from "../../src/services/brandGroupRosterService";
 import { supabase } from "../../src/services/supabase";
 import { fileMeta } from "../../src/services/brandGroupFileMetaService";
 import type { BrandGroupMediaRow } from "../../src/services/brandGroupMediaService";
@@ -76,6 +75,7 @@ const LazyBrandGroupMediaPanel = React.lazy(async () => {
   const module = await import("../../src/components/messages/BrandGroupMediaPanel");
   return { default: module.BrandGroupMediaPanel };
 });
+
 const LazyMediaThumb = React.lazy(async () => {
   const module = await import("../../src/components/media/MediaThumb");
   return { default: module.MediaThumb };
@@ -775,9 +775,9 @@ function BrandGroupThreadScreen(): React.ReactElement {
       ) : null}
       </KeyboardAvoidingView>
 
-      {!isWideDesktop ? (
+      {!isWideDesktop && peopleSheetOpen ? (
         <BrandGroupPeopleSheet
-          visible={peopleSheetOpen}
+          visible
           groupName={group?.brand_name ?? "Brand group"}
           members={members}
           loading={memberQuery.isLoading}

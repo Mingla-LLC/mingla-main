@@ -11,7 +11,7 @@ import {
 } from "react-native";
 
 import { accent, canvas, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
-import type { BrandGroupMember } from "../../services/brandGroupsService";
+import type { BrandGroupMember } from "../../services/brandGroupRosterService";
 import { Icon } from "../ui/Icon";
 
 function initials(name: string): string {

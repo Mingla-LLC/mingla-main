@@ -12,14 +12,13 @@ jest.mock("../supabase", () => ({
 }));
 
 import {
-  listBrandGroupMentionCandidates,
-  listBrandGroupMembers,
   listBrandGroups,
   listBrandGroupMessages,
   markBrandGroupRead,
   sendBrandGroupMessage,
   setBrandGroupWatch,
 } from "../brandGroupsService";
+import { listBrandGroupMembers, listBrandGroupMentionCandidates } from "../brandGroupRosterService";
 
 const ROOT = path.resolve(__dirname, "../../..");
 const read = (relative: string): string => fs.readFileSync(path.join(ROOT, relative), "utf8");
