@@ -68,7 +68,7 @@ export function BrandGroupPeoplePanel({
       {onShowMedia ? (
         <View style={styles.tabs} accessibilityRole="tablist">
           <View style={[styles.tab, styles.tabActive]} accessibilityRole="tab" accessibilityState={{ selected: true }}><Text style={styles.tabActiveText}>People · {members.length || "—"}</Text></View>
-          <Pressable accessibilityRole="tab" accessibilityState={{ selected: false }} onPress={onShowMedia} style={styles.tab}><Text style={styles.tabText}>Media</Text></Pressable>
+          <Pressable accessibilityRole="tab" accessibilityLabel="Show media" accessibilityState={{ selected: false }} onPress={onShowMedia} style={styles.tab}><Text style={styles.tabText}>Media</Text></Pressable>
         </View>
       ) : null}
 
@@ -111,12 +111,13 @@ export function BrandGroupPeoplePanel({
 export function BrandGroupPeopleSheet(props: BrandGroupPeoplePanelProps & { visible: boolean }): React.ReactElement {
   return (
     <Modal visible={props.visible} transparent animationType="slide" onRequestClose={props.onClose}>
-      <Pressable accessible={false} onPress={props.onClose} style={styles.backdrop}>
-        <Pressable accessible={false} onPress={(event) => event.stopPropagation()} style={styles.sheet} accessibilityViewIsModal>
+      <View style={styles.backdrop}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close people list" onPress={props.onClose} style={StyleSheet.absoluteFillObject} />
+        <View style={styles.sheet} accessibilityViewIsModal>
           <View style={styles.handle} />
           <BrandGroupPeoplePanel {...props} />
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }

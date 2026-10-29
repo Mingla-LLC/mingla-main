@@ -750,7 +750,7 @@ function BrandGroupThreadScreen(): React.ReactElement {
           ) : (
             <View style={styles.mediaRail}>
               <View style={styles.railTabs} accessibilityRole="tablist">
-                <Pressable accessibilityRole="tab" accessibilityState={{ selected: false }} onPress={() => { setDesktopDetailTab("people"); setMediaPanelOpen(false); }} style={styles.railTab}>
+                <Pressable accessibilityRole="tab" accessibilityLabel="Show people" accessibilityState={{ selected: false }} onPress={() => { setDesktopDetailTab("people"); setMediaPanelOpen(false); }} style={styles.railTab}>
                   <Text style={styles.railTabText}>People · {members.length || "—"}</Text>
                 </Pressable>
                 <View accessibilityRole="tab" accessibilityState={{ selected: true }} style={[styles.railTab, styles.railTabActive]}>
