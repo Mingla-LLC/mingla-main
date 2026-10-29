@@ -9,6 +9,7 @@ describe("issue #3697 v1.4 Host Ads program", () => {
   const service = read("src/services/hostAdPlanService.ts");
   const createRoute = read("app/(tabs)/marketing/ads/create.tsx");
   const adsRoute = read("app/(tabs)/marketing/ads/index.tsx");
+  const tabActions = read("src/components/marketing/marketingTabActions.ts");
   const ariCard = read("src/components/ari/ToolProposalCard.tsx");
   const campaignService = read("src/services/hostAdCampaignService.ts");
   const hostCampaignEndpoint = read(
@@ -17,12 +18,14 @@ describe("issue #3697 v1.4 Host Ads program", () => {
   const planEndpoint = read("../supabase/functions/ad-plan/index.ts");
 
   it("links the Ads tab to a concrete Host builder", () => {
-    expect(adsRoute).toContain('router.push("/(tabs)/marketing/ads/create"');
+    expect(tabActions).toContain('label: "Create an ad"');
+    expect(tabActions).toContain('href: "/(tabs)/marketing/ads/create"');
     expect(createRoute).toContain("Prepare immutable plan");
     expect(createRoute).toContain("Hold funds");
     expect(createRoute).toContain("Launch approved plan");
     expect(adsRoute).toContain("useHostAdPlans");
-    expect(adsRoute).toContain("Plans in progress");
+    expect(adsRoute).toContain('testID="ads-campaigns-empty"');
+    expect(adsRoute).not.toContain("Plans in progress");
   });
 
   it("uses the shared immutable plan and never accepts client currency", () => {

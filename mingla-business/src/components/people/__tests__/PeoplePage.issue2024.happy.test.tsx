@@ -1,14 +1,15 @@
 // #3682 — product label "Extended circle" → "Friends of followers".
 import React from "react";
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+
+import { MARKETING_TAB_ACTIONS } from "../../marketing/marketingTabActions";
 
 const router = { push: jest.fn(), replace: jest.fn() };
 let brand: { id: string } | null = { id: "brand-a" };
 let role = { isLoading: false, isError: false, accepted: true, rank: 20 };
 let auth = { isAuthReady: true, user: { id: "user-1" } };
 let layout = { isWideDesktop: true, isWeb: true, width: 1440 };
-let stickyOffset = 120;
 let forcedKind: string | null = null;
 const refetch = jest.fn(async () => {});
 const fetchNextPage = jest.fn(async () => {});
@@ -61,9 +62,6 @@ jest.mock("../../../hooks/useFeatureFlag", () => ({
   useFeatureFlag: () => ({ isPending: false, isFetching: false, isError: false, data: true }),
 }));
 jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => layout }));
-jest.mock("../../../hooks/useStickyFooterOffset", () => ({
-  useStickyFooterOffset: () => stickyOffset,
-}));
 jest.mock("../../../hooks/marketing/useBrandPeople", () => ({
   useBrandPeople: (...args: [string | null, string | null, boolean, boolean, number]) =>
     peopleHook(args[0], args[1], args[2], args[3], args[4]),
@@ -181,17 +179,13 @@ const renderPage = (): void => {
     tree = TestRenderer.create(<PeoplePage />);
   });
 };
-const campaignFabs = (): any[] =>
-  tree.root.findAll(
-    (node: any) => node.type === Pressable && node.props.testID === "people-new-campaign",
-  );
+const campaignFabs = (): any[] => tree.root.findAllByProps({ testID: "people-new-campaign" });
 
 beforeEach(() => {
   brand = { id: "brand-a" };
   role = { isLoading: false, isError: false, accepted: true, rank: 20 };
   auth = { isAuthReady: true, user: { id: "user-1" } };
   layout = { isWideDesktop: true, isWeb: true, width: 1440 };
-  stickyOffset = 120;
   forcedKind = null;
   Object.defineProperty(globalThis, "matchMedia", {
     configurable: true,
@@ -259,26 +253,24 @@ describe("issue #2024 rendered People workspace happy path", () => {
     });
   });
 
-  test("floats the sticky-footer campaign action and opens the exact composer once", () => {
+  test("leaves the tab-aware People action to the Marketing shell without a duplicate route FAB", () => {
     renderPage();
-    const fab = campaignFabs()[0];
-    expect(fab.props.accessibilityLabel).toBe("New campaign");
-    expect(StyleSheet.flatten(fab.props.style({ pressed: false }))).toMatchObject({ bottom: 120 });
+    expect(campaignFabs()).toHaveLength(0);
+    expect(MARKETING_TAB_ACTIONS.people).toMatchObject({
+      label: "Import people",
+      href: "/(tabs)/people/import?returnTo=marketingPeople",
+    });
     const scroll = tree.root.findByType(ScrollView);
     expect(StyleSheet.flatten(scroll.props.contentContainerStyle)).toMatchObject({
       paddingBottom: 120,
     });
-    TestRenderer.act(() => fab.props.onPress());
-    expect(router.push).toHaveBeenCalledTimes(1);
-    expect(router.push).toHaveBeenCalledWith("/marketing/campaigns/compose");
   });
 
   test.each([
-    { name: "iPhone SE", width: 320, height: 568, bottom: 120 },
-    { name: "modern compact", width: 390, height: 844, bottom: 132 },
-  ])("matches the sibling full-canvas FAB contract on $name", ({ width, bottom }) => {
+    { name: "iPhone SE", width: 320 },
+    { name: "modern compact", width: 390 },
+  ])("keeps the compact canvas full width without a route-local FAB on $name", ({ width }) => {
     layout = { isWideDesktop: false, isWeb: false, width };
-    stickyOffset = bottom;
     renderPage();
     const scroll = tree.root.findByType(ScrollView);
     const scrollStyle = StyleSheet.flatten(scroll.props.style);
@@ -298,29 +290,23 @@ describe("issue #2024 rendered People workspace happy path", () => {
     );
     expect(groupsStyle).toMatchObject({ width: "100%", padding: 16 });
     expect(groupsStyle.paddingRight).toBeUndefined();
-    expect(StyleSheet.flatten(campaignFabs()[0].props.style({ pressed: false }))).toMatchObject({
-      right: 16,
-      bottom,
-      minHeight: 48,
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-    });
+    expect(campaignFabs()).toHaveLength(0);
   });
 
-  test("keeps the FAB in authorized loading and error states but removes it when forbidden", () => {
+  test("never mounts a duplicate route FAB across authorized and forbidden states", () => {
     forcedKind = "loading";
     renderPage();
-    expect(campaignFabs()).toHaveLength(1);
+    expect(campaignFabs()).toHaveLength(0);
     forcedKind = "error";
     TestRenderer.act(() => tree.update(<PeoplePage />));
-    expect(campaignFabs()).toHaveLength(1);
+    expect(campaignFabs()).toHaveLength(0);
     forcedKind = "forbidden";
     TestRenderer.act(() => tree.update(<PeoplePage />));
     expect(campaignFabs()).toHaveLength(0);
     expect(textOf(tree.toJSON())).not.toMatch(/Ada|Buyers/);
   });
 
-  test("removes the workspace and FAB from interaction while a People sheet is open", () => {
+  test("removes the workspace from interaction while a People sheet is open", () => {
     renderPage();
     const seeAll = tree.root
       .findAllByType("MockButton")
