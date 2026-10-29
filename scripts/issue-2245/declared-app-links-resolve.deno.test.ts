@@ -234,6 +234,7 @@ type Outcome =
   | { kind: "shell-page"; page: string; params: Record<string, string> }
   | { kind: "referral-capture" }
   | { kind: "attendance-claim" }
+  | { kind: "claim-code"; code: string }
   | { kind: "dead"; why: string };
 
 /**
@@ -284,6 +285,7 @@ function resolveDeclaredUrl(url: string): Outcome {
   let params: Record<string, string> = {};
   let paywall = false;
   let profileId: string | null = null;
+  let claimCode: string | null = null;
   executeDeepLink(dest, {
     setCurrentPage: (p) => {
       page = p;
@@ -297,8 +299,17 @@ function resolveDeclaredUrl(url: string): Outcome {
     setViewingFriendProfileId: (id) => {
       profileId = id;
     },
+    handleClaimCode: (code) => {
+      claimCode = code;
+    },
   });
 
+  if (claimCode !== null) {
+    // #4174 — this handler opens the claim presentation (or resumes the claim
+    // after sign-in), so it is a real destination even though it deliberately
+    // does not switch the bottom-nav page.
+    return { kind: "claim-code", code: claimCode };
+  }
   if (paywall || profileId !== null) {
     // Overlays mount over the current page; they always render.
     return { kind: "shell-page", page: "overlay", params };
@@ -415,6 +426,8 @@ const PROBES: Readonly<Record<string, readonly string[]>> = {
   "usemingla.com/chat": ["https://usemingla.com/chat/0a0870b0-c117-4707-bdf4-21fc64bebcab"],
   "usemingla.com/invite/*": ["https://usemingla.com/invite/ADA2026"],
   "usemingla.com/invite": ["https://usemingla.com/invite/ADA2026"],
+  "usemingla.com/c/*": ["https://usemingla.com/c/AB12CD34EF"],
+  "usemingla.com/c/": ["https://usemingla.com/c/AB12CD34EF"],
   "usemingla.com/s/*": ["https://usemingla.com/s/a1B2c3D4e5F6g7H8"],
   "usemingla.com/s/": ["https://usemingla.com/s/a1B2c3D4e5F6g7H8"],
   "usemingla.com/p/*": [`https://usemingla.com/p/${"a".repeat(36)}`],
