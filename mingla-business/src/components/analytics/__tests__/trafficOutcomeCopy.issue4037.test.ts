@@ -1,4 +1,5 @@
 import { primaryActionCount, trafficOutcomeCopy } from "../trafficOutcomeCopy";
+import { listingInsightsIntro } from "../listingInsightsIntro";
 
 describe("#4037 analytics language by listing type", () => {
   test.each([
@@ -46,6 +47,7 @@ describe("#4037 analytics language by listing type", () => {
         outcomeLabel,
         pathTitle,
       });
+      expect(listingInsightsIntro(listingType)).toBe(intro);
     },
   );
 

@@ -32,7 +32,7 @@ import {
 } from "../../analytics/businessAnalyticsEvents";
 import { TopBar } from "../ui/TopBar";
 import { LegacyListingInsightsScreen } from "./LegacyListingInsightsScreen";
-import { trafficOutcomeCopy } from "./trafficOutcomeCopy";
+import { listingInsightsIntro } from "./listingInsightsIntro";
 
 interface TrafficListingInsightsScreenProps {
   identity: UseQueryResult<ListingInsightsIdentity, Error>;
@@ -231,7 +231,7 @@ const TrafficListingInsightsScreen: React.FC<
               </Text>
               {identity.data === undefined ? null : (
                 <Text style={styles.intro}>
-                  {trafficOutcomeCopy(identity.data.listingType).intro}
+                  {listingInsightsIntro(identity.data.listingType)}
                 </Text>
               )}
               <View accessibilityLiveRegion="polite">

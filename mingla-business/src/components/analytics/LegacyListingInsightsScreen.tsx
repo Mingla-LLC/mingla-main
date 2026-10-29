@@ -31,7 +31,7 @@ import {
 } from "../../analytics/businessAnalyticsEvents";
 import { GlassCard } from "../ui/GlassCard";
 import { TopBar } from "../ui/TopBar";
-import { trafficOutcomeCopy } from "./trafficOutcomeCopy";
+import { listingInsightsIntro } from "./listingInsightsIntro";
 
 const SOURCE_ORDER: {
   key: ListingInsightsSource;
@@ -49,7 +49,7 @@ const SOURCE_ORDER: {
 ];
 
 const introFor = (identity: ListingInsightsIdentity): string =>
-  trafficOutcomeCopy(identity.listingType).intro;
+  listingInsightsIntro(identity.listingType);
 
 const CurrencyValues: React.FC<{
   values: Record<string, number>;
