@@ -496,7 +496,17 @@ function BrandGroupThreadScreen(): React.ReactElement {
 
       {notice ? <Pressable accessibilityRole="button" accessibilityLabel="Dismiss notification" onPress={() => setNotice(null)} style={styles.notice}><Text style={styles.noticeText}>{notice}</Text></Pressable> : null}
 
-      <View style={styles.workspace}>
+      {/* #4173 — keep the keyboard boundary in SafeScreen coordinates. The
+          controller calculates overlap from this view's layout frame; nesting
+          it around only the composer made that frame relative to threadColumn
+          and omitted the header/workspace offset on iOS. Owning the full
+          workspace keeps the composer directly above the Done bar + keyboard
+          while preserving the same row layout on web. */}
+      <KeyboardAvoidingView
+        behavior="padding"
+        keyboardVerticalOffset={DONE_BAR_OCCUPIED}
+        style={styles.workspace}
+      >
       <View style={styles.threadColumn}>
       {loading ? (
         <View style={styles.state}><ActivityIndicator color={accent.warm} /></View>
@@ -569,7 +579,6 @@ function BrandGroupThreadScreen(): React.ReactElement {
         </ScrollView>
       )}
 
-      <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={DONE_BAR_OCCUPIED}>
       <View
         style={[
           styles.composer,
@@ -641,7 +650,6 @@ function BrandGroupThreadScreen(): React.ReactElement {
           <Button label="Send" leadingIcon="send" loading={sending} disabled={!composer.trim() || sending} onPress={() => void send()} />
         </View>
       </View>
-      </KeyboardAvoidingView>
       </View>
       {isWideDesktop && mediaPanelOpen && conversationId ? (
         <React.Suspense fallback={<View style={styles.mediaPanelLoading}><ActivityIndicator color={accent.warm} /></View>}>
@@ -657,7 +665,7 @@ function BrandGroupThreadScreen(): React.ReactElement {
           />
         </React.Suspense>
       ) : null}
-      </View>
+      </KeyboardAvoidingView>
 
       <BrandGroupSignalModal
         visible={signalSourceId !== null}

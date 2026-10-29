@@ -38,10 +38,14 @@ describe("#3988 Brand group composer and mentions", () => {
     ])).toHaveLength(1);
   });
 
-  test("route uses the sanctioned native lift and visible web viewport, and sends validated IDs", () => {
+  test("route anchors the sanctioned native lift at workspace level, keeps the web viewport visible, and sends validated IDs", () => {
     const route = fs.readFileSync(path.join(ROOT, "app/messages/[conversationId].tsx"), "utf8");
     expect(route).toContain('from "../../src/wrappers/SmartKeyboardAvoidingView"');
     expect(route).toContain('keyboardVerticalOffset={DONE_BAR_OCCUPIED}');
+    expect(route).toMatch(
+      /<KeyboardAvoidingView[\s\S]*?style=\{styles\.workspace\}[\s\S]*?<View style=\{styles\.threadColumn\}>/,
+    );
+    expect(route.match(/<KeyboardAvoidingView\b/g)).toHaveLength(1);
     expect(route).toContain("liftedBottomSpacer(");
     expect(route).toContain('Platform.OS === "web" && windowHeight > 0');
     expect(route).toContain('keyboardShouldPersistTaps="handled"');
