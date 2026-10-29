@@ -320,6 +320,7 @@ export default function HostGigContract(): React.ReactElement {
         const downloaded = await FileSystem.downloadAsync(grant.url, cacheUri);
         try {
           if (Platform.OS === "ios") {
+              // SHARE-NON-CONTENT:file-export
             await Share.share({ url: downloaded.uri, title: grant.filename });
           } else {
             const permission =
