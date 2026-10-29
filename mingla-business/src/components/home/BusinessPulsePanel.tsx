@@ -911,8 +911,6 @@ const styles = StyleSheet.create({
   root: { paddingHorizontal: spacing.md, marginBottom: spacing.md },
   rootNarrow: {
     width: "100%",
-    maxWidth: 640,
-    alignSelf: "center",
     paddingHorizontal: spacing.sm + spacing.xs,
   },
   liveCardGlow: {
