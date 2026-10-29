@@ -73,13 +73,13 @@ test("Budget levels are gone: no ranges editor, tab, table read or save call", (
   assert.doesNotMatch(gigs, /tab=|<Tabs /, "the Gigs page keeps no second tab");
 });
 
-test("Mingla Locals: city cards with seats, open or paused, rate and payout currency; four tabs with the existing decisions", () => {
+test("Mingla Locals: city cards with seats, open or paused, rate and payout currency; program work tabs with the existing decisions", () => {
   assert.match(service, /write\("local_city_program_save", \{[\s\S]*p_monthly_rate_minor: monthlyRateMinor,\s*p_payout_currency: payoutCurrency,/);
   assert.doesNotMatch(service, /p_monthly_usd_minor/);
   assert.match(locals, /seats used/);
   assert.match(locals, /"Open" : "Paused"/);
   assert.match(locals, /label="Paid in"|>Paid in</);
-  for (const tab of ["applications", "picks", "reviews", "payouts"]) assert.match(locals, new RegExp(`id: "${tab}"`));
+  for (const tab of ["applications", "picks", "reviews", "payouts", "messages"]) assert.match(locals, new RegExp(`id: "${tab}"`));
   for (const rpc of ["local_application_decide", "local_review_decide", "local_month_void", "local-payout", "admin_local_queue"]) assert.match(service, new RegExp(rpc));
   assert.match(locals, /Approved agreement version/);
   assert.match(locals, /Required before accepting anyone/);

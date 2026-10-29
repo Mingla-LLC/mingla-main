@@ -229,6 +229,9 @@ export interface DirectMessage {
   updated_at?: string;
   deleted_at?: string | null;
   sender_name?: string;
+  /** #4187 official team label captured when an Admin sends a program message. */
+  sender_display_name_snapshot?: string | null;
+  sender_role_snapshot?: string | null;
   is_read?: boolean;
   isSystem?: boolean;
   /**
@@ -521,6 +524,8 @@ export interface Conversation {
   session_id?: string | null;
   event_id?: string | null;
   linked_entity_type?: 'direct' | 'session' | 'trip' | 'event';
+  /** #4187 managed Mingla program thread; absent on every ordinary chat. */
+  program_kind?: 'local' | 'creator' | null;
   is_broadcast_only?: boolean;
   created_by: string | null;
   created_at: string;
@@ -863,7 +868,8 @@ export class MessagingService {
           last_message:messages(
             id, conversation_id, sender_id, content, message_type,
             file_url, file_name, file_size, card_payload, reply_to_id,
-            marketing_campaign_id, created_at, updated_at, deleted_at,
+            marketing_campaign_id, sender_display_name_snapshot, sender_role_snapshot,
+            created_at, updated_at, deleted_at,
             read_status:message_reads(user_id)
           )
         `)
@@ -961,7 +967,8 @@ export class MessagingService {
           const cachedSender = lastMessageRaw.sender_id
             ? this.senderProfileCache.get(lastMessageRaw.sender_id)
             : null;
-          const senderName = cachedSender?.name
+          const senderName = lastMessageRaw.sender_display_name_snapshot
+            ?? cachedSender?.name
             ?? (lastMessageRaw.sender_id ? 'Unknown' : 'Deleted User');
           const { read_status, ...messageFields } = lastMessageRaw as any;
           lastMessage = {
@@ -978,6 +985,7 @@ export class MessagingService {
           session_id: (conv as any).session_id ?? null,
           event_id: (conv as any).event_id ?? null,
           linked_entity_type: (conv as any).linked_entity_type ?? undefined,
+          program_kind: (conv as any).program_kind ?? null,
           is_broadcast_only: Boolean((conv as any).is_broadcast_only),
           created_by: (conv as any).created_by,
           created_at: conv.created_at,
@@ -1967,7 +1975,9 @@ export class MessagingService {
    * MessageBubble.tsx:156 renders isSystem rows centered + muted with no chrome.
    */
   private async enrichMessage(message: any, userId: string): Promise<DirectMessage> {
-    const senderName = await this.getSenderName(message.sender_id);
+    const senderName = typeof message.sender_display_name_snapshot === 'string' && message.sender_display_name_snapshot.trim()
+      ? message.sender_display_name_snapshot.trim()
+      : await this.getSenderName(message.sender_id);
 
     // Check if message is read by current user
     const { data: readData } = await supabase
@@ -1991,7 +2001,9 @@ export class MessagingService {
    * ORCH-0908: same isSystem rule as enrichMessage.
    */
   private async enrichMessageRealtime(message: any): Promise<DirectMessage> {
-    const senderName = await this.getSenderName(message.sender_id);
+    const senderName = typeof message.sender_display_name_snapshot === 'string' && message.sender_display_name_snapshot.trim()
+      ? message.sender_display_name_snapshot.trim()
+      : await this.getSenderName(message.sender_id);
 
     return {
       ...message,

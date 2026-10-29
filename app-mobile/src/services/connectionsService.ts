@@ -18,6 +18,8 @@ export interface Friend {
   sessionId?: string | null;
   eventId?: string | null;
   linkedEntityType?: 'direct' | 'session' | 'trip' | 'event' | null;
+  /** #4187 official Mingla program team conversation. */
+  programKind?: 'local' | 'creator' | null;
   sessionCreatorId?: string | null;
   eventBrandName?: string | null;
   eventBrandAccountId?: string | null;

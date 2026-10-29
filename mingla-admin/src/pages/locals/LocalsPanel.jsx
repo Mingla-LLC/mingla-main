@@ -8,17 +8,19 @@
 //     decide actions; the approved agreement version is required to seat a
 //     Local.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Input, Textarea, Toggle } from "../../components/ui/Input";
 import { AlertCard, SectionCard } from "../../components/ui/Card";
 import { Tabs } from "../../components/ui/Tabs";
 import { useToast } from "../../context/ToastContext";
+import { ProgramConversationPanel } from "../../components/programs/ProgramConversationPanel";
 import {
   decideLocalApplication,
   decideLocalReview,
   getLocalQueue,
+  listLocalProgramPeople,
   prepareLocalPayout,
   saveCityProgram,
   voidLocalMonth,
@@ -154,9 +156,74 @@ function handleList(handles) {
     .map(([platform, handle]) => `${platform.charAt(0).toUpperCase()}${platform.slice(1)} @${String(handle).replace(/^@/, "")}`);
 }
 
+function localStatusWord(person) {
+  if (person.has_local_record && person.program_status === "active") return "Active Local";
+  if (person.has_local_record) return String(person.program_status || "Local").replaceAll("_", " ");
+  return APPLICATION_STATUS_WORDS[person.program_status] ?? String(person.program_status || "Applicant").replaceAll("_", " ");
+}
+
+function LocalMessagesWorkspace({ people }) {
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState(null);
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return people;
+    return people.filter((person) => [person.display_name, person.city, localStatusWord(person)]
+      .some((value) => String(value || "").toLowerCase().includes(needle)));
+  }, [people, query]);
+  const selected = filtered.find((person) => person.target_user_id === selectedId) ?? filtered[0] ?? null;
+
+  return (
+    <div className="grid min-w-0 gap-4 min-[1050px]:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.4fr)]" role="tabpanel" id="tabpanel-messages">
+      <SectionCard title="Locals and applicants" subtitle={`${people.length} people can receive a program message`} noPadding>
+        <div className="border-b border-[var(--gray-200)] p-3">
+          <Input aria-label="Search Locals and applicants" placeholder="Search by name, city or status" value={query} onChange={(event) => setQuery(event.target.value)} />
+        </div>
+        {filtered.length ? (
+          <ul className="max-h-[560px] divide-y divide-[var(--gray-200)] overflow-y-auto">
+            {filtered.map((person) => {
+              const active = person.target_user_id === selected?.target_user_id;
+              return (
+                <li key={person.target_user_id}>
+                  <button
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setSelectedId(person.target_user_id)}
+                    className={`w-full px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-brand-500)] ${active ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--gray-50)]"}`}
+                  >
+                    <span className="flex items-start justify-between gap-3">
+                      <span className="min-w-0">
+                        <strong className="block truncate text-sm text-[var(--color-text-primary)]">{person.display_name}</strong>
+                        <span className="mt-0.5 block truncate text-xs text-[var(--color-text-secondary)]">{person.city || "City unavailable"} · {localStatusWord(person)}</span>
+                      </span>
+                      {person.conversation_id ? <Badge variant="brand">Chat</Badge> : null}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : <p className="px-5 py-10 text-center text-sm text-[var(--color-text-secondary)]">No people match that search.</p>}
+      </SectionCard>
+      <div className="min-w-0 self-start">
+        {selected ? (
+          <ProgramConversationPanel
+            key={selected.target_user_id}
+            programKind="local"
+            targetUserId={selected.target_user_id}
+            recipientName={selected.display_name}
+          />
+        ) : (
+          <SectionCard><p className="py-12 text-center text-sm text-[var(--color-text-secondary)]">Choose a Local or applicant to message.</p></SectionCard>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function LocalsPanel() {
   const { addToast } = useToast();
-  const [queue, setQueue] = useState({ cities: [], programs: [], applications: [], picks: [], reviews: [], payouts: [] });
+  const [queue, setQueue] = useState({ cities: [], programs: [], applications: [], picks: [], reviews: [], payouts: [], people: [] });
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState("applications");
   const [agreementVersion, setAgreementVersion] = useState("");
@@ -167,9 +234,15 @@ export function LocalsPanel() {
 
   const load = useCallback(async () => {
     setLoadError("");
-    try { setQueue(await getLocalQueue()); } catch (cause) { setLoadError(programErrorMessage(cause, "Couldn't load Mingla Locals. Try again.")); }
+    try {
+      const [nextQueue, people] = await Promise.all([getLocalQueue(), listLocalProgramPeople()]);
+      setQueue({ ...nextQueue, people });
+    } catch (cause) { setLoadError(programErrorMessage(cause, "Couldn't load Mingla Locals. Try again.")); }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
 
   const run = async (key, action, success) => {
     setBusy(key);
@@ -197,6 +270,7 @@ export function LocalsPanel() {
   };
 
   const tabs = [
+    { id: "messages", label: `Messages · ${queue.people.length}` },
     { id: "applications", label: `Applications · ${queue.applications.length}` },
     { id: "picks", label: `Picks · ${queue.picks.length}` },
     { id: "reviews", label: `Reviews · ${queue.reviews.length}` },
@@ -221,6 +295,8 @@ export function LocalsPanel() {
 
       <div className="space-y-4">
         <Tabs tabs={tabs} activeTab={tab} onChange={setTab} />
+
+        {tab === "messages" ? <LocalMessagesWorkspace people={queue.people} /> : null}
 
         {tab === "applications" ? (
           <div className="space-y-3" role="tabpanel" id="tabpanel-applications">

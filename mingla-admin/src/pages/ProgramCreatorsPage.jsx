@@ -17,6 +17,7 @@ import { Button } from "../components/ui/Button";
 import { Drawer } from "../components/ui/Drawer";
 import { Textarea } from "../components/ui/Input";
 import { AlertCard } from "../components/ui/Card";
+import { ProgramConversationPanel } from "../components/programs/ProgramConversationPanel";
 import { useToast } from "../context/ToastContext";
 import { decideCreator, listCreatorQueue } from "../services/creatorProgramsService";
 import {
@@ -150,6 +151,15 @@ function CreatorDrawer({ creator, onClose, onDecided }) {
         </div>
         {creator.review_note ? <AlertCard variant="info" title="We asked for">{creator.review_note}</AlertCard> : null}
         {creator.declined_reason ? <AlertCard variant="warning" title="Declined because">{creator.declined_reason}</AlertCard> : null}
+
+        <Section title="Conversation">
+          <ProgramConversationPanel
+            key={creator.creator_id}
+            programKind="creator"
+            targetUserId={creator.creator_id}
+            recipientName={creator.display_name || "this Creator"}
+          />
+        </Section>
 
         <Section title="Verification">
           <ul className="space-y-1.5" aria-label="Setup checks">

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/notify-message/__tests__/issue_4187_program_message_title.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4187-program-message-title-implementor",
+  "profile": "deno-2-unit",
+  "permissions": []
+}

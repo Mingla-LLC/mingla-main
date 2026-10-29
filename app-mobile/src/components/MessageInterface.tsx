@@ -337,6 +337,8 @@ interface Friend {
   sessionId?: string | null;
   eventId?: string | null;
   linkedEntityType?: "direct" | "session" | "trip" | "event" | null;
+  /** #4187 managed official-team chat. */
+  programKind?: "local" | "creator" | null;
   sessionCreatorId?: string | null;
   eventBrandName?: string | null;
   eventBrandAccountId?: string | null;
@@ -374,6 +376,8 @@ interface MessageInterfaceProps {
    * chat media service.
    */
   onSendMedia?: (items: PickedChatMedia[], caption: string, viewOnce: boolean, replyToId?: string) => void;
+  /** Managed program threads are text-only in v1 so Admin can review every reply. */
+  allowAttachments?: boolean;
   /** Issue #4114 Wave 4: 0..1 upload progress of media sends, by client id. */
   uploadProgress?: Record<string, number>;
   /** Issue #4114 Wave 4: cancel a media send while it uploads. */
@@ -478,6 +482,7 @@ export default function MessageInterface({
   onSendMessage,
   messages,
   onSendMedia,
+  allowAttachments = true,
   uploadProgress,
   onCancelUpload,
   onRetryMessage,
@@ -539,6 +544,7 @@ export default function MessageInterface({
     return name.trim();
   };
   const isGroupChat = friend.conversationType === "group";
+  const isProgramChat = isGroupChat && Boolean(friend.programKind);
   const isTripEventGroupChat =
     isGroupChat && (friend.linkedEntityType === "trip" || friend.linkedEntityType === "event");
   const isCollabSessionGroupChat =
@@ -823,7 +829,7 @@ export default function MessageInterface({
   );
   const headerAvatarKind: "single" | "stack" | "cover" | "brand" = !isGroupChat
     ? "single"
-    : isBrandChannel
+    : isBrandChannel || isProgramChat
       ? "brand"
       : friend.eventCoverMediaUrl
       ? "cover"
@@ -836,6 +842,8 @@ export default function MessageInterface({
         t('chat:you'),
         (names) => t('chat:membersAndYou', { names }),
       )
+    : isProgramChat
+      ? t('chat:programTeamSubtitle')
     : isTripEventGroupChat
       ? eventAudienceSubtitle
       : isGroupChat
@@ -3320,8 +3328,9 @@ export default function MessageInterface({
             </>
           )}
           <View style={styles.inputContainer}>
-          {/* Attachment Menu */}
-          <View style={styles.attachmentContainer}>
+          {/* Attachment Menu — program replies stay text-only in v1 so the
+              Admin program panel can review every reply. */}
+          {allowAttachments ? <View style={styles.attachmentContainer}>
             <TouchableOpacity
               onPress={() => setShowAttachmentMenu(!showAttachmentMenu)}
               style={styles.attachmentButton}
@@ -3333,10 +3342,10 @@ export default function MessageInterface({
               <Icon name="attach" size={20} color="rgba(255, 255, 255, 0.85)" />
             </TouchableOpacity>
 
-          </View>
+          </View> : null}
 
           {/* Separator — cutout between attach and text field */}
-          <View style={styles.capsuleSeparator} />
+          {allowAttachments ? <View style={styles.capsuleSeparator} /> : null}
 
           {/* Message Input */}
           <TouchableOpacity
@@ -3733,6 +3742,7 @@ export default function MessageInterface({
         onOpenMedia={() => setShowMediaSheet(true)}
         onLeft={() => onGroupConversationLeft?.()}
         onError={(message) => showNotification(message, "", "error")}
+        managed={isProgramChat}
       />
 
       <ChatMediaSheet

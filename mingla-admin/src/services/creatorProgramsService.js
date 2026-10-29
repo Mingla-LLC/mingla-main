@@ -3,7 +3,7 @@
 // a write that answers {ok:false, error} is thrown as a failure so a page can
 // never show a success for it.
 
-import { supabase } from "../lib/supabase";
+import { invokeWithRefresh, supabase } from "../lib/supabase";
 
 export class ProgramWriteError extends Error {
   constructor(result) {
@@ -40,6 +40,50 @@ export function decideCreator(creatorId, decision, note) {
     p_decision: decision,
     p_note: note && note.trim() ? note.trim() : null,
   });
+}
+
+// ── Program conversations (#4187) ─────────────────────────────────────────
+
+export async function listLocalProgramPeople() {
+  const rows = await read("admin_program_local_people");
+  return Array.isArray(rows) ? rows : [];
+}
+
+export function getProgramConversation(programKind, targetUserId) {
+  return write("admin_program_conversation_thread", {
+    p_program_kind: programKind,
+    p_target_user_id: targetUserId,
+  });
+}
+
+export async function sendProgramMessage({ programKind, targetUserId, content, clientId }) {
+  const result = await write("admin_program_message_send", {
+    p_program_kind: programKind,
+    p_target_user_id: targetUserId,
+    p_content: content,
+    p_client_id: clientId,
+  });
+
+  // The message row is already durable at this point. Push is deliberately a
+  // follow-on through the one canonical notification rail, keyed by message id
+  // so retrying the same client id cannot create a second notification.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user?.id && result?.conversation_id && result?.message?.id) {
+    const notification = await invokeWithRefresh("notify-message", {
+      body: {
+        type: "message",
+        senderId: user.id,
+        conversationId: result.conversation_id,
+        messageId: result.message.id,
+        messagePreview: result.message.content,
+      },
+    });
+    if (notification.error) {
+      console.warn("[program-messages] Message saved but push notification was not confirmed", notification.error);
+    }
+  }
+
+  return result;
 }
 
 // ── Gigs ────────────────────────────────────────────────────────────────────

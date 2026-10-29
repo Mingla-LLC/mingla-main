@@ -45,6 +45,8 @@ export interface Conversation {
   event_id?: string | null;
   // #4111 — 'brand_enquiry' rows are built by components/brandEnquiry/enquiryChatRows.
   linked_entity_type?: 'direct' | 'session' | 'trip' | 'event' | 'brand_enquiry';
+  /** #4187 official Mingla program team thread. */
+  program_kind?: 'local' | 'creator' | null;
   /** #4111 — enquiry threads (always their own row; #4114 reads this flag). */
   isEnquiry?: boolean;
   is_broadcast_only?: boolean;

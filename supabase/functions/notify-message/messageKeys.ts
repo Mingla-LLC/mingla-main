@@ -31,3 +31,24 @@ export function unifiedMessageIdempotencyKey(input: UnifiedMessageKeyInput): str
   }
   return `dm:${input.senderId}:${input.conversationId}:${input.nowMs}`;
 }
+
+export interface UnifiedMessageTitleInput {
+  conversationType: string;
+  conversationName?: string | null;
+  programKind?: "local" | "creator" | null;
+  programTargetUserId?: string | null;
+  senderId: string;
+  senderName: string;
+}
+
+/** #4187: an Admin-authored program message is presented as the official team. */
+export function unifiedMessageTitle(input: UnifiedMessageTitleInput): string {
+  const officialTeam = Boolean(
+    input.programKind && input.programTargetUserId && input.senderId !== input.programTargetUserId
+  );
+  if (officialTeam && input.conversationName) return input.conversationName;
+  if (input.conversationType === "group" && input.conversationName) {
+    return `${input.senderName} in ${input.conversationName}`;
+  }
+  return input.senderName;
+}

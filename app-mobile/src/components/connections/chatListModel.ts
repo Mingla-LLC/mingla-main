@@ -45,6 +45,8 @@ export interface ChatListConversationLike {
   name?: string | null;
   session_id?: string | null;
   linked_entity_type?: "direct" | "session" | "trip" | "event" | "brand_enquiry";
+  /** #4187 managed Mingla Local / Creator team conversation. */
+  program_kind?: "local" | "creator" | null;
   participants: ChatListParticipant[];
   last_message?: { content?: string | null; created_at?: string | null; message_type?: string | null } | null;
   unread_count?: number;
@@ -87,11 +89,12 @@ export const CHAT_FILTERS: readonly ChatFilter[] = ["all", "unread", "groups", "
  *    and trip chats of one brand, folded into one row);
  *  - enquiry: #4111's private enquiry thread (D11), kept as its own row.
  */
-export type ChatKind = "direct" | "direct_collab" | "group" | "event" | "brand_channel" | "enquiry";
+export type ChatKind = "direct" | "direct_collab" | "group" | "event" | "brand_channel" | "enquiry" | "program";
 
 export function chatKind(conversation: ChatListConversationLike): ChatKind {
   if (conversation.__brandChannel) return "brand_channel";
   if (conversation.isEnquiry) return "enquiry";
+  if (conversation.program_kind) return "program";
   if (conversation.type === "group") {
     if (conversation.linked_entity_type === "event" || conversation.linked_entity_type === "trip") {
       return "event";
@@ -465,6 +468,8 @@ export function chatAvatarSpec(input: ChatAvatarInput): ChatAvatarSpec {
       return present(input.eventBrandLogoUrl ?? input.brandLogoUrl)
         ? square(input.label, [input.eventBrandLogoUrl, input.brandLogoUrl])
         : circle(input.label, others[0]);
+    case "program":
+      return square(input.label, []);
     case "group": {
       if (others.length <= 1) return circle(input.label, others[0]);
       if (others.length <= GROUP_MAX_FACES) {
