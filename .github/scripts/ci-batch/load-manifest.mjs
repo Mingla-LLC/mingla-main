@@ -64,7 +64,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // exclusions beside #4073 in the deliberately filtered historical replays.
 // #4179: re-sealed after the Feature Guide reconciliation migration and its
 // PostgreSQL and structural proofs entered the preserved inventories.
-export const BOOTSTRAP_SHA256 = "f158bd84852f1895944f76960c2db7d4b0ac92d1e44dc0a9b2cf1a696bda40da";
+// #4179: re-sealed after the release-reason repair entered the same three
+// preserved historical replay inventories.
+export const BOOTSTRAP_SHA256 = "185892bcfcb91e9dbd5036d84603c410a0963087661eb590d57b76a982725dd0";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
