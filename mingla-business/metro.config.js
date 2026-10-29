@@ -150,6 +150,25 @@ const REACT_NATIVE_REANIMATED_WEB_STUB = path.join(
 const originalResolveRequest = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // Public offering pages lazy-load
+  // this leaf module to keep the full brand-rendering barrel out of their eager
+  // chunks. Metro can rewrite the alias as an app-relative ./packages path;
+  // resolve both spellings to the workspace package on every platform.
+  if (
+    moduleName === "@mingla/brand-rendering/FollowButton" ||
+    moduleName === "./packages/brand-rendering/FollowButton"
+  ) {
+    return {
+      filePath: path.join(
+        WORKSPACE_ROOT,
+        "packages",
+        "brand-rendering",
+        "FollowButton.tsx",
+      ),
+      type: "sourceFile",
+    };
+  }
+
   // The package root is mapped through extraNodeModules, but Metro does not
   // reliably preserve that mapping for a lazy subpath import. Keep this pure
   // validator in its own deferred chunk instead of pulling the package index
