@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4179_feature_guide_merge_reconciliation.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4179-feature-guide-merge-reconciliation-pg17",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "supabase_admin",
+    "reset": "suite-owned"
+  }
+}
