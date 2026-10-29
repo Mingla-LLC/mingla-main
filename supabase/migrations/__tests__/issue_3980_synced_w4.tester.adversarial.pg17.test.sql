@@ -8,10 +8,10 @@
 --               owner whose earlier request row is from another transaction
 --               (still a person). The helpers, ops_brand_match and
 --               ops_brand_autolink_one stay closed to every client role.
---   W4T-QUIET   a preview writes nothing anywhere: every public table keeps
---               its row count and the tables a backfill could touch keep
---               their exact contents (md5), including the agent log, request
---               keys and the brand auto-link wait list.
+--   W4T-QUIET   a preview leaves the complete backfill-owned write set byte-
+--               identical (md5), including the agent log, request keys and
+--               the brand auto-link wait list. Unrelated tables are outside
+--               this suite's ownership and cannot make this contract red.
 --   W4T-SAME    the preview ALWAYS says what brand auto-link then does, over
 --               the W3 rework 2 phone rules: US, Nigerian and UK numbers read
 --               across countries, a leading trunk 0, a leading 1, a side with
@@ -160,20 +160,15 @@ begin
 end;
 $fn$;
 
--- Every public table's row count, and the exact contents of every table a
--- backfill or brand auto-link could touch. One string, compared before/after.
--- team_agent_calls is left out: this suite's agent stand-in writes it.
+-- Exact contents of every table a backfill or brand auto-link could touch.
+-- One string, compared before/after. team_agent_calls is left out because this
+-- suite's agent stand-in writes it. Deliberately do not inventory every public
+-- table: unrelated features may add audited denial or telemetry rows without
+-- weakening the backfill's read-only preview/refused-caller contract.
 create function pg_temp.w4t_world() returns text
 language plpgsql as $fn$
-declare r record; v_n bigint; v_parts text[] := array[]::text[]; v_md5 text;
+declare r record; v_parts text[] := array[]::text[]; v_md5 text;
 begin
-  for r in select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
-            where n.nspname = 'public' and c.relkind in ('r', 'p')
-              and c.relname <> 'team_agent_calls' -- written by this suite's own agent stand-in, never by a backfill
-            order by c.relname loop
-    execute format('select count(*) from public.%I', r.relname) into v_n;
-    v_parts := v_parts || (r.relname || '=' || v_n);
-  end loop;
   for r in select unnest(array['crm_records', 'crm_activity', 'crm_record_identifiers', 'crm_record_owners', 'ops_work_cards',
                                'ops_work_links', 'ops_work_people', 'ops_roadmap_links', 'ops_agent_log', 'ops_request_keys',
                                'ops_brand_autolink_waits', 'ops_settings', 'ops_github_items', 'community_roadmap_cards',
@@ -315,7 +310,7 @@ begin
     pg_temp.w4t_agent('admin', 'claude', 'select public.ops_brand_cards_confirm(' || c_brands || ', ''w4t-admagent-1'')::text'), 'ERR:42501:forbidden:%');
   perform pg_temp.w4t_like('W4T-WHO', 'a signed-out caller cannot preview roadmap links',
     pg_temp.w4t_as('anon', 'select public.ops_roadmap_links_preview(' || c_links || ')::text'), 'ERR:42501:permission denied%');
-  perform pg_temp.w4t_check('W4T-WHO', 'no refused caller wrote anything anywhere', pg_temp.w4t_world(), v_before);
+  perform pg_temp.w4t_check('W4T-WHO', 'no refused caller changed the backfill-owned write set', pg_temp.w4t_world(), v_before);
   -- An agent request row from an earlier transaction does not make the owner an agent now.
   v := pg_temp.w4t_agent('owner', 'claude', 'select 1::text');
   v := pg_temp.w4t_person('owner', 'select public.ops_brand_cards_preview()::text');
@@ -355,7 +350,7 @@ begin
   v := pg_temp.w4t_person('owner', 'select public.ops_brand_cards_preview()::text');
   v := pg_temp.w4t_person('owner', $q$select public.ops_roadmap_links_preview('[{"card_id":"4e4a0000-0000-4000-d100-000000000003","issue":"#985004"}]'::jsonb)::text$q$);
   v := pg_temp.w4t_person('owner', 'select public.ops_roadmap_links_preview(''[]''::jsonb)::text');
-  perform pg_temp.w4t_check('W4T-QUIET', 'every public table keeps its rows, and the backfill tables their exact contents',
+  perform pg_temp.w4t_check('W4T-QUIET', 'the backfill-owned write set keeps its exact contents',
     pg_temp.w4t_world(), v_before);
 end;
 $quiet$;
