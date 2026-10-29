@@ -313,7 +313,8 @@ export function payUpToWord(minor, currency) {
 export const APPLICATION_STATUS_WORDS = {
   submitted: "New",
   shortlisted: "Shortlisted",
-  accepted: "Seated",
+  agreement_pending: "Waiting for signature",
+  accepted: "Signed · active",
   waitlisted: "Waitlisted",
   rejected: "Not this time",
 };
@@ -357,11 +358,11 @@ export function moneyStateWord(shareStatus) {
 }
 
 /** Validate a city's typed details. Returns { values } or { errors }. */
-export function checkProgramDraft(draft, activeCount = 0) {
+export function checkProgramDraft(draft, committedCount = 0) {
   const errors = {};
   const seats = Number(draft.seats);
   if (!/^\d+$/.test(String(draft.seats).trim()) || seats > 10) errors.seats = "Seats must be a whole number from 0 to 10.";
-  else if (seats < activeCount) errors.seats = `Seats can't be fewer than the ${activeCount} Locals already seated.`;
+  else if (seats < committedCount) errors.seats = `Seats can't be fewer than the ${committedCount} active or reserved Local seats.`;
   const minor = wholeToMinor(draft.rate, draft.currency);
   if (minor === null || Number.isNaN(minor) || minor <= 0) errors.rate = "Enter a whole monthly amount above 0, like 150.";
   if (!PAYOUT_CURRENCIES.includes(draft.currency)) errors.currency = "Choose a payout currency.";
@@ -430,16 +431,31 @@ const ERROR_WORDS = {
   dispute_not_escalated: "This dispute was already settled or withdrawn. Refresh the list.",
   invalid_outcome: "Choose release, partial refund or full refund.",
   invalid_refund_bps: "Enter a refund between 1% and 99%.",
-  seats_below_active_locals: "Seats can't be fewer than the Locals already seated.",
+  seats_below_active_locals: "Seats can't be fewer than the active and reserved Local seats.",
   social_check_required: "The social post must pass its check before you approve.",
+  local_social_post_not_reviewable: "This social post is no longer ready for review. Refresh the list.",
+  local_social_check_incomplete: "Check every social-post requirement before marking it complete.",
+  media_unavailable: "This video cannot be played right now. Do not approve the review yet.",
+  review_media_unavailable: "A submitted video is unavailable. Do not publish this review yet.",
   local_month_not_reviewable: "This review was already decided. Refresh the list.",
   changes_reasons_or_resubmission_invalid: "Add at least one reason. A review can only be sent back once.",
   local_month_not_voidable: "This pick can't be cancelled anymore.",
-  agreement_version_required: "Add the approved agreement version before seating a Local.",
+  agreement_version_required: "Publish the Local agreement before inviting someone to sign.",
+  agreement_version_is_server_owned: "The agreement version is set by the published Local agreement, not by an application review.",
+  local_agreement_not_published: "Publish the Local agreement before inviting someone to sign.",
+  local_signature_required: "The applicant must sign their agreement before their Local seat becomes active.",
+  local_city_seats_full: "This city has no unreserved Local seats.",
+  local_city_closed: "Local applications for this city are paused.",
+  application_not_reviewable: "This application changed. Refresh the list before deciding it.",
   seats_full: "This city has no free seats.",
   invalid_currency: "Use a three-letter currency code, like USD.",
   invalid_range: "The highest amount can't be below the lowest.",
   invalid_rate: "Enter a monthly rate above 0.",
+  media_type_unsupported: "Choose a JPG, PNG, GIF, WebP, HEIC, MP4, MOV, M4V, 3GP or WebM file.",
+  media_size_invalid: "Choose a photo or video between 1 byte and 25 MB.",
+  media_message_shape_invalid: "That photo or video is missing required file details.",
+  media_upload_unavailable: "The upload could not be verified. Choose the file and try again.",
+  message_media_unavailable: "That photo or video is no longer available.",
 };
 
 /** Any thrown error or {ok:false,error} -> one plain sentence. Never raw server text. */

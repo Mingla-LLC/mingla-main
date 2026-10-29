@@ -96,8 +96,8 @@ test("payees: kind and rail in plain words, money words On the way · Ready · P
 });
 
 test("server errors become one plain sentence, never raw text", () => {
-  assert.equal(programErrorMessage({ error: "seats_below_active_locals" }), "Seats can't be fewer than the Locals already seated.");
-  assert.equal(programErrorMessage({ message: 'new row violates check "seats_below_active_locals"' }), "Seats can't be fewer than the Locals already seated.");
+  assert.equal(programErrorMessage({ error: "seats_below_active_locals" }), "Seats can't be fewer than the active and reserved Local seats.");
+  assert.equal(programErrorMessage({ message: 'new row violates check "seats_below_active_locals"' }), "Seats can't be fewer than the active and reserved Local seats.");
   assert.equal(programErrorMessage(new Error("duplicate key value violates unique constraint")), "That didn't work. Try again.");
   assert.equal(programErrorMessage(null, "Fallback."), "Fallback.");
 });

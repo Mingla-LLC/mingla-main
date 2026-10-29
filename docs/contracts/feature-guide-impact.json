@@ -11,6 +11,61 @@
         "supabase/migrations/20280210004179_issue_4179_release_reason_backfill.sql",
         "supabase/migrations/20280211004179_issue_4179_release_reason_json_null.sql"
       ]
+    },
+    {
+      "capability_key": "programs-creators",
+      "paths": [
+        "app-mobile/app/local/index.tsx",
+        "app-mobile/app/local/review.tsx",
+        "app-mobile/src/components/expandedCard/LocalReviewsSection.tsx",
+        "app-mobile/src/components/local/localWords.ts",
+        "app-mobile/src/components/programs/CreatorMediaPlayerModal.tsx",
+        "app-mobile/src/services/localProgramService.ts",
+        "app-mobile/src/services/programResult.ts",
+        "app-mobile/src/utils/programFormat.ts",
+        "mingla-admin/src/components/programs/ProgramConversationPanel.jsx",
+        "mingla-admin/src/lib/creatorPrograms.js",
+        "mingla-admin/src/pages/ProgramCreatorsPage.jsx",
+        "mingla-admin/src/pages/locals/LocalsPanel.jsx",
+        "mingla-admin/src/services/creatorProgramsService.js",
+        "mingla-business/src/components/creators/screens/HostGigContractScreen.tsx",
+        "mingla-business/src/services/creatorGigsService.ts",
+        "mingla-marketing/app/local-agreement/page.tsx",
+        "mingla-marketing/lib/localAgreementContent.ts",
+        "mingla-marketing/package.json",
+        "supabase/functions/_shared/creatorMedia.ts",
+        "supabase/functions/_shared/creatorMedia.ts.function-policy.json",
+        "supabase/functions/creator-media-public/function-policy.json",
+        "supabase/functions/creator-media-reaper/function-policy.json",
+        "supabase/functions/creator-media-reaper/index.ts",
+        "supabase/functions/creator-media-status/function-policy.json",
+        "supabase/functions/creator-media-status/index.ts",
+        "supabase/functions/creator-media-upload-intent/function-policy.json",
+        "supabase/functions/creator-media-upload-intent/index.ts",
+        "supabase/functions/creator-media-webhook/function-policy.json",
+        "supabase/functions/creator-media-webhook/index.ts",
+        "supabase/functions/local-payout/index.ts",
+        "supabase/migrations/20280208004182_issue_4182_bunny_media_lifecycle.sql",
+        "supabase/migrations/20280212004187_issue_4187_admin_program_messaging.sql"
+      ]
+    },
+    {
+      "capability_key": "social-chat",
+      "paths": [
+        "app-mobile/src/components/ConnectionsPage.tsx",
+        "app-mobile/src/components/MessageInterface.tsx",
+        "app-mobile/src/components/chat/ChatAttachSheet.tsx",
+        "app-mobile/src/components/chat/GroupInfoSheet.tsx",
+        "app-mobile/src/components/connections/ChatListItem.tsx",
+        "app-mobile/src/components/connections/chatListModel.ts",
+        "app-mobile/src/hooks/useMessages.ts",
+        "app-mobile/src/i18n/locales/en/chat.json",
+        "app-mobile/src/services/connectionsService.ts",
+        "app-mobile/src/services/messagingService.ts",
+        "app-mobile/src/utils/chatComposerGeometry.ts",
+        "supabase/functions/notify-message/index.ts",
+        "supabase/functions/notify-message/messageKeys.ts"
+      ]
     }
   ]
 }

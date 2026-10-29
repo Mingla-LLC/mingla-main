@@ -161,17 +161,16 @@ import { HapticFeedback } from "../utils/hapticFeedback";
 import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
 import { colors } from "../constants/colors";
 import { chatTokens } from "../constants/chatTokens";
-import { useAppLayout } from "../hooks/useAppLayout";
+import { getFloatingBottomNavSheetInset } from "../hooks/useAppLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { validateNativeContentCardDescriptorV1, type NativeContentCardDescriptorV1 } from '@mingla/sharing';
+import { resolveChatComposerBottom } from "../utils/chatComposerGeometry";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 /** Vertical gap between composer border and input row; match bottom when keyboard is closed. */
 const INPUT_AREA_VERTICAL_PADDING = 6;
-/** ORCH-0600: breathing gap between floating glass input capsule and the bottom nav. */
-const INPUT_CAPSULE_MARGIN_BOTTOM = 14;
 /** Bottom read-only broadcast pill height; used to keep chat bubbles and sheets above it. */
 // META-ORCH-0991 Wave B Batch 5: fixed compact snap for the 1:1 chat
 // more-options action menu (was a flex-end RN <Modal>).
@@ -337,6 +336,8 @@ interface Friend {
   sessionId?: string | null;
   eventId?: string | null;
   linkedEntityType?: "direct" | "session" | "trip" | "event" | null;
+  /** #4187 managed official-team chat. */
+  programKind?: "local" | "creator" | null;
   sessionCreatorId?: string | null;
   eventBrandName?: string | null;
   eventBrandAccountId?: string | null;
@@ -374,6 +375,12 @@ interface MessageInterfaceProps {
    * chat media service.
    */
   onSendMedia?: (items: PickedChatMedia[], caption: string, viewOnce: boolean, replyToId?: string) => void;
+  /** Whether the chat composer exposes its attachment control. */
+  allowAttachments?: boolean;
+  /** Managed program threads keep photo/video replies durable for Admin review. */
+  allowViewOnce?: boolean;
+  /** Managed program threads accept photo/video replies, not arbitrary files. */
+  allowFiles?: boolean;
   /** Issue #4114 Wave 4: 0..1 upload progress of media sends, by client id. */
   uploadProgress?: Record<string, number>;
   /** Issue #4114 Wave 4: cancel a media send while it uploads. */
@@ -478,6 +485,9 @@ export default function MessageInterface({
   onSendMessage,
   messages,
   onSendMedia,
+  allowAttachments = true,
+  allowViewOnce = true,
+  allowFiles = true,
   uploadProgress,
   onCancelUpload,
   onRetryMessage,
@@ -539,6 +549,7 @@ export default function MessageInterface({
     return name.trim();
   };
   const isGroupChat = friend.conversationType === "group";
+  const isProgramChat = isGroupChat && Boolean(friend.programKind);
   const isTripEventGroupChat =
     isGroupChat && (friend.linkedEntityType === "trip" || friend.linkedEntityType === "event");
   const isCollabSessionGroupChat =
@@ -823,7 +834,7 @@ export default function MessageInterface({
   );
   const headerAvatarKind: "single" | "stack" | "cover" | "brand" = !isGroupChat
     ? "single"
-    : isBrandChannel
+    : isBrandChannel || isProgramChat
       ? "brand"
       : friend.eventCoverMediaUrl
       ? "cover"
@@ -836,6 +847,8 @@ export default function MessageInterface({
         t('chat:you'),
         (names) => t('chat:membersAndYou', { names }),
       )
+    : isProgramChat
+      ? t('chat:programTeamSubtitle')
     : isTripEventGroupChat
       ? eventAudienceSubtitle
       : isGroupChat
@@ -1012,15 +1025,8 @@ export default function MessageInterface({
   } | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const flatListRef = useRef<FlatList>(null);
-  const { bottomNavTotalHeight } = useAppLayout();
-  // ORCH-0610 fix: Android overlap — the Mingla nav uses bottom: insets.bottom + 6
-  // (see app/index.tsx CoachMarkNavigationGate) so its TOP edge is higher than
-  // bottomNavTotalHeight alone implies. Add 19pt to the input capsule's bottom
-  // offset (and matching chat-list padding) so the capsule clears the nav top
-  // with an 8pt visual gap. iOS nav uses bottom: 11 which is already below
-  // bottomNavTotalHeight, so no adjustment needed.
-  const ANDROID_NAV_OVERLAP_FIX = Platform.OS === 'android' ? 19 : 0;
   const safeInsets = useSafeAreaInsets();
+  const floatingNavBottom = getFloatingBottomNavSheetInset(safeInsets.bottom);
 
   // ── Keyboard handling via useKeyboard hook ─────────────────
   const { keyboardHeight, isVisible: keyboardVisible } = useKeyboard({
@@ -1383,7 +1389,7 @@ export default function MessageInterface({
   const handleSendPickedMedia = () => {
     if (pendingMedia.length === 0 || !onSendMedia) return;
     const media = pendingMedia;
-    const viewOnce = attachViewOnce;
+    const viewOnce = allowViewOnce && attachViewOnce;
     sendCoordinator.requestSend({
       read: chatController.readText,
       allowEmpty: true,
@@ -2056,10 +2062,9 @@ export default function MessageInterface({
     );
   }, [currentUserId, friend.sessionId, onGroupSessionExited, t]);
 
-  // ORCH-0620 composer position:
-  //   - inputBottomOffset: nav clearance so the composer floats above the bottom
-  //     nav when the keyboard is closed. On Android, + ANDROID_NAV_OVERLAP_FIX
-  //     because the nav uses bottom: insets.bottom + 6 (not 0).
+  // ORCH-0620 / #4187 composer position:
+  //   - Closed: clear the actual rendered floating-nav capsule by 8pt. The old
+  //     bottomNavTotalHeight approximation left the composer visibly stranded.
   //   - iOS keyboard lift: iOS never resizes/pans the window — always lift manually.
   //     Safe because iOS fires keyboardWillShow BEFORE animation.
   //   - Android adaptive lift: Expo maps softwareKeyboardLayoutMode="resize" to
@@ -2084,26 +2089,21 @@ export default function MessageInterface({
   // physical screen bottom. The gesture bar (safeInsets.bottom) still sits
   // between keyboard and screen bottom visually. To position the composer above
   // the actual visible keyboard, we need to account for it.
-  const androidManualLift =
-    Platform.OS === 'android' && keyboardVisible
-      ? Math.max(0, keyboardHeight + safeInsets.bottom - windowShrinkAmount) +
-        KEYBOARD_TOOLBAR_HEIGHT
-      : 0;
-  const iosKeyboardLift =
-    Platform.OS === 'ios' && keyboardVisible
-      ? keyboardHeight + KEYBOARD_TOOLBAR_HEIGHT
-      : 0;
-
-  // When the keyboard is open, the floating bottom nav is hidden behind the
-  // keyboard — the composer only needs a small breathing gap above the keyboard
-  // top, not the full nav clearance. When closed, use full nav clearance so the
-  // composer floats above the nav capsule.
-  const inputBottomOffset = keyboardVisible
-    ? INPUT_CAPSULE_MARGIN_BOTTOM
-    : bottomNavTotalHeight + INPUT_CAPSULE_MARGIN_BOTTOM + ANDROID_NAV_OVERLAP_FIX;
-  const finalInputBottom = inputBottomOffset + iosKeyboardLift + androidManualLift;
+  // The resolver applies one surface only: nav when closed, keyboard + the
+  // global Done toolbar when open. This keeps the capsule flush to both without
+  // stacking two independent clearances.
+  const finalInputBottom = resolveChatComposerBottom({
+    platform: Platform.OS,
+    keyboardVisible,
+    keyboardHeight,
+    keyboardToolbarHeight: KEYBOARD_TOOLBAR_HEIGHT,
+    floatingNavBottom,
+    androidSafeAreaBottom: safeInsets.bottom,
+    androidWindowShrinkAmount: windowShrinkAmount,
+  });
   const isBroadcastOnlyConsumerChannel = isTripEventGroupChat && friend.isBroadcastOnly === true;
-  const broadcastComposerNoticeBottom = bottomNavTotalHeight + BROADCAST_COMPOSER_NOTICE_BOTTOM_GAP;
+  const broadcastComposerNoticeBottom =
+    floatingNavBottom + (BROADCAST_COMPOSER_NOTICE_BOTTOM_GAP - 8);
   const broadcastComposerContentClearance =
     broadcastComposerNoticeBottom +
     BROADCAST_COMPOSER_NOTICE_HEIGHT +
@@ -2122,7 +2122,7 @@ export default function MessageInterface({
       : NOTICE_BANNER_LIST_GAP;
   // Issue #4114 Wave 3: the blocked / unfriended / deleted banners sit above
   // the floating bottom nav instead of behind it.
-  const noticeBannerBottomGap = bottomNavTotalHeight + 12 + ANDROID_NAV_OVERLAP_FIX;
+  const noticeBannerBottomGap = floatingNavBottom + 4;
   // Issue #4114 Wave 6: translated, and no "broadcast" label on chats guests can post in.
   const channelBrand = friend.eventBrandName?.trim() || t('chat:theOrganiser');
   const channelLabel = isBrandChannel
@@ -3202,10 +3202,9 @@ export default function MessageInterface({
         </View>
       )}
 
-      {/* Input Area - Floating glass capsule. ORCH-0610 forensic fix: bottom
-          is a STATIC value keyed off keyboardVisible (not an Animated.add).
-          When keyboard opens, the capsule is positioned at keyboardHeight + 8
-          from screen bottom — above the keyboard. OS `adjustPan` sees the
+      {/* Input Area - Floating glass capsule. The bottom value resolves against
+          the rendered nav capsule while closed and the keyboard toolbar while
+          open. OS `adjustPan` sees the
           focused input is already visible above the keyboard and does NOT pan
           the window, so the header stays at its original position. */}
       {/* Issue #4114 Wave 3: a tap anywhere outside closes the attach menu. */}
@@ -3235,6 +3234,8 @@ export default function MessageInterface({
             items={pendingMedia}
             viewOnce={attachViewOnce}
             onToggleViewOnce={setAttachViewOnce}
+            allowViewOnce={allowViewOnce}
+            allowFiles={allowFiles}
             recipientName={isGroupChat ? null : cleanName(friend.name || friend.username || "")}
             picking={isPickingMedia}
             onCamera={() => void handlePickCamera()}
@@ -3320,8 +3321,9 @@ export default function MessageInterface({
             </>
           )}
           <View style={styles.inputContainer}>
-          {/* Attachment Menu */}
-          <View style={styles.attachmentContainer}>
+          {/* Attachment Menu — official program chats use this same canonical
+              media rail, with view-once and arbitrary files disabled. */}
+          {allowAttachments ? <View style={styles.attachmentContainer}>
             <TouchableOpacity
               onPress={() => setShowAttachmentMenu(!showAttachmentMenu)}
               style={styles.attachmentButton}
@@ -3333,10 +3335,10 @@ export default function MessageInterface({
               <Icon name="attach" size={20} color="rgba(255, 255, 255, 0.85)" />
             </TouchableOpacity>
 
-          </View>
+          </View> : null}
 
           {/* Separator — cutout between attach and text field */}
-          <View style={styles.capsuleSeparator} />
+          {allowAttachments ? <View style={styles.capsuleSeparator} /> : null}
 
           {/* Message Input */}
           <TouchableOpacity
@@ -3733,6 +3735,7 @@ export default function MessageInterface({
         onOpenMedia={() => setShowMediaSheet(true)}
         onLeft={() => onGroupConversationLeft?.()}
         onError={(message) => showNotification(message, "", "error")}
+        managed={isProgramChat}
       />
 
       <ChatMediaSheet

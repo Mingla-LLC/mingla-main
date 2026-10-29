@@ -6,14 +6,21 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { localProgramService } from '../../src/services/localProgramService';
 import { chooseAndUploadCreatorMedia, creatorMediaStatus, isPickerCancel } from '../../src/services/creatorMediaService';
 import { programErrorText } from '../../src/services/programResult';
-import { parseDay, toDayString } from '../../src/utils/programFormat';
+import { parseDay, persistedDayString } from '../../src/utils/programFormat';
 import { SPEND_BANDS } from '../../src/components/local/localWords';
-import { PROGRAM_COLORS as C, ProgramButton, ProgramEmpty, ProgramField, ProgramLoading, ProgramNotice, ProgramScreen, programStyles as s } from '../../src/components/programs/ProgramUi';
+import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoading, ProgramNotice, ProgramRow, ProgramScreen, programStyles as s } from '../../src/components/programs/ProgramUi';
 import { CheckRow, Chip, DateField, StarsInput } from '../../src/components/programs/ProgramPickers';
 import { Icon } from '../../src/components/ui/Icon';
 import { playOwnVideo } from '../../src/components/programs/VideoTile';
 
 type Clip = { jobId: string; status: string };
+
+const VIDEO_BEATS = [
+  { title: 'Show how you found it', text: 'Start with the place card in your Mingla deck and name the place you picked.' },
+  { title: 'Take us inside', text: 'Show the arrival, atmosphere and the experience without staging the visit.' },
+  { title: 'Give the honest review', text: 'Share what you tried, what stood out, what could improve and who would enjoy it.' },
+  { title: 'End with your verdict', text: 'Say whether you would return and invite viewers to find the place on Mingla.' },
+] as const;
 
 /** #3872 — the Local review: date, stars, title, counted body, videos, public post link and disclosure. */
 export default function LocalReviewScreen(): React.ReactElement {
@@ -23,7 +30,7 @@ export default function LocalReviewScreen(): React.ReactElement {
   const home = useQuery({ queryKey: ['local', 'home'], queryFn: () => localProgramService.home() });
   const month = home.data?.months.find((m) => m.id === monthId) ?? (home.data?.current_month?.id === monthId ? home.data.current_month : null);
   const names = useQuery({ queryKey: ['local', 'place-name', month?.place_id], queryFn: () => localProgramService.placeNames([month!.place_id!]), enabled: Boolean(month?.place_id) });
-  const visitedDefault = month?.visited_at ? toDayString(parseDay(month.visited_at)!) : null;
+  const visitedDefault = persistedDayString(month?.visited_at);
   const [visitedOn, setVisitedOn] = useState<string | null>(null);
   const [rating, setRating] = useState(0);
   const [title, setTitle] = useState('');
@@ -32,7 +39,8 @@ export default function LocalReviewScreen(): React.ReactElement {
   const [clips, setClips] = useState<Clip[]>([]);
   const [uploading, setUploading] = useState(0);
   const [link, setLink] = useState('');
-  const [disclosed, setDisclosed] = useState(false);
+  const [formatConfirmed, setFormatConfirmed] = useState(false);
+  const [collaborationConfirmed, setCollaborationConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
@@ -42,7 +50,7 @@ export default function LocalReviewScreen(): React.ReactElement {
   const titleOk = title.trim().length >= 3 && title.trim().length <= 70;
   const bodyOk = body.trim().length >= 300 && body.trim().length <= 2000;
   const linkOk = /^https:\/\/\S+\.\S+/i.test(link.trim());
-  const valid = Boolean(day) && rating > 0 && titleOk && bodyOk && ready.length > 0 && linkOk && disclosed && clips.every((c) => c.status === 'ready');
+  const valid = Boolean(day) && rating > 0 && titleOk && bodyOk && ready.length > 0 && linkOk && formatConfirmed && collaborationConfirmed && clips.every((c) => c.status === 'ready');
 
   const addClip = async (): Promise<void> => {
     if (!month) return;
@@ -74,6 +82,12 @@ export default function LocalReviewScreen(): React.ReactElement {
   const processing = clips.some((c) => c.status !== 'ready' && c.status !== 'failed');
 
   return <ProgramScreen title={`Your review · ${place}`} footer={<ProgramButton label="Send for review" busy={busy} disabled={!valid} onPress={() => void submit()} />}>
+    <ProgramCard tone="highlight">
+      <Text style={s.title}>Your video format · 30–60 seconds, vertical</Text>
+      <Text style={s.copy}>Use one finished video in this order so it works on the place card and in Mingla marketing.</Text>
+      {VIDEO_BEATS.map((beat, index) => <ProgramRow key={beat.title} title={`${index + 1}. ${beat.title}`} subtitle={beat.text} chevron={false} isLast={index === VIDEO_BEATS.length - 1} />)}
+    </ProgramCard>
+    <ProgramNotice text="Before the visit, save a short screen recording of the place card in your Mingla deck. Put it at the start so viewers can see how you found the place." />
     <DateField label="Visited on" value={day} onChange={setVisitedOn} minimumDate={parseDay(month.month) ?? undefined} maximumDate={new Date()} sheetTitle="Visited on" />
     <View style={{ gap: 6 }}>
       <Text style={s.fieldLabel}>Your rating</Text>
@@ -102,10 +116,17 @@ export default function LocalReviewScreen(): React.ReactElement {
     {processing ? <ProgramButton label="Check processing" variant="ghost" onPress={() => void checkClips()} /> : null}
     {touched && ready.length === 0 ? <Text style={s.fieldErrorText}>Add at least one video and wait for it to process.</Text> : null}
 
-    <ProgramField label="Link to your public post" value={link} onChangeText={setLink} placeholder="https://instagram.com/p/…" autoCapitalize="none" autoCorrect={false} spellCheck={false}
+    <ProgramCard>
+      <Text style={s.title}>Post the same finished video</Text>
+      <Text style={s.copy}>Publish it on your social account, tag Mingla and invite Mingla’s official account as a collaborator. Then paste the public post below.</Text>
+      <Text style={s.small}>After approval, this video can also appear on this place’s expanded card and in Mingla marketing, as set out in your signed Local agreement.</Text>
+    </ProgramCard>
+    <ProgramField label="Link to the post with your video" value={link} onChangeText={setLink} placeholder="https://instagram.com/p/…" autoCapitalize="none" autoCorrect={false} spellCheck={false}
       keyboardType="url" textContentType="URL" error={touched && !linkOk ? 'Paste the full link, starting with https://' : null} />
-    <CheckRow checked={disclosed} onToggle={() => setDisclosed((v) => !v)} label="My post says I’m a Mingla Local and the visit was paid by Mingla" />
-    {touched && !disclosed ? <Text style={s.fieldErrorText}>Your post must say this so viewers know.</Text> : null}
+    <CheckRow checked={formatConfirmed} onToggle={() => setFormatConfirmed((value) => !value)} label="My video follows the four-part Mingla format above" />
+    <CheckRow checked={collaborationConfirmed} onToggle={() => setCollaborationConfirmed((value) => !value)} label="I posted this same video, tagged Mingla and invited Mingla’s official account as a collaborator" />
+    {touched && !formatConfirmed ? <Text style={s.fieldErrorText}>Confirm that the submitted video follows the format.</Text> : null}
+    {touched && !collaborationConfirmed ? <Text style={s.fieldErrorText}>Post the video and invite Mingla as a collaborator before sending it for review.</Text> : null}
     {error ? <ProgramNotice tone="error" text={error} /> : null}
   </ProgramScreen>;
 }

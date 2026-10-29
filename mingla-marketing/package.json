@@ -39,7 +39,8 @@
     "test:issue-4063": "node app/c/[code]/__tests__/issue-4063-claim-link.implementor.happy.test.mjs",
     "test:issue-3548:tester": "node scripts/issue-3548-local-fonts.tester.adversarial.test.mjs",
     "test:issue-4137": "node scripts/issue-4137-cta-destinations.implementor.happy.test.mjs && node scripts/issue-4137-host-page.implementor.happy.test.mjs && node scripts/issue-4137-device-cta-ssr.implementor.happy.test.mjs && node scripts/issue-4137-menu.implementor.happy.test.mjs --source-only && node scripts/issue-4137-menu-blog-seam.implementor.happy.test.mjs && node scripts/issue-4137-city-rank.implementor.happy.test.mjs && node scripts/issue-4137-city-place-media.implementor.happy.test.mjs && node scripts/issue-4137-blog-routes.implementor.happy.test.mjs",
-    "test:issue-4137:tester": "node --experimental-websocket scripts/issue-4137-host-and-cta.tester.adversarial.test.mjs --built-only && node --experimental-websocket scripts/issue-4137-menu-and-city.tester.adversarial.test.mjs --built-only && node --experimental-websocket scripts/issue-4137-blog.tester.adversarial.test.mjs --built-only"
+    "test:issue-4137:tester": "node --experimental-websocket scripts/issue-4137-host-and-cta.tester.adversarial.test.mjs --built-only && node --experimental-websocket scripts/issue-4137-menu-and-city.tester.adversarial.test.mjs --built-only && node --experimental-websocket scripts/issue-4137-blog.tester.adversarial.test.mjs --built-only",
+    "test:issue-4182": "node --experimental-strip-types scripts/issue-4182-local-agreement.implementor.happy.test.mjs"
   },
   "dependencies": {
     "@next/third-parties": "^15.1.6",

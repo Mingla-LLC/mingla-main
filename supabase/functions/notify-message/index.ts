@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { unifiedMessageIdempotencyKey } from "./messageKeys.ts";
+import { unifiedMessageIdempotencyKey, unifiedMessageTitle } from "./messageKeys.ts";
 
 // Loose type alias for the Supabase admin client passed into helper functions. The strict
 // generic-defaulted SupabaseClient<unknown, never, ...> from ReturnType<typeof createClient>
@@ -123,7 +123,7 @@ async function handleUnifiedMessage(
   // Fetch conversation metadata (single query — includes type, name, linked_entity_type, session_id, event_id).
   const { data: conv, error: convErr } = await adminClient
     .from("conversations")
-    .select("id, type, name, linked_entity_type, session_id, event_id")
+    .select("id, type, name, linked_entity_type, session_id, event_id, program_kind, program_target_user_id")
     .eq("id", conversationId)
     .maybeSingle();
 
@@ -146,7 +146,14 @@ async function handleUnifiedMessage(
 
   // Render title + deep-link based on conversation type.
   const isGroup = conv.type === "group";
-  const title = isGroup && conv.name ? `${senderName} in ${conv.name}` : senderName;
+  const title = unifiedMessageTitle({
+    conversationType: conv.type,
+    conversationName: conv.name,
+    programKind: conv.program_kind,
+    programTargetUserId: conv.program_target_user_id,
+    senderId,
+    senderName,
+  });
 
   let deepLink = `mingla://chat/${conversationId}?type=${conv.type}`;
   if (isGroup && conv.linked_entity_type === "session" && conv.session_id) {

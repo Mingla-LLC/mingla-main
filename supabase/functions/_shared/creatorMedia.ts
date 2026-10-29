@@ -14,6 +14,7 @@ import {
 const VIDEO_HOST = "https://video.bunnycdn.com";
 const ACCOUNT_HOST = "https://api.bunny.net";
 const TUS_ENDPOINT = "https://video.bunnycdn.com/tusupload";
+const SHARED_CREDENTIAL_BUNDLE = "AD_CONVERSION_TOKENS";
 
 export const CREATOR_MEDIA_MAX_BYTES = 150 * 1024 * 1024;
 export const CREATOR_MEDIA_MAX_DURATION_S = 90;
@@ -35,20 +36,46 @@ const positiveNumber = (raw: string | undefined): number => {
   return Number.isFinite(value) && value > 0 ? value : 0;
 };
 
+/**
+ * The project is at its governed secret-name ceiling. Production Creator
+ * Bunny values therefore live in the existing encrypted credential map;
+ * direct names remain a compatibility seam for local development and tests.
+ * Values are never emitted when the bundle is absent or malformed.
+ */
+const creatorMediaEnv = (name: string): string | undefined => {
+  try {
+    const raw = Deno.env.get(SHARED_CREDENTIAL_BUNDLE);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const value = parsed[name];
+      if (typeof value === "string" && value.trim()) return value;
+    }
+  } catch {
+    // Direct values are a local/test compatibility fallback when the governed
+    // production bundle is absent or malformed.
+  }
+  const direct = Deno.env.get(name);
+  return direct?.trim() ? direct : undefined;
+};
+
 export function creatorMediaConfig(): CreatorMediaConfig {
   return {
-    libraryId: (Deno.env.get("CREATOR_BUNNY_STREAM_LIBRARY_ID") ?? "").trim(),
-    apiKey: (Deno.env.get("CREATOR_BUNNY_STREAM_API_KEY") ?? "").trim(),
-    accountApiKey: (Deno.env.get("CREATOR_BUNNY_ACCOUNT_API_KEY") ?? "").trim(),
-    cdnHostname: (Deno.env.get("CREATOR_BUNNY_STREAM_CDN_HOSTNAME") ?? "")
+    libraryId: (creatorMediaEnv("CREATOR_BUNNY_STREAM_LIBRARY_ID") ?? "")
       .trim(),
-    tokenKey: (Deno.env.get("CREATOR_BUNNY_STREAM_TOKEN_KEY") ?? "").trim(),
-    webhookKey: (Deno.env.get("CREATOR_BUNNY_STREAM_WEBHOOK_KEY") ?? "").trim(),
+    apiKey: (creatorMediaEnv("CREATOR_BUNNY_STREAM_API_KEY") ?? "").trim(),
+    accountApiKey: (creatorMediaEnv("CREATOR_BUNNY_ACCOUNT_API_KEY") ?? "")
+      .trim(),
+    cdnHostname: (creatorMediaEnv("CREATOR_BUNNY_STREAM_CDN_HOSTNAME") ?? "")
+      .trim(),
+    tokenKey: (creatorMediaEnv("CREATOR_BUNNY_STREAM_TOKEN_KEY") ?? "")
+      .trim(),
+    webhookKey: (creatorMediaEnv("CREATOR_BUNNY_STREAM_WEBHOOK_KEY") ?? "")
+      .trim(),
     storageCapBytes: positiveNumber(
-      Deno.env.get("CREATOR_BUNNY_STORAGE_CAP_BYTES"),
+      creatorMediaEnv("CREATOR_BUNNY_STORAGE_CAP_BYTES"),
     ),
     trafficCapBytes: positiveNumber(
-      Deno.env.get("CREATOR_BUNNY_TRAFFIC_CAP_BYTES"),
+      creatorMediaEnv("CREATOR_BUNNY_TRAFFIC_CAP_BYTES"),
     ),
   };
 }
@@ -58,6 +85,7 @@ export type CapacityDecision = {
   reason:
     | "under_cap"
     | "capacity_reached"
+    | "provider_not_configured"
     | "usage_unreadable"
     | "settings_invalid";
   usedPercent: number | null;
@@ -72,6 +100,8 @@ export function evaluateCreatorMediaCapacity(input: {
   mp4Fallback: unknown;
   keepOriginalFiles?: unknown;
   tokenAuthentication?: unknown;
+  playerTokenAuthentication?: unknown;
+  allowDirectPlay?: unknown;
 }): CapacityDecision {
   const storage = Number(input.storageUsage);
   const traffic = Number(input.trafficUsage);
@@ -86,9 +116,14 @@ export function evaluateCreatorMediaCapacity(input: {
       part.trim().toLowerCase()
     )
     : [];
+  const requiredResolutions = ["240p", "360p", "480p", "720p", "1080p"];
   if (
-    !resolutions.includes("1080p") || input.mp4Fallback !== true ||
-    input.keepOriginalFiles !== false || input.tokenAuthentication !== true
+    requiredResolutions.some((resolution) =>
+      !resolutions.includes(resolution)
+    ) ||
+    input.mp4Fallback !== true ||
+    input.keepOriginalFiles !== false || input.tokenAuthentication !== true ||
+    input.playerTokenAuthentication !== true || input.allowDirectPlay !== true
   ) {
     return { blocked: true, reason: "settings_invalid", usedPercent: null };
   }
@@ -106,10 +141,16 @@ export async function readCreatorMediaCapacity(
   fetchImpl: typeof fetch = fetch,
 ): Promise<CapacityDecision> {
   if (
-    config.libraryId.length === 0 || config.accountApiKey.length === 0 ||
+    config.libraryId.length === 0 || config.apiKey.length === 0 ||
+    config.accountApiKey.length === 0 || config.cdnHostname.length === 0 ||
+    config.tokenKey.length === 0 || config.webhookKey.length === 0 ||
     config.storageCapBytes <= 0 || config.trafficCapBytes <= 0
   ) {
-    return { blocked: true, reason: "usage_unreadable", usedPercent: null };
+    return {
+      blocked: true,
+      reason: "provider_not_configured",
+      usedPercent: null,
+    };
   }
   let response: Response;
   try {
@@ -139,6 +180,44 @@ export async function readCreatorMediaCapacity(
   if (body === null) {
     return { blocked: true, reason: "usage_unreadable", usedPercent: null };
   }
+  // Bunny applies Stream CDN token authentication on the library's backing
+  // pull zone. The video-library API currently returns
+  // EnableTokenAuthentication=null even when the pull zone is protected, so
+  // treating that nullable mirror as provider truth would permanently block a
+  // correctly configured library. Verify the authoritative pull-zone setting
+  // before allowing an upload.
+  const pullZoneId = Number(body.PullZoneId);
+  if (!Number.isInteger(pullZoneId) || pullZoneId <= 0) {
+    return { blocked: true, reason: "settings_invalid", usedPercent: null };
+  }
+  let pullZoneResponse: Response;
+  try {
+    pullZoneResponse = await fetchWithTimeout(
+      `${ACCOUNT_HOST}/pullzone/${pullZoneId}`,
+      {
+        headers: {
+          AccessKey: config.accountApiKey,
+          accept: "application/json",
+        },
+      },
+      BUNNY_TIMEOUTS_MS.usage,
+      fetchImpl,
+    );
+  } catch {
+    return { blocked: true, reason: "usage_unreadable", usedPercent: null };
+  }
+  if (!pullZoneResponse.ok) {
+    return { blocked: true, reason: "usage_unreadable", usedPercent: null };
+  }
+  let pullZoneBody: Record<string, unknown> | null = null;
+  try {
+    pullZoneBody = await pullZoneResponse.json();
+  } catch {
+    pullZoneBody = null;
+  }
+  if (pullZoneBody === null) {
+    return { blocked: true, reason: "usage_unreadable", usedPercent: null };
+  }
   return evaluateCreatorMediaCapacity({
     storageUsage: body.StorageUsage,
     trafficUsage: body.TrafficUsage,
@@ -147,7 +226,9 @@ export async function readCreatorMediaCapacity(
     enabledResolutions: body.EnabledResolutions,
     mp4Fallback: body.EnableMP4Fallback,
     keepOriginalFiles: body.KeepOriginalFiles,
-    tokenAuthentication: body.EnableTokenAuthentication,
+    tokenAuthentication: pullZoneBody.ZoneSecurityEnabled,
+    playerTokenAuthentication: body.PlayerTokenAuthenticationEnabled,
+    allowDirectPlay: body.AllowDirectPlay,
   });
 }
 
@@ -285,12 +366,78 @@ export async function creatorPlaybackUrl(
     !/^[0-9a-f-]{20,}$/i.test(videoId)
   ) return null;
   const expires = Math.floor(nowMs / 1000) + 3600;
-  const token = await sha256Hex(`${videoId}${config.tokenKey}${expires}`);
+  // Bunny embed-view tokens are SHA-256(key + video ID + expiry). Keep the
+  // signing key server-side and return only the finished, short-lived URL.
+  const token = await sha256Hex(`${config.tokenKey}${videoId}${expires}`);
   return {
-    url: `https://iframe.mediadelivery.net/embed/${
+    url: `https://player.mediadelivery.net/embed/${
       encodeURIComponent(config.libraryId)
     }/${encodeURIComponent(videoId)}?token=${token}&expires=${expires}`,
     expiresAt: new Date(expires * 1000).toISOString(),
+  };
+}
+
+const base64Url = (bytes: Uint8Array): string => {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll(
+    "=",
+    "",
+  );
+};
+
+const hmacSha256 = async (key: string, message: string): Promise<string> => {
+  const encoder = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(key),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return base64Url(
+    new Uint8Array(
+      await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(message)),
+    ),
+  );
+};
+
+/**
+ * A short-lived, single-file Bunny CDN grant for the approved MP4 master.
+ * Advanced token authentication signs the exact path; the token key never
+ * leaves this function and the grant cannot be reused for another asset.
+ */
+export async function creatorDownloadUrl(
+  videoId: string,
+  height: number | null,
+  config = creatorMediaConfig(),
+  nowMs = Date.now(),
+): Promise<{ url: string; expiresAt: string; filename: string } | null> {
+  if (
+    config.cdnHostname.length === 0 || config.tokenKey.length === 0 ||
+    !/^[0-9a-f-]{20,}$/i.test(videoId)
+  ) return null;
+  const sourceHeight = Number(height);
+  const rendition = sourceHeight >= 1080
+    ? 1080
+    : sourceHeight >= 720
+    ? 720
+    : sourceHeight >= 480
+    ? 480
+    : sourceHeight >= 360
+    ? 360
+    : 240;
+  const path = `/${videoId}/play_${rendition}p.mp4`;
+  const expires = Math.floor(nowMs / 1000) + 15 * 60;
+  const signature = await hmacSha256(config.tokenKey, `${path}${expires}`);
+  const host = config.cdnHostname.replace(/^https?:\/\//i, "").replace(
+    /\/$/,
+    "",
+  );
+  return {
+    url: `https://${host}${path}?token=HS256-${signature}&expires=${expires}`,
+    expiresAt: new Date(expires * 1000).toISOString(),
+    filename: `mingla-approved-video-${videoId.slice(0, 8)}.mp4`,
   };
 }
 
@@ -362,14 +509,14 @@ export async function getCreatorVideo(
   };
 }
 
-export async function deleteCreatorVideo(
+export function deleteCreatorVideo(
   videoId: string,
   config = creatorMediaConfig(),
   fetchImpl: typeof fetch = fetch,
   observeApiCall?: BunnyCallOptions["observeApiCall"],
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   if (config.libraryId.length === 0 || config.apiKey.length === 0) {
-    return { ok: false, reason: "provider_not_configured" };
+    return Promise.resolve({ ok: false, reason: "provider_not_configured" });
   }
   return bunnyDeleteVideo(videoId, {
     libraryId: config.libraryId,

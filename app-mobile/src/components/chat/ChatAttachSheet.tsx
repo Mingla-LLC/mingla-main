@@ -28,6 +28,10 @@ interface ChatAttachSheetProps {
   items: readonly PickedChatMedia[];
   viewOnce: boolean;
   onToggleViewOnce: (next: boolean) => void;
+  /** Managed program threads keep media durable for Admin review. */
+  allowViewOnce?: boolean;
+  /** Managed program threads accept the requested photos and videos only. */
+  allowFiles?: boolean;
   /** Name shown in the view-once hint ("Ada can open it one time…"); null in groups. */
   recipientName: string | null;
   picking: boolean;
@@ -92,6 +96,8 @@ export function ChatAttachSheet({
   items,
   viewOnce,
   onToggleViewOnce,
+  allowViewOnce = true,
+  allowFiles = true,
   recipientName,
   picking,
   onCamera,
@@ -104,13 +110,15 @@ export function ChatAttachSheet({
   const full = items.length >= MAX_CHAT_MEDIA_ITEMS;
   const hasFile = items.some((item) => item.kind === "file");
   // View once applies to photos and videos only.
-  const viewOnceAvailable = !hasFile;
+  const viewOnceAvailable = allowViewOnce && !hasFile;
 
   const rows: Array<{ key: string; icon: string; color: string; title: string; onPress: () => void; disabled: boolean }> = [
     { key: "camera", icon: "camera", color: "#f97316", title: t("chat:attachCamera"), onPress: onCamera, disabled: full || picking },
     { key: "library", icon: "images", color: "#3b82f6", title: t("chat:attachLibrary"), onPress: onLibrary, disabled: full || picking },
     // A file can't be view once, so File is off while the switch is on.
-    { key: "file", icon: "document-text", color: "#10b981", title: t("chat:attachFile"), onPress: onFile, disabled: full || picking || viewOnce },
+    ...(allowFiles
+      ? [{ key: "file", icon: "document-text", color: "#10b981", title: t("chat:attachFile"), onPress: onFile, disabled: full || picking || viewOnce }]
+      : []),
   ];
 
   return (
@@ -154,9 +162,9 @@ export function ChatAttachSheet({
         </TouchableOpacity>
       ))}
 
-      <View style={styles.divider} />
+      {allowViewOnce ? <View style={styles.divider} /> : null}
 
-      <View style={[styles.row, !viewOnceAvailable && styles.rowDisabled]}>
+      {allowViewOnce ? <View style={[styles.row, !viewOnceAvailable && styles.rowDisabled]}>
         <View style={styles.rowIcon}>
           <Icon name="eye-off" size={16} color={chatTokens.accent} />
         </View>
@@ -177,7 +185,7 @@ export function ChatAttachSheet({
           accessibilityLabel={t("chat:viewOnce")}
           testID="chat-attach-view-once"
         />
-      </View>
+      </View> : null}
 
       <TouchableOpacity
         onPress={onSend}

@@ -3,9 +3,12 @@ import {
   assertObjectMatch,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  creatorDownloadUrl,
+  creatorMediaConfig,
   creatorPlaybackUrl,
   deleteCreatorVideo,
   evaluateCreatorMediaCapacity,
+  readCreatorMediaCapacity,
 } from "../_shared/creatorMedia.ts";
 import { selectCreatorMediaReap } from "../creator-media-reaper/index.ts";
 import { createCreatorMediaWebhookHandler } from "../creator-media-webhook/index.ts";
@@ -38,7 +41,16 @@ const request = (overrides: Record<string, unknown> = {}) =>
     }),
   });
 
-function deps(options: { blocked?: boolean } = {}) {
+function deps(
+  options: {
+    blocked?: boolean;
+    blockedReason?:
+      | "usage_unreadable"
+      | "capacity_reached"
+      | "provider_not_configured"
+      | "settings_invalid";
+  } = {},
+) {
   let job: Record<string, unknown> | null = null;
   let creates = 0;
   let alerts = 0;
@@ -66,7 +78,11 @@ function deps(options: { blocked?: boolean } = {}) {
       readCapacity: () =>
         Promise.resolve(
           options.blocked
-            ? { blocked: true, reason: "usage_unreadable", usedPercent: null }
+            ? {
+              blocked: true,
+              reason: options.blockedReason ?? "usage_unreadable",
+              usedPercent: null,
+            }
             : { blocked: false, reason: "under_cap", usedPercent: 12 },
         ),
       findVideo: () => Promise.resolve({ ok: true, videoId: null }),
@@ -97,10 +113,12 @@ Deno.test("#3872 creator media capacity fails closed for unreadable, malformed a
       trafficUsage: 10,
       storageCapBytes: 100,
       trafficCapBytes: 100,
-      enabledResolutions: "720p,1080p",
+      enabledResolutions: "240p,360p,480p,720p,1080p",
       mp4Fallback: true,
       keepOriginalFiles: false,
       tokenAuthentication: true,
+      playerTokenAuthentication: true,
+      allowDirectPlay: true,
     }),
     { blocked: true, reason: "usage_unreadable" },
   );
@@ -114,6 +132,8 @@ Deno.test("#3872 creator media capacity fails closed for unreadable, malformed a
       mp4Fallback: true,
       keepOriginalFiles: false,
       tokenAuthentication: true,
+      playerTokenAuthentication: true,
+      allowDirectPlay: true,
     }),
     { blocked: true, reason: "settings_invalid" },
   );
@@ -123,28 +143,152 @@ Deno.test("#3872 creator media capacity fails closed for unreadable, malformed a
       trafficUsage: 10,
       storageCapBytes: 100,
       trafficCapBytes: 100,
-      enabledResolutions: "720p,1080p",
+      enabledResolutions: "240p,360p,480p,720p,1080p",
       mp4Fallback: true,
       keepOriginalFiles: false,
       tokenAuthentication: true,
+      playerTokenAuthentication: true,
+      allowDirectPlay: true,
     }),
     { blocked: true, reason: "capacity_reached", usedPercent: 91 },
   );
 });
 
-Deno.test("#3872 creator media intent refuses before any allocation when capacity is unreadable", async () => {
+Deno.test("#4182 creator media preflight requires every signed MP4 rendition", () => {
+  assertEquals(
+    evaluateCreatorMediaCapacity({
+      storageUsage: 1,
+      trafficUsage: 1,
+      storageCapBytes: 100,
+      trafficCapBytes: 100,
+      enabledResolutions: "360p,480p,720p,1080p",
+      mp4Fallback: true,
+      keepOriginalFiles: false,
+      tokenAuthentication: true,
+      playerTokenAuthentication: true,
+      allowDirectPlay: true,
+    }),
+    { blocked: true, reason: "settings_invalid", usedPercent: null },
+  );
+});
+
+Deno.test("#4182 creator media preflight reads CDN token protection from the authoritative pull zone", async () => {
+  const urls: string[] = [];
+  const fetchImpl = (input: string | URL | Request): Promise<Response> => {
+    const url = String(input);
+    urls.push(url);
+    if (url.endsWith("/videolibrary/4182")) {
+      return Promise.resolve(new Response(JSON.stringify({
+        StorageUsage: 10,
+        TrafficUsage: 20,
+        PullZoneId: 99182,
+        EnabledResolutions: "240p,360p,480p,720p,1080p",
+        EnableMP4Fallback: true,
+        KeepOriginalFiles: false,
+        EnableTokenAuthentication: null,
+        PlayerTokenAuthenticationEnabled: true,
+        AllowDirectPlay: true,
+      }), { status: 200 }));
+    }
+    if (url.endsWith("/pullzone/99182")) {
+      return Promise.resolve(new Response(JSON.stringify({
+        ZoneSecurityEnabled: true,
+      }), { status: 200 }));
+    }
+    return Promise.resolve(new Response(null, { status: 404 }));
+  };
+  const result = await readCreatorMediaCapacity({
+    libraryId: "4182",
+    apiKey: "library-key",
+    accountApiKey: "account-key",
+    cdnHostname: "creator.example.test",
+    tokenKey: "token-key",
+    webhookKey: "webhook-key",
+    storageCapBytes: 100,
+    trafficCapBytes: 100,
+  }, fetchImpl as typeof fetch);
+  assertEquals(result, {
+    blocked: false,
+    reason: "under_cap",
+    usedPercent: 20,
+  });
+  assertEquals(urls, [
+    "https://api.bunny.net/videolibrary/4182",
+    "https://api.bunny.net/pullzone/99182",
+  ]);
+});
+
+Deno.test("#4182 creator media config resolves from the governed shared credential bundle", () => {
+  const names = [
+    "CREATOR_BUNNY_ACCOUNT_API_KEY",
+    "CREATOR_BUNNY_STORAGE_CAP_BYTES",
+    "CREATOR_BUNNY_STREAM_API_KEY",
+    "CREATOR_BUNNY_STREAM_CDN_HOSTNAME",
+    "CREATOR_BUNNY_STREAM_LIBRARY_ID",
+    "CREATOR_BUNNY_STREAM_TOKEN_KEY",
+    "CREATOR_BUNNY_STREAM_WEBHOOK_KEY",
+    "CREATOR_BUNNY_TRAFFIC_CAP_BYTES",
+  ];
+  const before = new Map(
+    [...names, "AD_CONVERSION_TOKENS"].map((
+      name,
+    ) => [name, Deno.env.get(name)]),
+  );
+  try {
+    for (const name of names) Deno.env.set(name, `stale-${name}`);
+    Deno.env.set(
+      "AD_CONVERSION_TOKENS",
+      JSON.stringify({
+        CREATOR_BUNNY_ACCOUNT_API_KEY: "account-key",
+        CREATOR_BUNNY_STORAGE_CAP_BYTES: "1000000",
+        CREATOR_BUNNY_STREAM_API_KEY: "library-key",
+        CREATOR_BUNNY_STREAM_CDN_HOSTNAME: "creator.example.test",
+        CREATOR_BUNNY_STREAM_LIBRARY_ID: "4182",
+        CREATOR_BUNNY_STREAM_TOKEN_KEY: "token-key",
+        CREATOR_BUNNY_STREAM_WEBHOOK_KEY: "webhook-key",
+        CREATOR_BUNNY_TRAFFIC_CAP_BYTES: "2000000",
+      }),
+    );
+    assertEquals(creatorMediaConfig(), {
+      libraryId: "4182",
+      apiKey: "library-key",
+      accountApiKey: "account-key",
+      cdnHostname: "creator.example.test",
+      tokenKey: "token-key",
+      webhookKey: "webhook-key",
+      storageCapBytes: 1_000_000,
+      trafficCapBytes: 2_000_000,
+    });
+  } finally {
+    for (const [name, value] of before) {
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    }
+  }
+});
+
+Deno.test("#4182 creator media intent distinguishes provider outage from exhausted capacity", async () => {
   const fake = deps({ blocked: true });
   const response = await createCreatorMediaUploadIntentHandler(
     fake.deps as never,
   )(request());
   assertEquals(response.status, 503);
   assertObjectMatch(await response.json(), {
-    error: "media_capacity",
-    retryAfterSeconds: 300,
+    error: "media_unavailable",
   });
   assertEquals(fake.values().job, null);
   assertEquals(fake.values().creates, 0);
   assertEquals(fake.values().alerts, 1);
+
+  const capped = deps({ blocked: true, blockedReason: "capacity_reached" });
+  const cappedResponse = await createCreatorMediaUploadIntentHandler(
+    capped.deps as never,
+  )(request());
+  assertEquals(cappedResponse.status, 503);
+  assertObjectMatch(await cappedResponse.json(), {
+    error: "media_capacity",
+    retryAfterSeconds: 300,
+  });
 });
 
 Deno.test("#3872 creator media intent creates one deterministic provider object and replays it", async () => {
@@ -202,8 +346,37 @@ Deno.test("#3872 creator media playback grants are signed and expire after one h
     now,
   );
   assertEquals(playback?.expiresAt, "2026-10-26T13:00:00.000Z");
+  const expectedToken = [
+    "15e336c746ba010e7598265dbf75884bf",
+    "61a3a5e891be3e3fc4dd1d813def08b",
+  ].join("");
+  assertEquals(
+    playback?.url,
+    `https://player.mediadelivery.net/embed/3872/00000000-3872-4000-8000-000000000099?token=${expectedToken}&expires=1793019600`,
+  );
   assertEquals(playback?.url.includes("token-secret"), false);
-  assertEquals(playback?.url.includes("token="), true);
+});
+
+Deno.test("#4182 approved-master grants sign one MP4 path for fifteen minutes", async () => {
+  const grant = await creatorDownloadUrl(
+    "00000000-3872-4000-8000-000000000099",
+    1920,
+    {
+      libraryId: "3872",
+      apiKey: "api",
+      accountApiKey: "account",
+      cdnHostname: "creator.example.test",
+      tokenKey: "token-secret",
+      webhookKey: "webhook-secret",
+      storageCapBytes: 100,
+      trafficCapBytes: 100,
+    },
+    Date.parse("2026-10-26T12:00:00.000Z"),
+  );
+  assertEquals(grant?.expiresAt, "2026-10-26T12:15:00.000Z");
+  assertEquals(grant?.url.includes("play_1080p.mp4"), true);
+  assertEquals(grant?.url.includes("token=HS256-"), true);
+  assertEquals(grant?.url.includes("token-secret"), false);
 });
 
 Deno.test("#3872 creator media webhook authenticates before write and promotes verified provider truth", async () => {
