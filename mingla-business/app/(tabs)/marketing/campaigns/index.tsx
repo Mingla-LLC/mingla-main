@@ -13,10 +13,8 @@ import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -27,18 +25,13 @@ import {
   type CampaignFilter,
 } from "../../../../src/components/marketing/CampaignFilterPills";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
-import { Icon } from "../../../../src/components/ui/Icon";
 import {
-  accent,
-  glass,
-  radius,
   spacing,
   text as textTokens,
-  typography,
 } from "../../../../src/constants/designSystem";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useCampaigns } from "../../../../src/hooks/marketing/useCampaigns";
-import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
+import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
 import {
   cancelScheduled,
   deleteDraft,
@@ -47,7 +40,7 @@ import type { CampaignStatus } from "../../../../src/types/marketing";
 
 export default function MarketingCampaignsRoute(): React.ReactElement {
   const router = useRouter();
-  const fabOffset = useStickyFooterOffset();
+  const { isWideDesktop } = useResponsiveLayout();
   // #2514 — the list is scoped to the brand you are standing in, not to your
   // account. Keyed by account it mixed brands together and hid teammates.
   const currentBrand = useCurrentBrand();
@@ -96,15 +89,13 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
     }
   }, [campaignsQuery]);
 
-  const handleNewCampaign = useCallback(() => {
-    router.push("/marketing/campaigns/compose" as never);
-  }, [router]);
-
   const campaigns = campaignsQuery.data ?? [];
 
   return (
     <View style={styles.host}>
-      <CampaignFilterPills active={filter} onChange={setFilter} />
+      {filter !== "all" && campaigns.length === 0 ? (
+        <CampaignFilterPills active={filter} onChange={setFilter} />
+      ) : null}
       {/* ORCH-0889: disabled-query (auth-bootstrap) and first-fetch both
           render the spinner. The old guard `isLoading && campaigns.length
           === 0` mis-fired during the web auth-bootstrap window and fell
@@ -135,31 +126,22 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {campaigns.map((campaign) => (
-            <CampaignCard
-              key={campaign.id}
-              campaign={campaign}
-              onResume={handleResume}
-              onCancel={handleCancel}
-              onDelete={handleDelete}
-              onOpenReport={handleOpenReport}
-            />
-          ))}
+          <CampaignFilterPills active={filter} onChange={setFilter} />
+          <View style={[styles.campaignGrid, isWideDesktop && styles.campaignGridWide]}>
+            {campaigns.map((campaign) => (
+              <View key={campaign.id} style={isWideDesktop ? styles.campaignCellWide : styles.campaignCell}>
+                <CampaignCard
+                  campaign={campaign}
+                  onResume={handleResume}
+                  onCancel={handleCancel}
+                  onDelete={handleDelete}
+                  onOpenReport={handleOpenReport}
+                />
+              </View>
+            ))}
+          </View>
         </ScrollView>
       )}
-      <Pressable
-        onPress={handleNewCampaign}
-        accessibilityRole="button"
-        accessibilityLabel="New campaign"
-        style={({ pressed }) => [
-          styles.fab,
-          { bottom: fabOffset },
-          pressed ? styles.fabPressed : null,
-        ]}
-      >
-        <Icon name="plus" size={24} color={textTokens.primary} />
-        <Text style={styles.fabLabel}>New campaign</Text>
-      </Pressable>
     </View>
   );
 }
@@ -179,32 +161,8 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
     gap: spacing.sm,
   },
-  fab: {
-    position: "absolute",
-    right: spacing.md,
-    // `bottom` is set dynamically on the Pressable so it's safe-area aware.
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.full,
-    backgroundColor: "rgba(235, 120, 37, 0.42)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.32,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  fabPressed: {
-    opacity: 0.85,
-  },
-  fabLabel: {
-    ...typography.bodySm,
-    fontWeight: "600",
-    color: textTokens.primary,
-  },
+  campaignGrid: { gap: spacing.sm },
+  campaignGridWide: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start" },
+  campaignCell: { width: "100%" },
+  campaignCellWide: { flexBasis: "48%", flexGrow: 1, minWidth: 360 },
 });

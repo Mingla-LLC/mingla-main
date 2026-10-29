@@ -15,11 +15,13 @@ import {
   ListGroup,
   ListRow,
   ProgramEmpty,
+  ProgramColumns,
   ProgramLoading,
   ProgramScreen,
   Segmented,
   StatStrip,
 } from "../../../components/programs/ProgramKit";
+import { useMarketingActionRegistration } from "../../../components/marketing/MarketingActionContext";
 import { useProgramParams } from "../../../components/programs/useProgramParams";
 import { summarizeResults } from "../../../components/programs/resultsSummary";
 import { blastHubHref } from "../../../components/marketing/marketingSubNavTabs";
@@ -36,9 +38,20 @@ import {
 } from "../../../utils/creatorProgramFormat";
 import { text as textTokens } from "../../../constants/designSystem";
 
-export default function CreatorResults(): React.ReactElement {
+export default function CreatorResults({
+  embedded = false,
+  brandIdOverride,
+  currencyOverride,
+}: {
+  embedded?: boolean;
+  brandIdOverride?: string;
+  currencyOverride?: string;
+} = {}): React.ReactElement {
   const router = useRouter();
-  const { brandId, params, currency } = useProgramParams("gigId");
+  const route = useProgramParams("gigId");
+  const brandId = brandIdOverride ?? route.brandId;
+  const currency = currencyOverride ?? route.currency;
+  const { params } = route;
   const [rows, setRows] = useState<GigResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<ResultsPeriod>("30d");
@@ -70,25 +83,26 @@ export default function CreatorResults(): React.ReactElement {
 
   const summary = summarizeResults(rows ?? []);
   const code = summary.currency ?? currency;
+  const bookAction = React.useMemo(
+    () => ({
+      id: "creators-results-book",
+      label: "Book a creator",
+      compactLabel: "Book",
+      icon: "video" as const,
+      onPress: () => router.push(`/brand/${brandId}/creators/brief` as never),
+    }),
+    [brandId, router],
+  );
+  useMarketingActionRegistration(embedded ? bookAction : null);
 
   return (
     <ProgramScreen
       title="Results"
       fallback={blastHubHref("creators")}
+      embedded={embedded}
       refreshing={false}
       onRefresh={() => void load()}
     >
-      <Segmented
-        options={
-          [
-            ["7d", "7 days"],
-            ["30d", "30 days"],
-            ["all", "All"],
-          ] as const
-        }
-        value={period}
-        onChange={setPeriod}
-      />
       {rows === null ? <ProgramLoading /> : null}
       <FieldError message={error} />
       {rows !== null && rows.length === 0 && !error ? (
@@ -99,54 +113,59 @@ export default function CreatorResults(): React.ReactElement {
         />
       ) : null}
       {rows !== null && rows.length > 0 ? (
-        <>
-          <StatStrip
-            items={[
-              {
-                value: programMoneyShort(summary.soldMinor, code),
-                label: `Sold · ${summary.tickets} ticket${summary.tickets === 1 ? "" : "s"}`,
-              },
-              { value: programMoneyShort(summary.spentMinor, code), label: "Spent" },
-              {
-                value:
-                  summary.returnOnSpend === null
-                    ? "—"
-                    : `${summary.returnOnSpend.toFixed(1)}×`,
-                label: "Return",
-              },
-            ]}
-          />
-          <ListGroup>
-            {summary.creators.map((creator) => (
-              <ListRow
-                key={creator.id}
-                compact
-                leading={<Initials name={creator.name} size={32} />}
-                title={creator.name}
-                subtitle={`${creator.clicks} clicks · ${creator.tickets} sold · ${programMoney(creator.spentMinor, code)}`}
-                chevron={false}
-                right={
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    label="Book again"
-                    accessibilityLabel={`Book ${creator.name} again`}
-                    onPress={() =>
-                      router.push(
-                        `/brand/${brandId}/creators/brief?fromGigId=${creator.lastGigId}` as never,
-                      )
+        <ProgramColumns
+          supportFirstOnCompact
+          support={
+            <>
+              <StatStrip
+                items={[
+                  {
+                    value: programMoneyShort(summary.soldMinor, code),
+                    label: `Sold · ${summary.tickets} ticket${summary.tickets === 1 ? "" : "s"}`,
+                  },
+                  { value: programMoneyShort(summary.spentMinor, code), label: "Spent" },
+                  {
+                    value: summary.returnOnSpend === null ? "—" : `${summary.returnOnSpend.toFixed(1)}×`,
+                    label: "Return",
+                  },
+                ]}
+              />
+              {summary.returnOnSpend === null ? (
+                <Text style={styles.tiny}>Return shows once a creator&apos;s link makes a sale.</Text>
+              ) : null}
+            </>
+          }
+          primary={
+            <>
+              <Segmented
+                options={[["7d", "7 days"], ["30d", "30 days"], ["all", "All"]] as const}
+                value={period}
+                onChange={setPeriod}
+              />
+              <ListGroup>
+                {summary.creators.map((creator) => (
+                  <ListRow
+                    key={creator.id}
+                    compact
+                    leading={<Initials name={creator.name} size={32} />}
+                    title={creator.name}
+                    subtitle={`${creator.clicks} clicks · ${creator.tickets} sold · ${programMoney(creator.spentMinor, code)}`}
+                    chevron={false}
+                    right={
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        label="Book again"
+                        accessibilityLabel={`Book ${creator.name} again`}
+                        onPress={() => router.push(`/brand/${brandId}/creators/brief?fromGigId=${creator.lastGigId}` as never)}
+                      />
                     }
                   />
-                }
-              />
-            ))}
-          </ListGroup>
-          {summary.returnOnSpend === null ? (
-            <Text style={styles.tiny}>
-              Return shows once a creator's link makes a sale.
-            </Text>
-          ) : null}
-        </>
+                ))}
+              </ListGroup>
+            </>
+          }
+        />
       ) : null}
     </ProgramScreen>
   );

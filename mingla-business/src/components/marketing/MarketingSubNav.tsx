@@ -18,7 +18,7 @@
  * Design ref: §6.1 (sub-nav specification).
  */
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter, usePathname } from "expo-router";
 
@@ -35,6 +35,9 @@ import {
   detectMarketingSubNavActive,
   type MarketingSubNavId,
 } from "./marketingSubNavTabs";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useMarketingAction } from "./MarketingActionContext";
+import { MarketingActionButton } from "./MarketingActionButton";
 
 export type { MarketingSubNavId } from "./marketingSubNavTabs";
 
@@ -47,15 +50,21 @@ export const MarketingSubNav: React.FC = () => {
   const router = useRouter();
   const pathname = usePathname();
   const scrollRef = useRef<ScrollView>(null);
-  const offsets = useRef<Partial<Record<MarketingSubNavId, number>>>({});
+  const offsets = useRef<Partial<Record<MarketingSubNavId, { x: number; width: number }>>>({});
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const { isWideDesktop } = useResponsiveLayout();
+  const action = useMarketingAction();
   const active = detectMarketingSubNavActive(pathname);
   // Keep the active pill in view when a deep link lands on a later section.
   useEffect(() => {
-    const x = offsets.current[active];
-    if (typeof x === "number") {
-      scrollRef.current?.scrollTo({ x: Math.max(0, x - spacing.xl), animated: false });
+    const frame = offsets.current[active];
+    if (frame && viewportWidth > 0) {
+      scrollRef.current?.scrollTo({
+        x: Math.max(0, frame.x + frame.width / 2 - viewportWidth / 2),
+        animated: false,
+      });
     }
-  }, [active]);
+  }, [active, viewportWidth]);
   // Composer is a child route of Campaigns, NOT a sub-nav tab — hide the
   // pill row while the operator is authoring a campaign.
   if (pathname.includes("/campaigns/compose")) return null;
@@ -64,10 +73,12 @@ export const MarketingSubNav: React.FC = () => {
     <View style={styles.host}>
       <ScrollView
         ref={scrollRef}
+        style={styles.scroller}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.bar}
         accessibilityRole="tablist"
+        onLayout={(event) => setViewportWidth(event.nativeEvent.layout.width)}
       >
         {MARKETING_SUB_NAV_TABS.map((tab) => {
           const isActive = tab.id === active;
@@ -75,7 +86,20 @@ export const MarketingSubNav: React.FC = () => {
             <Pressable
               key={tab.id}
               onLayout={(event) => {
-                offsets.current[tab.id] = event.nativeEvent.layout.x;
+                offsets.current[tab.id] = {
+                  x: event.nativeEvent.layout.x,
+                  width: event.nativeEvent.layout.width,
+                };
+                if (tab.id === active && viewportWidth > 0) {
+                  const frame = offsets.current[tab.id];
+                  scrollRef.current?.scrollTo({
+                    x: Math.max(
+                      0,
+                      (frame?.x ?? 0) + (frame?.width ?? 0) / 2 - viewportWidth / 2,
+                    ),
+                    animated: false,
+                  });
+                }
               }}
               onPress={() => router.replace(tab.path as never)}
               style={({ pressed }) => [
@@ -100,6 +124,7 @@ export const MarketingSubNav: React.FC = () => {
           );
         })}
       </ScrollView>
+      <MarketingActionButton action={action} compact={!isWideDesktop} />
     </View>
   );
 };
@@ -108,9 +133,14 @@ const PILL_HEIGHT = 36;
 
 const styles = StyleSheet.create({
   host: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
+    paddingRight: spacing.md,
   },
+  scroller: { flex: 1, minWidth: 0 },
   bar: {
     flexDirection: "row",
     alignItems: "center",

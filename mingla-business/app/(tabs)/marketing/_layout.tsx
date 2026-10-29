@@ -5,12 +5,8 @@
  * at the top; expo-router's `<Slot />` renders whichever sub-route the
  * user navigated to (Overview / Audiences / Campaigns / Templates).
  *
- * ORCH-0826 M0 (Q4 operator override): the universal "+" creator now lives
- * on the Marketing tab's TopBar, mounted in this layout so it persists
- * across all marketing sub-routes. The composer route
- * (`/(tabs)/marketing/campaigns/compose`) HIDES the "+" to keep the
- * focused-authoring surface uncluttered (matches the existing BottomNav
- * hide pattern from `(tabs)/_layout.tsx`).
+ * #4168: the persistent tab-row action and mobile floating action are both
+ * driven by one tab-aware action contract. Focused composer routes hide both.
  */
 
 import React, { Suspense, useCallback, useState } from "react";
@@ -19,20 +15,29 @@ import { Slot, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { MarketingSubNav } from "../../../src/components/marketing/MarketingSubNav";
+import {
+  MarketingActionProvider,
+  useMarketingAction,
+} from "../../../src/components/marketing/MarketingActionContext";
+import { MarketingActionButton } from "../../../src/components/marketing/MarketingActionButton";
 import { MarketingBrandSwitcherProvider } from "../../../src/components/people/MarketingBrandSwitcherContext";
-import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import { canvas, spacing } from "../../../src/constants/designSystem";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
+import { useStickyFooterOffset } from "../../../src/hooks/useStickyFooterOffset";
 
 const LazyBrandSwitcherSheet = React.lazy(async () => {
   const mod = await import("../../../src/components/brand/BrandSwitcherSheet");
   return { default: mod.BrandSwitcherSheet };
 });
 
-const LazyUniversalCreatorSheet = React.lazy(async () => {
-  const mod = await import("../../../src/components/ui/UniversalCreatorSheet");
-  return { default: mod.UniversalCreatorSheet };
-});
+function MarketingActionSurfaces({ hidden }: { hidden: boolean }): React.ReactElement | null {
+  const action = useMarketingAction();
+  const { isWideDesktop } = useResponsiveLayout();
+  const bottom = useStickyFooterOffset();
+  if (hidden || isWideDesktop) return null;
+  return <MarketingActionButton action={action} floating bottom={bottom} />;
+}
 
 export default function MarketingTabLayout(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -66,17 +71,15 @@ export default function MarketingTabLayout(): React.ReactElement {
    */
   const { height: windowHeight } = useWindowDimensions();
 
-  // ORCH-0826 M0: BrandSwitcherSheet (matches Home + Hub + Account pattern)
-  // + UniversalCreatorSheet for the universal "+" creator.
+  // BrandSwitcherSheet matches the Home + Hub + Account pattern.
   const [brandSheetVisible, setBrandSheetVisible] = useState<boolean>(false);
-  const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] = useState<boolean>(false);
 
   const handleOpenSwitcher = useCallback((): void => {
     setBrandSheetVisible(true);
   }, []);
 
-  // Hide universal "+" on composer screens (matches BottomNav hide pattern).
-  const hideUniversalPlus = pathname.includes("/campaigns/compose");
+  // Focused authoring routes hide both action entry points.
+  const hideActions = pathname.includes("/campaigns/compose");
 
   return (
     <View
@@ -107,37 +110,20 @@ export default function MarketingTabLayout(): React.ReactElement {
         <TopBar
           leftKind="brand"
           onBrandTap={handleOpenSwitcher}
-          extraRightSlot={
-            hideUniversalPlus ? undefined : (
-              <IconChrome
-                icon="plus"
-                size={36}
-                onPress={() => setIsUniversalCreatorOpen(true)}
-                accessibilityLabel="Create event, experience, or trip"
-                testID="marketing-universal-creator-button"
-              />
-            )
-          }
         />
       </View>
-      <MarketingSubNav />
-      <MarketingBrandSwitcherProvider value={handleOpenSwitcher}>
-        <Slot />
-      </MarketingBrandSwitcherProvider>
+      <MarketingActionProvider>
+        {hideActions ? null : <MarketingSubNav />}
+        <MarketingBrandSwitcherProvider value={handleOpenSwitcher}>
+          <Slot />
+        </MarketingBrandSwitcherProvider>
+        <MarketingActionSurfaces hidden={hideActions} />
+      </MarketingActionProvider>
       {brandSheetVisible ? (
         <Suspense fallback={null}>
           <LazyBrandSwitcherSheet
             visible
             onClose={() => setBrandSheetVisible(false)}
-          />
-        </Suspense>
-      ) : null}
-      {/* ORCH-0826 M0: universal creator sheet */}
-      {isUniversalCreatorOpen ? (
-        <Suspense fallback={null}>
-          <LazyUniversalCreatorSheet
-            visible
-            onClose={() => setIsUniversalCreatorOpen(false)}
           />
         </Suspense>
       ) : null}

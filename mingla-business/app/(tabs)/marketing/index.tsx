@@ -18,7 +18,6 @@
 import React, { Suspense, useCallback, useMemo } from "react";
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -31,7 +30,6 @@ import { Icon } from "../../../src/components/ui/Icon";
 import { OverviewMetricCard } from "../../../src/components/marketing/OverviewMetricCard";
 import { OverviewRecentCampaignRow } from "../../../src/components/marketing/OverviewRecentCampaignRow";
 import {
-  accent,
   glass,
   radius,
   spacing,
@@ -40,7 +38,7 @@ import {
 } from "../../../src/constants/designSystem";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import { useMarketingOverview } from "../../../src/hooks/marketing/useMarketingOverview";
-import { useStickyFooterOffset } from "../../../src/hooks/useStickyFooterOffset";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 
 // #3872 round 2 — the promotion section loads through the Creator and
 // Referral program's one lazy owner, so program code stays out of the
@@ -52,10 +50,10 @@ const BlastPromotionOverview = React.lazy(async () => {
 
 export default function MarketingOverviewRoute(): React.ReactElement {
   const router = useRouter();
-  const fabOffset = useStickyFooterOffset();
   // #2514 — the funnel belongs to the brand you are standing in. Scoped to
   // the account it summed across every brand the operator belongs to.
   const currentBrand = useCurrentBrand();
+  const { isWideDesktop } = useResponsiveLayout();
   const overviewQuery = useMarketingOverview(currentBrand?.id ?? null);
   const params = useLocalSearchParams<{
     listingKind?: string | string[];
@@ -114,14 +112,20 @@ export default function MarketingOverviewRoute(): React.ReactElement {
     return (
       <View style={styles.host} testID="overview-skeleton">
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          {promotion}
-          <View style={styles.headlineCardSkeleton}>
-            <ActivityIndicator size="small" color={textTokens.secondary} />
-          </View>
-          <View style={styles.metricGrid}>
-            {[0, 1, 2, 3].map((idx) => (
-              <View key={idx} style={styles.metricSkeleton} />
-            ))}
+          <View style={[styles.workspace, isWideDesktop && styles.workspaceWide]}>
+            <View style={[styles.primaryColumn, isWideDesktop && styles.primaryColumnWide]}>
+              {promotion}
+            </View>
+            <View style={[styles.supportColumn, isWideDesktop && styles.supportColumnWide]}>
+              <View style={styles.headlineCardSkeleton}>
+                <ActivityIndicator size="small" color={textTokens.secondary} />
+              </View>
+              <View style={styles.metricGrid}>
+                {[0, 1, 2, 3].map((idx) => (
+                  <View key={idx} style={styles.metricSkeleton} />
+                ))}
+              </View>
+            </View>
           </View>
         </ScrollView>
       </View>
@@ -171,7 +175,7 @@ export default function MarketingOverviewRoute(): React.ReactElement {
   const isEmpty =
     snap.campaigns_sent_count === 0 && snap.recent_campaigns.length === 0;
   const caption = isEmpty
-    ? "Your first blast is one tap away. Tap + below."
+    ? "Your first blast is one tap away."
     : "in the last 30 days";
 
   return (
@@ -180,19 +184,30 @@ export default function MarketingOverviewRoute(): React.ReactElement {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        {promotion}
-        <View style={styles.headlineCard}>
-          <View style={styles.headlineLabelRow}>
-            <Icon name="send" size={20} color={textTokens.secondary} />
-            <Text style={styles.headlineLabel}>CAMPAIGNS SENT</Text>
+        <View style={[styles.workspace, isWideDesktop && styles.workspaceWide]}>
+          <View style={[styles.primaryColumn, isWideDesktop && styles.primaryColumnWide]}>
+            {promotion}
+            {snap.recent_campaigns.length > 0 ? (
+              <>
+                <Text style={styles.sectionLabel}>RECENT CAMPAIGNS</Text>
+                <View style={styles.recentList}>
+                  {snap.recent_campaigns.map((c, idx) => (
+                    <OverviewRecentCampaignRow key={c.id} campaign={c} onPress={handleOpenCampaign} isLast={idx === snap.recent_campaigns.length - 1} />
+                  ))}
+                </View>
+              </>
+            ) : null}
           </View>
-          <Text style={styles.headlineValue}>
-            {snap.campaigns_sent_count.toLocaleString()}
-          </Text>
-          <Text style={styles.headlineCaption}>{caption}</Text>
-        </View>
-
-        <View style={styles.metricGrid}>
+          <View style={[styles.supportColumn, isWideDesktop && styles.supportColumnWide]}>
+            <View style={styles.headlineCard}>
+              <View style={styles.headlineLabelRow}>
+                <Icon name="send" size={20} color={textTokens.secondary} />
+                <Text style={styles.headlineLabel}>CAMPAIGNS SENT</Text>
+              </View>
+              <Text style={styles.headlineValue}>{snap.campaigns_sent_count.toLocaleString()}</Text>
+              <Text style={styles.headlineCaption}>{caption}</Text>
+            </View>
+            <View style={styles.metricGrid}>
           {/* #2510 — DELIVERED was COUNT(status IN ('delivered','clicked')),
               and nothing ever wrote 'delivered', so this tile was the CLICK
               count under a Delivered label. It read "DELIVERED 3 (1.5%)" for a
@@ -250,44 +265,14 @@ export default function MarketingOverviewRoute(): React.ReactElement {
             percent={failedPct}
             tone="warning"
           />
-        </View>
-
-        {!snap.funnel.deliveryHealthy || !snap.funnel.openHealthy ? (
-          <Text style={styles.trackingDegraded}>
-            Tracking data is catching up. Check back in a few minutes.
-          </Text>
-        ) : null}
-
-        {snap.recent_campaigns.length > 0 ? (
-          <>
-            <Text style={styles.sectionLabel}>RECENT CAMPAIGNS</Text>
-            <View style={styles.recentList}>
-              {snap.recent_campaigns.map((c, idx) => (
-                <OverviewRecentCampaignRow
-                  key={c.id}
-                  campaign={c}
-                  onPress={handleOpenCampaign}
-                  isLast={idx === snap.recent_campaigns.length - 1}
-                />
-              ))}
             </View>
-          </>
-        ) : null}
+            {!snap.funnel.deliveryHealthy || !snap.funnel.openHealthy ? (
+              <Text style={styles.trackingDegraded}>Tracking data is catching up. Check back in a few minutes.</Text>
+            ) : null}
+          </View>
+        </View>
       </ScrollView>
 
-      <Pressable
-        onPress={handleNewCampaign}
-        accessibilityRole="button"
-        accessibilityLabel="New campaign"
-        style={({ pressed }) => [
-          styles.fab,
-          { bottom: fabOffset },
-          pressed ? styles.fabPressed : null,
-        ]}
-      >
-        <Icon name="plus" size={24} color={textTokens.primary} />
-        <Text style={styles.fabLabel}>New campaign</Text>
-      </Pressable>
     </View>
   );
 }
@@ -302,6 +287,12 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
     gap: spacing.lg,
   },
+  workspace: { gap: spacing.lg },
+  workspaceWide: { flexDirection: "row", alignItems: "flex-start" },
+  primaryColumn: { minWidth: 0, gap: spacing.lg },
+  primaryColumnWide: { flexBasis: 0, flexGrow: 5 },
+  supportColumn: { minWidth: 0, gap: spacing.md },
+  supportColumnWide: { flexBasis: 0, flexGrow: 3 },
   promotionOnly: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
@@ -375,32 +366,5 @@ const styles = StyleSheet.create({
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
     overflow: "hidden",
-  },
-  fab: {
-    position: "absolute",
-    right: spacing.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.full,
-    backgroundColor: "rgba(235, 120, 37, 0.42)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.32,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  fabPressed: {
-    opacity: 0.85,
-  },
-  fabLabel: {
-    ...typography.bodySm,
-    fontWeight: "600",
-    color: textTokens.primary,
   },
 });

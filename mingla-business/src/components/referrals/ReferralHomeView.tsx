@@ -59,6 +59,7 @@ import {
   ListRow,
   Muted,
   ProgramLoading,
+  ProgramColumns,
   ProgramScreen,
   SectionLabel,
   Segmented,
@@ -68,6 +69,7 @@ import {
   SummaryLine,
   programStyles,
 } from "../programs/ProgramKit";
+import { useMarketingActionRegistration } from "../marketing/MarketingActionContext";
 import { ReferralOfferSheet } from "./ReferralOfferSheet";
 import {
   memberStatusWords,
@@ -81,7 +83,7 @@ import {
 const ROOT = "brand-referrals";
 const QRCode = React.lazy(() => import("react-native-qrcode-svg"));
 export type ReferralTab = "offers" | "promoters" | "links" | "results";
-const TABS: ReadonlyArray<readonly [ReferralTab, string]> = [
+const TABS: readonly (readonly [ReferralTab, string])[] = [
   ["offers", "Offers"],
   ["promoters", "Promoters"],
   ["links", "Links"],
@@ -250,6 +252,29 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
   const reportValue = report.data ?? {};
   const soldMinor = Number(reportValue.revenueMinor ?? 0);
   const linkRows = (links.data ?? []).filter((row) => row.archivedAt === null);
+
+  const tabAction = React.useMemo(
+    () => ({
+      id: `referrals-${tab}`,
+      label:
+        tab === "offers"
+          ? "Create offer"
+          : tab === "promoters"
+            ? "Invite promoters"
+            : "New tracking link",
+      compactLabel:
+        tab === "offers" ? "Create" : tab === "promoters" ? "Invite" : "New link",
+      icon: tab === "promoters" ? ("users" as const) : tab === "offers" ? ("gift" as const) : ("link" as const),
+      onPress: () => {
+        setError(null);
+        if (tab === "offers") setEditing(null);
+        else if (tab === "promoters") setInviting(true);
+        else setCreatingLink(true);
+      },
+    }),
+    [tab],
+  );
+  useMarketingActionRegistration(embedded ? tabAction : null);
 
   const resend = (row: ReferralMember) => {
     if (!row.email) return;
@@ -635,45 +660,57 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
         </>
       }
     >
-      <StatStrip
-        items={[
-          { value: programMoneyShort(soldMinor, currency), label: "Sold" },
-          {
-            value: String(Number(reportValue.orders ?? 0)),
-            label: "Tickets · 30d",
-          },
-          {
-            value: programMoneyShort(
-              Number(reportValue.paidMinor ?? 0),
-              currency,
-            ),
-            label: "Paid out",
-          },
-        ]}
-      />
-      <Segmented
-        options={TABS}
-        value={tab}
-        onChange={(next) => {
-          setError(null);
-          setTab(next);
-        }}
-      />
-      {notice ? (
+      <ProgramColumns
+        supportFirstOnCompact
+        support={
+          <>
+            <StatStrip
+              items={[
+                { value: programMoneyShort(soldMinor, currency), label: "Sold" },
+                {
+                  value: String(Number(reportValue.orders ?? 0)),
+                  label: "Tickets · 30d",
+                },
+                {
+                  value: programMoneyShort(
+                    Number(reportValue.paidMinor ?? 0),
+                    currency,
+                  ),
+                  label: "Paid out",
+                },
+              ]}
+            />
+            <Text style={styles.feeNote}>
+              Payouts are after Mingla&apos;s 5%. Buyers never pay extra, and
+              tracking-only links never pay anyone.
+            </Text>
+          </>
+        }
+        primary={
+          <>
+            <Segmented
+              options={TABS}
+              value={tab}
+              onChange={(next) => {
+                setError(null);
+                setTab(next);
+              }}
+            />
+            {notice ? (
         <Text style={styles.notice} accessibilityLiveRegion="polite">
           {notice}
         </Text>
-      ) : null}
-      {acting === null && !inviting && !creatingLink && member === null ? (
+            ) : null}
+            {acting === null && !inviting && !creatingLink && member === null ? (
         <FieldError message={error} />
-      ) : null}
+            ) : null}
 
       {tab === "offers" ? (
         offers.isLoading ? (
           <ProgramLoading />
         ) : offers.isError ? (
           <Card>
-            <Text style={programStyles.body}>Offers couldn't load.</Text>
+            <Text style={programStyles.body}>Offers couldn&apos;t load.</Text>
             <Button
               variant="secondary"
               label="Try again"
@@ -711,30 +748,8 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
         )
       ) : null}
 
-      {tab === "offers" && (offers.data ?? []).length > 0 ? (
-        <Button
-          variant="secondary"
-          size="sm"
-          label="New offer"
-          leadingIcon="plus"
-          onPress={() => {
-            setError(null);
-            setEditing(null);
-          }}
-        />
-      ) : null}
-
       {tab === "promoters" ? (
         <>
-          <Button
-            fullWidth
-            label="Invite promoters"
-            leadingIcon="plus"
-            onPress={() => {
-              setError(null);
-              setInviting(true);
-            }}
-          />
           {leaderboard.length > 0 ? (
             <Card>
               <View style={styles.rowBetween}>
@@ -794,15 +809,6 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
 
       {tab === "links" ? (
         <>
-          <Button
-            fullWidth
-            label="New tracking link"
-            leadingIcon="plus"
-            onPress={() => {
-              setError(null);
-              setCreatingLink(true);
-            }}
-          />
           {links.isLoading ? (
             <ProgramLoading />
           ) : linkRows.length === 0 ? (
@@ -869,10 +875,9 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
           </Card>
         </>
       ) : null}
-      <Text style={styles.feeNote}>
-        Payouts are after Mingla's 5%. Buyers never pay extra, and tracking-only
-        links never pay anyone.
-      </Text>
+          </>
+        }
+      />
     </ProgramScreen>
   );
 };
