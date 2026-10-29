@@ -20,7 +20,8 @@ describe("#4173 Guides, Community and Brand-group polish", () => {
     expect(guides).toContain('desktopCell: { flex: 1, height: "100%"');
     expect(route).toContain('scrollEnabled={tab !== "guides"}');
     expect(read("mingla-business/src/components/support/helpCentreLauncher.native.ts")).toContain("WebBrowser.openBrowserAsync");
-    expect(read("mingla-business/src/components/support/helpCentreLauncher.web.ts")).toContain('window.open(url, "_blank"');
+    expect(read("mingla-business/src/components/support/helpCentreLauncher.web.ts")).toContain("openExternal(url)");
+    expect(read("mingla-business/src/components/support/helpCentreLauncher.web.ts")).not.toContain("window.open");
   });
 
   it("never calls pause during guide teardown after Expo may release the player", () => {
