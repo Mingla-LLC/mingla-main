@@ -61,9 +61,14 @@ describe("#3720 Host Help & Support rebuild", () => {
     expect(community).toContain("truncateRoadmapBlurb");
     expect(community).toContain("Aiming for");
     expect(community).toContain("Fed by");
-    expect(guides).toContain("HELP_CHAPTERS.map");
-    expect(guides).toContain("width: 88");
-    expect(guides).toContain("height: 56");
+    // [TEST-MOD-APPROVED #4173] Guides now keep five foundations on one
+    // screen: one start card and four equal flex-fill essentials.
+    expect(guides).toContain("FEATURED_GUIDE_SLUGS");
+    expect(guides).toContain("START_GUIDE");
+    expect(guides).toContain("ESSENTIAL_GUIDES");
+    expect(guides).toContain("View more videos");
+    expect(guides).toContain('mobileCell: { width: "48%", height: "48%"');
+    expect(guides).toContain('desktopCell: { flex: 1, height: "100%"');
     expect(account).toContain('icon="logout"');
     expect(account).toContain("Sign out of Mingla Host on this device?");
     expect(support).toContain("Add a subject to start");

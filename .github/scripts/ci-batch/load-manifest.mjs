@@ -57,7 +57,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // type migrations and their executable proofs entered those replay inventories.
 // #4167: re-sealed after the #1532 route timeout widened from five to ten
 // minutes following two consecutive checkout/router timeouts.
-export const BOOTSTRAP_SHA256 = "986f7060ddcebea3d5f241d352a4d77a5da81868a5a4c1c76902d4e9151bcf5e";
+// #4173: re-sealed after the Brand group roster migration and its local
+// PostgreSQL proof entered the three preserved full-history inventories.
+export const BOOTSTRAP_SHA256 = "556dcf8e1b089ceaf267ffc896764223b9bbfe2372bdf6329cf51ac228babb4f";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

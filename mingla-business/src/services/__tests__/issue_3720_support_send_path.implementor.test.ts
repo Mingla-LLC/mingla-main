@@ -6,7 +6,7 @@
  * Pins:
  *   - sendSupportMessage invokes support-send with ticketId + trimmed content
  *   - SupportThreadCore uses sendSupportMessage (not postPlannerMessage)
- *   - Help & Support shows Help Centre videos → usemingla.com/help
+ *   - Help & Support shows View more videos → usemingla.com/help
  *   - Host-facing agent string matches the edge mirror
  *
  * Fails-on-revert: restoring postPlannerMessage in SupportThreadCore or dropping
@@ -61,13 +61,16 @@ describe("#3720 support send path (implementor)", () => {
     expect(src).toMatch(/from ["']\.\.\/\.\.\/constants\/supportHostFacing["']/);
   });
 
-  test("Help & Support Guides tab exposes Help Centre videos link", () => {
+  test("Help & Support Guides tab exposes the growing Help Centre video catalogue", () => {
     // #3720 Slice G moved Help Centre into GuidesTabPanel (still under hub).
     const src = fs.readFileSync(
       path.join(ROOT, "src/components/support/GuidesTabPanel.tsx"),
       "utf8",
     );
-    expect(src).toContain("Help Centre videos");
+    // [TEST-MOD-APPROVED #4173] The compact redesign names the handoff
+    // "View more videos" while preserving the canonical Help Centre target.
+    expect(src).toContain("View more videos");
+    expect(src).toContain("openHelpCentre(HELP_CENTRE_URL)");
     expect(src).toContain("HELP_CENTRE_URL");
     expect(HELP_CENTRE_URL).toBe("https://usemingla.com/help");
   });

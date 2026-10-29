@@ -12,13 +12,13 @@ jest.mock("../supabase", () => ({
 }));
 
 import {
-  listBrandGroupMentionCandidates,
   listBrandGroups,
   listBrandGroupMessages,
   markBrandGroupRead,
   sendBrandGroupMessage,
   setBrandGroupWatch,
 } from "../brandGroupsService";
+import { listBrandGroupMembers, listBrandGroupMentionCandidates } from "../brandGroupRosterService";
 
 const ROOT = path.resolve(__dirname, "../../..");
 const read = (relative: string): string => fs.readFileSync(path.join(ROOT, relative), "utf8");
@@ -77,6 +77,20 @@ describe("#3720 official Brand groups Host contract", () => {
       p_conversation_id: "g1",
       p_query: "ami",
       p_limit: 4,
+    });
+  });
+
+  test("roster names, account emails and roles use the access-gated #4173 RPC", async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: [{ user_id: "u2", display_name: "Amina Bello", email: "amina@example.com", role: "brand_admin" }],
+      error: null,
+    });
+    await expect(listBrandGroupMembers("g1")).resolves.toEqual({
+      members: [{ user_id: "u2", display_name: "Amina Bello", email: "amina@example.com", role: "brand_admin" }],
+      error: null,
+    });
+    expect(rpcMock).toHaveBeenCalledWith("issue_4173_list_brand_group_members", {
+      p_conversation_id: "g1",
     });
   });
 

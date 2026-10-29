@@ -49,9 +49,12 @@ jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: ()
 jest.mock("../../../hooks/useSupportStaff", () => ({ useSupportStaff: () => ({ isStaff: false }) }));
 jest.mock("../../../services/brandGroupsService", () => ({
   listBrandGroupMessages: (...args: unknown[]) => mockListMessages(...args),
-  listBrandGroupMentionCandidates: jest.fn(async () => ({ candidates: [], error: null })),
   markBrandGroupRead: jest.fn(async () => undefined),
   sendBrandGroupMessage: jest.fn(),
+}));
+jest.mock("../../../services/brandGroupRosterService", () => ({
+  listBrandGroupMentionCandidates: jest.fn(async () => ({ candidates: [], error: null })),
+  listBrandGroupMembers: jest.fn(async () => ({ members: [], error: null })),
 }));
 jest.mock("../../../services/supabase", () => ({
   supabase: {

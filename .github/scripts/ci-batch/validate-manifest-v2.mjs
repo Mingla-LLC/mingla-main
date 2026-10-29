@@ -288,7 +288,9 @@ export function phase3dContractDigest(manifest) {
 // #3872 out of the deliberately pre-foundation #1931 replay by exact filename.
 // #4037: register the Home Pulse lifetime-sales and analytics listing-type
 // migrations and their proofs selected by the preserved replay commands.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "8da1a893bfe6ea3161b7b10156340fd736e8908865f6be32f2fc4a9d9db20793";
+// #4173: register the Brand group roster migration and its declared local
+// PostgreSQL proof selected by the same preserved replay commands.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "5eaf60bee7bcc8acd5d0d3bbe405aef0d9c0fa703b95a8b494ef833764ff6394";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

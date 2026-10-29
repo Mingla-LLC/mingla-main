@@ -189,7 +189,18 @@ export default function SupportRoute(): React.ReactElement {
         <HelpSupportHubTabs active={tab} onChange={handleTabChange} communityBadge={unreadCount} />
 
         {/* orch-strict-grep-allow orch-0892 — short requester sections; no chat composer or thread keyboard lifecycle here. */}
-        <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + (tab === "community" && !isWideDesktop ? 144 : spacing.xl) }]} showsVerticalScrollIndicator={false} key={`${tab}:${tab === "community" ? communitySection : "root"}`}>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.scrollContent,
+            tab === "guides" && styles.guidesContent,
+            { paddingBottom: insets.bottom + (tab === "community" && !isWideDesktop ? 144 : spacing.xl) },
+          ]}
+          scrollEnabled={tab !== "guides"}
+          showsVerticalScrollIndicator={false}
+          key={`${tab}:${tab === "community" ? communitySection : "root"}`}
+        >
           {tab === "community" ? communityPanel : null}
           {tab === "support" ? <SupportTabPanel onToast={showToast} /> : null}
           {tab === "guides" ? <GuidesTabPanel onToast={showToast} /> : null}
@@ -221,6 +232,7 @@ const styles = StyleSheet.create({
   chromeRightSlot: { width: 36 },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.md, width: "100%" },
+  guidesContent: { flexGrow: 1 },
   floatingAction: { position: "absolute", right: spacing.md, minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingHorizontal: spacing.md, borderRadius: radius.full, backgroundColor: accent.warm, zIndex: 40, elevation: 8 },
   floatingActionPressed: { opacity: 0.86, transform: [{ scale: 0.98 }] },
   floatingActionText: { ...typography.buttonMd, color: textTokens.inverse, fontWeight: "800" },

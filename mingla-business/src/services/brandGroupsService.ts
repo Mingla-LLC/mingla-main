@@ -1,5 +1,4 @@
 import { supabase } from "./supabase";
-import type { BrandGroupMentionCandidate } from "../utils/brandGroupMentions";
 
 export interface BrandGroupSummary {
   conversation_id: string;
@@ -130,21 +129,6 @@ export async function setBrandGroupPushPrefEnabled(
       updated_at: new Date().toISOString(),
     });
   if (error) throw new Error(error.message || "Couldn't save Brand group notifications");
-}
-
-export async function listBrandGroupMentionCandidates(
-  conversationId: string,
-  query: string,
-): Promise<{ candidates: BrandGroupMentionCandidate[]; error: string | null }> {
-  const { data, error } = await supabase.rpc("issue_3988_list_brand_group_mention_candidates", {
-    p_conversation_id: conversationId,
-    p_query: query,
-    p_limit: 4,
-  });
-  return {
-    candidates: (data ?? []) as BrandGroupMentionCandidate[],
-    error: errorMessage(error, "Couldn't load Brand group teammates"),
-  };
 }
 
 export async function sendBrandGroupMessage(input: {
