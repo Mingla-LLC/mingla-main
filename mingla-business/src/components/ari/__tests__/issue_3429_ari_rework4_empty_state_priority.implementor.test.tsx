@@ -59,14 +59,14 @@ import React from "react";
 
 import { spacing } from "../../../constants/designSystem";
 
-// AriOrb value-imports react-native-svg + reanimated, neither of which loads
-// under the node/ts-jest config. The orb's pixels are not under test here — its
+// AriOrb value-imports reanimated, which does not load under the node/ts-jest
+// config. The orb's pixels are not under test here — its
 // PLACEMENT is, and that is decided by the zones around it.
 jest.mock("../AriOrb", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const ReactModule = require("react");
-  // The component is stubbed (it value-imports react-native-svg and reanimated,
-  // neither of which loads here), but the SIZE TABLES are read out of the real
+  // The component is stubbed (it value-imports reanimated, which does not load
+  // here), but the SIZE TABLES are read out of the real
   // AriOrb source. EmptyState derives its orb ladder from these, so the ladder
   // under test is built from AriOrb's own numbers and cannot quietly fork.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -158,8 +158,8 @@ const SCALES = [
 ] as const;
 
 const HOST_PADDING_BOTTOM = spacing.xxl;
-/** Mirrors ORB_INK_HEADROOM_PX: the largest halo on the ladder. */
-const ORB_INK_HEADROOM = 18;
+/** Mirrors ORB_INK_HEADROOM_PX: the compact `lg` ring overflow. */
+const ORB_INK_HEADROOM = 7;
 
 interface Mounted {
   host: Record<string, unknown>;

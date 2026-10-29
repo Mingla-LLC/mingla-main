@@ -16,6 +16,7 @@ import React, { useRef, useState } from "react";
 import {
   AccessibilityInfo,
   Keyboard,
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -24,6 +25,7 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as Clipboard from "expo-clipboard";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Menu, Settings } from "lucide-react-native";
@@ -677,8 +679,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           <Menu size={24} color={textTokens.primary} strokeWidth={2} />
         </Pressable>
         <View style={styles.headerTitle}>
-          <AriOrb size="sm" decorative />
-          <Text style={styles.title}>Ari</Text>
+          <AriOrb size="md" decorative />
+          <View style={styles.headerIdentityCopy}>
+            <Text style={styles.title}>Ari</Text>
+            <Text style={styles.titleMeta}>MINGLA INTELLIGENCE</Text>
+          </View>
         </View>
         <Pressable
           onPress={() => router.push("/ari/settings" as never)}
@@ -814,6 +819,49 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
             brandNamesById={brandNamesById}
             accountId={accountId}
             onSeedMessage={(text) => { setDraftText(text); composerInputRef.current?.focus(); }}
+            onRenditionAction={(_message, interaction) => {
+              const { behavior } = interaction.action;
+              if (behavior.type === "reply") {
+                setDraftText(behavior.message);
+                requestAnimationFrame(() => composerInputRef.current?.focus());
+                return;
+              }
+              if (behavior.type === "route") {
+                router.push(behavior.route as never);
+                return;
+              }
+              if (behavior.type === "external") {
+                void Linking.openURL(behavior.url).catch(() => {
+                  setLocalError("That link could not be opened. Copy it and try again.");
+                });
+                return;
+              }
+              if (behavior.command === "stop" && chat.activeTurn) {
+                void chat.stopTurn(chat.activeTurn.clientTurnId);
+                return;
+              }
+              if (behavior.command === "retry") {
+                const clientTurnId = _message.client_turn_id;
+                if (clientTurnId) void chat.retryTurn(clientTurnId);
+                else {
+                  setDraftText("Retry the last step safely");
+                  requestAnimationFrame(() => composerInputRef.current?.focus());
+                }
+                return;
+              }
+              if (behavior.command === "resume") {
+                setDraftText("Resume this plan from the last safe step");
+                requestAnimationFrame(() => composerInputRef.current?.focus());
+                return;
+              }
+              if (behavior.command === "copy") {
+                const copy = interaction.rendition.code ??
+                  (interaction.fieldValue || interaction.rendition.body);
+                void Clipboard.setStringAsync(copy).catch(() => {
+                  setLocalError("That text could not be copied. Select it and copy manually.");
+                });
+              }
+            }}
             // ORCH-1103 REWORK 2 — a disambiguation / no-brand-handoff chip tap
             // sends the chip label as a normal user turn (Q2 conversational
             // feedback; Gemini re-proposes with the resolved target).
@@ -1128,10 +1176,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
   },
+  headerIdentityCopy: {
+    gap: 1,
+  },
   title: {
     fontSize: typography.h3.fontSize,
     fontWeight: typography.h3.fontWeight,
     color: textTokens.primary,
+  },
+  titleMeta: {
+    color: textTokens.tertiary,
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: "700",
+    letterSpacing: 1.15,
   },
   pressed: {
     opacity: 0.7,

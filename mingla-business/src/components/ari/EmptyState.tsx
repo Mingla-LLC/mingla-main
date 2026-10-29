@@ -232,7 +232,7 @@ export const EmptyState: React.FC = () => {
         <View style={styles.heroContent} onLayout={handleHeroLayout}>
           {orb ? (
             <View style={styles.orbWrap}>
-              <AriOrb size={orb.size} thinking decorative={false} accessibilityLabel="Ari" />
+              <AriOrb size={orb.size} decorative={false} accessibilityLabel="Ari" />
             </View>
           ) : null}
           {showHeadline ? (

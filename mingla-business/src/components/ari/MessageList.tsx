@@ -27,12 +27,6 @@ import {
   typography,
 } from "../../constants/designSystem";
 
-/** #3355 — inverted-list tolerance (px) for "still at newest". */
-const NEWEST_PIN_TOLERANCE_PX = 48;
-/** Matches `ariPalette.userBubble` / accent.warm — avoid requiring ariPalette in
- *  suites that mock a partial designSystem (issue_1985). */
-const NEW_REPLY_FILL = "#eb7825";
-const NEW_REPLY_ON_FILL = "#0F1115";
 import { AgentMessage } from "../../services/agentChatService";
 import { AriSentAttachments } from "./AriAttachmentCards";
 import { ChatBubble } from "./ChatBubble";
@@ -43,6 +37,8 @@ import { QuickReplyChips } from "./QuickReplyChips";
 import { ClarifyingCard } from "./ClarifyingCard";
 import { MultiSelectPrompt } from "./MultiSelectPrompt";
 import { buildChoiceSubmission, choiceLabel, choicesOf } from "./agentChoices";
+import type { AriRenditionInteraction } from "./renditions/AriRenditionPreview";
+import { parseAriRendition } from "./renditions/ariRenditionProtocol";
 import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
 import type { PendingActionView } from "../../hooks/useAgentChat";
 
@@ -60,11 +56,33 @@ import type { PendingActionView } from "../../hooks/useAgentChat";
  * proposal card uses to re-target the cover picker in the create-row-first /
  * attach-second flow (Q7). `ok:false` means the commit errored (toast shown).
  */
-export type { ConfirmOutcome } from "./toolProposalTypes";
 import type { ConfirmOutcome } from "./toolProposalTypes";
 // #3429 REWORK-2 R-4 — the failed-delivery row renders the ONE connection
 // sentence #3184 owns, not a second wording of its own.
 import { ARI_CHAT_CONNECTION_COPY } from "../../screens/ari/ariChatErrorCopy";
+
+/** #3355 — inverted-list tolerance (px) for "still at newest". */
+const NEWEST_PIN_TOLERANCE_PX = 48;
+/** Matches `ariPalette.userBubble` / accent.warm — avoid requiring ariPalette in
+ *  suites that mock a partial designSystem (issue_1985). */
+const NEW_REPLY_FILL = "#eb7825";
+const NEW_REPLY_ON_FILL = "#0F1115";
+
+type AriRenditionCardComponent = typeof import("./renditions/AriRenditionPreview").AriRenditionCard;
+let ariRenditionCardComponent: AriRenditionCardComponent | null = null;
+
+/** Keep the animation-heavy rendition surface off ordinary text-only thread
+ *  evaluation. Metro still bundles the static module id, then resolves it once
+ *  on the first validated structured row. */
+const getAriRenditionCard = (): AriRenditionCardComponent => {
+  if (!ariRenditionCardComponent) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    ariRenditionCardComponent = require("./renditions/AriRenditionPreview").AriRenditionCard as AriRenditionCardComponent;
+  }
+  return ariRenditionCardComponent;
+};
+
+export type { ConfirmOutcome } from "./toolProposalTypes";
 
 export interface MessageListProps {
   messages: AgentMessage[];
@@ -107,6 +125,8 @@ export interface MessageListProps {
   attachedCovers?: Record<string, { url: string | null; type: string | null }>;
   onEditTurn?: (clientTurnId: string) => void;
   onDiscardTurn?: (clientTurnId: string) => void;
+  /** #3355 — a validated structured rendition action was tapped. */
+  onRenditionAction?: (message: AgentMessage, interaction: AriRenditionInteraction) => void;
   surface?: "main" | "website";
   /**
    * #3355 — when the host switches conversations, pin/unseen state must reset
@@ -168,6 +188,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   attachedCovers = {},
   onEditTurn,
   onDiscardTurn,
+  onRenditionAction,
   surface = "main",
   conversationId = null,
 }) => {
@@ -181,6 +202,9 @@ export const MessageList: React.FC<MessageListProps> = ({
   const [clarifyDraft, setClarifyDraft] = useState<Record<string, string>>({});
   const [multiDraft, setMultiDraft] = useState<Record<string, string[]>>({});
   const [revealSkipSignal, setRevealSkipSignal] = useState(0);
+  const [dismissedRenditionIds, setDismissedRenditionIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
 
   // A failed typed turn remains in the thread as a retryable optimistic row.
   // Re-open the choice when the message set changes so an error never strands
@@ -245,7 +269,10 @@ export const MessageList: React.FC<MessageListProps> = ({
     }
     const text = (m.content as any)?.text ?? "";
     const attachments = (m.content as { attachments?: unknown[] })?.attachments ?? [];
-    if (!text && attachments.length === 0) continue;
+    const rendition = m.role === "assistant" && !dismissedRenditionIds.has(m.id)
+      ? parseAriRendition((m.content as { structured?: { rendition?: unknown } })?.structured?.rendition)
+      : null;
+    if (!text && attachments.length === 0 && !rendition) continue;
     raw.push({
       kind: "message",
       message: m,
@@ -348,6 +375,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     setHasUnseenTail(false);
     lastTailKeyRef.current = null;
     lastUserMessageIdRef.current = null;
+    setDismissedRenditionIds(new Set());
     scrollGenerationRef.current += 1;
   }, [conversationId]);
 
@@ -475,7 +503,11 @@ export const MessageList: React.FC<MessageListProps> = ({
         }
         const text = (m.content as any)?.text ?? "";
         const attachments = ((m.content as { attachments?: unknown }).attachments ?? []) as import("../../services/ariAttachmentService").AriSentAttachment[];
-        if (!text && attachments.length === 0) return null;
+        const rendition = m.role === "assistant" && !dismissedRenditionIds.has(m.id)
+          ? parseAriRendition((m.content as { structured?: { rendition?: unknown } })?.structured?.rendition)
+          : null;
+        const AriRenditionCard = rendition ? getAriRenditionCard() : null;
+        if (!text && attachments.length === 0 && !rendition) return null;
         const localDelivery = (m.content as { local_delivery?: string }).local_delivery;
 
         // ORCH-1103 REWORK 2 — render disambiguation / no-brand-handoff chips
@@ -498,6 +530,21 @@ export const MessageList: React.FC<MessageListProps> = ({
                 revealSkipSignal={revealSkipSignal}
                 surface={surface}
               />
+            ) : null}
+            {rendition && AriRenditionCard ? (
+              <View style={text ? styles.renditionAfterText : undefined}>
+                <AriRenditionCard
+                  rendition={rendition}
+                  showOrb={!text && !item.hideOrb}
+                  onAction={(interaction) => {
+                    if (interaction.action.behavior.type === "local" &&
+                        interaction.action.behavior.command === "dismiss") {
+                      setDismissedRenditionIds((current) => new Set([...current, m.id]));
+                    }
+                    onRenditionAction?.(m, interaction);
+                  }}
+                />
+              </View>
             ) : null}
             {m.role === "user" && localDelivery && localDelivery !== "failed" ? (
               localDelivery === "sending" ? (
@@ -883,6 +930,9 @@ const styles = StyleSheet.create({
   choicesRow: {
     marginTop: ariThread.gapGroup,
     marginLeft: 24 + ariThread.orbGap,
+  },
+  renditionAfterText: {
+    marginTop: ariThread.gapGroup,
   },
   retryTurn: {
     alignSelf: "flex-end",

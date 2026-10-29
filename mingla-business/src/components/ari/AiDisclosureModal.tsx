@@ -1,16 +1,16 @@
 /**
- * ORCH-0821 — AI disclosure modal (rework 2026-05-12 — fixed tap + liquid glass)
+ * ORCH-0821 / #3355 — first-open Ari trust sheet.
  *
  * First-launch consent. Shown when agent_user_profile.ai_disclosure_acknowledged_at
- * IS NULL. User taps "Got it — let's start" → persists timestamp + dismisses.
+ * IS NULL. User taps "Start with Ari" → persists timestamp + dismisses.
  *
  * FIXES vs first cut:
  *   - CTA moved OUT of the ScrollView into a fixed footer. The previous
  *     ScrollView-wrapped Pressable swallowed taps when the content fit
  *     without scrolling.
  *   - Sheet wrapped in BlurView for true liquid-glass feel.
- *   - Calmer Ari palette on the CTA (warm coral, not punchy brand orange).
- *   - Subtle inner highlight ring at the sheet top for premium glass edge.
+ *   - Compact three-ring Ari identity and a decision-first trust hierarchy.
+ *   - Solid, shadow-free actions: no decorative gradients or glow.
  */
 
 import React, { useEffect } from "react";
@@ -34,12 +34,29 @@ import {
 } from "../../constants/designSystem";
 import { shouldUseRealBlur } from "../../utils/glassBlur";
 import { resolveSheetMaxHeight } from "./aiDisclosureSheetLayout";
+import { AriActionButton } from "./AriActionButton";
 import { AriOrb } from "./AriOrb";
 
 export interface AiDisclosureModalProps {
   visible: boolean;
   onAccept: () => void;
 }
+
+const TrustRow: React.FC<{ number: string; title: string; detail: string }> = ({
+  number,
+  title,
+  detail,
+}) => (
+  <View style={styles.trustRow}>
+    <View style={styles.trustNumber}>
+      <Text style={styles.trustNumberText}>{number}</Text>
+    </View>
+    <View style={styles.trustCopy}>
+      <Text style={styles.trustTitle}>{title}</Text>
+      <Text style={styles.trustDetail}>{detail}</Text>
+    </View>
+  </View>
+);
 
 // META-ORCH-1002 Sub-D / ORCH-1100: on Android expo-blur renders a thin
 // near-transparent view, and on phone web (< 768px) the blur-kill media rule
@@ -124,8 +141,7 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
               in the touch path of the X or the CTA. */}
           <SheetBackdropSurface />
           <View style={styles.sheet}>
-            {/* Inner highlight ring at the top of the sheet — premium glass edge */}
-            <View pointerEvents="none" style={styles.topHighlight} />
+            <View pointerEvents="none" style={styles.grabber} />
 
             {/* ORCH-1248 (Apple 2.1a): ALWAYS-VISIBLE close (X) affordance,
                 rendered OUTSIDE the blur layer so its touch target can never be
@@ -146,29 +162,41 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              <View style={styles.orbWrap}>
-                <AriOrb size="lg" decorative={false} accessibilityLabel="Ari" />
+              <View style={styles.hero}>
+                <View style={styles.orbWrap}>
+                  <AriOrb size="lg" decorative={false} accessibilityLabel="Ari" />
+                </View>
+                <Text style={styles.eyebrow}>MINGLA INTELLIGENCE</Text>
+                <Text style={styles.title}>Meet Ari, your Mingla copilot.</Text>
+                <Text style={styles.body}>
+                  Ask Ari to plan, research, and prepare work across your business. You stay in
+                  control of every consequential change.
+                </Text>
               </View>
-              <Text style={styles.title}>Meet Ari.</Text>
-              <Text style={styles.body}>
-                Ari is your AI co-pilot, powered by Mingla's AI. It can create brands and events
-                for you, and answer questions about your business.
-              </Text>
-              <Text style={styles.subhead}>How it works</Text>
-              <Text style={styles.bullet}>
-                • Ari never makes changes without asking — you always confirm before anything is
-                created or changed.
-              </Text>
-              <Text style={styles.bullet}>
-                • Your conversations are saved so Ari remembers context across visits.
-              </Text>
-              <Text style={styles.bullet}>
-                • You can see and delete everything Ari knows about you in Settings.
-              </Text>
-              <Text style={[styles.body, styles.disclaimer]}>
-                Ari is not a financial, legal, or tax advisor. Always double-check anything
-                important.
-              </Text>
+              <View style={styles.trustList}>
+                <TrustRow
+                  number="1"
+                  title="You approve important changes"
+                  detail="Ari shows what will happen before creating, publishing, sending, or spending."
+                />
+                <TrustRow
+                  number="2"
+                  title="Memory stays under your control"
+                  detail="Conversations and brand context are saved, editable, and deletable in Settings."
+                />
+                <TrustRow
+                  number="3"
+                  title="Research shows its evidence"
+                  detail="Sources, uncertainty, and blocked pages stay visible instead of being guessed."
+                />
+              </View>
+              <View style={styles.boundaryCard}>
+                <Text style={styles.boundaryTitle}>Important</Text>
+                <Text style={styles.boundaryCopy}>
+                  Ari can make mistakes and is not a financial, legal, or tax advisor. Double-check
+                  decisions that matter.
+                </Text>
+              </View>
             </ScrollView>
 
             {/* Footer is OUTSIDE the ScrollView so the Pressable hit target
@@ -181,15 +209,12 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
                 { paddingBottom: Math.max(insets.bottom, spacing.lg) },
               ]}
             >
-              <Pressable
+              <AriActionButton
                 onPress={onAccept}
-                style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
-                accessibilityRole="button"
+                label="Start with Ari"
+                variant="primary"
                 accessibilityLabel="Acknowledge and continue to Ari"
-                hitSlop={8}
-              >
-                <Text style={styles.ctaText}>Got it — let&apos;s start</Text>
-              </Pressable>
+              />
             </View>
           </View>
         </View>
@@ -237,6 +262,14 @@ const styles = StyleSheet.create({
   sheet: {
     flexShrink: 1,
   },
+  grabber: {
+    width: 38,
+    height: 4,
+    alignSelf: "center",
+    borderRadius: radius.full,
+    backgroundColor: "#51565c",
+    marginTop: spacing.sm,
+  },
   // ORCH-1248 (Apple 2.1a): always-visible close affordance, top-right, above
   // the blur layer. ≥44pt effective target via size + hitSlop.
   closeButton: {
@@ -248,7 +281,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.10)",
+    borderWidth: 1,
+    borderColor: "#3b4248",
+    backgroundColor: "#20242a",
     zIndex: 2,
   },
   closeGlyph: {
@@ -257,53 +292,102 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: textTokens.primary,
   },
-  topHighlight: {
-    position: "absolute",
-    top: 0,
-    left: spacing.lg,
-    right: spacing.lg,
-    height: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.18)",
-    zIndex: 1,
-  },
   content: {
     padding: spacing.xl,
-    paddingTop: spacing.xl + spacing.sm,
+    paddingTop: spacing.lg,
+    gap: spacing.lg,
+  },
+  hero: {
+    alignItems: "center",
   },
   orbWrap: {
     alignItems: "center",
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  eyebrow: {
+    color: ariPalette.flame,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: "800",
+    letterSpacing: 1.35,
+    marginBottom: spacing.sm,
   },
   title: {
     fontSize: typography.h1.fontSize,
     fontWeight: typography.h1.fontWeight,
     color: textTokens.primary,
     textAlign: "center",
-    marginBottom: spacing.md,
-    letterSpacing: -0.2,
+    marginBottom: spacing.sm,
+    letterSpacing: -0.45,
   },
   body: {
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
     color: textTokens.secondary,
-    marginBottom: spacing.md,
+    textAlign: "center",
+    maxWidth: 420,
   },
-  subhead: {
-    fontSize: typography.bodyLg.fontSize,
-    fontWeight: "600",
+  trustList: {
+    borderWidth: 1,
+    borderColor: "#32383e",
+    borderRadius: radius.lg,
+    backgroundColor: "#171a1f",
+    overflow: "hidden",
+  },
+  trustRow: {
+    minHeight: 74,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+    padding: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#30353b",
+  },
+  trustNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#8b4a2d",
+    backgroundColor: "#2a1d18",
+  },
+  trustNumberText: {
+    color: "#f49a66",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "800",
+  },
+  trustCopy: { flex: 1, minWidth: 0, gap: 3 },
+  trustTitle: {
     color: textTokens.primary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  bullet: {
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
+    fontWeight: "700",
   },
-  disclaimer: {
-    marginTop: spacing.md,
+  trustDetail: {
+    color: textTokens.secondary,
     fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+  },
+  boundaryCard: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "#3b4147",
+    backgroundColor: "#1d2126",
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  boundaryTitle: {
+    color: textTokens.primary,
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "700",
+  },
+  boundaryCopy: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
     color: textTokens.tertiary,
   },
   footer: {
@@ -313,29 +397,6 @@ const styles = StyleSheet.create({
     // — see render (ORCH-1246): keeps the CTA above the home-indicator on iPad.
     borderTopWidth: 1,
     borderTopColor: glass.border.profileBase,
-  },
-  cta: {
-    height: 54,
-    borderRadius: radius.lg,
-    backgroundColor: ariPalette.flame,
-    alignItems: "center",
-    justifyContent: "center",
-    // Premium soft glow shadow under the CTA
-    shadowColor: ariPalette.flame,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 0,
-  },
-  ctaPressed: {
-    opacity: 0.88,
-    transform: [{ scale: 0.98 }],
-  },
-  ctaText: {
-    fontSize: typography.bodyLg.fontSize,
-    fontWeight: "600",
-    color: textTokens.inverse,
-    letterSpacing: 0.2,
   },
 });
 

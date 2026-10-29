@@ -1,7 +1,7 @@
 /**
  * ORCH-1246 (Apple 2.1a) — "Meet Ari" disclosure must always show its dismiss
- * CTA on every device (iPad included). The owner's decision: NO X / close button;
- * the existing "Got it — let's start" CTA must simply always be on-screen.
+ * CTA on every device (iPad included). The current "Start with Ari" CTA must
+ * always be on-screen.
  *
  * Two guards:
  *   1. resolveSheetMaxHeight — pure: the sheet height is the SMALLER of 88% of
@@ -59,7 +59,7 @@ describe("AiDisclosureModal source guards (ORCH-1246 Apple 2.1a)", () => {
   // build 15's single-CTA approach still trapped the reviewer (BlurView swallowed
   // the tap on iOS 26). The new contract requires REDUNDANT escape routes.
   test("CTA still present and wired to onAccept", () => {
-    expect(SOURCE).toContain("Got it");
+    expect(SOURCE).toContain("Start with Ari");
     expect(SOURCE).toContain("onPress={onAccept}");
   });
 });
