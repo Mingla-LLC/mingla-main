@@ -172,8 +172,8 @@ Deno.test("#4179 maps only to known or newly declared capability keys", async ()
 });
 
 Deno.test("#4179 removes stale claims and keeps merged-but-unreleased native work honest", () => {
-  assertEquals(guide.length, 32);
-  assertEquals(new Set(guide.map((row) => row.capability_key)).size, 32);
+  assertEquals(guide.length, 33);
+  assertEquals(new Set(guide.map((row) => row.capability_key)).size, 33);
   const byKey = new Map(guide.map((row) => [row.capability_key, row]));
   const paystack = JSON.stringify(byKey.get("trips-installments"));
   assert(paystack.includes("eligible Nigerian Paystack"));
@@ -183,6 +183,9 @@ Deno.test("#4179 removes stale claims and keeps merged-but-unreleased native wor
   assertEquals(byKey.get("account-app-updates")?.claimed_status, "planned");
   assertEquals(byKey.get("sites-brand-website")?.claimed_status, "live");
   assertEquals(byKey.get("programs-creators")?.claimed_status, "live");
+  const teamRoles = byKey.get("staff-team-roles")?.limitations ?? "";
+  assert(teamRoles.includes("Every active teammate role can use Work and Calendar."));
+  assert(!teamRoles.includes("Work, Needs you and Calendar"));
   for (
     const key of [
       "discover-events",
@@ -215,7 +218,7 @@ Deno.test("#4179 removes stale claims and keeps merged-but-unreleased native wor
 });
 
 Deno.test("#4179 reasoned classifications have no 20-key truncation", () => {
-  const keys = Array.from({ length: 32 }, (_, index) => `feature-${index}`);
+  const keys = Array.from({ length: 33 }, (_, index) => `feature-${index}`);
   assertEquals(
     parseFeatureGuide(`Feature Guide: ${keys.join(", ")}`),
     { kind: "keys", keys },

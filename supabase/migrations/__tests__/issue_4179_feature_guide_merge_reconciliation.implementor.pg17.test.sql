@@ -24,7 +24,7 @@ BEGIN
   END IF;
   IF (SELECT count(*) FROM public.product_truth_audit
        WHERE metadata->>'source' = 'issue_4179_feature_guide_merge_reconciliation'
-         AND action = 'capability_saved') <> 32 THEN
+         AND action = 'capability_saved') <> 33 THEN
     RAISE EXCEPTION 'issue4179_saved_audit_count';
   END IF;
   IF EXISTS (
@@ -35,13 +35,21 @@ BEGIN
        'marketing-analytics','marketing-host-ads','official-brand-groups','programs-creators',
        'sites-brand-website','social-chat','social-collab-decide','staff-ads',
        'staff-community-support','staff-data-room','staff-drafts','staff-email','staff-health',
-       'staff-offerings','staff-orders-money','staff-people-brands','staff-sites-ops',
+       'staff-offerings','staff-orders-money','staff-people-brands','staff-sites-ops','staff-team-roles',
        'staff-work-board','staff-mingla-money','trips-installments','web-blog','brand-customer-enquiries'
      )
        AND c.claimed_status = 'live'
        AND public.issue_3720_feature_guide_effective_status(c.id) = 'Live'
   ) THEN
     RAISE EXCEPTION 'issue4179_rewritten_entry_still_live';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.product_capabilities
+     WHERE capability_key = 'staff-team-roles'
+       AND limitations ILIKE '%Every active teammate role can use Work and Calendar.%'
+       AND limitations NOT ILIKE '%Work, Needs you and Calendar%'
+  ) THEN
+    RAISE EXCEPTION 'issue4179_retired_needs_you_role_copy_stale';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.product_capabilities
