@@ -123,7 +123,15 @@ test("Mute calls the new RPC optimistically and restores the prior value on erro
     path.resolve(__dirname, "../../../app/messages/[conversationId].tsx"),
     "utf8",
   );
-  expect(thread).toContain("Mute notifications");
+  const peoplePanel = fs.readFileSync(
+    path.resolve(__dirname, "../../components/messages/BrandGroupPeoplePanel.tsx"),
+    "utf8",
+  );
+  // [TEST-MOD-APPROVED #4173] Notification controls moved into the authorized
+  // people/details surface; the active muted-state notice remains in-thread.
+  expect(thread).toContain("BrandGroupPeoplePanel");
+  expect(peoplePanel).toContain("Mute notifications");
+  expect(peoplePanel).toContain("Direct @mentions still notify you");
   // [TEST-MOD-APPROVED #3988] Direct mentions intentionally bypass a thread
   // mute, so the previous blanket no-push copy was no longer truthful.
   expect(thread).toContain(

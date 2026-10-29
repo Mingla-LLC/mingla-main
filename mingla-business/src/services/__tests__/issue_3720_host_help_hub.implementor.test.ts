@@ -233,12 +233,15 @@ describe("#3720 Host Help & Support hub (implementor)", () => {
     expect(src).toContain('label: "Guides"');
   });
 
-  test("Guides tab exposes Help Centre videos link", () => {
+  test("Guides tab exposes the growing Help Centre video catalogue", () => {
     const src = fs.readFileSync(
       path.join(SRC, "components/support/GuidesTabPanel.tsx"),
       "utf8",
     );
-    expect(src).toContain("Help Centre videos");
+    // [TEST-MOD-APPROVED #4173] The compact redesign names the handoff
+    // "View more videos" while preserving the canonical Help Centre target.
+    expect(src).toContain("View more videos");
+    expect(src).toContain("openHelpCentre(HELP_CENTRE_URL)");
     expect(src).toContain("HELP_CENTRE_URL");
     expect(HELP_CENTRE_URL).toBe("https://usemingla.com/help");
   });
