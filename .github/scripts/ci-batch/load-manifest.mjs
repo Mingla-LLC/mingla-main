@@ -66,7 +66,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // PostgreSQL and structural proofs entered the preserved inventories.
 // #4179: re-sealed after the release-reason repair entered the same three
 // preserved historical replay inventories.
-export const BOOTSTRAP_SHA256 = "185892bcfcb91e9dbd5036d84603c410a0963087661eb590d57b76a982725dd0";
+// #4179: re-sealed after the explicit JSON-null repair and its proofs entered
+// those inventories without changing any preserved commands.
+export const BOOTSTRAP_SHA256 = "fe56cb1f48afefa8e6ed6f7c28dfc86667d0012374d66b023585808b2008911a";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

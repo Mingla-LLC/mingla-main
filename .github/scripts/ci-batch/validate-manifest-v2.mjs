@@ -295,7 +295,9 @@ export function phase3dContractDigest(manifest) {
 // exact exclusions beside #4073 in the filtered historical replays.
 // #4179: register the Feature Guide reconciliation migration and its declared
 // PostgreSQL and structural proofs in the same preserved inventories.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "008fe5cd9fb4273e18becdaf5eac6a307091f735a872f92aa316b97cd4c2f000";
+// #4179: register the explicit JSON-null repair and its two proofs in those
+// same inventories so every preserved selector remains exact.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "6762f54052c6cc330be248b22778625402b06bc5ece090489761b7d6de9e2cac";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

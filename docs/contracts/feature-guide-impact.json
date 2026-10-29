@@ -8,7 +8,8 @@
         "mingla-admin/src/services/featureGuideService.js",
         "supabase/functions/_shared/opsBridges.ts",
         "supabase/functions/product-avengers-sync/index.ts",
-        "supabase/migrations/20280210004179_issue_4179_release_reason_backfill.sql"
+        "supabase/migrations/20280210004179_issue_4179_release_reason_backfill.sql",
+        "supabase/migrations/20280211004179_issue_4179_release_reason_json_null.sql"
       ]
     }
   ]
