@@ -22,6 +22,7 @@ import {
 } from "../../constants/designSystem";
 import { SUPPORT_HOST_FACING_AGENT } from "../../constants/supportHostFacing";
 import { useSupportIsOnline } from "../../hooks/useCommunity";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import {
   useCreateSupportTicket,
   useSupportTickets,
@@ -62,6 +63,7 @@ export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
   const { mutateAsync: createTicket, isPending: creating } =
     useCreateSupportTicket();
   const { online, isLoading: onlineLoading } = useSupportIsOnline();
+  const { isWideDesktop } = useResponsiveLayout();
 
   const [subject, setSubject] = useState("");
 
@@ -116,95 +118,74 @@ export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
         </View>
       ) : null}
 
-      <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
-        <Text style={styles.cardTitle}>Need a hand?</Text>
-        <Text style={styles.cardBody}>
-          Start a chat and {SUPPORT_HOST_FACING_AGENT} will reply right here.
-          Add a short subject so we know what you need.
-        </Text>
-        <TextInput
-          value={subject}
-          onChangeText={setSubject}
-          placeholder="What's it about? (e.g. payouts, a stuck event)"
-          placeholderTextColor={textTokens.tertiary}
-          style={styles.subjectInput}
-          maxLength={SUBJECT_MAX}
-          editable={!creating}
-          accessibilityLabel="Subject"
-          returnKeyType="done"
-          onSubmitEditing={() => void handleStartChat()}
-        />
-        <Button
-          label="Start a chat"
-          leadingIcon="chat"
-          onPress={handleStartChat}
-          loading={creating}
-          disabled={!canStart}
-        />
-        {!canStart && !creating ? (
-          <Text style={styles.disabledHint}>Add a subject to start</Text>
-        ) : null}
-      </GlassCard>
-
-      <Text style={styles.sectionLabel}>My support requests</Text>
-
-      {isLoading ? (
-        <View style={styles.listState}>
-          <ActivityIndicator color={textTokens.secondary} />
+      <View style={[styles.workspace, isWideDesktop && styles.workspaceWide]}>
+        <View
+          style={[
+            styles.primaryColumn,
+            isWideDesktop && styles.primaryColumnWide,
+          ]}
+        >
+          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+            <Text style={styles.cardTitle}>Need a hand?</Text>
+            <Text style={styles.cardBody}>
+              Start a chat and {SUPPORT_HOST_FACING_AGENT} will reply right here.
+              Add a short subject so we know what you need.
+            </Text>
+            <TextInput
+              value={subject}
+              onChangeText={setSubject}
+              placeholder="What's it about? (e.g. payouts, a stuck event)"
+              placeholderTextColor={textTokens.tertiary}
+              style={styles.subjectInput}
+              maxLength={SUBJECT_MAX}
+              editable={!creating}
+              accessibilityLabel="Subject"
+              returnKeyType="done"
+              onSubmitEditing={() => void handleStartChat()}
+            />
+            <Button label="Start a chat" leadingIcon="chat" onPress={handleStartChat} loading={creating} disabled={!canStart} />
+            {!canStart && !creating ? <Text style={styles.disabledHint}>Add a subject to start</Text> : null}
+          </GlassCard>
         </View>
-      ) : isError ? (
-        <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
-          <Text style={styles.cardBody}>
-            We couldn&apos;t load your requests just now.
-          </Text>
-          <Button
-            label="Try again"
-            variant="secondary"
-            onPress={() => void refetch()}
-          />
-        </GlassCard>
-      ) : tickets.length === 0 ? (
-        <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
-          <Text style={styles.emptyTitle}>No requests yet</Text>
-          <Text style={styles.cardBody}>
-            When you start a chat, it&apos;ll show up here so you can pick the
-            conversation back up anytime.
-          </Text>
-        </GlassCard>
-      ) : (
-        <View style={styles.list}>
-          {tickets.map((ticket: SupportTicket) => {
-            const pill = statusPill(ticket.status);
-            return (
-              <Pressable
-                key={ticket.id}
-                onPress={() => handleOpenTicket(ticket.id)}
-                accessibilityRole="button"
-                accessibilityLabel={`Open support request: ${ticket.subject}`}
-                style={({ pressed }) => [pressed && styles.rowPressed]}
-              >
-                <GlassCard variant="elevated" radius="md" padding={spacing.md}>
-                  <View style={styles.rowTop}>
-                    <Text style={styles.rowSubject} numberOfLines={1}>
-                      {ticket.subject}
-                    </Text>
-                    <Pill variant={pill.variant}>{pill.label}</Pill>
-                  </View>
-                  <View style={styles.rowBottom}>
-                    <Text style={styles.rowMeta} numberOfLines={1}>
-                      {ticket.audience === "brand" ? "Shared with your brand · " : ""}
-                      {ticket.next_update_at
-                        ? `Next update ${new Date(ticket.next_update_at).toLocaleString()}`
-                        : `Updated ${new Date(ticket.last_message_at).toLocaleDateString()}`}
-                    </Text>
-                    <Icon name="chevR" size={16} color={textTokens.tertiary} />
-                  </View>
-                </GlassCard>
-              </Pressable>
-            );
-          })}
+        <View
+          style={[
+            styles.supportColumn,
+            isWideDesktop && styles.supportColumnWide,
+          ]}
+        >
+          <Text style={styles.sectionLabel}>My support requests</Text>
+          {isLoading ? (
+            <View style={styles.listState}><ActivityIndicator color={textTokens.secondary} /></View>
+          ) : isError ? (
+            <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+              <Text style={styles.cardBody}>We couldn&apos;t load your requests just now.</Text>
+              <Button label="Try again" variant="secondary" onPress={() => void refetch()} />
+            </GlassCard>
+          ) : tickets.length === 0 ? (
+            <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+              <Text style={styles.emptyTitle}>No requests yet</Text>
+              <Text style={styles.cardBody}>When you start a chat, it&apos;ll show up here so you can pick the conversation back up anytime.</Text>
+            </GlassCard>
+          ) : (
+            <View style={styles.list}>
+              {tickets.map((ticket: SupportTicket) => {
+                const pill = statusPill(ticket.status);
+                return (
+                  <Pressable key={ticket.id} onPress={() => handleOpenTicket(ticket.id)} accessibilityRole="button" accessibilityLabel={`Open support request: ${ticket.subject}`} style={({ pressed }) => [pressed && styles.rowPressed]}>
+                    <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+                      <View style={styles.rowTop}><Text style={styles.rowSubject} numberOfLines={1}>{ticket.subject}</Text><Pill variant={pill.variant}>{pill.label}</Pill></View>
+                      <View style={styles.rowBottom}>
+                        <Text style={styles.rowMeta} numberOfLines={1}>{ticket.audience === "brand" ? "Shared with your brand · " : ""}{ticket.next_update_at ? `Next update ${new Date(ticket.next_update_at).toLocaleString()}` : `Updated ${new Date(ticket.last_message_at).toLocaleDateString()}`}</Text>
+                        <Icon name="chevR" size={16} color={textTokens.tertiary} />
+                      </View>
+                    </GlassCard>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
         </View>
-      )}
+      </View>
     </View>
   );
 };
@@ -213,6 +194,12 @@ const styles = StyleSheet.create({
   col: {
     gap: spacing.md,
   },
+  workspace: { gap: spacing.lg },
+  workspaceWide: { flexDirection: "row", alignItems: "flex-start" },
+  primaryColumn: { minWidth: 0, gap: spacing.md },
+  primaryColumnWide: { flexBasis: 0, flexGrow: 5 },
+  supportColumn: { minWidth: 0, gap: spacing.md },
+  supportColumnWide: { flexBasis: 0, flexGrow: 3 },
   banner: {
     flexDirection: "row",
     alignItems: "center",

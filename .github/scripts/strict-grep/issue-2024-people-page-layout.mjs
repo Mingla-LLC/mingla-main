@@ -8,8 +8,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const files = {
   page: "mingla-business/src/components/people/PeoplePage.tsx",
   primitives: "mingla-business/src/components/people/PeoplePrimitives.tsx",
-  overview: "mingla-business/app/(tabs)/marketing/index.tsx",
-  campaigns: "mingla-business/app/(tabs)/marketing/campaigns/index.tsx",
+  layout: "mingla-business/app/(tabs)/marketing/_layout.tsx",
+  actionButton:
+    "mingla-business/src/components/marketing/MarketingActionButton.tsx",
+  actions: "mingla-business/src/components/marketing/marketingTabActions.ts",
   route: "mingla-business/app/(tabs)/marketing/people/index.tsx",
   happy: "mingla-business/src/components/people/__tests__/PeoplePage.issue2024.happy.test.tsx",
   preservedHappy:
@@ -34,8 +36,9 @@ export function audit(base) {
   };
   const page = read("page");
   const primitives = read("primitives");
-  const overview = read("overview");
-  const campaigns = read("campaigns");
+  const layout = read("layout");
+  const actionButton = read("actionButton");
+  const actions = read("actions");
   const route = read("route");
   const happy = read("happy");
   const preservedHappy = read("preservedHappy");
@@ -68,11 +71,14 @@ export function audit(base) {
   if (!/groupsColumnWide\s*:\s*\{[\s\S]*?flexBasis\s*:\s*0[\s\S]*?flexGrow\s*:\s*3[\s\S]*?minWidth\s*:\s*0/.test(page)) {
     failures.push("People Groups column lost the approved 3-part wide allocation");
   }
-  if (!page.includes("const fabOffset = useStickyFooterOffset();")) {
-    failures.push("People FAB bottom no longer comes from useStickyFooterOffset");
+  if (page.includes("useStickyFooterOffset") || page.includes("people-new-campaign")) {
+    failures.push("People restored a route-local FAB instead of using the Marketing shell");
+  }
+  if (!layout.includes("const bottom = useStickyFooterOffset();")) {
+    failures.push("Marketing shell FAB bottom no longer comes from useStickyFooterOffset");
   }
   if (!page.includes("paddingBottom: 120")) {
-    failures.push("People no longer uses the established sibling FAB scroll clearance");
+    failures.push("People no longer leaves established shell-action scroll clearance");
   }
   if (/marginBottom\s*:\s*fabOffset\s*\+\s*FAB_HEIGHT/.test(page)) {
     failures.push("People restored the forbidden full-width FAB bottom bar");
@@ -80,33 +86,38 @@ export function audit(base) {
   if (/floatingActionInset|people-fab-exclusion|LinearGradient|PanResponder|fabSize|marginBottom\s*:\s*fabOffset|paddingRight\s*:\s*(?:fab|shield)/.test(`${page}\n${primitives}`)) {
     failures.push("People introduced custom FAB exclusion geometry instead of the sibling pattern");
   }
-  const siblingFabMarkers = [
+  const sharedFabMarkers = [
     'position: "absolute"',
     "right: spacing.md",
     "minHeight: 48",
-    "paddingHorizontal: spacing.md",
-    "paddingVertical: spacing.sm",
-    'backgroundColor: "rgba(235, 120, 37, 0.42)"',
-    "pressed ? styles.fabPressed : null",
+    'testID={floating ? "marketing-floating-action" : "marketing-tab-action"}',
   ];
-  if (siblingFabMarkers.some((marker) => !page.includes(marker) || !overview.includes(marker) || !campaigns.includes(marker))) {
-    failures.push("People New campaign FAB diverged from the established Overview/Campaigns contract");
+  if (
+    !layout.includes("<MarketingActionSurfaces hidden={hideActions} />") ||
+    !layout.includes("<MarketingActionButton action={action} floating bottom={bottom} />") ||
+    sharedFabMarkers.some((marker) => !actionButton.includes(marker))
+  ) {
+    failures.push("shared Marketing floating action lost its shell-owned geometry");
   }
-  if (!page.includes('testID="people-new-campaign"') || !page.includes('accessibilityLabel="New campaign"')) {
-    failures.push("People lost the labelled New campaign action");
-  }
-  const exactRoute = 'router.push("/marketing/campaigns/compose" as never);';
-  if ((page.match(new RegExp(exactRoute.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length !== 1) {
-    failures.push("People New campaign no longer performs one exact parameter-free push");
+  if (
+    !/people\s*:\s*\{[\s\S]*?label\s*:\s*"Import people"[\s\S]*?icon\s*:\s*"upload"[\s\S]*?href\s*:\s*"\/\(tabs\)\/people\/import\?returnTo=marketingPeople"/.test(
+      actions,
+    )
+  ) {
+    failures.push("People tab lost its canonical Import people action");
   }
   if (!page.includes('pointerEvents={modalOpen ? "none" : "auto"}') || !page.includes("accessibilityElementsHidden={modalOpen}")) {
-    failures.push("People modal state no longer isolates the workspace and FAB");
+    failures.push("People modal state no longer isolates the workspace");
   }
-  if (!happy.includes("TestRenderer.create(<PeoplePage />") || !happy.includes('node.props.testID === "people-new-campaign"')) {
-    failures.push("issue #2024 happy guard no longer renders the real PeoplePage and campaign action");
+  if (
+    !happy.includes("TestRenderer.create(<PeoplePage />") ||
+    !happy.includes("MARKETING_TAB_ACTIONS.people") ||
+    !happy.includes('findAllByProps({ testID: "people-new-campaign" })')
+  ) {
+    failures.push("issue #2024 happy guard no longer proves the real PeoplePage uses the shell action");
   }
   if (!happy.includes("marginBottom).toBeUndefined()") || !happy.includes('paddingBottom).toBe(120)') || !happy.includes('people-fab-exclusion')) {
-    failures.push("issue #2024 rendered guard no longer proves sibling FAB geometry and full cards");
+    failures.push("issue #2024 rendered guard no longer proves shell-action clearance and full cards");
   }
 
   if (!preservedHappy.includes('status="Import unavailable"') || !preservedHappy.includes("flag\\.data")) {
@@ -160,10 +171,13 @@ function selfTest() {
     expectMutation(
       "sticky owner deleted",
       () => {
-        const source = fs.readFileSync(target("page"), "utf8");
-        fs.writeFileSync(target("page"), source.replace("const fabOffset = useStickyFooterOffset();", "const fabOffset = 24;"));
+        const source = fs.readFileSync(target("layout"), "utf8");
+        fs.writeFileSync(
+          target("layout"),
+          source.replace("const bottom = useStickyFooterOffset();", "const bottom = 24;"),
+        );
       },
-      "useStickyFooterOffset",
+      "Marketing shell FAB bottom",
     );
     expectMutation(
       "custom FAB halo restored",
@@ -198,29 +212,46 @@ function selfTest() {
           source.replace("paddingBottom: 120", "paddingBottom: 184"),
         );
       },
-      "established sibling FAB scroll clearance",
+      "established shell-action scroll clearance",
     );
     expectMutation(
-      "campaign action deleted",
+      "canonical People action deleted",
       () => {
-        const source = fs.readFileSync(target("page"), "utf8");
-        fs.writeFileSync(target("page"), source.replace('testID="people-new-campaign"', 'testID="deleted-campaign-action"'));
-      },
-      "labelled New campaign",
-    );
-    expectMutation(
-      "route changed",
-      () => {
-        const source = fs.readFileSync(target("page"), "utf8");
+        const source = fs.readFileSync(target("actions"), "utf8");
         fs.writeFileSync(
-          target("page"),
+          target("actions"),
+          source.replace('label: "Import people"', 'label: "Deleted action"'),
+        );
+      },
+      "canonical Import people action",
+    );
+    expectMutation(
+      "People action destination changed",
+      () => {
+        const source = fs.readFileSync(target("actions"), "utf8");
+        fs.writeFileSync(
+          target("actions"),
           source.replace(
-            'router.push("/marketing/campaigns/compose" as never);',
-            'router.push("/marketing/campaigns/compose?audience=book" as never);',
+            'href: "/(tabs)/people/import?returnTo=marketingPeople"',
+            'href: "/(tabs)/marketing/campaigns/compose"',
           ),
         );
       },
-      "parameter-free push",
+      "canonical Import people action",
+    );
+    expectMutation(
+      "shared action surface deleted",
+      () => {
+        const source = fs.readFileSync(target("layout"), "utf8");
+        fs.writeFileSync(
+          target("layout"),
+          source.replace(
+            "<MarketingActionSurfaces hidden={hideActions} />",
+            "{/* action removed */}",
+          ),
+        );
+      },
+      "shell-owned geometry",
     );
     expectMutation(
       "hidden heading made visible",

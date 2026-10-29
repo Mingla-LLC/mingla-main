@@ -4,23 +4,28 @@
  * pilot access. Loading and refusal are plain states, never a crash.
  */
 import React from "react";
-import { useLocalSearchParams } from "expo-router";
+import { StyleSheet, View } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import {
   ProgramEmpty,
   ProgramLoading,
+  Segmented,
 } from "../programs/ProgramKit";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { currencyCodeOrNull } from "../../utils/currency";
 import { CreatorsHomeView } from "../creators/CreatorsHomeView";
+import CreatorRosterScreen from "../creators/screens/CreatorRosterScreen";
+import CreatorResultsScreen from "../creators/screens/CreatorResultsScreen";
 import {
   ReferralHomeView,
   type ReferralTab,
 } from "../referrals/ReferralHomeView";
 import { fetchCreatorGigsAccess } from "../../services/creatorGigsService";
 import { fetchReferralAccess } from "../../services/referralService";
+import { spacing } from "../../constants/designSystem";
 
 // The tab itself is reached only through the program's lazy owner
 // (programs/creatorProgramOwner.ts), so the homes and services are static
@@ -33,6 +38,12 @@ const REFERRAL_TABS: ReadonlySet<string> = new Set([
   "links",
   "results",
 ]);
+type CreatorSection = "gigs" | "roster" | "results";
+const CREATOR_SECTIONS: readonly (readonly [CreatorSection, string])[] = [
+  ["gigs", "Gigs"],
+  ["roster", "My creators"],
+  ["results", "Results"],
+];
 
 export function BlastProgramTab({
   program,
@@ -40,10 +51,17 @@ export function BlastProgramTab({
   program: "creators" | "referrals";
 }): React.ReactElement {
   const brand = useCurrentBrand();
+  const router = useRouter();
   const brandId = brand?.id ?? null;
   const role = useCurrentBrandRole(brandId);
-  const params = useLocalSearchParams<{ tab?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    tab?: string | string[];
+    view?: string | string[];
+  }>();
   const rawTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
+  const rawView = Array.isArray(params.view) ? params.view[0] : params.view;
+  const creatorSection: CreatorSection =
+    rawView === "roster" || rawView === "results" ? rawView : "gigs";
   const access = useQuery({
     queryKey: ["blast-program-access", program, brandId],
     enabled: brandId !== null && role.rank >= 20,
@@ -91,7 +109,30 @@ export function BlastProgramTab({
   return (
     <>
       {program === "creators" ? (
-        <CreatorsHomeView key={brandId} brandId={brandId} />
+        <View style={styles.creatorHost}>
+          <View style={styles.creatorTabs}>
+            <Segmented
+              options={CREATOR_SECTIONS}
+              value={creatorSection}
+              onChange={(next) =>
+                router.replace(
+                  `/(tabs)/marketing/creators?view=${next}` as never,
+                )
+              }
+            />
+          </View>
+          {creatorSection === "gigs" ? (
+            <CreatorsHomeView key={brandId} brandId={brandId} />
+          ) : creatorSection === "roster" ? (
+            <CreatorRosterScreen embedded brandIdOverride={brandId} />
+          ) : (
+            <CreatorResultsScreen
+              embedded
+              brandIdOverride={brandId}
+              currencyOverride={currency}
+            />
+          )}
+        </View>
       ) : (
         <ReferralHomeView
           key={brandId}
@@ -110,3 +151,11 @@ export function BlastProgramTab({
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  creatorHost: { flex: 1, minHeight: 0 },
+  creatorTabs: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+});

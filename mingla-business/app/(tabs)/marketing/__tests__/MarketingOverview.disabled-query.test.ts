@@ -35,12 +35,15 @@ import fs from "node:fs";
 import path from "node:path";
 
 const ROUTE_PATH = path.resolve(__dirname, "..", "index.tsx");
+const LAYOUT_PATH = path.resolve(__dirname, "..", "_layout.tsx");
 
 describe("ORCH-0889 — Marketing Overview disabled-query guard (T-01 happy)", () => {
   let source: string;
+  let layoutSource: string;
 
   beforeAll(() => {
     source = fs.readFileSync(ROUTE_PATH, "utf8");
+    layoutSource = fs.readFileSync(LAYOUT_PATH, "utf8");
   });
 
   it("(T-01a) uses the disabled-query-safe pattern `!hasResolved && !isError`", () => {
@@ -63,8 +66,10 @@ describe("ORCH-0889 — Marketing Overview disabled-query guard (T-01 happy)", (
     expect(source.includes('testID="overview-skeleton"')).toBe(true);
   });
 
-  it("(T-01d) reads from useStickyFooterOffset for FAB positioning (no inline `insets.bottom + 96`)", () => {
-    expect(source.includes("useStickyFooterOffset")).toBe(true);
+  it("(T-01d) lets the shared Marketing shell own sticky-footer FAB positioning", () => {
+    expect(source.includes("useStickyFooterOffset")).toBe(false);
+    expect(layoutSource.includes("useStickyFooterOffset")).toBe(true);
+    expect(layoutSource.includes("<MarketingActionSurfaces hidden={hideActions} />")).toBe(true);
     // Confirm no inline `insets.bottom + 96` remains anywhere.
     expect(/insets\.bottom\s*\+\s*96/.test(source)).toBe(false);
   });

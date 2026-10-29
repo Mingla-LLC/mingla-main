@@ -12,7 +12,6 @@ import * as ExpoRouter from "expo-router";
 import { AudienceCard, ManualGroupCard } from "../marketing/AudienceCard";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
-import { Icon } from "../ui/Icon";
 import { Skeleton } from "../ui/Skeleton";
 import { Toast } from "../ui/Toast";
 import { createRetryableLazyErrorBoundary, RetryableLazyErrorBoundary } from "../ui/RetryableLazyBoundary";
@@ -40,7 +39,6 @@ import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
-import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
 import { canPerformAction, gateCaptionFor } from "../../utils/permissionGates";
 import {
   ensureBrandBuyersAudience,
@@ -200,7 +198,6 @@ export function PeoplePage(): React.ReactElement {
   const online = useShareNetworkState();
   const openBrandSwitcher = useMarketingBrandSwitcher();
   const { isWideDesktop, width } = useResponsiveLayout();
-  const fabOffset = useStickyFooterOffset();
   const actionColumns = width > 0 && width < 352 ? 1 : isWideDesktop ? 4 : 2;
   const regularActionCell = {
     flexBasis: actionColumns === 1 ? "100%" : actionColumns === 2 ? "48%" : 0,
@@ -424,9 +421,6 @@ export function PeoplePage(): React.ReactElement {
       kind: "success",
     });
   };
-  const openNewCampaign = React.useCallback((): void => {
-    router.push("/marketing/campaigns/compose" as never);
-  }, [router]);
   const closeExport = React.useCallback((): void => {
     setExportOpen(false);
     if (Platform.OS === "web") {
@@ -733,20 +727,6 @@ export function PeoplePage(): React.ReactElement {
             </View>
           </View>
         </ScrollView>
-        <Pressable
-          accessibilityLabel="New campaign"
-          accessibilityRole="button"
-          onPress={openNewCampaign}
-          testID="people-new-campaign"
-          style={({ pressed }) => [
-            styles.fab,
-            { bottom: fabOffset },
-            pressed ? styles.fabPressed : null,
-          ]}
-        >
-          <Icon name="plus" size={24} color={text.primary} />
-          <Text style={styles.fabLabel}>New campaign</Text>
-        </Pressable>
       </View>
       <BookSheet
         visible={bookOpen}
@@ -986,33 +966,6 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: text.tertiary,
     marginTop: spacing.xs,
-  },
-  fab: {
-    position: "absolute",
-    right: spacing.md,
-    minHeight: 48,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-    backgroundColor: "rgba(235, 120, 37, 0.42)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.32,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  fabPressed: {
-    opacity: 0.85,
-  },
-  fabLabel: {
-    ...typography.bodySm,
-    fontWeight: "600",
-    color: text.primary,
   },
   toast: {
     position: "absolute",

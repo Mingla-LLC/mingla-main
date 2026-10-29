@@ -19,6 +19,7 @@ import {
   ListRow,
   Muted,
   ProgramEmpty,
+  ProgramColumns,
   ProgramLoading,
   ProgramScreen,
   SectionLabel,
@@ -26,6 +27,7 @@ import {
   StatusTag,
   programStyles,
 } from "../programs/ProgramKit";
+import { useMarketingActionRegistration } from "../people/MarketingBrandSwitcherContext";
 import {
   creatorGigsService,
   type HostHome,
@@ -103,6 +105,17 @@ export const CreatorsHomeView: React.FC<CreatorsHomeViewProps> = ({
   const gigs = home?.gigs ?? [];
   const openContract = (id: string) =>
     router.push(`/brand/${brandId}/creators/contract/${id}` as never);
+  const hireAction = React.useMemo(
+    () => ({
+      id: "creators-hire",
+      label: "Hire a creator",
+      compactLabel: "Hire",
+      icon: "video" as const,
+      onPress: () => setPicking(true),
+    }),
+    [],
+  );
+  useMarketingActionRegistration(hireAction);
 
   return (
     <ProgramScreen
@@ -111,14 +124,6 @@ export const CreatorsHomeView: React.FC<CreatorsHomeViewProps> = ({
       fallback="/(tabs)/marketing"
       refreshing={loading && home !== null}
       onRefresh={() => void load()}
-      footer={
-        <Button
-          fullWidth
-          label="Hire a creator"
-          leadingIcon="plus"
-          onPress={() => setPicking(true)}
-        />
-      }
       overlay={
         <ProgramSheet
           visible={picking}
@@ -166,114 +171,82 @@ export const CreatorsHomeView: React.FC<CreatorsHomeViewProps> = ({
         </Card>
       ) : null}
 
-      {needs.length > 0 ? <SectionLabel>Needs you</SectionLabel> : null}
-      {needs.map((contract) => {
-        const copy = needsYouCopy(
-          contract.state,
-          contract.creator,
-          contract.due_at,
-        );
-        return (
-          <Card key={contract.id}>
-            <Text style={programStyles.title}>{copy.title}</Text>
-            <Muted>
-              {[contract.title, copy.body].filter(Boolean).join(" · ")}
-            </Muted>
-            <Button
-              label={copy.cta}
-              size="sm"
-              onPress={() => openContract(contract.id)}
-            />
-          </Card>
-        );
-      })}
-
       {home ? (
-        <>
-          <SectionLabel>Gigs</SectionLabel>
-          {gigs.length === 0 ? (
-            <ProgramEmpty
-              icon="video"
-              title="No gigs yet"
-              body="Post a brief for an event or venue. Creators in your city tell you they're interested."
-            />
-          ) : (
-            <ListGroup>
-              {gigs.map((gig) => (
-                <ListRow
-                  key={gig.id}
-                  title={gig.title_public}
-                  subtitle={[
-                    gig.post_by ? `Video by ${shortDate(gig.post_by)}` : null,
-                    gig.interest_count > 0
-                      ? `${gig.interest_count} interested`
-                      : null,
-                    `${gig.hired_count} of ${gig.slots} hired`,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                  right={
-                    <StatusTag
-                      label={gigStatusLabel(gig.status)}
-                      tone={gig.status === "open" ? "live" : "ended"}
-                    />
-                  }
-                  onPress={() =>
-                    router.push(
-                      `/brand/${brandId}/creators/${gig.id}/interest` as never,
-                    )
-                  }
-                />
-              ))}
-            </ListGroup>
-          )}
-
-          {hired.length > 0 ? <SectionLabel>Hired</SectionLabel> : null}
-          {hired.length > 0 ? (
-            <ListGroup>
-              {hired.map((contract) => {
-                const pill = hostContractPill(contract);
+        <ProgramColumns
+          primary={
+            <>
+              {needs.length > 0 ? <SectionLabel>Needs you</SectionLabel> : null}
+              {needs.map((contract) => {
+                const copy = needsYouCopy(
+                  contract.state,
+                  contract.creator,
+                  contract.due_at,
+                );
                 return (
-                  <ListRow
-                    key={contract.id}
-                    leading={<Initials name={contract.creator} size={32} />}
-                    title={contract.creator}
-                    subtitle={
-                      contract.payment_pending
-                        ? `${contract.title} · Retry payment`
-                        : contract.title
-                    }
-                    right={<StatusTag label={pill.label} tone={pill.tone} />}
-                    onPress={() =>
-                      contract.payment_pending
-                        ? router.push(
-                            `/brand/${brandId}/creators/${contract.gig_id}/interest` as never,
-                          )
-                        : openContract(contract.id)
-                    }
-                  />
+                  <Card key={contract.id}>
+                    <Text style={programStyles.title}>{copy.title}</Text>
+                    <Muted>
+                      {[contract.title, copy.body].filter(Boolean).join(" · ")}
+                    </Muted>
+                    <Button label={copy.cta} size="sm" onPress={() => openContract(contract.id)} />
+                  </Card>
                 );
               })}
-            </ListGroup>
-          ) : null}
-
-          <View style={styles.chips}>
-            <LinkChip
-              icon="star"
-              label="My creators"
-              onPress={() =>
-                router.push(`/brand/${brandId}/creators/roster` as never)
-              }
-            />
-            <LinkChip
-              icon="chart"
-              label="Results"
-              onPress={() =>
-                router.push(`/brand/${brandId}/creators/results` as never)
-              }
-            />
-          </View>
-        </>
+              <SectionLabel>Gigs</SectionLabel>
+              {gigs.length === 0 ? (
+                <ProgramEmpty
+                  icon="video"
+                  title="No gigs yet"
+                  body="Post a brief for an event or venue. Creators in your city tell you they're interested."
+                />
+              ) : (
+                <ListGroup>
+                  {gigs.map((gig) => (
+                    <ListRow
+                      key={gig.id}
+                      title={gig.title_public}
+                      subtitle={[
+                        gig.post_by ? `Video by ${shortDate(gig.post_by)}` : null,
+                        gig.interest_count > 0 ? `${gig.interest_count} interested` : null,
+                        `${gig.hired_count} of ${gig.slots} hired`,
+                      ].filter(Boolean).join(" · ")}
+                      right={<StatusTag label={gigStatusLabel(gig.status)} tone={gig.status === "open" ? "live" : "ended"} />}
+                      onPress={() => router.push(`/brand/${brandId}/creators/${gig.id}/interest` as never)}
+                    />
+                  ))}
+                </ListGroup>
+              )}
+            </>
+          }
+          support={
+            <>
+              {hired.length > 0 ? <SectionLabel>Hired</SectionLabel> : null}
+              {hired.length > 0 ? (
+                <ListGroup>
+                  {hired.map((contract) => {
+                    const pill = hostContractPill(contract);
+                    return (
+                      <ListRow
+                        key={contract.id}
+                        leading={<Initials name={contract.creator} size={32} />}
+                        title={contract.creator}
+                        subtitle={contract.payment_pending ? `${contract.title} · Retry payment` : contract.title}
+                        right={<StatusTag label={pill.label} tone={pill.tone} />}
+                        onPress={() => contract.payment_pending
+                          ? router.push(`/brand/${brandId}/creators/${contract.gig_id}/interest` as never)
+                          : openContract(contract.id)}
+                      />
+                    );
+                  })}
+                </ListGroup>
+              ) : null}
+              <View style={styles.chips}>
+                <LinkChip icon="star" label="My creators" onPress={() => router.replace(`/(tabs)/marketing/creators?view=roster` as never)} />
+                <LinkChip icon="chart" label="Results" onPress={() => router.replace(`/(tabs)/marketing/creators?view=results` as never)} />
+              </View>
+            </>
+          }
+        />
       ) : null}
     </ProgramScreen>
   );

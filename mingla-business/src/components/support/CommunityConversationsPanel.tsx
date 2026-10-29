@@ -28,6 +28,7 @@ import type {
   CommunityPostKind,
 } from "../../services/communityService";
 import { ScrollView } from "../../wrappers/SmartScrollView";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -229,9 +230,11 @@ function ComposerSheet({
 export function CommunityConversationsPanel({
   kind,
   targetPostId,
+  composeRequestKey = 0,
 }: {
   kind: CommunityPostKind;
   targetPostId?: string;
+  composeRequestKey?: number;
 }) {
   // Legacy label marker for the renamed surface: Q&A is now Questions.
   const posts = useCommunityPosts(kind);
@@ -239,10 +242,14 @@ export function CommunityConversationsPanel({
   const [selectedId, setSelectedId] = useState<string | null>(targetPostId ?? null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const { isWideDesktop } = useResponsiveLayout();
 
   useEffect(() => {
     if (targetPostId) setSelectedId(targetPostId);
   }, [targetPostId]);
+  useEffect(() => {
+    if (composeRequestKey > 0) setComposerOpen(true);
+  }, [composeRequestKey]);
 
   const selected = posts.data.find((post) => post.id === selectedId) ?? null;
   const firstPost = !posts.data.some((post) => post.is_mine);
@@ -257,13 +264,6 @@ export function CommunityConversationsPanel({
 
   return (
     <View style={styles.list}>
-      <View style={styles.sectionHeader}>
-        <View style={styles.headerCopy}>
-          <Text style={styles.heading}>{kind === "idea" ? "Ideas" : "Questions"}</Text>
-          <Text style={styles.muted}>{kind === "idea" ? "Vote on what Mingla should build next." : "Ask and learn from other Hosts and the Mingla team."}</Text>
-        </View>
-        <Button label={kind === "idea" ? "Suggest an idea" : "Ask a question"} onPress={() => setComposerOpen(true)} />
-      </View>
       {notice ? <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text> : null}
       {posts.isLoading ? <ActivityIndicator color={textTokens.secondary} /> : posts.isError ? (
         <Button label="Try again" variant="secondary" onPress={() => void posts.refetch()} />
@@ -274,19 +274,23 @@ export function CommunityConversationsPanel({
           <Text style={styles.emptyCopy}>{kind === "idea" ? "Suggest something that would make hosting easier. Other Hosts can vote and add context." : "Start a useful conversation with other Hosts."}</Text>
           <Button label={kind === "idea" ? "Suggest an idea" : "Ask a question"} onPress={() => setComposerOpen(true)} />
         </GlassCard>
-      ) : posts.data.map((post) => (
-        <GlassCard key={post.id} variant="elevated" radius="md" padding={spacing.md}>
-          <Pressable accessibilityRole="button" accessibilityLabel={`Open ${post.title}`} onPress={() => setSelectedId(post.id)}>
-            <View style={styles.titleRow}>
-              <Text style={styles.title}>{post.title}</Text>
-              {post.review_state !== "published" ? <Text style={styles.pending}>{post.review_state === "pending" ? "In review" : "Needs attention"}</Text> : kind === "idea" ? <Pill variant={post.workflow_status === "shipped" ? "live" : "info"}>{IDEA_STATUS_LABELS[post.workflow_status ?? "new"] ?? "New"}</Pill> : post.staff_answered ? <Pill variant="live">ANSWERED</Pill> : null}
-            </View>
-            <Text numberOfLines={3} style={styles.body}>{post.body}</Text>
-            <Text style={styles.meta}>{post.author_label} · {post.brand_label} · {post.comment_count} {kind === "question" ? "answers" : "comments"}</Text>
-          </Pressable>
-          {post.review_state === "published" ? <Button label={`${post.voted_by_me ? "Voted" : "Vote"} · ${post.vote_count}`} variant="secondary" onPress={() => void posts.toggleVote(post.id)} /> : post.is_mine && post.review_state !== "pending" ? <Button label="Appeal decision" variant="secondary" onPress={() => void moderationActions.appeal("post", post.id, "Please review this decision again.")} /> : null}
-        </GlassCard>
-      ))}
+      ) : (
+        <View style={[styles.postGrid, isWideDesktop && styles.postGridWide]}>
+          {posts.data.map((post) => (
+            <GlassCard key={post.id} variant="elevated" radius="md" padding={spacing.md} style={isWideDesktop ? styles.postCardWide : undefined}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Open ${post.title}`} onPress={() => setSelectedId(post.id)}>
+                <View style={styles.titleRow}>
+                  <Text style={styles.title}>{post.title}</Text>
+                  {post.review_state !== "published" ? <Text style={styles.pending}>{post.review_state === "pending" ? "In review" : "Needs attention"}</Text> : kind === "idea" ? <Pill variant={post.workflow_status === "shipped" ? "live" : "info"}>{IDEA_STATUS_LABELS[post.workflow_status ?? "new"] ?? "New"}</Pill> : post.staff_answered ? <Pill variant="live">ANSWERED</Pill> : null}
+                </View>
+                <Text numberOfLines={3} style={styles.body}>{post.body}</Text>
+                <Text style={styles.meta}>{post.author_label} · {post.brand_label} · {post.comment_count} {kind === "question" ? "answers" : "comments"}</Text>
+              </Pressable>
+              {post.review_state === "published" ? <Button label={`${post.voted_by_me ? "Voted" : "Vote"} · ${post.vote_count}`} variant="secondary" onPress={() => void posts.toggleVote(post.id)} /> : post.is_mine && post.review_state !== "pending" ? <Button label="Appeal decision" variant="secondary" onPress={() => void moderationActions.appeal("post", post.id, "Please review this decision again.")} /> : null}
+            </GlassCard>
+          ))}
+        </View>
+      )}
       <ComposerSheet visible={composerOpen} kind={kind} ideas={kind === "idea" ? posts.data : []} firstPost={firstPost} saving={posts.isSaving} onClose={() => setComposerOpen(false)} onSubmit={submit} onOpenIdea={(id) => { setComposerOpen(false); setSelectedId(id); }} />
     </View>
   );
@@ -294,6 +298,9 @@ export function CommunityConversationsPanel({
 
 const styles = StyleSheet.create({
   list: { gap: spacing.md },
+  postGrid: { gap: spacing.md },
+  postGridWide: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start" },
+  postCardWide: { flexBasis: "48%", flexGrow: 1, minWidth: 320 },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
   headerCopy: { flex: 1, minWidth: 0 },
   heading: { fontSize: 20, fontWeight: "800", color: textTokens.primary },

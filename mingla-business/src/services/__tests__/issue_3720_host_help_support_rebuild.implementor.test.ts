@@ -19,20 +19,20 @@ describe("#3720 Host Help & Support rebuild", () => {
     expect(result.length).toBeLessThanOrEqual(35);
   });
 
-  test("H1-H2 keep the desktop shell, constrained panes and four section navigation", () => {
+  test("H1-H2 keep the desktop shell, wide panes and four section navigation", () => {
     const route = read("mingla-business/app/account/support.tsx");
     const community = read("mingla-business/src/components/support/CommunityTabPanel.tsx");
     expect(route).toContain("DesktopCanvas");
-    expect(route).toMatch(/Account\s+›\s+Help &amp; Support/);
-    expect(route).toMatch(/width >= 1100/);
-    expect(route).toMatch(/sectionRail[\s\S]+desktopFeed[\s\S]+sidePanel/);
-    expect(route).toContain("maxWidth: 760");
+    expect(route).not.toMatch(/Account\s+›\s+Help &amp; Support/);
+    expect(route).not.toContain("sectionRail");
+    expect(route).not.toContain("maxWidth: 760");
+    expect(route).toContain("community-floating-action");
     expect(route).toContain("hasCommunityTarget ? \"community\" : null");
     expect(route).toContain("target.kind === \"idea\" ? \"ideas\" : \"questions\"");
     for (const label of ["Announcements", "Roadmap", "Ideas", "Questions"]) {
       expect(community).toContain(`label: "${label}"`);
     }
-    expect(route).toContain("key={communitySection}");
+    expect(community).toContain("showSectionTabs = true");
   });
 
   test("H3-H5 keep normal placeholders, list-first ideas and complete announcements", () => {
@@ -56,7 +56,8 @@ describe("#3720 Host Help & Support rebuild", () => {
     const guides = read("mingla-business/src/components/support/GuidesTabPanel.tsx");
     const account = read("mingla-business/app/(tabs)/account.tsx");
     const support = read("mingla-business/src/components/support/SupportTabPanel.tsx");
-    for (const label of ["Being delivered now", "Next", "Later", "Recently shipped"]) expect(community).toContain(label);
+    expect(community).toContain('const LANE_ORDER = ["now", "next", "later"] as const');
+    for (const label of ['now: "Now"', 'next: "Next"', 'later: "Later"']) expect(community).toContain(label);
     expect(community).toContain("truncateRoadmapBlurb");
     expect(community).toContain("Aiming for");
     expect(community).toContain("Fed by");

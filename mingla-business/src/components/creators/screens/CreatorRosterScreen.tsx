@@ -20,11 +20,14 @@ import {
   ListRow,
   Muted,
   ProgramEmpty,
+  ProgramColumns,
   ProgramLoading,
   ProgramScreen,
   SheetBody,
   StatusTag,
+  StatStrip,
 } from "../../../components/programs/ProgramKit";
+import { useMarketingActionRegistration } from "../../people/MarketingBrandSwitcherContext";
 import { blastHubHref } from "../../../components/marketing/marketingSubNavTabs";
 import { useProgramParams } from "../../../components/programs/useProgramParams";
 import {
@@ -55,8 +58,15 @@ import {
 
 const PLATFORMS = ["instagram", "tiktok", "youtube", "x", "snapchat"] as const;
 
-export default function CreatorRoster(): React.ReactElement {
-  const { brandId } = useProgramParams();
+export default function CreatorRoster({
+  embedded = false,
+  brandIdOverride,
+}: {
+  embedded?: boolean;
+  brandIdOverride?: string;
+} = {}): React.ReactElement {
+  const route = useProgramParams();
+  const brandId = brandIdOverride ?? route.brandId;
   const [rows, setRows] = useState<CreatorRosterRow[] | null>(null);
   const [offers, setOffers] = useState<ReferralOffer[]>([]);
   const [filter, setFilter] = useState<RosterFilter>("all");
@@ -120,6 +130,20 @@ export default function CreatorRoster(): React.ReactElement {
   const visible = (rows ?? []).filter(
     (row) => filter === "all" || rosterStatus(row).key === filter,
   );
+  const addAction = React.useMemo(
+    () => ({
+      id: "creators-roster-add",
+      label: "Add a creator",
+      compactLabel: "Add",
+      icon: "plus" as const,
+      onPress: () => {
+        setError(null);
+        setAdding(true);
+      },
+    }),
+    [],
+  );
+  useMarketingActionRegistration(embedded ? addAction : null);
 
   const save = async () => {
     setBusy(true);
@@ -200,8 +224,9 @@ export default function CreatorRoster(): React.ReactElement {
     <ProgramScreen
       title="My creators"
       fallback={blastHubHref("creators")}
+      embedded={embedded}
       right={
-        <Pressable
+        embedded ? undefined : <Pressable
           onPress={() => {
             setError(null);
             setAdding(true);
@@ -391,60 +416,49 @@ export default function CreatorRoster(): React.ReactElement {
         />
       ) : null}
       {rows !== null && rows.length > 0 ? (
-        <>
-          <View style={styles.chips}>
-            <Chip
-              label={`All ${counts.all}`}
-              selected={filter === "all"}
-              onPress={() => setFilter("all")}
-            />
-            <Chip
-              label="On Mingla"
-              selected={filter === "on_mingla"}
-              onPress={() => setFilter("on_mingla")}
-            />
-            <Chip
-              label="Invited"
-              selected={filter === "invited"}
-              onPress={() => setFilter("invited")}
-            />
-          </View>
-          {visible.length === 0 ? (
-            <Muted>No one here yet. Try another filter.</Muted>
-          ) : (
-            <ListGroup>
-              {visible.map((row) => {
-                const status = rosterStatus(row);
-                return (
-                  <ListRow
-                    key={row.id}
-                    compact
-                    leading={<Initials name={row.name} size={32} />}
-                    title={row.name}
-                    subtitle={
-                      status.key === "on_mingla" || row.sales_count > 0
-                        ? `${row.sales_count} sale${row.sales_count === 1 ? "" : "s"} · ${programMoney(row.revenue_minor, row.currency)} in sales`
-                        : status.key === "invited"
-                          ? `Invite sent ${shortDate(row.updated_at)}`
-                          : "Track sales with a link"
-                    }
-                    right={
-                      <StatusTag label={status.label} tone={status.tone} />
-                    }
-                    onPress={() => {
-                      setError(null);
-                      setSelected(row);
-                    }}
-                  />
-                );
-              })}
-            </ListGroup>
-          )}
-          <Text style={styles.tiny}>
-            Paid gig work starts only after a creator joins Mingla and accepts
-            your offer.
-          </Text>
-        </>
+        <ProgramColumns
+          primary={
+            <>
+              <View style={styles.chips}>
+                <Chip label={`All ${counts.all}`} selected={filter === "all"} onPress={() => setFilter("all")} />
+                <Chip label="On Mingla" selected={filter === "on_mingla"} onPress={() => setFilter("on_mingla")} />
+                <Chip label="Invited" selected={filter === "invited"} onPress={() => setFilter("invited")} />
+              </View>
+              {visible.length === 0 ? (
+                <Muted>No one here yet. Try another filter.</Muted>
+              ) : (
+                <ListGroup>
+                  {visible.map((row) => {
+                    const status = rosterStatus(row);
+                    return (
+                      <ListRow
+                        key={row.id}
+                        compact
+                        leading={<Initials name={row.name} size={32} />}
+                        title={row.name}
+                        subtitle={status.key === "on_mingla" || row.sales_count > 0
+                          ? `${row.sales_count} sale${row.sales_count === 1 ? "" : "s"} · ${programMoney(row.revenue_minor, row.currency)} in sales`
+                          : status.key === "invited" ? `Invite sent ${shortDate(row.updated_at)}` : "Track sales with a link"}
+                        right={<StatusTag label={status.label} tone={status.tone} />}
+                        onPress={() => { setError(null); setSelected(row); }}
+                      />
+                    );
+                  })}
+                </ListGroup>
+              )}
+            </>
+          }
+          support={
+            <>
+              <StatStrip items={[
+                { value: String(counts.all), label: "Creators" },
+                { value: String(counts.on_mingla), label: "On Mingla" },
+                { value: String(counts.invited), label: "Invited" },
+              ]} />
+              <Text style={styles.tiny}>Paid gig work starts only after a creator joins Mingla and accepts your offer.</Text>
+            </>
+          }
+        />
       ) : null}
     </ProgramScreen>
   );

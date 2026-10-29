@@ -9,7 +9,6 @@
 import React, { useCallback } from "react";
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,11 +17,8 @@ import {
 import { useRouter } from "expo-router";
 
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
-import { Icon } from "../../../../src/components/ui/Icon";
 import { TemplateCard } from "../../../../src/components/marketing/TemplateCard";
 import {
-  accent,
-  radius,
   spacing,
   text as textTokens,
   typography,
@@ -30,11 +26,11 @@ import {
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useStarterTemplates } from "../../../../src/hooks/marketing/useStarterTemplates";
 import { useUserTemplates } from "../../../../src/hooks/marketing/useUserTemplates";
-import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
+import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
 
 export default function MarketingTemplatesRoute(): React.ReactElement {
   const router = useRouter();
-  const fabOffset = useStickyFooterOffset();
+  const { isWideDesktop } = useResponsiveLayout();
   const { user } = useAuth();
   const accountId = user?.id ?? null;
   const starterQuery = useStarterTemplates();
@@ -46,10 +42,6 @@ export default function MarketingTemplatesRoute(): React.ReactElement {
     },
     [router],
   );
-
-  const handleNewTemplate = useCallback(() => {
-    router.push("/marketing/templates/new" as never);
-  }, [router]);
 
   // Starter loading + no cache → full-screen spinner.
   if (starterQuery.isLoading && starterQuery.data === undefined) {
@@ -89,48 +81,35 @@ export default function MarketingTemplatesRoute(): React.ReactElement {
       >
         <Text style={styles.sectionLabel}>MINGLA STARTER PACK</Text>
         <Text style={styles.sectionCaption}>Read-only — duplicate to customize.</Text>
-        {starters.map((tmpl) => (
-          <TemplateCard
-            key={tmpl.id}
-            template={tmpl}
-            onPress={handleOpenTemplate}
-          />
-        ))}
+        <View style={[styles.templateGrid, isWideDesktop && styles.templateGridWide]}>
+          {starters.map((tmpl) => (
+            <View key={tmpl.id} style={isWideDesktop ? styles.templateCellWide : styles.templateCell}>
+              <TemplateCard template={tmpl} onPress={handleOpenTemplate} />
+            </View>
+          ))}
+        </View>
 
         {userTemplates.length > 0 ? (
           <>
             <View style={styles.sectionSpacer} />
             <Text style={styles.sectionLabel}>YOUR TEMPLATES</Text>
-            {userTemplates.map((tmpl) => (
-              <TemplateCard
-                key={tmpl.id}
-                template={tmpl}
-                onPress={handleOpenTemplate}
-              />
-            ))}
+            <View style={[styles.templateGrid, isWideDesktop && styles.templateGridWide]}>
+              {userTemplates.map((tmpl) => (
+                <View key={tmpl.id} style={isWideDesktop ? styles.templateCellWide : styles.templateCell}>
+                  <TemplateCard template={tmpl} onPress={handleOpenTemplate} />
+                </View>
+              ))}
+            </View>
           </>
         ) : null}
 
         {userError && userTemplates.length === 0 ? (
           <Text style={styles.userErrorText}>
-            Couldn't load your templates. Pull to retry.
+            Couldn&apos;t load your templates. Pull to retry.
           </Text>
         ) : null}
       </ScrollView>
 
-      <Pressable
-        onPress={handleNewTemplate}
-        accessibilityRole="button"
-        accessibilityLabel="New template"
-        style={({ pressed }) => [
-          styles.fab,
-          { bottom: fabOffset },
-          pressed ? styles.fabPressed : null,
-        ]}
-      >
-        <Icon name="plus" size={24} color={textTokens.primary} />
-        <Text style={styles.fabLabel}>New template</Text>
-      </Pressable>
     </View>
   );
 }
@@ -145,6 +124,10 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
     gap: spacing.sm,
   },
+  templateGrid: { gap: spacing.sm },
+  templateGridWide: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start" },
+  templateCell: { width: "100%" },
+  templateCellWide: { flexBasis: "48%", flexGrow: 1, minWidth: 360 },
   centerHost: {
     flex: 1,
     alignItems: "center",
@@ -168,32 +151,5 @@ const styles = StyleSheet.create({
     color: "#f59e0b",
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
-  },
-  fab: {
-    position: "absolute",
-    right: spacing.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.full,
-    backgroundColor: "rgba(235, 120, 37, 0.42)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.32,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  fabPressed: {
-    opacity: 0.85,
-  },
-  fabLabel: {
-    ...typography.bodySm,
-    fontWeight: "600",
-    color: textTokens.primary,
   },
 });

@@ -67,7 +67,14 @@ const ROUTES = [
   },
   {
     file: "_layout.tsx",
-    mustInclude: ["MarketingSubNav", "hideUniversalPlus"],
+    // #4168 — both the compact tab action and mobile floating action must
+    // stay behind the same tab-aware owner; focused composer routes hide both.
+    mustInclude: [
+      "MarketingSubNav",
+      "MarketingActionProvider",
+      "hideActions",
+      "MarketingActionSurfaces hidden={hideActions}",
+    ],
     label: "layout",
   },
 ];

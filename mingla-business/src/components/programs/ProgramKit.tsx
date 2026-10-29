@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon, type IconName } from "../ui/Icon";
 import {
@@ -202,6 +203,48 @@ export function ProgramLoading({
   return (
     <View style={styles.loading} accessibilityLabel={label}>
       <ActivityIndicator color={accent.warm} />
+    </View>
+  );
+}
+
+/**
+ * #4168 — shared responsive program workspace. Desktop uses the available
+ * canvas as a 5:3 primary/support pair; compact screens keep one vertical page
+ * scroll and stack the same surfaces. No column owns an independent vertical
+ * scroller.
+ */
+export function ProgramColumns({
+  primary,
+  support,
+  supportFirstOnCompact = false,
+}: {
+  primary: React.ReactNode;
+  support: React.ReactNode;
+  supportFirstOnCompact?: boolean;
+}): React.ReactElement {
+  const { isWideDesktop } = useResponsiveLayout();
+  const primaryColumn = (
+    <View style={isWideDesktop ? styles.primaryWide : styles.columnCompact}>
+      {primary}
+    </View>
+  );
+  const supportColumn = (
+    <View style={isWideDesktop ? styles.supportWide : styles.columnCompact}>
+      {support}
+    </View>
+  );
+  return (
+    <View
+      style={[
+        styles.programColumns,
+        isWideDesktop ? styles.programColumnsWide : styles.programColumnsCompact,
+        isWideDesktop && supportFirstOnCompact
+          ? styles.programColumnsWideReversed
+          : null,
+      ]}
+    >
+      {supportFirstOnCompact ? supportColumn : primaryColumn}
+      {supportFirstOnCompact ? primaryColumn : supportColumn}
     </View>
   );
 }
@@ -550,7 +593,12 @@ export const PROGRAM_BUTTON_HIT_SLOP = { top: 4, bottom: 4, left: 8, right: 8 } 
  */
 export { StatStrip } from "./StatStrip";
 
-/** Centred empty state: icon, one heading, one sentence, one action. */
+/**
+ * #4168 — compact empty card. Wide screens use one horizontal row so an
+ * empty program still feels intentional instead of floating in the middle of
+ * a large canvas; compact screens stack the same content without introducing
+ * another scroll region.
+ */
 export function ProgramEmpty({
   icon,
   title,
@@ -562,16 +610,23 @@ export function ProgramEmpty({
   body: string;
   action?: React.ReactNode;
 }): React.ReactElement {
+  const { isWideDesktop } = useResponsiveLayout();
   return (
-    <View style={styles.empty}>
+    <View style={[styles.empty, isWideDesktop && styles.emptyWide]}>
       <View style={styles.emptyIcon}>
         <Icon name={icon} size={26} color={accent.warm} />
       </View>
-      <Text style={styles.emptyTitle} accessibilityRole="header">
-        {title}
-      </Text>
-      <Text style={styles.emptyBody}>{body}</Text>
-      {action ?? null}
+      <View style={styles.emptyCopy}>
+        <Text style={styles.emptyTitle} accessibilityRole="header">
+          {title}
+        </Text>
+        <Text style={styles.emptyBody}>{body}</Text>
+      </View>
+      {action ? (
+        <View style={[styles.emptyAction, isWideDesktop && styles.emptyActionWide]}>
+          {action}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -640,7 +695,7 @@ export function Segmented<T extends string>({
   value,
   onChange,
 }: {
-  options: ReadonlyArray<readonly [T, string]>;
+  options: readonly (readonly [T, string])[];
   value: T;
   onChange: (next: T) => void;
 }): React.ReactElement {
@@ -767,7 +822,28 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     gap: PROGRAM_BLOCK_GAP,
   },
-  contentEmbedded: { paddingTop: spacing.md, paddingBottom: 120 },
+  contentEmbedded: {
+    maxWidth: "100%",
+    paddingTop: spacing.sm,
+    paddingBottom: 120,
+  },
+  programColumns: { width: "100%", gap: spacing.lg },
+  programColumnsWide: { flexDirection: "row", alignItems: "flex-start" },
+  programColumnsWideReversed: { flexDirection: "row-reverse" },
+  programColumnsCompact: { flexDirection: "column" },
+  primaryWide: {
+    flexBasis: 0,
+    flexGrow: 5,
+    minWidth: 0,
+    gap: PROGRAM_BLOCK_GAP,
+  },
+  supportWide: {
+    flexBasis: 0,
+    flexGrow: 3,
+    minWidth: 0,
+    gap: PROGRAM_BLOCK_GAP,
+  },
+  columnCompact: { width: "100%", minWidth: 0, gap: PROGRAM_BLOCK_GAP },
   inlineFooter: { gap: spacing.sm, marginTop: spacing.xs },
   done: { minWidth: 40, height: 40, alignItems: "flex-end", justifyContent: "center" },
   doneText: { color: accent.warm, fontSize: 16, fontWeight: "700" },
@@ -893,31 +969,42 @@ const styles = StyleSheet.create({
   rowSubtitle: { color: textTokens.secondary, fontSize: 13, lineHeight: 18 },
   rowRight: { color: textTokens.primary, fontSize: 15, fontWeight: "700" },
   empty: {
+    alignItems: "flex-start",
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  emptyWide: {
+    minHeight: 112,
+    flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: spacing.xxl,
-    paddingHorizontal: spacing.lg,
   },
   emptyIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: radius.lg,
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: accent.tint,
   },
+  emptyCopy: { flex: 1, minWidth: 0, gap: 4 },
+  emptyAction: { alignSelf: "stretch" },
+  emptyActionWide: { alignSelf: "center" },
   emptyTitle: {
     color: textTokens.primary,
     fontSize: 17,
     fontWeight: "800",
-    textAlign: "center",
+    textAlign: "left",
   },
   emptyBody: {
     color: textTokens.secondary,
     fontSize: 14,
     lineHeight: 20,
-    textAlign: "center",
-    maxWidth: 280,
+    textAlign: "left",
+    maxWidth: 520,
   },
   tag: {
     paddingHorizontal: 10,

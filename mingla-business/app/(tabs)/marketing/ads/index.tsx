@@ -42,6 +42,7 @@ import { useHostAdPlans } from "../../../../src/hooks/marketing/useHostAdPlans";
 import { useCanManageBrandPayments } from "../../../../src/hooks/useCanManageBrandPayments";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useHostAdPermissions } from "../../../../src/hooks/useHostAdPermissions";
+import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
 import { applyAdCreditTopUp } from "../../../../src/services/adCreditService";
 import {
   buildHostAdList,
@@ -92,6 +93,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const plansQuery = useHostAdPlans(brandId);
   const creditManage = useCanManageBrandPayments(brandId);
   const permissions = useHostAdPermissions(brandId);
+  const { isWideDesktop } = useResponsiveLayout();
   const [sheetMode, setSheetMode] = useState<AdCreditQuoteMode | null>(null);
   const [returnNotice, setReturnNotice] = useState<string | null>(null);
   const [campaignFilter, setCampaignFilter] = useState<HostAdFilter>("all");
@@ -291,6 +293,13 @@ export default function MarketingAdsRoute(): React.ReactElement {
             {returnNotice}
           </Text>
         ) : null}
+        <View style={[styles.workspace, isWideDesktop && styles.workspaceWide]}>
+          <View
+            style={[
+              styles.supportColumn,
+              isWideDesktop && styles.supportColumnWide,
+            ]}
+          >
         {walletQuery.viewLoading ? (
           <GlassCard variant="elevated" padding={spacing.lg}>
             <ActivityIndicator color={textTokens.secondary} />
@@ -381,28 +390,14 @@ export default function MarketingAdsRoute(): React.ReactElement {
             )}
           </GlassCard>
         )}
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Your ads</Text>
-          <Pressable
+          </View>
+          <View
             style={[
-              styles.createBtn,
-              !permissions.canPlan && styles.createBtnDisabled,
+              styles.primaryColumn,
+              isWideDesktop && styles.primaryColumnWide,
             ]}
-            onPress={() => router.push("/(tabs)/marketing/ads/create" as never)}
-            disabled={!permissions.canPlan}
-            accessibilityRole="button"
-            accessibilityLabel="Create a Host ad"
-            accessibilityState={{ disabled: !permissions.canPlan }}
-            testID="ads-create"
           >
-            <Text style={styles.createBtnLabel}>Create ad</Text>
-          </Pressable>
-        </View>
-        <Text style={styles.subsectionTitle}>
-          Plans in progress, drafts, live delivery and results in one list.
-        </Text>
-        <View style={styles.filterRow} testID="ads-campaign-filters">
+        {adItems.length > 0 ? <View style={styles.filterRow} testID="ads-campaign-filters">
           {FILTERS.map(({ key, label }) => {
             const selected = campaignFilter === key;
             return (
@@ -426,7 +421,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
               </Pressable>
             );
           })}
-        </View>
+        </View> : null}
         <GlassCard variant="base" padding={0}>
           {campaignsQuery.isLoading || plansQuery.isLoading ? (
             <View style={styles.emptyHistory} testID="ads-list-loading">
@@ -531,6 +526,8 @@ export default function MarketingAdsRoute(): React.ReactElement {
             })
           )}
         </GlassCard>
+          </View>
+        </View>
 
         {walletQuery.canView ? (
           <>
@@ -581,6 +578,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     gap: spacing.md,
   },
+  workspace: { gap: spacing.lg, flexDirection: "column-reverse" },
+  workspaceWide: { flexDirection: "row-reverse", alignItems: "flex-start" },
+  primaryColumn: { minWidth: 0, gap: spacing.sm },
+  primaryColumnWide: { flexBasis: 0, flexGrow: 5 },
+  supportColumn: { minWidth: 0, gap: spacing.sm },
+  supportColumnWide: { flexBasis: 0, flexGrow: 3 },
   notice: {
     ...typography.caption,
     color: textTokens.secondary,
