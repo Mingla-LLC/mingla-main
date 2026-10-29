@@ -174,9 +174,9 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
                 </View>
                 <Text style={styles.title}>Meet Ari.</Text>
                 <Text style={styles.body}>
-                  Ari can plan, research, and prepare work. Sources stay
-                  visible, and you approve anything important. Ari can make
-                  mistakes, so double-check decisions that matter.
+                  Ari is powered by Mingla's AI. Ari can plan, research, and prepare work.
+                  Sources stay visible, and you approve anything important.
+                  Ari can make mistakes, so double-check decisions that matter.
                 </Text>
               </View>
             </ScrollView>
