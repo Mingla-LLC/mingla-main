@@ -38,6 +38,19 @@ INSERT INTO public.brands (
   'ACCT_issue1423', now(), now()
 );
 
+-- The fixture uses the reserved example.test domain, which the canonical
+-- internal-brand classifier correctly treats as synthetic. This suite models a
+-- genuinely public Stay, so record that explicit brand-level decision instead
+-- of relying on a test-looking owner email to be Explorer-visible.
+INSERT INTO public.admin_internal_brands (
+  brand_id, is_internal, reason, marked_by
+) VALUES (
+  '00000000-1423-4000-8000-000000000002',
+  false,
+  'Issue #1423 public Stay fixture',
+  'pg17'
+);
+
 INSERT INTO public.venue_listings (
   id, brand_id, slug, name, address, city, country_code,
   lat, lng, venue_category, claim_status
