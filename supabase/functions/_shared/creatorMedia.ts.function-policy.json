@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "kind": "shared-module-policy",
+  "module_path": "supabase/functions/_shared/creatorMedia.ts",
+  "env": {
+    "allowed_bundle_fields": {
+      "AD_CONVERSION_TOKENS": [
+        "CREATOR_BUNNY_ACCOUNT_API_KEY",
+        "CREATOR_BUNNY_STORAGE_CAP_BYTES",
+        "CREATOR_BUNNY_STREAM_API_KEY",
+        "CREATOR_BUNNY_STREAM_CDN_HOSTNAME",
+        "CREATOR_BUNNY_STREAM_LIBRARY_ID",
+        "CREATOR_BUNNY_STREAM_TOKEN_KEY",
+        "CREATOR_BUNNY_STREAM_WEBHOOK_KEY",
+        "CREATOR_BUNNY_TRAFFIC_CAP_BYTES"
+      ]
+    },
+    "allowed_top_level": [
+      "AD_CONVERSION_TOKENS",
+      "CREATOR_BUNNY_ACCOUNT_API_KEY",
+      "CREATOR_BUNNY_STORAGE_CAP_BYTES",
+      "CREATOR_BUNNY_STREAM_API_KEY",
+      "CREATOR_BUNNY_STREAM_CDN_HOSTNAME",
+      "CREATOR_BUNNY_STREAM_LIBRARY_ID",
+      "CREATOR_BUNNY_STREAM_TOKEN_KEY",
+      "CREATOR_BUNNY_STREAM_WEBHOOK_KEY",
+      "CREATOR_BUNNY_TRAFFIC_CAP_BYTES"
+    ],
+    "closure_call_identifiers": [],
+    "dynamic_getters": [
+      "SHARED_CREDENTIAL_BUNDLE",
+      "name"
+    ],
+    "local_call_identifiers": [
+      "creatorMediaEnv"
+    ]
+  }
+}

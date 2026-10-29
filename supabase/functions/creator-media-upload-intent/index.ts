@@ -182,11 +182,18 @@ export function createCreatorMediaUploadIntentHandler(deps: CreatorMediaDeps) {
         jobId: job?.id ?? null,
         actorId,
       });
+      if (capacity.reason === "capacity_reached") {
+        return response({
+          error: "media_capacity",
+          detail:
+            "Uploads are paused for a few minutes. Your work is saved; try again shortly.",
+          retryAfterSeconds: 300,
+        }, 503);
+      }
       return response({
-        error: "media_capacity",
+        error: "media_unavailable",
         detail:
-          "Uploads are paused for a few minutes. Your work is saved; try again shortly.",
-        retryAfterSeconds: 300,
+          "Video uploads are temporarily unavailable. Mingla has been notified.",
       }, 503);
     }
 

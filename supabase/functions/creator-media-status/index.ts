@@ -8,7 +8,10 @@ import {
   ticketCorsHeaders,
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
-import { creatorPlaybackUrl } from "../_shared/creatorMedia.ts";
+import {
+  creatorDownloadUrl,
+  creatorPlaybackUrl,
+} from "../_shared/creatorMedia.ts";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -32,6 +35,8 @@ export type MediaStatusRow = {
   aspect_warning: boolean | null;
   failure_code: string | null;
   ready_at: string | null;
+  height: number | null;
+  delete_after: string | null;
 };
 
 export type MediaStatusDeps = {
@@ -40,7 +45,9 @@ export type MediaStatusDeps = {
   /** True when the actor may read this contract as its host team. */
   isContractHost: (contractId: string, actorId: string) => Promise<boolean>;
   isAdmin: (actorId: string) => Promise<boolean>;
+  isApprovedDelivery: (jobId: string, contractId: string) => Promise<boolean>;
   playback: (videoId: string) => Promise<unknown>;
+  download: (videoId: string, height: number | null) => Promise<unknown>;
 };
 
 const SHARED_WITH_CONTRACT = new Set(["delivery", "dispute_evidence"]);
@@ -70,15 +77,32 @@ export function createCreatorMediaStatusHandler(deps: MediaStatusDeps) {
       return json({ error: "internal" }, 500);
     }
     if (!data) return json({ error: "not_found" }, 404);
-    let allowed = data.owner_id === actorId;
-    if (!allowed && SHARED_WITH_CONTRACT.has(data.purpose) && data.contract_id) {
-      allowed = await deps.isContractHost(data.contract_id, actorId) ||
-        await deps.isAdmin(actorId);
+    const ownsMedia = data.owner_id === actorId;
+    let allowed = ownsMedia;
+    let contractHost = false;
+    let admin = false;
+    if (
+      !allowed && SHARED_WITH_CONTRACT.has(data.purpose) && data.contract_id
+    ) {
+      contractHost = await deps.isContractHost(data.contract_id, actorId);
+      admin = contractHost ? false : await deps.isAdmin(actorId);
+      allowed = contractHost || admin;
+    }
+    if (!allowed && data.purpose === "local_review") {
+      admin = await deps.isAdmin(actorId);
+      allowed = admin;
     }
     // Same answer for "missing" and "not yours", so ids can't be probed.
     if (!allowed) return json({ error: "not_found" }, 404);
     const playback = data.status === "ready" && data.bunny_video_id
       ? await deps.playback(data.bunny_video_id)
+      : null;
+    const approvedDelivery = contractHost && data.purpose === "delivery" &&
+      data.contract_id !== null &&
+      await deps.isApprovedDelivery(data.id, data.contract_id);
+    const download = approvedDelivery && data.status === "ready" &&
+        data.bunny_video_id
+      ? await deps.download(data.bunny_video_id, data.height)
       : null;
     return json({
       jobId: data.id,
@@ -88,6 +112,8 @@ export function createCreatorMediaStatusHandler(deps: MediaStatusDeps) {
       failureCode: data.failure_code,
       readyAt: data.ready_at,
       playback,
+      download,
+      availableUntil: approvedDelivery ? data.delete_after : null,
     });
   };
 }
@@ -99,7 +125,7 @@ if (import.meta.main) {
     media: async (jobId) => {
       const { data, error } = await supabase.from("creator_media_jobs")
         .select(
-          "id,owner_id,purpose,status,contract_id,bunny_video_id,aspect_warning,failure_code,ready_at",
+          "id,owner_id,purpose,status,contract_id,bunny_video_id,aspect_warning,failure_code,ready_at,height,delete_after",
         )
         .eq("id", jobId).maybeSingle();
       if (error) throw error;
@@ -123,6 +149,13 @@ if (import.meta.main) {
         .eq("email", email).eq("status", "active").maybeSingle();
       return Boolean(data);
     },
+    isApprovedDelivery: async (jobId, contractId) => {
+      const { data, error } = await supabase.from("gig_deliveries")
+        .select("id").eq("media_job_id", jobId).eq("contract_id", contractId)
+        .in("decision", ["approved", "auto_approved"]).maybeSingle();
+      return !error && Boolean(data);
+    },
     playback: creatorPlaybackUrl,
+    download: creatorDownloadUrl,
   }));
 }

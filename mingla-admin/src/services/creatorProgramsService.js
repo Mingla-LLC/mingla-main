@@ -87,6 +87,7 @@ export async function decideDispute({ disputeId, outcome, refundBps, note }) {
 export async function getLocalQueue() {
   const data = await read("admin_local_queue");
   return {
+    agreement: data?.agreement ?? null,
     cities: data?.cities ?? [],
     programs: data?.programs ?? [],
     applications: data?.applications ?? [],
@@ -106,11 +107,11 @@ export function saveCityProgram({ cityId, seats, isOpen, monthlyRateMinor, payou
   });
 }
 
-export function decideLocalApplication(applicationId, status, agreementVersion) {
+export function decideLocalApplication(applicationId, status) {
   return write("local_application_decide", {
     p_application_id: applicationId,
     p_status: status,
-    p_agreement_version: status === "accepted" ? agreementVersion.trim() : null,
+    p_agreement_version: null,
   });
 }
 
@@ -120,6 +121,21 @@ export function decideLocalReview(localMonthId, decision, reasons) {
     p_decision: decision,
     p_reasons: decision === "changes_requested" ? reasons : [],
   });
+}
+
+export async function getCreatorMediaPlayback(jobId) {
+  const { data, error } = await supabase.functions.invoke("creator-media-status", {
+    body: { jobId },
+  });
+  if (error) throw new ProgramWriteError({ error: "media_unavailable" });
+  if (typeof data?.playback?.url !== "string") {
+    throw new ProgramWriteError({ error: "media_unavailable" });
+  }
+  return {
+    status: data.status ?? null,
+    url: data.playback.url,
+    expiresAt: data.playback.expiresAt ?? null,
+  };
 }
 
 export function voidLocalMonth(localMonthId, reason) {

@@ -34,10 +34,12 @@ const json = (body: Record<string, unknown>, status = 200) =>
 
 const retention = (purpose: Job["purpose"], nowMs: number): string | null => {
   const day = 24 * 60 * 60 * 1000;
-  if (purpose === "delivery") return new Date(nowMs + 120 * day).toISOString();
   if (purpose === "dispute_evidence") {
     return new Date(nowMs + 180 * day).toISOString();
   }
+  // Delivery retention starts when the Host approves the actual delivery,
+  // not when Bunny happens to finish encoding it. The database lifecycle
+  // trigger owns that clock and extends it through posting/payout milestones.
   return null;
 };
 

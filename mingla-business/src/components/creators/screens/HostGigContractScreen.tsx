@@ -8,8 +8,22 @@
  * (On the way · Ready · Paid), posts, and Activity folded behind Show with
  * events only — never the button names.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import * as FileSystem from "expo-file-system/legacy";
+import {
+  Platform,
+  Pressable,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useRouter } from "expo-router";
 
 import { Button } from "../../../components/ui/Button";
@@ -80,6 +94,7 @@ import {
 } from "../../../components/programs/contractCopy";
 import {
   creatorGigsService,
+  approvedDeliveryDownload,
   deliveryPlaybackStatus,
   openCounter,
   pendingTopup,
@@ -160,6 +175,9 @@ export default function HostGigContract(): React.ReactElement {
   const [tags, setTags] = useState<string[]>([]);
   const [topup, setTopup] = useState<HireSheetMode | null>(null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
+  const [downloadAvailableUntil, setDownloadAvailableUntil] = useState<
+    string | null
+  >(null);
 
   const refresh = useCallback(async () => {
     setLoadError(null);
@@ -236,6 +254,106 @@ export default function HostGigContract(): React.ReactElement {
   const delivery = workspace?.deliveries.length
     ? [...workspace.deliveries].sort((a, b) => b.round - a.round)[0]
     : null;
+  const deliveryMediaJobId = delivery?.media_job_id ?? null;
+  const approvedDeliveryState =
+    Boolean(delivery) &&
+    ["approved", "auto_approved"].includes(delivery?.decision ?? "") &&
+    [
+      "approved",
+      "posting",
+      "posts_failed",
+      "posts_submitted",
+      "posts_verified",
+      "released",
+      "day30",
+      "completed",
+      "disputed",
+      "resolved_release",
+      "resolved_partial",
+      "resolved_refund",
+    ].includes(state);
+
+  useEffect(() => {
+    let active = true;
+    if (!approvedDeliveryState || !deliveryMediaJobId) {
+      setDownloadAvailableUntil(null);
+      return () => {
+        active = false;
+      };
+    }
+    void deliveryPlaybackStatus(deliveryMediaJobId)
+      .then(({ availableUntil }) => {
+        if (active) setDownloadAvailableUntil(availableUntil);
+      })
+      .catch(() => {
+        if (active) setDownloadAvailableUntil(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [approvedDeliveryState, deliveryMediaJobId, state]);
+
+  const saveApprovedMaster = async () => {
+    if (!delivery) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    let temporaryUri: string | null = null;
+    try {
+      const grant = await approvedDeliveryDownload(delivery.media_job_id);
+      setDownloadAvailableUntil(grant.availableUntil);
+      if (Platform.OS === "web") {
+        const response = await fetch(grant.url);
+        if (!response.ok) throw new Error("approved_master_download_failed");
+        const objectUrl = URL.createObjectURL(await response.blob());
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = grant.filename;
+        anchor.rel = "noopener";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      } else {
+        const cacheUri = `${FileSystem.cacheDirectory ?? ""}${grant.filename}`;
+        const downloaded = await FileSystem.downloadAsync(grant.url, cacheUri);
+        temporaryUri = downloaded.uri;
+        if (Platform.OS === "ios") {
+          await Share.share({ url: downloaded.uri, title: grant.filename });
+        } else {
+          const permission =
+            await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+          if (!permission.granted) {
+            setNotice("Nothing was saved. Tap again whenever you're ready.");
+            return;
+          }
+          const destination =
+            await FileSystem.StorageAccessFramework.createFileAsync(
+              permission.directoryUri,
+              grant.filename,
+              "video/mp4",
+            );
+          const contents = await FileSystem.readAsStringAsync(downloaded.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          await FileSystem.writeAsStringAsync(destination, contents, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+        }
+      }
+      setNotice(
+        "Approved master saved. Creator payout is not affected by this download.",
+      );
+    } catch {
+      setError(
+        "We couldn't save the approved video. Nothing expired—try again.",
+      );
+    } finally {
+      if (temporaryUri)
+        void FileSystem.deleteAsync(temporaryUri, { idempotent: true });
+      setBusy(false);
+    }
+  };
   const left = fixesLeft(workspace?.contract.fix_rounds_used);
   const terms = workspace?.terms ?? [];
   const currentTerms = terms.length ? terms[terms.length - 1] : null;
@@ -350,7 +468,11 @@ export default function HostGigContract(): React.ReactElement {
         });
       }
       await refresh();
-      if (accept && result.requires_topup && typeof result.terms_version === "number") {
+      if (
+        accept &&
+        result.requires_topup &&
+        typeof result.terms_version === "number"
+      ) {
         // The top-up sheet carries on from here.
       } else if (accept && result.refund_minor && currentTerms) {
         setNotice(
@@ -458,7 +580,7 @@ export default function HostGigContract(): React.ReactElement {
             {sheet === "fix" ? (
               <SheetBody title="Request a fix">
                 <Muted>
-                  Fixes are for technical problems only. Taste alone isn't a
+                  Fixes are for technical problems only. Taste alone isn’t a
                   reason for a fix.
                 </Muted>
                 {FIX_CATEGORIES.map(([key, label]) => (
@@ -558,7 +680,7 @@ export default function HostGigContract(): React.ReactElement {
               <SheetBody title="Open a dispute">
                 <Muted>
                   Mingla holds the money while you and the creator settle. If
-                  you can't agree, Mingla decides.
+                  you can’t agree, Mingla decides.
                 </Muted>
                 {DISPUTE_REASONS.map(([key, label]) => (
                   <Chip
@@ -645,69 +767,69 @@ export default function HostGigContract(): React.ReactElement {
             ) : null}
             {sheet === "rate" ? (
               <SheetBody title={`How was working with ${creatorName}?`}>
-            <View style={styles.stars}>
-              {[1, 2, 3, 4, 5].map((value) => (
-                <Pressable
-                  key={value}
-                  onPress={() => setStars(value)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${value} star${value === 1 ? "" : "s"}`}
-                  accessibilityState={{ selected: stars >= value }}
-                  hitSlop={6}
-                >
-                  <Icon
-                    name="star"
-                    size={30}
-                    color={
-                      stars >= value ? accent.warm : textTokens.quaternary
-                    }
-                  />
-                </Pressable>
-              ))}
-            </View>
-            <View style={styles.chips}>
-              {RATING_TAGS.map((tag) => (
-                <Chip
-                  key={tag}
-                  label={tag}
-                  selected={tags.includes(tag)}
+                <View style={styles.stars}>
+                  {[1, 2, 3, 4, 5].map((value) => (
+                    <Pressable
+                      key={value}
+                      onPress={() => setStars(value)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${value} star${value === 1 ? "" : "s"}`}
+                      accessibilityState={{ selected: stars >= value }}
+                      hitSlop={6}
+                    >
+                      <Icon
+                        name="star"
+                        size={30}
+                        color={
+                          stars >= value ? accent.warm : textTokens.quaternary
+                        }
+                      />
+                    </Pressable>
+                  ))}
+                </View>
+                <View style={styles.chips}>
+                  {RATING_TAGS.map((tag) => (
+                    <Chip
+                      key={tag}
+                      label={tag}
+                      selected={tags.includes(tag)}
+                      onPress={() =>
+                        setTags((current) =>
+                          current.includes(tag)
+                            ? current.filter((item) => item !== tag)
+                            : [...current, tag],
+                        )
+                      }
+                    />
+                  ))}
+                </View>
+                <Input
+                  value={note}
+                  onChangeText={setNote}
+                  multiline
+                  placeholder="Anything else (optional)"
+                  accessibilityLabel="Rating note"
+                />
+                <Muted>
+                  Ratings show to the creator after you’ve both rated.
+                </Muted>
+                <Button
+                  label="Send rating"
+                  loading={busy}
+                  disabled={stars === 0}
                   onPress={() =>
-                    setTags((current) =>
-                      current.includes(tag)
-                        ? current.filter((item) => item !== tag)
-                        : [...current, tag],
+                    void run(
+                      () =>
+                        creatorGigsService.rate(
+                          contractId,
+                          stars,
+                          tags,
+                          note.trim(),
+                        ),
+                      "Thanks. Your rating is in.",
                     )
                   }
                 />
-              ))}
-            </View>
-            <Input
-              value={note}
-              onChangeText={setNote}
-              multiline
-              placeholder="Anything else (optional)"
-              accessibilityLabel="Rating note"
-            />
-            <Muted>
-              Ratings show to the creator after you've both rated.
-            </Muted>
-            <Button
-              label="Send rating"
-              loading={busy}
-              disabled={stars === 0}
-              onPress={() =>
-                void run(
-                  () =>
-                    creatorGigsService.rate(
-                      contractId,
-                      stars,
-                      tags,
-                      note.trim(),
-                    ),
-                  "Thanks. Your rating is in.",
-                )
-              }
-            />
               </SheetBody>
             ) : null}
             {sheet === "terms" ? (
@@ -975,7 +1097,7 @@ export default function HostGigContract(): React.ReactElement {
                 style={programStyles.title}
               >{`${creatorName} is writing the script`}</Text>
               <Muted>
-                You'll review it before filming. It approves itself 48 hours
+                You’ll review it before filming. It approves itself 48 hours
                 after it arrives.
               </Muted>
             </Card>
@@ -1051,7 +1173,7 @@ export default function HostGigContract(): React.ReactElement {
               )}
               {state === "script_sent" && left === 0 ? (
                 <Muted>
-                  You've used both change requests. Approve the script or let it
+                  You’ve used both change requests. Approve the script or let it
                   approve itself.
                 </Muted>
               ) : null}
@@ -1079,7 +1201,9 @@ export default function HostGigContract(): React.ReactElement {
                       if (url) setVideoUri(url);
                       else setNotice(playbackNotice(status, url));
                     })
-                    .catch(() => setError("We couldn't load the video. Try again."));
+                    .catch(() =>
+                      setError("We couldn't load the video. Try again."),
+                    );
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Play ${creatorName}'s video`}
@@ -1149,6 +1273,29 @@ export default function HostGigContract(): React.ReactElement {
                 ]
                   .filter(Boolean)
                   .join(" · ") || "The creator has your fix request."}
+              </Muted>
+            </Card>
+          ) : null}
+
+          {approvedDeliveryState && delivery ? (
+            <Card>
+              <Text style={programStyles.title}>Approved master</Text>
+              <Muted>
+                {downloadAvailableUntil
+                  ? `Available until at least ${shortDateTime(downloadAvailableUntil)}. Mingla may extend this while posting, payout or a dispute is still open.`
+                  : "Available for at least 120 days after the final posting, payout and dispute checks."}
+              </Muted>
+              <Button
+                label={
+                  Platform.OS === "web"
+                    ? "Download approved master"
+                    : "Save approved master"
+                }
+                loading={busy}
+                onPress={() => void saveApprovedMaster()}
+              />
+              <Muted>
+                Downloading is for your records. It never holds creator payout.
               </Muted>
             </Card>
           ) : null}
@@ -1465,7 +1612,9 @@ export default function HostGigContract(): React.ReactElement {
             <Pressable
               onPress={() => setShowActivity((value) => !value)}
               accessibilityRole="button"
-              accessibilityLabel={showActivity ? "Hide activity" : "Show activity"}
+              accessibilityLabel={
+                showActivity ? "Hide activity" : "Show activity"
+              }
               style={styles.activityToggle}
             >
               <Text style={styles.activityLabel}>

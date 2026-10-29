@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -9,19 +9,23 @@ import { programErrorText } from '../../src/services/programResult';
 import { formatDaysLeft, formatMoney, formatMonth, formatShortDate, parseDay, toDayString } from '../../src/utils/programFormat';
 import { APPLICATION_COPY, LOCAL_STEPS, localMoneyWord, localMonthWords, localStepIndex } from '../../src/components/local/localWords';
 import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramEmpty, ProgramField, ProgramLoadError, ProgramLoading, ProgramNotice, ProgramPill, ProgramRow, ProgramScreen, programStyles as s } from '../../src/components/programs/ProgramUi';
-import { ChoiceField, Chip, DateField, ToggleRow } from '../../src/components/programs/ProgramPickers';
+import { CheckRow, ChoiceField, Chip, DateField, ToggleRow } from '../../src/components/programs/ProgramPickers';
 import { Icon } from '../../src/components/ui/Icon';
 
 export default function LocalScreen(): React.ReactElement {
   const queryClient = useQueryClient();
   const landing = useQuery({ queryKey: ['local', 'landing'], queryFn: () => localProgramService.landing() });
-  const home = useQuery({ queryKey: ['local', 'home'], queryFn: () => localProgramService.home(), enabled: Boolean(landing.data?.local) });
+  const signedLocal = Boolean(landing.data?.local?.agreement_signed_at);
+  const home = useQuery({ queryKey: ['local', 'home'], queryFn: () => localProgramService.home(), enabled: signedLocal });
   const refresh = (): void => { void queryClient.invalidateQueries({ queryKey: ['local'] }); };
 
-  if (landing.isLoading || (landing.data?.local && home.isLoading)) return <ProgramScreen title="Mingla Local"><ProgramLoading /></ProgramScreen>;
+  if (landing.isLoading || (signedLocal && home.isLoading)) return <ProgramScreen title="Mingla Local"><ProgramLoading /></ProgramScreen>;
   if (landing.isError || !landing.data) return <ProgramScreen title="Mingla Local"><ProgramLoadError text={programErrorText(landing.error)} onRetry={refresh} /></ProgramScreen>;
-  if (landing.data.local && home.data) return <LocalMonthHome landing={landing.data} home={home.data} refreshing={home.isFetching} onRefresh={refresh} />;
   const latest = landing.data.applications[0];
+  if (latest?.status === 'agreement_pending' || (landing.data.local && !landing.data.local.agreement_signed_at)) {
+    return <LocalAgreementSign landing={landing.data} refreshing={landing.isFetching} onRefresh={refresh} />;
+  }
+  if (landing.data.local && home.data) return <LocalMonthHome landing={landing.data} home={home.data} refreshing={home.isFetching} onRefresh={refresh} />;
   if (latest && latest.status !== 'accepted') return <ApplicationStatus landing={landing.data} refreshing={landing.isFetching} onRefresh={refresh} />;
   return <ApplyForm landing={landing.data} onApplied={refresh} />;
 }
@@ -113,6 +117,60 @@ function ApplicationStatus({ landing, refreshing, onRefresh }: { landing: LocalL
     </ProgramCard>
     {reviewing ? <ProgramCard>{steps.map((st, i) => <ProgramRow key={st.title} title={st.title} subtitle={st.sub} done={st.done} subtitleTone={st.now ? 'accent' : 'muted'} isLast={i === steps.length - 1} />)}</ProgramCard> : null}
     <Text style={s.small}>Not selected this time? You can apply again in 90 days. Waitlisted? You’ll move up when a seat opens.</Text>
+  </ProgramScreen>;
+}
+
+// ── Applicant agreement ──────────────────────────────────────────────────
+
+function LocalAgreementSign({ landing, refreshing, onRefresh }: { landing: LocalLanding; refreshing: boolean; onRefresh: () => void }): React.ReactElement {
+  const application = landing.applications.find((item) => item.status === 'agreement_pending')
+    ?? landing.applications.find((item) => item.status === 'accepted' && item.city_id === landing.local?.city_id)
+    ?? landing.applications[0];
+  const agreement = landing.agreement;
+  const [signatureName, setSignatureName] = useState('');
+  const [agreed, setAgreed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const dueAt = application?.agreement_due_at ? new Date(application.agreement_due_at) : null;
+  const expired = Boolean(dueAt && dueAt.getTime() <= Date.now());
+  const canSign = Boolean(application && agreement && signatureName.trim().length >= 2 && agreed && !expired);
+
+  const sign = async (): Promise<void> => {
+    if (!application || !agreement || !canSign) return;
+    setBusy(true); setError(null);
+    try {
+      await localProgramService.signAgreement(application.id, agreement.version, signatureName);
+      onRefresh();
+    } catch (cause) {
+      setError(programErrorText(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <ProgramScreen title="Sign your Local agreement" refreshing={refreshing} onRefresh={onRefresh}
+    footer={<ProgramButton label="Sign and activate my seat" busy={busy} disabled={!canSign} onPress={() => void sign()} />}>
+    <ProgramCard tone="highlight">
+      <ProgramPill label="Seat reserved" tone="accent" />
+      <Text style={s.title}>You’ve been invited to become a Mingla Local</Text>
+      <Text style={s.copy}>{application?.city ?? landing.local?.city} · Only you can sign this agreement. A Mingla Admin cannot sign it for you.</Text>
+      {dueAt && !expired ? <Text style={s.accentText}>Sign by {formatShortDate(dueAt)}</Text> : null}
+    </ProgramCard>
+
+    {agreement ? <>
+      <ProgramCard>
+        <ProgramRow title="Local agreement" subtitle={`Version ${agreement.version}`} value="Read first" chevron={false} isLast />
+      </ProgramCard>
+      <ProgramButton label="Read the full agreement" variant="secondary" icon="document-text" onPress={() => void Linking.openURL(agreement.document_url)} />
+      <ProgramField label="Full legal name" value={signatureName} onChangeText={(value) => { setSignatureName(value); setError(null); }}
+        placeholder="Type your name exactly as you sign" autoCapitalize="words" autoCorrect={false} textContentType="name" />
+      <CheckRow checked={agreed} onToggle={() => { setAgreed((value) => !value); setError(null); }}
+        label={`I’ve read and agree to the Mingla Local agreement, version ${agreement.version}`} />
+      <ProgramNotice text="Your typed name, the agreement version, its document fingerprint, and the signing time are recorded together." />
+    </> : <ProgramNotice tone="warning" text="The Local agreement is not available to sign yet. Your application and reserved seat are saved; Mingla needs to publish the reviewed agreement." />}
+
+    {expired ? <ProgramNotice tone="warning" text="Your signing window expired. Mingla needs to renew the invitation before you can activate this seat." /> : null}
+    {error ? <ProgramNotice tone="error" text={error} /> : null}
   </ProgramScreen>;
 }
 

@@ -1,12 +1,14 @@
-import React, { useEffect, useRef } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
 
 import { localProgramService } from '../../services/localProgramService';
+import { publicCreatorMedia } from '../../services/creatorMediaService';
 import { postHogService } from '../../services/postHogService';
 import { Icon } from '../ui/Icon';
-import { VideoTile, playPublicVideo } from '../programs/VideoTile';
+import { VideoTile } from '../programs/VideoTile';
+import { CreatorMediaPlayerModal } from '../programs/CreatorMediaPlayerModal';
 import { formatMonth } from '../../utils/programFormat';
 import { Section } from './SpineParts';
 
@@ -22,6 +24,7 @@ export function LocalReviewsSection({ placePoolId }: { placePoolId: string | nul
     retry: 1,
   });
   const reviews = query.data ?? [];
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const tracked = useRef(false);
   useEffect(() => {
     if (reviews.length > 0 && !tracked.current) {
@@ -29,9 +32,18 @@ export function LocalReviewsSection({ placePoolId }: { placePoolId: string | nul
       postHogService.capture('local_review_viewed', { surface: 'place_card' });
     }
   }, [reviews.length]);
+  const openVideo = async (jobId: string) => {
+    try {
+      const media = await publicCreatorMedia(jobId);
+      setVideoUrl(media.playback.url);
+    } catch {
+      Alert.alert('Video unavailable', 'This review video cannot be played right now. Try again later.');
+    }
+  };
   if (!reviews.length) return null;
   return (
-    <Section title="Mingla Local">
+    <>
+      <Section title="Mingla Local">
       <View style={styles.note}>
         <Icon name="shield-checkmark" size={16} color="#c2410c" />
         <Text style={styles.noteText}>Independent visits. This place did not buy or approve these reviews.</Text>
@@ -48,7 +60,7 @@ export function LocalReviewsSection({ placePoolId }: { placePoolId: string | nul
           </View>
           <Text style={styles.title}>{review.title}</Text>
           <Text style={styles.body} numberOfLines={4}>{review.excerpt || review.body}</Text>
-          {review.media_job_ids?.[0] ? <View style={styles.videoRow}><VideoTile accessibilityLabel={`Play ${review.name}'s review video`} onPress={() => void playPublicVideo(review.media_job_ids[0])} /><View style={styles.videoPad} /></View> : null}
+          {review.media_job_ids?.[0] ? <View style={styles.videoRow}><VideoTile accessibilityLabel={`Play ${review.name}'s review video`} onPress={() => void openVideo(review.media_job_ids[0])} /><View style={styles.videoPad} /></View> : null}
           {review.reply ? (
             <View style={styles.reply}>
               <Text style={styles.replyLabel}>REPLY FROM THE PLACE</Text>
@@ -57,7 +69,9 @@ export function LocalReviewsSection({ placePoolId }: { placePoolId: string | nul
           ) : null}
         </View>
       ))}
-    </Section>
+      </Section>
+      <CreatorMediaPlayerModal url={videoUrl} onClose={() => setVideoUrl(null)} />
+    </>
   );
 }
 
