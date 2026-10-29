@@ -15,7 +15,13 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { Check } from "lucide-react-native";
 
 import {
@@ -72,8 +78,8 @@ type AriRenditionCardComponent = typeof import("./renditions/AriRenditionPreview
 let ariRenditionCardComponent: AriRenditionCardComponent | null = null;
 
 /** Keep the animation-heavy rendition surface off ordinary text-only thread
- *  evaluation. Metro still bundles the static module id, then resolves it once
- *  on the first validated structured row. */
+ * evaluation. The static module id remains inside Ari's one route chunk, then
+ * resolves once on the first validated structured row. */
 const getAriRenditionCard = (): AriRenditionCardComponent => {
   if (!ariRenditionCardComponent) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -539,7 +545,6 @@ export const MessageList: React.FC<MessageListProps> = ({
         const rendition = m.role === "assistant" && !dismissedRenditionIds.has(m.id)
           ? renditionsByMessageId.get(m.id) ?? null
           : null;
-        const AriRenditionCard = rendition ? getAriRenditionCard() : null;
         if (!text && attachments.length === 0 && !rendition) return null;
         const localDelivery = (m.content as { local_delivery?: string }).local_delivery;
 
@@ -548,6 +553,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         // DESIGN §5/§7). Only the latest such row is interactive; tapping a chip
         // sends its label as a normal user turn (Q2 conversational feedback).
         const choices = choicesOf(m);
+        const AriRenditionCard = rendition ? getAriRenditionCard() : null;
         const bubble = (
           <View>
             {m.role === "user" && attachments.length ? (

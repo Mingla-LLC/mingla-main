@@ -1,17 +1,17 @@
 /**
  * #3355 — local cross-platform rendition review route.
  *
- * `/auth/*` is reachable without a session, which lets browser and simulator
- * QA inspect the visual contract without production credentials. The screen is
- * compile-time dev-gated and redirects in any production bundle.
+ * This route deliberately redirects into the ONE Ari route rather than
+ * importing Ari's screen graph a second time. Metro promotes modules shared by
+ * two routes into web `__common`; that would charge every public guest for a
+ * Host-only 65-state QA catalog. The route is compile-time dev-gated and
+ * redirects home in any production bundle.
  */
 
 import React from "react";
 import { Redirect } from "expo-router";
 
-import { AriRenditionGalleryScreen } from "../../src/screens/ari/AriRenditionGalleryScreen";
-
 export default function AriRenditionsRoute(): React.ReactElement {
   if (!__DEV__) return <Redirect href="/" />;
-  return <AriRenditionGalleryScreen />;
+  return <Redirect href="/(tabs)/ari?renditions=gallery" />;
 }

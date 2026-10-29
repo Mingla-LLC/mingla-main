@@ -9,6 +9,12 @@
  */
 
 import type { AriRenditionGraphicVariant } from "./AriRenditionGraphic";
+import { ARI_RENDITION_BLOCK_TYPES } from "./ariRenditionCapabilities";
+export {
+  ARI_RENDITION_BLOCK_TYPES,
+  buildAriUiCapabilities,
+  type AriUiCapabilitiesV2,
+} from "./ariRenditionCapabilities";
 
 export type AriRenditionTone = "default" | "warning" | "danger" | "success";
 export type AriRenditionStepState = "done" | "active" | "queued";
@@ -125,33 +131,6 @@ export interface AriRenditionV2 {
 }
 
 export type AriRendition = AriRenditionV1 | AriRenditionV2;
-
-export const ARI_RENDITION_BLOCK_TYPES = [
-  "paragraph",
-  "list",
-  "key_value",
-  "metrics",
-  "table",
-  "timeline",
-  "progress",
-  "choices",
-  "input",
-  "code",
-  "sources",
-  "callout",
-] as const;
-
-export interface AriUiCapabilitiesV2 {
-  protocol_version: 2;
-  max_schema_version: 2;
-  block_version: 1;
-  action_version: 1;
-  block_types: typeof ARI_RENDITION_BLOCK_TYPES[number][];
-  graphic_types: AriRenditionGraphicVariant[];
-  platform: "ios" | "android" | "web" | "unknown";
-  app_version: string;
-  runtime_version: string | null;
-}
 
 const TONES = new Set<AriRenditionTone>(["default", "warning", "danger", "success"]);
 const STEP_STATES = new Set<AriRenditionStepState>(["done", "active", "queued"]);
@@ -579,27 +558,6 @@ export function parseAriRendition(value: unknown): AriRendition | null {
   if (raw?.schema_version === 2) return parseAriRenditionV2(value);
   if (raw?.schema_version === 1) return parseAriRenditionV1(value);
   return null;
-}
-
-export function buildAriUiCapabilities(input: {
-  platform: string;
-  appVersion: string | null | undefined;
-  runtimeVersion: string | null | undefined;
-}): AriUiCapabilitiesV2 {
-  const platform = input.platform === "ios" || input.platform === "android" || input.platform === "web"
-    ? input.platform
-    : "unknown";
-  return {
-    protocol_version: 2,
-    max_schema_version: 2,
-    block_version: 1,
-    action_version: 1,
-    block_types: [...ARI_RENDITION_BLOCK_TYPES],
-    graphic_types: ["event", "media", "site", "research", "social"],
-    platform,
-    app_version: input.appVersion?.trim() || "unknown",
-    runtime_version: input.runtimeVersion?.trim() || null,
-  };
 }
 
 export function ariRenditionCopyText(rendition: AriRendition): string | undefined {

@@ -47,8 +47,23 @@ describe("#3355 Ari rendition foundation", () => {
       path.join(root, "src/screens/ari/AriSettingsScreen.tsx"),
       "utf8",
     );
+    const ariRoute = fs.readFileSync(
+      path.join(root, "app/(tabs)/ari.tsx"),
+      "utf8",
+    );
     expect(route).toContain("if (!__DEV__)");
     expect(route).toContain('<Redirect href="/" />');
+    expect(route).toContain(
+      '<Redirect href="/(tabs)/ari?renditions=gallery" />',
+    );
+    expect(route).not.toContain(
+      'import { AriRenditionGalleryScreen } from "../../src/screens/ari/AriRenditionGalleryScreen"',
+    );
+    expect(ariRoute).toContain(
+      'import { AriRenditionGalleryScreen } from "../../src/screens/ari/AriRenditionGalleryScreen"',
+    );
+    expect(ariRoute).toContain('renditionMode === "gallery"');
+    expect(ariRoute).toContain("<AriRenditionGalleryScreen />");
     expect(settings).toContain("{__DEV__ ? (");
     expect(settings).toContain("Open 65-state gallery");
   });
@@ -155,6 +170,12 @@ describe("#3355 Ari rendition foundation", () => {
     expect(gallery).not.toContain("<AriRenditionPreview");
     expect(messageList).toContain("parseAriRendition");
     expect(messageList).toContain("<AriRenditionCard");
+    expect(messageList).toContain("getAriRenditionCard");
+    expect(messageList).toContain(
+      'require("./renditions/AriRenditionPreview")',
+    );
+    expect(messageList).not.toContain("React.lazy(async () =>");
+    expect(messageList).not.toContain("<React.Suspense");
     expect(messageList).toContain("receiptPendingActionIds");
     expect(messageList).toContain(
       "negotiated premium receipt owns the completed representation",
