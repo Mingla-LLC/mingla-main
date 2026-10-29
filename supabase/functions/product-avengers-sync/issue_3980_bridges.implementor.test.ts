@@ -84,14 +84,16 @@ Deno.test("#3980 bridges: only the bot's own record comments are ingested, and t
 Deno.test("#3980 bridges: main commits carry their pull request, and a direct push carries none", async () => {
   const calls: { name: string; args?: Json }[] = [];
   const commits = [
-    { sha: "d".repeat(40), commit: { message: "[deploy] toward #3980: x (#4001)\n\nbody", committer: { date: "2026-10-21T09:00:00Z" } }, author: { login: "seth" } },
-    { sha: "e".repeat(40), commit: { message: "Direct push", committer: { date: "2026-10-21T09:30:00Z" } }, author: null },
+    { sha: "d".repeat(40), parents: [{ sha: "c".repeat(40) }], commit: { message: "[deploy] toward #3980: x (#4001)\n\nbody", committer: { date: "2026-10-21T09:00:00Z" } }, author: { login: "seth" } },
+    { sha: "e".repeat(40), parents: [{ sha: "d".repeat(40) }], commit: { message: "Direct push", committer: { date: "2026-10-21T09:30:00Z" } }, author: null },
     { sha: "not-a-sha", commit: { message: "x", committer: { date: "2026-10-21T09:40:00Z" } } },
   ];
   await runReleaseBridges(fakeAdmin(calls), fakeGitHub({ commits }));
   const rows = calls.find((c) => c.name === "ops_main_commits_ingest")!.args!.p_commits as Json[];
   assertEquals(rows.map((r) => [r.subject, r.pr]), [["[deploy] toward #3980: x (#4001)", 4001], ["Direct push", null]]);
+  assertEquals(rows.map((r) => [r.first_parent_sha, r.is_head]), [["c".repeat(40), true], ["d".repeat(40), false]]);
   assertEquals(calls.find((c) => c.name === "ops_bridge_cursor_set" && c.args?.p_name === "main_commits")!.args!.p_at, "2026-10-21T09:30:00Z");
+  assert(calls.some((c) => c.name === "ops_feature_guide_coverage_reconcile"));
 });
 
 Deno.test("#3980 bridges: a rate budget under 500 starts no GitHub call; the database steps still run", async () => {

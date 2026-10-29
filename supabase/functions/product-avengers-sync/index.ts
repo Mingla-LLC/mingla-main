@@ -265,6 +265,7 @@ async function reconcile(
     bridges = {
       release_records: result.release_records,
       main_commits: result.main_commits,
+      feature_guide_coverage: result.feature_guide_coverage,
       statuses_posted: result.statuses_posted,
       engineering_cards: result.engineering_cards,
       github_follow: result.github_follow,

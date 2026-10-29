@@ -226,7 +226,7 @@ function merged(gh: FakeGitHub, opts: {
   gh.prs.set(number, {
     number,
     title,
-    body: opts.body ?? "Issue: toward #3980\n\nFeature Guide: none\n",
+    body: opts.body ?? "Issue: toward #3980\n\nFeature Guide: none — test fixture changes no product path\n",
     merged_at: MERGED_AT,
     merge_commit_sha: sha,
     base: { ref: "main" },
@@ -322,7 +322,7 @@ Deno.test("#3980 tester G3: a PR that links several issues gets one record on ea
 
 Deno.test("#3980 tester G3: a PR that links no issue gets its record on the PR itself, saying so", async () => {
   const gh = new FakeGitHub();
-  const { number } = merged(gh, { title: "Tidy the README", body: "Feature Guide: none" });
+  const { number } = merged(gh, { title: "Tidy the README", body: "Feature Guide: none — README text only" });
   const r = await runScript("record.mjs", "push_main.json", gh);
   assertEquals(r.code, 0);
   const recs = records(gh, number);
@@ -616,7 +616,7 @@ Deno.test("#3980 tester G4: issue links in prose, comments and other repositorie
   assertEquals(parseFeatureGuide("Feature Guide: " + Array.from({ length: 501 }, (_, i) => `k${i}`).join(", ")).kind, "invalid");
   assertEquals(parseFeatureGuide("<!-- Feature Guide: none -->").kind, "missing");
   const v = prLinksVerdict({ title: "x", body: "Issue: none\nFeature Guide: none", author: "someone", createdAt: "2026-11-05T00:00:00Z", landedAt: LANDED, now: "2026-11-06T00:00:00Z" });
-  assertEquals([v.ok, v.missing], [false, ["an issue link"]], "\"Issue: none\" without a reason is not an answer");
+  assertEquals([v.ok, v.missing], [false, ["an issue link", 'a reason after "Feature Guide: none"']], "both none classifications need reasons");
 });
 
 // ---------------------------------------------------------------------------
@@ -643,6 +643,7 @@ Deno.test("#3980 tester G3: a record never says Complete while anything is pendi
     v: 1, repo: REPO, pr: 4300, title: "t", pr_url: `https://github.com/${REPO}/pull/4300`, merged_at: MERGED_AT, merge_sha: SHA,
     merged_by: "m", author: "a", issues: [{ number: 3980, relation: "toward" }], migrations_added: [], migrations_applied_state: "none",
     edge_functions: [], web_projects: [], deploy_marker: true, deploy: { web: {}, edge: "none" }, feature_guide: [],
+    feature_guide_reason: "test fixture changes no product path",
     live_check: { text: "ok", by_login: "s", url: "u", at: MERGED_AT }, test_files: [], problems: [],
   };
   assertMatch(renderRecord(base), /\nStatus: Complete\n/);

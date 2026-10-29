@@ -54,12 +54,24 @@ BEGIN
    );
 
   SET LOCAL ROLE service_role;
+  -- [TEST-MOD-APPROVED #4179] The reconciliation revises the two brand-guide
+  -- entries and deliberately invalidates their old evidence. Their claimed
+  -- Live state remains intact, but effective truth must fail closed until the
+  -- revised wording has fresh proof. The unchanged product inbox stays Live.
   IF (SELECT count(*) FROM public.product_capabilities
-       WHERE claimed_status='live'
-         -- [TEST-MOD-APPROVED #3980] #3980 F1 adds the Work board and Agent log as Live entries with their own evidence
-         AND capability_key NOT IN ('staff-work-board', 'staff-agent-log')
-         AND public.issue_3720_feature_guide_effective_status(id)='Live') <> 3 THEN
-    RAISE EXCEPTION 'seeded_verified_capabilities_missing';
+       WHERE capability_key IN ('official-brand-groups', 'brand-files-and-guides', 'product-inbox-avengers')
+         AND claimed_status = 'live') <> 3 THEN
+    RAISE EXCEPTION 'seeded_live_claims_missing';
+  END IF;
+  IF (SELECT public.issue_3720_feature_guide_effective_status(id)
+        FROM public.product_capabilities
+       WHERE capability_key = 'product-inbox-avengers') <> 'Live' THEN
+    RAISE EXCEPTION 'unchanged_seeded_capability_not_live';
+  END IF;
+  IF (SELECT count(*) FROM public.product_capabilities
+       WHERE capability_key IN ('official-brand-groups', 'brand-files-and-guides')
+         AND public.issue_3720_feature_guide_effective_status(id) = 'Needs review') <> 2 THEN
+    RAISE EXCEPTION 'revised_seeded_capabilities_did_not_fail_closed';
   END IF;
   RESET ROLE;
 
@@ -74,16 +86,28 @@ BEGIN
     v_agent_digest,'find_capabilities',
     '{"query":"Brand groups","limit":5}'::jsonb,'wave5-test/1.0'
   );
+  v_rows := jsonb_array_length(v_agent #> '{result,capabilities}');
   IF v_agent->>'ok' <> 'true'
-     OR jsonb_array_length(v_agent #> '{result,capabilities}') <> 1
-     OR v_agent #>> '{result,capabilities,0,effective_status}' <> 'Live'
-     OR jsonb_array_length(v_agent #> '{result,capabilities,0,evidence}') < 1 THEN
-    RAISE EXCEPTION 'support_agent_cited_query_failed:%', v_agent;
+     OR v_rows < 2
+     OR EXISTS (
+       SELECT 1
+         FROM jsonb_array_elements(v_agent #> '{result,capabilities}') item
+        WHERE item->>'effective_status' <> 'Needs review'
+     )
+     OR NOT ('official-brand-groups' = ANY (
+       SELECT item->>'capability_key'
+         FROM jsonb_array_elements(v_agent #> '{result,capabilities}') item
+     ))
+     OR NOT ('brand-files-and-guides' = ANY (
+       SELECT item->>'capability_key'
+         FROM jsonb_array_elements(v_agent #> '{result,capabilities}') item
+     )) THEN
+    RAISE EXCEPTION 'support_agent_fail_closed_query_failed:%', v_agent;
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.team_agent_calls
      WHERE tool='find_capabilities' AND owner_email='wave5-support@test.local'
-       AND outcome='ok' AND items=1
+       AND outcome='ok' AND items=v_rows
   ) THEN
     RAISE EXCEPTION 'support_agent_query_not_audited';
   END IF;

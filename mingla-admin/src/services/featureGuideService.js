@@ -21,6 +21,13 @@ export async function listFeatureGuide(query = "") {
   );
 }
 
+export async function getFeatureGuideFreshness() {
+  return unwrap(
+    await supabase.rpc("issue_4179_feature_guide_freshness"),
+    "Could not verify Feature Guide merge coverage",
+  );
+}
+
 export async function saveFeatureCapability(form) {
   return unwrap(
     await supabase.rpc("issue_3720_save_feature_capability", {

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4179_feature_guide_merge_reconciliation.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4179-feature-guide-merge-reconciliation-structural",
+  "profile": "deno-2-unit"
+}

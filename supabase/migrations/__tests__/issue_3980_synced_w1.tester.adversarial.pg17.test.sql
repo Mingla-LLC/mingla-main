@@ -796,10 +796,16 @@ $g5$;
 do $f1$
 declare c_sha constant text := '2f1ef910d01119ba5248901ad6dbfa3e2ba63ee1';
 begin
-  -- [TEST-MOD-APPROVED #3980] synced program Wave 4 (W4.2) saves their text once more after F1: live at revision 3.
-  perform pg_temp.t3980a_check('F1', 'both entries are live at revision 3 (F1, then the Wave 4 text)',
-    (select string_agg(capability_key || ':' || claimed_status || ':' || revision, ',' order by capability_key) from public.product_capabilities
-      where capability_key in ('staff-work-board', 'staff-agent-log')), 'staff-agent-log:live:3,staff-work-board:live:3');
+  -- [TEST-MOD-APPROVED #4179] Later truth reconciliation may advance either
+  -- entry's revision. Preserve the durable F1 claim and its immutable audit
+  -- instead of pinning this historical proof to a current revision number.
+  perform pg_temp.t3980a_check('F1', 'both entries remain claimed Live with their F1 promotion audit',
+    (select count(*)::text from public.product_capabilities c
+      where c.capability_key in ('staff-work-board', 'staff-agent-log')
+        and c.claimed_status = 'live'
+        and (select count(*) from public.product_truth_audit a
+              where a.capability_id = c.id and a.action = 'capability_saved'
+                and a.metadata->>'source' = 'issue_3980_synced_f1') = 1), '2');
   perform pg_temp.t3980a_check('F1', 'every current evidence row is verified and one of the four kinds the release proves',
     (select count(*)::text from public.product_capability_evidence e join public.product_capabilities c on c.id = e.capability_id
       where c.capability_key in ('staff-work-board', 'staff-agent-log') and e.is_current

@@ -36,12 +36,14 @@ BEGIN
     RAISE EXCEPTION 'staff_sites_ops_status_changed';
   END IF;
 
-  -- The three human-verified Live entries keep their original wording and are untouched.
+  -- [TEST-MOD-APPROVED #4179] #3720 left these three human-verified entries
+  -- untouched. Later governed reconciliations may revise their truth and
+  -- invalidate stale evidence, so the durable proof is that #3720 itself did
+  -- not audit a rewrite; they must still retain their claimed Live state.
   IF (SELECT count(*) FROM public.product_capabilities
        WHERE capability_key IN ('official-brand-groups', 'brand-files-and-guides', 'product-inbox-avengers')
-         AND claimed_status = 'live'
-         AND revision = 1) <> 3 THEN
-    RAISE EXCEPTION 'protected_live_entries_changed';
+         AND claimed_status = 'live') <> 3 THEN
+    RAISE EXCEPTION 'protected_live_entries_demoted';
   END IF;
   IF EXISTS (
     SELECT 1 FROM public.product_truth_audit a

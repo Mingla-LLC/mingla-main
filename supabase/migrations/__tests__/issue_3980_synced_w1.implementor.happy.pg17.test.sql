@@ -511,19 +511,25 @@ $f3$;
 -- ---------------------------------------------------------------------------
 do $f1$
 begin
-  perform pg_temp.t3980s_check('F1', 'both entries are live and effectively Live',
+  -- [TEST-MOD-APPROVED #4179] #4179 revises the Work entry and invalidates
+  -- its superseded proof. The unchanged Agent log stays effectively Live;
+  -- both historical F1 promotions and evidence rows remain auditable.
+  perform pg_temp.t3980s_check('F1', 'both entries stay claimed Live; the revised Work entry fails closed',
     (select string_agg(capability_key || ':' || claimed_status || ':' || public.issue_3720_feature_guide_effective_status(id), ',' order by capability_key)
        from public.product_capabilities where capability_key in ('staff-work-board', 'staff-agent-log')),
-    case when now() < '2027-01-18T02:44:56Z'::timestamptz then 'staff-agent-log:live:Live,staff-work-board:live:Live'
+    case when now() < '2027-01-18T02:44:56Z'::timestamptz then 'staff-agent-log:live:Live,staff-work-board:live:Needs review'
          else 'staff-agent-log:live:Needs review,staff-work-board:live:Needs review' end);
-  perform pg_temp.t3980s_check('F1', 'each has current verified source, test, release record and live check evidence',
-    (select string_agg(c.capability_key || ':' || e.evidence_kind, ',' order by c.capability_key, e.evidence_kind)
-       from public.product_capability_evidence e join public.product_capabilities c on c.id = e.capability_id
-      where c.capability_key in ('staff-work-board', 'staff-agent-log') and e.is_current and e.verdict = 'verified'),
-    'staff-agent-log:live_check,staff-agent-log:release_record,staff-agent-log:source,staff-agent-log:test,staff-work-board:live_check,staff-work-board:release_record,staff-work-board:source,staff-work-board:test');
-  perform pg_temp.t3980s_check('F1', 'the live check expires on 18 January',
+  perform pg_temp.t3980s_check('F1', 'each retains the four F1 evidence audits',
+    (select string_agg(c.capability_key || ':' || evidence_rows, ',' order by c.capability_key)
+       from public.product_capabilities c
+       cross join lateral (select count(*)::text evidence_rows from public.product_truth_audit a
+         where a.capability_id = c.id and a.action = 'evidence_recorded'
+           and a.metadata->>'source' = 'issue_3980_synced_f1') proof
+      where c.capability_key in ('staff-work-board', 'staff-agent-log')),
+    'staff-agent-log:4,staff-work-board:4');
+  perform pg_temp.t3980s_check('F1', 'the historical Work live check expires on 18 January',
     (select max(e.expires_at)::text from public.product_capability_evidence e join public.product_capabilities c on c.id = e.capability_id
-      where c.capability_key = 'staff-work-board' and e.evidence_kind = 'live_check' and e.is_current), '2027-01-18 02:44:56+00');
+      where c.capability_key = 'staff-work-board' and e.evidence_kind = 'live_check'), '2027-01-18 02:44:56+00');
   perform pg_temp.t3980s_check('F1', 'audit rows for the evidence and the save, from this change',
     (select count(*)::text from public.product_truth_audit a join public.product_capabilities c on c.id = a.capability_id
       where c.capability_key in ('staff-work-board', 'staff-agent-log') and a.metadata->>'source' = 'issue_3980_synced_f1'), '10');

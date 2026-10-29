@@ -293,7 +293,9 @@ export function phase3dContractDigest(manifest) {
 // #4174: register the Explorer internal-brand isolation migration and its
 // declared local PostgreSQL proof selected by those replay commands, with
 // exact exclusions beside #4073 in the filtered historical replays.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "bc578a2d03a3ea25980dcc0efa6414e2efbe87890087f0406fa5d469abadec7d";
+// #4179: register the Feature Guide reconciliation migration and its declared
+// PostgreSQL and structural proofs in the same preserved inventories.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "d3f05d2cc4e9b247c5494241b554b18d136c8f5cb930d1b25696bc55def05bc4";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

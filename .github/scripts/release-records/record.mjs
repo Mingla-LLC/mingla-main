@@ -479,6 +479,7 @@ async function collect(number) {
     edge_original_state: originalEdgeDeployState(edge, edgeRuns),
     edge_supersession: edgeSupersessionStatus(statuses),
     feature_guide: guide.kind === "keys" ? guide.keys : guide.kind === "none" ? [] : null,
+    feature_guide_reason: guide.kind === "none" ? guide.reason : null,
     ...(guide.kind === "invalid" ? { feature_guide_bad: guide.bad } : {}),
     live_check: live,
     test_files: paths.filter(isTestFile).slice(0, 50),
