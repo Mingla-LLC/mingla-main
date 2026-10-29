@@ -22,4 +22,9 @@ describe("#4171 Business Pulse responsive width", () => {
     expect(narrow).not.toMatch(/maxWidth\s*:/);
     expect(narrow).not.toMatch(/alignSelf\s*:\s*"center"/);
   });
+
+  it("delegates the footer to retryable failures instead of authorization", () => {
+    expect(source).toContain("businessPulseHasRetryableError({");
+    expect(source).not.toContain("traffic30d.data?.authorized === false");
+  });
 });

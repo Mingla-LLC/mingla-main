@@ -13,6 +13,37 @@ export interface PulseVisibility {
   followers: boolean;
 }
 
+export interface PulseRetryInput {
+  canViewMoney: boolean;
+  payoutError: boolean;
+  payoutDataState: "present" | "missing" | "null";
+  trafficError: boolean;
+  trafficDataPresent: boolean;
+  trafficAuthorized: boolean | null;
+  followersError: boolean;
+  followersDataPresent: boolean;
+}
+
+export function businessPulseHasRetryableError(
+  input: PulseRetryInput,
+): boolean {
+  const payoutUnavailable =
+    input.payoutDataState === "null" ||
+    (input.payoutError && input.payoutDataState === "missing");
+  const trafficUnavailable =
+    input.trafficAuthorized !== false &&
+    input.trafficError &&
+    !input.trafficDataPresent;
+  const followersUnavailable =
+    input.followersError && !input.followersDataPresent;
+
+  return (
+    (input.canViewMoney && payoutUnavailable) ||
+    trafficUnavailable ||
+    followersUnavailable
+  );
+}
+
 export function businessPulseVisibility(
   input: PulseVisibilityInput,
 ): PulseVisibility {

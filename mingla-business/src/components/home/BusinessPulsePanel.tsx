@@ -44,6 +44,7 @@ import type { LiveCardMetrics } from "./LiveOfferingCard";
 import type { UpcomingItem } from "../../utils/upcomingBuilder";
 import {
   businessPulseDesktopSpans,
+  businessPulseHasRetryableError,
   businessPulseVisibility,
   selectStartsSoon,
   startsSoonCountdown,
@@ -626,15 +627,29 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
   const coming = payoutData?.comingToYouCents ?? 0;
   const paidMonth = payoutData?.paidThisMonthCents ?? 0;
   const showComing = coming > 0 || warning;
-  const showMoneyRows = payout.isLoading || showComing || payout.isError || paidMonth > 0;
+  const payoutDataState = payout.data === null
+    ? "null"
+    : payout.data === undefined
+      ? "missing"
+      : "present";
+  const payoutUnavailable =
+    payoutDataState === "null" ||
+    (payout.isError && payoutDataState === "missing");
+  const showMoneyRows = payout.isLoading || showComing || payoutUnavailable || paidMonth > 0;
   const otherCurrencies = Object.entries(payoutData?.lifetimeSalesCents ?? {})
     .filter(([code, amount]) => code !== currency && amount > 0)
     .sort(([left], [right]) => left.localeCompare(right));
   const moneyA11y = `Total lifetime revenue ${exactLifetime}. Coming to you ${formatCurrency(coming, currency, true)}. ${payoutStatus}. Open Payments`;
-  const dataError =
-    (canViewPayments && (payout.isError || payout.data === null)) ||
-    traffic30d.isError || followers.isError ||
-    traffic30d.data?.authorized === false;
+  const dataError = businessPulseHasRetryableError({
+    canViewMoney: canViewPayments,
+    payoutError: payout.isError,
+    payoutDataState,
+    trafficError: traffic30d.isError,
+    trafficDataPresent: traffic30d.data !== undefined,
+    trafficAuthorized: traffic30d.data?.authorized ?? null,
+    followersError: followers.isError,
+    followersDataPresent: followers.data !== undefined,
+  });
   const retryAll = (): void => {
     void Promise.all([
       ...(canViewPayments ? [payout.refetch()] : []),
@@ -669,7 +684,7 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
           <View style={styles.moneySkeleton}>
             <Skeleton width="60%" height={44} />
           </View>
-        ) : payout.isError || payoutData === undefined ? (
+        ) : payoutData === undefined ? (
           <Text style={[styles.moneyAmount, !isWideDesktop && styles.moneyAmountPhone]}>—</Text>
         ) : (
           <>
@@ -697,7 +712,7 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
           <Skeleton width="100%" height={44} />
         ) : (
           <>
-            {showComing || payout.isError ? (
+            {showComing || payoutUnavailable ? (
               <View style={[styles.moneyRow, !isWideDesktop && styles.moneyRowPhone]}>
                 <View style={styles.rowCopy}>
                   <Text style={styles.rowLabel}>Coming to you</Text>
@@ -708,7 +723,7 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
                   ) : null}
                 </View>
                 <Text style={styles.rowValue}>
-                  {payout.isError ? "—" : formatCurrencyRound(coming, currency, true)}
+                  {payoutUnavailable ? "—" : formatCurrencyRound(coming, currency, true)}
                 </Text>
               </View>
             ) : null}
