@@ -296,10 +296,12 @@ Deno.test("#3980 rework: the PR links comment says how many entries are wrong an
     createdAt: "2026-02-01T00:00:00Z", landedAt: "2026-01-01T00:00:00Z", now: "2026-03-01T00:00:00Z" });
   assertMatch(one.words, /1 entry is not a key;/);
   assert(!one.words.includes("Staff-Board"));
-  const many = prLinksVerdict({ title: "x", body: "Issue: toward #1\nFeature Guide: " + Array.from({ length: 21 }, (_, i) => `k${i}`).join(", "),
+  // [TEST-MOD-APPROVED #1553] Wide, truthful classifications stay valid; the
+  // bounded payload ceiling still reports only a count and echoes no PR text.
+  const many = prLinksVerdict({ title: "x", body: "Issue: toward #1\nFeature Guide: " + Array.from({ length: 501 }, (_, i) => `k${i}`).join(", "),
     author: "s", createdAt: "2026-02-01T00:00:00Z", landedAt: "2026-01-01T00:00:00Z", now: "2026-03-01T00:00:00Z" });
-  assertMatch(many.words, /more than 20 entries;/);
-  assert(!many.words.includes("k20"));
+  assertMatch(many.words, /more than 500 entries;/);
+  assert(!many.words.includes("k500"));
 });
 
 Deno.test("#3980 rework: the PR links runner posts no pull request text", async () => {
