@@ -14,6 +14,8 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  ariPalette,
+  ariThread,
   canvas,
   glass,
   radius,
@@ -154,6 +156,22 @@ export const AriSettingsScreen: React.FC = () => {
             visits. Ari is not a financial, legal, or tax advisor.
           </Text>
         </Section>
+
+        {__DEV__ ? (
+          <Section title="Local preview">
+            <Text style={styles.about}>
+              Inspect every Ari response, research, recovery, and memory state with deterministic local data.
+            </Text>
+            <Pressable
+              onPress={() => router.push("/auth/ari-renditions" as never)}
+              style={({ pressed }) => [styles.previewBtn, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Open Ari rendition gallery"
+            >
+              <Text style={styles.previewBtnText}>Open 65-state gallery</Text>
+            </Pressable>
+          </Section>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -305,6 +323,20 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
+  },
+  previewBtn: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.md,
+    backgroundColor: ariPalette.userBubble,
+    paddingHorizontal: spacing.md,
+  },
+  previewBtnText: {
+    color: ariThread.onUserBubble,
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    fontWeight: "700",
   },
 });
 

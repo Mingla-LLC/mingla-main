@@ -1,20 +1,29 @@
 /**
- * ORCH-0821 — AI disclosure modal (rework 2026-05-12 — fixed tap + liquid glass)
+ * ORCH-0821 / #3355 — first-open Ari trust sheet.
  *
  * First-launch consent. Shown when agent_user_profile.ai_disclosure_acknowledged_at
- * IS NULL. User taps "Got it — let's start" → persists timestamp + dismisses.
+ * IS NULL. User taps "Start with Ari" → persists timestamp + dismisses.
  *
  * FIXES vs first cut:
  *   - CTA moved OUT of the ScrollView into a fixed footer. The previous
  *     ScrollView-wrapped Pressable swallowed taps when the content fit
  *     without scrolling.
  *   - Sheet wrapped in BlurView for true liquid-glass feel.
- *   - Calmer Ari palette on the CTA (warm coral, not punchy brand orange).
- *   - Subtle inner highlight ring at the sheet top for premium glass edge.
+ *   - Compact three-ring Ari identity and one decision-first trust promise.
+ *   - One boundary and one action: no nested cards or competing choices.
  */
 
 import React, { useEffect } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import Animated, {
@@ -25,7 +34,6 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
-  ariPalette,
   glass,
   radius,
   spacing,
@@ -34,6 +42,7 @@ import {
 } from "../../constants/designSystem";
 import { shouldUseRealBlur } from "../../utils/glassBlur";
 import { resolveSheetMaxHeight } from "./aiDisclosureSheetLayout";
+import { AriPremiumButton as Button } from "./AriPremiumButton";
 import { AriOrb } from "./AriOrb";
 
 export interface AiDisclosureModalProps {
@@ -55,7 +64,12 @@ export interface AiDisclosureModalProps {
 const SheetBackdropSurface: React.FC = () => {
   const { width: windowWidth } = useWindowDimensions();
   if (!shouldUseRealBlur(windowWidth)) {
-    return <View pointerEvents="none" style={[styles.surfaceFill, styles.opaqueSheet]} />;
+    return (
+      <View
+        pointerEvents="none"
+        style={[styles.surfaceFill, styles.opaqueSheet]}
+      />
+    );
   }
   return (
     <BlurView
@@ -106,7 +120,12 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
       // the sheet (was a no-op → reviewer could get trapped).
       onRequestClose={onAccept}
     >
-      <Animated.View style={[styles.scrim, scrimStyle]}>
+      <Animated.View
+        style={[
+          styles.scrim,
+          Platform.OS === "web" ? styles.webScrimVisible : scrimStyle,
+        ]}
+      >
         {/* ORCH-1248 (Apple 2.1a): full-bleed backdrop tap-to-dismiss behind the
             sheet. Sits UNDER the sheet in z-order so it only receives taps on the
             dimmed area around the sheet, never the sheet's own content. Every
@@ -124,8 +143,7 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
               in the touch path of the X or the CTA. */}
           <SheetBackdropSurface />
           <View style={styles.sheet}>
-            {/* Inner highlight ring at the top of the sheet — premium glass edge */}
-            <View pointerEvents="none" style={styles.topHighlight} />
+            <View pointerEvents="none" style={styles.grabber} />
 
             {/* ORCH-1248 (Apple 2.1a): ALWAYS-VISIBLE close (X) affordance,
                 rendered OUTSIDE the blur layer so its touch target can never be
@@ -146,29 +164,21 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              <View style={styles.orbWrap}>
-                <AriOrb size="lg" decorative={false} accessibilityLabel="Ari" />
+              <View style={styles.hero}>
+                <View style={styles.orbWrap}>
+                  <AriOrb
+                    size="md"
+                    decorative={false}
+                    accessibilityLabel="Ari"
+                  />
+                </View>
+                <Text style={styles.title}>Meet Ari.</Text>
+                <Text style={styles.body}>
+                  Ari is powered by Mingla's AI. Ari can plan, research, and prepare work.
+                  Sources stay visible, and you approve anything important.
+                  Ari can make mistakes, so double-check decisions that matter.
+                </Text>
               </View>
-              <Text style={styles.title}>Meet Ari.</Text>
-              <Text style={styles.body}>
-                Ari is your AI co-pilot, powered by Mingla's AI. It can create brands and events
-                for you, and answer questions about your business.
-              </Text>
-              <Text style={styles.subhead}>How it works</Text>
-              <Text style={styles.bullet}>
-                • Ari never makes changes without asking — you always confirm before anything is
-                created or changed.
-              </Text>
-              <Text style={styles.bullet}>
-                • Your conversations are saved so Ari remembers context across visits.
-              </Text>
-              <Text style={styles.bullet}>
-                • You can see and delete everything Ari knows about you in Settings.
-              </Text>
-              <Text style={[styles.body, styles.disclaimer]}>
-                Ari is not a financial, legal, or tax advisor. Always double-check anything
-                important.
-              </Text>
             </ScrollView>
 
             {/* Footer is OUTSIDE the ScrollView so the Pressable hit target
@@ -181,15 +191,15 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
                 { paddingBottom: Math.max(insets.bottom, spacing.lg) },
               ]}
             >
-              <Pressable
+              <Button
                 onPress={onAccept}
-                style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
-                accessibilityRole="button"
+                label="Start with Ari"
+                variant="primary"
+                size="lg"
+                fullWidth
+                edgeEffect="animatedGradient"
                 accessibilityLabel="Acknowledge and continue to Ari"
-                hitSlop={8}
-              >
-                <Text style={styles.ctaText}>Got it — let&apos;s start</Text>
-              </Pressable>
+              />
             </View>
           </View>
         </View>
@@ -203,6 +213,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(8, 9, 12, 0.65)",
     justifyContent: "flex-end",
+  },
+  webScrimVisible: {
+    // Reanimated's shared-value effect can remain at its initial opacity during
+    // a React Native Web Modal mount. The Modal already owns the web entrance
+    // transition, so keep the scrim visibly deterministic there.
+    opacity: 1,
   },
   sheetWrap: {
     // ORCH-1246 (Apple 2.1a): maxHeight is a POINT cap (see SHEET_MAX_HEIGHT)
@@ -237,6 +253,14 @@ const styles = StyleSheet.create({
   sheet: {
     flexShrink: 1,
   },
+  grabber: {
+    width: 38,
+    height: 4,
+    alignSelf: "center",
+    borderRadius: radius.full,
+    backgroundColor: "#51565c",
+    marginTop: spacing.sm,
+  },
   // ORCH-1248 (Apple 2.1a): always-visible close affordance, top-right, above
   // the blur layer. ≥44pt effective target via size + hitSlop.
   closeButton: {
@@ -248,7 +272,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.10)",
+    borderWidth: 1,
+    borderColor: "#3b4248",
+    backgroundColor: "#20242a",
     zIndex: 2,
   },
   closeGlyph: {
@@ -257,54 +283,33 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: textTokens.primary,
   },
-  topHighlight: {
-    position: "absolute",
-    top: 0,
-    left: spacing.lg,
-    right: spacing.lg,
-    height: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.18)",
-    zIndex: 1,
-  },
   content: {
     padding: spacing.xl,
-    paddingTop: spacing.xl + spacing.sm,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
+    gap: spacing.md,
+  },
+  hero: {
+    alignItems: "center",
   },
   orbWrap: {
     alignItems: "center",
-    marginBottom: spacing.lg,
+    marginBottom: spacing.sm,
   },
   title: {
     fontSize: typography.h1.fontSize,
     fontWeight: typography.h1.fontWeight,
     color: textTokens.primary,
     textAlign: "center",
-    marginBottom: spacing.md,
-    letterSpacing: -0.2,
+    marginBottom: spacing.sm,
+    letterSpacing: -0.45,
   },
   body: {
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
     color: textTokens.secondary,
-    marginBottom: spacing.md,
-  },
-  subhead: {
-    fontSize: typography.bodyLg.fontSize,
-    fontWeight: "600",
-    color: textTokens.primary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  bullet: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
-  },
-  disclaimer: {
-    marginTop: spacing.md,
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
+    textAlign: "center",
+    maxWidth: 420,
   },
   footer: {
     paddingHorizontal: spacing.xl,
@@ -313,29 +318,6 @@ const styles = StyleSheet.create({
     // — see render (ORCH-1246): keeps the CTA above the home-indicator on iPad.
     borderTopWidth: 1,
     borderTopColor: glass.border.profileBase,
-  },
-  cta: {
-    height: 54,
-    borderRadius: radius.lg,
-    backgroundColor: ariPalette.flame,
-    alignItems: "center",
-    justifyContent: "center",
-    // Premium soft glow shadow under the CTA
-    shadowColor: ariPalette.flame,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 0,
-  },
-  ctaPressed: {
-    opacity: 0.88,
-    transform: [{ scale: 0.98 }],
-  },
-  ctaText: {
-    fontSize: typography.bodyLg.fontSize,
-    fontWeight: "600",
-    color: textTokens.inverse,
-    letterSpacing: 0.2,
   },
 });
 

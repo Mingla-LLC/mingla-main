@@ -16,6 +16,7 @@ import React, { useRef, useState } from "react";
 import {
   AccessibilityInfo,
   Keyboard,
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -50,11 +51,16 @@ import { StreamingText } from "../../components/ari/StreamingText";
 import { AriActivity } from "../../components/ari/AriActivity";
 import { AriAttachmentTray } from "../../components/ari/AriAttachmentCards";
 import { AriAttachmentSourceSheet } from "../../components/ari/AriAttachmentSourceSheet";
+import {
+  ariRenditionCopyText,
+  buildAriRenditionSubmission,
+} from "../../components/ari/renditions/ariRenditionProtocol";
 import { Toast } from "../../components/ui/Toast";
 import { useShareNetworkState } from "../../components/ui/useShareNetworkState";
 import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
 import { BrandSwitcherSheet } from "../../components/brand/BrandSwitcherSheet";
 import { ariChatErrorCopy, shouldReportAriChatError } from "./ariChatErrorCopy";
+import { copyAddressText as copyTextToClipboard } from "../../utils/copyAddressText";
 
 import { useAgentChat } from "../../hooks/useAgentChat";
 import { useAriAttachments } from "../../hooks/useAriAttachments";
@@ -677,8 +683,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           <Menu size={24} color={textTokens.primary} strokeWidth={2} />
         </Pressable>
         <View style={styles.headerTitle}>
-          <AriOrb size="sm" decorative />
-          <Text style={styles.title}>Ari</Text>
+          <AriOrb size="md" decorative />
+          <View style={styles.headerIdentityCopy}>
+            <Text style={styles.title}>Ari</Text>
+            <Text style={styles.titleMeta}>MINGLA INTELLIGENCE</Text>
+          </View>
         </View>
         <Pressable
           onPress={() => router.push("/ari/settings" as never)}
@@ -814,6 +823,69 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
             brandNamesById={brandNamesById}
             accountId={accountId}
             onSeedMessage={(text) => { setDraftText(text); composerInputRef.current?.focus(); }}
+            onRenditionAction={(_message, interaction) => {
+              const { behavior } = interaction.action;
+              if (behavior.type === "reply") {
+                setDraftText(behavior.message);
+                requestAnimationFrame(() => composerInputRef.current?.focus());
+                return;
+              }
+              if (behavior.type === "submit") {
+                void handleSend(buildAriRenditionSubmission(interaction));
+                return;
+              }
+              if (behavior.type === "route") {
+                router.push(behavior.route as never);
+                return;
+              }
+              if (behavior.type === "external") {
+                void Linking.openURL(behavior.url).catch(() => {
+                  setLocalError("That link could not be opened. Copy it and try again.");
+                });
+                return;
+              }
+              if (behavior.type === "confirm") {
+                if (chat.pendingAction?.pending_action_id !== behavior.pending_action_id) {
+                  setLocalError("This proposal is no longer active. Ask Ari to prepare it again.");
+                  return;
+                }
+                void handleConfirm();
+                return;
+              }
+              if (behavior.type === "cancel") {
+                if (chat.pendingAction?.pending_action_id !== behavior.pending_action_id) {
+                  setLocalError("This proposal is no longer active.");
+                  return;
+                }
+                void handleCancelProposal();
+                return;
+              }
+              if (behavior.command === "stop" && chat.activeTurn) {
+                void chat.stopTurn(chat.activeTurn.clientTurnId);
+                return;
+              }
+              if (behavior.command === "retry") {
+                const clientTurnId = _message.client_turn_id;
+                if (clientTurnId) void chat.retryTurn(clientTurnId);
+                else {
+                  setDraftText("Retry the last step safely");
+                  requestAnimationFrame(() => composerInputRef.current?.focus());
+                }
+                return;
+              }
+              if (behavior.command === "resume") {
+                setDraftText("Resume this plan from the last safe step");
+                requestAnimationFrame(() => composerInputRef.current?.focus());
+                return;
+              }
+              if (behavior.command === "copy") {
+                const copy = ariRenditionCopyText(interaction.rendition) ??
+                  (interaction.fieldValue || interaction.rendition.body);
+                void copyTextToClipboard(copy).catch(() => {
+                  setLocalError("That text could not be copied. Select it and copy manually.");
+                });
+              }
+            }}
             // ORCH-1103 REWORK 2 — a disambiguation / no-brand-handoff chip tap
             // sends the chip label as a normal user turn (Q2 conversational
             // feedback; Gemini re-proposes with the resolved target).
@@ -1128,10 +1200,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
   },
+  headerIdentityCopy: {
+    gap: 1,
+  },
   title: {
     fontSize: typography.h3.fontSize,
     fontWeight: typography.h3.fontWeight,
     color: textTokens.primary,
+  },
+  titleMeta: {
+    color: textTokens.tertiary,
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: "700",
+    letterSpacing: 1.15,
   },
   pressed: {
     opacity: 0.7,

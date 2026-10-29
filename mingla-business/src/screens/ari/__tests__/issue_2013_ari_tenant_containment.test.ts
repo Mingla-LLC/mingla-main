@@ -43,6 +43,7 @@ import {
   sendAgentMessage,
   type AgentConversation,
 } from "../../../services/agentChatService";
+import { currentAriUiCapabilities } from "../../../services/ariUiCapabilitiesService";
 import { ConversationDrawer } from "../../../components/ari/ConversationDrawer";
 import { useConversationList } from "../../../hooks/useConversationList";
 
@@ -116,10 +117,18 @@ describe("#2013 Ari tenant-containment UI behavior", () => {
       client_timezone: "Africa/Lagos",
       locale: "en-NG",
       brand_id: "brand-a",
+      ari_ui: currentAriUiCapabilities(),
     });
 
     expect(mockInvoke).toHaveBeenCalledWith("agent-chat", {
       body: {
+        ari_ui: expect.objectContaining({
+          protocol_version: 2,
+          max_schema_version: 2,
+          block_version: 1,
+          action_version: 1,
+          platform: "web",
+        }),
         conversation_id: "conversation-a",
         message: "Continue planning",
         client_turn_id: "00000000-0000-4000-8000-000000002013",

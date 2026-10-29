@@ -97,6 +97,12 @@ import {
   runWithAriRequest,
   updateAriRequest,
 } from "../_shared/agentReliabilityHttp.ts";
+import {
+  type AriUiCapabilitiesV2,
+  buildGenericProposalRendition,
+  buildToolReadRendition,
+  parseAriUiCapabilities,
+} from "../_shared/ariRendition.ts";
 
 const MAX_MESSAGE_LENGTH = 4096;
 const HISTORY_WINDOW = 10;
@@ -110,6 +116,7 @@ interface RequestBody {
   locale?: string | null;
   choice_response?: AgentChoiceSubmissionV2;
   attachment_ids?: string[];
+  ari_ui?: unknown;
 }
 
 type Response_ =
@@ -681,6 +688,7 @@ async function handle(req: Request): Promise<Response> {
   } catch {
     return errorResponse(400, "BAD_REQUEST", "Invalid JSON body");
   }
+  const ariUiCapabilities = parseAriUiCapabilities(body.ari_ui);
 
   const choiceSubmission = body.choice_response === undefined
     ? null
@@ -1741,6 +1749,7 @@ async function handle(req: Request): Promise<Response> {
             userId,
             conversationId,
             clientTurnId: body.client_turn_id,
+            uiCapabilities: ariUiCapabilities,
             previousState: taskState,
             readyState: planned.state,
             expectedRevision: taskStateRevision,
@@ -1834,6 +1843,7 @@ async function handle(req: Request): Promise<Response> {
             userId,
             conversationId,
             clientTurnId: body.client_turn_id,
+            uiCapabilities: ariUiCapabilities,
             previousState: taskState,
             readyState: planned.state,
             expectedRevision: taskStateRevision,
@@ -2150,6 +2160,17 @@ async function handle(req: Request): Promise<Response> {
           const resumedText = resumePrompt
             ? `${text}\n\nBack to your event plan: ${resumePrompt}`
             : text;
+          const structuredResult =
+            result !== null && typeof result === "object" &&
+              !Array.isArray(result)
+              ? result as Record<string, unknown>
+              : { result };
+          const rendition = buildToolReadRendition({
+            toolName: tool.name,
+            result,
+            capabilities: ariUiCapabilities,
+            checkedAt: new Date().toISOString(),
+          });
           return await commitTextTurn({
             client: serviceClient,
             userId,
@@ -2165,10 +2186,10 @@ async function handle(req: Request): Promise<Response> {
               : "general_read",
             startedAt: turnStartedAt,
             choices: readInterruption && liveChoices ? liveChoices : undefined,
-            structuredData: result !== null && typeof result === "object" &&
-                !Array.isArray(result)
-              ? result as Record<string, unknown>
-              : { result },
+            structuredData: {
+              ...structuredResult,
+              ...(rendition ? { rendition } : {}),
+            },
             resumed: readInterruption,
           });
         } catch (err: any) {
@@ -2381,6 +2402,7 @@ async function handle(req: Request): Promise<Response> {
         userId,
         conversationId,
         clientTurnId: body.client_turn_id,
+        uiCapabilities: ariUiCapabilities,
         previousState: taskState,
         readyState: taskState,
         expectedRevision: taskStateRevision,
@@ -2469,6 +2491,7 @@ async function commitPendingTurn(args: {
   toolName: string;
   toolArgs: Record<string, unknown>;
   proposalContext?: Record<string, unknown> | null;
+  uiCapabilities?: AriUiCapabilitiesV2 | null;
   classification: string;
   startedAt: number;
 }): Promise<Response> {
@@ -2512,6 +2535,12 @@ async function commitPendingTurn(args: {
     args.toolArgs,
     args.proposalContext ?? null,
   );
+  const rendition = buildGenericProposalRendition({
+    toolName: args.toolName,
+    toolArgs: proposalArgs,
+    pendingActionId,
+    capabilities: args.uiCapabilities ?? null,
+  });
   const toolCalls = {
     tool_name: args.toolName,
     args: proposalArgs,
@@ -2572,7 +2601,10 @@ async function commitPendingTurn(args: {
         stateSummaryEvent(args.classification, nextState),
       ),
       p_assistant_message_id: assistantMessageId,
-      p_content: { text: "" },
+      p_content: {
+        text: "",
+        ...(rendition ? { structured: { rendition } } : {}),
+      },
       p_tool_calls: toolCalls,
       p_client_turn_id: args.clientTurnId,
       p_prompt_version: TENANT_CONTEXT_VERSION,

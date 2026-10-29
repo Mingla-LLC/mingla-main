@@ -1,23 +1,20 @@
 /**
- * ORCH-0821 — AriOrb (rework 2026-05-12 — premium pulse + glass feel)
+ * ORCH-0821 / #3355 — AriOrb (three-ring kinetic identity)
  *
- * Ari's visual signature. A radial-gradient orb (soft peach → coral → ember)
- * with always-on breathing, premium spring entrance, and a glass halo ring.
+ * Ari's visual signature is deliberately simple: three crisp orange circles
+ * that ripple and bounce without gradients, blur, glow, or spiritual imagery.
  *
  * Animation layers:
  *   1. Entrance — spring scale 0.7 → 1.0 with subtle overshoot (300ms)
- *   2. Idle pulse — slow gradient breath (2400ms loop, ease-in-out)
- *   3. Thinking pulse — faster, brighter (1200ms loop)
- *   4. Glass halo — soft outer ring that breathes in counterpoint
+ *   2. Outer ring — slow outward ripple
+ *   3. Middle ring — counterpoint ripple
+ *   4. Core — restrained vertical bounce while thinking
  *
- * Reduced motion: skips all animation, renders static gradient.
- * Uses react-native-svg <RadialGradient/> for accurate radial fill.
- * All colors HSL/hex per RN color rule (Cycle 7 FX2 incident).
+ * Reduced motion renders the same static three-circle mark.
  */
 
 import React, { useEffect } from "react";
-import { Platform, StyleSheet, View } from "react-native";
-import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
+import { StyleSheet, View } from "react-native";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -29,8 +26,6 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { ariPalette } from "../../constants/designSystem";
-
 export type AriOrbSize = "xs" | "sm" | "md" | "lg" | "xl";
 
 /** Orb diameter per size, in px. Exported so a caller that must reason about
@@ -39,23 +34,20 @@ export const SIZE_PX: Record<AriOrbSize, number> = {
   xs: 16,
   sm: 24,
   md: 32,
-  lg: 56,
-  xl: 88,
+  lg: 72,
+  xl: 112,
 };
 
 /** How far the halo extends PAST the orb diameter on every side, in px — so
  *  the ink is `SIZE_PX + HALO_MULT_PX * 2` and overflows the layout box by
  *  `HALO_MULT_PX` on each edge. Exported for the same reason. */
 export const HALO_MULT_PX: Record<AriOrbSize, number> = {
-  xs: 4,
-  sm: 6,
-  md: 10,
-  lg: 18,
-  xl: 28,
+  xs: 2,
+  sm: 3,
+  md: 4,
+  lg: 7,
+  xl: 10,
 };
-
-const IDLE_PULSE_DURATION_MS = 2400;
-const THINKING_PULSE_DURATION_MS = 1200;
 
 // Smooth, Apple-like easing — slower out, controlled in. Feels "lived in".
 const PREMIUM_EASING = Easing.bezier(0.4, 0.0, 0.2, 1);
@@ -83,18 +75,14 @@ export const AriOrb: React.FC<AriOrbProps> = ({
   const entranceScale = useSharedValue(reduceMotion ? 1 : 0.7);
   const entranceOpacity = useSharedValue(reduceMotion ? 1 : 0);
 
-  // Breathing animation (0 → 1 → 0 loop)
-  const breath = useSharedValue(0);
-
-  // Halo breath runs in counterpoint (offset phase)
-  const haloBreath = useSharedValue(0.5);
+  // One bounded cycle drives the three-circle choreography in counterpoint.
+  const ripple = useSharedValue(0);
 
   useEffect(() => {
     if (reduceMotion) {
       entranceScale.value = 1;
       entranceOpacity.value = 1;
-      breath.value = 0.5;
-      haloBreath.value = 0.5;
+      ripple.value = 0.5;
       return;
     }
 
@@ -109,44 +97,58 @@ export const AriOrb: React.FC<AriOrbProps> = ({
       easing: PREMIUM_EASING,
     });
 
-    // Continuous breathing
-    const duration = thinking ? THINKING_PULSE_DURATION_MS : IDLE_PULSE_DURATION_MS;
-    breath.value = withRepeat(
-      withTiming(1, { duration, easing: PREMIUM_EASING }),
-      -1,
-      true,
-    );
-    haloBreath.value = withRepeat(
-      withTiming(1, { duration: duration * 1.15, easing: PREMIUM_EASING }),
-      -1,
-      true,
-    );
+    if (thinking) {
+      ripple.value = 0;
+      ripple.value = withRepeat(
+        withSpring(1, {
+          damping: 9,
+          stiffness: 72,
+          mass: 0.72,
+          overshootClamping: true,
+        }),
+        -1,
+        true,
+      );
+    } else {
+      // Ready/idle marks settle after their spring entrance. A ripple always
+      // means Ari is actively working, never generic decoration.
+      ripple.value = withSpring(0, {
+        damping: 14,
+        stiffness: 150,
+        mass: 0.7,
+      });
+    }
 
     return (): void => {
       cancelAnimation(entranceScale);
       cancelAnimation(entranceOpacity);
-      cancelAnimation(breath);
-      cancelAnimation(haloBreath);
+      cancelAnimation(ripple);
     };
-  }, [reduceMotion, thinking, entranceScale, entranceOpacity, breath, haloBreath]);
+  }, [reduceMotion, thinking, entranceScale, entranceOpacity, ripple]);
 
-  // Orb scale subtly breathes from 0.97 → 1.03 (idle) or 0.94 → 1.06 (thinking)
-  const orbAnimStyle = useAnimatedStyle(() => {
-    const amplitude = thinking ? 0.06 : 0.03;
-    const scale = (1 - amplitude) + breath.value * (amplitude * 2);
+  const outerRingStyle = useAnimatedStyle(() => {
     return {
-      transform: [{ scale: entranceScale.value * scale }],
-      opacity: entranceOpacity.value,
+      opacity: entranceOpacity.value * (0.28 + ripple.value * 0.22),
+      transform: [{ scale: entranceScale.value * (0.95 + ripple.value * 0.05) }],
     };
   });
 
-  // Halo opacity breathes 0.25 → 0.55 (idle) or 0.4 → 0.75 (thinking)
-  const haloAnimStyle = useAnimatedStyle(() => {
-    const lo = thinking ? 0.4 : 0.25;
-    const hi = thinking ? 0.75 : 0.55;
-    const value = lo + haloBreath.value * (hi - lo);
+  const middleRingStyle = useAnimatedStyle(() => {
     return {
-      opacity: entranceOpacity.value * value,
+      opacity: entranceOpacity.value * (0.52 + (1 - ripple.value) * 0.18),
+      transform: [{ scale: entranceScale.value * (0.97 + (1 - ripple.value) * 0.03) }],
+    };
+  });
+
+  const coreStyle = useAnimatedStyle(() => {
+    const scale = thinking ? 0.92 + ripple.value * 0.12 : 0.96 + ripple.value * 0.05;
+    const translateY = thinking ? -1.5 + ripple.value * 3 : 0;
+    return {
+      opacity: entranceOpacity.value,
+      transform: [
+        { translateY },
+        { scale: entranceScale.value * scale },
+      ],
     };
   });
 
@@ -162,72 +164,45 @@ export const AriOrb: React.FC<AriOrbProps> = ({
       accessibilityElementsHidden={decorative}
       importantForAccessibility={decorative ? "no" : undefined}
     >
-      {/* Glass halo — soft outer ring tinted by the orb color */}
+      {/* Three circles, no blur or decorative lighting. */}
       <Animated.View
         pointerEvents="none"
         style={[
-          styles.halo,
+          styles.outerRing,
           {
             width: dim + halo * 2,
             height: dim + halo * 2,
             borderRadius: (dim + halo * 2) / 2,
             top: -halo,
             left: -halo,
-            backgroundColor: ariPalette.glow,
           },
-          haloAnimStyle,
+          outerRingStyle,
         ]}
       />
-      {/* Inner glass highlight ring — a thin lighter rim just inside the orb */}
       <Animated.View
         pointerEvents="none"
         style={[
-          styles.innerRing,
+          styles.middleRing,
           {
             width: dim,
             height: dim,
             borderRadius: dim / 2,
           },
-          orbAnimStyle,
+          middleRingStyle,
         ]}
-      >
-        <Svg width={dim} height={dim} viewBox="0 0 100 100">
-          <Defs>
-            {/* Offset center toward top-left for "lit from upper-left" feel */}
-            <RadialGradient
-              id={`ari-orb-${size}`}
-              cx="36"
-              cy="34"
-              rx="70"
-              ry="70"
-              fx="32"
-              fy="30"
-              gradientUnits="userSpaceOnUse"
-            >
-              <Stop offset="0%" stopColor={ariPalette.gold} stopOpacity="1" />
-              <Stop offset="55%" stopColor={ariPalette.flame} stopOpacity="1" />
-              <Stop offset="100%" stopColor={ariPalette.ember} stopOpacity="1" />
-            </RadialGradient>
-            {/* Top specular highlight — thin lighter arc at the top */}
-            <RadialGradient
-              id={`ari-spec-${size}`}
-              cx="40"
-              cy="22"
-              rx="35"
-              ry="20"
-              fx="40"
-              fy="20"
-              gradientUnits="userSpaceOnUse"
-            >
-              <Stop offset="0%" stopColor="hsl(40, 100%, 92%)" stopOpacity="0.7" />
-              <Stop offset="100%" stopColor="hsl(40, 100%, 92%)" stopOpacity="0" />
-            </RadialGradient>
-          </Defs>
-          <Circle cx="50" cy="50" r="48" fill={`url(#ari-orb-${size})`} />
-          {/* Specular highlight overlay */}
-          <Circle cx="50" cy="50" r="48" fill={`url(#ari-spec-${size})`} />
-        </Svg>
-      </Animated.View>
+      />
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.core,
+          {
+            width: dim * 0.46,
+            height: dim * 0.46,
+            borderRadius: dim * 0.23,
+          },
+          coreStyle,
+        ]}
+      />
     </View>
   );
 };
@@ -238,19 +213,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  halo: {
+  outerRing: {
     position: "absolute",
-    ...(Platform.OS === "ios"
-      ? {
-          shadowColor: ariPalette.flame,
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.5,
-          shadowRadius: 12,
-        }
-      : {}),
+    borderWidth: 1.5,
+    borderColor: "#f07a3d",
+    backgroundColor: "transparent",
   },
-  innerRing: {
-    overflow: "hidden",
+  middleRing: {
+    position: "absolute",
+    borderWidth: 2,
+    borderColor: "#f07a3d",
+    backgroundColor: "transparent",
+  },
+  core: {
+    position: "absolute",
+    borderWidth: 1,
+    borderColor: "#ffb07c",
+    backgroundColor: "#f07a3d",
   },
 });
 

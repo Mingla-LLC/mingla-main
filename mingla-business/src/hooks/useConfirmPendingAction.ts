@@ -13,6 +13,7 @@ import {
   cancelAgentAction,
   confirmAgentAction,
 } from "../services/agentChatService";
+import { currentAriUiCapabilities } from "../services/ariUiCapabilitiesService";
 import {
   canDispatchAriIntent,
   createAriClientIntent,
@@ -44,7 +45,7 @@ export function useConfirmPendingAction(
 
   const confirmMutation = useMutation({
     mutationFn: (args: { pending_action_id: string; edited_args?: Record<string, unknown> }) =>
-      confirmAgentAction(args),
+      confirmAgentAction({ ...args, ari_ui: currentAriUiCapabilities() }),
     onSuccess: (response) => {
       qc.invalidateQueries({ queryKey: agentQueryKeys.messages(conversationId) });
       if (response.kind === "executed") {
@@ -93,7 +94,8 @@ export function useConfirmPendingAction(
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (pending_action_id: string) => cancelAgentAction(pending_action_id),
+    mutationFn: (pending_action_id: string) =>
+      cancelAgentAction(pending_action_id, currentAriUiCapabilities()),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: agentQueryKeys.messages(conversationId) });
     },

@@ -48,11 +48,16 @@ import {
   runWithAriRequest,
   updateAriRequest,
 } from "../_shared/agentReliabilityHttp.ts";
+import {
+  buildToolReceiptRendition,
+  parseAriUiCapabilities,
+} from "../_shared/ariRendition.ts";
 
 interface RequestBody {
   action: "confirm" | "cancel";
   pending_action_id: string;
   edited_args?: Record<string, unknown>;
+  ari_ui?: unknown;
 }
 
 type Response_ =
@@ -496,6 +501,7 @@ Deno.serve(async (req) => {
     } catch {
       return errorResponse(400, "BAD_REQUEST", "Invalid JSON body");
     }
+    const ariUiCapabilities = parseAriUiCapabilities(body.ari_ui);
 
     if (typeof body.pending_action_id !== "string") {
       return errorResponse(400, "BAD_REQUEST", "pending_action_id required");
@@ -568,6 +574,7 @@ Deno.serve(async (req) => {
 
     return await handleConfirmAction({
       body,
+      ariUiCapabilities,
       userId,
       userClient,
       pendingStateClient,
@@ -578,6 +585,7 @@ Deno.serve(async (req) => {
 
 async function handleConfirmAction(args: {
   body: RequestBody;
+  ariUiCapabilities: ReturnType<typeof parseAriUiCapabilities>;
   userId: string;
   userClient: SupabaseClient;
   pendingStateClient: ReturnType<typeof buildServiceClient>;
@@ -593,7 +601,14 @@ async function handleConfirmAction(args: {
     server_proposed_at: string | null;
   };
 }): Promise<Response> {
-  const { body, userId, userClient, pendingStateClient, pending } = args;
+  const {
+    body,
+    ariUiCapabilities,
+    userId,
+    userClient,
+    pendingStateClient,
+    pending,
+  } = args;
 
   let conversationTask: { row: ConversationTaskRow; state: TaskStateV1 } | null;
   try {
@@ -1249,18 +1264,32 @@ async function handleConfirmAction(args: {
   }
 
   const followupText = buildFollowupText(tool.name, result);
+  const rendition = buildToolReceiptRendition({
+    toolName: tool.name,
+    result,
+    pendingActionId: pending.id,
+    capabilities: ariUiCapabilities,
+    completedAt: new Date().toISOString(),
+  });
   const resource = createdResource(tool.name, result);
   const choices = proactiveChoices(resource);
   const assistantMessageId = crypto.randomUUID();
-  if (followupText && pending.conversation_id) {
+  if ((followupText || rendition) && pending.conversation_id) {
     await pendingStateClient.from("agent_messages").insert({
       id: assistantMessageId,
       conversation_id: pending.conversation_id,
       user_id: userId,
       role: "assistant",
       content: {
-        text: followupText,
-        ...(choices ? { structured: { choices } } : {}),
+        text: followupText ?? "",
+        ...((choices || rendition)
+          ? {
+            structured: {
+              ...(choices ? { choices } : {}),
+              ...(rendition ? { rendition } : {}),
+            },
+          }
+          : {}),
       },
       prompt_version: TENANT_CONTEXT_VERSION,
       model_version: ARI_MODEL_VERSION,
@@ -1277,7 +1306,7 @@ async function handleConfirmAction(args: {
       outcome: "executed",
       toolName: tool.name,
       result,
-      assistantMessageId: followupText && pending.conversation_id
+      assistantMessageId: (followupText || rendition) && pending.conversation_id
         ? assistantMessageId
         : terminalMessageId,
       choices,

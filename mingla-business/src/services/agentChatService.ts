@@ -9,6 +9,7 @@
 
 import { supabase } from "./supabase";
 import type { AriSentAttachment } from "./ariAttachmentService";
+import type { AriUiCapabilitiesV2 } from "../components/ari/renditions/ariRenditionCapabilities";
 // Type-only cite keeps #2060 gates happy without pulling the recovery registry
 // into the web boot chunk (ORCH-1083). Runtime assert below is structural.
 import type { AriResponseEnvelope } from "./agentReliability";
@@ -92,11 +93,13 @@ export interface SendMessageArgs {
   choice_response?: AgentChoiceSubmissionV2;
   brand_id?: string | null;
   attachment_ids?: string[];
+  ari_ui?: AriUiCapabilitiesV2;
 }
 
 export interface ConfirmActionArgs {
   pending_action_id: string;
   edited_args?: Record<string, unknown>;
+  ari_ui?: AriUiCapabilitiesV2;
 }
 
 function allowUnattestedRelease(): boolean {
@@ -305,10 +308,17 @@ export async function confirmAgentAction(args: ConfirmActionArgs): Promise<Agent
 
 export async function cancelAgentAction(
   pending_action_id: string,
+  ari_ui?: AriUiCapabilitiesV2,
 ): Promise<AgentConfirmResponse> {
   const { data, error } = await supabase.functions.invoke<unknown>(
     "agent-confirm-action",
-    { body: { action: "cancel", pending_action_id } },
+    {
+      body: {
+        action: "cancel",
+        pending_action_id,
+        ...(ari_ui ? { ari_ui } : {}),
+      },
+    },
   );
   if (error) {
     const typed = await extractError(error, "Couldn't cancel — try again");

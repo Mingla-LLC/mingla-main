@@ -23,6 +23,7 @@ import {
   fetchMessages,
   sendAgentMessage,
 } from "../services/agentChatService";
+import { currentAriUiCapabilities } from "../services/ariUiCapabilitiesService";
 import {
   type AriAttachmentDraft,
   type AriSentAttachment,
@@ -474,6 +475,7 @@ export function useAgentChat(
         client_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
         locale: Intl.DateTimeFormat().resolvedOptions().locale || "en-US",
         brand_id: brandId,
+        ari_ui: currentAriUiCapabilities(),
       });
       if (turn.epoch !== brandEpoch.current) return response;
       if (response.kind === "error") {

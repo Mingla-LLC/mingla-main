@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#3355",
+  "target": {
+    "kind": "function",
+    "name": "agent-chat"
+  },
+  "basePolicySha256": "aff064204eefb9a94e70433060cf5c116c2cac8d93837bd04c74183d59cdd594",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "ARI_RENDITION_V2_ENABLED",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "c1fb13b6591ec2ed15151df01ce5a197b3738fd3a43563ca71255df3f7419fca",
+  "reason": "Issue #3355 uses an optional fail-closed rollout flag for server-built Ari renditions; an unset value keeps v2 structured output disabled."
+}
