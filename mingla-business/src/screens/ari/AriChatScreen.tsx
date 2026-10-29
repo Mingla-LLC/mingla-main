@@ -25,7 +25,6 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as Clipboard from "expo-clipboard";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Menu, Settings } from "lucide-react-native";
@@ -61,6 +60,7 @@ import { useShareNetworkState } from "../../components/ui/useShareNetworkState";
 import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
 import { BrandSwitcherSheet } from "../../components/brand/BrandSwitcherSheet";
 import { ariChatErrorCopy, shouldReportAriChatError } from "./ariChatErrorCopy";
+import { copyAddressText as copyTextToClipboard } from "../../utils/copyAddressText";
 
 import { useAgentChat } from "../../hooks/useAgentChat";
 import { useAriAttachments } from "../../hooks/useAriAttachments";
@@ -881,7 +881,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               if (behavior.command === "copy") {
                 const copy = ariRenditionCopyText(interaction.rendition) ??
                   (interaction.fieldValue || interaction.rendition.body);
-                void Clipboard.setStringAsync(copy).catch(() => {
+                void copyTextToClipboard(copy).catch(() => {
                   setLocalError("That text could not be copied. Select it and copy manually.");
                 });
               }

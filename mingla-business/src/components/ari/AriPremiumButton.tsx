@@ -18,7 +18,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from "react-native-reanimated";
-import { LinearGradient } from "expo-linear-gradient";
+import type { LinearGradientProps } from "expo-linear-gradient";
 
 import {
   Button,
@@ -113,6 +113,15 @@ export const AriPremiumButton: React.FC<AriPremiumButtonProps> = ({
       />
     );
   }
+
+  // Keep Expo's native module unevaluated when the host renders Ari without
+  // an edge treatment (including protected composition/layout harnesses).
+  // Metro still resolves the module into production bundles; the require is
+  // delayed until the animated perimeter is actually rendered.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { LinearGradient } = require("expo-linear-gradient") as {
+    LinearGradient: React.ComponentType<LinearGradientProps>;
+  };
 
   const borderRadius = shape === "pill" ? radius.full : radius.md;
   return (

@@ -10,7 +10,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import * as Clipboard from "expo-clipboard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ScrollView } from "../../wrappers/SmartScrollView";
@@ -44,6 +43,7 @@ import {
   ariRenditionCopyText,
   buildAriRenditionSubmission,
 } from "../../components/ari/renditions/ariRenditionProtocol";
+import { copyAddressText as copyTextToClipboard } from "../../utils/copyAddressText";
 
 function harnessMessage(
   id: string,
@@ -141,7 +141,9 @@ const AriProductionThread: React.FC<{
       const copy =
         ariRenditionCopyText(interaction.rendition) ??
         (interaction.fieldValue || interaction.rendition.body);
-      void Clipboard.setStringAsync(copy);
+      void copyTextToClipboard(copy).catch(() => {
+        setNotice("That text could not be copied. Select it and copy manually.");
+      });
     } else if (behavior.command === "resume") {
       setDraft("Resume this plan from the last safe step");
     } else if (behavior.command === "retry") {
