@@ -78,6 +78,12 @@ describe("issue #3872 — completed Creator and Local Host journeys", () => {
       "Creator payout is not affected by this download.",
     );
     expect(hostContract).toContain("StorageAccessFramework");
+    expect(hostContract).toContain(
+      'const FileSystem = await import("expo-file-system/legacy")',
+    );
+    expect(hostContract).not.toContain(
+      'import * as FileSystem from "expo-file-system/legacy"',
+    );
     expect(retentionMigration).toContain(
       "s.payee_kind='gig_fee' AND s.status='paid'",
     );

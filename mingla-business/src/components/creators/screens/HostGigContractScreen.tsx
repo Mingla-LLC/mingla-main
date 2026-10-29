@@ -15,7 +15,6 @@ import React, {
   useRef,
   useState,
 } from "react";
-import * as FileSystem from "expo-file-system/legacy";
 import {
   Platform,
   Pressable,
@@ -298,7 +297,6 @@ export default function HostGigContract(): React.ReactElement {
     setBusy(true);
     setError(null);
     setNotice(null);
-    let temporaryUri: string | null = null;
     try {
       const grant = await approvedDeliveryDownload(delivery.media_job_id);
       setDownloadAvailableUntil(grant.availableUntil);
@@ -315,29 +313,37 @@ export default function HostGigContract(): React.ReactElement {
         anchor.remove();
         window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
       } else {
+        // Keep native filesystem support out of the eager Host web bundle.
+        // It is needed only after the Host explicitly taps Download master.
+        const FileSystem = await import("expo-file-system/legacy");
         const cacheUri = `${FileSystem.cacheDirectory ?? ""}${grant.filename}`;
         const downloaded = await FileSystem.downloadAsync(grant.url, cacheUri);
-        temporaryUri = downloaded.uri;
-        if (Platform.OS === "ios") {
-          await Share.share({ url: downloaded.uri, title: grant.filename });
-        } else {
-          const permission =
-            await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-          if (!permission.granted) {
-            setNotice("Nothing was saved. Tap again whenever you're ready.");
-            return;
+        try {
+          if (Platform.OS === "ios") {
+            await Share.share({ url: downloaded.uri, title: grant.filename });
+          } else {
+            const permission =
+              await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+            if (!permission.granted) {
+              setNotice("Nothing was saved. Tap again whenever you're ready.");
+              return;
+            }
+            const destination =
+              await FileSystem.StorageAccessFramework.createFileAsync(
+                permission.directoryUri,
+                grant.filename,
+                "video/mp4",
+              );
+            const contents = await FileSystem.readAsStringAsync(downloaded.uri, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            await FileSystem.writeAsStringAsync(destination, contents, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
           }
-          const destination =
-            await FileSystem.StorageAccessFramework.createFileAsync(
-              permission.directoryUri,
-              grant.filename,
-              "video/mp4",
-            );
-          const contents = await FileSystem.readAsStringAsync(downloaded.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          await FileSystem.writeAsStringAsync(destination, contents, {
-            encoding: FileSystem.EncodingType.Base64,
+        } finally {
+          await FileSystem.deleteAsync(downloaded.uri, {
+            idempotent: true,
           });
         }
       }
@@ -349,8 +355,6 @@ export default function HostGigContract(): React.ReactElement {
         "We couldn't save the approved video. Nothing expired—try again.",
       );
     } finally {
-      if (temporaryUri)
-        void FileSystem.deleteAsync(temporaryUri, { idempotent: true });
       setBusy(false);
     }
   };
