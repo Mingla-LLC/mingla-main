@@ -1,5 +1,5 @@
 -- #4173 — executable privacy and current-membership proof for the Brand-group roster.
--- MINGLA-INVARIANT: I-4173-BRAND-GROUP-ROSTER-PRIVACY | issue #4173 | Brand-group roster names, emails and roles are returned only to an authenticated caller who can access that exact Brand-group conversation, and only for active accepted teammates.
+-- MINGLA-INVARIANT: I-4173-BRAND-GROUP-ROSTER-PRIVACY | issue #4173 | Brand-group roster names, emails and roles are returned only to an authenticated caller who can access that exact Brand-group conversation, and only for accepted, non-removed teammates.
 \set ON_ERROR_STOP on
 BEGIN;
 
