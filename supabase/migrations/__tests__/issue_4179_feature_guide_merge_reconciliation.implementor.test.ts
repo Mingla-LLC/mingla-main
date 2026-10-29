@@ -79,9 +79,11 @@ Deno.test("#4179 classifies the sealed 144-merge window exactly once", () => {
   assert(review.every((row) => row.capability_keys.length > 0));
 });
 
-Deno.test("#4179 first-parent range agrees with the sealed review when history is present", async () => {
+Deno.test("#4179 first-parent range agrees with the sealed review when git and history are available", async () => {
   const baseline = "c604fb6931ecb00c939ead8023198a7648bba606";
   const head = "896d0482f669d9e0d9f407c6b05a7bc5617010d7";
+  const runPermission = await Deno.permissions.query({ name: "run", command: "git" });
+  if (runPermission.state !== "granted") return;
   const present = await new Deno.Command("git", {
     cwd: root,
     args: ["cat-file", "-e", `${baseline}^{commit}`],
