@@ -16,7 +16,9 @@ import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BUSINESS_ROOT = path.resolve(HERE, "..");
+const REPO_ROOT = path.resolve(BUSINESS_ROOT, "..");
 const APP_JSON = path.join(BUSINESS_ROOT, "app.json");
+const CONSUMER_APP_JSON = path.join(REPO_ROOT, "app-mobile/app.json");
 const APP_CONFIG = path.join(BUSINESS_ROOT, "app.config.js");
 const APPEARANCE_PLUGIN = path.join(
   BUSINESS_ROOT,
@@ -80,8 +82,10 @@ function loadPluginWithInfoPlistSpy() {
 
 test("resolved EAS-facing config cannot drop or reorder the final Light owner", () => {
   const config = resolvedHostConfig();
+  const consumerConfig = JSON.parse(read(CONSUMER_APP_JSON)).expo;
   assert.equal(config.userInterfaceStyle, "light");
-  assert.equal(config.version, "1.1.6");
+  assert.match(config.version, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
+  assert.equal(config.version, consumerConfig.version);
   assert.deepEqual(config.ios.runtimeVersion, { policy: "appVersion" });
   assert.deepEqual(config.android.runtimeVersion, { policy: "appVersion" });
 

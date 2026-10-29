@@ -24,8 +24,9 @@ const { SUPABASE_URL } = require("./src/config/supabaseProject");
 const RELEASE_BOUND_EAS_PROFILES = [
   "production",
   "production-apk",
+  "production-simulator",
   "preview",
-  "preview-sim",
+  "demo-simulator",
 ];
 /**
  * @param {string} envName

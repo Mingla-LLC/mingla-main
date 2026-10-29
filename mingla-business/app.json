@@ -2,7 +2,7 @@
   "expo": {
     "name": "Mingla Host",
     "slug": "mingla-business",
-    "version": "1.1.6",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
@@ -12,12 +12,12 @@
       "bundleIdentifier": "com.sethogieva.minglabusiness",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "Mingla Host uses your camera to scan attendee tickets at the door.",
+        "NSCameraUsageDescription": "Mingla Host uses your camera to scan attendee tickets and capture photos or videos for event covers and brand group chats.",
+        "NSMicrophoneUsageDescription": "Mingla Host uses the microphone to include sound when you record videos for event covers and brand group chats.",
         "NSPhotoLibraryUsageDescription": "Mingla Host uses your photo library to upload brand and event imagery.",
         "NSPhotoLibraryAddUsageDescription": "Mingla Host saves event tickets to your photo library when you tap Save.",
         "NSFaceIDUsageDescription": "Mingla Host uses Face ID to confirm Apple Pay transactions at the door.",
         "NSUserTrackingUsageDescription": "Mingla Host uses your advertising identifier to measure the performance of our ads and help us reach more organizers like you.",
-        "NSLocationWhenInUseUsageDescription": "Mingla Host uses your location to help measure the performance of our marketing and improve our services.",
         "NSAdvertisingAttributionReportEndpoint": "https://appsflyer-skadnetwork.com/",
         "SKAdNetworkItems": [
           { "SKAdNetworkIdentifier": "v9wttpbfk9.skadnetwork" },

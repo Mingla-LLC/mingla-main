@@ -23,9 +23,17 @@ interface ViewOncePhotoViewerProps {
   onClose: () => void;
   /** Issue #4114 QA: told when the image fails to load (the parent re-signs and retries once). */
   onLoadError?: () => void;
+  onReport?: () => void;
+  onBlock?: () => void;
 }
 
-export function ViewOncePhotoViewer({ url, onClose, onLoadError }: ViewOncePhotoViewerProps): React.ReactElement {
+export function ViewOncePhotoViewer({
+  url,
+  onClose,
+  onLoadError,
+  onReport,
+  onBlock,
+}: ViewOncePhotoViewerProps): React.ReactElement {
   const { t } = useTranslation(["chat"]);
   const insets = useSafeAreaInsets();
   // Issue #4114 QA run 2: loading is derived from which url has settled, so a
@@ -85,6 +93,32 @@ export function ViewOncePhotoViewer({ url, onClose, onLoadError }: ViewOncePhoto
         >
           <Icon name="close" size={24} color={chatTokens.textPrimary} />
         </TouchableOpacity>
+        {onReport || onBlock ? (
+          <View style={[styles.actions, { bottom: insets.bottom + 18 }]}>
+            {onReport ? (
+              <TouchableOpacity
+                style={styles.action}
+                onPress={onReport}
+                accessibilityRole="button"
+                accessibilityLabel={t("chat:reportUser")}
+              >
+                <Icon name="flag" size={18} color={chatTokens.textPrimary} />
+                <Text style={styles.actionText}>{t("chat:reportUser")}</Text>
+              </TouchableOpacity>
+            ) : null}
+            {onBlock ? (
+              <TouchableOpacity
+                style={[styles.action, styles.dangerAction]}
+                onPress={onBlock}
+                accessibilityRole="button"
+                accessibilityLabel={t("chat:blockUser")}
+              >
+                <Icon name="ban" size={18} color={chatTokens.textPrimary} />
+                <Text style={styles.actionText}>{t("chat:blockUser")}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
       </View>
     </Modal>
   );
@@ -135,5 +169,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  actions: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 10,
+  },
+  action: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    borderRadius: 22,
+    backgroundColor: "rgba(24, 24, 27, 0.88)",
+  },
+  dangerAction: {
+    backgroundColor: "rgba(127, 29, 29, 0.9)",
+  },
+  actionText: {
+    color: chatTokens.textPrimary,
+    fontSize: 14,
+    fontWeight: "700",
   },
 });

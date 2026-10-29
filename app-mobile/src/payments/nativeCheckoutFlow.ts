@@ -16,7 +16,10 @@
  *      - requires_web_redirect → should not happen on native; treat as failure
  */
 
-import { useStripePaymentSheet } from "@mingla/payments-native";
+import {
+  isStripeGooglePayTestEnv,
+  useStripePaymentSheet,
+} from "@mingla/payments-native";
 import {
   createCheckoutAttemptTracker,
   isCheckoutAttemptId,
@@ -677,9 +680,6 @@ async function preflightPaymentSheet(
   }
 }
 
-export const isStripeGooglePayTestEnv = (): boolean =>
-  process.env.EAS_BUILD_PROFILE !== "production";
-
 export const useNativeCheckoutFlow = (): ((
   input: NativeCheckoutInput,
 ) => Promise<NativeCheckoutOutcome>) => {
@@ -1129,7 +1129,7 @@ export const useNativeCheckoutFlow = (): ((
         },
         googlePay: {
           merchantCountryCode: "US",
-          testEnv: isStripeGooglePayTestEnv(),
+          testEnv: isStripeGooglePayTestEnv(data.publishableKey),
           currencyCode: data.currency.trim().toLowerCase(),
         },
         });

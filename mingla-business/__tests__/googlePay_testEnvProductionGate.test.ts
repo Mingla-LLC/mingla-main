@@ -1,14 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 
-describe("ORCH-0953 §3.7 — business Google Pay EAS profile gate", () => {
-  it("uses EAS_BUILD_PROFILE rather than __DEV__ for PaymentSheet googlePay.testEnv", () => {
+describe("#4174 — business Google Pay Stripe-key gate", () => {
+  it("derives PaymentSheet googlePay.testEnv from the server publishable key", () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, "../src/payments/nativeCheckoutFlow.native.ts"),
       "utf8",
     );
-    expect(source).toContain("process.env.EAS_BUILD_PROFILE !== \"production\"");
-    expect(source).toContain("testEnv: isStripeGooglePayTestEnv()");
-    expect(source).not.toContain("testEnv: __DEV__");
+    expect(source).toContain(
+      "testEnv: isStripeGooglePayTestEnv(data.publishableKey)",
+    );
+    expect(source).not.toContain("process.env.EAS_BUILD_PROFILE");
   });
 });

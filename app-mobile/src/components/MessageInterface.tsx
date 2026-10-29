@@ -655,6 +655,7 @@ export default function MessageInterface({
   // look at a view-once item) and the view-once items opened on this phone.
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [viewOncePhotoUrl, setViewOncePhotoUrl] = useState<string | null>(null);
+  const [activeViewOnceMessage, setActiveViewOnceMessage] = useState<Message | null>(null);
   // Issue #4114 QA run 2: a link tapped in a text bubble opens here.
   const [linkBrowserUrl, setLinkBrowserUrl] = useState<string | null>(null);
   const [viewOnceVideoUrl, setViewOnceVideoUrl] = useState<string | null>(null);
@@ -1519,6 +1520,7 @@ export default function MessageInterface({
         // Issue #4114 QA: one re-sign is allowed if this link fails to load.
         viewOnceRetryRef.current = { messageId: message.id, retried: false };
         setOpenedViewOnce((prev) => ({ ...prev, [message.id]: true }));
+        setActiveViewOnceMessage(message);
         if (result.messageType === "video") setViewOnceVideoUrl(result.url);
         else setViewOncePhotoUrl(result.url);
         return;
@@ -2543,6 +2545,48 @@ export default function MessageInterface({
     }, MENU_PRESENT_AFTER_DISMISS_MS);
   }, [onReportMessage, showNotification, t]);
 
+  const closeViewOnceViewer = useCallback(() => {
+    viewOnceRetryRef.current = null;
+    setViewOncePhotoUrl(null);
+    setViewOnceVideoUrl(null);
+    setActiveViewOnceMessage(null);
+  }, []);
+
+  const reportActiveViewOnce = useCallback(() => {
+    const messageId = activeViewOnceMessage?.id;
+    closeViewOnceViewer();
+    if (messageId) handleReportMessageRequest(messageId);
+  }, [activeViewOnceMessage?.id, closeViewOnceViewer, handleReportMessageRequest]);
+
+  const blockActiveViewOnceSender = useCallback(() => {
+    const message = activeViewOnceMessage;
+    closeViewOnceViewer();
+    if (!message || !onBlockUser) return;
+    onBlockUser(
+      {
+        id: message.senderId,
+        name: message.senderName,
+        username: "",
+        isOnline: false,
+      },
+      (blocked) => {
+        if (blocked) {
+          showNotification(
+            t('chat:userBlocked'),
+            t('chat:userBlockedMessage', { name: message.senderName }),
+          );
+        }
+      },
+    );
+  }, [activeViewOnceMessage, closeViewOnceViewer, onBlockUser, showNotification, t]);
+
+  const canBlockActiveViewOnceSender = Boolean(
+    activeViewOnceMessage?.senderId &&
+      activeViewOnceMessage.senderId !== currentUserId &&
+      activeViewOnceMessage.senderId !== friend.eventBrandAccountId &&
+      onBlockUser,
+  );
+
   // The list's renderItem — stable (it changes only when a timestamp is
   // revealed or a handler's real inputs change), so typing never re-renders it.
   // Issue #4114 Wave 6: one event's guest list (marker, picker row or ⋯).
@@ -3096,8 +3140,10 @@ export default function MessageInterface({
       <ChatVideoPlayerModal url={videoUrl} onClose={() => setVideoUrl(null)} />
       <ChatVideoPlayerModal
         url={viewOnceVideoUrl}
-        onClose={() => { viewOnceRetryRef.current = null; setViewOnceVideoUrl(null); }}
+        onClose={closeViewOnceViewer}
         onLoadError={() => { void handleViewOnceLoadError(); }}
+        onReport={onReportMessage ? reportActiveViewOnce : undefined}
+        onBlock={canBlockActiveViewOnceSender ? blockActiveViewOnceSender : undefined}
         viewOnce
       />
       <InAppBrowserModal
@@ -3108,8 +3154,10 @@ export default function MessageInterface({
       />
       <ViewOncePhotoViewer
         url={viewOncePhotoUrl}
-        onClose={() => { viewOnceRetryRef.current = null; setViewOncePhotoUrl(null); }}
+        onClose={closeViewOnceViewer}
         onLoadError={() => { void handleViewOnceLoadError(); }}
+        onReport={onReportMessage ? reportActiveViewOnce : undefined}
+        onBlock={canBlockActiveViewOnceSender ? blockActiveViewOnceSender : undefined}
       />
 
       {/* Issue #4114 Wave 3: the no-composer banners are dark and sit above the

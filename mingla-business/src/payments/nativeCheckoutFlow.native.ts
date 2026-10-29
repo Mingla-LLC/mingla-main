@@ -30,7 +30,10 @@
  *      - requires_web_redirect → should not happen on native; treat as failure
  */
 
-import { useStripePaymentSheet } from "@mingla/payments-native";
+import {
+  isStripeGooglePayTestEnv,
+  useStripePaymentSheet,
+} from "@mingla/payments-native";
 import { initStripe } from "@stripe/stripe-react-native";
 // META-ORCH-1076 [Paystack Africa] — in-app browser for the Paystack hosted
 // checkout redirect (mirror of app-mobile). We never parse payment state from
@@ -302,9 +305,6 @@ async function preflightPaymentSheet(
 const BUSINESS_MERCHANT_IDENTIFIER = "merchant.com.sethogieva.minglabusiness";
 const BUSINESS_URL_SCHEME = "com.sethogieva.minglabusiness";
 
-export const isStripeGooglePayTestEnv = (): boolean =>
-  process.env.EAS_BUILD_PROFILE !== "production";
-
 /**
  * issue #3281 — map a `ticket-checkout-create` refusal to BUYER COPY.
  *
@@ -506,7 +506,7 @@ export const useNativeCheckoutFlow = (): ((
         },
         googlePay: {
           merchantCountryCode: "US",
-          testEnv: isStripeGooglePayTestEnv(),
+          testEnv: isStripeGooglePayTestEnv(data.publishableKey),
           currencyCode: "usd",
         },
       });

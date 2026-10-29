@@ -27,13 +27,17 @@ interface ChatVideoPlayerModalProps {
   viewOnce?: boolean;
   /** Issue #4114 QA: told once per URL when it fails to load (view once re-signs and retries). */
   onLoadError?: () => void;
+  onReport?: () => void;
+  onBlock?: () => void;
 }
 
-function Player({ url, onClose, viewOnce, onLoadError }: {
+function Player({ url, onClose, viewOnce, onLoadError, onReport, onBlock }: {
   url: string;
   onClose: () => void;
   viewOnce: boolean;
   onLoadError?: () => void;
+  onReport?: () => void;
+  onBlock?: () => void;
 }): React.ReactElement {
   const { t } = useTranslation(["chat"]);
   const insets = useSafeAreaInsets();
@@ -107,14 +111,57 @@ function Player({ url, onClose, viewOnce, onLoadError }: {
       >
         <Icon name="close" size={24} color={chatTokens.textPrimary} />
       </TouchableOpacity>
+      {viewOnce && (onReport || onBlock) ? (
+        <View style={[styles.actions, { bottom: insets.bottom + 18 }]}>
+          {onReport ? (
+            <TouchableOpacity
+              style={styles.action}
+              onPress={onReport}
+              accessibilityRole="button"
+              accessibilityLabel={t("chat:reportUser")}
+            >
+              <Icon name="flag" size={18} color={chatTokens.textPrimary} />
+              <Text style={styles.actionText}>{t("chat:reportUser")}</Text>
+            </TouchableOpacity>
+          ) : null}
+          {onBlock ? (
+            <TouchableOpacity
+              style={[styles.action, styles.dangerAction]}
+              onPress={onBlock}
+              accessibilityRole="button"
+              accessibilityLabel={t("chat:blockUser")}
+            >
+              <Icon name="ban" size={18} color={chatTokens.textPrimary} />
+              <Text style={styles.actionText}>{t("chat:blockUser")}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
 
-export function ChatVideoPlayerModal({ url, onClose, viewOnce = false, onLoadError }: ChatVideoPlayerModalProps): React.ReactElement {
+export function ChatVideoPlayerModal({
+  url,
+  onClose,
+  viewOnce = false,
+  onLoadError,
+  onReport,
+  onBlock,
+}: ChatVideoPlayerModalProps): React.ReactElement {
   return (
     <Modal visible={!!url} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      {url ? <Player key={url} url={url} onClose={onClose} viewOnce={viewOnce} onLoadError={onLoadError} /> : null}
+      {url ? (
+        <Player
+          key={url}
+          url={url}
+          onClose={onClose}
+          viewOnce={viewOnce}
+          onLoadError={onLoadError}
+          onReport={onReport}
+          onBlock={onBlock}
+        />
+      ) : null}
     </Modal>
   );
 }
@@ -164,5 +211,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: chatTokens.textPrimary,
+  },
+  actions: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 10,
+  },
+  action: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    borderRadius: 22,
+    backgroundColor: "rgba(24, 24, 27, 0.88)",
+  },
+  dangerAction: {
+    backgroundColor: "rgba(127, 29, 29, 0.9)",
+  },
+  actionText: {
+    color: chatTokens.textPrimary,
+    fontSize: 14,
+    fontWeight: "700",
   },
 });

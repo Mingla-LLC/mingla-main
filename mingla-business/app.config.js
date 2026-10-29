@@ -42,6 +42,7 @@ const hasOneSignalEnv = () =>
 const RELEASE_BOUND_EAS_PROFILES = [
   "production",
   "production-apk",
+  "production-simulator",
   "preview",
   "preview-sim",
 ];

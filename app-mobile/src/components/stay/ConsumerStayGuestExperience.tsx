@@ -1,7 +1,10 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { initStripe } from "@stripe/stripe-react-native";
-import { useStripePaymentSheet } from "@mingla/payments-native";
+import {
+  isStripeGooglePayTestEnv,
+  useStripePaymentSheet,
+} from "@mingla/payments-native";
 import { StayGuestBooking, type StayGuestBookingProps } from "@mingla/brand-rendering/StayGuestBooking";
 import {
   type StayGuestCheckoutInput,
@@ -223,7 +226,7 @@ export function ConsumerStayGuestExperience({
         },
         googlePay: {
           merchantCountryCode: "US",
-          testEnv: process.env.EAS_BUILD_PROFILE !== "production",
+          testEnv: isStripeGooglePayTestEnv(payment.publishableKey),
           currencyCode: payment.currencyCode.toLowerCase(),
         },
       });

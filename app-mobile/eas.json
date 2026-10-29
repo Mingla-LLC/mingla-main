@@ -37,14 +37,24 @@
     },
     "production": {
       "channel": "production",
+      "environment": "production",
       "autoIncrement": true,
       "android": {},
       "env": {
         "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com"
       }
     },
+    "production-apk": {
+      "extends": "production",
+      "autoIncrement": false,
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "production-simulator": {
       "extends": "production",
+      "environment": "production",
+      "autoIncrement": false,
       "ios": {
         "simulator": true,
         "buildConfiguration": "Release"
