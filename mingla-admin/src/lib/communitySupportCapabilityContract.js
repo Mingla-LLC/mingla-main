@@ -110,6 +110,7 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
       "issue_3720_list_feature_guide",
       "issue_3720_record_feature_evidence",
       "issue_3720_save_feature_capability",
+      "issue_4179_feature_guide_freshness",
     ]),
     functions: Object.freeze([]),
   }),
