@@ -1,6 +1,7 @@
 -- Issue #3980 synced program, Wave 2 -- the bridges, on the fully replayed
 -- PG17 schema.
--- [TEST-MOD-APPROVED #4179] MINGLA-INVARIANT: I-3980-LIVE-ONLY-WITH-EVIDENCE | issue #3980 | A Feature Guide entry turns Live from a release record only when every evidence kind it requires is current and verified; an incomplete record can invalidate named source truth but never turns it Live and says what is missing.
+-- [TEST-MOD-APPROVED #4179] The invariant below now names immediate source invalidation.
+-- MINGLA-INVARIANT: I-3980-LIVE-ONLY-WITH-EVIDENCE | issue #3980 | A Feature Guide entry turns Live from a release record only when every evidence kind it requires is current and verified; an incomplete record can invalidate named source truth but never turns it Live and says what is missing.
 -- MINGLA-INVARIANT: I-3980-HOSTS-TOLD-ONLY-BY-SETH | issue #3980 | Bridge drafts for the roadmap and announcements are created as drafts only, and nothing reaches hosts until the owner or an admin publishes it.
 --
 -- What it proves (each check is recorded and reported together):
