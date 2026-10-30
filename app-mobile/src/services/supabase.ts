@@ -14,6 +14,7 @@ import { SUPABASE_URL } from '../config/supabaseProject';
 
 export const supabaseUrl = SUPABASE_URL;
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdxbm9hanFlcnFobnZ1bG1ueXZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1MDUyNzIsImV4cCI6MjA3MzA4MTI3Mn0.p4yi9yD2RWfJ2HN4DD-dgrvXnyzhJi3g2YCouSK-hbo';
+export { supabaseAnonKey };
 
 /**
  * Fetch wrapper with 30-second hard timeout via Promise.race.
