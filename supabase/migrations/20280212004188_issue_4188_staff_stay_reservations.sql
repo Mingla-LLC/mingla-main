@@ -1354,7 +1354,7 @@ BEGIN
   WHERE group_id = v_group.id
   FOR UPDATE;
   IF NOT FOUND OR v_hold.state <> 'active' THEN
-    RAISE EXCEPTION 'stay_inventory_changed' USING ERRCODE = '40001';
+    RAISE EXCEPTION 'stay_inventory_changed' USING ERRCODE = 'PT409';
   END IF;
 
   IF v_payment_method = 'link' THEN
@@ -1444,7 +1444,7 @@ BEGIN
   FROM public.stay_inventory_commitments
   WHERE group_id = v_group.id AND state = 'active';
   IF v_slice_count = 0 OR v_commitment_count <> v_slice_count THEN
-    RAISE EXCEPTION 'stay_inventory_changed' USING ERRCODE = '40001';
+    RAISE EXCEPTION 'stay_inventory_changed' USING ERRCODE = 'PT409';
   END IF;
 
   PERFORM set_config(
