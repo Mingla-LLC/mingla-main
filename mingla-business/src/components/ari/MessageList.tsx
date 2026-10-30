@@ -15,13 +15,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { Check } from "lucide-react-native";
 
 import {
@@ -47,6 +41,7 @@ import type { AriRenditionInteraction } from "./renditions/AriRenditionPreview";
 import { parseAriRendition } from "./renditions/ariRenditionProtocol";
 import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
 import type { PendingActionView } from "../../hooks/useAgentChat";
+import type { AriFeedbackReason } from "../../services/ariFeedbackService";
 
 // #3429 TRIM — this used to be a `React.lazy` "to keep the file-card module off
 // the eager path". It never did: AriChatScreen.tsx statically imports
@@ -74,7 +69,8 @@ const NEWEST_PIN_TOLERANCE_PX = 48;
 const NEW_REPLY_FILL = "#eb7825";
 const NEW_REPLY_ON_FILL = "#0F1115";
 
-type AriRenditionCardComponent = typeof import("./renditions/AriRenditionPreview").AriRenditionCard;
+type AriRenditionCardComponent =
+  typeof import("./renditions/AriRenditionPreview").AriRenditionCard;
 let ariRenditionCardComponent: AriRenditionCardComponent | null = null;
 
 /** Keep the animation-heavy rendition surface off ordinary text-only thread
@@ -83,7 +79,8 @@ let ariRenditionCardComponent: AriRenditionCardComponent | null = null;
 const getAriRenditionCard = (): AriRenditionCardComponent => {
   if (!ariRenditionCardComponent) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    ariRenditionCardComponent = require("./renditions/AriRenditionPreview").AriRenditionCard as AriRenditionCardComponent;
+    ariRenditionCardComponent = require("./renditions/AriRenditionPreview")
+      .AriRenditionCard as AriRenditionCardComponent;
   }
   return ariRenditionCardComponent;
 };
@@ -94,7 +91,10 @@ export interface MessageListProps {
   messages: AgentMessage[];
   pendingAction: PendingActionView | null;
   isExecuting: boolean;
-  onConfirm: (editedArgs?: Record<string, unknown>, keepPending?: boolean) => Promise<ConfirmOutcome>;
+  onConfirm: (
+    editedArgs?: Record<string, unknown>,
+    keepPending?: boolean,
+  ) => Promise<ConfirmOutcome>;
   onCancel: () => void;
   /**
    * ORCH-1103 Q7 — the proposal card calls this after the create-for-cover
@@ -132,7 +132,16 @@ export interface MessageListProps {
   onEditTurn?: (clientTurnId: string) => void;
   onDiscardTurn?: (clientTurnId: string) => void;
   /** #3355 — a validated structured rendition action was tapped. */
-  onRenditionAction?: (message: AgentMessage, interaction: AriRenditionInteraction) => void;
+  onRenditionAction?: (
+    message: AgentMessage,
+    interaction: AriRenditionInteraction,
+  ) => void;
+  /** #3355 — host quality signal for one persisted Ari reply. */
+  onFeedback?: (
+    messageId: string,
+    sentiment: "positive" | "negative",
+    reasonCode?: AriFeedbackReason,
+  ) => Promise<void>;
   surface?: "main" | "website";
   /**
    * #3355 — when the host switches conversations, pin/unseen state must reset
@@ -195,6 +204,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   onEditTurn,
   onDiscardTurn,
   onRenditionAction,
+  onFeedback,
   surface = "main",
   conversationId = null,
 }) => {
@@ -204,13 +214,19 @@ export const MessageList: React.FC<MessageListProps> = ({
   // row collapses to the selected pill (siblings unmount, per QuickReplyChips
   // CHOICE "submitted" state) and stays that way — the follow-up user turn has
   // been sent and re-asking with the same chip would be redundant.
-  const [resolvedChoice, setResolvedChoice] = useState<{ messageId: string; optionId: string } | null>(null);
+  const [resolvedChoice, setResolvedChoice] = useState<{
+    messageId: string;
+    optionId: string;
+  } | null>(null);
   const [clarifyDraft, setClarifyDraft] = useState<Record<string, string>>({});
   const [multiDraft, setMultiDraft] = useState<Record<string, string[]>>({});
   const [revealSkipSignal, setRevealSkipSignal] = useState(0);
-  const [dismissedRenditionIds, setDismissedRenditionIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
+  const [dismissedRenditionIds, setDismissedRenditionIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const [feedbackState, setFeedbackState] = useState<
+    Record<string, "positive" | "negative" | "choose_reason">
+  >({});
 
   // A failed typed turn remains in the thread as a retryable optimistic row.
   // Re-open the choice when the message set changes so an error never strands
@@ -232,7 +248,10 @@ export const MessageList: React.FC<MessageListProps> = ({
   // with grouping flags (hideOrb / tail) by comparing it to its visible
   // bubble neighbours of the same speaker.
   const receiptPendingActionIds = new Set<string>();
-  const renditionsByMessageId = new Map<string, ReturnType<typeof parseAriRendition>>();
+  const renditionsByMessageId = new Map<
+    string,
+    ReturnType<typeof parseAriRendition>
+  >();
   for (const message of messages) {
     if (message.role !== "assistant") continue;
     const rendition = parseAriRendition(
@@ -242,10 +261,13 @@ export const MessageList: React.FC<MessageListProps> = ({
     if (!rendition) continue;
     renditionsByMessageId.set(message.id, rendition);
     if (
-      rendition.schema_version === 2 && rendition.kind === "receipt" &&
+      rendition.schema_version === 2 &&
+      rendition.kind === "receipt" &&
       rendition.rendition_id.startsWith("receipt:")
     ) {
-      receiptPendingActionIds.add(rendition.rendition_id.slice("receipt:".length));
+      receiptPendingActionIds.add(
+        rendition.rendition_id.slice("receipt:".length),
+      );
     }
   }
 
@@ -259,10 +281,14 @@ export const MessageList: React.FC<MessageListProps> = ({
       continue; // historical proposal — silent
     }
     if (
-      m.role === "tool" && (m.tool_results as any)?.outcome === "failed" &&
+      m.role === "tool" &&
+      (m.tool_results as any)?.outcome === "failed" &&
       confirmationFailureSentence(m.tool_results) === null
     ) {
       continue; // hidden — toast + Ari follow-up cover an in-turn tool failure
+    }
+    if (m.role === "tool" && !toolResultNeedsThreadRow(m.tool_results)) {
+      continue; // the reply/rendition is the proof; no generic "Done" row
     }
     // ORCH-1103 REWORK 3 — mutual-exclusion between the live proposal card and
     // the executed receipt. During the create-and-attach window the host KEEPS
@@ -275,14 +301,18 @@ export const MessageList: React.FC<MessageListProps> = ({
     if (
       m.role === "tool" &&
       pendingAction &&
-      (m.tool_results as any)?.pending_action_id === pendingAction.pending_action_id
+      (m.tool_results as any)?.pending_action_id ===
+        pendingAction.pending_action_id
     ) {
       continue; // suppressed while the live card owns this action
     }
     if (
       m.role === "tool" &&
       receiptPendingActionIds.has(
-        String((m.tool_results as { pending_action_id?: unknown } | null)?.pending_action_id ?? ""),
+        String(
+          (m.tool_results as { pending_action_id?: unknown } | null)
+            ?.pending_action_id ?? "",
+        ),
       )
     ) {
       continue; // negotiated premium receipt owns the completed representation
@@ -300,12 +330,15 @@ export const MessageList: React.FC<MessageListProps> = ({
       continue;
     }
     const text = (m.content as any)?.text ?? "";
-    const attachments = (m.content as { attachments?: unknown[] })?.attachments ?? [];
-    const rendition = m.role === "assistant" && !dismissedRenditionIds.has(m.id)
-      ? renditionsByMessageId.get(m.id) ?? null
-      : null;
+    const attachments =
+      (m.content as { attachments?: unknown[] })?.attachments ?? [];
+    const rendition =
+      m.role === "assistant" && !dismissedRenditionIds.has(m.id)
+        ? (renditionsByMessageId.get(m.id) ?? null)
+        : null;
     if (
-      rendition?.schema_version === 2 && rendition.kind === "receipt" &&
+      rendition?.schema_version === 2 &&
+      rendition.kind === "receipt" &&
       pendingAction?.pending_action_id ===
         rendition.rendition_id.slice("receipt:".length)
     ) {
@@ -368,8 +401,14 @@ export const MessageList: React.FC<MessageListProps> = ({
   // and must not keep offering taps. A pending proposal also supersedes choices.
   let lastChoiceMessageId: string | null = null;
   if (!pendingAction) {
-    for (const it of raw) {
-      if (it.kind === "message" && choicesOf(it.message)) lastChoiceMessageId = it.message.id;
+    // A choice is live only when its message is the actual visible tail. Merely
+    // being the most recent choices-bearing message is not enough: a later user
+    // turn, receipt, cancellation or answer has already superseded it.
+    for (let index = raw.length - 1; index >= 0; index -= 1) {
+      const item = raw[index];
+      if (item.kind !== "message") continue;
+      lastChoiceMessageId = choicesOf(item.message) ? item.message.id : null;
+      break;
     }
   }
 
@@ -383,7 +422,8 @@ export const MessageList: React.FC<MessageListProps> = ({
   const lastTailKeyRef = useRef<string | null>(null);
   const lastUserMessageIdRef = useRef<string | null>(null);
 
-  const newestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+  const newestMessage =
+    messages.length > 0 ? messages[messages.length - 1] : null;
   const newestId = newestMessage?.id ?? null;
   const newestRole = newestMessage?.role ?? null;
   const pendingId = pendingAction?.pending_action_id ?? null;
@@ -461,258 +501,436 @@ export const MessageList: React.FC<MessageListProps> = ({
     setHasUnseenTail(true);
     // Intentionally omit isThinking: thinking / reveal / card growth must not
     // animate to offset 0 while the host is reading history (#3355).
-  }, [
-    items.length,
-    newestId,
-    newestRole,
-    pendingId,
-    scrollToNewestOnce,
-  ]);
+  }, [items.length, newestId, newestRole, pendingId, scrollToNewestOnce]);
 
   // #1841 — residual in-row edit field tracked by #1873.
   return (
     // orch-strict-grep-allow orch-0892 — no keyboard-aware virtualised container exists: chat thread must stay FlatList; composer keyboard lives in AriChatScreen.
     <View style={styles.listShell}>
-    <FlatList
-      ref={listRef}
-      // #2649 — bottom-anchored by construction. `inverted` paints data[0] at
-      // the frame's bottom edge, which is the edge the composer is attached to,
-      // so the thread rides up with the keyboard instead of being clipped by
-      // the viewport shrinking underneath a frozen scroll offset. No keyboard
-      // height, no listener and no scroll call is involved in holding it there.
-      inverted
-      data={invertedItems}
-      keyExtractor={(item, idx) => {
-        if (item.kind === "message") return `m-${item.message.id}`;
-        if (item.kind === "pending") return `p-${item.pendingAction.pending_action_id}`;
-        return `t-${idx}`;
-      }}
-      contentContainerStyle={styles.content}
-      ItemSeparatorComponent={({ leadingItem }) => {
-        // FlatList supplies only leadingItem — the item BEFORE this separator in
-        // DATA order (the SectionList-only trailingItem prop is never read here,
-        // and reading it crashed the thread on send in ORCH-1101).
-        //
-        // #2649 — the list is inverted, so data order runs newest-first and the
-        // leading item is the row rendered BELOW this gap. The quantity we want
-        // is therefore that row's own `gapAbove`, stamped during the grouping
-        // pass. The predicate this replaced derived the gap from a
-        // neighbour-relative flag, which under inversion put every 4pt cluster
-        // gap one boundary off (measured, #2649 F-8).
-        const lead = leadingItem as ListItem | undefined;
-        return <View style={{ height: lead?.gapAbove ?? ariThread.gapTurn }} />;
-      }}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      onScrollBeginDrag={() => setRevealSkipSignal((value) => value + 1)}
-      scrollEventThrottle={16}
-      onScroll={(event) => {
-        // Inverted list: offset 0 is the newest row (visual bottom).
-        const offset = event.nativeEvent.contentOffset.y;
-        const atNewest = offset <= NEWEST_PIN_TOLERANCE_PX;
-        if (atNewest !== pinnedRef.current) {
-          pinnedRef.current = atNewest;
-          setPinnedToNewest(atNewest);
-        }
-        if (atNewest) setHasUnseenTail(false);
-      }}
-      renderItem={({ item }) => {
-        if (item.kind === "thinking") {
-          return <View>{renderThinking?.()}</View>;
-        }
-        if (item.kind === "pending") {
+      <FlatList
+        ref={listRef}
+        // #2649 — bottom-anchored by construction. `inverted` paints data[0] at
+        // the frame's bottom edge, which is the edge the composer is attached to,
+        // so the thread rides up with the keyboard instead of being clipped by
+        // the viewport shrinking underneath a frozen scroll offset. No keyboard
+        // height, no listener and no scroll call is involved in holding it there.
+        inverted
+        data={invertedItems}
+        keyExtractor={(item, idx) => {
+          if (item.kind === "message") return `m-${item.message.id}`;
+          if (item.kind === "pending")
+            return `p-${item.pendingAction.pending_action_id}`;
+          return `t-${idx}`;
+        }}
+        contentContainerStyle={styles.content}
+        ItemSeparatorComponent={({ leadingItem }) => {
+          // FlatList supplies only leadingItem — the item BEFORE this separator in
+          // DATA order (the SectionList-only trailingItem prop is never read here,
+          // and reading it crashed the thread on send in ORCH-1101).
+          //
+          // #2649 — the list is inverted, so data order runs newest-first and the
+          // leading item is the row rendered BELOW this gap. The quantity we want
+          // is therefore that row's own `gapAbove`, stamped during the grouping
+          // pass. The predicate this replaced derived the gap from a
+          // neighbour-relative flag, which under inversion put every 4pt cluster
+          // gap one boundary off (measured, #2649 F-8).
+          const lead = leadingItem as ListItem | undefined;
           return (
-            <ToolProposalCard
-              toolName={item.pendingAction.tool_name}
-              args={item.pendingAction.tool_args}
-              isExecuting={isExecuting}
-              onConfirm={onConfirm}
-              onCancel={onCancel}
-              brandNamesById={brandNamesById}
-              accountId={accountId}
-              onAttachDone={onAttachDone}
-              // #3040 B-C14 — the persisted proposal id keys Ari's ad video.
-              proposalId={item.pendingAction.pending_action_id}
-            />
+            <View style={{ height: lead?.gapAbove ?? ariThread.gapTurn }} />
           );
-        }
-        const m = item.message;
-        if (m.role === "tool") {
-          return renderToolResult(m, onSeedMessage, attachedCovers);
-        }
-        const text = (m.content as any)?.text ?? "";
-        const attachments = ((m.content as { attachments?: unknown }).attachments ?? []) as import("../../services/ariAttachmentService").AriSentAttachment[];
-        const rendition = m.role === "assistant" && !dismissedRenditionIds.has(m.id)
-          ? renditionsByMessageId.get(m.id) ?? null
-          : null;
-        if (!text && attachments.length === 0 && !rendition) return null;
-        const localDelivery = (m.content as { local_delivery?: string }).local_delivery;
-
-        // ORCH-1103 REWORK 2 — render disambiguation / no-brand-handoff chips
-        // beneath an Ari bubble that carries a choices payload (SPEC §6.ii/§6.v,
-        // DESIGN §5/§7). Only the latest such row is interactive; tapping a chip
-        // sends its label as a normal user turn (Q2 conversational feedback).
-        const choices = choicesOf(m);
-        const AriRenditionCard = rendition ? getAriRenditionCard() : null;
-        const bubble = (
-          <View>
-            {m.role === "user" && attachments.length ? (
-              <AriSentAttachments attachments={attachments} surface={surface} />
-            ) : null}
-            {text ? (
-              <ChatBubble
-                role={m.role === "user" ? "user" : "assistant"}
-                text={text}
-                hideOrb={item.hideOrb}
-                tail={item.tail}
-                reveal={m.role === "assistant" && (m.content as { local_reveal?: boolean }).local_reveal === true}
-                revealSkipSignal={revealSkipSignal}
-                surface={surface}
+        }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        onScrollBeginDrag={() => setRevealSkipSignal((value) => value + 1)}
+        scrollEventThrottle={16}
+        onScroll={(event) => {
+          // Inverted list: offset 0 is the newest row (visual bottom).
+          const offset = event.nativeEvent.contentOffset.y;
+          const atNewest = offset <= NEWEST_PIN_TOLERANCE_PX;
+          if (atNewest !== pinnedRef.current) {
+            pinnedRef.current = atNewest;
+            setPinnedToNewest(atNewest);
+          }
+          if (atNewest) setHasUnseenTail(false);
+        }}
+        renderItem={({ item }) => {
+          if (item.kind === "thinking") {
+            return <View>{renderThinking?.()}</View>;
+          }
+          if (item.kind === "pending") {
+            return (
+              <ToolProposalCard
+                toolName={item.pendingAction.tool_name}
+                args={item.pendingAction.tool_args}
+                isExecuting={isExecuting}
+                onConfirm={onConfirm}
+                onCancel={onCancel}
+                brandNamesById={brandNamesById}
+                accountId={accountId}
+                onAttachDone={onAttachDone}
+                // #3040 B-C14 — the persisted proposal id keys Ari's ad video.
+                proposalId={item.pendingAction.pending_action_id}
               />
-            ) : null}
-            {rendition && AriRenditionCard ? (
-              <View style={text ? styles.renditionAfterText : undefined}>
-                <AriRenditionCard
-                  rendition={rendition}
-                  showOrb={!text && !item.hideOrb}
-                  onAction={(interaction) => {
-                    if (interaction.action.behavior.type === "local" &&
-                        interaction.action.behavior.command === "dismiss") {
-                      setDismissedRenditionIds((current) => new Set([...current, m.id]));
-                    }
-                    onRenditionAction?.(m, interaction);
-                  }}
-                />
-              </View>
-            ) : null}
-            {m.role === "user" && localDelivery && localDelivery !== "failed" ? (
-              localDelivery === "sending" ? (
-                <Text style={styles.deliveryMeta}>Sending…</Text>
-              ) : (
-                // P2-1: Sent (with its check) as soon as the turn is accepted.
-                <View style={styles.deliverySent} accessible accessibilityRole="text" accessibilityLabel="Sent">
-                  <Check size={12} color={ariThread.tertiaryText} strokeWidth={2.25} />
-                  <Text style={styles.deliverySentText}>Sent</Text>
-                </View>
-              )
-            ) : null}
-            {m.role === "user" && localDelivery === "failed" && m.client_turn_id ? (
-              <View style={styles.deliveryFailure} accessibilityRole="alert">
-                <Text style={styles.deliveryFailureCopy}>{(m.content as { local_error?: string }).local_error ?? ARI_CHAT_CONNECTION_COPY}</Text>
-                <View style={styles.deliveryActions}>
-                  <Pressable onPress={() => onRetryTurn?.(m.client_turn_id as string)} style={styles.retryTurn} accessibilityRole="button" accessibilityLabel={`Retry sending ${text}`}><Text style={styles.retryTurnText}>Retry</Text></Pressable>
-                  <Pressable onPress={() => onEditTurn?.(m.client_turn_id as string)} style={styles.retryTurn} accessibilityRole="button" accessibilityLabel={`Edit ${text}`}><Text style={styles.retryTurnText}>Edit</Text></Pressable>
-                  <Pressable onPress={() => onDiscardTurn?.(m.client_turn_id as string)} style={styles.retryTurn} accessibilityRole="button" accessibilityLabel={`Discard ${text}`}><Text style={styles.retryTurnText}>Discard</Text></Pressable>
-                </View>
-              </View>
-            ) : null}
-          </View>
-        );
-        if (!choices) return bubble;
+            );
+          }
+          const m = item.message;
+          if (m.role === "tool") {
+            return renderToolResult(m, onSeedMessage, attachedCovers);
+          }
+          const text = (m.content as any)?.text ?? "";
+          const attachments = ((m.content as { attachments?: unknown })
+            .attachments ??
+            []) as import("../../services/ariAttachmentService").AriSentAttachment[];
+          const rendition =
+            m.role === "assistant" && !dismissedRenditionIds.has(m.id)
+              ? (renditionsByMessageId.get(m.id) ?? null)
+              : null;
+          if (!text && attachments.length === 0 && !rendition) return null;
+          const localDelivery = (m.content as { local_delivery?: string })
+            .local_delivery;
 
-        const isResolved = resolvedChoice?.messageId === m.id;
-        const isLatest = lastChoiceMessageId === m.id;
-        // Stale rows (superseded by a newer turn / pending proposal) collapse to
-        // nothing extra — just the bubble — so they can't be tapped again.
-        if (!isLatest && !isResolved) return bubble;
-        if (choices.kind === "clarifying" && choices.options.length === 0) {
-          const typed = clarifyDraft[m.id] ?? "";
-          const clarifyState = isResolved
-            ? "submitted"
-            : choicesDisabled
-              ? "disabled"
-            : typed.trim().length > 0
-              ? "typed"
-              : "default";
-          return (
+          // ORCH-1103 REWORK 2 — render disambiguation / no-brand-handoff chips
+          // beneath an Ari bubble that carries a choices payload (SPEC §6.ii/§6.v,
+          // DESIGN §5/§7). Only the latest such row is interactive; tapping a chip
+          // sends its label as a normal user turn (Q2 conversational feedback).
+          const choices = choicesOf(m);
+          const AriRenditionCard = rendition ? getAriRenditionCard() : null;
+          const bubble = (
             <View>
-              {bubble}
-              <View style={styles.choicesRow}>
-                <ClarifyingCard
-                  question={choices.prompt}
-                  value={typed}
-                  state={clarifyState}
-                  onChange={(next) => setClarifyDraft((prev) => ({ ...prev, [m.id]: next }))}
-                  onSubmit={() => {
-                    const label = typed.trim();
-                    if (!label) return;
-                    const submission = buildChoiceSubmission(choices, [], label);
-                    if (!submission) return;
-                    setResolvedChoice({ messageId: m.id, optionId: "typed" });
-                    onSendChoice?.(submission, label);
-                  }}
+              {m.role === "user" && attachments.length ? (
+                <AriSentAttachments
+                  attachments={attachments}
+                  surface={surface}
                 />
-              </View>
+              ) : null}
+              {text ? (
+                <ChatBubble
+                  role={m.role === "user" ? "user" : "assistant"}
+                  text={text}
+                  hideOrb={item.hideOrb}
+                  tail={item.tail}
+                  reveal={
+                    m.role === "assistant" &&
+                    (m.content as { local_reveal?: boolean }).local_reveal ===
+                      true
+                  }
+                  revealSkipSignal={revealSkipSignal}
+                  surface={surface}
+                />
+              ) : null}
+              {rendition && AriRenditionCard ? (
+                <View style={text ? styles.renditionAfterText : undefined}>
+                  <AriRenditionCard
+                    rendition={rendition}
+                    showOrb={!text && !item.hideOrb}
+                    onAction={(interaction) => {
+                      if (
+                        interaction.action.behavior.type === "local" &&
+                        interaction.action.behavior.command === "dismiss"
+                      ) {
+                        setDismissedRenditionIds(
+                          (current) => new Set([...current, m.id]),
+                        );
+                      }
+                      onRenditionAction?.(m, interaction);
+                    }}
+                  />
+                </View>
+              ) : null}
+              {m.role === "assistant" && onFeedback ? (
+                <View style={styles.feedbackWrap}>
+                  <View style={styles.feedbackActions}>
+                    <Text style={styles.feedbackPrompt}>Was this useful?</Text>
+                    <Pressable
+                      hitSlop={5}
+                      onPress={() => {
+                        const previous = feedbackState[m.id];
+                        setFeedbackState((current) => ({
+                          ...current,
+                          [m.id]: "positive",
+                        }));
+                        void onFeedback(m.id, "positive").catch(() => {
+                          setFeedbackState((current) => {
+                            const next = { ...current };
+                            if (previous) next[m.id] = previous;
+                            else delete next[m.id];
+                            return next;
+                          });
+                        });
+                      }}
+                      style={({ pressed }) => [
+                        styles.feedbackButton,
+                        feedbackState[m.id] === "positive" &&
+                          styles.feedbackButtonSelected,
+                        pressed && styles.feedbackPressed,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel="This Ari reply was helpful"
+                    >
+                      <Text
+                        style={[
+                          styles.feedbackButtonText,
+                          feedbackState[m.id] === "positive" &&
+                            styles.feedbackPositiveText,
+                        ]}
+                      >
+                        Yes
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      hitSlop={5}
+                      onPress={() =>
+                        setFeedbackState((current) => ({
+                          ...current,
+                          [m.id]: "choose_reason",
+                        }))
+                      }
+                      style={({ pressed }) => [
+                        styles.feedbackButton,
+                        ["negative", "choose_reason"].includes(
+                          feedbackState[m.id],
+                        ) && styles.feedbackButtonSelected,
+                        pressed && styles.feedbackPressed,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel="This Ari reply needs improvement"
+                    >
+                      <Text
+                        style={[
+                          styles.feedbackButtonText,
+                          ["negative", "choose_reason"].includes(
+                            feedbackState[m.id],
+                          ) && styles.feedbackNegativeText,
+                        ]}
+                      >
+                        Improve
+                      </Text>
+                    </Pressable>
+                    {feedbackState[m.id] === "positive" ||
+                    feedbackState[m.id] === "negative" ? (
+                      <Text style={styles.feedbackSaved}>Feedback saved</Text>
+                    ) : null}
+                  </View>
+                  {feedbackState[m.id] === "choose_reason" ? (
+                    <View style={styles.feedbackReasons}>
+                      {(
+                        [
+                          ["inaccurate", "Inaccurate"],
+                          ["missed_request", "Missed request"],
+                          ["hard_to_use", "Hard to use"],
+                          ["unsafe", "Unsafe"],
+                        ] as const
+                      ).map(([reason, label]) => (
+                        <Pressable
+                          key={reason}
+                          onPress={() => {
+                            setFeedbackState((current) => ({
+                              ...current,
+                              [m.id]: "negative",
+                            }));
+                            void onFeedback(m.id, "negative", reason).catch(
+                              () => {
+                                setFeedbackState((current) => ({
+                                  ...current,
+                                  [m.id]: "choose_reason",
+                                }));
+                              },
+                            );
+                          }}
+                          style={({ pressed }) => [
+                            styles.feedbackReason,
+                            pressed && styles.feedbackPressed,
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Ari feedback: ${label}`}
+                        >
+                          <Text style={styles.feedbackReasonText}>{label}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+              {m.role === "user" &&
+              localDelivery &&
+              localDelivery !== "failed" ? (
+                localDelivery === "sending" ? (
+                  <Text style={styles.deliveryMeta}>Sending…</Text>
+                ) : (
+                  // P2-1: Sent (with its check) as soon as the turn is accepted.
+                  <View
+                    style={styles.deliverySent}
+                    accessible
+                    accessibilityRole="text"
+                    accessibilityLabel="Sent"
+                  >
+                    <Check
+                      size={12}
+                      color={ariThread.tertiaryText}
+                      strokeWidth={2.25}
+                    />
+                    <Text style={styles.deliverySentText}>Sent</Text>
+                  </View>
+                )
+              ) : null}
+              {m.role === "user" &&
+              localDelivery === "failed" &&
+              m.client_turn_id ? (
+                <View style={styles.deliveryFailure} accessibilityRole="alert">
+                  <Text style={styles.deliveryFailureCopy}>
+                    {(m.content as { local_error?: string }).local_error ??
+                      ARI_CHAT_CONNECTION_COPY}
+                  </Text>
+                  <View style={styles.deliveryActions}>
+                    <Pressable
+                      onPress={() => onRetryTurn?.(m.client_turn_id as string)}
+                      style={styles.retryTurn}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Retry sending ${text}`}
+                    >
+                      <Text style={styles.retryTurnText}>Retry</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => onEditTurn?.(m.client_turn_id as string)}
+                      style={styles.retryTurn}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Edit ${text}`}
+                    >
+                      <Text style={styles.retryTurnText}>Edit</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() =>
+                        onDiscardTurn?.(m.client_turn_id as string)
+                      }
+                      style={styles.retryTurn}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Discard ${text}`}
+                    >
+                      <Text style={styles.retryTurnText}>Discard</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
             </View>
           );
-        }
-        if (choices.kind === "multi_select") {
-          const selectedIds = multiDraft[m.id] ?? [];
+          if (!choices) return bubble;
+
+          const isResolved = resolvedChoice?.messageId === m.id;
+          const isLatest = lastChoiceMessageId === m.id;
+          // Stale rows (superseded by a newer turn / pending proposal) collapse to
+          // nothing extra — just the bubble — so they can't be tapped again.
+          if (!isLatest && !isResolved) return bubble;
+          if (choices.kind === "clarifying" && choices.options.length === 0) {
+            const typed = clarifyDraft[m.id] ?? "";
+            const clarifyState = isResolved
+              ? "submitted"
+              : choicesDisabled
+                ? "disabled"
+                : typed.trim().length > 0
+                  ? "typed"
+                  : "default";
+            return (
+              <View>
+                {bubble}
+                <View style={styles.choicesRow}>
+                  <ClarifyingCard
+                    question={choices.prompt}
+                    value={typed}
+                    state={clarifyState}
+                    onChange={(next) =>
+                      setClarifyDraft((prev) => ({ ...prev, [m.id]: next }))
+                    }
+                    onSubmit={() => {
+                      const label = typed.trim();
+                      if (!label) return;
+                      const submission = buildChoiceSubmission(
+                        choices,
+                        [],
+                        label,
+                      );
+                      if (!submission) return;
+                      setResolvedChoice({ messageId: m.id, optionId: "typed" });
+                      onSendChoice?.(submission, label);
+                    }}
+                  />
+                </View>
+              </View>
+            );
+          }
+          if (choices.kind === "multi_select") {
+            const selectedIds = multiDraft[m.id] ?? [];
+            return (
+              <View>
+                {bubble}
+                <View style={styles.choicesRow}>
+                  <MultiSelectPrompt
+                    title={choices.prompt}
+                    options={choices.options}
+                    selectedIds={selectedIds}
+                    state={isResolved ? "submitted" : "default"}
+                    disabled={choicesDisabled}
+                    onToggle={(id) => {
+                      setMultiDraft((prev) => {
+                        const cur = prev[m.id] ?? [];
+                        const next = cur.includes(id)
+                          ? cur.filter((x) => x !== id)
+                          : [...cur, id];
+                        return { ...prev, [m.id]: next };
+                      });
+                    }}
+                    onConfirm={() => {
+                      const ids = multiDraft[m.id] ?? [];
+                      const submission = buildChoiceSubmission(choices, ids);
+                      if (!submission) return;
+                      const label = choiceLabel(choices, ids);
+                      setResolvedChoice({
+                        messageId: m.id,
+                        optionId: ids.join(","),
+                      });
+                      onSendChoice?.(submission, label);
+                    }}
+                  />
+                </View>
+              </View>
+            );
+          }
           return (
             <View>
               {bubble}
               <View style={styles.choicesRow}>
-                <MultiSelectPrompt
-                  title={choices.prompt}
+                <QuickReplyChips
                   options={choices.options}
-                  selectedIds={selectedIds}
+                  selectedId={isResolved ? resolvedChoice?.optionId : undefined}
                   state={isResolved ? "submitted" : "default"}
                   disabled={choicesDisabled}
-                  onToggle={(id) => {
-                    setMultiDraft((prev) => {
-                      const cur = prev[m.id] ?? [];
-                      const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
-                      return { ...prev, [m.id]: next };
-                    });
-                  }}
-                  onConfirm={() => {
-                    const ids = multiDraft[m.id] ?? [];
-                    const submission = buildChoiceSubmission(choices, ids);
+                  onSelectId={(optionId) => {
+                    const submission = buildChoiceSubmission(choices, [
+                      optionId,
+                    ]);
                     if (!submission) return;
-                    const label = choiceLabel(choices, ids);
-                    setResolvedChoice({ messageId: m.id, optionId: ids.join(",") });
+                    const label = choiceLabel(choices, [optionId]);
+                    setResolvedChoice({ messageId: m.id, optionId });
                     onSendChoice?.(submission, label);
                   }}
                 />
               </View>
             </View>
           );
-        }
-        return (
-          <View>
-            {bubble}
-            <View style={styles.choicesRow}>
-              <QuickReplyChips
-                options={choices.options}
-                selectedId={isResolved ? resolvedChoice?.optionId : undefined}
-                state={isResolved ? "submitted" : "default"}
-                disabled={choicesDisabled}
-                onSelectId={(optionId) => {
-                  const submission = buildChoiceSubmission(choices, [optionId]);
-                  if (!submission) return;
-                  const label = choiceLabel(choices, [optionId]);
-                  setResolvedChoice({ messageId: m.id, optionId });
-                  onSendChoice?.(submission, label);
-                }}
-              />
-            </View>
-          </View>
-        );
-      }}
-    />
-    {hasUnseenTail && !pinnedToNewest ? (
-      <View style={styles.newReplyOverlay} pointerEvents="box-none">
-        <Pressable
-          onPress={jumpToNewest}
-          accessibilityRole="button"
-          accessibilityLabel="New reply"
-          hitSlop={8}
-          style={styles.newReplyButton}
-        >
-          <Text style={styles.newReplyLabel}>New reply ↓</Text>
-        </Pressable>
-      </View>
-    ) : null}
+        }}
+      />
+      {hasUnseenTail && !pinnedToNewest ? (
+        <View style={styles.newReplyOverlay} pointerEvents="box-none">
+          <Pressable
+            onPress={jumpToNewest}
+            accessibilityRole="button"
+            accessibilityLabel="New reply"
+            hitSlop={8}
+            style={styles.newReplyButton}
+          >
+            <Text style={styles.newReplyLabel}>New reply ↓</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -741,7 +959,9 @@ export const MessageList: React.FC<MessageListProps> = ({
  * when the reason really has that shape — anything else gets fixed copy, so no
  * internal code, database text or raw throw message can reach the thread.
  */
-export function confirmationFailureSentence(toolResults: unknown): string | null {
+export function confirmationFailureSentence(
+  toolResults: unknown,
+): string | null {
   const tr = toolResults as
     | { outcome?: unknown; pending_action_id?: unknown; reason?: unknown }
     | null
@@ -756,10 +976,44 @@ export function confirmationFailureSentence(toolResults: unknown): string | null
     : "That didn't go through, so nothing changed. Ask Ari to try it again.";
 }
 
+const THREAD_RECEIPT_TOOLS = new Set([
+  "create_event",
+  "update_event",
+  "delete_brand",
+  "propose_site_content_update",
+  "propose_site_settings_update",
+  "attach_approved_site_media",
+  "create_site_preview",
+  "publish_site",
+  "rollback_site",
+]);
+
+/** Generic successful reads stay in history for Ari, but not as visual rows. */
+export function toolResultNeedsThreadRow(toolResults: unknown): boolean {
+  const tr = toolResults as any;
+  const outcome = tr?.outcome ?? "executed";
+  if (outcome === "failed") return confirmationFailureSentence(tr) !== null;
+  if (outcome === "cancelled") return true;
+  if (
+    (tr?.tool_name === "create_brand" || tr?.tool_name === "update_brand") &&
+    tr?.result?.brand?.name
+  )
+    return true;
+  if (
+    typeof tr?.tool_name === "string" &&
+    buildAnalyticsCardForTool(tr.tool_name, tr?.result)
+  )
+    return true;
+  return THREAD_RECEIPT_TOOLS.has(String(tr?.tool_name ?? ""));
+}
+
 function renderToolResult(
   m: AgentMessage,
   onSeedMessage?: (text: string) => void,
-  attachedCovers: Record<string, { url: string | null; type: string | null }> = {},
+  attachedCovers: Record<
+    string,
+    { url: string | null; type: string | null }
+  > = {},
 ): React.ReactElement | null {
   const tr = m.tool_results as any;
   const outcome = tr?.outcome ?? "executed";
@@ -816,14 +1070,17 @@ function renderToolResult(
     // fn that echoes the cover); the override is the fallback for create-attach.
     // We merge onto the brand object so the downstream cover logic stays a single
     // read of brand.cover_media_url / brand.cover_media_type.
-    const attached = tr?.pending_action_id ? attachedCovers[tr.pending_action_id as string] : undefined;
+    const attached = tr?.pending_action_id
+      ? attachedCovers[tr.pending_action_id as string]
+      : undefined;
     const brand = {
       ...rawBrand,
       cover_media_url: rawBrand.cover_media_url ?? attached?.url ?? null,
       cover_media_type: rawBrand.cover_media_type ?? attached?.type ?? null,
     };
     const rows: { label: string; value: string }[] = [];
-    if (brand.default_currency) rows.push({ label: "Currency", value: brand.default_currency });
+    if (brand.default_currency)
+      rows.push({ label: "Currency", value: brand.default_currency });
     if (brand.slug) rows.push({ label: "Slug", value: brand.slug });
     const coverType =
       brand.cover_media_type === "video"
@@ -873,7 +1130,12 @@ function renderToolResult(
           rows={analyticsCard.rows}
           actions={
             analyticsCard.seedAction
-              ? [{ id: analyticsCard.seedAction.id, label: analyticsCard.seedAction.label }]
+              ? [
+                  {
+                    id: analyticsCard.seedAction.id,
+                    label: analyticsCard.seedAction.label,
+                  },
+                ]
               : undefined
           }
           state={analyticsCard.state}
@@ -888,7 +1150,7 @@ function renderToolResult(
   }
 
   // executed — derive a short label (ribbon for non-brand tools)
-  let label = "Done";
+  let label: string | null = null;
   if (tr?.tool_name === "create_event" && r?.event?.title) {
     label = `Created "${r.event.title}"`;
   } else if (tr?.tool_name === "update_event") {
@@ -908,8 +1170,13 @@ function renderToolResult(
   } else if (tr?.tool_name === "rollback_site") {
     label = "Earlier Website version is publishing as a new version";
   }
+  if (!label) return null;
   return (
-    <View style={styles.successRibbon} accessibilityRole="text" accessibilityLabel={label}>
+    <View
+      style={styles.successRibbon}
+      accessibilityRole="text"
+      accessibilityLabel={label}
+    >
       <Check size={13} color={semantic.success} strokeWidth={2.5} />
       <Text style={styles.successText}>{label}</Text>
     </View>
@@ -963,6 +1230,71 @@ const styles = StyleSheet.create({
     maxWidth: ariThread.threadMaxWidth,
     alignSelf: "center",
   },
+  feedbackWrap: {
+    alignSelf: "flex-start",
+    marginLeft: ariThread.orbGap,
+    marginTop: spacing.xs,
+    gap: spacing.xs,
+  },
+  feedbackActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  feedbackPrompt: {
+    marginRight: spacing.xs,
+    color: ariThread.tertiaryText,
+    fontSize: typography.caption.fontSize,
+  },
+  feedbackButton: {
+    minHeight: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+  },
+  feedbackButtonSelected: {
+    backgroundColor: glass.tint.profileElevated,
+  },
+  feedbackPressed: {
+    opacity: 0.68,
+  },
+  feedbackButtonText: {
+    color: ariThread.secondaryText,
+    fontSize: typography.caption.fontSize,
+    fontWeight: "600",
+  },
+  feedbackPositiveText: {
+    color: semantic.success,
+  },
+  feedbackNegativeText: {
+    color: semantic.error,
+  },
+  feedbackSaved: {
+    marginLeft: spacing.xs,
+    color: ariThread.tertiaryText,
+    fontSize: typography.caption.fontSize,
+  },
+  feedbackReasons: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  feedbackReason: {
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+  },
+  feedbackReasonText: {
+    color: ariThread.secondaryText,
+    fontSize: typography.caption.fontSize,
+    fontWeight: "600",
+  },
   // ORCH-1103 REWORK 2 — chips sit under the Ari bubble, indented past the orb
   // gutter (24px orb + orbGap, matching ChatBubble's orbWrap) so they align with
   // the bubble text, with a small breath above.
@@ -984,12 +1316,45 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     fontWeight: "600",
   },
-  deliveryMeta: { alignSelf: "flex-end", color: ariThread.tertiaryText, fontSize: 12, lineHeight: 16, marginTop: spacing.xs },
-  deliverySent: { alignSelf: "flex-end", flexDirection: "row", alignItems: "center", gap: 4, marginTop: spacing.xs },
-  deliverySentText: { color: ariThread.tertiaryText, fontSize: 12, lineHeight: 16 },
-  deliveryFailure: { alignSelf: "flex-end", width: "84%", borderWidth: 1, borderColor: semantic.error, borderRadius: radius.md, paddingHorizontal: spacing.sm, paddingTop: spacing.sm, marginTop: spacing.xs },
-  deliveryFailureCopy: { color: ariThread.secondaryText, fontSize: 14, lineHeight: 20 },
-  deliveryActions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end" },
+  deliveryMeta: {
+    alignSelf: "flex-end",
+    color: ariThread.tertiaryText,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: spacing.xs,
+  },
+  deliverySent: {
+    alignSelf: "flex-end",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: spacing.xs,
+  },
+  deliverySentText: {
+    color: ariThread.tertiaryText,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  deliveryFailure: {
+    alignSelf: "flex-end",
+    width: "84%",
+    borderWidth: 1,
+    borderColor: semantic.error,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  deliveryFailureCopy: {
+    color: ariThread.secondaryText,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  deliveryActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
   successRibbon: {
     alignSelf: "flex-start",
     flexDirection: "row",

@@ -7,6 +7,12 @@ import {
   toAccessibleText,
   toSegments,
 } from "../ariBubbleSegments";
+import {
+  ariUserFacingReplyText,
+  parseAriRendition,
+} from "../renditions/ariRenditionProtocol";
+import fs from "node:fs";
+import path from "node:path";
 
 /** Production-shaped ad reply that leaked *** / ### / ** / backticks on Host web. */
 const LEAKY_AD_REPLY = [
@@ -25,6 +31,74 @@ const LEAKY_AD_REPLY = [
 ].join("\n");
 
 describe("#3355 readable Ari replies", () => {
+  test("approval, cancellation, choice, and retry UI never renders raw backend exception text", () => {
+    const screen = fs.readFileSync(
+      path.resolve(__dirname, "../../../screens/ari/AriChatScreen.tsx"),
+      "utf8",
+    );
+    const card = fs.readFileSync(
+      path.resolve(__dirname, "../ToolProposalCard.tsx"),
+      "utf8",
+    );
+
+    expect(screen).toContain("const message = ariChatErrorCopy(result.code)");
+    expect(screen).toContain("setLocalError(ariChatErrorCopy(result.code))");
+    expect(screen).not.toContain("setLocalError(result.message)");
+    expect(screen).not.toMatch(/setLocalError\([\s\S]{0,100}error\.message/);
+    expect(card).not.toMatch(/setProposalError\([\s\S]{0,100}error\.message/);
+  });
+
+  test("persisted replies cannot expose diagnostic slugs, tool names, or UUID routes", () => {
+    const publicText = ariUserFacingReplyText(
+      "Search public sources: RESEARCH_NOT_CONFIGURED. Create it using the tool create_site_draft, then open /brand/33550000-0000-4000-a000-000000000001/website.",
+    );
+    expect(publicText).not.toMatch(
+      /RESEARCH_NOT_CONFIGURED|create_site_draft|33550000-0000-4000-a000-000000000001/,
+    );
+    expect(publicText).toContain("Public research is temporarily unavailable");
+    expect(publicText).toContain("website draft");
+    expect(publicText).toContain("Website screen");
+  });
+
+  test("persisted replies fail closed for unknown internal code slugs", () => {
+    const publicText = ariUserFacingReplyText(
+      "The step returned EVENT_GRAPH_STALE and DATE_WINDOW_AMBIGUOUS.",
+    );
+    expect(publicText).not.toMatch(/EVENT_GRAPH_STALE|DATE_WINDOW_AMBIGUOUS/);
+    expect(publicText).toContain("This step needs attention");
+  });
+
+  test("persisted receipts hide legacy database slugs and identifiers", () => {
+    const rendition = parseAriRendition({
+      schema_version: 2,
+      rendition_id: "receipt:legacy",
+      kind: "receipt",
+      title: "Create Event",
+      body: "Saved in Mingla.",
+      blocks: [
+        {
+          type: "key_value",
+          version: 1,
+          id: "facts",
+          rows: [
+            { label: "Title", value: "Autumn Table" },
+            { label: "Slug", value: "draft-85ac85b6d8e84325" },
+            {
+              label: "Created By",
+              value: "edbf610d-b15f-4778-a7d8-b9a8c21419a8",
+            },
+            { label: "Created At", value: "2026-10-29T18:51:38.201809+00:00" },
+          ],
+        },
+      ],
+    });
+    expect(rendition).not.toBeNull();
+    expect(JSON.stringify(rendition)).toContain("Autumn Table");
+    expect(JSON.stringify(rendition)).not.toMatch(
+      /draft-85ac85b6d8e84325|edbf610d|Created At|Created By/,
+    );
+  });
+
   test("leaky ad reply exposes no hash, asterisk, backtick, or rule markers", () => {
     expect(ariTextLeaksMarkdown(LEAKY_AD_REPLY)).toBe(false);
     const spoken = toAccessibleText(LEAKY_AD_REPLY);
@@ -42,7 +116,9 @@ describe("#3355 readable Ari replies", () => {
   });
 
   test("numbered steps and bullets are typed blocks", () => {
-    const segments = toSegments("Next:\n1. Draft the reminder\n2. Send it\n- Keep it short");
+    const segments = toSegments(
+      "Next:\n1. Draft the reminder\n2. Send it\n- Keep it short",
+    );
     expect(segments).toEqual([
       { kind: "paragraph", text: "Next:" },
       { kind: "numbered", text: "Draft the reminder", n: 1 },
@@ -64,7 +140,9 @@ describe("#3355 readable Ari replies", () => {
     const spoken = toAccessibleText("Oops **unclosed and ###hashes `ticks");
     expect(spoken).not.toMatch(/`/);
     expect(spoken).not.toMatch(/\*\*/);
-    expect(ariTextLeaksMarkdown("Oops **unclosed and ###hashes `ticks")).toBe(false);
+    expect(ariTextLeaksMarkdown("Oops **unclosed and ###hashes `ticks")).toBe(
+      false,
+    );
   });
 
   test("literal email underscores and URL fragments survive", () => {

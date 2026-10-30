@@ -34,9 +34,9 @@ export const ARI_ATTACHMENT_IO_TIMEOUT_MS = 15_000;
 export const ARI_ATTACHMENT_FAILURE_COPY: Readonly<Record<string, string>> =
   Object.freeze({
     UNSUPPORTED_TYPE:
-      "That file isn’t supported. Add a JPG, PNG, WebP, HEIC, PDF, DOCX, TXT, or CSV file up to 10 MB.",
+      "That file isn’t supported. Add an image, PDF, DOCX, TXT, CSV, audio, or video file up to 10 MB.",
     MIME_MISMATCH:
-      "That file isn’t supported. Add a JPG, PNG, WebP, HEIC, PDF, DOCX, TXT, or CSV file up to 10 MB.",
+      "That file isn’t supported. Add an image, PDF, DOCX, TXT, CSV, audio, or video file up to 10 MB.",
     FILE_TOO_LARGE: "That file is larger than 10 MB. Choose a smaller file.",
     DUPLICATE_FILE: "{filename} is already attached.",
     CONTEXT_LIMIT_EXCEEDED:
@@ -45,7 +45,8 @@ export const ARI_ATTACHMENT_FAILURE_COPY: Readonly<Record<string, string>> =
       "Ari couldn’t read {filename}. Remove password protection or choose a different file.",
     CORRUPT_FILE: "Ari couldn’t read {filename}. Choose a different file.",
     UNREADABLE_FILE: "Ari couldn’t read {filename}. Choose a different file.",
-    DECOMPRESSION_BOMB: "Ari couldn’t read {filename}. Choose a different file.",
+    DECOMPRESSION_BOMB:
+      "Ari couldn’t read {filename}. Choose a different file.",
     IMAGE_UNREADABLE: "Ari couldn’t read {filename}. Choose a different file.",
     UPLOAD_INCOMPLETE: "{filename} couldn’t upload. Nothing was sent to Ari.",
     SIZE_MISMATCH: "{filename} couldn’t upload. Nothing was sent to Ari.",

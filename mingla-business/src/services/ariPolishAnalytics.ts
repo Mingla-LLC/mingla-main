@@ -16,19 +16,40 @@
 function capture(event: string, properties: Record<string, unknown>): void {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { postHogService } = require("./postHogService") as {
-    postHogService: { capture: (event: string, properties: Record<string, unknown>) => void };
+    postHogService: {
+      capture: (event: string, properties: Record<string, unknown>) => void;
+    };
   };
   postHogService.capture(event, properties);
 }
 
 type AriSurface = "main" | "website";
-type AriAttachmentOutcome = "selected" | "ready" | "failed" | "removed" | "opened";
-type AriTurnOutcome = "started" | "pending" | "accepted" | "completed" | "failed" | "stopped" | "retried" | "edited" | "discarded" | "cancelled";
+type AriAttachmentOutcome =
+  "selected" | "ready" | "failed" | "removed" | "opened";
+type AriTurnOutcome =
+  | "started"
+  | "pending"
+  | "accepted"
+  | "completed"
+  | "failed"
+  | "stopped"
+  | "retried"
+  | "edited"
+  | "discarded"
+  | "cancelled";
 
 export function captureAriAttachmentOutcome(args: {
   surface: AriSurface;
   outcome: AriAttachmentOutcome;
-  fileType: "image" | "pdf" | "docx" | "text" | "csv" | "unsupported";
+  fileType:
+    | "image"
+    | "pdf"
+    | "docx"
+    | "text"
+    | "csv"
+    | "audio"
+    | "video"
+    | "unsupported";
   errorCode?: string | null;
 }): void {
   capture("ari_attachment_outcome", {
@@ -50,11 +71,12 @@ export function captureAriTurnOutcome(args: {
     surface: args.surface,
     outcome: args.outcome,
     has_attachments: args.hasAttachments ?? false,
-    attachment_count_bucket: (args.attachmentCount ?? 0) === 0
-      ? "0"
-      : args.attachmentCount === 1
-      ? "1"
-      : "2-5",
+    attachment_count_bucket:
+      (args.attachmentCount ?? 0) === 0
+        ? "0"
+        : args.attachmentCount === 1
+          ? "1"
+          : "2-5",
     error_code: args.errorCode?.slice(0, 80) ?? null,
   });
 }
@@ -79,7 +101,14 @@ export function captureAriRevealOutcome(args: {
     surface: args.surface,
     outcome: args.outcome,
     reduced_motion: args.reducedMotion,
-    duration_bucket: args.durationMs === 0 ? "instant" : args.durationMs <= 500 ? "300-500" : args.durationMs <= 900 ? "501-900" : "901-1200",
+    duration_bucket:
+      args.durationMs === 0
+        ? "instant"
+        : args.durationMs <= 500
+          ? "300-500"
+          : args.durationMs <= 900
+            ? "501-900"
+            : "901-1200",
   });
 }
 

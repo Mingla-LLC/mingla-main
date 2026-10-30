@@ -36,6 +36,7 @@ import {
   type AriInlineRun,
 } from "./ariBubbleSegments";
 import { SemanticRevealText } from "./SemanticRevealText";
+import { ariUserFacingReplyText } from "./renditions/ariRenditionProtocol";
 
 export interface ChatBubbleProps {
   role: "user" | "assistant";
@@ -70,10 +71,13 @@ const InlineRuns: React.FC<{ text: string; style: object | object[] }> = ({
   style,
 }) => {
   const runs = parseInlineRuns(text);
-  const onlyPlain =
-    runs.length === 1 && runs[0].kind === "plain";
+  const onlyPlain = runs.length === 1 && runs[0].kind === "plain";
   if (onlyPlain) {
-    return <Text selectable style={style}>{runs[0].text}</Text>;
+    return (
+      <Text selectable style={style}>
+        {runs[0].text}
+      </Text>
+    );
   }
   return (
     <Text selectable style={style}>
@@ -112,10 +116,7 @@ const SegmentView: React.FC<{
 }> = ({ seg, style, topGap }) => {
   if (seg.kind === "section_label") {
     return (
-      <View
-        accessibilityRole="header"
-        style={{ marginTop: topGap }}
-      >
+      <View accessibilityRole="header" style={{ marginTop: topGap }}>
         <InlineRuns text={seg.text} style={[style, styles.sectionLabel]} />
       </View>
     );
@@ -147,7 +148,10 @@ const SegmentView: React.FC<{
   );
 };
 
-const BubbleText: React.FC<{ text: string; style: object }> = ({ text, style }) => {
+const BubbleText: React.FC<{ text: string; style: object }> = ({
+  text,
+  style,
+}) => {
   const segments = toSegments(text);
   // Fast path: a single plain paragraph with no inline markup.
   if (
@@ -189,40 +193,48 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
       <View
         style={styles.userRow}
         accessibilityRole="text"
-        accessibilityLabel={accessibilityLabel ?? `You said: ${toAccessibleText(text)}`}
+        accessibilityLabel={
+          accessibilityLabel ?? `You said: ${toAccessibleText(text)}`
+        }
       >
         <View
-          style={[
-            styles.userBubble,
-            tail ? styles.userTail : styles.noTail,
-          ]}
+          style={[styles.userBubble, tail ? styles.userTail : styles.noTail]}
         >
           <BubbleText text={text} style={styles.userText} />
         </View>
       </View>
     );
   }
+  const publicText = ariUserFacingReplyText(text);
   return (
     <View
       style={styles.ariRow}
       accessible={!reveal}
       accessibilityRole="text"
-      accessibilityLabel={!reveal ? accessibilityLabel ?? `Ari said: ${toAccessibleText(text)}` : undefined}
+      accessibilityLabel={
+        !reveal
+          ? (accessibilityLabel ?? `Ari said: ${toAccessibleText(publicText)}`)
+          : undefined
+      }
     >
       <View style={styles.orbWrap}>
-        {!hideOrb ? <AriOrb size="sm" decorative /> : <View style={styles.orbSpacer} />}
+        {!hideOrb ? (
+          <AriOrb size="sm" decorative />
+        ) : (
+          <View style={styles.orbSpacer} />
+        )}
       </View>
-      <View
-        style={[styles.ariBubble, tail ? styles.ariTail : styles.noTail]}
-      >
+      <View style={[styles.ariBubble, tail ? styles.ariTail : styles.noTail]}>
         {reveal ? (
           <SemanticRevealText
-            text={text}
+            text={publicText}
             textStyle={styles.ariText}
             skipSignal={revealSkipSignal}
             surface={surface}
           />
-        ) : <BubbleText text={text} style={styles.ariText} />}
+        ) : (
+          <BubbleText text={publicText} style={styles.ariText} />
+        )}
       </View>
     </View>
   );
@@ -272,7 +284,10 @@ const styles = StyleSheet.create({
     // Android opaque equivalent of glass.tint.profileBase (composited #16181b)
     // satisfies ANDROID_GLASS_USES_OPAQUE_FALLBACK; iOS/web keep the translucent
     // glass tint + hairline border.
-    backgroundColor: Platform.OS === "android" ? ariThread.ariBubbleAndroid : glass.tint.profileBase,
+    backgroundColor:
+      Platform.OS === "android"
+        ? ariThread.ariBubbleAndroid
+        : glass.tint.profileBase,
     borderRadius: ariThread.bubbleRadius, // 16 base
     paddingHorizontal: ariThread.bubblePadH,
     paddingVertical: ariThread.bubblePadV,

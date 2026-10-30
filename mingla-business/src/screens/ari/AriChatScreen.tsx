@@ -43,7 +43,10 @@ import {
 import { AriOrb } from "../../components/ari/AriOrb";
 import { AiDisclosureModal } from "../../components/ari/AiDisclosureModal";
 import { ConversationDrawer } from "../../components/ari/ConversationDrawer";
-import { AriEmptyStateLayoutContext, EmptyState } from "../../components/ari/EmptyState";
+import {
+  AriEmptyStateLayoutContext,
+  EmptyState,
+} from "../../components/ari/EmptyState";
 import { InputBar } from "../../components/ari/InputBar";
 import { MessageList } from "../../components/ari/MessageList";
 import type { ConfirmOutcome } from "../../components/ari/toolProposalTypes";
@@ -51,6 +54,7 @@ import { StreamingText } from "../../components/ari/StreamingText";
 import { AriActivity } from "../../components/ari/AriActivity";
 import { AriAttachmentTray } from "../../components/ari/AriAttachmentCards";
 import { AriAttachmentSourceSheet } from "../../components/ari/AriAttachmentSourceSheet";
+import { AriThreadLoadingState } from "./AriThreadLoadingState";
 import {
   ariRenditionCopyText,
   buildAriRenditionSubmission,
@@ -61,6 +65,7 @@ import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
 import { BrandSwitcherSheet } from "../../components/brand/BrandSwitcherSheet";
 import { ariChatErrorCopy, shouldReportAriChatError } from "./ariChatErrorCopy";
 import { copyAddressText as copyTextToClipboard } from "../../utils/copyAddressText";
+import { submitAriMessageFeedback } from "../../services/ariFeedbackService";
 
 import { useAgentChat } from "../../hooks/useAgentChat";
 import { useAriAttachments } from "../../hooks/useAriAttachments";
@@ -117,30 +122,40 @@ function isAlreadyResolvedError(message: string): boolean {
 }
 
 function isExpiredActionError(code: string, message: string): boolean {
-  return code === "EXPIRED" || message.toLowerCase().includes("status: expired") ||
-    message.toLowerCase().includes("proposal expired");
+  return (
+    code === "EXPIRED" ||
+    message.toLowerCase().includes("status: expired") ||
+    message.toLowerCase().includes("proposal expired")
+  );
 }
 
 type Recovery = { code: string; title: string; body: string; action?: string };
 
-const RecoveryPanel: React.FC<{ recovery: Recovery; onAction: () => void }> = ({ recovery, onAction }) => {
+const RecoveryPanel: React.FC<{ recovery: Recovery; onAction: () => void }> = ({
+  recovery,
+  onAction,
+}) => {
   const [focused, setFocused] = useState(false);
   return (
     <View style={styles.recoveryPanel} accessibilityRole="alert">
       <Text style={styles.recoveryTitle}>{recovery.title}</Text>
       <Text style={styles.recoveryBody}>{recovery.body}</Text>
-    {recovery.action ? (
-      <Pressable
-        onPress={onAction}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        style={({ pressed }) => [styles.recoveryAction, pressed && styles.pressed, focused && styles.recoveryActionFocused]}
-        accessibilityRole="button"
-        accessibilityLabel={recovery.action}
-      >
-        <Text style={styles.recoveryActionText}>{recovery.action}</Text>
-      </Pressable>
-    ) : null}
+      {recovery.action ? (
+        <Pressable
+          onPress={onAction}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={({ pressed }) => [
+            styles.recoveryAction,
+            pressed && styles.pressed,
+            focused && styles.recoveryActionFocused,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={recovery.action}
+        >
+          <Text style={styles.recoveryActionText}>{recovery.action}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 };
@@ -164,7 +179,10 @@ const RecoveryPanel: React.FC<{ recovery: Recovery; onAction: () => void }> = ({
  * Do NOT add a measured pill height: this positions the pill's bottom edge, so
  * any pill-height term is the double count #1890 removed.
  */
-const composerOccupiedPxFor = (keyboardHeight: number, restingOccupiedPx: number): number =>
+const composerOccupiedPxFor = (
+  keyboardHeight: number,
+  restingOccupiedPx: number,
+): number =>
   keyboardHeight > 0
     ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE
     : restingOccupiedPx;
@@ -206,8 +224,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const sitesBrandId = Array.isArray(sitesParams.brandId)
     ? sitesParams.brandId[0]
     : sitesParams.brandId;
-  const websiteSplit = sitesIntent === "edit" &&
-    typeof sitesBrandId === "string" && sitesBrandId.length > 0;
+  const websiteSplit =
+    sitesIntent === "edit" &&
+    typeof sitesBrandId === "string" &&
+    sitesBrandId.length > 0;
   const insets = useSafeAreaInsets();
   const online = useShareNetworkState();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -225,7 +245,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // instead of re-centering the orb.
   const [emptyHeroBoxHeight, setEmptyHeroBoxHeight] = useState(0);
   const [draftText, setDraftText] = useState("");
-  const composerInputRef = useRef<React.ElementRef<typeof TextInput> | null>(null);
+  const composerInputRef = useRef<React.ElementRef<typeof TextInput> | null>(
+    null,
+  );
   const [brandSwitcherOpen, setBrandSwitcherOpen] = useState(false);
   const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
   const [cooldownNow, setCooldownNow] = useState(() => Date.now());
@@ -259,10 +281,19 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const currentBrand = useCurrentBrand();
   const selectedBrandId = currentBrand?.id ?? null;
   const conversations = useConversationList(selectedBrandId);
-  const conversationScopeKey = ariConversationScopeKey(accountId, selectedBrandId);
-  const storedConversationSelections = useAriConversationSelectionStore((state) => state.selections);
-  const conversationSelectionHydrated = useAriConversationSelectionStore((state) => state.hasHydrated);
-  const setStoredConversationSelection = useAriConversationSelectionStore((state) => state.setSelection);
+  const conversationScopeKey = ariConversationScopeKey(
+    accountId,
+    selectedBrandId,
+  );
+  const storedConversationSelections = useAriConversationSelectionStore(
+    (state) => state.selections,
+  );
+  const conversationSelectionHydrated = useAriConversationSelectionStore(
+    (state) => state.hasHydrated,
+  );
+  const setStoredConversationSelection = useAriConversationSelectionStore(
+    (state) => state.setSelection,
+  );
   // ORCH-1103 — brand name lookup for delete/update target display +
   // type-to-confirm matching. Mirrors the prompt-known brand list.
   const brands = useBrands(accountId);
@@ -272,20 +303,28 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     return out;
   }, [brands.data]);
 
-  const persistConversationSelection = React.useCallback((conversationId: string | null): void => {
-    if (conversationScopeKey) {
-      setStoredConversationSelection(conversationScopeKey, conversationId);
-    }
-  }, [conversationScopeKey, setStoredConversationSelection]);
-  const surface = websiteSplit ? "website" as const : "main" as const;
-  const chat = useAgentChat(null, selectedBrandId, persistConversationSelection);
+  const persistConversationSelection = React.useCallback(
+    (conversationId: string | null): void => {
+      if (conversationScopeKey) {
+        setStoredConversationSelection(conversationScopeKey, conversationId);
+      }
+    },
+    [conversationScopeKey, setStoredConversationSelection],
+  );
+  const surface = websiteSplit ? ("website" as const) : ("main" as const);
+  const chat = useAgentChat(
+    null,
+    selectedBrandId,
+    persistConversationSelection,
+  );
   React.useEffect(() => chat.setSurface(surface), [chat.setSurface, surface]);
   const attachments = useAriAttachments({
     brandId: selectedBrandId,
     conversationId: chat.conversationId,
     surface,
   });
-  const [restoredConversationScope, setRestoredConversationScope] = React.useState<string | null>(null);
+  const [restoredConversationScope, setRestoredConversationScope] =
+    React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!conversationScopeKey || !selectedBrandId) {
@@ -297,7 +336,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       conversations.isLoading ||
       conversations.isError ||
       restoredConversationScope === conversationScopeKey
-    ) return;
+    )
+      return;
 
     const hasStoredSelection = hasStoredAriConversationSelection(
       storedConversationSelections,
@@ -351,9 +391,12 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     // than swallowed (the old `.catch(() => undefined)` hid every failure).
     setDisclosureDismissed(true);
     prefs.acknowledge().catch((err: unknown) => {
-      const message =
-        err instanceof Error ? err.message : "Couldn't save your preference — it'll ask again next time.";
-      setLocalError(message);
+      // Keep the typed failure boundary explicit for diagnostics while the
+      // host-facing message remains stable and does not expose raw exceptions.
+      void err;
+      setLocalError(
+        "Couldn't save your preference — it'll ask again next time.",
+      );
     });
   };
 
@@ -369,73 +412,101 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     // Composer ownership transfers to one local row in this synchronous event.
     setDraftText("");
     setLocalError(null);
-    void chat.sendMessage(text, selectedFiles).then((result) => {
-    if (result.kind === "error") {
-      // P2-2: a stop the person asked for is represented only by its row or
-      // callout — never an error toast or a non-fatal report.
-      if (result.code === "TURN_STOPPED" || result.code === "STOP_BEFORE_ACCEPTANCE") return;
-      if (["BRAND_CONTEXT_REQUIRED", "BRAND_ACCESS_DENIED", "CONVERSATION_BRAND_MISMATCH", "LEGACY_CONVERSATION_UNSCOPED", "TENANT_SCOPE_UNAVAILABLE", "UNAUTHORIZED"].includes(result.code)) {
-      } else if (result.code === "RATE_LIMITED") {
-        const parsedUntil = result.cooldown_until ? Date.parse(result.cooldown_until) : Number.NaN;
-        const fallbackMs = Math.max(1, result.retry_after_seconds ?? 5) * 1000;
-        setRateLimitUntil(Number.isFinite(parsedUntil) && parsedUntil > Date.now() ? parsedUntil : Date.now() + fallbackMs);
-        setCooldownNow(Date.now());
-      } else {
-        // #3184 — every code has honest copy in ariChatErrorCopy; "check your
-        // connection" is shown only for TRANSPORT_UNAVAILABLE, a request that
-        // never reached Mingla. A refusal is never blamed on the network.
-        // #3186 — the generic fallback used to swallow this class entirely: the
-        // user saw a toast, nothing reached Sentry, and a total outage looked
-        // like flaky wifi. Anything we have no copy for is by definition a code
-        // we did not anticipate, which is precisely what must be reported.
-        if (shouldReportAriChatError(result.code)) {
-          // Loaded LAZILY, on purpose. A module-scope import of the diagnostics
-          // barrel pulls @sentry/react-native's ESM build into every render
-          // suite that imports this screen, and the #1890 jest config does not
-          // transform it — that broke `issue_1890_ari_composer_clearance` in CI
-          // on this PR's first push. Telemetry must never decide whether a
-          // screen can be tested, and `reportNonFatal` is already throw-proof,
-          // so a failure here cannot reach the chat either.
-          void (async () => {
-            try {
-              const { reportNonFatal } = await import(
-                "../../diagnostics/reportNonFatal"
-              );
-              reportNonFatal(
-                "ari_chat",
-                new Error(`ari_chat_unmapped_error:${result.code}`),
-                { ari_error_code: result.code },
-              );
-            } catch {
-              // Reporting a fault must never become one.
+    void chat
+      .sendMessage(text, selectedFiles)
+      .then((result) => {
+        if (result.kind === "error") {
+          // P2-2: a stop the person asked for is represented only by its row or
+          // callout — never an error toast or a non-fatal report.
+          if (
+            result.code === "TURN_STOPPED" ||
+            result.code === "STOP_BEFORE_ACCEPTANCE"
+          )
+            return;
+          if (
+            [
+              "BRAND_CONTEXT_REQUIRED",
+              "BRAND_ACCESS_DENIED",
+              "CONVERSATION_BRAND_MISMATCH",
+              "LEGACY_CONVERSATION_UNSCOPED",
+              "TENANT_SCOPE_UNAVAILABLE",
+              "UNAUTHORIZED",
+            ].includes(result.code)
+          ) {
+          } else if (result.code === "RATE_LIMITED") {
+            const parsedUntil = result.cooldown_until
+              ? Date.parse(result.cooldown_until)
+              : Number.NaN;
+            const fallbackMs =
+              Math.max(1, result.retry_after_seconds ?? 5) * 1000;
+            setRateLimitUntil(
+              Number.isFinite(parsedUntil) && parsedUntil > Date.now()
+                ? parsedUntil
+                : Date.now() + fallbackMs,
+            );
+            setCooldownNow(Date.now());
+          } else {
+            // #3184 — every code has honest copy in ariChatErrorCopy; "check your
+            // connection" is shown only for TRANSPORT_UNAVAILABLE, a request that
+            // never reached Mingla. A refusal is never blamed on the network.
+            // #3186 — the generic fallback used to swallow this class entirely: the
+            // user saw a toast, nothing reached Sentry, and a total outage looked
+            // like flaky wifi. Anything we have no copy for is by definition a code
+            // we did not anticipate, which is precisely what must be reported.
+            if (shouldReportAriChatError(result.code)) {
+              // Loaded LAZILY, on purpose. A module-scope import of the diagnostics
+              // barrel pulls @sentry/react-native's ESM build into every render
+              // suite that imports this screen, and the #1890 jest config does not
+              // transform it — that broke `issue_1890_ari_composer_clearance` in CI
+              // on this PR's first push. Telemetry must never decide whether a
+              // screen can be tested, and `reportNonFatal` is already throw-proof,
+              // so a failure here cannot reach the chat either.
+              void (async () => {
+                try {
+                  const { reportNonFatal } =
+                    await import("../../diagnostics/reportNonFatal");
+                  reportNonFatal(
+                    "ari_chat",
+                    new Error(`ari_chat_unmapped_error:${result.code}`),
+                    { ari_error_code: result.code },
+                  );
+                } catch {
+                  // Reporting a fault must never become one.
+                }
+              })();
             }
-          })();
+            setLocalError(ariChatErrorCopy(result.code));
+          }
+          return;
         }
-        setLocalError(ariChatErrorCopy(result.code));
-      }
-      return;
-    }
-    if (result.kind === "text" && result.handoff_route) router.push(result.handoff_route as never);
-    }).catch((error: unknown) => {
-      // #3184 — the screen owns no connection sentence. A throw here has no
-      // registry code (the transport layer already returns TRANSPORT_UNAVAILABLE
-      // as a result when the request never reached Mingla), so show the
-      // module's internal-failure copy instead of blaming the network.
-      setLocalError(error instanceof Error ? error.message : ariChatErrorCopy("EDGE_ERROR"));
-    });
+        if (result.kind === "text" && result.handoff_route)
+          router.push(result.handoff_route as never);
+      })
+      .catch((error: unknown) => {
+        // #3184 — the screen owns no connection sentence. A throw here has no
+        // registry code (the transport layer already returns TRANSPORT_UNAVAILABLE
+        // as a result when the request never reached Mingla), so show the
+        // module's internal-failure copy instead of blaming the network.
+        setLocalError(ariChatErrorCopy("EDGE_ERROR"));
+      });
     return true;
   };
 
-  const handleChoice = async (submission: AgentChoiceSubmissionV2, label: string): Promise<void> => {
+  const handleChoice = async (
+    submission: AgentChoiceSubmissionV2,
+    label: string,
+  ): Promise<void> => {
     if (!online) {
       setLocalError("You're offline. Reconnect to continue this plan.");
       return;
     }
     const result = await chat.sendChoice(submission, label);
     if (result.kind === "error") {
-      setLocalError(result.code === "CHOICE_STALE"
-        ? "That choice is no longer active. Ari refreshed the current step."
-        : result.message);
+      setLocalError(
+        result.code === "CHOICE_STALE"
+          ? "That choice is no longer active. Ari refreshed the current step."
+          : ariChatErrorCopy(result.code),
+      );
     } else if (result.kind === "text" && result.handoff_route) {
       router.push(result.handoff_route as never);
     }
@@ -456,53 +527,56 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     // approved_action_started arrives and clears when this confirm resolves.
     chat.beginConfirmedActivity(chat.pendingAction.pending_action_id);
     try {
-    let result: Awaited<ReturnType<typeof confirm.confirm>>;
-    try {
-      result = await confirm.confirm(chat.pendingAction.pending_action_id, editedArgs);
-    } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : "Couldn't complete that action — try again.";
-      setLocalError(message);
-      return { ok: false, error: message };
-    }
-    if (result.kind === "error") {
-      if (isExpiredActionError(result.code, result.message)) {
-        const message = "This proposal expired. Ask Ari to propose it again.";
+      let result: Awaited<ReturnType<typeof confirm.confirm>>;
+      try {
+        result = await confirm.confirm(
+          chat.pendingAction.pending_action_id,
+          editedArgs,
+        );
+      } catch {
+        const message = ariChatErrorCopy("EDGE_ERROR");
         setLocalError(message);
-        chat.clearPendingAction();
-        return { ok: false, error: message, terminal: "expired" };
+        return { ok: false, error: message };
       }
-      // ORCH-1103 REWORK 3 — guard the already-executed / expired / raced case.
-      // If the pending action is no longer "pending" the edge fn returns
-      // WRONG_STATE ("Cannot confirm — current status: executed" / "…cancelled"
-      // / "…expired") or a race ("already handled"). A normal tap must NOT raise
-      // the alarming red error toast for an action that was simply already
-      // resolved — it's a no-op: silently clear the now-stale card. (The primary
-      // fix removes the re-confirm affordance entirely; this is the belt for any
-      // other path that lands on a non-pending action.)
-      if (isAlreadyResolvedError(result.message)) {
-        chat.clearPendingAction();
-        return { ok: false, terminal: "resolved" };
+      if (result.kind === "error") {
+        if (isExpiredActionError(result.code, result.message)) {
+          const message = "This proposal expired. Ask Ari to propose it again.";
+          setLocalError(message);
+          chat.clearPendingAction();
+          return { ok: false, error: message, terminal: "expired" };
+        }
+        // ORCH-1103 REWORK 3 — guard the already-executed / expired / raced case.
+        // If the pending action is no longer "pending" the edge fn returns
+        // WRONG_STATE ("Cannot confirm — current status: executed" / "…cancelled"
+        // / "…expired") or a race ("already handled"). A normal tap must NOT raise
+        // the alarming red error toast for an action that was simply already
+        // resolved — it's a no-op: silently clear the now-stale card. (The primary
+        // fix removes the re-confirm affordance entirely; this is the belt for any
+        // other path that lands on a non-pending action.)
+        if (isAlreadyResolvedError(result.message)) {
+          chat.clearPendingAction();
+          return { ok: false, terminal: "resolved" };
+        }
+        const message = ariChatErrorCopy(result.code);
+        setLocalError(message);
+        return { ok: false, error: message };
       }
-      setLocalError(result.message);
-      return { ok: false, error: result.message };
-    }
-    if (result.kind === "proposal_replaced") {
-      chat.clearPendingAction();
-      return { ok: false };
-    }
-    // ORCH-1103 — surface the freshly-created/updated brand id to the proposal
-    // card so the Q7 create-row-first / attach-second cover flow can re-target
-    // the picker to a real brandId. The executed result shape is
-    // { brand: { id, ... } } for create_brand / update_brand.
-    let brandId: string | undefined;
-    if (result.kind === "executed") {
-      const r = result.result as { brand?: { id?: string } } | null | undefined;
-      if (typeof r?.brand?.id === "string") brandId = r.brand.id;
-    }
-    if (!keepPending) chat.clearPendingAction();
-    return { ok: true, brandId };
+      if (result.kind === "proposal_replaced") {
+        chat.clearPendingAction();
+        return { ok: false };
+      }
+      // ORCH-1103 — surface the freshly-created/updated brand id to the proposal
+      // card so the Q7 create-row-first / attach-second cover flow can re-target
+      // the picker to a real brandId. The executed result shape is
+      // { brand: { id, ... } } for create_brand / update_brand.
+      let brandId: string | undefined;
+      if (result.kind === "executed") {
+        const r = result.result as
+          { brand?: { id?: string } } | null | undefined;
+        if (typeof r?.brand?.id === "string") brandId = r.brand.id;
+      }
+      if (!keepPending) chat.clearPendingAction();
+      return { ok: true, brandId };
     } finally {
       chat.finishConfirmedActivity();
     }
@@ -514,12 +588,12 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     try {
       const result = await confirm.cancel(chat.pendingAction.pending_action_id);
       if (result.kind === "error") {
-        setLocalError(result.message);
+        setLocalError(ariChatErrorCopy(result.code));
         return;
       }
       chat.clearPendingAction();
-    } catch (error) {
-      setLocalError(error instanceof Error ? error.message : "Couldn't cancel — try again.");
+    } catch {
+      setLocalError("Couldn't cancel — try again.");
     }
   };
 
@@ -530,18 +604,25 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
 
   const displayError = localError ?? chat.errorMessage;
   const conversationSelectionReady =
-    conversationScopeKey === null || restoredConversationScope === conversationScopeKey;
-  const noMessages = conversationSelectionReady && chat.messages.length === 0 && chat.conversationId == null;
-  const activeConversation = conversations.conversations.find((item) => item.id === chat.conversationId);
-  const legacyReadOnly = !!selectedBrandId && activeConversation?.brand_id === null;
-  const brandSelectionRequired = !selectedBrandId && (brands.data?.length ?? 0) > 0;
+    conversationScopeKey === null ||
+    restoredConversationScope === conversationScopeKey;
+  const noMessages =
+    conversationSelectionReady &&
+    chat.messages.length === 0 &&
+    chat.conversationId == null;
+  const activeConversation = conversations.conversations.find(
+    (item) => item.id === chat.conversationId,
+  );
+  const legacyReadOnly =
+    !!selectedBrandId && activeConversation?.brand_id === null;
+  const brandSelectionRequired =
+    !selectedBrandId && (brands.data?.length ?? 0) > 0;
   const brandName = currentBrand?.displayName ?? "selected brand";
   // #3429 REWORK-2 R-2 — the empty state is an absolute overlay whose bottom
   // padding is deliberately keyboard-independent (that is what stops the orb
   // jumping when the keyboard opens). The composer, however, DOES rise by the
   // keyboard height, so with the keyboard up it was drawing straight over the
-  // first-run copy and the whole "Tap (+) to attach context" hint — on an
-  // iPhone SE the body sentence was cut mid-word and the hint row vanished.
+  // first-run copy — on an iPhone SE the body sentence was cut mid-word.
   //
   // This is how far the composer's top edge rises above its resting position.
   // It is applied as a bottom margin on the hero's VISIBLE REGION only, never
@@ -557,8 +638,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // ScrollView (see there), so nothing scrolls and no gesture brings trimmed
   // content back — only dismissing the keyboard does. Because trimming is
   // real, WHAT gets trimmed matters, and that is decided inside EmptyState:
-  // the clamp is handed to it through AriEmptyStateLayoutContext so it can
-  // sacrifice the decorative hero first and always keep the attach hint.
+  // the clamp is handed to it through AriEmptyStateLayoutContext so complete
+  // rows and orb sizes step down rather than rendering clipped fragments.
   // Web has no soft keyboard, so this is 0 there and nothing changes.
   const composerRestingOccupiedPx =
     Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX;
@@ -578,7 +659,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     [emptyHeroComposerClamp],
   );
   const rateLimited = rateLimitUntil !== null && rateLimitUntil > cooldownNow;
-  const cooldownSeconds = rateLimited ? Math.max(1, Math.ceil((rateLimitUntil - cooldownNow) / 1000)) : 0;
+  const cooldownSeconds = rateLimited
+    ? Math.max(1, Math.ceil((rateLimitUntil - cooldownNow) / 1000))
+    : 0;
 
   React.useEffect(() => {
     if (!rateLimited) {
@@ -588,32 +671,70 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     const timer = setInterval(() => setCooldownNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [rateLimitUntil, rateLimited]);
-  const recovery: Recovery | null = legacyReadOnly || chat.errorCode === "LEGACY_CONVERSATION_UNSCOPED"
-    ? { code: "LEGACY_CONVERSATION_UNSCOPED", title: "This older chat is read-only", body: "It was not saved to a brand, so Ari cannot safely continue it.", action: `Start a new chat for ${brandName}` }
-    : chat.errorCode === "BRAND_ACCESS_DENIED"
-      ? { code: chat.errorCode, title: "You no longer have access to this brand", body: "Choose a brand you can access to start a new chat.", action: "Choose a brand" }
-      : chat.errorCode === "CONVERSATION_BRAND_MISMATCH"
-        ? { code: chat.errorCode, title: "This chat belongs to another brand", body: "Ari will not move a conversation between brands.", action: `Start a new chat for ${brandName}` }
-        : chat.errorCode === "TENANT_SCOPE_UNAVAILABLE"
-          ? { code: chat.errorCode, title: "Ari cannot verify your brand right now", body: "Nothing was sent. Try again in a moment.", action: "Try again" }
-          : chat.errorCode === "UNAUTHORIZED"
-            ? { code: chat.errorCode, title: "Your session expired", body: "Sign in again to keep chatting with Ari.", action: "Sign in" }
-            : brandSelectionRequired || chat.errorCode === "BRAND_CONTEXT_REQUIRED"
-              ? { code: "BRAND_CONTEXT_REQUIRED", title: "Choose a brand to chat with Ari", body: "Ari keeps each conversation tied to one brand.", action: "Choose a brand" }
-              : null;
+  const recovery: Recovery | null =
+    legacyReadOnly || chat.errorCode === "LEGACY_CONVERSATION_UNSCOPED"
+      ? {
+          code: "LEGACY_CONVERSATION_UNSCOPED",
+          title: "This older chat is read-only",
+          body: "It was not saved to a brand, so Ari cannot safely continue it.",
+          action: `Start a new chat for ${brandName}`,
+        }
+      : chat.errorCode === "BRAND_ACCESS_DENIED"
+        ? {
+            code: chat.errorCode,
+            title: "You no longer have access to this brand",
+            body: "Choose a brand you can access to start a new chat.",
+            action: "Choose a brand",
+          }
+        : chat.errorCode === "CONVERSATION_BRAND_MISMATCH"
+          ? {
+              code: chat.errorCode,
+              title: "This chat belongs to another brand",
+              body: "Ari will not move a conversation between brands.",
+              action: `Start a new chat for ${brandName}`,
+            }
+          : chat.errorCode === "TENANT_SCOPE_UNAVAILABLE"
+            ? {
+                code: chat.errorCode,
+                title: "Ari cannot verify your brand right now",
+                body: "Nothing was sent. Try again in a moment.",
+                action: "Try again",
+              }
+            : chat.errorCode === "UNAUTHORIZED"
+              ? {
+                  code: chat.errorCode,
+                  title: "Your session expired",
+                  body: "Sign in again to keep chatting with Ari.",
+                  action: "Sign in",
+                }
+              : brandSelectionRequired ||
+                  chat.errorCode === "BRAND_CONTEXT_REQUIRED"
+                ? {
+                    code: "BRAND_CONTEXT_REQUIRED",
+                    title: "Choose a brand to chat with Ari",
+                    body: "Ari keeps each conversation tied to one brand.",
+                    action: "Choose a brand",
+                  }
+                : null;
 
   React.useEffect(() => {
-    if (recovery) AccessibilityInfo.announceForAccessibility(`${recovery.title}. ${recovery.body}`);
+    if (recovery)
+      AccessibilityInfo.announceForAccessibility(
+        `${recovery.title}. ${recovery.body}`,
+      );
   }, [recovery?.code]);
 
   const handleRecovery = (): void => {
     if (recovery?.code === "TENANT_SCOPE_UNAVAILABLE") {
-      void chat.retryTenantRecovery().catch((error: unknown) => {
-        setLocalError(error instanceof Error ? error.message : "Ari couldn’t retry that message.");
+      void chat.retryTenantRecovery().catch(() => {
+        setLocalError("Ari couldn’t retry that message.");
       });
     } else if (recovery?.code === "UNAUTHORIZED") {
       router.replace("/" as never);
-    } else if (recovery?.code === "BRAND_CONTEXT_REQUIRED" || recovery?.code === "BRAND_ACCESS_DENIED") {
+    } else if (
+      recovery?.code === "BRAND_CONTEXT_REQUIRED" ||
+      recovery?.code === "BRAND_ACCESS_DENIED"
+    ) {
       setBrandSwitcherOpen(true);
     } else {
       chat.setConversationId(null);
@@ -661,7 +782,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           <Pressable
             accessibilityRole="button"
             onPress={() =>
-              router.push(`/brand/${sitesBrandId}/website` as never)}
+              router.push(`/brand/${sitesBrandId}/website` as never)
+            }
             style={styles.websiteDraftAction}
           >
             <Text style={styles.websiteDraftActionLabel}>
@@ -670,55 +792,65 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           </Pressable>
         </View>
       ) : null}
-      <View style={[styles.ariPane, websiteSplit && isWideDesktop ? styles.websiteAriPane : null]}>
-      {/* Header — the embedding host owns the page title, so it is dropped
+      <View
+        style={[
+          styles.ariPane,
+          websiteSplit && isWideDesktop ? styles.websiteAriPane : null,
+        ]}
+      >
+        {/* Header — the embedding host owns the page title, so it is dropped
           there rather than stacking two headers in one column. */}
-      <View style={[styles.header, embedded ? styles.headerEmbedded : null]}>
-        <Pressable
-          onPress={() => setDrawerOpen(true)}
-          style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Show conversations"
-        >
-          <Menu size={24} color={textTokens.primary} strokeWidth={2} />
-        </Pressable>
-        <View style={styles.headerTitle}>
-          <AriOrb size="md" decorative />
-          <View style={styles.headerIdentityCopy}>
-            <Text style={styles.title}>Ari</Text>
-            <Text style={styles.titleMeta}>MINGLA INTELLIGENCE</Text>
+        <View style={[styles.header, embedded ? styles.headerEmbedded : null]}>
+          <Pressable
+            onPress={() => setDrawerOpen(true)}
+            style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Show conversations"
+          >
+            <Menu size={24} color={textTokens.primary} strokeWidth={2} />
+          </Pressable>
+          <View style={styles.headerTitle}>
+            <AriOrb size="md" decorative />
+            <View style={styles.headerIdentityCopy}>
+              <Text style={styles.title}>Ari</Text>
+              <Text style={styles.titleMeta}>MINGLA INTELLIGENCE</Text>
+            </View>
           </View>
+          <Pressable
+            onPress={() => router.push("/ari/settings" as never)}
+            style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Open Ari settings"
+          >
+            <Settings size={22} color={textTokens.primary} strokeWidth={2} />
+          </Pressable>
         </View>
-        <Pressable
-          onPress={() => router.push("/ari/settings" as never)}
-          style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Open Ari settings"
-        >
-          <Settings size={22} color={textTokens.primary} strokeWidth={2} />
-        </Pressable>
-      </View>
 
-      <Toast
-        visible={!!displayError}
-        kind="error"
-        message={displayError ?? ""}
-        onDismiss={() => {
-          // Both state sources MUST clear or the toast re-mounts on the
-          // next render frame (since displayError = localError ?? chat.errorMessage).
-          setLocalError(null);
-          chat.clearErrorMessage();
-        }}
-      />
+        <Toast
+          visible={!!displayError}
+          kind="error"
+          message={displayError ?? ""}
+          onDismiss={() => {
+            // Both state sources MUST clear or the toast re-mounts on the
+            // next render frame (since displayError = localError ?? chat.errorMessage).
+            setLocalError(null);
+            chat.clearErrorMessage();
+          }}
+        />
 
-      <View style={styles.kav}>
-        {!conversationSelectionReady ? (
-          <View style={styles.flexSpacer} accessibilityLabel="Restoring Ari conversation">
-            <StreamingText visible />
-          </View>
-        ) : noMessages ? (
-          <>
-            {/* Hero lives in an absolute overlay so the composer rising with the
+        <View style={styles.kav}>
+          {!conversationSelectionReady ? (
+            <View
+              style={styles.flexSpacer}
+              accessibilityLabel="Restoring Ari conversation"
+            >
+              <StreamingText visible />
+            </View>
+          ) : chat.conversationId && chat.isLoadingMessages ? (
+            <AriThreadLoadingState />
+          ) : noMessages ? (
+            <>
+              {/* Hero lives in an absolute overlay so the composer rising with the
                 keyboard can NOT squeeze the flex column and re-center (jump) the
                 orb. Its paddingBottom keeps the hero above the resting composer
                 and is keyboard-independent, so it stays put when the keyboard
@@ -728,32 +860,32 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 (that is the no-jump contract). The keyboard lift is applied to
                 the SCROLL VIEWPORT inside it instead, clamping the viewport's
                 bottom edge to the composer's top edge. */}
-            <View
-              style={[
-                styles.emptyOverlay,
-                {
-                  paddingBottom:
-                    Math.max(insets.bottom, spacing.md) +
-                    BOTTOM_NAV_CLEARANCE_PX +
-                    60 +
-                    Math.max(0, composerContentHeight - 60),
-                },
-              ]}
-            >
-              {/* This wrapper is the hero's resting box: it fills the padded
+              <View
+                style={[
+                  styles.emptyOverlay,
+                  {
+                    paddingBottom:
+                      Math.max(insets.bottom, spacing.md) +
+                      BOTTOM_NAV_CLEARANCE_PX +
+                      60 +
+                      Math.max(0, composerContentHeight - 60),
+                  },
+                ]}
+              >
+                {/* This wrapper is the hero's resting box: it fills the padded
                   overlay and the clamp never touches it, so its measured
                   height is the keyboard-independent height the scroll content
                   keeps. That is what anchors the orb. */}
-              <View
-                style={styles.emptyHeroBox}
-                onLayout={(event) => {
-                  const next = Math.round(event.nativeEvent.layout.height);
-                  setEmptyHeroBoxHeight((previous) =>
-                    previous === next ? previous : next
-                  );
-                }}
-              >
-                {/* The clamp lands HERE, on the visible region: this Pressable
+                <View
+                  style={styles.emptyHeroBox}
+                  onLayout={(event) => {
+                    const next = Math.round(event.nativeEvent.layout.height);
+                    setEmptyHeroBoxHeight((previous) =>
+                      previous === next ? previous : next,
+                    );
+                  }}
+                >
+                  {/* The clamp lands HERE, on the visible region: this Pressable
                     is both the tap-to-dismiss target and — because an
                     accessibilityRole flattens its subtree — the single node a
                     screen reader and an accessibility-frame dump see for the
@@ -762,16 +894,16 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                     The dismiss target should not extend under the composer
                     either. The box inside keeps the measured RESTING height,
                     so the orb does not move when the keyboard opens. */}
-                <Pressable
-                  style={[
-                    styles.emptyHeroPress,
-                    { marginBottom: emptyHeroComposerClamp },
-                  ]}
-                  onPress={() => Keyboard.dismiss()}
-                  accessibilityRole="button"
-                  accessibilityLabel="Dismiss keyboard"
-                >
-                  {/* Deliberately NOT a ScrollView: the ORCH-0892 / #1841
+                  <Pressable
+                    style={[
+                      styles.emptyHeroPress,
+                      { marginBottom: emptyHeroComposerClamp },
+                    ]}
+                    onPress={() => Keyboard.dismiss()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Dismiss keyboard"
+                  >
+                    {/* Deliberately NOT a ScrollView: the ORCH-0892 / #1841
                       gate blocks a react-native ScrollView in a file that has a
                       TextInput, and it is right to — a scroller near a focused
                       field belongs to the keyboard library. Nothing here hosts
@@ -786,311 +918,404 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                       height while the Pressable above it shrinks to the clamp,
                       this box's own bottom is trimmed — there is no scrolling
                       and no gesture that recovers it. EmptyState therefore owns
-                      the drop order, and gets the clamp through the context
-                      below so the attach hint outlives the decorative hero. */}
-                  <View
-                    style={[
-                      styles.emptyHeroContent,
-                      { minHeight: emptyHeroBoxHeight },
-                    ]}
-                  >
-                    <AriEmptyStateLayoutContext.Provider value={emptyStateLayout}>
-                      <EmptyState />
-                    </AriEmptyStateLayoutContext.Provider>
-                  </View>
-                </Pressable>
-              </View>
-            </View>
-            <View style={styles.flexSpacer} pointerEvents="none" />
-          </>
-        ) : (
-          <MessageList
-            conversationId={chat.conversationId}
-            messages={chat.messages}
-            pendingAction={chat.pendingAction}
-            isExecuting={confirm.isExecuting}
-            onConfirm={handleConfirm}
-            onCancel={handleCancelProposal}
-            isThinking={!!chat.activeTurn}
-            renderThinking={() => chat.activeTurn ? (
-              <AriActivity
-                turn={chat.activeTurn}
-                surface={surface}
-                onStop={() => chat.stopTurn(chat.activeTurn!.clientTurnId)}
-                onRetry={() => chat.retryTurn(chat.activeTurn!.clientTurnId)}
-              />
-            ) : null}
-            brandNamesById={brandNamesById}
-            accountId={accountId}
-            onSeedMessage={(text) => { setDraftText(text); composerInputRef.current?.focus(); }}
-            onRenditionAction={(_message, interaction) => {
-              const { behavior } = interaction.action;
-              if (behavior.type === "reply") {
-                setDraftText(behavior.message);
-                requestAnimationFrame(() => composerInputRef.current?.focus());
-                return;
-              }
-              if (behavior.type === "submit") {
-                void handleSend(buildAriRenditionSubmission(interaction));
-                return;
-              }
-              if (behavior.type === "route") {
-                router.push(behavior.route as never);
-                return;
-              }
-              if (behavior.type === "external") {
-                void Linking.openURL(behavior.url).catch(() => {
-                  setLocalError("That link could not be opened. Copy it and try again.");
-                });
-                return;
-              }
-              if (behavior.type === "confirm") {
-                if (chat.pendingAction?.pending_action_id !== behavior.pending_action_id) {
-                  setLocalError("This proposal is no longer active. Ask Ari to prepare it again.");
-                  return;
-                }
-                void handleConfirm();
-                return;
-              }
-              if (behavior.type === "cancel") {
-                if (chat.pendingAction?.pending_action_id !== behavior.pending_action_id) {
-                  setLocalError("This proposal is no longer active.");
-                  return;
-                }
-                void handleCancelProposal();
-                return;
-              }
-              if (behavior.command === "stop" && chat.activeTurn) {
-                void chat.stopTurn(chat.activeTurn.clientTurnId);
-                return;
-              }
-              if (behavior.command === "retry") {
-                const clientTurnId = _message.client_turn_id;
-                if (clientTurnId) void chat.retryTurn(clientTurnId);
-                else {
-                  setDraftText("Retry the last step safely");
-                  requestAnimationFrame(() => composerInputRef.current?.focus());
-                }
-                return;
-              }
-              if (behavior.command === "resume") {
-                setDraftText("Resume this plan from the last safe step");
-                requestAnimationFrame(() => composerInputRef.current?.focus());
-                return;
-              }
-              if (behavior.command === "copy") {
-                const copy = ariRenditionCopyText(interaction.rendition) ??
-                  (interaction.fieldValue || interaction.rendition.body);
-                void copyTextToClipboard(copy).catch(() => {
-                  setLocalError("That text could not be copied. Select it and copy manually.");
-                });
-              }
-            }}
-            // ORCH-1103 REWORK 2 — a disambiguation / no-brand-handoff chip tap
-            // sends the chip label as a normal user turn (Q2 conversational
-            // feedback; Gemini re-proposes with the resolved target).
-            onSendChoice={(submission, label) => void handleChoice(submission, label)}
-            onRetryTurn={(clientTurnId) => {
-              if (!online) {
-                setLocalError("You're offline. Reconnect to continue this plan.");
-                return;
-              }
-              void chat.retryTurn(clientTurnId).then((result) => {
-                if (result?.kind === "error" && result.code === "OFFLINE") {
-                  setLocalError(result.message);
-                }
-              }).catch((error: unknown) => {
-                setLocalError(error instanceof Error
-                  ? error.message
-                  : "Ari could not retry that message. Try again.");
-              });
-            }}
-            onEditTurn={(clientTurnId) => {
-              const restored = chat.editTurn(clientTurnId);
-              if (!restored) return;
-              setDraftText(restored.text);
-              attachments.restoreDrafts(restored.attachments);
-              requestAnimationFrame(() => composerInputRef.current?.focus());
-            }}
-            onDiscardTurn={chat.discardTurn}
-            surface={surface}
-            choicesDisabled={chat.isSending || !online}
-            attachedCovers={attachedCovers}
-            onAttachDone={(cover) => {
-              // ORCH-1103 REWORK 3 — stash the attached cover against the
-              // resolving pending action so the receipt renders it, THEN clear
-              // the pending action (which mounts the receipt exactly once).
-              const pid = chat.pendingAction?.pending_action_id;
-              if (pid && cover && cover.url) {
-                setAttachedCovers((prev) => ({ ...prev, [pid]: cover }));
-              }
-              chat.clearPendingAction();
-            }}
-          />
-        )}
-
-        <View
-          style={[
-            styles.inputWrap,
-            {
-              // ORCH-1101 Bug A (screen side): on WIDE desktop web there is no
-              // soft keyboard (keyboardHeight stays 0) and no floating BottomNav
-              // capsule (the business web nav is a left side rail), so the old
-              // `insets.bottom + BOTTOM_NAV_CLEARANCE_PX` reserved a phantom
-              // 80px gap below the composer. Wide desktop web → spacing.sm only.
-              //
-              // #3460 [narrow-web-nav-overlap] — that premise is about WIDTH, not
-              // platform, and it was written as `Platform.OS === "web"`, which is
-              // also true for every web viewport UNDER `WIDE_DESKTOP_MIN_WIDTH`
-              // (1024, inclusive). Below 1024 `BottomNav.web.tsx` renders
-              // `MobileWebCapsule` — a floating capsule in `navWrap`
-              // (`position:absolute; bottom:0`, painted after `<Slot/>`) whose
-              // `pointerEvents="box-none"` compiles in react-native-web 0.21.2 to
-              // `<selector> > * { pointer-events: auto }`, so its full-width direct
-              // child captures taps across the whole 80pt band. With only
-              // `spacing.sm` (8pt) of clearance the composer sat INSIDE that band:
-              // `document.elementFromPoint` returned a nav element at 147 of 147
-              // points sampled across the Attach (+) button, the input and Send on
-              // real mobile Safari at 402x714, and real taps never reached the
-              // controls. The clearance therefore follows `isWideDesktop` — the
-              // same hook the nav itself gates on (I-DESKTOP-GATE-VIA-HOOK) — so
-              // narrow web gets the same 80pt capsule clearance native gets, and
-              // >=1024 keeps ORCH-1101's phantom-gap fix byte-for-byte.
-              //
-              // NOT fixed by adding `/ari` to `(tabs)/_layout.tsx`'s
-              // `hideBottomNav` list: `/campaigns/compose` and `/analytics` are
-              // sub-routes a user can back out of, whereas `/ari` IS a top-level
-              // tab (and Website → Edit with Ari redirects INTO it at
-              // `/(tabs)/ari?sitesIntent=edit`), so hiding the capsule there would
-              // strand a phone-web user on a screen with no navigation.
-              //
-              // Native: when the keyboard is up, this padding IS the composer's
-              // position. `inputWrap` carries only paddingHorizontal/paddingTop
-              // and is the last in-flow child of a flex:1 column, so its
-              // paddingBottom already places the pill's BOTTOM EDGE — the pill's
-              // body then extends upward from there.
-              //
-              // #1890 [keyboard-clearance-overshoot] — ORCH-1165 REWORK loop 2
-              // added the measured `composerHeight` on top of that, which lifted
-              // the pill by its own full height a SECOND time, plus a stray
-              // spacing.sm. Measured on glass: 61.0pt of gap on an iPhone SE3
-              // against a 12pt contract, 71.8dp on the physical Samsung. #1850
-              // then correctly replaced the hand-typed 42 with DONE_BAR_OCCUPIED,
-              // which removed the accidental masking and made iOS worse (49 -> 60).
-              //
-              // The bar's top sits keyboardHeight + DONE_BAR_OCCUPIED from the
-              // bottom, so clearing it by MIN_VISIBLE_CLEARANCE is the whole job.
-              // Do NOT add a measured pill height here: this padding positions
-              // the pill's bottom edge, so any pill-height term is a double
-              // count. When closed, clear the floating BottomNav capsule +
-              // safe-area inset.
-              paddingBottom:
-                Platform.OS === "web"
-                  ? isWideDesktop
-                    ? spacing.sm
-                    // #3460 — narrow web HAS the floating capsule, so it needs the
-                    // same clearance the native branch below reserves.
-                    : Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX
-                  // ORCH-1101 ADV-3 checks that the web result precedes the
-                  // native clearance term IN THIS EXPRESSION, so the resting
-                  // value is spelled out here rather than passed as
-                  // `composerRestingOccupiedPx`. Same value, same owner for the
-                  // lift itself — the ternary still lives in one place.
-                  : composerOccupiedPxFor(
-                      keyboardHeight,
-                      Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX,
-                    ),
-            },
-          ]}
-        >
-          {/* #1890 — the measuring wrapper is gone with the double count it fed.
-              `inputWrap`'s paddingBottom already positions this pill's bottom
-              edge; nothing needs the pill's own height. */}
-          {recovery ? <RecoveryPanel recovery={recovery} onAction={handleRecovery} /> : (
-            <View
-              style={styles.composerColumn}
-              onLayout={(event) => {
-                const next = Math.round(event.nativeEvent.layout.height);
-                setComposerContentHeight((previous) => previous === next ? previous : next);
-              }}
-            >
-              {!online ? (
-                <RecoveryPanel
-                  recovery={{ code: "OFFLINE", title: "You’re offline", body: "Reconnect to send." }}
-                  onAction={() => undefined}
-                />
-              ) : null}
-              {rateLimited ? (
-                <RecoveryPanel
-                  recovery={{
-                    code: "RATE_LIMITED",
-                    title: "You have reached today’s chat limit",
-                    body: `Sending is paused. Try again in ${cooldownSeconds} ${cooldownSeconds === 1 ? "second" : "seconds"}.`,
-                  }}
-                  onAction={() => undefined}
-                />
-              ) : null}
-              {attachments.errorMessage ? (
-                <View style={styles.attachmentError} accessibilityRole="alert">
-                  <Text style={styles.attachmentErrorText}>{attachments.errorMessage}</Text>
-                  {attachments.photoPermissionRecovery ? (
-                    <View style={styles.attachmentRecoveryActions}>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Choose documents instead"
-                        onPress={() => void attachments.addFiles("documents")}
-                        style={styles.attachmentRecoveryAction}
+                      the drop order and gets the clamp through the context so
+                      it can step down whole elements without clipping. */}
+                    <View
+                      style={[
+                        styles.emptyHeroContent,
+                        { minHeight: emptyHeroBoxHeight },
+                      ]}
+                    >
+                      <AriEmptyStateLayoutContext.Provider
+                        value={emptyStateLayout}
                       >
-                        <Text style={styles.attachmentRecoveryActionText}>Choose documents</Text>
-                      </Pressable>
-                      {attachments.photoPermissionRecovery.canOpenSettings ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Open photo permissions in Settings"
-                          onPress={() => void attachments.openPhotoPermissionSettings()}
-                          style={styles.attachmentRecoveryAction}
-                        >
-                          <Text style={styles.attachmentRecoveryActionText}>Open Settings</Text>
-                        </Pressable>
-                      ) : null}
+                        <EmptyState />
+                      </AriEmptyStateLayoutContext.Provider>
                     </View>
-                  ) : null}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Dismiss attachment message"
-                    onPress={attachments.clearError}
-                    style={styles.attachmentErrorDismiss}
-                  >
-                    <Text style={styles.attachmentErrorDismissText}>Dismiss</Text>
                   </Pressable>
                 </View>
-              ) : null}
-              <AriAttachmentTray
-                attachments={attachments.attachments}
-                onRemove={attachments.removeAttachment}
-                onRetry={(localId) => void attachments.retryAttachment(localId)}
-                onRemoveAll={attachments.removeAll}
-              />
-              {chat.isSending ? <Text style={styles.composerHelper}>Ari is finishing your last message.</Text> : null}
-              <InputBar
-                onSend={handleSend}
-                value={draftText}
-                onChangeText={setDraftText}
-                inputRef={composerInputRef}
-                hasReadyAttachments={attachments.attachments.length > 0 && attachments.allReady}
-                disabled={brands.isLoading || !conversationSelectionReady}
-                sendDisabled={chat.isSending || rateLimited || !online || !attachments.allReady}
-                attachDisabled={!online || !attachments.canAttachMore}
-                placeholder={!conversationSelectionReady ? "Restoring your chat…" : !online ? "Reconnect to continue…" : brands.isLoading ? "Checking brand access…" : rateLimited ? "Sending paused…" : "Ask Ari…"}
-                onAttach={() => {
-                  if (Platform.OS === "web") void attachments.addFiles("all");
-                  else setAttachmentSourceOpen(true);
-                }}
-              />
-            </View>
+              </View>
+              <View style={styles.flexSpacer} pointerEvents="none" />
+            </>
+          ) : (
+            <MessageList
+              conversationId={chat.conversationId}
+              messages={chat.messages}
+              pendingAction={chat.pendingAction}
+              isExecuting={confirm.isExecuting}
+              onConfirm={handleConfirm}
+              onCancel={handleCancelProposal}
+              isThinking={!!chat.activeTurn}
+              renderThinking={() =>
+                chat.activeTurn ? (
+                  <AriActivity
+                    turn={chat.activeTurn}
+                    surface={surface}
+                    onStop={() => chat.stopTurn(chat.activeTurn!.clientTurnId)}
+                    onRetry={() =>
+                      chat.retryTurn(chat.activeTurn!.clientTurnId)
+                    }
+                  />
+                ) : null
+              }
+              brandNamesById={brandNamesById}
+              accountId={accountId}
+              onSeedMessage={(text) => {
+                setDraftText(text);
+                composerInputRef.current?.focus();
+              }}
+              onRenditionAction={(_message, interaction) => {
+                const { behavior } = interaction.action;
+                if (behavior.type === "reply") {
+                  setDraftText(behavior.message);
+                  requestAnimationFrame(() =>
+                    composerInputRef.current?.focus(),
+                  );
+                  return;
+                }
+                if (behavior.type === "submit") {
+                  void handleSend(buildAriRenditionSubmission(interaction));
+                  return;
+                }
+                if (behavior.type === "route") {
+                  router.push(behavior.route as never);
+                  return;
+                }
+                if (behavior.type === "external") {
+                  void Linking.openURL(behavior.url).catch(() => {
+                    setLocalError(
+                      "That link could not be opened. Copy it and try again.",
+                    );
+                  });
+                  return;
+                }
+                if (behavior.type === "confirm") {
+                  if (
+                    chat.pendingAction?.pending_action_id !==
+                    behavior.pending_action_id
+                  ) {
+                    setLocalError(
+                      "This proposal is no longer active. Ask Ari to prepare it again.",
+                    );
+                    return;
+                  }
+                  void handleConfirm();
+                  return;
+                }
+                if (behavior.type === "cancel") {
+                  if (
+                    chat.pendingAction?.pending_action_id !==
+                    behavior.pending_action_id
+                  ) {
+                    setLocalError("This proposal is no longer active.");
+                    return;
+                  }
+                  void handleCancelProposal();
+                  return;
+                }
+                if (behavior.command === "stop" && chat.activeTurn) {
+                  void chat.stopTurn(chat.activeTurn.clientTurnId);
+                  return;
+                }
+                if (behavior.command === "retry") {
+                  const clientTurnId = _message.client_turn_id;
+                  if (clientTurnId) void chat.retryTurn(clientTurnId);
+                  else {
+                    setDraftText("Retry the last step safely");
+                    requestAnimationFrame(() =>
+                      composerInputRef.current?.focus(),
+                    );
+                  }
+                  return;
+                }
+                if (behavior.command === "resume") {
+                  setDraftText("Resume this plan from the last safe step");
+                  requestAnimationFrame(() =>
+                    composerInputRef.current?.focus(),
+                  );
+                  return;
+                }
+                if (behavior.command === "copy") {
+                  const copy =
+                    ariRenditionCopyText(interaction.rendition) ??
+                    (interaction.fieldValue || interaction.rendition.body);
+                  void copyTextToClipboard(copy).catch(() => {
+                    setLocalError(
+                      "That text could not be copied. Select it and copy manually.",
+                    );
+                  });
+                }
+              }}
+              onFeedback={async (messageId, sentiment, reasonCode) => {
+                try {
+                  await submitAriMessageFeedback({
+                    messageId,
+                    sentiment,
+                    reasonCode,
+                  });
+                } catch (error) {
+                  setLocalError("Ari couldn't save that feedback. Try again.");
+                  throw error;
+                }
+              }}
+              // ORCH-1103 REWORK 2 — a disambiguation / no-brand-handoff chip tap
+              // sends the chip label as a normal user turn (Q2 conversational
+              // feedback; Gemini re-proposes with the resolved target).
+              onSendChoice={(submission, label) =>
+                void handleChoice(submission, label)
+              }
+              onRetryTurn={(clientTurnId) => {
+                if (!online) {
+                  setLocalError(
+                    "You're offline. Reconnect to continue this plan.",
+                  );
+                  return;
+                }
+                void chat
+                  .retryTurn(clientTurnId)
+                  .then((result) => {
+                    if (result?.kind === "error" && result.code === "OFFLINE") {
+                      setLocalError(ariChatErrorCopy(result.code));
+                    }
+                  })
+                  .catch(() => {
+                    setLocalError(
+                      "Ari could not retry that message. Try again.",
+                    );
+                  });
+              }}
+              onEditTurn={(clientTurnId) => {
+                const restored = chat.editTurn(clientTurnId);
+                if (!restored) return;
+                setDraftText(restored.text);
+                attachments.restoreDrafts(restored.attachments);
+                requestAnimationFrame(() => composerInputRef.current?.focus());
+              }}
+              onDiscardTurn={chat.discardTurn}
+              surface={surface}
+              choicesDisabled={chat.isSending || !online}
+              attachedCovers={attachedCovers}
+              onAttachDone={(cover) => {
+                // ORCH-1103 REWORK 3 — stash the attached cover against the
+                // resolving pending action so the receipt renders it, THEN clear
+                // the pending action (which mounts the receipt exactly once).
+                const pid = chat.pendingAction?.pending_action_id;
+                if (pid && cover && cover.url) {
+                  setAttachedCovers((prev) => ({ ...prev, [pid]: cover }));
+                }
+                chat.clearPendingAction();
+              }}
+            />
           )}
+
+          <View
+            style={[
+              styles.inputWrap,
+              {
+                // ORCH-1101 Bug A (screen side): on WIDE desktop web there is no
+                // soft keyboard (keyboardHeight stays 0) and no floating BottomNav
+                // capsule (the business web nav is a left side rail), so the old
+                // `insets.bottom + BOTTOM_NAV_CLEARANCE_PX` reserved a phantom
+                // 80px gap below the composer. Wide desktop web → spacing.sm only.
+                //
+                // #3460 [narrow-web-nav-overlap] — that premise is about WIDTH, not
+                // platform, and it was written as `Platform.OS === "web"`, which is
+                // also true for every web viewport UNDER `WIDE_DESKTOP_MIN_WIDTH`
+                // (1024, inclusive). Below 1024 `BottomNav.web.tsx` renders
+                // `MobileWebCapsule` — a floating capsule in `navWrap`
+                // (`position:absolute; bottom:0`, painted after `<Slot/>`) whose
+                // `pointerEvents="box-none"` compiles in react-native-web 0.21.2 to
+                // `<selector> > * { pointer-events: auto }`, so its full-width direct
+                // child captures taps across the whole 80pt band. With only
+                // `spacing.sm` (8pt) of clearance the composer sat INSIDE that band:
+                // `document.elementFromPoint` returned a nav element at 147 of 147
+                // points sampled across the Attach (+) button, the input and Send on
+                // real mobile Safari at 402x714, and real taps never reached the
+                // controls. The clearance therefore follows `isWideDesktop` — the
+                // same hook the nav itself gates on (I-DESKTOP-GATE-VIA-HOOK) — so
+                // narrow web gets the same 80pt capsule clearance native gets, and
+                // >=1024 keeps ORCH-1101's phantom-gap fix byte-for-byte.
+                //
+                // NOT fixed by adding `/ari` to `(tabs)/_layout.tsx`'s
+                // `hideBottomNav` list: `/campaigns/compose` and `/analytics` are
+                // sub-routes a user can back out of, whereas `/ari` IS a top-level
+                // tab (and Website → Edit with Ari redirects INTO it at
+                // `/(tabs)/ari?sitesIntent=edit`), so hiding the capsule there would
+                // strand a phone-web user on a screen with no navigation.
+                //
+                // Native: when the keyboard is up, this padding IS the composer's
+                // position. `inputWrap` carries only paddingHorizontal/paddingTop
+                // and is the last in-flow child of a flex:1 column, so its
+                // paddingBottom already places the pill's BOTTOM EDGE — the pill's
+                // body then extends upward from there.
+                //
+                // #1890 [keyboard-clearance-overshoot] — ORCH-1165 REWORK loop 2
+                // added the measured `composerHeight` on top of that, which lifted
+                // the pill by its own full height a SECOND time, plus a stray
+                // spacing.sm. Measured on glass: 61.0pt of gap on an iPhone SE3
+                // against a 12pt contract, 71.8dp on the physical Samsung. #1850
+                // then correctly replaced the hand-typed 42 with DONE_BAR_OCCUPIED,
+                // which removed the accidental masking and made iOS worse (49 -> 60).
+                //
+                // The bar's top sits keyboardHeight + DONE_BAR_OCCUPIED from the
+                // bottom, so clearing it by MIN_VISIBLE_CLEARANCE is the whole job.
+                // Do NOT add a measured pill height here: this padding positions
+                // the pill's bottom edge, so any pill-height term is a double
+                // count. When closed, clear the floating BottomNav capsule +
+                // safe-area inset.
+                paddingBottom:
+                  Platform.OS === "web"
+                    ? isWideDesktop
+                      ? spacing.sm
+                      : // #3460 — narrow web HAS the floating capsule, so it needs the
+                        // same clearance the native branch below reserves.
+                        Math.max(insets.bottom, spacing.md) +
+                        BOTTOM_NAV_CLEARANCE_PX
+                    : // ORCH-1101 ADV-3 checks that the web result precedes the
+                      // native clearance term IN THIS EXPRESSION, so the resting
+                      // value is spelled out here rather than passed as
+                      // `composerRestingOccupiedPx`. Same value, same owner for the
+                      // lift itself — the ternary still lives in one place.
+                      composerOccupiedPxFor(
+                        keyboardHeight,
+                        Math.max(insets.bottom, spacing.md) +
+                          BOTTOM_NAV_CLEARANCE_PX,
+                      ),
+              },
+            ]}
+          >
+            {/* #1890 — the measuring wrapper is gone with the double count it fed.
+              `inputWrap`'s paddingBottom already positions this pill's bottom
+              edge; nothing needs the pill's own height. */}
+            {recovery ? (
+              <RecoveryPanel recovery={recovery} onAction={handleRecovery} />
+            ) : (
+              <View
+                style={styles.composerColumn}
+                onLayout={(event) => {
+                  const next = Math.round(event.nativeEvent.layout.height);
+                  setComposerContentHeight((previous) =>
+                    previous === next ? previous : next,
+                  );
+                }}
+              >
+                {!online ? (
+                  <RecoveryPanel
+                    recovery={{
+                      code: "OFFLINE",
+                      title: "You’re offline",
+                      body: "Reconnect to send.",
+                    }}
+                    onAction={() => undefined}
+                  />
+                ) : null}
+                {rateLimited ? (
+                  <RecoveryPanel
+                    recovery={{
+                      code: "RATE_LIMITED",
+                      title: "You have reached today’s chat limit",
+                      body: `Sending is paused. Try again in ${cooldownSeconds} ${cooldownSeconds === 1 ? "second" : "seconds"}.`,
+                    }}
+                    onAction={() => undefined}
+                  />
+                ) : null}
+                {attachments.errorMessage ? (
+                  <View
+                    style={styles.attachmentError}
+                    accessibilityRole="alert"
+                  >
+                    <Text style={styles.attachmentErrorText}>
+                      {attachments.errorMessage}
+                    </Text>
+                    {attachments.photoPermissionRecovery ? (
+                      <View style={styles.attachmentRecoveryActions}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Choose documents instead"
+                          onPress={() => void attachments.addFiles("documents")}
+                          style={styles.attachmentRecoveryAction}
+                        >
+                          <Text style={styles.attachmentRecoveryActionText}>
+                            Choose documents
+                          </Text>
+                        </Pressable>
+                        {attachments.photoPermissionRecovery.canOpenSettings ? (
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Open photo permissions in Settings"
+                            onPress={() =>
+                              void attachments.openPhotoPermissionSettings()
+                            }
+                            style={styles.attachmentRecoveryAction}
+                          >
+                            <Text style={styles.attachmentRecoveryActionText}>
+                              Open Settings
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    ) : null}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Dismiss attachment message"
+                      onPress={attachments.clearError}
+                      style={styles.attachmentErrorDismiss}
+                    >
+                      <Text style={styles.attachmentErrorDismissText}>
+                        Dismiss
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+                <AriAttachmentTray
+                  attachments={attachments.attachments}
+                  onRemove={attachments.removeAttachment}
+                  onRetry={(localId) =>
+                    void attachments.retryAttachment(localId)
+                  }
+                  onRemoveAll={attachments.removeAll}
+                />
+                {chat.isSending ? (
+                  <Text style={styles.composerHelper}>
+                    Ari is finishing your last message.
+                  </Text>
+                ) : null}
+                <InputBar
+                  onSend={handleSend}
+                  value={draftText}
+                  onChangeText={setDraftText}
+                  inputRef={composerInputRef}
+                  hasReadyAttachments={
+                    attachments.attachments.length > 0 && attachments.allReady
+                  }
+                  disabled={brands.isLoading || !conversationSelectionReady}
+                  sendDisabled={
+                    chat.isSending ||
+                    rateLimited ||
+                    !online ||
+                    !attachments.allReady
+                  }
+                  attachDisabled={!online || !attachments.canAttachMore}
+                  placeholder={
+                    !conversationSelectionReady
+                      ? "Restoring your chat…"
+                      : !online
+                        ? "Reconnect to continue…"
+                        : brands.isLoading
+                          ? "Checking brand access…"
+                          : rateLimited
+                            ? "Sending paused…"
+                            : "Ask Ari…"
+                  }
+                  onAttach={() => {
+                    if (Platform.OS === "web") void attachments.addFiles("all");
+                    else setAttachmentSourceOpen(true);
+                  }}
+                />
+              </View>
+            )}
+          </View>
         </View>
-      </View>
       </View>
 
       <ConversationDrawer
@@ -1107,7 +1332,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         surface={surface}
       />
 
-      <BrandSwitcherSheet visible={brandSwitcherOpen} onClose={() => setBrandSwitcherOpen(false)} />
+      <BrandSwitcherSheet
+        visible={brandSwitcherOpen}
+        onClose={() => setBrandSwitcherOpen(false)}
+      />
 
       <AriAttachmentSourceSheet
         visible={attachmentSourceOpen}
@@ -1136,7 +1364,11 @@ const styles = StyleSheet.create({
     minWidth: ariThread.websiteAriMinWidth,
     maxWidth: ariThread.websiteAriMaxWidth,
   },
-  websiteSplitHost: { flexDirection: "row", gap: spacing.lg, padding: spacing.md },
+  websiteSplitHost: {
+    flexDirection: "row",
+    gap: spacing.lg,
+    padding: spacing.md,
+  },
   websiteDraftPane: {
     flex: 1.2,
     minWidth: 0,
@@ -1261,7 +1493,12 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   composerColumn: { width: "100%" },
-  composerHelper: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16, marginBottom: spacing.xs },
+  composerHelper: {
+    color: textTokens.tertiary,
+    fontSize: 12,
+    lineHeight: 16,
+    marginBottom: spacing.xs,
+  },
   attachmentError: {
     minHeight: 48,
     flexDirection: "row",
@@ -1270,29 +1507,83 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingLeft: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: Platform.OS === "android" ? "#2b1d15" : "rgba(235, 120, 37, 0.12)",
+    backgroundColor:
+      Platform.OS === "android" ? "#2b1d15" : "rgba(235, 120, 37, 0.12)",
   },
-  attachmentErrorText: { flex: 1, color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
-  attachmentRecoveryActions: { flexDirection: "row", gap: spacing.xs, paddingLeft: spacing.md, paddingBottom: spacing.sm, width: "100%" },
-  attachmentRecoveryAction: { minHeight: 40, justifyContent: "center", paddingHorizontal: spacing.sm, borderRadius: radius.sm, backgroundColor: ariThread.composerSurface },
-  attachmentRecoveryActionText: { color: accent.warm, fontSize: 14, fontWeight: "600" },
-  attachmentErrorDismiss: { minWidth: 64, minHeight: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.sm },
-  attachmentErrorDismissText: { color: accent.warm, fontSize: 14, fontWeight: "600" },
+  attachmentErrorText: {
+    flex: 1,
+    color: textTokens.secondary,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  attachmentRecoveryActions: {
+    flexDirection: "row",
+    gap: spacing.xs,
+    paddingLeft: spacing.md,
+    paddingBottom: spacing.sm,
+    width: "100%",
+  },
+  attachmentRecoveryAction: {
+    minHeight: 40,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
+    backgroundColor: ariThread.composerSurface,
+  },
+  attachmentRecoveryActionText: {
+    color: accent.warm,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  attachmentErrorDismiss: {
+    minWidth: 64,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  attachmentErrorDismissText: {
+    color: accent.warm,
+    fontSize: 14,
+    fontWeight: "600",
+  },
   recoveryPanel: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: glass.border.profileElevated,
-    backgroundColor: Platform.OS === "android" ? ariThread.ariBubbleAndroid : glass.tint.profileElevated,
+    backgroundColor:
+      Platform.OS === "android"
+        ? ariThread.ariBubbleAndroid
+        : glass.tint.profileElevated,
     overflow: "hidden",
     gap: spacing.sm,
   },
   recoveryTitle: { color: textTokens.primary, fontSize: 15, fontWeight: "600" },
   recoveryBody: { color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
-  recoveryAction: { minHeight: 44, width: "100%", alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: ariPalette.userBubble },
-  recoveryActionFocused: Platform.OS === "web" ? ({ outlineWidth: 2, outlineStyle: "solid", outlineColor: ariPalette.flame, outlineOffset: 2 } as object) : {},
-  recoveryActionText: { color: ariThread.onUserBubble, fontWeight: "700", textAlign: "center" },
+  recoveryAction: {
+    minHeight: 44,
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.md,
+    backgroundColor: ariPalette.userBubble,
+  },
+  recoveryActionFocused:
+    Platform.OS === "web"
+      ? ({
+          outlineWidth: 2,
+          outlineStyle: "solid",
+          outlineColor: ariPalette.flame,
+          outlineOffset: 2,
+        } as object)
+      : {},
+  recoveryActionText: {
+    color: ariThread.onUserBubble,
+    fontWeight: "700",
+    textAlign: "center",
+  },
 });
 
 export default AriChatScreen;

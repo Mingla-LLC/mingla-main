@@ -19,6 +19,15 @@ const DOCUMENT_MIMES = [
   "text/plain",
   "text/csv",
   "application/csv",
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/x-m4a",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/webm",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
 ];
 
 /** expo-image-picker assets carry pixel dimensions the shared wrapper type omits. */
@@ -39,7 +48,7 @@ export async function pickAriAttachmentFiles(
       );
     }
     const result = await launchImageLibraryAsync({
-      mediaTypes: ["images"],
+      mediaTypes: ["images", "videos"],
       allowsMultipleSelection: true,
       selectionLimit: remaining,
       quality: 1,
@@ -49,7 +58,10 @@ export async function pickAriAttachmentFiles(
       uri: asset.uri,
       name: asset.fileName ?? `image-${Date.now()}.jpg`,
       mimeType: asset.mimeType ?? null,
-      size: typeof asset.fileSize === "number" && asset.fileSize > 0 ? asset.fileSize : null,
+      size:
+        typeof asset.fileSize === "number" && asset.fileSize > 0
+          ? asset.fileSize
+          : null,
       width: asset.width ?? null,
       height: asset.height ?? null,
     }));

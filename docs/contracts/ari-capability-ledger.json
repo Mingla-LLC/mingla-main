@@ -3,18 +3,18 @@
   "contract": "I-PROPOSED-ARI-CAPABILITY-LEDGER-TRUTH",
   "authority": {
     "support_status": "docs/contracts/ari-capability-ledger.json",
-    "registration_schema_executor": "supabase/functions/_shared/agentTools.ts, agentDomainTools.ts, and agentSiteTools.ts",
+    "registration_schema_executor": "supabase/functions/_shared/agentTools.ts, agentDomainTools.ts, agentSiteTools.ts, and agentAri10xTools.ts",
     "advertising": "supabase/functions/_shared/agentSystemPrompt.ts",
     "product_operations": "declared Business source roots below"
   },
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
-    "verified_at": "2026-09-11T00:00:00Z",
-    "registered_tool_count": 152,
-    "capability_count": 164,
+    "verified_at": "2026-10-30T12:52:49Z",
+    "registered_tool_count": 172,
+    "capability_count": 184,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 151,
+      "registered_unverified": 171,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -34,6 +34,7 @@
       "supabase/functions/_shared/agentTools.ts",
       "supabase/functions/_shared/agentDomainTools.ts",
       "supabase/functions/_shared/agentSiteTools.ts",
+      "supabase/functions/_shared/agentAri10xTools.ts",
       "supabase/functions/_shared/agentSystemPrompt.ts"
     ],
     "external_overlay": "GitHub issues #1736, #1743, #1753, #1796, #2000 at the audit timestamp",
@@ -2253,7 +2254,9 @@
         "reference": "issue_3872_agent_tools_registry.implementor.test.ts: registered read-only discount listing"
       }],
       "owning_issues": [3872, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-10-22"
     },
@@ -2267,7 +2270,9 @@
       "surfaces": ["business_ios", "business_android", "business_web"],
       "provenance": { "phase": "post_1986", "introduced_by": "issue_3872" },
       "owners": {
-        "ui": ["mingla-business/src/components/discounts/DiscountEditSheet.tsx"],
+        "ui": [
+          "mingla-business/src/components/discounts/DiscountEditSheet.tsx"
+        ],
         "source": [{
           "path": "supabase/functions/_shared/agentDomainTools.ts",
           "symbol": "const createDiscount"
@@ -2281,7 +2286,9 @@
         "reference": "issue_3872_agent_tools_registry.implementor.test.ts: registered confirmed discount creation"
       }],
       "owning_issues": [3872, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-10-22"
     },
@@ -2309,7 +2316,9 @@
         "reference": "issue_3872_agent_tools_registry.implementor.test.ts: registered confirmed versioned pause"
       }],
       "owning_issues": [3872, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-10-22"
     },
@@ -2337,7 +2346,9 @@
         "reference": "issue_3872_agent_tools_registry.implementor.test.ts: registered caller-bound referral listing"
       }],
       "owning_issues": [3872, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-10-24"
     },
@@ -2351,7 +2362,9 @@
       "surfaces": ["business_ios", "business_android", "business_web"],
       "provenance": { "phase": "post_1986", "introduced_by": "issue_3872_r2" },
       "owners": {
-        "ui": ["mingla-business/src/components/referrals/ReferralOfferSheet.tsx"],
+        "ui": [
+          "mingla-business/src/components/referrals/ReferralOfferSheet.tsx"
+        ],
         "source": [{
           "path": "supabase/functions/_shared/agentDomainTools.ts",
           "symbol": "const createReferralOffer"
@@ -2365,7 +2378,9 @@
         "reference": "issue_3872_agent_tools_registry.implementor.test.ts: registered canonical referral offer creation"
       }],
       "owning_issues": [3872, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-10-24"
     },
@@ -2393,7 +2408,9 @@
         "reference": "issue_3872_agent_tools_registry.implementor.test.ts: registered token-safe promoter invitation"
       }],
       "owning_issues": [3872, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-10-24"
     },
@@ -2407,7 +2424,9 @@
       "surfaces": ["business_ios", "business_android", "business_web"],
       "provenance": { "phase": "post_1986", "introduced_by": "issue_3872_r3" },
       "owners": {
-        "ui": ["mingla-business/app/brand/[id]/creators/contract/[contractId].tsx"],
+        "ui": [
+          "mingla-business/app/brand/[id]/creators/contract/[contractId].tsx"
+        ],
         "source": [{
           "path": "supabase/functions/_shared/agentDomainTools.ts",
           "symbol": "const draftGigScript"
@@ -2421,7 +2440,9 @@
         "reference": "issue_3872_gig_script.implementor.test.ts: registered guarded script drafting"
       }],
       "owning_issues": [3872, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-10-26"
     },
@@ -8012,6 +8033,706 @@
       ],
       "confidence": "high",
       "verified_at": "2026-10-26"
+    },
+    {
+      "id": "ari.research.search_public_web",
+      "domain": "research",
+      "outcome": "Search public web sources with dates and citations",
+      "safety": "read",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const searchPublicWebTool"
+          }
+        ]
+      },
+      "ari_tool": "search_public_web",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: public research contracts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.research.read_public_url",
+      "domain": "research",
+      "outcome": "Read one allowlisted public page or document safely",
+      "safety": "read",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const readPublicUrlTool"
+          }
+        ]
+      },
+      "ari_tool": "read_public_url",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: public URL safety contracts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.research.inspect_public_social_profile",
+      "domain": "research",
+      "outcome": "Inspect a publicly accessible social profile",
+      "safety": "read",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const inspectPublicSocialProfile"
+          }
+        ]
+      },
+      "ari_tool": "inspect_public_social_profile",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: social research contracts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.capabilities.search",
+      "domain": "capabilities",
+      "outcome": "Search Ari's live Mingla capability map",
+      "safety": "read",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const searchCapabilities"
+          }
+        ]
+      },
+      "ari_tool": "search_capabilities",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: capability discovery contracts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.capabilities.request_tools",
+      "domain": "capabilities",
+      "outcome": "Load the bounded toolsets needed for the current step",
+      "safety": "read",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const requestTools"
+          }
+        ]
+      },
+      "ari_tool": "request_tools",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: bounded tool loading",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.onboarding.read_plan",
+      "domain": "onboarding",
+      "outcome": "Read the caller's resumable onboarding plan",
+      "safety": "read",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const getOnboardingPlan"
+          }
+        ]
+      },
+      "ari_tool": "get_onboarding_plan",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: resumable plan contracts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.onboarding.update_plan",
+      "domain": "onboarding",
+      "outcome": "Create or advance the caller's versioned onboarding plan",
+      "safety": "write",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const updateOnboardingPlan"
+          }
+        ]
+      },
+      "ari_tool": "update_onboarding_plan",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: plan compare-and-swap contracts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.memory.list",
+      "domain": "memory",
+      "outcome": "List editable memories scoped to the caller and brand",
+      "safety": "read",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const listMemoryNotes"
+          }
+        ]
+      },
+      "ari_tool": "list_memory_notes",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: scoped memory contracts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.memory.save",
+      "domain": "memory",
+      "outcome": "Save an approved preference, correction, business fact, or workflow",
+      "safety": "write",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const saveMemoryNote"
+          }
+        ]
+      },
+      "ari_tool": "save_memory_note",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: scoped memory contracts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.memory.forget",
+      "domain": "memory",
+      "outcome": "Remove one memory from Ari's future context",
+      "safety": "write",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const forgetMemoryNote"
+          }
+        ]
+      },
+      "ari_tool": "forget_memory_note",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: editable memory contracts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.handoff.open",
+      "domain": "handoffs",
+      "outcome": "Prepare an allowlisted Mingla destination for a human-owned step",
+      "safety": "read",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const openHandoff"
+          }
+        ]
+      },
+      "ari_tool": "open_handoff",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: allowlisted handoff contracts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.market.rules",
+      "domain": "markets",
+      "outcome": "Read deterministic country, currency, timezone, and payment-rail rules",
+      "safety": "read",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const getMarketRules"
+          }
+        ]
+      },
+      "ari_tool": "get_market_rules",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: deterministic market rules",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.listings.type_capabilities",
+      "domain": "listings",
+      "outcome": "Read the capabilities and limits of each Mingla listing type",
+      "safety": "read",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const getListingCapabilities"
+          }
+        ]
+      },
+      "ari_tool": "get_listing_type_capabilities",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: listing capability contracts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.onboarding.build_blueprint",
+      "domain": "onboarding",
+      "outcome": "Build a complete resumable host setup and launch checklist",
+      "safety": "read",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const buildHostOnboardingBlueprint"
+          }
+        ]
+      },
+      "ari_tool": "build_host_onboarding_blueprint",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: host onboarding blueprint",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.capabilities.inventory",
+      "domain": "capabilities",
+      "outcome": "Inspect Ari's live coverage across shipped Mingla product areas",
+      "safety": "read",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const getCapabilityInventory"
+          }
+        ]
+      },
+      "ari_tool": "get_capability_inventory",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: capability inventory",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.event.set_refund_policy",
+      "domain": "events",
+      "outcome": "Set or clear an offering's canonical refund policy",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const setRefundPolicy"
+          }
+        ]
+      },
+      "ari_tool": "set_refund_policy",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: protected refund-policy writer",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.event.buyer_notice_status",
+      "domain": "events",
+      "outcome": "Read buyer-notification requirements and latest delivery counts for a live edit",
+      "safety": "read",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const getBuyerNoticeStatus"
+          }
+        ]
+      },
+      "ari_tool": "get_buyer_notice_status",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: buyer notice readback",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.research.fetch_listing_page",
+      "domain": "research",
+      "outcome": "Read a public listing or ticket page as untrusted evidence",
+      "safety": "read",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const fetchPublicListingPage"
+          }
+        ]
+      },
+      "ari_tool": "fetch_public_listing_page",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: listing-page research",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.listings.extract_candidates",
+      "domain": "listings",
+      "outcome": "Extract candidate listing fields and surface conflicts from supplied material",
+      "safety": "read",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const extractListingCandidates"
+          }
+        ]
+      },
+      "ari_tool": "extract_listing_candidates",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: multimodal candidate extraction",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.jobs.manage",
+      "domain": "jobs",
+      "outcome": "Create, inspect, checkpoint, pause, resume, or cancel a durable Ari job",
+      "safety": "write",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const manageAgentJob"
+          }
+        ]
+      },
+      "ari_tool": "manage_agent_job",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "902b303c9db024ecdc261d57822bb22f15c5253b",
+          "reference": "issue_3355_ari_10x.test.ts: durable job lifecycle",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-30"
     }
   ]
 }

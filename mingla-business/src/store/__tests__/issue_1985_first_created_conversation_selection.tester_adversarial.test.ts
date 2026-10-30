@@ -22,7 +22,7 @@ describe("#1985 tester — first created conversation becomes the durable select
     const hook = readSource("../../hooks/useAgentChat.ts");
 
     const selectionOwner = hook.match(
-      /const selectConversation = useCallback\(\(id: string \| null\): void => \{([\s\S]*?)\n  \}, \[onConversationIdChange\]\);/,
+      /const selectConversation\s*=\s*useCallback\(\s*\(id: string \| null\): void\s*=>\s*\{([\s\S]*?)\}\s*,\s*\[onConversationIdChange\]\s*,?\s*\);/,
     )?.[1];
     expect(selectionOwner).toBeDefined();
     expect(selectionOwner).toMatch(/setConversationId\(id\);/);
@@ -42,13 +42,13 @@ describe("#1985 tester — first created conversation becomes the durable select
     const screen = readSource("../../screens/ari/AriChatScreen.tsx");
 
     expect(screen).toMatch(
-      /const conversationScopeKey = ariConversationScopeKey\(accountId, selectedBrandId\);/,
+      /const conversationScopeKey = ariConversationScopeKey\(\s*accountId,\s*selectedBrandId,?\s*\);/,
     );
     expect(screen).toMatch(
-      /setStoredConversationSelection\(conversationScopeKey, conversationId\);/,
+      /setStoredConversationSelection\(conversationScopeKey,\s*conversationId\);/,
     );
     expect(screen).toMatch(
-      /useAgentChat\(null, selectedBrandId, persistConversationSelection\)/,
+      /useAgentChat\(\s*null,\s*selectedBrandId,\s*persistConversationSelection,?\s*\)/,
     );
   });
 });

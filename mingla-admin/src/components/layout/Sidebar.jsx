@@ -36,6 +36,7 @@ import {
   Clapperboard,
   MapPin,
   Scale,
+  BrainCircuit,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -93,6 +94,7 @@ const ICON_MAP = {
   FolderLock,
   HeartPulse,
   Flag,
+  BrainCircuit,
   Settings,
 };
 

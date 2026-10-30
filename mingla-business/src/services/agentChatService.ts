@@ -20,7 +20,12 @@ import type { AriResponseEnvelope } from "./agentReliability";
 
 export type AgentChoicePayload =
   | { type: "slot_patch"; slot_updates: Record<string, unknown> }
-  | { type: "task_command"; command: "pause" | "resume" | "cancel" | "start_new" | "continue_planning"; replacement_request?: string }
+  | {
+      type: "task_command";
+      command:
+        "pause" | "resume" | "cancel" | "start_new" | "continue_planning";
+      replacement_request?: string;
+    }
   | { type: "handoff"; route: string };
 
 export interface AgentChoicesV2 {
@@ -39,7 +44,18 @@ export interface AgentChoiceSubmissionV2 {
 }
 
 export type AgentChatResponse =
-  | { kind: "text"; text: string; conversation_id: string; message_id: string; task_state_revision: number; client_turn_id: string; attempt_status: "completed"; conversation_title: string; choices?: AgentChoicesV2; handoff_route?: string }
+  | {
+      kind: "text";
+      text: string;
+      conversation_id: string;
+      message_id: string;
+      task_state_revision: number;
+      client_turn_id: string;
+      attempt_status: "completed";
+      conversation_title: string;
+      choices?: AgentChoicesV2;
+      handoff_route?: string;
+    }
   | {
       kind: "pending_action";
       pending_action_id: string;
@@ -52,7 +68,13 @@ export type AgentChatResponse =
       attempt_status: "completed";
       conversation_title: string;
     }
-  | { kind: "error"; code: string; message: string; retry_after_seconds?: number; cooldown_until?: string };
+  | {
+      kind: "error";
+      code: string;
+      message: string;
+      retry_after_seconds?: number;
+      cooldown_until?: string;
+    };
 
 export type AgentConfirmResponse =
   | {
@@ -158,7 +180,8 @@ function assertAriEnvelope(
   if (
     envelope.protocol_version !== 1 ||
     (envelope.kind !== "success" && envelope.kind !== "error") ||
-    typeof envelope.code !== "string" || envelope.code.length === 0 ||
+    typeof envelope.code !== "string" ||
+    envelope.code.length === 0 ||
     typeof envelope.user_message !== "string" ||
     envelope.user_message.length === 0 ||
     !RETRYABILITY.has(envelope.retryability as string) ||
@@ -185,7 +208,14 @@ function assertAriEnvelope(
 function unwrapAriDomainPayload<T extends { kind: string }>(
   raw: unknown,
   fallback: string,
-): T | { kind: "error"; code: string; message: string; retry_after_seconds?: number } {
+):
+  | T
+  | {
+      kind: "error";
+      code: string;
+      message: string;
+      retry_after_seconds?: number;
+    } {
   try {
     assertAriEnvelope(raw, { allowUnattested: allowUnattestedRelease() });
   } catch {
@@ -203,7 +233,11 @@ function unwrapAriDomainPayload<T extends { kind: string }>(
     };
   }
   const data = envelope.data;
-  if (!data || typeof data !== "object" || typeof (data as { kind?: unknown }).kind !== "string") {
+  if (
+    !data ||
+    typeof data !== "object" ||
+    typeof (data as { kind?: unknown }).kind !== "string"
+  ) {
     return { kind: "error", code: "EMPTY", message: fallback };
   }
   return data as T;
@@ -213,20 +247,42 @@ function unwrapAriDomainPayload<T extends { kind: string }>(
 // Error extraction (mirrors app-mobile/src/utils/edgeFunctionError.ts)
 // ----------------------------------------------------------------------------
 
-async function extractError(error: unknown, fallback: string): Promise<{ code: string; message: string; retry_after_seconds?: number; cooldown_until?: string }> {
+async function extractError(
+  error: unknown,
+  fallback: string,
+): Promise<{
+  code: string;
+  message: string;
+  retry_after_seconds?: number;
+  cooldown_until?: string;
+}> {
+  const safeLegacyMessage = (code: unknown): string => {
+    switch (code) {
+      case "CONVERSATION_BRAND_MISMATCH":
+        return "This conversation belongs to a different brand.";
+      default:
+        return fallback;
+    }
+  };
   try {
     const err = error as Record<string, unknown> | null | undefined;
     if (!err) return { code: "EDGE_ERROR", message: fallback };
-    if (err.name === "FunctionsFetchError") return { code: "TRANSPORT_UNAVAILABLE", message: fallback };
+    if (err.name === "FunctionsFetchError")
+      return { code: "TRANSPORT_UNAVAILABLE", message: fallback };
     const ctx = err.context as Response | undefined;
     if (ctx && typeof ctx.text === "function") {
       try {
         const raw = await ctx.text();
         try {
           const body = JSON.parse(raw);
-          if (body?.protocol_version === 1 && typeof body.user_message === "string") {
+          if (
+            body?.protocol_version === 1 &&
+            typeof body.user_message === "string"
+          ) {
             try {
-              assertAriEnvelope(body, { allowUnattested: allowUnattestedRelease() });
+              assertAriEnvelope(body, {
+                allowUnattested: allowUnattestedRelease(),
+              });
               return {
                 code: typeof body.code === "string" ? body.code : "EDGE_ERROR",
                 message: body.user_message,
@@ -238,28 +294,61 @@ async function extractError(error: unknown, fallback: string): Promise<{ code: s
               return { code: "ENVELOPE_INVALID", message: fallback };
             }
           }
-          if (body?.message && typeof body.message === "string") return {
-            code: typeof body.code === "string" ? body.code : "EDGE_ERROR",
-            message: body.message,
-            ...(typeof body.retry_after_seconds === "number" ? { retry_after_seconds: body.retry_after_seconds } : {}),
-            ...(typeof body.cooldown_until === "string" ? { cooldown_until: body.cooldown_until } : {}),
-          };
-          if (body?.error && typeof body.error === "string") return { code: typeof body.code === "string" ? body.code : "EDGE_ERROR", message: body.error };
+          // Legacy/non-envelope bodies are diagnostic input, not product copy.
+          // Gateways and local runtimes can put transport details such as
+          // "name resolution failed" here. Preserve the machine code for
+          // reporting, but fail closed to the caller-owned public sentence.
+          if (body?.message && typeof body.message === "string")
+            return {
+              code: typeof body.code === "string" ? body.code : "EDGE_ERROR",
+              message: safeLegacyMessage(body.code),
+              ...(typeof body.retry_after_seconds === "number"
+                ? { retry_after_seconds: body.retry_after_seconds }
+                : {}),
+              ...(typeof body.cooldown_until === "string"
+                ? { cooldown_until: body.cooldown_until }
+                : {}),
+            };
+          if (body?.error && typeof body.error === "string")
+            return {
+              code: typeof body.code === "string" ? body.code : "EDGE_ERROR",
+              message: fallback,
+            };
         } catch {
-          if (raw && raw.length < 300 && !raw.startsWith("<!")) return { code: "EDGE_ERROR", message: raw };
+          if (raw && raw.length < 300 && !raw.startsWith("<!"))
+            return { code: "EDGE_ERROR", message: fallback };
         }
       } catch {
         // fall through
       }
       const status = (ctx as Response).status;
-      if (status === 401) return { code: "UNAUTHENTICATED", message: "Sign in again to continue with Ari." };
-      if (status === 403) return { code: "FORBIDDEN", message: "Your current access does not allow this action." };
-      if (status === 410) return { code: "STALE_PROPOSAL", message: "This proposal changed. Review the latest version before confirming." };
-      if (status === 429) return { code: "RATE_LIMITED", message: "Ari is busy right now. Try again shortly." };
+      if (status === 401)
+        return {
+          code: "UNAUTHENTICATED",
+          message: "Sign in again to continue with Ari.",
+        };
+      if (status === 403)
+        return {
+          code: "FORBIDDEN",
+          message: "Your current access does not allow this action.",
+        };
+      if (status === 410)
+        return {
+          code: "STALE_PROPOSAL",
+          message:
+            "This proposal changed. Review the latest version before confirming.",
+        };
+      if (status === 429)
+        return {
+          code: "RATE_LIMITED",
+          message: "Ari is busy right now. Try again shortly.",
+        };
     }
+    // SDK/runtime exception text is likewise never user-facing. It can contain
+    // DNS errors, provider identifiers, URLs, or internal status slugs.
     const msg = err.message;
     if (typeof msg === "string" && !msg.startsWith("Edge Function returned")) {
-      return { code: "EDGE_ERROR", message: msg };
+      return { code: "EDGE_ERROR", message: fallback };
     }
   } catch {
     // ignore
@@ -271,16 +360,25 @@ async function extractError(error: unknown, fallback: string): Promise<{ code: s
 // Calls
 // ----------------------------------------------------------------------------
 
-export async function sendAgentMessage(args: SendMessageArgs): Promise<AgentChatResponse> {
-  const { data, error } = await supabase.functions.invoke<unknown>("agent-chat", {
-    body: args,
-  });
+export async function sendAgentMessage(
+  args: SendMessageArgs,
+): Promise<AgentChatResponse> {
+  const { data, error } = await supabase.functions.invoke<unknown>(
+    "agent-chat",
+    {
+      body: args,
+    },
+  );
   if (error) {
     const typed = await extractError(error, "Ari couldn't respond — try again");
     return { kind: "error", ...typed };
   }
   if (!data) {
-    return { kind: "error", code: "EMPTY", message: "Ari returned an empty response" };
+    return {
+      kind: "error",
+      code: "EMPTY",
+      message: "Ari returned an empty response",
+    };
   }
   return unwrapAriDomainPayload<Exclude<AgentChatResponse, { kind: "error" }>>(
     data,
@@ -288,22 +386,26 @@ export async function sendAgentMessage(args: SendMessageArgs): Promise<AgentChat
   ) as AgentChatResponse;
 }
 
-export async function confirmAgentAction(args: ConfirmActionArgs): Promise<AgentConfirmResponse> {
+export async function confirmAgentAction(
+  args: ConfirmActionArgs,
+): Promise<AgentConfirmResponse> {
   const { data, error } = await supabase.functions.invoke<unknown>(
     "agent-confirm-action",
     { body: { action: "confirm", ...args } },
   );
   if (error) {
-    const typed = await extractError(error, "Couldn't complete that action — try again");
+    const typed = await extractError(
+      error,
+      "Couldn't complete that action — try again",
+    );
     return { kind: "error", ...typed };
   }
   if (!data) {
     return { kind: "error", code: "EMPTY", message: "Empty response" };
   }
-  return unwrapAriDomainPayload<Exclude<AgentConfirmResponse, { kind: "error" }>>(
-    data,
-    "Empty response",
-  ) as AgentConfirmResponse;
+  return unwrapAriDomainPayload<
+    Exclude<AgentConfirmResponse, { kind: "error" }>
+  >(data, "Empty response") as AgentConfirmResponse;
 }
 
 export async function cancelAgentAction(
@@ -327,10 +429,9 @@ export async function cancelAgentAction(
   if (!data) {
     return { kind: "error", code: "EMPTY", message: "Empty response" };
   }
-  return unwrapAriDomainPayload<Exclude<AgentConfirmResponse, { kind: "error" }>>(
-    data,
-    "Empty response",
-  ) as AgentConfirmResponse;
+  return unwrapAriDomainPayload<
+    Exclude<AgentConfirmResponse, { kind: "error" }>
+  >(data, "Empty response") as AgentConfirmResponse;
 }
 
 // ----------------------------------------------------------------------------
@@ -343,7 +444,8 @@ export interface AgentConversation {
   brand_id: string | null;
   created_at: string;
   updated_at: string;
-  title_source?: "legacy" | "provisional" | "generated" | "manual" | "legacy_fallback";
+  title_source?:
+    "legacy" | "provisional" | "generated" | "manual" | "legacy_fallback";
   title_generation_version?: string | null;
   title_generated_at?: string | null;
 }
@@ -352,14 +454,16 @@ export interface AgentMessage {
   id: string;
   conversation_id: string;
   role: "user" | "assistant" | "tool";
-  content: {
-    text?: string;
-    structured?: unknown;
-    local_delivery?: "sending" | "sent" | "failed" | "stopped";
-    local_error?: string;
-    attachments?: AriSentAttachment[];
-    local_reveal?: boolean;
-  } | Record<string, unknown>;
+  content:
+    | {
+        text?: string;
+        structured?: unknown;
+        local_delivery?: "sending" | "sent" | "failed" | "stopped";
+        local_error?: string;
+        attachments?: AriSentAttachment[];
+        local_reveal?: boolean;
+      }
+    | Record<string, unknown>;
   client_turn_id: string | null;
   tool_calls: {
     tool_name: string;
@@ -384,23 +488,31 @@ export interface AgentUserProfileRow {
 export async function fetchConversations(): Promise<AgentConversation[]> {
   const { data, error } = await supabase
     .from("agent_conversations")
-    .select("id, title, brand_id, created_at, updated_at, title_source, title_generation_version, title_generated_at")
+    .select(
+      "id, title, brand_id, created_at, updated_at, title_source, title_generation_version, title_generated_at",
+    )
     .order("updated_at", { ascending: false })
     .limit(50);
   if (error) throw error;
   return (data ?? []) as AgentConversation[];
 }
 
-export async function fetchMessages(conversationId: string): Promise<AgentMessage[]> {
+export async function fetchMessages(
+  conversationId: string,
+): Promise<AgentMessage[]> {
   const [messagesResult, attachmentsResult] = await Promise.all([
     supabase
-    .from("agent_messages")
-    .select("id, conversation_id, role, content, tool_calls, tool_results, client_turn_id, created_at")
-    .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true }),
+      .from("agent_messages")
+      .select(
+        "id, conversation_id, role, content, tool_calls, tool_results, client_turn_id, created_at",
+      )
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true }),
     supabase
       .from("agent_attachments")
-      .select("id,message_id,original_filename,verified_mime,file_type,verified_size_bytes,display_order,state")
+      .select(
+        "id,message_id,original_filename,verified_mime,file_type,verified_size_bytes,display_order,state",
+      )
       .eq("conversation_id", conversationId)
       .eq("state", "ready")
       .order("display_order", { ascending: true }),
@@ -431,7 +543,9 @@ export async function fetchMessages(conversationId: string): Promise<AgentMessag
 }
 
 export async function fetchProfile(): Promise<AgentUserProfileRow | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) return null;
   const { data, error } = await supabase
     .from("agent_user_profile")
@@ -445,11 +559,17 @@ export async function fetchProfile(): Promise<AgentUserProfileRow | null> {
 export async function upsertProfile(
   patch: Partial<Omit<AgentUserProfileRow, "user_id">>,
 ): Promise<AgentUserProfileRow> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
   const { data, error } = await supabase
     .from("agent_user_profile")
-    .upsert({ user_id: user.id, ...patch, updated_at: new Date().toISOString() })
+    .upsert({
+      user_id: user.id,
+      ...patch,
+      updated_at: new Date().toISOString(),
+    })
     .select("*")
     .single();
   if (error) throw error;
@@ -457,22 +577,27 @@ export async function upsertProfile(
 }
 
 export async function acknowledgeDisclosure(): Promise<void> {
-  await upsertProfile({ ai_disclosure_acknowledged_at: new Date().toISOString() });
+  await upsertProfile({
+    ai_disclosure_acknowledged_at: new Date().toISOString(),
+  });
 }
 
-export async function deleteConversation(conversationId: string): Promise<void> {
-  const { data, error } = await supabase.functions.invoke<{ deleted?: boolean }>(
-    "agent-conversation",
-    { body: { action: "delete", conversation_id: conversationId } },
-  );
-  if (error || !data?.deleted) throw new Error("Conversation not found or already deleted");
+export async function deleteConversation(
+  conversationId: string,
+): Promise<void> {
+  const { data, error } = await supabase.functions.invoke<{
+    deleted?: boolean;
+  }>("agent-conversation", {
+    body: { action: "delete", conversation_id: conversationId },
+  });
+  if (error || !data?.deleted)
+    throw new Error("Conversation not found or already deleted");
 }
 
 export async function deleteAllAriData(): Promise<void> {
-  const { data, error } = await supabase.functions.invoke<{ deleted?: boolean }>(
-    "agent-conversation",
-    { body: { action: "delete_all" } },
-  );
+  const { data, error } = await supabase.functions.invoke<{
+    deleted?: boolean;
+  }>("agent-conversation", { body: { action: "delete_all" } });
   if (error || !data?.deleted) throw new Error("Couldn't delete Ari data");
 }
 
@@ -480,11 +605,13 @@ export async function renameAgentConversation(
   conversationId: string,
   title: string,
 ): Promise<AgentConversation> {
-  const { data, error } = await supabase.functions.invoke<{ conversation?: AgentConversation }>(
-    "agent-conversation",
-    { body: { action: "rename", conversation_id: conversationId, title } },
-  );
-  if (error || !data?.conversation) throw new Error("Couldn't rename this conversation.");
+  const { data, error } = await supabase.functions.invoke<{
+    conversation?: AgentConversation;
+  }>("agent-conversation", {
+    body: { action: "rename", conversation_id: conversationId, title },
+  });
+  if (error || !data?.conversation)
+    throw new Error("Couldn't rename this conversation.");
   return data.conversation;
 }
 
@@ -504,7 +631,10 @@ export async function regenerateAgentConversationTitle(
     },
   });
   if (error || !data?.conversation) {
-    throw new Error(data?.message ?? "Couldn’t update the title. Your previous title is unchanged.");
+    throw new Error(
+      data?.message ??
+        "Couldn’t update the title. Your previous title is unchanged.",
+    );
   }
   return data.conversation;
 }

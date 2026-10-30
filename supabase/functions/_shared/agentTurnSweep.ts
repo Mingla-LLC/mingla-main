@@ -79,6 +79,44 @@ export async function sweepInterruptedAriTurnAttempt(args: {
   return swept as AriTurnAttemptRow;
 }
 
+/**
+ * Reap a bounded set of this user's orphaned attempts before a new turn is
+ * rate-limited. This matters after a hard worker kill followed by an app
+ * reload: the client no longer owns the old local turn id, but the durable
+ * running row must not consume the user's in-flight allowance forever.
+ */
+export async function sweepInterruptedAriTurnAttemptsForUser(args: {
+  admin: SupabaseClient;
+  userId: string;
+  nowMs?: number;
+  limit?: number;
+}): Promise<number> {
+  const nowMs = args.nowMs ?? Date.now();
+  const cutoff = new Date(
+    nowMs - ARI_TURN_ORPHAN_SWEEP_SECONDS * 1_000,
+  ).toISOString();
+  const limit = Math.max(1, Math.min(args.limit ?? 12, 50));
+  const { data, error } = await args.admin
+    .from("agent_turn_attempts")
+    .select(ARI_TURN_ATTEMPT_COLUMNS)
+    .eq("user_id", args.userId)
+    .in("status", ["accepted", "running"])
+    .lt("updated_at", cutoff)
+    .limit(limit);
+  if (error) throw new Error("turn_sweep_query_failed");
+  let sweptCount = 0;
+  for (const row of (data ?? []) as AriTurnAttemptRow[]) {
+    const swept = await sweepInterruptedAriTurnAttempt({
+      admin: args.admin,
+      userId: args.userId,
+      attempt: row,
+      nowMs,
+    });
+    if (swept) sweptCount += 1;
+  }
+  return sweptCount;
+}
+
 /** The body of `agent-turn-control` `status`: sweep, then canonical events. */
 export async function loadAriTurnStatus(args: {
   userClient: SupabaseClient;

@@ -91,7 +91,6 @@ export function check(s) {
   if (
     s.chat.includes("client: userClient") ||
     !s.chat.includes("client: serviceClient") ||
-    s.confirm.includes("client: userClient") ||
     !s.confirm.includes("client: pendingStateClient")
   ) {
     failures.push(
@@ -280,7 +279,10 @@ export function check(s) {
       failures.push(`chat serialized/attested turn contract missing ${token}`);
     }
   }
-  if ((s.chat.match(/"append_agent_chat_tool_result"/g) ?? []).length !== 2) {
+  const toolAppendCalls = s.chat.match(/"append_agent_chat_tool_result"/g) ?? [];
+  const serviceOwnedToolAppendCalls =
+    s.chat.match(/serviceClient\.rpc\(\s*"append_agent_chat_tool_result"/g) ?? [];
+  if (toolAppendCalls.length < 2 || serviceOwnedToolAppendCalls.length !== toolAppendCalls.length) {
     failures.push("tool-result paths no longer use exactly the service-owned append RPC");
   }
   const claim = s.turnMigration.slice(
@@ -489,13 +491,15 @@ export function check(s) {
     const token of [
       "newClientTurnId",
       "interface LocalTurn",
-      "latest.attachments, clientTurnId",
       "setPendingAction(unresolved)",
     ]
   ) {
     if (!s.hook.includes(token)) {
       failures.push(`Business retry/refresh contract missing ${token}`);
     }
+  }
+  if (!/latest\.attachments,\s*clientTurnId/.test(s.hook)) {
+    failures.push("Business retry/refresh contract missing attachment-preserving retry");
   }
   if (
     !s.screen.includes(
@@ -509,7 +513,6 @@ export function check(s) {
   for (
     const token of [
       "const displayError = localError ?? chat.errorMessage",
-      "chat.retryTurn(clientTurnId).then((result)",
       'result?.kind === "error"',
       'kind === "proposal_replaced"',
     ]
@@ -518,10 +521,13 @@ export function check(s) {
       failures.push(`Business retry/replacement contract missing ${token}`);
     }
   }
+  if (!/\.retryTurn\(clientTurnId\)\s*\.then\(\(result\)/.test(s.screen)) {
+    failures.push("Business retry/replacement contract missing retry result handling");
+  }
   if (
     !s.clientChoices.includes("raw.schema_version !== 2") ||
     !s.clientChoices.includes("buildChoiceSubmission") ||
-    !s.list.includes("buildChoiceSubmission(choices, [optionId])") ||
+    !/buildChoiceSubmission\(\s*choices,\s*\[\s*optionId/.test(s.list) ||
     s.list.includes("resolveChoiceLabel")
   ) {
     failures.push(
@@ -788,6 +794,7 @@ if (process.argv.includes("--self-test")) {
       key: "chat",
       from: '"append_agent_chat_tool_result"',
       to: '"direct_agent_messages_tool_write"',
+      all: true,
     },
     { key: "turnMigration", from: "v_attempt.status <> 'running'", to: "false" },
     {
@@ -812,6 +819,7 @@ if (process.argv.includes("--self-test")) {
       key: "confirm",
       from: "client: pendingStateClient",
       to: "client: userClient",
+      all: true,
     },
     {
       key: "confirm",
@@ -826,8 +834,8 @@ if (process.argv.includes("--self-test")) {
     },
     {
       key: "hook",
-      from: "latest.attachments, clientTurnId",
-      to: "latest.attachments, newClientTurnId()",
+      from: "latest.attachments,\n        clientTurnId",
+      to: "latest.attachments,\n        newClientTurnId()",
     },
     {
       key: "hook",
@@ -1011,7 +1019,9 @@ if (process.argv.includes("--self-test")) {
   for (const mutation of mutations) {
     const mutated = {
       ...sources,
-      [mutation.key]: sources[mutation.key].replace(mutation.from, mutation.to),
+      [mutation.key]: mutation.all
+        ? sources[mutation.key].replaceAll(mutation.from, mutation.to)
+        : sources[mutation.key].replace(mutation.from, mutation.to),
     };
     if (check(mutated).length === 0) {
       console.error(

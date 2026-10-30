@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import test from "node:test";
 import path from "node:path";
 import { selectSuites } from "../ci-batch/run-suite-batch.mjs";
@@ -166,9 +167,13 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // `user_id`, the table's non-partial PRIMARY KEY from
   // `20271219003872_issue_3872_r2_referrals_foundation.sql`; census +2 (101).
   //
+  // #3355 Ari message feedback adds one service upsert on
+  // `ari_message_feedback(user_id,assistant_message_id)`, backed by the
+  // migration's unique constraint; census +1 (102).
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 101);
+  assert.equal(sites.length, 102);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&
@@ -215,6 +220,25 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
     ),
     true,
   );
+});
+
+test("does not treat generated Expo web bundles as runtime source", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "issue-1614-generated-bundle-"));
+  try {
+    const source = path.join(root, "mingla-business", "src", "runtime.ts");
+    const generated = path.join(root, "mingla-business", "web-build", "_expo", "static", "js", "web", "bundle.js");
+    fs.mkdirSync(path.dirname(source), { recursive: true });
+    fs.mkdirSync(path.dirname(generated), { recursive: true });
+    fs.writeFileSync(source, `db.from("runtime_table").upsert({}, { onConflict: "id" });`);
+    fs.writeFileSync(generated, `db.from("bundle_table").upsert({}, { onConflict: value });`);
+
+    assert.deepEqual(
+      enumerateRepository(root).map(({ table }) => table),
+      ["runtime_table"],
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("discovers future literals and rejects dynamic/unresolved/duplicate targets", () => {

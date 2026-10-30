@@ -255,6 +255,30 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   get_site_operation_status: role("marketing_manager", "brand"),
   list_site_versions: role("marketing_manager", "brand"),
   rollback_site: role("brand_admin", "brand"),
+  // #3355 — safe research, capability discovery and durable agent state.
+  // These remain caller-bound even though the loop may execute them without a
+  // separate confirmation: research is read-only; plan/memory writes affect
+  // Ari's own state, are reversible and are scoped again inside their RPCs.
+  search_public_web: role("self", "none"),
+  read_public_url: role("self", "none"),
+  inspect_public_social_profile: role("self", "none"),
+  search_capabilities: role("self", "none"),
+  request_tools: role("self", "none"),
+  get_onboarding_plan: role("self", "optional_brand"),
+  update_onboarding_plan: role("self", "optional_brand"),
+  list_memory_notes: role("self", "optional_brand"),
+  save_memory_note: role("self", "optional_brand"),
+  forget_memory_note: role("self", "none"),
+  open_handoff: role("self", "optional_brand"),
+  get_market_rules: role("self", "none"),
+  get_listing_type_capabilities: role("self", "none"),
+  build_host_onboarding_blueprint: role("self", "none"),
+  get_capability_inventory: role("self", "none"),
+  fetch_public_listing_page: role("self", "none"),
+  extract_listing_candidates: role("self", "none"),
+  manage_agent_job: role("self", "optional_brand"),
+  set_refund_policy: role("event_manager", "event"),
+  get_buyer_notice_status: role("event_manager", "event"),
 });
 
 function unavailable(): never {

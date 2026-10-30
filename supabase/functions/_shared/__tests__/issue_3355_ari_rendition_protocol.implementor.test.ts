@@ -144,6 +144,104 @@ Deno.test("#3355 confirmed tools produce a durable generic receipt", () => {
   assertFalse(JSON.stringify(receipt.blocks).includes("22222222"));
 });
 
+Deno.test("#3355 event receipts render proof without database internals", () => {
+  const receipt = buildToolReceiptRendition({
+    toolName: "create_event",
+    result: {
+      event: {
+        id: "11111111-1111-4111-8111-111111111111",
+        title: "Autumn Table",
+        slug: "draft-85ac85b6d8e84325",
+        status: "draft",
+        visibility: "draft",
+        created_by: "33333333-3333-4333-8333-333333333333",
+        created_at: "2026-10-29T18:51:38.201809+00:00",
+        theme: {
+          business_draft: {
+            requestedVisibility: "private",
+            when: {
+              date: "2026-11-14",
+              doorsOpen: "19:00",
+              timezone: "America/New_York",
+            },
+            tickets: [{
+              id: "ari-general-admission",
+              name: "General admission",
+              capacity: 20,
+              isFree: true,
+            }],
+          },
+        },
+      },
+    },
+    toolArgs: {
+      title: "Autumn Table",
+      start_at: "2026-11-15T00:00:00.000Z",
+      timezone: "America/New_York",
+      visibility: "private",
+    },
+    brandName: "Lantern Room",
+    pendingActionId: "22222222-2222-4222-8222-222222222222",
+    capabilities: CAPABILITIES,
+    envValue: "true",
+  });
+  assertExists(receipt);
+  const wire = JSON.stringify(receipt);
+  assert(wire.includes("Autumn Table"));
+  assert(wire.includes("Lantern Room"));
+  assert(wire.includes("Nov 14, 2026"));
+  assert(wire.includes("Draft — not published"));
+  assert(wire.includes("20 guests · Free"));
+  assert(wire.includes("remaining event details and cover"));
+  assertFalse(wire.includes("details, tickets and cover"));
+  for (
+    const leaked of [
+      "draft-85ac85b6d8e84325",
+      "11111111-1111-4111-8111-111111111111",
+      "33333333-3333-4333-8333-333333333333",
+      "created_by",
+      "created_at",
+      "2026-10-29T18:51:38.201809+00:00",
+    ]
+  ) {
+    assertFalse(wire.includes(leaked), `receipt leaked ${leaked}`);
+  }
+});
+
+Deno.test("#3355 event receipts preserve confirmed admission when the immediate result is empty", () => {
+  const receipt = buildToolReceiptRendition({
+    toolName: "create_event",
+    result: {
+      event: {
+        title: "Capacity Receipt Proof",
+        theme: {
+          business_draft: {
+            requestedVisibility: "private",
+            tickets: [],
+          },
+        },
+      },
+    },
+    toolArgs: {
+      title: "Capacity Receipt Proof",
+      tickets: [{
+        name: "General admission",
+        capacity: 20,
+        isFree: true,
+      }],
+    },
+    pendingActionId: "22222222-2222-4222-8222-222222222222",
+    capabilities: CAPABILITIES,
+    envValue: "true",
+  });
+
+  assertExists(receipt);
+  const wire = JSON.stringify(receipt);
+  assert(wire.includes("20 guests · Free"));
+  assert(wire.includes("details and cover"));
+  assertFalse(wire.includes("details, tickets and cover"));
+});
+
 Deno.test("#3355 real chat and confirmation paths persist negotiated renditions", async () => {
   const chat = await Deno.readTextFile(
     new URL("../../agent-chat/index.ts", import.meta.url),
@@ -157,5 +255,7 @@ Deno.test("#3355 real chat and confirmation paths persist negotiated renditions"
   assert(chat.includes("...(rendition ? { rendition } : {})"));
   assert(confirmation.includes("parseAriUiCapabilities(body.ari_ui)"));
   assert(confirmation.includes("buildToolReceiptRendition({"));
+  assert(confirmation.includes('tool.name === "create_event"'));
+  assert(confirmation.includes("deterministicEventTaskFinished"));
   assert(confirmation.includes("...(rendition ? { rendition } : {})"));
 });

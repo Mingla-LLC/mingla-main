@@ -20,12 +20,7 @@ export type AriRenditionTone = "default" | "warning" | "danger" | "success";
 export type AriRenditionStepState = "done" | "active" | "queued";
 export type AriRenditionActionStyle = "primary" | "secondary" | "danger";
 export type AriRenditionVisualState =
-  | "loading"
-  | "transitioning"
-  | "ready"
-  | "submitted"
-  | "error"
-  | "disabled";
+  "loading" | "transitioning" | "ready" | "submitted" | "error" | "disabled";
 
 export interface AriRenditionRowV1 {
   label: string;
@@ -52,7 +47,10 @@ export type AriRenditionActionBehaviorV1 =
   | { type: "external"; url: string }
   | { type: "confirm"; pending_action_id: string }
   | { type: "cancel"; pending_action_id: string }
-  | { type: "local"; command: "retry" | "stop" | "resume" | "copy" | "dismiss" };
+  | {
+      type: "local";
+      command: "retry" | "stop" | "resume" | "copy" | "dismiss";
+    };
 
 export interface AriRenditionActionV1 {
   id: string;
@@ -103,17 +101,48 @@ export interface AriRenditionSourceV2 extends AriRenditionOptionV1 {
 
 export type AriRenditionBlockV2 =
   | { type: "paragraph"; version: 1; id: string; text: string }
-  | { type: "list"; version: 1; id: string; title?: string; style: "bullet" | "numbered"; items: string[] }
+  | {
+      type: "list";
+      version: 1;
+      id: string;
+      title?: string;
+      style: "bullet" | "numbered";
+      items: string[];
+    }
   | { type: "key_value"; version: 1; id: string; rows: AriRenditionRowV1[] }
-  | { type: "metrics"; version: 1; id: string; items: { id: string; label: string; value: string; detail?: string }[] }
-  | { type: "table"; version: 1; id: string; columns: { id: string; label: string }[]; rows: { id: string; cells: Record<string, string> }[] }
+  | {
+      type: "metrics";
+      version: 1;
+      id: string;
+      items: { id: string; label: string; value: string; detail?: string }[];
+    }
+  | {
+      type: "table";
+      version: 1;
+      id: string;
+      columns: { id: string; label: string }[];
+      rows: { id: string; cells: Record<string, string> }[];
+    }
   | { type: "timeline"; version: 1; id: string; items: AriRenditionStepV1[] }
   | { type: "progress"; version: 1; id: string; value: number; label?: string }
-  | { type: "choices"; version: 1; id: string; selection: "single" | "multiple"; options: AriRenditionOptionV1[] }
+  | {
+      type: "choices";
+      version: 1;
+      id: string;
+      selection: "single" | "multiple";
+      options: AriRenditionOptionV1[];
+    }
   | { type: "input"; version: 1; id: string; field: AriRenditionFieldV1 }
   | { type: "code"; version: 1; id: string; code: string; language?: string }
   | { type: "sources"; version: 1; id: string; items: AriRenditionSourceV2[] }
-  | { type: "callout"; version: 1; id: string; tone: AriRenditionTone; title?: string; body: string };
+  | {
+      type: "callout";
+      version: 1;
+      id: string;
+      tone: AriRenditionTone;
+      title?: string;
+      body: string;
+    };
 
 export interface AriRenditionV2 {
   schema_version: 2;
@@ -132,9 +161,22 @@ export interface AriRenditionV2 {
 
 export type AriRendition = AriRenditionV1 | AriRenditionV2;
 
-const TONES = new Set<AriRenditionTone>(["default", "warning", "danger", "success"]);
-const STEP_STATES = new Set<AriRenditionStepState>(["done", "active", "queued"]);
-const ACTION_STYLES = new Set<AriRenditionActionStyle>(["primary", "secondary", "danger"]);
+const TONES = new Set<AriRenditionTone>([
+  "default",
+  "warning",
+  "danger",
+  "success",
+]);
+const STEP_STATES = new Set<AriRenditionStepState>([
+  "done",
+  "active",
+  "queued",
+]);
+const ACTION_STYLES = new Set<AriRenditionActionStyle>([
+  "primary",
+  "secondary",
+  "danger",
+]);
 const VISUAL_STATES = new Set<AriRenditionVisualState>([
   "loading",
   "transitioning",
@@ -144,13 +186,26 @@ const VISUAL_STATES = new Set<AriRenditionVisualState>([
   "disabled",
 ]);
 const LOCAL_COMMANDS = new Set(["retry", "stop", "resume", "copy", "dismiss"]);
-const GRAPHICS = new Set<AriRenditionGraphicVariant>(["event", "media", "site", "research", "social"]);
+const GRAPHICS = new Set<AriRenditionGraphicVariant>([
+  "event",
+  "media",
+  "site",
+  "research",
+  "social",
+]);
 const BLOCK_TYPES = new Set<string>(ARI_RENDITION_BLOCK_TYPES);
-const SAFE_ROUTE_PREFIXES = ["/ari", "/brand/", "/account", "/settings", "/profile", "/(tabs)/"];
+const SAFE_ROUTE_PREFIXES = [
+  "/ari",
+  "/brand/",
+  "/account",
+  "/settings",
+  "/profile",
+  "/(tabs)/",
+];
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : null;
 }
 
@@ -165,21 +220,125 @@ function optionalText(value: unknown, max: number): string | undefined {
   return text(value, max) ?? undefined;
 }
 
+const PUBLIC_DIAGNOSTIC_COPY: Readonly<Record<string, string>> = {
+  RESEARCH_NOT_CONFIGURED:
+    "Public research is temporarily unavailable. Try again or share a specific public page.",
+  RESEARCH_UNGROUNDED:
+    "I could not verify this with reliable public sources yet.",
+  TOOL_TIMEOUT: "This step took too long to finish. It is safe to try again.",
+  TOOL_UNAVAILABLE:
+    "This capability is temporarily unavailable. It is safe to try again.",
+  TOOL_FAILED: "This step could not be completed safely.",
+  PERMISSION_DENIED:
+    "You do not currently have permission to complete this step.",
+  INVALID_ARGUMENTS: "This step needs more information before it can continue.",
+  INVALID_ARGS: "This step needs more information before it can continue.",
+  UNAUTHENTICATED: "Your session needs to be refreshed.",
+};
+
+const INTERNAL_DIAGNOSTIC_SLUG =
+  /\b(?:[A-Z0-9]+_)+(?:ERROR|FAILED|UNAVAILABLE|NOT_CONFIGURED|DENIED|TIMEOUT|INVALID_ARGS|REQUIRED|STOPPED|UNAUTHENTICATED)(?:_[A-Z0-9]+)*\b/g;
+const INTERNAL_CODE_SLUG = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g;
+
+/**
+ * Persisted renditions can outlive the server release that created them. Keep
+ * diagnostic identifiers in the admin audit trail, never in the host thread.
+ */
+export function ariUserFacingRenditionText(value: string): string {
+  let publicText = value
+    .replace(
+      /\b(?:using|with)\s+the\s+tool\s+`?create_site_draft`?/gi,
+      "by preparing a website draft",
+    )
+    .replace(/`?create_site_draft`?/gi, "prepare a website draft")
+    .replace(/`?\/brand\/[0-9a-f-]{36}\/website`?/gi, "the Website screen")
+    .replace(
+      /`?\/brand\/[0-9a-f-]{36}(?:\/[a-z0-9/_-]+)?`?/gi,
+      "the relevant brand screen",
+    )
+    .replace(/\s*\(([A-Z0-9_]+)\)/g, (match, code: string) => {
+      INTERNAL_DIAGNOSTIC_SLUG.lastIndex = 0;
+      return PUBLIC_DIAGNOSTIC_COPY[code] || INTERNAL_DIAGNOSTIC_SLUG.test(code)
+        ? ""
+        : match;
+    });
+  for (const [code, copy] of Object.entries(PUBLIC_DIAGNOSTIC_COPY)) {
+    publicText = publicText.replace(new RegExp(`\\b${code}\\b`, "g"), copy);
+  }
+  const withoutDiagnostics = publicText
+    .replace(
+      INTERNAL_DIAGNOSTIC_SLUG,
+      (code) => PUBLIC_DIAGNOSTIC_COPY[code] ?? "This step needs attention.",
+    )
+    .replace(
+      INTERNAL_CODE_SLUG,
+      (code) => PUBLIC_DIAGNOSTIC_COPY[code] ?? "This step needs attention.",
+    )
+    .replace(/[^\S\r\n]{2,}/g, " ")
+    .replace(/\s+([.,:;!?])/g, "$1")
+    .trim();
+  return (
+    withoutDiagnostics || "This step needs attention before it can continue."
+  );
+}
+
+/**
+ * Assistant prose has no legitimate reason to display implementation-style
+ * snake_case identifiers. Keep rendition data values intact (for example a
+ * version id such as evt_v42), but apply this final defense to spoken replies.
+ */
+export function ariUserFacingReplyText(value: string): string {
+  return ariUserFacingRenditionText(value).replace(
+    /`?\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b`?/g,
+    (slug) => slug.replace(/`/g, "").split("_").join(" "),
+  );
+}
+
+function displayText(value: unknown, max: number): string | null {
+  const parsed = text(value, max);
+  return parsed ? ariUserFacingRenditionText(parsed) : null;
+}
+
+function optionalDisplayText(value: unknown, max: number): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  return displayText(value, max) ?? undefined;
+}
+
+const INTERNAL_ROW_LABEL =
+  /^(?:id|uuid|slug|created by|created at|updated at|deleted at|(?:brand|user|event|account|operation|pending action) id)$/i;
+const INTERNAL_ROW_VALUE =
+  /^(?:[0-9a-f]{8}-[0-9a-f-]{27,}|draft-[0-9a-f]{8,})$/i;
+
+function isInternalPresentationRow(value: unknown): boolean {
+  const row = record(value);
+  const label = text(row?.label, 120);
+  const rowValue = text(row?.value, 300);
+  return Boolean(
+    label &&
+    rowValue &&
+    (INTERNAL_ROW_LABEL.test(label) || INTERNAL_ROW_VALUE.test(rowValue)),
+  );
+}
+
 function id(value: unknown): string | null {
   const candidate = text(value, 80);
-  return candidate && /^[a-z0-9][a-z0-9:_-]*$/i.test(candidate) ? candidate : null;
+  return candidate && /^[a-z0-9][a-z0-9:_-]*$/i.test(candidate)
+    ? candidate
+    : null;
 }
 
 function parseOption(value: unknown): AriRenditionOptionV1 | null {
   const raw = record(value);
   if (!raw) return null;
   const optionId = id(raw.id);
-  const label = text(raw.label, 120);
+  const label = displayText(raw.label, 120);
   if (!optionId || !label) return null;
   return {
     id: optionId,
     label,
-    ...(optionalText(raw.detail, 240) ? { detail: optionalText(raw.detail, 240) } : {}),
+    ...(optionalDisplayText(raw.detail, 240)
+      ? { detail: optionalDisplayText(raw.detail, 240) }
+      : {}),
     ...(typeof raw.selected === "boolean" ? { selected: raw.selected } : {}),
   };
 }
@@ -187,25 +346,37 @@ function parseOption(value: unknown): AriRenditionOptionV1 | null {
 function parseField(value: unknown): AriRenditionFieldV1 | null {
   const source = record(value);
   const fieldId = id(source?.id);
-  const label = text(source?.label, 100);
-  const fieldValue = typeof source?.value === "string" && source.value.length <= 1000
-    ? source.value
-    : null;
+  const label = displayText(source?.label, 100);
+  const fieldValue =
+    typeof source?.value === "string" && source.value.length <= 1000
+      ? source.value
+      : null;
   if (!fieldId || !label || fieldValue === null) return null;
   return {
     id: fieldId,
     label,
     value: fieldValue,
-    ...(optionalText(source?.placeholder, 200) ? { placeholder: optionalText(source?.placeholder, 200) } : {}),
-    ...(typeof source?.editable === "boolean" ? { editable: source.editable } : {}),
-    ...(optionalText(source?.confirmationPhrase, 100) ? { confirmationPhrase: optionalText(source?.confirmationPhrase, 100) } : {}),
+    ...(optionalText(source?.placeholder, 200)
+      ? { placeholder: optionalText(source?.placeholder, 200) }
+      : {}),
+    ...(typeof source?.editable === "boolean"
+      ? { editable: source.editable }
+      : {}),
+    ...(optionalText(source?.confirmationPhrase, 100)
+      ? { confirmationPhrase: optionalText(source?.confirmationPhrase, 100) }
+      : {}),
   };
 }
-function parseOptions(value: unknown, max = 12): AriRenditionOptionV1[] | undefined {
+function parseOptions(
+  value: unknown,
+  max = 12,
+): AriRenditionOptionV1[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value) || value.length > max) return undefined;
   const parsed = value.map(parseOption);
-  return parsed.every((option): option is AriRenditionOptionV1 => option !== null)
+  return parsed.every(
+    (option): option is AriRenditionOptionV1 => option !== null,
+  )
     ? parsed
     : undefined;
 }
@@ -215,42 +386,62 @@ function parseAction(value: unknown): AriRenditionActionV1 | null {
   const rawBehavior = record(raw?.behavior);
   if (!raw || !rawBehavior) return null;
   const actionId = id(raw?.id);
-  const label = text(raw?.label, 100);
+  const label = displayText(raw?.label, 100);
   const style = raw?.style;
   const behaviorType = rawBehavior?.type;
-  if (!actionId || !label || !ACTION_STYLES.has(style as AriRenditionActionStyle)) return null;
+  if (
+    !actionId ||
+    !label ||
+    !ACTION_STYLES.has(style as AriRenditionActionStyle)
+  )
+    return null;
 
   let behavior: AriRenditionActionBehaviorV1 | null = null;
   if (behaviorType === "reply" || behaviorType === "submit") {
     const message = text(rawBehavior.message, 1000);
-    if (message) behavior = behaviorType === "reply"
-      ? { type: "reply", message }
-      : { type: "submit", message };
+    if (message)
+      behavior =
+        behaviorType === "reply"
+          ? { type: "reply", message }
+          : { type: "submit", message };
   } else if (behaviorType === "route") {
     const route = text(rawBehavior.route, 300);
     if (
-      route && route.startsWith("/") && !route.startsWith("//") &&
-      !route.includes("..") && SAFE_ROUTE_PREFIXES.some((prefix) => route === prefix || route.startsWith(prefix))
-    ) behavior = { type: "route", route };
+      route &&
+      route.startsWith("/") &&
+      !route.startsWith("//") &&
+      !route.includes("..") &&
+      SAFE_ROUTE_PREFIXES.some(
+        (prefix) => route === prefix || route.startsWith(prefix),
+      )
+    )
+      behavior = { type: "route", route };
   } else if (behaviorType === "external") {
     const url = text(rawBehavior.url, 1000);
     if (url) {
       try {
         const parsed = new URL(url);
-        if (parsed.protocol === "https:") behavior = { type: "external", url: parsed.toString() };
+        if (parsed.protocol === "https:")
+          behavior = { type: "external", url: parsed.toString() };
       } catch {
         behavior = null;
       }
     }
   } else if (behaviorType === "confirm" || behaviorType === "cancel") {
     const pendingActionId = id(rawBehavior.pending_action_id);
-    if (pendingActionId) behavior = behaviorType === "confirm"
-      ? { type: "confirm", pending_action_id: pendingActionId }
-      : { type: "cancel", pending_action_id: pendingActionId };
-  } else if (behaviorType === "local" && LOCAL_COMMANDS.has(rawBehavior.command as string)) {
+    if (pendingActionId)
+      behavior =
+        behaviorType === "confirm"
+          ? { type: "confirm", pending_action_id: pendingActionId }
+          : { type: "cancel", pending_action_id: pendingActionId };
+  } else if (
+    behaviorType === "local" &&
+    LOCAL_COMMANDS.has(rawBehavior.command as string)
+  ) {
     behavior = {
       type: "local",
-      command: rawBehavior.command as "retry" | "stop" | "resume" | "copy" | "dismiss",
+      command: rawBehavior.command as
+        "retry" | "stop" | "resume" | "copy" | "dismiss",
     };
   }
   if (!behavior) return null;
@@ -269,8 +460,8 @@ function parseAriRenditionV1(value: unknown): AriRenditionV1 | null {
   if (!raw || raw.schema_version !== 1) return null;
   const renditionId = id(raw.rendition_id);
   const kind = id(raw.kind);
-  const title = text(raw.title, 180);
-  const body = text(raw.body, 1500);
+  const title = displayText(raw.title, 180);
+  const body = displayText(raw.body, 1500);
   if (!renditionId || !kind || !title || !body) {
     return null;
   }
@@ -278,13 +469,16 @@ function parseAriRenditionV1(value: unknown): AriRenditionV1 | null {
   let rows: AriRenditionRowV1[] | undefined;
   if (raw.rows !== undefined) {
     if (!Array.isArray(raw.rows) || raw.rows.length > 12) return null;
-    const parsedRows = raw.rows.map((value): AriRenditionRowV1 | null => {
-      const row = record(value);
-      const label = text(row?.label, 120);
-      const valueText = text(row?.value, 300);
-      return label && valueText ? { label, value: valueText } : null;
-    });
-    if (!parsedRows.every((row): row is AriRenditionRowV1 => row !== null)) return null;
+    const parsedRows = raw.rows
+      .filter((value) => !isInternalPresentationRow(value))
+      .map((value): AriRenditionRowV1 | null => {
+        const row = record(value);
+        const label = displayText(row?.label, 120);
+        const valueText = displayText(row?.value, 300);
+        return label && valueText ? { label, value: valueText } : null;
+      });
+    if (!parsedRows.every((row): row is AriRenditionRowV1 => row !== null))
+      return null;
     rows = parsedRows;
   }
 
@@ -294,14 +488,18 @@ function parseAriRenditionV1(value: unknown): AriRenditionV1 | null {
     const parsedSteps = raw.steps.map((value): AriRenditionStepV1 | null => {
       const step = record(value);
       const stepId = id(step?.id);
-      const label = text(step?.label, 120);
-      const detail = text(step?.detail, 300);
+      const label = displayText(step?.label, 120);
+      const detail = displayText(step?.detail, 300);
       const state = step?.state;
-      return stepId && label && detail && STEP_STATES.has(state as AriRenditionStepState)
+      return stepId &&
+        label &&
+        detail &&
+        STEP_STATES.has(state as AriRenditionStepState)
         ? { id: stepId, label, detail, state: state as AriRenditionStepState }
         : null;
     });
-    if (!parsedSteps.every((step): step is AriRenditionStepV1 => step !== null)) return null;
+    if (!parsedSteps.every((step): step is AriRenditionStepV1 => step !== null))
+      return null;
     steps = parsedSteps;
   }
 
@@ -309,7 +507,12 @@ function parseAriRenditionV1(value: unknown): AriRenditionV1 | null {
   if (raw.actions !== undefined) {
     if (!Array.isArray(raw.actions) || raw.actions.length > 3) return null;
     const parsedActions = raw.actions.map(parseAction);
-    if (!parsedActions.every((action): action is AriRenditionActionV1 => action !== null)) return null;
+    if (
+      !parsedActions.every(
+        (action): action is AriRenditionActionV1 => action !== null,
+      )
+    )
+      return null;
     actions = parsedActions;
   }
 
@@ -323,18 +526,36 @@ function parseAriRenditionV1(value: unknown): AriRenditionV1 | null {
   const chips = parseOptions(raw.chips);
   const choices = parseOptions(raw.choices);
   const sources = parseOptions(raw.sources);
-  if ((raw.chips !== undefined && chips === undefined) ||
-      (raw.choices !== undefined && choices === undefined) ||
-      (raw.sources !== undefined && sources === undefined)) return null;
+  if (
+    (raw.chips !== undefined && chips === undefined) ||
+    (raw.choices !== undefined && choices === undefined) ||
+    (raw.sources !== undefined && sources === undefined)
+  )
+    return null;
 
   const tone = raw.tone;
   if (tone !== undefined && !TONES.has(tone as AriRenditionTone)) return null;
   const visualState = raw.state;
-  if (visualState !== undefined && !VISUAL_STATES.has(visualState as AriRenditionVisualState)) return null;
+  if (
+    visualState !== undefined &&
+    !VISUAL_STATES.has(visualState as AriRenditionVisualState)
+  )
+    return null;
   const progress = raw.progress;
-  if (progress !== undefined && (typeof progress !== "number" || !Number.isFinite(progress) || progress < 0 || progress > 100)) return null;
+  if (
+    progress !== undefined &&
+    (typeof progress !== "number" ||
+      !Number.isFinite(progress) ||
+      progress < 0 ||
+      progress > 100)
+  )
+    return null;
   const graphic = raw.graphic;
-  if (graphic !== undefined && !GRAPHICS.has(graphic as AriRenditionGraphicVariant)) return null;
+  if (
+    graphic !== undefined &&
+    !GRAPHICS.has(graphic as AriRenditionGraphicVariant)
+  )
+    return null;
 
   return {
     schema_version: 1,
@@ -342,10 +563,14 @@ function parseAriRenditionV1(value: unknown): AriRenditionV1 | null {
     kind,
     title,
     body,
-    ...(optionalText(raw.eyebrow, 100) ? { eyebrow: optionalText(raw.eyebrow, 100) } : {}),
+    ...(optionalDisplayText(raw.eyebrow, 100)
+      ? { eyebrow: optionalDisplayText(raw.eyebrow, 100) }
+      : {}),
     ...(tone ? { tone: tone as AriRenditionTone } : {}),
     ...(visualState ? { state: visualState as AriRenditionVisualState } : {}),
-    ...(optionalText(raw.transition_label, 160) ? { transition_label: optionalText(raw.transition_label, 160) } : {}),
+    ...(optionalDisplayText(raw.transition_label, 160)
+      ? { transition_label: optionalDisplayText(raw.transition_label, 160) }
+      : {}),
     ...(rows ? { rows } : {}),
     ...(chips ? { chips } : {}),
     ...(choices ? { choices } : {}),
@@ -353,7 +578,9 @@ function parseAriRenditionV1(value: unknown): AriRenditionV1 | null {
     ...(typeof progress === "number" ? { progress } : {}),
     ...(actions ? { actions } : {}),
     ...(field ? { field } : {}),
-    ...(optionalText(raw.code, 3000) ? { code: optionalText(raw.code, 3000) } : {}),
+    ...(optionalText(raw.code, 3000)
+      ? { code: optionalText(raw.code, 3000) }
+      : {}),
     ...(graphic ? { graphic: graphic as AriRenditionGraphicVariant } : {}),
     ...(sources ? { sources } : {}),
   };
@@ -361,13 +588,17 @@ function parseAriRenditionV1(value: unknown): AriRenditionV1 | null {
 
 function parseRows(value: unknown, max = 12): AriRenditionRowV1[] | null {
   if (!Array.isArray(value) || value.length > max) return null;
-  const rows = value.map((entry): AriRenditionRowV1 | null => {
-    const row = record(entry);
-    const label = text(row?.label, 120);
-    const valueText = text(row?.value, 300);
-    return label && valueText ? { label, value: valueText } : null;
-  });
-  return rows.every((row): row is AriRenditionRowV1 => row !== null) ? rows : null;
+  const rows = value
+    .filter((entry) => !isInternalPresentationRow(entry))
+    .map((entry): AriRenditionRowV1 | null => {
+      const row = record(entry);
+      const label = displayText(row?.label, 120);
+      const valueText = displayText(row?.value, 300);
+      return label && valueText ? { label, value: valueText } : null;
+    });
+  return rows.every((row): row is AriRenditionRowV1 => row !== null)
+    ? rows
+    : null;
 }
 
 function parseSteps(value: unknown, max = 12): AriRenditionStepV1[] | null {
@@ -375,14 +606,19 @@ function parseSteps(value: unknown, max = 12): AriRenditionStepV1[] | null {
   const steps = value.map((entry): AriRenditionStepV1 | null => {
     const step = record(entry);
     const stepId = id(step?.id);
-    const label = text(step?.label, 120);
-    const detail = text(step?.detail, 300);
+    const label = displayText(step?.label, 120);
+    const detail = displayText(step?.detail, 300);
     const state = step?.state;
-    return stepId && label && detail && STEP_STATES.has(state as AriRenditionStepState)
+    return stepId &&
+      label &&
+      detail &&
+      STEP_STATES.has(state as AriRenditionStepState)
       ? { id: stepId, label, detail, state: state as AriRenditionStepState }
       : null;
   });
-  return steps.every((step): step is AriRenditionStepV1 => step !== null) ? steps : null;
+  return steps.every((step): step is AriRenditionStepV1 => step !== null)
+    ? steps
+    : null;
 }
 
 function parseSource(value: unknown): AriRenditionSourceV2 | null {
@@ -404,10 +640,18 @@ function parseSource(value: unknown): AriRenditionSourceV2 | null {
   return {
     ...base,
     ...(url ? { url } : {}),
-    ...(optionalText(raw.publisher, 120) ? { publisher: optionalText(raw.publisher, 120) } : {}),
-    ...(optionalText(raw.published_at, 80) ? { published_at: optionalText(raw.published_at, 80) } : {}),
-    ...(optionalText(raw.accessed_at, 80) ? { accessed_at: optionalText(raw.accessed_at, 80) } : {}),
-    ...(optionalText(raw.excerpt, 500) ? { excerpt: optionalText(raw.excerpt, 500) } : {}),
+    ...(optionalDisplayText(raw.publisher, 120)
+      ? { publisher: optionalDisplayText(raw.publisher, 120) }
+      : {}),
+    ...(optionalText(raw.published_at, 80)
+      ? { published_at: optionalText(raw.published_at, 80) }
+      : {}),
+    ...(optionalText(raw.accessed_at, 80)
+      ? { accessed_at: optionalText(raw.accessed_at, 80) }
+      : {}),
+    ...(optionalDisplayText(raw.excerpt, 500)
+      ? { excerpt: optionalDisplayText(raw.excerpt, 500) }
+      : {}),
   };
 }
 
@@ -418,15 +662,31 @@ function parseBlock(value: unknown): AriRenditionBlockV2 | null | "unknown" {
   const blockId = id(raw.id);
   if (!blockId) return null;
   if (raw.type === "paragraph") {
-    const valueText = text(raw.text, 2000);
-    return valueText ? { type: "paragraph", version: 1, id: blockId, text: valueText } : null;
+    const valueText = displayText(raw.text, 2000);
+    return valueText
+      ? { type: "paragraph", version: 1, id: blockId, text: valueText }
+      : null;
   }
   if (raw.type === "list") {
     if (!Array.isArray(raw.items) || raw.items.length > 20) return null;
-    const items = raw.items.map((item) => text(item, 300));
-    const style = raw.style === "numbered" ? "numbered" : raw.style === "bullet" ? "bullet" : null;
+    const items = raw.items.map((item) => displayText(item, 300));
+    const style =
+      raw.style === "numbered"
+        ? "numbered"
+        : raw.style === "bullet"
+          ? "bullet"
+          : null;
     return style && items.every((item): item is string => item !== null)
-      ? { type: "list", version: 1, id: blockId, style, items, ...(optionalText(raw.title, 120) ? { title: optionalText(raw.title, 120) } : {}) }
+      ? {
+          type: "list",
+          version: 1,
+          id: blockId,
+          style,
+          items,
+          ...(optionalDisplayText(raw.title, 120)
+            ? { title: optionalDisplayText(raw.title, 120) }
+            : {}),
+        }
       : null;
   }
   if (raw.type === "key_value") {
@@ -438,25 +698,46 @@ function parseBlock(value: unknown): AriRenditionBlockV2 | null | "unknown" {
     const items = raw.items.map((entry) => {
       const item = record(entry);
       const itemId = id(item?.id);
-      const label = text(item?.label, 100);
-      const valueText = text(item?.value, 120);
+      const label = displayText(item?.label, 100);
+      const valueText = displayText(item?.value, 120);
       return itemId && label && valueText
-        ? { id: itemId, label, value: valueText, ...(optionalText(item?.detail, 200) ? { detail: optionalText(item?.detail, 200) } : {}) }
+        ? {
+            id: itemId,
+            label,
+            value: valueText,
+            ...(optionalDisplayText(item?.detail, 200)
+              ? { detail: optionalDisplayText(item?.detail, 200) }
+              : {}),
+          }
         : null;
     });
-    return items.every((item): item is NonNullable<typeof item> => item !== null)
+    return items.every(
+      (item): item is NonNullable<typeof item> => item !== null,
+    )
       ? { type: "metrics", version: 1, id: blockId, items }
       : null;
   }
   if (raw.type === "table") {
-    if (!Array.isArray(raw.columns) || raw.columns.length === 0 || raw.columns.length > 6 || !Array.isArray(raw.rows) || raw.rows.length > 20) return null;
+    if (
+      !Array.isArray(raw.columns) ||
+      raw.columns.length === 0 ||
+      raw.columns.length > 6 ||
+      !Array.isArray(raw.rows) ||
+      raw.rows.length > 20
+    )
+      return null;
     const columns = raw.columns.map((entry) => {
       const column = record(entry);
       const columnId = id(column?.id);
-      const label = text(column?.label, 80);
+      const label = displayText(column?.label, 80);
       return columnId && label ? { id: columnId, label } : null;
     });
-    if (!columns.every((column): column is NonNullable<typeof column> => column !== null)) return null;
+    if (
+      !columns.every(
+        (column): column is NonNullable<typeof column> => column !== null,
+      )
+    )
+      return null;
     const columnIds = new Set(columns.map((column) => column.id));
     const rows = raw.rows.map((entry) => {
       const row = record(entry);
@@ -466,11 +747,13 @@ function parseBlock(value: unknown): AriRenditionBlockV2 | null | "unknown" {
       const parsedCells: Record<string, string> = {};
       for (const [key, cell] of Object.entries(cells)) {
         if (!columnIds.has(key)) return null;
-        const cellText = text(cell, 240);
+        const cellText = displayText(cell, 240);
         if (!cellText) return null;
         parsedCells[key] = cellText;
       }
-      return Object.keys(parsedCells).length === columns.length ? { id: rowId, cells: parsedCells } : null;
+      return Object.keys(parsedCells).length === columns.length
+        ? { id: rowId, cells: parsedCells }
+        : null;
     });
     return rows.every((row): row is NonNullable<typeof row> => row !== null)
       ? { type: "table", version: 1, id: blockId, columns, rows }
@@ -481,14 +764,32 @@ function parseBlock(value: unknown): AriRenditionBlockV2 | null | "unknown" {
     return items ? { type: "timeline", version: 1, id: blockId, items } : null;
   }
   if (raw.type === "progress") {
-    return typeof raw.value === "number" && Number.isFinite(raw.value) && raw.value >= 0 && raw.value <= 100
-      ? { type: "progress", version: 1, id: blockId, value: raw.value, ...(optionalText(raw.label, 120) ? { label: optionalText(raw.label, 120) } : {}) }
+    return typeof raw.value === "number" &&
+      Number.isFinite(raw.value) &&
+      raw.value >= 0 &&
+      raw.value <= 100
+      ? {
+          type: "progress",
+          version: 1,
+          id: blockId,
+          value: raw.value,
+          ...(optionalDisplayText(raw.label, 120)
+            ? { label: optionalDisplayText(raw.label, 120) }
+            : {}),
+        }
       : null;
   }
   if (raw.type === "choices") {
     const options = parseOptions(raw.options, 12);
-    const selection = raw.selection === "single" ? "single" : raw.selection === "multiple" ? "multiple" : null;
-    return options && selection ? { type: "choices", version: 1, id: blockId, selection, options } : null;
+    const selection =
+      raw.selection === "single"
+        ? "single"
+        : raw.selection === "multiple"
+          ? "multiple"
+          : null;
+    return options && selection
+      ? { type: "choices", version: 1, id: blockId, selection, options }
+      : null;
   }
   if (raw.type === "input") {
     const field = parseField(raw.field);
@@ -496,19 +797,40 @@ function parseBlock(value: unknown): AriRenditionBlockV2 | null | "unknown" {
   }
   if (raw.type === "code") {
     const code = text(raw.code, 5000);
-    return code ? { type: "code", version: 1, id: blockId, code, ...(optionalText(raw.language, 40) ? { language: optionalText(raw.language, 40) } : {}) } : null;
+    return code
+      ? {
+          type: "code",
+          version: 1,
+          id: blockId,
+          code,
+          ...(optionalText(raw.language, 40)
+            ? { language: optionalText(raw.language, 40) }
+            : {}),
+        }
+      : null;
   }
   if (raw.type === "sources") {
     if (!Array.isArray(raw.items) || raw.items.length > 12) return null;
     const items = raw.items.map(parseSource);
-    return items.every((source): source is AriRenditionSourceV2 => source !== null)
+    return items.every(
+      (source): source is AriRenditionSourceV2 => source !== null,
+    )
       ? { type: "sources", version: 1, id: blockId, items }
       : null;
   }
   const tone = raw.tone;
-  const body = text(raw.body, 1000);
+  const body = displayText(raw.body, 1000);
   return body && TONES.has(tone as AriRenditionTone)
-    ? { type: "callout", version: 1, id: blockId, tone: tone as AriRenditionTone, body, ...(optionalText(raw.title, 120) ? { title: optionalText(raw.title, 120) } : {}) }
+    ? {
+        type: "callout",
+        version: 1,
+        id: blockId,
+        tone: tone as AriRenditionTone,
+        body,
+        ...(optionalDisplayText(raw.title, 120)
+          ? { title: optionalDisplayText(raw.title, 120) }
+          : {}),
+      }
     : null;
 }
 
@@ -517,25 +839,48 @@ function parseAriRenditionV2(value: unknown): AriRenditionV2 | null {
   if (!raw || raw.schema_version !== 2) return null;
   const renditionId = id(raw.rendition_id);
   const kind = id(raw.kind);
-  const title = text(raw.title, 180);
-  const body = text(raw.body, 1500);
-  if (!renditionId || !kind || !title || !body || !Array.isArray(raw.blocks) || raw.blocks.length > 24) return null;
+  const title = displayText(raw.title, 180);
+  const body = displayText(raw.body, 1500);
+  if (
+    !renditionId ||
+    !kind ||
+    !title ||
+    !body ||
+    !Array.isArray(raw.blocks) ||
+    raw.blocks.length > 24
+  )
+    return null;
   const parsedBlocks = raw.blocks.map(parseBlock);
   if (parsedBlocks.some((block) => block === null)) return null;
-  const blocks = parsedBlocks.filter((block): block is AriRenditionBlockV2 => block !== "unknown");
+  const blocks = parsedBlocks.filter(
+    (block): block is AriRenditionBlockV2 => block !== "unknown",
+  );
   let actions: AriRenditionActionV1[] | undefined;
   if (raw.actions !== undefined) {
     if (!Array.isArray(raw.actions) || raw.actions.length > 3) return null;
     const parsedActions = raw.actions.map(parseAction);
     // Content stays visible when an action is unsupported; unsafe controls do not.
-    if (parsedActions.every((action): action is AriRenditionActionV1 => action !== null)) actions = parsedActions;
+    if (
+      parsedActions.every(
+        (action): action is AriRenditionActionV1 => action !== null,
+      )
+    )
+      actions = parsedActions;
   }
   const tone = raw.tone;
   const visualState = raw.state;
   const graphic = raw.graphic;
   if (tone !== undefined && !TONES.has(tone as AriRenditionTone)) return null;
-  if (visualState !== undefined && !VISUAL_STATES.has(visualState as AriRenditionVisualState)) return null;
-  if (graphic !== undefined && !GRAPHICS.has(graphic as AriRenditionGraphicVariant)) return null;
+  if (
+    visualState !== undefined &&
+    !VISUAL_STATES.has(visualState as AriRenditionVisualState)
+  )
+    return null;
+  if (
+    graphic !== undefined &&
+    !GRAPHICS.has(graphic as AriRenditionGraphicVariant)
+  )
+    return null;
   return {
     schema_version: 2,
     rendition_id: renditionId,
@@ -543,10 +888,14 @@ function parseAriRenditionV2(value: unknown): AriRenditionV2 | null {
     title,
     body,
     blocks,
-    ...(optionalText(raw.eyebrow, 100) ? { eyebrow: optionalText(raw.eyebrow, 100) } : {}),
+    ...(optionalDisplayText(raw.eyebrow, 100)
+      ? { eyebrow: optionalDisplayText(raw.eyebrow, 100) }
+      : {}),
     ...(tone ? { tone: tone as AriRenditionTone } : {}),
     ...(visualState ? { state: visualState as AriRenditionVisualState } : {}),
-    ...(optionalText(raw.transition_label, 160) ? { transition_label: optionalText(raw.transition_label, 160) } : {}),
+    ...(optionalDisplayText(raw.transition_label, 160)
+      ? { transition_label: optionalDisplayText(raw.transition_label, 160) }
+      : {}),
     ...(graphic ? { graphic: graphic as AriRenditionGraphicVariant } : {}),
     ...(actions ? { actions } : {}),
   };
@@ -560,7 +909,9 @@ export function parseAriRendition(value: unknown): AriRendition | null {
   return null;
 }
 
-export function ariRenditionCopyText(rendition: AriRendition): string | undefined {
+export function ariRenditionCopyText(
+  rendition: AriRendition,
+): string | undefined {
   if (rendition.schema_version === 1) return rendition.code;
   return rendition.blocks.find((block) => block.type === "code")?.code;
 }
@@ -571,11 +922,12 @@ export function buildAriRenditionSubmission(input: {
   selectedOptionIds: string[];
   fieldValue: string;
 }): string {
-  const options = input.rendition.schema_version === 1
-    ? [...(input.rendition.chips ?? []), ...(input.rendition.choices ?? [])]
-    : input.rendition.blocks
-      .filter((block) => block.type === "choices")
-      .flatMap((block) => block.options);
+  const options =
+    input.rendition.schema_version === 1
+      ? [...(input.rendition.chips ?? []), ...(input.rendition.choices ?? [])]
+      : input.rendition.blocks
+          .filter((block) => block.type === "choices")
+          .flatMap((block) => block.options);
   const choiceLabels = options
     .filter((option) => input.selectedOptionIds.includes(option.id))
     .map((option) => option.label);
@@ -585,5 +937,7 @@ export function buildAriRenditionSubmission(input: {
       : "Continue",
     choiceLabels.length > 0 ? `Choices: ${choiceLabels.join(", ")}` : null,
     input.fieldValue.trim() ? `Response: ${input.fieldValue.trim()}` : null,
-  ].filter((part): part is string => !!part).join("\n");
+  ]
+    .filter((part): part is string => !!part)
+    .join("\n");
 }

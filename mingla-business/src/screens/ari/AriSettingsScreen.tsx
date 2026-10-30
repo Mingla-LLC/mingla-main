@@ -7,7 +7,15 @@
  */
 
 import React, { useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
@@ -25,13 +33,57 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useAriPreferences } from "../../hooks/useAriPreferences";
+import { useAriKnowledge } from "../../hooks/useAriKnowledge";
+import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import type {
+  AriAgentJob,
+  AriMemoryKind,
+  AriMemoryNote,
+} from "../../services/ariKnowledgeService";
+
+const MEMORY_KINDS: AriMemoryKind[] = [
+  "preference",
+  "business_fact",
+  "workflow",
+  "correction",
+];
+
+function jobErrorCopy(code: string): string {
+  if (code === "PERMISSION_DENIED") {
+    return "You do not currently have permission to complete this step.";
+  }
+  if (code === "UNAUTHENTICATED") {
+    return "Your session needs to be refreshed.";
+  }
+  if (code === "TOOL_TIMEOUT") {
+    return "This step took too long to finish. It is safe to try again.";
+  }
+  return "This step needs attention before it can continue.";
+}
+
+function labelForMemoryKind(kind: AriMemoryKind): string {
+  return kind.replace("_", " ").replace(/^./, (value) => value.toUpperCase());
+}
+
+function labelForJobStatus(status: AriAgentJob["status"]): string {
+  return status.replace("_", " ").replace(/^./, (value) => value.toUpperCase());
+}
 
 export const AriSettingsScreen: React.FC = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const prefs = useAriPreferences();
-  const [displayName, setDisplayName] = useState(prefs.profile?.display_name ?? "");
-  const [timezone, setTimezone] = useState(prefs.profile?.preferred_timezone ?? "");
+  const currentBrand = useCurrentBrand();
+  const knowledge = useAriKnowledge(currentBrand?.id ?? null);
+  const [displayName, setDisplayName] = useState(
+    prefs.profile?.display_name ?? "",
+  );
+  const [timezone, setTimezone] = useState(
+    prefs.profile?.preferred_timezone ?? "",
+  );
+  const [memoryKind, setMemoryKind] = useState<AriMemoryKind>("preference");
+  const [memoryDraft, setMemoryDraft] = useState("");
+  const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null);
 
   React.useEffect(() => {
     if (prefs.profile) {
@@ -48,7 +100,10 @@ export const AriSettingsScreen: React.FC = () => {
       });
       Alert.alert("Saved", "Your preferences are updated.");
     } catch (err) {
-      Alert.alert("Couldn't save", err instanceof Error ? err.message : "Unknown error");
+      Alert.alert(
+        "Couldn't save",
+        err instanceof Error ? err.message : "Unknown error",
+      );
     }
   };
 
@@ -64,7 +119,10 @@ export const AriSettingsScreen: React.FC = () => {
           onPress: async () => {
             try {
               await prefs.deleteAll();
-              Alert.alert("Deleted", "All Ari data for your account has been removed.");
+              Alert.alert(
+                "Deleted",
+                "All Ari data for your account has been removed.",
+              );
               router.back();
             } catch (err) {
               Alert.alert(
@@ -76,6 +134,83 @@ export const AriSettingsScreen: React.FC = () => {
         },
       ],
     );
+  };
+
+  const resetMemoryComposer = (): void => {
+    setEditingMemoryId(null);
+    setMemoryKind("preference");
+    setMemoryDraft("");
+  };
+
+  const handleSaveMemory = async (): Promise<void> => {
+    const content = memoryDraft.trim();
+    if (!content) return;
+    try {
+      if (editingMemoryId) {
+        await knowledge.updateMemory({
+          noteId: editingMemoryId,
+          kind: memoryKind,
+          content,
+        });
+      } else {
+        await knowledge.saveMemory({ kind: memoryKind, content });
+      }
+      resetMemoryComposer();
+    } catch (err) {
+      Alert.alert(
+        "Couldn't save memory",
+        err instanceof Error ? err.message : "Unknown error",
+      );
+    }
+  };
+
+  const beginMemoryEdit = (note: AriMemoryNote): void => {
+    setEditingMemoryId(note.id);
+    setMemoryKind(note.kind);
+    setMemoryDraft(note.content);
+  };
+
+  const handleForgetMemory = (note: AriMemoryNote): void => {
+    Alert.alert(
+      "Forget this memory?",
+      "Ari will stop using it in future conversations.",
+      [
+        { text: "Keep", style: "cancel" },
+        {
+          text: "Forget",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await knowledge.forgetMemory(note.id);
+              if (editingMemoryId === note.id) resetMemoryComposer();
+            } catch (err) {
+              Alert.alert(
+                "Couldn't forget memory",
+                err instanceof Error ? err.message : "Unknown error",
+              );
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleJobControl = async (
+    job: AriAgentJob,
+    action: "pause" | "resume" | "cancel",
+  ): Promise<void> => {
+    try {
+      await knowledge.controlJob({
+        jobId: job.id,
+        revision: job.revision,
+        action,
+      });
+    } catch (err) {
+      Alert.alert(
+        "Couldn't update task",
+        err instanceof Error ? err.message : "Unknown error",
+      );
+    }
   };
 
   return (
@@ -97,7 +232,9 @@ export const AriSettingsScreen: React.FC = () => {
         {/* Mode */}
         <Section title="Mode">
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>Co-pilot (always ask before writes)</Text>
+            <Text style={styles.rowLabel}>
+              Co-pilot (always ask before writes)
+            </Text>
             <Text style={styles.rowValue}>Active</Text>
           </View>
           <Text style={styles.hint}>
@@ -137,11 +274,204 @@ export const AriSettingsScreen: React.FC = () => {
           </Pressable>
         </Section>
 
+        <Section
+          title={`Ari memory${currentBrand ? ` · ${currentBrand.displayName}` : ""}`}
+        >
+          <Text style={styles.about}>
+            Review exactly what Ari may carry into future conversations. Brand
+            memories stay with the active brand; personal preferences can be
+            corrected or forgotten here.
+          </Text>
+          <View style={styles.kindRow}>
+            {MEMORY_KINDS.map((kind) => (
+              <Pressable
+                key={kind}
+                onPress={() => setMemoryKind(kind)}
+                style={({ pressed }) => [
+                  styles.kindChip,
+                  memoryKind === kind && styles.kindChipSelected,
+                  pressed && styles.pressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={`Show ${labelForMemoryKind(kind)} memories`}
+                accessibilityState={{ selected: memoryKind === kind }}
+              >
+                <Text
+                  style={[
+                    styles.kindChipText,
+                    memoryKind === kind && styles.kindChipTextSelected,
+                  ]}
+                >
+                  {labelForMemoryKind(kind)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <TextInput
+            value={memoryDraft}
+            onChangeText={setMemoryDraft}
+            multiline
+            maxLength={1200}
+            placeholder="What should Ari remember?"
+            placeholderTextColor={textTokens.tertiary}
+            style={styles.memoryInput}
+            accessibilityLabel="Memory content"
+          />
+          <View style={styles.inlineActions}>
+            {editingMemoryId ? (
+              <Pressable
+                onPress={resetMemoryComposer}
+                style={styles.secondaryAction}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel memory edit"
+              >
+                <Text style={styles.secondaryActionText}>Cancel edit</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={handleSaveMemory}
+              disabled={!memoryDraft.trim() || knowledge.isSaving}
+              accessibilityRole="button"
+              accessibilityLabel={
+                editingMemoryId ? "Update Ari memory" : "Save Ari memory"
+              }
+              accessibilityState={{
+                disabled: !memoryDraft.trim() || knowledge.isSaving,
+              }}
+              style={({ pressed }) => [
+                styles.primaryAction,
+                (!memoryDraft.trim() || knowledge.isSaving) && styles.disabled,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.primaryActionText}>
+                {editingMemoryId ? "Update memory" : "Remember this"}
+              </Text>
+            </Pressable>
+          </View>
+          {knowledge.isLoading ? (
+            <ActivityIndicator color={ariPalette.flame} />
+          ) : null}
+          {!knowledge.isLoading && knowledge.memory.length === 0 ? (
+            <Text style={styles.emptyText}>
+              Ari has no saved memories for this scope yet.
+            </Text>
+          ) : null}
+          {knowledge.memory.map((note) => (
+            <View key={note.id} style={styles.memoryCard}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.memoryKind}>
+                  {labelForMemoryKind(note.kind)}
+                </Text>
+                <Text style={styles.cardMeta}>
+                  {note.brand_id ? "This brand" : "All brands"}
+                </Text>
+              </View>
+              <Text style={styles.memoryContent}>{note.content}</Text>
+              <View style={styles.inlineActions}>
+                <Pressable
+                  onPress={() => beginMemoryEdit(note)}
+                  style={styles.textAction}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${labelForMemoryKind(note.kind)} memory`}
+                >
+                  <Text style={styles.textActionLabel}>Edit</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => handleForgetMemory(note)}
+                  style={styles.textAction}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Forget ${labelForMemoryKind(note.kind)} memory`}
+                >
+                  <Text style={styles.forgetLabel}>Forget</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </Section>
+
+        <Section title="Long-running tasks">
+          <Text style={styles.about}>
+            Ari keeps completed steps when you close the app. Pause, resume, or
+            cancel any unfinished task without repeating finished work.
+          </Text>
+          {!knowledge.isLoading && knowledge.jobs.length === 0 ? (
+            <Text style={styles.emptyText}>No saved Ari tasks yet.</Text>
+          ) : null}
+          {knowledge.jobs.map((job) => (
+            <View key={job.id} style={styles.memoryCard}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.jobTitle}>{job.goal_summary}</Text>
+                <View style={styles.statusPill}>
+                  <Text style={styles.statusText}>
+                    {labelForJobStatus(job.status)}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.cardMeta}>
+                {job.completed_step_keys.length} completed ·{" "}
+                {job.pending_step_keys.length} remaining
+              </Text>
+              {job.last_error_code ? (
+                <Text style={styles.errorText}>
+                  Needs attention: {jobErrorCopy(job.last_error_code)}
+                </Text>
+              ) : null}
+              {!["completed", "cancelled"].includes(job.status) ? (
+                <View style={styles.inlineActions}>
+                  {job.status === "paused" ? (
+                    <Pressable
+                      onPress={() => handleJobControl(job, "resume")}
+                      style={styles.primaryAction}
+                      disabled={knowledge.isControllingJob}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Resume ${job.goal_summary}`}
+                      accessibilityState={{
+                        disabled: knowledge.isControllingJob,
+                      }}
+                    >
+                      <Text style={styles.primaryActionText}>Resume</Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      onPress={() => handleJobControl(job, "pause")}
+                      style={styles.secondaryAction}
+                      disabled={knowledge.isControllingJob}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Pause ${job.goal_summary}`}
+                      accessibilityState={{
+                        disabled: knowledge.isControllingJob,
+                      }}
+                    >
+                      <Text style={styles.secondaryActionText}>Pause</Text>
+                    </Pressable>
+                  )}
+                  <Pressable
+                    onPress={() => handleJobControl(job, "cancel")}
+                    style={styles.textAction}
+                    disabled={knowledge.isControllingJob}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Cancel ${job.goal_summary}`}
+                    accessibilityState={{
+                      disabled: knowledge.isControllingJob,
+                    }}
+                  >
+                    <Text style={styles.forgetLabel}>Cancel task</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          ))}
+        </Section>
+
         {/* Privacy */}
         <Section title="Privacy">
           <Pressable
             onPress={handleDeleteAll}
-            style={({ pressed }) => [styles.destructiveBtn, pressed && styles.pressed]}
+            style={({ pressed }) => [
+              styles.destructiveBtn,
+              pressed && styles.pressed,
+            ]}
             accessibilityRole="button"
             accessibilityLabel="Delete all Ari data for my account"
           >
@@ -152,19 +482,24 @@ export const AriSettingsScreen: React.FC = () => {
         {/* About */}
         <Section title="About">
           <Text style={styles.about}>
-            Ari is powered by Mingla's AI. Your conversations are stored so Ari remembers context across
-            visits. Ari is not a financial, legal, or tax advisor.
+            {"Ari is powered by Mingla's AI. Your conversations are stored so "}
+            {"Ari remembers context across visits. Ari is not a financial, legal, "}
+            {"or tax advisor."}
           </Text>
         </Section>
 
         {__DEV__ ? (
           <Section title="Local preview">
             <Text style={styles.about}>
-              Inspect every Ari response, research, recovery, and memory state with deterministic local data.
+              Inspect every Ari response, research, recovery, and memory state
+              with deterministic local data.
             </Text>
             <Pressable
               onPress={() => router.push("/auth/ari-renditions" as never)}
-              style={({ pressed }) => [styles.previewBtn, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.previewBtn,
+                pressed && styles.pressed,
+              ]}
               accessibilityRole="button"
               accessibilityLabel="Open Ari rendition gallery"
             >
@@ -287,6 +622,148 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: glass.border.pending,
     minHeight: 44,
+  },
+  kindRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  kindChip: {
+    minHeight: 36,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    justifyContent: "center",
+    backgroundColor: canvas.discover,
+  },
+  kindChipSelected: {
+    backgroundColor: ariPalette.userBubble,
+    borderColor: ariPalette.userBubble,
+  },
+  kindChipText: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.secondary,
+  },
+  kindChipTextSelected: {
+    color: ariThread.onUserBubble,
+    fontWeight: "700",
+  },
+  memoryInput: {
+    minHeight: 88,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    color: textTokens.primary,
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    textAlignVertical: "top",
+    backgroundColor: canvas.discover,
+  },
+  inlineActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: spacing.sm,
+  },
+  primaryAction: {
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: ariPalette.userBubble,
+  },
+  primaryActionText: {
+    color: ariThread.onUserBubble,
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "700",
+  },
+  secondaryAction: {
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryActionText: {
+    color: textTokens.primary,
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+  },
+  disabled: {
+    opacity: 0.45,
+  },
+  emptyText: {
+    color: textTokens.tertiary,
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+  },
+  memoryCard: {
+    gap: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: glass.border.profileBase,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  memoryKind: {
+    color: textTokens.primary,
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "700",
+  },
+  memoryContent: {
+    color: textTokens.primary,
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+  },
+  cardMeta: {
+    color: textTokens.tertiary,
+    fontSize: typography.caption.fontSize,
+  },
+  textAction: {
+    minHeight: 40,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  textActionLabel: {
+    color: textTokens.primary,
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+  },
+  forgetLabel: {
+    color: semantic.error,
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+  },
+  jobTitle: {
+    flex: 1,
+    color: textTokens.primary,
+    fontSize: typography.body.fontSize,
+    fontWeight: "600",
+  },
+  statusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: glass.tint.profileElevated,
+  },
+  statusText: {
+    color: textTokens.secondary,
+    fontSize: typography.caption.fontSize,
+    fontWeight: "600",
+  },
+  errorText: {
+    color: semantic.error,
+    fontSize: typography.bodySm.fontSize,
   },
   saveBtn: {
     marginTop: spacing.sm,

@@ -202,6 +202,7 @@ export const NAV_GROUPS = [
     items: [
       { id: "platform-health",           label: "Platform health",    icon: "HeartPulse" },
       { id: "feature-flags",             label: "Feature flags",      icon: "Flag" },
+      { id: "ari-improvement-lab",       label: "Ari Improvement Lab", icon: "BrainCircuit" },
       { id: "settings",                  label: "Settings",           icon: "Settings" },
     ],
   },

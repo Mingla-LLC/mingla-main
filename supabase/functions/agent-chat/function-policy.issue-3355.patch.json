@@ -11,10 +11,34 @@
     {
       "op": "add_env_name",
       "classification": "optional_top_level",
+      "name": "ARI_EVAL_GEMINI_MODEL_ALLOWLIST",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "ARI_LOCAL_MODEL_BASE_URL",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "ARI_LOCAL_MODEL_ENABLED",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "ARI_LOCAL_MODEL_ID",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
       "name": "ARI_RENDITION_V2_ENABLED",
       "expectedAbsent": true
     }
   ],
-  "resultPolicySha256": "c1fb13b6591ec2ed15151df01ce5a197b3738fd3a43563ca71255df3f7419fca",
-  "reason": "Issue #3355 uses an optional fail-closed rollout flag for server-built Ari renditions; an unset value keeps v2 structured output disabled."
+  "resultPolicySha256": "ca31ceca2f4ab33af75d9109d20b98adc0c3c78abd58f1d96cc9f90c79aa5796",
+  "reason": "Issue #3355 uses optional fail-closed controls for server-built Ari renditions and explicitly configured local or evaluation models; unset values keep those paths disabled."
 }

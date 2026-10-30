@@ -5,33 +5,65 @@ import { LinearGradient } from "expo-linear-gradient";
 import { ariPalette, radius, spacing } from "../../../constants/designSystem";
 
 export type AriRenditionGraphicVariant =
-  | "event"
-  | "media"
-  | "site"
-  | "research"
-  | "social";
+  "event" | "media" | "site" | "research" | "social";
 
 interface Props {
   variant: AriRenditionGraphicVariant;
+  eyebrow?: string;
+  title?: string;
+  meta?: string;
 }
 
-const COPY: Record<AriRenditionGraphicVariant, { eyebrow: string; title: string; meta: string }> = {
-  event: { eyebrow: "FRIDAY · 7:30 PM", title: "Rooftop Sessions", meta: "Downtown Brooklyn" },
-  media: { eyebrow: "MEDIA REVIEW", title: "3 crops ready", meta: "Alt text · captions · attribution" },
-  site: { eyebrow: "PRIVATE PREVIEW", title: "Homepage draft v18", meta: "0 broken links · 1 alt-text fix" },
-  research: { eyebrow: "RESEARCH RUN", title: "6 sources checked", meta: "Web · X · YouTube · Mingla" },
-  social: { eyebrow: "PUBLIC PROFILE", title: "@rooftopsessions", meta: "Verified · refreshed today" },
+const COPY: Record<
+  AriRenditionGraphicVariant,
+  { eyebrow: string; title: string; meta: string }
+> = {
+  event: {
+    eyebrow: "EVENT PLAN",
+    title: "Event details",
+    meta: "Confirmed fields appear below",
+  },
+  media: {
+    eyebrow: "MEDIA REVIEW",
+    title: "Attached media",
+    meta: "Verified details appear below",
+  },
+  site: {
+    eyebrow: "WEBSITE PLAN",
+    title: "Site details",
+    meta: "Preview and verification appear below",
+  },
+  research: {
+    eyebrow: "PUBLIC RESEARCH",
+    title: "Evidence check",
+    meta: "Sources and freshness appear below",
+  },
+  social: {
+    eyebrow: "PUBLIC PROFILE",
+    title: "Profile evidence",
+    meta: "Public details appear below",
+  },
 };
 
-export const AriRenditionGraphic: React.FC<Props> = ({ variant }) => {
-  const copy = COPY[variant];
-  const colors: [string, string, string] = variant === "site"
-    ? ["#162d39", "#264b55", "#b35f2e"]
-    : variant === "research"
-      ? ["#1d223b", "#493667", "#bc6b38"]
-      : variant === "social"
-        ? ["#30203d", "#713f64", "#da7b43"]
-        : ["#3a2119", "#8e4826", "#d88955"];
+export const AriRenditionGraphic: React.FC<Props> = ({
+  variant,
+  eyebrow,
+  title,
+  meta,
+}) => {
+  const copy = {
+    eyebrow: eyebrow ?? COPY[variant].eyebrow,
+    title: title ?? COPY[variant].title,
+    meta: meta ?? COPY[variant].meta,
+  };
+  const colors: [string, string, string] =
+    variant === "site"
+      ? ["#162d39", "#264b55", "#b35f2e"]
+      : variant === "research"
+        ? ["#1d223b", "#493667", "#bc6b38"]
+        : variant === "social"
+          ? ["#30203d", "#713f64", "#da7b43"]
+          : ["#3a2119", "#8e4826", "#d88955"];
 
   return (
     <LinearGradient

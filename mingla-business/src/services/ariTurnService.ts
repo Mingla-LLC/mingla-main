@@ -17,6 +17,9 @@ export type AriActivityEventType =
   | "accepted"
   | "attachments_processing_started"
   | "model_started"
+  | "planning_started"
+  | "research_started"
+  | "verification_started"
   | "workspace_read_started"
   | "approved_action_started"
   | "automated_retry_started"
@@ -70,22 +73,30 @@ async function invokeTurnControl(
   return data;
 }
 
-export function fetchAriTurnStatus(clientTurnId: string): Promise<AriTurnStatusResult> {
+export function fetchAriTurnStatus(
+  clientTurnId: string,
+): Promise<AriTurnStatusResult> {
   return invokeTurnControl("status", clientTurnId);
 }
 
-export function stopAriTurn(clientTurnId: string): Promise<AriTurnStatusResult & { accepted?: boolean; changed?: boolean }> {
+export function stopAriTurn(
+  clientTurnId: string,
+): Promise<AriTurnStatusResult & { accepted?: boolean; changed?: boolean }> {
   return invokeTurnControl("cancel", clientTurnId);
 }
 
-export function retryAriTurn(clientTurnId: string): Promise<AriTurnStatusResult & { accepted?: boolean; changed?: boolean }> {
+export function retryAriTurn(
+  clientTurnId: string,
+): Promise<AriTurnStatusResult & { accepted?: boolean; changed?: boolean }> {
   return invokeTurnControl("retry", clientTurnId);
 }
 
 export function subscribeAriTurnActivity(
   clientTurnId: string,
   onEvent: (event: AriActivityEvent) => void,
-  onStatus?: (status: "SUBSCRIBED" | "CHANNEL_ERROR" | "TIMED_OUT" | "CLOSED") => void,
+  onStatus?: (
+    status: "SUBSCRIBED" | "CHANNEL_ERROR" | "TIMED_OUT" | "CLOSED",
+  ) => void,
 ): () => void {
   let channel: RealtimeChannel | null = supabase
     .channel(`ari-turn-${clientTurnId}`)

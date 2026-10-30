@@ -1,6 +1,7 @@
 // #2013 — append-only tenant-containment regression.
 import { assert, assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { READ_ONLY_TOOL_NAMES } from "../agentTools.ts";
+import { ARI_10X_READ_ONLY } from "../agentAri10xTools.ts";
 import {
   AccessibleAgentBrand,
   TENANT_SCOPED_READ_TOOL_NAMES,
@@ -17,8 +18,15 @@ const delegated: AccessibleAgentBrand = {
   default_currency: "USD", cover_media_url: null, role: "event_manager", effective_rank: 40,
 };
 
-Deno.test("#2013 registry covers every and only inline read tool", () => {
-  assertEquals([...TENANT_SCOPED_READ_TOOL_NAMES].sort(), [...READ_ONLY_TOOL_NAMES].sort());
+Deno.test("#2013 every inline read has an explicit tenant or Ari 10x scope", () => {
+  const classified = new Set([
+    ...TENANT_SCOPED_READ_TOOL_NAMES,
+    ...ARI_10X_READ_ONLY,
+  ]);
+  assertEquals([...classified].sort(), [...READ_ONLY_TOOL_NAMES].sort());
+  for (const name of ARI_10X_READ_ONLY) {
+    assert(!TENANT_SCOPED_READ_TOOL_NAMES.has(name), `${name} uses user/public or RPC authorization`);
+  }
 });
 
 Deno.test("#2013 owner and active member are accessible; foreign public brand fails closed", () => {
@@ -52,10 +60,10 @@ Deno.test("#2013 proposal-confirm rows share provenance and replay while v4 stay
   const confirmSource = await Deno.readTextFile("supabase/functions/agent-confirm-action/index.ts");
   assert(confirmSource.includes('import { TENANT_CONTEXT_VERSION }'));
   // [TEST-MOD-APPROVED #1985] #1972 remains the sole terminal-tool writer;
-  // #1985 adds one service-only assistant/state CAS attestation. These five
-  // values are four trusted RPC attestations plus the sole remaining direct
-  // assistant-message writer, never split terminal Edge inserts.
-  assertEquals(confirmSource.split("prompt_version: TENANT_CONTEXT_VERSION").length - 1, 5);
+  // #1985 adds one service-only assistant/state CAS attestation. Six values
+  // are four trusted RPC attestations plus two direct assistant-message
+  // writers, never split terminal Edge inserts.
+  assertEquals(confirmSource.split("prompt_version: TENANT_CONTEXT_VERSION").length - 1, 6);
   assertEquals(confirmSource.includes("PROMPT_VERSION"), false);
 
   const taskStateMigration = await Deno.readTextFile(

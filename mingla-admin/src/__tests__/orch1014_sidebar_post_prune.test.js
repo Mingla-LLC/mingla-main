@@ -77,6 +77,7 @@ const EXPECTED_IDS_POST_1014 = [
   // System
   "platform-health",
   "feature-flags",
+  "ari-improvement-lab",
   "settings",
 ];
 
