@@ -141,50 +141,21 @@ const LazyVenueSpotsSheet = React.lazy(async () => {
 export interface VenueMenuModuleProps {
   brandId: string | null;
   venueId?: string | null;
-  /**
-   * #1532 §5.6 — whether a guest can ACTUALLY see this menu on the public page.
-   *
-   * `"public"` (default, restaurants): the shipped promise is true.
-   * `"not_yet"` (a Stay): it is NOT. `PublicVenuePage.tsx:179` hard-codes
-   * `hasMenu = !isStay && …`, so a hotelier was told "Guests see your menu on
-   * your public page" by a module whose output no guest could ever reach — a
-   * write-only hole, and the single largest category leak in the Stay manager.
-   *
-   * Seth's decision was NOT to remove the module: "Stays get its own menu."
-   * Building that menu — what a hotel menu contains, where it renders for a
-   * guest, how it diverges from the restaurant tables — is #1536. What #1532
-   * owes an operator in the meantime is the truth, so this flag replaces the
-   * false promise with an honest interim state and leaves the authoring alone.
-   */
-  publicVisibility?: "public" | "not_yet";
   testID?: string;
 }
 
-/**
- * #1532 §5.6 — the promise, told honestly. One table so the empty state and
- * the populated intro can never claim different things about the same menu.
- */
 const MENU_VISIBILITY_COPY = {
-  public: {
-    emptyBody:
-      "Add categories and priced items. Guests see your menu on your public page.",
-    intro: "Your menu shows on your public venue page. Build it by category.",
-  },
-  not_yet: {
-    emptyBody:
-      "Add categories and priced items here. Guests can’t see a Stay menu on your public page yet — we’re building one made for hotels, and everything you add now will be waiting for it.",
-    intro:
-      "Guests can’t see a Stay menu on your public page yet — we’re building one made for hotels. Anything you add here is saved and will be waiting for it.",
-  },
+  emptyBody:
+    "Add categories and priced items. Guests see your menu on your public page.",
+  intro: "Your menu shows on your public venue page. Build it by category.",
 } as const;
 
 export function VenueMenuModule({
   brandId,
   venueId = null,
-  publicVisibility = "public",
   testID,
 }: VenueMenuModuleProps): React.ReactElement {
-  const visibilityCopy = MENU_VISIBILITY_COPY[publicVisibility];
+  const visibilityCopy = MENU_VISIBILITY_COPY;
   const network = useNetInfoSafe();
   const { width, fontScale } = useWindowDimensions();
   const stackItemRows =

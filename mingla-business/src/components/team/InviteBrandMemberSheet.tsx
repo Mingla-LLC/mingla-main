@@ -34,7 +34,11 @@ import {
   roleDisplayName,
 } from "../../utils/brandRole";
 import { useInviteBrandMember } from "../../hooks/useBrandInvitations";
-import { BrandInvitationServiceError } from "../../services/brandInvitationsService";
+import {
+  BrandInvitationServiceError,
+  type VenueAccessGrant,
+} from "../../services/brandInvitationsService";
+import type { VenueListing } from "../../services/venueListingsService";
 
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -42,6 +46,11 @@ import { Sheet } from "../ui/Sheet";
 import { Toast } from "../ui/Toast";
 
 import { RolePickerSheet } from "./RolePickerSheet";
+import {
+  isVenueAccessAssignable,
+  VenueAccessEditor,
+  VENUE_ACCESS_PROFILES,
+} from "./VenueAccessEditor";
 
 const NAME_MAX = 100;
 const EMAIL_MAX = 200;
@@ -58,6 +67,8 @@ export interface InviteBrandMemberSheetProps {
   /** Retained for prop compatibility with the call site (`team.tsx`); the
    * canonical invited_by is auth.uid() inside the edge fn. */
   operatorAccountId: string;
+  venues: VenueListing[];
+  initialVenueId?: string | null;
   onClose: () => void;
   /** Fires after a successful invite + email send. The detail param is
    * intentionally minimal — the team list refetches from the canonical
@@ -75,12 +86,15 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
   brandId,
   brandName,
   operatorAccountId: _operatorAccountId,
+  venues,
+  initialVenueId = null,
   onClose,
   onSuccess,
 }) => {
   const [name, setName] = useState<string>("");
   const [email, setEmail] = useState<string>("");
-  const [role, setRole] = useState<BrandRole>("event_manager");
+  const [role, setRole] = useState<BrandRole>("venue_staff");
+  const [venueGrants, setVenueGrants] = useState<VenueAccessGrant[]>([]);
   const [outgoingDisposition, setOutgoingDisposition] = useState<
     "leave" | "stay"
   >("leave");
@@ -95,18 +109,38 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
     if (visible) {
       setName("");
       setEmail("");
-      setRole("event_manager");
+      setRole("venue_staff");
+      const initialVenue = venues.find(
+        (venue) => venue.id === initialVenueId && isVenueAccessAssignable(venue),
+      );
+      setVenueGrants(initialVenue
+        ? [{
+            venueId: initialVenue.id,
+            profile: initialVenue.venueCategory === "stay"
+              ? "front_desk"
+              : "restaurant_manager",
+            capabilities: [
+              ...(initialVenue.venueCategory === "stay"
+                ? VENUE_ACCESS_PROFILES.front_desk
+                : VENUE_ACCESS_PROFILES.restaurant_manager),
+            ],
+          }]
+        : []);
       setRolePickerVisible(false);
       setRolePickerReadOnly(false);
       setToast(null);
     }
-  }, [visible]);
+  }, [visible, initialVenueId, venues]);
 
   // Validation.
   const trimmedNameLen = name.trim().length;
   const nameValid = trimmedNameLen >= 1 && trimmedNameLen <= NAME_MAX;
   const emailValid = isValidEmail(email);
-  const isValid = nameValid && emailValid;
+  const venueAccessValid = role !== "venue_staff" || (
+    venueGrants.length > 0 &&
+    venueGrants.every((grant) => grant.capabilities.length > 0)
+  );
+  const isValid = nameValid && emailValid && venueAccessValid;
   const canSubmit = !submitting && isValid;
 
   const handleConfirm = useCallback(async (): Promise<void> => {
@@ -118,6 +152,7 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
         inviteeEmail: email.trim().toLowerCase(),
         inviteeName: name.trim(),
         role,
+        venueGrants: role === "venue_staff" ? venueGrants : undefined,
         ...(role === "brand_owner"
           ? { outgoingDisposition }
           : {}),
@@ -132,6 +167,7 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
     email,
     name,
     role,
+    venueGrants,
     outgoingDisposition,
     brandId,
     inviteAsync,
@@ -157,6 +193,9 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
 
   const handlePickerSelect = useCallback((next: BrandRole): void => {
     setRole(next);
+    if (next !== "venue_staff") {
+      setVenueGrants([]);
+    }
     if (next !== "brand_owner") {
       setOutgoingDisposition("leave");
     }
@@ -261,6 +300,15 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
                 <Text style={styles.rolesExplainedText}>Roles explained</Text>
               </Pressable>
             </View>
+
+            {role === "venue_staff" ? (
+              <VenueAccessEditor
+                venues={venues}
+                grants={venueGrants}
+                onChange={setVenueGrants}
+                disabled={submitting}
+              />
+            ) : null}
 
             {role === "brand_owner" ? (
               <View style={styles.fieldGroup}>

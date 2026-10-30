@@ -26,6 +26,29 @@
 import { supabase } from "./supabase";
 import type { BrandRole } from "../utils/brandRole";
 
+export type VenueAccessProfile =
+  | "front_desk"
+  | "restaurant_manager"
+  | "kitchen_bar"
+  | "custom";
+
+export type VenueCapability =
+  | "stay.view_reservations"
+  | "stay.create_reservations"
+  | "stay.manage_reservations"
+  | "stay.view_availability"
+  | "restaurant.view_orders"
+  | "restaurant.manage_orders"
+  | "restaurant.manage_menu"
+  | "restaurant.manage_qr"
+  | "restaurant.manage_reservations";
+
+export interface VenueAccessGrant {
+  venueId: string;
+  profile: VenueAccessProfile;
+  capabilities: VenueCapability[];
+}
+
 // ---------- Types ----------
 
 export interface BrandInvitationRow {
@@ -42,6 +65,7 @@ export interface BrandInvitationRow {
   // ORCH-1111 — 'declined' is the new invitee-driven terminal state.
   status: "pending" | "accepted" | "revoked" | "expired" | "declined";
   created_at?: string;
+  venueGrants: VenueAccessGrant[];
 }
 
 /**
@@ -64,6 +88,7 @@ export interface BrandTeamMemberRow {
   invited_at: string;
   accepted_at: string | null;
   removed_at: string | null;
+  venueGrants: VenueAccessGrant[];
 }
 
 /** #3660 — outgoing owner choice when inviting brand_owner (stored on invite). */
@@ -80,6 +105,7 @@ export interface InviteBrandMemberInput {
   partnerSetup?: boolean;
   /** #3660 — when inviting brand_owner, outgoing owner chooses leave|stay. */
   outgoingDisposition?: OutgoingOwnerDisposition;
+  venueGrants?: VenueAccessGrant[];
 }
 
 export interface InviteBrandMemberResult {
@@ -170,6 +196,15 @@ export async function inviteBrandMember(
         ...(input.partnerSetup === true ? { partner_setup: true } : {}),
         ...(input.role === "brand_owner" && input.outgoingDisposition
           ? { outgoing_disposition: input.outgoingDisposition }
+          : {}),
+        ...(input.role === "venue_staff"
+          ? {
+              venue_grants: (input.venueGrants ?? []).map((grant) => ({
+                venue_id: grant.venueId,
+                access_profile: grant.profile,
+                capabilities: grant.capabilities,
+              })),
+            }
           : {}),
       },
     },
@@ -406,14 +441,20 @@ export async function listBrandInvitations(
   const { data, error } = await supabase
     .from("brand_invitations")
     .select(
-      "id, brand_id, email, invitee_name, role, invited_by, expires_at, accepted_at, accepted_by_account_id, revoked_at, status",
+      "id, brand_id, email, invitee_name, role, invited_by, expires_at, accepted_at, accepted_by_account_id, revoked_at, status, brand_invitation_venue_grants(venue_id, access_profile, capabilities)",
     )
     .eq("brand_id", brandId)
     .order("expires_at", { ascending: false });
   if (error) {
     throw new BrandInvitationServiceError("server", 500, error.message);
   }
-  return (data ?? []) as BrandInvitationRow[];
+  return (data ?? []).map((raw) => {
+    const row = raw as Record<string, unknown>;
+    return {
+      ...(row as unknown as Omit<BrandInvitationRow, "venueGrants">),
+      venueGrants: mapVenueGrants(row.brand_invitation_venue_grants),
+    };
+  });
 }
 
 export async function listBrandTeamMembers(
@@ -422,14 +463,67 @@ export async function listBrandTeamMembers(
   const { data, error } = await supabase
     .from("brand_team_members")
     .select(
-      "id, brand_id, user_id, role, invited_at, accepted_at, removed_at",
+      "id, brand_id, user_id, role, invited_at, accepted_at, removed_at, brand_team_member_venue_grants(venue_id, access_profile, capabilities)",
     )
     .eq("brand_id", brandId)
     .is("removed_at", null);
   if (error) {
     throw new BrandInvitationServiceError("server", 500, error.message);
   }
-  return (data ?? []) as BrandTeamMemberRow[];
+  return (data ?? []).map((raw) => {
+    const row = raw as Record<string, unknown>;
+    return {
+      ...(row as unknown as Omit<BrandTeamMemberRow, "venueGrants">),
+      venueGrants: mapVenueGrants(row.brand_team_member_venue_grants),
+    };
+  });
+}
+
+export async function updateBrandTeamMemberVenueGrants(
+  brandId: string,
+  memberId: string,
+  grants: VenueAccessGrant[],
+): Promise<void> {
+  const { error } = await supabase.rpc("issue_4188_set_member_venue_grants", {
+    p_brand_id: brandId,
+    p_member_id: memberId,
+    p_grants: grants.map((grant) => ({
+      venueId: grant.venueId,
+      profile: grant.profile,
+      capabilities: grant.capabilities,
+    })),
+  });
+  if (error) {
+    const code = error.message?.includes("forbidden")
+      ? "forbidden"
+      : error.message?.includes("member_not_found")
+        ? "member_not_found"
+        : error.message?.includes("invalid_venue_grants")
+          ? "invalid_venue_grants"
+          : "server";
+    throw new BrandInvitationServiceError(code, 400, error.message);
+  }
+}
+
+function mapVenueGrants(value: unknown): VenueAccessGrant[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw) => {
+    if (!raw || typeof raw !== "object") return [];
+    const row = raw as Record<string, unknown>;
+    if (
+      typeof row.venue_id !== "string" ||
+      typeof row.access_profile !== "string" ||
+      !Array.isArray(row.capabilities)
+    ) return [];
+    return [{
+      venueId: row.venue_id,
+      profile: row.access_profile as VenueAccessProfile,
+      capabilities: row.capabilities.filter(
+        (capability): capability is VenueCapability =>
+          typeof capability === "string",
+      ),
+    }];
+  });
 }
 
 /**

@@ -97,6 +97,52 @@ export const stayReservationService = {
     });
   },
 
+  createStaffGroup(input: {
+    quoteId: string;
+    idempotencyKey: string;
+    guest: StayGuestInput;
+    source: "phone" | "walk_in" | "website" | "instagram" | "mingla";
+    paymentMethod: "link" | "property";
+    sendEmail?: boolean;
+    sendSms?: boolean;
+    expectedQuoteVersion: number;
+  }): Promise<StayStaffReservationGroup> {
+    return invoke<StayStaffReservationGroup>({
+      action: "create_staff_group",
+      payload: {
+        quoteId: input.quoteId,
+        idempotencyKey: input.idempotencyKey,
+        guest: input.guest,
+        source: input.source,
+        paymentMethod: input.paymentMethod,
+        sendEmail: input.sendEmail === true,
+        sendSms: input.sendSms === true,
+      },
+      expectedVersion: input.expectedQuoteVersion,
+    });
+  },
+
+  rotateStaffPaymentLink(input: {
+    groupId: string;
+    sendEmail: boolean;
+    sendSms: boolean;
+  }): Promise<StayStaffReservationGroup> {
+    return invoke<StayStaffReservationGroup>({
+      action: "rotate_staff_payment_link",
+      payload: input,
+    });
+  },
+
+  revokeStaffPaymentLink(input: {
+    groupId: string;
+    reason: string;
+  }): Promise<StayStaffReservationGroup> {
+    return invoke<StayStaffReservationGroup>({
+      action: "revoke_staff_payment_link",
+      payload: input,
+    });
+  },
+
   approveRequest(input: {
     groupId: string;
     idempotencyKey: string;
@@ -169,7 +215,7 @@ export const stayReservationService = {
     reason: string;
     idempotencyKey: string;
   }): Promise<{
-    refundId: string;
+    refundId: string | null;
     groupId: string;
     state: string;
     amountMinor: string;

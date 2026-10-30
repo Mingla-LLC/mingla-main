@@ -6,6 +6,8 @@ import { handleStayReservations } from "./index.ts";
 
 Deno.env.set("SUPABASE_URL", "http://127.0.0.1:54321");
 Deno.env.set("SUPABASE_ANON_KEY", "test-anon-key");
+Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-service-key");
+Deno.env.set("BUSINESS_WEB_ORIGIN", "https://business.example.test");
 
 const venueId = "00000000-1426-4000-8000-000000000011";
 const groupId = "00000000-1426-4000-8000-000000000020";
@@ -149,7 +151,7 @@ Deno.test("Stay staff cancellation preview and commit keep exact server proof", 
   assertEquals(previewResponse.status, 200);
   assertEquals(cancelResponse.status, 200);
   assertObjectMatch(calls[0], {
-    name: "issue_1426_cancel_preview",
+    name: "issue_4188_cancel_preview",
     params: {
       p_group_id: groupId,
       p_selected_line_ids: [lineId],
@@ -158,13 +160,162 @@ Deno.test("Stay staff cancellation preview and commit keep exact server proof", 
     },
   });
   assertObjectMatch(calls[1], {
-    name: "issue_1426_cancel",
+    name: "issue_4188_cancel",
     params: {
       p_preview_id: previewId,
       p_preview_hash: previewHash,
       p_idempotency_key: "staff-cancel-1426",
       p_reason: "Guest requested a change",
       p_request_id: requestId,
+    },
+  });
+});
+
+Deno.test("Stay staff property creation forwards explicit collection truth", async () => {
+  const calls: Array<{ name: string; params: Record<string, unknown> }> = [];
+  const response = await handleStayReservations(
+    request({
+      action: "create_staff_group",
+      expectedVersion: 3,
+      payload: {
+        quoteId: "00000000-4188-4000-8000-000000000080",
+        idempotencyKey: "staff-create-group-4188",
+        source: "phone",
+        paymentMethod: "property",
+        sendEmail: false,
+        sendSms: false,
+        guest: {
+          name: "Nia Front Desk",
+          email: "nia@example.test",
+        },
+      },
+    }),
+    {
+      createRpcClient: () => ({
+        rpc: (name, params) => {
+          calls.push({ name, params });
+          return Promise.resolve({
+            data: {
+              groupId,
+              state: "confirmed",
+              paymentCollection: "property",
+            },
+            error: null,
+          });
+        },
+      }),
+    },
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(calls.length, 1);
+  assertObjectMatch(calls[0], {
+    name: "issue_4188_create_staff_stay_group",
+    params: {
+      p_quote_id: "00000000-4188-4000-8000-000000000080",
+      p_idempotency_key: "staff-create-group-4188",
+      p_source: "phone",
+      p_expected_quote_version: 3,
+      p_payment_method: "property",
+      p_token_hash: null,
+      p_send_email: false,
+      p_send_sms: false,
+      p_link_expires_at: null,
+      p_request_id: requestId,
+    },
+  });
+});
+
+Deno.test("Stay staff payment link records independent channel outcomes without exposing its token to RPC storage", async () => {
+  const staffCalls: Array<{ name: string; params: Record<string, unknown> }> =
+    [];
+  const serviceCalls: Array<{ name: string; params: Record<string, unknown> }> =
+    [];
+  const response = await handleStayReservations(
+    request({
+      action: "create_staff_group",
+      expectedVersion: 4,
+      payload: {
+        quoteId: "00000000-4188-4000-8000-000000000081",
+        idempotencyKey: "staff-payment-link-4188",
+        source: "website",
+        paymentMethod: "link",
+        sendEmail: true,
+        sendSms: true,
+        guest: {
+          name: "Link Guest",
+          email: "link@example.test",
+          phone: "+15555554188",
+        },
+      },
+    }),
+    {
+      createRpcClient: () => ({
+        rpc: (name, params) => {
+          staffCalls.push({ name, params });
+          return Promise.resolve({
+            data: {
+              groupId,
+              guest: {
+                name: "Link Guest",
+                email: "link@example.test",
+                phone: "+15555554188",
+              },
+              state: "approved_payment_required",
+              paymentCollection: "mingla",
+            },
+            error: null,
+          });
+        },
+      }),
+      createServiceRpcClient: () => ({
+        rpc: (name, params) => {
+          serviceCalls.push({ name, params });
+          return Promise.resolve({ data: null, error: null });
+        },
+      }),
+      sendPaymentLinkEmail: () =>
+        Promise.resolve({
+          ok: true,
+          status: "sent",
+          providerMessageId: "email-4188",
+        }),
+      sendPaymentLinkSms: () => Promise.reject(new Error("sms_provider_down")),
+    },
+  );
+  const body = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(body.data.paymentLinkDelivery, {
+    emailStatus: "sent",
+    smsStatus: "failed",
+  });
+  assertEquals(typeof body.data.paymentLinkUrl, "string");
+  assertEquals(
+    body.data.paymentLinkUrl.startsWith(
+      "https://business.example.test/stay/pay/",
+    ),
+    true,
+  );
+  assertEquals(staffCalls.length, 1);
+  assertEquals(
+    typeof staffCalls[0].params.p_token_hash === "string" &&
+      String(staffCalls[0].params.p_token_hash).startsWith("\\x"),
+    true,
+  );
+  assertEquals(
+    Object.values(staffCalls[0].params).includes(
+      body.data.paymentLinkUrl.split("/").at(-1),
+    ),
+    false,
+  );
+  assertObjectMatch(serviceCalls[0], {
+    name: "issue_4188_update_staff_link_delivery",
+    params: {
+      p_group_id: groupId,
+      p_email_status: "sent",
+      p_sms_status: "failed",
+      p_sms_error_code: "sms_provider_down",
     },
   });
 });

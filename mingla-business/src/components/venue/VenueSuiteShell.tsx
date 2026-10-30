@@ -51,6 +51,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useMyVenueAccess } from "../../hooks/useMyVenueAccess";
 import {
   useSetReservationsEnabled,
   useVenueReservationSettings,
@@ -94,6 +95,7 @@ import { deriveVenueRailModules } from "./venueRail";
 import { moduleSelfScrolls, venueScrollBottomPad } from "./venueShellScroll";
 import {
   deriveVenueModules,
+  filterVenueModulesForCapabilities,
   shouldLeaveBookingModule,
 } from "./venueModules";
 
@@ -162,10 +164,26 @@ export function VenueSuiteShell({
   // fails after a successful load keeps the last `data`, so that answer holds.)
   const settingsResolved = settingsQuery.data !== undefined;
   const setEnabled = useSetReservationsEnabled(brandId, venueId);
+  const venueAccessQuery = useMyVenueAccess(venueId);
+  const venueAccess = venueAccessQuery.data ?? {
+    scoped: true,
+    capabilities: [],
+  };
 
   const visibleModules = useMemo(
-    () => deriveVenueModules(reservationsEnabled),
-    [reservationsEnabled],
+    () => filterVenueModulesForCapabilities(
+      deriveVenueModules(
+        venueAccess.scoped && !settingsResolved ? true : reservationsEnabled,
+      ),
+      venueAccess.scoped,
+      venueAccess.capabilities,
+    ),
+    [
+      reservationsEnabled,
+      settingsResolved,
+      venueAccess.scoped,
+      venueAccess.capabilities,
+    ],
   );
 
   const [activeModule, setActiveModule] = useState<VenueModule>(initialModule);
@@ -403,6 +421,18 @@ export function VenueSuiteShell({
     }
   }, [activeModule, reservationsEnabled, settingsResolved, selectModule]);
 
+  useEffect(() => {
+    if (
+      !venueAccess.scoped ||
+      !venueAccessQuery.isFetched ||
+      visibleModules.includes(activeModule)
+    ) {
+      return;
+    }
+    const firstVisible = visibleModules[0];
+    if (firstVisible !== undefined) setActiveModule(firstVisible);
+  }, [activeModule, venueAccess.scoped, venueAccessQuery.isFetched, visibleModules]);
+
   // Bridge to the layout's pill row (native/web-phone REPLACE the Hub pills).
   const syncStore = useVenueSuiteStore((s) => s.sync);
   useEffect(() => {
@@ -563,6 +593,33 @@ export function VenueSuiteShell({
     return <VenueWaitlistModule brandId={brandId} venueId={venueId} />;
   };
 
+  if (!venueAccessQuery.isFetched) {
+    return (
+      <View style={styles.accessState} testID="venue-access-loading">
+        <ActivityIndicator />
+        <Text style={styles.accessBody}>Checking your venue access…</Text>
+      </View>
+    );
+  }
+  if (venueAccessQuery.isError || (venueAccess.scoped && visibleModules.length === 0)) {
+    return (
+      <View style={styles.accessState} testID="venue-access-unavailable">
+        <Text style={styles.accessTitle}>No venue pages assigned</Text>
+        <Text style={styles.accessBody}>
+          Ask a brand owner or admin to assign the restaurant pages you need.
+        </Text>
+        {venueAccessQuery.isError ? (
+          <Button
+            label="Try again"
+            onPress={() => void venueAccessQuery.refetch()}
+            variant="secondary"
+            size="md"
+          />
+        ) : null}
+      </View>
+    );
+  }
+
   // ----- Web desktop: two-column master rail + workspace. -----
   // Issue #1484 [stay-desktop-shell] — the layout itself now lives in the
   // SHARED `SuiteDesktopShell` (decision D2) so the Stay suite renders the
@@ -619,6 +676,15 @@ export function VenueSuiteShell({
 }
 
 const styles = StyleSheet.create({
+  accessState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+    gap: spacing.sm,
+  },
+  accessTitle: { ...typography.h2, color: textTokens.primary, textAlign: "center" },
+  accessBody: { ...typography.bodySm, color: textTokens.secondary, textAlign: "center" },
   // phone / native
   phoneHost: {
     flex: 1,

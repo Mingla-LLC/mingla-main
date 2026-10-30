@@ -43,6 +43,12 @@ describe("visibleTabsForRank", () => {
     expect(ids).toEqual(["home", "ari", "account"]);
   });
 
+  it("shows only Home and Account for venue-scoped staff", () => {
+    const visible = visibleTabsForRank(FULL_TABS, BRAND_ROLE_RANK.venue_staff);
+    expect(visible.map((tab) => tab.id)).toEqual(["home", "account"]);
+    expect(BRAND_ROLE_RANK.venue_staff).toBeLessThan(0);
+  });
+
   it("surfaces marketing for marketing_manager (rank 20)", () => {
     const visible = visibleTabsForRank(
       FULL_TABS,

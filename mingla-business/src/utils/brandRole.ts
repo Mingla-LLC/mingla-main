@@ -17,7 +17,8 @@ export type BrandRole =
   | "event_manager"
   | "finance_manager"
   | "marketing_manager"
-  | "scanner";
+  | "scanner"
+  | "venue_staff";
 
 /**
  * Rank values mirror SQL biz_role_rank() at
@@ -26,6 +27,10 @@ export type BrandRole =
  * Higher = more privilege. 0 = no membership.
  */
 export const BRAND_ROLE_RANK = {
+  // Deliberately below NO_MEMBERSHIP_RANK. The UI can distinguish a scoped
+  // operator from a brand-less user, while generic rank-threshold gates remain
+  // closed and only venue-capability checks can grant operational access.
+  venue_staff: -1,
   scanner: 10,
   marketing_manager: 20,
   finance_manager: 30,
@@ -50,6 +55,8 @@ export const roleDisplayName = (role: BrandRole): string => {
       return "Marketing manager";
     case "scanner":
       return "Scanner";
+    case "venue_staff":
+      return "Venue staff";
     default: {
       const _exhaust: never = role;
       return _exhaust;
@@ -71,6 +78,8 @@ export const roleDescription = (role: BrandRole): string => {
       return "Edit brand profile and public pages.";
     case "scanner":
       return "Scan tickets at the door (event-scoped).";
+    case "venue_staff":
+      return "Access only the selected venues and capabilities assigned by an admin.";
     default: {
       const _exhaust: never = role;
       return _exhaust;

@@ -27,6 +27,7 @@ import React, {
   useState,
 } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Platform,
   Pressable,
@@ -44,10 +45,12 @@ import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherShee
 import { BusinessTodoToggle } from "../../src/components/home/BusinessTodoToggle";
 import { BusinessPulsePanel } from "../../src/components/home/BusinessPulsePanel";
 import { HomeAdsSection } from "../../src/components/home/HomeAdsSection";
+import { VenueStaffHome } from "../../src/components/home/VenueStaffHome";
 import type { LiveCardMetrics } from "../../src/components/home/LiveOfferingCard";
 import { Toast } from "../../src/components/ui/Toast";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { TopBar } from "../../src/components/ui/TopBar";
+import { Button } from "../../src/components/ui/Button";
 // RecentRow is Home's rendering boundary for Recent covers and owns the shared
 // video-capable EventCoverMedia presentation; Home must not reimplement it.
 import { RecentRow } from "../../src/components/home/RecentRow";
@@ -694,6 +697,63 @@ export default function HomeTab(): React.ReactElement {
           ? "Updating…"
           : null;
 
+  const roleResolving = currentBrand !== null && (
+    role.isLoading || role.isAuthReady === false
+  );
+  const roleDenied = currentBrand !== null && (
+    role.isError || role.role === null
+  );
+  if (roleResolving || roleDenied) {
+    return (
+      <>
+        <View style={[styles.host, { paddingTop: insets.top }]}>
+          <View style={styles.barWrap}>
+            <TopBar
+              leftKind="brand"
+              onBrandTap={handleOpenSwitcher}
+              brandLoading={roleResolving}
+              rightSlot={null}
+            />
+          </View>
+          <View style={styles.roleGate} testID="home-role-gate">
+            {roleResolving ? <ActivityIndicator color={accent.warm} /> : null}
+            <Text style={styles.roleGateTitle}>
+              {roleResolving ? "Checking your access…" : "Brand access unavailable"}
+            </Text>
+            <Text style={styles.roleGateBody}>
+              {roleResolving
+                ? "Mingla is loading your exact role and venue permissions."
+                : "Your access may have changed. Retry or switch to another brand."}
+            </Text>
+            {roleDenied ? (
+              <View style={styles.roleGateActions}>
+                <Button
+                  label="Try again"
+                  onPress={() => void role.refetch()}
+                  variant="secondary"
+                  size="md"
+                />
+                <Button
+                  label="Switch brand"
+                  onPress={handleOpenSwitcher}
+                  variant="ghost"
+                  size="md"
+                />
+              </View>
+            ) : null}
+          </View>
+        </View>
+        <BrandSwitcherSheet
+          visible={sheetVisible}
+          onClose={handleCloseSheet}
+          onBrandCreated={handleBrandCreated}
+          onDefaultBrandSaveError={handleDefaultBrandSaveError}
+          onRequestDeleteBrand={handleRequestDeleteBrand}
+        />
+      </>
+    );
+  }
+
   // ORCH-1055: rank-10 scanner — render the door-only surface. All hooks
   // above have run unconditionally; this is a render-time branch, safe
   // under rules-of-hooks. rank<scanner (i.e. rank 0 / no membership)
@@ -701,6 +761,33 @@ export default function HomeTab(): React.ReactElement {
   // still drive onboarding.
   if (isScannerOnlyRank(callerRank)) {
     return <ScannerHome />;
+  }
+
+  if (role.role === "venue_staff" && currentBrand !== null) {
+    return (
+      <>
+        <VenueStaffHome
+          brandId={currentBrand.id}
+          brandName={currentBrand.displayName}
+          onBrandTap={handleOpenSwitcher}
+        />
+        <BrandSwitcherSheet
+          visible={sheetVisible}
+          onClose={handleCloseSheet}
+          onBrandCreated={handleBrandCreated}
+          onDefaultBrandSaveError={handleDefaultBrandSaveError}
+          onRequestDeleteBrand={handleRequestDeleteBrand}
+        />
+        <View style={styles.toastWrap} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            kind="info"
+            message={toast.message}
+            onDismiss={handleDismissToast}
+          />
+        </View>
+      </>
+    );
   }
 
   if (showFullRecent) {
@@ -1009,6 +1096,30 @@ const HomeBrandLoading: React.FC = () => (
 const styles = StyleSheet.create({
   host: {
     flex: 1,
+  },
+  roleGate: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+    gap: spacing.sm,
+  },
+  roleGateTitle: {
+    ...typography.h2,
+    color: textTokens.primary,
+    textAlign: "center",
+  },
+  roleGateBody: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+    textAlign: "center",
+    maxWidth: 420,
+  },
+  roleGateActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: spacing.sm,
   },
   brandLoading: {
     paddingHorizontal: spacing.md,

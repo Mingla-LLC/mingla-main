@@ -1,6 +1,15 @@
 /** Independent adversarial module lifecycle tests: use the real shell,
  * parser and UI bridge; stub only fetched settings and rendered child leaves. */
 import React from "react";
+
+jest.mock("../../../hooks/useMyVenueAccess", () => ({
+  useMyVenueAccess: () => ({
+    data: { scoped: false, capabilities: [] },
+    isFetched: true,
+    isError: false,
+    refetch: () => Promise.resolve(),
+  }),
+}));
 import { afterEach, beforeEach, expect, jest, test } from "@jest/globals";
 import type { VenueModule } from "../../../types/venueReservation";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

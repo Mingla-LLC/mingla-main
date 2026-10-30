@@ -80,7 +80,10 @@ jest.mock("../useBrandListShim", () => ({
   useBrandList: () => [],
 }));
 
-import { fetchCurrentBrandRole } from "../useCurrentBrandRole";
+import {
+  fetchCurrentBrandRole,
+  shouldUseLegacyStubBrandRole,
+} from "../useCurrentBrandRole";
 
 beforeEach(() => {
   tablesQueried.length = 0;
@@ -89,6 +92,30 @@ beforeEach(() => {
 });
 
 describe("#3602 fetchCurrentBrandRole — brand_owner synthesis from brands.account_id", () => {
+  test("#4188: legacy display-role fallback never elevates a loading or failed precise role", () => {
+    expect(shouldUseLegacyStubBrandRole({
+      dataResolved: false,
+      dataRole: null,
+      isLoading: true,
+      isError: false,
+      stubBrandRole: "admin",
+    })).toBe(false);
+    expect(shouldUseLegacyStubBrandRole({
+      dataResolved: false,
+      dataRole: null,
+      isLoading: false,
+      isError: true,
+      stubBrandRole: "admin",
+    })).toBe(false);
+    expect(shouldUseLegacyStubBrandRole({
+      dataResolved: true,
+      dataRole: null,
+      isLoading: false,
+      isError: false,
+      stubBrandRole: "admin",
+    })).toBe(true);
+  });
+
   test("T1-a (SC-1): owner with no membership row resolves to brand_owner, accepted", async () => {
     memberResult = { data: null, error: null };
     brandResult = { data: { account_id: "u1" }, error: null };

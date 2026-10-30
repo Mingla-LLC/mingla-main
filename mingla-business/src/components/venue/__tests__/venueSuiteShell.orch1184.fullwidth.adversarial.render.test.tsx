@@ -37,6 +37,15 @@
  */
 
 import React from "react";
+
+jest.mock("../../../hooks/useMyVenueAccess", () => ({
+  useMyVenueAccess: () => ({
+    data: { scoped: false, capabilities: [] },
+    isFetched: true,
+    isError: false,
+    refetch: () => Promise.resolve(),
+  }),
+}));
 import { Text, View } from "react-native";
 import { render, within } from "@testing-library/react-native";
 

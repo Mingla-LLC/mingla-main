@@ -83,6 +83,47 @@ describe("stayReservationService", () => {
     });
   });
 
+  it("creates a staff Stay group with explicit property-payment source truth", async () => {
+    invoke.mockResolvedValue({
+      data: {
+        kind: "success",
+        requestId: "request-4188",
+        data: {
+          groupId: "group-4188",
+          state: "confirmed",
+          bookingSource: "phone",
+          paymentCollection: "property",
+        },
+      },
+      error: null,
+    });
+
+    await stayReservationService.createStaffGroup({
+      quoteId: "quote-4188",
+      idempotencyKey: "staff-create-4188",
+      guest: { name: "Nia", email: "nia@example.test" },
+      source: "phone",
+      paymentMethod: "property",
+      expectedQuoteVersion: 2,
+    });
+
+    expect(invoke).toHaveBeenCalledWith("stay-reservations", {
+      body: {
+        action: "create_staff_group",
+        payload: {
+          quoteId: "quote-4188",
+          idempotencyKey: "staff-create-4188",
+          guest: { name: "Nia", email: "nia@example.test" },
+          source: "phone",
+          paymentMethod: "property",
+          sendEmail: false,
+          sendSms: false,
+        },
+        expectedVersion: 2,
+      },
+    });
+  });
+
   it("throws stable server code instead of returning a false success", async () => {
     invoke.mockResolvedValue({
       data: {

@@ -69,6 +69,8 @@ export interface StayGuestBookingProps {
   submitting?: boolean;
   errorMessage?: string | null;
   quote?: StayQuote | null;
+  checkoutContext?: "guest" | "staff";
+  staffPaymentMethod?: "link" | "property";
   onRetry?: () => void;
   onSubmit: (input: StayGuestCheckoutInput) => void | Promise<void>;
   renderPhoneField?: (args: {
@@ -110,6 +112,8 @@ export function StayGuestBooking({
   submitting = false,
   errorMessage = null,
   quote = null,
+  checkoutContext = "guest",
+  staffPaymentMethod = "property",
   onRetry,
   onSubmit,
   renderPhoneField,
@@ -323,7 +327,11 @@ export function StayGuestBooking({
           palette={palette}
         />
         <Text style={[styles.body, { color: palette.secondaryText }]}>
-          {quote.mode === "request"
+          {checkoutContext === "staff"
+            ? staffPaymentMethod === "link"
+              ? "This reservation will hold inventory for 24 hours while the guest pays through the secure Mingla link."
+              : "This reservation will be confirmed now. Payment is handled by the property, outside Mingla."
+            : quote.mode === "request"
             ? "This is a Request reservation. You will not be charged unless the Stay approves it."
             : `This price is held until ${new Date(quote.expiresAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}.`}
         </Text>
@@ -336,6 +344,8 @@ export function StayGuestBooking({
           label={
             submitting
               ? "Confirming…"
+              : checkoutContext === "staff"
+                ? "Confirm reservation"
               : quote.mode === "request"
                 ? "Send request"
                 : "Confirm and pay"
@@ -436,6 +446,16 @@ export function StayGuestBooking({
     }
     if (phoneRawValue.trim().length > 0 && cleanPhone.length === 0) {
       setValidationError("Select a country and enter a valid phone number.");
+      return;
+    }
+    if (
+      renderPhoneField === undefined &&
+      cleanPhone.length > 0 &&
+      !/^\+[1-9][0-9]{7,14}$/.test(cleanPhone)
+    ) {
+      setValidationError(
+        "Enter the phone in international format, including + and country code.",
+      );
       return;
     }
     if (cleanName.length < 1 || (cleanEmail.length < 3 && cleanPhone.length < 3)) {
@@ -655,7 +675,11 @@ export function StayGuestBooking({
             {selectionCount} {selectionCount === 1 ? "selection" : "selections"}
           </Text>
           <Text style={[styles.body, { color: palette.secondaryText }]}>
-            {mode === "request"
+            {checkoutContext === "staff"
+              ? staffPaymentMethod === "link"
+                ? "Mingla will confirm current inventory and show the exact total before creating a secure guest payment link."
+                : "Mingla will confirm current inventory and show the exact reservation total. The property handles payment."
+              : mode === "request"
               ? "This cart includes a Request item. Nothing is charged until the Stay approves it."
               : "Mingla will confirm current inventory and show the exact all-in total before payment."}
           </Text>
@@ -697,7 +721,7 @@ export function StayGuestBooking({
               value={phone}
               onChange={setPhone}
               palette={palette}
-              placeholder="+1 555 000 0000"
+              placeholder="+15550000000"
             />
           )}
           {validationError ?? roomAllocationError ?? errorMessage ? (
@@ -709,6 +733,8 @@ export function StayGuestBooking({
             label={
               submitting
                 ? "Checking availability…"
+                : checkoutContext === "staff"
+                  ? "Review reservation"
                 : mode === "request"
                   ? "Review request"
                   : "Review and reserve"

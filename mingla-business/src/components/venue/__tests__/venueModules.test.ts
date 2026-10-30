@@ -9,6 +9,7 @@
 
 import {
   deriveVenueModules,
+  filterVenueModulesForCapabilities,
   isBookingModule,
   VENUE_BOOKING_MODULES,
 } from "../venueModules";
@@ -86,5 +87,33 @@ describe("deriveVenueModules", () => {
     // Issue #1735 (append-only): insights is command-band, NOT a booking
     // module — the snap-to-overview guard never fires on it either.
     expect(isBookingModule("insights")).toBe(false);
+  });
+});
+
+describe("#4188 venue-scoped module filtering", () => {
+  const all = deriveVenueModules(true);
+
+  it("leaves the administrator module registry unchanged", () => {
+    expect(filterVenueModulesForCapabilities(all, false, [])).toEqual(all);
+  });
+
+  it("shows kitchen staff Orders but not settings, insights, or booking", () => {
+    expect(filterVenueModulesForCapabilities(
+      all,
+      true,
+      ["restaurant.view_orders", "restaurant.manage_orders"],
+    )).toEqual(["orders"]);
+  });
+
+  it("maps restaurant reservation authority to the complete booking workspace", () => {
+    expect(filterVenueModulesForCapabilities(
+      all,
+      true,
+      ["restaurant.manage_reservations"],
+    )).toEqual(["tables", "availability", "reservations", "waitlist"]);
+  });
+
+  it("fails closed with no page when a scoped grant has no usable capability", () => {
+    expect(filterVenueModulesForCapabilities(all, true, [])).toEqual([]);
   });
 });

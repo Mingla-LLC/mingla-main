@@ -4,6 +4,8 @@ import {
   type PreparedStayPayment,
   type StayPaymentSession,
 } from "../_shared/stayPaymentProvider.ts";
+import { emailAdapter } from "../_shared/adapters/emailAdapter.ts";
+import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,6 +19,9 @@ const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/;
 const actions = new Set([
   "quote",
   "create_group",
+  "create_staff_group",
+  "rotate_staff_payment_link",
+  "revoke_staff_payment_link",
   "approve_request",
   "decline_request",
   "get_group",
@@ -63,7 +68,117 @@ export type StayReservationsDependencies = {
     prepared: PreparedStayPayment,
     idempotencyKey: string,
   ) => Promise<StayPaymentSession>;
+  sendPaymentLinkEmail?: typeof emailAdapter.send;
+  sendPaymentLinkSms?: typeof smsAdapter.send;
 };
+
+function paymentLinkOrigin(): string | null {
+  const raw = Deno.env.get("BUSINESS_WEB_ORIGIN") ??
+    Deno.env.get("MINGLA_PUBLIC_WEB_BASE_URL") ?? "";
+  if (!/^https:\/\/[^\s/]+(?::\d+)?$/.test(raw)) return null;
+  return raw.replace(/\/$/, "");
+}
+
+async function mintPaymentLink(): Promise<{
+  token: string;
+  tokenHash: string;
+  expiresAt: string;
+}> {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const token = btoa(String.fromCharCode(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/g, "");
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token)),
+  );
+  const tokenHash = `\\x${
+    [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("")
+  }`;
+  return {
+    token,
+    tokenHash,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  };
+}
+
+async function deliverStaffPaymentLink(input: {
+  groupId: string;
+  guest: Record<string, unknown>;
+  url: string;
+  sendEmail: boolean;
+  sendSms: boolean;
+  requestId: string;
+  service: RpcClient;
+  dependencies: StayReservationsDependencies;
+}): Promise<{ emailStatus: string; smsStatus: string }> {
+  const email = typeof input.guest.email === "string"
+    ? input.guest.email.trim()
+    : "";
+  const phone = typeof input.guest.phone === "string"
+    ? input.guest.phone.trim()
+    : "";
+  const guestName = typeof input.guest.name === "string"
+    ? input.guest.name.trim()
+    : "Guest";
+  let emailResult: Awaited<ReturnType<typeof emailAdapter.send>> | null = null;
+  let smsResult: Awaited<ReturnType<typeof smsAdapter.send>> | null = null;
+  let emailThrown: string | null = null;
+  let smsThrown: string | null = null;
+  if (input.sendEmail) {
+    try {
+      emailResult = await (
+        input.dependencies.sendPaymentLinkEmail ?? emailAdapter.send
+      )({
+        to: email,
+        title: "Complete your Stay reservation",
+        body:
+          `Hi ${guestName},\n\nYour Stay reservation is being held for 24 hours. Use the secure link below to pay and confirm it.`,
+        cta: { label: "Pay securely", url: input.url },
+        idempotencyKey: `stay-staff-link:${input.groupId}:${input.requestId}`,
+      });
+    } catch (error) {
+      emailThrown = error instanceof Error ? error.message : "send_failed";
+    }
+  }
+  if (input.sendSms) {
+    try {
+      smsResult = await (
+        input.dependencies.sendPaymentLinkSms ?? smsAdapter.send
+      )({
+        to: phone,
+        brandName: "Mingla",
+        message:
+          `Mingla: complete your Stay reservation securely: ${input.url}`,
+        messageType: "transactional",
+      });
+    } catch (error) {
+      smsThrown = error instanceof Error ? error.message : "send_failed";
+    }
+  }
+  const emailStatus = !input.sendEmail
+    ? "not_requested"
+    : emailResult?.status === "sent"
+    ? "sent"
+    : "failed";
+  const smsStatus = !input.sendSms
+    ? "not_requested"
+    : smsResult?.status === "sent"
+    ? "sent"
+    : "failed";
+  await input.service.rpc("issue_4188_update_staff_link_delivery", {
+    p_group_id: input.groupId,
+    p_email_status: emailStatus,
+    p_sms_status: smsStatus,
+    p_email_error_code: emailStatus === "failed"
+      ? emailResult?.error ?? emailThrown ?? "send_failed"
+      : null,
+    p_sms_error_code: smsStatus === "failed"
+      ? smsResult?.error ?? smsThrown ?? "send_failed"
+      : null,
+  });
+  return { emailStatus, smsStatus };
+}
 
 async function captureInventoryChangedAlert(
   error: RpcError,
@@ -140,10 +255,18 @@ function validAdMatchData(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const data = value as Record<string, unknown>;
   const allowed = new Set([
-    "fbp", "fbc", "scid", "ttp", "clientUserAgent", "trackingOptOut",
+    "fbp",
+    "fbc",
+    "scid",
+    "ttp",
+    "clientUserAgent",
+    "trackingOptOut",
   ]);
   if (Object.keys(data).some((key) => !allowed.has(key))) return false;
-  if (data.trackingOptOut !== undefined && typeof data.trackingOptOut !== "boolean") return false;
+  if (
+    data.trackingOptOut !== undefined &&
+    typeof data.trackingOptOut !== "boolean"
+  ) return false;
   return ["fbp", "fbc", "scid", "ttp", "clientUserAgent"].every((key) =>
     data[key] === undefined || data[key] === null ||
     (typeof data[key] === "string" && (data[key] as string).length <= 1024)
@@ -154,20 +277,36 @@ function validGuest(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const guest = value as Record<string, unknown>;
   const keys = Object.keys(guest);
-  if (keys.some((key) => !["name", "email", "phone", "phoneCountryIso"].includes(key))) {
+  if (
+    keys.some((key) =>
+      !["name", "email", "phone", "phoneCountryIso"].includes(key)
+    )
+  ) {
     return false;
   }
-  if (typeof guest.name !== "string" || guest.name.trim().length < 1) return false;
-  if (guest.email !== undefined && guest.email !== null && typeof guest.email !== "string") return false;
-  if (guest.phone !== undefined && guest.phone !== null && (
-    typeof guest.phone !== "string" || !STRICT_E164.test(guest.phone.trim())
-  )) return false;
-  if (guest.phoneCountryIso !== undefined && guest.phoneCountryIso !== null && (
-    typeof guest.phoneCountryIso !== "string" || !COUNTRY_ISO.test(guest.phoneCountryIso)
-  )) return false;
+  if (typeof guest.name !== "string" || guest.name.trim().length < 1) {
+    return false;
+  }
+  if (
+    guest.email !== undefined && guest.email !== null &&
+    typeof guest.email !== "string"
+  ) return false;
+  if (
+    guest.phone !== undefined && guest.phone !== null && (
+      typeof guest.phone !== "string" || !STRICT_E164.test(guest.phone.trim())
+    )
+  ) return false;
+  if (
+    guest.phoneCountryIso !== undefined && guest.phoneCountryIso !== null && (
+      typeof guest.phoneCountryIso !== "string" ||
+      !COUNTRY_ISO.test(guest.phoneCountryIso)
+    )
+  ) return false;
   if (guest.phoneCountryIso != null && guest.phone == null) return false;
-  const hasEmail = typeof guest.email === "string" && guest.email.trim().length >= 3;
-  const hasPhone = typeof guest.phone === "string" && STRICT_E164.test(guest.phone.trim());
+  const hasEmail = typeof guest.email === "string" &&
+    guest.email.trim().length >= 3;
+  const hasPhone = typeof guest.phone === "string" &&
+    STRICT_E164.test(guest.phone.trim());
   return hasEmail || hasPhone;
 }
 
@@ -220,6 +359,42 @@ function validPayload(value: unknown): value is RequestBody {
       body.expectedVersion !== undefined &&
       body.expectedVersion !== null &&
       validGuest(payload.guest);
+  }
+  if (body.action === "create_staff_group") {
+    const paymentMethod = String(payload.paymentMethod ?? "");
+    const sendEmail = payload.sendEmail === true;
+    const sendSms = payload.sendSms === true;
+    return typeof payload.quoteId === "string" &&
+      UUID.test(payload.quoteId) &&
+      validKey(payload.idempotencyKey) &&
+      ["phone", "walk_in", "website", "instagram", "mingla"].includes(
+        String(payload.source),
+      ) &&
+      body.expectedVersion !== undefined &&
+      body.expectedVersion !== null &&
+      validGuest(payload.guest) &&
+      ["link", "property"].includes(paymentMethod) &&
+      (payload.sendEmail === undefined ||
+        typeof payload.sendEmail === "boolean") &&
+      (payload.sendSms === undefined || typeof payload.sendSms === "boolean") &&
+      (paymentMethod === "property" || (sendEmail || sendSms)) &&
+      (!sendEmail ||
+        typeof (payload.guest as Record<string, unknown>).email === "string") &&
+      (!sendSms ||
+        typeof (payload.guest as Record<string, unknown>).phone === "string");
+  }
+  if (body.action === "rotate_staff_payment_link") {
+    return typeof payload.groupId === "string" &&
+      UUID.test(payload.groupId) &&
+      typeof payload.sendEmail === "boolean" &&
+      typeof payload.sendSms === "boolean";
+  }
+  if (body.action === "revoke_staff_payment_link") {
+    return typeof payload.groupId === "string" &&
+      UUID.test(payload.groupId) &&
+      typeof payload.reason === "string" &&
+      payload.reason.trim().length >= 3 &&
+      payload.reason.trim().length <= 500;
   }
   if (
     body.action === "approve_request" ||
@@ -301,6 +476,10 @@ function errorResponse(error: RpcError, requestId: string): Response {
     "stay_rail_not_enabled",
     "stay_payment_not_found",
     "stay_payment_ambiguous",
+    "stay_invalid_payment_link",
+    "stay_payment_link_not_found",
+    "stay_payment_link_expired",
+    "stay_payment_link_not_actionable",
     "stay_cancel_preview_invalid",
     "stay_cancel_preview_expired",
   ].find((code) => raw.includes(code));
@@ -452,6 +631,154 @@ export async function handleStayReservations(
   }) as unknown as RpcClient;
   const payload = body.payload as Record<string, unknown>;
 
+  if (body.action === "create_staff_group") {
+    const paymentMethod = String(payload.paymentMethod);
+    const minted = paymentMethod === "link" ? await mintPaymentLink() : null;
+    const origin = minted ? paymentLinkOrigin() : null;
+    if (minted && origin === null) {
+      return json(500, {
+        kind: "error",
+        code: "internal_error",
+        message: "Secure payment links are unavailable.",
+        requestId,
+      });
+    }
+    const { data, error } = await client.rpc(
+      "issue_4188_create_staff_stay_group",
+      {
+        p_quote_id: payload.quoteId,
+        p_idempotency_key: payload.idempotencyKey,
+        p_guest: payload.guest,
+        p_source: payload.source,
+        p_expected_quote_version: body.expectedVersion,
+        p_payment_method: paymentMethod,
+        p_token_hash: minted?.tokenHash ?? null,
+        p_send_email: payload.sendEmail === true,
+        p_send_sms: payload.sendSms === true,
+        p_link_expires_at: minted?.expiresAt ?? null,
+        p_request_id: requestId,
+      },
+    );
+    if (error) {
+      await captureInventoryChangedAlert(
+        error,
+        payload,
+        body.action,
+        requestId,
+        dependencies,
+      );
+      return errorResponse(error, requestId);
+    }
+    if (minted && origin) {
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      if (!serviceKey) {
+        return json(500, {
+          kind: "error",
+          code: "internal_error",
+          message:
+            "The reservation was held, but its payment link could not be delivered.",
+          requestId,
+        });
+      }
+      const service = dependencies.createServiceRpcClient?.(url, serviceKey) ??
+        createClient(url, serviceKey, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        }) as unknown as RpcClient;
+      const result = data && typeof data === "object"
+        ? data as Record<string, unknown>
+        : {};
+      const groupId = typeof result.groupId === "string" ? result.groupId : "";
+      if (!UUID.test(groupId)) {
+        return json(500, {
+          kind: "error",
+          code: "internal_error",
+          message:
+            "The reservation was held, but its payment link could not be delivered.",
+          requestId,
+        });
+      }
+      const paymentLinkUrl = `${origin}/stay/pay/${minted.token}`;
+      const delivery = await deliverStaffPaymentLink({
+        groupId,
+        guest: payload.guest as Record<string, unknown>,
+        url: paymentLinkUrl,
+        sendEmail: payload.sendEmail === true,
+        sendSms: payload.sendSms === true,
+        requestId,
+        service,
+        dependencies,
+      });
+      return json(200, {
+        kind: "success",
+        data: { ...result, paymentLinkUrl, paymentLinkDelivery: delivery },
+        requestId,
+      });
+    }
+    return json(200, { kind: "success", data, requestId });
+  }
+
+  if (body.action === "rotate_staff_payment_link") {
+    const minted = await mintPaymentLink();
+    const origin = paymentLinkOrigin();
+    if (origin === null) {
+      return json(500, {
+        kind: "error",
+        code: "internal_error",
+        message: "Secure payment links are unavailable.",
+        requestId,
+      });
+    }
+    const { data, error } = await client.rpc(
+      "issue_4188_rotate_staff_payment_link",
+      {
+        p_group_id: payload.groupId,
+        p_token_hash: minted.tokenHash,
+        p_expires_at: minted.expiresAt,
+        p_send_email: payload.sendEmail,
+        p_send_sms: payload.sendSms,
+      },
+    );
+    if (error) return errorResponse(error, requestId);
+    const result = data && typeof data === "object"
+      ? data as Record<string, unknown>
+      : {};
+    const paymentLinkUrl = `${origin}/stay/pay/${minted.token}`;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (!serviceKey) {
+      return errorResponse({ message: "internal_error" }, requestId);
+    }
+    const service = dependencies.createServiceRpcClient?.(url, serviceKey) ??
+      createClient(url, serviceKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      }) as unknown as RpcClient;
+    const delivery = await deliverStaffPaymentLink({
+      groupId: String(payload.groupId),
+      guest: result.guest && typeof result.guest === "object"
+        ? result.guest as Record<string, unknown>
+        : {},
+      url: paymentLinkUrl,
+      sendEmail: payload.sendEmail === true,
+      sendSms: payload.sendSms === true,
+      requestId,
+      service,
+      dependencies,
+    });
+    return json(200, {
+      kind: "success",
+      data: { ...result, paymentLinkUrl, paymentLinkDelivery: delivery },
+      requestId,
+    });
+  }
+
+  if (body.action === "revoke_staff_payment_link") {
+    const { data, error } = await client.rpc(
+      "issue_4188_revoke_staff_payment_link",
+      { p_group_id: payload.groupId, p_reason: payload.reason },
+    );
+    if (error) return errorResponse(error, requestId);
+    return json(200, { kind: "success", data, requestId });
+  }
+
   if (body.action === "create_payment") {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     if (!serviceKey) {
@@ -567,7 +894,7 @@ export async function handleStayReservations(
   }
 
   if (body.action === "cancel_preview") {
-    const { data, error } = await client.rpc("issue_1426_cancel_preview", {
+    const { data, error } = await client.rpc("issue_4188_cancel_preview", {
       p_group_id: payload.groupId,
       p_selected_line_ids: payload.selectedLineIds,
       p_expected_group_version: body.expectedVersion,
@@ -578,7 +905,7 @@ export async function handleStayReservations(
   }
 
   if (body.action === "cancel") {
-    const { data, error } = await client.rpc("issue_1426_cancel", {
+    const { data, error } = await client.rpc("issue_4188_cancel", {
       p_preview_id: payload.previewId,
       p_preview_hash: payload.previewHash,
       p_idempotency_key: payload.idempotencyKey,
@@ -642,20 +969,23 @@ export async function handleStayReservations(
     const projection = data && typeof data === "object"
       ? data as Record<string, unknown>
       : {};
-    const groupId = typeof projection.groupId === "string" && UUID.test(projection.groupId)
-      ? projection.groupId
-      : null;
+    const groupId =
+      typeof projection.groupId === "string" && UUID.test(projection.groupId)
+        ? projection.groupId
+        : null;
     const match = payload.adMatchData && typeof payload.adMatchData === "object"
       ? payload.adMatchData as Record<string, unknown>
       : {};
     if (groupId) {
       const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
       if (serviceKey) {
-        const service = dependencies.createServiceRpcClient?.(url, serviceKey) ??
-          createClient(url, serviceKey, {
-            auth: { autoRefreshToken: false, persistSession: false },
-          }) as unknown as RpcClient;
-        const forwardedFor = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+        const service =
+          dependencies.createServiceRpcClient?.(url, serviceKey) ??
+            createClient(url, serviceKey, {
+              auth: { autoRefreshToken: false, persistSession: false },
+            }) as unknown as RpcClient;
+        const forwardedFor =
+          req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
         const userAgent = typeof match.clientUserAgent === "string"
           ? match.clientUserAgent
           : req.headers.get("user-agent");

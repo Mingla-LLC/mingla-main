@@ -114,6 +114,20 @@ interface QueryResult {
 
 const DISABLED_KEY = ["brand-role-disabled"] as const;
 
+export function shouldUseLegacyStubBrandRole(input: {
+  dataResolved: boolean;
+  dataRole: BrandRole | null;
+  isLoading: boolean;
+  isError: boolean;
+  stubBrandRole: "owner" | "admin" | null;
+}): boolean {
+  return input.dataResolved &&
+    input.dataRole === null &&
+    !input.isLoading &&
+    !input.isError &&
+    input.stubBrandRole !== null;
+}
+
 /**
  * The role read, extracted from the inline `queryFn` so it is directly
  * executable outside React.
@@ -250,7 +264,13 @@ export const useCurrentBrandRole = (
   // delete it in passing — 40+ consumers depend on the role it produces, and
   // removing it needs its own blast-radius pass (#3602 §10 q2). The exit
   // condition above is also documented in the file header.
-  if (role === null && stubBrandRole !== null) {
+  if (shouldUseLegacyStubBrandRole({
+    dataResolved: data !== undefined,
+    dataRole: data?.role ?? null,
+    isLoading,
+    isError,
+    stubBrandRole,
+  })) {
     // #1863 §4.0.2 — a local-only stub brand has no membership row to accept
     // and the operator is its creator, so the synthesised role is accepted.
     if (stubBrandRole === "owner") {

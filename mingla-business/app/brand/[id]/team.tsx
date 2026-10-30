@@ -35,7 +35,6 @@ import { InviteBrandMemberSheet } from "../../../src/components/team/InviteBrand
 import { MemberDetailSheet } from "../../../src/components/team/MemberDetailSheet";
 import type { BrandTeamEntry } from "../../../src/store/brandTeamStore";
 import { Avatar } from "../../../src/components/ui/Avatar";
-import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { Icon } from "../../../src/components/ui/Icon";
 import { TopBar } from "../../../src/components/ui/TopBar";
@@ -57,13 +56,16 @@ import {
   useBrandTeamMembers,
   useRemoveBrandTeamMember,
   useRevokeBrandInvitation,
+  useUpdateBrandTeamMemberVenueGrants,
 } from "../../../src/hooks/useBrandInvitations";
-import { BrandInvitationServiceError } from "../../../src/services/brandInvitationsService";
-import type {
-  BrandInvitationRow,
-  BrandTeamMemberRow,
+import {
+  BrandInvitationServiceError,
+  type VenueAccessGrant,
+  type BrandInvitationRow,
+  type BrandTeamMemberRow,
 } from "../../../src/services/brandInvitationsService";
 import { useBrand } from "../../../src/hooks/useBrands";
+import { useVenueListings } from "../../../src/hooks/useVenueListings";
 // ORCH-1384 — owner-side partner-link read: the member row whose user_id
 // matches an accepted, non-cancelled link's partner_account_id is the
 // PARTNER row (badge + owner-initiated disconnect).
@@ -110,10 +112,19 @@ export default function BrandTeamRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signedInEmail, onSwitchAccount } = useSwitchAccount();
-  const params = useLocalSearchParams<{ id: string | string[] }>();
+  const params = useLocalSearchParams<{
+    id: string | string[];
+    venueId?: string | string[];
+  }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const brandIdResolved =
     typeof idParam === "string" && idParam.length > 0 ? idParam : null;
+  const venueParam = Array.isArray(params.venueId)
+    ? params.venueId[0]
+    : params.venueId;
+  const initialVenueId = typeof venueParam === "string" && venueParam.length > 0
+    ? venueParam
+    : null;
 
   const { user, isAuthReady } = useAuth();
   const userId = user?.id ?? null;
@@ -151,9 +162,12 @@ export default function BrandTeamRoute(): React.ReactElement {
 
   const { data: invitationRows = [] } = useBrandInvitations(brandIdResolved);
   const { data: memberRows = [] } = useBrandTeamMembers(brandIdResolved);
+  const { data: venues = [] } = useVenueListings(brandIdResolved);
   const { mutateAsync: revokeAsync } = useRevokeBrandInvitation(brandIdResolved);
   const { mutateAsync: removeAsync, isPending: removePending } =
     useRemoveBrandTeamMember(brandIdResolved);
+  const { mutateAsync: updateVenueGrantsAsync, isPending: grantsPending } =
+    useUpdateBrandTeamMemberVenueGrants(brandIdResolved);
   // Scope late success/failure to the member that started the mutation so a
   // second sheet open cannot inherit a stale close or error toast.
   const removeTargetIdRef = useRef<string | null>(null);
@@ -328,13 +342,32 @@ export default function BrandTeamRoute(): React.ReactElement {
     [removeAsync, removePending],
   );
 
+  const handleSaveVenueGrants = useCallback(
+    async (entry: BrandTeamEntry, grants: VenueAccessGrant[]): Promise<void> => {
+      setErrorToast(null);
+      try {
+        await updateVenueGrantsAsync({ memberId: entry.id, grants });
+        setDetailEntry(null);
+        deferAfterDismiss(() => setToast("Venue access updated"));
+      } catch (error) {
+        const code = error instanceof BrandInvitationServiceError
+          ? error.code
+          : "server";
+        setErrorToast(code === "forbidden"
+          ? "You don't have permission to change venue access."
+          : "Couldn't update venue access. Try again.");
+      }
+    },
+    [updateVenueGrantsAsync],
+  );
+
   // ORCH-1309 — cold-load resolving state: a valid brandId whose brand is still
   // being fetched (session warming / query not settled) renders a spinner, not
   // the "Brand not found" empty state. Only a settled-null brand falls through.
   if (brandIdResolved !== null && brand === null && isBrandResolving) {
     return (
       <View style={[styles.host, { paddingTop: insets.top }]}>
-        <TopBar leftKind="back" title="Team" onBack={handleBack} rightSlot={null} />
+        <TopBar leftKind="back" title="Team & permissions" onBack={handleBack} rightSlot={null} />
         <View style={styles.resolvingHost}>
           <ActivityIndicator />
         </View>
@@ -349,7 +382,7 @@ export default function BrandTeamRoute(): React.ReactElement {
       >
         <TopBar
           leftKind="back"
-          title="Team"
+          title="Team & permissions"
           onBack={handleBack}
           rightSlot={null}
         />
@@ -394,7 +427,7 @@ export default function BrandTeamRoute(): React.ReactElement {
     <View style={[styles.host, { paddingTop: insets.top }]}>
       <TopBar
         leftKind="back"
-        title="Team"
+        title="Team & permissions"
         onBack={handleBack}
         rightSlot={
           canInvite ? (
@@ -464,6 +497,8 @@ export default function BrandTeamRoute(): React.ReactElement {
         brandId={brand.id}
         brandName={brand.displayName}
         operatorAccountId={operatorAccountId}
+        venues={venues}
+        initialVenueId={initialVenueId}
         onClose={() => setInviteVisible(false)}
         onSuccess={handleInviteSuccess}
       />
@@ -480,6 +515,9 @@ export default function BrandTeamRoute(): React.ReactElement {
         onRevoke={handleRevoke}
         onRemove={handleRemove}
         removePending={removePending}
+        grantsPending={grantsPending}
+        venues={venues}
+        onSaveVenueGrants={handleSaveVenueGrants}
         removeError={errorToast}
         onDismissRemoveError={() => setErrorToast(null)}
         // ORCH-1384 — partner identity + owner-only disconnect. The pending-
@@ -585,6 +623,7 @@ function invitationRowToEntry(row: BrandInvitationRow): BrandTeamEntry {
     inviteeEmail: row.email,
     inviteeName: row.invitee_name ?? row.email,
     role: row.role,
+    venueGrants: row.venueGrants,
     status: "pending",
     invitedBy: row.invited_by,
     invitedAt: new Date(
@@ -602,6 +641,7 @@ function memberRowToEntry(row: BrandTeamMemberRow): BrandTeamEntry {
     inviteeEmail: row.user_id,
     inviteeName: row.user_id,
     role: row.role,
+    venueGrants: row.venueGrants,
     status: "accepted",
     invitedBy: row.user_id,
     invitedAt: row.invited_at,
