@@ -2,6 +2,25 @@
   "version": 1,
   "mappings": [
     {
+      "capability_key": "checkout-claim-ticket",
+      "paths": [
+        "supabase/functions/claim-link/index.ts"
+      ]
+    },
+    {
+      "capability_key": "checkout-tickets",
+      "paths": [
+        "mingla-business/app/checkout/[eventId]/buyer.tsx"
+      ]
+    },
+    {
+      "capability_key": "checkout-trips-experiences",
+      "paths": [
+        "mingla-business/app/checkout-experience/[experienceEventId]/buyer.tsx",
+        "mingla-business/app/checkout-trip/[tripEventId]/buyer.tsx"
+      ]
+    },
+    {
       "capability_key": "staff-feature-guide",
       "paths": [
         "mingla-admin/src/components/community/FeatureGuidePanel.jsx",
