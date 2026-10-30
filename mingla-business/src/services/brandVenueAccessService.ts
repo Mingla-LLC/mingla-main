@@ -17,7 +17,7 @@ import {
   type VenueAccessGrant,
   type VenueAccessProfile,
   type VenueCapability,
-} from "./brandInvitationsService";
+} from "./brandInvitationShared";
 
 export async function inviteVenueStaffMember(
   input: InviteBrandMemberInput,
