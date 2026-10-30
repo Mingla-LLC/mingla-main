@@ -293,6 +293,7 @@ export const AriSettingsScreen: React.FC = () => {
                   pressed && styles.pressed,
                 ]}
                 accessibilityRole="button"
+                accessibilityLabel={`Show ${labelForMemoryKind(kind)} memories`}
                 accessibilityState={{ selected: memoryKind === kind }}
               >
                 <Text
