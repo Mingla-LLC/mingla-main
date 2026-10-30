@@ -17691,6 +17691,7 @@
         "supabase/migrations/20280207004173_issue_4173_brand_group_roster.sql",
         "supabase/migrations/20280208004174_issue_4174_explorer_internal_brand_isolation.sql",
         "supabase/migrations/20280208004182_issue_4182_bunny_media_lifecycle.sql",
+        "supabase/migrations/20280209003355_issue_3355_ari_10x_improvement.sql",
         "supabase/migrations/20280209004179_issue_4179_feature_guide_merge_reconciliation.sql",
         "supabase/migrations/20280210004179_issue_4179_release_reason_backfill.sql",
         "supabase/migrations/20280211004179_issue_4179_release_reason_json_null.sql",
@@ -19328,6 +19329,7 @@
         "supabase/migrations/20280207004173_issue_4173_brand_group_roster.sql",
         "supabase/migrations/20280208004174_issue_4174_explorer_internal_brand_isolation.sql",
         "supabase/migrations/20280208004182_issue_4182_bunny_media_lifecycle.sql",
+        "supabase/migrations/20280209003355_issue_3355_ari_10x_improvement.sql",
         "supabase/migrations/20280209004179_issue_4179_feature_guide_merge_reconciliation.sql",
         "supabase/migrations/20280210004179_issue_4179_release_reason_backfill.sql",
         "supabase/migrations/20280211004179_issue_4179_release_reason_json_null.sql",
@@ -19769,6 +19771,8 @@
         "supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql",
         "supabase/migrations/__tests__/issue_3313_recurring_event_occurrences.implementor.happy.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3314_bundle_hide_remaining.test.sql",
+        "supabase/migrations/__tests__/issue_3355_ari_10x.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3355_ari_10x.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3386_venue_details_host_edit.test.sql",
         "supabase/migrations/__tests__/issue_3391_venue_staff_cancel_refund.test.sql",
         "supabase/migrations/__tests__/issue_3426_brand_offering_sections.implementor.adversarial.pg17.test.sql",
@@ -24036,6 +24040,7 @@
         "supabase/migrations/20280207004173_issue_4173_brand_group_roster.sql",
         "supabase/migrations/20280208004174_issue_4174_explorer_internal_brand_isolation.sql",
         "supabase/migrations/20280208004182_issue_4182_bunny_media_lifecycle.sql",
+        "supabase/migrations/20280209003355_issue_3355_ari_10x_improvement.sql",
         "supabase/migrations/20280209004179_issue_4179_feature_guide_merge_reconciliation.sql",
         "supabase/migrations/20280210004179_issue_4179_release_reason_backfill.sql",
         "supabase/migrations/20280211004179_issue_4179_release_reason_json_null.sql",
@@ -24477,6 +24482,8 @@
         "supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql",
         "supabase/migrations/__tests__/issue_3313_recurring_event_occurrences.implementor.happy.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3314_bundle_hide_remaining.test.sql",
+        "supabase/migrations/__tests__/issue_3355_ari_10x.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3355_ari_10x.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3386_venue_details_host_edit.test.sql",
         "supabase/migrations/__tests__/issue_3391_venue_staff_cancel_refund.test.sql",
         "supabase/migrations/__tests__/issue_3426_brand_offering_sections.implementor.adversarial.pg17.test.sql",
@@ -52404,5 +52411,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3",
-  "phase3eContractSha256": "662b22586e8bd525737fe012b0dd8b535051b551233a29ec6e2dd45c9a3c2c74"
+  "phase3eContractSha256": "f319c1861ab40e13a0ba00e27c7d1861d5d2be7df600a3038537f6e14cae78e9"
 }
