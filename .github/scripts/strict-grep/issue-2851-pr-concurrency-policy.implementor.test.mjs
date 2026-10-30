@@ -49,7 +49,7 @@ const DENIED = [
 // hashing the sorted pull_request/pull_request_target workflow names directly.
 //
 // [TEST-MOD-APPROVED #3643] Re-derived after renaming the retained main-health
-// host `tests-append-only.yml` → `pre-merge-main-health.yml`. Count stays 57;
+// host from tests-append-only to pre-merge-main-health. Count stays 57;
 // only the sorted PR-family filename list moves, so identity must move with it.
 const PR_FAMILY_COUNT = 57;
 const PR_FAMILY_IDENTITY_SHA256 =
@@ -1269,11 +1269,11 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // job-level concurrency or uses: values moved. Derived locally with this
   // file's own canonical projection.
   // [TEST-MOD-APPROVED #3643] Re-derived again after renaming the retained
-  // main-health host filename (`tests-append-only.yml` →
-  // `pre-merge-main-health.yml`). The projection is keyed by workflow name, so
-  // the rename moves this digest even though trigger keys, job-level
-  // concurrency and uses: values are unchanged. Derived locally with this
-  // file's own canonical projection on the rebased branch.
+  // main-health host filename (tests-append-only → pre-merge-main-health).
+  // The projection is keyed by workflow name, so the rename moves this digest
+  // even though trigger keys, job-level concurrency and uses: values are
+  // unchanged. Derived locally with this file's own canonical projection on
+  // the rebased branch.
   "9a6367e21dd04c27bf721685490a488c4cc347f32f414f566b097f27af12564a";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
