@@ -58,13 +58,53 @@
         "app-mobile/src/components/chat/GroupInfoSheet.tsx",
         "app-mobile/src/components/connections/ChatListItem.tsx",
         "app-mobile/src/components/connections/chatListModel.ts",
+        "app-mobile/src/components/discover/BusinessEventCard.tsx",
+        "app-mobile/src/hooks/useBrandBySlug.ts",
         "app-mobile/src/hooks/useMessages.ts",
         "app-mobile/src/i18n/locales/en/chat.json",
         "app-mobile/src/services/connectionsService.ts",
         "app-mobile/src/services/messagingService.ts",
+        "app-mobile/src/services/publicEventSeedService.ts",
+        "app-mobile/src/types/mergedDiscover.ts",
         "app-mobile/src/utils/chatComposerGeometry.ts",
+        "app-mobile/src/utils/eventDateDisplay.ts",
         "supabase/functions/notify-message/index.ts",
         "supabase/functions/notify-message/messageKeys.ts"
+      ]
+    },
+    {
+      "capability_key": "social-friends",
+      "paths": [
+        "app-mobile/src/components/ConnectionsPage.tsx"
+      ]
+    },
+    {
+      "capability_key": "social-referrals",
+      "paths": [
+        "app-mobile/src/components/ConnectionsPage.tsx"
+      ]
+    },
+    {
+      "capability_key": "staff-offerings",
+      "paths": [
+        "mingla-admin/src/pages/OfferingDetailView.jsx",
+        "mingla-admin/src/pages/OfferingsConsolePage.jsx",
+        "supabase/migrations/20271222003281_issue_3281_public_schedule_cards.sql",
+        "supabase/migrations/20280213003281_issue_3281_admin_offerings_board_schedule.sql",
+        "supabase/migrations/20280214003281_issue_3281_discover_schedule_keys.sql"
+      ]
+    },
+    {
+      "capability_key": "discover-events",
+      "paths": [
+        "mingla-business/jest.config.cjs",
+        "mingla-business/server/socialPreview.js",
+        "mingla-business/tsconfig.json",
+        "supabase/functions/_shared/contentShare.ts",
+        "supabase/functions/_shared/contentShareService.ts",
+        "supabase/functions/discover-merged-events/_business-query.ts",
+        "supabase/functions/discover-merged-events/_types.ts",
+        "supabase/migrations/20280214003281_issue_3281_discover_schedule_keys.sql"
       ]
     },
     {

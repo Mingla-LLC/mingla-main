@@ -67,19 +67,41 @@ const publicDetailsFor = (kind: ContentShareKind, row: RecordLike, assembled: Re
     website: publicExternalUrl(row.website),
     utcOffsetMinutes: Number.isInteger(row.utc_offset_minutes) ? row.utc_offset_minutes : undefined,
   });
-  if (["event", "rsvp_event", "trip", "experience"].includes(kind)) return compact({
-    kind,
-    actionEligible: assembled.actionEligible === true,
-    occurrences: (assembled.relevantDates || []).slice(0, 24).map((date: RecordLike) => compact({
-      startAt: clean(date.start_at, 40), endAt: clean(date.end_at, 40), timezone: clean(date.timezone || row.timezone, 80),
-    })),
-  });
+  if (["event", "rsvp_event", "trip", "experience"].includes(kind)) {
+    // issue #3281 PR7 — no 24-date cut; share page shows first 6 + "and N more".
+    const occurrences = (assembled.relevantDates || []).map((date: RecordLike) => {
+      const tz = clean(date.timezone || row.timezone, 80);
+      const startAt = clean(date.start_at, 40);
+      const schedule = localSchedule(date.start_at, tz);
+      const label = [schedule.localDate, schedule.localTime].filter(Boolean).join(" · ");
+      return compact({
+        startAt,
+        endAt: clean(date.end_at, 40),
+        timezone: tz,
+        label: label || startAt,
+      });
+    });
+    // Event rows come from `events`, not the public view — derive schedule from
+    // still-open dates (end_at > now), matching issue_3281_event_schedule.
+    const derived = scheduleFromOpenDates(
+      assembled.relevantDates || [],
+      row.timezone,
+    );
+    return compact({
+      kind,
+      actionEligible: assembled.actionEligible === true,
+      scheduleLine: clean(row.schedule_line, 120) || derived.scheduleLine || undefined,
+      nextStartAt: clean(row.next_start_at, 40) || derived.nextStartAt || undefined,
+      occurrences,
+    });
+  }
   if (kind === "venue" || kind === "brand") return compact({
     kind,
     offerings: (assembled.offerings || []).slice(0, 8).map((item: RecordLike) => compact({
       title: clean(item.title, 160), kind: clean(item.event_type, 24),
       brandSlug: clean(item.brand_slug, 160), eventSlug: clean(item.slug, 160),
-      startAt: clean(item.master_start_at, 40),
+      startAt: clean(item.next_start_at || item.master_start_at, 40),
+      scheduleLine: clean(item.schedule_line, 120) || undefined,
     })),
   });
   return { kind };
@@ -512,6 +534,37 @@ function localSchedule(startAt: unknown, timezone: unknown): { localDate?: strin
   }
 }
 
+/** issue #3281 — chip + "+N more" from still-open dates (end_at > now). */
+function scheduleFromOpenDates(
+  dates: RecordLike[],
+  timezone: unknown,
+  nowMs = Date.now(),
+): { scheduleLine?: string; nextStartAt?: string } {
+  const open = dates
+    .filter((date) => typeof date?.start_at === "string" && Number.isFinite(Date.parse(date.start_at)))
+    .filter((date) => Date.parse(typeof date.end_at === "string" ? date.end_at : date.start_at) > nowMs)
+    .sort((a, b) => Date.parse(a.start_at) - Date.parse(b.start_at));
+  const next = open[0];
+  if (!next) return {};
+  const tz = clean(timezone || next.timezone, 80) || "UTC";
+  let chip: string | undefined;
+  try {
+    chip = new Intl.DateTimeFormat("en-GB", {
+      timeZone: tz,
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+    }).format(new Date(next.start_at));
+  } catch {
+    chip = localSchedule(next.start_at, tz).localDate;
+  }
+  if (!chip) return { nextStartAt: clean(next.start_at, 40) || undefined };
+  return {
+    nextStartAt: clean(next.start_at, 40) || undefined,
+    scheduleLine: open.length === 1 ? chip : `${chip} · +${open.length - 1} more`,
+  };
+}
+
 function sourceId(input: RecordLike, ...keys: string[]): string {
   for (const key of keys) {
     const value = clean(input[key], 256);
@@ -939,7 +992,9 @@ export async function loadAuthoritativeContentShare(
   const { data: row, error: rowError } = await brandQuery.maybeSingle();
   if (rowError) throw new Error("db_error");
   if (!row || row.deleted_at) throw new Error("gone");
-  const { data: offerings, error: offeringsError } = await db.from("business_public_events_view").select("title,event_type,brand_slug,slug,master_start_at").eq("brand_slug", row.slug).gte("master_start_at", new Date().toISOString()).order("master_start_at", { ascending: true }).limit(8);
+  // issue #3281 — Upcoming list uses next occurrence, not the (possibly past) master.
+  // Filter on next_end_at so an in-progress night (start < now < end) stays listed.
+  const { data: offerings, error: offeringsError } = await db.from("business_public_events_view").select("title,event_type,brand_slug,slug,master_start_at,next_start_at,next_end_at,schedule_line").eq("brand_slug", row.slug).gte("next_end_at", new Date().toISOString()).order("next_start_at", { ascending: true }).limit(8);
   if (offeringsError) throw new Error("db_error");
   const { count, error: countError } = await db.from("events").select("id", { count: "exact", head: true }).eq("brand_id", row.id)
     .in("visibility", ["public", "discover"]).not("published_at", "is", null).is("deleted_at", null).in("status", ["scheduled", "live"]);

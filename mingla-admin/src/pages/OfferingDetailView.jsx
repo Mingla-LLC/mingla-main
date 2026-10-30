@@ -27,6 +27,7 @@ import { useToast } from "../context/ToastContext";
 import {
   getOffering,
   getTicketTypes,
+  getEventDates,
   listEventOrders,
   listEventRsvps,
   getTripDetail,
@@ -118,8 +119,15 @@ function coreSection(b) {
       field("Currency", (b.currency || "").trim() || null),
       field("Pricing mode", b.pricing_mode),
       field("Whole price", b.whole_price_cents != null ? null : undefined, () => money(b.whole_price_cents, b.currency)),
-      field("Starts", b.master_start_at, (v) => formatDateTime(v)),
-      field("Ends", b.master_end_at, (v) => formatDateTime(v)),
+      field(
+        "Schedule",
+        b.schedule_line
+          ? `NEXT: ${b.schedule_line}`
+          : b.next_start_at || b.master_start_at,
+        (v) => (typeof b.schedule_line === "string" && b.schedule_line.trim() ? v : formatDateTime(v)),
+      ),
+      field("Starts", b.next_start_at || b.master_start_at, (v) => formatDateTime(v)),
+      field("Ends", b.next_end_at || b.master_end_at, (v) => formatDateTime(v)),
       field("Booking deadline", b.booking_deadline, (v) => formatDateTime(v)),
       field("Bookings closed", null, () => boolBadge(b.bookings_closed)),
       field("Pass tax", null, () => boolBadge(b.pass_tax)),
@@ -129,6 +137,29 @@ function coreSection(b) {
       field("Deleted", b.deleted_at, (v) => (v ? <Badge variant="error">Deleted {formatDate(v)}</Badge> : muted("—"))),
       field("Created", b.created_at, (v) => formatDate(v)),
     ].filter((f) => f.value !== undefined),
+  };
+}
+
+function eventDatesSection(dates) {
+  const rows = Array.isArray(dates) ? dates : [];
+  return {
+    label: `Dates (${rows.length})`,
+    fields:
+      rows.length === 0
+        ? [noneField("Dates")]
+        : rows.map((d) => {
+            const when = formatDateTime(d.start_at);
+            const title = d.override_title ? String(d.override_title).trim() : "";
+            const place = d.override_location
+              ? String(d.override_location).trim()
+              : "";
+            const extra = [title, place].filter(Boolean).join(" · ");
+            return field(
+              when || d.id,
+              extra || (d.is_master ? "Master" : "—"),
+              (v) => v,
+            );
+          }),
   };
 }
 
@@ -522,10 +553,18 @@ export function OfferingDetailView({ eventId, onBack }) {
       // Load the type-specific children.
       let kids = {};
       if (b.event_type === "event") {
-        const [tiers, orders] = await Promise.all([getTicketTypes(eventId), listEventOrders(eventId)]);
-        kids = { tiers, orders };
+        const [tiers, orders, dates] = await Promise.all([
+          getTicketTypes(eventId),
+          listEventOrders(eventId),
+          getEventDates(eventId),
+        ]);
+        kids = { tiers, orders, dates };
       } else if (b.event_type === "rsvp") {
-        kids = { rsvps: await listEventRsvps(eventId) };
+        const [rsvps, dates] = await Promise.all([
+          listEventRsvps(eventId),
+          getEventDates(eventId),
+        ]);
+        kids = { rsvps, dates };
       } else if (b.event_type === "trip") {
         const [trip, tiers] = await Promise.all([getTripDetail(eventId), getTicketTypes(eventId)]);
         kids = { trip, tiers };
@@ -570,9 +609,11 @@ export function OfferingDetailView({ eventId, onBack }) {
     const cb = { dispatch, onApprove, approvingId, waitlistEnabled: bundle.rsvp_waitlist_enabled };
     sections.push(coreSection(bundle));
     if (bundle.event_type === "event") {
+      if (k.dates) sections.push(eventDatesSection(k.dates));
       sections.push(ticketTiersSection(k.tiers || [], cb));
       if (k.orders) sections.push(...ordersSection(k.orders));
     } else if (bundle.event_type === "rsvp") {
+      if (k.dates) sections.push(eventDatesSection(k.dates));
       if (k.rsvps) sections.push(...rsvpSection(k.rsvps, cb));
     } else if (bundle.event_type === "trip") {
       // Trip pricing tiers cross-ref the event's ticket_types (loaded into trip).

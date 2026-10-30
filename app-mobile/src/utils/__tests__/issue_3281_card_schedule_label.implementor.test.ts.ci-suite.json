@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/utils/__tests__/issue_3281_card_schedule_label.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3281-card-schedule-label",
+  "profile": "deno-2-unit"
+}

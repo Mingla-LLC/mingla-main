@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3281_public_schedule_cards.structural.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3281-public-schedule-cards-structural",
+  "profile": "deno-2-unit"
+}

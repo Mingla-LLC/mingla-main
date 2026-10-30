@@ -243,9 +243,10 @@ BEGIN
       'pricing_locked','display_price_cents','rsvp_discoverable','rsvp_capacity','rsvp_allow_plus_ones',
       'rsvp_plus_ones_max','rsvp_waitlist_enabled','rsvp_approval_mode','rsvp_going_count','city_geo',
       'rsvp_contribution_enabled','rsvp_contribution_suggested_cents','rsvp_contribution_min_cents',
-      'cover_media_gallery']::text[],
-    'T-4b the view column list is EXACTLY the previous one, no column appended (got ' || array_to_string(v_cols, ',') || ')');
-  PERFORM pg_temp.gb_assert(n = 69, 'T-4c the view still has 69 columns');
+      'cover_media_gallery','next_start_at','next_end_at','upcoming_count','schedule_line']::text[],
+    -- [TEST-MOD-APPROVED #3281] PR7 appends four schedule columns after cover_media_gallery.
+    'T-4b the view column list is EXACTLY the sealed list including #3281 schedule cols (got ' || array_to_string(v_cols, ',') || ')');
+  PERFORM pg_temp.gb_assert(n = 73, 'T-4c the view has 73 columns after #3281 schedule append');
   PERFORM pg_temp.gb_assert(v_types[array_position(v_cols, 'rsvp_going_count')] = 'integer',
     'T-4d rsvp_going_count stays integer');
   PERFORM pg_temp.gb_assert(

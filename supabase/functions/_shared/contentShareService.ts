@@ -121,14 +121,19 @@ const publicDetails = (kind: string, value: unknown): boolean => {
       && (stop.category===undefined||bounded(stop.category,80,true)) && (stop.area===undefined||bounded(stop.area,120,true))
       && (stop.address===undefined||bounded(stop.address,180,true)) && (stop.description===undefined||bounded(stop.description,300,true))
       && (stop.imageUrl===undefined||mediaUrl(stop.imageUrl)); });
-  if (["event","rsvp_event","trip","experience"].includes(kind)) return exactKeys(row,["kind","actionEligible","occurrences"])
-    && typeof row.actionEligible === "boolean" && Array.isArray(row.occurrences) && row.occurrences.length <= 24 && row.occurrences.every((item:unknown)=>{ const occurrence=object(item); return !!occurrence
-      && exactKeys(occurrence,["startAt","endAt","timezone"]) && isoInstant(occurrence.startAt) && (occurrence.endAt===undefined||(isoInstant(occurrence.endAt)&&Date.parse(occurrence.endAt)>=Date.parse(occurrence.startAt)))
-      && (occurrence.timezone===undefined||ianaTimezone(occurrence.timezone)); });
+  // #3281 PR7 — optional scheduleLine/nextStartAt; occurrence.label; many-dates may exceed 24.
+  if (["event","rsvp_event","trip","experience"].includes(kind)) return exactKeys(row,["kind","actionEligible","occurrences","scheduleLine","nextStartAt"])
+    && typeof row.actionEligible === "boolean" && Array.isArray(row.occurrences) && row.occurrences.length <= 400 && row.occurrences.every((item:unknown)=>{ const occurrence=object(item); return !!occurrence
+      && exactKeys(occurrence,["startAt","endAt","timezone","label"]) && isoInstant(occurrence.startAt) && (occurrence.endAt===undefined||(isoInstant(occurrence.endAt)&&Date.parse(occurrence.endAt)>=Date.parse(occurrence.startAt)))
+      && (occurrence.timezone===undefined||ianaTimezone(occurrence.timezone))
+      && (occurrence.label===undefined||bounded(occurrence.label,120,true)); })
+    && (row.scheduleLine===undefined||bounded(row.scheduleLine,120,true))
+    && (row.nextStartAt===undefined||isoInstant(row.nextStartAt));
   if (["venue","brand"].includes(kind)) return exactKeys(row,["kind","offerings"]) && Array.isArray(row.offerings) && row.offerings.length <= 8
-    && row.offerings.every((item:unknown)=>{ const offering=object(item); return !!offering && exactKeys(offering,["title","kind","brandSlug","eventSlug","startAt"])
+    && row.offerings.every((item:unknown)=>{ const offering=object(item); return !!offering && exactKeys(offering,["title","kind","brandSlug","eventSlug","startAt","scheduleLine"])
       && bounded(offering.title,160,true) && ["event","rsvp","rsvp_event","trip","experience"].includes(offering.kind) && slug(offering.brandSlug)
-      && slug(offering.eventSlug) && isoInstant(offering.startAt); });
+      && slug(offering.eventSlug) && isoInstant(offering.startAt)
+      && (offering.scheduleLine===undefined||bounded(offering.scheduleLine,120,true)); });
   return false;
 };
 

@@ -74,6 +74,10 @@ interface PublicEventRow {
   master_start_at: string | null;
   master_end_at: string | null;
   master_timezone: string | null;
+  next_start_at?: string | null;
+  next_end_at?: string | null;
+  upcoming_count?: number | null;
+  schedule_line?: string | null;
 }
 
 interface PublicTripRow {
@@ -238,10 +242,17 @@ const mapEvent = (
     eventType: row.event_type === "rsvp" ? "rsvp" : "event",
     operatorEndedAtUtc: null,
     terminalSource,
+    // True master for lifecycle; dateLine prefers next / schedule_line.
     masterStartAtUtc: row.master_start_at,
     masterEndAtUtc: row.master_end_at,
     masterTimezone: row.master_timezone,
-    dateLine: formatDateLine(row.master_start_at, row.master_timezone),
+    dateLine:
+      typeof row.schedule_line === "string" && row.schedule_line.trim().length > 0
+        ? `NEXT: ${row.schedule_line.trim()}`
+        : formatDateLine(
+            row.next_start_at ?? row.master_start_at,
+            row.master_timezone,
+          ),
     venueName: row.location_text,
     format: row.is_online ? "online" : "in_person",
     coverHue:
