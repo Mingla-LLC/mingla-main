@@ -297,9 +297,10 @@ export function phase3dContractDigest(manifest) {
 // PostgreSQL and structural proofs in the same preserved inventories.
 // #4179: register the explicit JSON-null repair and its two proofs in those
 // same inventories so every preserved selector remains exact.
-// #4182 / #4187: register the Local/Creator lifecycle and Admin program-chat
-// migrations plus their declared PostgreSQL proofs in those inventories.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "06a8bbc24aed0586eb0bbe97e1b775582481dab46007dbb8aa25973333027410";
+// #4182 / #4187 / #4188: register the Local/Creator lifecycle, Admin
+// program-chat, and Stay staff-reservation migrations plus their declared
+// PostgreSQL proofs in the same inventories without changing any command.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "f12476e961bbc07c3c0ae58c089403bc2f200dc91815bbf6709c4d789ec71b00";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -17695,6 +17695,7 @@
         "supabase/migrations/20280210004179_issue_4179_release_reason_backfill.sql",
         "supabase/migrations/20280211004179_issue_4179_release_reason_json_null.sql",
         "supabase/migrations/20280212004187_issue_4187_admin_program_messaging.sql",
+        "supabase/migrations/20280212004188_issue_4188_staff_stay_reservations.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19330,6 +19331,7 @@
         "supabase/migrations/20280210004179_issue_4179_release_reason_backfill.sql",
         "supabase/migrations/20280211004179_issue_4179_release_reason_json_null.sql",
         "supabase/migrations/20280212004187_issue_4187_admin_program_messaging.sql",
+        "supabase/migrations/20280212004188_issue_4188_staff_stay_reservations.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -20419,6 +20421,8 @@
         "supabase/migrations/__tests__/issue_4182_bunny_media_lifecycle.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4187_admin_program_messaging.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4187_admin_program_messaging.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4188_staff_stay_reservations.implementor.happy.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4188_staff_stay_reservations.implementor.happy.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -24034,6 +24038,7 @@
         "supabase/migrations/20280210004179_issue_4179_release_reason_backfill.sql",
         "supabase/migrations/20280211004179_issue_4179_release_reason_json_null.sql",
         "supabase/migrations/20280212004187_issue_4187_admin_program_messaging.sql",
+        "supabase/migrations/20280212004188_issue_4188_staff_stay_reservations.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -25123,6 +25128,8 @@
         "supabase/migrations/__tests__/issue_4182_bunny_media_lifecycle.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4187_admin_program_messaging.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4187_admin_program_messaging.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4188_staff_stay_reservations.implementor.happy.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4188_staff_stay_reservations.implementor.happy.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -52394,5 +52401,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3",
-  "phase3eContractSha256": "06a8bbc24aed0586eb0bbe97e1b775582481dab46007dbb8aa25973333027410"
+  "phase3eContractSha256": "f12476e961bbc07c3c0ae58c089403bc2f200dc91815bbf6709c4d789ec71b00"
 }
