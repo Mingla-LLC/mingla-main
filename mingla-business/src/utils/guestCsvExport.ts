@@ -167,11 +167,6 @@ export const orderDayCell = (
   return labels.sort().join("; ");
 };
 
-export type GuestCsvDayCellFormatter = (
-  order: { ticketDays?: { eventDateIds: string[] }[] },
-  dayLabels: ReadonlyMap<string, string>,
-) => string;
-
 export const serializeGuestsToCsv = (
   rows: ExportGuestRow[],
   summary?: ReconciliationCsvSummary,
@@ -182,7 +177,6 @@ export const serializeGuestsToCsv = (
    * parsing this file by position.
    */
   dayLabels: ReadonlyMap<string, string> = new Map(),
-  formatDayCell: GuestCsvDayCellFormatter = orderDayCell,
 ): string => {
   // Cycle 12 — added "Kind" column at front (ONLINE | COMP | DOOR) +
   // "Payment method" column (online sales: card/apple/google; door sales:
@@ -264,7 +258,7 @@ export const serializeGuestsToCsv = (
         "",
         o.viaLinkLabel ?? "",
         o.partyLeadOrderId !== null && o.partyLeadOrderId !== undefined ? o.partyLeadName ?? "" : "",
-        formatDayCell(o, dayLabels),
+        orderDayCell(o, dayLabels),
       ];
       lines.push(fields.map(csvEscape).join(","));
     } else if (row.kind === "order") {
@@ -292,7 +286,7 @@ export const serializeGuestsToCsv = (
         o.currency,
         o.viaLinkLabel ?? "",
         "",
-        formatDayCell(o, dayLabels),
+        orderDayCell(o, dayLabels),
       ];
       lines.push(fields.map(csvEscape).join(","));
     } else {
@@ -341,7 +335,6 @@ export interface ExportGuestsCsvArgs {
    * on every single-date event, where the column is emitted but blank.
    */
   dayLabels?: ReadonlyMap<string, string>;
-  formatDayCell?: GuestCsvDayCellFormatter;
 }
 
 const downloadCsvWeb = (csv: string, filename: string): void => {
@@ -441,12 +434,7 @@ export const exportCsvText = async (
 export const exportGuestsCsv = async (
   args: ExportGuestsCsvArgs,
 ): Promise<ExportResult> => {
-  const csv = serializeGuestsToCsv(
-    args.rows,
-    undefined,
-    args.dayLabels,
-    args.formatDayCell,
-  );
+  const csv = serializeGuestsToCsv(args.rows, undefined, args.dayLabels);
   const filename = `${args.event.eventSlug}-guest-list-${formatYmdToday()}.csv`;
   if (Platform.OS === "web") {
     downloadCsvWeb(csv, filename);

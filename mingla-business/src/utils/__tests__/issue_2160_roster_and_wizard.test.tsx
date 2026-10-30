@@ -27,7 +27,10 @@ import {
   serializeGuestsToCsv,
   type ExportGuestRow,
 } from "../guestCsvExport";
-import { orderDayCellByOccurrence } from "../guestCsvDayOrder";
+import {
+  orderDayCellByOccurrence,
+  serializeGuestsToCsvByOccurrence,
+} from "../guestCsvDayOrder";
 import { dayHeadCount, orderMatchesDay } from "../guestDayFilter";
 import { draftMultiDatePricingMode } from "../multiDatePricingMode";
 
@@ -437,8 +440,7 @@ describe("issue #2160 — the CSV carries the day (a roster you cannot export is
 
   test("the row's Day cell names a full pass as All N dates", () => {
     expect(
-      serializeGuestsToCsv([order], undefined, LABELS, orderDayCellByOccurrence)
-        .split("\r\n")[1],
+      serializeGuestsToCsvByOccurrence([order], LABELS).split("\r\n")[1],
     ).toContain("All 2 dates");
   });
 

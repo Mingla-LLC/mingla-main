@@ -4,6 +4,14 @@
  * (guests / door / reconciliation / finance all share that module).
  */
 
+import type { LiveEvent } from "../store/liveEventStore";
+import {
+  exportCsvText,
+  serializeGuestsToCsv,
+  type ExportGuestRow,
+  type ExportResult,
+} from "./guestCsvExport";
+
 export type GuestCsvDayCellOrder = {
   ticketDays?: { eventDateIds: string[] }[];
 };
@@ -36,4 +44,86 @@ export const orderDayCellByOccurrence = (
     if (label !== undefined && label.length > 0) labels.push(label);
   }
   return labels.join("; ");
+};
+
+const csvEscapeDay = (value: string): string => {
+  if (
+    value.includes(",") ||
+    value.includes('"') ||
+    value.includes("\n") ||
+    value.includes("\r")
+  ) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+};
+
+const lastUnquotedComma = (line: string): number => {
+  let inQuotes = false;
+  let last = -1;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === "," && !inQuotes) {
+      last = i;
+    }
+  }
+  return last;
+};
+
+const daySourceForRow = (row: ExportGuestRow): GuestCsvDayCellOrder => {
+  if (row.kind === "order") return row.order;
+  return {};
+};
+
+/**
+ * Same as serializeGuestsToCsv, but the Day column uses occurrence order /
+ * "All N dates" without growing the shared guestCsvExport __common module.
+ */
+export const serializeGuestsToCsvByOccurrence = (
+  rows: ExportGuestRow[],
+  dayLabels: ReadonlyMap<string, string> = new Map(),
+): string => {
+  const raw = serializeGuestsToCsv(rows, undefined, dayLabels);
+  const lines = raw.split("\r\n");
+  if (lines.length === 0) return raw;
+  const out: string[] = [lines[0] ?? ""];
+  let rowIdx = 0;
+  for (let i = 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (line === undefined) continue;
+    if (line.length === 0 || line.startsWith("#")) {
+      out.push(line);
+      continue;
+    }
+    const row = rows[rowIdx];
+    rowIdx += 1;
+    if (row === undefined) {
+      out.push(line);
+      continue;
+    }
+    const day = orderDayCellByOccurrence(daySourceForRow(row), dayLabels);
+    const comma = lastUnquotedComma(line);
+    if (comma < 0) {
+      out.push(line);
+      continue;
+    }
+    out.push(`${line.slice(0, comma + 1)}${csvEscapeDay(day)}`);
+  }
+  return `${out.join("\r\n")}\r\n`;
+};
+
+export const exportGuestsCsvByOccurrence = async (args: {
+  event: LiveEvent;
+  rows: ExportGuestRow[];
+  dayLabels?: ReadonlyMap<string, string>;
+}): Promise<ExportResult> => {
+  const csv = serializeGuestsToCsvByOccurrence(
+    args.rows,
+    args.dayLabels ?? new Map(),
+  );
+  const ymd = new Date().toISOString().slice(0, 10);
+  const filename = `${args.event.eventSlug}-guest-list-${ymd}.csv`;
+  return exportCsvText(csv, filename, "Export guest list");
 };
