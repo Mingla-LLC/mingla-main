@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { StayGuestBooking } from "@mingla/brand-rendering/StayGuestBooking";
 import type {
   StayGuestCheckoutInput,
   StayQuote,
@@ -43,6 +42,8 @@ const SOURCES: readonly { id: StaffSource; label: string }[] = [
   { id: "instagram", label: "Instagram" },
   { id: "mingla", label: "Mingla" },
 ];
+
+const LazyStayGuestBooking = React.lazy(() => import("./StayGuestBooking.lazy"));
 
 function createErrorCopy(caught: unknown): string {
   const code = caught instanceof StayReservationError
@@ -347,27 +348,35 @@ export function StayStaffReservationCreateSheet({
           </Pressable>
         </View>
 
-        <StayGuestBooking
-          detail={detailQuery.data ?? null}
-          state={detailState}
-          palette={palette}
-          surface={surface}
-          theme={theme}
-          checkoutContext="staff"
-          staffPaymentMethod={paymentMethod}
-          submitting={submitting}
-          errorMessage={error}
-          quote={quote}
-          onRetry={() => void detailQuery.refetch()}
-          onSubmit={prepareQuote}
-          onConfirmQuote={confirm}
-          onEditQuote={() => {
-            setQuote(null);
-            setCheckout(null);
-            setCreateKey(null);
-            setError(null);
-          }}
-        />
+        <React.Suspense
+          fallback={(
+            <View style={styles.sourceBlock} accessibilityRole="progressbar">
+              <Text style={styles.helper}>Loading Room and Place options…</Text>
+            </View>
+          )}
+        >
+          <LazyStayGuestBooking
+            detail={detailQuery.data ?? null}
+            state={detailState}
+            palette={palette}
+            surface={surface}
+            theme={theme}
+            checkoutContext="staff"
+            staffPaymentMethod={paymentMethod}
+            submitting={submitting}
+            errorMessage={error}
+            quote={quote}
+            onRetry={() => void detailQuery.refetch()}
+            onSubmit={prepareQuote}
+            onConfirmQuote={confirm}
+            onEditQuote={() => {
+              setQuote(null);
+              setCheckout(null);
+              setCreateKey(null);
+              setError(null);
+            }}
+          />
+        </React.Suspense>
       </ScrollView>
     </Sheet>
   );

@@ -2584,6 +2584,9 @@ REVOKE ALL ON FUNCTION public.issue_4188_create_staff_stay_group(
 ) FROM public, anon;
 REVOKE ALL ON FUNCTION public.issue_4188_staff_stay_details(uuid)
   FROM public, anon;
+REVOKE ALL ON FUNCTION public.issue_4188_has_stay_permission(
+  uuid, uuid, uuid, text
+) FROM public, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_4188_guard_stay_group_source_truth()
   FROM public, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_4188_property_cancel_preview(

@@ -14,6 +14,10 @@ const detailSource = fs.readFileSync(
   path.join(stayDirectory, "StayReservationManagementDetail.tsx"),
   "utf8",
 );
+const lazyBookingSource = fs.readFileSync(
+  path.join(stayDirectory, "StayGuestBooking.lazy.ts"),
+  "utf8",
+);
 const detailServiceSource = fs.readFileSync(
   path.resolve(
     __dirname,
@@ -36,7 +40,13 @@ describe("#4188 Stay staff front-desk reservation contract", () => {
   });
 
   it("uses canonical Stay selection and offers honest link/property collection", () => {
-    expect(createSource).toContain("<StayGuestBooking");
+    expect(createSource).toContain("<LazyStayGuestBooking");
+    expect(createSource).toContain(
+      'import("./StayGuestBooking.lazy")',
+    );
+    expect(lazyBookingSource).toContain(
+      '@mingla/brand-rendering/StayGuestBooking',
+    );
     expect(createSource).toContain("useStaffStayDetail");
     expect(createSource).not.toContain("usePublicStayDetail");
     expect(detailServiceSource).toContain('"issue_4188_staff_stay_details"');

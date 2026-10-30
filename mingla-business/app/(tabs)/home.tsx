@@ -45,12 +45,10 @@ import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherShee
 import { BusinessTodoToggle } from "../../src/components/home/BusinessTodoToggle";
 import { BusinessPulsePanel } from "../../src/components/home/BusinessPulsePanel";
 import { HomeAdsSection } from "../../src/components/home/HomeAdsSection";
-import { VenueStaffHome } from "../../src/components/home/VenueStaffHome";
 import type { LiveCardMetrics } from "../../src/components/home/LiveOfferingCard";
 import { Toast } from "../../src/components/ui/Toast";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { TopBar } from "../../src/components/ui/TopBar";
-import { Button } from "../../src/components/ui/Button";
 // RecentRow is Home's rendering boundary for Recent covers and owns the shared
 // video-capable EventCoverMedia presentation; Home must not reimplement it.
 import { RecentRow } from "../../src/components/home/RecentRow";
@@ -131,6 +129,13 @@ const LazyBrandDeleteSheet = React.lazy(async () => {
 const LazyUniversalCreatorSheet = React.lazy(async () => {
   const mod = await import("../../src/components/ui/UniversalCreatorSheet");
   return { default: mod.UniversalCreatorSheet };
+});
+
+// Venue staff is a distinct operational shell. Loading it only for that role
+// keeps venue-management services out of every host's Home boot payload.
+const LazyVenueStaffHome = React.lazy(async () => {
+  const mod = await import("../../src/components/home/VenueStaffHome");
+  return { default: mod.VenueStaffHome };
 });
 
 interface ToastState {
@@ -726,18 +731,22 @@ export default function HomeTab(): React.ReactElement {
             </Text>
             {roleDenied ? (
               <View style={styles.roleGateActions}>
-                <Button
-                  label="Try again"
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Try again"
                   onPress={() => void role.refetch()}
-                  variant="secondary"
-                  size="md"
-                />
-                <Button
-                  label="Switch brand"
+                  style={styles.roleGatePrimaryAction}
+                >
+                  <Text style={styles.roleGatePrimaryActionText}>Try again</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Switch brand"
                   onPress={handleOpenSwitcher}
-                  variant="ghost"
-                  size="md"
-                />
+                  style={styles.roleGateSecondaryAction}
+                >
+                  <Text style={styles.roleGateSecondaryActionText}>Switch brand</Text>
+                </Pressable>
               </View>
             ) : null}
           </View>
@@ -765,11 +774,20 @@ export default function HomeTab(): React.ReactElement {
   if (role.role === "venue_staff" && currentBrand !== null) {
     return (
       <>
-        <VenueStaffHome
-          brandId={currentBrand.id}
-          brandName={currentBrand.displayName}
-          onBrandTap={handleOpenSwitcher}
-        />
+        <Suspense
+          fallback={(
+            <View style={styles.roleGate} accessibilityRole="progressbar">
+              <ActivityIndicator color={accent.warm} />
+              <Text style={styles.roleGateBody}>Loading venue operations…</Text>
+            </View>
+          )}
+        >
+          <LazyVenueStaffHome
+            brandId={currentBrand.id}
+            brandName={currentBrand.displayName}
+            onBrandTap={handleOpenSwitcher}
+          />
+        </Suspense>
         <BrandSwitcherSheet
           visible={sheetVisible}
           onClose={handleCloseSheet}
@@ -1119,6 +1137,31 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     justifyContent: "center",
     gap: spacing.sm,
+  },
+  roleGatePrimaryAction: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: radiusTokens.md,
+    backgroundColor: accent.warm,
+  },
+  roleGatePrimaryActionText: {
+    ...typography.bodySm,
+    color: textTokens.inverse,
+    fontWeight: "700",
+  },
+  roleGateSecondaryAction: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: accent.border,
+  },
+  roleGateSecondaryActionText: {
+    ...typography.bodySm,
+    color: accent.warm,
+    fontWeight: "700",
   },
   brandLoading: {
     paddingHorizontal: spacing.md,

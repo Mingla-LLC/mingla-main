@@ -49,6 +49,17 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'internal_property_cancel_rpc_was_exposed';
   END IF;
+  IF has_function_privilege(
+    'anon',
+    'public.issue_4188_has_stay_permission(uuid,uuid,uuid,text)',
+    'EXECUTE'
+  ) OR has_function_privilege(
+    'authenticated',
+    'public.issue_4188_has_stay_permission(uuid,uuid,uuid,text)',
+    'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'internal_stay_permission_helper_was_exposed';
+  END IF;
   IF NOT EXISTS (
     SELECT 1
     FROM pg_constraint
