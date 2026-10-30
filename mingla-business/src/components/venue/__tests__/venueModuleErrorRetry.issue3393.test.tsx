@@ -16,13 +16,15 @@
 
 import React from "react";
 
+let mockVenueAccessQuery: {
+  data: { scoped: boolean; capabilities: string[] } | undefined;
+  isFetched: boolean;
+  isError: boolean;
+  refetch: () => Promise<void>;
+};
+
 jest.mock("../../../hooks/useMyVenueAccess", () => ({
-  useMyVenueAccess: () => ({
-    data: { scoped: false, capabilities: [] },
-    isFetched: true,
-    isError: false,
-    refetch: () => Promise.resolve(),
-  }),
+  useMyVenueAccess: () => mockVenueAccessQuery,
 }));
 import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
 
@@ -127,12 +129,20 @@ const shell = (): React.ReactElement => (
   <VenueSuiteShell brandId="brand-3393" venueId="venue-3393" initialModule="tables" />
 );
 
+function VenueSuiteWithLayoutSubscriber(): React.ReactElement {
+  // Production's Hub layout subscribes to this mirrored module array. That
+  // parent subscription is essential to reproducing #4188's React #185 loop:
+  // every new array published by the shell re-renders the parent and shell.
+  useVenueSuiteStore((state) => state.visibleModules);
+  return shell();
+}
+
 const mounted: Tree[] = [];
 
-async function mountShell(): Promise<Tree> {
+async function mountShell(element: React.ReactElement = shell()): Promise<Tree> {
   let tree!: Tree;
   await TestRenderer.act(async () => {
-    tree = TestRenderer.create(shell());
+    tree = TestRenderer.create(element);
   });
   mounted.push(tree);
   return tree;
@@ -154,6 +164,12 @@ function rendered(tree: Tree, type: string): number {
 
 beforeEach(() => {
   mockSettingsQuery = { data: undefined, isError: false };
+  mockVenueAccessQuery = {
+    data: { scoped: false, capabilities: [] },
+    isFetched: true,
+    isError: false,
+    refetch: () => Promise.resolve(),
+  };
   useVenueSuiteStore.getState().deactivate();
 });
 
@@ -199,5 +215,25 @@ describe("#3389 — a failed settings request does not lose the requested module
 
     expect(useVenueSuiteStore.getState().activeModule).toBe("tables");
     expect(rendered(tree, "VenueTablesModule")).toBe(1);
+  });
+});
+
+describe("#4188 — an unavailable venue-access RPC cannot crash the suite", () => {
+  test("the fail-closed fallback stays stable while the subscribed layout mirrors it", async () => {
+    mockVenueAccessQuery = {
+      data: undefined,
+      isFetched: true,
+      isError: true,
+      refetch: () => Promise.resolve(),
+    };
+
+    const tree = await mountShell(<VenueSuiteWithLayoutSubscriber />);
+
+    expect(
+      tree.root.findAll(
+        (node) => node.props.testID === "venue-access-unavailable",
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(useVenueSuiteStore.getState().visibleModules).toEqual([]);
   });
 });

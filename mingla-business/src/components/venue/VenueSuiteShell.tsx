@@ -51,7 +51,10 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
-import { useMyVenueAccess } from "../../hooks/useMyVenueAccess";
+import {
+  useMyVenueAccess,
+  type MyVenueAccess,
+} from "../../hooks/useMyVenueAccess";
 import {
   useSetReservationsEnabled,
   useVenueReservationSettings,
@@ -131,6 +134,16 @@ const LazyVenueOrdersModule = React.lazy(async () => {
   return { default: mod.VenueOrdersModule };
 });
 
+// #4188 post-merge production regression — keep the fail-closed access answer
+// referentially stable while the permission RPC is loading or unavailable.
+// `visibleModules` is mirrored into the shared suite store below; allocating a
+// fresh empty capability array on every render made that store publish forever
+// when the parent layout subscribed to it (React #185 / maximum update depth).
+const PENDING_VENUE_ACCESS: MyVenueAccess = {
+  scoped: true,
+  capabilities: [],
+};
+
 export interface VenueSuiteShellProps {
   brandId: string | null;
   /** META-ORCH-1255 — the venue every module is scoped to. */
@@ -165,10 +178,7 @@ export function VenueSuiteShell({
   const settingsResolved = settingsQuery.data !== undefined;
   const setEnabled = useSetReservationsEnabled(brandId, venueId);
   const venueAccessQuery = useMyVenueAccess(venueId);
-  const venueAccess = venueAccessQuery.data ?? {
-    scoped: true,
-    capabilities: [],
-  };
+  const venueAccess = venueAccessQuery.data ?? PENDING_VENUE_ACCESS;
 
   const visibleModules = useMemo(
     () => filterVenueModulesForCapabilities(
