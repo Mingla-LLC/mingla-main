@@ -137,22 +137,32 @@ export const describeScanResult = (
 ): ScanResultCopy => {
   const kind = asScanResult(raw);
   const nounCap = noun.length > 0 ? `${noun[0].toUpperCase()}${noun.slice(1)}` : noun;
-  const admitted = formatAdmittedDateLine(scan);
+  const admitted = formatAdmittedDateLine({
+    dayLabel: scan.dayLabel,
+    overrideTitle: scan.overrideTitle,
+  });
   const passProgress = formatPassDateProgress(scan.passIndex, scan.passTotal);
   const day =
     typeof scan.dayLabel === "string" && scan.dayLabel.trim().length > 0
       ? scan.dayLabel.trim()
       : null;
+  const buyer = scan.buyerName ?? "Guest";
+  const tier = scan.ticketName ?? "Ticket";
   switch (kind) {
     case "success":
+      // Keep buyer + tier on the overlay; admitted date / pass progress are
+      // additive detail for multi-date doors (issue #3281 PR8 / Copilot).
       return {
         kind,
-        message: admitted ?? `${scan.buyerName ?? "Guest"} checked in`,
+        message: `${buyer} checked in`,
         detail:
-          passProgress ??
-          (admitted !== null
-            ? (scan.buyerName ?? scan.ticketName ?? "Ticket")
-            : (scan.ticketName ?? "Ticket")),
+          admitted !== null
+            ? passProgress !== null
+              ? `${tier} · ${admitted} · ${passProgress}`
+              : `${tier} · ${admitted}`
+            : passProgress !== null
+              ? `${tier} · ${passProgress}`
+              : tier,
         tone: "success",
       };
     case "duplicate":

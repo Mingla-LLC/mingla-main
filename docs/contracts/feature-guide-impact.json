@@ -239,6 +239,29 @@
         "mingla-business/src/components/venue/VenueSuiteShell.tsx",
         "mingla-business/src/components/venue/venueModules.ts"
       ]
+    },
+    {
+      "capability_key": "events-guest-list",
+      "paths": [
+        "mingla-business/app/event/[id]/guests/index.tsx",
+        "mingla-business/src/components/guests/GuestDaySelector.tsx",
+        "mingla-business/src/utils/guestCsvExport.ts"
+      ]
+    },
+    {
+      "capability_key": "events-check-in",
+      "paths": [
+        "mingla-business/app/event/[id]/scanner/index.tsx",
+        "mingla-business/src/components/scanner/scanResultCopy.ts",
+        "mingla-business/src/services/scanTicketService.ts",
+        "supabase/migrations/20280215003281_issue_3281_scan_duplicate_day_label.sql"
+      ]
+    },
+    {
+      "capability_key": "events-ticket-types",
+      "paths": [
+        "mingla-business/src/components/event/EventDetailTicketTypeRow.tsx"
+      ]
     }
   ]
 }

@@ -68,10 +68,10 @@ import {
 import { usePublicEventById } from "../../../../src/hooks/usePublicEvents";
 import { formatOccurrenceDayLabel } from "../../../../src/utils/eventDateDisplay";
 
-import {
-  describeScanResult,
-  type ScanResultCopy,
-} from "../../../../src/components/scanner/scanResultCopy";
+// Value import of describeScanResult stays behind an on-intent dynamic import
+// in handleBarcodeScanned so scanResultCopy does not grow the web __common
+// boot chunk (orch-1083 / bundle-baseline-movement).
+import type { ScanResultCopy } from "../../../../src/components/scanner/scanResultCopy";
 import type { AdmitResponse } from "../../../../src/services/guestListService";
 
 import { Button } from "../../../../src/components/ui/Button";
@@ -214,6 +214,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
     typeof eventId === "string" ? eventId : null,
   );
   const occurrences = publicEventQuery.data?.occurrences ?? [];
+  const allDaysPass = publicEventQuery.data?.allDaysPass === true;
   // META-ORCH-1059 — kind-aware copy lens for the shared scanner screen.
   const kindCfg = offeringKindConfig(
     offeringKindFromEventType(event?.event_type),
@@ -396,6 +397,9 @@ export default function ScannerCameraRoute(): React.ReactElement {
             ticketName: result.ticketName,
           });
           // issue #3281 PR8 — resolve admitted day for door copy.
+          const { describeScanResult } = await import(
+            "../../../../src/components/scanner/scanResultCopy"
+          );
           const admittedId =
             typeof result.eventDateId === "string" ? result.eventDateId : null;
           const admittedOcc =
@@ -409,7 +413,10 @@ export default function ScannerCameraRoute(): React.ReactElement {
                   admittedOcc.timezone,
                 )
               : null;
-          const passTotal = occurrences.length > 1 ? occurrences.length : null;
+          // Pass progress only for an all-dates pass — a single-day ticket on
+          // a multi-date event must not read "Date N of M".
+          const passTotal =
+            allDaysPass && occurrences.length > 1 ? occurrences.length : null;
           const passIndex =
             admittedOcc !== null && passTotal !== null
               ? occurrences.findIndex((o) => o.id === admittedOcc.id) + 1
@@ -478,7 +485,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
         }
       })();
     },
-    [event, showResult, recordServerScan, kindCfg.noun, occurrences],
+    [event, showResult, recordServerScan, kindCfg.noun, occurrences, allDaysPass],
   );
 
   // issue #3827 — a name admit gets the same result card, haptics and

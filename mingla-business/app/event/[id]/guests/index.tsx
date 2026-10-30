@@ -103,6 +103,13 @@ const LazyTicketLinksSheet = React.lazy(() =>
     default: module.TicketLinksSheet,
   }))
 );
+// issue #3281 PR8 / S24 — >7-date Day selector (month-grouped) stays out of
+// the web __common boot chunk until a multi-date roster needs it.
+const LazyGuestDaySelector = React.lazy(() =>
+  import("../../../../src/components/guests/GuestDaySelector").then((module) => ({
+    default: module.GuestDaySelector,
+  }))
+);
 
 // ---- Merged-row types ----------------------------------------------
 
@@ -838,67 +845,17 @@ export default function EventGuestsListRoute(): React.ReactElement {
             more than one occurrence, so a single-date roster is untouched. */}
         {hasDayChips ? (
           occurrences.length > 7 ? (
-            // issue #3281 PR8 — above 7 dates, a Day selector (month-grouped)
-            // defaults to the next upcoming occurrence.
-            <View style={styles.daySelectorHost} testID="issue-3281-day-selector">
-              <Text style={styles.daySelectorLabel}>Day</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.dayChipRow}
-              >
-                <Pressable
-                  onPress={() => setDayFilter(null)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: dayFilter === null }}
-                  accessibilityLabel={`All ${headcountPlural}`}
-                  testID="issue-2160-day-chip-all"
-                  style={[
-                    styles.dayChip,
-                    dayFilter === null ? styles.dayChipActive : null,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.dayChipLabel,
-                      dayFilter === null ? styles.dayChipLabelActive : null,
-                    ]}
-                  >
-                    All
-                  </Text>
-                </Pressable>
-                {occurrences.map((occ) => {
-                  const label = dayLabels.get(occ.id);
-                  if (label === undefined) return null;
-                  const active = dayFilter === occ.id;
-                  const count = dayHeadCounts.get(occ.id) ?? 0;
-                  const monthKey = occ.startAt.slice(0, 7);
-                  return (
-                    <Pressable
-                      key={occ.id}
-                      onPress={() => setDayFilter(active ? null : occ.id)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                      accessibilityLabel={`${label} — ${count} ${headcountLabelForCount(count)}`}
-                      testID={`issue-2160-day-chip-${occ.id}`}
-                      style={[
-                        styles.dayChip,
-                        active ? styles.dayChipActive : null,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.dayChipLabel,
-                          active ? styles.dayChipLabelActive : null,
-                        ]}
-                      >
-                        {monthKey} · {label} · {count}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
+            <React.Suspense fallback={null}>
+              <LazyGuestDaySelector
+                occurrences={occurrences}
+                dayLabels={dayLabels}
+                dayHeadCounts={dayHeadCounts}
+                dayFilter={dayFilter}
+                onSelectDay={setDayFilter}
+                allAccessibilityLabel={`All ${headcountPlural}`}
+                headcountLabelForCount={headcountLabelForCount}
+              />
+            </React.Suspense>
           ) : (
           <ScrollView
             horizontal
@@ -1221,17 +1178,6 @@ const styles = StyleSheet.create({
   // issue #2160 — the per-day chip row. Only mounted on a multi-day event, so
   // a single-date roster renders exactly today's screen.
   dayChipScroll: { flexGrow: 0, marginBottom: spacing.sm },
-  daySelectorHost: {
-    flexGrow: 0,
-    marginBottom: spacing.sm,
-    paddingHorizontal: 16,
-    gap: spacing.xs,
-  },
-  daySelectorLabel: {
-    ...textTokens.caption,
-    color: "rgba(255,255,255,0.72)",
-    marginBottom: 4,
-  },
   dayChipRow: { flexDirection: "row", gap: spacing.xs, paddingHorizontal: 16 },
   dayChip: {
     paddingHorizontal: 12,

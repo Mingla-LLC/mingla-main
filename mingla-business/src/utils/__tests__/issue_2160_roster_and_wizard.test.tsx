@@ -364,13 +364,14 @@ describe("issue #2160 — the CSV carries the day (a roster you cannot export is
       { ticketDays: [{ eventDateIds: [DAY_1] }, { eventDateIds: [DAY_2] }] },
       LABELS,
     );
-    expect(cell).toBe("Sat 22 Aug; Sun 23 Aug");
+    // issue #3281 PR8 — full coverage of every labelled day → "All N dates".
+    expect(cell).toBe("All 2 dates");
     expect(cell).not.toBe("Sat 22 Aug");
   });
 
-  test("an all_days pass — ONE ticket, TWO days — exports both", () => {
+  test("an all_days pass — ONE ticket, TWO days — exports All N dates", () => {
     expect(orderDayCell({ ticketDays: [{ eventDateIds: [DAY_1, DAY_2] }] }, LABELS))
-      .toBe("Sat 22 Aug; Sun 23 Aug");
+      .toBe("All 2 dates");
   });
 
   test("a one-day guest exports exactly that day", () => {
@@ -424,9 +425,9 @@ describe("issue #2160 — the CSV carries the day (a roster you cannot export is
     ]);
   });
 
-  test("the row's Day cell names both chosen days", () => {
+  test("the row's Day cell names a full pass as All N dates", () => {
     expect(serializeGuestsToCsv([order], undefined, LABELS).split("\r\n")[1])
-      .toContain("Sat 22 Aug; Sun 23 Aug");
+      .toContain("All 2 dates");
   });
 
   test("a SINGLE-DATE export is unchanged except for one trailing empty cell", () => {
