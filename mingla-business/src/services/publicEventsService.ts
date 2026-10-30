@@ -1278,17 +1278,12 @@ export const publicEventViewRowToEvent = (
   const seedLocation = extractPublicEventLocation(public_theme, location_text);
   const settings = asRecord(businessEvent.settings);
   const coverHue = asNumber(businessEvent.coverHue ?? theme.coverHue, 25);
-  // ORCH-0792: master_* stay true master; next_* preferred at display call sites.
+  // ORCH-0792: dates sourced from event_dates via master_* columns on the
+  // view (I-PROPOSED-AY EVENT_DATES_SOLE_DATE_AUTHORITY).
   const dateTimezone =
     row.master_timezone ?? asStringOrNull(row.timezone) ?? "UTC";
-  const startSplit = splitTimestampInTz(
-    row.next_start_at ?? master_start_at,
-    dateTimezone,
-  );
-  const endSplit = splitTimestampInTz(
-    row.next_end_at ?? master_end_at,
-    dateTimezone,
-  );
+  const startSplit = splitTimestampInTz(master_start_at, dateTimezone);
+  const endSplit = splitTimestampInTz(master_end_at, dateTimezone);
   return {
     terminalSource,
     id,
@@ -1314,7 +1309,6 @@ export const publicEventViewRowToEvent = (
     // fallback in `computeMasterEndAtUtc`.
     masterStartAtUtc: master_start_at,
     masterEndAtUtc: master_end_at,
-    nextStartAtUtc: row.next_start_at ?? null,
     timezone: dateTimezone,
     recurrenceRule:
       businessEvent.recurrenceRule === null ||
@@ -1668,23 +1662,28 @@ const detailFromRow = async (
       : Promise.resolve(null),
   ]);
   const event = publicEventViewRowToEvent(row, tickets);
+  const withSchedule = await import("./publicEventNextOccurrence").then(
+    (module) => module.attachNextOccurrenceFields(event, row),
+  );
   const merged =
     canonical !== null
       ? {
-          ...event,
+          ...withSchedule,
           partyTypes:
             canonical.partyTypes.length > 0
               ? canonical.partyTypes
-              : event.partyTypes,
+              : withSchedule.partyTypes,
           vibeTags:
-            canonical.vibeTags.length > 0 ? canonical.vibeTags : event.vibeTags,
+            canonical.vibeTags.length > 0
+              ? canonical.vibeTags
+              : withSchedule.vibeTags,
           musicGenres:
             canonical.musicGenres.length > 0
               ? canonical.musicGenres
-              : event.musicGenres,
+              : withSchedule.musicGenres,
           cityGeo: canonical.cityGeo,
         }
-      : event;
+      : withSchedule;
   return {
     event: merged,
     brand: viewRowToBrand(row),
@@ -1930,7 +1929,12 @@ const detailFromDirectBundle = async (
     kind: "occurrences",
     value: payload.occurrences,
   };
-  const event = publicEventViewRowToEvent(row, tickets, terminalSource);
+  const event = await import("./publicEventNextOccurrence").then((module) =>
+    module.attachNextOccurrenceFields(
+      publicEventViewRowToEvent(row, tickets, terminalSource),
+      row,
+    ),
+  );
   event.cityGeo = asLatLng(payload.cityGeo);
   const bookable = await resolveEventBookable(
     String(payload.brandId),
@@ -2337,9 +2341,15 @@ export const fetchPublicBrandEvents = async (
   const pricedRows = await import("./publicEventDisplayPricesService").then(
     (module) => module.addPublicEventDisplayPrices(visible),
   );
+  const { attachNextOccurrenceFields } = await import(
+    "./publicEventNextOccurrence"
+  );
 
   return pricedRows.map(({ row, tickets, terminalSource }) =>
-    publicEventViewRowToEvent(row, tickets, terminalSource),
+    attachNextOccurrenceFields(
+      publicEventViewRowToEvent(row, tickets, terminalSource),
+      row,
+    ),
   );
 };
 
