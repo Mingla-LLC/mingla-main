@@ -81,6 +81,7 @@
         "mingla-business/src/hooks/useBrandVenueAccessMutation.ts",
         "mingla-business/src/hooks/useCurrentBrandRole.ts",
         "mingla-business/src/hooks/useMyVenueAccess.ts",
+        "mingla-business/src/services/brandInvitationShared.ts",
         "mingla-business/src/services/brandInvitationsService.ts",
         "mingla-business/src/services/brandVenueAccessService.ts",
         "mingla-business/src/store/brandTeamStore.ts",
