@@ -1278,13 +1278,17 @@ export const publicEventViewRowToEvent = (
   const seedLocation = extractPublicEventLocation(public_theme, location_text);
   const settings = asRecord(businessEvent.settings);
   const coverHue = asNumber(businessEvent.coverHue ?? theme.coverHue, 25);
-  // ORCH-0792: master_* stay true master; display prefers next occurrence.
-  const displayStartAt = row.next_start_at ?? master_start_at;
-  const displayEndAt = row.next_end_at ?? master_end_at;
+  // ORCH-0792: master_* stay true master; next_* preferred at display call sites.
   const dateTimezone =
     row.master_timezone ?? asStringOrNull(row.timezone) ?? "UTC";
-  const startSplit = splitTimestampInTz(displayStartAt, dateTimezone);
-  const endSplit = splitTimestampInTz(displayEndAt, dateTimezone);
+  const startSplit = splitTimestampInTz(
+    row.next_start_at ?? master_start_at,
+    dateTimezone,
+  );
+  const endSplit = splitTimestampInTz(
+    row.next_end_at ?? master_end_at,
+    dateTimezone,
+  );
   return {
     terminalSource,
     id,
@@ -1311,7 +1315,6 @@ export const publicEventViewRowToEvent = (
     masterStartAtUtc: master_start_at,
     masterEndAtUtc: master_end_at,
     nextStartAtUtc: row.next_start_at ?? null,
-    nextEndAtUtc: row.next_end_at ?? null,
     timezone: dateTimezone,
     recurrenceRule:
       businessEvent.recurrenceRule === null ||

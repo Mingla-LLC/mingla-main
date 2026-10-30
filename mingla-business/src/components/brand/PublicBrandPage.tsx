@@ -138,14 +138,11 @@ const mapEvent = (event: PublicEventRecord): PublicBrandEvent => ({
   masterStartAtUtc: event.masterStartAtUtc ?? null,
   masterEndAtUtc: event.masterEndAtUtc ?? null,
   masterTimezone: event.timezone,
-  // Prefer next occurrence for the chip; master* on the record stay true master.
-  // Force single-mode when next* is present so multiDates[0] cannot win.
   dateLine: formatDraftDateLine({
     ...event,
     whenMode: event.nextStartAtUtc ? "single" : event.whenMode,
     multiDates: event.nextStartAtUtc ? null : event.multiDates,
     masterStartAtUtc: event.nextStartAtUtc ?? event.masterStartAtUtc,
-    masterEndAtUtc: event.nextEndAtUtc ?? event.masterEndAtUtc,
   }),
   venueName: event.venueName,
   format: event.format,
