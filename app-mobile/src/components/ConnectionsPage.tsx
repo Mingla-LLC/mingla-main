@@ -316,8 +316,9 @@ async function fetchGroupEventMetaByIds(eventIds: string[]): Promise<Map<string,
             coverMediaUrl: event.cover_media_url ?? null,
             coverMediaType: event.cover_media_type ?? null,
             coverHue: extractCoverHue(event.public_theme),
+            // True master pair for detail date-line; next_* drive list tags / NEXT.
             masterDateUtc: event.master_start_at ?? null,
-            masterEndAtUtc: event.next_end_at ?? event.master_end_at ?? null,
+            masterEndAtUtc: event.master_end_at ?? null,
             nextStartAtUtc: event.next_start_at ?? null,
             nextEndAtUtc: event.next_end_at ?? null,
             upcomingCount: event.upcoming_count ?? null,
@@ -1533,8 +1534,15 @@ function ConnectionsPageRefactored({
           eventBrandId: eventMeta?.brandId ?? null,
           eventBrandSlug: eventMeta?.brandSlug ?? null,
           eventBrandLogoUrl: eventMeta?.brandLogoUrl ?? null,
-          eventStartAt: eventMeta?.publicCard?.masterDateUtc ?? null,
-          eventEndAt: eventMeta?.publicCard?.masterEndAtUtc ?? null,
+          // Channel fold orders by next occurrence; publicCard keeps true master*.
+          eventStartAt:
+            eventMeta?.publicCard?.nextStartAtUtc ??
+            eventMeta?.publicCard?.masterDateUtc ??
+            null,
+          eventEndAt:
+            eventMeta?.publicCard?.nextEndAtUtc ??
+            eventMeta?.publicCard?.masterEndAtUtc ??
+            null,
           eventCoverMediaUrl: eventMeta?.coverMediaUrl ?? null,
           eventPublicUrl,
           eventPublicCard,

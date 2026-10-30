@@ -76,7 +76,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // exact exclusion from the deliberately pre-#1931 historical replay.
 // #3643: re-sealed after renaming tests-append-only.yml → pre-merge-main-health.yml
 // (display name already Pre-merge main health; path + provider registry catch up).
-export const BOOTSTRAP_SHA256 = "26744acde03840e99551e4749e86157677f21b49e7374a7baf9b6375261f5101";
+// #3281: re-sealed after PR7 public schedule-card migrations and structural
+// proofs entered the preserved inventories, with exact exclusions from the
+// deliberately pre-#1931 historical replay.
+export const BOOTSTRAP_SHA256 = "ad674a97b485173ce120e9397e278e10f47ccb68d29ea45a03e5e5898d2ddccc";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

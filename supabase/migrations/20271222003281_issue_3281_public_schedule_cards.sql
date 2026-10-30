@@ -166,21 +166,13 @@ AS $function$
     'vibe_tags',to_jsonb(e.vibe_tags),'music_genres',to_jsonb(e.music_genres),'event_type',e.event_type,
     'brand_slug',b.slug,'brand_name',b.name,'brand_profile_photo_url',b.profile_photo_url,
     'master_start_at',ed.start_at,'master_end_at',ed.end_at,'master_timezone',ed.timezone,
-    -- Window-selected occurrence is the card authority (#3281 PR7 review).
+    -- Window-selected occurrence is the card timestamp authority (#3281 PR7).
+    -- Do NOT call issue_3281_event_schedule here: this base feeds eligibility,
+    -- facets, and counts before pagination (same page-only rule as admin_list).
     'next_start_at',ed.start_at,
     'next_end_at',ed.end_at,
-    'upcoming_count',COALESCE((sched.j->>'upcomingCount')::integer,0),
-    -- Match helper/view: null when nothing upcoming; chip is the window occurrence.
-    'schedule_line', CASE
-      WHEN COALESCE((sched.j->>'upcomingCount')::integer,0) = 0 THEN NULL
-      WHEN COALESCE((sched.j->>'upcomingCount')::integer,0) = 1 THEN
-        to_char(ed.start_at AT TIME ZONE COALESCE(NULLIF(btrim(e.timezone), ''), 'UTC'), 'Dy DD Mon')
-      ELSE format(
-        '%s · +%s more',
-        to_char(ed.start_at AT TIME ZONE COALESCE(NULLIF(btrim(e.timezone), ''), 'UTC'), 'Dy DD Mon'),
-        GREATEST(COALESCE((sched.j->>'upcomingCount')::integer,0) - 1, 0)
-      )
-    END,
+    'upcoming_count',NULL,
+    'schedule_line',NULL,
     'price_min_cents',(SELECT min(tt.price_cents) FROM public.ticket_types tt
       WHERE tt.event_id=e.id AND tt.deleted_at IS NULL AND tt.is_hidden IS NOT TRUE
         AND tt.is_disabled IS NOT TRUE AND tt.price_cents IS NOT NULL),
@@ -201,9 +193,6 @@ AS $function$
       AND (p_upper_start IS NULL OR occurrence.start_at<=p_upper_start)
     ORDER BY occurrence.start_at,occurrence.id LIMIT 1
   ) ed ON true
-  LEFT JOIN LATERAL (
-    SELECT public.issue_3281_event_schedule(e.id) AS j
-  ) sched ON true
   WHERE e.deleted_at IS NULL
     AND e.visibility='public'
     AND (e.event_type='event' OR (e.event_type='rsvp' AND e.rsvp_discoverable=true))

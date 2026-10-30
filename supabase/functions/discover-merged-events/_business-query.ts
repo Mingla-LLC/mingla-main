@@ -111,8 +111,8 @@ export function mapRpcRowToCard(row: RpcRow): BusinessEventCard {
     coverMediaUrl: (row.cover_media_url as string | null) ?? null,
     coverMediaType: (row.cover_media_type as BusinessEventCard["coverMediaType"]) ?? null,
     coverHue: extractCoverHue(theme),
-    // Window-selected occurrence (master_*) is the card timestamp authority.
-    // next_* / schedule_line are aligned to that same occurrence in SQL.
+    // Window-selected occurrence is the card timestamp authority. Discover base
+    // leaves schedule_line/upcoming_count null (no helper tax before pagination).
     masterDateUtc: (row.master_start_at as string | null) ?? null,
     masterEndAtUtc: (row.master_end_at as string | null) ?? null,
     nextStartAtUtc:

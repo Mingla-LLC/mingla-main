@@ -158,7 +158,6 @@ interface BusinessPublicEventViewRow {
   master_end_at: string | null;
   master_timezone: string | null;
   master_event_date_id: string | null;
-  // issue #3281 PR7 — server next-occurrence schedule (cards / brand / SEO).
   next_start_at?: string | null;
   next_end_at?: string | null;
   upcoming_count?: number | null;
@@ -441,7 +440,6 @@ export type PublicBrandRecord = Brand;
 export type PublicEventRecord = LiveEvent & {
   terminalSource: EventTerminalSource;
   displaySalePriceCents?: number | null;
-  /** issue #3281 PR7 — server schedule line for cards / SEO. */
   scheduleLine?: string | null;
   upcomingCount?: number | null;
   nextStartAtUtc?: string | null;
@@ -1286,10 +1284,7 @@ export const publicEventViewRowToEvent = (
   const seedLocation = extractPublicEventLocation(public_theme, location_text);
   const settings = asRecord(businessEvent.settings);
   const coverHue = asNumber(businessEvent.coverHue ?? theme.coverHue, 25);
-  // ORCH-0792: dates sourced from event_dates via master_* columns on the
-  // view (I-PROPOSED-AY EVENT_DATES_SOLE_DATE_AUTHORITY).
-  // issue #3281 PR7 — card/SEO display prefers next occurrence; master_* stay
-  // true master for ORCH-0850 lifecycle (never silently remapped).
+  // ORCH-0792: master_* stay true master; display prefers next occurrence.
   const displayStartAt = row.next_start_at ?? master_start_at;
   const displayEndAt = row.next_end_at ?? master_end_at;
   const dateTimezone =
@@ -1929,7 +1924,6 @@ const detailFromDirectBundle = async (
     master_start_at: asStringOrNull(payload.masterStartAt),
     master_end_at: asStringOrNull(payload.masterEndAt),
     master_timezone: asStringOrNull(payload.timezone),
-    // issue #3281 PR7 — preserve next-occurrence schedule from the bundle.
     next_start_at: asStringOrNull(payload.nextStartAt),
     next_end_at: asStringOrNull(payload.nextEndAt),
     upcoming_count:

@@ -17,17 +17,22 @@ Deno.test("PR7 migration schedules public view, discover, and admin readers", ()
   assert(text.includes("CREATE OR REPLACE VIEW public.business_public_events_view"));
   assert(text.includes("discover_v2_event_base"));
   assert(text.includes("admin_list_offerings"));
+  // Live Offerings console uses admin_list_offerings_board (#4130), enriched
+  // in the follow-on migration after that board reader landed.
+  const board = Deno.readTextFileSync(
+    "supabase/migrations/20280213003281_issue_3281_admin_offerings_board_schedule.sql",
+  );
+  assert(board.includes("admin_list_offerings_board"));
+  assert(board.includes("issue_3281_event_schedule"));
+  assert(board.includes("schedule_line"));
+  assert(board.includes("next_start_at"));
+  assert(/page AS \([\s\S]*issue_3281_event_schedule/.test(board));
+  assert(!/filtered AS \([\s\S]*?issue_3281_event_schedule[\s\S]*?\)\s*,\s*ranked AS/.test(board));
 
   assert(text.includes("COALESCE(next_start_at_sort, master_start_at)"));
   assert(
     text.includes(
       "p_date_from IS NULL OR COALESCE(next_start_at_sort, master_start_at) >= p_date_from",
-    ),
-  );
-  // Discover schedule_line must null when upcoming_count is 0 (not <= 1 chip).
-  assert(
-    text.includes(
-      "WHEN COALESCE((sched.j->>'upcomingCount')::integer,0) = 0 THEN NULL",
     ),
   );
   assert(text.includes("page AS"));
@@ -38,6 +43,13 @@ Deno.test("PR7 migration schedules public view, discover, and admin readers", ()
   assert(!filteredBody[1].includes("issue_3281_event_schedule"));
   assert(!/ranked AS \([\s\S]*?issue_3281_event_schedule[\s\S]*?\)\s*,\s*page AS/.test(text));
   assert(/page AS \([\s\S]*issue_3281_event_schedule/.test(text));
+  // Discover eligibility base must not call the schedule helper (facet/count tax).
+  const discoverBody = text.match(
+    /CREATE OR REPLACE FUNCTION public\.discover_v2_event_base\([\s\S]*?\$function\$([\s\S]*?)\$function\$/,
+  );
+  assert(discoverBody !== null);
+  assert(!discoverBody[1].includes("issue_3281_event_schedule"));
+  assert(discoverBody[1].includes("'schedule_line',NULL"));
 
   // T-18 parity patch must stay in the migration (fail-fast if DO block is dropped).
   assert(text.includes("patch_rsvp_schedule"));

@@ -345,9 +345,7 @@ const mapLiveEventToPublicEvent = (
   // when no occurrence has a parseable instant).
   const dateDisplay = resolvePublicEventDateDisplay(event, occurrences);
   const scheduleLine =
-    typeof (event as { scheduleLine?: string | null }).scheduleLine === "string"
-      ? (event as { scheduleLine?: string | null }).scheduleLine!.trim()
-      : "";
+    typeof event.scheduleLine === "string" ? event.scheduleLine.trim() : "";
   return {
     id: event.id,
     name: event.name,
@@ -826,6 +824,11 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     }),
     [acquisitionState, event, hideRemainingCount, occurrences],
   );
+  // Buyer SEO prefers next; lifecycle fields stay on master*.
+  const buyerStartAtUtc = event.nextStartAtUtc ?? event.masterStartAtUtc;
+  const seoBlurb = publicEvent.dateLine
+    ? `${publicEvent.dateLine} — ${event.description || event.name}`
+    : event.description || event.name;
   const publicBrand = useMemo(() => mapBrandToPublicBrand(brand), [brand]);
   const resolvedTheme = useMemo(
     () =>
@@ -2063,27 +2066,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           <title>
             {event.name} · {brand?.displayName ?? "Mingla"}
           </title>
-          <meta
-            name="description"
-            content={
-              (
-                publicEvent.dateLine
-                  ? `${publicEvent.dateLine} — ${event.description || event.name}`
-                  : event.description || event.name
-              ).slice(0, 160)
-            }
-          />
+          <meta name="description" content={seoBlurb.slice(0, 160)} />
           <meta property="og:title" content={event.name} />
-          <meta
-            property="og:description"
-            content={
-              (
-                publicEvent.dateLine
-                  ? `${publicEvent.dateLine} — ${event.description || event.name}`
-                  : event.description || event.name
-              ).slice(0, 200)
-            }
-          />
+          <meta property="og:description" content={seoBlurb.slice(0, 200)} />
           <meta property="og:url" content={canonicalUrl(event)} />
           <meta
             property="og:image"
@@ -2093,27 +2078,15 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             })}
           />
           <meta property="og:type" content="event" />
-          {event.masterStartAtUtc ? (
-            <meta
-              property="event:start_time"
-              content={event.masterStartAtUtc}
-            />
+          {buyerStartAtUtc ? (
+            <meta property="event:start_time" content={buyerStartAtUtc} />
           ) : null}
-          {event.masterStartAtUtc ? (
-            <meta itemProp="startDate" content={event.masterStartAtUtc} />
+          {buyerStartAtUtc ? (
+            <meta itemProp="startDate" content={buyerStartAtUtc} />
           ) : null}
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content={event.name} />
-          <meta
-            name="twitter:description"
-            content={
-              (
-                publicEvent.dateLine
-                  ? `${publicEvent.dateLine} — ${event.description || event.name}`
-                  : event.description || event.name
-              ).slice(0, 200)
-            }
-          />
+          <meta name="twitter:description" content={seoBlurb.slice(0, 200)} />
           <meta
             name="twitter:image"
             content={eventOgImageUrl({
