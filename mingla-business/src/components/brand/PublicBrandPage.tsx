@@ -138,14 +138,12 @@ const mapEvent = (event: PublicEventRecord): PublicBrandEvent => ({
   masterStartAtUtc: event.masterStartAtUtc ?? null,
   masterEndAtUtc: event.masterEndAtUtc ?? null,
   masterTimezone: event.timezone,
-  dateLine:
-    typeof event.scheduleLine === "string" && event.scheduleLine.trim()
-      ? `NEXT: ${event.scheduleLine.trim()}`
-      : formatDraftDateLine({
-          ...event,
-          masterStartAtUtc: event.nextStartAtUtc ?? event.masterStartAtUtc,
-          masterEndAtUtc: event.nextEndAtUtc ?? event.masterEndAtUtc,
-        }),
+  // Prefer next occurrence for the chip; master* on the record stay true master.
+  dateLine: formatDraftDateLine({
+    ...event,
+    masterStartAtUtc: event.nextStartAtUtc ?? event.masterStartAtUtc,
+    masterEndAtUtc: event.nextEndAtUtc ?? event.masterEndAtUtc,
+  }),
   venueName: event.venueName,
   format: event.format,
   coverHue: event.coverHue,

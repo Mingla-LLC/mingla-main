@@ -343,9 +343,15 @@ const mapLiveEventToPublicEvent = (
   // formatDraft* calls this replaced (the helper returns exactly those when the
   // event is not multi-date, when the organiser's draft entries are present, or
   // when no occurrence has a parseable instant).
-  const dateDisplay = resolvePublicEventDateDisplay(event, occurrences);
-  const scheduleLine =
-    typeof event.scheduleLine === "string" ? event.scheduleLine.trim() : "";
+  // Display prefers next via service mapping; scheduleLine stays for share/OG.
+  const dateDisplay = resolvePublicEventDateDisplay(
+    {
+      ...event,
+      masterStartAtUtc: event.nextStartAtUtc ?? event.masterStartAtUtc,
+      masterEndAtUtc: event.nextEndAtUtc ?? event.masterEndAtUtc,
+    },
+    occurrences,
+  );
   return {
     id: event.id,
     name: event.name,
@@ -353,8 +359,7 @@ const mapLiveEventToPublicEvent = (
     brandSlug: event.brandSlug,
     eventSlug: event.eventSlug,
     description: event.description,
-    dateLine:
-      scheduleLine.length > 0 ? `NEXT: ${scheduleLine}` : dateDisplay.dateLine,
+    dateLine: dateDisplay.dateLine,
     dateSubline: dateDisplay.dateSubline,
     datesList: dateDisplay.datesList,
     status:
