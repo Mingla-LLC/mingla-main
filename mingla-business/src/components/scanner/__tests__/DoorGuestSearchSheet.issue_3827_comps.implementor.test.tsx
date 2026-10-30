@@ -71,7 +71,10 @@ jest.mock("../../ui/Input", () => ({ Input: probe("InputProbe") }));
 jest.mock("../../../wrappers/SmartScrollView", () => ({ ScrollView: probe("ScrollView") }));
 
 import { DoorGuestSearchPanel } from "../DoorGuestSearchSheet";
-import { describeScanResult } from "../scanResultCopy";
+import {
+  describeScanResult,
+  shouldApplyScanEnrichment,
+} from "../scanResultCopy";
 import { rosterPrimaryLabel } from "../../guests/GuestRosterExperience";
 import type { GuestRosterRow } from "../../../types/guestRoster";
 
@@ -203,6 +206,39 @@ describe("issue #3827 — door Find by name", () => {
     expect(describeScanResult("not_yet_open", base, "event").message).toBe("Doors aren't open yet");
     expect(describeScanResult("not_found", base, "event").message).toBe("Ticket not found");
     expect(describeScanResult("success", base, "event").message).toBe("Lolu Ade checked in");
+  });
+
+  test("issue #3281 — late enrichment must not overwrite a newer scan", () => {
+    const scanner = fs.readFileSync(
+      path.join(__dirname, "../../../../app/event/[id]/scanner/index.tsx"),
+      "utf8",
+    );
+    expect(scanner).toContain("enrichmentGenerationRef");
+    expect(scanner).toContain("shouldApplyScanEnrichment");
+    expect(scanner).toContain('.from("event_dates")');
+    // Scan A resolves after B: generation mismatch → drop enrichment.
+    expect(
+      shouldApplyScanEnrichment({
+        enrichmentGeneration: 1,
+        activeGeneration: 2,
+        overlayVisible: true,
+      }),
+    ).toBe(false);
+    // Dismissed overlay: drop enrichment even if generation still matches.
+    expect(
+      shouldApplyScanEnrichment({
+        enrichmentGeneration: 3,
+        activeGeneration: 3,
+        overlayVisible: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldApplyScanEnrichment({
+        enrichmentGeneration: 4,
+        activeGeneration: 4,
+        overlayVisible: true,
+      }),
+    ).toBe(true);
   });
 
   test("S-6 the web door shows Find a guest by name and keeps its scan-in-the-app message", () => {

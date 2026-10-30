@@ -29,8 +29,17 @@ Deno.test("scanner screen wires describeScanResult with dayLabel", () => {
   assert(text.includes("formatOccurrenceDayLabel"));
   assert(text.includes("allDaysPass"));
   assert(text.includes("getPublicEventById"));
+  assert(text.includes("shouldApplyScanEnrichment"));
+  assert(text.includes("enrichmentGenerationRef"));
+  // Grace window: buyer schedule may omit the admitted day; door reads event_dates.
+  assert(text.includes('.from("event_dates")'));
   assert(!text.includes("eventDateDisplay"));
   // Base overlay + haptics must not await enrichment (ticket already consumed).
   assert(text.includes("Authoritative scan outcome first"));
   assert(text.includes("if (admittedId === null) return"));
+});
+
+Deno.test("scanResultCopy exports shouldApplyScanEnrichment", () => {
+  const text = Deno.readTextFileSync(SRC);
+  assert(text.includes("shouldApplyScanEnrichment"));
 });

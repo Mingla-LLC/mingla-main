@@ -118,6 +118,18 @@ export const formatPassDateProgress = (
   return `Date ${passIndex} of ${passTotal}`;
 };
 
+/**
+ * issue #3281 PR8 — day-label enrichment is async. Only apply it when this
+ * scan still owns the overlay (same generation) and the overlay is visible.
+ * Prevents scan A's late metadata from painting over scan B's result.
+ */
+export const shouldApplyScanEnrichment = (args: {
+  enrichmentGeneration: number;
+  activeGeneration: number;
+  overlayVisible: boolean;
+}): boolean =>
+  args.overlayVisible && args.enrichmentGeneration === args.activeGeneration;
+
 /** What the door says for one server scan result. `noun` is the offering noun ("event"). */
 export const describeScanResult = (
   raw: string,

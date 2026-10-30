@@ -473,7 +473,11 @@ export default function EventGuestsListRoute(): React.ReactElement {
       // Cycle 13 v2 (D-CYCLE13-IMPL-6): honest toast per export result.
       // Native dismissed = silent (no false-positive success).
       // Loaded on press: the CSV writer stays out of the boot chunk (#3827, orch-1083).
-      const { exportGuestsCsv } = await import("../../../../src/utils/guestCsvExport");
+      const [{ exportGuestsCsv }, { orderDayCellByOccurrence }] =
+        await Promise.all([
+          import("../../../../src/utils/guestCsvExport"),
+          import("../../../../src/utils/guestCsvDayOrder"),
+        ]);
       const result = await exportGuestsCsv({
         event,
         rows: merged,
@@ -481,6 +485,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
         // label map the chips render from, so the file can never disagree with
         // the screen.
         dayLabels,
+        formatDayCell: orderDayCellByOccurrence,
       });
       if (result.method === "downloaded") {
         showToast(

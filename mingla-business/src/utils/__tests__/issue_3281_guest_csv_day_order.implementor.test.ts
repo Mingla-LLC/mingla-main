@@ -13,6 +13,9 @@ Deno.test("orderDayCell collapses full pass to All N dates and sorts by map orde
   assert(text.includes("Sort by the event's date order"));
   assert(text.includes("orderDayCellByOccurrence"));
   assert(!/labels\.sort\(\)/.test(text));
+  const guests = Deno.readTextFileSync(GUESTS);
+  assert(guests.includes("orderDayCellByOccurrence"));
+  assert(guests.includes("guestCsvDayOrder"));
 });
 
 Deno.test("guests roster uses Day selector above 7 dates", () => {

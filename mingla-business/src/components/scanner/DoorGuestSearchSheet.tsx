@@ -43,7 +43,11 @@ import { describeScanResult, type ScanResultCopy } from "./scanResultCopy";
 // describeScanResult (same async chunk as the sheet). Importing
 // `./scanResultCopy` from a second parent would hoist it into __common
 // (orch-1083 / #3493 baseline-movement).
-export { describeScanResult, type ScanResultCopy } from "./scanResultCopy";
+export {
+  describeScanResult,
+  shouldApplyScanEnrichment,
+  type ScanResultCopy,
+} from "./scanResultCopy";
 
 import { Button } from "../ui/Button";
 import { Pill } from "../ui/Pill";

@@ -221,6 +221,9 @@ export default function ScannerCameraRoute(): React.ReactElement {
 
   const [overlay, setOverlay] = useState<ResultOverlayState | null>(null);
   const overlayVisibleRef = useRef<boolean>(false);
+  // issue #3281 PR8 — per-scan generation so late enrichment cannot overwrite
+  // a newer scan (or a dismissed overlay that a later scan reopened).
+  const enrichmentGenerationRef = useRef<number>(0);
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayAnim = useRef(new Animated.Value(0)).current;
   // Cycle 17c §F.2 — respect OS reduce-motion preference per I-40 spirit.
@@ -290,6 +293,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
 
   const dismissOverlay = useCallback((): void => {
     overlayVisibleRef.current = false;
+    enrichmentGenerationRef.current += 1;
     if (reduceMotionRef.current) {
       // Cycle 17c §F.2 — instant set when reduce-motion ON; preserves the
       // post-fade callback (setOverlay(null)) by invoking it synchronously.
@@ -376,6 +380,8 @@ export default function ScannerCameraRoute(): React.ReactElement {
       if (overlayVisibleRef.current) return; // guard against double-fire
       if (event === null) return;
       overlayVisibleRef.current = true;
+      enrichmentGenerationRef.current += 1;
+      const enrichmentGeneration = enrichmentGenerationRef.current;
       void (async () => {
         try {
           const result = await scanTicket(event.id, scan.data);
@@ -436,11 +442,15 @@ export default function ScannerCameraRoute(): React.ReactElement {
           // scanResultCopy stays in that one async chunk (__common ceiling).
           if (admittedId === null) return;
           try {
-            const [{ describeScanResult }, { getPublicEventById }] =
-              await Promise.all([
-                import("../../../../src/components/scanner/DoorGuestSearchSheet"),
-                import("../../../../src/services/publicEventsService"),
-              ]);
+            const [
+              { describeScanResult, shouldApplyScanEnrichment },
+              { getPublicEventById },
+              { supabase },
+            ] = await Promise.all([
+              import("../../../../src/components/scanner/DoorGuestSearchSheet"),
+              import("../../../../src/services/publicEventsService"),
+              import("../../../../src/services/supabase"),
+            ]);
             const formatOccurrenceDayLabel = (
               startAt: string,
               timezone?: string | null,
@@ -474,22 +484,61 @@ export default function ScannerCameraRoute(): React.ReactElement {
               }));
               allDaysPass = detail.allDaysPass === true;
             }
-            const admittedOcc =
+            let admittedOcc =
               occurrences.find((o) => o.id === admittedId) ?? null;
+            let fromBuyerSchedule = admittedOcc !== null;
+            // Buyer checkout drops ended occurrences; biz_ticket_scan still
+            // admits for +6h. Resolve the named day from event_dates so the
+            // door keeps its label without widening the public reader.
+            if (admittedOcc === null) {
+              const { data: dateRow } = await supabase
+                .from("event_dates")
+                .select("id, start_at, timezone, override_title")
+                .eq("id", admittedId)
+                .eq("event_id", event.id)
+                .maybeSingle();
+              if (
+                dateRow !== null &&
+                typeof (dateRow as { start_at?: unknown }).start_at === "string"
+              ) {
+                const row = dateRow as {
+                  id: string;
+                  start_at: string;
+                  timezone?: string | null;
+                  override_title?: string | null;
+                };
+                admittedOcc = {
+                  id: row.id,
+                  startAt: row.start_at,
+                  timezone: row.timezone ?? null,
+                  overrideTitle: row.override_title ?? null,
+                };
+              }
+            }
             if (admittedOcc === null) return;
             const dayLabel = formatOccurrenceDayLabel(
               admittedOcc.startAt,
               admittedOcc.timezone,
             );
+            // Pass progress needs a complete upcoming schedule; skip it when
+            // we had to fall back past the buyer filter (incomplete M).
             const passTotal =
-              allDaysPass && occurrences.length > 1
+              fromBuyerSchedule && allDaysPass && occurrences.length > 1
                 ? occurrences.length
                 : null;
             const passIndex =
               passTotal !== null
                 ? occurrences.findIndex((o) => o.id === admittedOcc.id) + 1
                 : null;
-            if (!overlayVisibleRef.current) return;
+            if (
+              !shouldApplyScanEnrichment({
+                enrichmentGeneration,
+                activeGeneration: enrichmentGenerationRef.current,
+                overlayVisible: overlayVisibleRef.current,
+              })
+            ) {
+              return;
+            }
             const copy = describeScanResult(
               kind,
               {
