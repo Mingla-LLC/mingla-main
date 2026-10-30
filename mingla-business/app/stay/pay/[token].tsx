@@ -178,4 +178,3 @@ const styles = StyleSheet.create({
   expiry: { color: "#7f8795", fontSize: 12, textAlign: "center" },
   error: { color: "#fb7185", fontSize: 13, lineHeight: 18 },
 });
-

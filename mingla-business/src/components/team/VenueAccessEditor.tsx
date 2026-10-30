@@ -248,4 +248,3 @@ const styles = StyleSheet.create({
   capabilityRow: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: spacing.sm },
   capabilityText: { flex: 1, fontSize: 13, color: textTokens.primary },
 });
-

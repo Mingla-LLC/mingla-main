@@ -56,4 +56,3 @@ export const stayStaffPaymentLinkService = {
     return invoke({ action: "pay", ...input });
   },
 };
-
