@@ -482,9 +482,9 @@ export const AriSettingsScreen: React.FC = () => {
         {/* About */}
         <Section title="About">
           <Text style={styles.about}>
-            Ari is powered by Mingla&apos;s AI. Your conversations are stored so
-            Ari remembers context across visits. Ari is not a financial, legal,
-            or tax advisor.
+            {"Ari is powered by Mingla's AI. Your conversations are stored so "}
+            {"Ari remembers context across visits. Ari is not a financial, legal, "}
+            {"or tax advisor."}
           </Text>
         </Section>
 

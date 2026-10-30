@@ -22,6 +22,11 @@
       "readback_owner": "brands plus the capability-specific canonical brand owner",
       "dependency_issue": 2063
     },
+    "capabilities": {
+      "cache_owner_id": "ari.capabilities",
+      "readback_owner": "server capability registry and tool discovery result owner",
+      "dependency_issue": 3355
+    },
     "events": {
       "cache_owner_id": "ari.events",
       "readback_owner": "business event management RPC/view",
@@ -37,6 +42,11 @@
       "readback_owner": "growth tool run ledger",
       "dependency_issue": null
     },
+    "handoffs": {
+      "cache_owner_id": "ari.handoffs",
+      "readback_owner": "server-approved handoff route registry",
+      "dependency_issue": 3355
+    },
     "guests": {
       "cache_owner_id": "ari.guests",
       "readback_owner": "RSVP guest roster owner",
@@ -47,20 +57,45 @@
       "readback_owner": "server intelligence result owner",
       "dependency_issue": null
     },
+    "jobs": {
+      "cache_owner_id": "ari.jobs",
+      "readback_owner": "durable Ari job and task-state owner",
+      "dependency_issue": 3355
+    },
+    "listings": {
+      "cache_owner_id": "ari.listings",
+      "readback_owner": "listing-type contract and extracted-candidate result owner",
+      "dependency_issue": 3355
+    },
     "marketing": {
       "cache_owner_id": "ari.marketing",
       "readback_owner": "campaign and delivery owner",
       "dependency_issue": null
+    },
+    "markets": {
+      "cache_owner_id": "ari.markets",
+      "readback_owner": "server market-rules registry",
+      "dependency_issue": 3355
     },
     "media": {
       "cache_owner_id": "ari.media",
       "readback_owner": "canonical media attachment owner",
       "dependency_issue": null
     },
+    "memory": {
+      "cache_owner_id": "ari.memory",
+      "readback_owner": "tenant-scoped Ari memory owner",
+      "dependency_issue": 3355
+    },
     "notifications": {
       "cache_owner_id": "ari.notifications",
       "readback_owner": "notification preference and delivery owner",
       "dependency_issue": null
+    },
+    "onboarding": {
+      "cache_owner_id": "ari.onboarding",
+      "readback_owner": "durable onboarding plan and blueprint owner",
+      "dependency_issue": 3355
     },
     "orders": {
       "cache_owner_id": "ari.orders",
@@ -81,6 +116,11 @@
       "cache_owner_id": "ari.rsvp",
       "readback_owner": "RSVP draft/live/guest/contribution owner",
       "dependency_issue": 1977
+    },
+    "research": {
+      "cache_owner_id": "ari.research",
+      "readback_owner": "server research receipt, source, citation, and freshness owner",
+      "dependency_issue": 3355
     },
     "sites": {
       "cache_owner_id": "ari.sites",

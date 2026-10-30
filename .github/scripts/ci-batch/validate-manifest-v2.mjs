@@ -301,8 +301,8 @@ export function phase3dContractDigest(manifest) {
 // program-chat, and Stay staff-reservation migrations plus their declared
 // PostgreSQL proofs in the same inventories without changing any command.
 // #3355: register Ari's improvement-system migration and its declared proof in
-// the same inventories without changing any preserved command.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "f319c1861ab40e13a0ba00e27c7d1861d5d2be7df600a3038537f6e14cae78e9";
+// the same inventories, with its exact exclusion from the pre-#1931 replay.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "a5f684bd193ffe32e9aed6a16c039975097353059e578f24c6a1c5cbc2f74a48";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

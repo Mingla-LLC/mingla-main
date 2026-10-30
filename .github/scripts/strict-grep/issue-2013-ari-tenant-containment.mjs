@@ -82,8 +82,8 @@ export function check(sources) {
     if (!chat.includes(token)) failures.push(`persisted-context provenance boundary missing ${token}`);
   }
   const confirmationWrites = confirm.split("prompt_version: TENANT_CONTEXT_VERSION").length - 1;
-  if (!confirm.includes('import { TENANT_CONTEXT_VERSION }') || confirmationWrites !== 5 || confirm.includes("PROMPT_VERSION")) {
-    failures.push(`confirmation provenance registry incomplete: expected 5 tenant-v1 attestations/writes, found ${confirmationWrites}`);
+  if (!confirm.includes('import { TENANT_CONTEXT_VERSION }') || confirmationWrites !== 6 || confirm.includes("PROMPT_VERSION")) {
+    failures.push(`confirmation provenance registry incomplete: expected 6 tenant-v1 attestations/writes, found ${confirmationWrites}`);
   }
   // [#2438 SC-13] The old three-point count was taken against the historical YAML
   // wrapper that SC-21 deletes; a guard that hard-requires the file the cutover
@@ -136,8 +136,11 @@ export function check(sources) {
   }
   // [TEST-MOD-APPROVED #3429] InputBar splits permanent/hydration and
   // send-readiness props, while its effective canSend must require both.
-  for (const token of ["rateLimitUntil", "cooldown_until", "retry_after_seconds", "disabled={brands.isLoading || !conversationSelectionReady}", "sendDisabled={chat.isSending || rateLimited || !online || !attachments.allReady}"]) {
+  for (const token of ["rateLimitUntil", "cooldown_until", "retry_after_seconds", "disabled={brands.isLoading || !conversationSelectionReady}"]) {
     if (!(screen + chat).includes(token)) failures.push(`persistent cooldown missing ${token}`);
+  }
+  if (!/sendDisabled=\{\s*chat\.isSending\s*\|\|\s*rateLimited\s*\|\|\s*!online\s*\|\|\s*!attachments\.allReady\s*\}/m.test(screen)) {
+    failures.push("persistent cooldown missing fail-closed sendDisabled composition");
   }
   if (
     !/const canSend\s*=\s*isAriSendReady\(\s*text,\s*hasReadyAttachments,\s*disabled,\s*sendDisabled,?\s*\)/m

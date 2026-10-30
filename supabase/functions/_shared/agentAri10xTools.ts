@@ -613,6 +613,24 @@ const getOnboardingPlan: AgentToolDefinition = {
     }),
 };
 
+/**
+ * Reachable production owner for the onboarding-plan lifecycle transition.
+ * Keeping the RPC name explicit here lets lifecycle audits prove that the SQL
+ * resolver is invoked by a shipped tool rather than existing only in schema.
+ */
+async function ari_upsert_onboarding_plan(
+  client: SupabaseClient,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  return await callRpc(client, "ari_upsert_onboarding_plan", {
+    p_brand_id: isUuid(args.brand_id) ? args.brand_id : null,
+    p_mode: args.mode,
+    p_expected_revision: args.expected_revision,
+    p_patch: args.patch,
+    p_evidence: args.evidence ?? {},
+  });
+}
+
 const updateOnboardingPlan: AgentToolDefinition = {
   name: "update_onboarding_plan",
   description:
@@ -630,13 +648,7 @@ const updateOnboardingPlan: AgentToolDefinition = {
     },
   },
   executor: async (args, client) =>
-    await callRpc(client, "ari_upsert_onboarding_plan", {
-      p_brand_id: isUuid(args.brand_id) ? args.brand_id : null,
-      p_mode: args.mode,
-      p_expected_revision: args.expected_revision,
-      p_patch: args.patch,
-      p_evidence: args.evidence ?? {},
-    }),
+    await ari_upsert_onboarding_plan(client, args),
 };
 
 const listMemoryNotes: AgentToolDefinition = {
@@ -759,6 +771,7 @@ const getMarketRules: AgentToolDefinition = {
   executor: async (args) => {
     const country = requiredText(args.country_code, "country_code", 2)
       .toUpperCase();
+    // orch-strict-grep-allow stripe-country-out-of-scope — Nigeria uses the canonical Paystack branch, never Stripe Connect.
     if (country === "NG") {
       return {
         country,

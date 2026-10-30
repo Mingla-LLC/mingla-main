@@ -39,6 +39,7 @@ const FILES = {
   // [TEST-MOD-APPROVED #3872] R1-R3 Discounts, referrals, and gig-script
   // tools (145→152).
   // #2829 W9b Ari as the website designer: twelve website capabilities (152→164).
+  // #3355 bounded autonomy/research/memory/verification capabilities (164→184).
   // #1981 and stays pinned below; do not rewrite applied/history migrations.
   censusMigration:
     "supabase/migrations/20270824003697_issue_3697_ari_cert_capability_census.sql",
@@ -235,12 +236,12 @@ export function checkContract(fixture) {
   );
   assert.equal(
     fixture.ledger.capabilities.length,
-    164,
-    "canonical ledger must stay exactly 164 rows",
+    184,
+    "canonical ledger must stay exactly 184 rows",
   );
   assert.equal(
     new Set(fixture.ledger.capabilities.map((row) => row.id)).size,
-    164,
+    184,
     "capability IDs must be unique",
   );
   for (const row of fixture.ledger.capabilities) {
@@ -256,12 +257,12 @@ export function checkContract(fixture) {
 
   assert.equal(
     fixture.schema.properties.capabilities.minItems,
-    164,
+    184,
     "evidence schema row floor",
   );
   assert.equal(
     fixture.schema.properties.capabilities.maxItems,
-    164,
+    184,
     "evidence schema row ceiling",
   );
   assert.ok(
@@ -477,8 +478,8 @@ export function checkContract(fixture) {
   need(
     fixture.certifier,
     [
-      "ledger.capabilities.length !== 164",
-      "rows.length === 164",
+      "ledger.capabilities.length !== 184",
+      "rows.length === 184",
       "`ledger_not_certifiable:${planned.capability_id}",
       "`status_laundering:${planned.capability_id}",
       "verified_zero_residue === true",
@@ -704,7 +705,7 @@ function selfTest() {
     good,
     (x) => {
       x.certifier = x.certifier.replace(
-        "ledger.capabilities.length !== 164",
+        "ledger.capabilities.length !== 184",
         "false",
       );
     },
@@ -966,6 +967,6 @@ if (process.argv.includes("--self-test")) selfTest();
 else {
   checkContract(readLive());
   console.log(
-    "issue-2060 Ari reliability foundation: PASS (164 capabilities; #2060 history remains 116)",
+    "issue-2060 Ari reliability foundation: PASS (184 capabilities; #2060 history remains 116)",
   );
 }

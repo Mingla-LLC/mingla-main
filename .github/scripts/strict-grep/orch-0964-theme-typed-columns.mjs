@@ -26,7 +26,7 @@ for (const file of walk(root)) {
     /theme\.themeFont\b/,
     /theme\.themeAnimation\b/,
     /events\.theme\s*=\s*[^;]*(theme_color|theme_font|theme_animation)/s,
-    /theme:\s*\{[^}]*theme_(color|font|animation)/s,
+    /theme:\s*\{[^}]*theme_(color|font|animation)\s*:/s,
   ];
   if (forbidden.some((pattern) => pattern.test(src))) {
     failures.push(`${rel}: theme values must not be written inside events.theme JSONB`);

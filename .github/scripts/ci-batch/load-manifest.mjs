@@ -72,8 +72,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // Admin program-messaging, and Stay staff-reservation migrations plus their
 // registered PostgreSQL proofs entered the preserved replay inventories.
 // #3355: re-sealed after Ari's improvement-system migration and registered
-// PostgreSQL proof entered those same preserved inventories.
-export const BOOTSTRAP_SHA256 = "04228d6bee45c6f0bd970eefd3ccfb8c3a8251980dac176b31f762972fba1ae8";
+// PostgreSQL proof entered those same preserved inventories, including its
+// exact exclusion from the deliberately pre-#1931 historical replay.
+export const BOOTSTRAP_SHA256 = "2f9e6f3a741ab2060297434fdb06cc6cad09c0ef8fed9567bb0f0a26a87cb54c";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

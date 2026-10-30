@@ -372,6 +372,7 @@ export function ariDeterministicReadPlan(
   ) {
     return {
       intent: "market_rules",
+      // orch-strict-grep-allow stripe-country-out-of-scope — deterministic Nigeria research routes to Paystack market rules, not Stripe.
       calls: [{ name: "get_market_rules", args: { country_code: "NG" } }],
     };
   }

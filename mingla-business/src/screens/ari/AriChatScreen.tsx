@@ -54,6 +54,7 @@ import { StreamingText } from "../../components/ari/StreamingText";
 import { AriActivity } from "../../components/ari/AriActivity";
 import { AriAttachmentTray } from "../../components/ari/AriAttachmentCards";
 import { AriAttachmentSourceSheet } from "../../components/ari/AriAttachmentSourceSheet";
+import { AriThreadLoadingState } from "./AriThreadLoadingState";
 import {
   ariRenditionCopyText,
   buildAriRenditionSubmission,
@@ -846,17 +847,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               <StreamingText visible />
             </View>
           ) : chat.conversationId && chat.isLoadingMessages ? (
-            <View
-              style={styles.threadLoading}
-              accessibilityRole="progressbar"
-              accessibilityLabel="Opening Ari conversation"
-              accessibilityLiveRegion="polite"
-            >
-              <AriOrb size="md" thinking decorative />
-              <Text style={styles.threadLoadingText}>
-                Opening conversation…
-              </Text>
-            </View>
+            <AriThreadLoadingState />
           ) : noMessages ? (
             <>
               {/* Hero lives in an absolute overlay so the composer rising with the
@@ -1493,18 +1484,6 @@ const styles = StyleSheet.create({
   },
   flexSpacer: {
     flex: 1,
-  },
-  threadLoading: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.md,
-  },
-  threadLoadingText: {
-    color: textTokens.secondary,
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "500",
   },
   inputWrap: {
     paddingHorizontal: spacing.md,
