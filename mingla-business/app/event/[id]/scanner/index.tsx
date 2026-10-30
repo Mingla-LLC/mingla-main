@@ -387,81 +387,121 @@ export default function ScannerCameraRoute(): React.ReactElement {
             buyerName: result.buyerName,
             ticketName: result.ticketName,
           });
-          // issue #3281 PR8 — resolve admitted day for door copy (on-intent).
-          const [{ describeScanResult }, { getPublicEventById }, { formatOccurrenceDayLabel }] =
-            await Promise.all([
-              import("../../../../src/components/scanner/scanResultCopy"),
-              import("../../../../src/services/publicEventsService"),
-              import("../../../../src/utils/eventDateDisplay"),
-            ]);
-          let occurrences: Awaited<
-            ReturnType<typeof getPublicEventById>
-          >["occurrences"] = [];
-          let allDaysPass = false;
-          try {
-            const detail = await getPublicEventById(event.id);
-            occurrences = detail.occurrences ?? [];
-            allDaysPass = detail.allDaysPass === true;
-          } catch {
-            occurrences = [];
-            allDaysPass = false;
-          }
+          // Authoritative scan outcome first — never block the overlay /
+          // haptics on optional day-label enrichment (ticket already consumed).
           const admittedId =
             typeof result.eventDateId === "string" ? result.eventDateId : null;
-          const admittedOcc =
-            admittedId === null
-              ? null
-              : (occurrences.find((o) => o.id === admittedId) ?? null);
-          const dayLabel =
-            admittedOcc !== null
-              ? formatOccurrenceDayLabel(
-                  admittedOcc.startAt,
-                  admittedOcc.timezone,
-                )
-              : null;
-          // Pass progress only for an all-dates pass — a single-day ticket on
-          // a multi-date event must not read "Date N of M".
-          const passTotal =
-            allDaysPass && occurrences.length > 1 ? occurrences.length : null;
-          const passIndex =
-            admittedOcc !== null && passTotal !== null
-              ? occurrences.findIndex((o) => o.id === admittedOcc.id) + 1
-              : null;
-          const copy = describeScanResult(
-            kind,
-            {
-              buyerName: result.buyerName,
-              ticketName: result.ticketName,
-              nextStartAt: result.nextStartAt,
-              lastEndAt: result.lastEndAt,
-              eventDateId: admittedId,
-              dayLabel,
-              overrideTitle: admittedOcc?.overrideTitle ?? null,
-              passIndex,
-              passTotal,
-            },
-            kindCfg.noun,
-          );
-          showResult({
-            kind: copy.kind,
-            message: copy.message,
-            detail: copy.detail,
-          });
           if (kind === "success") {
+            showResult({
+              kind,
+              message: `${result.buyerName ?? "Guest"} checked in`,
+              detail: result.ticketName ?? "Ticket",
+            });
             void Haptics.notificationAsync(
               Haptics.NotificationFeedbackType.Success,
             );
-            return;
+          } else {
+            let message: string;
+            let detail: string | undefined = result.ticketName ?? undefined;
+            if (kind === "duplicate") {
+              message = "Already checked in";
+            } else if (kind === "wrong_event") {
+              message = `Different ${kindCfg.noun}`;
+            } else if (kind === "void") {
+              message = "Ticket not valid";
+            } else if (kind === "not_yet_open") {
+              message = "Doors aren't open yet";
+              detail = result.nextStartAt
+                ? `Opens ${formatDoorTime(result.nextStartAt)}`
+                : "Try again closer to start time";
+            } else if (kind === "event_ended") {
+              message = result.lastEndAt
+                ? `${capitalizeNoun(kindCfg.noun)} ended ${formatRelativeTime(result.lastEndAt)}`
+                : `${capitalizeNoun(kindCfg.noun)} has ended`;
+              detail = `Ticket can't be used after the ${kindCfg.noun}`;
+            } else {
+              message = "Ticket not found";
+            }
+            showResult({ kind, message, detail });
+            void Haptics.notificationAsync(
+              kind === "duplicate" ||
+                kind === "not_yet_open" ||
+                kind === "event_ended"
+                ? Haptics.NotificationFeedbackType.Warning
+                : Haptics.NotificationFeedbackType.Error,
+            );
           }
-          // Warning tone for recoverable states (duplicate + the two new
-          // time-window states); Error tone for the not-recoverable ones.
-          void Haptics.notificationAsync(
-            kind === "duplicate" ||
-              kind === "not_yet_open" ||
-              kind === "event_ended"
-              ? Haptics.NotificationFeedbackType.Warning
-              : Haptics.NotificationFeedbackType.Error,
-          );
+          // issue #3281 PR8 — enrich day copy in the background when the
+          // server named an occurrence. Import via DoorGuestSearchSheet so
+          // scanResultCopy stays in that one async chunk (__common ceiling).
+          if (admittedId === null) return;
+          try {
+            const [
+              { describeScanResult },
+              { getPublicEventById },
+              { formatOccurrenceDayLabel },
+            ] = await Promise.all([
+              import("../../../../src/components/scanner/DoorGuestSearchSheet"),
+              import("../../../../src/services/publicEventsService"),
+              import("../../../../src/utils/eventDateDisplay"),
+            ]);
+            type DoorOccurrence = {
+              id: string;
+              startAt: string;
+              timezone?: string | null;
+              overrideTitle?: string | null;
+            };
+            let occurrences: DoorOccurrence[] = [];
+            let allDaysPass = false;
+            const detail = await getPublicEventById(event.id);
+            if (detail !== null) {
+              occurrences = (detail.occurrences ?? []).map((o) => ({
+                id: o.id,
+                startAt: o.startAt,
+                timezone: o.timezone,
+                overrideTitle: o.overrideTitle ?? null,
+              }));
+              allDaysPass = detail.allDaysPass === true;
+            }
+            const admittedOcc =
+              occurrences.find((o) => o.id === admittedId) ?? null;
+            if (admittedOcc === null) return;
+            const dayLabel = formatOccurrenceDayLabel(
+              admittedOcc.startAt,
+              admittedOcc.timezone,
+            );
+            const passTotal =
+              allDaysPass && occurrences.length > 1
+                ? occurrences.length
+                : null;
+            const passIndex =
+              passTotal !== null
+                ? occurrences.findIndex((o) => o.id === admittedOcc.id) + 1
+                : null;
+            if (!overlayVisibleRef.current) return;
+            const copy = describeScanResult(
+              kind,
+              {
+                buyerName: result.buyerName,
+                ticketName: result.ticketName,
+                nextStartAt: result.nextStartAt,
+                lastEndAt: result.lastEndAt,
+                eventDateId: admittedId,
+                dayLabel,
+                overrideTitle: admittedOcc.overrideTitle ?? null,
+                passIndex,
+                passTotal,
+              },
+              kindCfg.noun,
+            );
+            showResult({
+              kind: copy.kind,
+              message: copy.message,
+              detail: copy.detail,
+            });
+          } catch {
+            // Keep the authoritative base overlay.
+          }
         } catch (error) {
           // ORCH-0795: surface the real edge-function failure reason.
           // ScanTicketError.code tells us whether the scanner is not

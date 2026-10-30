@@ -169,16 +169,13 @@ export const orderDayCell = (
     return `All ${allIds.length} dates`;
   }
   // Sort by the event's date order (Map insertion = occurrence start order),
-  // never lexicographic label order.
+  // never lexicographic label order. Ids on the order but missing from
+  // dayLabels stay omitted (#9).
   const labels: string[] = [];
   for (const id of allIds) {
     if (!ids.has(id)) continue;
     const label = dayLabels.get(id);
     if (label !== undefined && label.length > 0) labels.push(label);
-  }
-  // Ids present on the order but missing from dayLabels stay omitted (#9).
-  for (const id of ids) {
-    if (dayLabels.has(id)) continue;
   }
   return labels.join("; ");
 };

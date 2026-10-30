@@ -24,6 +24,8 @@ Deno.test("guests roster uses Day selector above 7 dates", () => {
   );
   assert(selector.includes("issue-3281-day-selector"));
   assert(selector.includes("occurrenceLocalDay"));
+  assert(selector.includes("prevDayFilterRef"));
+  assert(selector.includes("monthIndexForDay"));
 });
 
 Deno.test("dashboard ticket row shows N left at 10 or fewer", () => {

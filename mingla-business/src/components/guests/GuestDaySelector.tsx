@@ -4,7 +4,7 @@
  * default upcoming day stays on-screen. Loaded on intent from the guests
  * route to keep the web __common boot chunk under the shared movement ceiling.
  */
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { occurrenceLocalDay } from "@mingla/offering-rendering/eventDateSchedule";
 
@@ -24,6 +24,17 @@ export interface GuestDaySelectorProps {
   allAccessibilityLabel: string;
   headcountLabelForCount: (count: number) => string;
 }
+
+const monthIndexForDay = (
+  months: ReadonlyArray<readonly [string, PublicEventOccurrence[]]>,
+  dayId: string | null,
+): number => {
+  if (dayId === null) return 0;
+  const idx = months.findIndex(([, dates]) =>
+    dates.some((o) => o.id === dayId),
+  );
+  return idx >= 0 ? idx : 0;
+};
 
 export const GuestDaySelector: React.FC<GuestDaySelectorProps> = ({
   occurrences,
@@ -47,15 +58,19 @@ export const GuestDaySelector: React.FC<GuestDaySelectorProps> = ({
     return [...map.entries()];
   }, [occurrences, dayLabels]);
 
-  const initialMonth = useMemo(() => {
-    if (dayFilter === null) return 0;
-    const idx = months.findIndex(([, dates]) =>
-      dates.some((o) => o.id === dayFilter),
-    );
-    return idx >= 0 ? idx : 0;
+  const [monthIndex, setMonthIndex] = useState(() =>
+    monthIndexForDay(months, dayFilter),
+  );
+  // When the route seeds upcoming (null → dayId) or the selected day changes,
+  // jump to that month. Arrow browsing does not change dayFilter, so it stays.
+  const prevDayFilterRef = useRef(dayFilter);
+  useEffect(() => {
+    if (dayFilter !== null && dayFilter !== prevDayFilterRef.current) {
+      setMonthIndex(monthIndexForDay(months, dayFilter));
+    }
+    prevDayFilterRef.current = dayFilter;
   }, [dayFilter, months]);
 
-  const [monthIndex, setMonthIndex] = useState(initialMonth);
   const safeIndex = Math.min(monthIndex, Math.max(0, months.length - 1));
   const visible = months[safeIndex]?.[1] ?? [];
   const monthKey = months[safeIndex]?.[0] ?? "";

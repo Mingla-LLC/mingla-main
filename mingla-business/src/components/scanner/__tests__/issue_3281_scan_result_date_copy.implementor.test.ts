@@ -29,4 +29,7 @@ Deno.test("scanner screen wires describeScanResult with dayLabel", () => {
   assert(text.includes("formatOccurrenceDayLabel"));
   assert(text.includes("allDaysPass"));
   assert(text.includes("getPublicEventById"));
+  // Base overlay + haptics must not await enrichment (ticket already consumed).
+  assert(text.includes("Authoritative scan outcome first"));
+  assert(text.includes("if (admittedId === null) return"));
 });
