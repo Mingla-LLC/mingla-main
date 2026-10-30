@@ -90,7 +90,8 @@
         "mingla-admin/src/pages/OfferingDetailView.jsx",
         "mingla-admin/src/pages/OfferingsConsolePage.jsx",
         "supabase/migrations/20271222003281_issue_3281_public_schedule_cards.sql",
-        "supabase/migrations/20280213003281_issue_3281_admin_offerings_board_schedule.sql"
+        "supabase/migrations/20280213003281_issue_3281_admin_offerings_board_schedule.sql",
+        "supabase/migrations/20280214003281_issue_3281_discover_schedule_keys.sql"
       ]
     },
     {
@@ -106,7 +107,8 @@
         "supabase/functions/_shared/contentShare.ts",
         "supabase/functions/_shared/contentShareService.ts",
         "supabase/functions/discover-merged-events/_business-query.ts",
-        "supabase/functions/discover-merged-events/_types.ts"
+        "supabase/functions/discover-merged-events/_types.ts",
+        "supabase/migrations/20280214003281_issue_3281_discover_schedule_keys.sql"
       ]
     },
     {
