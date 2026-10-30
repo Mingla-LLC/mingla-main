@@ -701,6 +701,7 @@ DECLARE
   v_uid uuid := auth.uid();
 BEGIN
   IF v_uid IS NULL THEN RAISE EXCEPTION 'not_authenticated' USING ERRCODE='28000'; END IF;
+  -- #3391 delegation begin
   IF p_to_status='cancelled_by_venue' THEN
     SELECT * INTO v_row FROM public.reservations WHERE id=p_reservation_id;
     IF FOUND AND v_row.payment_status='paid' AND v_row.status<>'seated'
@@ -713,6 +714,7 @@ BEGIN
       RETURN v_row;
     END IF;
   END IF;
+  -- #3391 delegation end
   SELECT * INTO v_row FROM public.reservations WHERE id=p_reservation_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'reservation_not_found' USING ERRCODE='P0002'; END IF;
   v_from:=v_row.status; v_brand:=v_row.brand_id; v_venue:=v_row.venue_id;
