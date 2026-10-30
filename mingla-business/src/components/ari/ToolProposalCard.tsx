@@ -293,7 +293,7 @@ function formatAdMoneyCents(cents: unknown, currency: unknown): string | null {
 function fieldsFor(
   toolName: string,
   args: Record<string, unknown>,
-  brandNamesById: Record<string, string>,
+  brandNamesById: Record<string, string> = {},
 ): Field[] {
   const out: Field[] = [];
   const context =
@@ -1430,9 +1430,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           </>
         ) : isMoneyConfirm && moneyPhrase ? (
           <>
-            {fieldsFor(toolName, liveArgs, brandNamesById).length > 0 ? (
+            {fieldsFor(toolName, liveArgs).length > 0 ? (
               <View style={styles.fields}>
-                {fieldsFor(toolName, liveArgs, brandNamesById).map((f, i) => (
+                {fieldsFor(toolName, liveArgs).map((f, i) => (
                   <View key={i} style={styles.fieldRow}>
                     <Text style={styles.fieldLabel}>{f.label}</Text>
                     <Text

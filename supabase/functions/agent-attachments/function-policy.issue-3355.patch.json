@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#3355",
+  "target": {
+    "kind": "function",
+    "name": "agent-attachments"
+  },
+  "basePolicySha256": "de047a82f8e094c28e95f5ce36a519685d60951002bc1ec80f0e93ad9eb82bcb",
+  "operations": [
+    { "op": "add_env_name", "classification": "optional_top_level", "name": "ARI_EVAL_GEMINI_MODEL_ALLOWLIST", "expectedAbsent": true },
+    { "op": "add_env_name", "classification": "optional_top_level", "name": "ARI_LOCAL_MODEL_BASE_URL", "expectedAbsent": true },
+    { "op": "add_env_name", "classification": "optional_top_level", "name": "ARI_LOCAL_MODEL_ENABLED", "expectedAbsent": true },
+    { "op": "add_env_name", "classification": "optional_top_level", "name": "ARI_LOCAL_MODEL_ID", "expectedAbsent": true }
+  ],
+  "resultPolicySha256": "a718577644830464b14e07fef765d539de6707d2ecc93b0f05916d98f5a72f08",
+  "reason": "Issue #3355 permits attachment analysis to use only explicitly configured local or evaluation models; every unset value leaves those paths disabled."
+}

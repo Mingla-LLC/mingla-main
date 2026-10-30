@@ -11,21 +11,28 @@ import {
   updateAriMemory,
   type AriMemoryKind,
 } from "../services/ariKnowledgeService";
+import { useAuth } from "../context/AuthContext";
 
 const memoryKey = (brandId: string | null) =>
   ["ari", "memory", brandId ?? "all"] as const;
 const jobsKey = ["ari", "jobs"] as const;
+const disabledMemoryKey = ["ari", "memory", "disabled"] as const;
+const disabledJobsKey = ["ari", "jobs", "disabled"] as const;
 
 export function useAriKnowledge(brandId: string | null) {
   const queryClient = useQueryClient();
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady;
   const memory = useQuery({
-    queryKey: memoryKey(brandId),
+    queryKey: enabled ? memoryKey(brandId) : disabledMemoryKey,
     queryFn: () => listAriMemory(brandId),
+    enabled,
     staleTime: 15_000,
   });
   const jobs = useQuery({
-    queryKey: jobsKey,
+    queryKey: enabled ? jobsKey : disabledJobsKey,
     queryFn: listAriJobs,
+    enabled,
     staleTime: 10_000,
   });
   const refreshMemory = () =>

@@ -256,6 +256,14 @@ async function extractError(
   retry_after_seconds?: number;
   cooldown_until?: string;
 }> {
+  const safeLegacyMessage = (code: unknown): string => {
+    switch (code) {
+      case "CONVERSATION_BRAND_MISMATCH":
+        return "This conversation belongs to a different brand.";
+      default:
+        return fallback;
+    }
+  };
   try {
     const err = error as Record<string, unknown> | null | undefined;
     if (!err) return { code: "EDGE_ERROR", message: fallback };
@@ -293,7 +301,7 @@ async function extractError(
           if (body?.message && typeof body.message === "string")
             return {
               code: typeof body.code === "string" ? body.code : "EDGE_ERROR",
-              message: fallback,
+              message: safeLegacyMessage(body.code),
               ...(typeof body.retry_after_seconds === "number"
                 ? { retry_after_seconds: body.retry_after_seconds }
                 : {}),

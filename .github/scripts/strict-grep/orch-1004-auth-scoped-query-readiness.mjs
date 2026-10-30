@@ -80,6 +80,10 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useBrandStripeOrphanedRefunds.ts",
   "useManualInstallmentActions.ts",
   "useAgentChat.ts",
+  // #3355 — Ari memory and durable jobs are user/brand scoped. Both reads wait
+  // for the restored business session so a pre-auth RLS-empty response cannot
+  // be cached as the host's durable state.
+  "useAriKnowledge.ts",
   "useCurrentBrandRole.ts",
   // #4188 — venue access and staff Stay detail are protected by the restored
   // Business session and must not cache a pre-auth RLS-empty response.

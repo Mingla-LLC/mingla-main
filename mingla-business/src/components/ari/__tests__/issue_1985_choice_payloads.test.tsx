@@ -55,15 +55,18 @@ describe("#1985 AgentChoicesV2 client boundary", () => {
     const hook = read("src/hooks/useAgentChat.ts");
     const screen = read("src/screens/ari/AriChatScreen.tsx");
     expect(hook).toContain("clientTurnId = newClientTurnId()");
-    expect(hook).toContain("sendTurn((failed.content");
-    expect(hook).toContain("payload, clientTurnId");
+    expect(hook).toMatch(
+      /return sendTurn\([\s\S]*?failed\.content[\s\S]*?payload,[\s\S]*?clientTurnId,?\s*\)/,
+    );
     expect(screen).toContain("You're offline. Reconnect to continue this plan.");
     expect(screen).toContain("choicesDisabled={chat.isSending || !online}");
   });
 
   it("restores an unresolved pending action from refreshed message history", () => {
     const hook = read("src/hooks/useAgentChat.ts");
-    expect(hook).toContain("const resolved = new Set(serverMessages");
-    expect(hook).toContain("setPendingAction(unresolved)");
+    expect(hook).toMatch(/const resolved = new Set\(\s*serverMessages/);
+    expect(hook).toMatch(
+      /setPendingAction\(\(current\) =>[\s\S]*samePendingAction\(current, unresolved\)/,
+    );
   });
 });

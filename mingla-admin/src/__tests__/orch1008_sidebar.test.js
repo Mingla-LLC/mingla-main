@@ -94,6 +94,7 @@ const EXPECTED_IDS = [
   // System
   "platform-health",
   "feature-flags",
+  "ari-improvement-lab",
   "settings",
 ];
 // #4130: the first group is Home (Dashboard, Work, Notifications).

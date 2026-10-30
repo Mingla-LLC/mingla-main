@@ -1,5 +1,9 @@
 \set ON_ERROR_STOP on
 
+-- MINGLA-INVARIANT: I-3355-ARI-TRAINING-SURVIVES-CHAT-DELETE | issue #3355 | Deleting user-visible Ari history removes raw source references while preserving only the independently sanitized improvement record under its retention policy.
+-- MINGLA-INVARIANT: I-3355-ARI-QUALITY-ADMIN-ONLY | issue #3355 | Ari training turns, quality cases, evaluations, runtime versions and rollout controls are readable and mutable only through guarded admin paths.
+-- MINGLA-INVARIANT: I-3355-ARI-PLAN-CAS | issue #3355 | Per-brand onboarding plans advance only through compare-and-swap transitions so a resumed or concurrent task cannot repeat completed writes.
+
 -- Issue #3355 — Ari 10x durable state, privacy boundary and admin isolation.
 -- Runs after the full PG17 migration replay and rolls every fixture back.
 
