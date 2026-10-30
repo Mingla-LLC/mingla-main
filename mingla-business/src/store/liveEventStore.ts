@@ -290,6 +290,11 @@ export interface LiveEvent {
    */
   masterStartAtUtc?: string | null;
   masterEndAtUtc?: string | null;
+  /** issue #3281 — next upcoming occurrence for cards / SEO (master* stay true master). */
+  nextStartAtUtc?: string | null;
+  nextEndAtUtc?: string | null;
+  scheduleLine?: string | null;
+  upcomingCount?: number | null;
   timezone: string;
   recurrenceRule: RecurrenceRule | null;
   multiDates: MultiDateEntry[] | null;

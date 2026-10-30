@@ -138,17 +138,14 @@ const mapEvent = (event: PublicEventRecord): PublicBrandEvent => ({
   masterStartAtUtc: event.masterStartAtUtc ?? null,
   masterEndAtUtc: event.masterEndAtUtc ?? null,
   masterTimezone: event.timezone,
-  // Display prefers next / scheduleLine; master* stay true master for lifecycle.
-  dateLine: (() => {
-    const line =
-      typeof event.scheduleLine === "string" ? event.scheduleLine.trim() : "";
-    if (line) return `NEXT: ${line}`;
-    return formatDraftDateLine({
-      ...event,
-      masterStartAtUtc: event.nextStartAtUtc ?? event.masterStartAtUtc,
-      masterEndAtUtc: event.nextEndAtUtc ?? event.masterEndAtUtc,
-    });
-  })(),
+  dateLine:
+    typeof event.scheduleLine === "string" && event.scheduleLine.trim()
+      ? `NEXT: ${event.scheduleLine.trim()}`
+      : formatDraftDateLine({
+          ...event,
+          masterStartAtUtc: event.nextStartAtUtc ?? event.masterStartAtUtc,
+          masterEndAtUtc: event.nextEndAtUtc ?? event.masterEndAtUtc,
+        }),
   venueName: event.venueName,
   format: event.format,
   coverHue: event.coverHue,
