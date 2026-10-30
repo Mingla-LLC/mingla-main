@@ -931,7 +931,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
                   totalValue={
                     totals.isFree
                       ? BUYER_CLAIM_COPY.receipt.free
-                      : formatCurrency(totals.allInTotal, totals.currency, true)
+                      : formatCurrency(totals.allInTotal, totals.currency)
                   }
                 />
               </React.Suspense>
@@ -1155,7 +1155,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
               ? "Updating…"
               : totals.isFree
                 ? BUYER_CLAIM_COPY.receipt.free
-                : formatCurrency(totals.allInTotal, totals.currency, true)}
+                : formatCurrency(totals.allInTotal, totals.currency)}
           </Text>
         </View>
         {/* META-ORCH-1161 Sub-A.2 (DEC-186) — the Pay button stays VISUALLY

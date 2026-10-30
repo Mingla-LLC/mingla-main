@@ -10,6 +10,8 @@ import {
   parseClaimLinkBody,
 } from "../index.ts";
 
+// MINGLA-INVARIANT: I-4199-IOS-CLAIM-ONELINK-PATH | issue #4199 | claim OneLinks must live below /w36m/ because the live AppsFlyer AASA claims /w36m/*, not the bare template root
+
 const PEPPER = {
   bytes: new Uint8Array(32).fill(7),
   format: "hex" as const,
@@ -93,6 +95,10 @@ Deno.test("#4063 resolver adds app targets without widening masked RPC output", 
   assertEquals(
     (result.appLink as Record<string, unknown>).appScheme,
     "com.mingla.app.v2://c/AB12CD34EF",
+  );
+  assertEquals(
+    (result.appLink as Record<string, unknown>).oneLink,
+    "https://go.usemingla.com/w36m/claim?deep_link_value=claim&deep_link_sub1=AB12CD34EF&pid=claim_link&c=ticket",
   );
   assertEquals(calls, ["pg_venue_order_rate_limit_hit", "resolve_claim_link"]);
 });

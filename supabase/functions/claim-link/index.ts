@@ -143,7 +143,10 @@ function appLink(code: string, noun: unknown): Record<string, string> {
   const campaign =
     typeof noun === "string" && noun.length > 0 ? noun : "ticket";
   return {
-    oneLink: `https://go.usemingla.com/w36m?deep_link_value=claim&deep_link_sub1=${code}&pid=claim_link&c=${encodeURIComponent(
+    // The live AppsFlyer AASA claims `/w36m/*`, not the bare `/w36m`
+    // template root. Keep claim links under a real child path so iOS treats
+    // them as Universal Links instead of falling through to the App Store.
+    oneLink: `https://go.usemingla.com/w36m/claim?deep_link_value=claim&deep_link_sub1=${code}&pid=claim_link&c=${encodeURIComponent(
       campaign,
     )}`,
     appScheme: `com.mingla.app.v2://c/${code}`,
