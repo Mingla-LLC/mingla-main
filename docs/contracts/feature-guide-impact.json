@@ -73,6 +73,12 @@
       ]
     },
     {
+      "capability_key": "social-follow-brands",
+      "paths": [
+        "app-mobile/app/index.tsx"
+      ]
+    },
+    {
       "capability_key": "social-friends",
       "paths": [
         "app-mobile/src/components/ConnectionsPage.tsx"
