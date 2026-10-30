@@ -51,6 +51,7 @@ const EXPECTED_DELIVERY_RUNTIME_CLOSURE = [
   ["send-phone-invite", true],
   ["send-venue-sms", true],
   ["source-refund-sweep", false],
+  ["stay-reservations", true],
   ["support-brand-person-erasure", true],
   ["ticket-confirmation-dispatch", true],
   ["venue-reservation-cancel", false],
@@ -225,7 +226,7 @@ function closureViolations(repoRoot) {
   const expectedNames = EXPECTED_DELIVERY_RUNTIME_CLOSURE.map(([name]) => name);
   const result = deriveDeliveryRuntimeClosure(trackedProductionFunctionFiles(repoRoot));
   const failures = compareClosure(result, expectedNames);
-  if (result.derived.length !== 18 || expectedNames.length !== 18) {
+  if (result.derived.length !== 19 || expectedNames.length !== 19) {
     failures.push(
       `runtime_closure:locked_count_mismatch:derived_${result.derived.length}:expected_${expectedNames.length}`,
     );
@@ -526,7 +527,7 @@ export function violations(files) {
   ) failures.push("manifest: Paystack payment field metadata invalid");
 
   const runbook = files.runbook ?? "";
-  for (const token of ["schema v3", "bundle-only", "all 18", "schema v2"]) {
+  for (const token of ["schema v3", "bundle-only", "all 19", "schema v2"]) {
     requireToken(runbook, token, "#1903 value-blind rollout runbook", failures);
   }
 

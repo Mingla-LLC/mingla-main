@@ -112,7 +112,6 @@ export function check(files, plans = effectiveSuites()) {
     "Amenities & accessibility",
     "Rooms & Places",
     "Availability & pricing",
-    "Menus",
     "Bank & currency",
     "Venue review",
     "router.push(`/brand/${brandId}/payments`",
@@ -126,6 +125,9 @@ export function check(files, plans = effectiveSuites()) {
     "isStaySettingsFormValid",
   ]) {
     need(files.shell ?? "", token, "Stay management readiness", failures);
+  }
+  for (const token of ['id: "menu"', 'label: "Menus"', "VenueMenuModule", "StayMenuModule"]) {
+    forbid(files.shell ?? "", token, "Stay-only menu ownership", failures);
   }
   forbid(
     files.shell ?? "",
@@ -274,6 +276,12 @@ function selfTest() {
       "Manage your live Stay",
       "Ready to publish",
       "Manage your live Stay",
+    ],
+    [
+      "shell",
+      '{ id: "settings", label: "Settings", icon: "settings" }',
+      '{ id: "menu", label: "Menus", icon: "menu" },\n  { id: "settings", label: "Settings", icon: "settings" }',
+      'label: "Menus"',
     ],
     [
       "edge",
