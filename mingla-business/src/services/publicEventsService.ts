@@ -158,8 +158,6 @@ interface BusinessPublicEventViewRow {
   master_end_at: string | null;
   master_timezone: string | null;
   master_event_date_id: string | null;
-  next_start_at?: string | null;
-  next_end_at?: string | null;
   // ORCH-1006 Slice 3 Wave 2 — server-computed all-in (tax/fee-inclusive)
   // lowest-tier price in CENTS, surfaced by business_public_events_view.
   // Arrives via the existing .select("*"); null when no priced tier → the
@@ -1662,28 +1660,23 @@ const detailFromRow = async (
       : Promise.resolve(null),
   ]);
   const event = publicEventViewRowToEvent(row, tickets);
-  const withSchedule = await import("./publicEventNextOccurrence").then(
-    (module) => module.attachNextOccurrenceFields(event, row),
-  );
   const merged =
     canonical !== null
       ? {
-          ...withSchedule,
+          ...event,
           partyTypes:
             canonical.partyTypes.length > 0
               ? canonical.partyTypes
-              : withSchedule.partyTypes,
+              : event.partyTypes,
           vibeTags:
-            canonical.vibeTags.length > 0
-              ? canonical.vibeTags
-              : withSchedule.vibeTags,
+            canonical.vibeTags.length > 0 ? canonical.vibeTags : event.vibeTags,
           musicGenres:
             canonical.musicGenres.length > 0
               ? canonical.musicGenres
-              : withSchedule.musicGenres,
+              : event.musicGenres,
           cityGeo: canonical.cityGeo,
         }
-      : withSchedule;
+      : event;
   return {
     event: merged,
     brand: viewRowToBrand(row),
@@ -1918,8 +1911,6 @@ const detailFromDirectBundle = async (
     master_start_at: asStringOrNull(payload.masterStartAt),
     master_end_at: asStringOrNull(payload.masterEndAt),
     master_timezone: asStringOrNull(payload.timezone),
-    next_start_at: asStringOrNull(payload.nextStartAt),
-    next_end_at: asStringOrNull(payload.nextEndAt),
     pricing_currency: currency,
     party_types: asStringArray(payload.partyTypes),
     vibe_tags: asStringArray(payload.vibeTags),
@@ -1929,12 +1920,7 @@ const detailFromDirectBundle = async (
     kind: "occurrences",
     value: payload.occurrences,
   };
-  const event = await import("./publicEventNextOccurrence").then((module) =>
-    module.attachNextOccurrenceFields(
-      publicEventViewRowToEvent(row, tickets, terminalSource),
-      row,
-    ),
-  );
+  const event = publicEventViewRowToEvent(row, tickets, terminalSource);
   event.cityGeo = asLatLng(payload.cityGeo);
   const bookable = await resolveEventBookable(
     String(payload.brandId),
@@ -2341,15 +2327,9 @@ export const fetchPublicBrandEvents = async (
   const pricedRows = await import("./publicEventDisplayPricesService").then(
     (module) => module.addPublicEventDisplayPrices(visible),
   );
-  const { attachNextOccurrenceFields } = await import(
-    "./publicEventNextOccurrence"
-  );
 
   return pricedRows.map(({ row, tickets, terminalSource }) =>
-    attachNextOccurrenceFields(
-      publicEventViewRowToEvent(row, tickets, terminalSource),
-      row,
-    ),
+    publicEventViewRowToEvent(row, tickets, terminalSource),
   );
 };
 

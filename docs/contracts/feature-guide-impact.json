@@ -99,11 +99,6 @@
       "paths": [
         "mingla-business/jest.config.cjs",
         "mingla-business/server/socialPreview.js",
-        "mingla-business/src/components/brand/PublicBrandPage.tsx",
-        "mingla-business/src/components/event/PublicEventPage.tsx",
-        "mingla-business/src/services/publicEventNextOccurrence.ts",
-        "mingla-business/src/services/publicEventsService.ts",
-        "mingla-business/src/store/liveEventStore.ts",
         "mingla-business/tsconfig.json",
         "supabase/functions/_shared/contentShare.ts",
         "supabase/functions/_shared/contentShareService.ts",

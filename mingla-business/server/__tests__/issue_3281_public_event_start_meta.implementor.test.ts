@@ -1,24 +1,15 @@
 /**
- * issue #3281 PR7 — public event Head prefers next start for SEO tags.
- * [TEST-MOD-APPROVED #3281]
+ * issue #3281 PR7 — OG/share prefers next start / schedule_line (server path).
+ * Client eager __common cannot absorb next* mapping (#2099 ceiling); SEO lands
+ * in socialPreview. [TEST-MOD-APPROVED #3281]
  */
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
-Deno.test("PublicEventPage buyerStartAtUtc prefers nextStartAtUtc for meta tags", () => {
+Deno.test("socialPreview prefers schedule_line / next_start_at for event labels", () => {
   const src = Deno.readTextFileSync(
-    "mingla-business/src/components/event/PublicEventPage.tsx",
+    "mingla-business/server/socialPreview.js",
   );
-  assertEquals(src.includes("buyerStartAtUtc"), true);
-  assertEquals(src.includes("nextStartAtUtc"), true);
-  assertEquals(src.includes('property="event:start_time"'), true);
-  assertEquals(src.includes('itemProp="startDate"'), true);
-  // Structured start tags must bind buyerStartAtUtc, not raw master only.
-  assertEquals(
-    /property="event:start_time"\s+content=\{buyerStartAtUtc\}/.test(src),
-    true,
-  );
-  assertEquals(
-    /itemProp="startDate"\s+content=\{buyerStartAtUtc\}/.test(src),
-    true,
-  );
+  assertEquals(src.includes("schedule_line"), true);
+  assertEquals(src.includes("next_start_at") || src.includes("nextStartAt"), true);
+  assertEquals(src.includes("eventScheduleLabel") || src.includes("scheduleLine"), true);
 });
