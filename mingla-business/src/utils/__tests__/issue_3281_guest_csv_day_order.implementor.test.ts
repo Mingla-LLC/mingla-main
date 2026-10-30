@@ -4,14 +4,17 @@
  */
 import { assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
-const SRC = "mingla-business/src/utils/guestCsvExport.ts";
+const DAY_ORDER = "mingla-business/src/utils/guestCsvDayOrder.ts";
 const GUESTS = "mingla-business/app/event/[id]/guests/index.tsx";
 
 Deno.test("orderDayCell collapses full pass to All N dates and sorts by map order", () => {
-  const text = Deno.readTextFileSync(SRC);
+  const text = Deno.readTextFileSync(DAY_ORDER);
   assert(text.includes("All ${allIds.length} dates"));
   assert(text.includes("Sort by the event's date order"));
   assert(!/labels\.sort\(\)/.test(text));
+  const guests = Deno.readTextFileSync(GUESTS);
+  assert(guests.includes("orderDayCellByOccurrence"));
+  assert(guests.includes("guestCsvDayOrder"));
 });
 
 Deno.test("guests roster uses Day selector above 7 dates", () => {

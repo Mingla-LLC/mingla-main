@@ -159,26 +159,18 @@ export const orderDayCell = (
     for (const id of t.eventDateIds) ids.add(id);
   }
   if (ids.size === 0) return "";
-  // issue #3281 PR8 — a pass that covers every labelled day → "All N dates".
-  const allIds = [...dayLabels.keys()];
-  if (
-    allIds.length >= 2 &&
-    ids.size === allIds.length &&
-    allIds.every((id) => ids.has(id))
-  ) {
-    return `All ${allIds.length} dates`;
-  }
-  // Sort by the event's date order (Map insertion = occurrence start order),
-  // never lexicographic label order. Ids on the order but missing from
-  // dayLabels stay omitted (#9).
   const labels: string[] = [];
-  for (const id of allIds) {
-    if (!ids.has(id)) continue;
+  for (const id of ids) {
     const label = dayLabels.get(id);
     if (label !== undefined && label.length > 0) labels.push(label);
   }
-  return labels.join("; ");
+  return labels.sort().join("; ");
 };
+
+export type GuestCsvDayCellFormatter = (
+  order: { ticketDays?: { eventDateIds: string[] }[] },
+  dayLabels: ReadonlyMap<string, string>,
+) => string;
 
 export const serializeGuestsToCsv = (
   rows: ExportGuestRow[],
@@ -190,6 +182,8 @@ export const serializeGuestsToCsv = (
    * parsing this file by position.
    */
   dayLabels: ReadonlyMap<string, string> = new Map(),
+  /** issue #3281 — optional Day-cell formatter (keeps occurrence order out of __common). */
+  formatDayCell: GuestCsvDayCellFormatter = orderDayCell,
 ): string => {
   // Cycle 12 — added "Kind" column at front (ONLINE | COMP | DOOR) +
   // "Payment method" column (online sales: card/apple/google; door sales:
@@ -271,7 +265,7 @@ export const serializeGuestsToCsv = (
         "",
         o.viaLinkLabel ?? "",
         o.partyLeadOrderId !== null && o.partyLeadOrderId !== undefined ? o.partyLeadName ?? "" : "",
-        orderDayCell(o, dayLabels),
+        formatDayCell(o, dayLabels),
       ];
       lines.push(fields.map(csvEscape).join(","));
     } else if (row.kind === "order") {
@@ -299,7 +293,7 @@ export const serializeGuestsToCsv = (
         o.currency,
         o.viaLinkLabel ?? "",
         "",
-        orderDayCell(o, dayLabels),
+        formatDayCell(o, dayLabels),
       ];
       lines.push(fields.map(csvEscape).join(","));
     } else {
@@ -348,6 +342,8 @@ export interface ExportGuestsCsvArgs {
    * on every single-date event, where the column is emitted but blank.
    */
   dayLabels?: ReadonlyMap<string, string>;
+  /** issue #3281 — optional Day-cell formatter (occurrence order / All N). */
+  formatDayCell?: GuestCsvDayCellFormatter;
 }
 
 const downloadCsvWeb = (csv: string, filename: string): void => {
@@ -447,7 +443,12 @@ export const exportCsvText = async (
 export const exportGuestsCsv = async (
   args: ExportGuestsCsvArgs,
 ): Promise<ExportResult> => {
-  const csv = serializeGuestsToCsv(args.rows, undefined, args.dayLabels);
+  const csv = serializeGuestsToCsv(
+    args.rows,
+    undefined,
+    args.dayLabels,
+    args.formatDayCell,
+  );
   const filename = `${args.event.eventSlug}-guest-list-${formatYmdToday()}.csv`;
   if (Platform.OS === "web") {
     downloadCsvWeb(csv, filename);
