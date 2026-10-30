@@ -436,15 +436,26 @@ export default function ScannerCameraRoute(): React.ReactElement {
           // scanResultCopy stays in that one async chunk (__common ceiling).
           if (admittedId === null) return;
           try {
-            const [
-              { describeScanResult },
-              { getPublicEventById },
-              { formatOccurrenceDayLabel },
-            ] = await Promise.all([
-              import("../../../../src/components/scanner/DoorGuestSearchSheet"),
-              import("../../../../src/services/publicEventsService"),
-              import("../../../../src/utils/eventDateDisplay"),
-            ]);
+            const [{ describeScanResult }, { getPublicEventById }] =
+              await Promise.all([
+                import("../../../../src/components/scanner/DoorGuestSearchSheet"),
+                import("../../../../src/services/publicEventsService"),
+              ]);
+            const formatOccurrenceDayLabel = (
+              startAt: string,
+              timezone?: string | null,
+            ): string | null => {
+              try {
+                return new Intl.DateTimeFormat(undefined, {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  timeZone: timezone || undefined,
+                }).format(new Date(startAt));
+              } catch {
+                return null;
+              }
+            };
             type DoorOccurrence = {
               id: string;
               startAt: string;

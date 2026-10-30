@@ -251,6 +251,7 @@
       "paths": [
         "mingla-business/app/event/[id]/guests/index.tsx",
         "mingla-business/src/components/guests/GuestDaySelector.tsx",
+        "mingla-business/src/utils/guestCsvDayOrder.ts",
         "mingla-business/src/utils/guestCsvExport.ts"
       ]
     },
