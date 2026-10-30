@@ -1,5 +1,6 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
+import { useAuth } from "../context/AuthContext";
 import type { VenueCapability } from "../services/brandInvitationsService";
 import { supabase } from "../services/supabase";
 
@@ -11,10 +12,10 @@ export interface MyVenueAccess {
 export function useMyVenueAccess(
   venueId: string | null,
 ): UseQueryResult<MyVenueAccess> {
-  // Venue suites only mount inside the authenticated Business shell. Keeping
-  // this hook independent of AuthContext also avoids a second auth bootstrap
-  // dependency for every suite render; the RPC remains the authorization gate.
-  const enabled = venueId !== null && venueId.length > 0;
+  const { isAuthReady } = useAuth();
+  // ORCH-1004: protected venue RPCs must wait until the Supabase session is
+  // restored, otherwise an RLS-empty pre-auth response can be cached as success.
+  const enabled = isAuthReady && venueId !== null && venueId.length > 0;
   return useQuery<MyVenueAccess>({
     queryKey: enabled
       ? ["my-venue-access", venueId]
