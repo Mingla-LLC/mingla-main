@@ -198,8 +198,11 @@ Deno.test("#1999 tester: initial and read-follow-up calls share the sanitized sc
     "// Follow-up Gemini call to summarise the read result",
   );
   const followupEnd = source.indexOf("const text = followup?.textResponse");
+  const loopStart = source.indexOf("let selectedTools =");
+  const loopEnd = source.indexOf('if (loopResult.kind === "proposal")');
   assert(initialStart >= 0 && initialEnd > initialStart);
   assert(followupStart >= 0 && followupEnd > followupStart);
+  assert(loopStart >= 0 && loopEnd > loopStart);
 
   const initialBoundary = source.slice(initialStart, initialEnd);
   const followupBoundary = source.slice(followupStart, followupEnd);
@@ -211,9 +214,21 @@ Deno.test("#1999 tester: initial and read-follow-up calls share the sanitized sc
       /const schemaResponse = schemaErrorResponse\(err\);\s*if \(schemaResponse\) return schemaResponse;/s,
     );
   }
+  // [TEST-MOD-APPROVED #3355] The bounded loop adds a third model boundary.
+  // Provider schema failures are rejected with the same sanitized response
+  // before the loop can convert them into model-outage observations.
+  const loopBoundary = source.slice(loopStart, loopEnd);
+  assertStringIncludes(loopBoundary, "callGemini({");
+  assertStringIncludes(loopBoundary, "compileGeminiToolDeclarations(");
+  assertStringIncludes(loopBoundary, "schemaErrorResponse(err)");
+  assert(
+    loopBoundary.indexOf("compileGeminiToolDeclarations(") <
+      loopBoundary.indexOf("runAgentLoop({"),
+    "loop schemas must compile before the model boundary",
+  );
   assertEquals(
     source.match(/\bcallGemini\(\{/g)?.length,
-    2,
+    3,
     "every agent-chat model call must be reviewed when the boundary count changes",
   );
 

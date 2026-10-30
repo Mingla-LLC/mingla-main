@@ -917,7 +917,8 @@ const setRefundPolicy: AgentToolDefinition = {
     properties: {
       event_id: { type: "string", format: "uuid" },
       policy: {
-        type: ["object", "null"],
+        type: "object",
+        nullable: true,
         description:
           "The canonical refund-policy object, or null to clear it when the server permits that change.",
       },

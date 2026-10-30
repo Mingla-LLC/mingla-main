@@ -27,6 +27,7 @@ import { detectPromptInjection } from "../_shared/agentPromptInjection.ts";
 import {
   ARI_MODEL_VERSION,
   callGemini,
+  compileGeminiToolDeclarations,
   GeminiContentMessage,
   GeminiError,
 } from "../_shared/agentGemini.ts";
@@ -2184,6 +2185,17 @@ ${boundedAgentContext}
         8,
         semanticMessage,
       );
+      try {
+        compileGeminiToolDeclarations(selectedTools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        })));
+      } catch (err: unknown) {
+        const schemaResponse = schemaErrorResponse(err);
+        if (schemaResponse) return schemaResponse;
+        throw err;
+      }
       const launchPlanRequest = activeBrand !== null &&
         isBrandLaunchPlanRequest(semanticMessage);
       const launchInitialCalls = launchPlanRequest && activeBrand
@@ -2400,12 +2412,18 @@ ${boundedAgentContext}
                   ].includes(key)
                 ) selectedToolsets.add(key as AriToolsetKey);
               }
-              selectedTools = selectAriTools(
+              const candidateTools = selectAriTools(
                 AGENT_TOOLS,
                 [...selectedToolsets],
                 8,
                 semanticMessage,
               );
+              compileGeminiToolDeclarations(candidateTools.map((item) => ({
+                name: item.name,
+                description: item.description,
+                parameters: item.parameters,
+              })));
+              selectedTools = candidateTools;
             }
             const { data: toolMessageId, error: toolMessageError } =
               await serviceClient.rpc("append_agent_chat_tool_result", {

@@ -19,6 +19,7 @@ const TOOL_PATHS = [
   "supabase/functions/_shared/agentTools.ts",
   "supabase/functions/_shared/agentDomainTools.ts",
   "supabase/functions/_shared/agentSiteTools.ts",
+  "supabase/functions/_shared/agentAri10xTools.ts",
 ];
 const PROMPT_PATH = "supabase/functions/_shared/agentSystemPrompt.ts";
 
@@ -190,6 +191,26 @@ ari.sites.propose_copy
 ari.sites.propose_collection_entry
 ari.sites.confirm_review
 ari.sites.propose_trip_guide
+ari.research.search_public_web
+ari.research.read_public_url
+ari.research.inspect_public_social_profile
+ari.capabilities.search
+ari.capabilities.request_tools
+ari.onboarding.read_plan
+ari.onboarding.update_plan
+ari.memory.list
+ari.memory.save
+ari.memory.forget
+ari.handoff.open
+ari.market.rules
+ari.listings.type_capabilities
+ari.onboarding.build_blueprint
+ari.capabilities.inventory
+ari.event.set_refund_policy
+ari.event.buyer_notice_status
+ari.research.fetch_listing_page
+ari.listings.extract_candidates
+ari.jobs.manage
 `.trim().split(/\s+/));
 
 // Independent classification authority established by the source-contract
