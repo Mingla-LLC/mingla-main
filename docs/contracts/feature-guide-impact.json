@@ -92,6 +92,8 @@
       "capability_key": "discover-stays",
       "paths": [
         "mingla-business/app/stay/pay/[token].tsx",
+        "mingla-business/src/components/stay/BuyerStayGuestExperience.tsx",
+        "mingla-business/src/components/stay/StayGuestBooking.lazy.ts",
         "mingla-business/src/components/stay/StayStripePayment.tsx",
         "mingla-business/src/components/stay/StayStripePayment.web.tsx",
         "mingla-business/src/services/publicStayDetailService.ts",
