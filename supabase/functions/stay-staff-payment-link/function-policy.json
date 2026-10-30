@@ -6,7 +6,12 @@
   "gateway_reason": "Guest browsers use the project anon JWT; the handler additionally requires an unguessable expiring token and delegates payment preparation to service-only RPCs.",
   "env": {
     "migration_fallback_top_level": [],
-    "optional_top_level": [],
+    "optional_top_level": [
+      "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+      "SENTRY_DSN",
+      "SENTRY_ENVIRONMENT",
+      "STRIPE_PUBLISHABLE_KEY"
+    ],
     "required_bundle_fields": {},
     "required_top_level": []
   }

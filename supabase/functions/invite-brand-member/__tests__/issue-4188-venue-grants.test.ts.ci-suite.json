@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/invite-brand-member/__tests__/issue-4188-venue-grants.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4188-invite-brand-member-venue-grants",
+  "profile": "deno-2-unit"
+}
