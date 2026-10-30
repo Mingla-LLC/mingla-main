@@ -172,6 +172,7 @@
         "supabase/functions/_shared/agentRelativeTime.ts",
         "supabase/functions/_shared/agentRenditions.ts",
         "supabase/functions/_shared/agentSanitization.ts",
+        "supabase/functions/_shared/agentSystemPrompt.ts",
         "supabase/functions/_shared/agentToolAuthorization.ts",
         "supabase/functions/_shared/agentTools.ts",
         "supabase/functions/_shared/agentToolsets.ts",
