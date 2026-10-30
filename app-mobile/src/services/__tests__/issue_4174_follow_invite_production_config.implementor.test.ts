@@ -17,15 +17,10 @@ Deno.test("Explorer follow-invite reads the canonical production Supabase author
     "supabaseUrl must remain exported from the app's single project owner",
   );
   assert(
-    /const supabaseAnonKey = ['"][^'"]+['"];/.test(supabaseSource) &&
-      /export \{ supabaseAnonKey \};/.test(supabaseSource),
-    "the public anon key must be exported from the existing client authority",
-  );
-  assert(
-    /import\s*\{[\s\S]*?supabase[\s\S]*?supabaseAnonKey[\s\S]*?supabaseUrl[\s\S]*?\}\s*from\s*["']\.\.\/src\/services\/supabase["']/.test(
+    /import\s*\{[\s\S]*?getSupabaseFunctionHeaders[\s\S]*?supabase[\s\S]*?supabaseUrl[\s\S]*?\}\s*from\s*["']\.\.\/src\/services\/supabase["']/.test(
       indexSource,
     ),
-    "app/index.tsx must import the canonical Supabase URL and anon key",
+    "app/index.tsx must import the canonical Supabase URL and function headers",
   );
   assert(
     !indexSource.includes("process.env.EXPO_PUBLIC_SUPABASE_URL"),
@@ -40,7 +35,7 @@ Deno.test("Explorer follow-invite reads the canonical production Supabase author
     "all three follow-invite peeks must build from the canonical URL",
   );
   assert(
-    (indexSource.match(/apikey: supabaseAnonKey/g) ?? []).length === 3,
-    "all three follow-invite peeks must send the canonical anon key",
+    (indexSource.match(/apikey: getSupabaseFunctionHeaders\(\)\.apikey/g) ?? []).length === 3,
+    "all three follow-invite peeks must send the shared canonical function key",
   );
 });

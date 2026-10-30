@@ -68,6 +68,12 @@
       ]
     },
     {
+      "capability_key": "social-follow-brands",
+      "paths": [
+        "app-mobile/app/index.tsx"
+      ]
+    },
+    {
       "capability_key": "brand-team-roles",
       "paths": [
         "mingla-business/app/(tabs)/home.tsx",

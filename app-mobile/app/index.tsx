@@ -114,8 +114,8 @@ import {
 import { queryClient } from "../src/config/queryClient";
 import { BoardSessionService } from "../src/services/boardSessionService";
 import {
+  getSupabaseFunctionHeaders,
   supabase,
-  supabaseAnonKey,
   supabaseUrl,
 } from "../src/services/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -532,7 +532,7 @@ function AppContent() {
             `${base}/functions/v1/resolve-follow-invite?token=${encodeURIComponent(pending.token)}`,
             {
               headers: {
-                apikey: supabaseAnonKey,
+                apikey: getSupabaseFunctionHeaders().apikey,
               },
             },
           );
@@ -583,7 +583,7 @@ function AppContent() {
           `${base}/functions/v1/resolve-follow-invite?token=${encodeURIComponent(pending.token)}`,
           {
             headers: {
-              apikey: supabaseAnonKey,
+              apikey: getSupabaseFunctionHeaders().apikey,
             },
           },
         );
@@ -2699,7 +2699,7 @@ function AppContent() {
                 `${base}/functions/v1/resolve-follow-invite?token=${encodeURIComponent(dest.token)}`,
                 {
                   headers: {
-                    apikey: supabaseAnonKey,
+                    apikey: getSupabaseFunctionHeaders().apikey,
                   },
                 },
               );
