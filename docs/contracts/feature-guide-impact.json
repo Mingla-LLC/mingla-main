@@ -151,6 +151,7 @@
         "mingla-business/src/hooks/useAriKnowledge.ts",
         "mingla-business/src/screens/ari/AriChatScreen.tsx",
         "mingla-business/src/screens/ari/AriSettingsScreen.tsx",
+        "mingla-business/src/screens/ari/AriThreadLoadingState.tsx",
         "mingla-business/src/services/agentChatService.ts",
         "mingla-business/src/services/ariAttachmentService.ts",
         "mingla-business/src/services/ariFeedbackService.ts",
