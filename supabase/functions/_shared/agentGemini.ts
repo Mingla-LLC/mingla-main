@@ -750,14 +750,16 @@ interface OllamaResponse {
   eval_count?: number;
 }
 
-function readOptionalEnv(name: string): string | undefined {
+function modelVersionFromEnvironment(): string {
   try {
-    return Deno.env.get(name);
+    return Deno.env.get("ARI_LOCAL_MODEL_ENABLED") === "true"
+      ? `local:${Deno.env.get("ARI_LOCAL_MODEL_ID") ?? "qwen3:4b-instruct"}`
+      : GEMINI_MODEL_ID;
   } catch (error) {
     if (
       error instanceof Deno.errors.PermissionDenied ||
       (error instanceof Error && error.name === "NotCapable")
-    ) return undefined;
+    ) return GEMINI_MODEL_ID;
     throw error;
   }
 }
@@ -941,7 +943,4 @@ async function callLocalOllama(
 // Keep importing the provider compiler permission-free. Runtime calls still
 // read the full local-model configuration, but schema and contract consumers
 // can inspect Ari's production model identity without --allow-env.
-export const ARI_MODEL_VERSION = readOptionalEnv("ARI_LOCAL_MODEL_ENABLED") ===
-    "true"
-  ? `local:${readOptionalEnv("ARI_LOCAL_MODEL_ID") ?? "qwen3:4b-instruct"}`
-  : GEMINI_MODEL_ID;
+export const ARI_MODEL_VERSION = modelVersionFromEnvironment();
