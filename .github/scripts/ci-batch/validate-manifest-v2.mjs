@@ -300,7 +300,7 @@ export function phase3dContractDigest(manifest) {
 // #4182 / #4187 / #4188: register the Local/Creator lifecycle, Admin
 // program-chat, and Stay staff-reservation migrations plus their declared
 // PostgreSQL proofs in the same inventories without changing any command.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "f12476e961bbc07c3c0ae58c089403bc2f200dc91815bbf6709c4d789ec71b00";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "662b22586e8bd525737fe012b0dd8b535051b551233a29ec6e2dd45c9a3c2c74";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
