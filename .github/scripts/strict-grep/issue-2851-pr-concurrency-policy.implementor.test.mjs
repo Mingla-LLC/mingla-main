@@ -47,9 +47,13 @@ const DENIED = [
 // [#3643] Phase 3D and Phase 3E delete sixty-eight PR-family workflows.
 // Count 125 -> 57; identity is re-derived locally and cross-checked by
 // hashing the sorted pull_request/pull_request_target workflow names directly.
+//
+// [TEST-MOD-APPROVED #3643] Re-derived after renaming the retained main-health
+// host `tests-append-only.yml` → `pre-merge-main-health.yml`. Count stays 57;
+// only the sorted PR-family filename list moves, so identity must move with it.
 const PR_FAMILY_COUNT = 57;
 const PR_FAMILY_IDENTITY_SHA256 =
-  "f160340963dd1d1f29bae89ff0425d8a1e5b4ed93f63d6a0425f0dab2ef2faaf";
+  "d4dc03749c3a7f48cccd3d469973caa1733c33171c0dc270053f9221fe7bda89";
 // [TEST-MOD-APPROVED #2241] Mechanically re-derived after the exact approved
 // #1930 shared-resolver trigger addition, #2241 secret-readiness lanes,
 // #2893/#2899 Sites workflow authority, and #2885's reviewed baseline-only path
@@ -1264,7 +1268,13 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // commands now run as CI batch suites. No remaining workflow's trigger keys,
   // job-level concurrency or uses: values moved. Derived locally with this
   // file's own canonical projection.
-  "aa77dac52a2b73cc05eda276c0238e16b038f7574735b2ea33c01a4f36e37036";
+  // [TEST-MOD-APPROVED #3643] Re-derived again after renaming the retained
+  // main-health host filename (`tests-append-only.yml` →
+  // `pre-merge-main-health.yml`). The projection is keyed by workflow name, so
+  // the rename moves this digest even though trigger keys, job-level
+  // concurrency and uses: values are unchanged. Derived locally with this
+  // file's own canonical projection on the rebased branch.
+  "9a6367e21dd04c27bf721685490a488c4cc347f32f414f566b097f27af12564a";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   // [TEST-MOD-APPROVED #3493] Re-derived from the reviewed bytes after the
