@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(HERE, "../../..");
 export const DISPLAY_NAME = "Supabase Migrations + Stripe Deno Tests (B2a Path C V3)";
-export const FIXED_PROJECTION_SHA256 = "bf4a6cdb94bf9af098ec100a6cf0dead1412959121a3d6fff0fa2f2e1a1fc20e";
+export const FIXED_PROJECTION_SHA256 = "43e9ab0a1685c99ab19df3a56882335147c4a73e77d90995f661894c65d5435f";
 
 function fail(code, detail = "") {
   throw new Error(`ci-discovery:workflow-policy:${code}${detail ? `:${detail}` : ""}`);

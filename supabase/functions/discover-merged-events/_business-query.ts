@@ -111,8 +111,21 @@ export function mapRpcRowToCard(row: RpcRow): BusinessEventCard {
     coverMediaUrl: (row.cover_media_url as string | null) ?? null,
     coverMediaType: (row.cover_media_type as BusinessEventCard["coverMediaType"]) ?? null,
     coverHue: extractCoverHue(theme),
+    // Window-selected occurrence is the card timestamp authority. Discover base
+    // leaves schedule_line/upcoming_count null (no helper tax before pagination).
     masterDateUtc: (row.master_start_at as string | null) ?? null,
     masterEndAtUtc: (row.master_end_at as string | null) ?? null,
+    nextStartAtUtc:
+      (row.next_start_at as string | null) ??
+      (row.master_start_at as string | null) ??
+      null,
+    nextEndAtUtc:
+      (row.next_end_at as string | null) ??
+      (row.master_end_at as string | null) ??
+      null,
+    upcomingCount:
+      typeof row.upcoming_count === "number" ? row.upcoming_count : null,
+    scheduleLine: (row.schedule_line as string | null) ?? null,
     doorsOpenLocal: startSplit.time,
     endsAtLocal: endSplit.time,
     timezone: String(row.timezone ?? "UTC"),

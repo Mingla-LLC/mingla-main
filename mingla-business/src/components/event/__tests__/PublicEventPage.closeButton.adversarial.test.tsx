@@ -249,15 +249,23 @@ const brandFixture = (slug: string) => ({
 
 const childrenOf = (node: ElementNode): ElementNode[] => {
   const children = node.props?.children;
-  if (Array.isArray(children)) return children;
-  if (children !== null && typeof children === "object") return [children];
-  return [];
+  const list = Array.isArray(children)
+    ? children
+    : children !== null && typeof children === "object"
+      ? [children]
+      : [];
+  // Conditional JSX (`cond ? <X/> : null`) leaves nulls in the children array.
+  return list.filter(
+    (child): child is ElementNode =>
+      child !== null && typeof child === "object",
+  );
 };
 
 const findNode = (
   node: ElementNode,
   predicate: (candidate: ElementNode) => boolean,
 ): ElementNode | null => {
+  if (node == null) return null;
   if (predicate(node)) return node;
   for (const child of childrenOf(node)) {
     const found = findNode(child, predicate);

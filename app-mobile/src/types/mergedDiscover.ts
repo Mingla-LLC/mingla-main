@@ -48,6 +48,12 @@ export interface BusinessEventCard {
    * for back-compat with payloads from edge functions running pre-0877.
    */
   masterEndAtUtc?: string | null;
+  /** issue #3281 PR7 — server next occurrence (prefer over master for cards). */
+  nextStartAtUtc?: string | null;
+  nextEndAtUtc?: string | null;
+  upcomingCount?: number | null;
+  /** Server-computed schedule line; cards show "NEXT: " + this. */
+  scheduleLine?: string | null;
   doorsOpenLocal: string | null;
   endsAtLocal: string | null;
   timezone: string;

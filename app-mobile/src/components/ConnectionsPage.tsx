@@ -265,6 +265,7 @@ async function fetchGroupEventMetaByIds(eventIds: string[]): Promise<Map<string,
       id, brand_id, brand_slug, brand_name, brand_profile_photo_url,
       title, description, slug, cover_media_url, cover_media_type,
       master_start_at, master_end_at, master_timezone, timezone,
+      next_start_at, next_end_at, upcoming_count, schedule_line,
       location_text, is_online, city, location_geo, public_theme, currency,
       party_types, vibe_tags, music_genres
     `)
@@ -315,8 +316,13 @@ async function fetchGroupEventMetaByIds(eventIds: string[]): Promise<Map<string,
             coverMediaUrl: event.cover_media_url ?? null,
             coverMediaType: event.cover_media_type ?? null,
             coverHue: extractCoverHue(event.public_theme),
+            // True master pair for detail date-line; next_* drive list tags / NEXT.
             masterDateUtc: event.master_start_at ?? null,
             masterEndAtUtc: event.master_end_at ?? null,
+            nextStartAtUtc: event.next_start_at ?? null,
+            nextEndAtUtc: event.next_end_at ?? null,
+            upcomingCount: event.upcoming_count ?? null,
+            scheduleLine: event.schedule_line ?? null,
             doorsOpenLocal: null,
             endsAtLocal: null,
             timezone: event.master_timezone ?? event.timezone ?? 'UTC',
@@ -1528,8 +1534,15 @@ function ConnectionsPageRefactored({
           eventBrandId: eventMeta?.brandId ?? null,
           eventBrandSlug: eventMeta?.brandSlug ?? null,
           eventBrandLogoUrl: eventMeta?.brandLogoUrl ?? null,
-          eventStartAt: eventMeta?.publicCard?.masterDateUtc ?? null,
-          eventEndAt: eventMeta?.publicCard?.masterEndAtUtc ?? null,
+          // Channel fold orders by next occurrence; publicCard keeps true master*.
+          eventStartAt:
+            eventMeta?.publicCard?.nextStartAtUtc ??
+            eventMeta?.publicCard?.masterDateUtc ??
+            null,
+          eventEndAt:
+            eventMeta?.publicCard?.nextEndAtUtc ??
+            eventMeta?.publicCard?.masterEndAtUtc ??
+            null,
           eventCoverMediaUrl: eventMeta?.coverMediaUrl ?? null,
           eventPublicUrl,
           eventPublicCard,
