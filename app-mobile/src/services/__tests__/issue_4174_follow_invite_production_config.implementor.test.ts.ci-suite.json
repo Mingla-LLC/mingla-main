@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/services/__tests__/issue_4174_follow_invite_production_config.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4174-follow-invite-production-config-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

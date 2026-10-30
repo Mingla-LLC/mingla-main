@@ -113,7 +113,11 @@ import {
 // this route (prefetchQuery + dismissCollaborationInviteNotifications).
 import { queryClient } from "../src/config/queryClient";
 import { BoardSessionService } from "../src/services/boardSessionService";
-import { supabase } from "../src/services/supabase";
+import {
+  getSupabaseFunctionHeaders,
+  supabase,
+  supabaseUrl,
+} from "../src/services/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors } from "../src/constants/colors";
 import { logger } from "../src/utils/logger";
@@ -523,15 +527,12 @@ function AppContent() {
         const pending = getPendingFollowInvite();
         if (!pending?.token || cancelled) return;
         try {
-          const base = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? "").replace(
-            /\/$/,
-            "",
-          );
+          const base = supabaseUrl.replace(/\/$/, "");
           const res = await fetch(
             `${base}/functions/v1/resolve-follow-invite?token=${encodeURIComponent(pending.token)}`,
             {
               headers: {
-                apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
+                apikey: getSupabaseFunctionHeaders().apikey,
               },
             },
           );
@@ -577,15 +578,12 @@ function AppContent() {
       if (!pending?.token || cancelled) return;
       try {
         const sessionEmail = (user.email ?? "").trim().toLowerCase();
-        const base = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? "").replace(
-          /\/$/,
-          "",
-        );
+        const base = supabaseUrl.replace(/\/$/, "");
         const peekRes = await fetch(
           `${base}/functions/v1/resolve-follow-invite?token=${encodeURIComponent(pending.token)}`,
           {
             headers: {
-              apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
+              apikey: getSupabaseFunctionHeaders().apikey,
             },
           },
         );
@@ -2696,15 +2694,12 @@ function AppContent() {
             await setPendingFollowInvite({ token: dest.token });
             if (!userIdRef.current) return;
             try {
-              const base = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? "").replace(
-                /\/$/,
-                "",
-              );
+              const base = supabaseUrl.replace(/\/$/, "");
               const peekRes = await fetch(
                 `${base}/functions/v1/resolve-follow-invite?token=${encodeURIComponent(dest.token)}`,
                 {
                   headers: {
-                    apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
+                    apikey: getSupabaseFunctionHeaders().apikey,
                   },
                 },
               );
