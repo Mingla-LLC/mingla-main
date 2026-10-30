@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { BOOTSTRAP_SHA256, loadEffectiveManifest } from "../load-manifest.mjs";
 import { POSTGRES_WAVE, postgresAdditionalDatabaseName, postgresDatabaseName } from "../postgres-batch-contract.mjs";
-import { selectedPostgresSuites } from "../postgres-batch.mjs";
+import { migrationsForPostgresTemplate, selectedPostgresSuites } from "../postgres-batch.mjs";
 import { SUITES_FOLDED_IN_POSTGRES_WAVE, suiteCommandFingerprint, validateRegistry } from "../validate-manifest-v2.mjs";
 import { buildShardReport, expectedPrimarySuites, routingReport, runInvocation, runSuiteV2, selectSuites } from "../run-suite-batch.mjs";
 import { reconcilePhase3bReports, selectionDocument } from "../select-phase3b-suites.mjs";
@@ -91,6 +91,22 @@ test("#3643 one Postgres service/replay replaces per-suite bring-up and stays ro
   assert.equal(source.match(/image: \$\{\{ startsWith\(matrix\.class, 'postgres17-'\)/g)?.length, 1);
   assert.match(source, /steps\.route\.outputs\.runPrimarySetup != 'false'/);
   assert.match(source, /postgres-batch\.mjs --setup "\$\{\{ matrix\.class \}\}"/);
+});
+
+test("#3643 the #3429 dual-database template stops before its self-applied migration", () => {
+  const migrations = [
+    "supabase/migrations/20270712003428_before.sql",
+    "supabase/migrations/20270712003429_issue_3429_ari_chat_context.sql",
+    "supabase/migrations/20280209003355_later_dependency.sql",
+  ];
+  assert.deepEqual(
+    migrationsForPostgresTemplate(migrations, "postgres17-deno146-node20-dualdb"),
+    [migrations[0]],
+  );
+  assert.deepEqual(
+    migrationsForPostgresTemplate(migrations, "postgres17-deno2-node22-noinstall"),
+    migrations,
+  );
 });
 
 test("#3643 original unfiltered and live-provider routing cannot narrow during the fold", () => {

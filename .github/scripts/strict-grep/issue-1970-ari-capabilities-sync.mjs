@@ -3,7 +3,7 @@
 /**
  * #1970 / #424 Wave 0 — Ari tool registry ↔ CAPABILITIES sync.
  *
- * Every `name: "..."` on an AgentTool in agentTools.ts (and agentDomainTools.ts)
+ * Every `name: "..."` on an AgentTool in the composed Ari registry fragments
  * MUST appear as a `- <name> —` line in the CAPABILITIES block of
  * agentSystemPrompt.ts. Drift (create_experience registered but not advertised)
  * is a recipe violation and a silent "I can't do that yet" failure.
@@ -24,6 +24,7 @@ const TOOL_FILES = [
   "supabase/functions/_shared/agentTools.ts",
   "supabase/functions/_shared/agentDomainTools.ts",
   "supabase/functions/_shared/agentSiteTools.ts",
+  "supabase/functions/_shared/agentAri10xTools.ts",
 ];
 const PROMPT_FILE = "supabase/functions/_shared/agentSystemPrompt.ts";
 

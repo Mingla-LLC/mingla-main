@@ -53,12 +53,22 @@ $ari_media_bucket$;
 -- storage bucket. Expanding only `allowed_mime_types` makes the picker promise
 -- voice/video support while every prepare insert fails. Keep both authorities
 -- in lockstep so a supported media file can enter the private lifecycle.
-ALTER TABLE public.agent_attachments
-  DROP CONSTRAINT IF EXISTS agent_attachments_file_type_check;
-ALTER TABLE public.agent_attachments
-  ADD CONSTRAINT agent_attachments_file_type_check CHECK (
-    file_type IN ('image', 'pdf', 'docx', 'text', 'csv', 'audio', 'video')
-  );
+DO $ari_attachment_media_types$
+BEGIN
+  -- The #1985 dual-database CI fixture intentionally holds its shared template
+  -- immediately before the #3429 attachment migration, then applies #3429 in
+  -- two isolated databases. Keep this additive migration replay-safe there;
+  -- normal and production migration order already has the table at this point.
+  IF to_regclass('public.agent_attachments') IS NOT NULL THEN
+    ALTER TABLE public.agent_attachments
+      DROP CONSTRAINT IF EXISTS agent_attachments_file_type_check;
+    ALTER TABLE public.agent_attachments
+      ADD CONSTRAINT agent_attachments_file_type_check CHECK (
+        file_type IN ('image', 'pdf', 'docx', 'text', 'csv', 'audio', 'video')
+      );
+  END IF;
+END
+$ari_attachment_media_types$;
 
 ALTER TABLE public.agent_conversations
   ADD COLUMN IF NOT EXISTS auto_turns_since_user integer NOT NULL DEFAULT 0
