@@ -77,7 +77,8 @@ describe("ORCH-1171 Done-bar mount coverage (consumer)", () => {
 
   it("MessageInterface lifts composer by KEYBOARD_TOOLBAR_HEIGHT when keyboard open", () => {
     const chat = read("src/components/MessageInterface.tsx");
-    assert.match(chat, /keyboardHeight\s*\+\s*KEYBOARD_TOOLBAR_HEIGHT/);
+    assert.match(chat, /resolveChatComposerBottom\(\{/);
+    assert.match(chat, /keyboardToolbarHeight:\s*KEYBOARD_TOOLBAR_HEIGHT/);
   });
 
   it("KeyboardToolbarRoot native uses showArrows={false} and brand primary color", () => {

@@ -12,13 +12,18 @@ const manifest = JSON.parse(read("supabase/secrets.manifest.json"));
 const FIELD = "BRAND_PERSON_ERASURE_CHALLENGE_SECRET";
 const READER = "supabase/functions/support-brand-person-erasure/erasureContract.ts";
 const EXPECTED_READERS = [
+  "supabase/functions/_shared/adAppReadinessProviders/appsflyer.ts",
   "supabase/functions/_shared/capiTokens.ts",
+  // [TEST-MOD-APPROVED #4182] Creator review media reads Bunny provider
+  // values from the existing governed bundle; it adds no top-level secret.
+  "supabase/functions/_shared/creatorMedia.ts",
+  "supabase/functions/_shared/governedAdSecret.ts",
   "supabase/functions/_shared/notificationRecipientHmac.ts",
   "supabase/functions/_shared/oneSignalEventStreamAuth.ts",
   "supabase/functions/_shared/sourceRefundAttentionToken.ts",
   "supabase/functions/_shared/sourceRefundNotificationRecipient.ts",
-  "supabase/functions/_shared/adAppReadinessProviders/appsflyer.ts",
-  "supabase/functions/_shared/governedAdSecret.ts",
+  // #3392 — the venue booking manage-link key ring reader.
+  "supabase/functions/_shared/venueReservationManageToken.ts",
   "supabase/functions/admin-ad-app-readiness/index.ts",
   // [TEST-MOD-APPROVED #4137] Admin Blog reads the existing governed
   // revalidation authority from the shared bundle; it adds no secret name.
@@ -29,45 +34,53 @@ const EXPECTED_READERS = [
   "supabase/functions/claim-attendance/index.ts",
   "supabase/functions/competitor-intel-worker/index.ts",
   "supabase/functions/notify-dispatch/index.ts",
+  "supabase/functions/notify-outbox-drain/index.ts",
   "supabase/functions/onesignal-event-stream/index.ts",
   "supabase/functions/resend-webhook/index.ts",
   "supabase/functions/source-refund-attention/index.ts",
-  "supabase/functions/notify-outbox-drain/index.ts",
   READER,
   "supabase/functions/ticket-confirmation-dispatch/index.ts",
-  // #3392 — the venue booking manage-link key ring reader (appended).
-  "supabase/functions/_shared/venueReservationManageToken.ts",
 ];
 const EXPECTED_FIELDS = [
   ["APPSFLYER_API_V2_TOKEN", "Growth Engineering", "provider_dashboard_and_secure_vault"],
-  ["NOTIFICATION_RECIPIENT_HMAC_SECRET", "Messaging Engineering", "secure_vault"],
-  ["ONESIGNAL_EVENT_STREAM_TOKEN_CURRENT", "Messaging Engineering", "secure_vault"],
-  ["ONESIGNAL_EVENT_STREAM_TOKEN_PREVIOUS", "Messaging Engineering", "secure_vault"],
-  ["SOURCE_REFUND_ATTENTION_TOKEN_CURRENT_KID", "Payments Engineering", "secure_vault"],
-  ["SOURCE_REFUND_ATTENTION_TOKEN_CURRENT_KEY_B64", "Payments Engineering", "secure_vault"],
-  ["SOURCE_REFUND_ATTENTION_TOKEN_PREVIOUS_KID", "Payments Engineering", "secure_vault"],
-  ["SOURCE_REFUND_ATTENTION_TOKEN_PREVIOUS_KEY_B64", "Payments Engineering", "secure_vault"],
-  ["SOURCE_REFUND_ATTENTION_IP_CURRENT_KID", "Platform Security", "secure_vault"],
-  ["SOURCE_REFUND_ATTENTION_IP_CURRENT_KEY_B64", "Platform Security", "secure_vault"],
-  ["SOURCE_REFUND_ATTENTION_IP_PREVIOUS_KID", "Platform Security", "secure_vault"],
-  ["SOURCE_REFUND_ATTENTION_IP_PREVIOUS_KEY_B64", "Platform Security", "secure_vault"],
-  ["SOURCE_REFUND_NOTIFICATION_RECIPIENT_CURRENT_KID", "Messaging Engineering", "secure_vault"],
-  ["SOURCE_REFUND_NOTIFICATION_RECIPIENT_CURRENT_KEY_B64", "Messaging Engineering", "secure_vault"],
-  ["SOURCE_REFUND_NOTIFICATION_RECIPIENT_PREVIOUS_KID", "Messaging Engineering", "secure_vault"],
-  ["SOURCE_REFUND_NOTIFICATION_RECIPIENT_PREVIOUS_KEY_B64", "Messaging Engineering", "secure_vault"],
-  [FIELD, "Platform Security", "secure_vault"],
   ["ATTENDANCE_CLAIM_PEPPER", "Platform Security", "secure_vault"],
-  ["META_COMPETITOR_ACCESS_TOKEN", "Growth Engineering", "provider_dashboard_and_secure_vault"],
-  ["META_COMPETITOR_IG_USER_ID", "Growth Engineering", "provider_dashboard"],
+  [FIELD, "Platform Security", "secure_vault"],
+  // [TEST-MOD-APPROVED #4182] Bunny provider values stay inside the existing
+  // governed bundle so the 90-name ceiling and #1772 authority are unchanged.
+  ["CREATOR_BUNNY_ACCOUNT_API_KEY", "Media Engineering", "provider_dashboard_and_secure_vault"],
+  ["CREATOR_BUNNY_STORAGE_CAP_BYTES", "Media Engineering", "capacity_policy"],
+  ["CREATOR_BUNNY_STREAM_API_KEY", "Media Engineering", "provider_dashboard_and_secure_vault"],
+  ["CREATOR_BUNNY_STREAM_CDN_HOSTNAME", "Media Engineering", "provider_dashboard"],
+  ["CREATOR_BUNNY_STREAM_LIBRARY_ID", "Media Engineering", "provider_dashboard"],
+  ["CREATOR_BUNNY_STREAM_TOKEN_KEY", "Media Engineering", "provider_dashboard_and_secure_vault"],
+  ["CREATOR_BUNNY_STREAM_WEBHOOK_KEY", "Media Engineering", "provider_dashboard_and_secure_vault"],
+  ["CREATOR_BUNNY_TRAFFIC_CAP_BYTES", "Media Engineering", "capacity_policy"],
   // [TEST-MOD-APPROVED #4137] Existing AD_CONVERSION_TOKENS envelope field
   // used by the two Admin Blog readers above; no top-level secret is added.
   ["MARKETING_REVALIDATE_SECRET", "Marketing Engineering", "secure_vault"],
+  ["META_COMPETITOR_ACCESS_TOKEN", "Growth Engineering", "provider_dashboard_and_secure_vault"],
+  ["META_COMPETITOR_IG_USER_ID", "Growth Engineering", "provider_dashboard"],
+  ["NOTIFICATION_RECIPIENT_HMAC_SECRET", "Messaging Engineering", "secure_vault"],
+  ["ONESIGNAL_EVENT_STREAM_TOKEN_CURRENT", "Messaging Engineering", "secure_vault"],
+  ["ONESIGNAL_EVENT_STREAM_TOKEN_PREVIOUS", "Messaging Engineering", "secure_vault"],
   ["RESEND_WEBHOOK_SECRET", "Messaging Security", "secure_vault"],
-  // #3392 — four appended envelope fields; no new secret name (still 88).
-  ["VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KID", "Payments Engineering", "secure_vault"],
+  ["SOURCE_REFUND_ATTENTION_IP_CURRENT_KEY_B64", "Platform Security", "secure_vault"],
+  ["SOURCE_REFUND_ATTENTION_IP_CURRENT_KID", "Platform Security", "secure_vault"],
+  ["SOURCE_REFUND_ATTENTION_IP_PREVIOUS_KEY_B64", "Platform Security", "secure_vault"],
+  ["SOURCE_REFUND_ATTENTION_IP_PREVIOUS_KID", "Platform Security", "secure_vault"],
+  ["SOURCE_REFUND_ATTENTION_TOKEN_CURRENT_KEY_B64", "Payments Engineering", "secure_vault"],
+  ["SOURCE_REFUND_ATTENTION_TOKEN_CURRENT_KID", "Payments Engineering", "secure_vault"],
+  ["SOURCE_REFUND_ATTENTION_TOKEN_PREVIOUS_KEY_B64", "Payments Engineering", "secure_vault"],
+  ["SOURCE_REFUND_ATTENTION_TOKEN_PREVIOUS_KID", "Payments Engineering", "secure_vault"],
+  ["SOURCE_REFUND_NOTIFICATION_RECIPIENT_CURRENT_KEY_B64", "Messaging Engineering", "secure_vault"],
+  ["SOURCE_REFUND_NOTIFICATION_RECIPIENT_CURRENT_KID", "Messaging Engineering", "secure_vault"],
+  ["SOURCE_REFUND_NOTIFICATION_RECIPIENT_PREVIOUS_KEY_B64", "Messaging Engineering", "secure_vault"],
+  ["SOURCE_REFUND_NOTIFICATION_RECIPIENT_PREVIOUS_KID", "Messaging Engineering", "secure_vault"],
+  // #3392 — four envelope fields; no new secret name.
   ["VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KEY_B64", "Payments Engineering", "secure_vault"],
-  ["VENUE_RESERVATION_MANAGE_TOKEN_PREVIOUS_KID", "Payments Engineering", "secure_vault"],
+  ["VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KID", "Payments Engineering", "secure_vault"],
   ["VENUE_RESERVATION_MANAGE_TOKEN_PREVIOUS_KEY_B64", "Payments Engineering", "secure_vault"],
+  ["VENUE_RESERVATION_MANAGE_TOKEN_PREVIOUS_KID", "Payments Engineering", "secure_vault"],
 ].map(([name, owner, source_type]) => ({ name, owner, source_type }));
 
 // [TEST-MOD-APPROVED #2830] — Sites appends the approved slot-88 bundled
@@ -78,6 +91,8 @@ const EXPECTED_FIELDS = [
 // envelope and #1772 field remain byte-for-byte unchanged.
 // [TEST-MOD-APPROVED #4137] Admin Blog adds two governed-bundle readers while
 // preserving all 90 top-level names and every #1772 field and ordering guarantee.
+// [TEST-MOD-APPROVED #4182] Creator review media adds one governed-bundle reader
+// and eight Bunny fields while preserving the 90-name ceiling and #1772 field.
 test("#1772 keeps the exact governed 90-name envelope with no direct erasure secret", () => {
   const names = manifest.secrets.map((entry) => entry.name);
   assert.equal(names.length, 90);

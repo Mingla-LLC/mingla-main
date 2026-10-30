@@ -10,12 +10,22 @@ export type LocalCityProgram = {
   /** Legacy USD rate. */
   monthly_usd_minor?: number | null;
 };
-export type LocalApplication = { id: string; city_id: string; city: string; status: string; created_at: string };
-export type LocalSeat = { id: string; city_id: string; city: string; status: string; since: string };
+export type LocalApplication = {
+  id: string; city_id: string; city: string; status: string; created_at: string;
+  agreement_version?: string | null; agreement_due_at?: string | null;
+};
+export type LocalAgreement = {
+  version: string; document_url: string; document_sha256: string; effective_at: string;
+};
+export type LocalSeat = {
+  id: string; city_id: string; city: string; status: string; since: string;
+  agreement_version?: string | null; agreement_signed_at?: string | null;
+};
 export type LocalLanding = {
   enabled: boolean;
   programs: LocalCityProgram[];
   applications: LocalApplication[];
+  agreement: LocalAgreement | null;
   local: null | LocalSeat;
   /** The viewer's home city (creator or profile), when known. */
   viewer_city_id?: string | null;
@@ -30,7 +40,7 @@ export type LocalHome = {
   payout: null | { stripe_status?: string | null; paystack_status?: string | null; currency?: string | null };
 };
 export type LocalPlaceCandidate = { id: string; name: string; address: string | null; primary_type: string | null; eligible: boolean; reason: string | null };
-export type PublicLocalProfile = { user_id: string; name: string; avatar_url: string | null; city: string; local_since: string; reviews: Array<{ local_month_id: string; place_id: string; place_name: string; rating: number; title: string; body: string; visited_on: string; media_job_ids: string[]; reply: string | null }> };
+export type PublicLocalProfile = { user_id: string; name: string; avatar_url: string | null; city: string; local_since: string; reviews: { local_month_id: string; place_id: string; place_name: string; rating: number; title: string; body: string; visited_on: string; media_job_ids: string[]; reply: string | null }[] };
 export type PublicLocalPlaceReview = { local_month_id: string; local_user_id: string; name: string; avatar_url: string | null; rating: number; title: string; excerpt: string; body: string; visited_on: string; media_job_ids: string[]; reply: string | null; published_at: string };
 
 export { localCityRate } from '../utils/programFormat';
@@ -42,6 +52,15 @@ export const localProgramService = {
     postHogService.capture('local_applied');
     return result;
   },
+  signAgreement: async (applicationId: string, version: string, signatureName: string) => {
+    const result = await programWrite('local_agreement_sign', {
+      p_application_id: applicationId,
+      p_agreement_version: version,
+      p_signature_name: signatureName.trim(),
+    });
+    postHogService.capture('local_agreement_signed');
+    return result;
+  },
   home: () => programRead<LocalHome | null>('local_home'),
   places: (query?: string) => programRead<LocalPlaceCandidate[]>('local_place_candidates', { p_query: query?.trim() || null }),
   /** Names for the places on your own months (place_pool is readable by signed-in people). */
@@ -50,7 +69,7 @@ export const localProgramService = {
     if (!unique.length) return {};
     const { data, error } = await supabase.from('place_pool').select('id,name').in('id', unique);
     if (error) throw toProgramError(error);
-    return Object.fromEntries(((data ?? []) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name]));
+    return Object.fromEntries(((data ?? []) as { id: string; name: string }[]).map((row) => [row.id, row.name]));
   },
   pickPlace: async (placeId: string, personalTie = false) => {
     const result = await programWrite('local_pick_place', { p_place_id: placeId, p_personal_tie: personalTie });

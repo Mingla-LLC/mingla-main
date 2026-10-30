@@ -10,6 +10,7 @@ type ReapRow = {
   status: string;
   created_at: string;
   delete_after: string | null;
+  reap_reason?: string;
 };
 
 export function selectCreatorMediaReap(
@@ -39,10 +40,12 @@ if (import.meta.main) {
       });
     }
     const now = Date.now();
-    const { data, error } = await supabase.from("creator_media_jobs")
-      .select("id,bunny_video_id,status,created_at,delete_after")
-      .neq("status", "deleted")
-      .order("created_at", { ascending: true }).limit(500);
+    // The SQL function is the lifecycle authority. It omits deliveries whose
+    // posts/payout are unfinished, any open dispute, and every legal hold.
+    const { data, error } = await supabase.rpc(
+      "issue_4182_creator_media_reap_candidates",
+      { p_now: new Date(now).toISOString(), p_limit: 500 },
+    );
     if (error) {
       return new Response(JSON.stringify({ error: "read_failed" }), {
         status: 500,
@@ -50,16 +53,27 @@ if (import.meta.main) {
     }
     let deleted = 0;
     const failed: string[] = [];
-    for (const row of selectCreatorMediaReap((data ?? []) as ReapRow[], now)) {
+    for (const row of (data ?? []) as ReapRow[]) {
+      const attemptedAt = new Date().toISOString();
       if (row.bunny_video_id) {
         const outcome = await deleteCreatorVideo(row.bunny_video_id);
         if (!outcome.ok) {
           failed.push(row.id);
+          await supabase.from("creator_media_jobs").update({
+            purge_attempted_at: attemptedAt,
+            purge_failure_code: outcome.reason,
+          }).eq("id", row.id).neq("status", "deleted");
           continue;
         }
       }
       const { error: updateError } = await supabase.from("creator_media_jobs")
-        .update({ status: "deleted", deleted_at: new Date().toISOString() })
+        .update({
+          status: "deleted",
+          deleted_at: attemptedAt,
+          purge_attempted_at: attemptedAt,
+          purge_outcome: row.reap_reason ?? "deleted",
+          purge_failure_code: null,
+        })
         .eq("id", row.id).neq("status", "deleted");
       if (updateError) failed.push(row.id);
       else deleted += 1;

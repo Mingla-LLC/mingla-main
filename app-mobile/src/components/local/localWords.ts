@@ -41,6 +41,7 @@ export function localMoneyWord(status: string | null | undefined): string | null
 export const APPLICATION_COPY: Record<string, { pill: string; title: string; text: string }> = {
   submitted: { pill: 'In review', title: 'We’ve got your application', text: 'We’ll tell you here and by email, usually within a week.' },
   shortlisted: { pill: 'Shortlisted', title: 'You’re shortlisted', text: 'Mingla is reviewing your samples. We’ll be in touch soon.' },
+  agreement_pending: { pill: 'Signature needed', title: 'Your seat is reserved', text: 'Read and sign the Local agreement to activate your seat.' },
   waitlisted: { pill: 'Waitlisted', title: 'You’re on the waitlist', text: 'All seats in this city are taken right now. You’ll move up when a seat opens.' },
   rejected: { pill: 'Not selected', title: 'Not selected this time', text: 'Thanks for applying. You can apply again in 90 days.' },
   accepted: { pill: 'Accepted', title: 'You’re in', text: 'Pull down to open your Local home.' },

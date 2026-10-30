@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4187",
+  "suite": {
+    "id": "issue-4187-admin-program-messaging",
+    "class": "admin-node20-install",
+    "originPaths": ["mingla-admin/src/**"],
+    "steps": [{
+      "name": "Admin program messaging contract",
+      "cwd": "mingla-admin",
+      "run": "node --test src/pages/__tests__/issue4187_programMessaging.implementor.test.js",
+      "commandId": "assert:issue-4187-admin-program-messaging:01",
+      "invocation": {
+        "kind": "raw-shell",
+        "command": "bash",
+        "argv": ["-c", "node --test src/pages/__tests__/issue4187_programMessaging.implementor.test.js"]
+      },
+      "exceptionRationale": "Self-registering targeted Admin regression suite replaces a legacy workflow edit."
+    }],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4187",
+    "runtime": {"name": "node", "version": "20"},
+    "setupProfile": "admin-node20-install",
+    "cwd": "mingla-admin",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": ["mingla-admin/src/pages/__tests__/issue4187_programMessaging.implementor.test.js"],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: admin-node20-install",
+    "timingSeconds": {"p50": 1, "p95": 2, "evidence": "Local targeted run 2026-10-29"},
+    "generatedPaths": ["suite-results.json"],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion in the self-registering suite.",
+    "timeoutSeconds": 60
+  }
+}

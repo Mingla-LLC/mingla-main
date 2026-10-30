@@ -34,7 +34,7 @@ export type HostGig = Record<string, unknown> & {
   brief_public: string;
   brief_private: string | null;
   format_key: string;
-  deliverables: Array<{ platform: string; kind: string; count: number }>;
+  deliverables: { platform: string; kind: string; count: number }[];
   city_id: string;
   shoot_window_start: string;
   shoot_window_end: string;
@@ -178,20 +178,20 @@ export type GigWorkspace = {
   };
   terms: GigTerms[];
   proposals: GigProposal[];
-  events: Array<{
+  events: {
     id: string;
     at: string;
     actor: string;
     kind: string;
     data: Record<string, unknown>;
-  }>;
+  }[];
   hold: Record<string, unknown> | null;
   shoot_plan: GigShootPlan | null;
   scripts: GigScript[];
   deliveries: GigDelivery[];
   posts: GigPost[];
   dispute: GigDispute | null;
-  ratings: Array<Record<string, unknown> & { rated_by: string; stars: number }>;
+  ratings: (Record<string, unknown> & { rated_by: string; stars: number })[];
   counters?: unknown;
   next_action?: string | null;
   pending_topup?: unknown;
@@ -217,19 +217,19 @@ export type PrehireProfile = {
   niches: string[];
   languages: string[];
   follower_bands: FollowerBand[];
-  showcase: Array<{ media_id: string; thumb: string | null }>;
+  showcase: { media_id: string; thumb: string | null }[];
   rating: number | null;
   rating_count: number;
   completed: number;
   reliability: number | null;
-  packages: Array<{
+  packages: {
     id: string;
     format_key: string;
     price_minor: number;
     currency: string;
     turnaround_days: number;
     includes_usage_days: number;
-  }>;
+  }[];
 };
 
 export type CounterRespondResult = {
@@ -393,7 +393,7 @@ export function openCounter(
   workspace: Pick<GigWorkspace, "proposals"> & { counters?: unknown },
 ): GigCounter | null {
   const fromCounters = Array.isArray(workspace.counters)
-    ? (workspace.counters as Array<Record<string, unknown>>).find(
+    ? (workspace.counters as Record<string, unknown>[]).find(
         (row) =>
           row &&
           typeof row.id === "string" &&
@@ -448,22 +448,60 @@ export async function showcasePlayback(jobId: string): Promise<string> {
  * The delivery's processing status and, once ready, a playback URL. A ready
  * video with no URL is "can't play right now", not "still processing".
  */
-export async function deliveryPlaybackStatus(
-  jobId: string,
-): Promise<{ status: string | null; url: string | null }> {
+export async function deliveryPlaybackStatus(jobId: string): Promise<{
+  status: string | null;
+  url: string | null;
+  availableUntil: string | null;
+}> {
   const { data, error } = await supabase.functions.invoke<{
     status?: string;
     playback?: { url?: string } | null;
+    availableUntil?: string | null;
   }>("creator-media-status", { body: { jobId } });
   if (error) throw new Error("video_unavailable");
   return {
     status: typeof data?.status === "string" ? data.status : null,
     url: typeof data?.playback?.url === "string" ? data.playback.url : null,
+    availableUntil:
+      typeof data?.availableUntil === "string" ? data.availableUntil : null,
   };
 }
 
 export async function deliveryPlayback(jobId: string): Promise<string | null> {
   return (await deliveryPlaybackStatus(jobId)).url;
+}
+
+export type ApprovedDeliveryDownload = {
+  url: string;
+  filename: string;
+  grantExpiresAt: string | null;
+  availableUntil: string | null;
+};
+
+/**
+ * A Host-only, short-lived download grant for the exact delivery version the
+ * Host approved. Calling this never changes payout state.
+ */
+export async function approvedDeliveryDownload(
+  jobId: string,
+): Promise<ApprovedDeliveryDownload> {
+  const { data, error } = await supabase.functions.invoke<{
+    download?: { url?: string; filename?: string; expiresAt?: string } | null;
+    availableUntil?: string | null;
+  }>("creator-media-status", { body: { jobId } });
+  if (
+    error ||
+    typeof data?.download?.url !== "string" ||
+    typeof data.download.filename !== "string"
+  ) {
+    throw new Error("approved_video_download_unavailable");
+  }
+  return {
+    url: data.download.url,
+    filename: data.download.filename,
+    grantExpiresAt: data.download.expiresAt ?? null,
+    availableUntil: data.availableUntil ?? null,
+  };
 }
 
 /** A top-up the host still owes after accepting a higher counter-offer. */

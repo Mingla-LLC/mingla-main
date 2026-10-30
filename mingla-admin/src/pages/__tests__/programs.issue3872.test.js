@@ -73,17 +73,17 @@ test("Budget levels are gone: no ranges editor, tab, table read or save call", (
   assert.doesNotMatch(gigs, /tab=|<Tabs /, "the Gigs page keeps no second tab");
 });
 
-test("Mingla Locals: city cards with seats, open or paused, rate and payout currency; four tabs with the existing decisions", () => {
+test("Mingla Locals: city programs and six operations tabs keep the existing decisions", () => {
   assert.match(service, /write\("local_city_program_save", \{[\s\S]*p_monthly_rate_minor: monthlyRateMinor,\s*p_payout_currency: payoutCurrency,/);
   assert.doesNotMatch(service, /p_monthly_usd_minor/);
-  assert.match(locals, /seats used/);
+  assert.match(locals, /active · .*reserved · .*total/);
   assert.match(locals, /"Open" : "Paused"/);
   assert.match(locals, /label="Paid in"|>Paid in</);
-  for (const tab of ["applications", "picks", "reviews", "payouts"]) assert.match(locals, new RegExp(`id: "${tab}"`));
+  for (const tab of ["messages", "applications", "picks", "reviews", "payouts", "city-programs"]) assert.match(locals, new RegExp(`id: "${tab}"`));
   for (const rpc of ["local_application_decide", "local_review_decide", "local_month_void", "local-payout", "admin_local_queue"]) assert.match(service, new RegExp(rpc));
-  assert.match(locals, /Approved agreement version/);
-  assert.match(locals, /Required before accepting anyone/);
-  assert.match(locals, /disabled=\{!agreementVersion\.trim\(\)\}/);
+  assert.match(locals, /Invite to sign agreement/);
+  assert.match(locals, /Only the applicant can sign and activate the reserved seat/);
+  assert.doesNotMatch(locals, /Approved agreement version|Seat Local/);
   assert.match(locals, /Create city program/);
   assert.match(locals, /Open applications immediately/);
   assert.match(code("pages/ProgramLocalsPage.jsx"), /Mingla—not the place/);

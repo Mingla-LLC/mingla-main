@@ -23,46 +23,85 @@ const row = (purpose: string): MediaStatusRow => ({
   owner_id: OWNER,
   purpose,
   status: "ready",
-  contract_id: purpose === "showcase" ? null : CONTRACT,
+  contract_id: ["delivery", "dispute_evidence"].includes(purpose)
+    ? CONTRACT
+    : null,
   bunny_video_id: "00000000-3872-4000-8000-0000000000a6",
   aspect_warning: false,
   failure_code: null,
   ready_at: "2026-10-26T12:00:00Z",
+  height: 1920,
+  delete_after: "2027-02-23T12:00:00Z",
 });
 
-const deps = (actor: string, purpose: string, admin = false): MediaStatusDeps => ({
+const deps = (
+  actor: string,
+  purpose: string,
+  admin = false,
+): MediaStatusDeps => ({
   actorId: () => Promise.resolve(actor),
   media: () => Promise.resolve(row(purpose)),
   isContractHost: (contractId, actorId) =>
     Promise.resolve(contractId === CONTRACT && actorId === HOST),
   isAdmin: () => Promise.resolve(admin),
-  playback: () => Promise.resolve({ url: "https://video.example/play", expiresAt: "later" }),
+  isApprovedDelivery: () => Promise.resolve(purpose === "delivery"),
+  playback: () =>
+    Promise.resolve({ url: "https://video.example/play", expiresAt: "later" }),
+  download: () =>
+    Promise.resolve({
+      url: "https://video.example/download",
+      expiresAt: "soon",
+      filename: "approved.mp4",
+    }),
 });
 
 Deno.test("#3872 the owner gets playback for their own media", async () => {
-  const res = await createCreatorMediaStatusHandler(deps(OWNER, "showcase"))(request());
+  const res = await createCreatorMediaStatusHandler(deps(OWNER, "showcase"))(
+    request(),
+  );
   assertEquals(res.status, 200);
   assertEquals((await res.json()).playback.url, "https://video.example/play");
 });
 
 Deno.test("#3872 the contract's host can play the delivered video it must review", async () => {
-  const res = await createCreatorMediaStatusHandler(deps(HOST, "delivery"))(request());
+  const res = await createCreatorMediaStatusHandler(deps(HOST, "delivery"))(
+    request(),
+  );
   assertEquals(res.status, 200);
-  assertEquals((await res.json()).playback.url, "https://video.example/play");
+  const body = await res.json();
+  assertEquals(body.playback.url, "https://video.example/play");
+  assertEquals(body.download.url, "https://video.example/download");
+  assertEquals(body.availableUntil, "2027-02-23T12:00:00Z");
 });
 
 Deno.test("#3872 an admin can play a delivery for disputes", async () => {
-  const res = await createCreatorMediaStatusHandler(deps(STRANGER, "delivery", true))(request());
+  const res = await createCreatorMediaStatusHandler(
+    deps(STRANGER, "delivery", true),
+  )(request());
   assertEquals(res.status, 200);
 });
 
+Deno.test("#4182 an admin can play a Local review but receives no download grant", async () => {
+  const res = await createCreatorMediaStatusHandler(
+    deps(STRANGER, "local_review", true),
+  )(request());
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.playback.url, "https://video.example/play");
+  assertEquals(body.download, null);
+});
+
 Deno.test("#3872 a stranger gets not_found for someone else's delivery", async () => {
-  const res = await createCreatorMediaStatusHandler(deps(STRANGER, "delivery"))(request());
+  const res = await createCreatorMediaStatusHandler(deps(STRANGER, "delivery"))(
+    request(),
+  );
   assertEquals(res.status, 404);
   assertEquals((await res.json()).error, "not_found");
 });
 
 Deno.test("#3872 a host cannot read a creator's private showcase through this route", async () => {
-  const res = await createCreatorMediaStatusHandler(deps(HOST, "showcase"))(request());
+  const res = await createCreatorMediaStatusHandler(deps(HOST, "showcase"))(
+    request(),
+  );
   assertEquals(res.status, 404);
 });

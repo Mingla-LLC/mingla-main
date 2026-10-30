@@ -64,6 +64,7 @@ export type ChatListItemConversation = Conversation & {
   session_id?: string | null;
   event_id?: string | null;
   linked_entity_type?: 'direct' | 'session' | 'trip' | 'event' | 'brand_enquiry';
+  program_kind?: 'local' | 'creator' | null;
   eventBrandName?: string | null;
   eventBrandAccountId?: string | null;
   /** Issue #4114 Wave 6: the event's brand, for folding into a brand channel. */
@@ -127,6 +128,7 @@ function ChatListItemImpl({
   const brandChannel = isBrandChannelRow(conversation) ? conversation.__brandChannel : null;
   const isBrandChannel = kind === 'brand_channel' && brandChannel !== null;
   const isEvent = kind === 'event' || isBrandChannel;
+  const isProgram = kind === 'program';
   const isPinned = Boolean(conversation.pinned_at);
   const unread = isUnreadChat(conversation);
   // "Mark unread" is a private flag (it never touches read receipts). It is
@@ -206,6 +208,8 @@ function ChatListItemImpl({
       ?? t('connections:tag_event')
     : conversation.isEnquiry
       ? t('connections:tag_enquiry')
+      : isProgram
+        ? 'Mingla'
       : null;
 
   // Issue #4114: the friend's photo, the other members' photos, the event

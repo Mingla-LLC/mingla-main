@@ -39,6 +39,8 @@ interface GroupInfoSheetProps {
   onOpenMedia: () => void;
   onLeft: () => void;
   onError: (message: string) => void;
+  /** #4187: official program threads may be muted/archived but never left. */
+  managed?: boolean;
 }
 
 function memberLabel(member: GroupInfoMember): string {
@@ -57,6 +59,7 @@ export function GroupInfoSheet({
   onOpenMedia,
   onLeft,
   onError,
+  managed = false,
 }: GroupInfoSheetProps): React.ReactElement {
   const { t } = useTranslation(["chat", "common"]);
   const [muted, setMuted] = useState(initiallyMuted);
@@ -115,7 +118,7 @@ export function GroupInfoSheet({
           <Text style={styles.title} numberOfLines={1}>
             {name}
           </Text>
-          <Text style={styles.subtitle}>{t("chat:peopleInChat", { count: members.length })}</Text>
+          <Text style={styles.subtitle}>{managed ? t("chat:programTeamSubtitle") : t("chat:peopleInChat", { count: members.length })}</Text>
         </View>
       }
     >
@@ -146,10 +149,10 @@ export function GroupInfoSheet({
           />
         </View>
 
-        <Text style={styles.sectionHeading} accessibilityRole="header">
+        {!managed ? <Text style={styles.sectionHeading} accessibilityRole="header">
           {t("chat:groupMembers")}
-        </Text>
-        {members.map((member) => {
+        </Text> : null}
+        {!managed ? members.map((member) => {
           const label = memberLabel(member);
           const isMe = member.id === currentUserId;
           return (
@@ -176,10 +179,10 @@ export function GroupInfoSheet({
               </Text>
             </TouchableOpacity>
           );
-        })}
+        }) : null}
 
-        <View style={styles.divider} />
-        <TouchableOpacity
+        {!managed ? <View style={styles.divider} /> : null}
+        {!managed ? <TouchableOpacity
           style={styles.row}
           onPress={confirmLeave}
           disabled={leaving}
@@ -188,7 +191,7 @@ export function GroupInfoSheet({
         >
           <Icon name="exit-outline" size={20} color={chatTokens.danger} style={styles.rowIcon} />
           <Text style={[styles.rowText, styles.danger]}>{t("chat:leaveGroup")}</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
       </View>
     </BaseBottomSheet>
   );

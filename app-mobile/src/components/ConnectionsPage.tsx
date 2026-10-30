@@ -1405,6 +1405,7 @@ function ConnectionsPageRefactored({
         const sessionId = (conv as { session_id?: string | null }).session_id ?? null;
         const eventId = (conv as { event_id?: string | null }).event_id ?? null;
         const linkedEntityType = (conv as { linked_entity_type?: 'direct' | 'session' | 'trip' | 'event' }).linked_entity_type;
+        const programKind = (conv as { program_kind?: 'local' | 'creator' | null }).program_kind ?? null;
         const sessionMeta = sessionId ? sessionMetaMap.get(sessionId) : null;
         const eventMeta = eventId ? eventMetaMap.get(eventId) : null;
         const eventPublicUrl = buildGroupEventPublicUrl(eventMeta, linkedEntityType);
@@ -1502,6 +1503,7 @@ function ConnectionsPageRefactored({
           session_id: sessionId,
           event_id: eventId,
           linked_entity_type: linkedEntityType ?? undefined,
+          program_kind: programKind,
           sessionCreatorId: sessionMeta?.created_by ?? null,
           sessionStatus: sessionMeta?.status ?? null,
           isPendingCreatorCollab,
@@ -2182,6 +2184,7 @@ function ConnectionsPageRefactored({
       session_id?: string | null;
       event_id?: string | null;
       linked_entity_type?: 'direct' | 'session' | 'trip' | 'event';
+      program_kind?: 'local' | 'creator' | null;
       sessionCreatorId?: string | null;
       eventBrandName?: string | null;
       eventBrandAccountId?: string | null;
@@ -2266,6 +2269,7 @@ function ConnectionsPageRefactored({
       sessionId: conversationMeta.session_id ?? null,
       eventId: conversationMeta.event_id ?? null,
       linkedEntityType: conversationMeta.linked_entity_type ?? null,
+      programKind: conversationMeta.program_kind ?? null,
       sessionCreatorId,
       eventBrandName,
       eventBrandAccountId,
@@ -4445,6 +4449,9 @@ function ConnectionsPageRefactored({
           onSendMedia={(items, caption, viewOnce, replyToId) => {
             void handleSendMedia(items, caption, viewOnce, replyToId);
           }}
+          allowAttachments
+          allowViewOnce={!activeChat.programKind}
+          allowFiles={!activeChat.programKind}
           uploadProgress={mediaUploadProgress}
           onCancelUpload={handleCancelMediaUpload}
           onRetryMessage={handleRetryMessage}
