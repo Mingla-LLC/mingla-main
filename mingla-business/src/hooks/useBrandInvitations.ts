@@ -61,7 +61,6 @@ export const useBrandInvitations = (
     queryFn: () => listBrandInvitations(brandId as string),
   });
 };
-
 export const useBrandTeamMembers = (
   brandId: string | null,
 ): UseQueryResult<BrandTeamMemberRow[]> => {
@@ -97,7 +96,6 @@ export const useInviteBrandMember = (): {
   });
   return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };
 };
-
 export const useRevokeBrandInvitation = (
   brandId: string | null,
 ): {

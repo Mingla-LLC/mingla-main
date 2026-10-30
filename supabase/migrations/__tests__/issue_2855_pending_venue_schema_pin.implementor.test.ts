@@ -28,6 +28,8 @@ const ORIGINAL_PATH =
   "supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql";
 const FORWARD_PATH =
   "supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql";
+const CURRENT_PIN_PATH =
+  "supabase/migrations/20280212014188_issue_4188_pending_venue_repin.sql";
 const COVER_VIDEO_PATH =
   "supabase/migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql";
 const COMPETITOR_PATH =
@@ -46,11 +48,13 @@ const OLD_PIN =
   "('9a8c2a743af413f17f3b3e75e4f656f3' || 'e9cf3867cda091eb204bb9d5460f1ba0')";
 const NEW_PIN =
   "('52f4624c994529d2e63b8f70b79a3fcf' || 'e28f3ff90dafe300bc45439e37cd2921')";
-// [TEST-MOD-APPROVED #3872] #2855 still owns its historical six-lane forward
-// pin above. The live fixture follows the later reviewed Local place dependency,
-// which stays disallowed and is advanced by the #3872 R4 migration.
-const CURRENT_HASH =
-  "474371dd0c8edfdd734c8ef5fe78b167bf5422e95b37493111c9a6cdc40213f2";
+// [TEST-MOD-APPROVED #4188] #2855 still owns its historical six-lane forward
+// pin above. The live fixture follows the later reviewed Local and Stay venue
+// dependencies, which stay disallowed and are advanced by their later owners.
+const CURRENT_HASHES = [
+  "91042e6f4a170c709d016d9a598d0faea36b280486bf634226a24cbbae34d415",
+  "0b2f6691528759d391240f966a45b350ef523b38eaa40598f6a0ab99fc149711",
+] as const;
 const ORIGINAL_SHA256 =
   "8d35452b0237115640d4fcbc9dbc05c12b25ffa1b57a706c85cfc698df0c2bbe";
 // [TEST-MOD-APPROVED #2648] RE-DERIVED, NOT RE-PINNED. This pin is the sha256 of
@@ -410,6 +414,7 @@ Deno.test("#2855 workflow runs the forward owner and ordered D4 replay twice", (
   for (
     const path of [
       FORWARD_PATH,
+      CURRENT_PIN_PATH,
       "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts",
       TESTER_PATH,
     ]
@@ -434,19 +439,27 @@ Deno.test("#2855 workflow runs the forward owner and ordered D4 replay twice", (
   const originalName =
     "20270418002099_issue_2099_pending_venue_identity_correction.sql";
   const forwardName = "20270610002855_issue_2855_pending_venue_schema_pin.sql";
+  const currentPinName = "20280212014188_issue_4188_pending_venue_repin.sql";
   assert.equal(count(d4, originalName), 2, "D4 must replay the original twice");
   assert.equal(
     count(d4, forwardName),
     2,
     "D4 must replay the forward owner twice",
   );
-  const tokens = [...d4.matchAll(/2027\d+_issue_(?:2099|2855)[^\s"]+\.sql/g)]
+  assert.equal(
+    count(d4, currentPinName),
+    2,
+    "D4 must replay the current Stay pin owner twice",
+  );
+  const tokens = [...d4.matchAll(/202(?:7|8)\d+_issue_(?:2099|2855|4188)[^\s"]+\.sql/g)]
     .map((match) => match[0]);
   assert.deepEqual(tokens, [
     originalName,
     forwardName,
+    currentPinName,
     originalName,
     forwardName,
+    currentPinName,
   ]);
 });
 
@@ -653,8 +666,8 @@ Deno.test("#2855 host-composes the tester fragment into the real outer SQL fixtu
     "tester guard must truthfully name its CI provider",
   );
   assert.ok(
-    sqlTest.includes(CURRENT_HASH),
-    "main SQL fixture still expects the stale hash",
+    CURRENT_HASHES.every((hash) => sqlTest.includes(hash)),
+    "main SQL fixture must accept both exact reviewed runner hashes",
   );
 });
 

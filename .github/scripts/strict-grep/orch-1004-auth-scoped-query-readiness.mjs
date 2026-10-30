@@ -81,6 +81,10 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useManualInstallmentActions.ts",
   "useAgentChat.ts",
   "useCurrentBrandRole.ts",
+  // #4188 — venue access and staff Stay detail are protected by the restored
+  // Business session and must not cache a pre-auth RLS-empty response.
+  "useMyVenueAccess.ts",
+  "useStaffStayDetail.ts",
   "useEventOrders.ts", // the proven template — must stay gated
   // #4063 — door-sale history is brand/event scoped and must wait for the
   // restored host session before it calls the protected RPC.

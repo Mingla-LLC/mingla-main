@@ -286,8 +286,9 @@ export const VenueSettingsModule = forwardRef<
 
   const goToTeam = useCallback((): void => {
     if (brandId === null) return;
-    router.push(`/brand/${brandId}/team` as never);
-  }, [brandId, router]);
+    const venueQuery = venueId ? `?venueId=${encodeURIComponent(venueId)}` : "";
+    router.push(`/brand/${brandId}/team${venueQuery}` as never);
+  }, [brandId, router, venueId]);
 
   const feePreview = useMemo(() => {
     if (!feeActive) return null;
@@ -798,11 +799,10 @@ export const VenueSettingsModule = forwardRef<
         </Section>
       ) : null}
 
-      {/* 7 — Team roles scaffold (DISPLAY ONLY; mutation reuses the Team surface). */}
-      <Section title="Team roles">
+      <Section title="Team & permissions">
         <Text style={styles.rowSub}>
-          Who can manage reservations at this venue. Role assignment lives in
-          your team settings — more venue-specific roles are coming.
+          Choose exactly who can open this venue and which operational pages
+          they can use. This link opens Team preselected to this venue.
         </Text>
         <View style={styles.legend}>
           {ROLE_LEGEND.map((r) => (

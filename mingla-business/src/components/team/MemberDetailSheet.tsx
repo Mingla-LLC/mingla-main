@@ -19,7 +19,7 @@
  * onRemove (#3660 biz_remove_brand_team_member — no longer ORCH-1051 no-op).
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -29,7 +29,7 @@ import {
   spacing,
   text as textTokens,
 } from "../../constants/designSystem";
-import { roleDescription, roleDisplayName } from "../../utils/brandRole";
+import { roleDescription, roleDisplayName } from "../../utils/brandRoleCopy";
 import {
   canPerformAction,
   gateCaptionFor,
@@ -37,12 +37,15 @@ import {
 import { type BrandTeamEntry } from "../../store/brandTeamStore";
 import { formatRelativeTime } from "../../utils/relativeTime";
 import { useDisconnectLink } from "../../hooks/usePartnerBrandLinkMutations";
+import type { VenueAccessGrant } from "../../services/brandInvitationsService";
+import type { VenueListing } from "../../services/venueListingsService";
 
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 import { Toast } from "../ui/Toast";
+import { VenueAccessEditor } from "./VenueAccessEditor";
 
 // ORCH-1384 web eager-bundle budget fix — INLINE error-copy copy.
 //
@@ -93,6 +96,12 @@ export interface MemberDetailSheetProps {
   onDismissRemoveError?: () => void;
   /** #3660 — locks dismiss/confirm while biz_remove_brand_team_member is in flight. */
   removePending?: boolean;
+  grantsPending?: boolean;
+  venues?: VenueListing[];
+  onSaveVenueGrants?: (
+    entry: BrandTeamEntry,
+    grants: VenueAccessGrant[],
+  ) => Promise<void>;
   /**
    * ORCH-1384 — non-null EXACTLY when this entry is the member row whose
    * user_id matches an accepted, non-cancelled link's partner_account_id.
@@ -114,6 +123,9 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
   removeError = null,
   onDismissRemoveError,
   removePending = false,
+  grantsPending = false,
+  venues = [],
+  onSaveVenueGrants,
   partnerLink = null,
   viewerIsOwner = false,
   onPartnerDisconnected,
@@ -122,7 +134,12 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
   const [disconnectConfirmVisible, setDisconnectConfirmVisible] =
     useState<boolean>(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  const [venueGrants, setVenueGrants] = useState<VenueAccessGrant[]>([]);
   const disconnectMutation = useDisconnectLink();
+
+  useEffect(() => {
+    setVenueGrants(entry?.venueGrants ?? []);
+  }, [entry]);
 
   const handleConfirm = useCallback((): void => {
     if (entry === null) return;
@@ -222,6 +239,29 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
             {roleDescription(entry.role)}
           </Text>
         </View>
+
+        {entry.role === "venue_staff" ? (
+          <View style={styles.venueAccessBlock}>
+            <VenueAccessEditor
+              venues={venues}
+              grants={venueGrants}
+              onChange={setVenueGrants}
+              disabled={isPending || grantsPending}
+            />
+            {isAccepted && onSaveVenueGrants ? (
+              <Button
+                label="Save venue access"
+                onPress={() => void onSaveVenueGrants(entry, venueGrants)}
+                variant="primary"
+                size="md"
+                fullWidth
+                loading={grantsPending}
+                disabled={grantsPending || venueGrants.length === 0 || venueGrants.some((grant) => grant.capabilities.length === 0)}
+                testID="member-detail-save-venue-access"
+              />
+            ) : null}
+          </View>
+        ) : null}
 
         {showPartnerDisconnect ? (
           <View style={styles.actions}>
@@ -422,6 +462,9 @@ const styles = StyleSheet.create({
     backgroundColor: glass.tint.profileBase,
     borderWidth: 1,
     borderColor: glass.border.profileBase,
+  },
+  venueAccessBlock: {
+    marginTop: spacing.md,
   },
   descriptionLabel: {
     fontSize: 12,

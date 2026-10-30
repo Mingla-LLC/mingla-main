@@ -13,6 +13,7 @@ interface Props {
   groupId: string;
   accent: string;
   onComplete: () => void;
+  returnUrl?: string;
 }
 
 export function StayStripePayment({
@@ -20,6 +21,7 @@ export function StayStripePayment({
   groupId,
   accent,
   onComplete,
+  returnUrl,
 }: Props): React.ReactElement {
   const stripePromise = useMemo(
     () =>
@@ -84,11 +86,11 @@ export function StayStripePayment({
     if (!stripe || !elements || submitting) return;
     setSubmitting(true);
     setError(null);
-    const returnUrl =
+    const resolvedReturnUrl = returnUrl ??
       `${window.location.origin}/stay/${encodeURIComponent(groupId)}?payment=returned`;
     const result = await stripe.confirmPayment({
       elements,
-      confirmParams: { return_url: returnUrl },
+      confirmParams: { return_url: resolvedReturnUrl },
       redirect: "if_required",
     });
     if (result.error) {

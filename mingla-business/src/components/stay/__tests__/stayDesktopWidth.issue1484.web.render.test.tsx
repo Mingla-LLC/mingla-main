@@ -200,6 +200,9 @@ jest.mock("../StayInventoryManager", () => ({
 jest.mock("../StayReservationsModule", () => ({
   StayReservationsModule: (): null => null,
 }));
+jest.mock("../StayStaffAvailabilityModule", () => ({
+  StayStaffAvailabilityModule: (): null => null,
+}));
 jest.mock("../../venue/VenueMenuModule", () => ({
   VenueMenuModule: (): null => null,
 }));
@@ -211,6 +214,14 @@ jest.mock("../../../hooks/useOrganiserTermsPublishGate", () => ({
   }),
   ORGANISER_TERMS_PUBLISH_RETRY_TOAST:
     "Accept the Organiser Terms, then tap Publish again.",
+}));
+jest.mock("../../../hooks/useMyVenueAccess", () => ({
+  useMyVenueAccess: () => ({
+    data: { scoped: false, capabilities: [] },
+    isLoading: false,
+    isFetched: true,
+    isError: false,
+  }),
 }));
 
 import { stayPageMaxWidth } from "../../../constants/designSystem";

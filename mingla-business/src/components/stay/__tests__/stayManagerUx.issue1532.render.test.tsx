@@ -147,6 +147,16 @@ jest.mock("../StayReservationsModule", () => {
       ReactLocal.createElement(RN.View, { testID: "stub-stay-reservations" }),
   };
 });
+jest.mock("../StayStaffAvailabilityModule", () => {
+  const RN = jest.requireActual("react-native");
+  const ReactLocal = jest.requireActual("react");
+  return {
+    StayStaffAvailabilityModule: (): unknown =>
+      ReactLocal.createElement(RN.View, {
+        testID: "stub-stay-staff-availability",
+      }),
+  };
+});
 
 jest.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({
@@ -250,6 +260,14 @@ jest.mock("../../../hooks/useOrganiserTermsPublishGate", () => ({
   }),
   ORGANISER_TERMS_PUBLISH_RETRY_TOAST:
     "Accept the Organiser Terms, then tap Publish again.",
+}));
+jest.mock("../../../hooks/useMyVenueAccess", () => ({
+  useMyVenueAccess: () => ({
+    data: { scoped: false, capabilities: [] },
+    isLoading: false,
+    isFetched: true,
+    isError: false,
+  }),
 }));
 
 import { spacing } from "../../../constants/designSystem";
@@ -567,7 +585,7 @@ describe("#1532 D4 — the keyboard cannot reach the Stay manager's chrome", () 
     tree.unmount();
   });
 
-  it("D4-R4 — the module band is NOT a scroller, and shows all six modules", async () => {
+  it("D4-R4 — the module band is NOT a scroller, and shows all stay modules", async () => {
     mockIsWideDesktop = false;
     const tree = await mount(
       <StaySuiteShell
@@ -579,14 +597,14 @@ describe("#1532 D4 — the keyboard cannot reach the Stay manager's chrome", () 
     );
     const band = oneByTestId(tree, "stay-modules-band");
 
-    // Every module is REACHABLE AT REST. Only 3 of 6 were before: Menus and
-    // Settings needed a horizontal scroll with no affordance that more existed.
+    // Every supported module is REACHABLE AT REST. Settings previously needed
+    // a horizontal scroll with no affordance that more existed. Stays no
+    // longer own menus; resort dining is managed by a restaurant venue.
     const MODULE_IDS = [
       "overview",
       "rooms_places",
       "availability_pricing",
       "reservations",
-      "menu",
       "settings",
     ];
     for (const id of MODULE_IDS) {
@@ -595,6 +613,7 @@ describe("#1532 D4 — the keyboard cannot reach the Stay manager's chrome", () 
         count: 1,
       });
     }
+    expect(byTestId(tree, "stay-module-menu")).toHaveLength(0);
 
     // The band contains NO scroller of any kind — bare or keyboard-aware. A
     // horizontal scroller here is what accepted the keyboard-height spacer.

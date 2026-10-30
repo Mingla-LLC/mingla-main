@@ -28,6 +28,7 @@
 import { create } from "zustand";
 
 import type { BrandRole } from "../utils/brandRole";
+import type { VenueAccessGrant } from "../services/brandInvitationsService";
 
 // ---- Types -----------------------------------------------------------
 
@@ -41,6 +42,8 @@ export interface BrandTeamEntry {
   inviteeEmail: string;
   inviteeName: string;
   role: BrandRole;
+  /** Selected-venue access. Empty for brand-wide roles. */
+  venueGrants: VenueAccessGrant[];
   status: BrandTeamEntryStatus;
   /** Operator account_id who sent the invitation. */
   invitedBy: string;

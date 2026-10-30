@@ -1,6 +1,9 @@
 export type StayReservationAction =
   | "quote"
   | "create_group"
+  | "create_staff_group"
+  | "rotate_staff_payment_link"
+  | "revoke_staff_payment_link"
   | "approve_request"
   | "decline_request"
   | "get_group"
@@ -171,6 +174,7 @@ export type StayReservationGroup = {
 
 export type StayStaffPermissions = {
   canView: boolean;
+  canCreate: boolean;
   canRespond: boolean;
   canCancel: boolean;
   canViewFinance: boolean;
@@ -185,6 +189,8 @@ export type StayStaffReservationSummary = {
   mode: "instant" | "request";
   state: StayReservationGroup["state"];
   guest: StayGuestInput;
+  bookingSource: StayBookingSource;
+  paymentCollection: StayPaymentCollection;
   totalMinor: string;
   lineCount: number;
   roomCount: number;
@@ -192,6 +198,7 @@ export type StayStaffReservationSummary = {
   requestDeadline: string | null;
   paymentDeadline: string | null;
   paymentState: string | null;
+  paymentLink: StayStaffPaymentLink | null;
   refundState: string | null;
   version: number;
   createdAt: string;
@@ -204,7 +211,16 @@ export type StayStaffReservationList = {
 };
 
 export type StayStaffReservationGroup = Omit<StayReservationGroup, "lines"> & {
+  bookingSource: StayBookingSource;
+  paymentCollection: StayPaymentCollection;
+  createdByStaffUserId: string | null;
   permissions: StayStaffPermissions;
+  paymentLink: StayStaffPaymentLink | null;
+  paymentLinkUrl?: string;
+  paymentLinkDelivery?: {
+    emailStatus: string;
+    smsStatus: string;
+  };
   payment: {
     state: string;
     provider: "stripe" | "paystack";
@@ -254,6 +270,8 @@ export type StayCancelPreview = {
       reservationLineId: string;
       amountMinor: string;
     })[];
+  paymentCollection?: StayPaymentCollection;
+  externalRefundHandledBy?: "property";
   inventoryRelease: {
     lineCount: number;
     commitmentCount: number;
@@ -268,6 +286,29 @@ export type StayCancelPreview = {
     futureReleaseReductionMinor: string;
     requiresPayoutReversal: boolean;
   };
+};
+
+export type StayBookingSource =
+  | "guest"
+  | "phone"
+  | "walk_in"
+  | "website"
+  | "instagram"
+  | "mingla";
+
+export type StayPaymentCollection = "mingla" | "property";
+
+export type StayStaffPaymentLink = {
+  expiresAt: string;
+  revokedAt: string | null;
+  emailRequested?: boolean;
+  smsRequested?: boolean;
+  emailStatus: "not_requested" | "pending" | "sent" | "failed";
+  smsStatus: "not_requested" | "pending" | "sent" | "failed";
+  emailSentAt?: string | null;
+  smsSentAt?: string | null;
+  lastOpenedAt?: string | null;
+  version: number;
 };
 
 export type StayReservationEnvelope<T> =

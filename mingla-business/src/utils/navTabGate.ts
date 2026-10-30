@@ -65,6 +65,12 @@ export const visibleTabsForRank = <T extends BottomNavTab>(
   tabs.filter((tab) => {
     const min = (MIN_RANK_FOR_TAB as Record<string, number | undefined>)[tab.id];
     if (min === undefined) return false;
+    // Issue #4188 — selected-venue staff have a negative sentinel rank so
+    // they can never inherit a brand-wide threshold. Home hosts their assigned
+    // venue launcher; Account keeps profile/sign-out reachable.
+    if (rank === BRAND_ROLE_RANK.venue_staff) {
+      return tab.id === "home" || tab.id === "account";
+    }
     // ORCH-1112 — non-monotonic carve-out: Ari is reachable for a BRAND-LESS
     // user (rank 0) so they can create their first brand via Ari's create_brand
     // tool, AND for finance_manager+ (rank>=30). It stays HIDDEN for rank-10

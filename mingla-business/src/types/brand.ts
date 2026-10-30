@@ -30,7 +30,7 @@ export type { VenueCategory };
 // chip, brand-list rendering).
 //
 // Cycle 13a (DEC-092): the J-A9 BrandMemberRole + BrandMember + BrandInvitation
-// + InviteRole types were dropped. The canonical 6-role enum now lives in
+// + InviteRole types were dropped. The canonical role enum now lives in
 // `src/utils/brandRole.ts` (mirrors SQL biz_role_rank verbatim per I-32).
 // Brand membership state lives in `src/store/brandTeamStore.ts` (TRANSITIONAL
 // per I-31 until B-cycle wires invite-brand-member edge function). v11→v12

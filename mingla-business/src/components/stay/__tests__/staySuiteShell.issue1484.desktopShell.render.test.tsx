@@ -233,6 +233,9 @@ jest.mock("../StayInventoryManager", () => ({
 jest.mock("../StayReservationsModule", () => ({
   StayReservationsModule: stub("reservations"),
 }));
+jest.mock("../StayStaffAvailabilityModule", () => ({
+  StayStaffAvailabilityModule: stub("staff-availability"),
+}));
 jest.mock("../../venue/VenueMenuModule", () => ({
   VenueMenuModule: stub("menu"),
 }));
@@ -262,6 +265,14 @@ jest.mock("../../../hooks/useOrganiserTermsPublishGate", () => ({
   }),
   ORGANISER_TERMS_PUBLISH_RETRY_TOAST:
     "Accept the Organiser Terms, then tap Publish again.",
+}));
+jest.mock("../../../hooks/useMyVenueAccess", () => ({
+  useMyVenueAccess: () => ({
+    data: { scoped: false, capabilities: [] },
+    isLoading: false,
+    isFetched: true,
+    isError: false,
+  }),
 }));
 
 import {
@@ -416,7 +427,6 @@ const STAY_MODULE_IDS = [
   "rooms_places",
   "availability_pricing",
   "reservations",
-  "menu",
   "settings",
 ] as const;
 
@@ -468,9 +478,9 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
       "Rooms & Places",
       "Availability & pricing",
       "Reservations",
-      "Menus",
       "Settings",
     ]);
+    expect(testIdsMatching(r, /^stay-(?:rail|module)-menu$/)).toHaveLength(0);
     for (const id of STAY_MODULE_IDS) {
       expect(hostWithTestId(r, `stay-rail-${id}`)).toBeTruthy();
     }
@@ -572,7 +582,7 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
           rowIds.add(id);
         }
       });
-    expect(rowIds.size).toBe(7);
+    expect(rowIds.size).toBe(6);
   });
 
   it("T-3c — phone: NO grid wrapper (host tree byte-identical to today)", async () => {
@@ -580,7 +590,7 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
     const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
     expect(testIdsMatching(r, /^stay-readiness-grid$/)).toHaveLength(0);
     // The rows still render — they are just emitted as a bare fragment.
-    expect(testIdsMatching(r, /^stay-check-/)).toHaveLength(7);
+    expect(testIdsMatching(r, /^stay-check-/)).toHaveLength(6);
   });
 
   it("T-4 — below 1024px the pill row renders and the rail does NOT", async () => {

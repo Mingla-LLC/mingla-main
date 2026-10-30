@@ -79,6 +79,8 @@ export function humanizeRole(role: string | null | undefined): string {
       return "marketing manager";
     case "scanner":
       return "scanner";
+    case "venue_staff":
+      return "venue staff";
     default:
       return "a teammate";
   }
@@ -311,7 +313,7 @@ export async function handler(req: Request): Promise<Response> {
         return json({ error: "invite_not_found" }, 404);
       }
       const callerEmail = trustedCallerEmail;
-      const storedEmail = ((inviteRow as { email?: unknown }).email ?? "");
+      const storedEmail = (inviteRow as { email?: unknown }).email ?? "";
       if (
         callerEmail.length === 0 ||
         (typeof storedEmail === "string" &&
@@ -525,8 +527,9 @@ export async function handler(req: Request): Promise<Response> {
               .eq("invited_owner_email", memberEmail)
               .is("cancelled_at", null)
               .maybeSingle();
-            const partnerAccountId = (linkRow?.partner_account_id as string | null) ??
-              null;
+            const partnerAccountId =
+              (linkRow?.partner_account_id as string | null) ??
+                null;
             if (partnerAccountId && partnerAccountId !== account.id) {
               const newOwnerLabel = memberName ?? "The owner";
               await dispatchNotification({

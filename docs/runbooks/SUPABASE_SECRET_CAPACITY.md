@@ -156,10 +156,10 @@ secret mutation. The reviewed closure is exactly: `attendance-claim-backfill`, `
 `event-cancel-refund-fanout`, `rsvp-contribution-refund`, `source-refund-sweep`,
 `venue-reservation-cancel`, `send-pair-request`, `send-phone-invite`, `send-venue-sms`,
 `ticket-confirmation-dispatch`, `notify-dispatch`, `offering-invite-dispatch`, `rsvp-notify`,
-`guest-roster-actions`, and `support-brand-person-erasure`. Deploy all 18 from one merged compatibility commit while production
+`guest-roster-actions`, `stay-reservations`, and `support-brand-person-erasure`. Deploy all 19 from one merged compatibility commit while production
 is still schema v2, preserve each function's reviewed JWT posture, and require exact deployed
 source parity. If the recursive guard derives any other set or count, stop for amendment. Only
-after all 18 pass may the bundle be transformed value-blindly to exact schema v3 with the new
+after all 19 pass may the bundle be transformed value-blindly to exact schema v3 with the new
 Paystack field false and all six pre-existing controls unchanged. Activation is a separate
 post-#1845 operation.
 

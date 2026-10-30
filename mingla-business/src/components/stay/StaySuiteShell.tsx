@@ -17,7 +17,7 @@
  *
  * PER-MODULE WIDTH RULES (desktop only — phone keeps today's caps exactly):
  * releasing the shell's cap alone is not enough, because every Stay module
- * re-caps itself. On wide desktop Overview / Menus / Reservations / Rooms &
+ * re-caps itself. On wide desktop Overview / Reservations / Rooms &
  * Places / Availability & pricing run UNCAPPED and left-anchored (the shared
  * workspace owns the gutters), while Settings — an editable form — keeps a
  * readable-measure cap (`suiteFormMaxWidth`), left-anchored.
@@ -56,6 +56,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useMyVenueAccess } from "../../hooks/useMyVenueAccess";
 import { useBrandDiscoveryCurrency } from "../../hooks/useBrandDiscoveryCurrency";
 import {
   ORGANISER_TERMS_PUBLISH_RETRY_TOAST,
@@ -82,10 +83,10 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 import { Toast } from "../ui/Toast";
-import { VenueMenuModule } from "../venue/VenueMenuModule";
 import { StayActionBar } from "./StayActionBar";
 import { StayInventoryManager } from "./StayInventoryManager";
 import { StayReservationsModule } from "./StayReservationsModule";
+import { StayStaffAvailabilityModule } from "./StayStaffAvailabilityModule";
 import {
   STAY_PAGE_BOTTOM_PAD,
   STAY_SPACING,
@@ -100,7 +101,6 @@ export type StayModule =
   | "rooms_places"
   | "availability_pricing"
   | "reservations"
-  | "menu"
   | "settings";
 
 /**
@@ -117,10 +117,6 @@ export type StayModule =
  * so these cost zero — and moving this file off lucide entirely DELETES six
  * registrations, because `Accessibility`, `Circle`, `CreditCard`, `FileCheck2`,
  * `Home` and `Utensils` were imported by no other file in the app.
- *
- * `Utensils` -> `list` is also a category fix, not just a bundle one: a cutlery
- * glyph on a hotel's Menus tab is the same restaurant-blindness as "Reserve a
- * table" on a Stay. A menu is a list whatever the venue serves.
  */
 const MODULES: readonly {
   id: StayModule;
@@ -135,7 +131,6 @@ const MODULES: readonly {
     icon: "calendar",
   },
   { id: "reservations", label: "Reservations", icon: "notebook" },
-  { id: "menu", label: "Menus", icon: "list" },
   { id: "settings", label: "Settings", icon: "settings" },
 ];
 
@@ -494,16 +489,6 @@ function StayOverview({
         onPress={() => onSelect("availability_pricing")}
         icon="calendar"
         testID="stay-check-availability"
-        wide={isWideDesktop}
-      />
-      <ChecklistRow
-        title="Menus"
-        detail="Add display menus for dining and guest information"
-        complete={false}
-        optional
-        onPress={() => onSelect("menu")}
-        icon="list"
-        testID="stay-check-menus"
         wide={isWideDesktop}
       />
       <ChecklistRow
@@ -1072,17 +1057,51 @@ export function StaySuiteShell({
   const [activeModule, setActiveModule] = useState<StayModule>("overview");
   // #1484 — desktop gate ONLY via the canonical hook (I-DESKTOP-GATE-VIA-HOOK).
   const { isWideDesktop } = useResponsiveLayout();
+  const venueAccessQuery = useMyVenueAccess(venueId);
+  const venueAccess = venueAccessQuery.data ?? {
+    scoped: true,
+    capabilities: [],
+  };
+  const visibleModules = useMemo(() => {
+    if (!venueAccess.scoped) return MODULES;
+    const scoped: typeof MODULES[number][] = [];
+    if (venueAccess.capabilities.includes("stay.view_availability")) {
+      const availability = MODULES.find((module) => module.id === "availability_pricing");
+      if (availability) scoped.push(availability);
+    }
+    if (
+      venueAccess.capabilities.includes("stay.view_reservations") ||
+      venueAccess.capabilities.includes("stay.create_reservations") ||
+      venueAccess.capabilities.includes("stay.manage_reservations")
+    ) {
+      const reservations = MODULES.find((module) => module.id === "reservations");
+      if (reservations) scoped.push(reservations);
+    }
+    return scoped;
+  }, [venueAccess.capabilities, venueAccess.scoped]);
 
   const railModules = useMemo<SuiteDesktopModule[]>(
-    () => MODULES.map((module) => ({ key: module.id, label: module.label })),
-    [],
+    () => visibleModules.map((module) => ({ key: module.id, label: module.label })),
+    [visibleModules],
   );
   // The shared shell is string-keyed; resolve back through MODULES so an
   // unknown key can never write a bogus module into state (no `as` cast).
   const handleRailSelect = useCallback((key: string): void => {
-    const next = MODULES.find((module) => module.id === key);
+    const next = visibleModules.find((module) => module.id === key);
     if (next !== undefined) setActiveModule(next.id);
-  }, []);
+  }, [visibleModules]);
+
+  useEffect(() => {
+    if (
+      !venueAccess.scoped ||
+      !venueAccessQuery.isFetched ||
+      visibleModules.some((module) => module.id === activeModule)
+    ) {
+      return;
+    }
+    const first = visibleModules[0];
+    if (first) setActiveModule(first.id);
+  }, [activeModule, venueAccess.scoped, venueAccessQuery.isFetched, visibleModules]);
 
   const renderWorkspace = (): React.ReactElement => {
     if (activeModule === "overview") {
@@ -1099,31 +1118,11 @@ export function StaySuiteShell({
     if (activeModule === "settings") {
       return <StaySettings venueId={venueId} />;
     }
-    if (activeModule === "menu") {
-      return (
-        <ScrollView
-          contentContainerStyle={
-            isWideDesktop ? styles.pageDesktop : styles.page
-          }
-          keyboardShouldPersistTaps="handled"
-          testID="stay-menu-scroll"
-        >
-          {/* #1532 §5.6 — the module promised "Guests see your menu on your
-              public page" while `PublicVenuePage.tsx:179` hard-codes
-              `hasMenu = !isStay`, so for a hotel that promise was simply
-              false. Seth's decision is that Stays get a menu of their own
-              (#1536); until it exists, the operator gets the truth instead of
-              a promise nothing can keep. */}
-          <VenueMenuModule
-            brandId={brandId}
-            venueId={venueId}
-            publicVisibility="not_yet"
-          />
-        </ScrollView>
-      );
-    }
     if (activeModule === "reservations") {
       return <StayReservationsModule venueId={venueId} />;
+    }
+    if (activeModule === "availability_pricing" && venueAccess.scoped) {
+      return <StayStaffAvailabilityModule venueId={venueId} />;
     }
     return (
       /**
@@ -1151,9 +1150,36 @@ export function StaySuiteShell({
     );
   };
 
+  if (!venueAccessQuery.isFetched) {
+    return (
+      <View style={styles.accessState} testID="stay-access-loading">
+        <ActivityIndicator color={accent.warm} />
+        <Text style={styles.helper}>Checking your Stay access…</Text>
+      </View>
+    );
+  }
+  if (venueAccessQuery.isError || (venueAccess.scoped && visibleModules.length === 0)) {
+    return (
+      <View style={styles.accessState} testID="stay-access-unavailable">
+        <Text style={styles.pageTitle}>No Stay pages assigned</Text>
+        <Text style={styles.helper}>
+          Ask a brand owner or admin to assign the Stay reservations or availability pages you need.
+        </Text>
+        {venueAccessQuery.isError ? (
+          <Button
+            label="Try again"
+            onPress={() => void venueAccessQuery.refetch()}
+            variant="secondary"
+            size="md"
+          />
+        ) : null}
+      </View>
+    );
+  }
+
   // ----- Web desktop (>=1024px): shared two-column rail + workspace. -----
-  // Every Stay module OWNS its own ScrollView (Overview, Settings, the Menu
-  // wrapper, Reservations, the Inventory manager), so the shell must NOT wrap
+  // Every Stay module OWNS its own ScrollView (Overview, Settings,
+  // Reservations, Availability, and the Inventory manager), so the shell must NOT wrap
   // them in a second same-axis scroll container — `workspaceSelfScrolls` is
   // always true here and `scrollBottomPad` is therefore unused (0).
   if (isWideDesktop) {
@@ -1193,10 +1219,10 @@ export function StaySuiteShell({
         that squeezed the workspace to ~0pt. A plain `View` receives no
         keyboard frames at all, so there is nothing left to inflate.
 
-        (2) THE HIDDEN DESTINATIONS. Only 3 of the 6 pills were reachable at
+        (2) THE HIDDEN DESTINATIONS. Only 3 of the 5 pills were reachable at
         rest at 440pt, and a horizontal scroller offers no affordance that more
-        exists — Menus and Settings were simply undiscoverable. Wrapping shows
-        ALL SIX at every width, which was the requirement and is met.
+        exists — Settings was simply undiscoverable. Wrapping shows every
+        module at every width, which was the requirement and is met.
 
         WHAT IT COSTS — measured on device (#1532 tester, iPhone 17 Pro Max),
         NOT the design's arithmetic, which was wrong:
@@ -1218,7 +1244,7 @@ export function StaySuiteShell({
       */}
       <View style={styles.moduleNav} testID="stay-modules-band">
         <View style={styles.moduleNavContent}>
-          {MODULES.map((module) => {
+          {visibleModules.map((module) => {
             const selected = activeModule === module.id;
             return (
               <Pressable
@@ -1270,6 +1296,13 @@ const PAGE_BASE = {
 } as const;
 
 const styles = StyleSheet.create({
+  accessState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+    gap: spacing.sm,
+  },
   root: { flex: 1, backgroundColor: canvas.discover },
   workspace: { flex: 1 },
   // #1532 D5 — a module is a scroller PLUS a pinned bar, so it needs a

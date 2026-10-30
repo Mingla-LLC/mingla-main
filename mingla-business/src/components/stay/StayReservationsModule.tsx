@@ -27,6 +27,7 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { StayChipRow } from "./StayChipRow";
 import { StayReservationManagementDetail } from "./StayReservationManagementDetail";
+import { StayStaffReservationCreateSheet } from "./StayStaffReservationCreateSheet";
 import { STAY_PAGE_BOTTOM_PAD, STAY_SPACING } from "./stayLayoutContracts";
 
 type StayReservationView =
@@ -105,6 +106,12 @@ function matchesView(
 }
 
 function stateLabel(group: StayStaffReservationSummary): string {
+  if (
+    group.state === "confirmed" &&
+    group.paymentCollection === "property"
+  ) {
+    return "Confirmed · property payment";
+  }
   if (group.state === "request_pending") return "Response needed";
   if (group.state === "approved_payment_required")
     return "Approved · payment due";
@@ -173,6 +180,15 @@ function ReservationCard({
             Latest refund: {group.refundState.replaceAll("_", " ")}
           </Text>
         ) : null}
+        {group.paymentCollection === "property" ? (
+          <Text style={styles.meta}>
+            Source: {group.bookingSource.replaceAll("_", " ")} · Payment handled by property
+          </Text>
+        ) : group.paymentLink ? (
+          <Text style={styles.meta}>
+            Secure link · Email {group.paymentLink.emailStatus.replaceAll("_", " ")} · Text {group.paymentLink.smsStatus.replaceAll("_", " ")}
+          </Text>
+        ) : null}
       </GlassCard>
     </Pressable>
   );
@@ -190,6 +206,7 @@ export function StayReservationsModule({
   const list = useStayStaffReservationList(venueId);
   const [view, setView] = useState<StayReservationView>("needs_response");
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [createVisible, setCreateVisible] = useState(false);
   const groups = useMemo(() => list.data?.groups ?? [], [list.data?.groups]);
   const visible = useMemo(
     () => groups.filter((group) => matchesView(group, view)),
@@ -225,9 +242,19 @@ export function StayReservationsModule({
               Respond, track payment and manage Room-and-Place groups.
             </Text>
           </View>
-          {list.isFetching && !list.isLoading ? (
-            <ActivityIndicator color={accent.warm} />
-          ) : null}
+          <View style={styles.headerActions}>
+            {list.isFetching && !list.isLoading ? (
+              <ActivityIndicator color={accent.warm} />
+            ) : null}
+            {list.data?.permissions.canCreate ? (
+              <Button
+                label="Add reservation"
+                onPress={() => setCreateVisible(true)}
+                size="sm"
+                testID="stay-add-reservation"
+              />
+            ) : null}
+          </View>
         </View>
 
         {/* #1532 defect 4 — this row was a `SmartScrollView`, so it carried the
@@ -326,6 +353,17 @@ export function StayReservationsModule({
         groupId={selectedGroupId}
         onClose={() => setSelectedGroupId(null)}
       />
+      <StayStaffReservationCreateSheet
+        visible={createVisible}
+        venueId={venueId}
+        onClose={() => setCreateVisible(false)}
+        onCreated={(group) => {
+          setCreateVisible(false);
+          setView(group.paymentCollection === "property" ? "confirmed" : "awaiting_payment");
+          setSelectedGroupId(group.groupId);
+          void list.refetch();
+        }}
+      />
     </View>
   );
 }
@@ -364,6 +402,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: spacing.md,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    flexWrap: "wrap",
+    gap: spacing.sm,
   },
   flexOne: { flex: 1, minWidth: 0 },
   title: { ...typography.h2, color: textTokens.primary },

@@ -24,7 +24,7 @@
  * every gated surface (Create event, Edit event, Refund, etc. — 9 surfaces
  * total). To bridge this gap until B-cycle persists real brand rows, the hook
  * reads `currentBrandStore.brand.role` (`'owner' | 'admin'`) when the DB
- * chain returns null and synthesizes the corresponding 6-role enum value.
+ * chain returns null and synthesizes the corresponding 7-role enum value.
  *
  * #3602 — CORRECTION OF RECORD. This header used to claim the stub branch was
  * "dead code in practice" because the DB chain returned real values. The
@@ -113,6 +113,20 @@ interface QueryResult {
 }
 
 const DISABLED_KEY = ["brand-role-disabled"] as const;
+
+export function shouldUseLegacyStubBrandRole(input: {
+  dataResolved: boolean;
+  dataRole: BrandRole | null;
+  isLoading: boolean;
+  isError: boolean;
+  stubBrandRole: "owner" | "admin" | null;
+}): boolean {
+  return input.dataResolved &&
+    input.dataRole === null &&
+    !input.isLoading &&
+    !input.isError &&
+    input.stubBrandRole !== null;
+}
 
 /**
  * The role read, extracted from the inline `queryFn` so it is directly
@@ -235,7 +249,7 @@ export const useCurrentBrandRole = (
   // Fires when the DB chain returns no role (typically because the brand is a
   // local-only stub from `brandList.STUB_BRANDS` and isn't persisted to the
   // production DB yet). Maps the existing local-only `Brand.role` enum to the
-  // 6-role enum:
+  // 7-role enum:
   //   "owner" → "brand_owner" (rank 60 — top of hierarchy)
   //   "admin" → "brand_admin"   (rank 50)
   //
@@ -250,7 +264,13 @@ export const useCurrentBrandRole = (
   // delete it in passing — 40+ consumers depend on the role it produces, and
   // removing it needs its own blast-radius pass (#3602 §10 q2). The exit
   // condition above is also documented in the file header.
-  if (role === null && stubBrandRole !== null) {
+  if (shouldUseLegacyStubBrandRole({
+    dataResolved: data !== undefined,
+    dataRole: data?.role ?? null,
+    isLoading,
+    isError,
+    stubBrandRole,
+  })) {
     // #1863 §4.0.2 — a local-only stub brand has no membership row to accept
     // and the operator is its creator, so the synthesised role is accepted.
     if (stubBrandRole === "owner") {

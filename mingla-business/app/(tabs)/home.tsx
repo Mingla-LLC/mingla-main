@@ -130,6 +130,13 @@ const LazyUniversalCreatorSheet = React.lazy(async () => {
   return { default: mod.UniversalCreatorSheet };
 });
 
+// Venue staff is a distinct operational shell. Loading it only for that role
+// keeps venue-management services out of every host's Home boot payload.
+const LazyVenueStaffHomeBoundary = React.lazy(async () => {
+  const mod = await import("../../src/components/home/VenueStaffHome");
+  return { default: mod.VenueStaffHomeBoundary };
+});
+
 interface ToastState {
   visible: boolean;
   message: string;
@@ -693,6 +700,37 @@ export default function HomeTab(): React.ReactElement {
         : recent.state === "refreshing"
           ? "Updating…"
           : null;
+
+  const venueStaffSurface = currentBrand === null
+    ? null
+    : role.isLoading || role.isAuthReady === false
+      ? "resolving"
+      : role.isError || role.role === null
+        ? "denied"
+        : role.role === "venue_staff"
+          ? "staff"
+          : null;
+  if (venueStaffSurface !== null && currentBrand !== null) {
+    return (
+      <Suspense fallback={<View style={styles.host} />}>
+        <LazyVenueStaffHomeBoundary
+          mode={venueStaffSurface}
+          brandId={currentBrand.id}
+          brandName={currentBrand.displayName}
+          onBrandTap={handleOpenSwitcher}
+          onRoleRetry={() => void role.refetch()}
+          switcherVisible={sheetVisible}
+          onSwitcherClose={handleCloseSheet}
+          onBrandCreated={handleBrandCreated}
+          onDefaultBrandSaveError={handleDefaultBrandSaveError}
+          onRequestDeleteBrand={handleRequestDeleteBrand}
+          toastVisible={toast.visible}
+          toastMessage={toast.message}
+          onToastDismiss={handleDismissToast}
+        />
+      </Suspense>
+    );
+  }
 
   // ORCH-1055: rank-10 scanner — render the door-only surface. All hooks
   // above have run unconditionally; this is a render-time branch, safe

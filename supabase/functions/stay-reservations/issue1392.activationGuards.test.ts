@@ -23,7 +23,7 @@ function request(
   });
 }
 
-Deno.test("#1392 preserves the permissioned cancellation preview RPC", async () => {
+Deno.test("#1392 preserves permissioned cancellation preview through the collection-aware wrapper", async () => {
   let rpc = "";
   const response = await handleStayReservations(
     request("cancel_preview", { groupId, selectedLineIds: [lineId] }),
@@ -38,10 +38,10 @@ Deno.test("#1392 preserves the permissioned cancellation preview RPC", async () 
     },
   );
   assertEquals(response.status, 200);
-  assertEquals(rpc, "issue_1426_cancel_preview");
+  assertEquals(rpc, "issue_4188_cancel_preview");
 });
 
-Deno.test("#1392 preserves the permissioned cancellation execution RPC", async () => {
+Deno.test("#1392 preserves permissioned cancellation execution through the collection-aware wrapper", async () => {
   let rpc = "";
   const response = await handleStayReservations(
     request("cancel", {
@@ -64,5 +64,5 @@ Deno.test("#1392 preserves the permissioned cancellation execution RPC", async (
     },
   );
   assertEquals(response.status, 200);
-  assertEquals(rpc, "issue_1426_cancel");
+  assertEquals(rpc, "issue_4188_cancel");
 });

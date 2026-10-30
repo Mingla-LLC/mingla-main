@@ -1,5 +1,14 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 import React from "react";
+
+jest.mock("../../../hooks/useMyVenueAccess", () => ({
+  useMyVenueAccess: () => ({
+    data: { scoped: false, capabilities: [] },
+    isFetched: true,
+    isError: false,
+    refetch: () => Promise.resolve(),
+  }),
+}));
 import { StyleSheet, View } from "react-native";
 // @ts-expect-error react-test-renderer ships without declarations in this workspace.
 import type { ReactTestInstance, ReactTestRenderer } from "react-test-renderer";

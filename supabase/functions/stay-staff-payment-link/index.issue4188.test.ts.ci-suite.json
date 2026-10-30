@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/stay-staff-payment-link/index.issue4188.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4188-stay-staff-payment-link",
+  "profile": "deno-2-unit"
+}

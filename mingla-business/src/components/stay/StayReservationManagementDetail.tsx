@@ -29,9 +29,12 @@ import type {
   StayCancelPreview,
   StayStaffReservationGroup,
 } from "../../types/stayReservation";
+import { stayReservationService } from "../../services/stayReservationService";
+import { copyAddressText } from "../../utils/copyAddressText";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Sheet } from "../ui/Sheet";
 
 const STATE_LABELS: Record<StayStaffReservationGroup["state"], string> = {
@@ -184,6 +187,7 @@ function CancellationReview({
   pending: boolean;
   error: Error | null;
 }): React.ReactElement {
+  const propertyCollected = group.paymentCollection === "property";
   return (
     <GlassCard
       variant="elevated"
@@ -195,32 +199,51 @@ function CancellationReview({
         Nothing changes until you confirm. This preview expires{" "}
         {dateTime(preview.expiresAt)}.
       </Text>
+      {propertyCollected ? (
+        <View style={styles.attention}>
+          <Text style={styles.attentionTitle}>Property payment</Text>
+          <Text style={styles.helper}>
+            Mingla did not collect this payment, so it will not issue a refund.
+            Handle any money owed to the guest using the property’s payment
+            process. Confirming here only cancels the selected lines and reopens
+            inventory.
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.impactGrid}>
-        <Impact
-          label="Refund to guest"
-          value={formatStayMoney(preview.amountMinor, preview.currencyCode)}
-        />
-        <Impact
-          label="Amount retained"
-          value={formatStayMoney(
-            preview.retainedAmountMinor,
-            preview.currencyCode,
-          )}
-        />
+        {!propertyCollected ? (
+          <>
+            <Impact
+              label="Refund to guest"
+              value={formatStayMoney(preview.amountMinor, preview.currencyCode)}
+            />
+            <Impact
+              label="Amount retained"
+              value={formatStayMoney(
+                preview.retainedAmountMinor,
+                preview.currencyCode,
+              )}
+            />
+          </>
+        ) : (
+          <Impact label="Mingla refund" value="Not applicable" />
+        )}
         <Impact
           label="Inventory reopened"
           value={`${preview.inventoryRelease.lineCount} line${preview.inventoryRelease.lineCount === 1 ? "" : "s"}`}
           detail={`${preview.inventoryRelease.roomNightQuantity} room-night units · ${preview.inventoryRelease.placeQuantity} Place units`}
         />
-        <Impact
-          label="Payout effect"
-          value={
-            preview.payoutEffect.requiresPayoutReversal
-              ? `${formatStayMoney(preview.payoutEffect.payoutReversalMinor, preview.currencyCode)} reversal`
-              : `${formatStayMoney(preview.payoutEffect.futureReleaseReductionMinor, preview.currencyCode)} withheld`
-          }
-          detail={`${formatStayMoney(preview.payoutEffect.organizerLiabilityMinor, preview.currencyCode)} organiser liability`}
-        />
+        {!propertyCollected ? (
+          <Impact
+            label="Payout effect"
+            value={
+              preview.payoutEffect.requiresPayoutReversal
+                ? `${formatStayMoney(preview.payoutEffect.payoutReversalMinor, preview.currencyCode)} reversal`
+                : `${formatStayMoney(preview.payoutEffect.futureReleaseReductionMinor, preview.currencyCode)} withheld`
+            }
+            detail={`${formatStayMoney(preview.payoutEffect.organizerLiabilityMinor, preview.currencyCode)} organiser liability`}
+          />
+        ) : null}
       </View>
       <View style={styles.field}>
         <Text style={styles.fieldLabel}>Reason shown in the audit trail</Text>
@@ -297,6 +320,9 @@ export function StayReservationManagementDetail({
   const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
   const [preview, setPreview] = useState<StayCancelPreview | null>(null);
   const [reason, setReason] = useState("");
+  const [linkAction, setLinkAction] = useState<"copy" | "resend" | "revoke" | null>(null);
+  const [linkNotice, setLinkNotice] = useState<string | null>(null);
+  const [confirmRevokeOpen, setConfirmRevokeOpen] = useState(false);
 
   const group = groupQuery.data ?? null;
   const cancellableLines = useMemo(
@@ -308,7 +334,50 @@ export function StayReservationManagementDetail({
     setSelectedLineIds([]);
     setPreview(null);
     setReason("");
+    setLinkAction(null);
+    setLinkNotice(null);
+    setConfirmRevokeOpen(false);
   }, [groupId]);
+
+  const rotatePaymentLink = async (send: boolean): Promise<void> => {
+    if (group === null || group.paymentLink === null) return;
+    setLinkAction(send ? "resend" : "copy");
+    setLinkNotice(null);
+    try {
+      const updated = await stayReservationService.rotateStaffPaymentLink({
+        groupId: group.groupId,
+        sendEmail: send && group.paymentLink.emailRequested === true,
+        sendSms: send && group.paymentLink.smsRequested === true,
+      });
+      if (!updated.paymentLinkUrl) throw new Error("payment_link_missing");
+      if (!send) await copyAddressText(updated.paymentLinkUrl);
+      setLinkNotice(send ? "A new secure link was sent." : "A new secure link was copied.");
+      await groupQuery.refetch();
+    } catch {
+      setLinkNotice("The secure link could not be updated. Try again.");
+    } finally {
+      setLinkAction(null);
+    }
+  };
+
+  const revokePaymentLink = async (): Promise<void> => {
+    if (group === null) return;
+    setLinkAction("revoke");
+    setLinkNotice(null);
+    try {
+      await stayReservationService.revokeStaffPaymentLink({
+        groupId: group.groupId,
+        reason: "Revoked by property staff",
+      });
+      setLinkNotice("The payment link was revoked and held inventory was released.");
+      setConfirmRevokeOpen(false);
+      await groupQuery.refetch();
+    } catch {
+      setLinkNotice("The payment link could not be revoked. Payment may already be in progress.");
+    } finally {
+      setLinkAction(null);
+    }
+  };
 
   const toggleLine = (
     line: StayStaffReservationGroup["lines"][number],
@@ -424,6 +493,22 @@ export function StayReservationManagementDetail({
               ) : null}
               <View style={styles.divider} />
               <View style={styles.rowBetween}>
+                <Text style={styles.meta}>Booking source</Text>
+                <Text style={styles.value}>
+                  {group.bookingSource === "guest"
+                    ? "Public page"
+                    : group.bookingSource.replaceAll("_", " ")}
+                </Text>
+              </View>
+              <View style={styles.rowBetween}>
+                <Text style={styles.meta}>Payment collection</Text>
+                <Text style={styles.value}>
+                  {group.paymentCollection === "property"
+                    ? "Handled by property"
+                    : "Mingla checkout"}
+                </Text>
+              </View>
+              <View style={styles.rowBetween}>
                 <Text style={styles.meta}>Booking mode</Text>
                 <Text style={styles.value}>
                   {group.mode === "request" ? "Request" : "Instant"}
@@ -446,6 +531,64 @@ export function StayReservationManagementDetail({
                 </View>
               ) : null}
             </GlassCard>
+
+            {group.paymentLink !== null ? (
+              <GlassCard variant="elevated" contentStyle={styles.card}>
+                <Text style={styles.sectionTitle}>Secure guest payment link</Text>
+                <Text style={styles.helper}>
+                  Expires {dateTime(group.paymentLink.expiresAt)} · Email {group.paymentLink.emailStatus.replaceAll("_", " ")} · Text {group.paymentLink.smsStatus.replaceAll("_", " ")}
+                </Text>
+                {group.paymentLink.lastOpenedAt ? (
+                  <Text style={styles.meta}>Last opened {dateTime(group.paymentLink.lastOpenedAt)}</Text>
+                ) : null}
+                {linkNotice ? <Text style={styles.helper}>{linkNotice}</Text> : null}
+                {group.paymentLink.revokedAt === null && ["instant_payment_pending", "approved_payment_required"].includes(group.state) ? (
+                  <View style={styles.actionRow}>
+                    <Button
+                      label="Copy new link"
+                      onPress={() => void rotatePaymentLink(false)}
+                      variant="secondary"
+                      size="sm"
+                      loading={linkAction === "copy"}
+                      disabled={linkAction !== null}
+                    />
+                    <Button
+                      label="Resend"
+                      onPress={() => void rotatePaymentLink(true)}
+                      variant="secondary"
+                      size="sm"
+                      loading={linkAction === "resend"}
+                      disabled={linkAction !== null}
+                    />
+                    <Button
+                      label="Revoke"
+                      onPress={() => setConfirmRevokeOpen(true)}
+                      variant="destructive"
+                      size="sm"
+                      loading={linkAction === "revoke"}
+                      disabled={linkAction !== null || !group.permissions.canCancel}
+                    />
+                  </View>
+                ) : null}
+              </GlassCard>
+            ) : null}
+
+            <ConfirmDialog
+              visible={confirmRevokeOpen}
+              onClose={() => setConfirmRevokeOpen(false)}
+              onConfirm={revokePaymentLink}
+              title="Revoke this payment link?"
+              description="The secure link will stop working and the held rooms and places will be released. This cannot be undone."
+              variant="simple"
+              destructive
+              confirmLabel="Revoke and release"
+              cancelLabel="Keep link active"
+              confirmLoading={linkAction === "revoke"}
+              closeDisabled={linkAction === "revoke"}
+              confirmTestID="stay-payment-link-revoke-confirm"
+              cancelTestID="stay-payment-link-revoke-cancel"
+              testID="stay-payment-link-revoke-dialog"
+            />
 
             {group.state === "request_pending" ? (
               <GlassCard variant="elevated" contentStyle={styles.card}>
@@ -548,8 +691,9 @@ export function StayReservationManagementDetail({
               <GlassCard variant="elevated" contentStyle={styles.card}>
                 <Text style={styles.sectionTitle}>Cancel selected lines</Text>
                 <Text style={styles.helper}>
-                  Review the exact refund, inventory release and payout effect
-                  before anything changes.
+                  {group.paymentCollection === "property"
+                    ? "Review the inventory release. Any guest refund is handled by the property."
+                    : "Review the exact refund, inventory release and payout effect before anything changes."}
                 </Text>
                 {previewMutation.isError ? (
                   <Text style={styles.error}>
@@ -611,9 +755,9 @@ export function StayReservationManagementDetail({
                 </Text>
               </View>
               <Text style={styles.helper}>
-                Payment:{" "}
-                {group.payment?.state.replaceAll("_", " ") ?? "not started"}
-                {group.payment ? ` · ${group.payment.provider}` : ""}
+                {group.paymentCollection === "property"
+                  ? "Payment handled by property · no Mingla charge"
+                  : `Payment: ${group.payment?.state.replaceAll("_", " ") ?? "not started"}${group.payment ? ` · ${group.payment.provider}` : ""}`}
               </Text>
               {group.refunds.map((refund) => (
                 <View key={refund.refundId} style={styles.refundRow}>

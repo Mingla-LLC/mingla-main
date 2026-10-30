@@ -15,6 +15,15 @@
  */
 
 import React from "react";
+
+jest.mock("../../../hooks/useMyVenueAccess", () => ({
+  useMyVenueAccess: () => ({
+    data: { scoped: false, capabilities: [] },
+    isFetched: true,
+    isError: false,
+    refetch: () => Promise.resolve(),
+  }),
+}));
 import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 (

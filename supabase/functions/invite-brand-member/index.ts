@@ -57,6 +57,25 @@ import { minglaLogoUrl } from "../_shared/brandAssets.ts";
 import { resolveRuntimeString } from "../_shared/runtimeConfig.ts";
 
 const PERSONAL_NOTE_MAX = 280;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const VENUE_ACCESS_PROFILES = new Set([
+  "front_desk",
+  "restaurant_manager",
+  "kitchen_bar",
+  "custom",
+]);
+const VENUE_CAPABILITIES = new Set([
+  "stay.view_reservations",
+  "stay.create_reservations",
+  "stay.manage_reservations",
+  "stay.view_availability",
+  "restaurant.view_orders",
+  "restaurant.manage_orders",
+  "restaurant.manage_menu",
+  "restaurant.manage_qr",
+  "restaurant.manage_reservations",
+]);
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -72,6 +91,7 @@ const VALID_ROLES = new Set([
   "finance_manager",
   "marketing_manager",
   "scanner",
+  "venue_staff",
 ]);
 const NAME_MAX = 100;
 
@@ -90,11 +110,37 @@ export interface InvitePayload {
   partner_setup?: boolean;
   /** #3660 — leave|stay when role is brand_owner (default leave). */
   outgoing_disposition: "leave" | "stay";
+  venue_grants: Array<{
+    venue_id: string;
+    access_profile: string;
+    capabilities: string[];
+  }>;
 }
 
 export type ValidationOutcome =
   | { ok: true; payload: InvitePayload }
   | { ok: false; fields: string[] };
+
+export function venueGrantMatchesCategory(
+  grant: InvitePayload["venue_grants"][number],
+  venueCategory: string,
+): boolean {
+  if (venueCategory === "stay") {
+    return (grant.access_profile === "front_desk" ||
+      grant.access_profile === "custom") &&
+      grant.capabilities.every((capability) => capability.startsWith("stay."));
+  }
+  if (venueCategory === "restaurant") {
+    return (
+      grant.access_profile === "restaurant_manager" ||
+      grant.access_profile === "kitchen_bar" ||
+      grant.access_profile === "custom"
+    ) && grant.capabilities.every((capability) =>
+      capability.startsWith("restaurant.")
+    );
+  }
+  return false;
+}
 
 export function validateInvite(raw: unknown): ValidationOutcome {
   const fields: string[] = [];
@@ -120,18 +166,66 @@ export function validateInvite(raw: unknown): ValidationOutcome {
   if (!VALID_ROLES.has(role)) fields.push("role");
 
   // ORCH-1081 — optional personal_note (≤280 chars) + partner_setup flag.
-  const rawNote = typeof body.personal_note === "string" ? body.personal_note : "";
+  const rawNote = typeof body.personal_note === "string"
+    ? body.personal_note
+    : "";
   const personalNote = rawNote.trim();
   if (personalNote.length > PERSONAL_NOTE_MAX) fields.push("personal_note");
   const partnerSetup = body.partner_setup === true;
 
   // #3660 — outgoing owner disposition for brand_owner invites only.
-  const dispositionRaw =
-    typeof body.outgoing_disposition === "string"
-      ? body.outgoing_disposition.trim().toLowerCase()
-      : "leave";
+  const dispositionRaw = typeof body.outgoing_disposition === "string"
+    ? body.outgoing_disposition.trim().toLowerCase()
+    : "leave";
   const outgoingDisposition: "leave" | "stay" =
     role === "brand_owner" && dispositionRaw === "stay" ? "stay" : "leave";
+
+  const rawVenueGrants = Array.isArray(body.venue_grants)
+    ? body.venue_grants
+    : [];
+  const venueGrants: InvitePayload["venue_grants"] = [];
+  if (role === "venue_staff") {
+    if (rawVenueGrants.length < 1 || rawVenueGrants.length > 100) {
+      fields.push("venue_grants");
+    } else {
+      const seen = new Set<string>();
+      for (const rawGrant of rawVenueGrants) {
+        const grant = rawGrant && typeof rawGrant === "object"
+          ? rawGrant as Record<string, unknown>
+          : {};
+        const venueId = str(grant.venue_id).trim();
+        const accessProfile = str(grant.access_profile).trim();
+        const capabilities = Array.isArray(grant.capabilities)
+          ? [
+            ...new Set(grant.capabilities.filter((value): value is string =>
+              typeof value === "string" && VENUE_CAPABILITIES.has(value)
+            )),
+          ]
+          : [];
+        const rawCapabilityCount = Array.isArray(grant.capabilities)
+          ? grant.capabilities.length
+          : -1;
+        if (
+          !UUID_RE.test(venueId) ||
+          !VENUE_ACCESS_PROFILES.has(accessProfile) ||
+          capabilities.length !== rawCapabilityCount ||
+          capabilities.length < 1 ||
+          seen.has(venueId)
+        ) {
+          fields.push("venue_grants");
+          break;
+        }
+        seen.add(venueId);
+        venueGrants.push({
+          venue_id: venueId,
+          access_profile: accessProfile,
+          capabilities,
+        });
+      }
+    }
+  } else if (rawVenueGrants.length > 0) {
+    fields.push("venue_grants");
+  }
 
   if (fields.length > 0) return { ok: false, fields };
   return {
@@ -144,6 +238,7 @@ export function validateInvite(raw: unknown): ValidationOutcome {
       personal_note: personalNote.length > 0 ? personalNote : undefined,
       partner_setup: partnerSetup,
       outgoing_disposition: outgoingDisposition,
+      venue_grants: venueGrants,
     },
   };
 }
@@ -215,7 +310,10 @@ export async function handler(req: Request): Promise<Response> {
       { p_brand_id: payload.brand_id, p_user_id: userId },
     );
     if (rankErr) {
-      console.error("[invite-brand-member] rank lookup failed", rankErr.message);
+      console.error(
+        "[invite-brand-member] rank lookup failed",
+        rankErr.message,
+      );
       return json({ error: "server" }, 500);
     }
     const callerRank = typeof rankRow === "number" ? rankRow : 0;
@@ -238,11 +336,45 @@ export async function handler(req: Request): Promise<Response> {
       .is("deleted_at", null)
       .maybeSingle();
     if (brandErr) {
-      console.error("[invite-brand-member] brand lookup failed", brandErr.message);
+      console.error(
+        "[invite-brand-member] brand lookup failed",
+        brandErr.message,
+      );
       return json({ error: "server" }, 500);
     }
     if (!brandRow) {
       return json({ error: "brand_not_found" }, 404);
+    }
+
+    if (payload.role === "venue_staff") {
+      const requestedVenueIds = payload.venue_grants.map((grant) =>
+        grant.venue_id
+      );
+      const { data: venueRows, error: venueError } = await service
+        .from("venue_listings")
+        .select("id, venue_category")
+        .eq("brand_id", payload.brand_id)
+        .in("id", requestedVenueIds);
+      if (venueError) {
+        console.error(
+          "[invite-brand-member] venue grant validation failed",
+          venueError.message,
+        );
+        return json({ error: "server" }, 500);
+      }
+      const categoryByVenue = new Map(
+        (venueRows ?? []).map((venue) => [venue.id, venue.venue_category]),
+      );
+      if (
+        categoryByVenue.size !== requestedVenueIds.length ||
+        payload.venue_grants.some((grant) => {
+          const category = categoryByVenue.get(grant.venue_id);
+          return typeof category !== "string" ||
+            !venueGrantMatchesCategory(grant, category);
+        })
+      ) {
+        return json({ error: "invalid_venue_grants" }, 422);
+      }
     }
 
     // Duplicate guard — if a pending invite already exists for this brand+email,
@@ -296,6 +428,25 @@ export async function handler(req: Request): Promise<Response> {
       }
       console.error("[invite-brand-member] insert failed", insertErr.message);
       return json({ error: "server" }, 500);
+    }
+
+    if (payload.role === "venue_staff") {
+      const { error: grantError } = await service
+        .from("brand_invitation_venue_grants")
+        .insert(payload.venue_grants.map((grant) => ({
+          invitation_id: inserted.id,
+          venue_id: grant.venue_id,
+          access_profile: grant.access_profile,
+          capabilities: grant.capabilities,
+        })));
+      if (grantError) {
+        console.error(
+          "[invite-brand-member] venue grants insert failed",
+          grantError.message,
+        );
+        await service.from("brand_invitations").delete().eq("id", inserted.id);
+        return json({ error: "server" }, 500);
+      }
     }
 
     // Build the accept URL. host.usemingla.com is the canonical host;
@@ -435,6 +586,7 @@ export async function handler(req: Request): Promise<Response> {
           role: payload.role,
           invitee_email: payload.invitee_email,
           partner_setup: effectivePartnerSetup,
+          venue_count: payload.venue_grants.length,
         },
       });
     } catch {

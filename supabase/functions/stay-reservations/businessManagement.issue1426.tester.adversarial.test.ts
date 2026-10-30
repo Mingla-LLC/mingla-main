@@ -150,3 +150,31 @@ Deno.test("Unknown Stay staff database failures are generic and redact raw opera
     console.error = originalError;
   }
 });
+
+Deno.test("Stay staff creation rejects fabricated sources before RPC", async () => {
+  let rpcCalls = 0;
+  const response = await handleStayReservations(
+    request({
+      action: "create_staff_group",
+      expectedVersion: 1,
+      payload: {
+        quoteId: "00000000-4188-4000-8000-000000000080",
+        idempotencyKey: "staff-create-group-4188",
+        source: "stripe_paid",
+        paymentMethod: "property",
+        guest: { name: "Ada", email: "ada@example.test" },
+      },
+    }),
+    {
+      createRpcClient: () => ({
+        rpc: () => {
+          rpcCalls += 1;
+          return Promise.resolve({ data: null, error: null });
+        },
+      }),
+    },
+  );
+
+  assertEquals(response.status, 422);
+  assertEquals(rpcCalls, 0);
+});

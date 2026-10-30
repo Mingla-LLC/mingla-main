@@ -41,10 +41,12 @@ BEGIN
     RAISE EXCEPTION 'ISSUE-3564 T-CATALOG-2: RPC is not authenticated-only';
   END IF;
 
+  -- [TEST-MOD-APPROVED #4188] Scoped resort staff add one read and one write
+  -- policy to each menu table; the two existing brand-team policies remain.
   IF NOT (SELECT relrowsecurity FROM pg_catalog.pg_class WHERE oid = 'public.menus'::regclass)
      OR NOT (SELECT relrowsecurity FROM pg_catalog.pg_class WHERE oid = 'public.menu_items'::regclass)
-     OR (SELECT pg_catalog.count(*) FROM pg_catalog.pg_policies WHERE schemaname = 'public' AND tablename = 'menus') <> 2
-     OR (SELECT pg_catalog.count(*) FROM pg_catalog.pg_policies WHERE schemaname = 'public' AND tablename = 'menu_items') <> 2 THEN
+     OR (SELECT pg_catalog.count(*) FROM pg_catalog.pg_policies WHERE schemaname = 'public' AND tablename = 'menus') <> 4
+     OR (SELECT pg_catalog.count(*) FROM pg_catalog.pg_policies WHERE schemaname = 'public' AND tablename = 'menu_items') <> 4 THEN
     RAISE EXCEPTION 'ISSUE-3564 T-CATALOG-3: inherited menu RLS/policies drifted';
   END IF;
 

@@ -114,8 +114,10 @@ async function countInvocations(opts: {
 }
 
 describe("#1863 T-B0 — the calibration this file depends on is real", () => {
-  it("the role ladder is the full six and splits 3 allowed / 3 denied (view)", () => {
-    expect(ALL_ROLES).toHaveLength(6);
+  it("the role ladder is the full seven and splits 3 allowed / 4 denied (view)", () => {
+    // [TEST-MOD-APPROVED #4188] venue_staff is intentionally rank -1 and
+    // cannot inherit brand-level payment access from its venue grants.
+    expect(ALL_ROLES).toHaveLength(7);
     expect(BRAND_PAYMENTS_VIEW_ROLES).toHaveLength(3);
     const allowed = ALL_ROLES.filter((r) =>
       canViewBrandPayments({ role: r, accepted: true })
@@ -124,7 +126,7 @@ describe("#1863 T-B0 — the calibration this file depends on is real", () => {
       (r) => !canViewBrandPayments({ role: r, accepted: true }),
     );
     expect(allowed).toHaveLength(3);
-    expect(denied).toHaveLength(3);
+    expect(denied).toHaveLength(4);
   });
 
   it("the SHIPPED retry default is a function that separates the two errors", () => {

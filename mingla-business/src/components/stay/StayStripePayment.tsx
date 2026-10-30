@@ -9,6 +9,7 @@ export function StayStripePayment(_props: {
   groupId: string;
   accent: string;
   onComplete: () => void;
+  returnUrl?: string;
 }): React.ReactElement {
   return (
     <View style={styles.host}>

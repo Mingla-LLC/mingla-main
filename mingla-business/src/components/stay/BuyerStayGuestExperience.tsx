@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Linking, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { StayGuestBooking, type StayGuestBookingProps } from "@mingla/brand-rendering/StayGuestBooking";
+import type { StayGuestBookingProps } from "@mingla/brand-rendering/StayGuestBooking";
 import {
   type PublicStayDetail,
   type StayGuestCheckoutInput,
@@ -35,6 +35,11 @@ const StayStripePayment = React.lazy(() =>
     default: module.StayStripePayment,
   })),
 );
+
+// Guest and staff Stay checkout share this exact selector. Keeping the shared
+// module behind one explicit boundary prevents Metro from hoisting it into the
+// boot payload merely because two lazy route trees consume it.
+const LazyStayGuestBooking = React.lazy(() => import("./StayGuestBooking.lazy"));
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 type StayPhoneRenderer = NonNullable<StayGuestBookingProps["renderPhoneField"]>;
@@ -262,34 +267,42 @@ export function BuyerStayGuestExperience({
   }
 
   return (
-    <StayGuestBooking
-      detail={detail}
-      state={state}
-      palette={palette}
-      surface={surface}
-      theme={theme}
-      submitting={submitting}
-      errorMessage={error}
-      quote={quote}
-      onRetry={() => {
-        if (typeof window !== "undefined") window.location.reload();
-      }}
-      onSubmit={prepareQuote}
-      renderPhoneField={renderPhoneField}
-      onConfirmQuote={confirm}
-      onEditQuote={() => {
-        setQuote(null);
-        setError(null);
-      }}
-      onAnalytics={(event, properties) => {
-        captureWeb(event, {
-          surface: "buyer_web",
-          brand_id: brandId,
-          venue_id: venueId,
-          ...properties,
-        });
-      }}
-    />
+    <React.Suspense
+      fallback={(
+        <View style={styles.paymentCard} accessibilityRole="progressbar">
+          <Text style={[styles.body, { color: palette.secondaryText }]}>Loading booking options…</Text>
+        </View>
+      )}
+    >
+      <LazyStayGuestBooking
+        detail={detail}
+        state={state}
+        palette={palette}
+        surface={surface}
+        theme={theme}
+        submitting={submitting}
+        errorMessage={error}
+        quote={quote}
+        onRetry={() => {
+          if (typeof window !== "undefined") window.location.reload();
+        }}
+        onSubmit={prepareQuote}
+        renderPhoneField={renderPhoneField}
+        onConfirmQuote={confirm}
+        onEditQuote={() => {
+          setQuote(null);
+          setError(null);
+        }}
+        onAnalytics={(event, properties) => {
+          captureWeb(event, {
+            surface: "buyer_web",
+            brand_id: brandId,
+            venue_id: venueId,
+            ...properties,
+          });
+        }}
+      />
+    </React.Suspense>
   );
 }
 

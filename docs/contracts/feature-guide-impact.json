@@ -66,6 +66,75 @@
         "supabase/functions/notify-message/index.ts",
         "supabase/functions/notify-message/messageKeys.ts"
       ]
+    },
+    {
+      "capability_key": "brand-team-roles",
+      "paths": [
+        "mingla-business/app/(tabs)/home.tsx",
+        "mingla-business/app/brand/[id]/team.tsx",
+        "mingla-business/src/components/home/VenueStaffHome.tsx",
+        "mingla-business/src/components/team/InviteBrandMemberSheet.tsx",
+        "mingla-business/src/components/team/MemberDetailSheet.tsx",
+        "mingla-business/src/components/team/RolePickerSheet.tsx",
+        "mingla-business/src/components/team/VenueAccessEditor.tsx",
+        "mingla-business/src/hooks/useBrandInvitations.ts",
+        "mingla-business/src/hooks/useBrandVenueAccessMutation.ts",
+        "mingla-business/src/hooks/useCurrentBrandRole.ts",
+        "mingla-business/src/hooks/useMyVenueAccess.ts",
+        "mingla-business/src/services/brandInvitationShared.ts",
+        "mingla-business/src/services/brandInvitationsService.ts",
+        "mingla-business/src/services/brandVenueAccessService.ts",
+        "mingla-business/src/store/brandTeamStore.ts",
+        "mingla-business/src/types/brand.ts",
+        "mingla-business/src/utils/brandRole.ts",
+        "mingla-business/src/utils/brandRoleCopy.ts",
+        "mingla-business/src/utils/navTabGate.ts",
+        "mingla-business/src/components/venue/venueCapabilityGate.ts",
+        "supabase/functions/accept-brand-invitation/index.ts",
+        "supabase/functions/invite-brand-member/index.ts"
+      ]
+    },
+    {
+      "capability_key": "discover-stays",
+      "paths": [
+        "mingla-business/app/stay/pay/[token].tsx",
+        "mingla-business/src/components/stay/BuyerStayGuestExperience.tsx",
+        "mingla-business/src/components/stay/StayGuestBooking.lazy.ts",
+        "mingla-business/src/components/stay/StayStripePayment.tsx",
+        "mingla-business/src/components/stay/StayStripePayment.web.tsx",
+        "mingla-business/src/services/publicStayDetailService.ts",
+        "packages/brand-rendering/StayGuestBooking.tsx"
+      ]
+    },
+    {
+      "capability_key": "stays-hosting",
+      "paths": [
+        "mingla-business/src/components/stay/StayReservationManagementDetail.tsx",
+        "mingla-business/src/components/stay/StayReservationsModule.tsx",
+        "mingla-business/src/components/stay/StayStaffAvailabilityModule.tsx",
+        "mingla-business/src/components/stay/StayStaffReservationCreateSheet.tsx",
+        "mingla-business/src/components/stay/StaySuiteShell.tsx",
+        "mingla-business/src/hooks/useStaffStayDetail.ts",
+        "mingla-business/src/services/stayReservationService.ts",
+        "mingla-business/src/services/staffStayDetailService.ts",
+        "mingla-business/src/services/stayStaffPaymentLinkService.ts",
+        "mingla-business/src/types/stayReservation.ts",
+        "supabase/functions/stay-reservations/function-policy.issue-4188.patch.json",
+        "supabase/functions/stay-reservations/index.ts",
+        "supabase/functions/stay-staff-payment-link/function-policy.json",
+        "supabase/functions/stay-staff-payment-link/index.ts",
+        "supabase/migrations/20280212004188_issue_4188_staff_stay_reservations.sql",
+        "supabase/migrations/20280212014188_issue_4188_pending_venue_repin.sql"
+      ]
+    },
+    {
+      "capability_key": "venues-menu",
+      "paths": [
+        "mingla-business/src/components/venue/VenueMenuModule.tsx",
+        "mingla-business/src/components/venue/VenueSettingsModule.tsx",
+        "mingla-business/src/components/venue/VenueSuiteShell.tsx",
+        "mingla-business/src/components/venue/venueModules.ts"
+      ]
     }
   ]
 }

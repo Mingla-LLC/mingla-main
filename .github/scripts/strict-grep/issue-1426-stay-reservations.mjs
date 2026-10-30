@@ -16,6 +16,8 @@ const files = {
   edge: "supabase/functions/stay-reservations/index.ts",
   migration:
     "supabase/migrations/20270203001426_issue_1426_stay_staff_reservations.sql",
+  collectionMigration:
+    "supabase/migrations/20280212004188_issue_4188_staff_stay_reservations.sql",
   notifications:
     "supabase/migrations/20270131013816_issue_1389_stay_notifications_and_sweep.sql",
 };
@@ -61,8 +63,8 @@ const required = {
     '"issue_1426_list_staff_stay_reservations"',
     '"issue_1426_staff_group_projection"',
     '"issue_1426_manage_request"',
-    '"issue_1426_cancel_preview"',
-    '"issue_1426_cancel"',
+    '"issue_4188_cancel_preview"',
+    '"issue_4188_cancel"',
   ],
   migration: [
     "public.issue_1426_has_stay_permission",
@@ -81,6 +83,17 @@ const required = {
     "public.issue_1389_cancel",
     "FROM public, anon",
     "TO authenticated, service_role",
+  ],
+  collectionMigration: [
+    "public.issue_4188_property_cancel_preview",
+    "public.issue_4188_property_cancel",
+    "public.issue_4188_cancel_preview",
+    "public.issue_4188_cancel",
+    "IF v_collection = 'property' THEN",
+    "RETURN public.issue_1426_cancel_preview",
+    "RETURN public.issue_1426_cancel",
+    "GRANT EXECUTE ON FUNCTION public.issue_4188_cancel_preview",
+    "GRANT EXECUTE ON FUNCTION public.issue_4188_cancel",
   ],
   notifications: [
     "stay_reservation_event_notification",
@@ -119,6 +132,11 @@ function check(source) {
   }
   if ((source.edge ?? "").includes('"issue_1389_cancel_preview"')) {
     failures.push(`${files.edge} bypasses the permission-safe cancel wrapper`);
+  }
+  for (const token of ['"issue_1426_cancel_preview"', '"issue_1426_cancel"']) {
+    if ((source.edge ?? "").includes(token)) {
+      failures.push(`${files.edge} bypasses the collection-aware cancel wrapper`);
+    }
   }
   return failures;
 }
@@ -167,6 +185,12 @@ if (process.argv.includes("--self-test")) {
     edge: `${good.edge}\n"issue_1389_cancel_preview"`,
   };
   if (check(oldCancel).length === 0) process.exit(1);
+  reversions += 1;
+  const collectionBypass = {
+    ...good,
+    edge: `${good.edge}\n"issue_1426_cancel_preview"`,
+  };
+  if (check(collectionBypass).length === 0) process.exit(1);
   reversions += 1;
   console.log(`issue-1426 self-test PASS (${reversions} reversions)`);
   process.exit(0);

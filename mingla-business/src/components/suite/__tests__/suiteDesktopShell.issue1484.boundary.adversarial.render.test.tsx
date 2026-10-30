@@ -351,6 +351,12 @@ jest.mock("../../venue/VenueMenuModule", () => ({
 jest.mock("../../stay/StayReservationManagementDetail", () => ({
   StayReservationManagementDetail: stub("stay-reservation-detail"),
 }));
+jest.mock("../../stay/StayReservationsModule", () => ({
+  StayReservationsModule: stub("stay-reservations"),
+}));
+jest.mock("../../stay/StayStaffAvailabilityModule", () => ({
+  StayStaffAvailabilityModule: stub("stay-staff-availability"),
+}));
 // [TEST-MOD-APPROVED #3645] settled accepted — shell layout subject stays shell geometry.
 jest.mock("../../../hooks/useOrganiserTermsPublishGate", () => ({
   useOrganiserTermsPublishGate: () => ({
@@ -359,6 +365,14 @@ jest.mock("../../../hooks/useOrganiserTermsPublishGate", () => ({
   }),
   ORGANISER_TERMS_PUBLISH_RETRY_TOAST:
     "Accept the Organiser Terms, then tap Publish again.",
+}));
+jest.mock("../../../hooks/useMyVenueAccess", () => ({
+  useMyVenueAccess: () => ({
+    data: { scoped: false, capabilities: [] },
+    isLoading: false,
+    isFetched: true,
+    isError: false,
+  }),
 }));
 
 import { StyleSheet, Text as RNText } from "react-native";
@@ -545,7 +559,6 @@ const STAY_MODULE_IDS = [
   "rooms_places",
   "availability_pricing",
   "reservations",
-  "menu",
   "settings",
 ] as const;
 
@@ -633,6 +646,7 @@ describe("#1484 A — the real 1024 boundary, unmeasured viewports and native", 
     for (const id of STAY_MODULE_IDS) {
       expect(hostWithTestId(r, `stay-module-${id}`)).toBeTruthy();
     }
+    expect(testIdsMatching(r, /^stay-module-menu$/)).toHaveLength(0);
   });
 
   it("A-2 — 1024px web is INCLUSIVE: rail renders, pill row does NOT", async () => {
@@ -771,8 +785,7 @@ describe("#1484 B — the stay rail drives the workspace", () => {
       overview: /^stay-check-basics$/,
       rooms_places: /^stay-inventory-list-scroll$/,
       availability_pricing: /^stay-inventory-list-scroll$/,
-      reservations: /^stay-reservations-module$/,
-      menu: /^stub-menu$/,
+      reservations: /^stub-stay-reservations$/,
       settings: /^stay-settings-summary$/,
     };
 

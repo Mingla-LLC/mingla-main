@@ -81,8 +81,10 @@ BEGIN
     ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'c043d726559b59db1ea641ff4b5503de'),
     -- #4134 last-writes this function: its stale-stay raises use PT409, not 40001.
     ('public.issue_1388_create_stay_group(uuid,text,jsonb,bigint,uuid)', '284a54566e53f692dccdd48acff12b38'),
-    -- #4063 M9 last-writes this function so every direct host booking has a phone.
-    ('public.biz_reservation_create(uuid,timestamp with time zone,integer,text,text,text,text,uuid,text,text,text[],text)', 'a47b808186f0c59fb1aa6fd3a33e7f8d'),
+    -- [TEST-MOD-APPROVED #4188] #4188 last-writes this function to admit only
+    -- explicitly venue-scoped reservation managers while preserving #4063's
+    -- required-phone validation and the sealed SECURITY DEFINER definition.
+    ('public.biz_reservation_create(uuid,timestamp with time zone,integer,text,text,text,text,uuid,text,text,text[],text)', '47541188f7264c097396e8d712ca91ea'),
     ('public.pg_create_guest_reservation(uuid,timestamp with time zone,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)', '97adc49789e7e254744ff9b60efbe9ba'),
     ('public.pg_finalize_guest_reservation(uuid,text)', '51b79bcbec509bfd5f3a115f87af472d'),
     -- 20270327001773_issue_1773_reservation_stay_ingest.sql is the legitimate current last writer of these two definitions.

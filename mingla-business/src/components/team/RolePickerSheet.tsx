@@ -1,5 +1,5 @@
 /**
- * RolePickerSheet — sub-sheet picker for the 6 brand roles (Cycle 13a).
+ * RolePickerSheet — sub-sheet picker for brand and venue-scoped roles.
  *
  * Mirrors Cycle 5 VisibilitySheet + Cycle 12 AvailableAtSheet patterns.
  * In `readOnly` mode the sheet renders as a "Roles explained" reference
@@ -20,21 +20,21 @@ import {
 } from "../../constants/designSystem";
 import {
   type BrandRole,
-  roleDescription,
-  roleDisplayName,
 } from "../../utils/brandRole";
+import { roleDescription, roleDisplayName } from "../../utils/brandRoleCopy";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 
 /** Render order mirrors operator UX convention: highest privilege first. */
-const ROLE_ORDER: ReadonlyArray<BrandRole> = [
+const ROLE_ORDER: readonly BrandRole[] = [
   "brand_owner",
   "brand_admin",
   "event_manager",
   "finance_manager",
   "marketing_manager",
   "scanner",
+  "venue_staff",
 ];
 
 export interface RolePickerSheetProps {
