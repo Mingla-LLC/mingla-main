@@ -1161,7 +1161,7 @@ export function StaySuiteShell({
   if (venueAccessQuery.isError || (venueAccess.scoped && visibleModules.length === 0)) {
     return (
       <View style={styles.accessState} testID="stay-access-unavailable">
-        <Text style={styles.title}>No Stay pages assigned</Text>
+        <Text style={styles.pageTitle}>No Stay pages assigned</Text>
         <Text style={styles.helper}>
           Ask a brand owner or admin to assign the Stay reservations or availability pages you need.
         </Text>
@@ -1178,8 +1178,8 @@ export function StaySuiteShell({
   }
 
   // ----- Web desktop (>=1024px): shared two-column rail + workspace. -----
-  // Every Stay module OWNS its own ScrollView (Overview, Settings, the Menu
-  // wrapper, Reservations, the Inventory manager), so the shell must NOT wrap
+  // Every Stay module OWNS its own ScrollView (Overview, Settings,
+  // Reservations, Availability, and the Inventory manager), so the shell must NOT wrap
   // them in a second same-axis scroll container — `workspaceSelfScrolls` is
   // always true here and `scrollBottomPad` is therefore unused (0).
   if (isWideDesktop) {
