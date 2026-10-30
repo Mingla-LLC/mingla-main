@@ -21,7 +21,7 @@
  * and `orch-0834-rescoped-regression-check.mjs` T-A5/T-A6) are retired
  * in the same ORCH-0847 close commit using the `[TEST-MOD-APPROVED
  * ORCH-0847]` append-only override token per the
- * `.github/workflows/tests-append-only.yml` rule.
+ * retired tests-append-only gate (now pre-merge-main-health.yml hosts only main-health).
  *
  * Exit codes:
  *   0 — clean (file gone, no imports)

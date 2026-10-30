@@ -23,7 +23,7 @@
 // test added".) The meter-clamp + Maybe-exclusion cases are additional honesty /
 // state-machine guards on the same surface.
 //
-// Append-only NEW file (tests-append-only.yml compliant). Deno-runnable: the
+// Append-only NEW file (historical note; append-only CI gate retired under #4127). Deno-runnable: the
 // derivation is pure + dep-free; the component edges are source-structure
 // assertions (the package ships no react-native renderer — same constraint the
 // implementor suite documents).

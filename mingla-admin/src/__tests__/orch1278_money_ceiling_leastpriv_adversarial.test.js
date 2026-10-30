@@ -26,7 +26,7 @@
 // FAILS-ON-REVERT: deleting the amount-ceiling guard block removes `refund_exceeds_remaining`
 // from the executable body → suite (1) fails. Verified by true line-deletion at c6f605934.
 //
-// Append-only new file (CI tests-append-only gate). Reads the ACTUAL deployed source.
+// Append-only new file (append-only CI gate retired under #4127). Reads the ACTUAL deployed source.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

@@ -4,9 +4,9 @@
  *
  * WHAT WENT WRONG. Class A ran all 1,033 strict-grep executions in one job: mean
  * 519 s over 14 runs against the #3336 readiness ceiling of 540 s, worst 539 s —
- * ONE SECOND of margin — growing +3.6 to +8.8 s/day, because the corpus grows by
- * policy (#2865) and the append-only ratchet forbids removal. Within days ordinary
- * pull requests would have gone red, each red costing a 13-minute rerun.
+ * ONE SECOND of margin — growing +3.6 to +8.8 s/day because the corpus grows under
+ * #2865. Within days ordinary pull requests would have gone red, each red costing
+ * a 13-minute rerun.
  *
  * THE FIX, AND WHY IT NEEDS A GATE. Three parallel shards run the same executions
  * at about 183 s each. Membership is COMPUTED, never listed, so a new batch:A gate

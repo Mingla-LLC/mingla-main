@@ -20,7 +20,7 @@
  *   - Remove the realtime soft-delete drop branch            → case 4 RED.
  *   - Keep numberOfLines={1} when expanded / drop "Open"     → case 5 RED.
  *
- * Append-only post-merge per `.github/workflows/tests-append-only.yml`.
+ * Append-only post-merge (historical; append-only CI gate retired under #4127).
  */
 import { describe, expect, test } from "@jest/globals";
 import { readFileSync } from "node:fs";

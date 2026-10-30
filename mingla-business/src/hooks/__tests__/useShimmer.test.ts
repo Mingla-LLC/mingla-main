@@ -16,7 +16,7 @@
  * case RED (module resolution error then assertion error). Evidence
  * pattern same as `useResponsiveLayout.test.ts`.
  *
- * Append-only post-merge per `.github/workflows/tests-append-only.yml`.
+ * Append-only post-merge (historical; append-only CI gate retired under #4127).
  */
 
 import { describe, expect, jest, test, beforeEach } from "@jest/globals";

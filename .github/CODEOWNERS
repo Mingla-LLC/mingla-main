@@ -1,11 +1,11 @@
 # Mingla CODEOWNERS — originally codified by ORCH-0840 [Regression-test
 # enforcement + append-only CI].
 #
-# No named CODEOWNERS are assigned. The test append-only CI gate that once
-# lived in tests-append-only.yml was retired toward #3643 (2026-10-26); that
-# workflow now hosts only the main-health pregate. Test discipline (fixes ship
-# with regression tests) is enforced by review and the CLOSE gate, not by a
-# required human review from this file.
+# No named CODEOWNERS are assigned. The test append-only CI gate was retired
+# toward #3643 (2026-10-26). The former tests-append-only.yml path is now
+# pre-merge-main-health.yml and hosts only the main-health pregate. Test
+# discipline (fixes ship with regression tests) is enforced by review and the
+# CLOSE gate, not by a required human review from this file.
 #
 # Order matters in CODEOWNERS — later patterns override earlier ones, so
 # put broader rules above narrower ones if owners are reintroduced.

@@ -67,7 +67,7 @@ const ROOT = join(__dirname, "..", "..", "..");
  * read from, so a future reader can re-verify rather than trust this file.
  *
  * WHAT ACTUALLY PROTECTS THIS MAP — corrected at test, because the first draft
- * of this comment claimed `tests-append-only.yml` ratchets it and that is FALSE.
+ * of this comment claimed `pre-merge-main-health.yml` ratchets it and that is FALSE.
  * That workflow's `TEST_FILE_PATTERNS` is only `*.test.*`, `*.spec.*` and
  * `__tests__/`; this file matches none of them, so it may be edited freely.
  *

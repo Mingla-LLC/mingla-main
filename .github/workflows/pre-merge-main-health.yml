@@ -4,16 +4,13 @@ name: Pre-merge main health
 # green", issue #2909), which refuses to certify a merge onto a red `main` and
 # runs the Merge Certifier regression test.
 #
-# The test append-only gate this file was originally created for (ORCH-0840,
-# job "Test files: append-only", plus its self-test and the ORCH-1383
-# MANIFEST.json ratchet step) was RETIRED toward #3643 on 2026-10-26 by
-# engineering and product (Taofeek and Seth): existing test files may now be
-# edited or deleted in ordinary pull requests. The file path is kept
-# unchanged on purpose: the trigger below has no positive `paths:` filter,
-# which the pregate relies on to start on every pull request. The `name:` was
-# renamed from "Tests Append-Only" toward #3643 so PRs stop showing a retired
-# gate's name; the #2909 wiring gate finds the pregate by this name
-# (PREGATE_HOST_NAME).
+# The test append-only gate this workflow originally hosted (ORCH-0840) was
+# RETIRED toward #3643 on 2026-10-26. Existing test files may be edited or
+# deleted in ordinary PRs; fixes still ship with regression tests. The display
+# `name:` and file path were both renamed toward #3643 so PRs no longer look
+# like the retired gate. The trigger still has no positive `paths:` filter —
+# the pregate must start on every pull request. The #2909 wiring gate finds
+# this host by PREGATE_HOST_NAME ("Pre-merge main health").
 
 on:
   pull_request:
@@ -36,7 +33,7 @@ on:
 # abandon the post-merge verification run for that commit. Guarding on pull_request
 # recovers the PR-side waste while main runs always complete.
 concurrency:
-  group: ci-tests-append-only-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  group: ci-pre-merge-main-health-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 jobs:

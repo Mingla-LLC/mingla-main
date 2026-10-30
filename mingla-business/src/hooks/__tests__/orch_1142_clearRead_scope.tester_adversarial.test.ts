@@ -29,7 +29,7 @@
  *   - Remove the realtime `deleted_at !== null` drop branch → A3 RED.
  *   See the QA report for the exact commit hash + recorded failing assertion.
  *
- * Append-only post-merge per `.github/workflows/tests-append-only.yml`.
+ * Append-only post-merge (historical; append-only CI gate retired under #4127).
  */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 import { QueryClient } from "@tanstack/react-query";

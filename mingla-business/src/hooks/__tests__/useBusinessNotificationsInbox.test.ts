@@ -24,7 +24,7 @@
  * assertion RED. Break markAsRead (drop the optimistic setQueryData) →
  * the post-mark cache assertion RED.
  *
- * Append-only post-merge per `.github/workflows/tests-append-only.yml`.
+ * Append-only post-merge (historical; append-only CI gate retired under #4127).
  */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 import { QueryClient } from "@tanstack/react-query";

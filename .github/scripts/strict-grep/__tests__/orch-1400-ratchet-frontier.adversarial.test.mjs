@@ -10,10 +10,10 @@
  * b92e1355d proved (QA_ORCH-1400 report, F-1/F-2):
  *
  *   - Raising `fixtureCap` or `capableUnwiredCap` trips NO automated gate:
- *     parity only checks count <= cap, and the tests-append-only MANIFEST
+ *     parity only checks count <= cap, and the pre-merge-main-health / MANIFEST
  *     ratchet has no rule for either field (it guards only gates[] shrink,
  *     selfTestWiredFloor lowering, and unenforcedCap raising). SPEC §9's
- *     "ratchets guarded by the SEPARATE tests-append-only.yml" is FALSE for
+ *     "ratchets guarded by the SEPARATE pre-merge-main-health.yml" is FALSE for
  *     the two caps ORCH-1400 introduced — the laundering path SC-2 closes
  *     could be reopened by a one-line cap bump no gate objects to.
  *   - The base-relative ratchet is rollback-blind inside a PR window: while
@@ -25,9 +25,9 @@
  *
  * This suite closes those holes by pinning the Phase-1 ratchet frontier
  * against the on-disk MANIFEST. Raising any cap (or de-synchronizing the
- * floor) now requires editing THIS test file, which `tests-append-only.yml`
- * only permits with a Seth-visible `[TEST-MOD-APPROVED ORCH-NNNN]` token —
- * restoring exactly the "visible token path" SC-2 promised.
+ * floor) now requires editing THIS test file (the retired append-only
+ * `[TEST-MOD-APPROVED …]` token path is gone under #4127; review still sees
+ * the diff) — restoring the "visible change path" SC-2 promised.
  *
  * FRONTIER (b92e1355d): unenforcedCap 7 · fixtureCap 10 · capableUnwiredCap 23
  * · selfTestWiredFloor 188. Caps may only SHRINK from here; the floor may only

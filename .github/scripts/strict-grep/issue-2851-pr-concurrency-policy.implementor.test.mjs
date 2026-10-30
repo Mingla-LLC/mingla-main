@@ -866,11 +866,11 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     this must be re-derived on the new `main` — that blast radius is #3015,
   //     not this pin.
   //   - NOTE for the next re-derivation: replacing the literal below DELETES a
-  //     line, so `test-append-only-check.js` requires
+  //     line. The retired test-append-only-check.js historically required
   //     `[TEST-MOD-APPROVED #ISSUE]` in the BODY of a commit in the PR range
-  //     that touches THIS file — not in this comment, where it is invisible to
-  //     the gate. Rule 0 also requires the cited work item to carry a bracketed
-  //     label in that same body. #3186 lost a CI round-trip learning this.
+  //     that touches THIS file — not in this comment. That gate is gone toward
+  //     #3643; keep the citation habit for review clarity. #3186 lost a CI
+  //     round-trip learning the old tip-only token rule.
   // Every earlier re-derivation is preserved, not replaced.
   //
   // #3200 / #3201 [stripe safety nets and derived secrets] re-derivation. The

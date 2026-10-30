@@ -111,7 +111,7 @@ module.exports = {
     // #1062 [biz-jest-residual-burndown] Wave 1 — B5 WRONG-RUNTIME exclusions.
     // These files match jest's testMatch (*.test.ts) but their REAL runner is
     // NOT jest — each is excluded here (file RETAINED in the repo, never deleted;
-    // tests-append-only.yml stays green) with its true runner named. Placed BEFORE
+    // append-only gate, since retired under #4127, stayed green) with its true runner named. Placed BEFORE
     // the #1047 quarantine marker on purpose: the ORCH-1047 anti-quarantine gate
     // classifies only the #1047 block, and these are wrong-runtime files, not
     // source-text pins.
@@ -128,7 +128,7 @@ module.exports = {
     // #1047 [business-jest-suite-audit] — Part 1 quarantine (config-only).
     // Regenerate/verify the exact membership with:
     //   node scripts/ci/select-source-text-pins.mjs
-    // NO test file is edited here (tests-append-only.yml stays green); every
+    // NO test file is edited here (append-only gate, since retired under #4127, stayed green); every
     // file remains in the repo (grep-able), it is only excluded from the run.
     // ======================================================================
 
@@ -160,7 +160,7 @@ module.exports = {
     // which their `jest.mock("expo-router", …)` factories do not provide — so
     // every one of them dies at `useNavigation is not a function` before
     // asserting anything. Reviving them needs edits INSIDE the test files, which
-    // `tests-append-only.yml` blocks, and would only duplicate coverage that
+    // the retired append-only gate (#4127) blocked, and would only duplicate coverage that
     // already gates: the SAME commit shipped
     // `ci-batch:orch-0976-draft-promotion-tests`, which proves the
     // identical no-remount invariant (1 wizard mount, 0 router.replace) on both
