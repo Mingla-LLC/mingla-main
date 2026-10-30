@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#3355",
+  "target": {
+    "kind": "function",
+    "name": "agent-attachment-cleanup"
+  },
+  "basePolicySha256": "9edbe652d4dfe2f3dad4ec3162cc27a2680a9902661d11897d12fce587866491",
+  "operations": [
+    { "op": "add_env_name", "classification": "optional_top_level", "name": "ARI_EVAL_GEMINI_MODEL_ALLOWLIST", "expectedAbsent": true },
+    { "op": "add_env_name", "classification": "optional_top_level", "name": "ARI_LOCAL_MODEL_BASE_URL", "expectedAbsent": true },
+    { "op": "add_env_name", "classification": "optional_top_level", "name": "ARI_LOCAL_MODEL_ENABLED", "expectedAbsent": true },
+    { "op": "add_env_name", "classification": "optional_top_level", "name": "ARI_LOCAL_MODEL_ID", "expectedAbsent": true }
+  ],
+  "resultPolicySha256": "2f85f62444a445f46db1b89a9016fcad724016031b79ada35cf86b3696c00150",
+  "reason": "Issue #3355 keeps cleanup compatible with attachment analysis while allowing only explicitly configured local or evaluation models; unset values disable those paths."
+}

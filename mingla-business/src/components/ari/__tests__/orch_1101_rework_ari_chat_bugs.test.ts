@@ -19,14 +19,13 @@ import path from "node:path";
  *      passes isThinking while the send mutation is in flight.
  *   #4 — opaque composer: InputBar host fills with the solid ariThread
  *      .composerSurface (no rgba/hsla), never the translucent glass tint.
- *   #5 — empty-state hint renders the actual + glyph as an inline chip, not a
- *      literal "+" character in the sentence.
+ *   #5 — superseded by #3355: the empty-state duplicate + instruction is gone.
  *   #6 — AiDisclosure CTA dismisses locally on tap (disclosureDismissed),
  *      decoupled from the acknowledge mutation refetch; the error is surfaced,
  *      not swallowed with `.catch(() => undefined)`.
  *
  * fails-on-revert: every assertion targets a string that ONLY exists after the
- * rework (composerSurface fill, makeOptimisticMessage, hintChip, disclosure-
+ * rework (composerSurface fill, makeOptimisticMessage, disclosure-
  * Dismissed, the precomputed-tail separator) or that the rework REMOVED (the
  * literal "Tap + for things to try" text, the `.catch(() => undefined)` swallow,
  * the translucent composer host fill). Reverting any touched file flips its
@@ -55,7 +54,9 @@ describe("ORCH-1101 REWORK · #1 guard — separator never reads undefined trail
     // dereference trailingItem (a passing comment mention is fine).
     // The separator arrow destructures ONLY leadingItem (trailingItem is never a
     // prop it reads); the gap derives from the precomputed tail flag.
-    expect(messageList).toMatch(/ItemSeparatorComponent=\{\(\{ leadingItem \}\)/);
+    expect(messageList).toMatch(
+      /ItemSeparatorComponent=\{\(\{ leadingItem \}\)/,
+    );
     expect(messageList).not.toMatch(/trailingItem\s*[.?]/); // never dereferenced
     expect(messageList).not.toMatch(/\bconst\b[^\n]*trailingItem/); // never aliased into a const
     // [TEST-MOD-APPROVED #2649] — this ONE assertion is amended; :58/:59/:60
@@ -88,12 +89,16 @@ describe("ORCH-1101 REWORK · #1 guard — separator never reads undefined trail
     // those exact words — the audit-regex-matches-comments trap. Verified by
     // reverting the predicate and watching the bare-identifier version stay
     // green; the pair below goes red on that same revert.
-    expect(messageList).toMatch(/height: lead\?\.gapAbove \?\? ariThread\.gapTurn/);
+    expect(messageList).toMatch(
+      /height: lead\?\.gapAbove \?\? ariThread\.gapTurn/,
+    );
     expect(messageList).not.toMatch(/lead\.tail === false/); // superseded predicate stays gone
   });
 
   it("guards speakerOf against null/undefined items", () => {
-    expect(messageList).toMatch(/function speakerOf\(item: ListItem \| null \| undefined\)/);
+    expect(messageList).toMatch(
+      /function speakerOf\(item: ListItem \| null \| undefined\)/,
+    );
     expect(messageList).toMatch(/if \(!item\) return null/);
   });
 });
@@ -105,7 +110,9 @@ describe("ORCH-1101 REWORK · #2 — optimistic user message renders instantly",
     // introduced for D-2. The crash-safe shape this assertion protects — role
     // user, a text content field, null tool fields — is unchanged, and the id
     // is still namespaced (see ADV-R5).
-    expect(useAgentChat).toMatch(/function turnMessage\(turn: LocalTurn\): AgentMessage/);
+    expect(useAgentChat).toMatch(
+      /function turnMessage\(turn: LocalTurn\): AgentMessage/,
+    );
     const block = useAgentChat.slice(
       useAgentChat.indexOf("function turnMessage(turn: LocalTurn)"),
       useAgentChat.indexOf("function turnMessage(turn: LocalTurn)") + 900,
@@ -148,8 +155,12 @@ describe("ORCH-1101 REWORK · #2 — optimistic user message renders instantly",
     // Behavioural replacement: issue_3429_ari_chat_polish.implementor.test.ts
     // ("keeps same-text turns distinct and replaces exactly the matching
     // optimistic row") and issue_3429_ari_delivery_state.implementor.test.ts.
-    expect(useAgentChat).toMatch(/const liveLocalMessages = localMessages\.filter/);
-    expect(useAgentChat).toMatch(/patchTurn\(clientTurnId, \{[\s\S]{0,200}delivery: "failed"/);
+    expect(useAgentChat).toMatch(
+      /const liveLocalMessages = localMessages\.filter/,
+    );
+    expect(useAgentChat).toMatch(
+      /patchTurn\(clientTurnId, \{[\s\S]{0,200}delivery: "failed"/,
+    );
     expect(useAgentChat).toMatch(/errorMessage:/);
   });
 
@@ -158,11 +169,15 @@ describe("ORCH-1101 REWORK · #2 — optimistic user message renders instantly",
     // client_turn_id (canonicalIdentityMatch), with text equality kept only as
     // a compatibility path for pre-#3429 rows — strictly stronger than the
     // text-only dedupe this pinned.
-    expect(useAgentChat).toMatch(/const localMessages = scopedTurns\.map\(turnMessage\)/);
     expect(useAgentChat).toMatch(
-      /const liveLocalMessages = localMessages\.filter\(\(local\) => !serverMessages\.some\(\(server\) => canonicalIdentityMatch\(server, local\)\)\)/,
+      /const localMessages = scopedTurns\.map\(turnMessage\)/,
     );
-    expect(useAgentChat).toMatch(/const messages = \[\.\.\.decoratedServerMessages, \.\.\.liveLocalMessages\]/);
+    expect(useAgentChat).toMatch(
+      /const liveLocalMessages = localMessages\.filter\([\s\S]{0,160}!serverMessages\.some\(\(server\) => canonicalIdentityMatch\(server, local\)\)[\s\S]{0,20}\)/,
+    );
+    expect(useAgentChat).toMatch(
+      /const messages = \[\.\.\.decoratedServerMessages, \.\.\.liveLocalMessages\]/,
+    );
   });
 });
 
@@ -173,7 +188,9 @@ describe("ORCH-1101 REWORK · #3 — thinking signal shows while sending", () =>
     // mutation flag — the point of D-1 (the callout ends with its work). Still
     // derived, never a standalone useState (see ADV-R2).
     expect(chatScreen).toMatch(/isThinking=\{!!chat\.activeTurn\}/);
-    expect(chatScreen).toMatch(/renderThinking=\{\(\) => chat\.activeTurn \? \(/);
+    expect(chatScreen).toMatch(
+      /renderThinking=\{\(\) =>\s*chat\.activeTurn\s*\?\s*\(/,
+    );
     expect(chatScreen).toMatch(/<AriActivity/);
   });
 
@@ -200,58 +217,35 @@ describe("ORCH-1101 REWORK · #4 — composer is OPAQUE, nothing bleeds through"
       inputBar.indexOf("input: {"),
     );
     expect(hostBlock).toMatch(/backgroundColor:\s*ariThread\.composerSurface/);
-    expect(hostBlock).not.toMatch(/backgroundColor:\s*glass\.tint\.profileBase/);
+    expect(hostBlock).not.toMatch(
+      /backgroundColor:\s*glass\.tint\.profileBase/,
+    );
     // Border + radius preserved (still reads as a glass-edged field).
     expect(hostBlock).toMatch(/borderColor:\s*glass\.border\.profileBase/);
     expect(hostBlock).toMatch(/borderRadius:\s*radius\.xl/);
   });
 
   it("keeps the empty-overlay clearance above the resting composer (no underlap)", () => {
-    // The hero overlay reserves paddingBottom = inset + nav clearance + 60 so the
-    // hint row clears the composer; that clearance math must stay.
+    // The hero overlay reserves paddingBottom = inset + nav clearance + 60 so
+    // the orb and copy clear the composer; that clearance math must stay.
     expect(chatScreen).toMatch(/BOTTOM_NAV_CLEARANCE_PX \+\s*60/);
   });
 });
 
-describe("ORCH-1101 REWORK · #5 — hint references the actual + button glyph", () => {
-  it("renders an inline + chip, not a literal '+' character in the sentence", () => {
-    // The old literal copy is gone.
-    expect(emptyState).not.toMatch(/Tap \+ for things to try/);
-    // The sentence is split around a Plus-glyph chip.
-    // [TEST-MOD-APPROVED #3429] (a) superseded copy: the + now opens "Add
-    // context", so the split sentence reads "Tap [+] to attach context".
-    // [TEST-MOD-APPROVED #3429] REWORK-2 R-3 (widened grant): anchored to the
-    // shipped element, like the second half below — the loose regex matched the
-    // source comment and the accessibilityLabel as readily as the rendered copy.
-    expect(emptyState).toContain('<Text style={styles.hintText}>Tap </Text>');
-    // [TEST-MOD-APPROVED #3429] REWORK-2 R-3: anchored to the SHIPPED element
-    // rather than matching anywhere in the file — the source comment and the
-    // accessibilityLabel each satisfied the loose regex on their own, so a
-    // change to the visible second half of the split sentence went undetected.
-    expect(emptyState).toContain(
-      '<Text style={styles.hintText}> to attach context</Text>',
-    );
-    expect(emptyState).toMatch(/<View style=\{styles\.hintChip\}/);
-    expect(emptyState).toMatch(/<Plus size=\{13\}/);
-  });
-
-  it("styles the chip like the InputBar + button (bordered circle)", () => {
-    const chipBlock = emptyState.slice(emptyState.indexOf("hintChip: {"));
-    expect(chipBlock).toMatch(/borderRadius:\s*radius\.full/);
-    expect(chipBlock).toMatch(/borderWidth:\s*1/);
-    expect(chipBlock).toMatch(/borderColor:\s*glass\.border\.profileBase/);
-  });
-
-  it("keeps a natural spoken accessibility label for the hint row", () => {
-    // [TEST-MOD-APPROVED #3429] (a) superseded copy only — the label still
-    // speaks the whole sentence naturally, now for the attach affordance.
-    expect(emptyState).toMatch(/accessibilityLabel="Tap the plus button to attach context"/);
+describe("#3355 · premium empty state", () => {
+  it("removes the duplicate + instruction and its presentation styles", () => {
+    expect(emptyState).not.toContain("files and context");
+    expect(emptyState).not.toContain("hintRow");
+    expect(emptyState).not.toContain("hintChip");
+    expect(emptyState).not.toMatch(/<Plus size=\{13\}/);
   });
 });
 
 describe("ORCH-1101 REWORK · #6 — disclosure CTA dismisses on tap", () => {
   it("dismisses locally (disclosureDismissed) decoupled from the mutation refetch", () => {
-    expect(chatScreen).toMatch(/const \[disclosureDismissed, setDisclosureDismissed\] = useState\(false\)/);
+    expect(chatScreen).toMatch(
+      /const \[disclosureDismissed, setDisclosureDismissed\] = useState\(false\)/,
+    );
     expect(chatScreen).toMatch(/!disclosureDismissed/);
     const handler = chatScreen.slice(
       chatScreen.indexOf("const handleAcceptDisclosure"),
@@ -266,9 +260,13 @@ describe("ORCH-1101 REWORK · #6 — disclosure CTA dismisses on tap", () => {
 
   it("surfaces the acknowledge error instead of swallowing it", () => {
     // The old swallow is gone.
-    expect(chatScreen).not.toMatch(/acknowledge\(\)\.catch\(\(\) => undefined\)/);
+    expect(chatScreen).not.toMatch(
+      /acknowledge\(\)\.catch\(\(\) => undefined\)/,
+    );
     // The error routes to the toast via setLocalError.
-    expect(chatScreen).toMatch(/prefs\.acknowledge\(\)\.catch\(\(err: unknown\) => \{[\s\S]{0,300}setLocalError/);
+    expect(chatScreen).toMatch(
+      /prefs\.acknowledge\(\)\.catch\(\(err: unknown\) => \{[\s\S]{0,300}setLocalError/,
+    );
   });
 
   it("wires the modal onAccept to the new handler", () => {

@@ -148,7 +148,9 @@ function check(s, manifest) {
   // [TEST-MOD-APPROVED #3872] Discounts, R2 referrals, and guarded R3 gig
   // script drafting extend the caller-bound denominator (133 + 7 = 140;
   // #2829 W9b website designer tools 140 → 152).
-  if (declarationCount !== 152) failures.push(`expected 152 declarations, got ${declarationCount}`);
+  // [TEST-MOD-APPROVED #3355] Twenty planning, memory, research, extraction,
+  // and verification tools extend the same caller-bound denominator to 172.
+  if (declarationCount !== 172) failures.push(`expected 172 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

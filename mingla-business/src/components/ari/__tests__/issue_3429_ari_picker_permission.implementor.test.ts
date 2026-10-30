@@ -19,10 +19,17 @@ jest.mock("../../../utils/platformImagePicker", () => ({
   launchImageLibraryAsync: (options: unknown) => mockLaunchLibrary(options),
 }));
 // Emulate Metro's native platform resolution of the neutral specifier.
-jest.mock("../ariAttachmentPicker", () => jest.requireActual("../ariAttachmentPicker.native"));
+jest.mock("../ariAttachmentPicker", () =>
+  jest.requireActual("../ariAttachmentPicker.native"),
+);
 
-jest.mock("../../ui/Sheet", () => ({ Sheet: ({ children }: { children: unknown }) => children }));
-jest.mock("lucide-react-native", () => ({ FileText: () => null, Image: () => null }));
+jest.mock("../../ui/Sheet", () => ({
+  Sheet: ({ children }: { children: unknown }) => children,
+}));
+jest.mock("lucide-react-native", () => ({
+  FileText: () => null,
+  Image: () => null,
+}));
 // The sheet + dialog primitives own the real unmount windows; this runner cannot
 // load them (expo-blur ships ESM), so stand in for the two constants only. Their
 // real values are already guarded by deferAfterDismiss.derivation.tester.
@@ -42,7 +49,11 @@ describe("#3429 D-0 native photo permission denial", () => {
   });
 
   it("rejects with the shared permission error (openable Settings) instead of crashing", async () => {
-    mockRequestPermission.mockResolvedValue({ granted: false, canAskAgain: false, status: "denied" });
+    mockRequestPermission.mockResolvedValue({
+      granted: false,
+      canAskAgain: false,
+      status: "denied",
+    });
     let caught: unknown = null;
     try {
       await pickAriAttachmentFiles("photos", 5);
@@ -51,12 +62,18 @@ describe("#3429 D-0 native photo permission denial", () => {
     }
     expect(typeof AriAttachmentPickerPermissionError).toBe("function");
     expect(caught).toBeInstanceOf(AriAttachmentPickerPermissionError);
-    expect((caught as AriAttachmentPickerPermissionError).canOpenSettings).toBe(true);
+    expect((caught as AriAttachmentPickerPermissionError).canOpenSettings).toBe(
+      true,
+    );
     expect(mockLaunchLibrary).not.toHaveBeenCalled();
   });
 
   it("reports canOpenSettings false while the OS can still ask again", async () => {
-    mockRequestPermission.mockResolvedValue({ granted: false, canAskAgain: true, status: "undetermined" });
+    mockRequestPermission.mockResolvedValue({
+      granted: false,
+      canAskAgain: true,
+      status: "undetermined",
+    });
     await expect(pickAriAttachmentFiles("photos", 5)).rejects.toMatchObject({
       name: "AriAttachmentPickerPermissionError",
       canOpenSettings: false,
@@ -64,13 +81,33 @@ describe("#3429 D-0 native photo permission denial", () => {
   });
 
   it("returns picked photos with their dimensions and never a zero size", async () => {
-    mockRequestPermission.mockResolvedValue({ granted: true, canAskAgain: true, status: "granted" });
+    mockRequestPermission.mockResolvedValue({
+      granted: true,
+      canAskAgain: true,
+      status: "granted",
+    });
     mockLaunchLibrary.mockResolvedValue({
       canceled: false,
-      assets: [{ uri: "file:///photo.heic", fileName: "photo.heic", mimeType: "image/heic", fileSize: 0, width: 4032, height: 3024 }],
+      assets: [
+        {
+          uri: "file:///photo.heic",
+          fileName: "photo.heic",
+          mimeType: "image/heic",
+          fileSize: 0,
+          width: 4032,
+          height: 3024,
+        },
+      ],
     });
     await expect(pickAriAttachmentFiles("photos", 5)).resolves.toEqual([
-      { uri: "file:///photo.heic", name: "photo.heic", mimeType: "image/heic", size: null, width: 4032, height: 3024 },
+      {
+        uri: "file:///photo.heic",
+        name: "photo.heic",
+        mimeType: "image/heic",
+        size: null,
+        width: 4032,
+        height: 3024,
+      },
     ]);
   });
 });
@@ -113,12 +150,19 @@ describe("#3429 add-context sheet opens the picker after its own dismissal", () 
       platform.OS = "ios";
       const onClose = jest.fn();
       const onSelect = jest.fn();
-      const tree = AriAttachmentSourceSheet({ visible: true, onClose, onSelect });
+      const tree = AriAttachmentSourceSheet({
+        visible: true,
+        onClose,
+        onSelect,
+      });
       platform.OS = previous;
       const press = rows(tree);
-      expect(Object.keys(press).sort()).toEqual(["Choose documents", "Choose photos"]);
+      expect(Object.keys(press).sort()).toEqual([
+        "Choose documents",
+        "Choose photos and videos",
+      ]);
 
-      press["Choose photos"]();
+      press["Choose photos and videos"]();
       expect(onClose).toHaveBeenCalledTimes(1);
       // Same tick: the sheet's own modal is still on screen, so no picker yet.
       expect(onSelect).not.toHaveBeenCalled();

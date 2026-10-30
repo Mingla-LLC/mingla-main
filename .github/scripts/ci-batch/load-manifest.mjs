@@ -71,9 +71,12 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4182 / #4187 / #4188: re-sealed after the Local/Creator media lifecycle,
 // Admin program-messaging, and Stay staff-reservation migrations plus their
 // registered PostgreSQL proofs entered the preserved replay inventories.
+// #3355: re-sealed after Ari's improvement-system migration and registered
+// PostgreSQL proof entered those same preserved inventories, including its
+// exact exclusion from the deliberately pre-#1931 historical replay.
 // #3643: re-sealed after renaming tests-append-only.yml → pre-merge-main-health.yml
 // (display name already Pre-merge main health; path + provider registry catch up).
-export const BOOTSTRAP_SHA256 = "8216118945be67b2d1465f2d44fc8cd10b9c776475e59128f2acf56c56e01f62";
+export const BOOTSTRAP_SHA256 = "16209ff0de515b6e979f3833fdeb7ce681d3110c4d9580cf705b0cf3f8e86f78";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

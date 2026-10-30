@@ -54,7 +54,7 @@ export type ResponseCardState =
   | "default" // data shown
   | "loading" // 3 shimmer skeleton rows
   | "disabled" // 0.4 (e.g. stale)
-  | "submitted" // post-action success ribbon inline
+  | "submitted" // proof rows remain visible; no redundant status badge
   | "error"; // single muted "Couldn't load — tap to retry" row
 
 export interface ResponseCardProps {
@@ -129,7 +129,9 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({
           accessibilityLabel="Couldn't load. Tap to retry."
           style={({ pressed }) => [styles.errorRow, pressed && styles.pressed]}
         >
-          <Text style={styles.errorText}>Couldn&apos;t load — tap to retry</Text>
+          <Text style={styles.errorText}>
+            Couldn&apos;t load — tap to retry
+          </Text>
         </Pressable>
       );
     }
@@ -166,11 +168,7 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({
             ))}
           </View>
         ) : null}
-        {state === "submitted" ? (
-          <View style={styles.submittedRibbon}>
-            <Text style={styles.submittedText}>Done</Text>
-          </View>
-        ) : actions && actions.length > 0 ? (
+        {state !== "submitted" && actions && actions.length > 0 ? (
           <View style={styles.actions}>
             {actions.map((a) => (
               <Pressable
@@ -199,7 +197,11 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({
   return (
     <View style={styles.host}>
       <View style={styles.orbWrap}>
-        {showOrb ? <AriOrb size="sm" decorative /> : <View style={styles.orbSpacer} />}
+        {showOrb ? (
+          <AriOrb size="sm" decorative />
+        ) : (
+          <View style={styles.orbSpacer} />
+        )}
       </View>
       <GlassChrome
         intensity="cardElevated"
@@ -341,22 +343,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 17,
     color: semantic.error,
-  },
-  submittedRibbon: {
-    marginTop: spacing.sm,
-    alignSelf: "flex-start",
-    backgroundColor: semantic.successTint,
-    borderWidth: 1,
-    borderColor: "rgba(34, 197, 94, 0.4)",
-    borderRadius: 999,
-    overflow: "hidden",
-    paddingHorizontal: ariThread.ribbonPadH,
-    paddingVertical: ariThread.ribbonPadV,
-  },
-  submittedText: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "600",
-    color: semantic.success,
   },
 });
 

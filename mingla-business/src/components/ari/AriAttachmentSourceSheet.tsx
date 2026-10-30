@@ -5,7 +5,11 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { FileText, Image as ImageIcon } from "lucide-react-native";
 
 import { Sheet } from "../ui/Sheet";
-import { ariThread, spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  ariThread,
+  spacing,
+  text as textTokens,
+} from "../../constants/designSystem";
 import { deferAfterDismiss } from "../../utils/deferAfterDismiss";
 import type { AriAttachmentSource } from "./ariAttachmentPickerShared";
 
@@ -19,16 +23,45 @@ export const AriAttachmentSourceSheet: React.FC<{
 }> = ({ visible, onClose, onSelect }) => {
   if (Platform.OS === "web") return null;
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint={260} testID="ari-add-context-sheet">
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      snapPoint={260}
+      testID="ari-add-context-sheet"
+    >
       <View style={styles.body}>
         <Text style={styles.title}>Add context</Text>
-        <Pressable style={styles.row} accessibilityRole="button" accessibilityLabel="Choose photos" onPress={() => { onClose(); deferAfterDismiss(() => onSelect("photos")); }}>
+        <Pressable
+          style={styles.row}
+          accessibilityRole="button"
+          accessibilityLabel="Choose photos and videos"
+          onPress={() => {
+            onClose();
+            deferAfterDismiss(() => onSelect("photos"));
+          }}
+        >
           <ImageIcon size={22} color={textTokens.primary} />
-          <View><Text style={styles.label}>Photos</Text><Text style={styles.detail}>JPG, PNG, WebP or HEIC</Text></View>
+          <View>
+            <Text style={styles.label}>Photos & videos</Text>
+            <Text style={styles.detail}>Images, MP4, MOV or WebM</Text>
+          </View>
         </Pressable>
-        <Pressable style={styles.row} accessibilityRole="button" accessibilityLabel="Choose documents" onPress={() => { onClose(); deferAfterDismiss(() => onSelect("documents")); }}>
+        <Pressable
+          style={styles.row}
+          accessibilityRole="button"
+          accessibilityLabel="Choose documents"
+          onPress={() => {
+            onClose();
+            deferAfterDismiss(() => onSelect("documents"));
+          }}
+        >
           <FileText size={22} color={textTokens.primary} />
-          <View><Text style={styles.label}>Documents</Text><Text style={styles.detail}>PDF, DOCX, TXT or CSV</Text></View>
+          <View>
+            <Text style={styles.label}>Files & voice notes</Text>
+            <Text style={styles.detail}>
+              PDF, DOCX, text, CSV, MP3, M4A or WAV
+            </Text>
+          </View>
         </Pressable>
       </View>
     </Sheet>
@@ -36,10 +69,33 @@ export const AriAttachmentSourceSheet: React.FC<{
 };
 
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: spacing.sm },
-  title: { color: textTokens.primary, fontSize: 20, lineHeight: 32, fontWeight: "600" },
-  row: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.md, backgroundColor: ariThread.composerSurface, borderRadius: 16, overflow: "hidden" },
-  label: { color: textTokens.primary, fontSize: ariThread.labelFont, lineHeight: ariThread.labelLine, fontWeight: "600" },
+  body: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  title: {
+    color: textTokens.primary,
+    fontSize: 20,
+    lineHeight: 32,
+    fontWeight: "600",
+  },
+  row: {
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: ariThread.composerSurface,
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  label: {
+    color: textTokens.primary,
+    fontSize: ariThread.labelFont,
+    lineHeight: ariThread.labelLine,
+    fontWeight: "600",
+  },
   detail: { color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
 });
 

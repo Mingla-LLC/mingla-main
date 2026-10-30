@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion as Motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "./context/AuthContext";
 import { LoginScreen } from "./components/LoginScreen";
 import { InviteSetupScreen } from "./components/InviteSetupScreen";
@@ -64,6 +64,7 @@ import { GuidePage } from "./pages/GuidePage";
 import { ContentCalendarPage } from "./pages/ContentCalendarPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { DataRoomPage } from "./pages/DataRoomPage";
+import { AriImprovementLabPage } from "./pages/AriImprovementLabPage";
 import { CareersPage } from "./pages/CareersPage";
 // Issue #3872 — the Creator Program pages: Creators, Gigs, Mingla Locals,
 // Disputes. #4130 + #3872: listed under Hosts and creators in Outreach.
@@ -137,6 +138,7 @@ const PAGES = {
   // their own page (Wave 4b).
   "platform-health": PlatformHealthPage,
   "feature-flags": FeatureFlagsPage,
+  "ari-improvement-lab": AriImprovementLabPage,
   settings: SettingsPage,
   // Issue #3980: #/agent-log stays a page that opens Work > Agent activity.
   "agent-log": AgentLogPage,
@@ -390,7 +392,7 @@ export default function App() {
     <>
       <AppShell activeTab={route.pageId} onTabChange={handleTabChange} onOpenSearch={() => setCommandPaletteOpen(true)}>
         <AnimatePresence mode="wait">
-          <motion.div
+          <Motion.div
             key={route.pageId}
             initial={pageTransition.initial}
             animate={pageTransition.animate}
@@ -400,7 +402,7 @@ export default function App() {
             <ErrorBoundary>
               <ActivePage onTabChange={handleTabChange} />
             </ErrorBoundary>
-          </motion.div>
+          </Motion.div>
         </AnimatePresence>
       </AppShell>
       <CommandPalette

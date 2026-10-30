@@ -241,10 +241,10 @@ Deno.test("#1985 R2-5 retry errors are rendered and retry awaits its typed resul
   // [TEST-MOD-APPROVED #3429] Retry is now also reachable from the activity
   // rail; retained invariant: its typed result is awaited and an offline
   // rejection renders the returned message.
-  assertMatch(screen, /chat\.retryTurn\(clientTurnId\)\.then\(\(result\)/);
+  assertMatch(screen, /void chat[\s\S]*?\.retryTurn\(clientTurnId\)[\s\S]*?\.then\(\(result\)/);
   assertMatch(
     screen,
-    /if \(result\?\.kind === "error" && result\.code === "OFFLINE"\)\s*\{\s*setLocalError\(result\.message\)/,
+    /if \(result\?\.kind === "error" && result\.code === "OFFLINE"\)\s*\{\s*setLocalError\(ariChatErrorCopy\(result\.code\)\)/,
   );
 });
 
@@ -264,13 +264,13 @@ Deno.test("#1985 R2-6 provider follow-up and Business delivery ownership preserv
     /const schemaResponse = schemaErrorResponse\(err\);\s*if \(schemaResponse\) return schemaResponse;/s,
   );
 
-  assertMatch(hook, /const text = turn\.displayText/);
+  assertMatch(hook, /const text =\s*turn\.displayText\s*\|\|/);
   // [TEST-MOD-APPROVED #3429] Separate optimistic/failed arrays and their
   // synthetic failed ids are superseded by one LocalTurn per client id.
   // Retained invariant: retry reuses the exact payload and immutable id.
   assertMatch(hook, /interface LocalTurn/);
   assertMatch(hook, /current\.some\(\(candidate\) => candidate\.clientTurnId === clientTurnId\)/);
-  assertMatch(hook, /return sendTurn\([\s\S]*latest\.attachments, clientTurnId\)/);
+  assertMatch(hook, /return sendTurn\([\s\S]*latest\.attachments,[\s\S]*clientTurnId,/);
   assertMatch(hook, /export function reconcileAgentDeliveryMessages\(/);
   assertMatch(
     hook,

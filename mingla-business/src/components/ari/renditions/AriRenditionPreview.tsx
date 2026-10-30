@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -1002,7 +1003,10 @@ export function buildAriRenditionExample(fixture: AriRenditionFixture): {
       text: "Ari keeps the explanation readable in the thread while structured details remain scannable below.",
     });
   }
-  if (["assumption", "conflict", "partial"].includes(fixture.kind) && rows.length) {
+  if (
+    ["assumption", "conflict", "partial"].includes(fixture.kind) &&
+    rows.length
+  ) {
     blocks.push({
       type: "list",
       version: 1,
@@ -1048,14 +1052,15 @@ export function buildAriRenditionExample(fixture: AriRenditionFixture): {
       id: protocolId(label, `chip-${index}`),
       label,
       selected:
-        model.selectedChip === index ||
-        (fixture.kind === "multi" && index < 2),
+        model.selectedChip === index || (fixture.kind === "multi" && index < 2),
     })) ?? []),
     ...(model.choices?.map((choice, index) => ({
       id: protocolId(choice.title, `choice-${index}`),
       label: choice.title,
       detail: choice.detail,
-      ...(typeof choice.selected === "boolean" ? { selected: choice.selected } : {}),
+      ...(typeof choice.selected === "boolean"
+        ? { selected: choice.selected }
+        : {}),
     })) ?? []),
   ];
   if (choices.length) {
@@ -1104,7 +1109,13 @@ export function buildAriRenditionExample(fixture: AriRenditionFixture): {
     });
   }
   if (model.code) {
-    blocks.push({ type: "code", version: 1, id: "code", code: model.code, language: "text" });
+    blocks.push({
+      type: "code",
+      version: 1,
+      id: "code",
+      code: model.code,
+      language: "text",
+    });
   }
   if (model.sources?.length) {
     blocks.push({
@@ -1181,11 +1192,21 @@ const AriRenditionStatus: React.FC<{
   const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
   if (state === "ready") return null;
 
+  const stateLabel =
+    label ??
+    (state === "error"
+      ? "Needs attention"
+      : state === "disabled"
+        ? "Unavailable"
+        : state === "submitted"
+          ? "Verified"
+          : "Working");
+
   if (state === "loading") {
     return (
       <View
         style={[styles.stateRibbon, styles.stateRibbonLoading]}
-        accessibilityLabel={label ?? "Ari is loading"}
+        accessibilityLabel={stateLabel}
         accessibilityLiveRegion="polite"
       >
         <View style={styles.stateLabelRow}>
@@ -1228,7 +1249,7 @@ const AriRenditionStatus: React.FC<{
         state === "error" && styles.stateRibbonError,
         state === "disabled" && styles.stateRibbonDisabled,
       ]}
-      accessibilityLabel={label ?? state}
+      accessibilityLabel={stateLabel}
       accessibilityLiveRegion="polite"
     >
       <Animated.View
@@ -1236,10 +1257,46 @@ const AriRenditionStatus: React.FC<{
       >
         <Text style={styles.stateSymbolText}>{symbol}</Text>
       </Animated.View>
-      <Text style={styles.stateLabel}>{label ?? state}</Text>
+      <Text style={styles.stateLabel}>{stateLabel}</Text>
     </View>
   );
 };
+
+function renditionGraphicCopy(rendition: AriRendition): {
+  eyebrow?: string;
+  title?: string;
+  meta?: string;
+} {
+  if (rendition.graphic !== "research") return {};
+  const sources =
+    rendition.schema_version === 2
+      ? rendition.blocks.flatMap((block) =>
+          block.type === "sources" ? block.items : [],
+        )
+      : [];
+  if (sources.length > 0) {
+    const publishers = [
+      ...new Set(sources.map((source) => source.publisher)),
+    ].slice(0, 3);
+    return {
+      eyebrow: "PUBLIC RESEARCH",
+      title: `${sources.length} public ${sources.length === 1 ? "source" : "sources"}`,
+      meta: publishers.join(" · ") || "Sources and freshness appear below",
+    };
+  }
+  if (rendition.state === "loading" || rendition.state === "transitioning") {
+    return {
+      eyebrow: "PUBLIC RESEARCH",
+      title: "Checking public sources",
+      meta: "Treating every page as untrusted evidence",
+    };
+  }
+  return {
+    eyebrow: "RESEARCH CHECK",
+    title: "No public source verified",
+    meta: "The plan can continue from Mingla data",
+  };
+}
 
 function renditionChoices(rendition: AriRendition): {
   options: NonNullable<AriRenditionV1["choices"]>;
@@ -1258,7 +1315,9 @@ function renditionChoices(rendition: AriRendition): {
   };
 }
 
-function renditionField(rendition: AriRendition): AriRenditionFieldV1 | undefined {
+function renditionField(
+  rendition: AriRendition,
+): AriRenditionFieldV1 | undefined {
   if (rendition.schema_version === 1) return rendition.field;
   return rendition.blocks.find((block) => block.type === "input")?.field;
 }
@@ -1281,12 +1340,18 @@ const AriRenditionBlocks: React.FC<{
   <View style={styles.blockStack}>
     {blocks.map((block) => {
       if (block.type === "paragraph") {
-        return <Text key={block.id} style={styles.blockParagraph}>{block.text}</Text>;
+        return (
+          <Text key={block.id} style={styles.blockParagraph}>
+            {block.text}
+          </Text>
+        );
       }
       if (block.type === "list") {
         return (
           <View key={block.id} style={styles.blockSection}>
-            {block.title ? <Text style={styles.blockTitle}>{block.title}</Text> : null}
+            {block.title ? (
+              <Text style={styles.blockTitle}>{block.title}</Text>
+            ) : null}
             {block.items.map((item, index) => (
               <View key={`${block.id}-${index}`} style={styles.listRow}>
                 <Text style={styles.listMarker}>
@@ -1302,7 +1367,10 @@ const AriRenditionBlocks: React.FC<{
         return (
           <View key={block.id} style={styles.rows}>
             {block.rows.map((row) => (
-              <View key={`${block.id}-${row.label}-${row.value}`} style={styles.row}>
+              <View
+                key={`${block.id}-${row.label}-${row.value}`}
+                style={styles.row}
+              >
                 <Text style={styles.rowLabel}>{row.label}</Text>
                 <Text style={styles.rowValue}>{row.value}</Text>
               </View>
@@ -1317,7 +1385,9 @@ const AriRenditionBlocks: React.FC<{
               <View key={item.id} style={styles.metricCard}>
                 <Text style={styles.metricValue}>{item.value}</Text>
                 <Text style={styles.metricLabel}>{item.label}</Text>
-                {item.detail ? <Text style={styles.metricDetail}>{item.detail}</Text> : null}
+                {item.detail ? (
+                  <Text style={styles.metricDetail}>{item.detail}</Text>
+                ) : null}
               </View>
             ))}
           </View>
@@ -1331,7 +1401,9 @@ const AriRenditionBlocks: React.FC<{
                 {block.columns.map((column) => (
                   <View key={`${row.id}-${column.id}`} style={styles.tableCell}>
                     <Text style={styles.tableLabel}>{column.label}</Text>
-                    <Text style={styles.tableValue}>{row.cells[column.id]}</Text>
+                    <Text style={styles.tableValue}>
+                      {row.cells[column.id]}
+                    </Text>
                   </View>
                 ))}
               </View>
@@ -1344,22 +1416,30 @@ const AriRenditionBlocks: React.FC<{
           <View key={block.id} style={styles.steps}>
             {block.items.map((step) => (
               <View key={step.id} style={styles.step}>
-                <View style={[
-                  styles.stepMarker,
-                  step.state === "done" && styles.stepMarkerDone,
-                  step.state === "active" && styles.stepMarkerActive,
-                ]}>
+                <View
+                  style={[
+                    styles.stepMarker,
+                    step.state === "done" && styles.stepMarkerDone,
+                    step.state === "active" && styles.stepMarkerActive,
+                  ]}
+                >
                   <Text style={styles.stepMarkerText}>
-                    {step.state === "done" ? "✓" : step.state === "active" ? "•" : "·"}
+                    {step.state === "done"
+                      ? "✓"
+                      : step.state === "active"
+                        ? "•"
+                        : "·"}
                   </Text>
                 </View>
                 <View style={styles.stepCopy}>
                   <Text style={styles.stepTitle}>{step.label}</Text>
                   <Text style={styles.stepDetail}>{step.detail}</Text>
                 </View>
-                <Text style={styles.stepState}>
-                  {step.state === "active" ? "Now" : step.state === "done" ? "Done" : "Next"}
-                </Text>
+                {step.state === "done" ? null : (
+                  <Text style={styles.stepState}>
+                    {step.state === "active" ? "Now" : "Next"}
+                  </Text>
+                )}
               </View>
             ))}
           </View>
@@ -1368,32 +1448,46 @@ const AriRenditionBlocks: React.FC<{
       if (block.type === "progress") {
         return (
           <View key={block.id} style={styles.blockSection}>
-            {block.label ? <Text style={styles.progressLabel}>{block.label}</Text> : null}
+            {block.label ? (
+              <Text style={styles.progressLabel}>{block.label}</Text>
+            ) : null}
             <View
               style={styles.progressTrack}
               accessibilityRole="progressbar"
               accessibilityValue={{ min: 0, max: 100, now: block.value }}
             >
-              <View style={[styles.progressFill, { width: `${block.value}%` }]} />
+              <View
+                style={[styles.progressFill, { width: `${block.value}%` }]}
+              />
             </View>
           </View>
         );
       }
       if (block.type === "choices") {
         return (
-          <View key={block.id} style={styles.choiceGrid} accessibilityRole="radiogroup">
+          <View
+            key={block.id}
+            style={styles.choiceGrid}
+            accessibilityRole="radiogroup"
+          >
             {block.options.map((choice) => {
               const selected = selectedOptionIds.includes(choice.id);
               return (
                 <Pressable
                   key={choice.id}
                   disabled={interactionLocked}
-                  onPress={() => onSelect(choice.id, block.selection === "multiple")}
+                  onPress={() =>
+                    onSelect(choice.id, block.selection === "multiple")
+                  }
                   accessibilityLabel={choice.label}
-                  accessibilityRole={block.selection === "multiple" ? "checkbox" : "radio"}
-                  accessibilityState={block.selection === "multiple"
-                    ? { checked: selected, disabled: interactionLocked }
-                    : { selected, disabled: interactionLocked }}
+                  accessibilityRole={
+                    block.selection === "multiple" ? "checkbox" : "radio"
+                  }
+                  accessibilityState={
+                    block.selection === "multiple"
+                      ? { checked: selected, disabled: interactionLocked }
+                      : { selected, disabled: interactionLocked }
+                  }
                   style={({ pressed }) => [
                     styles.choice,
                     selected && styles.choiceSelected,
@@ -1402,7 +1496,9 @@ const AriRenditionBlocks: React.FC<{
                   ]}
                 >
                   <Text style={styles.choiceTitle}>{choice.label}</Text>
-                  {choice.detail ? <Text style={styles.choiceDetail}>{choice.detail}</Text> : null}
+                  {choice.detail ? (
+                    <Text style={styles.choiceDetail}>{choice.detail}</Text>
+                  ) : null}
                 </Pressable>
               );
             })}
@@ -1412,7 +1508,9 @@ const AriRenditionBlocks: React.FC<{
       if (block.type === "input") {
         return (
           <View key={block.id} style={styles.fieldWrap}>
-            <Text style={styles.fieldLabel}>{block.field.label.toUpperCase()}</Text>
+            <Text style={styles.fieldLabel}>
+              {block.field.label.toUpperCase()}
+            </Text>
             <TextInput
               editable={block.field.editable !== false && !interactionLocked}
               multiline
@@ -1429,28 +1527,76 @@ const AriRenditionBlocks: React.FC<{
       if (block.type === "code") {
         return (
           <View key={block.id} style={styles.codeBox}>
-            {block.language ? <Text style={styles.codeLanguage}>{block.language}</Text> : null}
-            <Text selectable style={styles.codeText}>{block.code}</Text>
+            {block.language ? (
+              <Text style={styles.codeLanguage}>{block.language}</Text>
+            ) : null}
+            <Text selectable style={styles.codeText}>
+              {block.code}
+            </Text>
           </View>
         );
       }
       if (block.type === "sources") {
         return (
           <View key={block.id} style={styles.sourceList}>
-            {block.items.map((source) => (
-              <View key={source.id} style={styles.sourceCard}>
-                <Text style={styles.sourceTitle}>{source.label}</Text>
-                {source.publisher ? <Text style={styles.sourceMeta}>{source.publisher}</Text> : null}
-                {source.excerpt ? <Text style={styles.sourceExcerpt}>{source.excerpt}</Text> : null}
-                {source.url ? <Text selectable style={styles.sourceUrl}>{source.url}</Text> : null}
-              </View>
-            ))}
+            {block.items.map((source) => {
+              const checkedAt = source.accessed_at
+                ? new Date(source.accessed_at)
+                : null;
+              const checkedLabel =
+                checkedAt && Number.isFinite(checkedAt.getTime())
+                  ? `Checked ${checkedAt.toLocaleDateString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}`
+                  : "Public source";
+              const content = (
+                <>
+                  <Text style={styles.sourceTitle}>{source.label}</Text>
+                  {source.publisher ? (
+                    <Text style={styles.sourceMeta}>{source.publisher}</Text>
+                  ) : null}
+                  {source.excerpt ? (
+                    <Text style={styles.sourceExcerpt}>{source.excerpt}</Text>
+                  ) : null}
+                  <View style={styles.sourceFooter}>
+                    <Text style={styles.sourceFreshness}>{checkedLabel}</Text>
+                    {source.url ? (
+                      <Text style={styles.sourceLink}>Open source ↗</Text>
+                    ) : null}
+                  </View>
+                </>
+              );
+              return source.url ? (
+                <Pressable
+                  key={source.id}
+                  accessibilityRole="link"
+                  accessibilityLabel={`Open ${source.label}${
+                    source.publisher ? ` from ${source.publisher}` : ""
+                  }`}
+                  onPress={() => void Linking.openURL(source.url!)}
+                  style={({ pressed }) => [
+                    styles.sourceCard,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  {content}
+                </Pressable>
+              ) : (
+                <View key={source.id} style={styles.sourceCard}>
+                  {content}
+                </View>
+              );
+            })}
           </View>
         );
       }
       return (
         <View key={block.id} style={[styles.callout, toneStyle(block.tone)]}>
-          {block.title ? <Text style={styles.calloutTitle}>{block.title}</Text> : null}
+          {block.title ? (
+            <Text style={styles.calloutTitle}>{block.title}</Text>
+          ) : null}
           <Text style={styles.calloutBody}>{block.body}</Text>
         </View>
       );
@@ -1481,6 +1627,7 @@ export const AriRenditionCard: React.FC<{
   const [fieldValue, setFieldValue] = useState(fieldModel?.value ?? "");
   const isMulti = choiceModel.multiple;
   const visualState = rendition.state ?? "ready";
+  const graphicCopy = renditionGraphicCopy(rendition);
   const interactionLocked =
     visualState === "loading" ||
     visualState === "submitted" ||
@@ -1546,7 +1693,7 @@ export const AriRenditionCard: React.FC<{
       </View>
       <View style={styles.renditionContent}>
         {rendition.graphic ? (
-          <AriRenditionGraphic variant={rendition.graphic} />
+          <AriRenditionGraphic variant={rendition.graphic} {...graphicCopy} />
         ) : null}
         <View
           style={[
@@ -1580,7 +1727,8 @@ export const AriRenditionCard: React.FC<{
             />
           ) : null}
 
-          {rendition.schema_version === 1 && typeof rendition.progress === "number" ? (
+          {rendition.schema_version === 1 &&
+          typeof rendition.progress === "number" ? (
             <View
               style={styles.progressTrack}
               accessibilityRole="progressbar"
@@ -1618,13 +1766,11 @@ export const AriRenditionCard: React.FC<{
                     <Text style={styles.stepTitle}>{step.label}</Text>
                     <Text style={styles.stepDetail}>{step.detail}</Text>
                   </View>
-                  <Text style={styles.stepState}>
-                    {step.state === "active"
-                      ? "Now"
-                      : step.state === "done"
-                        ? "Done"
-                        : "Next"}
-                  </Text>
+                  {step.state === "done" ? null : (
+                    <Text style={styles.stepState}>
+                      {step.state === "active" ? "Now" : "Next"}
+                    </Text>
+                  )}
                 </View>
               ))}
             </View>
@@ -1893,13 +2039,11 @@ export const AriRenditionPreview: React.FC<{
                       <Text style={styles.stepTitle}>{step.label}</Text>
                       <Text style={styles.stepDetail}>{step.detail}</Text>
                     </View>
-                    <Text style={styles.stepState}>
-                      {step.state === "active"
-                        ? "Now"
-                        : step.state === "done"
-                          ? "Done"
-                          : "Next"}
-                    </Text>
+                    {step.state === "done" ? null : (
+                      <Text style={styles.stepState}>
+                        {step.state === "active" ? "Now" : "Next"}
+                      </Text>
+                    )}
                   </View>
                 ))}
               </View>
@@ -2349,8 +2493,17 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     gap: spacing.xs,
   },
-  tableCell: { flexDirection: "row", justifyContent: "space-between", gap: spacing.md },
-  tableLabel: { flex: 1, color: ariThread.tertiaryText, fontSize: 10, lineHeight: 15 },
+  tableCell: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  tableLabel: {
+    flex: 1,
+    color: ariThread.tertiaryText,
+    fontSize: 10,
+    lineHeight: 15,
+  },
   tableValue: {
     flex: 2,
     color: textTokens.primary,
@@ -2359,7 +2512,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textAlign: "right",
   },
-  progressLabel: { color: ariThread.secondaryText, fontSize: 11, lineHeight: 16 },
+  progressLabel: {
+    color: ariThread.secondaryText,
+    fontSize: 11,
+    lineHeight: 16,
+  },
   sourceList: { gap: spacing.sm },
   sourceCard: {
     borderLeftWidth: 2,
@@ -2367,10 +2524,36 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.sm,
     gap: 2,
   },
-  sourceTitle: { color: textTokens.primary, fontSize: 12, lineHeight: 17, fontWeight: "700" },
+  sourceTitle: {
+    color: textTokens.primary,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "700",
+  },
   sourceMeta: { color: ariThread.tertiaryText, fontSize: 10, lineHeight: 14 },
-  sourceExcerpt: { color: ariThread.secondaryText, fontSize: 11, lineHeight: 17 },
-  sourceUrl: { color: "#f2aa78", fontSize: 10, lineHeight: 15 },
+  sourceExcerpt: {
+    color: ariThread.secondaryText,
+    fontSize: 11,
+    lineHeight: 17,
+  },
+  sourceFooter: {
+    marginTop: spacing.xs,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  sourceFreshness: {
+    color: ariThread.tertiaryText,
+    fontSize: 10,
+    lineHeight: 15,
+  },
+  sourceLink: {
+    color: "#f2aa78",
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "700",
+  },
   callout: {
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -2379,7 +2562,12 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
-  calloutTitle: { color: textTokens.primary, fontSize: 12, lineHeight: 17, fontWeight: "700" },
+  calloutTitle: {
+    color: textTokens.primary,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "700",
+  },
   calloutBody: { color: ariThread.secondaryText, fontSize: 11, lineHeight: 17 },
   rows: { marginTop: spacing.xs },
   row: {

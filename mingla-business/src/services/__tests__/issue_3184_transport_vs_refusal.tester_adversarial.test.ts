@@ -128,21 +128,37 @@ beforeEach(() => {
 
 describe("#3184 T-A7 a request that never reached Mingla is the only connection failure", () => {
   it.each([
-    ["a DNS / socket failure", () => Promise.reject(new TypeError("Network request failed"))],
+    [
+      "a DNS / socket failure",
+      () => Promise.reject(new TypeError("Network request failed")),
+    ],
     [
       "an aborted request",
-      () => Promise.reject(Object.assign(new Error("The operation was aborted."), { name: "AbortError" })),
+      () =>
+        Promise.reject(
+          Object.assign(new Error("The operation was aborted."), {
+            name: "AbortError",
+          }),
+        ),
     ],
-    ["a TLS failure with a hostile message", () => Promise.reject(new Error("FORBIDDEN <html>certificate</html>"))],
-  ])("%s through the real functions client gets the connection copy", async (_label, answer) => {
-    const toast = await toastFor(answer);
-    expect(toast.code).toBe("TRANSPORT_UNAVAILABLE");
-    expect(toast.copy).toBe(ARI_CHAT_CONNECTION_COPY);
-    expect(toast.reported).toBe(false);
-  });
+    [
+      "a TLS failure with a hostile message",
+      () => Promise.reject(new Error("FORBIDDEN <html>certificate</html>")),
+    ],
+  ])(
+    "%s through the real functions client gets the connection copy",
+    async (_label, answer) => {
+      const toast = await toastFor(answer);
+      expect(toast.code).toBe("TRANSPORT_UNAVAILABLE");
+      expect(toast.copy).toBe(ARI_CHAT_CONNECTION_COPY);
+      expect(toast.reported).toBe(false);
+    },
+  );
 
   it("every Ari call sharing extractError classifies a fetch failure the same way", async () => {
-    mockFetch.mockImplementation(() => Promise.reject(new TypeError("Network request failed")));
+    mockFetch.mockImplementation(() =>
+      Promise.reject(new TypeError("Network request failed")),
+    );
     const confirm = await confirmAgentAction({ pending_action_id: "pa-3184" });
     const cancel = await cancelAgentAction("pa-3184");
     for (const result of [confirm, cancel]) {
@@ -158,7 +174,11 @@ describe("#3184 T-A7 a request that never reached Mingla is the only connection 
 describe("#3184 T-A7 a server that answered is never blamed on the connection", () => {
   it("a relay error (x-relay-error: true) is not a transport failure", async () => {
     const toast = await toastFor(async () =>
-      jsonResponse(502, { message: "Function not reachable from relay" }, { "x-relay-error": "true" }),
+      jsonResponse(
+        502,
+        { message: "Function not reachable from relay" },
+        { "x-relay-error": "true" },
+      ),
     );
     expect(toast.code).not.toBe("TRANSPORT_UNAVAILABLE");
     expect(toast.copy).not.toBe(ARI_CHAT_CONNECTION_COPY);
@@ -166,22 +186,48 @@ describe("#3184 T-A7 a server that answered is never blamed on the connection", 
     expect(toast.reported).toBe(true);
   });
 
+  it("never exposes a legacy gateway diagnostic as the user message", async () => {
+    mockFetch.mockImplementationOnce(async () =>
+      jsonResponse(502, {
+        code: "EDGE_ERROR",
+        message: "name resolution failed: RESEARCH_NOT_CONFIGURED",
+      }),
+    );
+    const result = await sendAgentMessage(SEND_ARGS);
+    expect(result.kind).toBe("error");
+    if (result.kind !== "error") throw new Error("expected an error result");
+    expect(result.code).toBe("EDGE_ERROR");
+    expect(result.message).toBe("Ari couldn't respond — try again");
+    expect(result.message).not.toMatch(
+      /name resolution|RESEARCH_NOT_CONFIGURED/,
+    );
+  });
+
   it("a relay error carrying a connection-shaped envelope still does not get connection copy unless its code says so", async () => {
     const toast = await toastFor(async () =>
-      jsonResponse(503, errorEnvelope("DEPENDENCY_UNAVAILABLE", {
-        user_message: "Ari could not connect. Retry when your connection is stable.",
-      }), { "x-relay-error": "true" }),
+      jsonResponse(
+        503,
+        errorEnvelope("DEPENDENCY_UNAVAILABLE", {
+          user_message:
+            "Ari could not connect. Retry when your connection is stable.",
+        }),
+        { "x-relay-error": "true" },
+      ),
     );
     expect(toast.code).toBe("DEPENDENCY_UNAVAILABLE");
     expect(toast.copy).not.toMatch(CONNECTION_WORDS);
   });
 
   it("a gateway HTML page is an unclassified edge error with honest copy, and it is reported", async () => {
-    const toast = await toastFor(async () =>
-      new Response("<!DOCTYPE html><html><body>502 Bad Gateway</body></html>", {
-        status: 502,
-        headers: { "Content-Type": "text/html" },
-      }),
+    const toast = await toastFor(
+      async () =>
+        new Response(
+          "<!DOCTYPE html><html><body>502 Bad Gateway</body></html>",
+          {
+            status: 502,
+            headers: { "Content-Type": "text/html" },
+          },
+        ),
     );
     expect(toast.code).toBe("EDGE_ERROR");
     expect(toast.copy).not.toMatch(CONNECTION_WORDS);
@@ -198,7 +244,9 @@ describe("#3184 T-A7 a server that answered is never blamed on the connection", 
   ] as Array<[number, AriErrorCode]>)(
     "a %i %s refusal envelope keeps its exact code and non-network copy",
     async (status, code) => {
-      const toast = await toastFor(async () => jsonResponse(status, errorEnvelope(code)));
+      const toast = await toastFor(async () =>
+        jsonResponse(status, errorEnvelope(code)),
+      );
       expect(toast.code).toBe(code);
       expect(toast.copy).not.toMatch(CONNECTION_WORDS);
       expect(toast.copy).toBe(ariChatErrorCopy(code));
@@ -208,17 +256,28 @@ describe("#3184 T-A7 a server that answered is never blamed on the connection", 
 
   it("the toast copy comes from the code, never from a server user_message that mentions the connection", async () => {
     const toast = await toastFor(async () =>
-      jsonResponse(403, errorEnvelope("FORBIDDEN", {
-        user_message: "Check your connection and try again.",
-      })),
+      jsonResponse(
+        403,
+        errorEnvelope("FORBIDDEN", {
+          user_message: "Check your connection and try again.",
+        }),
+      ),
     );
     expect(toast.code).toBe("FORBIDDEN");
-    expect(toast.copy).toBe("Your role on this brand doesn't allow that. Nothing was changed.");
+    expect(toast.copy).toBe(
+      "Your role on this brand doesn't allow that. Nothing was changed.",
+    );
   });
 
   it("an envelope this app refuses (unattested release) is ENVELOPE_INVALID, reported, not a connection problem", async () => {
     const toast = await toastFor(async () =>
-      jsonResponse(403, errorEnvelope("FORBIDDEN", { release_sha: "unattested", function_version: "unknown" })),
+      jsonResponse(
+        403,
+        errorEnvelope("FORBIDDEN", {
+          release_sha: "unattested",
+          function_version: "unknown",
+        }),
+      ),
     );
     expect(toast.code).toBe("ENVELOPE_INVALID");
     expect(toast.copy).not.toMatch(CONNECTION_WORDS);
@@ -233,7 +292,10 @@ describe("#3184 T-A7 a server that answered is never blamed on the connection", 
 
   it("a legacy JSON body naming a transport-looking code in the wrong case does not unlock connection copy", async () => {
     const toast = await toastFor(async () =>
-      jsonResponse(500, { code: "transport_unavailable", message: "upstream went away" }),
+      jsonResponse(500, {
+        code: "transport_unavailable",
+        message: "upstream went away",
+      }),
     );
     expect(toast.code).toBe("transport_unavailable");
     expect(toast.copy).not.toBe(ARI_CHAT_CONNECTION_COPY);
@@ -251,21 +313,29 @@ describe("#3184 T-A7 a server that answered is never blamed on the connection", 
     for (const code of families) {
       if (code === "TRANSPORT_UNAVAILABLE" || code === "OFFLINE") continue;
       mockFetch.mockReset();
-      const toast = await toastFor(async () => jsonResponse(code === "RATE_LIMITED" ? 429 : 409, errorEnvelope(code)));
-      expect({ code: toast.code, connection: CONNECTION_WORDS.test(toast.copy) }).toEqual({
+      const toast = await toastFor(async () =>
+        jsonResponse(code === "RATE_LIMITED" ? 429 : 409, errorEnvelope(code)),
+      );
+      expect({
+        code: toast.code,
+        connection: CONNECTION_WORDS.test(toast.copy),
+      }).toEqual({
         code,
         connection: false,
       });
     }
   });
 
-  it.each(["__proto__", "hasOwnProperty", "TRANSPORT_UNAVAILABLE ", " TRANSPORT_UNAVAILABLE", "Transport_Unavailable"])(
-    "the lookalike code %p never receives connection copy",
-    (code) => {
-      expect(ariChatErrorCopy(code)).not.toBe(ARI_CHAT_CONNECTION_COPY);
-      expect(shouldReportAriChatError(code)).toBe(true);
-    },
-  );
+  it.each([
+    "__proto__",
+    "hasOwnProperty",
+    "TRANSPORT_UNAVAILABLE ",
+    " TRANSPORT_UNAVAILABLE",
+    "Transport_Unavailable",
+  ])("the lookalike code %p never receives connection copy", (code) => {
+    expect(ariChatErrorCopy(code)).not.toBe(ARI_CHAT_CONNECTION_COPY);
+    expect(shouldReportAriChatError(code)).toBe(true);
+  });
 });
 
 describe("#3184 T-A7 the Ari chat screen takes its toast from the copy module", () => {
@@ -285,6 +355,8 @@ describe("#3184 T-A7 the Ari chat screen takes its toast from the copy module", 
     expect(screen).toContain("if (shouldReportAriChatError(result.code)) {");
     // The #3186 lazy reporter survives: no module-scope diagnostics import.
     expect(screen).not.toMatch(/^import[^\n]*diagnostics\/reportNonFatal/m);
-    expect(screen).toMatch(/await import\(\s*"\.\.\/\.\.\/diagnostics\/reportNonFatal"/);
+    expect(screen).toMatch(
+      /await import\(\s*"\.\.\/\.\.\/diagnostics\/reportNonFatal"/,
+    );
   });
 });

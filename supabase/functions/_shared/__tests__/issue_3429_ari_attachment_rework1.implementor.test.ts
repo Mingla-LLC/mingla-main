@@ -24,6 +24,7 @@ import {
 import {
   loadAriTurnStatus,
   sweepInterruptedAriTurnAttempt,
+  sweepInterruptedAriTurnAttemptsForUser,
 } from "../agentTurnSweep.ts";
 
 const encoder = new TextEncoder();
@@ -337,7 +338,12 @@ Deno.test("#3429 R1 copy: no failure sentence but ENCRYPTED_FILE mentions passwo
     );
   }
   for (
-    const code of ["CORRUPT_FILE", "UNREADABLE_FILE", "UPLOAD_INCOMPLETE", "SOMETHING_NEW"]
+    const code of [
+      "CORRUPT_FILE",
+      "UNREADABLE_FILE",
+      "UPLOAD_INCOMPLETE",
+      "SOMETHING_NEW",
+    ]
   ) {
     assert(
       !stableFailureMessage(code, "menu.pdf").toLowerCase().includes(
@@ -510,7 +516,11 @@ function validHeic(): Uint8Array {
 
 function indexOfAscii(bytes: Uint8Array, text: string, from = 0): number {
   const needle = encoder.encode(text);
-  outer: for (let start = from; start <= bytes.length - needle.length; start++) {
+  outer: for (
+    let start = from;
+    start <= bytes.length - needle.length;
+    start++
+  ) {
     for (let index = 0; index < needle.length; index += 1) {
       if (bytes[start + index] !== needle[index]) continue outer;
     }
@@ -655,15 +665,39 @@ function deflatedZip(parts: ZipPart[]): Uint8Array {
   for (const part of parts) {
     const name = encoder.encode(part.name);
     const local = concat(
-      le32(0x04034b50), le16(20), le16(0), le16(8), le16(0), le16(0),
-      le32(part.crc), le32(part.compressed.length), le32(part.uncompressedSize),
-      le16(name.length), le16(0), name, part.compressed,
+      le32(0x04034b50),
+      le16(20),
+      le16(0),
+      le16(8),
+      le16(0),
+      le16(0),
+      le32(part.crc),
+      le32(part.compressed.length),
+      le32(part.uncompressedSize),
+      le16(name.length),
+      le16(0),
+      name,
+      part.compressed,
     );
     central.push(concat(
-      le32(0x02014b50), le16(20), le16(20), le16(0), le16(8), le16(0),
-      le16(0), le32(part.crc), le32(part.compressed.length),
-      le32(part.uncompressedSize), le16(name.length), le16(0), le16(0),
-      le16(0), le16(0), le32(0), le32(offset), name,
+      le32(0x02014b50),
+      le16(20),
+      le16(20),
+      le16(0),
+      le16(8),
+      le16(0),
+      le16(0),
+      le32(part.crc),
+      le32(part.compressed.length),
+      le32(part.uncompressedSize),
+      le16(name.length),
+      le16(0),
+      le16(0),
+      le16(0),
+      le16(0),
+      le32(0),
+      le32(offset),
+      name,
     ));
     locals.push(local);
     offset += local.length;
@@ -671,9 +705,16 @@ function deflatedZip(parts: ZipPart[]): Uint8Array {
   const localBytes = concat(...locals);
   const centralBytes = concat(...central);
   return concat(
-    localBytes, centralBytes, le32(0x06054b50), le16(0), le16(0),
-    le16(parts.length), le16(parts.length), le32(centralBytes.length),
-    le32(localBytes.length), le16(0),
+    localBytes,
+    centralBytes,
+    le32(0x06054b50),
+    le16(0),
+    le16(0),
+    le16(parts.length),
+    le16(parts.length),
+    le32(centralBytes.length),
+    le32(localBytes.length),
+    le16(0),
   );
 }
 
@@ -726,7 +767,11 @@ Deno.test("#3429 R1 PDF-1: an image-bearing PDF (opaque DCTDecode stream) reache
   const pdf = await Deno.readFile(
     new URL("./fixtures/issue_3429/image-2048.pdf", import.meta.url),
   );
-  const verified = await verifyAriAttachment(pdf, "application/pdf", pdf.length);
+  const verified = await verifyAriAttachment(
+    pdf,
+    "application/pdf",
+    pdf.length,
+  );
   assertEquals(verified.verifiedMime, "application/pdf");
   assertEquals(verified.processingMetadata.page_count, 1);
 });
@@ -735,7 +780,11 @@ Deno.test("#3429 R1 PDF-2: an indirect /Length reference resolves through the xr
   const pdf = await Deno.readFile(
     new URL("./fixtures/issue_3429/indirect-length.pdf", import.meta.url),
   );
-  const verified = await verifyAriAttachment(pdf, "application/pdf", pdf.length);
+  const verified = await verifyAriAttachment(
+    pdf,
+    "application/pdf",
+    pdf.length,
+  );
   assertEquals(verified.verifiedMime, "application/pdf");
 
   const latin = new TextDecoder("latin1").decode(pdf);
@@ -787,7 +836,12 @@ Deno.test("#3429 R1 turn sweep: status fails a running attempt silent for 421 s 
   const events = stale.tables.get("agent_activity_events") ?? [];
   assertEquals(events.map((event) => event.event_type), ["failed"]);
 
-  for (const [status, secondsAgo] of [["running", 419], ["completed", 900]] as const) {
+  for (
+    const [status, secondsAgo] of [["running", 419], [
+      "completed",
+      900,
+    ]] as const
+  ) {
     const db = new FakeDb();
     db.tables.set("agent_turn_attempts", [attemptRow(status, secondsAgo)]);
     const swept = await sweepInterruptedAriTurnAttempt({
@@ -800,4 +854,54 @@ Deno.test("#3429 R1 turn sweep: status fails a running attempt silent for 421 s 
     assertEquals(db.tables.get("agent_turn_attempts")![0].status, status);
     assertEquals(db.rpcCalls.length, 0);
   }
+});
+
+Deno.test("#3429 R1 turn sweep: a new request reaps every stale in-flight row for that user only", async () => {
+  const db = new FakeDb();
+  const otherUser = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  db.tables.set("agent_turn_attempts", [
+    { ...attemptRow("running", 500), id: "stale-running" },
+    {
+      ...attemptRow("accepted", 700),
+      id: "stale-accepted",
+      client_turn_id: "turn-accepted",
+    },
+    {
+      ...attemptRow("running", 100),
+      id: "live-running",
+      client_turn_id: "turn-live",
+    },
+    {
+      ...attemptRow("running", 800),
+      id: "other-user",
+      user_id: otherUser,
+      client_turn_id: "turn-other",
+    },
+  ]);
+
+  const swept = await sweepInterruptedAriTurnAttemptsForUser({
+    admin: db.client(),
+    userId: USER,
+    nowMs: NOW,
+  });
+
+  assertEquals(swept, 2);
+  const rows = db.tables.get("agent_turn_attempts")!;
+  assertEquals(
+    rows.find((row) => row.id === "stale-running")?.status,
+    "failed",
+  );
+  assertEquals(
+    rows.find((row) => row.id === "stale-accepted")?.status,
+    "failed",
+  );
+  assertEquals(
+    rows.find((row) => row.id === "live-running")?.status,
+    "running",
+  );
+  assertEquals(rows.find((row) => row.id === "other-user")?.status, "running");
+  assertEquals(
+    (db.tables.get("agent_activity_events") ?? []).map((row) => row.event_type),
+    ["failed", "failed"],
+  );
 });

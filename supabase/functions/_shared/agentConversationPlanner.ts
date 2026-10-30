@@ -62,9 +62,21 @@ export interface PlannerResult {
 }
 
 export function isCreateEventPlanningRequest(text: string): boolean {
-  return /\b(?:create|make|set up|setup|schedule|host|plan|start)\b[\s\S]{0,80}\b(?:event|gathering|party|show)\b/i
-    .test(text) ||
-    /\b(?:event|gathering|party|show)\b[\s\S]{0,80}\b(?:create|make|set up|setup|schedule|host|plan|start)\b/i
+  const actionToListing =
+    /\b(?:create|make|set up|setup|schedule|host|plan|start)\b[\s\S]{0,80}\b(?:event|gathering|party)\b/i
+      .test(text);
+  // “Show me the steps” uses show as a verb. Only treat show as an offering
+  // noun when the phrase itself is noun-shaped (plan a show, create our show,
+  // etc.). This avoids routing ordinary “show me a business plan” requests
+  // into the event intake state machine.
+  const actionToShow =
+    /\b(?:create|make|set up|setup|schedule|host|plan|start)\b[\s\S]{0,80}\b(?:(?:a|an|the|my|our|this)\s+show|show\s+(?:for|at|on|with|called|named))\b/i
+      .test(text);
+  return actionToListing || actionToShow ||
+    // "Show me a plan" is a general planning request, not a request to create
+    // an entertainment show. Keep the ambiguous noun out of the reverse form;
+    // explicit "plan a show" still matches the forward form above.
+    /\b(?:event|gathering|party)\b[\s\S]{0,80}\b(?:create|make|set up|setup|schedule|host|plan|start)\b/i
       .test(text);
 }
 
@@ -111,6 +123,9 @@ export function extractEventBrief(text: string): EventBrief {
   const experience: string[] = [];
   if (/\bfood\b/.test(lower)) concepts.push("food");
   if (/\bmusic\b/.test(lower)) concepts.push("music");
+  if (/\bprivate\b/.test(lower)) concepts.push("private");
+  else if (/\bunlisted\b/.test(lower)) concepts.push("unlisted");
+  else if (/\bpublic\b/.test(lower)) concepts.push("public");
   if (/\bjollof(?:\s+rice)?\b/.test(lower)) {
     food.push(text.match(/\bjollof(?:\s+rice)?\b/i)?.[0] ?? "jollof");
   }
@@ -134,12 +149,27 @@ export function extractEventBrief(text: string): EventBrief {
 }
 
 function extractTitle(text: string): string | undefined {
-  const explicit = text.match(
+  const explicitMatch = text.match(
     /\b(?:called|named|title(?:d)?)\s+["“']?([^"”'.,!?]{3,80})/i,
   )?.[1]?.trim();
+  const explicit = explicitMatch?.replace(
+    /\s+(?:on|at)\s+(?=(?:today|tomorrow|next|this|in\s+\d+|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)|\d{1,4}[-/:]))[\s\S]*$/i,
+    "",
+  ).trim();
   if (explicit) return explicit.slice(0, 80);
   const quoted = text.match(/["“]([^"”]{3,80})["”]/)?.[1]?.trim();
   return quoted ? quoted.slice(0, 80) : undefined;
+}
+
+function extractGuestCapacity(text: string): number | undefined {
+  const raw = text.match(
+    /\b(?:for(?:\s+exactly|\s+up\s+to)?|capacity(?:\s+of)?|limit(?:ed)?\s+to)\s+(\d{1,5})\s+(?:guests?|people|attendees?|spots?)\b/i,
+  )?.[1];
+  if (!raw) return undefined;
+  const capacity = Number(raw);
+  return Number.isInteger(capacity) && capacity > 0 && capacity <= 5000
+    ? capacity
+    : undefined;
 }
 
 function suggestedTitles(brief: EventBrief): string[] {
@@ -333,7 +363,13 @@ function proposalText(state: TaskStateV1, brandName: string): string {
     timeZoneName: "short",
   }).format(new Date(startAt));
   const kind = state.active_task.intent === "create_rsvp" ? "RSVP" : "event";
-  return `Ready to create “${title}” as a draft ${kind} for ${brandName} on ${display}. The draft will write the brand, title, and start time; your creative ideas stay in this plan for later refinement.`;
+  const capacity = state.active_task.slots.capacity?.status === "resolved"
+    ? Number(state.active_task.slots.capacity.value)
+    : null;
+  const admission = capacity && kind === "event"
+    ? ` It includes a free General admission tier limited to ${capacity} guests.`
+    : "";
+  return `Ready to create “${title}” as a draft ${kind} for ${brandName} on ${display}.${admission} The draft will write the brand, title, start time, and every confirmed limit; your creative ideas stay in this plan for later refinement.`;
 }
 
 function finalizeResult(
@@ -463,6 +499,7 @@ export function planEventTurn(
       intent: isCreateRsvpPlanningRequest(userText)
         ? "create_rsvp"
         : "create_event",
+      capacity: extractGuestCapacity(userText),
     });
     intro = usefulBrief(context.activeBrand.name, brief);
   }
@@ -477,6 +514,17 @@ export function planEventTurn(
   if (title) {
     state = applySlotUpdates(state, {
       title: resolvedSlot(title, "user", context.now.toISOString(), title),
+    }, state.pending_question);
+  }
+  const capacity = extractGuestCapacity(userText);
+  if (capacity && state.active_task?.intent === "create_event") {
+    state = applySlotUpdates(state, {
+      capacity: resolvedSlot(
+        capacity,
+        "user",
+        context.now.toISOString(),
+        `${capacity} guests`,
+      ),
     }, state.pending_question);
   }
   const time = incorporateTime(state, userText, context);

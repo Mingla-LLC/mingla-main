@@ -2,25 +2,20 @@
  * ORCH-0821 — Ari empty state (first run).
  * Big orb + headline + body.
  *
- * ORCH-1057 — removed the always-on 3-chip wall (it duplicated the
- * `+`-triggered suggestions panel, the single intended entry point for
- * examples). Replaced with one quiet, non-tappable hint row that points at
- * the composer `+` so a first-run user is never stranded.
+ * ORCH-1057 — removed the always-on 3-chip wall.
+ * #3355 — the follow-on `+` instruction was removed as well. The composer
+ * already communicates its attachment affordance; repeating it in the hero
+ * made Ari's first impression feel instructional instead of intelligent.
  *
  * #3429 REWORK-4 N-1 — PRIORITY, not trimming. The hero draws inside a box
  * whose visible bottom edge is clamped to the composer's top edge while the
  * keyboard is up (AriChatScreen owns that clamp). REWORK-2 satisfied the
  * no-overlap criterion by letting the whole empty state overflow that edge and
- * clipping it, which cost a first-run user the body sentence AND the entire
- * attach hint — on an iPhone SE, both — at the exact moment they tap the
- * composer. That is the one instruction this feature exists to ship.
+ * clipping it, which cut first-run content on compact phones at the exact
+ * moment the composer opened.
  *
- * The empty state is now two zones with an explicit drop order:
- *   - the DECORATIVE zone (orb, headline, body) is capped to whatever height is
- *     still visible and clips, so it is what gives way first;
- *   - the HINT zone never shrinks and is laid out immediately after it, so the
- *     attach hint is the LAST content dropped and is always inside the visible
- *     region — above the composer, never behind it.
+ * The hero (orb, headline and body) is capped to the space that remains above
+ * the composer. Children step down or disappear whole rather than clipping.
  *
  * NOTHING IS EVER CLIPPED. A half-drawn shape reads as a rendering bug rather
  * than as a deliberate reduction, so every child is either drawn whole or not
@@ -42,17 +37,13 @@
  *   - at rest the offset resolves to exactly what centring produced, so the
  *     resting layout is pixel-identical to what shipped before;
  *   - while the keyboard is up the orb and headline do not move at all — the
- *     ORCH-1057 no-jump contract — and the hint row rises with the visible
- *     bottom edge instead of being trimmed off it.
+ *     ORCH-1057 no-jump contract.
  */
 
 import React from "react";
 import { type LayoutChangeEvent, StyleSheet, Text, View } from "react-native";
-import { Plus } from "lucide-react-native";
 
 import {
-  glass,
-  radius,
   spacing,
   text as textTokens,
   typography,
@@ -157,7 +148,9 @@ function useRowBottom(): [number, (event: LayoutChangeEvent) => void] {
 }
 
 export const EmptyState: React.FC = () => {
-  const { viewportBottomClampPx } = React.useContext(AriEmptyStateLayoutContext);
+  const { viewportBottomClampPx } = React.useContext(
+    AriEmptyStateLayoutContext,
+  );
   // The host fills the screen's resting box, whose height is keyboard-
   // independent by construction, so this measures the RESTING height even while
   // the keyboard is up. That is what keeps the orb still.
@@ -172,25 +165,28 @@ export const EmptyState: React.FC = () => {
   // anything at all (handbook §8.7), and that remounts this component, so the
   // high-water mark is re-taken exactly when it should be.
   const [heroContentPx, setHeroContentPx] = React.useState(0);
-  const handleHeroLayout = React.useCallback((event: LayoutChangeEvent): void => {
-    const next = Math.round(event.nativeEvent.layout.height);
-    setHeroContentPx((previous) => (next > previous ? next : previous));
-  }, []);
-  const [hintHeightPx, handleHintLayout] = useMeasuredHeight();
+  const handleHeroLayout = React.useCallback(
+    (event: LayoutChangeEvent): void => {
+      const next = Math.round(event.nativeEvent.layout.height);
+      setHeroContentPx((previous) => (next > previous ? next : previous));
+    },
+    [],
+  );
   // Where each text row ENDS inside the decorative zone. A row is shown only if
   // the cap reaches its bottom edge.
   const [headlineBottomPx, handleHeadlineLayout] = useRowBottom();
   const [bodyBottomPx, handleBodyLayout] = useRowBottom();
 
-  const measured = restingHeightPx > 0 && heroContentPx > 0 && hintHeightPx > 0;
+  const measured = restingHeightPx > 0 && heroContentPx > 0;
   // What `justifyContent: "center"` used to resolve to for the whole group. It
   // does not reference the clamp, so it never moves.
   const centredTopOffsetPx = Math.round(
-    (restingHeightPx - HOST_PADDING_BOTTOM - heroContentPx - hintHeightPx) / 2,
+    (restingHeightPx - HOST_PADDING_BOTTOM - heroContentPx) / 2,
   );
   // How much of the resting box is still visible once the clamp lifts the
   // bottom edge to the composer's top.
-  const visibleHeightPx = restingHeightPx - viewportBottomClampPx - HOST_PADDING_BOTTOM;
+  const visibleHeightPx =
+    restingHeightPx - viewportBottomClampPx - HOST_PADDING_BOTTOM;
 
   // Where the decorative content starts, from the top of the resting box —
   // centred, but never so high that an orb's halo would be cut by the chat
@@ -198,12 +194,9 @@ export const EmptyState: React.FC = () => {
   const heroTopOffsetPx = measured
     ? Math.max(ORB_INK_HEADROOM_PX, centredTopOffsetPx)
     : 0;
-  // What the decorative zone may occupy once the hint row has taken its share.
-  // Capped, never margined: a margin is not shrinkable, so at an extreme clamp
-  // (tall attachment tray + keyboard on a small phone) it would push the hint
-  // row off the visible box — the exact failure REWORK-4 ended.
+  // What the hero may occupy above the composer.
   const heroMaxHeightPx = measured
-    ? Math.max(0, visibleHeightPx - hintHeightPx - heroTopOffsetPx)
+    ? Math.max(0, visibleHeightPx - heroTopOffsetPx)
     : 0;
   // The largest orb whose INK fits below that offset. Stepping down through
   // AriOrb's own sizes keeps the halo a circle at every keyboard height, and
@@ -215,8 +208,10 @@ export const EmptyState: React.FC = () => {
   // A text row that cannot be shown IN FULL is not shown. The rows are in
   // document order, so hiding one always hides the ones below it and never
   // moves the ones above it — nothing reflows, it only disappears.
-  const showHeadline = !measured || headlineBottomPx === 0 || headlineBottomPx <= heroMaxHeightPx;
-  const showBody = showHeadline && (bodyBottomPx === 0 || bodyBottomPx <= heroMaxHeightPx);
+  const showHeadline =
+    !measured || headlineBottomPx === 0 || headlineBottomPx <= heroMaxHeightPx;
+  const showBody =
+    showHeadline && (bodyBottomPx === 0 || bodyBottomPx <= heroMaxHeightPx);
 
   return (
     <View
@@ -226,53 +221,32 @@ export const EmptyState: React.FC = () => {
       <View
         style={[
           styles.heroClip,
-          measured ? { marginTop: heroTopOffsetPx, maxHeight: heroMaxHeightPx } : null,
+          measured
+            ? { marginTop: heroTopOffsetPx, maxHeight: heroMaxHeightPx }
+            : null,
         ]}
       >
         <View style={styles.heroContent} onLayout={handleHeroLayout}>
           {orb ? (
             <View style={styles.orbWrap}>
-              <AriOrb size={orb.size} decorative={false} accessibilityLabel="Ari" />
+              <AriOrb
+                size={orb.size}
+                decorative={false}
+                accessibilityLabel="Ari"
+              />
             </View>
           ) : null}
           {showHeadline ? (
-            <Text style={styles.headline} onLayout={handleHeadlineLayout}>Hi, I&apos;m Ari.</Text>
+            <Text style={styles.headline} onLayout={handleHeadlineLayout}>
+              What should we tackle?
+            </Text>
           ) : null}
           {showBody ? (
             <Text style={styles.body} onLayout={handleBodyLayout}>
-              I can create events, manage brands, and answer questions about your business.
+              Tell me the outcome. I&apos;ll make a plan, use the right tools,
+              and ask before anything important.
             </Text>
           ) : null}
-        </View>
-      </View>
-      {/* ORCH-1101 REWORK Bug #5: the hint must reference the ACTUAL + button, not
-          a literal "+" character. The "word" is the button glyph itself, rendered
-          as a chip that mirrors the InputBar "+" suggestions button (bordered
-          circle, lucide Plus) inline in the sentence. accessibilityLabel keeps the
-          spoken sentence natural. #3429 gives the + button to attachments.
-
-          [TEST-MOD-APPROVED #3429] REWORK-2 R-3: this docblock deliberately does
-          NOT quote the shipped sentence. Three suites assert the first-run copy is
-          byte-stable by reading this file, and while the prose quoted the sentence
-          those assertions were satisfied by the comment alone — the shipped copy
-          could be changed to anything and all three still passed. Do not restore
-          a quotation here; the copy is below, and the assertions are anchored to
-          the <Text> element that renders it.
-
-          #3429 REWORK-4 N-1: this row is the LAST thing dropped. Its zone does
-          not shrink and is measured, so the decorative zone above can be sized
-          around it. */}
-      <View style={styles.hintZone} onLayout={handleHintLayout}>
-        <View
-          style={styles.hintRow}
-          accessibilityRole="text"
-          accessibilityLabel="Tap the plus button to attach context"
-        >
-          <Text style={styles.hintText}>Tap </Text>
-          <View style={styles.hintChip} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <Plus size={13} color={textTokens.tertiary} strokeWidth={2.25} />
-          </View>
-          <Text style={styles.hintText}> to attach context</Text>
         </View>
       </View>
     </View>
@@ -291,8 +265,7 @@ const styles = StyleSheet.create({
   hostBeforeMeasurement: {
     justifyContent: "center",
   },
-  // #3429 REWORK-4 N-1 — the decorative zone: capped to what is still visible,
-  // so it is the thing that gives way while the hint row below it does not.
+  // #3429 REWORK-4 N-1 — the decorative zone is capped to what is visible.
   // #3429 REWORK-5 F-1 — and it carries no `overflow`, on purpose. Every child
   // is drawn whole or not drawn, so there is nothing left to clip; a clipping
   // box here is what sheared the orb's halo flat and sliced it in half on the
@@ -313,50 +286,20 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   headline: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: "700",
+    letterSpacing: -0.7,
     color: textTokens.primary,
     textAlign: "center",
   },
   body: {
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
     fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    lineHeight: 24,
     color: textTokens.secondary,
     textAlign: "center",
-    maxWidth: 280,
-  },
-  // `flexShrink: 0` is the whole contract: the attach hint outlives the hero.
-  // The gap that used to be the hint row's marginTop lives here as padding so
-  // the measured height includes it.
-  hintZone: {
-    flexShrink: 0,
-    alignItems: "center",
-    paddingTop: spacing.xl,
-  },
-  hintRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  // ORCH-1101 REWORK Bug #5: a bordered circle chip that visually quotes the
-  // InputBar "+" suggestions button so the hint literally points at it.
-  hintChip: {
-    width: 22,
-    height: 22,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    alignItems: "center",
-    justifyContent: "center",
-    marginHorizontal: 2,
-  },
-  hintText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: textTokens.tertiary,
+    maxWidth: 360,
   },
 });
 

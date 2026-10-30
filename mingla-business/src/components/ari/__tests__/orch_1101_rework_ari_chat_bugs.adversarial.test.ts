@@ -6,7 +6,7 @@ import path from "node:path";
  *
  * Attacks a DIFFERENT angle than the implementor's happy-path rework test
  * (orch_1101_rework_ari_chat_bugs.test.ts). That test asserts the presence of
- * the new strings (makeOptimisticMessage, composerSurface, hintChip,
+ * the new strings (makeOptimisticMessage, composerSurface,
  * disclosureDismissed, the precomputed-tail separator). It passes the moment
  * those strings exist — it does NOT defend against the SEMANTIC failure modes
  * the rework was supposed to close:
@@ -54,8 +54,12 @@ const read = (p: string): string => fs.readFileSync(p, "utf8");
 const stripComments = (src: string): string =>
   src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
 
-const useAgentChat = stripComments(read(path.join(HOOKS_DIR, "useAgentChat.ts")));
-const chatScreen = stripComments(read(path.join(SCREEN_DIR, "AriChatScreen.tsx")));
+const useAgentChat = stripComments(
+  read(path.join(HOOKS_DIR, "useAgentChat.ts")),
+);
+const chatScreen = stripComments(
+  read(path.join(SCREEN_DIR, "AriChatScreen.tsx")),
+);
 const inputBar = stripComments(read(path.join(ARI_DIR, "InputBar.tsx")));
 const streaming = stripComments(read(path.join(ARI_DIR, "StreamingText.tsx")));
 const designSystem = read(path.join(CONSTANTS_DIR, "designSystem.ts"));
@@ -67,8 +71,12 @@ describe("ORCH-1101 REWORK ADV-R1 · optimistic message cannot duplicate after r
     // the placeholder and the real echo can never both render. #3429 keys the
     // match on client_turn_id (canonicalIdentityMatch) and keeps text equality
     // only for pre-#3429 rows that have no id — strictly stronger than text.
-    const filterIdx = useAgentChat.indexOf("const liveLocalMessages = localMessages.filter");
-    const mergeIdx = useAgentChat.indexOf("const messages = [...decoratedServerMessages");
+    const filterIdx = useAgentChat.indexOf(
+      "const liveLocalMessages = localMessages.filter",
+    );
+    const mergeIdx = useAgentChat.indexOf(
+      "const messages = [...decoratedServerMessages",
+    );
     expect(filterIdx).toBeGreaterThan(-1);
     expect(mergeIdx).toBeGreaterThan(filterIdx); // filter computed before merge
     const filterBlock = useAgentChat.slice(filterIdx, mergeIdx);
@@ -79,8 +87,10 @@ describe("ORCH-1101 REWORK ADV-R1 · optimistic message cannot duplicate after r
     const identityIdx = useAgentChat.indexOf("function canonicalIdentityMatch");
     const identityBlock = useAgentChat.slice(identityIdx, identityIdx + 700);
     expect(identityBlock).toMatch(/role !== ["']user["']/);
-    expect(identityBlock).toMatch(/server\.client_turn_id === local\.client_turn_id/);
-    expect(identityBlock).toMatch(/\.text === /);
+    expect(identityBlock).toMatch(
+      /server\.client_turn_id === local\.client_turn_id/,
+    );
+    expect(identityBlock).toMatch(/\.text\s*===/);
   });
 
   it("has no clear-before-refetch window at all (the blink is structurally impossible)", () => {
@@ -91,9 +101,13 @@ describe("ORCH-1101 REWORK ADV-R1 · optimistic message cannot duplicate after r
     // the original protection is: no state write may remove a local row on
     // success — removal is derived only.
     expect(useAgentChat).not.toMatch(/setOptimisticMessages/);
-    const filterIdx = useAgentChat.indexOf("const liveLocalMessages = localMessages.filter");
+    const filterIdx = useAgentChat.indexOf(
+      "const liveLocalMessages = localMessages.filter",
+    );
     expect(filterIdx).toBeGreaterThan(-1);
-    expect(useAgentChat.indexOf("const messages = [...decoratedServerMessages")).toBeGreaterThan(filterIdx);
+    expect(
+      useAgentChat.indexOf("const messages = [...decoratedServerMessages"),
+    ).toBeGreaterThan(filterIdx);
   });
 
   it("a failed send keeps the row, marked failed, so the message is never lost", () => {
@@ -104,8 +118,12 @@ describe("ORCH-1101 REWORK ADV-R1 · optimistic message cannot duplicate after r
     // guarded is covered instead by the dedupe above (a failed row still
     // disappears the moment its server echo lands) and behaviourally by
     // issue_3429_ari_delivery_state.implementor.test.ts.
-    expect(useAgentChat).toMatch(/patchTurn\(clientTurnId, \{[\s\S]{0,200}delivery: "failed"/);
-    expect(useAgentChat).toMatch(/delivery: "failed",[\s\S]{0,200}errorMessage:/);
+    expect(useAgentChat).toMatch(
+      /patchTurn\(clientTurnId, \{[\s\S]{0,200}delivery: "failed"/,
+    );
+    expect(useAgentChat).toMatch(
+      /delivery: "failed",[\s\S]{0,200}errorMessage:/,
+    );
   });
 });
 
@@ -128,8 +146,12 @@ describe("ORCH-1101 REWORK ADV-R2 · thinking bubble unmounts the moment the rep
   });
 
   it("MessageList appends the thinking row ONLY while isThinking (conditional push)", () => {
-    const messageList = stripComments(read(path.join(ARI_DIR, "MessageList.tsx")));
-    expect(messageList).toMatch(/if \(isThinking\) items\.push\(\{ kind: "thinking" \}\)/);
+    const messageList = stripComments(
+      read(path.join(ARI_DIR, "MessageList.tsx")),
+    );
+    expect(messageList).toMatch(
+      /if \(isThinking\) items\.push\(\{ kind: "thinking" \}\)/,
+    );
   });
 });
 
@@ -150,7 +172,10 @@ describe("ORCH-1101 REWORK ADV-R3 · composerSurface has ZERO alpha transparency
   });
 
   it("the InputBar host fill is the opaque token and NEVER a translucent glass tint anywhere in its style", () => {
-    const hostBlock = inputBar.slice(inputBar.indexOf("host: {"), inputBar.indexOf("input: {"));
+    const hostBlock = inputBar.slice(
+      inputBar.indexOf("host: {"),
+      inputBar.indexOf("input: {"),
+    );
     expect(hostBlock).toMatch(/backgroundColor:\s*ariThread\.composerSurface/);
     // No rgba/hsla literal and no glass.tint.* fill leaked into the composer host.
     expect(hostBlock).not.toMatch(/backgroundColor:\s*["']?(rgba|hsla)/i);
@@ -158,7 +183,10 @@ describe("ORCH-1101 REWORK ADV-R3 · composerSurface has ZERO alpha transparency
   });
 
   it("the composer host clips overflow so the opaque fill honors the rounded edge (Android policy)", () => {
-    const hostBlock = inputBar.slice(inputBar.indexOf("host: {"), inputBar.indexOf("input: {"));
+    const hostBlock = inputBar.slice(
+      inputBar.indexOf("host: {"),
+      inputBar.indexOf("input: {"),
+    );
     expect(hostBlock).toMatch(/overflow:\s*["']hidden["']/);
   });
 });
@@ -179,7 +207,9 @@ describe("ORCH-1101 REWORK ADV-R4 · disclosure dismissal is decoupled from the 
   });
 
   it("the acknowledge error is ROUTED to state, not swallowed", () => {
-    expect(chatScreen).not.toMatch(/acknowledge\(\)\.catch\(\(\) => undefined\)/);
+    expect(chatScreen).not.toMatch(
+      /acknowledge\(\)\.catch\(\(\) => undefined\)/,
+    );
     const handlerIdx = chatScreen.indexOf("const handleAcceptDisclosure");
     const handler = chatScreen.slice(handlerIdx, handlerIdx + 600);
     // dismiss is synchronous and happens before the async persist
@@ -218,7 +248,9 @@ describe("ORCH-1101 REWORK ADV-R6 · the thinking blink never leaks a reanimated
   it("StreamingText cancels its repeat animation on unmount", () => {
     // The cleanup return must cancelAnimation so unmounting the thinking row
     // (reply arrived) doesn't strand a -1 (infinite) withRepeat on the UI thread.
-    expect(streaming).toMatch(/return \(\): void => \{[\s\S]{0,80}cancelAnimation\(opacity\)/);
+    expect(streaming).toMatch(
+      /return \(\): void => \{[\s\S]{0,80}cancelAnimation\(opacity\)/,
+    );
     expect(streaming).toMatch(/withRepeat\(/);
     // and the repeat only arms while visible (not unconditionally on mount)
     expect(streaming).toMatch(/if \(visible && !reduceMotion\)/);

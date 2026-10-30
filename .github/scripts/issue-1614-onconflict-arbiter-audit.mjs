@@ -15,7 +15,7 @@ const SOURCE_ROOTS = [
 ];
 const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx"]);
 const EXCLUDED_SEGMENTS = new Set([
-  "node_modules", "dist", "build", ".expo", ".next", "coverage", "vendor",
+  "node_modules", "dist", "build", "web-build", ".expo", ".next", "coverage", "vendor",
   "migrations", "__tests__", "test", "tests", "fixtures", "generated",
 ]);
 

@@ -51,7 +51,9 @@ describe("#3429 LocalTurn ownership and scope adversarial seams", () => {
     const hook = fs.readFileSync(hookPath, "utf8");
     expect(hook).toContain("interface LocalTurn");
     expect(hook).toContain("current.some((candidate) => candidate.clientTurnId === clientTurnId)");
-    expect(hook).toMatch(/return sendTurn\([\s\S]*latest\.attachments, clientTurnId\)/);
+    expect(hook).toMatch(
+      /return sendTurn\([\s\S]*latest\.attachments,\s*clientTurnId,?\s*\)/,
+    );
     expect(hook).not.toContain("turnPayloads");
   });
 
@@ -78,8 +80,12 @@ describe("#3429 LocalTurn ownership and scope adversarial seams", () => {
     expect(input).toMatch(/import \{[^}]*\bisAriSendReady\b[^}]*\} from /);
     expect(reliability).toMatch(/return \(text\.trim\(\)\.length > 0 \|\| hasReadyAttachments\) && !disabled\s*&&\s*!sendDisabled;/);
     expect(screen).toContain("disabled={brands.isLoading || !conversationSelectionReady}");
-    expect(screen).toContain("sendDisabled={chat.isSending || rateLimited || !online || !attachments.allReady}");
-    expect(screen).toContain("hasReadyAttachments={attachments.attachments.length > 0 && attachments.allReady}");
+    expect(screen).toMatch(
+      /sendDisabled=\{\s*chat\.isSending\s*\|\|\s*rateLimited\s*\|\|\s*!online\s*\|\|\s*!attachments\.allReady\s*\}/,
+    );
+    expect(screen).toMatch(
+      /hasReadyAttachments=\{\s*attachments\.attachments\.length > 0\s*&&\s*attachments\.allReady\s*\}/,
+    );
   });
 });
 
@@ -141,10 +147,16 @@ describe("#3429 assistive truth and cooperative-stop adversarial seams", () => {
     const activity = executableFile(activityPath);
     const reveal = executableFile(revealPath);
 
-    expect(activity).toContain(snippet('accessibilityLabel={stopRequested ? "Stop requested" : turn.accepted ? "Stop Ari" : "Stop sending"}'));
+    expect(activity).toMatch(
+      /accessibilityLabel\s*=\s*\{\s*stopRequested\s*\?\s*"Stop requested"\s*:\s*turn\.accepted\s*\?\s*"Stop Ari"\s*:\s*"Stop sending"\s*\}/,
+    );
     expect(activity).toContain(snippet("onPress={() => { setStopRequested(true); void onStop(); }}"));
-    expect(activity).toMatch(/const terminal = turn\.delivery === "stopped" \|\| turn\.delivery === "failed"/);
-    expect(activity).toContain(snippet('if (terminal) { AccessibilityInfo.announceForAccessibility(turn.errorMessage ?? "Ari stopped. Your message is still here.");'));
+    expect(activity).toMatch(
+      /const terminal\s*=\s*turn\.delivery\s*===\s*"stopped"\s*\|\|\s*turn\.delivery\s*===\s*"failed"\s*\|\|\s*\(\s*!!turn\.accepted\s*&&\s*!!turn\.errorMessage\s*&&\s*turn\.delivery\s*===\s*"sent"\s*\)/,
+    );
+    expect(activity).toMatch(
+      /if\s*\(\s*terminal\s*\)\s*\{\s*AccessibilityInfo\.announceForAccessibility\s*\(\s*turn\.errorMessage\s*\?\?\s*"Ari stopped\. Your message is still here\."/,
+    );
     // [TEST-MOD-APPROVED #3429] A QUALIFIED call depends on the binding of its
     // ROOT — `AccessibilityInfo`, not `announceForAccessibility`. My first
     // audit keyed on the identifier next to the paren and filed this as

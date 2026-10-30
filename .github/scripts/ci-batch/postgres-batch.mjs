@@ -91,11 +91,8 @@ export function setupPostgresBatch(manifest, klass, { port, credential, tempRoot
   // replay creates the #3429 Vault secrets, while the vaultless replay proves
   // the advisory path with no secrets. Keep the shared template at the schema
   // immediately before #3429 on this one dedicated host; the retained origin
-  // commands apply that migration once in each isolated clone. The reviewed
-  // migration inventory has no later migration that references its objects.
-  const templateMigrations = klass === "postgres17-deno146-node20-dualdb"
-    ? migrations.filter((migration) => path.basename(migration) !== "20270712003429_issue_3429_ari_chat_context.sql")
-    : migrations;
+  // commands apply that migration once in each isolated clone.
+  const templateMigrations = migrationsForPostgresTemplate(migrations, klass);
   const customReplaySuites = suites.filter((suite) => suite.templateReplay);
   if (customReplaySuites.length) {
     if (suites.length !== 1 || customReplaySuites.length !== 1) {
@@ -198,6 +195,20 @@ export function setupPostgresBatch(manifest, klass, { port, credential, tempRoot
   console.log(`G-3 PASS: template has zero client backends; suites map only to ${Object.values(databases).join(", ")}`);
   console.log(`G-9 PASS: per-suite selection came from each suite's originPaths (${suites.length} selected in ${klass})`);
   return evidencePath;
+}
+
+const ARI_CHAT_CONTEXT_MIGRATION = "20270712003429_issue_3429_ari_chat_context.sql";
+
+export function migrationsForPostgresTemplate(migrations, klass) {
+  if (klass !== "postgres17-deno146-node20-dualdb") return migrations;
+
+  // The dual-database suite applies #3429 itself once with Vault fixtures and
+  // once without them. Its shared template therefore has to stop immediately
+  // before #3429, not merely omit that one file while replaying later migrations
+  // that can legitimately depend on the tables #3429 creates.
+  return migrations.filter((migration) =>
+    path.basename(migration) < ARI_CHAT_CONTEXT_MIGRATION
+  );
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

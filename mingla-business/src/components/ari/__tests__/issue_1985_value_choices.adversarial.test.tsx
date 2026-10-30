@@ -17,12 +17,13 @@ const TestRenderer = require("react-test-renderer") as {
 jest.mock("react-native", () => {
   const React = require("react");
   return {
-    FlatList: (
-      { data, renderItem }: {
-        data: unknown[];
-        renderItem: (args: { item: unknown }) => React.ReactNode;
-      },
-    ) =>
+    FlatList: ({
+      data,
+      renderItem,
+    }: {
+      data: unknown[];
+      renderItem: (args: { item: unknown }) => React.ReactNode;
+    }) =>
       React.createElement(
         "flat-list",
         null,
@@ -31,7 +32,7 @@ jest.mock("react-native", () => {
             React.Fragment,
             { key: index },
             renderItem({ item }),
-          )
+          ),
         ),
       ),
     Pressable: ({ children, ...props }: { children?: React.ReactNode }) =>
@@ -56,20 +57,17 @@ jest.mock("../../../constants/designSystem", () => ({
   radius: { full: 999 },
   semantic: { error: "red", success: "green", successTint: "green" },
   spacing: { sm: 8, md: 16, xl: 32 },
-  typography: { bodySm: { fontSize: 13 } },
+  typography: { bodySm: { fontSize: 13 }, caption: { fontSize: 12 } },
 }));
-jest.mock(
-  "../ChatBubble",
-  () => ({ ChatBubble: () => React.createElement("chat-bubble") }),
-);
-jest.mock(
-  "../ToolProposalCard",
-  () => ({ ToolProposalCard: () => React.createElement("proposal-card") }),
-);
-jest.mock(
-  "../ResponseCard",
-  () => ({ ResponseCard: () => React.createElement("response-card") }),
-);
+jest.mock("../ChatBubble", () => ({
+  ChatBubble: () => React.createElement("chat-bubble"),
+}));
+jest.mock("../ToolProposalCard", () => ({
+  ToolProposalCard: () => React.createElement("proposal-card"),
+}));
+jest.mock("../ResponseCard", () => ({
+  ResponseCard: () => React.createElement("response-card"),
+}));
 // [TEST-MOD-APPROVED #3429] MessageList now imports AriAttachmentCards
 // statically (the old React.lazy deferred nothing — AriChatScreen already
 // imported the same module eagerly — and only forced Metro to hoist it and its
@@ -93,15 +91,15 @@ jest.mock("../MultiSelectPrompt", () => ({
     React.createElement("multi-select-prompt", props),
 }));
 
-const { MessageList } = require(
-  "../MessageList",
-) as typeof import("../MessageList");
+const { MessageList } =
+  require("../MessageList") as typeof import("../MessageList");
 
 beforeAll(() => {
-  (globalThis as typeof globalThis & {
-    requestAnimationFrame: (callback: () => void) => number;
-  })
-    .requestAnimationFrame = () => 1;
+  (
+    globalThis as typeof globalThis & {
+      requestAnimationFrame: (callback: () => void) => number;
+    }
+  ).requestAnimationFrame = () => 1;
 });
 
 test("#1985 T-9 renders server-provided date values as semantic chips, not a free-text-only card", () => {
@@ -164,5 +162,66 @@ test("#1985 T-9 renders server-provided date values as semantic chips, not a fre
 
   expect(tree.root.findAllByType("quick-reply-chips")).toHaveLength(1);
   expect(tree.root.findAllByType("clarifying-card")).toHaveLength(0);
+  tree.unmount();
+});
+
+test("#3355 a later turn removes stale historical choices", () => {
+  const choiceMessage: AgentMessage = {
+    id: "assistant-old-question",
+    conversation_id: "conversation-1",
+    role: "assistant",
+    content: {
+      text: "Which date should I use?",
+      structured: {
+        choices: {
+          schema_version: 2,
+          question_id: "question-old",
+          kind: "clarifying",
+          prompt: "Which date should I use?",
+          required_slot_keys: ["start_at"],
+          options: [
+            {
+              id: "date-old",
+              label: "Friday at 7 PM",
+              payload: {
+                type: "slot_patch",
+                slot_updates: { start_at: "2026-12-04T19:00:00.000Z" },
+              },
+            },
+          ],
+        },
+      },
+    },
+    client_turn_id: null,
+    tool_calls: null,
+    tool_results: null,
+    created_at: "2026-10-29T16:00:00.000Z",
+  };
+  const laterUserMessage: AgentMessage = {
+    id: "user-later-answer",
+    conversation_id: "conversation-1",
+    role: "user",
+    content: { text: "Use December 12 at 7 PM." },
+    client_turn_id: "turn-later",
+    tool_calls: null,
+    tool_results: null,
+    created_at: "2026-10-29T16:01:00.000Z",
+  };
+
+  let tree!: ReturnType<typeof TestRenderer.create>;
+  TestRenderer.act(() => {
+    tree = TestRenderer.create(
+      <MessageList
+        messages={[choiceMessage, laterUserMessage]}
+        pendingAction={null}
+        isExecuting={false}
+        onConfirm={async () => ({ ok: true })}
+        onCancel={() => undefined}
+        onSendChoice={() => undefined}
+      />,
+    );
+  });
+
+  expect(tree.root.findAllByType("quick-reply-chips")).toHaveLength(0);
   tree.unmount();
 });

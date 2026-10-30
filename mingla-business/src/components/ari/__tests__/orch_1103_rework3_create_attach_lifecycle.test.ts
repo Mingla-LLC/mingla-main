@@ -13,7 +13,7 @@ import path from "node:path";
  *
  * This test locks the four guarantees of the fix:
  *   1. POST-COMMIT the card exposes NO re-confirm of the executed action — the
- *      `committed` branch replaces Confirm/Edit/Cancel with a single "Done".
+ *      `committed` branch replaces Confirm/Edit/Cancel with "View result".
  *   2. The host suppresses the executed receipt while its pending action is
  *      still live (mutual exclusion: card OR receipt, never both).
  *   3. The attached cover is threaded commit → host → receipt (attachedCovers),
@@ -38,17 +38,19 @@ const screen = read("src/screens/ari/AriChatScreen.tsx");
 
 describe("ORCH-1103 REWORK 3 — fix #1: no re-confirm of the executed action post-commit", () => {
   it("derives a `committed` flag from createdBrandId (brand minted via Create & attach)", () => {
-    expect(proposalCard).toMatch(/const\s+committed\s*=\s*createdBrandId\s*!==\s*null/);
+    expect(proposalCard).toMatch(
+      /const\s+committed\s*=\s*createdBrandId\s*!==\s*null/,
+    );
   });
 
   it("gates the action row on `committed` — committed state renders its own branch", () => {
     expect(proposalCard).toMatch(/\{committed\s*\?\s*\(/);
   });
 
-  it("the committed branch's only action is Done (no Confirm/Edit/Cancel re-touch)", () => {
+  it("the committed branch only opens the result (no Confirm/Edit/Cancel re-touch)", () => {
     // The committed branch must wire onPress to the finish handler, not onConfirm.
     expect(proposalCard).toMatch(/onPress=\{handleDone\}/);
-    expect(proposalCard).toContain('accessibilityLabel="Done"');
+    expect(proposalCard).toContain('accessibilityLabel="View result"');
   });
 
   it("handleDone resolves via onAttachDone — it never calls onConfirm", () => {
@@ -73,7 +75,9 @@ describe("ORCH-1103 REWORK 3 — fix #2: card and receipt are mutually exclusive
 
 describe("ORCH-1103 REWORK 3 — fix #3: attached cover reaches the receipt", () => {
   it("onAttachDone carries the attached cover { url, type }", () => {
-    expect(proposalCard).toMatch(/onAttachDone\?:\s*\(cover\?:\s*\{\s*url:\s*string\s*\|\s*null;\s*type:\s*string\s*\|\s*null\s*\}\)/);
+    expect(proposalCard).toMatch(
+      /onAttachDone\?:\s*\(cover\?:\s*\{\s*url:\s*string\s*\|\s*null;\s*type:\s*string\s*\|\s*null\s*\}\)/,
+    );
   });
 
   it("the card passes the live editedArgs cover up on finish", () => {
@@ -88,7 +92,9 @@ describe("ORCH-1103 REWORK 3 — fix #3: attached cover reaches the receipt", ()
 
   it("the receipt overlays the attached cover onto the executed (null-cover) row", () => {
     expect(messageList).toMatch(/attachedCovers\[tr\.pending_action_id/);
-    expect(messageList).toMatch(/cover_media_url:\s*rawBrand\.cover_media_url\s*\?\?\s*attached\?\.url/);
+    expect(messageList).toMatch(
+      /cover_media_url:\s*rawBrand\.cover_media_url\s*\?\?\s*attached\?\.url/,
+    );
   });
 });
 
@@ -106,10 +112,18 @@ describe("ORCH-1103 REWORK 3 — fix #4: already-executed confirm is a soft no-o
     );
     expect(handleConfirm).toMatch(/isAlreadyResolvedError\(result\.message\)/);
     // The no-op branch clears the pending action and returns BEFORE setLocalError.
-    const guardIdx = handleConfirm.indexOf("isAlreadyResolvedError(result.message)");
-    const setErrIdx = handleConfirm.indexOf("setLocalError(result.message)");
+    const guardIdx = handleConfirm.indexOf(
+      "isAlreadyResolvedError(result.message)",
+    );
+    const setErrIdx = handleConfirm.indexOf("setLocalError(message)", guardIdx);
     expect(guardIdx).toBeGreaterThan(-1);
     expect(setErrIdx).toBeGreaterThan(guardIdx);
-    expect(handleConfirm.slice(guardIdx, setErrIdx)).toContain("chat.clearPendingAction()");
+    expect(handleConfirm.slice(guardIdx, setErrIdx)).toContain(
+      "chat.clearPendingAction()",
+    );
+    expect(handleConfirm).toContain(
+      "const message = ariChatErrorCopy(result.code)",
+    );
+    expect(handleConfirm).not.toContain("setLocalError(result.message)");
   });
 });

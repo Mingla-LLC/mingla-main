@@ -482,7 +482,10 @@ describe("#2649 T-2 — ORCH-1101 speaker-grouping rhythm survives inversion", (
       role: "tool",
       content: { text: "" },
       tool_calls: null,
-      tool_results: { outcome: "executed", tool_name: "noop", result: {} },
+      // Generic successful reads no longer draw a redundant "Done" row. A
+      // cancelled result remains a visible ribbon, so it exercises the
+      // grouping boundary without reviving the retired completion badge.
+      tool_results: { outcome: "cancelled", tool_name: "noop", result: {} },
       created_at: new Date(1_700_000_500_000).toISOString(),
     };
     const list = renderThread({
