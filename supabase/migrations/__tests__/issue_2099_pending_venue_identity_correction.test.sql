@@ -80,7 +80,13 @@ DECLARE p jsonb; r jsonb; retry jsonb; rollback_preview jsonb; rb jsonb; v_sourc
   v_address text; v_gallery text[]; v_hours jsonb; v_inputs jsonb;
 BEGIN
   p:=public.preview_pending_venue_identity_correction('20990000-0000-0000-0000-000000000020');
-  IF p->>'ok'<>'true' OR p->>'schema_fingerprint'<>'0b2f6691528759d391240f966a45b350ef523b38eaa40598f6a0ab99fc149711' THEN
+  IF p->>'ok'<>'true' OR NOT COALESCE(
+    p->>'schema_fingerprint' IN (
+      '91042e6f4a170c709d016d9a598d0faea36b280486bf634226a24cbbae34d415',
+      '0b2f6691528759d391240f966a45b350ef523b38eaa40598f6a0ab99fc149711'
+    ),
+    false
+  ) THEN
     RAISE EXCEPTION '#2099 eligible preview failed: %',p;
   END IF;
   r:=public.correct_pending_venue_identity(

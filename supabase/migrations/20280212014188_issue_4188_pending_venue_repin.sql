@@ -9,10 +9,14 @@ BEGIN;
 
 DO $issue_4188_pending_venue_repin$
 DECLARE
-  v_expected_live constant text := '0b2f6691528759d391240f966a45b350ef523b38eaa40598f6a0ab99fc149711';
+  -- The Supabase CLI migration runner and the direct PostgreSQL 17 batch use
+  -- different reviewed catalog plans for the same disallowed venue_id lanes.
+  -- Keep this an exact two-value allowlist: an unknown planner or dependency
+  -- shape must still strand the correction until it is reviewed.
+  v_expected_supabase constant text := '91042e6f4a170c709d016d9a598d0faea36b280486bf634226a24cbbae34d415';
+  v_expected_pg17 constant text := '0b2f6691528759d391240f966a45b350ef523b38eaa40598f6a0ab99fc149711';
   v_2855_pin constant text := '(''52f4624c994529d2e63b8f70b79a3fcf'' || ''e28f3ff90dafe300bc45439e37cd2921'')';
   v_3872_pin constant text := '(''474371dd0c8edfdd734c8ef5fe78b167'' || ''bf5422e95b37493111c9a6cdc40213f2'')';
-  v_new_pin constant text := '(''0b2f6691528759d391240f966a45b350'' || ''ef523b38eaa40598f6a0ab99fc149711'')';
   v_function_prefix constant text := 'CREATE OR REPLACE FUNCTION ';
   v_oid regprocedure;
   v_definition text;
@@ -20,14 +24,21 @@ DECLARE
   v_3872_count integer;
   v_new_count integer;
   v_live text;
+  v_new_pin text;
 BEGIN
   v_live := public.issue_2099_pending_venue_dependency_inventory(
     '00000000-0000-0000-0000-000000000001'::uuid,
     '00000000-0000-0000-0000-000000000002'::uuid
   ) ->> 'schema_fingerprint';
-  IF v_live IS DISTINCT FROM v_expected_live THEN
+  IF v_live IS DISTINCT FROM v_expected_supabase
+     AND v_live IS DISTINCT FROM v_expected_pg17 THEN
     RAISE EXCEPTION 'issue_4188_pending_venue_schema_unreviewed:%', v_live;
   END IF;
+  v_new_pin := pg_catalog.format(
+    '(''%s'' || ''%s'')',
+    left(v_live,32),
+    substr(v_live,33)
+  );
 
   FOREACH v_oid IN ARRAY ARRAY[
     'public.preview_pending_venue_identity_correction(uuid)'::regprocedure,
