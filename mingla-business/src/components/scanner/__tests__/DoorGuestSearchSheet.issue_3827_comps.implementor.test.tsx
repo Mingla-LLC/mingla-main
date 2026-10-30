@@ -71,7 +71,10 @@ jest.mock("../../ui/Input", () => ({ Input: probe("InputProbe") }));
 jest.mock("../../../wrappers/SmartScrollView", () => ({ ScrollView: probe("ScrollView") }));
 
 import { DoorGuestSearchPanel } from "../DoorGuestSearchSheet";
-import { describeScanResult } from "../scanResultCopy";
+import {
+  describeScanResult,
+  shouldApplyScanEnrichment,
+} from "../scanResultCopy";
 import { rosterPrimaryLabel } from "../../guests/GuestRosterExperience";
 import type { GuestRosterRow } from "../../../types/guestRoster";
 
@@ -195,12 +198,47 @@ describe("issue #3827 — door Find by name", () => {
   test("the name-admit copy is the QR camera's copy, word for word", () => {
     const scanner = fs.readFileSync(path.join(__dirname, "../../../../app/event/[id]/scanner/index.tsx"), "utf8");
     const base = { buyerName: "Lolu Ade", ticketName: "Guest list", nextStartAt: null, lastEndAt: null };
-    for (const kind of ["duplicate", "void", "not_yet_open", "not_found"]) {
-      const { message } = describeScanResult(kind, base, "event");
-      expect(scanner).toContain(`"${message}"`);
-    }
+    // Both surfaces call the same describeScanResult helper (QR via dynamic
+    // import; name-admit via DoorGuestSearchSheet). Pin shared messages here.
+    expect(scanner).toContain("describeScanResult");
+    expect(describeScanResult("duplicate", base, "event").message).toBe("Already checked in");
+    expect(describeScanResult("void", base, "event").message).toBe("Ticket not valid");
+    expect(describeScanResult("not_yet_open", base, "event").message).toBe("Doors aren't open yet");
+    expect(describeScanResult("not_found", base, "event").message).toBe("Ticket not found");
     expect(describeScanResult("success", base, "event").message).toBe("Lolu Ade checked in");
-    expect(scanner).toContain("checked in`");
+  });
+
+  test("issue #3281 — late enrichment must not overwrite a newer scan", () => {
+    const scanner = fs.readFileSync(
+      path.join(__dirname, "../../../../app/event/[id]/scanner/index.tsx"),
+      "utf8",
+    );
+    expect(scanner).toContain("enrichmentGenerationRef");
+    expect(scanner).toContain("shouldApplyScanEnrichment");
+    expect(scanner).toContain('.from("event_dates")');
+    // Scan A resolves after B: generation mismatch → drop enrichment.
+    expect(
+      shouldApplyScanEnrichment({
+        enrichmentGeneration: 1,
+        activeGeneration: 2,
+        overlayVisible: true,
+      }),
+    ).toBe(false);
+    // Dismissed overlay: drop enrichment even if generation still matches.
+    expect(
+      shouldApplyScanEnrichment({
+        enrichmentGeneration: 3,
+        activeGeneration: 3,
+        overlayVisible: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldApplyScanEnrichment({
+        enrichmentGeneration: 4,
+        activeGeneration: 4,
+        overlayVisible: true,
+      }),
+    ).toBe(true);
   });
 
   test("S-6 the web door shows Find a guest by name and keeps its scan-in-the-app message", () => {

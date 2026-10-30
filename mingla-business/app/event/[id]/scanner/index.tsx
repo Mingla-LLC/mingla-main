@@ -65,7 +65,9 @@ import {
   ScanTicketError,
   scanTicket,
 } from "../../../../src/services/scanTicketService";
-
+// Public-event occurrences + describeScanResult stay behind on-intent dynamic
+// imports in handleBarcodeScanned so they do not grow the web __common boot
+// chunk (orch-1083 / bundle-baseline-movement).
 import type { ScanResultCopy } from "../../../../src/components/scanner/scanResultCopy";
 import type { AdmitResponse } from "../../../../src/services/guestListService";
 
@@ -219,6 +221,9 @@ export default function ScannerCameraRoute(): React.ReactElement {
 
   const [overlay, setOverlay] = useState<ResultOverlayState | null>(null);
   const overlayVisibleRef = useRef<boolean>(false);
+  // issue #3281 PR8 — per-scan generation so late enrichment cannot overwrite
+  // a newer scan (or a dismissed overlay that a later scan reopened).
+  const enrichmentGenerationRef = useRef<number>(0);
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayAnim = useRef(new Animated.Value(0)).current;
   // Cycle 17c §F.2 — respect OS reduce-motion preference per I-40 spirit.
@@ -288,6 +293,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
 
   const dismissOverlay = useCallback((): void => {
     overlayVisibleRef.current = false;
+    enrichmentGenerationRef.current += 1;
     if (reduceMotionRef.current) {
       // Cycle 17c §F.2 — instant set when reduce-motion ON; preserves the
       // post-fade callback (setOverlay(null)) by invoking it synchronously.
@@ -374,6 +380,8 @@ export default function ScannerCameraRoute(): React.ReactElement {
       if (overlayVisibleRef.current) return; // guard against double-fire
       if (event === null) return;
       overlayVisibleRef.current = true;
+      enrichmentGenerationRef.current += 1;
+      const enrichmentGeneration = enrichmentGenerationRef.current;
       void (async () => {
         try {
           const result = await scanTicket(event.id, scan.data);
@@ -385,6 +393,10 @@ export default function ScannerCameraRoute(): React.ReactElement {
             buyerName: result.buyerName,
             ticketName: result.ticketName,
           });
+          // Authoritative scan outcome first — never block the overlay /
+          // haptics on optional day-label enrichment (ticket already consumed).
+          const admittedId =
+            typeof result.eventDateId === "string" ? result.eventDateId : null;
           if (kind === "success") {
             showResult({
               kind,
@@ -394,41 +406,162 @@ export default function ScannerCameraRoute(): React.ReactElement {
             void Haptics.notificationAsync(
               Haptics.NotificationFeedbackType.Success,
             );
-            return;
-          }
-          // ORCH-0793 — explicit branches so the time-window cases can
-          // pull nextStartAt / lastEndAt off the server response.
-          let message: string;
-          let detail: string | undefined = result.ticketName ?? undefined;
-          if (kind === "duplicate") {
-            message = "Already checked in";
-          } else if (kind === "wrong_event") {
-            message = `Different ${kindCfg.noun}`;
-          } else if (kind === "void") {
-            message = "Ticket not valid";
-          } else if (kind === "not_yet_open") {
-            message = "Doors aren't open yet";
-            detail = result.nextStartAt
-              ? `Opens ${formatDoorTime(result.nextStartAt)}`
-              : "Try again closer to start time";
-          } else if (kind === "event_ended") {
-            message = result.lastEndAt
-              ? `${capitalizeNoun(kindCfg.noun)} ended ${formatRelativeTime(result.lastEndAt)}`
-              : `${capitalizeNoun(kindCfg.noun)} has ended`;
-            detail = `Ticket can't be used after the ${kindCfg.noun}`;
           } else {
-            message = "Ticket not found";
+            let message: string;
+            let detail: string | undefined = result.ticketName ?? undefined;
+            if (kind === "duplicate") {
+              message = "Already checked in";
+            } else if (kind === "wrong_event") {
+              message = `Different ${kindCfg.noun}`;
+            } else if (kind === "void") {
+              message = "Ticket not valid";
+            } else if (kind === "not_yet_open") {
+              message = "Doors aren't open yet";
+              detail = result.nextStartAt
+                ? `Opens ${formatDoorTime(result.nextStartAt)}`
+                : "Try again closer to start time";
+            } else if (kind === "event_ended") {
+              message = result.lastEndAt
+                ? `${capitalizeNoun(kindCfg.noun)} ended ${formatRelativeTime(result.lastEndAt)}`
+                : `${capitalizeNoun(kindCfg.noun)} has ended`;
+              detail = `Ticket can't be used after the ${kindCfg.noun}`;
+            } else {
+              message = "Ticket not found";
+            }
+            showResult({ kind, message, detail });
+            void Haptics.notificationAsync(
+              kind === "duplicate" ||
+                kind === "not_yet_open" ||
+                kind === "event_ended"
+                ? Haptics.NotificationFeedbackType.Warning
+                : Haptics.NotificationFeedbackType.Error,
+            );
           }
-          showResult({ kind, message, detail });
-          // Warning tone for recoverable states (duplicate + the two new
-          // time-window states); Error tone for the not-recoverable ones.
-          void Haptics.notificationAsync(
-            kind === "duplicate" ||
-              kind === "not_yet_open" ||
-              kind === "event_ended"
-              ? Haptics.NotificationFeedbackType.Warning
-              : Haptics.NotificationFeedbackType.Error,
-          );
+          // issue #3281 PR8 — enrich day copy in the background when the
+          // server named an occurrence. Import via DoorGuestSearchSheet so
+          // scanResultCopy stays in that one async chunk (__common ceiling).
+          if (admittedId === null) return;
+          try {
+            const [
+              { describeScanResult, shouldApplyScanEnrichment },
+              { getPublicEventById },
+              { supabase },
+            ] = await Promise.all([
+              import("../../../../src/components/scanner/DoorGuestSearchSheet"),
+              import("../../../../src/services/publicEventsService"),
+              import("../../../../src/services/supabase"),
+            ]);
+            const formatOccurrenceDayLabel = (
+              startAt: string,
+              timezone?: string | null,
+            ): string | null => {
+              try {
+                return new Intl.DateTimeFormat(undefined, {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  timeZone: timezone || undefined,
+                }).format(new Date(startAt));
+              } catch {
+                return null;
+              }
+            };
+            type DoorOccurrence = {
+              id: string;
+              startAt: string;
+              timezone?: string | null;
+              overrideTitle?: string | null;
+            };
+            let occurrences: DoorOccurrence[] = [];
+            let allDaysPass = false;
+            const detail = await getPublicEventById(event.id);
+            if (detail !== null) {
+              occurrences = (detail.occurrences ?? []).map((o) => ({
+                id: o.id,
+                startAt: o.startAt,
+                timezone: o.timezone,
+                overrideTitle: o.overrideTitle ?? null,
+              }));
+              allDaysPass = detail.allDaysPass === true;
+            }
+            let admittedOcc =
+              occurrences.find((o) => o.id === admittedId) ?? null;
+            let fromBuyerSchedule = admittedOcc !== null;
+            // Buyer checkout drops ended occurrences; biz_ticket_scan still
+            // admits for +6h. Resolve the named day from event_dates so the
+            // door keeps its label without widening the public reader.
+            if (admittedOcc === null) {
+              const { data: dateRow } = await supabase
+                .from("event_dates")
+                .select("id, start_at, timezone, override_title")
+                .eq("id", admittedId)
+                .eq("event_id", event.id)
+                .maybeSingle();
+              if (
+                dateRow !== null &&
+                typeof (dateRow as { start_at?: unknown }).start_at === "string"
+              ) {
+                const row = dateRow as {
+                  id: string;
+                  start_at: string;
+                  timezone?: string | null;
+                  override_title?: string | null;
+                };
+                admittedOcc = {
+                  id: row.id,
+                  startAt: row.start_at,
+                  timezone: row.timezone ?? null,
+                  overrideTitle: row.override_title ?? null,
+                };
+              }
+            }
+            if (admittedOcc === null) return;
+            const dayLabel = formatOccurrenceDayLabel(
+              admittedOcc.startAt,
+              admittedOcc.timezone,
+            );
+            // Pass progress needs a complete upcoming schedule; skip it when
+            // we had to fall back past the buyer filter (incomplete M).
+            const passTotal =
+              fromBuyerSchedule && allDaysPass && occurrences.length > 1
+                ? occurrences.length
+                : null;
+            const passIndex =
+              passTotal !== null
+                ? occurrences.findIndex((o) => o.id === admittedOcc.id) + 1
+                : null;
+            if (
+              !shouldApplyScanEnrichment({
+                enrichmentGeneration,
+                activeGeneration: enrichmentGenerationRef.current,
+                overlayVisible: overlayVisibleRef.current,
+              })
+            ) {
+              return;
+            }
+            const copy = describeScanResult(
+              kind,
+              {
+                buyerName: result.buyerName,
+                ticketName: result.ticketName,
+                nextStartAt: result.nextStartAt,
+                lastEndAt: result.lastEndAt,
+                eventDateId: admittedId,
+                dayLabel,
+                overrideTitle: admittedOcc.overrideTitle ?? null,
+                passIndex,
+                passTotal,
+              },
+              kindCfg.noun,
+            );
+            showResult({
+              kind: copy.kind,
+              message: copy.message,
+              detail: copy.detail,
+            });
+          } catch {
+            // Keep the authoritative base overlay.
+          }
         } catch (error) {
           // ORCH-0795: surface the real edge-function failure reason.
           // ScanTicketError.code tells us whether the scanner is not

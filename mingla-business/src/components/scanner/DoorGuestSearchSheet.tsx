@@ -39,6 +39,16 @@ import type {
 } from "../../services/guestListService";
 import { describeScanResult, type ScanResultCopy } from "./scanResultCopy";
 
+// Re-export so the native scanner can dynamic-import THIS module for
+// describeScanResult (same async chunk as the sheet). Importing
+// `./scanResultCopy` from a second parent would hoist it into __common
+// (orch-1083 / #3493 baseline-movement).
+export {
+  describeScanResult,
+  shouldApplyScanEnrichment,
+  type ScanResultCopy,
+} from "./scanResultCopy";
+
 import { Button } from "../ui/Button";
 import { Pill } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";

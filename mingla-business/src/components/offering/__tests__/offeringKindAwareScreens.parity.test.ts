@@ -145,9 +145,16 @@ describe("META-ORCH-1059 — shared screens are kind-aware in source", () => {
     expect(scanner).not.toContain('"Event has ended"');
     expect(scanner).not.toContain('"Event not found"');
     expect(scanner).not.toContain("not authorized to scan this event");
-    // composes via config
-    expect(scanner).toContain("Different ${kindCfg.noun}");
+    // issue #3281 PR8 — QR overlay copy lives in describeScanResult; the
+    // screen passes kindCfg.noun into that helper (and keeps auth copy local).
+    expect(scanner).toContain("describeScanResult");
+    expect(scanner).toContain("kindCfg.noun");
     expect(scanner).toContain("not authorized to scan this ${kindCfg.noun}");
+    const scanCopy = readFileSync(
+      join(__dirname, "../../scanner/scanResultCopy.ts"),
+      "utf8",
+    );
+    expect(scanCopy).toContain("Different ${noun}");
   });
 
   test("scanners screen has no hardcoded steady-state event-noun shell copy", () => {

@@ -103,6 +103,13 @@ const LazyTicketLinksSheet = React.lazy(() =>
     default: module.TicketLinksSheet,
   }))
 );
+// issue #3281 PR8 / S24 — >7-date Day selector (month-grouped) stays out of
+// the web __common boot chunk until a multi-date roster needs it.
+const LazyGuestDaySelector = React.lazy(() =>
+  import("../../../../src/components/guests/GuestDaySelector").then((module) => ({
+    default: module.GuestDaySelector,
+  }))
+);
 
 // ---- Merged-row types ----------------------------------------------
 
@@ -380,10 +387,21 @@ export default function EventGuestsListRoute(): React.ReactElement {
   // reader that served the event (#2161), so an UNLISTED event's roster gets
   // its days exactly like a public one's and this screen issues no extra query.
   const [dayFilter, setDayFilter] = useState<string | null>(null);
+  const [dayFilterSeeded, setDayFilterSeeded] = useState(false);
   const occurrences = publicEventQuery.data?.occurrences ?? EMPTY_OCCURRENCES;
   // Only a REAL multi-day event gets a chip row. A single-date event renders
   // exactly today's screen — no chips, no new column header, nothing.
   const hasDayChips = occurrences.length > 1;
+  // issue #3281 PR8 — above 7 dates, default the Day selector to the next upcoming.
+  useEffect(() => {
+    if (dayFilterSeeded || occurrences.length <= 7) return;
+    const now = Date.now();
+    const next = occurrences.find((o) => Date.parse(o.endAt) > now) ?? occurrences[0];
+    if (next !== undefined) {
+      setDayFilter(next.id);
+      setDayFilterSeeded(true);
+    }
+  }, [occurrences, dayFilterSeeded]);
   const dayLabels = useMemo<Map<string, string>>(() => {
     const map = new Map<string, string>();
     for (const occ of occurrences) {
@@ -455,8 +473,12 @@ export default function EventGuestsListRoute(): React.ReactElement {
       // Cycle 13 v2 (D-CYCLE13-IMPL-6): honest toast per export result.
       // Native dismissed = silent (no false-positive success).
       // Loaded on press: the CSV writer stays out of the boot chunk (#3827, orch-1083).
-      const { exportGuestsCsv } = await import("../../../../src/utils/guestCsvExport");
-      const result = await exportGuestsCsv({
+      // Day-order / All-N lives in guestCsvDayOrder so guestCsvExport stays
+      // off the __common growth path (orch-1083 / #3493).
+      const { exportGuestsCsvByOccurrence } = await import(
+        "../../../../src/utils/guestCsvDayOrder"
+      );
+      const result = await exportGuestsCsvByOccurrence({
         event,
         rows: merged,
         // issue #2160 — a roster you cannot export is half a roster. The SAME
@@ -826,6 +848,19 @@ export default function EventGuestsListRoute(): React.ReactElement {
         {/* issue #2160 — the day chip row. Rendered ONLY when the event has
             more than one occurrence, so a single-date roster is untouched. */}
         {hasDayChips ? (
+          occurrences.length > 7 ? (
+            <React.Suspense fallback={null}>
+              <LazyGuestDaySelector
+                occurrences={occurrences}
+                dayLabels={dayLabels}
+                dayHeadCounts={dayHeadCounts}
+                dayFilter={dayFilter}
+                onSelectDay={setDayFilter}
+                allAccessibilityLabel={`All ${headcountPlural}`}
+                headcountLabelForCount={headcountLabelForCount}
+              />
+            </React.Suspense>
+          ) : (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -880,6 +915,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
               );
             })}
           </ScrollView>
+          )
         ) : null}
 
         {legacyComps.length > 0 && canAddGuests ? (

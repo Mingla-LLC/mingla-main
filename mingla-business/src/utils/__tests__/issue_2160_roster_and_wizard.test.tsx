@@ -27,6 +27,10 @@ import {
   serializeGuestsToCsv,
   type ExportGuestRow,
 } from "../guestCsvExport";
+import {
+  orderDayCellByOccurrence,
+  serializeGuestsToCsvByOccurrence,
+} from "../guestCsvDayOrder";
 import { dayHeadCount, orderMatchesDay } from "../guestDayFilter";
 import { draftMultiDatePricingMode } from "../multiDatePricingMode";
 
@@ -360,31 +364,41 @@ describe("issue #2160 — a both-days guest is under BOTH days, and once under A
 // ═══════════════════════════════════════════════ the export
 describe("issue #2160 — the CSV carries the day (a roster you cannot export is half a roster)", () => {
   test("a both-days guest exports BOTH days, not one", () => {
-    const cell = orderDayCell(
+    const cell = orderDayCellByOccurrence(
       { ticketDays: [{ eventDateIds: [DAY_1] }, { eventDateIds: [DAY_2] }] },
       LABELS,
     );
-    expect(cell).toBe("Sat 22 Aug; Sun 23 Aug");
+    // issue #3281 PR8 — full coverage of every labelled day → "All N dates".
+    expect(cell).toBe("All 2 dates");
     expect(cell).not.toBe("Sat 22 Aug");
   });
 
-  test("an all_days pass — ONE ticket, TWO days — exports both", () => {
-    expect(orderDayCell({ ticketDays: [{ eventDateIds: [DAY_1, DAY_2] }] }, LABELS))
-      .toBe("Sat 22 Aug; Sun 23 Aug");
+  test("an all_days pass — ONE ticket, TWO days — exports All N dates", () => {
+    expect(orderDayCellByOccurrence({ ticketDays: [{ eventDateIds: [DAY_1, DAY_2] }] }, LABELS))
+      .toBe("All 2 dates");
+  });
+
+  test("legacy orderDayCell still joins labelled days (default CSV formatter)", () => {
+    expect(
+      orderDayCell(
+        { ticketDays: [{ eventDateIds: [DAY_1, DAY_2] }] },
+        LABELS,
+      ),
+    ).toBe("Sat 22 Aug; Sun 23 Aug");
   });
 
   test("a one-day guest exports exactly that day", () => {
-    expect(orderDayCell({ ticketDays: [{ eventDateIds: [DAY_2] }] }, LABELS))
+    expect(orderDayCellByOccurrence({ ticketDays: [{ eventDateIds: [DAY_2] }] }, LABELS))
       .toBe("Sun 23 Aug");
   });
 
   test("a NOT-day-scoped pass exports blank, never a fabricated day", () => {
-    expect(orderDayCell({ ticketDays: [{ eventDateIds: [] }] }, LABELS)).toBe("");
-    expect(orderDayCell({}, LABELS)).toBe("");
+    expect(orderDayCellByOccurrence({ ticketDays: [{ eventDateIds: [] }] }, LABELS)).toBe("");
+    expect(orderDayCellByOccurrence({}, LABELS)).toBe("");
   });
 
   test("an id with no label is OMITTED, not printed raw", () => {
-    expect(orderDayCell({ ticketDays: [{ eventDateIds: ["unknown-id"] }] }, LABELS))
+    expect(orderDayCellByOccurrence({ ticketDays: [{ eventDateIds: ["unknown-id"] }] }, LABELS))
       .toBe("");
   });
 
@@ -424,9 +438,10 @@ describe("issue #2160 — the CSV carries the day (a roster you cannot export is
     ]);
   });
 
-  test("the row's Day cell names both chosen days", () => {
-    expect(serializeGuestsToCsv([order], undefined, LABELS).split("\r\n")[1])
-      .toContain("Sat 22 Aug; Sun 23 Aug");
+  test("the row's Day cell names a full pass as All N dates", () => {
+    expect(
+      serializeGuestsToCsvByOccurrence([order], LABELS).split("\r\n")[1],
+    ).toContain("All 2 dates");
   });
 
   test("a SINGLE-DATE export is unchanged except for one trailing empty cell", () => {

@@ -79,6 +79,57 @@ const KNOWN: ReadonlySet<string> = new Set<ScanResult>([
 export const asScanResult = (raw: string): ScanResult =>
   KNOWN.has(raw) ? (raw as ScanResult) : "not_found";
 
+/**
+ * issue #3281 PR8 — admitted-date line for the door overlay.
+ * "Admitted - Sat 25 Oct - Halloween edition" / "Date 2 of 3" as detail.
+ */
+export const formatAdmittedDateLine = (opts: {
+  dayLabel: string | null | undefined;
+  overrideTitle?: string | null;
+  passIndex?: number | null;
+  passTotal?: number | null;
+}): string | null => {
+  const day =
+    typeof opts.dayLabel === "string" && opts.dayLabel.trim().length > 0
+      ? opts.dayLabel.trim()
+      : null;
+  if (day === null) return null;
+  const title =
+    typeof opts.overrideTitle === "string" && opts.overrideTitle.trim().length > 0
+      ? opts.overrideTitle.trim()
+      : null;
+  return title !== null ? `Admitted - ${day} - ${title}` : `Admitted - ${day}`;
+};
+
+export const formatPassDateProgress = (
+  passIndex: number | null | undefined,
+  passTotal: number | null | undefined,
+): string | null => {
+  if (
+    typeof passIndex !== "number" ||
+    typeof passTotal !== "number" ||
+    !Number.isFinite(passIndex) ||
+    !Number.isFinite(passTotal) ||
+    passTotal < 2 ||
+    passIndex < 1
+  ) {
+    return null;
+  }
+  return `Date ${passIndex} of ${passTotal}`;
+};
+
+/**
+ * issue #3281 PR8 — day-label enrichment is async. Only apply it when this
+ * scan still owns the overlay (same generation) and the overlay is visible.
+ * Prevents scan A's late metadata from painting over scan B's result.
+ */
+export const shouldApplyScanEnrichment = (args: {
+  enrichmentGeneration: number;
+  activeGeneration: number;
+  overlayVisible: boolean;
+}): boolean =>
+  args.overlayVisible && args.enrichmentGeneration === args.activeGeneration;
+
 /** What the door says for one server scan result. `noun` is the offering noun ("event"). */
 export const describeScanResult = (
   raw: string,
@@ -87,21 +138,52 @@ export const describeScanResult = (
     ticketName: string | null;
     nextStartAt: string | null;
     lastEndAt: string | null;
+    /** issue #3281 PR8 */
+    eventDateId?: string | null;
+    dayLabel?: string | null;
+    overrideTitle?: string | null;
+    passIndex?: number | null;
+    passTotal?: number | null;
   },
   noun: string,
 ): ScanResultCopy => {
   const kind = asScanResult(raw);
   const nounCap = noun.length > 0 ? `${noun[0].toUpperCase()}${noun.slice(1)}` : noun;
+  const admitted = formatAdmittedDateLine({
+    dayLabel: scan.dayLabel,
+    overrideTitle: scan.overrideTitle,
+  });
+  const passProgress = formatPassDateProgress(scan.passIndex, scan.passTotal);
+  const day =
+    typeof scan.dayLabel === "string" && scan.dayLabel.trim().length > 0
+      ? scan.dayLabel.trim()
+      : null;
+  const buyer = scan.buyerName ?? "Guest";
+  const tier = scan.ticketName ?? "Ticket";
   switch (kind) {
     case "success":
+      // Keep buyer + tier on the overlay; admitted date / pass progress are
+      // additive detail for multi-date doors (issue #3281 PR8 / Copilot).
       return {
         kind,
-        message: `${scan.buyerName ?? "Guest"} checked in`,
-        detail: scan.ticketName ?? "Ticket",
+        message: `${buyer} checked in`,
+        detail:
+          admitted !== null
+            ? passProgress !== null
+              ? `${tier} · ${admitted} · ${passProgress}`
+              : `${tier} · ${admitted}`
+            : passProgress !== null
+              ? `${tier} · ${passProgress}`
+              : tier,
         tone: "success",
       };
     case "duplicate":
-      return { kind, message: "Already checked in", detail: scan.ticketName ?? undefined, tone: "warning" };
+      return {
+        kind,
+        message: day !== null ? `Already scanned for ${day}` : "Already checked in",
+        detail: scan.ticketName ?? undefined,
+        tone: "warning",
+      };
     case "wrong_event":
       return { kind, message: `Different ${noun}`, detail: scan.ticketName ?? undefined, tone: "error" };
     case "void":
@@ -110,7 +192,11 @@ export const describeScanResult = (
       return {
         kind,
         message: "Doors aren't open yet",
-        detail: scan.nextStartAt ? `Opens ${formatDoorTime(scan.nextStartAt)}` : "Try again closer to start time",
+        detail: scan.nextStartAt
+          ? `Opens ${formatDoorTime(scan.nextStartAt)}`
+          : day !== null
+            ? `Opens ${day}`
+            : "Try again closer to start time",
         tone: "warning",
       };
     case "event_ended":
