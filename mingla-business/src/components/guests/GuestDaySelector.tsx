@@ -161,8 +161,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   label: {
-    ...textTokens.caption,
-    color: "rgba(255,255,255,0.72)",
+    fontSize: 12,
+    fontWeight: "600",
+    color: textTokens.secondary,
     marginBottom: 4,
   },
   monthRow: {
@@ -173,13 +174,13 @@ const styles = StyleSheet.create({
   },
   monthHit: { paddingHorizontal: 8, paddingVertical: 4 },
   monthKey: {
-    ...textTokens.caption,
-    color: "rgba(255,255,255,0.72)",
+    fontSize: 12,
+    color: textTokens.secondary,
     fontWeight: "700",
   },
   monthKeySolo: {
-    ...textTokens.caption,
-    color: "rgba(255,255,255,0.55)",
+    fontSize: 12,
+    color: textTokens.tertiary,
     marginBottom: 2,
   },
   list: { gap: spacing.xs },

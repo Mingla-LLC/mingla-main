@@ -28,4 +28,5 @@ Deno.test("scanner screen wires describeScanResult with dayLabel", () => {
   assert(text.includes("eventDateId"));
   assert(text.includes("formatOccurrenceDayLabel"));
   assert(text.includes("allDaysPass"));
+  assert(text.includes("getPublicEventById"));
 });

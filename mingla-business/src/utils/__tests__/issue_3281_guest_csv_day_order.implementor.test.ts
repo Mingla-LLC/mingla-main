@@ -17,8 +17,13 @@ Deno.test("orderDayCell collapses full pass to All N dates and sorts by map orde
 
 Deno.test("guests roster uses Day selector above 7 dates", () => {
   const text = Deno.readTextFileSync(GUESTS);
-  assert(text.includes("issue-3281-day-selector"));
+  assert(text.includes("LazyGuestDaySelector"));
   assert(text.includes("occurrences.length > 7"));
+  const selector = Deno.readTextFileSync(
+    "mingla-business/src/components/guests/GuestDaySelector.tsx",
+  );
+  assert(selector.includes("issue-3281-day-selector"));
+  assert(selector.includes("occurrenceLocalDay"));
 });
 
 Deno.test("dashboard ticket row shows N left at 10 or fewer", () => {

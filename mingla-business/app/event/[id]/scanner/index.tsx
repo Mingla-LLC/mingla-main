@@ -65,12 +65,9 @@ import {
   ScanTicketError,
   scanTicket,
 } from "../../../../src/services/scanTicketService";
-import { usePublicEventById } from "../../../../src/hooks/usePublicEvents";
-import { formatOccurrenceDayLabel } from "../../../../src/utils/eventDateDisplay";
-
-// Value import of describeScanResult stays behind an on-intent dynamic import
-// in handleBarcodeScanned so scanResultCopy does not grow the web __common
-// boot chunk (orch-1083 / bundle-baseline-movement).
+// Public-event occurrences + describeScanResult stay behind on-intent dynamic
+// imports in handleBarcodeScanned so they do not grow the web __common boot
+// chunk (orch-1083 / bundle-baseline-movement).
 import type { ScanResultCopy } from "../../../../src/components/scanner/scanResultCopy";
 import type { AdmitResponse } from "../../../../src/services/guestListService";
 
@@ -209,12 +206,6 @@ export default function ScannerCameraRoute(): React.ReactElement {
     typeof eventId === "string" ? eventId : null,
   );
   const event = routeEvent.event;
-  // issue #3281 PR8 — occurrences for admitted-date labels on the door.
-  const publicEventQuery = usePublicEventById(
-    typeof eventId === "string" ? eventId : null,
-  );
-  const occurrences = publicEventQuery.data?.occurrences ?? [];
-  const allDaysPass = publicEventQuery.data?.allDaysPass === true;
   // META-ORCH-1059 — kind-aware copy lens for the shared scanner screen.
   const kindCfg = offeringKindConfig(
     offeringKindFromEventType(event?.event_type),
@@ -396,10 +387,25 @@ export default function ScannerCameraRoute(): React.ReactElement {
             buyerName: result.buyerName,
             ticketName: result.ticketName,
           });
-          // issue #3281 PR8 — resolve admitted day for door copy.
-          const { describeScanResult } = await import(
-            "../../../../src/components/scanner/scanResultCopy"
-          );
+          // issue #3281 PR8 — resolve admitted day for door copy (on-intent).
+          const [{ describeScanResult }, { getPublicEventById }, { formatOccurrenceDayLabel }] =
+            await Promise.all([
+              import("../../../../src/components/scanner/scanResultCopy"),
+              import("../../../../src/services/publicEventsService"),
+              import("../../../../src/utils/eventDateDisplay"),
+            ]);
+          let occurrences: Awaited<
+            ReturnType<typeof getPublicEventById>
+          >["occurrences"] = [];
+          let allDaysPass = false;
+          try {
+            const detail = await getPublicEventById(event.id);
+            occurrences = detail.occurrences ?? [];
+            allDaysPass = detail.allDaysPass === true;
+          } catch {
+            occurrences = [];
+            allDaysPass = false;
+          }
           const admittedId =
             typeof result.eventDateId === "string" ? result.eventDateId : null;
           const admittedOcc =
@@ -485,7 +491,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
         }
       })();
     },
-    [event, showResult, recordServerScan, kindCfg.noun, occurrences, allDaysPass],
+    [event, showResult, recordServerScan, kindCfg.noun],
   );
 
   // issue #3827 — a name admit gets the same result card, haptics and
