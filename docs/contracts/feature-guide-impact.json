@@ -258,6 +258,7 @@
       "capability_key": "events-check-in",
       "paths": [
         "mingla-business/app/event/[id]/scanner/index.tsx",
+        "mingla-business/src/components/scanner/DoorGuestSearchSheet.tsx",
         "mingla-business/src/components/scanner/scanResultCopy.ts",
         "mingla-business/src/services/scanTicketService.ts",
         "supabase/migrations/20280215003281_issue_3281_scan_duplicate_day_label.sql"
