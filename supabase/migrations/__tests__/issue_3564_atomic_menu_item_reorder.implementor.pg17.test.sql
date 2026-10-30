@@ -40,8 +40,10 @@ BEGIN
      OR NOT has_table_privilege('service_role', 'public.menu_items', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN') THEN
     RAISE EXCEPTION 'ISSUE-3564 I-CATALOG-4: inherited #1856 menu table-grant posture drifted';
   END IF;
-  IF (SELECT pg_catalog.count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'menus') <> 2
-     OR (SELECT pg_catalog.count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'menu_items') <> 2 THEN
+  -- [TEST-MOD-APPROVED #4188] Scoped resort staff add one read and one write
+  -- policy to each menu table; the two existing brand-team policies remain.
+  IF (SELECT pg_catalog.count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'menus') <> 4
+     OR (SELECT pg_catalog.count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'menu_items') <> 4 THEN
     RAISE EXCEPTION 'ISSUE-3564 I-CATALOG-5: existing menu policy set changed';
   END IF;
   v_definition := pg_catalog.pg_get_functiondef(v_sig);

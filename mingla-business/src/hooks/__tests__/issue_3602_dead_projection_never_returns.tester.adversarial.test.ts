@@ -516,7 +516,13 @@ describe("#3602 A3 — two-sided parity with the SQL authority", () => {
     // consumers). It must still exist AND still be gated on the DB answer
     // being null, so a real DB answer always wins over the stub.
     expect(hook).toMatch(/\[TRANSITIONAL\]/);
-    expect(hook).toMatch(/role\s*===\s*null\s*&&\s*stubBrandRole\s*!==\s*null/);
+    // [TEST-MOD-APPROVED #4188] The predicate is now extracted so loading and
+    // error states cannot momentarily inherit a broad role from local display
+    // data. Pin every fail-closed input as well as the null-role guard.
+    expect(hook).toMatch(
+      /input\.dataResolved[\s\S]*input\.dataRole\s*===\s*null[\s\S]*!input\.isLoading[\s\S]*!input\.isError[\s\S]*input\.stubBrandRole\s*!==\s*null/,
+    );
+    expect(hook).toMatch(/dataRole:\s*data\?\.role\s*\?\?\s*null/);
   });
 
   test("A3-d: the real DB answer outranks the stub, because the owner path returns non-null", async () => {

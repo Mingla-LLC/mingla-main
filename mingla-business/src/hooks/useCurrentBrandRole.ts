@@ -24,7 +24,7 @@
  * every gated surface (Create event, Edit event, Refund, etc. — 9 surfaces
  * total). To bridge this gap until B-cycle persists real brand rows, the hook
  * reads `currentBrandStore.brand.role` (`'owner' | 'admin'`) when the DB
- * chain returns null and synthesizes the corresponding 6-role enum value.
+ * chain returns null and synthesizes the corresponding 7-role enum value.
  *
  * #3602 — CORRECTION OF RECORD. This header used to claim the stub branch was
  * "dead code in practice" because the DB chain returned real values. The
@@ -249,7 +249,7 @@ export const useCurrentBrandRole = (
   // Fires when the DB chain returns no role (typically because the brand is a
   // local-only stub from `brandList.STUB_BRANDS` and isn't persisted to the
   // production DB yet). Maps the existing local-only `Brand.role` enum to the
-  // 6-role enum:
+  // 7-role enum:
   //   "owner" → "brand_owner" (rank 60 — top of hierarchy)
   //   "admin" → "brand_admin"   (rank 50)
   //
