@@ -1,6 +1,8 @@
 -- issue #3281 PR9 — cancel one event date (status + preview/execute RPC).
--- Pass refund default: 1/N of paid order total for tickets covering this date
--- (pending Seth confirmation of the default; preview returns the same numbers).
+-- Preview quotes estimated refund liability (1/N of each ticket's covered
+-- dates on all-days passes; full remaining buyer total for day-scoped).
+-- Execute cancels the date only — date-scoped refund fan-out is a follow-up
+-- once Seth confirms the default (Host copy must not claim refunds completed).
 
 BEGIN;
 
@@ -39,8 +41,8 @@ AS $fn$
 DECLARE
   v_uid uuid := auth.uid();
   v_brand uuid;
+  v_event_status text;
   v_is_pass boolean;
-  v_date_count integer;
   v_buyer_count integer := 0;
   v_amount_cents bigint := 0;
   v_currency text;
@@ -53,15 +55,22 @@ BEGIN
     RAISE EXCEPTION 'invalid_edit_reason';
   END IF;
 
+  -- Lock event first (matches business_patch_event_when / issue_1930 order).
   SELECT e.brand_id,
+         e.status,
          (e.is_multi_date IS TRUE AND e.is_recurring IS NOT TRUE
-          AND COALESCE(e.theme->'business_event'->>'multi_date_pricing_mode', 'per_day') = 'all_days'),
+          AND COALESCE(e.multi_date_pricing_mode, 'per_day') = 'all_days'),
          e.currency
-    INTO v_brand, v_is_pass, v_currency
+    INTO v_brand, v_event_status, v_is_pass, v_currency
     FROM public.events e
-   WHERE e.id = p_event_id AND e.deleted_at IS NULL;
+   WHERE e.id = p_event_id AND e.deleted_at IS NULL
+   FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'event_not_found';
+  END IF;
+  IF v_event_status IS DISTINCT FROM 'scheduled'
+     AND v_event_status IS DISTINCT FROM 'live' THEN
+    RAISE EXCEPTION 'event_not_editable';
   END IF;
   IF public.biz_brand_effective_rank(v_brand, v_uid)
        < public.biz_role_rank('event_manager'::text) THEN
@@ -79,28 +88,68 @@ BEGIN
     RAISE EXCEPTION 'occurrence_already_cancelled';
   END IF;
 
-  SELECT count(*)::integer INTO v_date_count
-    FROM public.event_dates d
-   WHERE d.event_id = p_event_id AND d.status = 'active';
-
-  -- Buyers with a live ticket covering this date.
-  SELECT count(DISTINCT o.id)::integer,
-         COALESCE(sum(
+  -- Affected tickets: explicit binding to this date OR legacy unscoped
+  -- (zero ticket_event_dates rows = any-occurrence), matching
+  -- issue_3313_ticket_type_occurrence_sold. Include partial_refund orders.
+  -- Amount basis = buyer_total_cents (fees + tax) minus already refunded,
+  -- allocated by each ticket's covered-date count (stable; not shrinking
+  -- active-date denominator). Cap by remaining refundable on the order.
+  WITH affected AS (
+    SELECT o.id AS order_id,
+           tk.id AS ticket_id,
+           GREATEST(
+             0,
+             COALESCE(o.buyer_total_cents, o.total_cents, 0)
+               - COALESCE(o.refunded_amount_cents, 0)
+           )::bigint AS remaining_cents,
+           GREATEST(
+             1,
+             (
+               SELECT count(*)::integer
+                 FROM public.ticket_event_dates ted_all
+                WHERE ted_all.ticket_id = tk.id
+             )
+           )::integer AS covered_dates
+      FROM public.orders o
+      JOIN public.tickets tk ON tk.order_id = o.id
+     WHERE o.event_id = p_event_id
+       AND o.payment_status = ANY (ARRAY['paid'::text, 'partial_refund'::text])
+       AND tk.status = ANY (ARRAY['valid'::text, 'used'::text, 'transferred'::text])
+       AND (
+         EXISTS (
+           SELECT 1 FROM public.ticket_event_dates ted
+            WHERE ted.ticket_id = tk.id AND ted.event_date_id = p_event_date_id
+         )
+         OR NOT EXISTS (
+           SELECT 1 FROM public.ticket_event_dates ted
+            WHERE ted.ticket_id = tk.id
+         )
+       )
+  ),
+  per_ticket AS (
+    SELECT order_id,
+           ticket_id,
+           remaining_cents,
            CASE
-             WHEN v_is_pass AND v_date_count > 0 THEN
-               (o.total_cents / v_date_count)
-             ELSE o.total_cents
-           END
-         ), 0)::bigint
+             WHEN v_is_pass THEN
+               (remaining_cents / covered_dates)
+             ELSE remaining_cents
+           END::bigint AS share_cents
+      FROM affected
+  ),
+  capped AS (
+    SELECT order_id,
+           least(
+             sum(share_cents),
+             max(remaining_cents)
+           )::bigint AS order_share
+      FROM per_ticket
+     GROUP BY order_id
+  )
+  SELECT count(*)::integer,
+         COALESCE(sum(order_share), 0)::bigint
     INTO v_buyer_count, v_amount_cents
-    FROM public.orders o
-    JOIN public.tickets tk ON tk.order_id = o.id
-    JOIN public.ticket_event_dates ted ON ted.ticket_id = tk.id
-   WHERE o.event_id = p_event_id
-     AND o.payment_status = 'paid'
-     AND COALESCE(o.refunded_amount_cents, 0) < o.total_cents
-     AND ted.event_date_id = p_event_date_id
-     AND tk.status = ANY (ARRAY['valid'::text, 'used'::text, 'transferred'::text]);
+    FROM capped;
 
   IF p_preview IS TRUE THEN
     RETURN jsonb_build_object(
@@ -118,7 +167,11 @@ BEGIN
      SET status = 'cancelled',
          cancelled_at = now(),
          cancel_reason = left(btrim(p_reason), 200)
-   WHERE id = p_event_date_id;
+   WHERE id = p_event_date_id
+     AND status = 'active';
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'occurrence_already_cancelled';
+  END IF;
 
   RETURN jsonb_build_object(
     'ok', true,
@@ -139,9 +192,11 @@ GRANT EXECUTE ON FUNCTION public.business_cancel_event_date(uuid, uuid, text, bo
   TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.business_cancel_event_date(uuid, uuid, text, boolean) IS
-  'issue #3281 PR9 — preview or cancel one event_dates row; returns buyer/amount for confirm.';
+  'issue #3281 PR9 — preview or cancel one event_dates row; amountCents is estimated refund liability only.';
 
--- Stable-id time move (keeps ticket_event_dates FK).
+-- Stable-id time move (keeps ticket_event_dates FK). Sold dates must use the
+-- refund-first schedule writer; this path only retimes unsold active dates on
+-- scheduled/live parents.
 CREATE OR REPLACE FUNCTION public.business_move_event_date_time(
   p_event_id uuid,
   p_event_date_id uuid,
@@ -156,6 +211,8 @@ AS $fn$
 DECLARE
   v_uid uuid := auth.uid();
   v_brand uuid;
+  v_event_status text;
+  v_sold boolean;
 BEGIN
   IF v_uid IS NULL THEN RAISE EXCEPTION 'not_authenticated'; END IF;
   IF p_reason IS NULL OR length(btrim(p_reason)) < 10 OR length(btrim(p_reason)) > 200 THEN
@@ -165,23 +222,52 @@ BEGIN
     RAISE EXCEPTION 'invalid_time_range';
   END IF;
 
-  SELECT e.brand_id INTO v_brand
-    FROM public.events e WHERE e.id = p_event_id AND e.deleted_at IS NULL;
+  SELECT e.brand_id, e.status INTO v_brand, v_event_status
+    FROM public.events e
+   WHERE e.id = p_event_id AND e.deleted_at IS NULL
+   FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'event_not_found'; END IF;
+  IF v_event_status IS DISTINCT FROM 'scheduled'
+     AND v_event_status IS DISTINCT FROM 'live' THEN
+    RAISE EXCEPTION 'event_not_editable';
+  END IF;
   IF public.biz_brand_effective_rank(v_brand, v_uid)
        < public.biz_role_rank('event_manager'::text) THEN
     RAISE EXCEPTION 'insufficient_event_permission';
   END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM public.event_dates d
-     WHERE d.id = p_event_date_id AND d.event_id = p_event_id AND d.status = 'active'
-  ) THEN
+
+  PERFORM 1 FROM public.event_dates d
+   WHERE d.id = p_event_date_id AND d.event_id = p_event_id AND d.status = 'active'
+   FOR UPDATE;
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'occurrence_not_found';
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+      FROM public.orders o
+      JOIN public.tickets tk ON tk.order_id = o.id
+     WHERE o.event_id = p_event_id
+       AND o.payment_status = ANY (ARRAY['paid'::text, 'partial_refund'::text])
+       AND tk.status = ANY (ARRAY['valid'::text, 'used'::text, 'transferred'::text])
+       AND (
+         EXISTS (
+           SELECT 1 FROM public.ticket_event_dates ted
+            WHERE ted.ticket_id = tk.id AND ted.event_date_id = p_event_date_id
+         )
+         OR NOT EXISTS (
+           SELECT 1 FROM public.ticket_event_dates ted
+            WHERE ted.ticket_id = tk.id
+         )
+       )
+  ) INTO v_sold;
+  IF COALESCE(v_sold, false) THEN
+    RAISE EXCEPTION 'sold_date_requires_schedule_writer';
   END IF;
 
   UPDATE public.event_dates
      SET start_at = p_start_at, end_at = p_end_at
-   WHERE id = p_event_date_id;
+   WHERE id = p_event_date_id AND status = 'active';
 
   RETURN jsonb_build_object(
     'ok', true,
@@ -196,5 +282,90 @@ REVOKE ALL ON FUNCTION public.business_move_event_date_time(uuid, uuid, timestam
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.business_move_event_date_time(uuid, uuid, timestamptz, timestamptz, text)
   TO authenticated, service_role;
+
+-- Schedule helper: cancelled dates are not upcoming.
+CREATE OR REPLACE FUNCTION public.issue_3281_event_schedule(p_event_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $fn$
+DECLARE
+  v_next_start timestamptz;
+  v_next_end timestamptz;
+  v_upcoming integer := 0;
+BEGIN
+  SELECT count(*)::integer
+    INTO v_upcoming
+    FROM public.event_dates d
+   WHERE d.event_id = p_event_id
+     AND d.end_at > now()
+     AND COALESCE(d.status, 'active') = 'active';
+
+  SELECT d.start_at, d.end_at
+    INTO v_next_start, v_next_end
+    FROM public.event_dates d
+   WHERE d.event_id = p_event_id
+     AND d.end_at > now()
+     AND COALESCE(d.status, 'active') = 'active'
+   ORDER BY d.start_at, d.id
+   LIMIT 1;
+
+  RETURN jsonb_build_object(
+    'nextStartAt', v_next_start,
+    'nextEndAt', v_next_end,
+    'upcomingCount', COALESCE(v_upcoming, 0),
+    'scheduleLine', CASE
+      WHEN v_upcoming IS NULL OR v_upcoming = 0 THEN NULL
+      WHEN v_upcoming = 1 THEN to_char(v_next_start AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+      ELSE format('%s upcoming dates', v_upcoming)
+    END
+  );
+END;
+$fn$;
+
+-- Buyer-facing readers: exclude cancelled dates from upcoming / occurrence lists.
+DO $patch$
+DECLARE
+  r record;
+  v_def text;
+  v_new text;
+BEGIN
+  FOR r IN
+    SELECT p.oid
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'public'
+       AND pg_get_functiondef(p.oid) LIKE '%FROM public.event_dates%'
+       AND (
+         pg_get_functiondef(p.oid) LIKE '%d.end_at > now()%'
+         OR pg_get_functiondef(p.oid) LIKE '%WHERE d.event_id = ev.id%'
+       )
+       AND p.proname NOT IN (
+         'business_cancel_event_date',
+         'business_move_event_date_time'
+       )
+  LOOP
+    v_def := pg_get_functiondef(r.oid);
+    IF v_def IS NULL OR position('COALESCE(d.status' IN v_def) > 0 THEN
+      CONTINUE;
+    END IF;
+    v_new := replace(
+      v_def,
+      'd.end_at > now()',
+      'd.end_at > now() AND COALESCE(d.status, ''active'') = ''active'''
+    );
+    v_new := replace(
+      v_new,
+      'WHERE d.event_id = ev.id',
+      'WHERE d.event_id = ev.id AND COALESCE(d.status, ''active'') = ''active'''
+    );
+    IF v_new IS DISTINCT FROM v_def THEN
+      EXECUTE v_new;
+    END IF;
+  END LOOP;
+END;
+$patch$;
 
 COMMIT;

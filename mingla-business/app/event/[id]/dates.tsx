@@ -2,7 +2,15 @@
  * issue #3281 many-dates — Host Dates list (PR 3 + dark-theme follow-up).
  * Edit per-date title / venue via business_set_event_date_override.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   RefreshControl,
@@ -20,6 +28,7 @@ import { TopBar } from "../../../src/components/ui/TopBar";
 import { Button } from "../../../src/components/ui/Button";
 import { Toast } from "../../../src/components/ui/Toast";
 import { supabase } from "../../../src/services/supabase";
+import { formatCurrency } from "../../../src/utils/currency";
 import {
   accent,
   canvas,
@@ -27,6 +36,19 @@ import {
   text as textTokens,
   typography,
 } from "../../../src/constants/designSystem";
+
+// ConfirmDialog pulls reanimated — keep it off the Dates boot path.
+const LazyConfirmDialog = lazy(async () => {
+  const mod = await import("../../../src/components/ui/ConfirmDialog");
+  return { default: mod.ConfirmDialog };
+});
+
+type CancelPreview = {
+  rowId: string;
+  buyerCount: number;
+  amountCents: number;
+  currency: string;
+};
 
 type DateRow = {
   id: string;
@@ -68,6 +90,10 @@ export default function EventDatesScreen(): React.ReactElement {
   const [refreshing, setRefreshing] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [cancelPreview, setCancelPreview] = useState<CancelPreview | null>(
+    null,
+  );
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [drafts, setDrafts] = useState<
     Record<string, { title: string; location: string }>
   >({});
@@ -120,7 +146,20 @@ export default function EventDatesScreen(): React.ReactElement {
     void load();
   }, [load]);
 
-  const cancelRow = async (rowId: string) => {
+  const formatLiability = (
+    amountCents: number,
+    currency: string,
+  ): string | null => {
+    const code = currency.trim();
+    if (code.length === 0 || amountCents <= 0) return null;
+    try {
+      return formatCurrency(amountCents, code, true);
+    } catch {
+      return null;
+    }
+  };
+
+  const requestCancelPreview = async (rowId: string): Promise<void> => {
     if (typeof id !== "string") return;
     const row = rows.find((r) => r.id === rowId);
     if (row === undefined || row.status === "cancelled") return;
@@ -135,34 +174,50 @@ export default function EventDatesScreen(): React.ReactElement {
         p_preview: true,
       },
     );
+    setSavingId(null);
     if (previewError) {
-      setSavingId(null);
       setToast(previewError.message);
       return;
     }
-    const buyers =
-      typeof preview?.buyerCount === "number" ? preview.buyerCount : 0;
-    const amount =
-      typeof preview?.amountCents === "number" ? preview.amountCents : 0;
-    const currency =
-      typeof preview?.currency === "string" ? preview.currency : "";
+    setCancelPreview({
+      rowId,
+      buyerCount:
+        typeof preview?.buyerCount === "number" ? preview.buyerCount : 0,
+      amountCents:
+        typeof preview?.amountCents === "number" ? preview.amountCents : 0,
+      currency: typeof preview?.currency === "string" ? preview.currency : "",
+    });
+  };
+
+  const dismissCancelPreview = useCallback((): void => {
+    if (confirmingCancel) return;
+    setCancelPreview(null);
+  }, [confirmingCancel]);
+
+  const confirmCancelDate = async (): Promise<void> => {
+    if (typeof id !== "string" || cancelPreview === null) return;
+    const { rowId, buyerCount, amountCents, currency } = cancelPreview;
+    setConfirmingCancel(true);
+    const reason = "Host cancelled this date for guests and buyers.";
     const { error } = await supabase.rpc("business_cancel_event_date", {
       p_event_id: id,
       p_event_date_id: rowId,
       p_reason: reason,
       p_preview: false,
     });
-    setSavingId(null);
+    setConfirmingCancel(false);
     if (error) {
       setToast(error.message);
       return;
     }
+    setCancelPreview(null);
     setRows((prev) =>
       prev.map((r) => (r.id === rowId ? { ...r, status: "cancelled" } : r)),
     );
+    const money = formatLiability(amountCents, currency);
     setToast(
-      buyers > 0
-        ? `Cancelled · ${buyers} buyer${buyers === 1 ? "" : "s"}${amount > 0 ? ` · ${amount} ${currency}`.trim() : ""}`
+      buyerCount > 0
+        ? `Date cancelled · ${buyerCount} buyer${buyerCount === 1 ? "" : "s"}${money !== null ? ` · est. to refund ${money}` : ""}`
         : "Date cancelled",
     );
   };
@@ -288,7 +343,8 @@ export default function EventDatesScreen(): React.ReactElement {
                   />
                   {cancelled ? (
                     <Text style={styles.mutedInline}>
-                      Cancelled · refunded for that date's buyers when owed.
+                      Cancelled · not offered to new buyers. Refunds (when
+                      owed) are handled separately.
                     </Text>
                   ) : past ? (
                     <Text style={styles.mutedInline}>
@@ -304,8 +360,8 @@ export default function EventDatesScreen(): React.ReactElement {
                       <Button
                         label="Cancel this date"
                         variant="secondary"
-                        onPress={() => void cancelRow(r.id)}
-                        disabled={savingId !== null}
+                        onPress={() => void requestCancelPreview(r.id)}
+                        disabled={savingId !== null || cancelPreview !== null}
                         testID={`issue-3281-cancel-date-${r.id}`}
                       />
                     </View>
@@ -316,6 +372,35 @@ export default function EventDatesScreen(): React.ReactElement {
           )}
         </ScrollView>
       )}
+      {cancelPreview !== null ? (
+        <Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            destructive
+            title="Cancel this date?"
+            description={(() => {
+              const money = formatLiability(
+                cancelPreview.amountCents,
+                cancelPreview.currency,
+              );
+              if (cancelPreview.buyerCount <= 0) {
+                return "No paid buyers cover this date. Cancelling hides it from new buyers. This cannot be undone from here.";
+              }
+              return money !== null
+                ? `${cancelPreview.buyerCount} buyer${cancelPreview.buyerCount === 1 ? "" : "s"} cover this date. Estimated refund liability ${money}. Cancelling hides the date from new buyers; refunds are not issued by this action.`
+                : `${cancelPreview.buyerCount} buyer${cancelPreview.buyerCount === 1 ? "" : "s"} cover this date. Cancelling hides the date from new buyers; refunds are not issued by this action.`;
+            })()}
+            confirmLabel="Cancel date"
+            cancelLabel="Keep date"
+            confirmLoading={confirmingCancel}
+            onClose={dismissCancelPreview}
+            onConfirm={() => void confirmCancelDate()}
+            testID="issue-3281-cancel-date-confirm"
+            confirmTestID="issue-3281-cancel-date-confirm-yes"
+            cancelTestID="issue-3281-cancel-date-confirm-no"
+          />
+        </Suspense>
+      ) : null}
       <Toast
         visible={toast !== null}
         kind="info"

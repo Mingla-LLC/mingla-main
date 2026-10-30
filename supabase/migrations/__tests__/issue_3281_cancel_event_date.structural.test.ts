@@ -15,11 +15,22 @@ Deno.test("cancel migration adds status columns and RPCs", () => {
   assert(text.includes("business_cancel_event_date"));
   assert(text.includes("business_move_event_date_time"));
   assert(text.includes("p_preview"));
+  assert(text.includes("multi_date_pricing_mode"));
+  assert(text.includes("buyer_total_cents"));
+  assert(text.includes("partial_refund"));
+  assert(text.includes("FOR UPDATE"));
+  assert(text.includes("COALESCE(d.status"));
+  assert(text.includes("sold_date_requires_schedule_writer"));
 });
 
-Deno.test("Host Dates screen wires Cancel this date", () => {
+Deno.test("Host Dates screen wires Cancel this date with confirm", () => {
   const text = Deno.readTextFileSync(DATES);
   assert(text.includes("business_cancel_event_date"));
   assert(text.includes("Cancel this date"));
   assert(text.includes("issue-3281-cancel-date-"));
+  assert(text.includes("requestCancelPreview"));
+  assert(text.includes("confirmCancelDate"));
+  assert(text.includes("formatCurrency"));
+  assert(text.includes("p_preview: false"));
+  assert(text.includes("LazyConfirmDialog"));
 });
