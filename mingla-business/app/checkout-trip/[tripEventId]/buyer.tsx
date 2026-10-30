@@ -819,7 +819,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
                   totalValue={
                     totals.isFree
                       ? BUYER_CLAIM_COPY.receipt.free
-                      : formatCurrency(totals.allInTotal, totals.currency, true)
+                      : formatCurrency(totals.allInTotal, totals.currency)
                   }
                 />
               </React.Suspense>
@@ -1041,7 +1041,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
               ? "Updating…"
               : totals.isFree
                 ? BUYER_CLAIM_COPY.receipt.free
-                : formatCurrency(totals.allInTotal, totals.currency, true)}
+                : formatCurrency(totals.allInTotal, totals.currency)}
           </Text>
         </View>
         {/* ORCH-1130 Fix #1 — due-today (deposit) line in the sticky bar under
