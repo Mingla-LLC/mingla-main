@@ -301,6 +301,7 @@ export function StayStaffReservationCreateSheet({
           <Text style={styles.fieldLabel}>Payment</Text>
           <Pressable
             accessibilityRole="radio"
+            accessibilityLabel="Send a secure payment link"
             accessibilityState={{ selected: paymentMethod === "link" }}
             onPress={() => setPaymentMethod("link")}
             disabled={quote !== null || submitting}
@@ -334,6 +335,7 @@ export function StayStaffReservationCreateSheet({
           ) : null}
           <Pressable
             accessibilityRole="radio"
+            accessibilityLabel="Pay at property"
             accessibilityState={{ selected: paymentMethod === "property" }}
             onPress={() => setPaymentMethod("property")}
             disabled={quote !== null || submitting}

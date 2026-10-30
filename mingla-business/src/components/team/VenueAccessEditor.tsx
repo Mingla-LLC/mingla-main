@@ -181,6 +181,7 @@ export function VenueAccessEditor({
                       onPress={() => update(venue, option.id)}
                       disabled={disabled}
                       accessibilityRole="radio"
+                      accessibilityLabel={option.label}
                       accessibilityState={{ selected: grant.profile === option.id }}
                       style={[
                         styles.profileChip,
@@ -204,6 +205,7 @@ export function VenueAccessEditor({
                       onPress={() => toggleCapability(venue, option.capability)}
                       disabled={disabled}
                       accessibilityRole="checkbox"
+                      accessibilityLabel={option.label}
                       accessibilityState={{ checked }}
                       style={styles.capabilityRow}
                     >

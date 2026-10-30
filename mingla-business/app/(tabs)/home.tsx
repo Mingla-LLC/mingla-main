@@ -712,7 +712,6 @@ export default function HomeTab(): React.ReactElement {
               leftKind="brand"
               onBrandTap={handleOpenSwitcher}
               brandLoading={roleResolving}
-              rightSlot={null}
             />
           </View>
           <View style={styles.roleGate} testID="home-role-gate">
