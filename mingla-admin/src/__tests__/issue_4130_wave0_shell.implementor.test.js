@@ -1,7 +1,7 @@
 // Issue #4130 (Wave 0) — the admin menu, routing and access match the approved
 // polish design, and the shared fixes later waves build on.
 //
-//   W0-1  the menu: nine groups, 27 pages, in the approved order; Needs you,
+//   W0-1  the menu: nine groups, 32 pages, in the approved order; Needs you,
 //         My agent and Guide are not menu entries
 //   W0-2  every retired page id redirects to its new home, keeping its query
 //   W0-3  every redirect lands on a real page and, for a hub, a real tab;
@@ -61,7 +61,9 @@ const MENU = [
   ["Growth", ["ad-engine:Ads"]],
   // #4130 (Seth): Careers is its own menu item again, between Team and roles and Data room.
   ["Company", ["admin:Team and roles", "careers:Careers", "data-room:Data room"]],
-  ["System", ["platform-health:Platform health", "feature-flags:Feature flags", "settings:Settings"]],
+  // [TEST-MOD-APPROVED #3355] The guarded Ari Improvement Lab is a first-class
+  // System destination and must remain in the approved sidebar order.
+  ["System", ["platform-health:Platform health", "feature-flags:Feature flags", "ari-improvement-lab:Ari Improvement Lab", "settings:Settings"]],
 ];
 
 // The approved "Retired and merged" table, as the spec's redirect list.
@@ -98,13 +100,14 @@ const admin = { email: "a@example.test", role: "admin", status: "active", areas:
 const growth = { email: "g@example.test", role: "growth", status: "active", areas: ["role_home", "crm", "beta_leads"] };
 
 describe("#4130 W0-1: the menu is the approved sidebar", () => {
-  it("nine groups, 31 pages, labels and order exactly as approved", () => {
+  it("nine groups, 32 pages, labels and order exactly as approved", () => {
     assert.deepEqual(NAV_GROUPS.map((g) => g.label), MENU.map(([label]) => label));
     for (const [i, [label, items]] of MENU.entries()) {
       assert.deepEqual(NAV_GROUPS[i].items.map((it) => `${it.id}:${it.label}`), items, label);
     }
-    // #4130: Careers is back as its own page (27). #4130 + #3872: + the four Creator Program pages.
-    assert.equal(NAV_ITEMS.length, 31);
+    // #4130: Careers is back as its own page (27). #4130 + #3872: + the four
+    // Creator Program pages. #3355: + the guarded Ari Improvement Lab.
+    assert.equal(NAV_ITEMS.length, 32);
   });
   it("Needs you, My agent and Guide are not menu entries; My agent and Guide keep their pages in the header", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
