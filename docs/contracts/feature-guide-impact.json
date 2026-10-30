@@ -85,6 +85,7 @@
         "mingla-business/src/services/brandInvitationsService.ts",
         "mingla-business/src/services/brandVenueAccessService.ts",
         "mingla-business/src/store/brandTeamStore.ts",
+        "mingla-business/src/types/brand.ts",
         "mingla-business/src/utils/brandRole.ts",
         "mingla-business/src/utils/brandRoleCopy.ts",
         "mingla-business/src/utils/navTabGate.ts",
