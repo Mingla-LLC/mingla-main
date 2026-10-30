@@ -10,7 +10,7 @@
 // This gate is itself a manifest entry (enforcement batch:B), so run-batch.mjs's
 // R4 (executed === expected) proves IT ran. The circularity — removing it from BOTH
 // the manifest and the runner would satisfy R4 — was once closed OUTSIDE this file
-// by a MANIFEST.json ratchet step in tests-append-only.yml. That step was retired
+// by a MANIFEST.json ratchet step in the former tests-append-only.yml (now pre-merge-main-health.yml). That step was retired
 // with the test append-only gate toward #3643 (2026-10-26); removing this gate from
 // both places is now caught only by code review of the visible MANIFEST diff.
 //

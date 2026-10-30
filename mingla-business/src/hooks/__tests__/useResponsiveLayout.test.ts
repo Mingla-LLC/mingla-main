@@ -13,7 +13,7 @@
  * Revert the hook commit (`useResponsiveLayout.ts`) and run this file —
  * cases 1-3 RED. Evidence captured in the CLOSE report.
  *
- * Append-only post-merge per `.github/workflows/tests-append-only.yml`.
+ * Append-only post-merge (historical; append-only CI gate retired under #4127).
  */
 
 import { describe, expect, jest, test } from "@jest/globals";

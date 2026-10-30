@@ -41533,29 +41533,16 @@
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },
     {
-      "workflow": "tests-append-only.yml",
+      "workflow": "pre-merge-main-health.yml",
       "ownerIssue": "#2148",
       "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/tests-append-only.yml",
+      "providerWorkflow": ".github/workflows/pre-merge-main-health.yml",
       "referenceFiles": [
         ".github/CODEOWNERS",
-        ".github/scripts/strict-grep/MANIFEST.json",
-        ".github/scripts/strict-grep/__tests__/orch-1400-ratchet-frontier.adversarial.test.mjs",
-        ".github/scripts/strict-grep/i-2286-ios-skadnetwork-roster-parity.mjs",
+        ".github/scripts/ci-batch/load-manifest.mjs",
         ".github/scripts/strict-grep/meta-1383-manifest-parity.mjs",
         ".github/scripts/strict-grep/orch-0847-ticket-claim-confirm-modal-removed.mjs",
-        "mingla-business/__tests__/orch-0891.bundle-budget.adversarial.test.ts",
-        "mingla-business/app/trip/__tests__/trip-dashboard-edit.test.ts",
-        "mingla-business/jest.config.cjs",
-        "mingla-business/scripts/ci/select-source-text-pins.mjs",
-        "mingla-business/src/constants/__tests__/businessNotificationTemplates.test.ts",
-        "mingla-business/src/hooks/__tests__/orch_1142_clearRead_scope.tester_adversarial.test.ts",
-        "mingla-business/src/hooks/__tests__/orch_1142_notif_softdelete_scope.test.ts",
-        "mingla-business/src/hooks/__tests__/useBusinessNotificationsInbox.test.ts",
-        "mingla-business/src/hooks/__tests__/useResponsiveLayout.test.ts",
-        "mingla-business/src/hooks/__tests__/useShimmer.test.ts",
-        "mingla-business/src/services/__tests__/businessNotificationRouting.test.ts",
-        "packages/offering-rendering/__tests__/orch_1157_rsvp_momentum_adversarial.test.ts"
+        "mingla-business/scripts/ci/select-source-text-pins.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },

@@ -30,7 +30,7 @@
  * message — both of which this test cross-validates via the tampered
  * copy. Verified at commit hash recorded in the M3 report.
  *
- * Append-only post-merge per `.github/workflows/tests-append-only.yml`.
+ * Append-only post-merge (historical; append-only CI gate retired under #4127).
  */
 
 import { describe, expect, test } from "@jest/globals";

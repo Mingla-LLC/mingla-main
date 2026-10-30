@@ -10,8 +10,8 @@
  *                       source-derived value, no render, no behavioral exec).
  *                       Safe to exclude from the default jest config: they guard
  *                       nothing behavioral. The file was kept in the repo while
- *                       `tests-append-only.yml` made deletion absolute; that gate
- *                       was retired toward #3643, so a pin may now be deleted.
+ *                       `pre-merge-main-health.yml` (formerly `tests-append-only.yml`) hosted the append-only deletion
+ *                       bar; that bar was retired under #4127 toward #3643, so a pin may now be deleted.
  *   INVARIANT_CONVERT — source-text pins that DO encode a load-bearing rule. Each
  *                       is re-pinned by an additive strict-grep .mjs gate (that
  *                       actually runs in CI) BEFORE its jest pin is quarantined,

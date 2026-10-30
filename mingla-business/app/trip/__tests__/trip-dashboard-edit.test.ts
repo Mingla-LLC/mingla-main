@@ -57,7 +57,7 @@ describe("ORCH-0859 REWORK 4 — operator dashboard Edit affordance", () => {
 // The block was instrumentation-only and explicitly self-described as
 // "intentionally NOT fails-on-revert tested" — it existed only to gate the
 // CLOSE Step 1.5 reap, which has now run. [TEST-MOD-APPROVED ORCH-0859]
-// per .github/workflows/tests-append-only.yml.
+// (historical append-only CI gate retired under #4127).
 
 describe("ORCH-0859 REWORK 4 — Item C Maestro gate", () => {
   test("canonical events-tab-no-trip-leak Maestro flow exists", () => {

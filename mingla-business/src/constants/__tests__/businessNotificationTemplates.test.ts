@@ -10,7 +10,7 @@
  * type from the record → the "11 types" assertion RED. Break the interpolate
  * fallback (return `{key}` on miss) → the no-leak assertion RED.
  *
- * Append-only post-merge per `.github/workflows/tests-append-only.yml`.
+ * Append-only post-merge (historical; append-only CI gate retired under #4127).
  */
 import { describe, expect, test } from "@jest/globals";
 

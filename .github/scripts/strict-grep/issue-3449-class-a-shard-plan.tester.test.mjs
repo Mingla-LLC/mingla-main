@@ -5,10 +5,9 @@
  *
  * WHAT WENT WRONG. Class A ran all 1,033 strict-grep executions in one job: mean
  * 519 s over 14 runs against #3336's 540 s readiness ceiling, worst 539 s — ONE
- * SECOND of margin — growing +3.6 to +8.8 s/day, because the corpus grows by
- * policy (#2865) and the append-only ratchet forbids removing anything. Within
- * days ordinary pull requests would have gone red, each red costing a 13-minute
- * rerun before anything could merge.
+ * SECOND of margin — growing +3.6 to +8.8 s/day because the corpus grows under
+ * #2865. Within days ordinary pull requests would have gone red, each red costing
+ * a 13-minute rerun before anything could merge.
  *
  * WHY A SPLIT IS THE FIX. Three shards run the same executions in parallel at
  * about 185 s each, so each has roughly 355 s of room instead of 1 s. That buys

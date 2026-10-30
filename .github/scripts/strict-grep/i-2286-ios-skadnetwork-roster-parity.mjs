@@ -67,9 +67,9 @@ const ROOT = join(__dirname, "..", "..", "..");
  * read from, so a future reader can re-verify rather than trust this file.
  *
  * WHAT ACTUALLY PROTECTS THIS MAP — corrected at test, because the first draft
- * of this comment claimed `tests-append-only.yml` ratchets it and that is FALSE.
- * That workflow's `TEST_FILE_PATTERNS` is only `*.test.*`, `*.spec.*` and
- * `__tests__/`; this file matches none of them, so it may be edited freely.
+ * of this comment claimed the former append-only / pre-merge-main-health host
+ * ratchets it and that is FALSE. That append-only checker (and its
+ * `TEST_FILE_PATTERNS`) was retired under #4127; this file may be edited freely.
  *
  * The real protections are narrower, and worth knowing exactly:
  *   - ORCH-1383's MANIFEST ratchet guarantees this file cannot be DELETED or go
