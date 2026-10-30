@@ -52,7 +52,7 @@ const NEW_PIN =
 // pin above. The live fixture follows the later reviewed Local and Stay venue
 // dependencies, which stay disallowed and are advanced by their later owners.
 const CURRENT_HASH =
-  "91042e6f4a170c709d016d9a598d0faea36b280486bf634226a24cbbae34d415";
+  "0b2f6691528759d391240f966a45b350ef523b38eaa40598f6a0ab99fc149711";
 const ORIGINAL_SHA256 =
   "8d35452b0237115640d4fcbc9dbc05c12b25ffa1b57a706c85cfc698df0c2bbe";
 // [TEST-MOD-APPROVED #2648] RE-DERIVED, NOT RE-PINNED. This pin is the sha256 of

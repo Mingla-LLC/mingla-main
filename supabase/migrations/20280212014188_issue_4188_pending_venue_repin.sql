@@ -9,10 +9,10 @@ BEGIN;
 
 DO $issue_4188_pending_venue_repin$
 DECLARE
-  v_expected_live constant text := '91042e6f4a170c709d016d9a598d0faea36b280486bf634226a24cbbae34d415';
+  v_expected_live constant text := '0b2f6691528759d391240f966a45b350ef523b38eaa40598f6a0ab99fc149711';
   v_2855_pin constant text := '(''52f4624c994529d2e63b8f70b79a3fcf'' || ''e28f3ff90dafe300bc45439e37cd2921'')';
   v_3872_pin constant text := '(''474371dd0c8edfdd734c8ef5fe78b167'' || ''bf5422e95b37493111c9a6cdc40213f2'')';
-  v_new_pin constant text := '(''91042e6f4a170c709d016d9a598d0fae'' || ''a36b280486bf634226a24cbbae34d415'')';
+  v_new_pin constant text := '(''0b2f6691528759d391240f966a45b350'' || ''ef523b38eaa40598f6a0ab99fc149711'')';
   v_function_prefix constant text := 'CREATE OR REPLACE FUNCTION ';
   v_oid regprocedure;
   v_definition text;
