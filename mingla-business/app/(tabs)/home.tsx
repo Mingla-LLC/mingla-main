@@ -27,7 +27,6 @@ import React, {
   useState,
 } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Platform,
   Pressable,
@@ -133,9 +132,9 @@ const LazyUniversalCreatorSheet = React.lazy(async () => {
 
 // Venue staff is a distinct operational shell. Loading it only for that role
 // keeps venue-management services out of every host's Home boot payload.
-const LazyVenueStaffHome = React.lazy(async () => {
+const LazyVenueStaffHomeBoundary = React.lazy(async () => {
   const mod = await import("../../src/components/home/VenueStaffHome");
-  return { default: mod.VenueStaffHome };
+  return { default: mod.VenueStaffHomeBoundary };
 });
 
 interface ToastState {
@@ -702,63 +701,34 @@ export default function HomeTab(): React.ReactElement {
           ? "Updating…"
           : null;
 
-  const roleResolving = currentBrand !== null && (
-    role.isLoading || role.isAuthReady === false
-  );
-  const roleDenied = currentBrand !== null && (
-    role.isError || role.role === null
-  );
-  if (roleResolving || roleDenied) {
+  const venueStaffSurface = currentBrand === null
+    ? null
+    : role.isLoading || role.isAuthReady === false
+      ? "resolving"
+      : role.isError || role.role === null
+        ? "denied"
+        : role.role === "venue_staff"
+          ? "staff"
+          : null;
+  if (venueStaffSurface !== null && currentBrand !== null) {
     return (
-      <>
-        <View style={[styles.host, { paddingTop: insets.top }]}>
-          <View style={styles.barWrap}>
-            <TopBar
-              leftKind="brand"
-              onBrandTap={handleOpenSwitcher}
-              brandLoading={roleResolving}
-            />
-          </View>
-          <View style={styles.roleGate} testID="home-role-gate">
-            {roleResolving ? <ActivityIndicator color={accent.warm} /> : null}
-            <Text style={styles.roleGateTitle}>
-              {roleResolving ? "Checking your access…" : "Brand access unavailable"}
-            </Text>
-            <Text style={styles.roleGateBody}>
-              {roleResolving
-                ? "Mingla is loading your exact role and venue permissions."
-                : "Your access may have changed. Retry or switch to another brand."}
-            </Text>
-            {roleDenied ? (
-              <View style={styles.roleGateActions}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Try again"
-                  onPress={() => void role.refetch()}
-                  style={styles.roleGatePrimaryAction}
-                >
-                  <Text style={styles.roleGatePrimaryActionText}>Try again</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Switch brand"
-                  onPress={handleOpenSwitcher}
-                  style={styles.roleGateSecondaryAction}
-                >
-                  <Text style={styles.roleGateSecondaryActionText}>Switch brand</Text>
-                </Pressable>
-              </View>
-            ) : null}
-          </View>
-        </View>
-        <BrandSwitcherSheet
-          visible={sheetVisible}
-          onClose={handleCloseSheet}
+      <Suspense fallback={<View style={styles.host} />}>
+        <LazyVenueStaffHomeBoundary
+          mode={venueStaffSurface}
+          brandId={currentBrand.id}
+          brandName={currentBrand.displayName}
+          onBrandTap={handleOpenSwitcher}
+          onRoleRetry={() => void role.refetch()}
+          switcherVisible={sheetVisible}
+          onSwitcherClose={handleCloseSheet}
           onBrandCreated={handleBrandCreated}
           onDefaultBrandSaveError={handleDefaultBrandSaveError}
           onRequestDeleteBrand={handleRequestDeleteBrand}
+          toastVisible={toast.visible}
+          toastMessage={toast.message}
+          onToastDismiss={handleDismissToast}
         />
-      </>
+      </Suspense>
     );
   }
 
@@ -769,42 +739,6 @@ export default function HomeTab(): React.ReactElement {
   // still drive onboarding.
   if (isScannerOnlyRank(callerRank)) {
     return <ScannerHome />;
-  }
-
-  if (role.role === "venue_staff" && currentBrand !== null) {
-    return (
-      <>
-        <Suspense
-          fallback={(
-            <View style={styles.roleGate} accessibilityRole="progressbar">
-              <ActivityIndicator color={accent.warm} />
-              <Text style={styles.roleGateBody}>Loading venue operations…</Text>
-            </View>
-          )}
-        >
-          <LazyVenueStaffHome
-            brandId={currentBrand.id}
-            brandName={currentBrand.displayName}
-            onBrandTap={handleOpenSwitcher}
-          />
-        </Suspense>
-        <BrandSwitcherSheet
-          visible={sheetVisible}
-          onClose={handleCloseSheet}
-          onBrandCreated={handleBrandCreated}
-          onDefaultBrandSaveError={handleDefaultBrandSaveError}
-          onRequestDeleteBrand={handleRequestDeleteBrand}
-        />
-        <View style={styles.toastWrap} pointerEvents="box-none">
-          <Toast
-            visible={toast.visible}
-            kind="info"
-            message={toast.message}
-            onDismiss={handleDismissToast}
-          />
-        </View>
-      </>
-    );
   }
 
   if (showFullRecent) {
@@ -1113,55 +1047,6 @@ const HomeBrandLoading: React.FC = () => (
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-  },
-  roleGate: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing.xl,
-    gap: spacing.sm,
-  },
-  roleGateTitle: {
-    ...typography.h2,
-    color: textTokens.primary,
-    textAlign: "center",
-  },
-  roleGateBody: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    textAlign: "center",
-    maxWidth: 420,
-  },
-  roleGateActions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: spacing.sm,
-  },
-  roleGatePrimaryAction: {
-    minHeight: 44,
-    justifyContent: "center",
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.md,
-    backgroundColor: accent.warm,
-  },
-  roleGatePrimaryActionText: {
-    ...typography.bodySm,
-    color: textTokens.inverse,
-    fontWeight: "700",
-  },
-  roleGateSecondaryAction: {
-    minHeight: 44,
-    justifyContent: "center",
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: accent.border,
-  },
-  roleGateSecondaryActionText: {
-    ...typography.bodySm,
-    color: accent.warm,
-    fontWeight: "700",
   },
   brandLoading: {
     paddingHorizontal: spacing.md,

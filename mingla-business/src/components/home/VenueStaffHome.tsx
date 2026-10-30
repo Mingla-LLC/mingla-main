@@ -19,9 +19,99 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useVenueListings } from "../../hooks/useVenueListings";
+import type { Brand } from "../../store/currentBrandStore";
+import { BrandSwitcherSheet } from "../brand/BrandSwitcherSheet";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { TopBar } from "../ui/TopBar";
+import { Toast } from "../ui/Toast";
+
+export function VenueStaffHomeBoundary({
+  mode,
+  brandId,
+  brandName,
+  onBrandTap,
+  onRoleRetry,
+  switcherVisible,
+  onSwitcherClose,
+  onBrandCreated,
+  onDefaultBrandSaveError,
+  onRequestDeleteBrand,
+  toastVisible,
+  toastMessage,
+  onToastDismiss,
+}: {
+  mode: "resolving" | "denied" | "staff";
+  brandId: string;
+  brandName: string;
+  onBrandTap: () => void;
+  onRoleRetry: () => void;
+  switcherVisible: boolean;
+  onSwitcherClose: () => void;
+  onBrandCreated: (brand: Brand) => void;
+  onDefaultBrandSaveError: (message: string) => void;
+  onRequestDeleteBrand: (brand: Brand) => void;
+  toastVisible: boolean;
+  toastMessage: string;
+  onToastDismiss: () => void;
+}): React.ReactElement {
+  const insets = useSafeAreaInsets();
+  const content = mode === "staff" ? (
+    <VenueStaffHome
+      brandId={brandId}
+      brandName={brandName}
+      onBrandTap={onBrandTap}
+    />
+  ) : (
+    <View style={[styles.host, { paddingTop: insets.top }]}>
+      <View style={styles.topBarWrap}>
+        <TopBar
+          leftKind="brand"
+          onBrandTap={onBrandTap}
+          brandLoading={mode === "resolving"}
+        />
+      </View>
+      <View style={styles.roleGate} testID="home-role-gate">
+        {mode === "resolving" ? <ActivityIndicator color={accent.warm} /> : null}
+        <Text style={styles.roleGateTitle}>
+          {mode === "resolving" ? "Checking your access…" : "Brand access unavailable"}
+        </Text>
+        <Text style={styles.roleGateBody}>
+          {mode === "resolving"
+            ? "Mingla is loading your exact role and venue permissions."
+            : "Your access may have changed. Retry or switch to another brand."}
+        </Text>
+        {mode === "denied" ? (
+          <View style={styles.roleGateActions}>
+            <Button label="Try again" onPress={onRoleRetry} variant="secondary" size="md" />
+            <Button label="Switch brand" onPress={onBrandTap} variant="ghost" size="md" />
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+
+  return (
+    <>
+      {content}
+      <BrandSwitcherSheet
+        visible={switcherVisible}
+        onClose={onSwitcherClose}
+        onBrandCreated={onBrandCreated}
+        onDefaultBrandSaveError={onDefaultBrandSaveError}
+        onRequestDeleteBrand={onRequestDeleteBrand}
+      />
+      <View style={styles.toastWrap} pointerEvents="box-none">
+        <Toast
+          visible={toastVisible}
+          kind="info"
+          message={toastMessage}
+          onDismiss={onToastDismiss}
+        />
+      </View>
+    </>
+  );
+}
 
 export function VenueStaffHome({
   brandId,
@@ -147,4 +237,9 @@ const styles = StyleSheet.create({
   cardMeta: { ...typography.bodySm, color: textTokens.secondary, marginTop: 3 },
   state: { padding: spacing.xl, borderWidth: StyleSheet.hairlineWidth, borderColor: glass.border.profileBase, borderRadius: radius.lg, backgroundColor: glass.tint.profileBase, alignItems: "center", gap: spacing.sm },
   stateTitle: { ...typography.h3, color: textTokens.primary, textAlign: "center" },
+  roleGate: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl, gap: spacing.sm },
+  roleGateTitle: { ...typography.h2, color: textTokens.primary, textAlign: "center" },
+  roleGateBody: { ...typography.bodySm, color: textTokens.secondary, textAlign: "center", maxWidth: 420 },
+  roleGateActions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: spacing.sm },
+  toastWrap: { ...StyleSheet.absoluteFillObject, justifyContent: "flex-end", alignItems: "center", padding: spacing.md },
 });

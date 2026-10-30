@@ -38,8 +38,6 @@ import {
   type InviteBrandMemberInput,
   type InviteBrandMemberResult,
   type PendingInviteRow,
-  type VenueAccessGrant,
-  updateBrandTeamMemberVenueGrants,
 } from "../services/brandInvitationsService";
 import { brandRoleKeys } from "./useCurrentBrandRole";
 import { brandKeys } from "./useBrands";
@@ -63,7 +61,6 @@ export const useBrandInvitations = (
     queryFn: () => listBrandInvitations(brandId as string),
   });
 };
-
 export const useBrandTeamMembers = (
   brandId: string | null,
 ): UseQueryResult<BrandTeamMemberRow[]> => {
@@ -99,7 +96,6 @@ export const useInviteBrandMember = (): {
   });
   return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };
 };
-
 export const useRevokeBrandInvitation = (
   brandId: string | null,
 ): {
@@ -251,40 +247,6 @@ export const useRemoveBrandTeamMember = (
         });
         qc.invalidateQueries({
           queryKey: brandRoleKeys.allForBrand(brandId),
-        });
-      }
-    },
-  });
-  return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };
-};
-
-export const useUpdateBrandTeamMemberVenueGrants = (
-  brandId: string | null,
-): {
-  mutateAsync: (input: {
-    memberId: string;
-    grants: VenueAccessGrant[];
-  }) => Promise<void>;
-  isPending: boolean;
-} => {
-  const qc = useQueryClient();
-  const mutation = useMutation<
-    void,
-    Error,
-    { memberId: string; grants: VenueAccessGrant[] }
-  >({
-    mutationFn: ({ memberId, grants }) => {
-      if (brandId === null) {
-        return Promise.reject(
-          new BrandInvitationServiceError("unauthenticated", 401),
-        );
-      }
-      return updateBrandTeamMemberVenueGrants(brandId, memberId, grants);
-    },
-    onSuccess: () => {
-      if (brandId !== null) {
-        void qc.invalidateQueries({
-          queryKey: brandTeamMemberKeys.list(brandId),
         });
       }
     },

@@ -56,8 +56,8 @@ import {
   useBrandTeamMembers,
   useRemoveBrandTeamMember,
   useRevokeBrandInvitation,
-  useUpdateBrandTeamMemberVenueGrants,
 } from "../../../src/hooks/useBrandInvitations";
+import { useUpdateBrandTeamMemberVenueGrants } from "../../../src/hooks/useBrandVenueAccessMutation";
 import {
   BrandInvitationServiceError,
   type VenueAccessGrant,
@@ -77,8 +77,8 @@ import {
 } from "../../../src/utils/coldLoadAuthGates";
 import {
   type BrandRole,
-  roleDisplayName,
 } from "../../../src/utils/brandRole";
+import { roleDisplayName } from "../../../src/utils/brandRoleCopy";
 import {
   canPerformAction,
   gateCaptionFor,

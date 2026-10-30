@@ -1,7 +1,7 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { PublicStayDetail } from "@mingla/brand-rendering/stayGuest";
 
-import { fetchStaffStayDetail } from "../services/publicStayDetailService";
+import { fetchStaffStayDetail } from "../services/staffStayDetailService";
 
 const DISABLED = ["stayStaff", "detail-disabled"] as const;
 

@@ -31,8 +31,8 @@ import {
 } from "../../constants/designSystem";
 import {
   type BrandRole,
-  roleDisplayName,
 } from "../../utils/brandRole";
+import { roleDisplayName } from "../../utils/brandRoleCopy";
 import { useInviteBrandMember } from "../../hooks/useBrandInvitations";
 import {
   BrandInvitationServiceError,

@@ -9,10 +9,10 @@
 
 import {
   deriveVenueModules,
-  filterVenueModulesForCapabilities,
   isBookingModule,
   VENUE_BOOKING_MODULES,
 } from "../venueModules";
+import { filterVenueModulesForCapabilities } from "../venueCapabilityGate";
 
 describe("deriveVenueModules", () => {
   it("T-1 — toggle OFF → Overview, Menu, Insights, Settings (no booking band)", () => {

@@ -20,9 +20,8 @@ import {
 } from "../../constants/designSystem";
 import {
   type BrandRole,
-  roleDescription,
-  roleDisplayName,
 } from "../../utils/brandRole";
+import { roleDescription, roleDisplayName } from "../../utils/brandRoleCopy";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";

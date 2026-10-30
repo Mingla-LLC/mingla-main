@@ -12,7 +12,6 @@
  */
 
 import type { VenueModule } from "../../types/venueReservation";
-import type { VenueCapability } from "../../services/brandInvitationsService";
 
 export interface VenueModuleMeta {
   readonly id: VenueModule;
@@ -143,36 +142,6 @@ export function deriveVenueModules(
     "orders",
     "settings",
   ];
-}
-
-/** Selected-venue staff see only the operational surfaces explicitly granted. */
-export function filterVenueModulesForCapabilities(
-  modules: readonly VenueModule[],
-  scoped: boolean,
-  capabilities: readonly VenueCapability[],
-): readonly VenueModule[] {
-  if (!scoped) return modules;
-  const allowed = new Set<VenueModule>();
-  if (
-    capabilities.includes("restaurant.view_orders") ||
-    capabilities.includes("restaurant.manage_orders")
-  ) {
-    allowed.add("orders");
-  }
-  if (
-    capabilities.includes("restaurant.manage_menu") ||
-    capabilities.includes("restaurant.manage_qr")
-  ) {
-    allowed.add("menu");
-  }
-  if (capabilities.includes("restaurant.manage_reservations")) {
-    allowed.add("tables");
-    allowed.add("availability");
-    allowed.add("reservations");
-    allowed.add("waitlist");
-  }
-  const filtered = modules.filter((module) => allowed.has(module));
-  return filtered;
 }
 
 /** True for the Band-B booking modules (which render ComingSoon in 2.0). */

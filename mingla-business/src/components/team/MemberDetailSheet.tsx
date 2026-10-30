@@ -29,7 +29,7 @@ import {
   spacing,
   text as textTokens,
 } from "../../constants/designSystem";
-import { roleDescription, roleDisplayName } from "../../utils/brandRole";
+import { roleDescription, roleDisplayName } from "../../utils/brandRoleCopy";
 import {
   canPerformAction,
   gateCaptionFor,

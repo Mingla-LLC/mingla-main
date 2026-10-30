@@ -62,6 +62,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { SuiteDesktopShell } from "../suite/SuiteDesktopShell";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
+import { filterVenueModulesForCapabilities } from "./venueCapabilityGate";
 
 /** Lazy ConfirmDialog / Toast — both pull reanimated and red node/web suites
  * that mount VenueSuiteShell (e.g. #2737 shellScroll render proof). */
@@ -95,7 +96,6 @@ import { deriveVenueRailModules } from "./venueRail";
 import { moduleSelfScrolls, venueScrollBottomPad } from "./venueShellScroll";
 import {
   deriveVenueModules,
-  filterVenueModulesForCapabilities,
   shouldLeaveBookingModule,
 } from "./venueModules";
 

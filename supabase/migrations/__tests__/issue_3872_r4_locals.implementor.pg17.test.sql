@@ -31,11 +31,11 @@ BEGIN
     '00000000-0000-0000-0000-000000000001'::uuid,
     '00000000-0000-0000-0000-000000000002'::uuid
   ) ->> 'schema_fingerprint';
-  IF v_live<>'474371dd0c8edfdd734c8ef5fe78b167bf5422e95b37493111c9a6cdc40213f2' THEN RAISE EXCEPTION 'Local pending-venue dependency seal mismatch: %',v_live; END IF;
+  IF v_live<>'91042e6f4a170c709d016d9a598d0faea36b280486bf634226a24cbbae34d415' THEN RAISE EXCEPTION 'Local pending-venue dependency seal mismatch: %',v_live; END IF;
   SELECT pg_get_functiondef('public.preview_pending_venue_identity_correction(uuid)'::regprocedure) INTO v_def;
-  IF position('474371dd0c8edfdd734c8ef5fe78b167' in v_def)=0 OR position('52f4624c994529d2e63b8f70b79a3fcf' in v_def)>0 THEN RAISE EXCEPTION 'Local preview pin not advanced exactly once'; END IF;
+  IF position('91042e6f4a170c709d016d9a598d0fae' in v_def)=0 OR position('474371dd0c8edfdd734c8ef5fe78b167' in v_def)>0 THEN RAISE EXCEPTION 'Local preview pin not advanced exactly once'; END IF;
   SELECT pg_get_functiondef('public.correct_pending_venue_identity(uuid,uuid,uuid,timestamptz,text,text,text,text,text,text,text,uuid,text,text,text,uuid)'::regprocedure) INTO v_def;
-  IF position('474371dd0c8edfdd734c8ef5fe78b167' in v_def)=0 OR position('52f4624c994529d2e63b8f70b79a3fcf' in v_def)>0 THEN RAISE EXCEPTION 'Local correction pin not advanced exactly once'; END IF;
+  IF position('91042e6f4a170c709d016d9a598d0fae' in v_def)=0 OR position('474371dd0c8edfdd734c8ef5fe78b167' in v_def)>0 THEN RAISE EXCEPTION 'Local correction pin not advanced exactly once'; END IF;
   SELECT pg_get_functiondef('public.local_place_candidates(text)'::regprocedure) INTO v_def;
   IF position('12 months' in v_def)=0 OR position('issue_3872_local_place_conflict' in v_def)=0 OR position('eligible' in v_def)=0 OR position('reason' in v_def)=0 THEN RAISE EXCEPTION 'Local place picker eligibility reasons incomplete'; END IF;
   IF NOT has_function_privilege('authenticated','public.brand_place_local_reviews(uuid,uuid)','execute')

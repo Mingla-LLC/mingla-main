@@ -78,7 +78,7 @@ BEGIN
   p:=public.preview_pending_venue_identity_correction('20990000-0000-0000-0000-000000000020');
   IF p->>'ok'<>'false' OR p->>'eligible'<>'false'
      OR p->>'code'<>'DEPENDENCY_NOT_EMPTY'
-     OR p->>'schema_fingerprint'<>'474371dd0c8edfdd734c8ef5fe78b167bf5422e95b37493111c9a6cdc40213f2'
+     OR p->>'schema_fingerprint'<>'91042e6f4a170c709d016d9a598d0faea36b280486bf634226a24cbbae34d415'
      OR COALESCE((SELECT sum((lane->>'count')::bigint)
                   FROM jsonb_array_elements(p->'dependency_counts') lane
                   WHERE lane->>'classification'='disallowed'),0)<>1 THEN
@@ -113,7 +113,7 @@ DECLARE
 BEGIN
   p:=public.preview_pending_venue_identity_correction('20990000-0000-0000-0000-000000000020');
   IF p->>'ok'<>'true' OR p->>'eligible'<>'true' OR p->>'code' IS NOT NULL
-     OR p->>'schema_fingerprint'<>'474371dd0c8edfdd734c8ef5fe78b167bf5422e95b37493111c9a6cdc40213f2'
+     OR p->>'schema_fingerprint'<>'91042e6f4a170c709d016d9a598d0faea36b280486bf634226a24cbbae34d415'
      OR length(p->>'state_fingerprint')<>64 THEN
     RAISE EXCEPTION '#2855 deleting the reviewed-lane row did not restore eligibility: %',p;
   END IF;

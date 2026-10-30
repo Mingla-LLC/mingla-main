@@ -18,10 +18,10 @@ const lazyBookingSource = fs.readFileSync(
   path.join(stayDirectory, "StayGuestBooking.lazy.ts"),
   "utf8",
 );
-const detailServiceSource = fs.readFileSync(
+const staffDetailServiceSource = fs.readFileSync(
   path.resolve(
     __dirname,
-    "../../../services/publicStayDetailService.ts",
+    "../../../services/staffStayDetailService.ts",
   ),
   "utf8",
 );
@@ -49,7 +49,7 @@ describe("#4188 Stay staff front-desk reservation contract", () => {
     );
     expect(createSource).toContain("useStaffStayDetail");
     expect(createSource).not.toContain("usePublicStayDetail");
-    expect(detailServiceSource).toContain('"issue_4188_staff_stay_details"');
+    expect(staffDetailServiceSource).toContain('"issue_4188_staff_stay_details"');
     expect(createSource).toContain('checkoutContext="staff"');
     expect(createSource).toContain("stayReservationService.quote");
     expect(createSource).toContain("stayReservationService.createStaffGroup");
