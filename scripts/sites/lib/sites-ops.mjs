@@ -47,17 +47,32 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const KID_RE = /^[A-Za-z0-9._-]{8,64}$/;
+const SAFE_S3_OBJECT_KEY_RE = /^[A-Za-z0-9._/-]{1,512}$/;
+const S3_OBJECT_READ_ATTEMPTS = 3;
+const S3_OBJECT_READ_DELAYS_MS = Object.freeze([250, 1000]);
+const S3_RETRYABLE_STATUSES = Object.freeze(new Set([
+  408,
+  425,
+  429,
+  500,
+  502,
+  503,
+  504,
+]));
 
 export class SitesOpsError extends Error {
-  constructor(code) {
+  constructor(code, details = null) {
     super(code);
     this.name = "SitesOpsError";
     this.code = code;
+    this.details = details && typeof details === "object"
+      ? Object.freeze({ ...details })
+      : null;
   }
 }
 
-export function fail(code) {
-  throw new SitesOpsError(code);
+export function fail(code, details = null) {
+  throw new SitesOpsError(code, details);
 }
 
 export function requiredEnv(env, name) {
@@ -514,12 +529,93 @@ export async function listBucket(config, bucket, fetchImpl = fetch) {
   return objects;
 }
 
-export async function getObject(config, bucket, key, fetchImpl = fetch) {
-  const response = await signedS3Request(config, {
-    method: "GET", bucket, key, fetchImpl,
-  });
-  if (!response.ok) fail("S3_OBJECT_READ_FAILED");
-  return Buffer.from(await response.arrayBuffer());
+function objectReadFailureDetails(bucket, key, status, attempts) {
+  const details = {
+    attempts,
+    bucket,
+    key_sha256: sha256Bytes(Buffer.from(key, "utf8")),
+    status: String(status),
+  };
+  if (
+    SAFE_S3_OBJECT_KEY_RE.test(key) &&
+    !key.startsWith("/") &&
+    !key.includes("..")
+  ) {
+    details.key = key;
+  }
+  return details;
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function isFetchTransportError(error) {
+  // WHATWG fetch exposes transport and response-body failures as TypeError.
+  // Never inspect message/stack/cause here: provider errors can contain URLs,
+  // response fragments, or credentials, and Sites recovery logs are durable.
+  return error instanceof TypeError;
+}
+
+async function retryObjectRead(sleep, attempt) {
+  await sleep(S3_OBJECT_READ_DELAYS_MS[attempt - 1]);
+}
+
+export async function getObject(
+  config,
+  bucket,
+  key,
+  fetchImpl = fetch,
+  { sleep = wait } = {},
+) {
+  for (let attempt = 1; attempt <= S3_OBJECT_READ_ATTEMPTS; attempt += 1) {
+    let response;
+    try {
+      response = await signedS3Request(config, {
+        method: "GET", bucket, key, fetchImpl,
+      });
+    } catch (error) {
+      if (!isFetchTransportError(error)) throw error;
+      if (attempt < S3_OBJECT_READ_ATTEMPTS) {
+        await retryObjectRead(sleep, attempt);
+        continue;
+      }
+      fail(
+        "S3_OBJECT_READ_FAILED",
+        objectReadFailureDetails(bucket, key, "FETCH_ERROR", attempt),
+      );
+    }
+
+    if (!response.ok) {
+      if (
+        S3_RETRYABLE_STATUSES.has(response.status) &&
+        attempt < S3_OBJECT_READ_ATTEMPTS
+      ) {
+        await retryObjectRead(sleep, attempt);
+        continue;
+      }
+      fail(
+        "S3_OBJECT_READ_FAILED",
+        objectReadFailureDetails(bucket, key, response.status, attempt),
+      );
+    }
+
+    try {
+      return Buffer.from(await response.arrayBuffer());
+    } catch (error) {
+      if (!isFetchTransportError(error)) throw error;
+      if (attempt < S3_OBJECT_READ_ATTEMPTS) {
+        await retryObjectRead(sleep, attempt);
+        continue;
+      }
+      fail(
+        "S3_OBJECT_READ_FAILED",
+        objectReadFailureDetails(bucket, key, "BODY_READ_ERROR", attempt),
+      );
+    }
+  }
+
+  fail("S3_OBJECT_READ_FAILED");
 }
 
 function canonicalCoreEnvelope(value) {
@@ -957,9 +1053,45 @@ export function recordRecoveryFailureClassification(code, env = process.env) {
   return verdict;
 }
 
+export function safeCliFailureLine(error) {
+  const code = error instanceof SitesOpsError ? error.code : "UNEXPECTED_FAILURE";
+  const fields = [];
+  if (code === "S3_OBJECT_READ_FAILED" && error instanceof SitesOpsError) {
+    const details = error.details;
+    if (
+      Number.isSafeInteger(details?.attempts) &&
+      details.attempts >= 1 &&
+      details.attempts <= S3_OBJECT_READ_ATTEMPTS
+    ) {
+      fields.push(`attempts=${details.attempts}`);
+    }
+    if (SITES_BUCKETS.includes(details?.bucket)) {
+      fields.push(`bucket=${details.bucket}`);
+    }
+    if (
+      typeof details?.key === "string" &&
+      SAFE_S3_OBJECT_KEY_RE.test(details.key) &&
+      !details.key.startsWith("/") &&
+      !details.key.includes("..")
+    ) {
+      fields.push(`key=${details.key}`);
+    }
+    if (typeof details?.key_sha256 === "string" && SHA256_RE.test(details.key_sha256)) {
+      fields.push(`key_sha256=${details.key_sha256}`);
+    }
+    if (
+      typeof details?.status === "string" &&
+      /^(?:[1-5][0-9]{2}|FETCH_ERROR|BODY_READ_ERROR)$/.test(details.status)
+    ) {
+      fields.push(`status=${details.status}`);
+    }
+  }
+  return `SITES_OPS_ERROR code=${code}${fields.length ? ` ${fields.join(" ")}` : ""}\n`;
+}
+
 export function safeCliFailure(error) {
   const code = error instanceof SitesOpsError ? error.code : "UNEXPECTED_FAILURE";
-  process.stderr.write(`SITES_OPS_ERROR code=${code}\n`);
+  process.stderr.write(safeCliFailureLine(error));
   recordRecoveryFailureClassification(code);
   process.exitCode = 1;
 }
