@@ -289,11 +289,13 @@ export function audit(base, plans = effectiveSuites()) {
     // [TEST-MOD-APPROVED #3872] R1 Discounts, R2 referrals, and R3 gig
     // script drafting; 133→140.
     // #2829 W9b website designer tools; 140→152.
-    if (parsed.audit?.registered_tool_count !== 152) {
-      failures.push("ledger audit registered_tool_count is not 152");
+    // #3355 adds 20 bounded autonomy, research, memory and verification tools;
+    // 152→172 without changing the RSVP command owner.
+    if (parsed.audit?.registered_tool_count !== 172) {
+      failures.push("ledger audit registered_tool_count is not 172");
     }
-    if (mapped.length !== 152 || new Set(mapped).size !== 152) {
-      failures.push("ledger mapped tool census is not 152 unique tools");
+    if (mapped.length !== 172 || new Set(mapped).size !== 172) {
+      failures.push("ledger mapped tool census is not 172 unique tools");
     }
     if (
       !mapped.includes("update_rsvp") ||
