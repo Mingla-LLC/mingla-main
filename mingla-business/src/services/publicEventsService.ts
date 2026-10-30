@@ -160,8 +160,6 @@ interface BusinessPublicEventViewRow {
   master_event_date_id: string | null;
   next_start_at?: string | null;
   next_end_at?: string | null;
-  upcoming_count?: number | null;
-  schedule_line?: string | null;
   // ORCH-1006 Slice 3 Wave 2 — server-computed all-in (tax/fee-inclusive)
   // lowest-tier price in CENTS, surfaced by business_public_events_view.
   // Arrives via the existing .select("*"); null when no priced tier → the
@@ -440,10 +438,6 @@ export type PublicBrandRecord = Brand;
 export type PublicEventRecord = LiveEvent & {
   terminalSource: EventTerminalSource;
   displaySalePriceCents?: number | null;
-  scheduleLine?: string | null;
-  upcomingCount?: number | null;
-  nextStartAtUtc?: string | null;
-  nextEndAtUtc?: string | null;
 };
 
 /** issue #2160 — the organiser's per-event multi-day pricing choice. */
@@ -1318,8 +1312,6 @@ export const publicEventViewRowToEvent = (
     masterEndAtUtc: master_end_at,
     nextStartAtUtc: row.next_start_at ?? null,
     nextEndAtUtc: row.next_end_at ?? null,
-    scheduleLine: row.schedule_line ?? null,
-    upcomingCount: row.upcoming_count ?? null,
     timezone: dateTimezone,
     recurrenceRule:
       businessEvent.recurrenceRule === null ||
@@ -1926,9 +1918,6 @@ const detailFromDirectBundle = async (
     master_timezone: asStringOrNull(payload.timezone),
     next_start_at: asStringOrNull(payload.nextStartAt),
     next_end_at: asStringOrNull(payload.nextEndAt),
-    upcoming_count:
-      typeof payload.upcomingCount === "number" ? payload.upcomingCount : null,
-    schedule_line: asStringOrNull(payload.scheduleLine),
     pricing_currency: currency,
     party_types: asStringArray(payload.partyTypes),
     vibe_tags: asStringArray(payload.vibeTags),

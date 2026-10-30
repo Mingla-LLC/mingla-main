@@ -343,14 +343,20 @@ const mapLiveEventToPublicEvent = (
   // formatDraft* calls this replaced (the helper returns exactly those when the
   // event is not multi-date, when the organiser's draft entries are present, or
   // when no occurrence has a parseable instant).
-  // Display prefers next via service mapping; scheduleLine stays for share/OG.
+  // Prefer next occurrence; drop ended days so multi-date eyebrows stay current.
+  const nextMs =
+    event.nextStartAtUtc != null ? Date.parse(event.nextStartAtUtc) : NaN;
+  const upcoming =
+    Number.isFinite(nextMs)
+      ? occurrences.filter((o) => Date.parse(o.startAt) >= nextMs)
+      : occurrences;
   const dateDisplay = resolvePublicEventDateDisplay(
     {
       ...event,
       masterStartAtUtc: event.nextStartAtUtc ?? event.masterStartAtUtc,
       masterEndAtUtc: event.nextEndAtUtc ?? event.masterEndAtUtc,
     },
-    occurrences,
+    upcoming.length > 0 ? upcoming : occurrences,
   );
   return {
     id: event.id,

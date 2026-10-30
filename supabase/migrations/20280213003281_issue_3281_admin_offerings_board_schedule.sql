@@ -135,4 +135,52 @@ $$;
 REVOKE ALL ON FUNCTION public.admin_list_offerings_board(text, text, text, uuid, boolean, text, integer, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_list_offerings_board(text, text, text, uuid, boolean, text, integer, integer) TO authenticated, service_role;
 
+-- Parity with the board: summary counts use next upcoming start (not expired master).
+CREATE OR REPLACE FUNCTION public.admin_offerings_summary()
+RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_out jsonb;
+BEGIN
+  IF NOT public.is_admin_user() THEN RAISE EXCEPTION 'not_authorized'; END IF;
+
+  WITH shown AS (
+    SELECT e.id, e.status, e.visibility, e.published_at,
+           COALESCE(nxt.start_at, d.start_at) AS start_at
+      FROM public.events e
+      JOIN public.brands b ON b.id = e.brand_id
+      LEFT JOIN public.event_dates d ON d.event_id = e.id AND d.is_master
+      LEFT JOIN LATERAL (
+        SELECT n.start_at
+          FROM public.event_dates n
+         WHERE n.event_id = e.id AND n.end_at > now()
+         ORDER BY n.start_at, n.id
+         LIMIT 1
+      ) nxt ON true
+     WHERE e.deleted_at IS NULL AND b.deleted_at IS NULL
+       AND NOT public.admin_brand_is_internal(b.id)
+  )
+  SELECT jsonb_build_object(
+    'on_sale_public', (SELECT count(*) FROM shown s
+                        WHERE s.visibility = 'public' AND public.admin_offering_is_current(s.status, s.start_at)),
+    'starting_14_days', (SELECT count(*) FROM shown s
+                          WHERE s.visibility = 'public' AND public.admin_offering_is_current(s.status, s.start_at)
+                            AND s.start_at >= now() AND s.start_at < now() + interval '14 days'),
+    'drafts_never_published', (SELECT count(*) FROM shown s WHERE s.status = 'draft' AND s.published_at IS NULL),
+    'sold_7_days', (SELECT count(*) FROM public.tickets t
+                      JOIN public.orders o ON o.id = t.order_id
+                      JOIN shown s ON s.id = t.event_id
+                     WHERE o.payment_status = 'paid' AND t.status <> 'void'
+                       AND COALESCE(o.confirmed_at, o.created_at) >= now() - interval '7 days'),
+    'as_of', now()
+  ) INTO v_out;
+
+  RETURN v_out;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_offerings_summary() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_offerings_summary() TO authenticated, service_role;
+
 COMMIT;

@@ -304,7 +304,7 @@ export function phase3dContractDigest(manifest) {
 // the same inventories, with its exact exclusion from the pre-#1931 replay.
 // #3281: register PR7 public schedule-card migrations and structural proofs in
 // the same inventories, with exact exclusions from the pre-#1931 replay.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "82f227157c1cbb7aa9f8c2a854175bb6e5fd8a9d715ded8c90d34ed501400f34";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "5a1902be140c2ec468099c2e081f9d4cdd1d2e57cd2b75fa9a86e0c2132f4d74";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

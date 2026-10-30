@@ -6,6 +6,8 @@ import { assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 const MIGRATION =
   "supabase/migrations/20271222003281_issue_3281_public_schedule_cards.sql";
+const DISCOVER_MIGRATION =
+  "supabase/migrations/20280214003281_issue_3281_discover_schedule_keys.sql";
 
 Deno.test("PR7 migration schedules public view, discover, and admin readers", () => {
   const text = Deno.readTextFileSync(MIGRATION);
@@ -15,8 +17,9 @@ Deno.test("PR7 migration schedules public view, discover, and admin readers", ()
   assert(text.includes("schedule_line"));
   assert(text.includes("issue_3281_event_schedule"));
   assert(text.includes("CREATE OR REPLACE VIEW public.business_public_events_view"));
-  assert(text.includes("discover_v2_event_base"));
   assert(text.includes("admin_list_offerings"));
+  // Discover REPLACE lives after #4174 so the explorer brand guard is kept.
+  assert(!text.includes("CREATE OR REPLACE FUNCTION public.discover_v2_event_base"));
   // Live Offerings console uses admin_list_offerings_board (#4130), enriched
   // in the follow-on migration after that board reader landed.
   const board = Deno.readTextFileSync(
@@ -28,6 +31,8 @@ Deno.test("PR7 migration schedules public view, discover, and admin readers", ()
   assert(board.includes("next_start_at"));
   assert(/page AS \([\s\S]*issue_3281_event_schedule/.test(board));
   assert(!/filtered AS \([\s\S]*?issue_3281_event_schedule[\s\S]*?\)\s*,\s*ranked AS/.test(board));
+  assert(board.includes("admin_offerings_summary"));
+  assert(board.includes("COALESCE(nxt.start_at, d.start_at)"));
 
   assert(text.includes("COALESCE(next_start_at_sort, master_start_at)"));
   assert(
@@ -43,13 +48,18 @@ Deno.test("PR7 migration schedules public view, discover, and admin readers", ()
   assert(!filteredBody[1].includes("issue_3281_event_schedule"));
   assert(!/ranked AS \([\s\S]*?issue_3281_event_schedule[\s\S]*?\)\s*,\s*page AS/.test(text));
   assert(/page AS \([\s\S]*issue_3281_event_schedule/.test(text));
+
+  const discoverText = Deno.readTextFileSync(DISCOVER_MIGRATION);
+  assert(discoverText.includes("CREATE OR REPLACE FUNCTION public.discover_v2_event_base"));
+  assert(discoverText.includes("issue_4174_explorer_brand_visible"));
   // Discover eligibility base must not call the schedule helper (facet/count tax).
-  const discoverBody = text.match(
+  const discoverBody = discoverText.match(
     /CREATE OR REPLACE FUNCTION public\.discover_v2_event_base\([\s\S]*?\$function\$([\s\S]*?)\$function\$/,
   );
   assert(discoverBody !== null);
   assert(!discoverBody[1].includes("issue_3281_event_schedule"));
   assert(discoverBody[1].includes("'schedule_line',NULL"));
+  assert(discoverBody[1].includes("issue_4174_explorer_brand_visible(e.brand_id)"));
 
   // T-18 parity patch must stay in the migration (fail-fast if DO block is dropped).
   assert(text.includes("patch_rsvp_schedule"));

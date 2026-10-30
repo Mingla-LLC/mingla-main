@@ -45,6 +45,7 @@
     "expo-env.d.ts"
   ],
   "exclude": [
-    "server/__tests__/issue_3281_social_preview_schedule.implementor.test.ts"
+    "server/__tests__/issue_3281_social_preview_schedule.implementor.test.ts",
+    "server/__tests__/issue_3281_public_event_start_meta.implementor.test.ts"
   ]
 }
