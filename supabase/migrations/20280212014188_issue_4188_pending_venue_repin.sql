@@ -5,8 +5,6 @@
 -- identity correction; this migration only advances the reviewed schema pin
 -- so an empty Stay lane does not strand every otherwise-safe correction.
 --
--- MINGLA-INVARIANT: I-4188-STAY-PENDING-VENUE-FENCE | issue #4188 | Stay operational rows remain disallowed pending-venue dependencies, and only the reviewed empty schema shape advances the correction RPC pin.
-
 BEGIN;
 
 DO $issue_4188_pending_venue_repin$

@@ -1,3 +1,4 @@
+-- MINGLA-INVARIANT: I-4188-STAY-PENDING-VENUE-FENCE | issue #4188 | Stay operational rows remain disallowed pending-venue dependencies, and only the reviewed empty schema shape advances the correction RPC pin.
 \set ON_ERROR_STOP on
 
 DO $$
