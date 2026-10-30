@@ -10,10 +10,11 @@
  * b92e1355d proved (QA_ORCH-1400 report, F-1/F-2):
  *
  *   - Raising `fixtureCap` or `capableUnwiredCap` trips NO automated gate:
- *     parity only checks count <= cap, and the pre-merge-main-health / MANIFEST
- *     ratchet has no rule for either field (it guards only gates[] shrink,
+ *     parity only checks count <= cap, and the MANIFEST ratchet (historically
+ *     also claimed for the retired append-only / pre-merge-main-health host)
+ *     has no rule for either field (it guards only gates[] shrink,
  *     selfTestWiredFloor lowering, and unenforcedCap raising). SPEC §9's
- *     "ratchets guarded by the SEPARATE pre-merge-main-health.yml" is FALSE for
+ *     "ratchets guarded by the SEPARATE append-only workflow" was FALSE for
  *     the two caps ORCH-1400 introduced — the laundering path SC-2 closes
  *     could be reopened by a one-line cap bump no gate objects to.
  *   - The base-relative ratchet is rollback-blind inside a PR window: while

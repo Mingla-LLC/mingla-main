@@ -41540,9 +41540,6 @@
       "referenceFiles": [
         ".github/CODEOWNERS",
         ".github/scripts/ci-batch/load-manifest.mjs",
-        ".github/scripts/strict-grep/MANIFEST.json",
-        ".github/scripts/strict-grep/__tests__/orch-1400-ratchet-frontier.adversarial.test.mjs",
-        ".github/scripts/strict-grep/i-2286-ios-skadnetwork-roster-parity.mjs",
         ".github/scripts/strict-grep/meta-1383-manifest-parity.mjs",
         ".github/scripts/strict-grep/orch-0847-ticket-claim-confirm-modal-removed.mjs",
         "mingla-business/scripts/ci/select-source-text-pins.mjs"

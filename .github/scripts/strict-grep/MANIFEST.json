@@ -9,7 +9,7 @@
     "must never gain a plain run; 229 are plain-only; 188 run both. Changing modes changes WHAT is asserted.",
     "'jobKeys' preserves the PRE-BATCH job identity so a failure can still name its origin (SPEC §5.1).",
     "Ratchets (selfTestWiredFloor, unenforcedCap, gates[]) are append-only — enforced by",
-    "meta-1383-manifest-parity.mjs P7/P8 and by pre-merge-main-health.yml (main-health only; append-only gate retired). Shrinking needs a GATE-REMOVAL: token.",
+    "meta-1383-manifest-parity.mjs P7/P8 (the former append-only workflow gate was retired under #4127). Shrinking needs a GATE-REMOVAL: token.",
     "ORCH-1400 additions: fixtureCap caps enforcement:\"fixture\" rows (P10); capableUnwiredCap caps",
     "selfTest:\"capable-unwired\" rows (P12); externalGateDirs lists dirs OUTSIDE strict-grep swept for",
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
