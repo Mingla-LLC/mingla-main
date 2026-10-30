@@ -51,24 +51,11 @@ const EventDetailTicketTypeRowInner: React.FC<EventDetailTicketTypeRowProps> = (
     : ticketCode !== null
       ? formatCurrency(ticket.priceGbp ?? 0, ticketCode)
       : "—";
-  // issue #3281 PR8 / S26 — "N left" at 10 or fewer remaining (LOW_PLACES_MAX).
-  const remaining =
-    sold !== null && !ticket.isUnlimited && Number.isFinite(cap) && cap > 0
-      ? Math.max(0, cap - sold)
-      : null;
-  const leftChip =
-    remaining !== null && remaining > 0 && remaining <= 10
-      ? `${remaining} left`
-      : null;
   const capText = sold === null
     ? "—"
     : ticket.isUnlimited
       ? capacityPerNight ? `${sold} sold busiest night` : `${sold} sold`
-      : capacityPerNight
-        ? `${sold} / ${cap} busiest night`
-        : leftChip !== null
-          ? `${sold} / ${cap} · ${leftChip}`
-          : `${sold} / ${cap}`;
+      : capacityPerNight ? `${sold} / ${cap} busiest night` : `${sold} / ${cap}`;
 
   return (
     <View style={styles.host}>
