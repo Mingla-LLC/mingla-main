@@ -583,13 +583,41 @@ const getBrandSite = tool(
 
 const getSitePlan = tool(
   "get_site_plan",
-  "Read the brand's website plan: the eight parts, which are done (computed by Mingla from the brand's real state), the owner's answers and its revision, and who is working on it.",
+  "Read the brand's website plan and complete field-level context audit: the eight parts, every missing/invalid/stale/conflicting/verified/not-applicable field with provenance, gap counts, the owner's answers, plan revision and who is working on it.",
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
     if (!isUuid(args.brand_id)) throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
     await assertAgentReadBrand(client, userId, args.brand_id);
     return settleControl(await readControl(client, { route: `/v1/brands/${args.brand_id}/site-plan`, method: "GET" }));
+  },
+);
+
+const startBrandCompletenessJob = tool(
+  "start_brand_completeness_job",
+  "Start or resume Ari's durable Fix all Website gaps job for this brand. Returns the current field audit plus completed and pending step keys. Reuse the returned job id for checkpoints; never repeat a completed write.",
+  { brand_id: UUID },
+  ["brand_id"],
+  async (args, client, userId) => {
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
+    }
+    await assertAgentReadBrand(client, userId, args.brand_id);
+    const { data, error } = await client.rpc(
+      "ari_start_brand_completeness_job",
+      { p_brand_id: args.brand_id },
+    );
+    if (error) {
+      throw new ToolError(
+        error.message.includes("not_authorized")
+          ? "BRAND_ACCESS_DENIED"
+          : "SITE_SERVICE_UNAVAILABLE",
+        error.message.includes("not_authorized")
+          ? "That brand is unavailable."
+          : "Ari could not start the Website completion job right now.",
+      );
+    }
+    return data;
   },
 );
 
@@ -711,6 +739,212 @@ const PLAN_ANSWERS = closedObject({
     main_action: plainText(300, "What someone should do when they find you"),
   }),
 });
+
+const PLAN_DESIGN_EVIDENCE = {
+  source_type: {
+    type: "string",
+    enum: ["mingla", "owner", "public_research", "imported"],
+  },
+  source_url: {
+    type: "string",
+    maxLength: 1000,
+    description: "HTTPS source when the design recommendation came from public research.",
+  },
+};
+
+const saveSitePlanDesign = tool(
+  "save_site_plan_design",
+  "Save Atelier or Voyage as the owner's pre-draft Website design choice against the plan revision. This does not create a draft. Changing it clears an older plan approval so the owner can review the changed plan.",
+  {
+    brand_id: UUID,
+    expected_plan_revision: {
+      type: "integer",
+      minimum: 0,
+      description: "The plan revision get_site_plan returned",
+    },
+    design_key: DESIGN,
+    ...PLAN_DESIGN_EVIDENCE,
+    why: WHY,
+    cites: CITES,
+  },
+  ["brand_id", "expected_plan_revision", "design_key", "why", "cites"],
+  async (args, client, _userId, context) => {
+    requireAgentOperationId(context);
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
+    }
+    const saved = settleControl(await readControl(client, {
+      route: `/v1/brands/${args.brand_id}/site-plan/design`,
+      method: "POST",
+      revision: args.expected_plan_revision,
+      design_key: args.design_key,
+      source_type: args.source_type ?? "owner",
+      source_url: args.source_url ?? null,
+    }));
+    const logged = await logWorkIfSite(client, args.brand_id, {
+      part: "plan",
+      tool: "save_site_plan_design",
+      why: args.why,
+      cites: args.cites,
+      target: "plan:design",
+    });
+    return { plan: saved, draft_created: false, work_log_saved: logged };
+  },
+);
+
+const CONTEXT_PATCH = closedObject({
+  name: plainText(80, "Public-facing brand name"),
+  description: { type: "string", maxLength: 500, nullable: true },
+  contact_email: { type: "string", maxLength: 254, nullable: true },
+  contact_phone: {
+    type: "string",
+    nullable: true,
+    pattern: "^\\+[1-9][0-9]{7,14}$",
+    description: "Canonical E.164 phone. Ask for the country when it is unknown; never invent a dial code.",
+  },
+  address: { type: "string", maxLength: 240, nullable: true },
+  city: { type: "string", maxLength: 120, nullable: true },
+  country_code: {
+    type: "string",
+    nullable: true,
+    pattern: "^[A-Z]{2}$",
+  },
+  social_links: {
+    type: "object",
+    nullable: true,
+    additionalProperties: false,
+    properties: Object.fromEntries(
+      ["website", "instagram", "tiktok", "x", "facebook", "youtube", "linkedin", "threads"]
+        .map((key) => [key, { type: "string", maxLength: 500, pattern: "^https://" }]),
+    ),
+  },
+  custom_links: {
+    type: "array",
+    nullable: true,
+    maxItems: 10,
+    items: closedObject(
+      { label: plainText(80), url: { type: "string", maxLength: 1000, pattern: "^https://" } },
+      ["label", "url"],
+    ),
+  },
+  theme: {
+    type: "object",
+    nullable: true,
+    additionalProperties: false,
+    properties: {
+      color: { type: "string", nullable: true, pattern: "^#[0-9a-fA-F]{6}$" },
+      font: {
+        type: "string",
+        nullable: true,
+        enum: [
+          "inter", "poppins", "space_grotesk", "plus_jakarta_sans", "manrope",
+          "playfair_display", "dm_serif_display", "fraunces", "lora",
+          "bebas_neue", "anton", "unbounded", "caveat", "dancing_script", null,
+        ],
+      },
+      animation: {
+        type: "string",
+        nullable: true,
+        enum: [
+          "none", "confetti", "fireworks", "balloons", "sparkles",
+          "glitter_shower", "snowfall", "falling_petals", "hearts",
+          "shimmer_reveal", null,
+        ],
+      },
+    },
+  },
+});
+
+const CONTEXT_EXCEPTION_FIELDS = [
+  "venue_descriptor",
+  "contact_email",
+  "contact_phone",
+  "address",
+  "city_country",
+  "social_links",
+  "profile_photo",
+  "cover_media",
+  "theme",
+] as const;
+
+const updateBrandContext = tool(
+  "update_brand_context",
+  "Fill one confirmed bundle of Website brand-context fields or record explicit owner-approved not-applicable exceptions. Supports contact phone, links, address/city/country and Mingla theme in addition to identity. Logo and cover are human upload handoffs: do not invent media URLs. Always re-read get_site_plan after the confirmed write.",
+  {
+    brand_id: UUID,
+    expected_plan_revision: {
+      type: "integer",
+      minimum: 0,
+      description: "The plan revision get_site_plan returned",
+    },
+    patch: CONTEXT_PATCH,
+    exceptions: {
+      type: "array",
+      maxItems: CONTEXT_EXCEPTION_FIELDS.length,
+      items: closedObject({
+        field_key: { type: "string", enum: [...CONTEXT_EXCEPTION_FIELDS] },
+        reason: plainText(500, "The owner's reason this field does not apply"),
+      }, ["field_key", "reason"]),
+    },
+    evidence: closedObject({
+      source_type: {
+        type: "string",
+        enum: ["mingla", "owner", "public_research", "imported"],
+      },
+      source_ref: plainText(300, "Short source label or Mingla record id"),
+      source_url: plainText(1000, "HTTPS public source URL"),
+      observed_at: {
+        type: "string",
+        description: "ISO-8601 time when the source was checked",
+      },
+    }, ["source_type"]),
+    why: WHY,
+    cites: CITES,
+  },
+  ["brand_id", "expected_plan_revision", "evidence", "why", "cites"],
+  async (args, client, _userId, context) => {
+    const operationId = requireAgentOperationId(context);
+    if (!isUuid(args.brand_id) || !Number.isInteger(args.expected_plan_revision)) {
+      throw new ToolError("INVALID_ARGS", "brand_id and expected_plan_revision are required");
+    }
+    const patch = args.patch && typeof args.patch === "object" && !Array.isArray(args.patch)
+      ? args.patch
+      : {};
+    const exceptions = Array.isArray(args.exceptions) ? args.exceptions : [];
+    if (Object.keys(patch as Record<string, unknown>).length === 0 && exceptions.length === 0) {
+      throw new ToolError("INVALID_ARGS", "Provide a field change or an explicit exception");
+    }
+    const { data, error } = await client.rpc("ari_update_brand_context", {
+      p_operation_id: operationId,
+      p_brand_id: args.brand_id,
+      p_expected_plan_revision: args.expected_plan_revision,
+      p_patch: patch,
+      p_exceptions: exceptions,
+      p_evidence: args.evidence,
+    });
+    if (error) {
+      const message = error.message ?? "Brand context update failed";
+      if (message.includes("sites_revision_conflict")) {
+        throw new ToolError("REVISION_CONFLICT", "The Website setup changed. Read get_site_plan again before proposing this update.");
+      }
+      if (message.includes("sites_plan_locked")) {
+        throw new ToolError("CONFLICT", "A teammate is editing the Website setup. Read the plan again before continuing.");
+      }
+      if (message.includes("forbidden")) {
+        throw new ToolError("FORBIDDEN", "A brand admin or owner must confirm this brand-context change.");
+      }
+      throw new ToolError("WRITE_FAILED", message);
+    }
+    const logged = await logWorkIfSite(client, args.brand_id, {
+      part: "brand_context",
+      tool: "update_brand_context",
+      why: args.why,
+      cites: args.cites,
+      target: "brand",
+    });
+    return { ...(data as Record<string, unknown>), work_log_saved: logged };
+  },
+);
 
 const saveSitePlanAnswers = tool(
   "save_site_plan_answers",
@@ -1150,6 +1384,7 @@ const rollbackSite = publicationTool("rollback_site");
 export const SITE_AGENT_TOOLS: AgentToolDefinition[] = [
   getBrandSite,
   getSitePlan,
+  startBrandCompletenessJob,
   listSiteDesigns,
   getBlockCatalog,
   getSiteTokens,
@@ -1158,6 +1393,8 @@ export const SITE_AGENT_TOOLS: AgentToolDefinition[] = [
   getSitePage,
   validateDraft,
   saveSitePlanAnswers,
+  saveSitePlanDesign,
+  updateBrandContext,
   createSiteDraft,
   proposeSiteComposition,
   proposeBlockVariant,
@@ -1177,6 +1414,7 @@ export const SITE_AGENT_TOOLS: AgentToolDefinition[] = [
 export const SITE_AGENT_READ_ONLY = new Set([
   "get_brand_site",
   "get_site_plan",
+  "start_brand_completeness_job",
   "list_site_designs",
   "get_block_catalog",
   "get_site_tokens",

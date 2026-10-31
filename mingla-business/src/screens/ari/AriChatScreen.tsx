@@ -54,6 +54,7 @@ import { StreamingText } from "../../components/ari/StreamingText";
 import { AriActivity } from "../../components/ari/AriActivity";
 import { AriAttachmentTray } from "../../components/ari/AriAttachmentCards";
 import { AriAttachmentSourceSheet } from "../../components/ari/AriAttachmentSourceSheet";
+import { AriWebsiteSetupPane } from "../../components/ari/AriWebsiteSetupPane";
 import { AriThreadLoadingState } from "./AriThreadLoadingState";
 import {
   ariRenditionCopyText,
@@ -74,6 +75,7 @@ import { useConfirmPendingAction } from "../../hooks/useConfirmPendingAction";
 import { useConversationList } from "../../hooks/useConversationList";
 import { useBrands } from "../../hooks/useBrands";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { useAuth } from "../../context/AuthContext";
 import {
   ariConversationScopeKey,
@@ -217,6 +219,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const sitesParams = useLocalSearchParams<{
     sitesIntent?: string | string[];
     brandId?: string | string[];
+    setupPart?: string | string[];
   }>();
   const sitesIntent = Array.isArray(sitesParams.sitesIntent)
     ? sitesParams.sitesIntent[0]
@@ -224,8 +227,15 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const sitesBrandId = Array.isArray(sitesParams.brandId)
     ? sitesParams.brandId[0]
     : sitesParams.brandId;
+  const requestedSetupPart = Array.isArray(sitesParams.setupPart)
+    ? sitesParams.setupPart[0]
+    : sitesParams.setupPart;
+  const setupPart = typeof requestedSetupPart === "string" && requestedSetupPart.length > 0
+    ? requestedSetupPart
+    : null;
+  const websiteSetup = sitesIntent === "setup";
   const websiteSplit =
-    sitesIntent === "edit" &&
+    (sitesIntent === "edit" || websiteSetup) &&
     typeof sitesBrandId === "string" &&
     sitesBrandId.length > 0;
   const insets = useSafeAreaInsets();
@@ -266,6 +276,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const [attachedCovers, setAttachedCovers] = useState<
     Record<string, { url: string | null; type: string | null }>
   >({});
+  const automaticSetupAudit = useRef<string | null>(null);
 
   // The composer swaps in `keyboardHeight` when the keyboard is up and
   // BOTTOM_NAV_CLEARANCE_PX when it is down; a plain KeyboardAvoidingView
@@ -278,6 +289,18 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const prefs = useAriPreferences();
   const { user } = useAuth();
   const accountId = user?.id ?? null;
+  const currentBrandId = useCurrentBrandStore((state) => state.currentBrandId);
+  const setCurrentBrandId = useCurrentBrandStore((state) => state.setCurrentBrandId);
+  React.useEffect(() => {
+    if (
+      websiteSplit &&
+      typeof sitesBrandId === "string" &&
+      sitesBrandId.length > 0 &&
+      currentBrandId !== sitesBrandId
+    ) {
+      setCurrentBrandId(sitesBrandId);
+    }
+  }, [currentBrandId, setCurrentBrandId, sitesBrandId, websiteSplit]);
   const currentBrand = useCurrentBrand();
   const selectedBrandId = currentBrand?.id ?? null;
   const conversations = useConversationList(selectedBrandId);
@@ -610,6 +633,52 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     conversationSelectionReady &&
     chat.messages.length === 0 &&
     chat.conversationId == null;
+
+  /*
+   * #2830 — entering Website setup is itself the request for the first audit.
+   * It runs once per mounted setup entry, after the correct brand and existing
+   * conversation are restored, so Ari's first answer is the rundown rather
+   * than a generic greeting. The server plan remains the authority: this
+   * message tells Ari to read it and expressly forbids draft creation.
+   */
+  React.useEffect(() => {
+    if (
+      !websiteSetup ||
+      typeof sitesBrandId !== "string" ||
+      sitesBrandId !== selectedBrandId ||
+      !conversationSelectionReady ||
+      chat.isLoadingMessages ||
+      chat.isSending ||
+      chat.pendingAction ||
+      disclosureNeeded ||
+      !online
+    ) return;
+    const auditKey = `${sitesBrandId}:${setupPart ?? "overview"}`;
+    if (automaticSetupAudit.current === auditKey) return;
+    automaticSetupAudit.current = auditKey;
+    const focus = setupPart ? ` The selected plan part is ${setupPart}.` : "";
+    void chat.sendMessage(
+      `Start my Website setup.${focus} First read get_site_plan, then give me a concise rundown of what is complete, every field-level gap, and how complete the brand context is. Offer to fix all gaps, work on one named gap, or let me add details myself. Ask one question at a time while you work. Do not create a website draft until setup and brand context are complete.`,
+      [],
+    ).then((result) => {
+      if (result.kind === "error") automaticSetupAudit.current = null;
+    }).catch(() => {
+      automaticSetupAudit.current = null;
+      setLocalError("Ari couldn’t start the Website audit. Try again.");
+    });
+  }, [
+    chat.isLoadingMessages,
+    chat.isSending,
+    chat.pendingAction,
+    chat.sendMessage,
+    conversationSelectionReady,
+    disclosureNeeded,
+    online,
+    selectedBrandId,
+    setupPart,
+    sitesBrandId,
+    websiteSetup,
+  ]);
   const activeConversation = conversations.conversations.find(
     (item) => item.id === chat.conversationId,
   );
@@ -765,7 +834,19 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         not own is whether the owner is told where they are. On a phone the
         same context renders as a banner above the conversation.
       */}
-      {websiteSplit ? (
+      {websiteSetup && typeof sitesBrandId === "string" ? (
+        <AriWebsiteSetupPane
+          brandId={sitesBrandId}
+          compact={!isWideDesktop}
+          activePart={setupPart}
+          fixing={chat.isSending}
+          onFixAll={() => {
+            handleSend(
+              "Fix all Website brand-context gaps. Start or resume the durable completeness job, research safe public facts, ask me one question at a time for anything only I can know, show options when helpful, confirm every write, checkpoint after each gap, and keep re-auditing until required and recommended gaps are zero. Do not create a draft before setup is complete.",
+            );
+          }}
+        />
+      ) : websiteSplit ? (
         <View
           style={[
             styles.websiteDraftPane,
