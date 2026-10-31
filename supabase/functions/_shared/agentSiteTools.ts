@@ -839,7 +839,7 @@ const CONTEXT_PATCH = closedObject({
         enum: [
           "inter", "poppins", "space_grotesk", "plus_jakarta_sans", "manrope",
           "playfair_display", "dm_serif_display", "fraunces", "lora",
-          "bebas_neue", "anton", "unbounded", "caveat", "dancing_script", null,
+          "bebas_neue", "anton", "unbounded", "caveat", "dancing_script",
         ],
       },
       animation: {
@@ -848,7 +848,7 @@ const CONTEXT_PATCH = closedObject({
         enum: [
           "none", "confetti", "fireworks", "balloons", "sparkles",
           "glitter_shower", "snowfall", "falling_petals", "hearts",
-          "shimmer_reveal", null,
+          "shimmer_reveal",
         ],
       },
     },
