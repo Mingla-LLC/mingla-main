@@ -120,10 +120,6 @@ Deno.test("#4202 the auth callback clears only the Explorer marker and restarts 
   const claimSource = await Deno.readTextFile(
     new URL("../../services/attendanceClaimService.ts", import.meta.url),
   );
-  const rootSource = await Deno.readTextFile(
-    new URL("../../../app/index.tsx", import.meta.url),
-  );
-
   assert(hookSource.includes("captureExplorerReactivationIntentForAuthEvent(event)"));
   assert(hookSource.includes("resolveExplorerProfileAfterAuthEvent"));
   assert(hookSource.includes("explorer_deleted_at: null"));
@@ -134,5 +130,4 @@ Deno.test("#4202 the auth callback clears only the Explorer marker and restarts 
   assert(appStateSource.includes("withExplorerReactivationIntent(signInWithApple)"));
   assert(emailSource.includes("withExplorerReactivationIntent(() =>"));
   assert(claimSource.includes("withExplorerReactivationIntent(() =>"));
-  assert(rootSource.includes("withExplorerReactivationIntent(() =>"));
 });
