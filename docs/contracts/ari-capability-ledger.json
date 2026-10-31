@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-10-31T03:20:00Z",
-    "registered_tool_count": 175,
-    "capability_count": 187,
+    "registered_tool_count": 176,
+    "capability_count": 188,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 174,
+      "registered_unverified": 175,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -7839,6 +7839,53 @@
       "owning_issues": [
         2830,
         2829,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-31"
+    },
+    {
+      "id": "ari.sites.record_context_finding",
+      "domain": "sites",
+      "outcome": "Preserve bounded evidence that a Website brand-context field is stale or conflicting without changing the public value",
+      "safety": "write",
+      "required_role": "owner_or_admin",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const recordBrandContextFinding"
+          }
+        ]
+      },
+      "ari_tool": "record_brand_context_finding",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "3390babb6085ae4639b4e63e1de5cdd041182699",
+          "reference": "issue_2830_brand_completeness.test.ts: stale/conflict finding and bounded candidate evidence contract",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
         2000
       ],
       "blockers": [
