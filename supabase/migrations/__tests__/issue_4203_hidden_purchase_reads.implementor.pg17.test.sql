@@ -252,8 +252,9 @@ $proof$;
 -- #4202 — the service-role-only release boundary removes the phone identity
 -- and Mingla possession ledger together without touching the email identity.
 -- The production GoTrue schema owns auth.identities. The full-history CI image
--- intentionally carries only auth.users, so give this transaction the minimum
--- compatible identity table needed to execute the production function body.
+-- intentionally carries only auth.users, so this suite runs as supabase_admin
+-- and gives its transaction the minimum compatible identity table needed to
+-- execute the production function body.
 CREATE TABLE IF NOT EXISTS auth.identities (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
