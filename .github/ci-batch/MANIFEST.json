@@ -17709,6 +17709,7 @@
         "supabase/migrations/20280216004204_issue_4202_explorer_phone_identity_release.sql",
         "supabase/migrations/20280217003281_issue_3281_production_order_repair.sql",
         "supabase/migrations/20280217004202_issue_4202_local_acceptance_auth_detach.sql",
+        "supabase/migrations/20280218004202_issue_4202_explorer_phone_rpc_null.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19358,6 +19359,7 @@
         "supabase/migrations/20280216004204_issue_4202_explorer_phone_identity_release.sql",
         "supabase/migrations/20280217003281_issue_3281_production_order_repair.sql",
         "supabase/migrations/20280217004202_issue_4202_local_acceptance_auth_detach.sql",
+        "supabase/migrations/20280218004202_issue_4202_explorer_phone_rpc_null.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -20459,6 +20461,8 @@
         "supabase/migrations/__tests__/issue_4187_admin_program_messaging.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4188_staff_stay_reservations.implementor.happy.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4188_staff_stay_reservations.implementor.happy.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4202_explorer_phone_rpc_null.implementor.happy.test.sql",
+        "supabase/migrations/__tests__/issue_4202_explorer_phone_rpc_null.implementor.happy.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4202_local_acceptance_auth_detach.implementor.happy.test.sql",
         "supabase/migrations/__tests__/issue_4202_local_acceptance_auth_detach.implementor.happy.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4203_hidden_purchase_reads.implementor.pg17.test.sql",
@@ -24092,6 +24096,7 @@
         "supabase/migrations/20280216004204_issue_4202_explorer_phone_identity_release.sql",
         "supabase/migrations/20280217003281_issue_3281_production_order_repair.sql",
         "supabase/migrations/20280217004202_issue_4202_local_acceptance_auth_detach.sql",
+        "supabase/migrations/20280218004202_issue_4202_explorer_phone_rpc_null.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -25193,6 +25198,8 @@
         "supabase/migrations/__tests__/issue_4187_admin_program_messaging.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4188_staff_stay_reservations.implementor.happy.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4188_staff_stay_reservations.implementor.happy.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4202_explorer_phone_rpc_null.implementor.happy.test.sql",
+        "supabase/migrations/__tests__/issue_4202_explorer_phone_rpc_null.implementor.happy.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4202_local_acceptance_auth_detach.implementor.happy.test.sql",
         "supabase/migrations/__tests__/issue_4202_local_acceptance_auth_detach.implementor.happy.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4203_hidden_purchase_reads.implementor.pg17.test.sql",
@@ -52455,5 +52462,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "99cddfdd5d505ac2faacd4bf9d65cefa72c4939ace80caa74e097f37fcbc58a3",
-  "phase3eContractSha256": "b45c05386ed517cd1b3364d55b8492f877a24590d79f21f0b991f9875410fadf"
+  "phase3eContractSha256": "fbb51c1ee453f61fb89bb989431d70348ae705a7f6dafb604eb3f32440207c16"
 }
