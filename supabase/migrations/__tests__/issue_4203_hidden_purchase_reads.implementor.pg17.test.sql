@@ -262,6 +262,11 @@ CREATE TABLE IF NOT EXISTS auth.identities (
   provider_id text NOT NULL,
   identity_data jsonb NOT NULL DEFAULT '{}'::jsonb
 );
+-- GoTrue owns this table on production and grants postgres DML access. The
+-- migration runner owns the SECURITY DEFINER function as postgres, so mirror
+-- that measured ACL instead of letting the CI-created stub invent a stricter
+-- relationship than production.
+GRANT SELECT, INSERT, UPDATE, DELETE ON auth.identities TO postgres;
 
 INSERT INTO auth.users(id, email) VALUES (
   '42020000-0000-4000-8000-000000000099',
