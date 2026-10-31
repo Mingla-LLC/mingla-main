@@ -83,7 +83,7 @@ export function loadCertificationInputs() {
 export function buildCertificationPlan(ledger, owners) {
   if (
     !Array.isArray(ledger.capabilities) ||
-    ledger.capabilities.length !== 187
+    ledger.capabilities.length !== 188
   ) {
     throw new Error(
       `ledger_capability_count:${ledger.capabilities?.length ?? "missing"}`,
@@ -653,7 +653,7 @@ export function validateCertificationEvidence(
     ? evidence.capabilities
     : [];
   requireValue(
-    rows.length === 187,
+    rows.length === 188,
     `evidence_capability_count:${rows.length}`,
     failures,
   );
