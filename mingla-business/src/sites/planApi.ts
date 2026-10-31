@@ -69,6 +69,29 @@ export async function saveBrandSitePlan(input: {
   return normalizeSitePlan(input.brandId, data.data);
 }
 
+/** #2830 — a plan-level design choice exists before any draft/site row. */
+export async function saveBrandSitePlanDesign(input: {
+  brandId: string;
+  revision: number;
+  designKey: "atelier" | "voyage";
+}): Promise<SitePlanState> {
+  const { data, error } = await supabase.functions.invoke<{ ok: boolean; data?: unknown }>(
+    "brand-site-control",
+    {
+      body: {
+        route: `/v1/brands/${input.brandId}/site-plan/design`,
+        method: "POST",
+        revision: input.revision,
+        design_key: input.designKey,
+        source_type: "owner",
+      },
+    },
+  );
+  if (error !== null) throw await failureFromInvokeError(error);
+  if (!data || data.ok !== true) throw brandSitesErrorFrom(null, data);
+  return normalizeSitePlan(input.brandId, data.data);
+}
+
 export async function heartbeatBrandSitePlan(brandId: string): Promise<SitePlanState> {
   return normalizeSitePlan(brandId, await invokeBrandSiteControl<unknown>(`/v1/brands/${brandId}/site-plan/heartbeat`, "POST"));
 }
@@ -129,6 +152,15 @@ export function useSaveBrandSitePlan(brandId: string) {
       // A conflict re-shows the latest plan (the screen says what happened).
       if (error instanceof BrandSitePlanConflict && error.latest) await apply(error.latest);
     },
+  });
+}
+
+export function useSaveBrandSitePlanDesign(brandId: string) {
+  const apply = useApplyPlan(brandId);
+  return useMutation({
+    mutationFn: (input: { revision: number; designKey: "atelier" | "voyage" }) =>
+      saveBrandSitePlanDesign({ brandId, ...input }),
+    onSuccess: apply,
   });
 }
 
