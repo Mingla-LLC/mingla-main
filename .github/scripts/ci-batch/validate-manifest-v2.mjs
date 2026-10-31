@@ -318,7 +318,9 @@ export function phase3dContractDigest(manifest) {
 // suite owns its executable proof.
 // #4202: register the Local audit-row auth detach in the same inventories;
 // its local PostgreSQL suite proves deletion plus immutable evidence retention.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "fbb51c1ee453f61fb89bb989431d70348ae705a7f6dafb604eb3f32440207c16";
+// #4202: register the GoTrue pending-phone sentinel repair in those inventories;
+// the existing phone-release suite proves its executable representation contract.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "45223ab4a66b4abc2c1b8d431dd8f66b8ea0bc7ea7c71ad98682626b9ca8e7ac";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
