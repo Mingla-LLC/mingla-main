@@ -1579,6 +1579,16 @@ test('AX-F3 — everything ELSE in useAuthSimple.ts is byte-identical to origin/
   }
   residue = remove4202Region(
     residue,
+    '      // #4202 [explorer-account-deletion] — begin initialization generation capture.',
+    '      // #4202 [explorer-account-deletion] — end initialization generation capture.',
+  )
+  residue = remove4202Region(
+    residue,
+    '                // #4202 [explorer-account-deletion] — begin initialization race guard.',
+    '                // #4202 [explorer-account-deletion] — end initialization race guard.',
+  )
+  residue = remove4202Region(
+    residue,
     '      // #4202 [explorer-account-deletion] — begin synchronous intent capture.',
     '      // #4202 [explorer-account-deletion] — end synchronous intent capture.',
   )
