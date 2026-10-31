@@ -58,10 +58,19 @@ BEGIN
     OR (v_manifest->>'context_complete')::boolean THEN
     RAISE EXCEPTION 'empty context was awarded completion: %',v_manifest;
   END IF;
-
-  -- Design lives on the plan, creates no site and invalidates older approval.
   PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',v_owner)::text,true);
   PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
+  v_failed := false;
+  BEGIN
+    PERFORM public.brand_site_provision(v_brand,gen_random_uuid(),repeat('0',64),NULL);
+  EXCEPTION WHEN OTHERS THEN
+    v_failed := SQLERRM IN ('sites_plan_not_ready','sites_context_incomplete');
+  END;
+  IF NOT v_failed OR EXISTS (SELECT 1 FROM public.brand_sites WHERE brand_id=v_brand) THEN
+    RAISE EXCEPTION 'direct provision bypassed incomplete setup';
+  END IF;
+
+  -- Design lives on the plan, creates no site and invalidates older approval.
   v_result := public.brand_site_plan_save_design(v_brand,1,'voyage','owner',NULL);
   IF v_result->'plan'->>'design_key' <> 'voyage'
     OR (v_result->'plan'->>'revision')::integer <> 2
@@ -169,6 +178,11 @@ BEGIN
     OR NOT (v_result#>>'{context,context_complete}')::boolean THEN
     RAISE EXCEPTION 'complete setup could not authorize provision: %',v_result;
   END IF;
+  v_result := public.brand_site_provision(v_brand,gen_random_uuid(),repeat('1',64),NULL);
+  IF v_result->>'status' <> 'executing'
+    OR NOT EXISTS (SELECT 1 FROM public.brand_sites WHERE brand_id=v_brand) THEN
+    RAISE EXCEPTION 'complete setup could not cross the direct provision boundary: %',v_result;
+  END IF;
 
   UPDATE public.brands SET description=NULL WHERE id=v_brand;
   v_failed := false;
@@ -178,6 +192,13 @@ BEGIN
     v_failed := SQLERRM IN ('sites_plan_not_ready','sites_context_incomplete');
   END;
   IF NOT v_failed THEN RAISE EXCEPTION 'incomplete setup authorized a first draft'; END IF;
+  v_failed := false;
+  BEGIN
+    PERFORM public.brand_site_provision(v_brand,gen_random_uuid(),repeat('2',64),NULL);
+  EXCEPTION WHEN OTHERS THEN
+    v_failed := SQLERRM IN ('sites_plan_not_ready','sites_context_incomplete');
+  END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'direct provision accepted a newly reopened gap'; END IF;
 
   -- Cross-tenant reads and direct table access remain closed.
   PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',v_other)::text,true);
