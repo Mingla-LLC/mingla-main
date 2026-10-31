@@ -42,13 +42,17 @@ import {
 } from "./siteContracts/ariToolSchemas.ts";
 import {
   DESIGN_KEYS,
-  DESIGNS,
   designFontSlots,
-  designSwatches,
   type DesignKey,
+  DESIGNS,
+  designSwatches,
 } from "./siteContracts/designs.ts";
 import { PLAN_OFFERING_KEYS } from "./siteContracts/sitePlan.ts";
-import { MAX_NAV_ITEMS, MAX_NAV_LABEL_LENGTH, MAX_PAGE_TITLE_LENGTH } from "./siteContracts/limits.ts";
+import {
+  MAX_NAV_ITEMS,
+  MAX_NAV_LABEL_LENGTH,
+  MAX_PAGE_TITLE_LENGTH,
+} from "./siteContracts/limits.ts";
 
 const UUID = { type: "string", format: "uuid" };
 const REVISION = { type: "string", minLength: 1, maxLength: 200 };
@@ -61,14 +65,16 @@ const DIGEST = {
 const PAGE_PATH = {
   type: "string",
   maxLength: 200,
-  description: 'The page\'s address as list_site_pages returns it ("" is the home page, "about", "resources/faqs"). Always send it.',
+  description:
+    'The page\'s address as list_site_pages returns it ("" is the home page, "about", "resources/faqs"). Always send it.',
 };
 const DESIGN = { type: "string", enum: [...DESIGN_KEYS] };
 const WHY = {
   type: "string",
   minLength: 1,
   maxLength: MAX_WORK_LOG_DECISION,
-  description: "Why this change, in one or two plain sentences the owner will read under “Why it looks like this”.",
+  description:
+    "Why this change, in one or two plain sentences the owner will read under “Why it looks like this”.",
 };
 const CITES = workLogCitesSchema();
 const plainText = (maxLength: number, description?: string) => ({
@@ -207,17 +213,35 @@ function safeRefusal(body: unknown): { code: string; message: string } | null {
   if (!body || typeof body !== "object") return null;
   const candidate = body as {
     ok?: unknown;
-    error?: { code?: unknown; message?: unknown; claims?: unknown; problems?: unknown; problem?: unknown; variants?: unknown; latest_revision?: unknown };
+    error?: {
+      code?: unknown;
+      message?: unknown;
+      claims?: unknown;
+      problems?: unknown;
+      problem?: unknown;
+      variants?: unknown;
+      latest_revision?: unknown;
+    };
   };
   const code = candidate.error?.code;
   if (candidate.ok !== false || typeof code !== "string") return null;
   if (SITES_SAFE_CODE_SET.has(code)) {
     const detail = refusalDetail(candidate.error);
-    return { code, message: `${SITES_TOOL_MESSAGES[code as SitesSafeCustomerCode]}${detail}` };
+    return {
+      code,
+      message: `${SITES_TOOL_MESSAGES[code as SitesSafeCustomerCode]}${detail}`,
+    };
   }
-  const envelope = Object.prototype.hasOwnProperty.call(SITES_NAMED_CODES, code) ? SITES_NAMED_CODES[code] : undefined;
+  const envelope = Object.prototype.hasOwnProperty.call(SITES_NAMED_CODES, code)
+    ? SITES_NAMED_CODES[code]
+    : undefined;
   if (envelope && typeof candidate.error?.message === "string") {
-    return { code: envelope, message: `${candidate.error.message.slice(0, 300)}${refusalDetail(candidate.error)}` };
+    return {
+      code: envelope,
+      message: `${candidate.error.message.slice(0, 300)}${
+        refusalDetail(candidate.error)
+      }`,
+    };
   }
   return null;
 }
@@ -226,7 +250,12 @@ function safeRefusal(body: unknown): { code: string; message: string } | null {
 function refusalDetail(error: Record<string, unknown> | undefined): string {
   if (!error) return "";
   const list = (value: unknown, max: number) =>
-    Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").slice(0, max).map((item) => item.slice(0, 300)) : [];
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string").slice(
+        0,
+        max,
+      ).map((item) => item.slice(0, 300))
+      : [];
   const parts = [
     ...list(error.claims, 12),
     ...list(error.problems, 12),
@@ -284,7 +313,12 @@ async function readControl(
         const refusal = safeRefusal(body);
         const status = context.status;
         if (refusal) {
-          outcome = { kind: "refused", code: refusal.code, message: refusal.message, status };
+          outcome = {
+            kind: "refused",
+            code: refusal.code,
+            message: refusal.message,
+            status,
+          };
         } else {
           outcome = {
             kind: "unavailable",
@@ -309,7 +343,12 @@ async function readControl(
       outcome = response?.ok === true
         ? { kind: "ok", data: response.data }
         : refusal
-        ? { kind: "refused", code: refusal.code, message: refusal.message, status: 200 }
+        ? {
+          kind: "refused",
+          code: refusal.code,
+          message: refusal.message,
+          status: 200,
+        }
         : { kind: "unavailable", reason: "body_unrecognized", status: null };
     }
   } catch {
@@ -458,7 +497,10 @@ function designerWrite(name: string): AgentToolDefinition["executor"] {
  * Mingla admins. Never throws: the honest answer stands whether or not the
  * record could be written (a failure is logged, id-free).
  */
-async function recordSiteInterest(client: SupabaseClient, brandId: string): Promise<boolean> {
+async function recordSiteInterest(
+  client: SupabaseClient,
+  brandId: string,
+): Promise<boolean> {
   const outcome = await readControl(client, {
     route: `/v1/brands/${brandId}/site-interest`,
     method: "POST",
@@ -587,16 +629,30 @@ const getSitePlan = tool(
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
-    if (!isUuid(args.brand_id)) throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
+    }
     await assertAgentReadBrand(client, userId, args.brand_id);
-    return settleControl(await readControl(client, { route: `/v1/brands/${args.brand_id}/site-plan`, method: "GET" }));
+    return settleControl(
+      await readControl(client, {
+        route: `/v1/brands/${args.brand_id}/site-plan`,
+        method: "GET",
+      }),
+    );
   },
 );
 
 const startBrandCompletenessJob = tool(
   "start_brand_completeness_job",
-  "Start or resume Ari's durable Fix all Website gaps job for this brand. Returns the current field audit plus completed and pending step keys. Reuse the returned job id for checkpoints; never repeat a completed write.",
-  { brand_id: UUID },
+  "Start or resume Ari's one durable Fix all Website gaps job for this brand. Returns the current field audit plus completed and pending step keys. If another teammate owns the active job, explain the collision and ask an eligible admin or owner whether to wait or take over; set takeover=true only after that explicit choice. Reuse the returned job id for checkpoints; never repeat a completed write.",
+  {
+    brand_id: UUID,
+    takeover: {
+      type: "boolean",
+      description:
+        "True only after an eligible admin or owner explicitly chooses to take over the competing job.",
+    },
+  },
   ["brand_id"],
   async (args, client, userId) => {
     if (!isUuid(args.brand_id)) {
@@ -605,16 +661,116 @@ const startBrandCompletenessJob = tool(
     await assertAgentReadBrand(client, userId, args.brand_id);
     const { data, error } = await client.rpc(
       "ari_start_brand_completeness_job",
-      { p_brand_id: args.brand_id },
+      { p_brand_id: args.brand_id, p_takeover: args.takeover === true },
     );
     if (error) {
+      const denied = error.message.includes("not_authorized") ||
+        error.message.includes("forbidden");
       throw new ToolError(
-        error.message.includes("not_authorized")
-          ? "BRAND_ACCESS_DENIED"
-          : "SITE_SERVICE_UNAVAILABLE",
-        error.message.includes("not_authorized")
-          ? "That brand is unavailable."
+        denied ? "BRAND_ACCESS_DENIED" : "SITE_SERVICE_UNAVAILABLE",
+        denied
+          ? "That brand is unavailable or this role cannot take over its Website completion job."
           : "Ari could not start the Website completion job right now.",
+      );
+    }
+    return data;
+  },
+);
+
+const BRAND_CONTEXT_FIELD_KEYS = [
+  "name",
+  "description",
+  "offerings_selected",
+  "design_key",
+  "story.who",
+  "story.why",
+  "story.main_action",
+  "approved_plan",
+  "venue_descriptor",
+  "contact_email",
+  "contact_phone",
+  "address",
+  "city_country",
+  "social_links",
+  "profile_photo",
+  "cover_media",
+  "theme",
+] as const;
+
+const recordBrandContextFinding = tool(
+  "record_brand_context_finding",
+  "Record bounded evidence that one Website context field is stale or has conflicting candidates, without changing the public brand value. Use this after read-only Mingla or public research so the canonical audit and durable job remain truthful while Ari asks the owner to resolve it.",
+  {
+    brand_id: UUID,
+    field_key: { type: "string", enum: [...BRAND_CONTEXT_FIELD_KEYS] },
+    state: { type: "string", enum: ["stale", "conflict"] },
+    candidates: {
+      type: "array",
+      minItems: 1,
+      maxItems: 10,
+      items: closedObject({
+        value: plainText(1000, "Candidate value as concise text"),
+        source_type: {
+          type: "string",
+          enum: ["mingla", "owner", "public_research", "imported"],
+        },
+        source_ref: plainText(300, "Short source label or Mingla record id"),
+        source_url: {
+          type: "string",
+          maxLength: 1000,
+          pattern: "^https://",
+          nullable: true,
+        },
+        observed_at: {
+          type: "string",
+          maxLength: 80,
+          description: "ISO-8601 time when this candidate was observed",
+        },
+        confidence: { type: "number", minimum: 0, maximum: 1 },
+      }, ["value", "source_type", "source_ref", "observed_at", "confidence"]),
+    },
+  },
+  ["brand_id", "field_key", "state", "candidates"],
+  async (args, client, userId) => {
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
+    }
+    await assertAgentReadBrand(client, userId, args.brand_id);
+    if (
+      args.state === "conflict" &&
+      (!Array.isArray(args.candidates) || args.candidates.length < 2)
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "A conflict needs at least two evidence candidates.",
+      );
+    }
+    const { data, error } = await client.rpc(
+      "ari_record_brand_context_finding",
+      {
+        p_brand_id: args.brand_id,
+        p_field_key: args.field_key,
+        p_disposition: args.state,
+        p_candidates: args.candidates,
+      },
+    );
+    if (error) {
+      const message = error.message ?? "Brand context finding failed";
+      if (message.includes("forbidden")) {
+        throw new ToolError(
+          "FORBIDDEN",
+          "A brand admin or owner must preserve this Website audit finding.",
+        );
+      }
+      if (message.includes("invalid_finding")) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "The finding needs bounded, dated evidence and HTTPS URLs for public research.",
+        );
+      }
+      throw new ToolError(
+        "SITE_SERVICE_UNAVAILABLE",
+        "Ari could not preserve that Website audit finding right now.",
       );
     }
     return data;
@@ -627,7 +783,9 @@ const listSiteDesigns = tool(
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
-    if (!isUuid(args.brand_id)) throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
+    }
     await assertAgentReadBrand(client, userId, args.brand_id);
     return DESIGN_KEYS.map((key) => {
       const design = DESIGNS[key];
@@ -635,7 +793,11 @@ const listSiteDesigns = tool(
         key,
         name: design.label,
         description: design.description,
-        swatches: designSwatches(design).map((swatch) => ({ label: swatch.label, role: swatch.role, step: swatch.step ?? null })),
+        swatches: designSwatches(design).map((swatch) => ({
+          label: swatch.label,
+          role: swatch.role,
+          step: swatch.step ?? null,
+        })),
         font_slots: designFontSlots(design),
       };
     });
@@ -648,9 +810,13 @@ const getBlockCatalog = tool(
   { brand_id: UUID, design: DESIGN },
   ["brand_id"],
   async (args, client, userId) => {
-    if (!isUuid(args.brand_id)) throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
+    }
     await assertAgentReadBrand(client, userId, args.brand_id);
-    return ariBlockCatalog(typeof args.design === "string" ? args.design as DesignKey : undefined);
+    return ariBlockCatalog(
+      typeof args.design === "string" ? args.design as DesignKey : undefined,
+    );
   },
 );
 
@@ -672,7 +838,12 @@ const runSiteDesignChecks = tool(
   ["brand_id", "site_id"],
   async (args, client, userId) => {
     await assertAgentReadBrand(client, userId, args.brand_id);
-    return await cmsTool("run_site_design_checks", args, client, crypto.randomUUID());
+    return await cmsTool(
+      "run_site_design_checks",
+      args,
+      client,
+      crypto.randomUUID(),
+    );
   },
 );
 
@@ -748,7 +919,8 @@ const PLAN_DESIGN_EVIDENCE = {
   source_url: {
     type: "string",
     maxLength: 1000,
-    description: "HTTPS source when the design recommendation came from public research.",
+    description:
+      "HTTPS source when the design recommendation came from public research.",
   },
 };
 
@@ -773,14 +945,16 @@ const saveSitePlanDesign = tool(
     if (!isUuid(args.brand_id)) {
       throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
     }
-    const saved = settleControl(await readControl(client, {
-      route: `/v1/brands/${args.brand_id}/site-plan/design`,
-      method: "POST",
-      revision: args.expected_plan_revision,
-      design_key: args.design_key,
-      source_type: args.source_type ?? "owner",
-      source_url: args.source_url ?? null,
-    }));
+    const saved = settleControl(
+      await readControl(client, {
+        route: `/v1/brands/${args.brand_id}/site-plan/design`,
+        method: "POST",
+        revision: args.expected_plan_revision,
+        design_key: args.design_key,
+        source_type: args.source_type ?? "owner",
+        source_url: args.source_url ?? null,
+      }),
+    );
     const logged = await logWorkIfSite(client, args.brand_id, {
       part: "plan",
       tool: "save_site_plan_design",
@@ -800,7 +974,8 @@ const CONTEXT_PATCH = closedObject({
     type: "string",
     nullable: true,
     pattern: "^\\+[1-9][0-9]{7,14}$",
-    description: "Canonical E.164 phone. Ask for the country when it is unknown; never invent a dial code.",
+    description:
+      "Canonical E.164 phone. Ask for the country when it is unknown; never invent a dial code.",
   },
   address: { type: "string", maxLength: 240, nullable: true },
   city: { type: "string", maxLength: 120, nullable: true },
@@ -814,8 +989,19 @@ const CONTEXT_PATCH = closedObject({
     nullable: true,
     additionalProperties: false,
     properties: Object.fromEntries(
-      ["website", "instagram", "tiktok", "x", "facebook", "youtube", "linkedin", "threads"]
-        .map((key) => [key, { type: "string", maxLength: 500, pattern: "^https://" }]),
+      [
+        "website",
+        "instagram",
+        "tiktok",
+        "x",
+        "facebook",
+        "youtube",
+        "linkedin",
+        "threads",
+      ]
+        .map((
+          key,
+        ) => [key, { type: "string", maxLength: 500, pattern: "^https://" }]),
     ),
   },
   custom_links: {
@@ -823,7 +1009,10 @@ const CONTEXT_PATCH = closedObject({
     nullable: true,
     maxItems: 10,
     items: closedObject(
-      { label: plainText(80), url: { type: "string", maxLength: 1000, pattern: "^https://" } },
+      {
+        label: plainText(80),
+        url: { type: "string", maxLength: 1000, pattern: "^https://" },
+      },
       ["label", "url"],
     ),
   },
@@ -837,17 +1026,35 @@ const CONTEXT_PATCH = closedObject({
         type: "string",
         nullable: true,
         enum: [
-          "inter", "poppins", "space_grotesk", "plus_jakarta_sans", "manrope",
-          "playfair_display", "dm_serif_display", "fraunces", "lora",
-          "bebas_neue", "anton", "unbounded", "caveat", "dancing_script",
+          "inter",
+          "poppins",
+          "space_grotesk",
+          "plus_jakarta_sans",
+          "manrope",
+          "playfair_display",
+          "dm_serif_display",
+          "fraunces",
+          "lora",
+          "bebas_neue",
+          "anton",
+          "unbounded",
+          "caveat",
+          "dancing_script",
         ],
       },
       animation: {
         type: "string",
         nullable: true,
         enum: [
-          "none", "confetti", "fireworks", "balloons", "sparkles",
-          "glitter_shower", "snowfall", "falling_petals", "hearts",
+          "none",
+          "confetti",
+          "fireworks",
+          "balloons",
+          "sparkles",
+          "glitter_shower",
+          "snowfall",
+          "falling_petals",
+          "hearts",
           "shimmer_reveal",
         ],
       },
@@ -877,6 +1084,11 @@ const updateBrandContext = tool(
       minimum: 0,
       description: "The plan revision get_site_plan returned",
     },
+    expected_context_revision: {
+      type: "string",
+      pattern: "^[0-9a-f]{64}$",
+      description: "The context_revision get_site_plan returned",
+    },
     patch: CONTEXT_PATCH,
     exceptions: {
       type: "array",
@@ -901,39 +1113,96 @@ const updateBrandContext = tool(
     why: WHY,
     cites: CITES,
   },
-  ["brand_id", "expected_plan_revision", "evidence", "why", "cites"],
+  [
+    "brand_id",
+    "expected_plan_revision",
+    "expected_context_revision",
+    "evidence",
+    "why",
+    "cites",
+  ],
   async (args, client, _userId, context) => {
     const operationId = requireAgentOperationId(context);
-    if (!isUuid(args.brand_id) || !Number.isInteger(args.expected_plan_revision)) {
-      throw new ToolError("INVALID_ARGS", "brand_id and expected_plan_revision are required");
+    if (
+      !isUuid(args.brand_id) ||
+      !Number.isInteger(args.expected_plan_revision) ||
+      typeof args.expected_context_revision !== "string" ||
+      !/^[0-9a-f]{64}$/.test(args.expected_context_revision)
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "brand_id, expected_plan_revision and expected_context_revision are required",
+      );
     }
-    const patch = args.patch && typeof args.patch === "object" && !Array.isArray(args.patch)
-      ? args.patch
-      : {};
+    const patch =
+      args.patch && typeof args.patch === "object" && !Array.isArray(args.patch)
+        ? args.patch
+        : {};
     const exceptions = Array.isArray(args.exceptions) ? args.exceptions : [];
-    if (Object.keys(patch as Record<string, unknown>).length === 0 && exceptions.length === 0) {
-      throw new ToolError("INVALID_ARGS", "Provide a field change or an explicit exception");
+    if (
+      Object.keys(patch as Record<string, unknown>).length === 0 &&
+      exceptions.length === 0
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Provide a field change or an explicit exception",
+      );
     }
     const { data, error } = await client.rpc("ari_update_brand_context", {
       p_operation_id: operationId,
       p_brand_id: args.brand_id,
       p_expected_plan_revision: args.expected_plan_revision,
+      p_expected_context_revision: args.expected_context_revision,
       p_patch: patch,
       p_exceptions: exceptions,
       p_evidence: args.evidence,
     });
     if (error) {
       const message = error.message ?? "Brand context update failed";
-      if (message.includes("sites_revision_conflict")) {
-        throw new ToolError("REVISION_CONFLICT", "The Website setup changed. Read get_site_plan again before proposing this update.");
+      if (
+        message.includes("sites_revision_conflict") ||
+        message.includes("sites_context_revision_conflict")
+      ) {
+        throw new ToolError(
+          "REVISION_CONFLICT",
+          "The Website setup changed. Read get_site_plan again before proposing this update.",
+        );
       }
       if (message.includes("sites_plan_locked")) {
-        throw new ToolError("REVISION_CONFLICT", "A teammate is editing the Website setup. Read the plan again before continuing.");
+        throw new ToolError(
+          "REVISION_CONFLICT",
+          "A teammate is editing the Website setup. Read the plan again before continuing.",
+        );
       }
       if (message.includes("forbidden")) {
-        throw new ToolError("FORBIDDEN", "A brand admin or owner must confirm this brand-context change.");
+        throw new ToolError(
+          "FORBIDDEN",
+          "A brand admin or owner must confirm this brand-context change.",
+        );
       }
-      throw new ToolError("SITE_SERVICE_UNAVAILABLE", "Ari could not save that Website detail right now.");
+      if (
+        message.includes("invalid_args") ||
+        message.includes("invalid_evidence") ||
+        message.includes("invalid_exception") ||
+        message.includes("invalid_brand_name") ||
+        message.includes("invalid_description") ||
+        message.includes("invalid_contact_") ||
+        message.includes("invalid_address") ||
+        message.includes("invalid_city") ||
+        message.includes("invalid_country_code") ||
+        message.includes("invalid_social_links") ||
+        message.includes("invalid_custom_links") ||
+        message.includes("invalid_theme")
+      ) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "That Website detail or its evidence is not in a safe, supported format.",
+        );
+      }
+      throw new ToolError(
+        "SITE_SERVICE_UNAVAILABLE",
+        "Ari could not save that Website detail right now.",
+      );
     }
     const logged = await logWorkIfSite(client, args.brand_id, {
       part: "brand_context",
@@ -951,7 +1220,11 @@ const saveSitePlanAnswers = tool(
   "Save the owner's answers to the website plan (what they offer, the venue word, and the three story answers, in their own words) against the plan's revision. Brand admins and owners only. Never approves the plan; the owner approves it themselves.",
   {
     brand_id: UUID,
-    expected_plan_revision: { type: "integer", minimum: 0, description: "The plan revision get_site_plan returned" },
+    expected_plan_revision: {
+      type: "integer",
+      minimum: 0,
+      description: "The plan revision get_site_plan returned",
+    },
     answers: PLAN_ANSWERS,
     why: WHY,
     cites: CITES,
@@ -959,14 +1232,24 @@ const saveSitePlanAnswers = tool(
   ["brand_id", "expected_plan_revision", "answers", "why", "cites"],
   async (args, client, _userId, context) => {
     requireAgentOperationId(context);
-    if (!isUuid(args.brand_id)) throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
-    const saved = settleControl(await readControl(client, {
-      route: `/v1/brands/${args.brand_id}/site-plan`,
-      method: "POST",
-      revision: args.expected_plan_revision,
-      patch: args.answers,
-    }));
-    const logged = await logWorkIfSite(client, args.brand_id, { part: "plan", tool: "save_site_plan_answers", why: args.why, cites: args.cites, target: "plan" });
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
+    }
+    const saved = settleControl(
+      await readControl(client, {
+        route: `/v1/brands/${args.brand_id}/site-plan`,
+        method: "POST",
+        revision: args.expected_plan_revision,
+        patch: args.answers,
+      }),
+    );
+    const logged = await logWorkIfSite(client, args.brand_id, {
+      part: "plan",
+      tool: "save_site_plan_answers",
+      why: args.why,
+      cites: args.cites,
+      target: "plan",
+    });
     return { plan: saved, draft_only: true, work_log_saved: logged };
   },
 );
@@ -975,7 +1258,14 @@ const saveSitePlanAnswers = tool(
 async function logWorkIfSite(
   client: SupabaseClient,
   brandId: string,
-  entry: { part: string; tool: string; why: unknown; cites: unknown; target: string; revision?: string | null },
+  entry: {
+    part: string;
+    tool: string;
+    why: unknown;
+    cites: unknown;
+    target: string;
+    revision?: string | null;
+  },
 ): Promise<boolean> {
   const siteId = await authoritativeSiteId(client, brandId);
   if (!siteId) return false;
@@ -985,10 +1275,24 @@ async function logWorkIfSite(
     operation_id: crypto.randomUUID(),
     action: "log_work",
     brand_id: brandId,
-    args: { part: entry.part, tool: entry.tool, why: entry.why, cites: entry.cites, target: entry.target, revision: entry.revision ?? null },
+    args: {
+      part: entry.part,
+      tool: entry.tool,
+      why: entry.why,
+      cites: entry.cites,
+      target: entry.target,
+      revision: entry.revision ?? null,
+    },
   });
   if (outcome.kind !== "ok") {
-    console.warn("[agentSiteTools] work log not saved", JSON.stringify({ fn: "agentSiteTools", tool: entry.tool, outcome: outcome.kind }));
+    console.warn(
+      "[agentSiteTools] work log not saved",
+      JSON.stringify({
+        fn: "agentSiteTools",
+        tool: entry.tool,
+        outcome: outcome.kind,
+      }),
+    );
     return false;
   }
   return true;
@@ -1003,33 +1307,89 @@ const createSiteDraft = tool(
   ["brand_id", "why", "cites"],
   async (args, client, _userId, context) => {
     const operationId = requireAgentOperationId(context);
-    if (!isUuid(args.brand_id)) throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
-    const brandId = args.brand_id;
-    const availability = await readControl(client, { route: `/v1/brands/${brandId}/site-availability`, method: "GET" });
-    const state = settleControl(availability) as { available?: unknown; site?: unknown } | null;
-    if (state?.available === false) {
-      return { website_state: "not_available", reply: NOT_AVAILABLE_REPLY, interest_recorded: await recordSiteInterest(client, brandId) };
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
     }
-    let site = await readControl(client, { route: `/v1/brands/${brandId}/site`, method: "GET" });
+    const brandId = args.brand_id;
+    const availability = await readControl(client, {
+      route: `/v1/brands/${brandId}/site-availability`,
+      method: "GET",
+    });
+    const state = settleControl(availability) as {
+      available?: unknown;
+      site?: unknown;
+    } | null;
+    if (state?.available === false) {
+      return {
+        website_state: "not_available",
+        reply: NOT_AVAILABLE_REPLY,
+        interest_recorded: await recordSiteInterest(client, brandId),
+      };
+    }
+    let site = await readControl(client, {
+      route: `/v1/brands/${brandId}/site`,
+      method: "GET",
+    });
     if (site.kind === "refused" && site.code === "NOT_FOUND") {
-      settleControl(await readControl(client, { route: `/v1/brands/${brandId}/site`, method: "POST", operation_id: operationId }));
-      site = await readControl(client, { route: `/v1/brands/${brandId}/site`, method: "GET" });
+      settleControl(
+        await readControl(client, {
+          route: `/v1/brands/${brandId}/site`,
+          method: "POST",
+          operation_id: operationId,
+        }),
+      );
+      site = await readControl(client, {
+        route: `/v1/brands/${brandId}/site`,
+        method: "GET",
+      });
     }
     const started = Date.now();
     let row = settleControl(site) as { id?: unknown; status?: unknown } | null;
-    while (row && row.status === "provisioning" && Date.now() - started < SITE_READY_WINDOW_MS) {
+    while (
+      row && row.status === "provisioning" &&
+      Date.now() - started < SITE_READY_WINDOW_MS
+    ) {
       await new Promise((resolve) => setTimeout(resolve, 1_500));
-      row = settleControl(await readControl(client, { route: `/v1/brands/${brandId}/site`, method: "GET" })) as typeof row;
+      row = settleControl(
+        await readControl(client, {
+          route: `/v1/brands/${brandId}/site`,
+          method: "GET",
+        }),
+      ) as typeof row;
     }
-    if (!row || !isUuid(row.id)) throw new ToolError("SITE_SERVICE_UNAVAILABLE", SITE_SERVICE_UNAVAILABLE_MESSAGE);
-    if (row.status === "provisioning") throw new ToolError("OPERATION_IN_PROGRESS", "The website draft is still being set up. Try again in a minute.");
-    const composed = settleControl(await readControl(client, {
-      route: `/v1/brands/${brandId}/site/compose-from-plan`,
-      method: "POST",
-      operation_id: crypto.randomUUID(),
-    })) as { pages?: unknown; site_id?: unknown };
-    const logged = await logWorkIfSite(client, brandId, { part: "draft", tool: "create_site_draft", why: args.why, cites: args.cites, target: "site" });
-    return { website_state: "draft", site_id: row.id, pages: composed?.pages ?? [], draft_only: true, work_log_saved: logged };
+    if (!row || !isUuid(row.id)) {
+      throw new ToolError(
+        "SITE_SERVICE_UNAVAILABLE",
+        SITE_SERVICE_UNAVAILABLE_MESSAGE,
+      );
+    }
+    if (row.status === "provisioning") {
+      throw new ToolError(
+        "OPERATION_IN_PROGRESS",
+        "The website draft is still being set up. Try again in a minute.",
+      );
+    }
+    const composed = settleControl(
+      await readControl(client, {
+        route: `/v1/brands/${brandId}/site/compose-from-plan`,
+        method: "POST",
+        operation_id: crypto.randomUUID(),
+      }),
+    ) as { pages?: unknown; site_id?: unknown };
+    const logged = await logWorkIfSite(client, brandId, {
+      part: "draft",
+      tool: "create_site_draft",
+      why: args.why,
+      cites: args.cites,
+      target: "site",
+    });
+    return {
+      website_state: "draft",
+      site_id: row.id,
+      pages: composed?.pages ?? [],
+      draft_only: true,
+      work_log_saved: logged,
+    };
   },
 );
 
@@ -1039,7 +1399,11 @@ const proposeSiteComposition = tool(
   {
     brand_id: UUID,
     site_id: UUID,
-    expected_site_revision: { ...DIGEST, description: "The draft digest from validate_site_draft (the whole draft's revision)" },
+    expected_site_revision: {
+      ...DIGEST,
+      description:
+        "The draft digest from validate_site_draft (the whole draft's revision)",
+    },
     pages: {
       type: "array",
       maxItems: 20,
@@ -1054,7 +1418,11 @@ const proposeSiteComposition = tool(
       type: "array",
       maxItems: 10,
       items: closedObject({
-        slug: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$", maxLength: 60 },
+        slug: {
+          type: "string",
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          maxLength: 60,
+        },
         title: plainText(MAX_PAGE_TITLE_LENGTH),
         parent_path: PAGE_PATH,
         blocks: { type: "array", maxItems: 60, items: blocksSchema() },
@@ -1063,8 +1431,12 @@ const proposeSiteComposition = tool(
     menu: {
       type: "array",
       maxItems: MAX_NAV_ITEMS,
-      description: "The header menu, in order (labels and pages). Links to other websites and “More” groups stay as they are.",
-      items: closedObject({ page_path: PAGE_PATH, label: plainText(MAX_NAV_LABEL_LENGTH) }, ["page_path", "label"]),
+      description:
+        "The header menu, in order (labels and pages). Links to other websites and “More” groups stay as they are.",
+      items: closedObject({
+        page_path: PAGE_PATH,
+        label: plainText(MAX_NAV_LABEL_LENGTH),
+      }, ["page_path", "label"]),
     },
     why: WHY,
     cites: CITES,
@@ -1086,7 +1458,15 @@ const proposeBlockVariant = tool(
     why: WHY,
     cites: CITES,
   },
-  ["brand_id", "site_id", "expected_revision", "block_index", "variant", "why", "cites"],
+  [
+    "brand_id",
+    "site_id",
+    "expected_revision",
+    "block_index",
+    "variant",
+    "why",
+    "cites",
+  ],
   designerWrite("propose_block_variant"),
 );
 
@@ -1096,7 +1476,10 @@ const proposeSiteTokens = tool(
   {
     brand_id: UUID,
     site_id: UUID,
-    expected_revision: { ...REVISION, description: "The revision get_site_tokens returned" },
+    expected_revision: {
+      ...REVISION,
+      description: "The revision get_site_tokens returned",
+    },
     design: DESIGN,
     tokens: tokenOverridesSchema(),
     fonts: fontChoicesSchema(),
@@ -1121,8 +1504,17 @@ const proposeSiteCopy = tool(
       maxItems: 40,
       items: closedObject({
         block_index: { type: "integer", minimum: 0, maximum: 59 },
-        field: { type: "string", maxLength: 60, description: "A text field of that block (or of the list item)" },
-        list: { type: "string", maxLength: 60, description: "For text inside a list (e.g. ctas, items, cards): the list's field name" },
+        field: {
+          type: "string",
+          maxLength: 60,
+          description: "A text field of that block (or of the list item)",
+        },
+        list: {
+          type: "string",
+          maxLength: 60,
+          description:
+            "For text inside a list (e.g. ctas, items, cards): the list's field name",
+        },
         item_index: { type: "integer", minimum: 0, maximum: 119 },
         value: plainText(5000),
       }, ["block_index", "field", "value"]),
@@ -1154,7 +1546,9 @@ const proposeSiteImagery = tool(
         images: {
           type: "array",
           maxItems: 12,
-          items: closedObject({ media_id: UUID, alt: plainText(240) }, ["media_id"]),
+          items: closedObject({ media_id: UUID, alt: plainText(240) }, [
+            "media_id",
+          ]),
         },
       }, ["block_index", "slot"]),
     },
@@ -1165,33 +1559,53 @@ const proposeSiteImagery = tool(
   designerWrite("propose_site_imagery"),
 );
 
-const COLLECTION_DATA = closedObject({
-  destination: closedObject({
-    title: plainText(120),
-    country: plainText(80),
-    tagline: plainText(200),
-    summary: plainText(600),
-    story_heading: plainText(120),
-    body: plainText(5000, "The destination's story (plain text; a blank line starts a new paragraph)"),
-    featured_image: UUID,
-    did_you_know: { type: "array", maxItems: 12, items: plainText(400) },
-    related_offerings: { type: "array", maxItems: 12, items: UUID },
-  }),
-  story: closedObject({
-    title: plainText(160),
-    excerpt: plainText(400),
-    content: plainText(5000, "The story (plain text; a blank line starts a new paragraph)"),
-    featured_image: UUID,
-  }),
-  review: closedObject({
-    quote: plainText(1200, "The review word for word as the owner pasted it"),
-    reviewer: plainText(80, "The reviewer's name exactly as shown in the pasted text"),
-    review_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "YYYY-MM-DD" },
-    trip_name: plainText(120),
-    related_offering: UUID,
-    source_note: plainText(500, "Where the owner says this review comes from"),
-  }),
-}, [], "Exactly one of destination, story or review, matching collection");
+const COLLECTION_DATA = closedObject(
+  {
+    destination: closedObject({
+      title: plainText(120),
+      country: plainText(80),
+      tagline: plainText(200),
+      summary: plainText(600),
+      story_heading: plainText(120),
+      body: plainText(
+        5000,
+        "The destination's story (plain text; a blank line starts a new paragraph)",
+      ),
+      featured_image: UUID,
+      did_you_know: { type: "array", maxItems: 12, items: plainText(400) },
+      related_offerings: { type: "array", maxItems: 12, items: UUID },
+    }),
+    story: closedObject({
+      title: plainText(160),
+      excerpt: plainText(400),
+      content: plainText(
+        5000,
+        "The story (plain text; a blank line starts a new paragraph)",
+      ),
+      featured_image: UUID,
+    }),
+    review: closedObject({
+      quote: plainText(1200, "The review word for word as the owner pasted it"),
+      reviewer: plainText(
+        80,
+        "The reviewer's name exactly as shown in the pasted text",
+      ),
+      review_date: {
+        type: "string",
+        pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+        description: "YYYY-MM-DD",
+      },
+      trip_name: plainText(120),
+      related_offering: UUID,
+      source_note: plainText(
+        500,
+        "Where the owner says this review comes from",
+      ),
+    }),
+  },
+  [],
+  "Exactly one of destination, story or review, matching collection",
+);
 
 const proposeSiteCollectionEntry = tool(
   "propose_site_collection_entry",
@@ -1199,25 +1613,40 @@ const proposeSiteCollectionEntry = tool(
   {
     brand_id: UUID,
     site_id: UUID,
-    collection: { type: "string", enum: ["destinations", "stories", "testimonials"] },
+    collection: {
+      type: "string",
+      enum: ["destinations", "stories", "testimonials"],
+    },
     operation: { type: "string", enum: ["create", "update"] },
     entry_id: { type: "string", maxLength: 64 },
     expected_revision: REVISION,
     data: COLLECTION_DATA,
-    owner_source_text: plainText(5000, "Text the owner pasted into the chat (required for a review)"),
+    owner_source_text: plainText(
+      5000,
+      "Text the owner pasted into the chat (required for a review)",
+    ),
     why: WHY,
     cites: CITES,
   },
   ["brand_id", "site_id", "collection", "operation", "data", "why", "cites"],
   async (args, client, _userId, context) => {
     const operationId = requireAgentOperationId(context);
-    const key = args.collection === "destinations" ? "destination" : args.collection === "stories" ? "story" : "review";
+    const key = args.collection === "destinations"
+      ? "destination"
+      : args.collection === "stories"
+      ? "story"
+      : "review";
     const data = (args.data ?? {}) as Record<string, unknown>;
     const entry = data[key];
     if (!entry || typeof entry !== "object" || Object.keys(data).length !== 1) {
       throw new ToolError("INVALID_ARGS", `data must carry only ${key}`);
     }
-    return await cmsTool("propose_site_collection_entry", { ...args, data: entry }, client, operationId);
+    return await cmsTool(
+      "propose_site_collection_entry",
+      { ...args, data: entry },
+      client,
+      operationId,
+    );
   },
 );
 
@@ -1236,7 +1665,10 @@ const confirmSiteReview = tool(
     const operationId = requireAgentOperationId(context);
     const { brandId, siteId } = requiredIds(args);
     if (args.statement !== REVIEW_CONFIRMATION_STATEMENT) {
-      throw new ToolError("INVALID_ARGS", "The confirmation statement must be shown word for word.");
+      throw new ToolError(
+        "INVALID_ARGS",
+        "The confirmation statement must be shown word for word.",
+      );
     }
     // The owner's own confirmation (rank 50 checked by Core in SQL), never Ari's designer path.
     return await invokeSiteControl(client, brandId, siteId, (id) => ({
@@ -1244,23 +1676,34 @@ const confirmSiteReview = tool(
       method: "POST",
       operation_id: operationId,
       action: "confirm_review",
-      args: { id: args.review_id, expected_revision: args.expected_revision, confirmed: true },
+      args: {
+        id: args.review_id,
+        expected_revision: args.expected_revision,
+        confirmed: true,
+      },
     }));
   },
 );
 
-const TRIP_GUIDE = closedObject({
-  highlights: { type: "array", maxItems: 12, items: plainText(200) },
-  what_to_prepare: plainText(4000),
-  good_to_know: plainText(4000),
-  faqs: {
-    type: "array",
-    maxItems: 20,
-    items: closedObject({ question: plainText(300), answer: plainText(2000) }, ["question", "answer"]),
+const TRIP_GUIDE = closedObject(
+  {
+    highlights: { type: "array", maxItems: 12, items: plainText(200) },
+    what_to_prepare: plainText(4000),
+    good_to_know: plainText(4000),
+    faqs: {
+      type: "array",
+      maxItems: 20,
+      items: closedObject(
+        { question: plainText(300), answer: plainText(2000) },
+        ["question", "answer"],
+      ),
+    },
+    group_minimum: { type: "integer", minimum: 1, maximum: 500 },
+    activity_level: plainText(60),
   },
-  group_minimum: { type: "integer", minimum: 1, maximum: 500 },
-  activity_level: plainText(60),
-}, [], "The trip guide's full replacement (an empty guide removes it)");
+  [],
+  "The trip guide's full replacement (an empty guide removes it)",
+);
 
 const proposeTripGuideUpdate = tool(
   "propose_trip_guide_update",
@@ -1268,7 +1711,12 @@ const proposeTripGuideUpdate = tool(
   {
     brand_id: UUID,
     trip_id: UUID,
-    expected_revision: { type: "string", maxLength: 64, description: "The guide's updated_at Ari read, or \"none\" when the trip had no guide" },
+    expected_revision: {
+      type: "string",
+      maxLength: 64,
+      description:
+        'The guide\'s updated_at Ari read, or "none" when the trip had no guide',
+    },
     guide: TRIP_GUIDE,
     why: WHY,
     cites: CITES,
@@ -1276,27 +1724,69 @@ const proposeTripGuideUpdate = tool(
   ["brand_id", "trip_id", "expected_revision", "guide", "why", "cites"],
   async (args, client, _userId, context) => {
     requireAgentOperationId(context);
-    if (!isUuid(args.brand_id) || !isUuid(args.trip_id)) throw new ToolError("INVALID_ARGS", "brand_id and trip_id must be UUIDs");
-    const current = await client.rpc("biz_get_trip_guide", { p_event_id: args.trip_id });
-    if (current.error) throw tripGuideError(current.error.message);
-    const currentRevision = (current.data as { updated_at?: unknown } | null)?.updated_at;
-    const expected = String(args.expected_revision ?? "");
-    if ((currentRevision == null && expected !== "none") || (currentRevision != null && String(currentRevision) !== expected)) {
-      throw new ToolError("REVISION_CONFLICT", `The trip guide changed since Ari read it. Latest revision: ${currentRevision == null ? "none" : String(currentRevision)}.`);
+    if (!isUuid(args.brand_id) || !isUuid(args.trip_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id and trip_id must be UUIDs");
     }
-    const saved = await client.rpc("biz_upsert_trip_guide", { p_event_id: args.trip_id, p_guide: args.guide });
+    const current = await client.rpc("biz_get_trip_guide", {
+      p_event_id: args.trip_id,
+    });
+    if (current.error) throw tripGuideError(current.error.message);
+    const currentRevision = (current.data as { updated_at?: unknown } | null)
+      ?.updated_at;
+    const expected = String(args.expected_revision ?? "");
+    if (
+      (currentRevision == null && expected !== "none") ||
+      (currentRevision != null && String(currentRevision) !== expected)
+    ) {
+      throw new ToolError(
+        "REVISION_CONFLICT",
+        `The trip guide changed since Ari read it. Latest revision: ${
+          currentRevision == null ? "none" : String(currentRevision)
+        }.`,
+      );
+    }
+    const saved = await client.rpc("biz_upsert_trip_guide", {
+      p_event_id: args.trip_id,
+      p_guide: args.guide,
+    });
     if (saved.error) throw tripGuideError(saved.error.message);
-    const logged = await logWorkIfSite(client, args.brand_id, { part: "trip_guide", tool: "propose_trip_guide_update", why: args.why, cites: args.cites, target: `trip:${args.trip_id}` });
+    const logged = await logWorkIfSite(client, args.brand_id, {
+      part: "trip_guide",
+      tool: "propose_trip_guide_update",
+      why: args.why,
+      cites: args.cites,
+      target: `trip:${args.trip_id}`,
+    });
     return { guide: saved.data, work_log_saved: logged };
   },
 );
 
 function tripGuideError(message: string): ToolError {
-  if (message.includes("insufficient_event_permission")) return new ToolError("FORBIDDEN", "Trip guides need an event manager, brand admin or owner.");
-  if (message.includes("trip_not_found") || message.includes("event_not_a_trip")) return new ToolError("NOT_FOUND", "That isn't one of this brand's trips.");
-  if (message.includes("trip_guide_invalid")) return new ToolError("INVALID_ARGS", "That trip guide doesn't fit the guide's limits.");
-  if (message.includes("trip_not_editable_status")) return new ToolError("INVALID_STATE", "This trip can't be edited any more.");
-  return new ToolError("SITE_SERVICE_UNAVAILABLE", "Ari could not reach the trip guide right now.");
+  if (message.includes("insufficient_event_permission")) {
+    return new ToolError(
+      "FORBIDDEN",
+      "Trip guides need an event manager, brand admin or owner.",
+    );
+  }
+  if (
+    message.includes("trip_not_found") || message.includes("event_not_a_trip")
+  ) return new ToolError("NOT_FOUND", "That isn't one of this brand's trips.");
+  if (message.includes("trip_guide_invalid")) {
+    return new ToolError(
+      "INVALID_ARGS",
+      "That trip guide doesn't fit the guide's limits.",
+    );
+  }
+  if (message.includes("trip_not_editable_status")) {
+    return new ToolError(
+      "INVALID_STATE",
+      "This trip can't be edited any more.",
+    );
+  }
+  return new ToolError(
+    "SITE_SERVICE_UNAVAILABLE",
+    "Ari could not reach the trip guide right now.",
+  );
 }
 
 function publicationTool(
@@ -1385,6 +1875,7 @@ export const SITE_AGENT_TOOLS: AgentToolDefinition[] = [
   getBrandSite,
   getSitePlan,
   startBrandCompletenessJob,
+  recordBrandContextFinding,
   listSiteDesigns,
   getBlockCatalog,
   getSiteTokens,
@@ -1415,6 +1906,7 @@ export const SITE_AGENT_READ_ONLY = new Set([
   "get_brand_site",
   "get_site_plan",
   "start_brand_completeness_job",
+  "record_brand_context_finding",
   "list_site_designs",
   "get_block_catalog",
   "get_site_tokens",
@@ -1428,7 +1920,9 @@ export const SITE_AGENT_READ_ONLY = new Set([
 
 /** The Sites tools that write (each one a confirmed proposal). */
 export const SITE_AGENT_WRITES: ReadonlySet<string> = new Set(
-  SITE_AGENT_TOOLS.map((definition) => definition.name).filter((name) => !SITE_AGENT_READ_ONLY.has(name)),
+  SITE_AGENT_TOOLS.map((definition) => definition.name).filter((name) =>
+    !SITE_AGENT_READ_ONLY.has(name)
+  ),
 );
 
 /**
@@ -1439,39 +1933,79 @@ export const SITE_AGENT_WRITES: ReadonlySet<string> = new Set(
  * Facts (numbers, prices, dates, superlatives) are checked by Studio against
  * Mingla's data when the confirmed change is applied.
  */
-export function assertSiteToolArgs(toolName: string, args: Record<string, unknown>): void {
+export function assertSiteToolArgs(
+  toolName: string,
+  args: Record<string, unknown>,
+): void {
   if (!SITE_AGENT_WRITES.has(toolName)) return;
   const invalid = (message: string): never => {
     throw new ToolError("INVALID_ARGS", message);
   };
-  const needsLog = !["confirm_site_review", "create_site_preview", "publish_site", "rollback_site"].includes(toolName);
+  const needsLog = ![
+    "confirm_site_review",
+    "create_site_preview",
+    "publish_site",
+    "rollback_site",
+  ].includes(toolName);
   if (needsLog) {
     const problem = workLogCitesProblem(args.cites);
-    if (problem) invalid(`${problem} (every website change says what it is based on)`);
-    if (typeof args.why !== "string" || !args.why.trim()) invalid("why is required");
+    if (problem) {
+      invalid(`${problem} (every website change says what it is based on)`);
+    }
+    if (typeof args.why !== "string" || !args.why.trim()) {
+      invalid("why is required");
+    }
   }
   if (toolName === "propose_site_composition") {
-    for (const [listName, rows] of [["pages", args.pages], ["new_pages", args.new_pages]] as const) {
+    for (
+      const [listName, rows] of [["pages", args.pages], [
+        "new_pages",
+        args.new_pages,
+      ]] as const
+    ) {
       if (rows === undefined) continue;
       if (!Array.isArray(rows)) invalid(`${listName} must be a list`);
       (rows as Array<Record<string, unknown>>).forEach((row, n) => {
-        const blocks = Array.isArray(row?.blocks) ? row.blocks : invalid(`${listName}[${n}].blocks must be a list`);
-        const problems = (blocks as unknown[]).flatMap((block, i) => ariBlockProblems(block, undefined, `${listName}[${n}].blocks[${i}]`));
+        const blocks = Array.isArray(row?.blocks)
+          ? row.blocks
+          : invalid(`${listName}[${n}].blocks must be a list`);
+        const problems = (blocks as unknown[]).flatMap((block, i) =>
+          ariBlockProblems(block, undefined, `${listName}[${n}].blocks[${i}]`)
+        );
         if (problems.length) invalid(problems.slice(0, 6).join("; "));
       });
     }
-    if (args.pages === undefined && args.new_pages === undefined && args.menu === undefined) invalid("propose at least one page, new page or menu");
+    if (
+      args.pages === undefined && args.new_pages === undefined &&
+      args.menu === undefined
+    ) invalid("propose at least one page, new page or menu");
   }
-  if (toolName === "propose_site_collection_entry" && args.collection === "testimonials") {
-    const source = typeof args.owner_source_text === "string" ? args.owner_source_text : "";
-    const review = ((args.data ?? {}) as { review?: { quote?: unknown; reviewer?: unknown } }).review;
-    if (!source.trim()) invalid("A review needs owner_source_text: the text the owner pasted.");
-    const squash = (value: string) => value.replace(/\s+/g, " ").trim().toLowerCase();
-    if (typeof review?.quote === "string" && !squash(source).includes(squash(review.quote))) {
+  if (
+    toolName === "propose_site_collection_entry" &&
+    args.collection === "testimonials"
+  ) {
+    const source = typeof args.owner_source_text === "string"
+      ? args.owner_source_text
+      : "";
+    const review = ((args.data ?? {}) as {
+      review?: { quote?: unknown; reviewer?: unknown };
+    }).review;
+    if (!source.trim()) {
+      invalid("A review needs owner_source_text: the text the owner pasted.");
+    }
+    const squash = (value: string) =>
+      value.replace(/\s+/g, " ").trim().toLowerCase();
+    if (
+      typeof review?.quote === "string" &&
+      !squash(source).includes(squash(review.quote))
+    ) {
       invalid("The review must be word for word as the owner pasted it.");
     }
   }
-  if (toolName === "confirm_site_review" && args.statement !== REVIEW_CONFIRMATION_STATEMENT) {
+  if (
+    toolName === "confirm_site_review" &&
+    args.statement !== REVIEW_CONFIRMATION_STATEMENT
+  ) {
     invalid("The confirmation statement must be shown word for word.");
   }
 }

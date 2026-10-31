@@ -1686,7 +1686,8 @@ export const READ_ONLY_TOOL_NAMES = new Set<string>([
 /** Reversible Ari-owned state that may advance inside the bounded loop. */
 export function isAgentStateToolCall(toolName: string): boolean {
   return ARI_10X_AGENT_STATE.has(toolName) ||
-    toolName === "start_brand_completeness_job";
+    toolName === "start_brand_completeness_job" ||
+    toolName === "record_brand_context_finding";
 }
 
 /** Server-owned call classification for tools with both read and write actions. */

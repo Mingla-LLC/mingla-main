@@ -83,6 +83,7 @@ Deno.test("#2830 Ari registry exposes exactly the approved website tools", () =>
       "get_brand_site",
       "get_site_plan",
       "start_brand_completeness_job",
+      "record_brand_context_finding",
       "list_site_designs",
       "get_block_catalog",
       "get_site_tokens",
@@ -110,7 +111,7 @@ Deno.test("#2830 Ari registry exposes exactly the approved website tools", () =>
     ]),
     "Ari Website tool registry drifted",
   );
-  assert(SITE_AGENT_READ_ONLY.size === 12, "Ari read-only set drifted");
+  assert(SITE_AGENT_READ_ONLY.size === 13, "Ari read-only set drifted");
   for (const tool of SITE_AGENT_TOOLS) {
     assert(
       (tool.parameters as { additionalProperties?: unknown }).additionalProperties === false,

@@ -41,4 +41,11 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
     expect(pane).toContain('gap.humanActionRequired ? "your upload"');
     expect(pane).toContain("Ari will not guess");
   });
+
+  it("keeps phone setup context visible in a collapsible summary", () => {
+    expect(pane).toContain('testID="ari-setup-toggle"');
+    expect(pane).toContain("accessibilityState={{ expanded: compactExpanded }}");
+    expect(pane).toContain("Current: {currentLabel}");
+    expect(pane).toContain('compactExpanded ? "Hide details" : "Show details"');
+  });
 });
