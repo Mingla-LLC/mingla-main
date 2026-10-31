@@ -307,7 +307,8 @@ export function phase3dContractDigest(manifest) {
 // #3281: register PR8 door scan day-label migration in the three preserved
 // full-history inventories (1857/1931/2117).
 // #3281: register PR9 cancel-date migration in the same inventories.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "7af2f921947eddd96c98fc32762c7f38b968fd97f1f6bae6b3c7d8cdbdb7c789";
+// #3281: register PR10 byDate quantities migration in the same inventories.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "de08d914fa4e8ec33975335b3efe623b3f5c425b20358ad94bef2679da827297";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

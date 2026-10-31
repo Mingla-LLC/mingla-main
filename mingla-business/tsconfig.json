@@ -48,6 +48,7 @@
     "server/__tests__/issue_3281_social_preview_schedule.implementor.test.ts",
     "server/__tests__/issue_3281_public_event_start_meta.implementor.test.ts",
     "src/components/scanner/__tests__/issue_3281_scan_result_date_copy.implementor.test.ts",
-    "src/utils/__tests__/issue_3281_guest_csv_day_order.implementor.test.ts"
+    "src/utils/__tests__/issue_3281_guest_csv_day_order.implementor.test.ts",
+    "src/components/checkout/__tests__/issue_3281_by_date_quantities.implementor.test.ts"
   ]
 }

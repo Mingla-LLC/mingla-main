@@ -19,7 +19,11 @@
 import React from "react";
 import { Stack, useLocalSearchParams } from "expo-router";
 
-import { CartProvider } from "../../../src/components/checkout/CartContext";
+const CartProvider = React.lazy(() =>
+  import("../../../src/components/checkout/CartContext").then((module) => ({
+    default: module.CartProvider,
+  })),
+);
 
 const TicketQuoteController = React.lazy(() =>
   import("../../../src/components/checkout/TicketQuoteController").then(
@@ -44,8 +48,10 @@ const CheckoutStack = (): React.ReactElement => {
 
 export default function CheckoutExperienceLayout(): React.ReactElement {
   return (
-    <CartProvider>
-      <CheckoutStack />
-    </CartProvider>
+    <React.Suspense fallback={null}>
+      <CartProvider>
+        <CheckoutStack />
+      </CartProvider>
+    </React.Suspense>
   );
 }

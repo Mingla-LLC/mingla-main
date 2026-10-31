@@ -79,10 +79,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281: re-sealed after PR8 door scan day-label migration entered the three
 // preserved full-history inventories (1857/1931/2117).
 // #3281: re-sealed after PR9 cancel-date migration entered the same inventories.
+// #3281: re-sealed after PR10 byDate quantities migration entered the same inventories.
 // #3281: re-sealed after PR7 public schedule-card migrations and structural
 // proofs entered the preserved inventories, with exact exclusions from the
 // deliberately pre-#1931 historical replay.
-export const BOOTSTRAP_SHA256 = "fc1c28785171e3a7c7fb3182700ff65534e063084b939a894dde3cf741954aaa";
+export const BOOTSTRAP_SHA256 = "4155990d6c7fb4b9d4943a8ac11e663848070eae15e43bcbe7ead09282cfecd0";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
