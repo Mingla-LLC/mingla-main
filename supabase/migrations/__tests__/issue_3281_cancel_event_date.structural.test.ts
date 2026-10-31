@@ -23,6 +23,9 @@ Deno.test("cancel migration adds status columns and RPCs", () => {
   assert(text.includes("sold_date_requires_schedule_writer"));
   assert(text.includes("p.prokind = 'f'"));
   assert(text.includes("order_live_tickets"));
+  assert(text.includes("regexp_replace"));
+  assert(text.includes("(^|[^A-Za-z0-9_])d\\.end_at > now\\(\\)"));
+  assert(!text.includes("'d.end_at > now()'"));
 });
 
 Deno.test("Host Dates screen wires Cancel this date with confirm", () => {

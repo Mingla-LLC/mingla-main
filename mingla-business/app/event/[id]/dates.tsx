@@ -217,7 +217,7 @@ export default function EventDatesScreen(): React.ReactElement {
     const money = formatLiability(amountCents, currency);
     setToast(
       buyerCount > 0
-        ? `Date cancelled · ${buyerCount} buyer${buyerCount === 1 ? "" : "s"}${money !== null ? ` · est. to refund ${money}` : ""}`
+        ? `Date cancelled · ${buyerCount} buyer${buyerCount === 1 ? "" : "s"}${money !== null ? ` · est. liability ${money}` : ""}`
         : "Date cancelled",
     );
   };

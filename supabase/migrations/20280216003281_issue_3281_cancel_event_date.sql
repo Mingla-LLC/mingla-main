@@ -1,6 +1,6 @@
 -- issue #3281 PR9 — cancel one event date (status + preview/execute RPC).
 -- Preview quotes estimated refund liability (1/N of each ticket's covered
--- dates on all-days passes; full remaining buyer total for day-scoped).
+-- dates on all-days passes; remaining / live order tickets for day-scoped).
 -- Execute cancels the date only — date-scoped refund fan-out is a follow-up
 -- once Seth confirms the default (Host copy must not claim refunds completed).
 
@@ -378,15 +378,18 @@ BEGIN
     IF v_def IS NULL OR position('COALESCE(d.status' IN v_def) > 0 THEN
       CONTINUE;
     END IF;
-    v_new := replace(
+    -- Bound the alias to bare `d.` — plain replace would also hit `ed.end_at`.
+    v_new := regexp_replace(
       v_def,
-      'd.end_at > now()',
-      'd.end_at > now() AND COALESCE(d.status, ''active'') = ''active'''
+      '(^|[^A-Za-z0-9_])d\.end_at > now\(\)',
+      E'\\1d.end_at > now() AND COALESCE(d.status, ''active'') = ''active''',
+      'g'
     );
-    v_new := replace(
+    v_new := regexp_replace(
       v_new,
-      'WHERE d.event_id = ev.id',
-      'WHERE d.event_id = ev.id AND COALESCE(d.status, ''active'') = ''active'''
+      '(^|[^A-Za-z0-9_])WHERE d\.event_id = ev\.id',
+      E'\\1WHERE d.event_id = ev.id AND COALESCE(d.status, ''active'') = ''active''',
+      'g'
     );
     IF v_new IS DISTINCT FROM v_def THEN
       EXECUTE v_new;
