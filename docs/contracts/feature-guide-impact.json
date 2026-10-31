@@ -22,7 +22,8 @@
       "paths": [
         "app-mobile/src/components/OnboardingFlow.tsx",
         "app-mobile/src/components/onboarding/TicketsFoundStep.tsx",
-        "supabase/functions/claim-link/index.ts"
+        "supabase/functions/claim-link/index.ts",
+        "supabase/functions/attendance-claim-identity/index.ts"
       ]
     },
     {
