@@ -349,53 +349,10 @@ BEGIN
 END;
 $fn$;
 
--- Buyer-facing readers: exclude cancelled dates from upcoming / occurrence lists.
--- Only ordinary functions (prokind = 'f'): pg_get_functiondef fails on aggregates
--- such as public wrappers of array_agg ("array_agg is an aggregate function").
-DO $patch$
-DECLARE
-  r record;
-  v_def text;
-  v_new text;
-BEGIN
-  FOR r IN
-    SELECT p.oid
-      FROM pg_proc p
-      JOIN pg_namespace n ON n.oid = p.pronamespace
-     WHERE n.nspname = 'public'
-       AND p.prokind = 'f'
-       AND pg_get_functiondef(p.oid) LIKE '%FROM public.event_dates%'
-       AND (
-         pg_get_functiondef(p.oid) LIKE '%d.end_at > now()%'
-         OR pg_get_functiondef(p.oid) LIKE '%WHERE d.event_id = ev.id%'
-       )
-       AND p.proname NOT IN (
-         'business_cancel_event_date',
-         'business_move_event_date_time'
-       )
-  LOOP
-    v_def := pg_get_functiondef(r.oid);
-    IF v_def IS NULL OR position('COALESCE(d.status' IN v_def) > 0 THEN
-      CONTINUE;
-    END IF;
-    -- Bound the alias to bare `d.` — plain replace would also hit `ed.end_at`.
-    v_new := regexp_replace(
-      v_def,
-      '(^|[^A-Za-z0-9_])d\.end_at > now\(\)',
-      E'\\1d.end_at > now() AND COALESCE(d.status, ''active'') = ''active''',
-      'g'
-    );
-    v_new := regexp_replace(
-      v_new,
-      '(^|[^A-Za-z0-9_])WHERE d\.event_id = ev\.id',
-      E'\\1WHERE d.event_id = ev.id AND COALESCE(d.status, ''active'') = ''active''',
-      'g'
-    );
-    IF v_new IS DISTINCT FROM v_def THEN
-      EXECUTE v_new;
-    END IF;
-  END LOOP;
-END;
-$patch$;
+-- issue_3281_event_schedule above already omits cancelled dates. Broader
+-- buyer-facing occurrence readers (checkout/discover laterals) get named
+-- CREATE OR REPLACE updates in a follow-up — catalog string-rewrites are
+-- refused by the #1860 RLS readability gate (EXECUTE of a variable) and
+-- are unsafe against aliases like ed.end_at.
 
 COMMIT;
