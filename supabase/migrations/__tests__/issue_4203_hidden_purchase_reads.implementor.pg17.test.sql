@@ -26,11 +26,15 @@ BEGIN
 END;
 $proof$;
 
-INSERT INTO auth.users(id, email, email_confirmed_at) VALUES
-  ('42030000-0000-4000-8000-000000000001', 'host-4203@example.test', now()),
-  ('42030000-0000-4000-8000-000000000002', 'buyer-4203@example.test', now()),
-  ('42030000-0000-4000-8000-000000000003', 'holder-4203@example.test', now()),
-  ('42030000-0000-4000-8000-000000000004', 'stranger-4203@example.test', now());
+-- The bare Supabase PostgreSQL image deliberately carries only the auth.users
+-- stub columns shared with production; mailbox proof for this test comes from
+-- account_claim_contacts below, not from a hosted-GoTrue-only confirmation
+-- column.
+INSERT INTO auth.users(id, email) VALUES
+  ('42030000-0000-4000-8000-000000000001', 'host-4203@example.test'),
+  ('42030000-0000-4000-8000-000000000002', 'buyer-4203@example.test'),
+  ('42030000-0000-4000-8000-000000000003', 'holder-4203@example.test'),
+  ('42030000-0000-4000-8000-000000000004', 'stranger-4203@example.test');
 
 INSERT INTO public.profiles(id, email, first_name, account_type) VALUES
   ('42030000-0000-4000-8000-000000000001', 'host-4203@example.test', 'Host', 'business'),
