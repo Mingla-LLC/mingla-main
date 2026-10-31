@@ -90,6 +90,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // re-emit entered those inventories and their filtered historical replays.
 // #3281: re-sealed after the production-order repair and its proofs entered
 // those inventories and the same filtered historical replays.
+// #2830: re-sealed after the Ari brand-completeness migration and registered
+// PostgreSQL proof entered the three preserved full-history inventories.
 export const BOOTSTRAP_SHA256 = "5af477760072ce19adafcbf3b03d3e794d7ee5e9e5a110c9586d96500912ab49";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";

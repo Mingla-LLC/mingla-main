@@ -313,6 +313,8 @@ export function phase3dContractDigest(manifest) {
 // #3281 / #3645: register the terminal by-date + Paystack finalizer re-emit,
 // including its exact exclusions from the filtered historical replays.
 // #3281: register the production-order repair and its proofs the same way.
+// #2830: register Ari's brand-completeness migration and its declared proof in
+// the three preserved full-history inventories.
 const LOCKED_PHASE3E_CONTRACT_SHA256 = "e4cd0f98c5e24638873d1db5b5ee4590c4690ad78ddeb2af1c73ef3382ff91fc";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
