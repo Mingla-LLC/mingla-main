@@ -12,7 +12,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { invokeBrandSiteControl } from "../../services/brandSitesService";
+import { supabase } from "../../services/supabase";
 
 type Raw = Record<string, unknown>;
 type SetupPart = { key: string; label: string; done: boolean };
@@ -63,7 +63,17 @@ function normalizePlan(value: unknown): {
 }
 
 async function getWebsiteSetup(brandId: string) {
-  return normalizePlan(await invokeBrandSiteControl<unknown>(`/v1/brands/${brandId}/site-plan`, "GET"));
+  // Keep this on-intent pane independent from the full Website workspace
+  // service. Sharing that large module across the Ari and Website chunks makes
+  // Metro hoist it into __common for every Host (#3493).
+  const { data, error } = await supabase.functions.invoke<{ ok: boolean; data?: unknown }>(
+    "brand-site-control",
+    { body: { route: `/v1/brands/${brandId}/site-plan`, method: "GET" } },
+  );
+  if (error !== null || !data || data.ok !== true) {
+    throw error ?? new Error("Website setup plan unavailable");
+  }
+  return normalizePlan(data.data);
 }
 
 export function AriWebsiteSetupPane({

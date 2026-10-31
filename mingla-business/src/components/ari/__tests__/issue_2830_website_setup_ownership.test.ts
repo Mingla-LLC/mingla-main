@@ -20,9 +20,9 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
 
   it("loads the plan beside Ari and starts with a real audit before any draft", () => {
     expect(screen).toContain("<AriWebsiteSetupPane");
-    expect(screen).toContain("First read get_site_plan");
-    expect(screen).toContain("every field-level gap");
-    expect(screen).toContain("Do not create a website draft until setup and brand context are complete");
+    expect(screen).toContain("Read get_site_plan");
+    expect(screen).toContain("every field gap");
+    expect(screen).toContain("Do not create a draft until setup and brand context are complete");
     expect(pane).toContain("/site-plan");
     expect(pane).toContain('testID="ari-website-setup"');
   });
@@ -31,9 +31,9 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
     expect(pane).toContain("Fix all gaps with Ari");
     expect(pane).toContain("Add it myself");
     expect(pane).toContain("Back to setup plan");
-    expect(screen).toContain("ask me one question at a time");
-    expect(screen).toContain("checkpoint after each gap");
-    expect(screen).toContain("keep re-auditing until required and recommended gaps are zero");
+    expect(screen).toContain("ask one question at a time");
+    expect(screen).toContain("confirm and checkpoint each write");
+    expect(screen).toContain("re-audit until required and recommended gaps are zero");
   });
 
   it("refreshes server truth while Ari works and labels uploads as human actions", () => {
