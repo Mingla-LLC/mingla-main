@@ -1,5 +1,5 @@
 -- #3281 uneven per-date carts: quote, session and minted tickets must agree.
--- MINGLA-INVARIANT: I-3281-BY-DATE-QUOTE-MATCHES-MINT | issue #3281 | An uneven per-date cart quotes, reserves and mints each date's own quantity, never quantity times days.
+-- MINGLA-INVARIANT: I-3281-BY-DATE-QUOTE-MATCHES-MINT | issue #3281 | An uneven per-date cart quotes, holds, binds and mints each date's own quantity, never quantity times days or an even share.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -21,8 +21,12 @@ DECLARE
   v_item record;
   v_count integer;
   v_raised boolean;
+  v_attempt uuid := '32817000-0000-4000-8400-000000000008';
+  v_key text;
+  v_scope text;
 BEGIN
   v_days := ARRAY[v_day_one,v_day_two,v_day_three];
+  v_key := 'ticket_checkout:v2:'||v_event::text||':'||v_attempt::text;
   INSERT INTO auth.users(id,email) VALUES(v_owner,'by-date-owner@example.test');
   INSERT INTO public.creator_accounts(id,email)
     VALUES(v_owner,'by-date-owner@example.test');
@@ -93,7 +97,7 @@ BEGIN
 
   v_created := public.biz_ticket_checkout_create_session(
     v_event,NULL,'Buyer','buyer@example.test','+15555550801',false,
-    jsonb_build_array(v_line),'by-date-repair',now()+interval '15 minutes',0,'full',
+    jsonb_build_array(v_line),v_key,now()+interval '15 minutes',0,'full',
     v_days,NULL,NULL,NULL,NULL,v_quote->>'quoteDigest');
   v_session := COALESCE(v_created->>'sessionId',v_created->>'checkoutSessionId')::uuid;
   SELECT quantity,total_cents,by_date INTO v_item
@@ -102,6 +106,46 @@ BEGIN
      OR (v_item.by_date->>v_day_one::text)::integer <> 2 THEN
     RAISE EXCEPTION 'session must match the quote, got % %',v_item.quantity,v_item.total_cents;
   END IF;
+
+  -- Per-date capacity: each date holds its own count, not an even third.
+  SELECT capacity_scope INTO v_scope FROM public.events WHERE id=v_event;
+  UPDATE public.events SET event_type='experience',capacity_scope='per_day' WHERE id=v_event;
+  IF public.issue_3313_ticket_type_occurrence_taken(v_ticket,v_day_one,NULL) <> 2
+     OR public.issue_3313_ticket_type_occurrence_taken(v_ticket,v_day_two,NULL) <> 1
+     OR public.issue_3313_ticket_type_occurrence_taken(v_ticket,v_day_three,NULL) <> 0 THEN
+    RAISE EXCEPTION 'holds must follow the per-date split';
+  END IF;
+  -- A real capacity edit fails open holds; this reads the capacity check alone.
+  SET LOCAL session_replication_role=replica;
+  UPDATE public.ticket_types SET quantity_total=2 WHERE id=v_ticket;
+  IF NOT public.issue_1930_ticket_session_authorized(v_session,v_event) THEN
+    RAISE EXCEPTION 'a cart that fits every date must stay authorized';
+  END IF;
+  UPDATE public.ticket_types SET quantity_total=1 WHERE id=v_ticket;
+  IF public.issue_1930_ticket_session_authorized(v_session,v_event) THEN
+    RAISE EXCEPTION 'two places on one date must not pass a capacity of one';
+  END IF;
+  UPDATE public.ticket_types SET quantity_total=100 WHERE id=v_ticket;
+  SET LOCAL session_replication_role=DEFAULT;
+  UPDATE public.events SET event_type='event',capacity_scope=v_scope WHERE id=v_event;
+
+  -- An interrupted attempt retried with the same total but another split.
+  v_raised := false;
+  BEGIN
+    PERFORM public.issue_3859_bind_checkout_contract(
+      v_session,v_event,v_key,v_attempt,repeat('a',64),
+      jsonb_build_array(jsonb_build_object('ticketTypeId',v_ticket,'quantity',3,
+        'paymentPlanChoice','full','byDate',
+        jsonb_build_object(v_day_one::text,1,v_day_two::text,2))),
+      6000,6000,NULL);
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM='checkout_lines_conflict' THEN v_raised:=true; ELSE RAISE; END IF;
+  END;
+  IF NOT v_raised THEN RAISE EXCEPTION 'a different split must not bind'; END IF;
+  PERFORM public.issue_3859_bind_checkout_contract(
+    v_session,v_event,v_key,v_attempt,repeat('a',64),
+    jsonb_build_array(v_line||jsonb_build_object('paymentPlanChoice','full')),
+    6000,6000,NULL);
 
   -- The base owns minting; the wrapper's provider evidence is proven elsewhere.
   PERFORM public.issue_1930_ticket_checkout_finalize_base(

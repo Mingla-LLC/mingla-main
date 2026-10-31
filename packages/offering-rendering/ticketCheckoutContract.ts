@@ -113,6 +113,7 @@ export function normalizeCheckoutV2Lines(
     const ticketTypeId = row.ticketTypeId;
     const quantity = row.quantity;
     const paymentPlanChoice = row.paymentPlanChoice;
+    const byDate = row.byDate as Record<string, number> | undefined;
     if (
       typeof ticketTypeId !== "string" || !UUID_PATTERN.test(ticketTypeId) ||
       !Number.isInteger(quantity) || Number(quantity) < 1 ||
@@ -127,8 +128,8 @@ export function normalizeCheckoutV2Lines(
       ticketTypeId,
       quantity: Number(quantity),
       paymentPlanChoice,
-      // issue #3281 — carried for attempt identity; the server validates it.
-      ...(row.byDate !== undefined ? { byDate: row.byDate as Record<string, number> } : {}),
+      // issue #3281 — part of attempt identity; the server validates it.
+      ...(byDate && { byDate }),
     });
   }
 

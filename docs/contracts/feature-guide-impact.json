@@ -31,6 +31,9 @@
       "paths": [
         "app-mobile/src/i18n/locales/en/purchases.json",
         "packages/offering-rendering/ticketCheckoutContract.ts",
+        "packages/offering-rendering/ticketCheckoutServerContract.ts",
+        "mingla-business/src/hooks/useTicketQuote.ts",
+        "mingla-business/src/services/ticketQuoteService.ts",
         "supabase/functions/ticket-checkout-create/byDateDatabaseGuard.ts",
         "mingla-business/app/checkout/[eventId]/index.tsx",
         "mingla-business/app/checkout/[eventId]/buyer.tsx",

@@ -18,6 +18,7 @@ export const ticketQuoteKeys = {
       input.lines.map((line) => [
         line.ticketTypeId,
         line.quantity,
+        line.byDate ?? null,
         line.paymentPlanChoice ?? null,
       ]),
       input.eventDateId ?? null,

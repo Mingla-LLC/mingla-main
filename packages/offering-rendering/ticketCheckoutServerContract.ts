@@ -25,13 +25,19 @@ export function normalizeCheckoutV2ServerLines(
   const parsed = normalizeCheckoutV2Lines(value);
   if (!parsed.ok) return parsed;
   const invalid = { ok: false, error: "checkout_lines_invalid" } as const;
+  // The shared parser proved every row is an object with a unique ticket id.
+  const requested = new Map(
+    (value as Array<{ ticketTypeId: string; byDate?: unknown }>).map(
+      (row) => [row.ticketTypeId, row.byDate],
+    ),
+  );
   const lines = [];
   for (const line of parsed.lines) {
-    if (line.byDate === undefined) {
+    const map = requested.get(line.ticketTypeId);
+    if (map === undefined) {
       lines.push(line);
       continue;
     }
-    const map: unknown = line.byDate;
     if (map === null || typeof map !== "object" || Array.isArray(map)) {
       return invalid;
     }

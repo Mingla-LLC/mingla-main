@@ -12,9 +12,13 @@
 -- The finalizer needs no re-emit here: 20280216003282 is its terminal body, and
 -- the verify block refuses to finish if that file has not run first.
 --
--- Also re-emits issue_3872_ticket_quote, the one checkout reader that still
--- ignored byDate: it multiplied the summed quantity by every chosen day, so an
--- uneven cart quoted more than create-session would mint.
+-- Also finishes the by-date readers that still treated a line as uniform:
+--   issue_3872_ticket_quote multiplied the summed quantity by every chosen day.
+--   issue_3313_ticket_type_occurrence_taken and
+--     issue_1930_ticket_session_authorized divided a line evenly across dates,
+--     so an uneven cart held too few places on its busiest date.
+--   issue_3859_bind_checkout_contract compared only totals, so a same-total
+--     retry could bind a different split from the one reserved.
 
 BEGIN;
 
@@ -1168,908 +1172,6 @@ GRANT EXECUTE ON FUNCTION public.pg_notify_reminders_enqueue(int, text, int)
 COMMENT ON FUNCTION public.pg_notify_reminders_enqueue(int, text, int) IS
   '#4063: five-minute reminder enqueue window. p_window_minutes is deprecated and ignored; retained for caller compatibility.';
 
-CREATE OR REPLACE FUNCTION public.issue_2947_waitlist_drain_for_ticket_type(
-  p_ticket_type_id uuid,
-  p_freed integer
-)
-RETURNS integer
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_temp'
-AS $function$
-DECLARE
-  v_running integer := 0;
-  v_entry record;
-  v_notification_id uuid;
-  v_email_notification_id uuid;
-  v_sms_notification_id uuid;
-  v_channel text;
-  v_recipient text;
-  v_phone text;
-  v_event_date_id uuid;
-  v_start_at timestamptz;
-  v_timezone text;
-  v_payload jsonb;
-  v_v2 boolean := public.issue_4063_switch_on('messages_v2');
-BEGIN
-  IF p_ticket_type_id IS NULL OR p_freed IS NULL OR p_freed < 1 THEN
-    RETURN 0;
-  END IF;
-
-  FOR v_entry IN
-    SELECT id, event_id, ticket_type_id, email, phone, qty_requested
-      FROM public.waitlist_entries
-     WHERE ticket_type_id = p_ticket_type_id
-       AND status = 'waiting'
-       AND notified_at IS NULL
-     ORDER BY created_at ASC, id ASC
-  LOOP
-    EXIT WHEN v_running >= p_freed;
-
-    IF NOT v_v2 THEN
-      -- Preserve the exact pre-#4063 one-row producer while the switch is off.
-      IF v_entry.email IS NOT NULL AND length(btrim(v_entry.email)) > 0 THEN
-        v_channel := 'email';
-        v_recipient := v_entry.email;
-      ELSIF v_entry.phone IS NOT NULL AND length(btrim(v_entry.phone)) > 0 THEN
-        v_channel := 'sms';
-        v_recipient := v_entry.phone;
-      ELSE
-        CONTINUE;
-      END IF;
-
-      v_notification_id := NULL;
-      INSERT INTO public.ticket_order_notifications
-        (order_id, event_id, channel, recipient, status, payload,
-         idempotency_key, attempt_count)
-      VALUES
-        (NULL, v_entry.event_id, v_channel, v_recipient, 'pending',
-         jsonb_build_object(
-           'template_key', 'waitlist_spot_open',
-           'waitlist_entry_id', v_entry.id,
-           'event_id', v_entry.event_id,
-           'ticket_type_id', v_entry.ticket_type_id,
-           'qty_requested', v_entry.qty_requested,
-           'invite_expires_at', (now() + interval '24 hours')
-         ),
-         'waitlist_invite:' || v_entry.id::text,
-         0)
-      ON CONFLICT (idempotency_key) DO NOTHING
-      RETURNING id INTO v_notification_id;
-    ELSE
-      SELECT date.id, date.start_at, COALESCE(date.timezone, event.timezone)
-        INTO v_event_date_id, v_start_at, v_timezone
-        FROM public.events AS event
-        LEFT JOIN LATERAL (
-          SELECT event_date.id, event_date.start_at, event_date.timezone
-            FROM public.event_dates AS event_date
-           WHERE event_date.event_id = event.id
-           ORDER BY event_date.is_master DESC, event_date.start_at, event_date.id
-           LIMIT 1
-        ) AS date ON true
-       WHERE event.id = v_entry.event_id;
-
-      v_payload := jsonb_strip_nulls(jsonb_build_object(
-        'template_key', 'waitlist_spot_open',
-        'waitlist_entry_id', v_entry.id,
-        'event_id', v_entry.event_id,
-        'ticket_type_id', v_entry.ticket_type_id,
-        'qty_requested', v_entry.qty_requested,
-        'invite_expires_at', (now() + interval '24 hours'),
-        'event_date_id', v_event_date_id,
-        'timezone', v_timezone,
-        'start_at', v_start_at
-      ));
-
-      v_email_notification_id := NULL;
-      v_sms_notification_id := NULL;
-      v_phone := public.mingla_e164_normalize(v_entry.phone);
-
-      IF nullif(btrim(coalesce(v_entry.email, '')), '') IS NOT NULL THEN
-        INSERT INTO public.ticket_order_notifications
-          (order_id, event_id, channel, recipient, status, payload,
-           idempotency_key, attempt_count)
-        VALUES
-          (NULL, v_entry.event_id, 'email', lower(btrim(v_entry.email)), 'pending',
-           v_payload,
-           'waitlist_invite:' || v_entry.id::text || ':email',
-           0)
-        ON CONFLICT (idempotency_key) DO NOTHING
-        RETURNING id INTO v_email_notification_id;
-
-        IF v_email_notification_id IS NULL THEN
-          SELECT notification.id INTO v_email_notification_id
-            FROM public.ticket_order_notifications AS notification
-           WHERE notification.idempotency_key =
-             'waitlist_invite:' || v_entry.id::text || ':email';
-        END IF;
-      END IF;
-
-      IF v_phone IS NOT NULL THEN
-        INSERT INTO public.ticket_order_notifications
-          (order_id, event_id, channel, recipient, status, payload,
-           idempotency_key, attempt_count)
-        VALUES
-          (NULL, v_entry.event_id, 'sms', v_phone, 'pending',
-           v_payload || jsonb_build_object('channel_hint', 'sms'),
-           'waitlist_invite:' || v_entry.id::text || ':sms',
-           0)
-        ON CONFLICT (idempotency_key) DO NOTHING
-        RETURNING id INTO v_sms_notification_id;
-
-        IF v_sms_notification_id IS NULL THEN
-          SELECT notification.id INTO v_sms_notification_id
-            FROM public.ticket_order_notifications AS notification
-           WHERE notification.idempotency_key =
-             'waitlist_invite:' || v_entry.id::text || ':sms';
-        END IF;
-      END IF;
-
-      v_notification_id := COALESCE(v_email_notification_id, v_sms_notification_id);
-    END IF;
-
-    IF v_notification_id IS NOT NULL THEN
-      UPDATE public.waitlist_entries
-         SET status = 'invited',
-             invited_at = now(),
-             notified_at = now(),
-             notification_id = v_notification_id
-       WHERE id = v_entry.id;
-      v_running := v_running + v_entry.qty_requested;
-    END IF;
-  END LOOP;
-
-  RETURN v_running;
-END;
-$function$;
-
-COMMENT ON FUNCTION public.issue_2947_waitlist_drain_for_ticket_type(uuid, integer) IS
-  '#2947/#4063: FIFO waitlist drain. messages_v2 emits independent email and normalized SMS rows with canonical occurrence facts; switch-off preserves the original one-row producer.';
-
-REVOKE ALL ON FUNCTION public.issue_2947_waitlist_drain_for_ticket_type(uuid, integer)
-  FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.issue_2947_waitlist_drain_for_ticket_type(uuid, integer)
-  TO service_role;
-
-CREATE OR REPLACE FUNCTION public.fn_rsvp_drain_on_capacity_freed()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $function$
-DECLARE
-  v_event_id uuid;
-  v_capacity integer;
-  v_approval_mode text;
-  v_event_type text;
-  v_confirmed integer;
-  v_free integer;
-  v_entry record;
-  v_has_queue boolean;
-  v_v2 boolean := public.issue_4063_switch_on('messages_v2');
-BEGIN
-  IF TG_TABLE_NAME = 'events' THEN
-    v_event_id := NEW.id;
-  ELSE
-    v_event_id := NEW.event_id;
-  END IF;
-
-  SELECT event.event_type, event.rsvp_capacity, event.rsvp_approval_mode
-    INTO v_event_type, v_capacity, v_approval_mode
-    FROM public.events AS event
-   WHERE event.id = v_event_id;
-
-  IF v_event_type IS DISTINCT FROM 'rsvp' THEN RETURN NEW; END IF;
-  IF v_capacity IS NULL THEN RETURN NEW; END IF;
-
-  SELECT coalesce(sum(1 + rsvp.plus_count), 0)
-    INTO v_confirmed
-    FROM public.event_rsvps AS rsvp
-   WHERE rsvp.event_id = v_event_id
-     AND rsvp.rsvp_status = 'going'
-     AND rsvp.approval_status = 'approved';
-
-  v_free := v_capacity - v_confirmed;
-  IF v_free <= 0 THEN RETURN NEW; END IF;
-
-  SELECT EXISTS (
-    SELECT 1
-      FROM information_schema.tables
-     WHERE table_schema = 'public'
-       AND table_name = 'rsvp_notifications'
-  ) INTO v_has_queue;
-
-  FOR v_entry IN
-    SELECT rsvp.id, rsvp.plus_count, rsvp.user_id
-      FROM public.event_rsvps AS rsvp
-     WHERE rsvp.event_id = v_event_id
-       AND rsvp.rsvp_status = 'waitlisted'
-     ORDER BY rsvp.waitlisted_at ASC NULLS FIRST, rsvp.created_at ASC
-  LOOP
-    EXIT WHEN v_free <= 0;
-
-    IF v_approval_mode = 'manual' THEN
-      UPDATE public.event_rsvps
-         SET rsvp_status = 'going',
-             approval_status = 'pending',
-             promoted_at = now()
-       WHERE id = v_entry.id;
-    ELSE
-      IF (1 + v_entry.plus_count) > v_free THEN
-        EXIT;
-      END IF;
-      UPDATE public.event_rsvps
-         SET rsvp_status = 'going',
-             approval_status = 'approved',
-             promoted_at = now()
-       WHERE id = v_entry.id;
-      v_free := v_free - (1 + v_entry.plus_count);
-    END IF;
-
-    IF v_has_queue
-       AND (NOT v_v2 OR v_approval_mode <> 'manual') THEN
-      -- Auto promotions keep the established promotion template. The v2
-      -- renderer turns it into the on-the-list message; only manual/pending
-      -- promotions become silent after the switch is enabled.
-      INSERT INTO public.rsvp_notifications
-        (event_id, rsvp_id, channel, recipient, status, template_key, payload,
-         idempotency_key, attempt_count)
-      VALUES
-        (v_event_id, v_entry.id, NULL, NULL, 'pending', 'rsvp_waitlist_promoted',
-         jsonb_build_object('template_key', 'rsvp_waitlist_promoted',
-                            'rsvp_id', v_entry.id, 'event_id', v_event_id),
-         'rsvp_promote:' || v_entry.id::text || ':' || extract(epoch FROM now())::bigint::text,
-         0)
-      ON CONFLICT (idempotency_key) DO NOTHING;
-    END IF;
-  END LOOP;
-
-  RETURN NEW;
-END;
-$function$;
-
-COMMENT ON FUNCTION public.fn_rsvp_drain_on_capacity_freed() IS
-  '#1150/#4063: deterministic RSVP capacity drain. messages_v2 keeps auto promotion notices and makes manual promotions silent until host approval; switch-off preserves the legacy notice for both modes.';
-
-REVOKE ALL ON FUNCTION public.fn_rsvp_drain_on_capacity_freed()
-  FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fn_rsvp_drain_on_capacity_freed()
-  TO service_role;
-
-CREATE OR REPLACE FUNCTION public.event_edit_notice_fanout(
-  p_limit integer DEFAULT 20
-) RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $function$
-DECLARE
-  v_due record;
-  v_notice public.event_edit_notices%ROWTYPE;
-  v_event record;
-  v_allowlist_only boolean;
-  v_recipient record;
-  v_notification_id uuid;
-  v_key text;
-  v_index integer;
-  v_held integer;
-  v_recipients integer;
-  v_no_email integer;
-  v_notices integer := 0;
-  v_rows integer := 0;
-  v_v2 boolean := public.issue_4063_switch_on('messages_v2');
-BEGIN
-  v_allowlist_only := public.event_edit_notice_allowlist_only();
-
-  DELETE FROM public.event_edit_notice_pending
-   WHERE created_at < now() - interval '1 day';
-
-  FOR v_due IN
-    SELECT notice.id, notice.event_id
-      FROM public.event_edit_notices AS notice
-     WHERE notice.state = 'scheduled'
-       AND notice.send_after <= now()
-     ORDER BY notice.send_after
-     LIMIT LEAST(GREATEST(coalesce(p_limit, 20), 1), 100)
-  LOOP
-    PERFORM 1 FROM public.events AS e WHERE e.id = v_due.event_id FOR KEY SHARE;
-    PERFORM pg_advisory_xact_lock(
-      hashtext('issue_3827_event_edit_notice'),
-      hashtext(v_due.event_id::text)
-    );
-    SELECT * INTO v_notice
-      FROM public.event_edit_notices AS notice
-     WHERE notice.id = v_due.id
-       AND notice.state = 'scheduled'
-       AND notice.send_after <= now()
-       FOR UPDATE SKIP LOCKED;
-    IF NOT FOUND THEN
-      CONTINUE;
-    END IF;
-
-    SELECT event.id, event.status, event.deleted_at, event.brand_id,
-           event.event_type
-      INTO v_event
-      FROM public.events AS event
-     WHERE event.id = v_notice.event_id;
-
-    IF NOT public.event_edit_notice_brand_live(v_notice.brand_id) THEN
-      UPDATE public.event_edit_notices
-         SET state = 'held', hold_code = 'feature_off', send_after = NULL
-       WHERE id = v_notice.id;
-      IF v_event.event_type = 'rsvp' THEN
-        PERFORM public.event_edit_notice_legacy_alert(v_notice.id, rsvp.id)
-          FROM public.event_rsvps AS rsvp
-         WHERE rsvp.event_id = v_notice.event_id
-           AND rsvp.rsvp_status = 'going'
-           AND rsvp.approval_status = 'approved';
-      END IF;
-      CONTINUE;
-    END IF;
-    IF v_event.id IS NULL
-       OR v_event.status NOT IN ('scheduled', 'live')
-       OR v_event.deleted_at IS NOT NULL THEN
-      UPDATE public.event_edit_notices
-         SET state = 'held', hold_code = 'event_not_live', send_after = NULL
-       WHERE id = v_notice.id;
-      CONTINUE;
-    END IF;
-
-    v_index := 0;
-    v_held := 0;
-    FOR v_recipient IN
-      WITH buyer AS (
-        SELECT *
-          FROM public.business_event_buyer_rows(v_notice.event_id)
-      ), order_contact AS (
-        SELECT
-          'o:' || orders.id::text AS group_key,
-          lower(nullif(btrim(orders.buyer_email), '')) AS email,
-          nullif(btrim(orders.buyer_name), '') AS name,
-          CASE
-            WHEN orders.buyer_phone_e164 ~ '^\+[1-9][0-9]{1,14}$'
-              THEN orders.buyer_phone_e164
-            ELSE NULL
-          END AS phone,
-          orders.buyer_user_id IS NOT NULL AS claimed
-        FROM public.orders AS orders
-        WHERE orders.event_id = v_notice.event_id
-          AND orders.payment_status IN ('paid', 'partial_refund')
-          AND orders.cancelled_at IS NULL
-      ), by_email AS (
-        SELECT
-          lower(buyer.email) AS email,
-          (array_agg(buyer.name ORDER BY buyer.source)
-            FILTER (WHERE buyer.name IS NOT NULL))[1] AS name,
-          (array_agg(buyer.rsvp_id)
-            FILTER (WHERE buyer.rsvp_id IS NOT NULL))[1] AS rsvp_id,
-          bool_or(coalesce(order_contact.claimed, false)) AS claimed
-        FROM buyer
-        LEFT JOIN order_contact
-          ON order_contact.group_key = buyer.group_key
-        WHERE buyer.email IS NOT NULL
-        GROUP BY lower(buyer.email)
-      ), by_phone AS (
-        SELECT
-          order_contact.phone,
-          min(order_contact.name) AS name,
-          min(order_contact.email) AS gate_email,
-          bool_or(order_contact.claimed) AS claimed
-        FROM order_contact
-        WHERE order_contact.phone IS NOT NULL
-        GROUP BY order_contact.phone
-      )
-      SELECT *
-        FROM (
-          SELECT email.email, email.name, email.rsvp_id,
-                 NULL::text AS phone, NULL::boolean AS claimed,
-                 NULL::text AS kind, email.email AS gate_email,
-                 'email'::text AS delivery_kind
-            FROM by_email AS email
-           WHERE NOT v_v2
-          UNION ALL
-          SELECT NULL::text, buyer.name, buyer.rsvp_id,
-                 NULL::text, NULL::boolean, NULL::text, NULL::text,
-                 'rsvp'::text
-            FROM buyer
-           WHERE NOT v_v2
-             AND buyer.email IS NULL
-             AND buyer.rsvp_id IS NOT NULL
-          UNION ALL
-          SELECT email.email, email.name, email.rsvp_id,
-                 NULL::text, email.claimed, v_event.event_type,
-                 email.email, 'email'::text
-            FROM by_email AS email
-           WHERE v_v2
-          UNION ALL
-          SELECT NULL::text, buyer.name, buyer.rsvp_id,
-                 NULL::text, NULL::boolean, NULL::text, NULL::text,
-                 'rsvp'::text
-            FROM buyer
-           WHERE v_v2
-             AND buyer.email IS NULL
-             AND buyer.rsvp_id IS NOT NULL
-          UNION ALL
-          SELECT NULL::text, phone.name, NULL::uuid,
-                 phone.phone, phone.claimed, v_event.event_type,
-                 phone.gate_email, 'sms'::text
-            FROM by_phone AS phone
-           WHERE v_v2
-        ) AS recipient
-       ORDER BY recipient.email, recipient.rsvp_id, recipient.phone
-    LOOP
-      IF v_allowlist_only
-         AND NOT public.event_edit_notice_on_allowlist(
-           coalesce(v_recipient.email, v_recipient.gate_email)
-         ) THEN
-        v_held := v_held + 1;
-        IF v_recipient.rsvp_id IS NOT NULL THEN
-          PERFORM public.event_edit_notice_legacy_alert(
-            v_notice.id,
-            v_recipient.rsvp_id
-          );
-        END IF;
-        CONTINUE;
-      END IF;
-
-      IF v_recipient.rsvp_id IS NOT NULL AND EXISTS (
-        SELECT 1
-          FROM public.rsvp_notifications AS legacy
-         WHERE legacy.event_id = v_notice.event_id
-           AND legacy.rsvp_id = v_recipient.rsvp_id
-           AND legacy.template_key = 'rsvp_event_updated'
-           AND NOT (legacy.payload ? 'noticeId')
-           AND legacy.created_at >= v_notice.created_at - interval '1 second'
-      ) THEN
-        CONTINUE;
-      END IF;
-
-      v_notification_id := NULL;
-      IF v_recipient.rsvp_id IS NOT NULL THEN
-        v_key := 'event_edit:' || v_notice.id::text || ':'
-          || coalesce(
-            md5(v_recipient.email),
-            'rsvp:' || v_recipient.rsvp_id::text
-          );
-        INSERT INTO public.rsvp_notifications
-          (event_id, rsvp_id, channel, recipient, status, template_key,
-           payload, idempotency_key, attempt_count)
-        VALUES
-          (v_notice.event_id, v_recipient.rsvp_id, NULL, NULL, 'pending',
-           'rsvp_event_updated',
-           jsonb_build_object(
-             'template_key', 'rsvp_event_updated',
-             'rsvp_id', v_recipient.rsvp_id,
-             'event_id', v_notice.event_id,
-             'noticeId', v_notice.id
-           ),
-           v_key, 0)
-        ON CONFLICT (idempotency_key) DO NOTHING
-        RETURNING id INTO v_notification_id;
-      ELSE
-        v_key := 'event_edit:' || v_notice.id::text || ':'
-          || CASE
-            WHEN v_recipient.delivery_kind = 'sms'
-              THEN 'phone:' || md5(v_recipient.phone)
-            ELSE md5(v_recipient.email)
-          END;
-        INSERT INTO public.rsvp_notifications
-          (event_id, rsvp_id, channel, recipient, status, template_key,
-           payload, idempotency_key, attempt_count)
-        VALUES
-          (v_notice.event_id, NULL, NULL, NULL, 'pending',
-           'buyer_event_updated',
-           jsonb_strip_nulls(jsonb_build_object(
-             'template_key', 'buyer_event_updated',
-             'event_id', v_notice.event_id,
-             'noticeId', v_notice.id,
-             'recipientEmail', v_recipient.email,
-             'recipientPhone', v_recipient.phone,
-             'recipientName', v_recipient.name,
-             'claimed', v_recipient.claimed,
-             'kind', v_recipient.kind
-           )),
-           v_key, 0)
-        ON CONFLICT (idempotency_key) DO NOTHING
-        RETURNING id INTO v_notification_id;
-      END IF;
-
-      IF v_notification_id IS NOT NULL THEN
-        UPDATE public.rsvp_notification_deliveries
-           SET next_attempt_at = now() + make_interval(mins => v_index / 40)
-         WHERE notification_id = v_notification_id;
-        v_index := v_index + 1;
-        v_rows := v_rows + 1;
-      END IF;
-    END LOOP;
-
-    SELECT audience.recipients, audience.no_email
-      INTO v_recipients, v_no_email
-      FROM public.event_edit_notice_audience(v_notice.event_id) AS audience;
-    UPDATE public.event_edit_notices
-       SET state = 'fanned_out',
-           fanned_out_at = now(),
-           send_after = NULL,
-           audience_count = v_recipients + v_no_email,
-           no_email_count = v_no_email,
-           held_count = v_held,
-           tested_at_fanout = v_allowlist_only
-     WHERE id = v_notice.id;
-    v_notices := v_notices + 1;
-  END LOOP;
-
-  RETURN jsonb_build_object('notices', v_notices, 'rows', v_rows);
-END;
-$function$;
-
-COMMENT ON FUNCTION public.event_edit_notice_fanout(integer) IS
-  '#3827/#4063: switch-safe edit fan-out. messages_v2 adds one phone-only buyer row per distinct paid-order handset plus claimed/kind payload facts; pilot and allowlist gates stay authoritative.';
-
-REVOKE ALL ON FUNCTION public.event_edit_notice_fanout(integer)
-  FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.event_edit_notice_fanout(integer)
-  TO service_role;
-
-CREATE OR REPLACE FUNCTION public.orch_1161_reservation_notify_outbox()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $function$
-DECLARE
-  v_category text;
-  v_contact text;
-  v_base_key text;
-  v_refund_cents integer;
-  v_refund_currency text;
-  v_v2 boolean := public.issue_4063_switch_on('messages_v2');
-  v_payload jsonb;
-  v_venue_name text;
-  v_venue_address text;
-  v_venue_city text;
-  v_timezone text;
-BEGIN
-  IF TG_OP = 'INSERT' THEN
-    IF NEW.status <> 'confirmed' THEN
-      RETURN NEW;
-    END IF;
-    v_category := 'buyer_reservation_confirmed';
-    v_base_key := 'buyer_reservation_confirmed:' || NEW.id::text;
-  ELSE
-    IF NOT v_v2 THEN
-      -- Preserve the exact pre-#4063 trigger guard while the switch is off.
-      IF NEW.status IS NOT DISTINCT FROM OLD.status
-         AND NEW.table_id IS NOT DISTINCT FROM OLD.table_id
-         AND NEW.reserved_for IS NOT DISTINCT FROM OLD.reserved_for THEN
-        RETURN NEW;
-      END IF;
-    ELSIF NEW.status IS NOT DISTINCT FROM OLD.status
-       AND NEW.table_id IS NOT DISTINCT FROM OLD.table_id
-       AND NEW.reserved_for IS NOT DISTINCT FROM OLD.reserved_for
-       AND NEW.party_size IS NOT DISTINCT FROM OLD.party_size THEN
-      RETURN NEW;
-    END IF;
-
-    IF NEW.status IN ('cancelled_by_guest','cancelled_by_venue')
-       AND NEW.status IS DISTINCT FROM OLD.status THEN
-      v_category := 'buyer_reservation_cancelled';
-    ELSIF NEW.status = 'confirmed' AND OLD.status = 'requested' THEN
-      v_category := 'buyer_reservation_confirmed';
-    ELSIF NOT v_v2 THEN
-      v_category := 'buyer_reservation_changed';
-    ELSIF NEW.status NOT IN ('cancelled_by_guest','cancelled_by_venue')
-       AND (
-         NEW.reserved_for IS DISTINCT FROM OLD.reserved_for
-         OR NEW.party_size IS DISTINCT FROM OLD.party_size
-       ) THEN
-      v_category := 'buyer_reservation_changed';
-    ELSE
-      -- #4063: seated/completed/no-show and table-only transitions are quiet.
-      RETURN NEW;
-    END IF;
-
-    IF v_category = 'buyer_reservation_confirmed' THEN
-      v_base_key := 'buyer_reservation_confirmed:' || NEW.id::text;
-    ELSE
-      v_base_key := v_category || ':' || NEW.id::text || ':'
-        || to_char(now(), 'YYYYMMDD"T"HH24MISSMS');
-    END IF;
-  END IF;
-
-  IF v_category = 'buyer_reservation_cancelled'
-     AND NEW.status = 'cancelled_by_venue' THEN
-    SELECT refund.buyer_refund_requested_cents, refund.currency
-      INTO v_refund_cents, v_refund_currency
-      FROM public.source_refunds AS refund
-     WHERE refund.source_type = 'venue_reservation'
-       AND refund.subject_id = NEW.id
-       AND refund.refund_kind = 'venue_staff_cancel'
-     ORDER BY refund.requested_at DESC
-     LIMIT 1;
-  END IF;
-
-  v_payload := jsonb_build_object(
-    'reservation_id', NEW.id,
-    'status', NEW.status,
-    'reserved_for', NEW.reserved_for,
-    'party_size', NEW.party_size,
-    'guest_name', NEW.guest_name,
-    'guest_phone_e164', NEW.guest_phone_e164,
-    'guest_email', NEW.guest_email
-  ) || CASE
-    WHEN v_refund_cents IS NULL THEN '{}'::jsonb
-    ELSE jsonb_build_object(
-      'cancelled_by', 'venue',
-      'refund_amount_cents', v_refund_cents,
-      'refund_currency', v_refund_currency
-    )
-  END;
-
-  IF v_v2 THEN
-    SELECT
-      venue.name,
-      venue.address,
-      venue.city,
-      CASE
-        WHEN availability.iana_timezone_source IN ('derived','operator')
-          THEN availability.iana_timezone
-        ELSE NULL
-      END
-      INTO v_venue_name, v_venue_address, v_venue_city, v_timezone
-      FROM public.venue_listings AS venue
-      LEFT JOIN public.venue_availability_config AS availability
-        ON availability.venue_id = venue.id
-     WHERE venue.id = NEW.venue_id;
-
-    v_payload := v_payload || jsonb_strip_nulls(jsonb_build_object(
-      'venue_id', NEW.venue_id,
-      'venue_name', v_venue_name,
-      'venue_address', v_venue_address,
-      'venue_city', v_venue_city,
-      'timezone', v_timezone,
-      'created_via', NEW.created_via,
-      'claimed', NEW.consumer_user_id IS NOT NULL,
-      'previous_reserved_for', CASE WHEN TG_OP = 'UPDATE'
-        THEN OLD.reserved_for ELSE NULL END,
-      'previous_party_size', CASE WHEN TG_OP = 'UPDATE'
-        THEN OLD.party_size ELSE NULL END
-    ));
-
-    IF nullif(btrim(coalesce(NEW.guest_email, '')), '') IS NOT NULL THEN
-      INSERT INTO public.notification_outbox (
-        category_key, user_id, contact, brand_id, payload,
-        idempotency_key, country_code
-      ) VALUES (
-        v_category,
-        NEW.consumer_user_id,
-        lower(btrim(NEW.guest_email)),
-        NEW.brand_id,
-        v_payload,
-        v_base_key || ':email',
-        public.mingla_e164_country(NEW.guest_phone_e164)
-      ) ON CONFLICT (idempotency_key) DO NOTHING;
-    END IF;
-
-    IF NEW.guest_phone_e164 ~ '^\+[1-9][0-9]{1,14}$' THEN
-      INSERT INTO public.notification_outbox (
-        category_key, user_id, contact, brand_id, payload,
-        idempotency_key, country_code
-      ) VALUES (
-        v_category,
-        CASE
-          WHEN nullif(btrim(coalesce(NEW.guest_email, '')), '') IS NULL
-            THEN NEW.consumer_user_id
-          ELSE NULL
-        END,
-        NEW.guest_phone_e164,
-        NEW.brand_id,
-        v_payload || jsonb_build_object('channel_hint', 'sms'),
-        v_base_key || ':sms',
-        public.mingla_e164_country(NEW.guest_phone_e164)
-      ) ON CONFLICT (idempotency_key) DO NOTHING;
-    END IF;
-  ELSE
-    -- This branch is the pre-#4063 producer byte-for-byte in data shape.
-    v_contact := coalesce(NEW.guest_phone_e164, NEW.guest_email);
-    INSERT INTO public.notification_outbox (
-      category_key, user_id, contact, brand_id, payload,
-      idempotency_key, country_code
-    ) VALUES (
-      v_category,
-      NEW.consumer_user_id,
-      v_contact,
-      NEW.brand_id,
-      v_payload,
-      v_base_key,
-      public.mingla_e164_country(NEW.guest_phone_e164)
-    ) ON CONFLICT (idempotency_key) DO NOTHING;
-  END IF;
-
-  RETURN NEW;
-END;
-$function$;
-
-REVOKE ALL ON FUNCTION public.orch_1161_reservation_notify_outbox()
-  FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.orch_1161_reservation_notify_outbox()
-  FROM anon;
-
-CREATE OR REPLACE FUNCTION public.tg_venue_orders_a4063_receipt()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $function$
-DECLARE
-  v_venue_name text;
-BEGIN
-  IF NEW.money_path <> 'mingla'
-     OR NEW.payment_status <> 'paid'
-     OR NEW.confirmed_at IS NULL
-     OR NEW.buyer_phone_e164 !~ '^\+[1-9][0-9]{1,14}$'
-     OR NOT public.issue_4063_switch_on('messages_v2')
-     OR (
-       TG_OP = 'UPDATE'
-       AND OLD.payment_status = 'paid'
-       AND OLD.confirmed_at IS NOT NULL
-     ) THEN
-    RETURN NEW;
-  END IF;
-
-  BEGIN
-    SELECT venue.name
-      INTO v_venue_name
-      FROM public.venue_listings AS venue
-     WHERE venue.id = NEW.venue_id;
-
-    INSERT INTO public.notification_outbox (
-      category_key,
-      user_id,
-      contact,
-      brand_id,
-      payload,
-      idempotency_key,
-      country_code,
-      status
-    ) VALUES (
-      'buyer_venue_order_receipt',
-      NEW.buyer_user_id,
-      NEW.buyer_phone_e164,
-      NEW.brand_id,
-      jsonb_build_object(
-        'venue_order_id', NEW.id,
-        'venue_id', NEW.venue_id,
-        'venue_name', coalesce(nullif(btrim(v_venue_name), ''), 'the venue'),
-        'pickup_code', NEW.pickup_code,
-        'claimed', NEW.buyer_user_id IS NOT NULL,
-        'channel_hint', 'sms'
-      ),
-      'buyer_venue_order_receipt:' || NEW.id::text || ':sms',
-      public.mingla_e164_country(NEW.buyer_phone_e164),
-      'pending'
-    )
-    ON CONFLICT (idempotency_key) DO NOTHING;
-  EXCEPTION WHEN OTHERS THEN
-    -- A notification failure must never roll back a successful payment write.
-    RAISE WARNING 'issue_4063_receipt_enqueue_failed %', SQLSTATE;
-  END;
-
-  RETURN NEW;
-END;
-$function$;
-
-REVOKE ALL ON FUNCTION public.tg_venue_orders_a4063_receipt()
-  FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.tg_venue_orders_a4063_receipt()
-  TO service_role;
-
-DROP TRIGGER IF EXISTS trg_venue_orders_a4063_receipt
-  ON public.venue_orders;
-CREATE TRIGGER trg_venue_orders_a4063_receipt
-AFTER INSERT OR UPDATE OF payment_status, confirmed_at
-ON public.venue_orders
-FOR EACH ROW
-EXECUTE FUNCTION public.tg_venue_orders_a4063_receipt();
-
-DO $reschedule$
-BEGIN
-  PERFORM cron.unschedule(job.jobid)
-    FROM cron.job AS job
-   WHERE job.jobname = 'orch_1161_notify_reminders';
-END;
-$reschedule$;
-
-SELECT cron.schedule(
-  'orch_1161_notify_reminders',
-  '*/5 * * * *',
-  $cron$
-    SELECT net.http_post(
-      url := (
-        SELECT decrypted_secret
-          FROM vault.decrypted_secrets
-         WHERE name = 'supabase_url'
-         LIMIT 1
-      ) || '/functions/v1/notify-reminders',
-      headers := jsonb_build_object(
-        'Content-Type',  'application/json',
-        'Authorization', 'Bearer ' || (
-          SELECT decrypted_secret
-            FROM vault.decrypted_secrets
-           WHERE name = 'service_role_key'
-           LIMIT 1
-        )
-      ),
-      body := '{}'::jsonb,
-      timeout_milliseconds := 30000
-    );
-  $cron$
-);
-
-DO $exit_check$
-DECLARE
-  v_definition text;
-  v_schedule text;
-BEGIN
-  SELECT pg_get_functiondef(
-    'public.pg_notify_reminders_enqueue(int, text, int)'::regprocedure
-  ) INTO v_definition;
-
-  IF v_definition NOT LIKE '%interval ''7 minutes''%'
-     OR v_definition NOT LIKE '%interval ''3 minutes''%'
-     OR v_definition NOT LIKE '%ticket_event_dates%'
-     OR v_definition NOT LIKE '%o.booked_start_at%'
-     OR v_definition NOT LIKE '%partial_refund%'
-     OR v_definition NOT LIKE '%buyer_event_reminder:%booked%'
-     OR v_definition NOT LIKE '%mingla_e164_country(u.contact)%' THEN
-    RAISE EXCEPTION 'issue_4063_exit_check_reminder_definition_incomplete';
-  END IF;
-
-  SELECT pg_get_functiondef(
-    'public.issue_2947_waitlist_drain_for_ticket_type(uuid, integer)'::regprocedure
-  ) INTO v_definition;
-  IF v_definition NOT LIKE '%issue_4063_switch_on%'
-     OR v_definition NOT LIKE '%mingla_e164_normalize%'
-     OR v_definition NOT LIKE '%:email%'
-     OR v_definition NOT LIKE '%:sms%'
-     OR v_definition NOT LIKE '%event_date_id%'
-     OR v_definition NOT LIKE '%start_at%' THEN
-    RAISE EXCEPTION 'issue_4063_exit_check_waitlist_definition_incomplete';
-  END IF;
-
-  SELECT pg_get_functiondef(
-    'public.fn_rsvp_drain_on_capacity_freed()'::regprocedure
-  ) INTO v_definition;
-  IF v_definition NOT LIKE '%issue_4063_switch_on%'
-     OR v_definition NOT LIKE '%NOT v_v2 OR v_approval_mode <> ''manual''%'
-     OR v_definition NOT LIKE '%rsvp_waitlist_promoted%' THEN
-    RAISE EXCEPTION 'issue_4063_exit_check_rsvp_promotion_definition_incomplete';
-  END IF;
-
-  SELECT pg_get_functiondef(
-    'public.event_edit_notice_fanout(integer)'::regprocedure
-  ) INTO v_definition;
-  IF v_definition NOT LIKE '%issue_4063_switch_on%'
-     OR v_definition NOT LIKE '%buyer_phone_e164%'
-     OR v_definition NOT LIKE '%recipientPhone%'
-     OR v_definition NOT LIKE '%phone:%'
-     OR v_definition NOT LIKE '%claimed%'
-     OR v_definition NOT LIKE '%kind%' THEN
-    RAISE EXCEPTION 'issue_4063_exit_check_event_edit_fanout_incomplete';
-  END IF;
-
-  SELECT schedule INTO v_schedule
-    FROM cron.job
-   WHERE jobname = 'orch_1161_notify_reminders'
-   LIMIT 1;
-  IF v_schedule IS DISTINCT FROM '*/5 * * * *' THEN
-    RAISE EXCEPTION 'issue_4063_exit_check_reminder_cron_%', v_schedule;
-  END IF;
-END;
-$exit_check$;
-
-COMMIT;
-NOTIFY pgrst, 'reload schema';
-
 CREATE OR REPLACE FUNCTION public.issue_3872_ticket_quote(
   p_event_id uuid,
   p_lines jsonb,
@@ -2257,6 +1359,367 @@ BEGIN
 END;
 $quote$;
 
+CREATE OR REPLACE FUNCTION public.issue_3313_ticket_type_occurrence_taken(
+  p_ticket_type_id uuid,
+  p_event_date_id uuid,
+  p_exclude_session_id uuid DEFAULT NULL
+) RETURNS integer
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $fn$
+DECLARE
+  v_held integer;
+BEGIN
+  SELECT COALESCE(SUM(
+           CASE
+             -- A by-date line holds that date's own count, zero when omitted.
+             WHEN jsonb_typeof(i.by_date) = 'object'
+               THEN COALESCE((i.by_date ->> p_event_date_id::text)::integer, 0)
+             WHEN sd.day_count = 0 THEN i.quantity
+             WHEN COALESCE(s.multi_date_pricing_mode_snapshot, 'per_day') = 'per_day'
+               THEN i.quantity / sd.day_count
+             ELSE i.quantity
+           END
+         ), 0)::integer
+    INTO v_held
+    FROM public.ticket_checkout_session_items i
+    JOIN public.ticket_checkout_sessions s ON s.id = i.checkout_session_id
+    CROSS JOIN LATERAL (
+      SELECT count(*)::integer AS day_count,
+             COALESCE(bool_or(x.event_date_id = p_event_date_id), false) AS has_night
+        FROM public.ticket_checkout_session_event_dates x
+       WHERE x.checkout_session_id = s.id
+    ) sd
+   WHERE i.ticket_type_id = p_ticket_type_id
+     AND s.expires_at > now()
+     AND s.status IN ('pending_free', 'requires_payment', 'processing_payment', 'awaiting_web_redirect')
+     -- a finalized or revoked session holds nothing (its tickets, if any,
+     -- are counted as sold); the caller's own session can be excluded.
+     AND s.order_id IS NULL
+     AND s.revoked_at IS NULL
+     AND (p_exclude_session_id IS NULL OR s.id <> p_exclude_session_id)
+     AND (sd.day_count = 0 OR sd.has_night);
+
+  RETURN public.issue_3313_ticket_type_occurrence_sold(p_ticket_type_id, p_event_date_id)
+         + COALESCE(v_held, 0);
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION public.issue_1930_ticket_session_authorized(
+  p_session_id uuid, p_event_id uuid
+) RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path=public,auth,pg_temp AS $function$
+DECLARE
+  v_event public.events%ROWTYPE; v_bad boolean;
+  v_session public.ticket_checkout_sessions%ROWTYPE; v_decision text;
+  v_per_occurrence boolean; -- issue #3313
+BEGIN
+  SELECT * INTO v_event FROM public.events WHERE id=p_event_id;
+  IF public.issue_1930_event_sale_reason(v_event) <> 'sellable' THEN RETURN false; END IF;
+  -- #2101 — the sole decision owner, consuming this session's snapshots. It
+  -- takes event -> brand in the canonical order before any lower-order row.
+  SELECT * INTO v_session FROM public.ticket_checkout_sessions
+    WHERE id=p_session_id AND event_id=p_event_id;
+  IF NOT FOUND THEN RETURN false; END IF;
+  v_decision := public.issue_2101_ticket_checkout_access_decision(
+    p_event_id, v_session.buyer_user_id,
+    v_session.checkout_access_mode_snapshot,
+    v_session.checkout_access_restrictive_epoch_snapshot,
+    v_session.checkout_access_membership_id_snapshot,
+    v_session.checkout_access_membership_epoch_snapshot);
+  IF v_decision NOT IN ('allowed_unrestricted','allowed_named') THEN RETURN false; END IF;
+  v_per_occurrence := COALESCE(
+    (public.issue_3313_event_day_choice(p_event_id) ->> 'perOccurrenceCapacity')::boolean, false);
+  IF NOT EXISTS(SELECT 1 FROM public.ticket_checkout_sessions s
+    WHERE s.id=p_session_id AND s.event_id=p_event_id AND s.revoked_at IS NULL
+      AND s.status IN ('pending_free','requires_payment','processing_payment','awaiting_web_redirect'))
+  THEN RETURN false; END IF;
+  SELECT EXISTS(
+    SELECT 1 FROM public.ticket_checkout_session_items i
+    LEFT JOIN public.ticket_types tt ON tt.id=i.ticket_type_id AND tt.event_id=p_event_id
+    WHERE i.checkout_session_id=p_session_id AND (
+      tt.id IS NULL OR tt.deleted_at IS NOT NULL OR tt.is_hidden OR tt.is_disabled
+      OR NOT tt.available_online
+      OR (tt.sale_start_at IS NOT NULL AND tt.sale_start_at > now())
+      OR (tt.sale_end_at IS NOT NULL AND tt.sale_end_at <= now())
+      -- issue #3313 — a recurring event's capacity is PER NIGHT, so the
+      -- finalize-time re-check measures each of this session's nights (every
+      -- upcoming night when it has none): everyone else's sold + held places
+      -- that night, plus this session's own places that night. The shared
+      -- whole-run check below stays for every other event. DELETE THIS and a
+      -- second night's buyer is authorised at reserve and refused at finalize.
+      OR (v_per_occurrence AND NOT tt.is_unlimited AND tt.quantity_total IS NOT NULL
+        AND EXISTS (
+          SELECT 1
+            FROM public.event_dates night
+           WHERE night.event_id = p_event_id
+             AND (
+               EXISTS (SELECT 1 FROM public.ticket_checkout_session_event_dates sd
+                        WHERE sd.checkout_session_id = p_session_id AND sd.event_date_id = night.id)
+               OR (NOT EXISTS (SELECT 1 FROM public.ticket_checkout_session_event_dates sd
+                                WHERE sd.checkout_session_id = p_session_id)
+                   AND night.end_at > now())
+             )
+             AND public.issue_3313_ticket_type_occurrence_taken(tt.id, night.id, p_session_id)
+                 + CASE
+                     WHEN jsonb_typeof(i.by_date) = 'object'
+                       THEN COALESCE((i.by_date ->> night.id::text)::integer, 0)
+                     WHEN COALESCE(v_session.multi_date_pricing_mode_snapshot, 'per_day') = 'per_day'
+                          AND (SELECT count(*) FROM public.ticket_checkout_session_event_dates sd
+                                WHERE sd.checkout_session_id = p_session_id) > 0
+                       THEN i.quantity / (SELECT count(*) FROM public.ticket_checkout_session_event_dates sd
+                                           WHERE sd.checkout_session_id = p_session_id)
+                     ELSE i.quantity
+                   END
+                 > tt.quantity_total
+        ))
+      OR (NOT v_per_occurrence AND NOT tt.is_unlimited AND tt.quantity_total IS NOT NULL AND
+        (SELECT count(*) FROM public.tickets sold
+          WHERE sold.ticket_type_id=tt.id
+            AND sold.status IN ('valid','used','transferred'))
+        + (SELECT COALESCE(sum(reserved.quantity),0) FROM public.ticket_checkout_session_items reserved
+            JOIN public.ticket_checkout_sessions active
+              ON active.id=reserved.checkout_session_id
+          WHERE reserved.ticket_type_id=tt.id
+            AND active.id<>p_session_id
+            AND active.expires_at>now()
+            AND active.order_id IS NULL
+            AND active.revoked_at IS NULL
+            AND active.status IN ('pending_free','requires_payment','processing_payment','awaiting_web_redirect'))
+        + i.quantity > tt.quantity_total)
+    )
+  ) INTO v_bad;
+  IF v_bad THEN RETURN false; END IF;
+  IF EXISTS(SELECT 1 FROM public.ticket_checkout_sessions s
+    WHERE s.id=p_session_id AND (s.metadata->>'event_date_id') IS NOT NULL
+      AND NOT EXISTS(SELECT 1 FROM public.event_dates d
+        WHERE d.id=(s.metadata->>'event_date_id')::uuid AND d.event_id=p_event_id
+          AND d.end_at > now())) THEN RETURN false; END IF;
+  -- ══ issue #2160 — RE-VALIDATE **EVERY** CHOSEN DAY, NOT JUST THE ANCHOR ══
+  -- The clause above re-checks only `metadata->>'event_date_id'`, which under
+  -- #2160 is the ANCHOR (the latest-ENDING day). Without the clause below a
+  -- stale NON-anchor day could still mint an entitlement at finalize for an
+  -- occurrence that has already ended — the guest gets a pass for a day that
+  -- is over, and the scanner correctly refuses them at a door they paid for.
+  --
+  -- DELETE THIS BLOCK and a session that sat in the cart across the end of
+  -- day 1 finalizes into a day-1 pass.
+  IF EXISTS(SELECT 1 FROM public.ticket_checkout_session_event_dates i
+             WHERE i.checkout_session_id=p_session_id
+               AND NOT EXISTS(SELECT 1 FROM public.event_dates d
+                 WHERE d.id=i.event_date_id AND d.event_id=p_event_id
+                   AND d.end_at > now())) THEN RETURN false; END IF;
+  RETURN true;
+END $function$;
+
+CREATE OR REPLACE FUNCTION public.issue_3859_bind_checkout_contract(
+  p_checkout_session_id uuid,
+  p_event_id uuid,
+  p_idempotency_key text,
+  p_checkout_attempt_id uuid,
+  p_checkout_fingerprint text,
+  p_lines jsonb,
+  p_due_today_cents integer,
+  p_full_price_cents integer,
+  p_installment_schedule jsonb
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $function$
+DECLARE
+  v_session public.ticket_checkout_sessions%ROWTYPE;
+  v_line jsonb;
+  v_item public.ticket_checkout_session_items%ROWTYPE;
+  v_choice text;
+  v_ticket_type_id uuid;
+  v_quantity integer;
+  v_seen integer := 0;
+  v_item_count integer;
+  v_full_price bigint;
+  v_scheduled_total bigint := 0;
+  v_installment jsonb;
+  v_expected_ordinal integer := 1;
+  v_seen_ticket_ids uuid[] := ARRAY[]::uuid[];
+BEGIN
+  IF p_checkout_attempt_id IS NULL
+     OR p_checkout_fingerprint IS NULL
+     OR p_due_today_cents IS NULL
+     OR p_full_price_cents IS NULL
+     OR p_checkout_fingerprint !~ '^[0-9a-f]{64}$'
+     OR p_idempotency_key IS DISTINCT FROM
+       ('ticket_checkout:v2:' || p_event_id::text || ':' || p_checkout_attempt_id::text) THEN
+    RAISE EXCEPTION 'checkout_contract_invalid';
+  END IF;
+
+  SELECT * INTO v_session
+    FROM public.ticket_checkout_sessions
+   WHERE id = p_checkout_session_id
+     AND event_id = p_event_id
+     AND idempotency_key = p_idempotency_key
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'checkout_session_not_found';
+  END IF;
+
+  -- Same attempt + same canonical fingerprint is reconciliation. Same attempt
+  -- + changed cart/contact/consent/intake/quote is a review conflict.
+  IF v_session.checkout_contract_version IS NOT NULL THEN
+    IF v_session.checkout_contract_version = 2
+       AND v_session.checkout_attempt_id = p_checkout_attempt_id
+       AND v_session.checkout_fingerprint = p_checkout_fingerprint THEN
+      RETURN jsonb_build_object(
+        'outcome', 'reconciled',
+        'totalCents', v_session.total_cents,
+        'installmentSchedule', v_session.installment_schedule
+      );
+    END IF;
+    RAISE EXCEPTION 'checkout_fingerprint_conflict';
+  END IF;
+
+  IF v_session.order_id IS NOT NULL
+     OR v_session.stripe_payment_intent_id IS NOT NULL
+     OR v_session.status NOT IN ('pending_free', 'requires_payment') THEN
+    RAISE EXCEPTION 'checkout_contract_too_late';
+  END IF;
+  IF p_lines IS NULL OR jsonb_typeof(p_lines) <> 'array'
+     OR jsonb_array_length(p_lines) = 0 THEN
+    RAISE EXCEPTION 'checkout_lines_conflict';
+  END IF;
+
+  SELECT count(*), COALESCE(sum(total_cents), 0)
+    INTO v_item_count, v_full_price
+    FROM public.ticket_checkout_session_items
+   WHERE checkout_session_id = p_checkout_session_id;
+  IF v_item_count <> jsonb_array_length(p_lines)
+     OR v_full_price <> p_full_price_cents THEN
+    RAISE EXCEPTION 'checkout_lines_conflict';
+  END IF;
+
+  FOR v_line IN SELECT value FROM jsonb_array_elements(p_lines)
+  LOOP
+    IF jsonb_typeof(v_line) <> 'object'
+       OR COALESCE(v_line->>'ticketTypeId', '') !~
+         '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+       OR COALESCE(v_line->>'quantity', '') !~ '^[1-9][0-9]*$'
+       OR COALESCE(v_line->>'paymentPlanChoice', '') NOT IN ('full', 'installments') THEN
+      RAISE EXCEPTION 'checkout_lines_conflict';
+    END IF;
+    v_ticket_type_id := (v_line->>'ticketTypeId')::uuid;
+    v_quantity := (v_line->>'quantity')::integer;
+    v_choice := v_line->>'paymentPlanChoice';
+
+    SELECT * INTO v_item
+      FROM public.ticket_checkout_session_items
+     WHERE checkout_session_id = p_checkout_session_id
+       AND ticket_type_id = v_ticket_type_id;
+    IF NOT FOUND OR v_item.quantity <> v_quantity THEN
+      RAISE EXCEPTION 'checkout_lines_conflict';
+    END IF;
+    -- A same-total retry must not bind over the reserved per-date split.
+    IF v_item.by_date IS DISTINCT FROM (v_line -> 'byDate') THEN
+      RAISE EXCEPTION 'checkout_lines_conflict';
+    END IF;
+
+    IF v_ticket_type_id = ANY(v_seen_ticket_ids) THEN
+      RAISE EXCEPTION 'checkout_lines_conflict';
+    END IF;
+    v_seen_ticket_ids := array_append(v_seen_ticket_ids, v_ticket_type_id);
+    UPDATE public.ticket_checkout_session_items
+       SET payment_plan_choice = v_choice
+     WHERE id = v_item.id;
+    v_seen := v_seen + 1;
+  END LOOP;
+  IF v_seen <> v_item_count THEN
+    RAISE EXCEPTION 'checkout_lines_conflict';
+  END IF;
+
+  IF p_due_today_cents < 0 OR p_due_today_cents > p_full_price_cents THEN
+    RAISE EXCEPTION 'checkout_quote_invalid';
+  END IF;
+  IF p_installment_schedule IS NULL THEN
+    IF p_due_today_cents <> p_full_price_cents
+       OR EXISTS (
+         SELECT 1 FROM public.ticket_checkout_session_items
+          WHERE checkout_session_id = p_checkout_session_id
+            AND payment_plan_choice = 'installments'
+       ) THEN
+      RAISE EXCEPTION 'checkout_quote_invalid';
+    END IF;
+  ELSE
+    IF jsonb_typeof(p_installment_schedule) <> 'object'
+       OR COALESCE(p_installment_schedule->>'fullPriceCents', '') !~ '^[0-9]+$'
+       OR COALESCE(p_installment_schedule->>'depositCents', '') !~ '^[0-9]+$'
+       OR upper(COALESCE(p_installment_schedule->>'currency', '')) <>
+         upper(trim(v_session.currency))
+       OR jsonb_typeof(p_installment_schedule->'installments') <> 'array'
+       OR p_due_today_cents <= 0 THEN
+      RAISE EXCEPTION 'checkout_quote_invalid';
+    END IF;
+    IF jsonb_array_length(p_installment_schedule->'installments') = 0
+       OR (p_installment_schedule->>'fullPriceCents')::bigint <> p_full_price_cents
+       OR (p_installment_schedule->>'depositCents')::bigint <> p_due_today_cents THEN
+      RAISE EXCEPTION 'checkout_quote_invalid';
+    END IF;
+    FOR v_installment IN
+      SELECT value FROM jsonb_array_elements(p_installment_schedule->'installments')
+    LOOP
+      IF COALESCE(v_installment->>'ordinal', '') !~ '^[1-9][0-9]*$'
+         OR (v_installment->>'ordinal')::integer <> v_expected_ordinal
+         OR COALESCE(v_installment->>'amountCents', '') !~ '^[1-9][0-9]*$'
+         OR COALESCE(v_installment->>'sourceTicketTypeId', '') !~
+           '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+         OR NOT EXISTS (
+           SELECT 1 FROM public.ticket_checkout_session_items
+            WHERE checkout_session_id = p_checkout_session_id
+              AND ticket_type_id = (v_installment->>'sourceTicketTypeId')::uuid
+              AND payment_plan_choice = 'installments'
+         ) THEN
+        RAISE EXCEPTION 'checkout_quote_invalid';
+      END IF;
+      IF (v_installment->>'dueAt')::timestamptz <= v_session.created_at THEN
+        RAISE EXCEPTION 'checkout_quote_invalid';
+      END IF;
+      v_scheduled_total := v_scheduled_total +
+        (v_installment->>'amountCents')::bigint;
+      v_expected_ordinal := v_expected_ordinal + 1;
+    END LOOP;
+    IF p_due_today_cents + v_scheduled_total <> p_full_price_cents
+       OR EXISTS (
+         SELECT 1 FROM public.ticket_checkout_session_items l
+          WHERE l.checkout_session_id = p_checkout_session_id
+            AND l.payment_plan_choice = 'installments'
+            AND NOT EXISTS (
+              SELECT 1
+                FROM jsonb_array_elements(p_installment_schedule->'installments') i
+               WHERE i->>'sourceTicketTypeId' = l.ticket_type_id::text
+            )
+       ) THEN
+      RAISE EXCEPTION 'checkout_quote_invalid';
+    END IF;
+  END IF;
+
+  UPDATE public.ticket_checkout_sessions
+     SET checkout_contract_version = 2,
+         checkout_attempt_id = p_checkout_attempt_id,
+         checkout_fingerprint = p_checkout_fingerprint,
+         cart_fingerprint = p_checkout_fingerprint,
+         subtotal_cents = p_due_today_cents,
+         total_cents = p_due_today_cents,
+         installment_schedule = p_installment_schedule,
+         updated_at = now()
+   WHERE id = p_checkout_session_id;
+
+  RETURN jsonb_build_object(
+    'outcome', 'bound',
+    'totalCents', p_due_today_cents,
+    'installmentSchedule', p_installment_schedule
+  );
+END
+$function$;
+
 DO $verify$
 DECLARE
   v_live text := pg_get_functiondef(
@@ -2267,6 +1730,15 @@ DECLARE
   );
   v_quote text := pg_get_functiondef(
     'public.issue_3872_ticket_quote(uuid, jsonb, uuid[], timestamptz, timestamptz, integer, text, text, text, text, uuid, text, boolean)'::regprocedure
+  );
+  v_taken text := pg_get_functiondef(
+    'public.issue_3313_ticket_type_occurrence_taken(uuid, uuid, uuid)'::regprocedure
+  );
+  v_authorized text := pg_get_functiondef(
+    'public.issue_1930_ticket_session_authorized(uuid, uuid)'::regprocedure
+  );
+  v_bind text := pg_get_functiondef(
+    'public.issue_3859_bind_checkout_contract(uuid, uuid, text, uuid, text, jsonb, integer, integer, jsonb)'::regprocedure
   );
   v_finalize text := pg_get_functiondef(
     'public.issue_1930_ticket_checkout_finalize_base(uuid, text, text, text, text, text, text, boolean)'::regprocedure
@@ -2282,11 +1754,18 @@ BEGIN
   IF position('issue_3281_line_qty_sum' IN v_quote) = 0 THEN
     RAISE EXCEPTION 'issue_3281_order_repair: quote body ignores byDate';
   END IF;
+  IF position('by_date' IN v_taken) = 0
+     OR position('by_date' IN v_authorized) = 0
+     OR position('by_date' IN v_bind) = 0 THEN
+    RAISE EXCEPTION 'issue_3281_order_repair: a by-date reader is not terminal';
+  END IF;
   IF position('by_date' IN v_finalize) = 0
      OR position('plan_bound_at' IN v_finalize) = 0 THEN
     RAISE EXCEPTION 'issue_3281_order_repair: finalizer needs 20280216003282 first';
   END IF;
 END;
 $verify$;
+
+NOTIFY pgrst, 'reload schema';
 
 COMMIT;

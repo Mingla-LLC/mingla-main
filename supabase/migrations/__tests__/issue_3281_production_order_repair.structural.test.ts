@@ -86,6 +86,25 @@ Deno.test("production order reaches the same function bodies as file order", () 
 Deno.test("this repair is what closes the gap", () => {
   assertEquals(differing(productionOrder(false)), [
     "public.biz_update_live_experience",
+    "public.issue_1930_ticket_session_authorized",
+    "public.issue_3313_ticket_type_occurrence_taken",
+    "public.issue_3859_bind_checkout_contract",
+    "public.issue_3872_ticket_quote",
+    "public.pg_notify_reminders_enqueue",
+  ]);
+});
+
+Deno.test("the repair is one transaction and touches only its named functions", () => {
+  const name = files.find((file) => file.startsWith(REPAIR))!;
+  const sql = Deno.readTextFileSync(`${DIR}/${name}`);
+  assertEquals(sql.match(/^(?:BEGIN|COMMIT);$/gm), ["BEGIN;", "COMMIT;"]);
+  assertEquals(/^NOTIFY /m.test(sql.slice(sql.indexOf("COMMIT;"))), false);
+  assertEquals(sql.includes("cron."), false);
+  assertEquals([...definitions(name).keys()].sort(), [
+    "public.biz_update_live_experience",
+    "public.issue_1930_ticket_session_authorized",
+    "public.issue_3313_ticket_type_occurrence_taken",
+    "public.issue_3859_bind_checkout_contract",
     "public.issue_3872_ticket_quote",
     "public.pg_notify_reminders_enqueue",
   ]);
