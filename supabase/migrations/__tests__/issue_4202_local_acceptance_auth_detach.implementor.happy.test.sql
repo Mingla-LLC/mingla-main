@@ -1,5 +1,6 @@
 \set ON_ERROR_STOP on
 
+-- PostgreSQL 17 post-replay behavioural proof.
 -- MINGLA-INVARIANT: I-4202-EXPLORER-AUTH-DETACH | issue #4202 | Deleting an Explorer authentication user may detach retained Local audit records, but cannot rewrite or delete the signed agreement evidence.
 
 BEGIN;
