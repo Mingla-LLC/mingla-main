@@ -150,7 +150,9 @@ function check(s, manifest) {
   // #2829 W9b website designer tools 140 → 152).
   // [TEST-MOD-APPROVED #3355] Twenty planning, memory, research, extraction,
   // and verification tools extend the same caller-bound denominator to 172.
-  if (declarationCount !== 172) failures.push(`expected 172 declarations, got ${declarationCount}`);
+  // [TEST-MOD-APPROVED #2830] Durable Website completeness, pre-draft design,
+  // and evidence-backed context writes extend that denominator to 175.
+  if (declarationCount !== 175) failures.push(`expected 175 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }
