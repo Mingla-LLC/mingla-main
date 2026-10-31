@@ -186,11 +186,11 @@
   },
   "found": {
     "title": {
-      "ticket_one": "Your ticket is here.",
-      "ticket_other": "Your tickets are here.",
-      "pass": "Your pass is here.",
-      "booking": "Your booking is here.",
-      "receipt": "Your receipt is here."
+      "ticket_one": "Your ticket is ready",
+      "ticket_other": "Your tickets are ready",
+      "pass": "Your pass is ready",
+      "booking": "Your booking is ready",
+      "receipt": "Your receipt is ready"
     },
     "cta": {
       "ticket_one": "See my ticket",
@@ -201,6 +201,9 @@
       "many": "See my purchases"
     },
     "footer": "They're always in Profile › Purchases.",
+    "setupBody": "Finish setting up Mingla. Then we’ll show you around and where your tickets live.",
+    "continueSetup": "Continue setup",
+    "setupFooter": "At the end, we’ll point out Purchases so you always know where to look.",
     "sentBy": "Sent by {{name}}",
     "atDoor": "bought at the door",
     "itemCount": "{{count}} {{noun}}"

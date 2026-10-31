@@ -913,7 +913,8 @@ const OnboardingFlow = ({
     needsLanguage: !isDeviceLanguageSupported(),
     phonePreVerified,
     skipLocation: onboardingMode === 'finish_setup' && deferredLocationSeeded,
-  }), [deferredLocationSeeded, onboardingMode, phonePreVerified])
+    showTicketConfirmation: foundItems.length > 0,
+  }), [deferredLocationSeeded, foundItems.length, onboardingMode, phonePreVerified])
 
   // ─── State Machine ───
   const {
@@ -1596,13 +1597,6 @@ const OnboardingFlow = ({
           goToSubStep('tickets_found')
           return
         }
-        if (onboardingMode === 'ticket_first') {
-          // Purchase-first changes the entry point, not the rest of onboarding.
-          // Even when the purchase is already linked (no pending claim), show
-          // the reassurance screen and then continue the normal setup journey.
-          goToSubStep('tickets_found')
-          return
-        }
         setTimeout(() => goNext(), 800) // pause for success animation
       } else {
         logger.onboarding('OTP verification failed', { attempts: otpAttempts + 1, error: result.error })
@@ -1634,7 +1628,6 @@ const OnboardingFlow = ({
       otpAttempts,
       goToSubStep,
       data.phoneCountryCode,
-      onboardingMode,
       user?.id,
     ]
   )
@@ -2327,12 +2320,12 @@ const OnboardingFlow = ({
     // Skip OTP step when navigating back if phone is already verified
     // (user shouldn't land on "Enter the code" screen when already verified)
     if (data.phoneVerified && navState.subStep === 'gender_identity') {
-      goToSubStep(onboardingMode === 'ticket_first' ? 'tickets_found' : 'phone')
+      goToSubStep(onboardingMode === 'ticket_first' && foundItems.length > 0 ? 'tickets_found' : 'phone')
       return
     }
 
     goBack()
-  }, [goBack, goToSubStep, data.phoneVerified, navState.subStep, onboardingMode])
+  }, [goBack, goToSubStep, data.phoneVerified, foundItems.length, navState.subStep, onboardingMode])
 
   const handleBackToWelcome = useCallback(async () => {
     logger.action('Back to welcome — signing out')
@@ -3664,20 +3657,8 @@ const OnboardingFlow = ({
     if (subStep === 'tickets_found') {
       return (
         <TicketsFoundStep
-          hadPendingClaim={pendingClaim !== null}
           items={foundItems}
           onContinue={goNext}
-          onItemsChanged={(items) => {
-            if (items.length > 0) {
-              setFoundItems(items)
-              return
-            }
-            if (!user?.id) return
-            void runClaimSweep(user.id, 'add_identity', { showBanner: false })
-              .then((result) => {
-                if (result.claimed.length > 0) setFoundItems(result.claimed)
-              })
-          }}
         />
       )
     }

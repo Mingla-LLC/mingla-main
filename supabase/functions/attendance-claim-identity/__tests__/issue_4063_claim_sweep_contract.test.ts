@@ -53,3 +53,16 @@ Deno.test("#4063 success reflects every claimed kind, not only orders", () => {
     "a non-order claim must still record success",
   );
 });
+
+Deno.test("#4202 retained purchase history reconnects after usable admission claims", () => {
+  const liveSweep = SOURCE.indexOf('"claim_attendance_by_verified_identity"');
+  const retainedHistory = SOURCE.indexOf(
+    '"issue_4202_reconnect_retained_orders"',
+  );
+  assert(liveSweep >= 0, "the usable-admission sweep must remain present");
+  assert(
+    retainedHistory > liveSweep,
+    "history must reconnect only after the live sweep claims admission inventory",
+  );
+  assertStringIncludes(SOURCE, "if (retainedHistoryError) throw retainedHistoryError;");
+});

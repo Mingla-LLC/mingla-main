@@ -2,15 +2,41 @@
   "version": 1,
   "mappings": [
     {
+      "capability_key": "account-delete",
+      "paths": [
+        "supabase/functions/_shared/explorerPhoneRelease.ts",
+        "supabase/functions/delete-user/index.ts"
+      ]
+    },
+    {
+      "capability_key": "account-explorer-onboarding",
+      "paths": [
+        "app-mobile/src/components/OnboardingFlow.tsx",
+        "app-mobile/src/components/onboarding/TicketsFoundStep.tsx",
+        "app-mobile/src/hooks/onboardingSequenceLogic.ts",
+        "app-mobile/src/hooks/useOnboardingStateMachine.ts"
+      ]
+    },
+    {
       "capability_key": "checkout-claim-ticket",
       "paths": [
-        "supabase/functions/claim-link/index.ts"
+        "app-mobile/src/components/OnboardingFlow.tsx",
+        "app-mobile/src/components/onboarding/TicketsFoundStep.tsx",
+        "supabase/functions/claim-link/index.ts",
+        "supabase/functions/attendance-claim-identity/index.ts"
       ]
     },
     {
       "capability_key": "checkout-tickets",
       "paths": [
-        "mingla-business/app/checkout/[eventId]/buyer.tsx"
+        "app-mobile/src/i18n/locales/en/purchases.json",
+        "mingla-business/app/checkout/[eventId]/index.tsx",
+        "mingla-business/app/checkout/[eventId]/buyer.tsx",
+        "mingla-business/src/components/checkout/CartContext.tsx",
+        "mingla-business/src/services/checkoutErrorCopy.ts",
+        "mingla-business/src/services/ticketCheckoutService.ts",
+        "supabase/migrations/20280216003282_issue_3281_by_date_quantities_paystack_reemit.sql",
+        "supabase/migrations/20280216004203_issue_4203_hidden_purchase_reads.sql"
       ]
     },
     {

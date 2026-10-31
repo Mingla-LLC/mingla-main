@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { BOOTSTRAP_SHA256, loadEffectiveManifest } from "../load-manifest.mjs";
 import { POSTGRES_WAVE, postgresAdditionalDatabaseName, postgresDatabaseName } from "../postgres-batch-contract.mjs";
-import { migrationsForPostgresTemplate, selectedPostgresSuites } from "../postgres-batch.mjs";
+import { migrationsForPostgresTemplate, selectedPostgresSuites, waitForTemplateDrain } from "../postgres-batch.mjs";
 import { SUITES_FOLDED_IN_POSTGRES_WAVE, suiteCommandFingerprint, validateRegistry } from "../validate-manifest-v2.mjs";
 import { buildShardReport, expectedPrimarySuites, routingReport, runInvocation, runSuiteV2, selectSuites } from "../run-suite-batch.mjs";
 import { reconcilePhase3bReports, selectionDocument } from "../select-phase3b-suites.mjs";
@@ -106,6 +106,26 @@ test("#3643 the #3429 dual-database template stops before its self-applied migra
   assert.deepEqual(
     migrationsForPostgresTemplate(migrations, "postgres17-deno2-node22-noinstall"),
     migrations,
+  );
+});
+
+test("#3643 template drain tolerates asynchronous exit but still fails closed", () => {
+  const observedSleeps = [];
+  const counts = ["1", "1", "0"];
+  waitForTemplateDrain(() => counts.shift(), {
+    attempts: 3,
+    delayMs: 25,
+    sleep: (ms) => observedSleeps.push(ms),
+  });
+  assert.deepEqual(observedSleeps, [25, 25]);
+
+  assert.throws(
+    () => waitForTemplateDrain(() => "1", { attempts: 3, sleep() {} }),
+    /G-3: 1 backend\(s\) remain attached.*after 3 drain checks/,
+  );
+  assert.throws(
+    () => waitForTemplateDrain(() => "not-a-count", { sleep() {} }),
+    /G-3: invalid template backend count/,
   );
 });
 

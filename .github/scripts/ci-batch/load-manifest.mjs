@@ -83,7 +83,12 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281: re-sealed after PR7 public schedule-card migrations and structural
 // proofs entered the preserved inventories, with exact exclusions from the
 // deliberately pre-#1931 historical replay.
-export const BOOTSTRAP_SHA256 = "4155990d6c7fb4b9d4943a8ac11e663848070eae15e43bcbe7ead09282cfecd0";
+// #4202 / #4203: re-sealed after the retained-purchase and hidden-event read
+// migration plus its registered PostgreSQL proof entered the three preserved
+// full-history inventories.
+// #3281 / #3645: re-sealed after the terminal by-date + Paystack finalizer
+// re-emit entered those inventories and their filtered historical replays.
+export const BOOTSTRAP_SHA256 = "e8cfc89a192bed21754f0d6fa6665f011721703525d2f682828b23faca7ea232";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
