@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4202_local_acceptance_auth_detach.implementor.happy.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4202-local-acceptance-auth-detach",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "supabase_admin",
+    "reset": "suite-owned"
+  }
+}
