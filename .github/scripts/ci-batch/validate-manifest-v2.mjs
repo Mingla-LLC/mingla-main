@@ -316,7 +316,9 @@ export function phase3dContractDigest(manifest) {
 // #4202: register the Explorer phone-identity release migration in the three
 // preserved full-history inventories; the existing #4202/#4203 PostgreSQL
 // suite owns its executable proof.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "c1019d1170fff8bc30ac92eae754b7cb236dd9403018c034e8deeac2c29cbb0a";
+// #4202: register the Local audit-row auth detach in the same inventories;
+// its local PostgreSQL suite proves deletion plus immutable evidence retention.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "b45c05386ed517cd1b3364d55b8492f877a24590d79f21f0b991f9875410fadf";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

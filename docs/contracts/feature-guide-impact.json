@@ -6,7 +6,8 @@
       "paths": [
         "supabase/functions/_shared/explorerPhoneRelease.ts",
         "supabase/functions/delete-user/index.ts",
-        "supabase/migrations/20280216004204_issue_4202_explorer_phone_identity_release.sql"
+        "supabase/migrations/20280216004204_issue_4202_explorer_phone_identity_release.sql",
+        "supabase/migrations/20280217004202_issue_4202_local_acceptance_auth_detach.sql"
       ]
     },
     {
@@ -98,7 +99,8 @@
         "supabase/functions/creator-media-webhook/index.ts",
         "supabase/functions/local-payout/index.ts",
         "supabase/migrations/20280208004182_issue_4182_bunny_media_lifecycle.sql",
-        "supabase/migrations/20280212004187_issue_4187_admin_program_messaging.sql"
+        "supabase/migrations/20280212004187_issue_4187_admin_program_messaging.sql",
+        "supabase/migrations/20280217004202_issue_4202_local_acceptance_auth_detach.sql"
       ]
     },
     {
