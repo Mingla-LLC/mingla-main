@@ -5,7 +5,8 @@
       "capability_key": "account-delete",
       "paths": [
         "supabase/functions/_shared/explorerPhoneRelease.ts",
-        "supabase/functions/delete-user/index.ts"
+        "supabase/functions/delete-user/index.ts",
+        "supabase/migrations/20280216004204_issue_4202_explorer_phone_identity_release.sql"
       ]
     },
     {
