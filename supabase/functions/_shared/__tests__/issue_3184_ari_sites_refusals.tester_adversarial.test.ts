@@ -299,11 +299,14 @@ const TOOL_ARGS: Record<string, Json> = {
   get_site_page: { brand_id: BRAND_ID, site_id: SITE_ID, page_role: "home" },
   // #2829 W9b — the website designer's tools (typed proposals with a work-log entry).
   get_site_plan: { brand_id: BRAND_ID },
+  start_brand_completeness_job: { brand_id: BRAND_ID },
   list_site_designs: { brand_id: BRAND_ID },
   get_block_catalog: { brand_id: BRAND_ID },
   get_site_tokens: { brand_id: BRAND_ID, site_id: SITE_ID },
   run_site_design_checks: { brand_id: BRAND_ID, site_id: SITE_ID },
   save_site_plan_answers: { brand_id: BRAND_ID, expected_plan_revision: 1, answers: { offerings_selected: ["trips"] }, why: "Owner said trips", cites: CITES },
+  save_site_plan_design: { brand_id: BRAND_ID, expected_plan_revision: 1, design_key: "atelier", why: "Owner chose Atelier", cites: CITES },
+  update_brand_context: { brand_id: BRAND_ID, expected_plan_revision: 1, patch: { description: "Small group trips" }, exceptions: [], evidence: { source_type: "owner" }, why: "Owner supplied the description", cites: CITES },
   create_site_draft: { brand_id: BRAND_ID, why: "Plan approved", cites: CITES },
   propose_site_composition: { brand_id: BRAND_ID, site_id: SITE_ID, expected_site_revision: DIGEST, menu: [{ page_path: "about", label: "About" }], why: "Menu", cites: CITES },
   propose_block_variant: { brand_id: BRAND_ID, site_id: SITE_ID, page_path: "", expected_revision: "rev-1", block_index: 0, variant: "atelier", why: "Layout", cites: CITES },
@@ -960,8 +963,13 @@ Deno.test({
       // #2829 W9b — list_site_designs and get_block_catalog answer from the
       // site-contracts copy without calling brand-site-control, so no
       // control answer can reach them.
-      const LOCAL_READS = new Set(["list_site_designs", "get_block_catalog"]);
-      for (const tool of SITE_AGENT_TOOLS.filter((item) => !LOCAL_READS.has(item.name))) {
+      const CONTROL_INDEPENDENT = new Set([
+        "list_site_designs",
+        "get_block_catalog",
+        "start_brand_completeness_job",
+        "update_brand_context",
+      ]);
+      for (const tool of SITE_AGENT_TOOLS.filter((item) => !CONTROL_INDEPENDENT.has(item.name))) {
         const args = TOOL_ARGS[tool.name];
         assert(args, `no adversarial args for ${tool.name}`);
         for (const [label, control] of answers) {

@@ -928,12 +928,12 @@ const updateBrandContext = tool(
         throw new ToolError("REVISION_CONFLICT", "The Website setup changed. Read get_site_plan again before proposing this update.");
       }
       if (message.includes("sites_plan_locked")) {
-        throw new ToolError("CONFLICT", "A teammate is editing the Website setup. Read the plan again before continuing.");
+        throw new ToolError("REVISION_CONFLICT", "A teammate is editing the Website setup. Read the plan again before continuing.");
       }
       if (message.includes("forbidden")) {
         throw new ToolError("FORBIDDEN", "A brand admin or owner must confirm this brand-context change.");
       }
-      throw new ToolError("WRITE_FAILED", message);
+      throw new ToolError("SITE_SERVICE_UNAVAILABLE", "Ari could not save that Website detail right now.");
     }
     const logged = await logWorkIfSite(client, args.brand_id, {
       part: "brand_context",
