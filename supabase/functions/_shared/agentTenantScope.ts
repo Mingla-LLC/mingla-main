@@ -58,6 +58,9 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   "list_site_versions",
   // #2829 W9b — the website designer's reads assert the same authority inline.
   "get_site_plan",
+  // #2830 — starting/resuming Fix all mutates only Ari-owned job state, but it
+  // still runs inline and must assert the same explicit brand membership.
+  "start_brand_completeness_job",
   "list_site_designs",
   "get_block_catalog",
   "get_site_tokens",
