@@ -8,6 +8,7 @@ import {
   resolveExplorerProfileAfterAuthEvent,
   withExplorerReactivationIntent,
 } from "../explorerReactivation.ts";
+import { buildExplorerProfileAuthRestRequest } from "../explorerProfileAuthRest.ts";
 
 const deletedProfile: {
   id: string;
@@ -107,6 +108,50 @@ Deno.test("#4202 a failed auth attempt cannot leave reactivation intent armed", 
   assertEquals(captureExplorerReactivationIntentForAuthEvent("SIGNED_IN"), false);
 });
 
+Deno.test("#4202 post-auth profile reads use the captured bearer, never the anon key", () => {
+  const request = buildExplorerProfileAuthRestRequest({
+    supabaseUrl: "https://project.supabase.co/",
+    anonKey: "anon-key",
+    accessToken: "verified-user-token",
+    userId: deletedProfile.id,
+    reactivate: false,
+  });
+
+  assertEquals(request.init.method, "GET");
+  assertEquals(request.init.body, undefined);
+  assertEquals(
+    (request.init.headers as Record<string, string>).Authorization,
+    "Bearer verified-user-token",
+  );
+  assertEquals((request.init.headers as Record<string, string>).apikey, "anon-key");
+  assert(request.url.startsWith("https://project.supabase.co/rest/v1/profiles?"));
+  assert(request.url.includes(`id=eq.${deletedProfile.id}`));
+});
+
+Deno.test("#4202 reactivation PATCH changes only the Explorer marker and onboarding", () => {
+  const request = buildExplorerProfileAuthRestRequest({
+    supabaseUrl: "https://project.supabase.co",
+    anonKey: "anon-key",
+    accessToken: "verified-user-token",
+    userId: deletedProfile.id,
+    reactivate: true,
+  });
+
+  assertEquals(request.init.method, "PATCH");
+  assertEquals(
+    JSON.parse(String(request.init.body)),
+    { explorer_deleted_at: null, has_completed_onboarding: false },
+  );
+  assertEquals(
+    (request.init.headers as Record<string, string>).Prefer,
+    "return=representation",
+  );
+  assertEquals(
+    (request.init.headers as Record<string, string>).Authorization,
+    "Bearer verified-user-token",
+  );
+});
+
 Deno.test("#4202 the auth callback clears only the Explorer marker and restarts onboarding", async () => {
   const hookSource = await Deno.readTextFile(
     new URL("../../hooks/useAuthSimple.ts", import.meta.url),
@@ -120,10 +165,20 @@ Deno.test("#4202 the auth callback clears only the Explorer marker and restarts 
   const claimSource = await Deno.readTextFile(
     new URL("../../services/attendanceClaimService.ts", import.meta.url),
   );
+  const supabaseSource = await Deno.readTextFile(
+    new URL("../../services/supabase.ts", import.meta.url),
+  );
+  const authRestSource = await Deno.readTextFile(
+    new URL("../explorerProfileAuthRest.ts", import.meta.url),
+  );
   assert(hookSource.includes("captureExplorerReactivationIntentForAuthEvent(event)"));
   assert(hookSource.includes("resolveExplorerProfileAfterAuthEvent"));
-  assert(hookSource.includes("explorer_deleted_at: null"));
-  assert(hookSource.includes("has_completed_onboarding: false"));
+  assert(authRestSource.includes("explorer_deleted_at: null"));
+  assert(authRestSource.includes("has_completed_onboarding: false"));
+  assert(hookSource.includes("requestOwnExplorerProfileForAuthEvent<ExplorerAuthProfile>"));
+  assert(hookSource.includes("accessToken: session.access_token"));
+  assert(supabaseSource.includes("buildExplorerProfileAuthRestRequest"));
+  assert(supabaseSource.includes("fetchWithTimeout(request.url"));
   assert(hookSource.includes('resolution.kind === "deleted_session"'));
   assert(hookSource.includes('resolution.kind === "reactivation_failed"'));
   assert(appStateSource.includes("withExplorerReactivationIntent(signInWithGoogle)"));

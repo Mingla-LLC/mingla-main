@@ -6,7 +6,10 @@ import {
   statusCodes,
 } from "@react-native-google-signin/google-signin";
 import * as AppleAuthentication from "expo-apple-authentication";
-import { supabase } from "../services/supabase";
+import {
+  requestOwnExplorerProfileForAuthEvent,
+  supabase,
+} from "../services/supabase";
 import { realtimeService } from "../services/realtimeService";
 import { useAppStore } from "../store/appStore";
 import { User } from "../types";
@@ -38,6 +41,10 @@ import {
 // Prevents duplicate SIGNED_OUT handling when multiple hook instances are mounted.
 // Placed after imports so ESLint import/first rule is satisfied.
 let _isHandlingSignOut = false;
+
+type ExplorerAuthProfile = User & {
+  explorer_deleted_at?: string | null;
+};
 
 // Configure Google Sign-In
 const webClientId =
@@ -551,18 +558,20 @@ export const useAuthSimple = () => {
         // The Supabase SDK's _notifyAllSubscribers() AWAITS this callback.
         // A direct `await supabase.from()` here would call getSession() which
         // awaits initializePromise — circular deadlock (see I-AUTH-CB-01 above).
-        // setTimeout(0) breaks out of the await chain: by the time the deferred
-        // function runs, _notifyAllSubscribers has already resolved this callback,
-        // initializePromise has completed, and getSession() works normally.
+        // setTimeout(0) breaks out of the callback's deadlock chain. It does NOT
+        // guarantee that every request builder on the shared client has observed
+        // the new bearer yet, so the #4202 profile gate below uses the access
+        // token captured on this auth event explicitly.
         setTimeout(async () => {
           if (!mounted) return;
           try {
             // #4202 [explorer-account-deletion] — begin explicit reactivation gate.
-            const { data: profile, error: profileError } = await supabase
-              .from("profiles")
-              .select("*")
-              .eq("id", session.user.id)
-              .single();
+            const { data: profile, error: profileError } =
+              await requestOwnExplorerProfileForAuthEvent<ExplorerAuthProfile>({
+                accessToken: session.access_token,
+                userId: session.user.id,
+                reactivate: false,
+              });
             if (profileError || !profile) {
               console.error("Profile load in auth callback failed:", profileError);
               return;
@@ -571,16 +580,11 @@ export const useAuthSimple = () => {
             const resolution = await resolveExplorerProfileAfterAuthEvent(
               explorerReactivationIntentConfirmed,
               profile,
-              () =>
-                supabase
-                  .from("profiles")
-                  .update({
-                    explorer_deleted_at: null,
-                    has_completed_onboarding: false,
-                  })
-                  .eq("id", session.user.id)
-                  .select("*")
-                  .single(),
+              () => requestOwnExplorerProfileForAuthEvent<ExplorerAuthProfile>({
+                accessToken: session.access_token,
+                userId: session.user.id,
+                reactivate: true,
+              }),
             );
 
             if (resolution.kind === "deleted_session") {
