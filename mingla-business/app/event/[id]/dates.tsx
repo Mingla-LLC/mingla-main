@@ -2,7 +2,15 @@
  * issue #3281 many-dates — Host Dates list (PR 3 + dark-theme follow-up).
  * Edit per-date title / venue via business_set_event_date_override.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   RefreshControl,
@@ -20,6 +28,7 @@ import { TopBar } from "../../../src/components/ui/TopBar";
 import { Button } from "../../../src/components/ui/Button";
 import { Toast } from "../../../src/components/ui/Toast";
 import { supabase } from "../../../src/services/supabase";
+import { formatCurrency } from "../../../src/utils/currency";
 import {
   accent,
   canvas,
@@ -28,6 +37,19 @@ import {
   typography,
 } from "../../../src/constants/designSystem";
 
+// ConfirmDialog pulls reanimated — keep it off the Dates boot path.
+const LazyConfirmDialog = lazy(async () => {
+  const mod = await import("../../../src/components/ui/ConfirmDialog");
+  return { default: mod.ConfirmDialog };
+});
+
+type CancelPreview = {
+  rowId: string;
+  buyerCount: number;
+  amountCents: number;
+  currency: string;
+};
+
 type DateRow = {
   id: string;
   start_at: string;
@@ -35,6 +57,8 @@ type DateRow = {
   timezone: string | null;
   override_title: string | null;
   override_location: string | null;
+  /** issue #3281 PR9 */
+  status?: string | null;
 };
 
 const formatInZone = (iso: string, zone: string | null): string => {
@@ -66,6 +90,10 @@ export default function EventDatesScreen(): React.ReactElement {
   const [refreshing, setRefreshing] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [cancelPreview, setCancelPreview] = useState<CancelPreview | null>(
+    null,
+  );
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [drafts, setDrafts] = useState<
     Record<string, { title: string; location: string }>
   >({});
@@ -84,7 +112,9 @@ export default function EventDatesScreen(): React.ReactElement {
     else setLoading(true);
     const { data, error } = await supabase
       .from("event_dates")
-      .select("id, start_at, end_at, timezone, override_title, override_location")
+      .select(
+        "id, start_at, end_at, timezone, override_title, override_location, status",
+      )
       .eq("event_id", id)
       .order("start_at", { ascending: true });
     if (opts?.soft === true) setRefreshing(false);
@@ -115,6 +145,82 @@ export default function EventDatesScreen(): React.ReactElement {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const formatLiability = (
+    amountCents: number,
+    currency: string,
+  ): string | null => {
+    const code = currency.trim();
+    if (code.length === 0 || amountCents <= 0) return null;
+    try {
+      return formatCurrency(amountCents, code, true);
+    } catch {
+      return null;
+    }
+  };
+
+  const requestCancelPreview = async (rowId: string): Promise<void> => {
+    if (typeof id !== "string") return;
+    const row = rows.find((r) => r.id === rowId);
+    if (row === undefined || row.status === "cancelled") return;
+    setSavingId(rowId);
+    const reason = "Host cancelled this date for guests and buyers.";
+    const { data: preview, error: previewError } = await supabase.rpc(
+      "business_cancel_event_date",
+      {
+        p_event_id: id,
+        p_event_date_id: rowId,
+        p_reason: reason,
+        p_preview: true,
+      },
+    );
+    setSavingId(null);
+    if (previewError) {
+      setToast(previewError.message);
+      return;
+    }
+    setCancelPreview({
+      rowId,
+      buyerCount:
+        typeof preview?.buyerCount === "number" ? preview.buyerCount : 0,
+      amountCents:
+        typeof preview?.amountCents === "number" ? preview.amountCents : 0,
+      currency: typeof preview?.currency === "string" ? preview.currency : "",
+    });
+  };
+
+  const dismissCancelPreview = useCallback((): void => {
+    if (confirmingCancel) return;
+    setCancelPreview(null);
+  }, [confirmingCancel]);
+
+  const confirmCancelDate = async (): Promise<void> => {
+    if (typeof id !== "string" || cancelPreview === null) return;
+    const { rowId, buyerCount, amountCents, currency } = cancelPreview;
+    setConfirmingCancel(true);
+    const reason = "Host cancelled this date for guests and buyers.";
+    const { error } = await supabase.rpc("business_cancel_event_date", {
+      p_event_id: id,
+      p_event_date_id: rowId,
+      p_reason: reason,
+      p_preview: false,
+    });
+    setConfirmingCancel(false);
+    if (error) {
+      setToast(error.message);
+      return;
+    }
+    setCancelPreview(null);
+    setRows((prev) =>
+      prev.map((r) => (r.id === rowId ? { ...r, status: "cancelled" } : r)),
+    );
+    const money = formatLiability(amountCents, currency);
+    setToast(
+      buyerCount > 0
+        ? `Date cancelled · ${buyerCount} buyer${buyerCount === 1 ? "" : "s"}${money !== null ? ` · est. liability ${money}` : ""}`
+        : "Date cancelled",
+    );
+  };
 
   const saveRow = async (rowId: string) => {
     if (typeof id !== "string") return;
@@ -190,16 +296,17 @@ export default function EventDatesScreen(): React.ReactElement {
             rows.map((r) => {
               const d = drafts[r.id] ?? { title: "", location: "" };
               const past = isPastEnd(r.end_at, nowMs);
+              const cancelled = r.status === "cancelled";
               return (
                 <View key={r.id} style={styles.card}>
                   <Text style={styles.when}>
                     {formatInZone(r.start_at, r.timezone)}
-                    {past ? " · ended" : ""}
+                    {cancelled ? " · cancelled" : past ? " · ended" : ""}
                   </Text>
                   <Text style={styles.label}>Title for this date</Text>
                   <TextInput
                     value={d.title}
-                    editable={!past && savingId === null}
+                    editable={!past && !cancelled && savingId === null}
                     onChangeText={(title) => {
                       dirtyIdsRef.current.add(r.id);
                       setDrafts((prev) => ({
@@ -210,12 +317,15 @@ export default function EventDatesScreen(): React.ReactElement {
                     placeholder="Inherits event title"
                     placeholderTextColor={textTokens.quaternary}
                     maxLength={120}
-                    style={[styles.input, past ? styles.inputDisabled : null]}
+                    style={[
+                      styles.input,
+                      past || cancelled ? styles.inputDisabled : null,
+                    ]}
                   />
                   <Text style={styles.label}>Place for this date</Text>
                   <TextInput
                     value={d.location}
-                    editable={!past && savingId === null}
+                    editable={!past && !cancelled && savingId === null}
                     onChangeText={(location) => {
                       dirtyIdsRef.current.add(r.id);
                       setDrafts((prev) => ({
@@ -226,20 +336,35 @@ export default function EventDatesScreen(): React.ReactElement {
                     placeholder="Inherits venue"
                     placeholderTextColor={textTokens.quaternary}
                     maxLength={120}
-                    style={[styles.input, past ? styles.inputDisabled : null]}
+                    style={[
+                      styles.input,
+                      past || cancelled ? styles.inputDisabled : null,
+                    ]}
                   />
-                  {past ? (
+                  {cancelled ? (
+                    <Text style={styles.mutedInline}>
+                      Cancelled · not offered to new buyers. Refunds (when
+                      owed) are handled separately.
+                    </Text>
+                  ) : past ? (
                     <Text style={styles.mutedInline}>
                       Past dates are read-only.
                     </Text>
                   ) : (
-                    <Button
-                      label={savingId === r.id ? "Saving…" : "Save"}
-                      onPress={() => void saveRow(r.id)}
-                      // One in-flight save at a time: a second row's save must not
-                      // re-enable this row while its request is still pending.
-                      disabled={savingId !== null}
-                    />
+                    <View style={styles.rowActions}>
+                      <Button
+                        label={savingId === r.id ? "Saving…" : "Save"}
+                        onPress={() => void saveRow(r.id)}
+                        disabled={savingId !== null}
+                      />
+                      <Button
+                        label="Cancel this date"
+                        variant="secondary"
+                        onPress={() => void requestCancelPreview(r.id)}
+                        disabled={savingId !== null || cancelPreview !== null}
+                        testID={`issue-3281-cancel-date-${r.id}`}
+                      />
+                    </View>
                   )}
                 </View>
               );
@@ -247,6 +372,35 @@ export default function EventDatesScreen(): React.ReactElement {
           )}
         </ScrollView>
       )}
+      {cancelPreview !== null ? (
+        <Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            destructive
+            title="Cancel this date?"
+            description={(() => {
+              const money = formatLiability(
+                cancelPreview.amountCents,
+                cancelPreview.currency,
+              );
+              if (cancelPreview.buyerCount <= 0) {
+                return "No paid buyers cover this date. Cancelling hides it from new buyers. This cannot be undone from here.";
+              }
+              return money !== null
+                ? `${cancelPreview.buyerCount} buyer${cancelPreview.buyerCount === 1 ? "" : "s"} cover this date. Estimated refund liability ${money}. Cancelling hides the date from new buyers; refunds are not issued by this action.`
+                : `${cancelPreview.buyerCount} buyer${cancelPreview.buyerCount === 1 ? "" : "s"} cover this date. Cancelling hides the date from new buyers; refunds are not issued by this action.`;
+            })()}
+            confirmLabel="Cancel date"
+            cancelLabel="Keep date"
+            confirmLoading={confirmingCancel}
+            onClose={dismissCancelPreview}
+            onConfirm={() => void confirmCancelDate()}
+            testID="issue-3281-cancel-date-confirm"
+            confirmTestID="issue-3281-cancel-date-confirm-yes"
+            cancelTestID="issue-3281-cancel-date-confirm-no"
+          />
+        </Suspense>
+      ) : null}
       <Toast
         visible={toast !== null}
         kind="info"
@@ -292,4 +446,5 @@ const styles = StyleSheet.create({
   inputDisabled: { opacity: 0.55 },
   muted: { color: textTokens.tertiary, marginTop: 16 },
   mutedInline: { color: textTokens.tertiary, marginTop: 4 },
+  rowActions: { gap: 8, marginTop: 4 },
 });

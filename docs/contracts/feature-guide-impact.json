@@ -289,6 +289,13 @@
       "paths": [
         "mingla-business/src/components/event/EventDetailTicketTypeRow.tsx"
       ]
+    },
+    {
+      "capability_key": "events-edit-live",
+      "paths": [
+        "mingla-business/app/event/[id]/dates.tsx",
+        "supabase/migrations/20280216003281_issue_3281_cancel_event_date.sql"
+      ]
     }
   ]
 }
