@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_2830_brand_completeness.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-2830-brand-completeness-control-plane",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

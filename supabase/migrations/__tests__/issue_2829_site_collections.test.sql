@@ -58,14 +58,13 @@ BEGIN
   PERFORM public.brand_site_admin_grant(v_brand, 'rollout', NULL);
   PERFORM public.brand_site_admin_grant(v_other, 'rollout', NULL);
 
-  PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_owner)::text, true);
-  PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
-  v_result := public.brand_site_provision(v_brand, gen_random_uuid(), repeat('1', 64));
-  v_site := (v_result->>'site_id')::uuid;
-  PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_other_owner)::text, true);
-  PERFORM set_config('request.jwt.claim.sub', v_other_owner::text, true);
-  v_result := public.brand_site_provision(v_other, gen_random_uuid(), repeat('2', 64));
-  v_other_site := (v_result->>'site_id')::uuid;
+  -- These are deliberately legacy sites from before setup plans existed.
+  -- Constructing them directly preserves that compatibility contract while
+  -- new public provisioning remains subject to #2830's completeness gate.
+  INSERT INTO public.brand_sites(brand_id, created_by)
+  VALUES (v_brand, v_owner) RETURNING id INTO v_site;
+  INSERT INTO public.brand_sites(brand_id, created_by)
+  VALUES (v_other, v_other_owner) RETURNING id INTO v_other_site;
 
   -- ── the plan never contradicts a site that predates it ──────────────────
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_owner)::text, true);

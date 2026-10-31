@@ -233,6 +233,8 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   // trip guides: event managers and up (rank 40). Core re-checks every rank.
   get_brand_site: role("marketing_manager", "brand"),
   get_site_plan: role("marketing_manager", "brand"),
+  start_brand_completeness_job: role("marketing_manager", "brand"),
+  record_brand_context_finding: role("brand_admin", "brand"),
   list_site_designs: role("marketing_manager", "brand"),
   get_block_catalog: role("marketing_manager", "brand"),
   get_site_tokens: role("marketing_manager", "brand"),
@@ -241,6 +243,8 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   get_site_page: role("marketing_manager", "brand"),
   validate_site_draft: role("marketing_manager", "brand"),
   save_site_plan_answers: role("brand_admin", "brand"),
+  save_site_plan_design: role("brand_admin", "brand"),
+  update_brand_context: role("brand_admin", "brand"),
   create_site_draft: role("brand_admin", "brand"),
   propose_site_composition: role("marketing_manager", "brand"),
   propose_block_variant: role("marketing_manager", "brand"),

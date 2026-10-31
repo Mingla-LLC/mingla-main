@@ -18,7 +18,7 @@ import {
 } from "../_shared/sitesSecurity.ts";
 import { observeSitesRequest } from "../_shared/sitesObservability.ts";
 import { corsHeaders } from "../_shared/cors.ts";
-import { handleSitePlanRoute } from "./sitePlan.ts";
+import { handleSitePlanRoute, planFailureFromRpc } from "./sitePlan.ts";
 import { handleSiteContentRoute } from "./siteContent.ts";
 import { handleSiteShareRoute } from "./siteShare.ts";
 import { ARI_CMS_ACTIONS, ARI_DESIGNER_ACTIONS, ariFailureFrom, siteEvidence } from "./siteAri.ts";
@@ -634,6 +634,18 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
     if (brandMatch && method === "POST") {
       const brandId = requireUuid(brandMatch[1]);
       const operationId = requireUuid(input.operation_id);
+      // #2830 — provisioning is the first moment a website draft can exist.
+      // Core refuses it until setup and brand context are complete; the UI and
+      // Ari cannot bypass this by calling the older provision route directly.
+      const { data: setup, error: setupError } = await db.user.rpc(
+        "brand_site_plan_authorize_provision",
+        { p_brand_id: brandId },
+      );
+      if (setupError) return planFailureFromRpc(setupError.message, operationId);
+      const designKey = (setup as { design_key?: unknown } | null)?.design_key;
+      if (designKey !== "atelier" && designKey !== "voyage") {
+        return sitesFailure("INVALID_STATE", 409, operationId);
+      }
       // #2829 — an optional owner-confirmed label; otherwise Core derives it
       // from the brand (the same value site-label proposed).
       const label = typeof input.label === "string" ? input.label : null;
@@ -691,6 +703,7 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
           renderer_version: 1,
           display_name: String(brandRow.name).slice(0, 120),
           primary_hostname: hostRow.hostname,
+          design_key: designKey,
         },
       });
     }

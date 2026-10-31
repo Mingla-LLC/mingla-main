@@ -159,6 +159,8 @@ const DOMPURIFY_MAJOR = 3;
 const ARI_TOOL_ROLES = {
   get_brand_site: "marketing_manager",
   get_site_plan: "marketing_manager",
+  start_brand_completeness_job: "marketing_manager",
+  record_brand_context_finding: "brand_admin",
   list_site_designs: "marketing_manager",
   get_block_catalog: "marketing_manager",
   get_site_tokens: "marketing_manager",
@@ -166,6 +168,8 @@ const ARI_TOOL_ROLES = {
   list_site_pages: "marketing_manager",
   get_site_page: "marketing_manager",
   validate_site_draft: "marketing_manager",
+  save_site_plan_design: "brand_admin",
+  update_brand_context: "brand_admin",
   save_site_plan_answers: "brand_admin",
   create_site_draft: "brand_admin",
   propose_site_composition: "marketing_manager",
@@ -730,7 +734,7 @@ export function violations(files) {
   ) failures.push("slot 88: exact manifest contract missing");
 
   const ariTools = files.ariTools ?? "";
-  const toolNames = [...ariTools.matchAll(/publicationTool\("([^"]+)"\)|^\s*"((?:get|list|propose|attach|validate|save|create|run|confirm)_[^"]+)"/gm)]
+  const toolNames = [...ariTools.matchAll(/publicationTool\("([^"]+)"\)|^\s*"((?:get|list|start|record|propose|attach|validate|save|update|create|run|confirm)_[^"]+)"/gm)]
     .map((match) => match[1] || match[2])
     .filter((name, index, names) => name && names.indexOf(name) === index);
   for (const name of ARI_TOOLS) {

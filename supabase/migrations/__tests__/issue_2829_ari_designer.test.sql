@@ -12,6 +12,7 @@
 -- fixtures only.
 
 \set ON_ERROR_STOP on
+\ir issue_2830_complete_brand_setup.fixture.sql
 BEGIN;
 
 DO $w9b$
@@ -152,6 +153,7 @@ BEGIN
   -- ── a first publish refused for unrun checks names itself; free text never
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_granted_owner)::text, true);
   PERFORM set_config('request.jwt.claim.sub', v_granted_owner::text, true);
+  PERFORM pg_temp.issue_2830_complete_brand_setup(v_granted, v_granted_owner);
   v_result := public.brand_site_provision(v_granted, gen_random_uuid(), repeat('3', 64));
   v_site := (v_result->>'site_id')::uuid;
   PERFORM public.brand_site_complete_provision(v_site,
