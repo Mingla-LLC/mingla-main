@@ -58,6 +58,37 @@ const csvEscapeDay = (value: string): string => {
   return value;
 };
 
+/** Split RFC 4180 records; CRLF inside quotes stays inside the same record. */
+export const splitCsvRecords = (csv: string): string[] => {
+  const records: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < csv.length; i += 1) {
+    const ch = csv[i] ?? "";
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      cur += ch;
+      continue;
+    }
+    if (!inQuotes && ch === "\r" && csv[i + 1] === "\n") {
+      records.push(cur);
+      cur = "";
+      i += 1;
+      continue;
+    }
+    if (!inQuotes && ch === "\n") {
+      records.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur.length > 0 || csv.endsWith("\n") || csv.endsWith("\r\n")) {
+    records.push(cur);
+  }
+  return records;
+};
+
 const lastUnquotedComma = (line: string): number => {
   let inQuotes = false;
   let last = -1;
@@ -80,20 +111,20 @@ const daySourceForRow = (row: ExportGuestRow): GuestCsvDayCellOrder => {
 /**
  * Same as serializeGuestsToCsv, but the Day column uses occurrence order /
  * "All N dates" without growing the shared guestCsvExport __common module.
+ * Record splitting respects quoted CRLF so notes cannot desync rowIdx.
  */
 export const serializeGuestsToCsvByOccurrence = (
   rows: ExportGuestRow[],
   dayLabels: ReadonlyMap<string, string> = new Map(),
 ): string => {
   const raw = serializeGuestsToCsv(rows, undefined, dayLabels);
-  const lines = raw.split("\r\n");
-  if (lines.length === 0) return raw;
-  const out: string[] = [lines[0] ?? ""];
+  const records = splitCsvRecords(raw);
+  if (records.length === 0) return raw;
+  const out: string[] = [];
   let rowIdx = 0;
-  for (let i = 1; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (line === undefined) continue;
-    if (line.length === 0 || line.startsWith("#")) {
+  for (let i = 0; i < records.length; i += 1) {
+    const line = records[i] ?? "";
+    if (i === 0 || line.length === 0 || line.startsWith("#")) {
       out.push(line);
       continue;
     }

@@ -30,6 +30,7 @@ import {
 import {
   orderDayCellByOccurrence,
   serializeGuestsToCsvByOccurrence,
+  splitCsvRecords,
 } from "../guestCsvDayOrder";
 import { dayHeadCount, orderMatchesDay } from "../guestDayFilter";
 import { draftMultiDatePricingMode } from "../multiDatePricingMode";
@@ -441,6 +442,14 @@ describe("issue #2160 — the CSV carries the day (a roster you cannot export is
   test("the row's Day cell names a full pass as All N dates", () => {
     expect(
       serializeGuestsToCsvByOccurrence([order], LABELS).split("\r\n")[1],
+    ).toContain("All 2 dates");
+  });
+
+  test("quoted CRLF inside a field does not split CSV records", () => {
+    const embedded = 'a,"b\r\nc",d\r\ne,f,g\r\n';
+    expect(splitCsvRecords(embedded)).toEqual(['a,"b\r\nc",d', "e,f,g", ""]);
+    expect(
+      serializeGuestsToCsvByOccurrence([order], LABELS),
     ).toContain("All 2 dates");
   });
 
