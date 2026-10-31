@@ -2,15 +2,35 @@
   "version": 1,
   "mappings": [
     {
+      "capability_key": "account-delete",
+      "paths": [
+        "supabase/functions/_shared/explorerPhoneRelease.ts",
+        "supabase/functions/delete-user/index.ts"
+      ]
+    },
+    {
+      "capability_key": "account-explorer-onboarding",
+      "paths": [
+        "app-mobile/src/components/OnboardingFlow.tsx",
+        "app-mobile/src/components/onboarding/TicketsFoundStep.tsx",
+        "app-mobile/src/hooks/onboardingSequenceLogic.ts",
+        "app-mobile/src/hooks/useOnboardingStateMachine.ts"
+      ]
+    },
+    {
       "capability_key": "checkout-claim-ticket",
       "paths": [
+        "app-mobile/src/components/OnboardingFlow.tsx",
+        "app-mobile/src/components/onboarding/TicketsFoundStep.tsx",
         "supabase/functions/claim-link/index.ts"
       ]
     },
     {
       "capability_key": "checkout-tickets",
       "paths": [
-        "mingla-business/app/checkout/[eventId]/buyer.tsx"
+        "app-mobile/src/i18n/locales/en/purchases.json",
+        "mingla-business/app/checkout/[eventId]/buyer.tsx",
+        "supabase/migrations/20280216004203_issue_4203_hidden_purchase_reads.sql"
       ]
     },
     {
