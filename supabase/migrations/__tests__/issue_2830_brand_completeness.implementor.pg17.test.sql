@@ -1,6 +1,7 @@
--- MINGLA-INVARIANT: I-2830-CONTEXT-IS-SERVER-TRUTH | issue #2830 | Website setup completeness, provenance and first-draft readiness are computed in Core; plan ticks and clients cannot award completion.
+-- MINGLA-INVARIANT: I-2830-CONTEXT-IS-SERVER-TRUTH | issue #2830 | Website setup completeness, provenance and initial provisioning eligibility are computed in Core; plan ticks and clients cannot award completion.
 -- MINGLA-INVARIANT: I-2830-NO-DRAFT-BEFORE-SETUP | issue #2830 | Provisioning is refused until the first five plan parts and every required or recommended brand-context field are resolved.
 -- MINGLA-INVARIANT: I-2830-PRE-DRAFT-DESIGN | issue #2830 | A revision-safe design choice lives on the shared setup plan before a brand_sites row exists.
+-- MINGLA-INVARIANT: I-2830-CONTEXT-WRITES-RECEIPTED | issue #2830 | Ari brand-context writes require owner authority, revision compare-and-set, and one canonical operation receipt.
 
 \set ON_ERROR_STOP on
 BEGIN;
