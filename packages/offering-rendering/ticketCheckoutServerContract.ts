@@ -8,9 +8,50 @@
 import {
   type CanonicalCheckoutLine,
   canonicalJson,
+  type CheckoutV2LineParseResult,
   isCheckoutAttemptId,
+  normalizeCheckoutV2Lines,
   TICKET_CHECKOUT_CONTRACT_VERSION,
 } from "./ticketCheckoutContract.ts";
+
+/**
+ * issue #3281 — v2 lines for the edge function. The map, not a stale scalar,
+ * owns an uneven line's total, so zero dates drop out and quantity is derived.
+ * This stays server-only to keep the check out of the eager web payload.
+ */
+export function normalizeCheckoutV2ServerLines(
+  value: unknown,
+): CheckoutV2LineParseResult {
+  const parsed = normalizeCheckoutV2Lines(value);
+  if (!parsed.ok) return parsed;
+  const invalid = { ok: false, error: "checkout_lines_invalid" } as const;
+  const lines = [];
+  for (const line of parsed.lines) {
+    if (line.byDate === undefined) {
+      lines.push(line);
+      continue;
+    }
+    const map: unknown = line.byDate;
+    if (map === null || typeof map !== "object" || Array.isArray(map)) {
+      return invalid;
+    }
+    const byDate: Record<string, number> = {};
+    let quantity = 0;
+    for (const [dateId, count] of Object.entries(map)) {
+      if (
+        !isCheckoutAttemptId(dateId) || !Number.isInteger(count) ||
+        Number(count) < 0 || Number(count) > 100_000
+      ) {
+        return invalid;
+      }
+      if (Number(count) > 0) byDate[dateId] = Number(count);
+      quantity += Number(count);
+    }
+    if (quantity < 1 || quantity > 100_000) return invalid;
+    lines.push({ ...line, quantity, byDate });
+  }
+  return { ok: true, lines };
+}
 
 export function checkoutV2IdempotencyKey(input: {
   eventId: string;

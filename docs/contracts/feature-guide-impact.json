@@ -30,6 +30,8 @@
       "capability_key": "checkout-tickets",
       "paths": [
         "app-mobile/src/i18n/locales/en/purchases.json",
+        "packages/offering-rendering/ticketCheckoutContract.ts",
+        "supabase/functions/ticket-checkout-create/byDateDatabaseGuard.ts",
         "mingla-business/app/checkout/[eventId]/index.tsx",
         "mingla-business/app/checkout/[eventId]/buyer.tsx",
         "mingla-business/src/components/checkout/CartContext.tsx",

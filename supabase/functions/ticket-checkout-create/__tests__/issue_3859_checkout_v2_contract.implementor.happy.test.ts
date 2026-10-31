@@ -10,6 +10,7 @@ import {
 import {
   canonicalCheckoutV2FingerprintInput,
   checkoutV2IdempotencyKey,
+  normalizeCheckoutV2ServerLines,
 } from "../../../../packages/offering-rendering/ticketCheckoutServerContract.ts";
 import {
   computeMultiLineInstallmentPlan,
@@ -326,7 +327,7 @@ Deno.test("#3859 migration binds one fingerprint and preserves line/order proven
 Deno.test("#3281 v2 keeps byDate, derives quantity and leaves plain lines alone", () => {
   const DAY_ONE = "55555555-5555-4555-8555-555555555555";
   const DAY_TWO = "66666666-6666-4666-8666-666666666666";
-  const parsed = normalizeCheckoutV2Lines([{
+  const parsed = normalizeCheckoutV2ServerLines([{
     ticketTypeId: VIP,
     quantity: 1,
     paymentPlanChoice: "full",
@@ -340,7 +341,7 @@ Deno.test("#3281 v2 keeps byDate, derives quantity and leaves plain lines alone"
     byDate: { [DAY_ONE]: 2 },
   }]);
 
-  const plain = normalizeCheckoutV2Lines([
+  const plain = normalizeCheckoutV2ServerLines([
     { ticketTypeId: VIP, quantity: 2, paymentPlanChoice: "full" },
   ]);
   assert(plain.ok);
@@ -358,7 +359,7 @@ Deno.test("#3281 v2 keeps byDate, derives quantity and leaves plain lines alone"
     ]
   ) {
     assertEquals(
-      normalizeCheckoutV2Lines([{
+      normalizeCheckoutV2ServerLines([{
         ticketTypeId: VIP,
         quantity: 1,
         paymentPlanChoice: "full",
@@ -367,4 +368,16 @@ Deno.test("#3281 v2 keeps byDate, derives quantity and leaves plain lines alone"
       { ok: false, error: "checkout_lines_invalid" },
     );
   }
+});
+
+Deno.test("#3281 a changed date map changes the client attempt lines", () => {
+  const DAY_ONE = "55555555-5555-4555-8555-555555555555";
+  const parsed = normalizeCheckoutV2Lines([{
+    ticketTypeId: VIP,
+    quantity: 2,
+    paymentPlanChoice: "full",
+    byDate: { [DAY_ONE]: 2 },
+  }]);
+  assert(parsed.ok);
+  assertEquals(parsed.lines[0].byDate, { [DAY_ONE]: 2 });
 });

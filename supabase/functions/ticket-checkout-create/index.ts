@@ -42,12 +42,12 @@ import {
 import {
   type CheckoutV2Line,
   isCheckoutAttemptId,
-  normalizeCheckoutV2Lines,
   TICKET_CHECKOUT_CONTRACT_VERSION,
 } from "../../../packages/offering-rendering/ticketCheckoutContract.ts";
 import {
   canonicalCheckoutV2FingerprintInput,
   checkoutV2IdempotencyKey,
+  normalizeCheckoutV2ServerLines,
 } from "../../../packages/offering-rendering/ticketCheckoutServerContract.ts";
 import {
   computeMultiLineInstallmentPlan,
@@ -802,7 +802,7 @@ export const createTicketCheckoutCreateHandler = (
       if (!isCheckoutAttemptId(body.checkoutAttemptId)) {
         return jsonResponse({ error: "checkout_attempt_invalid" }, 400);
       }
-      const parsedLines = normalizeCheckoutV2Lines(body.lines);
+      const parsedLines = normalizeCheckoutV2ServerLines(body.lines);
       if (!parsedLines.ok) {
         return jsonResponse({ error: parsedLines.error }, 400);
       }
