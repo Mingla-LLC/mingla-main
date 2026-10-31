@@ -1075,7 +1075,7 @@ const extractListingCandidates: AgentToolDefinition = {
 const manageAgentJob: AgentToolDefinition = {
   name: "manage_agent_job",
   description:
-    "Create, inspect, checkpoint, pause, resume or cancel a durable Ari job. Use a stable UUID idempotency key when creating so retries never duplicate work.",
+    "Create, inspect, checkpoint, pause, resume or cancel a durable Ari job. Checkpoints can preserve the current and next action, one active question, verified/pending/blocked/human-action keys, and bounded evidence references. Use a stable UUID idempotency key when creating so retries never duplicate work.",
   parameters: {
     type: "object",
     additionalProperties: false,
@@ -1113,6 +1113,37 @@ const manageAgentJob: AgentToolDefinition = {
         nullable: true,
       },
       current_step: { type: "string", maxLength: 200, nullable: true },
+      next_action: {
+        type: "object",
+        nullable: true,
+        additionalProperties: false,
+        required: ["kind"],
+        properties: {
+          kind: {
+            type: "string",
+            enum: [
+              "fresh_terminal_read",
+              "human_handoff",
+              "resolve_conflict",
+              "refresh_evidence",
+              "propose_correction",
+              "research_or_ask",
+              "ask_owner",
+              "confirmed_write",
+              "readback",
+            ],
+          },
+          field_key: { type: "string", maxLength: 120, nullable: true },
+          detail: { type: "string", maxLength: 500, nullable: true },
+          requires_owner_input: { type: "boolean", nullable: true },
+          recheck_triggers: {
+            type: "array",
+            maxItems: 20,
+            items: { type: "string", maxLength: 120 },
+          },
+        },
+      },
+      active_question: { type: "string", maxLength: 500, nullable: true },
       completed_step_keys: {
         type: "array",
         maxItems: 50,
@@ -1122,6 +1153,40 @@ const manageAgentJob: AgentToolDefinition = {
         type: "array",
         maxItems: 50,
         items: { type: "string", maxLength: 120 },
+      },
+      blocked_step_keys: {
+        type: "array",
+        maxItems: 50,
+        items: { type: "string", maxLength: 120 },
+      },
+      human_action_step_keys: {
+        type: "array",
+        maxItems: 50,
+        items: { type: "string", maxLength: 120 },
+      },
+      evidence_refs: {
+        type: "array",
+        maxItems: 50,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["field_key", "source_type"],
+          properties: {
+            field_key: { type: "string", maxLength: 120 },
+            source_type: {
+              type: "string",
+              enum: ["mingla", "owner", "public_research", "imported"],
+            },
+            source_ref: { type: "string", maxLength: 300, nullable: true },
+            source_url: {
+              type: "string",
+              maxLength: 1000,
+              pattern: "^https://",
+              nullable: true,
+            },
+            observed_at: { type: "string", maxLength: 80, nullable: true },
+          },
+        },
       },
       last_error_code: { type: "string", maxLength: 120, nullable: true },
     },
@@ -1144,11 +1209,43 @@ const manageAgentJob: AgentToolDefinition = {
       );
     }
     if (typeof args.status === "string") patch.status = args.status;
-    if (typeof args.current_step === "string") {
-      patch.checkpoint = {
-        current_step: requiredText(args.current_step, "current_step", 200),
-      };
+    const checkpoint: Record<string, unknown> = {};
+    if (args.current_step === null) {
+      checkpoint.current_step = null;
+    } else if (typeof args.current_step === "string") {
+      checkpoint.current_step = requiredText(
+        args.current_step,
+        "current_step",
+        200,
+      );
     }
+    if (args.next_action === null) {
+      checkpoint.next_action = null;
+    } else if (
+      args.next_action && typeof args.next_action === "object" &&
+      !Array.isArray(args.next_action)
+    ) {
+      checkpoint.next_action = args.next_action;
+    }
+    if (args.active_question === null) {
+      checkpoint.active_question = null;
+    } else if (typeof args.active_question === "string") {
+      checkpoint.active_question = requiredText(
+        args.active_question,
+        "active_question",
+        500,
+      );
+    }
+    if (Array.isArray(args.blocked_step_keys)) {
+      checkpoint.blocked_step_keys = args.blocked_step_keys;
+    }
+    if (Array.isArray(args.human_action_step_keys)) {
+      checkpoint.human_action_step_keys = args.human_action_step_keys;
+    }
+    if (Array.isArray(args.evidence_refs)) {
+      checkpoint.evidence_refs = args.evidence_refs;
+    }
+    if (Object.keys(checkpoint).length > 0) patch.checkpoint = checkpoint;
     if (Array.isArray(args.completed_step_keys)) {
       patch.completed_step_keys = args.completed_step_keys;
     }

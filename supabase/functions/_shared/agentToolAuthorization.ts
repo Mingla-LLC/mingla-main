@@ -234,6 +234,7 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   get_brand_site: role("marketing_manager", "brand"),
   get_site_plan: role("marketing_manager", "brand"),
   start_brand_completeness_job: role("marketing_manager", "brand"),
+  record_brand_context_finding: role("brand_admin", "brand"),
   list_site_designs: role("marketing_manager", "brand"),
   get_block_catalog: role("marketing_manager", "brand"),
   get_site_tokens: role("marketing_manager", "brand"),

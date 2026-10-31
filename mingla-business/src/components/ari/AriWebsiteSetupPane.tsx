@@ -90,6 +90,7 @@ export function AriWebsiteSetupPane({
   fixing: boolean;
 }): React.ReactElement {
   const router = useRouter();
+  const [compactExpanded, setCompactExpanded] = React.useState(false);
   const setup = useQuery({
     queryKey: ["brand-site-plan", brandId, "ari-setup"],
     queryFn: () => getWebsiteSetup(brandId),
@@ -102,6 +103,9 @@ export function AriWebsiteSetupPane({
   const done = plan?.doneCount ?? 0;
   const gaps = plan?.gaps ?? [];
   const activeLabel = activePart ? PART_LABELS[activePart] ?? activePart : null;
+  const currentLabel = activeLabel
+    ?? plan?.parts.find((part) => !part.done)?.label
+    ?? (plan?.contextComplete ? "Ready for the first draft" : "Reviewing brand context");
 
   return (
     <View style={[styles.host, compact ? styles.compact : null]} testID="ari-website-setup">
@@ -110,12 +114,33 @@ export function AriWebsiteSetupPane({
           <Text style={styles.eyebrow}>Website setup</Text>
           <Text style={styles.title}>Setup plan</Text>
         </View>
-        <Text style={styles.progress}>{done} of {total} done</Text>
+        <View style={styles.headingMeta}>
+          <Text style={styles.progress}>{done} of {total} done</Text>
+          {compact ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={compactExpanded ? "Hide Website setup details" : "Show Website setup details"}
+              accessibilityState={{ expanded: compactExpanded }}
+              onPress={() => setCompactExpanded((value) => !value)}
+              hitSlop={8}
+              testID="ari-setup-toggle"
+            >
+              <Text style={styles.toggleLabel}>{compactExpanded ? "Hide details" : "Show details"}</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
-      <Text style={styles.body}>
-        {activeLabel ? `Working on ${activeLabel}. ` : ""}
-        Ari reads this same live plan, finds every field-level gap, and works through it before any draft is created.
-      </Text>
+      {compact ? (
+        <Text style={styles.compactSummary}>
+          Current: {currentLabel}{gaps.length > 0 ? ` · ${gaps.length} ${gaps.length === 1 ? "gap" : "gaps"}` : ""}
+        </Text>
+      ) : null}
+      {!compact || compactExpanded ? (
+        <Text style={styles.body}>
+          {activeLabel ? `Working on ${activeLabel}. ` : ""}
+          Ari reads this same live plan, finds every field-level gap, and works through it before any draft is created.
+        </Text>
+      ) : null}
 
       {setup.isLoading ? <Text style={styles.muted}>Reading the shared plan…</Text> : null}
       {setup.isError ? <Text style={styles.error}>The plan could not refresh. Ari will not guess; try again.</Text> : null}
@@ -132,21 +157,25 @@ export function AriWebsiteSetupPane({
         </View>
       ) : null}
 
-      {plan?.contextComplete ? (
+      {(!compact || compactExpanded) && plan?.contextComplete ? (
         <View style={styles.completeBox}>
           <Text style={styles.completeTitle}>Brand context complete</Text>
           <Text style={styles.completeBody}>Ari will re-check it before building the first draft.</Text>
         </View>
-      ) : plan && gaps.length > 0 ? (
+      ) : (!compact || compactExpanded) && plan && gaps.length > 0 ? (
         <View style={styles.gapBox}>
           <Text style={styles.gapTitle}>{gaps.length} context {gaps.length === 1 ? "gap" : "gaps"}</Text>
-          {!compact ? gaps.slice(0, 6).map((gap) => (
+          {(!compact || compactExpanded) ? gaps.slice(0, compact ? 4 : 6).map((gap) => (
             <View key={gap.key} style={styles.gapRow}>
               <Text style={styles.gapLabel}>{gap.label}</Text>
               <Text style={styles.gapState}>{gap.humanActionRequired ? "your upload" : gap.state}</Text>
             </View>
           )) : null}
-          {!compact && gaps.length > 6 ? <Text style={styles.muted}>+ {gaps.length - 6} more in the shared plan</Text> : null}
+          {gaps.length > (compact ? 4 : 6) ? (
+            <Text style={styles.muted}>
+              + {gaps.length - (compact ? 4 : 6)} more in the shared plan
+            </Text>
+          ) : null}
         </View>
       ) : null}
 
@@ -195,9 +224,12 @@ const styles = StyleSheet.create({
   compact: { flex: 0, gap: spacing.sm, padding: spacing.md, marginHorizontal: spacing.md, marginTop: spacing.sm },
   headingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
   headingCopy: { flex: 1 },
+  headingMeta: { alignItems: "flex-end", gap: spacing.xs },
   eyebrow: { ...typography.micro, color: accent.warm, textTransform: "uppercase" },
   title: { ...typography.h2, color: textTokens.primary, marginTop: 2 },
   progress: { ...typography.labelCap, color: accent.warm },
+  toggleLabel: { ...typography.micro, color: accent.warm, textDecorationLine: "underline" },
+  compactSummary: { ...typography.bodySm, color: textTokens.primary },
   body: { ...typography.body, color: textTokens.secondary },
   muted: { ...typography.bodySm, color: textTokens.tertiaryOnCard },
   error: { ...typography.bodySm, color: semantic.errorText },
