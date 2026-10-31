@@ -132,6 +132,7 @@ import {
 // #3645 — event_type → buyer-web surface path (trip / experience / event),
 // shared by the Paystack callback_url and the Stripe success/cancel URLs.
 import { buyerWebSurfacePath } from "./buyerWebSurfacePath.ts";
+import { capacityEventDateIdFromError } from "./capacityEventDateId.ts";
 import { resolveSitesAttributionPepper } from "../_shared/sitesSecurity.ts";
 import {
   hashTicketLinkToken,
@@ -215,8 +216,15 @@ async function persistSiteAttributionToken(
  * made every gap in this system findable.
  */
 
+/** Narrow enough for qty/tier helpers; avoids Record index-signature fights
+ * with CheckoutV2Line / CheckoutLine interface shapes under deno check. */
+type CheckoutLineFields = {
+  ticketTypeId?: unknown;
+  quantity?: unknown;
+};
+
 const firstTicketTypeId = (
-  lines: ReadonlyArray<Record<string, unknown>>,
+  lines: ReadonlyArray<CheckoutLineFields>,
 ): string | null => {
   for (const line of lines) {
     const id = line?.ticketTypeId;
@@ -226,7 +234,7 @@ const firstTicketTypeId = (
 };
 
 const totalRequestedQuantity = (
-  lines: ReadonlyArray<Record<string, unknown>>,
+  lines: ReadonlyArray<CheckoutLineFields>,
 ): number | null => {
   let total = 0;
   let saw = false;
@@ -452,7 +460,12 @@ const recordCheckoutRefusal = async (
  * telemetry fault must never become a buyer's failed checkout.
  */
 
-type CheckoutLine = { ticketTypeId: string; quantity: number };
+type CheckoutLine = {
+  ticketTypeId: string;
+  quantity: number;
+  /** issue #3281 PR10 — optional per-date quantities. */
+  byDate?: Record<string, number>;
+};
 type CheckoutMode = "create" | "preview" | "quote";
 // ORCH-1006 Slice 2 (SPEC §B.6): the BuyerAddress type + parseBuyerAddress +
 // validateBuyerAddress are REMOVED. Tax is sourced at the VENUE (SPEC §B.1),
@@ -490,13 +503,25 @@ type PaymentPlanChoice = "auto" | "full" | "installments";
 type CheckoutSurface = "native" | "web" | "mobile-web";
 
 function isCheckoutLine(value: unknown): value is CheckoutLine {
-  const row = value as Partial<CheckoutLine>;
-  return (
-    typeof row.ticketTypeId === "string" &&
-    row.ticketTypeId.length > 0 &&
-    Number.isInteger(row.quantity) &&
-    Number(row.quantity) > 0
-  );
+  const row = value as Partial<CheckoutLine> & { byDate?: unknown };
+  if (
+    typeof row.ticketTypeId !== "string" ||
+    row.ticketTypeId.length === 0 ||
+    !Number.isInteger(row.quantity) ||
+    Number(row.quantity) <= 0
+  ) {
+    return false;
+  }
+  if (row.byDate === undefined) return true;
+  if (row.byDate === null || typeof row.byDate !== "object" ||
+    Array.isArray(row.byDate)) {
+    return false;
+  }
+  for (const [key, qty] of Object.entries(row.byDate as Record<string, unknown>)) {
+    if (typeof key !== "string" || key.length === 0) return false;
+    if (!Number.isInteger(qty) || Number(qty) < 0) return false;
+  }
+  return true;
 }
 
 function optionalTrimmed(value: unknown): string | undefined {
@@ -788,7 +813,9 @@ export const createTicketCheckoutCreateHandler = (
     }
     const lines = checkoutV2Lines ??
       (Array.isArray(body.lines) ? body.lines.filter(isCheckoutLine) : []);
-    refusal.lines = lines;
+    // Refusal telemetry stores opaque JSON rows; cast at the boundary so
+    // typed CheckoutV2Line / CheckoutLine arrays type-check under deno check.
+    refusal.lines = lines as Record<string, unknown>[];
 
     // #2879 / #2947 slice 3 — opt-in waiting room. Absent queueContract ⇒ today's
     // behaviour exactly (never emit kind queued / waitlist_offered).
@@ -1151,6 +1178,17 @@ export const createTicketCheckoutCreateHandler = (
         (passRow as { is_recurring?: unknown }).is_recurring !== true &&
         (passRow as { multi_date_pricing_mode?: unknown })
             .multi_date_pricing_mode === "all_days";
+      if (
+        allDaysPass &&
+        lines.some((line) => {
+          const byDate = (line as { byDate?: Record<string, number> }).byDate;
+          return byDate != null && Object.keys(byDate).length > 0;
+        })
+      ) {
+        // Per-date quantities have no meaning under an all-days pass; refuse
+        // rather than mint entitlements that ignore the buyer's byDate map.
+        return refuse({ error: "by_date_not_supported_for_all_days" }, 422);
+      }
       if (allDaysPass) {
         const { data: passDates, error: passDatesErr } = await supabase
           .from("event_dates")
@@ -2210,10 +2248,37 @@ export const createTicketCheckoutCreateHandler = (
           );
         }
         // Waitlist disabled or enrollment failed — keep today's sold-out token.
+        {
+          const eventDateId = capacityEventDateIdFromError(sessionError);
+          return jsonResponse(
+            {
+              error: "ticket_capacity_exceeded",
+              detail: sessionError?.message,
+              ...(eventDateId != null ? { eventDateId } : {}),
+            },
+            409,
+          );
+        }
+      }
+      if (
+        typeof sessionError?.message === "string" &&
+        sessionError.message.includes("ticket_capacity_exceeded")
+      ) {
+        const eventDateId = capacityEventDateIdFromError(sessionError);
         return jsonResponse(
-          { error: "checkout_session_failed", detail: sessionError?.message },
+          {
+            error: "ticket_capacity_exceeded",
+            detail: sessionError.message,
+            ...(eventDateId != null ? { eventDateId } : {}),
+          },
           409,
         );
+      }
+      if (
+        typeof sessionError?.message === "string" &&
+        sessionError.message.includes("by_date_not_supported_for_all_days")
+      ) {
+        return refuse({ error: "by_date_not_supported_for_all_days" }, 422);
       }
       return jsonResponse(
         { error: "checkout_session_failed", detail: sessionError?.message },

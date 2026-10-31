@@ -441,8 +441,11 @@ const ARMS: ReadonlyArray<
     expected: FREE_CHECKOUT_FAILED_MESSAGE,
   },
   {
+    // issue #3281 PR10 — capacity DETAIL is elevated to the top-level error
+    // token (and may carry eventDateId). Sold-out copy still comes from the
+    // same capacity raise; only the wire token changed.
     arm: "session_rpc_capacity_819",
-    token: "checkout_session_failed",
+    token: "ticket_capacity_exceeded",
     expected: FREE_CHECKOUT_SOLD_OUT_MESSAGE,
   },
   {

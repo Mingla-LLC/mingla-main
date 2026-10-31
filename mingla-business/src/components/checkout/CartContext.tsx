@@ -71,6 +71,11 @@ export interface CartLine {
    * when its caller omits the choice.
    */
   paymentPlanChoice?: CheckoutLinePlanChoice;
+  /**
+   * issue #3281 PR10 — optional per-date quantities when "Same tickets for
+   * every date" is off. Absent means uniform quantity × chosen days.
+   */
+  byDate?: Readonly<Record<string, number>>;
 }
 
 export interface BuyerDetails {
@@ -263,6 +268,11 @@ export interface CartState {
   bookedEndAt: string | null;
   /** issue #3281 R2 — guest party size. null when absent. */
   partySize: number | null;
+  /**
+   * issue #3281 PR10 — when true (default) one stepper applies to every chosen
+   * date; when false, cart lines may carry byDate maps.
+   */
+  sameTicketsForEveryDate: boolean;
 }
 
 // ---- Reducer --------------------------------------------------------
@@ -280,8 +290,10 @@ type CartAction =
       isFree: boolean;
       quantity: number;
       paymentPlanChoice?: CheckoutLinePlanChoice;
+      byDate?: Readonly<Record<string, number>> | null;
     }
   | { type: "SET_BUYER"; patch: Partial<BuyerDetails> }
+  | { type: "SET_SAME_TICKETS_FOR_EVERY_DATE"; sameTicketsForEveryDate: boolean }
   | { type: "SET_DISCOUNT_CODE"; code: string | null }
   | {
       type: "SET_QUOTE_STATE";
@@ -342,6 +354,7 @@ const INITIAL_STATE: CartState = {
   bookedStartAt: null,
   bookedEndAt: null,
   partySize: null,
+  sameTicketsForEveryDate: true,
 };
 
 const reducer = (state: CartState, action: CartAction): CartState => {
@@ -357,6 +370,7 @@ const reducer = (state: CartState, action: CartAction): CartState => {
         isFree,
         quantity,
         paymentPlanChoice,
+        byDate,
       } = action;
       const normalizedCurrency = currency.toUpperCase();
       const existingCurrency = state.lines[0]?.currency;
@@ -376,6 +390,10 @@ const reducer = (state: CartState, action: CartAction): CartState => {
           lines: state.lines.filter((l) => l.ticketTypeId !== ticketTypeId),
         };
       }
+      const nextByDate =
+        state.sameTicketsForEveryDate || byDate == null
+          ? undefined
+          : { ...byDate };
       if (existing === undefined) {
         return {
           ...state,
@@ -394,6 +412,7 @@ const reducer = (state: CartState, action: CartAction): CartState => {
               currency: normalizedCurrency,
               isFree,
               paymentPlanChoice: paymentPlanChoice ?? "full",
+              ...(nextByDate !== undefined ? { byDate: nextByDate } : {}),
             },
           ],
         };
@@ -413,9 +432,42 @@ const reducer = (state: CartState, action: CartAction): CartState => {
                 ...(paymentPlanChoice !== undefined
                   ? { paymentPlanChoice }
                   : {}),
+                ...(byDate === null
+                  ? { byDate: undefined }
+                  : nextByDate !== undefined
+                    ? { byDate: nextByDate }
+                    : state.sameTicketsForEveryDate
+                      ? { byDate: undefined }
+                      : {}),
               }
             : l,
         ),
+      };
+    }
+    case "SET_SAME_TICKETS_FOR_EVERY_DATE": {
+      const on = action.sameTicketsForEveryDate;
+      if (on === state.sameTicketsForEveryDate) return state;
+      if (on) {
+        return {
+          ...state,
+          sameTicketsForEveryDate: true,
+          lines: state.lines.map((l) => {
+            if (l.byDate === undefined) return l;
+            const rest = { ...l };
+            delete rest.byDate;
+            return rest;
+          }),
+        };
+      }
+      return {
+        ...state,
+        sameTicketsForEveryDate: false,
+        lines: state.lines.map((l) => ({
+          ...l,
+          byDate: Object.fromEntries(
+            state.eventDateIds.map((id) => [id, l.quantity]),
+          ),
+        })),
       };
     }
     case "SET_BUYER":
@@ -465,8 +517,22 @@ const reducer = (state: CartState, action: CartAction): CartState => {
     }
     case "SET_EVENT_DATE_ID":
       return { ...state, eventDateId: action.eventDateId };
-    case "SET_EVENT_DATE_IDS":
-      return { ...state, eventDateIds: action.eventDateIds };
+    case "SET_EVENT_DATE_IDS": {
+      const eventDateIds = action.eventDateIds;
+      if (state.sameTicketsForEveryDate) {
+        return { ...state, eventDateIds };
+      }
+      return {
+        ...state,
+        eventDateIds,
+        lines: state.lines.map((l) => ({
+          ...l,
+          byDate: Object.fromEntries(
+            eventDateIds.map((id) => [id, l.byDate?.[id] ?? l.quantity]),
+          ),
+        })),
+      };
+    }
     case "SET_BOOKED_START_AT":
       return { ...state, bookedStartAt: action.bookedStartAt };
     case "SET_BOOKED_END_AT":
@@ -496,7 +562,10 @@ export interface CartContextValue extends CartState {
     isFree: boolean;
     quantity: number;
     paymentPlanChoice?: CheckoutLinePlanChoice;
+    byDate?: Readonly<Record<string, number>> | null;
   }) => void;
+  /** issue #3281 PR10 — toggle uniform vs per-date steppers. */
+  setSameTicketsForEveryDate: (sameTicketsForEveryDate: boolean) => void;
   setBuyer: (patch: Partial<BuyerDetails>) => void;
   setDiscountCode: (code: string | null) => void;
   setQuoteState: (
@@ -582,8 +651,19 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       isFree: boolean;
       quantity: number;
       paymentPlanChoice?: CheckoutLinePlanChoice;
+      byDate?: Readonly<Record<string, number>> | null;
     }): void => {
       dispatch({ type: "SET_LINE_QUANTITY", ...params });
+    },
+    [],
+  );
+
+  const setSameTicketsForEveryDate = useCallback(
+    (sameTicketsForEveryDate: boolean): void => {
+      dispatch({
+        type: "SET_SAME_TICKETS_FOR_EVERY_DATE",
+        sameTicketsForEveryDate,
+      });
     },
     [],
   );
@@ -720,6 +800,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     () => ({
       ...state,
       setLineQuantity,
+      setSameTicketsForEveryDate,
       setBuyer,
       setDiscountCode,
       setQuoteState,
@@ -742,6 +823,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     [
       state,
       setLineQuantity,
+      setSameTicketsForEveryDate,
       setBuyer,
       setDiscountCode,
       setQuoteState,

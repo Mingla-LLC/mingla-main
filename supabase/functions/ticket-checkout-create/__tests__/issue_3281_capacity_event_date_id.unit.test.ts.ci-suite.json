@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ticket-checkout-create/__tests__/issue_3281_capacity_event_date_id.unit.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3281-capacity-event-date-id-unit",
+  "profile": "deno-2-unit"
+}

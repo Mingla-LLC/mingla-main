@@ -19,7 +19,13 @@
 import React from "react";
 import { Stack, useLocalSearchParams } from "expo-router";
 
-import { CartProvider } from "../../../src/components/checkout/CartContext";
+// Lazy so CartContext (and byDate cart growth) stays off the eager __common
+// chunk; checkout layouts already Suspense TicketQuoteController the same way.
+const CartProvider = React.lazy(() =>
+  import("../../../src/components/checkout/CartContext").then((module) => ({
+    default: module.CartProvider,
+  })),
+);
 
 const TicketQuoteController = React.lazy(() =>
   import("../../../src/components/checkout/TicketQuoteController").then(
@@ -48,8 +54,10 @@ const CheckoutStack = (): React.ReactElement => {
 
 export default function CheckoutLayout(): React.ReactElement {
   return (
-    <CartProvider>
-      <CheckoutStack />
-    </CartProvider>
+    <React.Suspense fallback={null}>
+      <CartProvider>
+        <CheckoutStack />
+      </CartProvider>
+    </React.Suspense>
   );
 }

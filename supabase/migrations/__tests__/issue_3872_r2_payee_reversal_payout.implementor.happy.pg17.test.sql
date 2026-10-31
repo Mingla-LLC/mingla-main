@@ -73,11 +73,14 @@ INSERT INTO public.payee_accounts(
   ('38723000-0000-4000-8400-000000000010','acct_r2b3_disconnected','active',NULL,'none',NULL,NULL);
 
 -- Proportional partial + full reversal is exact and idempotent before payout.
+-- created_at must sit inside the 30-day refund-ratio window relative to
+-- payee_share_reverse → issue_3872_evaluate_referral_risk(..., now()). A fixed
+-- 2026-10-01 stamp fell outside that window once wall-clock crossed 2026-10-31.
 INSERT INTO public.order_attributions(
   order_kind,order_id,brand_id,source,member_id,offer_id,eligible_minor,
   share_bps,share_minor,created_at
 ) VALUES(
-  'ticket','38723000-0000-4000-8400-000000000101','38723000-0000-4000-8400-000000000010','code','38723000-0000-4000-8400-000000000042','38723000-0000-4000-8400-000000000030',10000,1000,1000,'2026-10-01T00:00:00Z'
+  'ticket','38723000-0000-4000-8400-000000000101','38723000-0000-4000-8400-000000000010','code','38723000-0000-4000-8400-000000000042','38723000-0000-4000-8400-000000000030',10000,1000,1000,now() - interval '2 days'
 );
 INSERT INTO public.payee_shares(
   order_kind,order_id,payee_kind,member_id,payee_user_id,brand_id,rail,currency,

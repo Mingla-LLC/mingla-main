@@ -24,7 +24,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -200,7 +200,10 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   const {
     lines,
     quoteStatus,
+    eventDateIds,
+    sameTicketsForEveryDate,
     setLineQuantity,
+    setSameTicketsForEveryDate,
     setEventDateId,
     setEventDateIds,
   } = useCart();
@@ -590,34 +593,122 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
 
         <Text style={styles.sectionLabel}>Select your tickets</Text>
 
-        {visibleTickets.map((ticket) => {
-          const line = lines.find((l) => l.ticketTypeId === ticket.id);
-          const qty = line?.quantity ?? 0;
-          return (
-            <QuantityRow
-              key={ticket.id}
-              ticket={ticket}
-              quantity={qty}
-              hideRemainingCount={hideRemainingCount}
-              onJoinWaitlist={setWaitlistTicketId}
-              onQuantityChange={(next): void =>
-                setLineQuantity({
-                  ticketTypeId: ticket.id,
-                  ticketName: ticket.name,
-                  unitPrice: ticket.priceGbp ?? 0,
-                  // ORCH-1147 — seed the server fee-grossed all-in
-                  // (priceAllInGbp, from pg_public_event_tier_allin) as the
-                  // headline-Total basis; fall back to base when the tier has
-                  // no all-in (free / RPC miss — never fabricate).
-                  unitPriceAllIn: ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
-                  currency: ticket.currency ?? event.currency ?? "GBP",
-                  isFree: ticket.isFree,
-                  quantity: next,
-                })
-              }
+        {eventDateIds.length >= 2 ? (
+          <View
+            style={styles.sameTicketsRow}
+            testID="issue-3281-same-tickets-switch"
+          >
+            <Text style={styles.sameTicketsLabel}>
+              Same tickets for every date
+            </Text>
+            <Switch
+              value={sameTicketsForEveryDate}
+              onValueChange={setSameTicketsForEveryDate}
+              accessibilityLabel="Same tickets for every date"
             />
-          );
-        })}
+          </View>
+        ) : null}
+
+        {eventDateIds.length >= 2 && !sameTicketsForEveryDate
+          ? eventDateIds.map((dateId) => {
+              const occ = occurrences.find((o) => o.id === dateId);
+              const dateLabel =
+                occ != null
+                  ? new Date(occ.startAt).toLocaleDateString(undefined, {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                    })
+                  : "This date";
+              return (
+                <View key={dateId} style={styles.perDateBlock}>
+                  <Text style={styles.perDateHeading}>{dateLabel}</Text>
+                  {visibleTickets.map((ticket) => {
+                    const line = lines.find((l) => l.ticketTypeId === ticket.id);
+                    const qty = line?.byDate?.[dateId] ?? 0;
+                    const maxHint =
+                      ticket.maxPurchaseQty != null && ticket.maxPurchaseQty > 0
+                        ? `Up to ${ticket.maxPurchaseQty} per date`
+                        : null;
+                    return (
+                      <View key={`${dateId}-${ticket.id}`}>
+                        {maxHint != null ? (
+                          <Text style={styles.perDateHint}>{maxHint}</Text>
+                        ) : null}
+                        <QuantityRow
+                          ticket={ticket}
+                          quantity={qty}
+                          hideRemainingCount={hideRemainingCount}
+                          onJoinWaitlist={setWaitlistTicketId}
+                          onQuantityChange={(next): void => {
+                            const nextByDate = {
+                              ...(line?.byDate ?? {}),
+                              [dateId]: next,
+                            };
+                            if (next <= 0) delete nextByDate[dateId];
+                            const sum = Object.values(nextByDate).reduce(
+                              (a, b) => a + (Number(b) || 0),
+                              0,
+                            );
+                            setLineQuantity({
+                              ticketTypeId: ticket.id,
+                              ticketName: ticket.name,
+                              unitPrice: ticket.priceGbp ?? 0,
+                              unitPriceAllIn:
+                                ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
+                              currency:
+                                ticket.currency ?? event.currency ?? "GBP",
+                              isFree: ticket.isFree,
+                              quantity: sum,
+                              byDate: nextByDate,
+                            });
+                          }}
+                        />
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })
+          : visibleTickets.map((ticket) => {
+              const line = lines.find((l) => l.ticketTypeId === ticket.id);
+              const qty = line?.quantity ?? 0;
+              const maxHint =
+                eventDateIds.length >= 2 &&
+                ticket.maxPurchaseQty != null &&
+                ticket.maxPurchaseQty > 0
+                  ? `Up to ${ticket.maxPurchaseQty} per date`
+                  : null;
+              return (
+                <View key={ticket.id}>
+                  {maxHint != null ? (
+                    <Text style={styles.perDateHint}>{maxHint}</Text>
+                  ) : null}
+                  <QuantityRow
+                    ticket={ticket}
+                    quantity={qty}
+                    hideRemainingCount={hideRemainingCount}
+                    onJoinWaitlist={setWaitlistTicketId}
+                    onQuantityChange={(next): void =>
+                      setLineQuantity({
+                        ticketTypeId: ticket.id,
+                        ticketName: ticket.name,
+                        unitPrice: ticket.priceGbp ?? 0,
+                        // ORCH-1147 — seed the server fee-grossed all-in
+                        // (priceAllInGbp, from pg_public_event_tier_allin) as the
+                        // headline-Total basis; fall back to base when the tier has
+                        // no all-in (free / RPC miss — never fabricate).
+                        unitPriceAllIn:
+                          ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
+                        currency: ticket.currency ?? event.currency ?? "GBP",
+                        isFree: ticket.isFree,
+                        quantity: next,
+                      })
+                    }
+                  />
+                </View>
+              );
+            })}
         {/* #2331 — end of content: reopens the privacy bar. */}
         <PrivacyChoicesLink />
       </ScrollView>
@@ -718,6 +809,34 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     letterSpacing: 1.4,
     marginBottom: spacing.sm,
+  },
+  sameTicketsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  sameTicketsLabel: {
+    flex: 1,
+    paddingRight: spacing.md,
+    fontSize: 14,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  perDateBlock: {
+    marginBottom: spacing.md,
+  },
+  perDateHeading: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: textTokens.primary,
+    marginBottom: spacing.xs,
+  },
+  perDateHint: {
+    fontSize: 12,
+    color: textTokens.tertiary,
+    marginBottom: 4,
   },
   emptyWrap: {
     flex: 1,

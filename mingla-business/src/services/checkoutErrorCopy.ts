@@ -399,6 +399,9 @@ const FREE_CHECKOUT_MESSAGE_BY_CODE: Readonly<Record<string, string>> = Object
     checkout_unavailable: FREE_CHECKOUT_UNAVAILABLE_MESSAGE,
     // Refused before anything could be created. (index.ts:819/1008)
     checkout_session_failed: FREE_CHECKOUT_FAILED_MESSAGE,
+    // issue #3281 PR10 — capacity raised to the top-level error token (DETAIL
+    // may still carry eventDateId). Same sold-out sentence as detail matching.
+    [TICKET_CAPACITY_EXCEEDED_TOKEN]: FREE_CHECKOUT_SOLD_OUT_MESSAGE,
     // The finalize refused AFTER it may have written state — `order_missing`
     // and `tickets_missing` both describe partial results, so this one must not
     // claim either direction. (index.ts:1079/1135/1146/1173)
