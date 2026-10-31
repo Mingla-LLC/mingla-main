@@ -13,6 +13,7 @@ const PHONE = "+32466178389";
 
 interface Spec {
   authUpdateError?: boolean;
+  identityReleaseError?: boolean;
   authReadbackError?: boolean;
   readbackPhone?: string | null;
   readbackPhoneIdentity?: string | null;
@@ -65,6 +66,15 @@ function makeClient(spec: Spec = {}) {
         },
       },
     },
+    rpc: (name: string, payload: unknown) => {
+      calls.push({ name: `rpc.${name}`, payload });
+      return Promise.resolve({
+        data: spec.identityReleaseError ? null : { status: "released" },
+        error: spec.identityReleaseError
+          ? { message: "identity release failed" }
+          : null,
+      });
+    },
     from: (table: string) => {
       assertEquals(table, "profiles");
       return builder;
@@ -85,8 +95,29 @@ Deno.test("#4202 retained-Business deletion releases auth before profile and pre
 
   assertEquals(calls, [
     { name: "auth.update", payload: { phone: "" } },
+    {
+      name: "rpc.release_explorer_phone_identity",
+      payload: { p_user_id: UID },
+    },
     { name: "auth.readback" },
     { name: "profile.update", payload: { phone: null } },
+  ]);
+});
+
+Deno.test("#4202 a phone-identity release failure cannot report deletion success", async () => {
+  const { client, calls } = makeClient({ identityReleaseError: true });
+  const error = await assertRejects(
+    () => clearExplorerPhoneForReuse(client, UID, PHONE),
+    ExplorerPhoneReleaseError,
+    "auth_identity_release",
+  );
+  assertEquals(error.stage, "auth_identity_release");
+  assertEquals(calls, [
+    { name: "auth.update", payload: { phone: "" } },
+    {
+      name: "rpc.release_explorer_phone_identity",
+      payload: { p_user_id: UID },
+    },
   ]);
 });
 
@@ -111,6 +142,7 @@ Deno.test("#4202 unreadable auth readback fails before profile mutation", async 
   assertEquals(error.stage, "auth_readback");
   assertEquals(calls.map((call) => call.name), [
     "auth.update",
+    "rpc.release_explorer_phone_identity",
     "auth.readback",
   ]);
 });
@@ -125,6 +157,7 @@ Deno.test("#4202 a surviving auth.users phone fails closed", async () => {
   assertEquals(error.stage, "auth_still_attached");
   assertEquals(calls.map((call) => call.name), [
     "auth.update",
+    "rpc.release_explorer_phone_identity",
     "auth.readback",
   ]);
 });
@@ -141,6 +174,7 @@ Deno.test("#4202 any surviving phone identity fails closed even when auth.users.
   assertEquals(error.stage, "auth_still_attached");
   assertEquals(calls.map((call) => call.name), [
     "auth.update",
+    "rpc.release_explorer_phone_identity",
     "auth.readback",
   ]);
 });

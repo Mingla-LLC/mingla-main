@@ -1,5 +1,6 @@
 -- MINGLA-INVARIANT: I-4203-HIDDEN-PURCHASE-OWNERSHIP | issue #4203 | Hidden events and their dates are readable only to their buyer/current ticket holder plus existing Host readers; they remain absent from public Explorer discovery.
 -- MINGLA-INVARIANT: I-4202-RETAINED-PURCHASE-RECONNECT | issue #4202 | Re-registration with a server-verified purchase email or phone reconnects retained ended/cancelled purchase history without granting admission, joining chats or making the event public.
+-- MINGLA-INVARIANT: I-4202-EXPLORER-DELETE-FREES-PHONE | issue #4202 | Explorer deletion removes the GoTrue phone identity and verified-phone ledger while preserving email/social identities and any retained Business login.
 -- #4203 — hidden reviewer inventory stays out of Explorer discovery while its
 -- buyer/current holder can render the exact event and date behind a purchase.
 -- FAILS-ON-REVERT: without the #4203 policies, the buyer/holder counts are 0;
@@ -247,5 +248,97 @@ BEGIN
   RESET ROLE;
 END;
 $proof$;
+
+-- #4202 — the service-role-only release boundary removes the phone identity
+-- and Mingla possession ledger together without touching the email identity.
+-- The production GoTrue schema owns auth.identities. The full-history CI image
+-- intentionally carries only auth.users, so this suite runs as supabase_admin
+-- and gives its transaction the minimum compatible identity table needed to
+-- execute the production function body.
+CREATE TABLE IF NOT EXISTS auth.identities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  provider text NOT NULL,
+  provider_id text NOT NULL,
+  identity_data jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+-- GoTrue owns this table on production and grants postgres DML access. The
+-- migration runner owns the SECURITY DEFINER function as postgres, so mirror
+-- that measured ACL instead of letting the CI-created stub invent a stricter
+-- relationship than production.
+GRANT SELECT, INSERT, UPDATE, DELETE ON auth.identities TO postgres;
+
+INSERT INTO auth.users(id, email) VALUES (
+  '42020000-0000-4000-8000-000000000099',
+  'release-4202@example.test'
+);
+
+INSERT INTO auth.identities(user_id, provider, provider_id, identity_data)
+VALUES
+  (
+    '42020000-0000-4000-8000-000000000099',
+    'email',
+    'release-4202@example.test',
+    '{"email":"release-4202@example.test","email_verified":true}'::jsonb
+  ),
+  (
+    '42020000-0000-4000-8000-000000000099',
+    'phone',
+    '32466178389',
+    '{"phone":"32466178389","phone_verified":true}'::jsonb
+  );
+
+INSERT INTO public.verified_phone_identities(user_id, phone_e164)
+VALUES (
+  '42020000-0000-4000-8000-000000000099',
+  '+32466178389'
+);
+
+SELECT public.release_explorer_phone_identity(
+  '42020000-0000-4000-8000-000000000099'
+);
+
+DO $phone_release$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM auth.identities
+    WHERE user_id = '42020000-0000-4000-8000-000000000099'
+      AND provider = 'phone'
+  ) THEN
+    RAISE EXCEPTION '#4202: phone identity survived release';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM auth.identities
+    WHERE user_id = '42020000-0000-4000-8000-000000000099'
+      AND provider = 'email'
+  ) THEN
+    RAISE EXCEPTION '#4202: retained email identity was removed';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.verified_phone_identities
+    WHERE user_id = '42020000-0000-4000-8000-000000000099'
+  ) THEN
+    RAISE EXCEPTION '#4202: verified-phone ledger survived release';
+  END IF;
+
+  IF has_function_privilege(
+       'anon',
+       'public.release_explorer_phone_identity(uuid)',
+       'EXECUTE'
+     )
+     OR has_function_privilege(
+       'authenticated',
+       'public.release_explorer_phone_identity(uuid)',
+       'EXECUTE'
+     ) THEN
+    RAISE EXCEPTION '#4202: client role can release a phone identity';
+  END IF;
+END;
+$phone_release$;
 
 ROLLBACK;

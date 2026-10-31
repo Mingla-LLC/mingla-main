@@ -313,7 +313,10 @@ export function phase3dContractDigest(manifest) {
 // #3281 / #3645: register the terminal by-date + Paystack finalizer re-emit,
 // including its exact exclusions from the filtered historical replays.
 // #3281: register the production-order repair and its proofs the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "e4cd0f98c5e24638873d1db5b5ee4590c4690ad78ddeb2af1c73ef3382ff91fc";
+// #4202: register the Explorer phone-identity release migration in the three
+// preserved full-history inventories; the existing #4202/#4203 PostgreSQL
+// suite owns its executable proof.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c1019d1170fff8bc30ac92eae754b7cb236dd9403018c034e8deeac2c29cbb0a";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
