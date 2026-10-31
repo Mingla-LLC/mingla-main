@@ -310,7 +310,9 @@ export function phase3dContractDigest(manifest) {
 // #3281: register PR10 byDate quantities migration in the same inventories.
 // #4202 / #4203: register the retained-purchase and hidden-event read migration
 // plus its declared PostgreSQL proof in those same inventories.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "9b6057db6e3ee890f34d9b496752f73d7ab038b169c0e7d3b463c0749fada4a9";
+// #3281 / #3645: register the terminal by-date + Paystack finalizer re-emit,
+// including its exact exclusions from the filtered historical replays.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "4b0e2364d3ee2f126743c92a9a34d7d643695f8cb4be9b5aed16daf3b58456b9";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
