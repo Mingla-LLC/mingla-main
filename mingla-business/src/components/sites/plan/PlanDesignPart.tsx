@@ -74,6 +74,7 @@ export function PlanDesignPart({
           return (
             <Pressable
               key={key}
+              accessibilityLabel={`${design.label}: ${design.description}`}
               accessibilityRole="radio"
               accessibilityState={{ checked: selected, disabled: readOnly }}
               disabled={readOnly}
