@@ -4,6 +4,7 @@ export class ExplorerPhoneReleaseError extends Error {
   readonly code = "explorer_phone_release_failed";
   readonly stage:
     | "auth_update"
+    | "auth_identity_release"
     | "auth_readback"
     | "auth_still_attached"
     | "profile_update";
@@ -38,6 +39,21 @@ export async function clearExplorerPhoneForReuse(
     );
   if (authUpdateError) {
     throw new ExplorerPhoneReleaseError("auth_update");
+  }
+
+  // GoTrue clears auth.users.phone for an empty-phone admin update, but it
+  // deliberately leaves the provider=phone identity row behind. That row is
+  // still a live login/ownership claim and prevents the number from behaving
+  // like a brand-new number after Explorer deletion. The service-role-only RPC
+  // removes that identity and the verified-phone possession ledger together;
+  // its migration owns the auth-schema write because PostgREST cannot expose
+  // auth.identities as a normal table mutation.
+  const { error: identityReleaseError } = await adminClient.rpc(
+    "release_explorer_phone_identity",
+    { p_user_id: userId },
+  );
+  if (identityReleaseError) {
+    throw new ExplorerPhoneReleaseError("auth_identity_release");
   }
 
   const { data: authReadback, error: authReadbackError } = await adminClient
