@@ -658,7 +658,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     automaticSetupAudit.current = auditKey;
     const focus = setupPart ? ` The selected plan part is ${setupPart}.` : "";
     void chat.sendMessage(
-      `Start my Website setup.${focus} First read get_site_plan, then give me a concise rundown of what is complete, every field-level gap, and how complete the brand context is. Offer to fix all gaps, work on one named gap, or let me add details myself. Ask one question at a time while you work. Do not create a website draft until setup and brand context are complete.`,
+      `Start Website setup.${focus} Read get_site_plan, summarize completion and every field gap, then offer Fix all, one gap, or Add it myself. Ask one question at a time. Do not create a draft until setup and brand context are complete.`,
       [],
     ).then((result) => {
       if (result.kind === "error") automaticSetupAudit.current = null;
@@ -842,7 +842,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           fixing={chat.isSending}
           onFixAll={() => {
             handleSend(
-              "Fix all Website brand-context gaps. Start or resume the durable completeness job, research safe public facts, ask me one question at a time for anything only I can know, show options when helpful, confirm every write, checkpoint after each gap, and keep re-auditing until required and recommended gaps are zero. Do not create a draft before setup is complete.",
+              "Fix all Website brand-context gaps. Resume the durable job, research safe public facts, ask one question at a time, confirm and checkpoint each write, and re-audit until required and recommended gaps are zero. Do not create a draft first.",
             );
           }}
         />
