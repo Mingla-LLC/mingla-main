@@ -4,6 +4,7 @@ import {
   parseAttendanceClaimUrl as parseClaimUrl,
   type AttendanceClaimCredential,
 } from "../utils/attendanceClaimDeepLink";
+import { withExplorerReactivationIntent } from "../utils/explorerReactivation";
 
 export { isAttendanceClaimUrl } from "../utils/attendanceClaimDeepLink";
 
@@ -385,10 +386,13 @@ export async function verifyPendingClaimEmailCode(input: {
     ? data as Record<string, unknown>
     : {};
   if (!error && payload.ok === true && typeof payload.tokenHash === "string") {
-    const auth = await supabase.auth.verifyOtp({
-      token_hash: payload.tokenHash,
-      type: "magiclink",
-    });
+    const tokenHash = payload.tokenHash;
+    const auth = await withExplorerReactivationIntent(() =>
+      supabase.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: "magiclink",
+      })
+    );
     if (!auth.error) return { ok: true };
     return {
       ok: false,

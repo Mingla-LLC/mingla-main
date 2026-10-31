@@ -1547,6 +1547,35 @@ test('AX-F3 — everything ELSE in useAuthSimple.ts is byte-identical to origin/
   residue = cutBetween(residue, '  // #1875 [transient-signin-failure] — cancellation checkpoint C1 for the', '\n  // Add timeout to prevent infinite loading', 'isMountedRef decl')
   residue = cutBetween(residue, '    // #1875 — re-arm on (re)mount.', '\n    const initializeAuth', 're-arm')
   residue = cutBetween(residue, '      // #1875 — C1: stop any in-flight bounded transport retry.', '      subscription.unsubscribe();', 'cleanup')
+  // #4202 deliberately extends the auth callback after #1875 shipped. Excise
+  // only its declared intent-capture and callback regions so this older guard continues
+  // proving that #1875 itself did not alter any unrelated code.
+  const remove4202Region = (source: string, start: string, end: string): string => {
+    const startAt = source.indexOf(start)
+    const endAt = source.indexOf(end, startAt)
+    assert.ok(startAt > -1 && endAt > startAt, `AX-F #4202 region missing: ${start}`)
+    const after = endAt + end.length + (source[endAt + end.length] === '\n' ? 1 : 0)
+    return source.slice(0, startAt) + source.slice(after)
+  }
+  residue = remove4202Region(
+    residue,
+    '      // #4202 [explorer-account-deletion] — begin synchronous intent capture.',
+    '      // #4202 [explorer-account-deletion] — end synchronous intent capture.',
+  )
+  const issue4202Start = '            // #4202 [explorer-account-deletion] — begin explicit reactivation gate.\n'
+  const issue4202End = '            // #4202 [explorer-account-deletion] — end explicit reactivation gate.\n'
+  const issue4202At = residue.indexOf(issue4202Start)
+  const issue4202After = residue.indexOf(issue4202End, issue4202At)
+  assert.ok(issue4202At > -1 && issue4202After > issue4202At, 'AX-F #4202 declared region missing')
+  residue =
+    residue.slice(0, issue4202At) +
+    '            const { data: profile } = await supabase\n' +
+    '              .from("profiles")\n' +
+    '              .select("*")\n' +
+    '              .eq("id", session.user.id)\n' +
+    '              .single();\n' +
+    '            if (profile && mounted) setProfile(profile);\n' +
+    residue.slice(issue4202After + issue4202End.length)
   if (residue !== baseRest) {
     const r = residue.split('\n')
     const b = baseRest.split('\n')
