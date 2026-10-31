@@ -6,6 +6,7 @@ import {
 import {
   captureExplorerReactivationIntentForAuthEvent,
   resolveExplorerProfileAfterAuthEvent,
+  shouldDeferDeletedExplorerSessionForAuthEvent,
   withExplorerReactivationIntent,
 } from "../explorerReactivation.ts";
 import { buildExplorerProfileAuthRestRequest } from "../explorerProfileAuthRest.ts";
@@ -99,6 +100,73 @@ Deno.test("#4202 SIGNED_IN needs a live user-initiated auth bracket", async () =
   assertEquals(captureExplorerReactivationIntentForAuthEvent("SIGNED_IN"), false);
 });
 
+Deno.test("#4202 passive session events cannot beat an explicit sign-in", async () => {
+  assertEquals(
+    shouldDeferDeletedExplorerSessionForAuthEvent("INITIAL_SESSION"),
+    false,
+  );
+
+  await withExplorerReactivationIntent(async () => {
+    assertEquals(
+      shouldDeferDeletedExplorerSessionForAuthEvent("INITIAL_SESSION"),
+      true,
+    );
+    assertEquals(
+      shouldDeferDeletedExplorerSessionForAuthEvent("TOKEN_REFRESHED"),
+      true,
+    );
+    assertEquals(
+      shouldDeferDeletedExplorerSessionForAuthEvent("SIGNED_IN"),
+      false,
+    );
+  });
+
+  assertEquals(
+    shouldDeferDeletedExplorerSessionForAuthEvent("INITIAL_SESSION"),
+    false,
+  );
+});
+
+Deno.test("#4202 delayed passive profile work cannot sign out before explicit reactivation", async () => {
+  let passiveMustDefer = false;
+  let explicitMayReactivate = false;
+
+  await withExplorerReactivationIntent(async () => {
+    // Model the race the production callback permits: Supabase can deliver the
+    // subscription's passive session event and the user-driven SIGNED_IN event
+    // while verifyOtp is still awaiting its subscribers, but both profile
+    // requests run on the next timer turn.
+    passiveMustDefer = shouldDeferDeletedExplorerSessionForAuthEvent(
+      "INITIAL_SESSION",
+    );
+    explicitMayReactivate =
+      captureExplorerReactivationIntentForAuthEvent("SIGNED_IN");
+  });
+
+  const passiveResolution = await resolveExplorerProfileAfterAuthEvent(
+    false,
+    deletedProfile,
+    () => Promise.resolve({ data: deletedProfile, error: null }),
+  );
+  assertEquals(passiveResolution.kind, "deleted_session");
+  assertEquals(passiveMustDefer, true);
+
+  const explicitResolution = await resolveExplorerProfileAfterAuthEvent(
+    explicitMayReactivate,
+    deletedProfile,
+    () =>
+      Promise.resolve({
+        data: {
+          ...deletedProfile,
+          explorer_deleted_at: null,
+          has_completed_onboarding: false,
+        },
+        error: null,
+      }),
+  );
+  assertEquals(explicitResolution.kind, "reactivated");
+});
+
 Deno.test("#4202 a failed auth attempt cannot leave reactivation intent armed", async () => {
   try {
     await withExplorerReactivationIntent(() => Promise.reject(new Error("no session")));
@@ -172,6 +240,8 @@ Deno.test("#4202 the auth callback clears only the Explorer marker and restarts 
     new URL("../explorerProfileAuthRest.ts", import.meta.url),
   );
   assert(hookSource.includes("captureExplorerReactivationIntentForAuthEvent(event)"));
+  assert(hookSource.includes("shouldDeferDeletedExplorerSessionForAuthEvent(event)"));
+  assert(hookSource.includes("if (deferDeletedExplorerSessionSignOut)"));
   assert(hookSource.includes("resolveExplorerProfileAfterAuthEvent"));
   assert(authRestSource.includes("explorer_deleted_at: null"));
   assert(authRestSource.includes("has_completed_onboarding: false"));

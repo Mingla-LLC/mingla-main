@@ -34,6 +34,7 @@ import i18n from "../i18n";
 import {
   captureExplorerReactivationIntentForAuthEvent,
   resolveExplorerProfileAfterAuthEvent,
+  shouldDeferDeletedExplorerSessionForAuthEvent,
 } from "../utils/explorerReactivation";
 
 
@@ -513,6 +514,8 @@ export const useAuthSimple = () => {
       // emits it when an existing session is re-established on app focus.
       const explorerReactivationIntentConfirmed =
         captureExplorerReactivationIntentForAuthEvent(event);
+      const deferDeletedExplorerSessionSignOut =
+        shouldDeferDeletedExplorerSessionForAuthEvent(event);
       // #4202 [explorer-account-deletion] — end synchronous intent capture.
 
       // RELIABILITY: On TOKEN_REFRESHED, invalidate ALL React Query queries so they
@@ -588,6 +591,13 @@ export const useAuthSimple = () => {
             );
 
             if (resolution.kind === "deleted_session") {
+              if (deferDeletedExplorerSessionSignOut) {
+                logger.auth(
+                  "Passive auth event deferred while explicit Explorer sign-in resolves",
+                  { event },
+                );
+                return;
+              }
               logger.auth("Deleted Explorer session cannot reactivate implicitly");
               await signOutWithPrivateCleanup(
                 "explorer-side-deleted-stale-session",
