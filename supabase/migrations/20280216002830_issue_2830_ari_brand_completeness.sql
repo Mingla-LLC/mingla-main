@@ -480,6 +480,106 @@ REVOKE ALL ON FUNCTION public.brand_site_plan_authorize_provision(uuid)
 GRANT EXECUTE ON FUNCTION public.brand_site_plan_authorize_provision(uuid)
   TO authenticated, service_role;
 
+-- The route performs the same check so it can return a named plan error, but
+-- the RPC is also an authenticated boundary.  A client that calls it directly
+-- must not create the first brand_sites row before setup is complete.
+CREATE OR REPLACE FUNCTION public.brand_site_provision(
+  p_brand_id uuid,
+  p_operation_id uuid,
+  p_arguments_digest text,
+  p_label text DEFAULT NULL
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_site public.brand_sites%ROWTYPE;
+  v_receipt public.brand_site_operation_receipts%ROWTYPE;
+  v_suffix text;
+  v_label text;
+  v_seed text;
+BEGIN
+  IF v_actor IS NULL OR public.biz_brand_effective_rank(p_brand_id, v_actor) < 50 THEN
+    RAISE EXCEPTION 'sites_forbidden';
+  END IF;
+  IF p_arguments_digest !~ '^[0-9a-f]{64}$' THEN
+    RAISE EXCEPTION 'sites_validation_failed';
+  END IF;
+  IF NOT public.brand_site_entitled(p_brand_id) THEN
+    RAISE EXCEPTION 'sites_forbidden';
+  END IF;
+  SELECT config.public_host_suffix INTO v_suffix
+  FROM public.brand_site_service_config config
+  WHERE config.config_key = 'sites_v1'
+  FOR SHARE;
+  IF v_suffix IS NULL THEN RAISE EXCEPTION 'sites_forbidden'; END IF;
+
+  -- A completed receipt remains replayable even if the brand later changes.
+  -- Only a new operation is subject to the current completeness gate.
+  SELECT * INTO v_receipt FROM public.brand_site_operation_receipts
+    WHERE operation_id = p_operation_id FOR UPDATE;
+  IF FOUND THEN
+    IF v_receipt.arguments_digest <> p_arguments_digest OR
+       v_receipt.brand_id <> p_brand_id OR v_receipt.kind <> 'provision' THEN
+      RAISE EXCEPTION 'sites_idempotency_conflict';
+    END IF;
+    RETURN COALESCE(v_receipt.result_summary, jsonb_build_object(
+      'site_id', v_receipt.site_id, 'status', v_receipt.status));
+  END IF;
+
+  PERFORM public.brand_site_plan_authorize_provision(p_brand_id);
+
+  SELECT * INTO v_site FROM public.brand_sites WHERE brand_id = p_brand_id FOR UPDATE;
+  IF NOT FOUND THEN
+    INSERT INTO public.brand_sites(brand_id, created_by)
+    VALUES (p_brand_id, v_actor) RETURNING * INTO v_site;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.brand_site_hosts host
+    WHERE host.site_id = v_site.id AND host.kind = 'mingla_subdomain'
+  ) THEN
+    IF p_label IS NOT NULL THEN
+      IF public.brand_site_subdomain_label(p_label) <> p_label
+        OR EXISTS (SELECT 1 FROM public.brand_site_reserved_labels reserved
+          WHERE reserved.label = p_label)
+        OR EXISTS (SELECT 1 FROM public.brand_site_hosts host
+          WHERE host.hostname = p_label || '.' || v_suffix) THEN
+        RAISE EXCEPTION 'sites_label_unavailable';
+      END IF;
+      v_label := p_label;
+    ELSE
+      SELECT COALESCE(NULLIF(brand.slug, ''), brand.name) INTO v_seed
+      FROM public.brands brand WHERE brand.id = p_brand_id;
+      v_label := public.brand_site_available_label(v_seed, v_suffix);
+    END IF;
+    INSERT INTO public.brand_site_hosts(site_id, hostname, kind, status, is_primary, label)
+    VALUES (v_site.id, v_label || '.' || v_suffix, 'mingla_subdomain', 'pending', true, v_label);
+  END IF;
+  INSERT INTO public.brand_site_operation_receipts(
+    operation_id, site_id, brand_id, user_id, kind, arguments_digest,
+    status, result_summary, started_at
+  ) VALUES (
+    p_operation_id, v_site.id, p_brand_id, v_actor, 'provision',
+    p_arguments_digest, 'executing',
+    jsonb_build_object('site_id', v_site.id, 'status', 'executing'), now()
+  );
+  INSERT INTO public.brand_site_audit_log(
+    site_id, brand_id, actor_user_id, actor_kind, action,
+    resource_kind, resource_id, operation_id, metadata
+  ) VALUES (
+    v_site.id, p_brand_id, v_actor, 'user', 'site.provision_requested',
+    'site', v_site.id::text, p_operation_id,
+    jsonb_build_object('status', 'executing', 'renderer_version', 1)
+  );
+  RETURN jsonb_build_object('site_id', v_site.id, 'status', 'executing');
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.brand_site_provision(uuid,uuid,text,text)
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.brand_site_provision(uuid,uuid,text,text)
+  TO authenticated, service_role;
+
 CREATE OR REPLACE FUNCTION public.brand_site_plan_authorize_compose(p_brand_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER
