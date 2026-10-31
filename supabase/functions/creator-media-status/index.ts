@@ -35,6 +35,7 @@ export type MediaStatusRow = {
   aspect_warning: boolean | null;
   failure_code: string | null;
   ready_at: string | null;
+  width: number | null;
   height: number | null;
   delete_after: string | null;
 };
@@ -48,7 +49,11 @@ export type MediaStatusDeps = {
   isApprovedDelivery: (jobId: string, contractId: string) => Promise<boolean>;
   hasActiveRights: (contractId: string) => Promise<boolean>;
   playback: (videoId: string) => Promise<unknown>;
-  download: (videoId: string, height: number | null) => Promise<unknown>;
+  download: (
+    videoId: string,
+    width: number | null,
+    height: number | null,
+  ) => Promise<unknown>;
 };
 
 const SHARED_WITH_CONTRACT = new Set(["delivery", "dispute_evidence"]);
@@ -105,7 +110,7 @@ export function createCreatorMediaStatusHandler(deps: MediaStatusDeps) {
       await deps.hasActiveRights(data.contract_id);
     const download = activeRights && data.status === "ready" &&
         data.bunny_video_id
-      ? await deps.download(data.bunny_video_id, data.height)
+      ? await deps.download(data.bunny_video_id, data.width, data.height)
       : null;
     return json({
       jobId: data.id,
@@ -132,7 +137,7 @@ if (import.meta.main) {
     media: async (jobId) => {
       const { data, error } = await supabase.from("creator_media_jobs")
         .select(
-          "id,owner_id,purpose,status,contract_id,bunny_video_id,aspect_warning,failure_code,ready_at,height,delete_after",
+          "id,owner_id,purpose,status,contract_id,bunny_video_id,aspect_warning,failure_code,ready_at,width,height,delete_after",
         )
         .eq("id", jobId).maybeSingle();
       if (error) throw error;
