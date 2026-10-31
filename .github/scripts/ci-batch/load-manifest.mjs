@@ -88,7 +88,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // full-history inventories.
 // #3281 / #3645: re-sealed after the terminal by-date + Paystack finalizer
 // re-emit entered those inventories and their filtered historical replays.
-export const BOOTSTRAP_SHA256 = "e8cfc89a192bed21754f0d6fa6665f011721703525d2f682828b23faca7ea232";
+// #3281: re-sealed after the production-order repair and its proofs entered
+// those inventories and the same filtered historical replays.
+export const BOOTSTRAP_SHA256 = "5af477760072ce19adafcbf3b03d3e794d7ee5e9e5a110c9586d96500912ab49";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

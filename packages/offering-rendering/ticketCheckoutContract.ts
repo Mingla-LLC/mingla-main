@@ -15,6 +15,8 @@ export interface CheckoutV2Line {
   ticketTypeId: string;
   quantity: number;
   paymentPlanChoice: CheckoutLinePlanChoice;
+  /** issue #3281 — event date id → quantity; omit keeps fingerprints identical. */
+  byDate?: Record<string, number>;
 }
 
 export interface CheckoutClientAttemptInput {
@@ -111,6 +113,7 @@ export function normalizeCheckoutV2Lines(
     const ticketTypeId = row.ticketTypeId;
     const quantity = row.quantity;
     const paymentPlanChoice = row.paymentPlanChoice;
+    const byDate = row.byDate as Record<string, number> | undefined;
     if (
       typeof ticketTypeId !== "string" || !UUID_PATTERN.test(ticketTypeId) ||
       !Number.isInteger(quantity) || Number(quantity) < 1 ||
@@ -125,6 +128,8 @@ export function normalizeCheckoutV2Lines(
       ticketTypeId,
       quantity: Number(quantity),
       paymentPlanChoice,
+      // issue #3281 — part of attempt identity; the server validates it.
+      ...(byDate && { byDate }),
     });
   }
 

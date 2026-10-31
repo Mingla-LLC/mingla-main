@@ -42,12 +42,12 @@ import {
 import {
   type CheckoutV2Line,
   isCheckoutAttemptId,
-  normalizeCheckoutV2Lines,
   TICKET_CHECKOUT_CONTRACT_VERSION,
 } from "../../../packages/offering-rendering/ticketCheckoutContract.ts";
 import {
   canonicalCheckoutV2FingerprintInput,
   checkoutV2IdempotencyKey,
+  normalizeCheckoutV2ServerLines,
 } from "../../../packages/offering-rendering/ticketCheckoutServerContract.ts";
 import {
   computeMultiLineInstallmentPlan,
@@ -133,6 +133,7 @@ import {
 // shared by the Paystack callback_url and the Stripe success/cancel URLs.
 import { buyerWebSurfacePath } from "./buyerWebSurfacePath.ts";
 import { capacityEventDateIdFromError } from "./capacityEventDateId.ts";
+import { byDateDatabaseReady, cartHasByDateLines } from "./byDateDatabaseGuard.ts";
 import { resolveSitesAttributionPepper } from "../_shared/sitesSecurity.ts";
 import {
   hashTicketLinkToken,
@@ -801,7 +802,7 @@ export const createTicketCheckoutCreateHandler = (
       if (!isCheckoutAttemptId(body.checkoutAttemptId)) {
         return jsonResponse({ error: "checkout_attempt_invalid" }, 400);
       }
-      const parsedLines = normalizeCheckoutV2Lines(body.lines);
+      const parsedLines = normalizeCheckoutV2ServerLines(body.lines);
       if (!parsedLines.ok) {
         return jsonResponse({ error: parsedLines.error }, 400);
       }
@@ -1154,6 +1155,13 @@ export const createTicketCheckoutCreateHandler = (
     // set, which is what keeps every ORCH-1072 write site below byte-identical.
     let anchorEventDateId: string | null = null;
     const orderedEventDateIds: string[] = [];
+    // issue #3281 [TRANSITIONAL] — refuse uneven per-date carts until the
+    // by-date migration is live, because the older database ignores byDate and
+    // would mint quantity × days. Exit: remove once 20271224003281 is applied.
+    if (cartHasByDateLines(lines) && !(await byDateDatabaseReady(supabase))) {
+      return refuse({ error: "by_date_unavailable" }, 409);
+    }
+
     // issue #3281 many-dates — all-days pass binds every upcoming occurrence
     // before validation / idempotency (ignore client day list).
     {
@@ -2405,6 +2413,9 @@ export const createTicketCheckoutCreateHandler = (
           ),
           totalCents: Number(item.totalCents),
           paymentPlanChoice: requested?.paymentPlanChoice ?? "full" as const,
+          ...(requested?.byDate !== undefined
+            ? { byDate: requested.byDate }
+            : {}),
           requestedQuantity: requested?.quantity,
         };
       });
