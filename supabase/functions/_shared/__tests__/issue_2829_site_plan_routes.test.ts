@@ -74,7 +74,8 @@ Deno.test("#2829 W9a plan read and save map to Core's RPCs", async () => {
   const read = await body(await handleSitePlanRoute(`/v1/brands/${BRAND}/site-plan`, "GET", {}, ctx));
   assert(read.ok === true && userCalls[0]?.fn === "brand_site_plan_get", "read did not call plan_get");
   await handleSitePlanRoute(`/v1/brands/${BRAND}/site-plan`, "POST", { revision: 3, patch: { offerings_selected: [] } }, ctx);
-  assert(userCalls[1]?.fn === "brand_site_plan_save" && userCalls[1].args.p_revision === 3, "save did not carry the revision");
+  const saveCall = userCalls.find((call) => call.fn === "brand_site_plan_save");
+  assert(saveCall?.args.p_revision === 3, "save did not carry the revision");
   const bad = await handleSitePlanRoute(`/v1/brands/${BRAND}/site-plan`, "POST", { revision: "3", patch: {} }, ctx);
   assert(bad?.status === 400, "a non-integer revision was accepted");
   const notOurs = await handleSitePlanRoute("/v1/sites/x/versions", "GET", {}, ctx);
