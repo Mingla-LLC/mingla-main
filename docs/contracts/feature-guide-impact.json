@@ -18,8 +18,10 @@
       "paths": [
         "app-mobile/src/components/AppStateManager.tsx",
         "app-mobile/src/hooks/useAuthSimple.ts",
+        "app-mobile/src/services/supabase.ts",
         "app-mobile/src/services/attendanceClaimService.ts",
         "app-mobile/src/services/emailOtpService.ts",
+        "app-mobile/src/utils/explorerProfileAuthRest.ts",
         "app-mobile/src/utils/explorerReactivation.ts"
       ]
     },
