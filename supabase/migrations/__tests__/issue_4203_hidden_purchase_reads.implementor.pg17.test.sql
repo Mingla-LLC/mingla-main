@@ -7,6 +7,25 @@
 \set ON_ERROR_STOP on
 BEGIN;
 
+DO $proof$
+DECLARE
+  v_source text;
+BEGIN
+  SELECT p.prosrc
+    INTO v_source
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public'
+     AND p.proname = 'consumer_can_read_event_for_caller'
+     AND pg_get_function_identity_arguments(p.oid) = 'p_event_id uuid';
+
+  IF position('to_jsonb(t)->>''holder_user_id''' IN coalesce(v_source, '')) = 0 THEN
+    RAISE EXCEPTION
+      '#4203 replay compatibility: current-holder access must tolerate the pre-send-to-friend schema';
+  END IF;
+END;
+$proof$;
+
 INSERT INTO auth.users(id, email, email_confirmed_at) VALUES
   ('42030000-0000-4000-8000-000000000001', 'host-4203@example.test', now()),
   ('42030000-0000-4000-8000-000000000002', 'buyer-4203@example.test', now()),

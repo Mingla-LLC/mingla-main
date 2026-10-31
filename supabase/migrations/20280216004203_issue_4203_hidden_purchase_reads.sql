@@ -28,7 +28,12 @@ AS $function$
         SELECT 1
         FROM public.tickets t
         WHERE t.event_id = p_event_id
-          AND t.holder_user_id = auth.uid()
+          -- The deliberately filtered pre-#1931 replay omits the later
+          -- send-to-friend migration that adds holder_user_id. Reading the
+          -- optional field through the whole-row JSON keeps that historical
+          -- replay buildable while remaining exactly equivalent on the live
+          -- schema, where the UUID column exists.
+          AND to_jsonb(t)->>'holder_user_id' = auth.uid()::text
       )
     );
 $function$;
