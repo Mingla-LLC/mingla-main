@@ -7,7 +7,8 @@
         "supabase/functions/_shared/explorerPhoneRelease.ts",
         "supabase/functions/delete-user/index.ts",
         "supabase/migrations/20280216004204_issue_4202_explorer_phone_identity_release.sql",
-        "supabase/migrations/20280217004202_issue_4202_local_acceptance_auth_detach.sql"
+        "supabase/migrations/20280217004202_issue_4202_local_acceptance_auth_detach.sql",
+        "supabase/migrations/20280218004202_issue_4202_explorer_phone_rpc_null.sql"
       ]
     },
     {

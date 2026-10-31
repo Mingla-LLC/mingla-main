@@ -95,7 +95,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // the already-registered #4202/#4203 PostgreSQL suite.
 // #4202: re-sealed after the Local audit-row auth detach entered the same
 // inventories with its self-registered PostgreSQL retention proof.
-export const BOOTSTRAP_SHA256 = "41b3e6b20a658e0078e23def4d9fe30052c0a428a655ad340bff3aa1d8dc3283";
+// #4202: re-sealed after the retry-safe auth.users phone-release migration
+// and its self-registered PostgreSQL proof entered those inventories.
+export const BOOTSTRAP_SHA256 = "a725a2a67b41070e3d21d92dca6e3dc1765893f716e3b0bb5d96230139083e25";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
