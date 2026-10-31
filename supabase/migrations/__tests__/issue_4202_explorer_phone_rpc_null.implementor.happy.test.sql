@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 
 -- PostgreSQL 17 post-replay behavioural proof.
--- MINGLA-INVARIANT: I-4202-EXPLORER-PHONE-RELEASE | issue #4202 | Explorer deletion frees auth.users phone, its pending-phone state, the phone identity and possession ledger in one service-role boundary while preserving email identity; a retry is a no-op.
+-- MINGLA-INVARIANT: I-4202-EXPLORER-PHONE-RELEASE | issue #4202 | Explorer deletion frees auth.users phone authority with GoTrue-compatible empty pending-phone text sentinels, removes the phone identity and possession ledger in one service-role boundary, and preserves email identity; a retry is a no-op.
 
 BEGIN;
 
@@ -101,8 +101,8 @@ BEGIN
       AND (
         phone IS NOT NULL
         OR phone_confirmed_at IS NOT NULL
-        OR phone_change IS NOT NULL
-        OR phone_change_token IS NOT NULL
+        OR phone_change IS DISTINCT FROM ''
+        OR phone_change_token IS DISTINCT FROM ''
         OR phone_change_sent_at IS NOT NULL
       )
   ) THEN
