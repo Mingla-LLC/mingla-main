@@ -5,7 +5,7 @@
 import { assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 const MIGRATION =
-  "supabase/migrations/20271223003281_issue_3281_cancel_event_date.sql";
+  "supabase/migrations/20280216003281_issue_3281_cancel_event_date.sql";
 const DATES = "mingla-business/app/event/[id]/dates.tsx";
 
 Deno.test("cancel migration adds status columns and RPCs", () => {
@@ -21,6 +21,8 @@ Deno.test("cancel migration adds status columns and RPCs", () => {
   assert(text.includes("FOR UPDATE"));
   assert(text.includes("COALESCE(d.status"));
   assert(text.includes("sold_date_requires_schedule_writer"));
+  assert(text.includes("p.prokind = 'f'"));
+  assert(text.includes("order_live_tickets"));
 });
 
 Deno.test("Host Dates screen wires Cancel this date with confirm", () => {

@@ -91,9 +91,10 @@ BEGIN
   -- Affected tickets: explicit binding to this date OR legacy unscoped
   -- (zero ticket_event_dates rows = any-occurrence), matching
   -- issue_3313_ticket_type_occurrence_sold. Include partial_refund orders.
-  -- Amount basis = buyer_total_cents (fees + tax) minus already refunded,
-  -- allocated by each ticket's covered-date count (stable; not shrinking
-  -- active-date denominator). Cap by remaining refundable on the order.
+  -- Amount basis = buyer_total_cents (fees + tax) minus already refunded.
+  -- All-days passes: remaining / covered dates (bindings, else active dates).
+  -- Per-day: remaining / live tickets on the order (never the full order total
+  -- for one of several day tickets). Cap by remaining refundable on the order.
   WITH affected AS (
     SELECT o.id AS order_id,
            tk.id AS ticket_id,
@@ -104,12 +105,34 @@ BEGIN
            )::bigint AS remaining_cents,
            GREATEST(
              1,
+             CASE
+               WHEN EXISTS (
+                 SELECT 1 FROM public.ticket_event_dates ted_any
+                  WHERE ted_any.ticket_id = tk.id
+               ) THEN (
+                 SELECT count(*)::integer
+                   FROM public.ticket_event_dates ted_all
+                  WHERE ted_all.ticket_id = tk.id
+               )
+               ELSE (
+                 SELECT count(*)::integer
+                   FROM public.event_dates d_cov
+                  WHERE d_cov.event_id = p_event_id
+                    AND COALESCE(d_cov.status, 'active') = 'active'
+               )
+             END
+           )::integer AS covered_dates,
+           GREATEST(
+             1,
              (
                SELECT count(*)::integer
-                 FROM public.ticket_event_dates ted_all
-                WHERE ted_all.ticket_id = tk.id
+                 FROM public.tickets tk_ord
+                WHERE tk_ord.order_id = o.id
+                  AND tk_ord.status = ANY (
+                    ARRAY['valid'::text, 'used'::text, 'transferred'::text]
+                  )
              )
-           )::integer AS covered_dates
+           )::integer AS order_live_tickets
       FROM public.orders o
       JOIN public.tickets tk ON tk.order_id = o.id
      WHERE o.event_id = p_event_id
@@ -133,7 +156,8 @@ BEGIN
            CASE
              WHEN v_is_pass THEN
                (remaining_cents / covered_dates)
-             ELSE remaining_cents
+             ELSE
+               (remaining_cents / order_live_tickets)
            END::bigint AS share_cents
       FROM affected
   ),
@@ -326,6 +350,8 @@ END;
 $fn$;
 
 -- Buyer-facing readers: exclude cancelled dates from upcoming / occurrence lists.
+-- Only ordinary functions (prokind = 'f'): pg_get_functiondef fails on aggregates
+-- such as public wrappers of array_agg ("array_agg is an aggregate function").
 DO $patch$
 DECLARE
   r record;
@@ -337,6 +363,7 @@ BEGIN
       FROM pg_proc p
       JOIN pg_namespace n ON n.oid = p.pronamespace
      WHERE n.nspname = 'public'
+       AND p.prokind = 'f'
        AND pg_get_functiondef(p.oid) LIKE '%FROM public.event_dates%'
        AND (
          pg_get_functiondef(p.oid) LIKE '%d.end_at > now()%'
