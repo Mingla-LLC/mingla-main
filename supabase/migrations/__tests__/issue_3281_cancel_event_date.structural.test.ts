@@ -23,6 +23,7 @@ Deno.test("cancel migration adds status columns and RPCs", () => {
   assert(text.includes("sold_date_requires_schedule_writer"));
   assert(text.includes("order_live_tickets"));
   assert(text.includes("issue_3281_event_schedule"));
+  assert(text.includes("REVOKE ALL ON FUNCTION public.issue_3281_event_schedule(uuid)"));
   assert(!text.includes("DO $patch$"));
   assert(!text.includes("EXECUTE v_new"));
 });

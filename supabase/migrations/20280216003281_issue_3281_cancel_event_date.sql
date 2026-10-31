@@ -349,6 +349,14 @@ BEGIN
 END;
 $fn$;
 
+-- Preserve the PR7 privilege boundary: CREATE OR REPLACE keeps the OID but a
+-- lane that skipped 20271222003281 would otherwise create this DEFINER helper
+-- with default PUBLIC/anon EXECUTE. Always re-state the revoke/grant.
+REVOKE ALL ON FUNCTION public.issue_3281_event_schedule(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3281_event_schedule(uuid)
+  TO service_role;
+
 -- issue_3281_event_schedule above already omits cancelled dates. Broader
 -- buyer-facing occurrence readers (checkout/discover laterals) get named
 -- CREATE OR REPLACE updates in a follow-up — catalog string-rewrites are
