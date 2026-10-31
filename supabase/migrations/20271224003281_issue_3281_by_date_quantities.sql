@@ -318,6 +318,12 @@ BEGIN
       ELSE NULL
     END;
     IF v_by_date IS NOT NULL THEN
+      -- Optional byDate only applies under per_day minting. all_days mints one
+      -- pass entitled to every chosen day — per-date counts would be ignored
+      -- and silently wrong. Reject at create so finalize never sees this shape.
+      IF v_pricing_mode = 'all_days' THEN
+        RAISE EXCEPTION 'by_date_not_supported_for_all_days';
+      END IF;
       -- Optional byDate: quantity is the sum over chosen days; pricing skips the
       -- day multiplier (already expanded). Zero on a date is allowed; any
       -- non-zero must sit in [min, max] once the tier is loaded below.
@@ -504,9 +510,18 @@ BEGIN
     v_blocks := NULLIF(v_price->>'blocks','')::integer;
 
     -- issue #3281 R3 — capacity_scope counters (cart-aggregated like lifetime).
+    -- Same byDate / day-multiplier expansion as the lifetime quantity_total
+    -- gate above so experience scopes cannot under-count uneven carts.
     IF v_event.event_type = 'experience'
        AND v_ticket_type.quantity_total IS NOT NULL THEN
-      SELECT COALESCE(SUM((l ->> 'quantity')::integer), 0)::integer
+      SELECT COALESCE(SUM(
+          CASE
+            WHEN jsonb_typeof(l -> 'byDate') = 'object' THEN
+              public.issue_3281_line_qty_sum(l)
+            ELSE
+              COALESCE((l ->> 'quantity')::integer, 0) * v_day_multiplier
+          END
+        ), 0)::integer
         INTO v_cart_qty_for_type
         FROM jsonb_array_elements(p_lines) AS l
        WHERE (l ->> 'ticketTypeId')::uuid = v_ticket_type.id;
@@ -1040,7 +1055,12 @@ BEGIN
      ORDER BY created_at, id
   LOOP
     -- issue #3281 PR10 — when by_date is set, mint each date's own quantity
-    -- instead of round-robin on the summed quantity.
+    -- instead of round-robin on the summed quantity. Create already rejects
+    -- by_date under all_days; fail closed here if a legacy row still has it.
+    IF v_item.by_date IS NOT NULL AND jsonb_typeof(v_item.by_date) = 'object'
+       AND v_pricing_mode = 'all_days' THEN
+      RAISE EXCEPTION 'by_date_not_supported_for_all_days';
+    END IF;
     IF v_item.by_date IS NOT NULL AND jsonb_typeof(v_item.by_date) = 'object'
        AND v_day_count > 0 AND v_pricing_mode <> 'all_days' THEN
       FOREACH v_day_id IN ARRAY v_days LOOP

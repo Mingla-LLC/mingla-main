@@ -132,6 +132,7 @@ import {
 // #3645 — event_type → buyer-web surface path (trip / experience / event),
 // shared by the Paystack callback_url and the Stripe success/cancel URLs.
 import { buyerWebSurfacePath } from "./buyerWebSurfacePath.ts";
+import { capacityEventDateIdFromError } from "./capacityEventDateId.ts";
 import { resolveSitesAttributionPepper } from "../_shared/sitesSecurity.ts";
 import {
   hashTicketLinkToken,
@@ -215,8 +216,15 @@ async function persistSiteAttributionToken(
  * made every gap in this system findable.
  */
 
+/** Narrow enough for qty/tier helpers; avoids Record index-signature fights
+ * with CheckoutV2Line / CheckoutLine interface shapes under deno check. */
+type CheckoutLineFields = {
+  ticketTypeId?: unknown;
+  quantity?: unknown;
+};
+
 const firstTicketTypeId = (
-  lines: ReadonlyArray<Record<string, unknown>>,
+  lines: ReadonlyArray<CheckoutLineFields>,
 ): string | null => {
   for (const line of lines) {
     const id = line?.ticketTypeId;
@@ -226,7 +234,7 @@ const firstTicketTypeId = (
 };
 
 const totalRequestedQuantity = (
-  lines: ReadonlyArray<Record<string, unknown>>,
+  lines: ReadonlyArray<CheckoutLineFields>,
 ): number | null => {
   let total = 0;
   let saw = false;
@@ -514,27 +522,6 @@ function isCheckoutLine(value: unknown): value is CheckoutLine {
     if (!Number.isInteger(qty) || Number(qty) < 0) return false;
   }
   return true;
-}
-
-/** issue #3281 PR10 — DETAIL on ticket_capacity_exceeded carries event_date_id. */
-function capacityEventDateIdFromError(
-  err: { details?: unknown; detail?: unknown; message?: unknown } | null |
-    undefined,
-): string | null {
-  if (err == null) return null;
-  const candidates = [err.details, err.detail, err.message];
-  const uuidRe =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  for (const c of candidates) {
-    if (typeof c !== "string") continue;
-    const trimmed = c.trim();
-    if (uuidRe.test(trimmed)) return trimmed.toLowerCase();
-    const m = trimmed.match(
-      /([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/i,
-    );
-    if (m?.[1]) return m[1].toLowerCase();
-  }
-  return null;
 }
 
 function optionalTrimmed(value: unknown): string | undefined {
@@ -826,7 +813,9 @@ export const createTicketCheckoutCreateHandler = (
     }
     const lines = checkoutV2Lines ??
       (Array.isArray(body.lines) ? body.lines.filter(isCheckoutLine) : []);
-    refusal.lines = lines;
+    // Refusal telemetry stores opaque JSON rows; cast at the boundary so
+    // typed CheckoutV2Line / CheckoutLine arrays type-check under deno check.
+    refusal.lines = lines as Record<string, unknown>[];
 
     // #2879 / #2947 slice 3 — opt-in waiting room. Absent queueContract ⇒ today's
     // behaviour exactly (never emit kind queued / waitlist_offered).
@@ -1189,6 +1178,17 @@ export const createTicketCheckoutCreateHandler = (
         (passRow as { is_recurring?: unknown }).is_recurring !== true &&
         (passRow as { multi_date_pricing_mode?: unknown })
             .multi_date_pricing_mode === "all_days";
+      if (
+        allDaysPass &&
+        lines.some((line) => {
+          const byDate = (line as { byDate?: Record<string, number> }).byDate;
+          return byDate != null && Object.keys(byDate).length > 0;
+        })
+      ) {
+        // Per-date quantities have no meaning under an all-days pass; refuse
+        // rather than mint entitlements that ignore the buyer's byDate map.
+        return refuse({ error: "by_date_not_supported_for_all_days" }, 422);
+      }
       if (allDaysPass) {
         const { data: passDates, error: passDatesErr } = await supabase
           .from("event_dates")
@@ -2273,6 +2273,12 @@ export const createTicketCheckoutCreateHandler = (
           },
           409,
         );
+      }
+      if (
+        typeof sessionError?.message === "string" &&
+        sessionError.message.includes("by_date_not_supported_for_all_days")
+      ) {
+        return refuse({ error: "by_date_not_supported_for_all_days" }, 422);
       }
       return jsonResponse(
         { error: "checkout_session_failed", detail: sessionError?.message },
