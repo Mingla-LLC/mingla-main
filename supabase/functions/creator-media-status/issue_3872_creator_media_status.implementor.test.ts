@@ -30,6 +30,7 @@ const row = (purpose: string): MediaStatusRow => ({
   aspect_warning: false,
   failure_code: null,
   ready_at: "2026-10-26T12:00:00Z",
+  width: 1080,
   height: 1920,
   delete_after: "2027-02-23T12:00:00Z",
 });
@@ -64,14 +65,23 @@ Deno.test("#3872 the owner gets playback for their own media", async () => {
 });
 
 Deno.test("#3872 the contract's host can play the delivered video it must review", async () => {
-  const res = await createCreatorMediaStatusHandler(deps(HOST, "delivery"))(
-    request(),
-  );
+  let downloadDimensions: [number | null, number | null] | null = null;
+  const hostDeps = deps(HOST, "delivery");
+  hostDeps.download = (_videoId, width, height) => {
+    downloadDimensions = [width, height];
+    return Promise.resolve({
+      url: "https://video.example/download",
+      expiresAt: "soon",
+      filename: "approved.mp4",
+    });
+  };
+  const res = await createCreatorMediaStatusHandler(hostDeps)(request());
   assertEquals(res.status, 200);
   const body = await res.json();
   assertEquals(body.playback.url, "https://video.example/play");
   assertEquals(body.download.url, "https://video.example/download");
   assertEquals(body.availableUntil, "2027-02-23T12:00:00Z");
+  assertEquals(downloadDimensions, [1080, 1920]);
 });
 
 Deno.test("#3872 an admin can play a delivery for disputes", async () => {
