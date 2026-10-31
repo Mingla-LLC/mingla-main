@@ -30,7 +30,11 @@
       "capability_key": "checkout-tickets",
       "paths": [
         "app-mobile/src/i18n/locales/en/purchases.json",
+        "mingla-business/app/checkout/[eventId]/index.tsx",
         "mingla-business/app/checkout/[eventId]/buyer.tsx",
+        "mingla-business/src/components/checkout/CartContext.tsx",
+        "mingla-business/src/services/checkoutErrorCopy.ts",
+        "mingla-business/src/services/ticketCheckoutService.ts",
         "supabase/migrations/20280216004203_issue_4203_hidden_purchase_reads.sql"
       ]
     },
