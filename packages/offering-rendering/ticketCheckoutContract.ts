@@ -15,6 +15,8 @@ export interface CheckoutV2Line {
   ticketTypeId: string;
   quantity: number;
   paymentPlanChoice: CheckoutLinePlanChoice;
+  /** issue #3281 — event date id → quantity; omit keeps fingerprints identical. */
+  byDate?: Record<string, number>;
 }
 
 export interface CheckoutClientAttemptInput {
@@ -94,6 +96,29 @@ export function createCheckoutAttemptId(
   }-${hex.slice(20)}`;
 }
 
+/**
+ * issue #3281 — keep only positive date quantities so the map, not a stale
+ * scalar, owns the line's total. Returns null for a malformed map.
+ */
+function normalizeCheckoutV2ByDate(
+  value: unknown,
+): Record<string, number> | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const byDate: Record<string, number> = {};
+  for (const [dateId, quantity] of Object.entries(value)) {
+    if (
+      !UUID_PATTERN.test(dateId) || !Number.isInteger(quantity) ||
+      Number(quantity) < 0 || Number(quantity) > 100_000
+    ) {
+      return null;
+    }
+    if (Number(quantity) > 0) byDate[dateId] = Number(quantity);
+  }
+  return byDate;
+}
+
 export function normalizeCheckoutV2Lines(
   value: unknown,
 ): CheckoutV2LineParseResult {
@@ -121,6 +146,15 @@ export function normalizeCheckoutV2Lines(
       return { ok: false, error: "checkout_lines_invalid" };
     }
     seen.add(ticketTypeId);
+    if (row.byDate !== undefined) {
+      const byDate = normalizeCheckoutV2ByDate(row.byDate);
+      const total = Object.values(byDate ?? {}).reduce((sum, n) => sum + n, 0);
+      if (byDate === null || total < 1 || total > 100_000) {
+        return { ok: false, error: "checkout_lines_invalid" };
+      }
+      lines.push({ ticketTypeId, quantity: total, paymentPlanChoice, byDate });
+      continue;
+    }
     lines.push({
       ticketTypeId,
       quantity: Number(quantity),
