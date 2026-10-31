@@ -29,6 +29,7 @@ import { Platform } from "react-native";
 import { supabase } from "./supabase";
 import { mixpanelService } from "./mixpanelService";
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
+import { withExplorerReactivationIntent } from "../utils/explorerReactivation";
 // #1875's SINGLE transient/permanent decision point. Imported rather than
 // re-expressed: that issue exists because the distinction had been scattered
 // across catch branches, and an email-OTP fault must be judged by the same
@@ -128,11 +129,13 @@ export async function verifyEmailSignInCode(
     return { ok: false, error: "Enter the code we emailed you." };
   }
   try {
-    const { error } = await supabase.auth.verifyOtp({
-      email: address,
-      token,
-      type: "email",
-    });
+    const { error } = await withExplorerReactivationIntent(() =>
+      supabase.auth.verifyOtp({
+        email: address,
+        token,
+        type: "email",
+      })
+    );
     if (error) return { ok: false, error: verifyFailureMessage(error.message) };
     return { ok: true };
   } catch (err) {

@@ -319,3 +319,22 @@ Deno.test("#3660 SC-10 · explorer side with an active Host side keeps the #2321
   assertEquals(result.retainedReason, "business_side_active");
   assertEquals(deleteUserCalls(log), 0);
 });
+
+Deno.test("#4202 · explorer deletion never calls auth delete for an active Creator identity without a brand", async () => {
+  const { client, log } = makeClient({
+    rows: {
+      profiles: { explorer_deleted_at: "2026-10-31T21:37:28Z" },
+      creator_accounts: { deleted_at: null },
+    },
+    counts: { brands: 0, brand_team_members: 0 },
+  });
+
+  const result = await deleteAuthUserIfReady(client, UID, "explorer");
+
+  assertEquals(deleteUserCalls(log), 0);
+  assertEquals(result, {
+    authDeleted: false,
+    authRetained: true,
+    retainedReason: "business_side_active",
+  });
+});

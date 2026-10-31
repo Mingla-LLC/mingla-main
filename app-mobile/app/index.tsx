@@ -121,6 +121,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors } from "../src/constants/colors";
 import { logger } from "../src/utils/logger";
+import { withExplorerReactivationIntent } from "../src/utils/explorerReactivation";
 // V2: inAppNotificationService is no longer imported — server-synced notifications
 // are handled by useNotifications hook + Supabase Realtime. The old service file
 // stays in place but is no longer referenced from the app root.
@@ -2537,10 +2538,12 @@ function AppContent() {
           const { useAppStore } = await import("../src/store/appStore");
           const { setProfile } = useAppStore.getState();
 
-          const { data, error: sessionError } = await supabase.auth.setSession({
-            access_token: String(accessToken),
-            refresh_token: String(refreshToken),
-          });
+          const { data, error: sessionError } = await withExplorerReactivationIntent(() =>
+            supabase.auth.setSession({
+              access_token: String(accessToken),
+              refresh_token: String(refreshToken),
+            })
+          );
 
           if (sessionError) {
             console.error("Error setting session:", sessionError);
