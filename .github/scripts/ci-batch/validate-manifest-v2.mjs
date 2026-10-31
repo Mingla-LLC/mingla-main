@@ -324,7 +324,7 @@ export function phase3dContractDigest(manifest) {
 // inventories; the existing #4202/#4203 suite owns its executable proof.
 // #2830: register Ari's brand-completeness migration and its declared proof in
 // the three preserved full-history inventories.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "aa879ae99721998c6277e089305731dbc12a86c4f4f2351f7c5a931ebd1dd415";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "84de5f34d1a8b0aa19c2b84d7618d866f1c7a62210f2d205c368a6050ea6d1d3";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

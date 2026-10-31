@@ -103,7 +103,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // already-owned event-chat repair in those same inventories and proof suite.
 // #2830: re-sealed after the Ari brand-completeness migration and registered
 // PostgreSQL proof entered the three preserved full-history inventories.
-export const BOOTSTRAP_SHA256 = "e7dcfe61e03c7aa9db46ab65e2b2d201bccfcd889779f0fa5bf9fcf7c400eec2";
+export const BOOTSTRAP_SHA256 = "d94d57141d7881fbecea5ab7c63f516ac9c3319c7d3dfa1b495ffc0a07419f75";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

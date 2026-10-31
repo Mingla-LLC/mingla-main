@@ -7879,7 +7879,7 @@
       "evidence": [
         {
           "tier": "regression",
-          "sha": "f130564bfac809433623adcccd3ecbebbf2e315d",
+          "sha": "4ff0e1d3740bb590cb9a395680e881acb8d871a1",
           "reference": "issue_2830_brand_completeness.test.ts: stale/conflict finding and bounded candidate evidence contract",
           "guard_role": "implementor"
         }
