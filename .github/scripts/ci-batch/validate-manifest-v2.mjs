@@ -315,7 +315,7 @@ export function phase3dContractDigest(manifest) {
 // #3281: register the production-order repair and its proofs the same way.
 // #2830: register Ari's brand-completeness migration and its declared proof in
 // the three preserved full-history inventories.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "e4cd0f98c5e24638873d1db5b5ee4590c4690ad78ddeb2af1c73ef3382ff91fc";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "60363770765d3a9c4086af2cae4d941081d9759c2b2015215432956b4cf12c50";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
