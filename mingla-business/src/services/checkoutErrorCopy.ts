@@ -392,6 +392,9 @@ export const TICKET_CAPACITY_EXCEEDED_TOKEN = "ticket_capacity_exceeded";
  */
 const FREE_CHECKOUT_MESSAGE_BY_CODE: Readonly<Record<string, string>> = Object
   .assign(Object.create(null) as Record<string, string>, {
+    // issue #3281 PR10 — keep capacity first so embedded multi-token messages
+    // preserve the sold-out precedence used for RPC detail.
+    [TICKET_CAPACITY_EXCEEDED_TOKEN]: FREE_CHECKOUT_SOLD_OUT_MESSAGE,
     // The guest holds it. The opposite of sold out. (index.ts:902)
     [FREE_RESERVATION_ALREADY_EXISTS_TOKEN]:
       FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE,
@@ -399,9 +402,6 @@ const FREE_CHECKOUT_MESSAGE_BY_CODE: Readonly<Record<string, string>> = Object
     checkout_unavailable: FREE_CHECKOUT_UNAVAILABLE_MESSAGE,
     // Refused before anything could be created. (index.ts:819/1008)
     checkout_session_failed: FREE_CHECKOUT_FAILED_MESSAGE,
-    // issue #3281 PR10 — capacity raised to the top-level error token (DETAIL
-    // may still carry eventDateId). Same sold-out sentence as detail matching.
-    [TICKET_CAPACITY_EXCEEDED_TOKEN]: FREE_CHECKOUT_SOLD_OUT_MESSAGE,
     // The finalize refused AFTER it may have written state — `order_missing`
     // and `tickets_missing` both describe partial results, so this one must not
     // claim either direction. (index.ts:1079/1135/1146/1173)
@@ -510,19 +510,15 @@ export const freeCheckoutErrorMessage = (error: unknown): string => {
   // sales closed, a per-person limit, a removed ticket type. Each now says what
   // happened and what to change. Checked after capacity so the sold-out
   // sentence keeps its precedence.
-  const byRaiseDetail = raiseMessageIn(detail);
-  if (byRaiseDetail !== undefined) return byRaiseDetail;
-
-  const byToken = lookup(code);
-  if (byToken !== undefined) return byToken;
+  const byDetailOrToken = raiseMessageIn(detail) ?? lookup(code);
+  if (byDetailOrToken !== undefined) return byDetailOrToken;
 
   const message = messageOf(error);
   if (FREE_CHECKOUT_MESSAGES.includes(message)) return message;
 
-  if (message.includes(TICKET_CAPACITY_EXCEEDED_TOKEN)) {
-    return FREE_CHECKOUT_SOLD_OUT_MESSAGE;
-  }
-  for (const token of Object.keys(FREE_CHECKOUT_MESSAGE_BY_CODE)) {
+  // The map is deliberately prototype-less, so `for…in` visits only its
+  // bounded own tokens without allocating a keys array on every refusal.
+  for (const token in FREE_CHECKOUT_MESSAGE_BY_CODE) {
     if (message.includes(token)) return FREE_CHECKOUT_MESSAGE_BY_CODE[token];
   }
   // issue #2511 — same raise tokens, for a caller that never went through
