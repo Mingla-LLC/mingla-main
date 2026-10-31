@@ -15,6 +15,7 @@
 -- refused), the probe resolver, grants, and the cron job.
 
 \set ON_ERROR_STOP on
+\ir issue_2830_complete_brand_setup.fixture.sql
 BEGIN;
 
 DO $w8$
@@ -75,6 +76,8 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', v_mingla_admin::text, true);
   PERFORM public.brand_site_admin_grant(v_brand_a, 'rollout', NULL);
   PERFORM public.brand_site_admin_grant(v_brand_b, 'rollout', NULL);
+  PERFORM pg_temp.issue_2830_complete_brand_setup(v_brand_a, v_owner);
+  PERFORM pg_temp.issue_2830_complete_brand_setup(v_brand_b, v_other_owner);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_owner)::text, true);
   PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
   v_result := public.brand_site_provision(v_brand_a, gen_random_uuid(), repeat('1', 64));

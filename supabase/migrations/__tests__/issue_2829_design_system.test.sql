@@ -7,6 +7,7 @@
 -- fallback as a warning on the receipt; it never fails a publish for it.
 
 \set ON_ERROR_STOP on
+\ir issue_2830_complete_brand_setup.fixture.sql
 BEGIN;
 
 DO $w3$
@@ -53,6 +54,7 @@ BEGIN
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_mingla_admin)::text, true);
   PERFORM set_config('request.jwt.claim.sub', v_mingla_admin::text, true);
   PERFORM public.brand_site_admin_grant(v_brand, 'rollout', NULL);
+  PERFORM pg_temp.issue_2830_complete_brand_setup(v_brand, v_owner);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_owner)::text, true);
   PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
   v_result := public.brand_site_provision(v_brand, gen_random_uuid(), repeat('1', 64));
