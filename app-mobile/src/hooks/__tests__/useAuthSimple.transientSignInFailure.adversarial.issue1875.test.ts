@@ -1542,6 +1542,26 @@ test('AX-F3 — everything ELSE in useAuthSimple.ts is byte-identical to origin/
     'import { useState, useEffect, useRef } from "react";\nimport { Alert, AppState, Platform } from "react-native";',
     'import { useState, useEffect } from "react";\nimport { Alert, Platform } from "react-native";',
   )
+  // #4202 routes only the deliberate reactivation read/write through the
+  // bearer captured by the auth event. Restore its declared import and local
+  // profile shape to the pre-#4202 bytes before checking #1875's residue.
+  residue = residue.replace(
+    'import {\n  requestOwnExplorerProfileForAuthEvent,\n  supabase,\n} from "../services/supabase";',
+    'import { supabase } from "../services/supabase";',
+  )
+  residue = residue.replace(
+    '\ntype ExplorerAuthProfile = User & {\n  explorer_deleted_at?: string | null;\n};\n',
+    '',
+  )
+  residue = residue.replace(
+    "        // setTimeout(0) breaks out of the callback's deadlock chain. It does NOT\n" +
+      '        // guarantee that every request builder on the shared client has observed\n' +
+      '        // the new bearer yet, so the #4202 profile gate below uses the access\n' +
+      '        // token captured on this auth event explicitly.',
+    '        // setTimeout(0) breaks out of the await chain: by the time the deferred\n' +
+      '        // function runs, _notifyAllSubscribers has already resolved this callback,\n' +
+      '        // initializePromise has completed, and getSession() works normally.',
+  )
   residue = cutBetween(residue, '// #1875 [transient-signin-failure] — user-facing sign-in failure copy is read', '\n\n// Module-level flag', 'imports')
   residue = cutBetween(residue, '/**\n * #1875 [transient-signin-failure] —', 'export const useAuthSimple = () => {', 'classifier block')
   residue = cutBetween(residue, '  // #1875 [transient-signin-failure] — cancellation checkpoint C1 for the', '\n  // Add timeout to prevent infinite loading', 'isMountedRef decl')

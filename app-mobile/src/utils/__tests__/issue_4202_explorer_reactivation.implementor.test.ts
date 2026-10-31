@@ -6,8 +6,10 @@ import {
 import {
   captureExplorerReactivationIntentForAuthEvent,
   resolveExplorerProfileAfterAuthEvent,
+  shouldDeferDeletedExplorerSessionForAuthEvent,
   withExplorerReactivationIntent,
 } from "../explorerReactivation.ts";
+import { buildExplorerProfileAuthRestRequest } from "../explorerProfileAuthRest.ts";
 
 const deletedProfile: {
   id: string;
@@ -98,6 +100,73 @@ Deno.test("#4202 SIGNED_IN needs a live user-initiated auth bracket", async () =
   assertEquals(captureExplorerReactivationIntentForAuthEvent("SIGNED_IN"), false);
 });
 
+Deno.test("#4202 passive session events cannot beat an explicit sign-in", async () => {
+  assertEquals(
+    shouldDeferDeletedExplorerSessionForAuthEvent("INITIAL_SESSION"),
+    false,
+  );
+
+  await withExplorerReactivationIntent(async () => {
+    assertEquals(
+      shouldDeferDeletedExplorerSessionForAuthEvent("INITIAL_SESSION"),
+      true,
+    );
+    assertEquals(
+      shouldDeferDeletedExplorerSessionForAuthEvent("TOKEN_REFRESHED"),
+      true,
+    );
+    assertEquals(
+      shouldDeferDeletedExplorerSessionForAuthEvent("SIGNED_IN"),
+      false,
+    );
+  });
+
+  assertEquals(
+    shouldDeferDeletedExplorerSessionForAuthEvent("INITIAL_SESSION"),
+    false,
+  );
+});
+
+Deno.test("#4202 delayed passive profile work cannot sign out before explicit reactivation", async () => {
+  let passiveMustDefer = false;
+  let explicitMayReactivate = false;
+
+  await withExplorerReactivationIntent(async () => {
+    // Model the race the production callback permits: Supabase can deliver the
+    // subscription's passive session event and the user-driven SIGNED_IN event
+    // while verifyOtp is still awaiting its subscribers, but both profile
+    // requests run on the next timer turn.
+    passiveMustDefer = shouldDeferDeletedExplorerSessionForAuthEvent(
+      "INITIAL_SESSION",
+    );
+    explicitMayReactivate =
+      captureExplorerReactivationIntentForAuthEvent("SIGNED_IN");
+  });
+
+  const passiveResolution = await resolveExplorerProfileAfterAuthEvent(
+    false,
+    deletedProfile,
+    () => Promise.resolve({ data: deletedProfile, error: null }),
+  );
+  assertEquals(passiveResolution.kind, "deleted_session");
+  assertEquals(passiveMustDefer, true);
+
+  const explicitResolution = await resolveExplorerProfileAfterAuthEvent(
+    explicitMayReactivate,
+    deletedProfile,
+    () =>
+      Promise.resolve({
+        data: {
+          ...deletedProfile,
+          explorer_deleted_at: null,
+          has_completed_onboarding: false,
+        },
+        error: null,
+      }),
+  );
+  assertEquals(explicitResolution.kind, "reactivated");
+});
+
 Deno.test("#4202 a failed auth attempt cannot leave reactivation intent armed", async () => {
   try {
     await withExplorerReactivationIntent(() => Promise.reject(new Error("no session")));
@@ -105,6 +174,50 @@ Deno.test("#4202 a failed auth attempt cannot leave reactivation intent armed", 
     // Expected: the assertion is that finally disarms the bracket.
   }
   assertEquals(captureExplorerReactivationIntentForAuthEvent("SIGNED_IN"), false);
+});
+
+Deno.test("#4202 post-auth profile reads use the captured bearer, never the anon key", () => {
+  const request = buildExplorerProfileAuthRestRequest({
+    supabaseUrl: "https://project.supabase.co/",
+    anonKey: "anon-key",
+    accessToken: "verified-user-token",
+    userId: deletedProfile.id,
+    reactivate: false,
+  });
+
+  assertEquals(request.init.method, "GET");
+  assertEquals(request.init.body, undefined);
+  assertEquals(
+    (request.init.headers as Record<string, string>).Authorization,
+    "Bearer verified-user-token",
+  );
+  assertEquals((request.init.headers as Record<string, string>).apikey, "anon-key");
+  assert(request.url.startsWith("https://project.supabase.co/rest/v1/profiles?"));
+  assert(request.url.includes(`id=eq.${deletedProfile.id}`));
+});
+
+Deno.test("#4202 reactivation PATCH changes only the Explorer marker and onboarding", () => {
+  const request = buildExplorerProfileAuthRestRequest({
+    supabaseUrl: "https://project.supabase.co",
+    anonKey: "anon-key",
+    accessToken: "verified-user-token",
+    userId: deletedProfile.id,
+    reactivate: true,
+  });
+
+  assertEquals(request.init.method, "PATCH");
+  assertEquals(
+    JSON.parse(String(request.init.body)),
+    { explorer_deleted_at: null, has_completed_onboarding: false },
+  );
+  assertEquals(
+    (request.init.headers as Record<string, string>).Prefer,
+    "return=representation",
+  );
+  assertEquals(
+    (request.init.headers as Record<string, string>).Authorization,
+    "Bearer verified-user-token",
+  );
 });
 
 Deno.test("#4202 the auth callback clears only the Explorer marker and restarts onboarding", async () => {
@@ -120,10 +233,22 @@ Deno.test("#4202 the auth callback clears only the Explorer marker and restarts 
   const claimSource = await Deno.readTextFile(
     new URL("../../services/attendanceClaimService.ts", import.meta.url),
   );
+  const supabaseSource = await Deno.readTextFile(
+    new URL("../../services/supabase.ts", import.meta.url),
+  );
+  const authRestSource = await Deno.readTextFile(
+    new URL("../explorerProfileAuthRest.ts", import.meta.url),
+  );
   assert(hookSource.includes("captureExplorerReactivationIntentForAuthEvent(event)"));
+  assert(hookSource.includes("shouldDeferDeletedExplorerSessionForAuthEvent(event)"));
+  assert(hookSource.includes("if (deferDeletedExplorerSessionSignOut)"));
   assert(hookSource.includes("resolveExplorerProfileAfterAuthEvent"));
-  assert(hookSource.includes("explorer_deleted_at: null"));
-  assert(hookSource.includes("has_completed_onboarding: false"));
+  assert(authRestSource.includes("explorer_deleted_at: null"));
+  assert(authRestSource.includes("has_completed_onboarding: false"));
+  assert(hookSource.includes("requestOwnExplorerProfileForAuthEvent<ExplorerAuthProfile>"));
+  assert(hookSource.includes("accessToken: session.access_token"));
+  assert(supabaseSource.includes("buildExplorerProfileAuthRestRequest"));
+  assert(supabaseSource.includes("fetchWithTimeout(request.url"));
   assert(hookSource.includes('resolution.kind === "deleted_session"'));
   assert(hookSource.includes('resolution.kind === "reactivation_failed"'));
   assert(appStateSource.includes("withExplorerReactivationIntent(signInWithGoogle)"));

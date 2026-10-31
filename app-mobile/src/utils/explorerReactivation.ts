@@ -39,6 +39,19 @@ export function captureExplorerReactivationIntentForAuthEvent(
 }
 
 /**
+ * Supabase may deliver the subscription's delayed INITIAL_SESSION while an
+ * explicit sign-in is still awaiting its SIGNED_IN subscribers. That passive
+ * event must not sign a deleted Explorer side out from underneath the explicit
+ * event that is authorized to reactivate it. Capture this synchronously; the
+ * deferred profile work runs after the auth attempt's bracket has closed.
+ */
+export function shouldDeferDeletedExplorerSessionForAuthEvent(
+  event: string,
+): boolean {
+  return event !== "SIGNED_IN" && reactivationIntentDepth > 0;
+}
+
+/**
  * #4202 — a retained Business/Creator login may return to Explorer, but an old
  * session must not silently undo account deletion. Only a SIGNED_IN event
  * captured during a user-initiated auth operation may clear the Explorer

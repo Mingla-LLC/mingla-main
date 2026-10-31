@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logger } from '../utils/logger';
 import { getNativeAppVersionHeaders } from './appVersionIdentity';
+import { buildExplorerProfileAuthRestRequest } from '../utils/explorerProfileAuthRest';
 import { trackNetworkRequest } from './reloadNetworkFence';
 // #1594 [consumer-map-url] — the project URL now comes from the ONE owner that
 // `app.config.js` can also read (`src/config/supabaseProject.js`), so the value
@@ -106,6 +107,68 @@ export const getSupabaseFunctionHeaders = (
   apikey: supabaseAnonKey,
   Authorization: `Bearer ${bearer ?? supabaseAnonKey}`,
 });
+
+export interface ExplorerProfileAuthResult<T> {
+  data: T | null;
+  error: { message: string; code?: string } | null;
+}
+
+/**
+ * #4202 — read or reactivate the signed-in user's Explorer profile with the
+ * access token carried by the SIGNED_IN event itself. The shared client's
+ * internal session can still be one event-loop turn behind that callback; in
+ * production that made the first request run as anon and return SQLSTATE 42501.
+ */
+export async function requestOwnExplorerProfileForAuthEvent<T>(input: {
+  accessToken: string;
+  userId: string;
+  reactivate: boolean;
+}): Promise<ExplorerProfileAuthResult<T>> {
+  const request = buildExplorerProfileAuthRestRequest({
+    supabaseUrl,
+    anonKey: supabaseAnonKey,
+    accessToken: input.accessToken,
+    userId: input.userId,
+    reactivate: input.reactivate,
+  });
+
+  try {
+    const response = await fetchWithTimeout(request.url, {
+      ...request.init,
+      headers: {
+        ...getNativeAppVersionHeaders(),
+        ...(request.init.headers as Record<string, string>),
+      },
+    });
+    const payload = await response.json().catch(() => null) as
+      | T[]
+      | { message?: string; code?: string }
+      | null;
+
+    if (!response.ok) {
+      const failure = !Array.isArray(payload) && payload !== null ? payload : null;
+      return {
+        data: null,
+        error: {
+          message: failure?.message ?? `Profile request failed (${response.status})`,
+          ...(failure?.code ? { code: failure.code } : {}),
+        },
+      };
+    }
+
+    return {
+      data: Array.isArray(payload) ? payload[0] ?? null : null,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      data: null,
+      error: {
+        message: error instanceof Error ? error.message : "Profile request failed",
+      },
+    };
+  }
+}
 
 /**
  * Drop-in replacement for supabase.functions.invoke() that logs the full

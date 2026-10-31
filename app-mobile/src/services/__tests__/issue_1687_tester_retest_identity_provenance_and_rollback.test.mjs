@@ -862,6 +862,12 @@ test('T-9R the delete cannot come back under another name, in another file — t
     'src/services/supabase.ts',
     'src/services/visitService.ts',
     'src/utils/breadcrumbs.ts',
+    // #4202 explorerProfileAuthRest.ts joined through the shared Supabase
+    // client. It only builds a bearer-authenticated profiles GET/PATCH for the
+    // deliberate Explorer reactivation callback; it never reads or deletes
+    // user_visits. Keep it inside the closure so the delete scan below proves
+    // that invariant instead of silently exempting the new module.
+    'src/utils/explorerProfileAuthRest.ts',
     'src/utils/logger.ts',
   ];
 
