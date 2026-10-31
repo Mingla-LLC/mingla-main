@@ -61,16 +61,18 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // #2829 W9b website designer tools; 140→152.
   // [TEST-MOD-APPROVED #3355] Planning, memory, research, extraction, and
   // verification capabilities extend the caller-bound registry; 152→172.
+  // [TEST-MOD-APPROVED #2830] Durable Website completeness, pre-draft design,
+  // and evidence-backed brand-context writes extend the exact census; 172→175.
   assert(
-    AGENT_TOOLS.length === 172,
-    `expected 172 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 175,
+    `expected 175 tools, got ${AGENT_TOOLS.length}`,
   );
   assert(
-    new Set(AGENT_TOOLS.map((t) => t.name)).size === 172,
+    new Set(AGENT_TOOLS.map((t) => t.name)).size === 175,
     "duplicate tool",
   );
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 172,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 175,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
@@ -132,7 +134,9 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   // #2829 W9b website designer tools; 140→152.
   // [TEST-MOD-APPROVED #3355] The same 20 tools are present in the accepted
   // capability ledger; 152→172.
-  assert(rows.length === 172, `expected 172 ledger rows, got ${rows.length}`);
+  // [TEST-MOD-APPROVED #2830] The three completeness tools are present in the
+  // accepted capability ledger; 172→175.
+  assert(rows.length === 175, `expected 175 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===
