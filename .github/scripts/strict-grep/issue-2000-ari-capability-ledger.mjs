@@ -187,6 +187,7 @@ ari.sites.run_design_checks
 ari.sites.save_plan_answers
 ari.sites.start_completeness_job
 ari.sites.save_plan_design
+ari.sites.record_context_finding
 ari.brand.update_context
 ari.sites.create_draft
 ari.sites.propose_variant

@@ -291,13 +291,13 @@ export function audit(base, plans = effectiveSuites()) {
     // #2829 W9b website designer tools; 140→152.
     // #3355 adds 20 bounded autonomy, research, memory and verification tools;
     // 152→172 without changing the RSVP command owner.
-    // #2830 adds the durable Website completeness, pre-draft design, and
-    // evidence-backed brand-context tools; 172→175.
-    if (parsed.audit?.registered_tool_count !== 175) {
-      failures.push("ledger audit registered_tool_count is not 175");
+    // #2830 adds durable Website completeness, pre-draft design, bounded
+    // audit findings, and evidence-backed brand-context tools; 172→176.
+    if (parsed.audit?.registered_tool_count !== 176) {
+      failures.push("ledger audit registered_tool_count is not 176");
     }
-    if (mapped.length !== 175 || new Set(mapped).size !== 175) {
-      failures.push("ledger mapped tool census is not 175 unique tools");
+    if (mapped.length !== 176 || new Set(mapped).size !== 176) {
+      failures.push("ledger mapped tool census is not 176 unique tools");
     }
     if (
       !mapped.includes("update_rsvp") ||
