@@ -2,7 +2,6 @@
 -- to render their own purchase even when the Host keeps the event hidden from
 -- Explorer discovery. This adds an ownership-only base-table read; it does not
 -- alter visibility, public views, feeds, search, recommendations, or anon RLS.
--- MINGLA-INVARIANT: I-4203-HIDDEN-PURCHASE-OWNERSHIP | issue #4203 | Hidden events and their dates are readable only to their buyer/current ticket holder (plus existing Host readers); they remain absent from public Explorer discovery.
 
 BEGIN;
 

@@ -1,3 +1,4 @@
+-- MINGLA-INVARIANT: I-4203-HIDDEN-PURCHASE-OWNERSHIP | issue #4203 | Hidden events and their dates are readable only to their buyer/current ticket holder plus existing Host readers; they remain absent from public Explorer discovery.
 -- #4203 — hidden reviewer inventory stays out of Explorer discovery while its
 -- buyer/current holder can render the exact event and date behind a purchase.
 -- FAILS-ON-REVERT: without the #4203 policies, the buyer/holder counts are 0;
