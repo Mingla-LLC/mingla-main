@@ -118,6 +118,7 @@ export interface BusinessEventCalendarRow {
   brandName: string;
   brandSlug: string;
   coverMediaUrl: string | null;
+  coverMediaType?: "image" | "video" | "gif" | null;
   masterDateUtc: string | null;
   // ORCH-0853: ISO-8601 UTC end timestamp of the master event date.
   // Sourced from `event_dates.end_at` where `is_master = true`. Active/Archive
@@ -164,11 +165,13 @@ export interface ConsumerRsvpRow {
   // guest's name on a plus-one row) — shown on the pass.
   displayName: string | null;
   coverMediaUrl: string | null;
+  coverMediaType?: "image" | "video" | "gif" | null;
   // The RSVP event id — needed to change/cancel via submitDeckRsvp.
   eventId: string;
   eventTitle: string;
   eventSlug: string;
   brandId: string;
+  brandSlug?: string;
   brandName: string;
   masterDateUtc: string | null;
   masterDateEndUtc: string | null;
@@ -446,7 +449,8 @@ export class CalendarService {
         `
           id, event_id, payment_status, created_at, ticket_pdf_path, event_date_id, booked_start_at,
           events!inner (
-            id, title, slug, event_type, cover_media_url, timezone,
+            id, title, slug, event_type, cover_media_url, cover_media_type,
+            timezone,
             location_text, location_geo, is_online, online_url,
             brand:brands!inner ( id, slug, name ),
             event_dates!left ( id, start_at, end_at, is_master )
@@ -488,6 +492,7 @@ export class CalendarService {
         // ORCH-1188 FIX 2: drives the public-page URL prefix (/e /t /exp).
         event_type: string | null;
         cover_media_url: string | null;
+        cover_media_type: string | null;
         timezone: string | null;
         location_text: string | null;
         location_geo: unknown;
@@ -614,6 +619,12 @@ export class CalendarService {
             brandName: brand?.name ?? "",
             brandSlug: brand?.slug ?? "",
             coverMediaUrl: event?.cover_media_url ?? null,
+            coverMediaType:
+              event?.cover_media_type === "image" ||
+              event?.cover_media_type === "video" ||
+              event?.cover_media_type === "gif"
+                ? event.cover_media_type
+                : null,
             masterDateUtc: day.masterDateUtc,
             // ORCH-0853: end-of-event timestamp used by consumer Calendar
             // partition. Still the END, never the start — the
@@ -700,10 +711,12 @@ export class CalendarService {
         plusGuestNames: [],
         displayName: row.display_name ?? null,
         coverMediaUrl: row.cover_media_url ?? null,
+        coverMediaType: null,
         eventId: row.event_id,
         eventTitle: row.event_title ?? "Event",
         eventSlug: row.event_slug ?? "",
         brandId: row.brand_id,
+        brandSlug: row.brand_slug ?? "",
         brandName: row.brand_name ?? "",
         masterDateUtc: row.master_start_at ?? null,
         masterDateEndUtc: row.master_end_at ?? null,

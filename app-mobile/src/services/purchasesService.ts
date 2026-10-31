@@ -40,6 +40,8 @@ export interface PurchaseLineItem {
 export interface PurchaseOrderRecord extends PurchaseOrderSource {
   eventDateId: string | null;
   brandId: string | null;
+  brandSlug?: string | null;
+  eventSlug?: string | null;
   conversationId: string | null;
   createdAt: string;
   ticketPdfPath: string | null;
@@ -90,16 +92,18 @@ interface RawOrder {
   payment_wallet: string | null;
   events: {
     id: string;
+    slug: string;
     title: string;
     event_type: string | null;
     cover_media_url: string | null;
+    cover_media_type: string | null;
     timezone: string | null;
     location_text: string | null;
     city: string | null;
     location_geo: unknown;
     is_online: boolean | null;
     online_url: string | null;
-    brand: { id: string; name: string | null } | null;
+    brand: { id: string; slug: string; name: string | null } | null;
     event_dates: Array<{
       id: string;
       start_at: string | null;
@@ -151,9 +155,10 @@ export async function fetchMyOrders(
       source, cancelled_at, cancelled_by, refunded_amount_cents, pricing_breakdown,
       payment_card_brand, payment_card_last4, payment_wallet,
       events!inner (
-        id, title, event_type, cover_media_url, timezone, location_text,
+        id, slug, title, event_type, cover_media_url, cover_media_type,
+        timezone, location_text,
         city, location_geo, is_online, online_url,
-        brand:brands!inner ( id, name ),
+        brand:brands!inner ( id, slug, name ),
         event_dates!left ( id, start_at, end_at, is_master )
       ),
       tickets:tickets (
@@ -191,7 +196,12 @@ export async function fetchMyOrders(
       if (statesError) throw statesError;
       ticketStatesByOrder.set(
         order.id,
-        (states ?? []).map((row) => ({
+        (states ?? []).map((row: {
+          ticket_id: string;
+          ticket_index: number;
+          transfer_state: "none" | "offered" | "claimed";
+          holder_first_name: string | null;
+        }) => ({
           ticketId: row.ticket_id,
           ticketIndex: row.ticket_index,
           transferState: row.transfer_state,
@@ -288,16 +298,24 @@ export async function fetchMyOrders(
       const buyerTotalCents = money(
         order.buyer_total_cents ?? order.total_cents,
       );
-      const normalized = {
+      const normalized: Omit<PurchaseOrderRecord, "raw"> = {
         id: order.id,
         eventDateId: window.eventDateId ?? null,
         eventId: event.id,
         eventTitle: event.title,
         eventType: event.event_type,
+        eventSlug: event.slug,
         brandName: event.brand?.name ?? "",
         brandId: event.brand?.id ?? null,
+        brandSlug: event.brand?.slug ?? null,
         conversationId: conversationByEvent.get(event.id) ?? null,
         coverMediaUrl: event.cover_media_url,
+        coverMediaType:
+          event.cover_media_type === "image" ||
+          event.cover_media_type === "video" ||
+          event.cover_media_type === "gif"
+            ? event.cover_media_type
+            : null,
         startAt,
         endAt: window.masterDateEndUtc,
         timezone: event.timezone ?? "UTC",
@@ -372,9 +390,10 @@ export async function fetchMyHeldTickets(
       ticket_type:ticket_types ( name ),
       ticket_event_dates ( event_date_id ),
       events!inner (
-        id, title, event_type, cover_media_url, timezone, location_text,
+        id, slug, title, event_type, cover_media_url, cover_media_type,
+        timezone, location_text,
         city, location_geo, is_online, online_url,
-        brand:brands!inner ( id, name ),
+        brand:brands!inner ( id, slug, name ),
         event_dates!left ( id, start_at, end_at, is_master )
       )
     `,
@@ -420,10 +439,18 @@ export async function fetchMyHeldTickets(
       eventId: event.id,
       eventTitle: event.title,
       eventType: event.event_type,
+      eventSlug: event.slug,
       brandName: event.brand?.name ?? "",
       brandId: event.brand?.id ?? null,
+      brandSlug: event.brand?.slug ?? null,
       conversationId: null,
       coverMediaUrl: event.cover_media_url,
+      coverMediaType:
+        event.cover_media_type === "image" ||
+        event.cover_media_type === "video" ||
+        event.cover_media_type === "gif"
+          ? event.cover_media_type
+          : null,
       startAt: start?.start_at ?? row.created_at,
       endAt: start?.end_at ?? null,
       timezone: event.timezone ?? "UTC",
@@ -509,6 +536,7 @@ function mapRsvp(row: ConsumerRsvpRow): PurchaseRsvpSource {
     eventTitle: row.eventTitle,
     brandName: row.brandName,
     coverMediaUrl: row.coverMediaUrl,
+    coverMediaType: row.coverMediaType,
     startAt: row.masterDateUtc,
     endAt: row.masterDateEndUtc,
     timezone: row.timezone,
