@@ -308,7 +308,9 @@ export function phase3dContractDigest(manifest) {
 // full-history inventories (1857/1931/2117).
 // #3281: register PR9 cancel-date migration in the same inventories.
 // #3281: register PR10 byDate quantities migration in the same inventories.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "de08d914fa4e8ec33975335b3efe623b3f5c425b20358ad94bef2679da827297";
+// #4202 / #4203: register the retained-purchase and hidden-event read migration
+// plus its declared PostgreSQL proof in those same inventories.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "9b6057db6e3ee890f34d9b496752f73d7ab038b169c0e7d3b463c0749fada4a9";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
