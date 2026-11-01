@@ -79,6 +79,7 @@ import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { useAuth } from "../../context/AuthContext";
 import {
   ariConversationScopeKey,
+  ariWebsiteSetupConversationScopeKey,
   hasStoredAriConversationSelection,
   resolveRestoredAriConversation,
   useAriConversationSelectionStore,
@@ -230,9 +231,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const requestedSetupPart = Array.isArray(sitesParams.setupPart)
     ? sitesParams.setupPart[0]
     : sitesParams.setupPart;
-  const setupPart = typeof requestedSetupPart === "string" && requestedSetupPart.length > 0
-    ? requestedSetupPart
-    : null;
+  const setupPart =
+    typeof requestedSetupPart === "string" && requestedSetupPart.length > 0
+      ? requestedSetupPart
+      : null;
   const websiteSetup = sitesIntent === "setup";
   const websiteSplit =
     (sitesIntent === "edit" || websiteSetup) &&
@@ -290,7 +292,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const { user } = useAuth();
   const accountId = user?.id ?? null;
   const currentBrandId = useCurrentBrandStore((state) => state.currentBrandId);
-  const setCurrentBrandId = useCurrentBrandStore((state) => state.setCurrentBrandId);
+  const setCurrentBrandId = useCurrentBrandStore(
+    (state) => state.setCurrentBrandId,
+  );
   React.useEffect(() => {
     if (
       websiteSplit &&
@@ -304,10 +308,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const currentBrand = useCurrentBrand();
   const selectedBrandId = currentBrand?.id ?? null;
   const conversations = useConversationList(selectedBrandId);
-  const conversationScopeKey = ariConversationScopeKey(
-    accountId,
-    selectedBrandId,
-  );
+  const conversationScopeKey = websiteSetup
+    ? ariWebsiteSetupConversationScopeKey(accountId, selectedBrandId)
+    : ariConversationScopeKey(accountId, selectedBrandId);
   const storedConversationSelections = useAriConversationSelectionStore(
     (state) => state.selections,
   );
@@ -341,6 +344,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     persistConversationSelection,
   );
   React.useEffect(() => chat.setSurface(surface), [chat.setSurface, surface]);
+  React.useEffect(
+    () => chat.setWorkflowContext(websiteSetup ? "website_setup" : null),
+    [chat.setWorkflowContext, websiteSetup],
+  );
   const attachments = useAriAttachments({
     brandId: selectedBrandId,
     conversationId: chat.conversationId,
@@ -366,9 +373,14 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       storedConversationSelections,
       conversationScopeKey,
     );
+    // A first Website setup visit starts a dedicated thread instead of
+    // adopting the newest brand conversation (which may contain an active
+    // event plan). Once created, that setup thread restores normally.
     const storedSelection = hasStoredSelection
       ? storedConversationSelections[conversationScopeKey]
-      : undefined;
+      : websiteSetup
+        ? null
+        : undefined;
     const restoredConversationId = resolveRestoredAriConversation(
       storedSelection,
       conversations.conversations,
@@ -386,6 +398,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     restoredConversationScope,
     selectedBrandId,
     storedConversationSelections,
+    websiteSetup,
   ]);
   const previousBrandId = React.useRef(selectedBrandId);
   const brandScopeStable = previousBrandId.current === selectedBrandId;
@@ -652,20 +665,24 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       chat.pendingAction ||
       disclosureNeeded ||
       !online
-    ) return;
+    )
+      return;
     const auditKey = `${sitesBrandId}:${setupPart ?? "overview"}`;
     if (automaticSetupAudit.current === auditKey) return;
     automaticSetupAudit.current = auditKey;
     const focus = setupPart ? ` The selected plan part is ${setupPart}.` : "";
-    void chat.sendMessage(
-      `Start Website setup.${focus} Read get_site_plan, summarize completion and every field gap, then offer Fix all, one gap, or Add it myself. Ask one question at a time. Do not create a draft until setup and brand context are complete.`,
-      [],
-    ).then((result) => {
-      if (result.kind === "error") automaticSetupAudit.current = null;
-    }).catch(() => {
-      automaticSetupAudit.current = null;
-      setLocalError("Ari couldn’t start the Website audit. Try again.");
-    });
+    void chat
+      .sendMessage(
+        `Start Website setup.${focus} Read get_site_plan, summarize completion and every field gap, then offer Fix all, one gap, or Add it myself. Ask one question at a time. Do not create a draft until setup and brand context are complete.`,
+        [],
+      )
+      .then((result) => {
+        if (result.kind === "error") automaticSetupAudit.current = null;
+      })
+      .catch(() => {
+        automaticSetupAudit.current = null;
+        setLocalError("Ari couldn’t start the Website audit. Try again.");
+      });
   }, [
     chat.isLoadingMessages,
     chat.isSending,

@@ -137,6 +137,11 @@ import {
   canCompleteResearchFromSearchIndex,
   isStandalonePublicResearchRequest,
 } from "../_shared/agentWebResearch.ts";
+import {
+  buildWebsiteSetupReply,
+  detectWebsiteSetupIntent,
+  websiteSetupWorkflowInitialCalls,
+} from "../_shared/agentWebsiteSetup.ts";
 
 const MAX_MESSAGE_LENGTH = 4096;
 const HISTORY_WINDOW = 10;
@@ -220,6 +225,7 @@ interface RequestBody {
   choice_response?: AgentChoiceSubmissionV2;
   attachment_ids?: string[];
   ari_ui?: unknown;
+  workflow_context?: "website_setup";
 }
 
 type Response_ =
@@ -894,6 +900,12 @@ async function handle(req: Request): Promise<Response> {
     return errorResponse(400, "BAD_REQUEST", "Invalid JSON body");
   }
   const ariUiCapabilities = parseAriUiCapabilities(body.ari_ui);
+  if (
+    body.workflow_context !== undefined &&
+    body.workflow_context !== "website_setup"
+  ) {
+    return errorResponse(400, "BAD_REQUEST", "workflow_context is invalid");
+  }
 
   const choiceSubmission = body.choice_response === undefined
     ? null
@@ -1900,9 +1912,27 @@ async function handle(req: Request): Promise<Response> {
       : null;
     const activeEventPlan = taskState.active_task?.intent === "create_event" &&
       !["completed", "cancelled"].includes(taskState.status);
+    // Website setup is a separate durable workflow. It must not be interpreted
+    // as an answer to an older event-planning question in the same thread.
+    const websiteSetupIntent = activeBrand
+      ? detectWebsiteSetupIntent(semanticMessage)
+      : null;
+    const websiteSetupWorkflow = body.workflow_context === "website_setup";
+    const websiteSetupBoundary = websiteSetupWorkflow ||
+      websiteSetupIntent !== null;
+    let activeWebsiteSetupJob = false;
+    if (websiteSetupWorkflow && activeBrand) {
+      const { data: hasWebsiteJob } = await userClient.rpc(
+        "ari_has_active_brand_completeness_job",
+        { p_brand_id: activeBrand.id },
+      );
+      activeWebsiteSetupJob = hasWebsiteJob === true;
+    }
     const readInterruption = activeEventPlan &&
+      !websiteSetupBoundary &&
       isReadInterruption(semanticMessage);
-    const questionInterruption = activeEventPlan && !readInterruption &&
+    const questionInterruption = activeEventPlan &&
+      !websiteSetupBoundary && !readInterruption &&
       /\b(?:what|why|how|who|where|can you|do you)\b/i.test(semanticMessage) &&
       !/\b(?:today|tomorrow|next|this|month|week|am|pm|morning|afternoon|evening|title|called|named)\b/i
         .test(semanticMessage);
@@ -2018,7 +2048,8 @@ async function handle(req: Request): Promise<Response> {
     }
 
     if (
-      plannerContext && !readInterruption && !questionInterruption &&
+      plannerContext && !websiteSetupBoundary &&
+      !readInterruption && !questionInterruption &&
       (activeEventPlan || isCreateEventPlanningRequest(semanticMessage))
     ) {
       try {
@@ -2124,7 +2155,10 @@ async function handle(req: Request): Promise<Response> {
     // the governed flag is disabled or unavailable.
     const { data: agentLoopFlag, error: agentLoopFlagError } = await userClient
       .rpc("ari_agent_loop_enabled");
-    if (!agentLoopFlagError && agentLoopFlag === true) {
+    if (
+      websiteSetupBoundary ||
+      (!agentLoopFlagError && agentLoopFlag === true)
+    ) {
       if (
         !await appendActivity({
           client: serviceClient,
@@ -2179,10 +2213,14 @@ ${boundedAgentContext}
       const selectedToolsets = new Set<AriToolsetKey>(
         inferAriToolsets(semanticMessage),
       );
+      if (websiteSetupBoundary) {
+        selectedToolsets.add("sites");
+        selectedToolsets.add("memory");
+      }
       let selectedTools = selectAriTools(
         AGENT_TOOLS,
         [...selectedToolsets],
-        8,
+        websiteSetupBoundary ? 16 : 8,
         semanticMessage,
       );
       try {
@@ -2223,7 +2261,16 @@ ${boundedAgentContext}
       const deterministicSafetyReply = ariDeterministicSafetyReply(
         semanticMessage,
       );
-      const initialCalls = standaloneResearchRequest
+      const websiteInitialCalls = activeBrand && websiteSetupBoundary
+        ? websiteSetupWorkflowInitialCalls({
+          intent: websiteSetupIntent,
+          brandId: activeBrand.id,
+          activeFixAllJob: activeWebsiteSetupJob,
+        })
+        : [];
+      const initialCalls = websiteInitialCalls.length > 0
+        ? websiteInitialCalls
+        : standaloneResearchRequest
         ? [{ name: "search_public_web", args: { query: semanticMessage } }]
         : launchInitialCalls.length > 0
         ? launchInitialCalls
@@ -2255,7 +2302,14 @@ ${boundedAgentContext}
           }
           : undefined,
         initialCalls,
-        completeAfterInitialReads: deterministicSafetyReply
+        completeAfterInitialReads: websiteSetupIntent
+          ? (observations) =>
+            buildWebsiteSetupReply(
+              websiteSetupIntent,
+              observations,
+              activeBrand?.name ?? null,
+            )
+          : deterministicSafetyReply
           ? () => deterministicSafetyReply
           : completeFromSearchIndex
           ? completeStandaloneResearchRead
@@ -2519,7 +2573,7 @@ ${boundedAgentContext}
       });
 
       if (loopResult.kind === "proposal") {
-        if (activeEventPlan) {
+        if (activeEventPlan && !websiteSetupBoundary) {
           const resumedState = interruptionState.status === "interrupted"
             ? resumeInterruption(interruptionState)
             : taskState;
