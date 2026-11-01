@@ -965,7 +965,8 @@ const buildStep: StepDefinition = {
         ack: "Something changed since I asked, so I haven't built anything.",
       };
     }
-    if (websitePartDone(plan, "build")) {
+    if (websitePartDone(plan, "build") && siteIdOf(await siteRow(ctx))) {
+      // Already built and read back: nothing to propose.
       return { record: { state: "pending" } };
     }
     return {

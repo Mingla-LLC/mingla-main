@@ -171,7 +171,8 @@ function planOf(w: World) {
     story: settled(w, "story.who") && settled(w, "story.why") &&
       settled(w, "story.main_action"),
     approve: w.approved,
-    build: !!w.site && w.built,
+    // The plan's tick alone; the flow must still read the site back.
+    build: w.built,
     first_offering: w.firstOfferingDone,
     publish: w.published,
   };
