@@ -989,14 +989,26 @@ const buildStep: StepDefinition = {
   },
 };
 
+/**
+ * `ari_creates`: Ari's lane for this kind asks for every fact it saves (the
+ * deterministic event planner). Trips and experiences still have lanes that
+ * fill details in themselves (SPEC D-16/D-23, fixed in P8/P9), so Ari does
+ * not offer to create them here — it says where to add one instead.
+ */
 const OFFERING_KINDS: ReadonlyArray<{
   plan: string;
   noun: string;
   request: string;
+  ari_creates: boolean;
 }> = [
-  { plan: "events", noun: "event", request: "Create an event" },
-  { plan: "trips", noun: "trip", request: "Create a trip" },
-  { plan: "experiences", noun: "experience", request: "Create an experience" },
+  { plan: "events", noun: "event", request: "Create an event", ari_creates: true },
+  { plan: "trips", noun: "trip", request: "Create a trip", ari_creates: false },
+  {
+    plan: "experiences",
+    noun: "experience",
+    request: "Create an experience",
+    ari_creates: false,
+  },
 ];
 
 function chosenKinds(plan: Json): typeof OFFERING_KINDS[number][] {
@@ -1073,17 +1085,32 @@ const firstOfferingStep: StepDefinition = {
       return { done: false, delegate: true, semantic: request ?? "" };
     }
     const nouns = kinds.map((candidate) => candidate.noun);
+    const creatable = kinds.filter((candidate) => candidate.ari_creates);
+    const elsewhere = kinds.filter((candidate) => !candidate.ari_creates)
+      .map((candidate) => `${candidate.noun}s`);
     return {
       done: false,
       ask: {
         kind: "question",
         reuse_key: `website:first_offering:${nouns.join(",")}`,
         title: "Add your first offering",
-        text: `Want to add your first ${
-          listWords(nouns.map((noun) => noun))
-        } now? Your Website's pages show what you offer. This part is optional — I'll ask you for the details and won't fill any in for you.`,
+        text: [
+          `Your Website's pages show what you offer. Adding your first ${
+            listWords(nouns)
+          } is optional.`,
+          creatable.length > 0
+            ? `I can start your first ${
+              listWords(creatable.map((candidate) => candidate.noun))
+            } now — I'll ask you for every detail and won't fill any in for you.`
+            : "",
+          elsewhere.length > 0
+            ? `Add your first ${
+              listWords(elsewhere)
+            } from Mingla when you're ready.`
+            : "",
+        ].filter(Boolean).join(" "),
         options: [
-          ...kinds.map((candidate) => ({
+          ...creatable.map((candidate) => ({
             id: `create:${candidate.plan}`,
             label: `Create my first ${candidate.noun}`,
           })),
@@ -1105,6 +1132,7 @@ const firstOfferingStep: StepDefinition = {
       const plan = await readPlan(ctx);
       const kind = plan
         ? chosenKinds(plan).find((candidate) =>
+          candidate.ari_creates &&
           candidate.plan === choiceId.slice("create:".length)
         )
         : undefined;

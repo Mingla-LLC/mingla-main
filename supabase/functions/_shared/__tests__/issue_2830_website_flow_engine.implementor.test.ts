@@ -1281,3 +1281,27 @@ Deno.test("P4: a finished Website setup is not restarted by every message on the
   assertEquals(store.runs.size, 1);
   assert(isWebsiteSetupRequest("Publish my Website"));
 });
+
+Deno.test("P4 first offering: trips and experiences are never created here (their lanes still fill in details) — only events", async () => {
+  const w = world([], { site: { id: SITE }, built: true });
+  w.fields.get("offerings_selected")!.value = ["trips", "events", "experiences"];
+  const store = new MemoryStore(OWNER);
+  const card = asArtefact(await step(w, store, await startRun(store), {}));
+  assertEquals(
+    card.artefact.options.map((o) => o.id),
+    ["create:events", "not_now"],
+  );
+  assertMatch(card.artefact.text, /Add your first trips and experiences from Mingla/);
+  const run = await current(store);
+  const forged = await step(w, store, run, {
+    trigger: "answer",
+    answer: {
+      run_id: run.id,
+      step_key: run.current_step_key!,
+      question_id: run.current_question_id!,
+      choice_id: "create:trips",
+      display_text: "Create my first trip",
+    },
+  });
+  assertEquals(forged.kind, "stale");
+});
