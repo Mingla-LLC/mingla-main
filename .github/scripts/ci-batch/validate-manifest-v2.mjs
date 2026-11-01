@@ -323,8 +323,9 @@ export function phase3dContractDigest(manifest) {
 // #4202: register retained shared-identity event-chat repair in the same three
 // inventories; the existing #4202/#4203 suite owns its executable proof.
 // #2830: register Ari's brand-completeness migration and its declared proof in
-// the three preserved full-history inventories.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "84de5f34d1a8b0aa19c2b84d7618d866f1c7a62210f2d205c368a6050ea6d1d3";
+// the three preserved inventories, with an exact-filename exclusion from the
+// pre-#1931 replay that deliberately omits its #3355 jobs-table prerequisite.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "3ac570fc868fded678b2d977c0aeeb3e15285b5430107e27fdac5e91974a1f04";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
