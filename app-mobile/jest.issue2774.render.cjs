@@ -50,6 +50,9 @@ module.exports = {
     // recovers the account recap without losing the buyer's cart lines.
     "**/__tests__/issue_3859_expired_session_guard.implementor.happy.render.test.tsx",
     "**/__tests__/issue_3859_expired_session_guard.tester.adversarial.render.test.tsx",
+    // issue #4174 — the cart's "Due today" line appears only for payment-plan
+    // quotes, never for an ordinary fee-bearing ticket.
+    "**/__tests__/issue_4174_due_today_plan_only.implementor.happy.render.test.tsx",
     // issue #3859 — native checkout request, recovery, and terminal truth.
     "**/__tests__/issue_3859_checkout_v2_client.implementor.happy.test.ts",
     "**/__tests__/issue_3859_native_checkout_recovery.implementor.happy.test.ts",

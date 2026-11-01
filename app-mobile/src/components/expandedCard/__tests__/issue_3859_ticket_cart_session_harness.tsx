@@ -185,9 +185,12 @@ jest.mock("../../../hooks/useAppLayout", () => ({
 // #3872 moved checkout totals behind the live quote hook. These #3859 session
 // tests exercise auth/contact state only, so keep the money rail inert and
 // avoid importing the native Supabase/app-version stack into this render unit.
+// #4174 — money-display render tests set `mockTicketQuote.data` to a server
+// quote; every other suite keeps the inert `null` default.
+export const mockTicketQuote: { data: unknown } = { data: null };
 jest.mock("../../../hooks/useTicketQuote", () => ({
   useTicketQuote: () => ({
-    query: { data: null, isFetching: false, isError: false },
+    query: { data: mockTicketQuote.data, isFetching: false, isError: false },
     isDebouncing: false,
   }),
 }));

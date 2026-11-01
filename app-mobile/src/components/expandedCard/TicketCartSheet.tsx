@@ -638,10 +638,18 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     quoteLines.length > 0 && (quoteIsDebouncing || quoteQuery.isFetching);
   const quoteIsReady = quote !== null && !quoteIsLoading && !quoteQuery.isError;
   const isFreeQuote = quoteIsReady && quote.buyerTotalCents === 0;
-  const showsDueToday =
-    quoteIsReady &&
+  // #4174 — "Due today" is a pay-over-time line only. The server marks a plan
+  // quote with a non-null `installmentSchedule` (Stripe and Paystack) and, on
+  // Paystack, also the locked `installmentChargeSchedule`. `dueTodayNetCents`
+  // is the PRE-FEE base, so comparing it with the all-in `buyerTotalCents`
+  // flagged every fee-bearing no-plan cart ("Total $10.45 / Due today $10.00").
+  const quoteIsPaymentPlan =
+    quote !== null &&
     (quote.installmentChargeSchedule !== undefined ||
-      quote.dueTodayNetCents < quote.buyerTotalCents);
+      (quote.installmentSchedule !== null &&
+        typeof quote.installmentSchedule === "object" &&
+        !Array.isArray(quote.installmentSchedule)));
+  const showsDueToday = quoteIsReady && quoteIsPaymentPlan;
 
   // META-ORCH-0991 Wave A — open/close is owned by BaseBottomSheet
   // (declarative `visible`). The prior sheetRef + snapToIndex/close effect is
