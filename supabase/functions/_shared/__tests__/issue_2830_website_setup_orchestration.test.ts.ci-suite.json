@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_2830_website_setup_orchestration.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-2830-website-setup-orchestration",
+  "profile": "deno-2-unit"
+}

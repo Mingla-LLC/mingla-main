@@ -60,6 +60,64 @@ export interface AriRenditionV2 {
   actions?: Record<string, unknown>[];
 }
 
+/**
+ * #2830 — the field of an `input` block. `kind` selects the Host control that
+ * matches the real form: `phone` is the Brand details country chip plus a
+ * local-number box (`countryIso` pre-selects the chip; `countryPlaceholder`
+ * shows "Choose country" while nobody has chosen one). The Host sends the
+ * chip's country back as "Country: XX" in the submission. Older clients
+ * ignore `kind` and render a plain text box.
+ */
+export const ARI_RENDITION_INPUT_KINDS = [
+  "text",
+  "email",
+  "url",
+  "phone",
+] as const;
+
+export interface AriRenditionInputFieldV1 {
+  id: string;
+  label: string;
+  value: string;
+  placeholder?: string;
+  editable?: boolean;
+  confirmationPhrase?: string;
+  kind?: typeof ARI_RENDITION_INPUT_KINDS[number];
+  countryIso?: string;
+  countryPlaceholder?: string;
+}
+
+export function isAriRenditionInputField(
+  value: unknown,
+): value is AriRenditionInputFieldV1 {
+  const field = value !== null && typeof value === "object" &&
+      !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+  if (
+    !field || typeof field.id !== "string" || !field.id ||
+    typeof field.label !== "string" || !field.label ||
+    field.label.length > 100 || typeof field.value !== "string" ||
+    field.value.length > 1000
+  ) return false;
+  if (
+    field.kind !== undefined &&
+    !(ARI_RENDITION_INPUT_KINDS as readonly unknown[]).includes(field.kind)
+  ) return false;
+  if (field.countryIso !== undefined) {
+    if (
+      field.kind !== "phone" || typeof field.countryIso !== "string" ||
+      !/^[A-Z]{2}$/.test(field.countryIso)
+    ) return false;
+  }
+  if (
+    field.countryPlaceholder !== undefined &&
+    (field.kind !== "phone" || typeof field.countryPlaceholder !== "string" ||
+      field.countryPlaceholder.length > 40)
+  ) return false;
+  return true;
+}
+
 const BLOCK_TYPE_SET = new Set<string>(ARI_RENDITION_BLOCK_TYPES);
 const PLATFORM_SET = new Set(["ios", "android", "web", "unknown"]);
 const MAX_BLOCKS = 18;

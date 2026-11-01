@@ -37,6 +37,7 @@ export type AriErrorCode =
   | "ROLE_REVOKED"
   | "TENANT_MISMATCH"
   | "STALE_PROPOSAL"
+  | "PROPOSAL_EXPIRED"
   | "CONFLICT"
   | "RATE_LIMITED"
   | "OFFLINE"
@@ -156,6 +157,17 @@ export const ARI_ERROR_REGISTRY: Readonly<
     operationState: "pending",
     userMessage:
       "This proposal changed. Review the latest version before confirming.",
+  },
+  // #2830 — an Ari approval that timed out. Terminal and explicit: nothing was
+  // saved, and the owner is told so instead of the card silently vanishing.
+  // (Hub proposals keep their own 200 expired_regenerate contract.)
+  PROPOSAL_EXPIRED: {
+    httpStatus: 409,
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "expired",
+    userMessage:
+      "That approval timed out, so nothing was saved. Ask me again and I'll redo it.",
   },
   CONFLICT: {
     httpStatus: 409,

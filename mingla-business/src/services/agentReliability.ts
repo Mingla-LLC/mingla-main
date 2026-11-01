@@ -77,6 +77,7 @@ export type AriErrorCode =
   | "ROLE_REVOKED"
   | "TENANT_MISMATCH"
   | "STALE_PROPOSAL"
+  | "PROPOSAL_EXPIRED"
   | "CONFLICT"
   | "RATE_LIMITED"
   | "OFFLINE"
@@ -141,6 +142,12 @@ export const ARI_CLIENT_ERROR_REGISTRY: Readonly<
     retryability: "never",
     safeToRetry: false,
     operationState: "pending",
+  },
+  // #2830 — an Ari approval that timed out; nothing was saved.
+  PROPOSAL_EXPIRED: {
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "expired",
   },
   CONFLICT: {
     retryability: "after_backoff",

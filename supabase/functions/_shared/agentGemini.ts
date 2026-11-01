@@ -19,7 +19,7 @@ import {
 const MAX_MALFORMED_RETRIES = 2;
 const MAX_OUTPUT_TOKENS = 1500;
 const LOCAL_MAX_OUTPUT_TOKENS = 384;
-const LOCAL_CONTEXT_TOKENS = 16_384;
+const LOCAL_CONTEXT_TOKENS = 32_768;
 // Keep an awaited local inference inside agent-chat's 115 s test budget so a
 // slow or wedged Ollama request cannot strand the chat beyond the loop deadline.
 export const ARI_LOCAL_MODEL_REQUEST_TIMEOUT_MS = 100_000;
@@ -905,6 +905,9 @@ async function callLocalOllama(
       })),
       options: {
         temperature: TEMPERATURE,
+        // Ari's tool contract plus a live setup plan can exceed Ollama's
+        // 4K default before the user sends an answer. Keep the local lane at
+        // the same practical context scale as the production reasoning path.
         num_ctx: LOCAL_CONTEXT_TOKENS,
         num_predict: LOCAL_MAX_OUTPUT_TOKENS,
       },

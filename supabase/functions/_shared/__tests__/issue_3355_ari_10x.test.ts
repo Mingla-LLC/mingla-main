@@ -868,7 +868,8 @@ Deno.test("#3355 local model lane is explicit and loopback-only", async () => {
     );
     assertEquals(result.usage.total_tokens, 23);
     assertEquals(wireModel, "qwen3:4b-instruct");
-    assertEquals(wireContext, 16_384);
+    // [TEST-MOD-APPROVED #2830] A live Website setup plan needs 32K context.
+    assertEquals(wireContext, 32_768);
     assertEquals(ARI_LOCAL_MODEL_REQUEST_TIMEOUT_MS, 100_000);
     assertEquals(requestSignals.length, 1);
     assert(requestSignals[0] instanceof AbortSignal);
