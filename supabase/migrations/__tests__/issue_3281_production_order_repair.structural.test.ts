@@ -68,8 +68,8 @@ const productionOrder = (repair: boolean) => [
   ...files.filter((name) => !isPending(name) && name > repairName),
 ];
 
-function differing(order: string[]): string[] {
-  const inFileOrder = lastBodies(files);
+function differing(order: string[], fileOrder = files): string[] {
+  const inFileOrder = lastBodies(fileOrder);
   const inOrder = lastBodies(order);
   return [...inFileOrder.keys()]
     .filter((fn) => inFileOrder.get(fn) !== inOrder.get(fn))
@@ -90,7 +90,11 @@ Deno.test("production order reaches the same function bodies as file order", () 
 });
 
 Deno.test("this repair is what closes the gap", () => {
-  assertEquals(differing(productionOrder(false)), [
+  // Later migrations may redefine these functions, so this history stops at the
+  // repair: it proves what the repair itself closed.
+  const upToRepair = files.filter((name) => name <= repairName);
+  const before = productionOrder(false).filter((name) => name < repairName);
+  assertEquals(differing(before, upToRepair), [
     "public.biz_update_live_experience",
     "public.issue_1930_ticket_session_authorized",
     "public.issue_3313_ticket_type_occurrence_taken",
