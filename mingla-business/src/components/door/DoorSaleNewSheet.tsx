@@ -483,17 +483,18 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
               ) : (
                 doorDates.map(([id, key]) => {
                   const active = id === doorDateId;
+                  const label =
+                    formatDraftDayScopeLabel(event.multiDates ?? [], [key]) ?? key;
                   return (
                     <Pressable
                       key={id}
                       onPress={() => setDoorDateId(id)}
                       accessibilityRole="radio"
                       accessibilityState={{ selected: active }}
+                      accessibilityLabel={label}
                       style={[styles.paymentRow, active && styles.paymentRowActive]}
                     >
-                      <Text style={styles.paymentLabel}>
-                        {formatDraftDayScopeLabel(event.multiDates ?? [], [key]) ?? key}
-                      </Text>
+                      <Text style={styles.paymentLabel}>{label}</Text>
                     </Pressable>
                   );
                 })

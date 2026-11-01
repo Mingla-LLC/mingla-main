@@ -123,7 +123,7 @@ import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
 import { buildDraftThemePreview } from "../theme/themePreviewContent";
-import { CreatorStep5Tickets } from "./CreatorStep5Tickets";
+import { CreatorStep5Tickets } from "./LazyCreatorStep5Tickets";
 // issue #3827 — the two settings steps load lazily (see lazySettingsSteps.tsx).
 import { CreatorStep6SettingsLazy, RsvpStep5SetupLazy } from "./lazySettingsSteps";
 // issue #2101 [named-buyer checkout] — the owner-only "Eligible buyers" card.

@@ -404,6 +404,8 @@
         "mingla-business/src/components/event/TicketTierCard.tsx",
         "mingla-business/src/components/event/TicketTierEditSheet.tsx",
         "mingla-business/src/components/event/ValidDaysSheet.tsx",
+        "mingla-business/src/components/event/LazyCreatorStep5Tickets.tsx",
+        "mingla-business/src/components/event/EventCreatorWizard.tsx",
         "mingla-business/src/components/event/types.ts",
         "mingla-business/src/hooks/useEventDateKeys.ts",
         "mingla-business/src/services/businessEvents.ts",
