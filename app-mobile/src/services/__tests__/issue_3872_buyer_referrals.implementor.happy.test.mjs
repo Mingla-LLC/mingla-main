@@ -33,8 +33,9 @@ test("#3872 B5 personal earning links appear on listing, success and ticket surf
   assert.match(cart, /successFooter/);
   assert.match(ticket, /<EarnBySharingCard[\s\S]*listingKind="event"/);
   assert.match(card, /fetchBuyerReferralLink/);
+  assert.match(card, /if \(!offer\.data\) return null/);
   assert.match(card, /referral_link_shared/);
-  assert.match(card, /This experience does not have an earning offer right now/);
+  assert.doesNotMatch(card, /does not have an earning offer right now/);
   const shareAdapter = read("src/services/contentShareAdapter.ts");
   const shareSheet = read("src/components/share/UnifiedShareProvider.tsx");
   assert.match(shareAdapter, /fetchBuyerReferralLink/);

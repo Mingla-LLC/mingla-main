@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/purchases/__tests__/issue_4174_ticket_polish.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4174-ticket-polish-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

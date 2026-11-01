@@ -18,8 +18,8 @@ import {
   Text,
   View,
 } from "react-native";
-import { Image as ExpoImage } from "expo-image";
 import { useRouter } from "expo-router";
+import { EventCoverMedia } from "@mingla/offering-rendering";
 
 import { Icon } from "../ui/Icon";
 import type { BusinessEventCalendarRow as BusinessEventRow } from "../../services/calendarService";
@@ -84,11 +84,15 @@ const BusinessEventCalendarRow: React.FC<BusinessEventCalendarRowProps> = ({
     <RowContainer style={[styles.row, animatedStyle]}>
       <View style={styles.thumbWrapper}>
         {entry.coverMediaUrl ? (
-          <ExpoImage
-            source={{ uri: entry.coverMediaUrl }}
-            style={styles.thumb}
-            contentFit="cover"
-            transition={150}
+          <EventCoverMedia
+            accessibleLabel={`${entry.eventTitle} cover`}
+            autoplay={false}
+            height="100%"
+            mediaType={entry.coverMediaType}
+            mediaUrl={entry.coverMediaUrl}
+            playbackActive={false}
+            radius={14}
+            width="100%"
           />
         ) : (
           <View style={[styles.thumb, styles.thumbFallback]}>

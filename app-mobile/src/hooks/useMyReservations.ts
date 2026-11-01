@@ -18,6 +18,7 @@ import type { ReservationRefundSummary } from "../components/activity/Reservatio
 export interface MyReservationRow {
   id: string;
   brand_id: string;
+  brand_slug?: string | null;
   brand_name: string | null;
   brand_cover_url: string | null;
   brand_cover_type: string | null;
@@ -40,6 +41,7 @@ export interface MyReservationRow {
 }
 
 interface RawBrandJoin {
+  slug: string | null;
   name: string | null;
   cover_media_url: string | null;
   cover_media_type: string | null;
@@ -77,7 +79,7 @@ export async function fetchMyReservations(
   const { data, error } = await supabase
     .from("reservations")
     .select(
-      "id, brand_id, reserved_for, party_size, status, fee_cents, fee_currency, payment_status, occasion, guest_notes, created_at, brands(name, cover_media_url, cover_media_type, profile_photo_url, cover_hue, address, city, lat, lng)",
+      "id, brand_id, reserved_for, party_size, status, fee_cents, fee_currency, payment_status, occasion, guest_notes, created_at, brands(slug, name, cover_media_url, cover_media_type, profile_photo_url, cover_hue, address, city, lat, lng)",
     )
     .eq("consumer_user_id", userId)
     .order("reserved_for", { ascending: false });
@@ -101,6 +103,7 @@ export async function fetchMyReservations(
     return {
       id: r.id,
       brand_id: r.brand_id,
+      brand_slug: brand?.slug ?? null,
       brand_name: brand?.name ?? null,
       brand_cover_url: brand?.cover_media_url ?? null,
       brand_cover_type: brand?.cover_media_type ?? null,

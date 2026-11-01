@@ -106,6 +106,7 @@
     "openInMaps": "Open in Maps",
     "onlineEvent": "Online event",
     "openLink": "Open link",
+    "openEventPage": "Open event page",
     "yourTickets": "Your tickets",
     "pageOf": "{{index}} of {{total}}",
     "status": {

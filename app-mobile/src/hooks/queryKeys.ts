@@ -65,6 +65,21 @@ export const purchaseKeys = {
     [...purchaseKeys.all, "lastClaim", userId] as const,
 };
 
+export const buyerReferralKeys = {
+  all: ["buyerReferral"] as const,
+  link: (
+    userId: string,
+    listingKind: "event" | "venue",
+    listingId: string,
+  ) => [
+    ...buyerReferralKeys.all,
+    "link",
+    userId,
+    listingKind,
+    listingId,
+  ] as const,
+};
+
 export const circleKeys = {
   all: ['circle'] as const,
   forUser: (viewerUserId: string) =>
