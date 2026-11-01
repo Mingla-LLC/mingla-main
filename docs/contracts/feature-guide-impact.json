@@ -66,6 +66,7 @@
         "mingla-business/src/hooks/useTicketQuote.ts",
         "mingla-business/src/services/ticketQuoteService.ts",
         "supabase/functions/ticket-checkout-create/byDateDatabaseGuard.ts",
+        "supabase/functions/ticket-checkout-create/checkoutSessionLines.ts",
         "mingla-business/app/checkout/[eventId]/index.tsx",
         "mingla-business/app/checkout/[eventId]/buyer.tsx",
         "mingla-business/src/components/checkout/CartContext.tsx",
@@ -73,6 +74,7 @@
         "mingla-business/src/services/ticketCheckoutService.ts",
         "supabase/migrations/20280216003282_issue_3281_by_date_quantities_paystack_reemit.sql",
         "supabase/migrations/20280216004203_issue_4203_hidden_purchase_reads.sql",
+        "supabase/migrations/20280222003281_issue_3281_per_date_maximum.sql",
         "supabase/migrations/20280217003281_issue_3281_production_order_repair.sql"
       ]
     },

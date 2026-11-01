@@ -108,7 +108,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4216: re-sealed after the Creator rights migration entered the same three
 // full-history replay inventories and gained an exact-file exclusion from the
 // deliberately pre-#1931 replay that has no Creator/gig schema.
-export const BOOTSTRAP_SHA256 = "9793619c2c320ce08028e2bac794ee14619eae6ef26a5c4e8b35b66563dc3ce6";
+// #3281: re-sealed after the per-date maximum migration entered the same
+// inventories and filtered replays.
+export const BOOTSTRAP_SHA256 = "0774f3351a263b0405112f3902fdeef80f9fab4084dda377cc9d2fee53ef3185";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
