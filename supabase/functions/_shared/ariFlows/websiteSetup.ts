@@ -43,6 +43,8 @@
 import {
   buildWebsiteSetupFlowRendition,
   resolveWebsiteSetupContextAnswer,
+  WEBSITE_SETUP_SUBMISSION_SUFFIX,
+  WEBSITE_SETUP_THEME_PRESETS,
   websiteSetupApprovalRoute,
   websiteSetupContextAnswer,
   websiteSetupDesignAnswer,
@@ -53,10 +55,12 @@ import {
   websiteSetupQuestion,
   websiteSetupUploadHandoff,
   websiteSetupUploadRoute,
-  WEBSITE_SETUP_SUBMISSION_SUFFIX,
-  WEBSITE_SETUP_THEME_PRESETS,
 } from "../agentWebsiteSetup.ts";
-import { DESIGN_KEYS, type DesignKey, DESIGNS } from "../siteContracts/designs.ts";
+import {
+  DESIGN_KEYS,
+  type DesignKey,
+  DESIGNS,
+} from "../siteContracts/designs.ts";
 import {
   PLAN_OFFERING_OPTIONS,
   PLAN_PARTS,
@@ -256,7 +260,9 @@ export function websiteReadbackLine(fieldKey: string, field: Json): string {
     case "social_links": {
       const links = object(object(value).social_links);
       const names = Object.entries(links).flatMap(([key, url]) =>
-        str(url) ? [key === "x" ? "X" : key.charAt(0).toUpperCase() + key.slice(1)] : []
+        str(url)
+          ? [key === "x" ? "X" : key.charAt(0).toUpperCase() + key.slice(1)]
+          : []
       );
       words = names.length > 0 ? listWords(names) : null;
       break;
@@ -397,7 +403,9 @@ export function resolveWebsiteFormAnswer(args: {
         expected_plan_revision: revision,
         design_key: design.designKey,
         source_type: "owner",
-        why: `The owner chose ${DESIGNS[design.designKey].label} for the Website.`,
+        why: `The owner chose ${
+          DESIGNS[design.designKey].label
+        } for the Website.`,
         cites: [{ kind: "owner_words", quote: design.ownerWords }],
       },
     };
@@ -478,7 +486,9 @@ function formAsk(args: {
   return {
     kind: "question",
     answer_mode: "form",
-    reuse_key: `website:${fieldKey}:${String(field.state ?? "missing")}:${args.attempt}`,
+    reuse_key: `website:${fieldKey}:${
+      String(field.state ?? "missing")
+    }:${args.attempt}`,
     title: label,
     text: [args.problem, question, args.problem ? "" : AUDIENCE].filter(Boolean)
       .join(" "),
@@ -513,9 +523,7 @@ function uploadAsk(ctx: FlowContext, fieldKey: string, field: Json): AskSpec {
     text:
       `${label} is an upload only you can add — Ari never adds media for you. Open Brand details, add it and save, then tell me and I'll check.`,
     options: [
-      ...(route
-        ? [{ id: "open", label: upload.actionLabel, route }]
-        : []),
+      ...(route ? [{ id: "open", label: upload.actionLabel, route }] : []),
       { id: "check", label: "I've uploaded it, check now" },
       ...(canSetAside(field)
         ? [{ id: "not_now", label: "Not now, keep going" }]
@@ -567,7 +575,9 @@ async function readback(
   const fieldKey = str(ctx.state.data?.field_key);
   if (!fieldKey) return {};
   const field = fieldOf(plan, fieldKey);
-  if (settledField(field)) return { note: websiteReadbackLine(fieldKey, field) };
+  if (settledField(field)) {
+    return { note: websiteReadbackLine(fieldKey, field) };
+  }
   if (ctx.trigger !== "confirm" && await proposalStillOpen(ctx)) {
     return { wait: true };
   }
@@ -599,7 +609,8 @@ function fieldStep(args: {
       if (back.wait) return { done: false, wait: true };
       const open = args.fieldKeys.flatMap((key) => {
         const field = fieldOf(plan, key);
-        return fieldNeeded(field) && !ctx.run.session_skips.includes(skipKey(key))
+        return fieldNeeded(field) &&
+            !ctx.run.session_skips.includes(skipKey(key))
           ? [{ key, field }]
           : [];
       });
@@ -622,7 +633,11 @@ function fieldStep(args: {
       }
       const { key, field } = open[0];
       if (websiteSetupUploadHandoff(key)) {
-        return { done: false, note: back.note, ask: uploadAsk(ctx, key, field) };
+        return {
+          done: false,
+          note: back.note,
+          ask: uploadAsk(ctx, key, field),
+        };
       }
       const data = ctx.state?.data ?? {};
       const sameField = str(data.field_key) === key;
@@ -665,7 +680,9 @@ function fieldStep(args: {
         const label = lowerFirst(websiteSetupFieldLabel(field, fieldKey));
         return {
           record: { state: "asked", data: {} },
-          session_skips: [...new Set([...ctx.run.session_skips, skipKey(fieldKey)])],
+          session_skips: [
+            ...new Set([...ctx.run.session_skips, skipKey(fieldKey)]),
+          ],
           ack:
             `Okay, I'll leave your ${label} for now. It stays on your Website to-do list; your pages can't be built until it's added or marked as not applying, and I'll remind you then.`,
         };
@@ -707,7 +724,8 @@ function fieldStep(args: {
               { label: "Design", value: `${design.label} (Mingla's default)` },
               {
                 label: "Change it later",
-                value: "You can pick a different design anytime from your Website.",
+                value:
+                  "You can pick a different design anytime from your Website.",
               },
             ],
           },
@@ -742,7 +760,10 @@ function fieldStep(args: {
       }
       return {
         record: { state: "awaiting_approval", data: { field_key: fieldKey } },
-        propose: { tool_name: resolved.tool_name, tool_args: resolved.tool_args },
+        propose: {
+          tool_name: resolved.tool_name,
+          tool_args: resolved.tool_args,
+        },
       };
     },
   };
@@ -921,7 +942,9 @@ const buildStep: StepDefinition = {
           : undefined,
         ask: {
           kind: "question",
-          reuse_key: `website:build:blocked:${blockers.map((b) => b.key).join(",")}`,
+          reuse_key: `website:build:blocked:${
+            blockers.map((b) => b.key).join(",")
+          }`,
           title: "Before I build your pages",
           text: `I can't build your pages yet. Still needed: ${
             listWords(blockers.map((b) => lowerFirst(b.label)))
@@ -1009,7 +1032,12 @@ const OFFERING_KINDS: ReadonlyArray<{
   request: string;
   ari_creates: boolean;
 }> = [
-  { plan: "events", noun: "event", request: "Create an event", ari_creates: true },
+  {
+    plan: "events",
+    noun: "event",
+    request: "Create an event",
+    ari_creates: true,
+  },
   { plan: "trips", noun: "trip", request: "Create a trip", ari_creates: false },
   {
     plan: "experiences",
@@ -1215,11 +1243,15 @@ async function preparePublish(ctx: FlowContext): Promise<Prepared> {
     (typeof validation.home_revision === "number"
       ? String(validation.home_revision)
       : null);
-  if (validation.valid !== true || !digest || !/^[0-9a-f]{64}$/.test(digest) || !revision) {
+  if (
+    validation.valid !== true || !digest || !/^[0-9a-f]{64}$/.test(digest) ||
+    !revision
+  ) {
     return {
       ok: false,
       retry: false,
-      problem: "Your draft didn't pass its check, so it can't be published yet.",
+      problem:
+        "Your draft didn't pass its check, so it can't be published yet.",
     };
   }
   let checks: Json;
@@ -1447,7 +1479,9 @@ function websiteSummary(run: FlowRun) {
       evidence: publish.evidence,
     };
   }
-  if (publish?.state === "skipped" && build?.state === "done" && build.evidence) {
+  if (
+    publish?.state === "skipped" && build?.state === "done" && build.evidence
+  ) {
     return {
       title: "Your Website draft is ready",
       text:

@@ -32,10 +32,10 @@ import type {
 import { findFlowDefinition } from "../ariFlows/index.ts";
 import {
   publishArgumentsDigest,
+  WEBSITE_BRAND_FIELD_ORDER,
   WEBSITE_DEFAULT_DESIGN,
   WEBSITE_SETUP_FLOW,
   websiteTextAnswer,
-  WEBSITE_BRAND_FIELD_ORDER,
 } from "../ariFlows/websiteSetup.ts";
 import {
   decideFlowTurn,
@@ -415,9 +415,10 @@ class MemoryStore implements FlowStore {
     const runs = [...this.runs.values()].filter((run) =>
       run.conversation_id === conversationId
     );
-    const live = runs.find((run) =>
-      !["completed", "cancelled", "expired"].includes(run.status)
-    ) ?? runs.at(-1);
+    const live =
+      runs.find((run) =>
+        !["completed", "cancelled", "expired"].includes(run.status)
+      ) ?? runs.at(-1);
     return Promise.resolve(live ? this.view(live) : null);
   }
   getById(runId: string) {
@@ -500,7 +501,9 @@ function applyConfirmed(
     case "update_brand_context": {
       const patch = args.patch as Record<string, unknown> ?? {};
       for (const [key, value] of Object.entries(patch)) verify(key, value);
-      for (const exception of (args.exceptions as { field_key: string }[] ?? [])) {
+      for (
+        const exception of (args.exceptions as { field_key: string }[] ?? [])
+      ) {
         w.fields.get(exception.field_key)!.state = "not_applicable";
       }
       break;
@@ -655,14 +658,22 @@ Deno.test("P4 happy: confirm-next for a Website run is one assistant row — no 
     probes: probes(w),
   });
   assert(result.next, "confirm must carry the next step");
-  assertMatch(result.next!.text, /Saved\. Contact email: hello@lantern\.test\./);
+  assertMatch(
+    result.next!.text,
+    /Saved\. Contact email: hello@lantern\.test\./,
+  );
   assertEquals(inserted.length, 1);
   assertEquals(inserted[0].row.role, "assistant");
   assertNotMatch(JSON.stringify(inserted), /Continue Website setup/);
 });
 
 Deno.test("P4 happy: walking all eight parts ends with a published Website and an evidence-backed summary", async () => {
-  const w = world(["offerings_selected", "design_key", "story.who", "approved_plan"]);
+  const w = world([
+    "offerings_selected",
+    "design_key",
+    "story.who",
+    "approved_plan",
+  ]);
   w.fields.get("offerings_selected")!.value = null;
   const store = new MemoryStore(OWNER);
   let out = asArtefact(await step(w, store, await startRun(store), {}));
@@ -722,7 +733,17 @@ Deno.test("P4 happy: walking all eight parts ends with a published Website and a
   assertMatch((done as { text: string }).text, /Your Website is live/);
   const final = await current(store);
   assertEquals(final.status, "completed");
-  for (const key of ["offer", "brand", "look", "story", "approve", "build", "publish"]) {
+  for (
+    const key of [
+      "offer",
+      "brand",
+      "look",
+      "story",
+      "approve",
+      "build",
+      "publish",
+    ]
+  ) {
     assertEquals(final.step_states[key]?.state, "done", key);
     assert(final.step_states[key]?.evidence?.probe, `${key} has evidence`);
   }
@@ -758,7 +779,10 @@ Deno.test("P4 adversarial: Ari never approves the plan — the approve part is o
   });
   assertEquals(claim.kind, "notice");
   assertMatch((claim as { text: string }).text, /isn't there yet/);
-  assertEquals((await current(store)).current_artefact?.artefact_id, out.artefact.artefact_id);
+  assertEquals(
+    (await current(store)).current_artefact?.artefact_id,
+    out.artefact.artefact_id,
+  );
   // No Website step can ever propose an approval write.
   const source = Deno.readTextFileSync(
     new URL("supabase/functions/_shared/ariFlows/websiteSetup.ts", ROOT),
@@ -845,13 +869,19 @@ Deno.test("P4 adversarial: exactly one website — build proposes once, is verif
   assertEquals(Object.keys(p.tool_args).sort(), ["brand_id", "cites", "why"]);
   // The tick alone is not proof: a built plan with no site is not done.
   w.built = true;
-  const noSite = asArtefact(await step(w, store, await current(store), {
-    trigger: "confirm",
-    confirmed: { tool_name: "create_site_draft", result: {} },
-  }));
+  const noSite = asArtefact(
+    await step(w, store, await current(store), {
+      trigger: "confirm",
+      confirmed: { tool_name: "create_site_draft", result: {} },
+    }),
+  );
   assertEquals(noSite.artefact.step_key, "build");
   run = await current(store);
-  const again = await confirm(w, store, await step(w, store, run, choose(run, "build")));
+  const again = await confirm(
+    w,
+    store,
+    await step(w, store, run, choose(run, "build")),
+  );
   assertEquals(asArtefact(again).artefact.step_key, "first_offering");
   // Re-reading never proposes another build.
   run = await current(store);
@@ -910,9 +940,15 @@ Deno.test("P4 adversarial: a draft that changed since the check is re-checked, n
   w.draftDigest = DIGEST_B; // someone edited the draft
   const run = await current(store);
   const out = asArtefact(await step(w, store, run, choose(run, "publish")));
-  assertMatch(out.text, /changed since I checked it, so I didn't prepare a publish/);
+  assertMatch(
+    out.text,
+    /changed since I checked it, so I didn't prepare a publish/,
+  );
   assertEquals(out.artefact.title, "Ready to publish");
-  assertEquals((await current(store)).step_states.publish?.data?.source_digest, DIGEST_B);
+  assertEquals(
+    (await current(store)).step_states.publish?.data?.source_digest,
+    DIGEST_B,
+  );
 });
 
 Deno.test("P4 adversarial: checks on a different digest, a failed validation and warnings are shown, not guessed past", async () => {
@@ -922,10 +958,15 @@ Deno.test("P4 adversarial: checks on a different digest, a failed validation and
   assertMatch(card.text, /changed while I was checking it/);
   assert(!card.artefact.options.some((o) => o.id === "publish"));
 
-  const invalid = readyToPublish({ validationFails: "The home page has no title." });
+  const invalid = readyToPublish({
+    validationFails: "The home page has no title.",
+  });
   store = new MemoryStore(OWNER);
   card = asArtefact(await step(invalid, store, await startRun(store), {}));
-  assertMatch(card.text, /The home page has no title\. Nothing was published\./);
+  assertMatch(
+    card.text,
+    /The home page has no title\. Nothing was published\./,
+  );
   assert(!card.artefact.options.some((o) => o.id === "publish"));
 
   const warned = readyToPublish({
@@ -950,10 +991,12 @@ Deno.test("P4 adversarial: after the publish confirm the plan is read back; not 
     { kind: "propose" }
   >;
   // Publishing is still running on Mingla's side.
-  const pending = asArtefact(await step(w, store, await current(store), {
-    trigger: "confirm",
-    confirmed: { tool_name: "publish_site", result: { status: "executing" } },
-  }));
+  const pending = asArtefact(
+    await step(w, store, await current(store), {
+      trigger: "confirm",
+      confirmed: { tool_name: "publish_site", result: { status: "executing" } },
+    }),
+  );
   assertEquals(pending.artefact.title, "Publishing your Website");
   run = await current(store);
   const notYet = await step(w, store, run, choose(run, "check"));
@@ -996,11 +1039,16 @@ Deno.test("P4 first offering: create goes to the event lane with no invented fac
   assertEquals(retry.kind, "stale");
   // The event lane's create is confirmed: verified by id, then publish.
   const result = applyConfirmed(w, "create_event", {});
-  const after = asArtefact(await step(w, store, await current(store), {
-    trigger: "confirm",
-    confirmed: { tool_name: "create_event", result },
-  }));
-  assertMatch(after.text, /first event is saved as a draft and I've checked it's there/);
+  const after = asArtefact(
+    await step(w, store, await current(store), {
+      trigger: "confirm",
+      confirmed: { tool_name: "create_event", result },
+    }),
+  );
+  assertMatch(
+    after.text,
+    /first event is saved as a draft and I've checked it's there/,
+  );
   assertEquals(after.artefact.step_key, "publish");
   const state = (await current(store)).step_states.first_offering;
   assertEquals(state?.state, "done");
@@ -1014,7 +1062,10 @@ Deno.test("P4 first offering: 'Not now' skips safely and keeps it on the plan", 
   const run = await current(store);
   const out = asArtefact(await step(w, store, run, choose(run, "not_now")));
   assertMatch(out.text, /stays on your Website plan/);
-  assertEquals((await current(store)).step_states.first_offering?.state, "skipped");
+  assertEquals(
+    (await current(store)).step_states.first_offering?.state,
+    "skipped",
+  );
   assertEquals(w.events.size, 0);
 });
 
@@ -1027,7 +1078,12 @@ Deno.test("P4 look: 'Use Mingla's default design' saves the default through a pr
   assertEquals(card.artefact.step_key, "look");
   assert(card.artefact.options.some((o) => o.id === "use_default"));
   const run = await current(store);
-  const proposed = await step(w, store, run, choose(run, "use_default")) as Extract<
+  const proposed = await step(
+    w,
+    store,
+    run,
+    choose(run, "use_default"),
+  ) as Extract<
     RunnerOutcome,
     { kind: "propose" }
   >;
@@ -1041,7 +1097,10 @@ Deno.test("P4 look: 'Use Mingla's default design' saves the default through a pr
   const rows = Object.fromEntries(
     presentation.fields.map((field) => [field.label, field.value]),
   );
-  assertEquals(rows["Change it later"], "You can pick a different design anytime from your Website.");
+  assertEquals(
+    rows["Change it later"],
+    "You can pick a different design anytime from your Website.",
+  );
   assertMatch(rows.Design, /Mingla's default/);
   // The skip is never a dead end: after the confirm, build is reachable.
   const next = asArtefact(await confirm(w, store, proposed));
@@ -1130,10 +1189,12 @@ Deno.test("P4: while the owner's proposal is still open, a turn waits — no sec
   assertEquals((await current(store)).current_artefact, null);
   // Cancelled (no open proposal): the same field is asked again.
   w.openProposal = false;
-  const again = asArtefact(await step(w, store, await current(store), {
-    trigger: "turn",
-    ownerText: "ok",
-  }));
+  const again = asArtefact(
+    await step(w, store, await current(store), {
+      trigger: "turn",
+      ownerText: "ok",
+    }),
+  );
   assertEquals(again.artefact.title, "Contact email");
 });
 
@@ -1245,7 +1306,10 @@ Deno.test("P4 parity: the agent-chat wiring only bypasses the pre-engine Website
   const chat = Deno.readTextFileSync(
     new URL("supabase/functions/agent-chat/index.ts", ROOT),
   );
-  assertMatch(chat, /websiteSetupWorkflow = body\.workflow_context === "website_setup" &&\s*!websiteEngine/);
+  assertMatch(
+    chat,
+    /websiteSetupWorkflow = body\.workflow_context === "website_setup" &&\s*!websiteEngine/,
+  );
   assertMatch(chat, /websiteSetupIntent = activeBrand && !websiteEngine/);
   assertMatch(chat, /if \(decision\.kind === "side"\) websiteEngine = true;/);
   const confirm = Deno.readTextFileSync(
@@ -1253,8 +1317,14 @@ Deno.test("P4 parity: the agent-chat wiring only bypasses the pre-engine Website
   );
   // The pre-engine next-gap reader runs only when no run owns the chat.
   assertMatch(confirm, /!next && !flowState && !nextPendingActionId/);
-  assert(isWebsiteSetupRequest("Start Website setup. Check the live setup plan"));
-  assert(isWebsiteSetupRequest("Fix all Website brand-context gaps. Resume the durable job"));
+  assert(
+    isWebsiteSetupRequest("Start Website setup. Check the live setup plan"),
+  );
+  assert(
+    isWebsiteSetupRequest(
+      "Fix all Website brand-context gaps. Resume the durable job",
+    ),
+  );
   assert(!isWebsiteSetupRequest("hello@lantern.test"));
 });
 
@@ -1277,7 +1347,10 @@ Deno.test("P4: a finished Website setup is not restarted by every message on the
     websiteSetup: true,
     store,
   };
-  const side = await decideFlowTurn({ ...args, message: "How do I add a page?" });
+  const side = await decideFlowTurn({
+    ...args,
+    message: "How do I add a page?",
+  });
   assertEquals(side.kind, "side");
   assertEquals(store.runs.size, 1);
   assert(isWebsiteSetupRequest("Publish my Website"));
@@ -1285,14 +1358,21 @@ Deno.test("P4: a finished Website setup is not restarted by every message on the
 
 Deno.test("P4 first offering: trips and experiences are never created here (their lanes still fill in details) — only events", async () => {
   const w = world([], { site: { id: SITE }, built: true });
-  w.fields.get("offerings_selected")!.value = ["trips", "events", "experiences"];
+  w.fields.get("offerings_selected")!.value = [
+    "trips",
+    "events",
+    "experiences",
+  ];
   const store = new MemoryStore(OWNER);
   const card = asArtefact(await step(w, store, await startRun(store), {}));
   assertEquals(
     card.artefact.options.map((o) => o.id),
     ["create:events", "not_now"],
   );
-  assertMatch(card.artefact.text, /Add your first trips and experiences from Mingla/);
+  assertMatch(
+    card.artefact.text,
+    /Add your first trips and experiences from Mingla/,
+  );
   const run = await current(store);
   const forged = await step(w, store, run, {
     trigger: "answer",
