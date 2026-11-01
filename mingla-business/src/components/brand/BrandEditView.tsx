@@ -91,6 +91,7 @@ import { TopBar } from "../ui/TopBar";
 // existing `accountId` prop (the signed-in operator) — no new auth dependency.
 import { canDeleteBrand } from "../../utils/brandDeletePermission";
 import { BrandAvatarPickerSheet } from "./BrandAvatarPickerSheet";
+import { BrandEditAddressField } from "./BrandEditAddressField";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 import type { ThemeInput } from "@mingla/offering-rendering";
@@ -890,19 +891,21 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             ADDRESS
           </Text>
           <View style={styles.fieldsCol}>
-            <Input
-              variant="text"
-              value={draft.address ?? ""}
-              onChangeText={(v) =>
-                setDraft({
-                  ...draft,
-                  address: v.length === 0 ? null : v,
-                })
+            {/* #3355 P5 (C3) — the same structured address search as brand
+                creation: a pick writes address, city, country and the point
+                together, so city/country can no longer go stale here. */}
+            <BrandEditAddressField
+              address={draft.address}
+              city={draft.city}
+              countryCode={draft.countryCode}
+              lat={draft.lat}
+              lng={draft.lng}
+              onChange={(patch) =>
+                setDraft((current) =>
+                  current === null ? current : { ...current, ...patch },
+                )
               }
-              placeholder="e.g. 12 Old Street, London EC1V 9HL"
-              leadingIcon="location"
-              accessibilityLabel="Address (optional)"
-              clearable
+              testID="brand-edit-address"
             />
             <Text style={styles.kindHint}>
               Optional. We&apos;ll use this to pre-fill venues for any experiences you publish, and to show your address on your public page.
