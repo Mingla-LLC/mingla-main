@@ -1655,12 +1655,14 @@ Deno.test("#3355 future onboarding materials do not trigger event or order tools
   const setupTools = selectAriOnboardingSetupTools(AGENT_TOOLS).map((tool) =>
     tool.name
   );
+  // [TEST-MOD-APPROVED #3355] P2: brand setup reads the canonical checklist too.
   assertEquals(setupTools, [
     "get_operator_snapshot",
     "get_onboarding_plan",
     "update_onboarding_plan",
     "get_market_rules",
     "build_host_onboarding_blueprint",
+    "get_brand_readiness",
   ]);
   const progressCall = buildAriOnboardingSetupPlanCall({
     text: request,
@@ -2260,7 +2262,35 @@ Deno.test("#3355 complete launch requests receive a deterministic real-data plan
             city: "Lagos",
             country_code: "NG",
             default_currency: "NGN",
-            genuinely_missing: ["cover image", "public phone"],
+            // [TEST-MOD-APPROVED #3355] P2: the launch plan reads the canonical
+            // brand_readiness summary the snapshot carries, not a hand-made list.
+            readiness: {
+              money: {
+                can_sell: false,
+                can_be_paid_out: false,
+                sell_reason: "no_provider",
+                payout_reason: "no_bank",
+                rail: "none",
+                currency: "NGN",
+                terms_accepted_by_caller: true,
+              },
+              items: [
+                {
+                  key: "cover_media",
+                  label: "Cover photo or video",
+                  group: "media",
+                  severity: "skippable",
+                  not_now: null,
+                },
+                {
+                  key: "contact_phone",
+                  label: "Contact phone",
+                  group: "contact",
+                  severity: "skippable",
+                  not_now: null,
+                },
+              ],
+            },
           },
           offerings: [],
           payout_ready: false,
@@ -2297,7 +2327,7 @@ Deno.test("#3355 complete launch requests receive a deterministic real-data plan
   assert(plan.text.includes("Lagos"));
   assert(plan.text.includes("NGN"));
   assert(plan.text.includes("Nothing has been changed or published"));
-  assert(plan.text.includes("cover image"));
+  assert(plan.text.includes("Cover photo or video"));
   assert(!plan.text.includes("RESEARCH_NOT_CONFIGURED"));
   assert(!plan.text.includes("create_site_draft"));
   assertEquals(plan.sourceUrls, [

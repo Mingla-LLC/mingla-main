@@ -24,6 +24,7 @@ const TOOL_LABELS: Readonly<Record<string, string>> = Object.freeze({
   list_brands: "Read available brands",
   list_events: "Read current listings",
   get_operator_snapshot: "Read the business workspace",
+  get_brand_readiness: "Read the brand checklist",
   get_onboarding_plan: "Read the saved onboarding plan",
   update_onboarding_plan: "Save onboarding progress",
   list_memory_notes: "Read approved business memory",
@@ -270,7 +271,7 @@ export function buildAgentRunRendition(input: {
       version: 1,
       id: "genuinely-missing",
       tone: "warning",
-      title: "Genuinely missing",
+      title: "Still needed",
       body: input.plan.missing.join("; ").slice(0, 1000),
     });
   }

@@ -3,22 +3,22 @@
   "contract": "I-PROPOSED-ARI-CAPABILITY-LEDGER-TRUTH",
   "authority": {
     "support_status": "docs/contracts/ari-capability-ledger.json",
-    "registration_schema_executor": "supabase/functions/_shared/agentTools.ts, agentDomainTools.ts, agentSiteTools.ts, and agentAri10xTools.ts",
+    "registration_schema_executor": "supabase/functions/_shared/agentTools.ts, agentDomainTools.ts, agentSiteTools.ts, agentAri10xTools.ts, and agentReadinessTools.ts",
     "advertising": "supabase/functions/_shared/agentSystemPrompt.ts",
     "product_operations": "declared Business source roots below"
   },
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-10-31T03:20:00Z",
-    "registered_tool_count": 177,
-    "capability_count": 189,
+    "registered_tool_count": 180,
+    "capability_count": 192,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 175,
+      "registered_unverified": 179,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
-      "in_flight": 6
+      "in_flight": 5
     }
   },
   "operation_universe": {
@@ -6070,7 +6070,7 @@
         "business_web"
       ],
       "provenance": {
-        "phase": "open_work",
+        "phase": "post_1986",
         "introduced_by": "issue-3355"
       },
       "owners": {
@@ -6085,7 +6085,7 @@
         ]
       },
       "ari_tool": "get_campaign_draft",
-      "status": "in_flight",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -6098,7 +6098,7 @@
         2000
       ],
       "blockers": [
-        "Open issue #3355; cross-surface and deployed runtime proof pending"
+        "No exact-revision runtime evidence on all required Business surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-10-30"
@@ -8968,6 +8968,111 @@
       ],
       "confidence": "high",
       "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.brand.readiness_read",
+      "domain": "brands",
+      "outcome": "Read the brand's one checklist for an action: state, blocking, who can fix it, where, and any brand-wide not-now",
+      "safety": "read",
+      "required_role": "brand_member",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentReadinessTools.ts",
+            "symbol": "const getBrandReadiness"
+          }
+        ]
+      },
+      "ari_tool": "get_brand_readiness",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "8ce841f911ae92738ebc7b33e0951ba390d86448",
+          "reference": "issue_3355_brand_readiness.implementor.test.ts: canonical readiness read",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-01"
+    },
+    {
+      "id": "ari.brand.readiness_defer",
+      "domain": "brands",
+      "outcome": "Mark one non-blocking checklist item not now for the whole brand without hiding it or unblocking anything",
+      "safety": "write",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentReadinessTools.ts",
+            "symbol": "const deferReadinessItem"
+          }
+        ]
+      },
+      "ari_tool": "defer_readiness_item",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "8ce841f911ae92738ebc7b33e0951ba390d86448",
+          "reference": "issue_3355_brand_readiness.implementor.pg17.test.sql: brand-wide not-now",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-01"
+    },
+    {
+      "id": "ari.brand.readiness_undefer",
+      "domain": "brands",
+      "outcome": "Put a not-now checklist item back on Ari's list",
+      "safety": "write",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentReadinessTools.ts",
+            "symbol": "const undeferReadinessItem"
+          }
+        ]
+      },
+      "ari_tool": "undefer_readiness_item",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "8ce841f911ae92738ebc7b33e0951ba390d86448",
+          "reference": "issue_3355_brand_readiness.implementor.pg17.test.sql: undo not-now",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-01"
     }
   ]
 }

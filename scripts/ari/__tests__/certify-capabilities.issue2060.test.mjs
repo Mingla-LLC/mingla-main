@@ -188,11 +188,12 @@ function passingEvidence(plan) {
 // [TEST-MOD-APPROVED #3872] R1-R3 add discounts, referrals, and guarded gig-script drafting.
 // [TEST-MOD-APPROVED #2830] Website completeness/design/context add four rows.
 // [TEST-MOD-APPROVED #3355] Merged with the #3355 capability row; 188→189.
-test("#2060 plan covers the current exact 189-row ledger with one cache/readback owner", () => {
+// [TEST-MOD-APPROVED #3355] P2 brand readiness read + not-now pair; 189→192.
+test("#2060 plan covers the current exact 192-row ledger with one cache/readback owner", () => {
   const { ledger, owners } = loadCertificationInputs();
   const plan = buildCertificationPlan(ledger, owners);
-  assert.equal(plan.capability_count, 189);
-  assert.equal(new Set(plan.rows.map((row) => row.capability_id)).size, 189);
+  assert.equal(plan.capability_count, 192);
+  assert.equal(new Set(plan.rows.map((row) => row.capability_id)).size, 192);
   assert.equal(
     plan.rows.every((row) =>
       row.cache_owner_id && row.canonical_readback_owner
@@ -244,7 +245,7 @@ test("#2060 rejects missing rows, SHA mismatch surfaces, dirty cleanup, and stra
       "requirements_digest",
       "release_artifact_sha:agent_chat_bundle",
       "native_artifact:business_android",
-      "evidence_capability_count:188",
+      "evidence_capability_count:191",
       "cleanup_zero_residue",
       "rollback_no_stranded_operations",
     ]

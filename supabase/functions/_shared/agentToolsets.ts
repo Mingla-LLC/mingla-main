@@ -26,7 +26,9 @@ const TOOLSET_PATTERNS: Readonly<Record<AriToolsetKey, readonly RegExp[]>> =
       /^request_tools$/,
       /^get_capability_inventory$/,
     ],
-    brand: [/brand/, /profile/, /notification/],
+    // #3355 P2 — get_brand_readiness matches /brand/; the brand-wide
+    // "not now" pair travels with brand work too.
+    brand: [/brand/, /profile/, /notification/, /readiness_item$/],
     listings: [
       /event/,
       /experience/,
@@ -193,6 +195,9 @@ export function selectAriTools(
     read_public_url: 60,
     inspect_public_social_profile: 58,
     fetch_public_listing_page: 56,
+    // #3355 P2: the saved onboarding plan stays in a tight window now that
+    // the brand checklist read competes for the same brand slots.
+    get_onboarding_plan: 55,
     build_host_onboarding_blueprint: 54,
     compare_listing_candidate_sources: 52,
     extract_listing_candidates: 50,
@@ -250,6 +255,7 @@ export function selectAriOnboardingSetupTools(
 ): AgentTool[] {
   const allowed = new Set([
     "get_operator_snapshot",
+    "get_brand_readiness",
     "get_onboarding_plan",
     "build_host_onboarding_blueprint",
     "update_onboarding_plan",
@@ -619,13 +625,32 @@ export function buildAriOnboardingSetupReply(
       unknown
     >
     : null;
-  const missing = profile && Array.isArray(profile.genuinely_missing)
-    ? profile.genuinely_missing.filter((value): value is string =>
-      typeof value === "string"
-    )
+  // #3355 P2: what the brand still needs comes from the canonical checklist
+  // summary (brand_readiness) inside the snapshot, never a list made here.
+  const readiness = profile && profile.readiness &&
+      typeof profile.readiness === "object" &&
+      !Array.isArray(profile.readiness)
+    ? profile.readiness as Record<string, unknown>
+    : null;
+  const gaps = readiness && Array.isArray(readiness.items)
+    ? readiness.items.flatMap((value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return [];
+      }
+      const item = value as Record<string, unknown>;
+      return ["identity", "contact", "location", "media"].includes(
+          String(item.group),
+        ) &&
+          item.severity !== "done" &&
+          typeof item.label === "string" && typeof item.key === "string"
+        ? [{ key: item.key, label: item.label.toLowerCase() }]
+        : [];
+    })
     : [];
-  const missingCopy = missing.length
-    ? "The current brand record has no " + missing.join(", ") + ". "
+  const missing = gaps.map((gap) => gap.key);
+  const missingCopy = gaps.length
+    ? "The brand checklist still needs: " +
+      gaps.map((gap) => gap.label).join(", ") + ". "
     : "";
   const hasCurrency = /\b(?:NGN|USD|GBP|EUR|CAD|AUD|GHS|KES|ZAR)\b/i.test(
     detailText,

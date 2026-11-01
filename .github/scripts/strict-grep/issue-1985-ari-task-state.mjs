@@ -816,7 +816,9 @@ if (process.argv.includes("--self-test")) {
       from: "TASK_REPLACED_BY_NEW_TASK",
       to: "REMOVED_TASK_REPLACEMENT",
     },
-    { key: "confirm", from: 'status: "executing"', to: 'status: "pending"' },
+    // [TEST-MOD-APPROVED #3355] P1 moved the executing flip into the
+    // database-clock claim; the mutant follows it (the old literal is gone).
+    { key: "confirm", from: "claimPendingForConfirm(pendingStateClient", to: "removedClaim(pendingStateClient" },
     {
       key: "confirm",
       from: 'rpc("commit_agent_task_outcome"',

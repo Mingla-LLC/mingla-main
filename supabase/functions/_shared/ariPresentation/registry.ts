@@ -20,6 +20,7 @@ import {
   isOwnerSafeValue,
 } from "../ariOwnerCopy.ts";
 import { toolOwnerCopy } from "./toolLabels.ts";
+import { readinessItemLabel } from "../readinessCatalog.ts";
 
 export interface PresentationField {
   label: string;
@@ -103,6 +104,8 @@ export const ARG_LABELS: Readonly<Record<string, string>> = Object.freeze({
   hours: "Opening hours",
   policy: "Policy",
   refund_policy: "Refund policy",
+  // #3355 P2 — a checklist item shows its owner label, never its key.
+  item_key: "Checklist item",
   enabled: "On",
   public: "Public",
 });
@@ -196,6 +199,7 @@ function displayValue(
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (!trimmed) return null;
+    if (key === "item_key") return readinessItemLabel(trimmed);
     if (/(_at|^date)$/.test(key) && /^\d{4}-\d{2}-\d{2}T/.test(trimmed)) {
       const tz = typeof args.timezone === "string" ? args.timezone : null;
       return formatInstant(trimmed, tz) ?? trimmed;

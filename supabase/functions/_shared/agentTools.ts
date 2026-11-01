@@ -32,6 +32,8 @@ import {
   ARI_10X_READ_ONLY,
   ARI_10X_TOOLS,
 } from "./agentAri10xTools.ts";
+// #3355 P2 — the canonical brand readiness read and its brand-wide "not now".
+import { READINESS_READ_ONLY, READINESS_TOOLS } from "./agentReadinessTools.ts";
 
 export { ToolError } from "./agentToolHelpers.ts";
 
@@ -1668,6 +1670,7 @@ export const AGENT_TOOLS: AgentTool[] = secureAgentTools([
   ...DOMAIN_TOOLS,
   ...SITE_AGENT_TOOLS,
   ...ARI_10X_TOOLS,
+  ...READINESS_TOOLS,
 ]);
 
 // #3355 P1 (D-5/D-6): the owner copy gate refuses every registered tool name,
@@ -1686,6 +1689,7 @@ export const READ_ONLY_TOOL_NAMES = new Set<string>([
   ...DOMAIN_READ_ONLY,
   ...SITE_AGENT_READ_ONLY,
   ...ARI_10X_READ_ONLY,
+  ...READINESS_READ_ONLY,
 ]);
 
 /** Reversible Ari-owned state that may advance inside the bounded loop. */

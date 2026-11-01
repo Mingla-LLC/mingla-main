@@ -32,6 +32,7 @@ import { providerExecutionTargeting } from "./adTargetingCompiler.ts";
 // writer that most needs to be told "no" before the row is stored.
 import { campaignPayloadIssues } from "./campaignPayloadContract.ts";
 import { validateGigScript } from "./gigScript.ts";
+import { tryReadBrandReadiness } from "./agentReadinessTools.ts";
 
 const UUID = { type: "string", format: "uuid" };
 const STR = { type: "string", minLength: 1, maxLength: 500 };
@@ -8060,9 +8061,12 @@ const requestAccountDeletion = writeTool(
 // O. Intelligence snapshot (read) — enables the create→ticket→publish→blast chain
 // ----------------------------------------------------------------------------
 
+// #3355 P2 (D-30): `writeTool` is only the schema builder shared by every
+// domain tool. This tool is classified read-only by DOMAIN_READ_ONLY below
+// (runs inline, never a confirmation card); the readiness test pins that.
 const getOperatorSnapshot = writeTool(
   "get_operator_snapshot",
-  "Compact owned offerings + payout-ready flag for chaining next steps. No PII rosters.",
+  "Compact owned offerings, the selected brand's canonical checklist summary (from get_brand_readiness) and the can-sell / can-be-paid-out money position for chaining next steps. No PII rosters.",
   { brand_id: UUID },
   [],
   async (args, client, userId) => {
@@ -8082,9 +8086,16 @@ const getOperatorSnapshot = writeTool(
       await assertAgentReadBrand(client, userId, brandId);
     }
     // Ledger `ari.operator.snapshot` requires brand_member: list every brand the
-    // caller can already read. Owner-only filtering was the Wave-3 leftover that
-    // kept delegated members out of the snapshot brand list and auto-select.
-    const brands = scope.slice(0, 8).map(
+    // caller can already read. #3355 P2 (C12): up to 50, the requested brand
+    // first, so a multi-brand operator's later brands are never invisible.
+    const requested = brandId;
+    const ordered = requested
+      ? [
+        ...scope.filter((brand) => brand.id === requested),
+        ...scope.filter((brand) => brand.id !== requested),
+      ]
+      : scope;
+    const brands = ordered.slice(0, 50).map(
       ({ id, name, role, effective_rank }) => ({
         id,
         name,
@@ -8094,13 +8105,14 @@ const getOperatorSnapshot = writeTool(
     );
     if (!brandId && brands.length === 1) brandId = brands[0].id;
     let offerings: unknown[] = [];
-    let canCollect: unknown = null;
     let brandProfile: Record<string, unknown> | null = null;
+    let payoutReady: boolean | null = null;
+    let canBePaidOut: boolean | null = null;
     if (brandId) {
       const { data: profile, error: profileError } = await client
         .from("brands")
         .select(
-          "id,name,slug,description,kind,address,city,country_code,default_currency,profile_photo_url,cover_media_url,contact_email,contact_phone,social_links,custom_links,theme_color,theme_font,theme_animation,enquiries_enabled,payment_provider,payment_country,payout_country",
+          "id,name,slug,description,kind,address,city,country_code,default_currency,default_timezone,social_links,custom_links,theme_color,theme_font,theme_animation,enquiries_enabled,payment_provider,payment_country,payout_country",
         )
         .eq("id", brandId)
         .is("deleted_at", null)
@@ -8116,22 +8128,27 @@ const getOperatorSnapshot = writeTool(
         .order("created_at", { ascending: false })
         .limit(8);
       offerings = ev ?? [];
-      canCollect = await callRpc(client, "pg_brand_can_collect", {
-        p_brand_id: brandId,
-      }).catch(() => null);
+      // #3355 P2 (C1/C2, I-BRAND-READINESS-SINGLE-SOURCE): what the brand is
+      // missing comes only from the canonical server read. While the read is
+      // not deployed the snapshot says so instead of guessing a list.
+      const { readiness, unavailable } = await tryReadBrandReadiness(
+        client,
+        brandId,
+      );
+      if (readiness) {
+        payoutReady = readiness.money.can_sell;
+        canBePaidOut = readiness.money.can_be_paid_out;
+      } else {
+        // [TRANSITIONAL] money falls back to the canonical collect predicate
+        // only while brand_readiness is not yet applied — exit: migration
+        // 20280225003355 applied in production.
+        const canCollect = await callRpc(client, "pg_brand_can_collect", {
+          p_brand_id: brandId,
+        }).catch(() => null);
+        payoutReady = canCollect === true ||
+          (canCollect as any)?.can_collect === true;
+      }
       if (profile) {
-        const missing = [
-          ["description", profile.description],
-          ["profile photo", profile.profile_photo_url],
-          ["cover", profile.cover_media_url],
-          ["phone number", profile.contact_phone],
-          [
-            "social links",
-            profile.social_links &&
-            typeof profile.social_links === "object" &&
-            Object.keys(profile.social_links).length > 0,
-          ],
-        ].flatMap(([label, value]) => value ? [] : [label]);
         brandProfile = {
           id: profile.id,
           name: profile.name,
@@ -8142,6 +8159,7 @@ const getOperatorSnapshot = writeTool(
           city: profile.city,
           country_code: profile.country_code,
           default_currency: profile.default_currency,
+          default_timezone: profile.default_timezone ?? null,
           social_links: profile.social_links ?? {},
           custom_links: profile.custom_links ?? [],
           theme: {
@@ -8152,14 +8170,31 @@ const getOperatorSnapshot = writeTool(
           enquiries_enabled: profile.enquiries_enabled === true,
           payment_provider: profile.payment_provider,
           payment_country: profile.payment_country ?? profile.payout_country,
-          readiness: {
-            profile_photo: Boolean(profile.profile_photo_url),
-            cover: Boolean(profile.cover_media_url),
-            contact_email: Boolean(profile.contact_email),
-            contact_phone: Boolean(profile.contact_phone),
-            social_links: !missing.includes("social links"),
-          },
-          genuinely_missing: missing,
+          readiness: readiness
+            ? {
+              counts: readiness.counts,
+              money: readiness.money,
+              items: readiness.items.map((item) => ({
+                key: item.key,
+                label: item.label,
+                group: item.group,
+                state: item.state,
+                severity: item.severity,
+                value_preview: item.value_preview,
+                not_now: item.deferral
+                  ? {
+                    by: item.deferral.by_display_name,
+                    at: item.deferral.at,
+                    reason: item.deferral.reason,
+                  }
+                  : null,
+                can_caller_fix: item.fix.can_caller_fix,
+                who_can_fix: item.fix.who_can_fix,
+                fix_route: item.fix.route,
+              })),
+            }
+            : null,
+          readiness_unavailable: unavailable,
         };
       }
     }
@@ -8167,8 +8202,8 @@ const getOperatorSnapshot = writeTool(
       brands,
       selected_brand: brandProfile,
       offerings,
-      payout_ready: canCollect === true ||
-        (canCollect as any)?.can_collect === true,
+      payout_ready: payoutReady === true,
+      can_be_paid_out: canBePaidOut,
       next_step_hint: !brands.length
         ? "create_brand"
         : offerings.length === 0

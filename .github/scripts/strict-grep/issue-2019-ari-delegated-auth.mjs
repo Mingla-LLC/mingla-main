@@ -152,7 +152,9 @@ function check(s, manifest) {
   // and verification tools extend the same caller-bound denominator to 172.
   // [TEST-MOD-APPROVED #2830] Durable Website completeness, pre-draft design,
   // bounded findings and evidence-backed context writes extend that denominator to 176.
-  if (declarationCount !== 176) failures.push(`expected 176 declarations, got ${declarationCount}`);
+  // [TEST-MOD-APPROVED #3355] The saved campaign draft readback and the P2
+  // brand readiness read + not-now pair extend that denominator to 180.
+  if (declarationCount !== 180) failures.push(`expected 180 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }
@@ -207,7 +209,10 @@ if (process.argv.includes("--self-test")) {
         ),
       ),
     }, registry],
-    [{ ...sources, confirm: sources.confirm.replace('status: "executing"', 'status: "removed"') }, registry],
+    // [TEST-MOD-APPROVED #3355] P1 moved the pending -> executing flip into
+    // claimPendingForConfirm; the mutant follows it (the old literal no longer
+    // exists, so the mutant had silently stopped mutating anything).
+    [{ ...sources, confirm: sources.confirm.replace("claimPendingForConfirm(pendingStateClient", "removedClaim(pendingStateClient") }, registry],
     [{ ...sources, auth: sources.auth.replace(/:\s*role\("/, ": removed(") }, registry],
     // [#2439 SC-15.1] Registry mutants: missing suite, wrong provider, lost push
     // provenance, lost PR provenance, changed command/options/runtime/env, and a

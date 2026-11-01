@@ -288,6 +288,13 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   manage_agent_job: role("self", "optional_brand"),
   set_refund_policy: role("event_manager", "event"),
   get_buyer_notice_status: role("event_manager", "event"),
+  // #3355 P2 — the canonical checklist: every active member may read it (it
+  // marks who can fix each row). A brand-wide "not now" is re-checked per item
+  // in SQL against that item's own role or money predicate; finance is the
+  // lowest rank that can fix any deferrable item.
+  get_brand_readiness: role("scanner", "brand"),
+  defer_readiness_item: role("finance_manager", "brand"),
+  undefer_readiness_item: role("finance_manager", "brand"),
 });
 
 function unavailable(): never {

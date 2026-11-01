@@ -64,16 +64,17 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // [TEST-MOD-APPROVED #2830] Durable Website completeness, pre-draft design,
   // bounded audit findings and evidence-backed brand-context writes extend the
   // exact census; 172→177.
+  // [TEST-MOD-APPROVED #3355] P2 brand readiness read + not-now pair; 177→180.
   assert(
-    AGENT_TOOLS.length === 177,
-    `expected 177 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 180,
+    `expected 180 tools, got ${AGENT_TOOLS.length}`,
   );
   assert(
-    new Set(AGENT_TOOLS.map((t) => t.name)).size === 177,
+    new Set(AGENT_TOOLS.map((t) => t.name)).size === 180,
     "duplicate tool",
   );
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 177,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 180,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
@@ -137,7 +138,8 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   // capability ledger; 152→172.
   // [TEST-MOD-APPROVED #2830] The four completeness tools are present in the
   // accepted capability ledger; 172→177.
-  assert(rows.length === 177, `expected 177 ledger rows, got ${rows.length}`);
+  // [TEST-MOD-APPROVED #3355] The P2 readiness read + not-now pair; 177→180.
+  assert(rows.length === 180, `expected 180 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===

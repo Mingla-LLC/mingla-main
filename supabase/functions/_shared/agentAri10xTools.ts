@@ -9,6 +9,7 @@ import type { AgentToolDefinition } from "./agentToolHelpers.ts";
 import { callRpc, isString, isUuid, ToolError } from "./agentToolHelpers.ts";
 import { DOMAIN_TOOLS } from "./agentDomainTools.ts";
 import { SITE_AGENT_TOOLS } from "./agentSiteTools.ts";
+import { READINESS_TOOLS } from "./agentReadinessTools.ts";
 import { STRIPE_SUPPORTED_COUNTRIES } from "./stripeSupportedCountries.ts";
 import { sanitizeAriPublicText } from "./agentSanitization.ts";
 import { toolBelongsTo } from "./agentToolsets.ts";
@@ -346,6 +347,7 @@ function catalogue(): Array<{ name: string; description: string }> {
   const all = [
     ...DOMAIN_TOOLS.map(({ name, description }) => ({ name, description })),
     ...SITE_AGENT_TOOLS.map(({ name, description }) => ({ name, description })),
+    ...READINESS_TOOLS.map(({ name, description }) => ({ name, description })),
     ...LOCAL_CAPABILITIES.map(([name, description]) => ({ name, description })),
     {
       name: "create_brand",

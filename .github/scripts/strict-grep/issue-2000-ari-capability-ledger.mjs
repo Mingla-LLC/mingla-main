@@ -20,6 +20,8 @@ const TOOL_PATHS = [
   "supabase/functions/_shared/agentDomainTools.ts",
   "supabase/functions/_shared/agentSiteTools.ts",
   "supabase/functions/_shared/agentAri10xTools.ts",
+  // #3355 P2 — the canonical brand readiness read and its brand-wide "not now".
+  "supabase/functions/_shared/agentReadinessTools.ts",
 ];
 const PROMPT_PATH = "supabase/functions/_shared/agentSystemPrompt.ts";
 
@@ -215,6 +217,10 @@ ari.event.buyer_notice_status
 ari.research.fetch_listing_page
 ari.listings.extract_candidates
 ari.jobs.manage
+ari.marketing.campaign_draft_review
+ari.brand.readiness_read
+ari.brand.readiness_defer
+ari.brand.readiness_undefer
 `.trim().split(/\s+/));
 
 // Independent classification authority established by the source-contract

@@ -46,6 +46,17 @@ export const WRITE_TOOL_OWNER_COPY: Readonly<Record<string, ToolOwnerCopy>> =
       "Save your brand details",
       "Brand details saved",
     ),
+    // #3355 P2 — brand-wide "not now" on one checklist item.
+    defer_readiness_item: row(
+      "Not now for this brand",
+      "Set this aside for now",
+      "Set aside for now",
+    ),
+    undefer_readiness_item: row(
+      "Back on Ari's list",
+      "Ask about this again",
+      "Back on Ari's list",
+    ),
     set_brand_pricing_defaults: row(
       "Update pricing defaults",
       "Pricing defaults",

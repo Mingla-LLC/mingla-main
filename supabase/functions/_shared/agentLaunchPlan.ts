@@ -4,6 +4,12 @@
 
 import type { AgentLoopObservation, AgentLoopToolCall } from "./agentLoop.ts";
 import { sanitizeAriPublicText } from "./agentSanitization.ts";
+import {
+  type BrandReadinessMoney,
+  readinessGapLabels,
+  readinessMoneyGaps,
+  readinessMoneySentence,
+} from "./agentReadinessTools.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -126,6 +132,52 @@ export function launchPlanInitialCalls(input: {
   return calls;
 }
 
+const PROFILE_GROUPS = new Set(["identity", "contact", "location", "media"]);
+
+interface SnapshotChecklistItem {
+  label: string;
+  group: string;
+  severity: string;
+  deferral: JsonRecord | null;
+}
+
+/** The snapshot's canonical checklist summary, or null when it couldn't be read. */
+function readinessFromSnapshot(
+  selected: JsonRecord,
+): { items: SnapshotChecklistItem[]; money: BrandReadinessMoney } | null {
+  const readiness = record(selected.readiness);
+  if (!readiness || !Array.isArray(readiness.items)) return null;
+  const money = record(readiness.money);
+  if (!money) return null;
+  const items = readiness.items.flatMap((value) => {
+    const item = record(value);
+    const label = text(item?.label);
+    return item && label
+      ? [{
+        label,
+        group: text(item.group),
+        severity: text(item.severity, "skippable"),
+        deferral: record(item.not_now),
+      }]
+      : [];
+  });
+  return {
+    items,
+    money: {
+      can_sell: money.can_sell === true,
+      can_be_paid_out: money.can_be_paid_out === true,
+      sell_reason: text(money.sell_reason, "kyc_incomplete"),
+      payout_reason: text(money.payout_reason, "no_bank"),
+      rail: text(money.rail, "none"),
+      currency: text(money.currency) || null,
+      terms_accepted_by_caller: typeof money.terms_accepted_by_caller ===
+          "boolean"
+        ? money.terms_accepted_by_caller
+        : null,
+    },
+  };
+}
+
 export function buildBrandLaunchPlan(input: {
   brandName: string;
   observations: readonly AgentLoopObservation[];
@@ -141,18 +193,25 @@ export function buildBrandLaunchPlan(input: {
     "search_public_web",
   );
   const offerings = Array.isArray(snapshot.offerings) ? snapshot.offerings : [];
-  const missingProfile = Array.isArray(selected.genuinely_missing)
-    ? selected.genuinely_missing.flatMap((item) => {
-      const value = text(item);
-      return value ? [value] : [];
-    })
+  // #3355 P2 (I-BRAND-READINESS-SINGLE-SOURCE): the profile and money gaps
+  // come from the canonical brand_readiness summary inside the snapshot.
+  const checklist = readinessFromSnapshot(selected);
+  const checklistUnavailable = checklist === null;
+  const missingProfile = checklist
+    ? readinessGapLabels(
+      checklist.items.filter((item) =>
+        PROFILE_GROUPS.has(item.group) && item.severity !== "done"
+      ),
+    )
     : [];
   const brandName = text(selected.name, text(input.brandName, "this brand"));
   const description = text(selected.description);
   const city = text(selected.city);
   const country = text(selected.country_code);
   const currency = text(selected.default_currency);
-  const payoutReady = snapshot.payout_ready === true;
+  const money = checklist?.money ?? null;
+  const moneyReady = money !== null && money.can_sell &&
+    money.can_be_paid_out && money.terms_accepted_by_caller !== false;
   const websiteReadFailed = input.observations.some((item) =>
     item.tool === "get_brand_site" && item.error
   );
@@ -166,7 +225,9 @@ export function buildBrandLaunchPlan(input: {
   );
 
   const confirmed = [description, city, country, currency].filter(Boolean);
-  const profileDetail = missingProfile.length > 0
+  const profileDetail = checklistUnavailable
+    ? "I couldn't read the brand checklist in this pass, so I can't say what the profile still needs. Nothing is assumed complete."
+    : missingProfile.length > 0
     ? `Confirmed ${
       confirmed.join(" · ") || "the saved brand record"
     }. Still needed: ${missingProfile.join(", ")}.`
@@ -200,7 +261,9 @@ export function buildBrandLaunchPlan(input: {
       id: "brand-profile",
       label: "Finish the public brand profile",
       detail: profileDetail,
-      state: missingProfile.length === 0 ? "done" : "active",
+      state: !checklistUnavailable && missingProfile.length === 0
+        ? "done"
+        : "active",
     },
     {
       id: "first-offering",
@@ -220,10 +283,12 @@ export function buildBrandLaunchPlan(input: {
     {
       id: "payouts-and-terms",
       label: "Complete payout and Terms handoffs",
-      detail: payoutReady
-        ? "Payout collection is ready; the account owner still controls legal acceptance."
-        : "Payout setup and legal acceptance remain human-owned and cannot be completed by Ari.",
-      state: payoutReady ? "done" : "active",
+      detail: money
+        ? `${
+          readinessMoneySentence(money)
+        } Payment setup and the Terms stay with people; Ari can't complete them.`
+        : "I couldn't read the payment position in this pass. Payment setup and the Terms stay with people; Ari can't complete them.",
+      state: moneyReady ? "done" : "active",
     },
     {
       id: "website",
@@ -255,13 +320,16 @@ export function buildBrandLaunchPlan(input: {
     },
   ];
 
-  const missing = [...missingProfile];
+  const missing = checklistUnavailable
+    ? ["a verified brand checklist"]
+    : [...missingProfile];
   if (offerings.length === 0) {
     missing.push(
       "first offering details: type, date and time, capacity, price, location privacy, and refund policy",
     );
   }
-  if (!payoutReady) missing.push("payout setup (human-owned)");
+  if (money) missing.push(...readinessMoneyGaps(money));
+  else missing.push("a verified payment position");
   if (websiteReadFailed) missing.push("verified website status");
   if (sourceUrls.length === 0) {
     missing.push("a known official public URL or social handle (optional)");
@@ -275,8 +343,8 @@ export function buildBrandLaunchPlan(input: {
     summary:
       `This plan uses ${brandName}'s saved Mingla record. Nothing has been changed or published.`,
     text:
-      `I built this launch plan for ${brandName} from the business information already in Mingla. Nothing has been changed or published.\n\n${numbered}\n\nThe only genuinely missing items are: ${
-        missing.length ? missing.join("; ") : "none for this planning pass"
+      `I built this launch plan for ${brandName} from the business information already in Mingla. Nothing has been changed or published.\n\n${numbered}\n\nStill needed: ${
+        missing.length ? missing.join("; ") : "nothing for this planning pass"
       }.`,
     steps,
     missing,

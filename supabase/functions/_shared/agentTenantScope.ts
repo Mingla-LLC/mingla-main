@@ -30,12 +30,17 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   "list_brand_team",
   "list_event_orders",
   "get_campaign_report",
+  // #3355 — the saved campaign draft readback asserts the draft's brand
+  // membership inline (assertAgentReadBrand) before returning any copy.
+  "get_campaign_draft",
   // Issue #3697 v1.4 — report is an inline read. Plan proposal is a confirmed
   // write because it freezes a version after the Host attaches the video.
   "get_ad_campaign_report",
   // #1980 — Growth Tool report resume/read; brand-scoped like Host app-lane.
   "get_growth_tool_report",
   "get_operator_snapshot",
+  // #3355 P2 — the canonical readiness read asserts the same membership inline.
+  "get_brand_readiness",
   // #1984 — event order sold/refunded/net read; same tenant scope as other reads.
   "get_event_order_reconciliation",
   // issue #1978 — venue discovery reads run inline under the same tenant scope.
