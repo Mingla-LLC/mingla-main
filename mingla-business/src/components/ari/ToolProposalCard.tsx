@@ -54,6 +54,11 @@ import {
 import type { ConfirmOutcome } from "./toolProposalTypes";
 import { formatEventProposalWhen } from "./eventProposalDisplay";
 import { websiteSetupProposalCopy } from "./websiteSetupProposalCopy";
+import {
+  ownerSafeProposalFields,
+  readServerPresentation,
+  toolProposalOwnerCopy,
+} from "./toolProposalCopy";
 
 // Premium proposal-card metrics — tighter than the default kit values.
 const CARD_PADDING = ariThread.cardPad; // 12
@@ -218,7 +223,8 @@ function humanizeToolName(toolName: string): string {
     case "create_site_draft":
       return websiteSetupProposalCopy(toolName, {})?.verb ?? "Website setup";
     default:
-      return toolName.replace(/_/g, " ");
+      // #3355 P1 (D-5): owner words for every write, never the tool name.
+      return toolProposalOwnerCopy(toolName).verb;
   }
 }
 
@@ -272,7 +278,10 @@ function primaryIdentity(
   if (typeof args.title === "string" && args.title) return args.title;
   if (typeof args.name === "string" && args.name) return args.name;
   if (typeof args.subject === "string" && args.subject) return args.subject;
-  return toolName.replace(/_/g, " ");
+  // #3355 P1 (D-5): the server's title, then the owner words for the tool.
+  return (
+    readServerPresentation(args)?.title ?? toolProposalOwnerCopy(toolName).title
+  );
 }
 
 function coverTypeLabel(type: unknown): string | null {
@@ -337,8 +346,9 @@ function fieldsFor(
       });
   }
   if (toolName === "pause_discount") {
-    if (typeof args.discount_id === "string")
-      out.push({ label: "Discount", value: args.discount_id });
+    // #3355 P1 (D-5): the discount's name, never its id.
+    if (typeof context.discount_name === "string")
+      out.push({ label: "Discount", value: context.discount_name });
     out.push({
       label: "Effect",
       value: "Stops new uses; existing orders keep their price",
@@ -492,15 +502,8 @@ function fieldsFor(
         out.push({ label: "Payment", value: context.payment_method });
       }
     }
-    if (toolName === "charge_installment_now") {
-      const id =
-        typeof args.installment_id === "string"
-          ? args.installment_id
-          : typeof context.installment_id === "string"
-            ? context.installment_id
-            : "";
-      if (id) out.push({ label: "Installment", value: `${id.slice(0, 8)}…` });
-    }
+    // #3355 P1 (D-5): charge_installment_now no longer prints a partial id;
+    // the confirm phrase and reason carry the scope.
     if (typeof args.reason === "string" && args.reason.trim()) {
       out.push({ label: "Reason", value: args.reason.trim() });
     }
@@ -526,9 +529,6 @@ function fieldsFor(
     }
     if (typeof args.change_summary === "string") {
       out.push({ label: "Exact change", value: args.change_summary });
-    }
-    if (typeof args.expected_revision === "string") {
-      out.push({ label: "Expected revision", value: args.expected_revision });
     }
     out.push({
       label: "Effect",
@@ -571,12 +571,6 @@ function fieldsFor(
   if (toolName === "manage_brand_discovery_currency") {
     if (typeof args.currency_code === "string") {
       out.push({ label: "Currency", value: args.currency_code.toUpperCase() });
-    }
-    if (typeof args.expected_state_version === "number") {
-      out.push({
-        label: "State version",
-        value: String(args.expected_state_version),
-      });
     }
     if (typeof args.decision === "string") {
       out.push({ label: "Decision", value: args.decision.replace(/_/g, " ") });
@@ -736,17 +730,13 @@ function fieldsFor(
     if (toolName === "invite_scanner" && args.can_accept_payments === true) {
       out.push({ label: "Door payments", value: "Allowed" });
     }
-    if (typeof args.invitation_id === "string" && args.invitation_id) {
-      out.push({
-        label: "Invitation",
-        value: `${args.invitation_id.slice(0, 8)}…`,
-      });
-    }
-    if (typeof args.member_id === "string" && args.member_id) {
-      out.push({ label: "Member", value: `${args.member_id.slice(0, 8)}…` });
-    }
+    // #3355 P1 (D-5): no partial invitation/member ids on the card.
     if (toolName === "manage_brand_people" && typeof args.action === "string") {
-      out.push({ label: "Action", value: args.action });
+      const action = args.action.replace(/_/g, " ");
+      out.push({
+        label: "Change",
+        value: action.charAt(0).toUpperCase() + action.slice(1),
+      });
     }
     if (typeof args.phone_e164 === "string" && args.phone_e164.trim()) {
       out.push({ label: "Phone", value: args.phone_e164.trim() });
@@ -754,25 +744,10 @@ function fieldsFor(
     return out;
   }
   if (out.length === 0) {
-    const skip = new Set([
-      "brand_id",
-      "event_id",
-      "cover_media_url",
-      "cover_media_poster_url",
-      "cover_media_type",
-      "confirm_phrase",
-      "__proposal_context",
-    ]);
-    for (const [key, value] of Object.entries(args)) {
-      if (skip.has(key) || value == null || value === "") continue;
-      if (
-        typeof value === "string" ||
-        typeof value === "number" ||
-        typeof value === "boolean"
-      ) {
-        out.push({ label: key.replace(/_/g, " "), value: String(value) });
-      }
-    }
+    // #3355 P1 (D-5): the raw-argument listing is gone. The server's
+    // presentation (or, for an older proposal, the same plumbing filter on
+    // the Host) is the only generic fallback — no keys, ids or revisions.
+    return readServerPresentation(args)?.fields ?? ownerSafeProposalFields(args);
   }
   return out;
 }
@@ -961,7 +936,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const [creatingForCover, setCreatingForCover] = useState(false);
   const [proposalError, setProposalError] = useState<string | null>(null);
 
-  const verb = humanizeToolName(toolName);
+  const verb = readServerPresentation(args)?.verb ?? humanizeToolName(toolName);
   // ORCH-1103 REWORK 3 — after a "Create & attach" commit the picker writes the
   // chosen cover into editedArgs, so the band must read editedArgs (not the
   // original proposal args) to reflect the freshly-attached cover.
@@ -1338,8 +1313,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               {isSiteDraftConfirm
                 ? "This confirmation updates the saved draft only. It will not publish the Website."
                 : isSiteRollbackConfirm
-                  ? "This is a separate rollback confirmation. The selected earlier revision will be validated and published as a new version."
-                  : "This is a separate publish confirmation. Mingla will validate and verify this exact revision before the public Website changes."}
+                  ? "This is a separate confirmation. Mingla checks the earlier version you picked, then publishes it as the newest one."
+                  : "This is a separate publish confirmation. Mingla checks this exact version before your public Website changes."}
             </Text>
           </View>
         ) : null}

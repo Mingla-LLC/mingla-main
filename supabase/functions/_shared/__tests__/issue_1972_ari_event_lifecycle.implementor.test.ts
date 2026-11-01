@@ -5,6 +5,12 @@ const migration = await read(
   "../../../migrations/20270422001972_issue_1972_ari_event_lifecycle.sql",
 );
 const confirm = await read("../../agent-confirm-action/index.ts");
+// #3355 P1 (D-14): the attested pending -> executing claim moved to the
+// database clock (agent_pending_action_claim_for_confirm), driven from here.
+const confirmClaim = await read("../../agent-confirm-action/pendingClaim.ts");
+const turnHygiene = await read(
+  "../../../migrations/20280224003355_issue_3355_ari_turn_hygiene.sql",
+);
 const chat = await read("../../agent-chat/index.ts");
 const domains = await read("../agentDomainTools.ts");
 const prompt = await read("../agentSystemPrompt.ts");
@@ -35,9 +41,11 @@ Deno.test("#1972 pending actions are server-attested and authenticated callers c
   ]);
   includesAll(confirm, [
     "buildServiceClient()",
-    "execution_attested_at: new Date().toISOString()",
+    "claimPendingForConfirm(pendingStateClient",
     '.eq("user_id", userId)',
   ]);
+  includesAll(confirmClaim, ["agent_pending_action_claim_for_confirm"]);
+  includesAll(turnHygiene, ["execution_attested_at = now()"]);
 });
 
 Deno.test("#1972 confirmation preserves edited canonical args and terminally records expiry", () => {

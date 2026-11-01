@@ -6,6 +6,12 @@
 // selects short presentation-safe facts and never turns result data into an
 // executable action.
 
+import { isOwnerSafe, isOwnerSafeValue } from "./ariOwnerCopy.ts";
+import {
+  buildProposalPresentation,
+  receiptTitle,
+} from "./ariPresentation/registry.ts";
+
 export const ARI_RENDITION_SCHEMA_VERSION = 2 as const;
 export const ARI_RENDITION_BLOCK_VERSION = 1 as const;
 export const ARI_RENDITION_ACTION_VERSION = 1 as const;
@@ -165,6 +171,9 @@ const SENSITIVE_KEY =
 const IDENTIFIER_KEY = /(^|_)(id|uuid)$/i;
 const INTERNAL_METADATA_KEY =
   /^(checked_at|fetched_at|retrieved_at|generated_at|fresh_at|cache_hit|cache_key|trace_id|request_id)$/i;
+// #3355 P1 (D-5): concurrency and audit plumbing is never an owner row.
+const PLUMBING_KEY =
+  /revision|version|hash|digest|fingerprint|checksum|etag|nonce|idempotency|operation_(id|key)|confirm_phrase|^why$|^cites$|^expected_|^__/i;
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -248,12 +257,13 @@ function humanize(value: string): string {
 function safePrimitive(key: string, value: unknown): string | null {
   if (
     SENSITIVE_KEY.test(key) || IDENTIFIER_KEY.test(key) ||
-    INTERNAL_METADATA_KEY.test(key) ||
+    INTERNAL_METADATA_KEY.test(key) || PLUMBING_KEY.test(key) ||
     /(url|link|source)$/i.test(key)
   ) return null;
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  return boundedText(value, 220);
+  const text = boundedText(value, 220);
+  return text !== null && isOwnerSafeValue(text) ? text : null;
 }
 
 function safeRows(value: unknown): { label: string; value: string }[] {
@@ -264,7 +274,8 @@ function safeRows(value: unknown): { label: string; value: string }[] {
     if (rows.length >= MAX_ROWS) return;
     const primitive = safePrimitive(prefix, entry);
     if (primitive !== null) {
-      rows.push({ label: humanize(prefix), value: primitive });
+      const label = humanize(prefix);
+      if (isOwnerSafe(label, "label")) rows.push({ label, value: primitive });
       return;
     }
     if (depth >= 1 || SENSITIVE_KEY.test(prefix)) return;
@@ -685,7 +696,9 @@ export function buildToolReadRendition(args: {
     rendition_id: stableRenditionId("read", args.toolName),
     kind: "result",
     eyebrow: research ? "Public research" : "Mingla workspace",
-    title: presentation?.title ?? humanize(args.toolName),
+    // #3355 P1 (D-5): never a tool name as a title.
+    title: presentation?.title ??
+      (research ? "Here's what I found" : "From your Mingla workspace"),
     body: presentation?.body ??
       (research
         ? "Here is the information Ari found."
@@ -722,7 +735,7 @@ export function buildToolReceiptRendition(args: {
     rendition_id: `receipt:${args.pendingActionId}`,
     kind: "receipt",
     eyebrow: eventPresentation ? "Event draft" : "Saved in Mingla",
-    title: eventPresentation?.title ?? humanize(args.toolName),
+    title: eventPresentation?.title ?? receiptTitle(args.toolName),
     body: eventPresentation?.body ??
       "The saved result below was read back from Mingla.",
     tone: "success",
@@ -755,13 +768,16 @@ export function buildGenericProposalRendition(args: {
   envValue?: string;
 }): AriRenditionV2 | null {
   if (!canRenderAriV2(args.capabilities, args.envValue)) return null;
-  const rows = safeRows(args.toolArgs);
+  // #3355 P1 (D-5): the same server presentation the Host card shows — owner
+  // words for the tool, readable rows, no plumbing.
+  const presentation = buildProposalPresentation(args.toolName, args.toolArgs);
+  const rows = presentation.fields.slice(0, MAX_ROWS);
   return {
     schema_version: 2,
     rendition_id: stableRenditionId("proposal", args.toolName),
     kind: "proposal",
-    eyebrow: "Review before confirming",
-    title: humanize(args.toolName),
+    eyebrow: presentation.verb,
+    title: presentation.title,
     body:
       "Ari prepared this action but cannot execute it without your confirmation.",
     state: "ready",
@@ -774,7 +790,7 @@ export function buildGenericProposalRendition(args: {
         tone: "warning",
         title: "Review required",
         body:
-          "No presentation-safe fields are available. Do not confirm until the scope is clear.",
+          "Ari couldn't list the details of this change. Ask Ari what it will change before you confirm.",
       }],
     actions: [
       {

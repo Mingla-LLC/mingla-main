@@ -61,6 +61,11 @@ import {
   reduceAriClientIntent,
 } from "../services/agentReliability";
 import { agentQueryKeys } from "./agentQueryKeys";
+import {
+  ariRateLimitCopy,
+  ariRetryNeedsFreshTurn,
+  ariTurnRetryAllowed,
+} from "./ariTurnRetryPolicy";
 
 export { agentQueryKeys };
 
@@ -176,6 +181,11 @@ interface LocalTurn {
   events: AriActivityEvent[];
   errorCode: string | null;
   errorMessage: string | null;
+  /**
+   * #3355 P1 — when a RATE_LIMITED refusal may be retried (epoch ms, from the
+   * server's database-clock retry_after_seconds). null for other failures.
+   */
+  retryAt: number | null;
   reconciling: boolean;
   startedAt: number;
   createdAt: string;
@@ -221,6 +231,17 @@ function sentAttachment(
   };
 }
 
+/**
+ * #3355 P1 (D-1): a deterministic refusal shows its own next step, not a
+ * Retry that would replay the same refusal.
+ */
+function retryableFlag(turn: LocalTurn): { local_retryable?: false } {
+  return turn.delivery === "failed" &&
+    !ariTurnRetryAllowed(turn.errorCode, turn.retryAt)
+    ? { local_retryable: false }
+    : {};
+}
+
 function turnMessage(turn: LocalTurn): AgentMessage {
   const attachmentCount = turn.attachments.length;
   const text =
@@ -234,6 +255,7 @@ function turnMessage(turn: LocalTurn): AgentMessage {
       text,
       local_delivery: ariRowDelivery(turn.delivery, turn.accepted),
       ...(turn.errorMessage ? { local_error: turn.errorMessage } : {}),
+      ...retryableFlag(turn),
       ...(attachmentCount
         ? { attachments: turn.attachments.map(sentAttachment) }
         : {}),
@@ -704,10 +726,18 @@ export function useAgentChat(
                 : response.code,
               // The code registry owns public error copy. Never render an SDK,
               // gateway, provider, or legacy server message directly in chat.
+              // #3355 P1 (D-1): the cap names its real reset time.
               errorMessage:
                 response.code === "TRANSPORT_UNAVAILABLE"
                   ? ARI_CHAT_CONNECTION_COPY
-                  : ariChatErrorCopy(response.code),
+                  : response.code === "RATE_LIMITED"
+                    ? ariRateLimitCopy(response.retry_after_seconds)
+                    : ariChatErrorCopy(response.code),
+              retryAt:
+                response.code === "RATE_LIMITED" &&
+                typeof response.retry_after_seconds === "number"
+                  ? Date.now() + response.retry_after_seconds * 1000
+                  : null,
               reconciling: false,
             });
           }
@@ -880,6 +910,7 @@ export function useAgentChat(
             delivery: "sending",
             errorCode: null,
             errorMessage: null,
+            retryAt: null,
             reconciling: false,
             startedAt: Date.now(),
           }
@@ -898,6 +929,7 @@ export function useAgentChat(
             events: [],
             errorCode: null,
             errorMessage: null,
+            retryAt: null,
             reconciling: false,
             startedAt: Date.now(),
             createdAt: new Date().toISOString(),
@@ -995,6 +1027,24 @@ export function useAgentChat(
         (candidate) => candidate.clientTurnId === clientTurnId,
       );
       if (!turn || !["failed", "stopped"].includes(turn.delivery)) return null;
+      // #3355 P1 (D-1): never replay a deterministic refusal.
+      if (
+        turn.delivery === "failed" &&
+        !ariTurnRetryAllowed(turn.errorCode, turn.retryAt)
+      ) {
+        return null;
+      }
+      // #3355 P1 (D-1): a turn the server refused before accepting it is
+      // retried as a fresh attempt under a new turn id, so the server judges
+      // it now instead of answering with the stored refusal.
+      if (turn.delivery === "failed" && ariRetryNeedsFreshTurn(turn)) {
+        if (sendIntentRef.current?.stableId === clientTurnId)
+          sendIntentRef.current = null;
+        replaceTurns((current) =>
+          current.filter((candidate) => candidate.clientTurnId !== clientTurnId),
+        );
+        return sendTurn(turn.displayText, turn.payload, turn.attachments);
+      }
       if (turn.accepted || turn.errorCode === "STOP_BEFORE_ACCEPTANCE") {
         try {
           // The retry RPC creates the next server attempt; clear the old
@@ -1031,8 +1081,24 @@ export function useAgentChat(
         clientTurnId,
       );
     },
-    [patchTurn, reconcileOne, sendTurn],
+    [patchTurn, reconcileOne, replaceTurns, sendTurn],
   );
+
+  // #3355 P1: when today's cap resets, re-render the failed row so its Retry
+  // appears at the server's reset time (never a dead tap before it).
+  const nextRetryAt = turns.reduce<number | null>((soonest, turn) => {
+    if (turn.delivery !== "failed" || turn.retryAt === null) return soonest;
+    if (turn.retryAt <= Date.now()) return soonest;
+    return soonest === null || turn.retryAt < soonest ? turn.retryAt : soonest;
+  }, null);
+  useEffect(() => {
+    if (nextRetryAt === null) return undefined;
+    const delay = Math.min(nextRetryAt - Date.now() + 250, 2_147_000_000);
+    const timer = setTimeout(() => {
+      replaceTurns((current) => [...current]);
+    }, Math.max(0, delay));
+    return () => clearTimeout(timer);
+  }, [nextRetryAt, replaceTurns]);
 
   const retryTenantRecovery =
     useCallback(async (): Promise<AgentChatResponse | null> => {

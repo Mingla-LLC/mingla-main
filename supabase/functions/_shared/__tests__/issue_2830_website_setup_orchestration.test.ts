@@ -1,4 +1,5 @@
 import {
+  assert,
   assertEquals,
   assertMatch,
   assertStringIncludes,
@@ -385,8 +386,9 @@ Deno.test("#2830 Fix all creates one durable job and asks one current-step quest
     ],
     "North Star",
   );
-  assertStringIncludes(reply ?? "", "started one durable Fix all job");
-  assertStringIncludes(reply ?? "", "3 remain");
+  // #3355 P1 (D-6): plain words, no engine vocabulary, no second counter.
+  assertStringIncludes(reply ?? "", "Starting Website setup for North Star");
+  assert(!/durable|job|checkpoint|\d+ remain/i.test(reply ?? ""));
   assertStringIncludes(reply ?? "", "Atelier or Voyage?");
   assertEquals((reply?.match(/\?/g) ?? []).length, 1);
   assertMatch(reply ?? "", /No draft will be created first/i);
@@ -404,9 +406,9 @@ Deno.test("#2830 Fix all reports teammate ownership without taking over", () => 
     ],
     "North Star",
   );
-  assertStringIncludes(reply ?? "", "Another teammate already owns");
+  assertStringIncludes(reply ?? "", "Another teammate is already working through");
   assertStringIncludes(reply ?? "", "explicitly take over");
-  assertStringIncludes(reply ?? "", "did not start a competing chain");
+  assertStringIncludes(reply ?? "", "didn’t start a second one");
 });
 
 // ---------------------------------------------------------------------------

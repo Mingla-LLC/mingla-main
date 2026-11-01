@@ -1751,10 +1751,10 @@ export function buildWebsiteSetupPresentation(
   if (!jobRead) return null;
   if (jobRead.error) {
     const reply =
-      `I read the live Website plan for ${brand}, but I couldn’t start the durable Fix all job. Nothing was changed and no draft was created. Try again and I’ll resume safely.`;
+      `I read the live Website plan for ${brand}, but I couldn’t start Website setup. Nothing was changed and no draft was created. Try again and I’ll pick up where we left off.`;
     return blockedPresentation(
       reply,
-      "Ari could not start the Fix everything chain",
+      "Ari couldn’t start Website setup",
     );
   }
   const result = object(jobRead.result);
@@ -1763,7 +1763,7 @@ export function buildWebsiteSetupPresentation(
       ? "An owner or admin can choose to wait or explicitly take over."
       : "Ask the teammate who owns it to finish or release it.";
     const reply =
-      `Another teammate already owns the active Website gap job for ${brand}. I did not start a competing chain or create a draft. ${takeover}`;
+      `Another teammate is already working through Website setup for ${brand}. I didn’t start a second one or create a draft. ${takeover}`;
     return blockedPresentation(reply, "Another teammate owns this setup");
   }
   const job = object(result.job);
@@ -1772,7 +1772,7 @@ export function buildWebsiteSetupPresentation(
   const completed = stringArray(job.completed_step_keys);
   if (pending.length === 0 || job.status === "completed") {
     const reply =
-      `The durable Website gap job for ${brand} is complete. I verified ${completed.length} brand-context steps and found no remaining required or recommended gaps. No draft has been created; the owner can review the completed setup plan next.`;
+      `Every Website detail for ${brand} is filled. I checked each one and nothing required or recommended is missing. No draft has been created yet; review the setup plan next.`;
     return {
       text: reply,
       rendition: {
@@ -1811,7 +1811,11 @@ export function buildWebsiteSetupPresentation(
   const action = setupQuestion(currentStep, currentField);
   const verb = result.resumed === true ? "resumed" : "started";
   const reply =
-    `I ${verb} one durable Fix all job for ${brand}. ${completed.length} steps are verified and ${pending.length} remain. I’ll research safe public facts, ask only for what I can’t verify, checkpoint every confirmed change, and re-audit before moving on. No draft will be created first.\n\nCurrent step — ${
+    // #3355 P1 (D-6): plain words, one counter (the card shows progress) and
+    // no engine vocabulary ("durable job", "checkpoint", "re-audit").
+    `${
+      verb === "resumed" ? "Picking up" : "Starting"
+    } Website setup for ${brand}. I’ll look up public facts first, ask only for what I can’t verify, and save each change only after you approve it. No draft will be created first.\n\nNext — ${
       fieldLabel(currentField, currentStep)
     }: ${action}`;
   return {

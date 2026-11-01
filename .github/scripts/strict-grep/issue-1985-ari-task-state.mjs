@@ -319,7 +319,11 @@ export function check(s) {
   const authorization = s.confirm.indexOf(
     "await authorizeAgentTool(tool, finalArgs",
   );
-  const executing = s.confirm.indexOf('status: "executing"', authorization);
+  // [TEST-MOD-APPROVED #3355] P1 (D-14): the flip is the database-clock claim.
+  const executing = s.confirm.indexOf(
+    "claimPendingForConfirm(pendingStateClient",
+    authorization,
+  );
   if (
     authorization < 0 || executing < authorization ||
     !s.confirm.includes("persistTaskOutcome") ||
@@ -433,7 +437,10 @@ export function check(s) {
   }
   const expiryOutcomeWrites =
     s.confirm.match(/^\s*outcome: "expired",?$/gm)?.length ?? 0;
-  if (expiryOutcomeWrites !== 2) {
+  // [TEST-MOD-APPROVED #3355] P1 (D-14): a third terminal write covers an
+  // approval that expires between the DB-clock probe and the claim (the claim
+  // refuses it and it is terminalized expired, never executed).
+  if (expiryOutcomeWrites !== 3) {
     failures.push(
       `proposal expiry contract expected canonical-message lookup plus reducer reconciliation, found ${expiryOutcomeWrites}`,
     );

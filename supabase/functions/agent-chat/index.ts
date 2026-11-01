@@ -53,6 +53,7 @@ import {
 import {
   buildServiceClient,
   enforceTurnRateLimit,
+  reconcileStalePendingActions,
 } from "../_shared/agentRateLimit.ts";
 import {
   AgentChoiceSubmissionV2,
@@ -156,6 +157,11 @@ import {
   launchPlanNeedsPublicResearch,
 } from "../_shared/agentLaunchPlan.ts";
 import { sanitizeAriUserFacingDiagnostics } from "../_shared/agentSanitization.ts";
+import {
+  assertOwnerCopy,
+  OWNER_PROSE_FALLBACK,
+  reconciledApprovalLine,
+} from "../_shared/ariOwnerCopy.ts";
 import { sweepInterruptedAriTurnAttemptsForUser } from "../_shared/agentTurnSweep.ts";
 import {
   canCompleteResearchFromSearchIndex,
@@ -653,7 +659,15 @@ async function commitTextTurn(args: {
   // message reaches either durable history or the response envelope. Raw
   // diagnostic codes remain available in agent_run observations and the
   // Improvement Lab; they never become chat prose.
-  const publicText = sanitizeAriUserFacingDiagnostics(args.text);
+  // #3355 P1 (D-6): the owner copy gate is the last word on what is shown.
+  const publicText = assertOwnerCopy(
+    sanitizeAriUserFacingDiagnostics(args.text),
+    {
+      fallback: OWNER_PROSE_FALLBACK,
+      surface: "chat_text_turn",
+      mode: "prose",
+    },
+  );
   const assistantMessageId = crypto.randomUUID();
   const nowIso = new Date().toISOString();
   const finalState: TaskStateV1 =
@@ -1044,20 +1058,34 @@ async function handle(req: Request): Promise<Response> {
     );
   }
 
-  const rateLimit = await enforceTurnRateLimit(userId, serviceClient);
+  // #3355 P1 (D-13): an approval stuck past its executing lease is settled
+  // from its receipt (or marked unknown) before this turn is judged.
+  await reconcileStalePendingActions(userId, serviceClient);
+
+  // #3355 P1 (D-1): the cap is judged after turn recognition. A client turn
+  // that was already claimed is a replay and always returns its stored
+  // answer; only owner turns count; the reset time comes from the database.
+  const rateLimit = await enforceTurnRateLimit(
+    userId,
+    serviceClient,
+    body.client_turn_id,
+  );
   if (!rateLimit.allowed) {
     const message = rateLimit.reason === "rate_limited_inflight"
       ? "Another action is currently being processed — please wait a moment"
-      : "You've reached today's chat limit. Resets in 24 hours.";
-    const cooldownUntil = rateLimit.resetAt ??
-      new Date(Date.now() + 5_000).toISOString();
-    const retryAfterSeconds = Math.max(
-      1,
-      Math.ceil((Date.parse(cooldownUntil) - Date.now()) / 1000),
-    );
+      : "You've reached today's Ari message limit.";
+    const retryAfterSeconds = rateLimit.retryAfterSeconds ??
+      (rateLimit.reason === "rate_limited_inflight"
+        ? 5
+        : Math.max(
+          1,
+          Math.ceil(
+            (Date.parse(rateLimit.resetAt ?? "") - Date.now()) / 1000,
+          ) || 60,
+        ));
     return errorResponse(429, "RATE_LIMITED", message, {
       retry_after_seconds: retryAfterSeconds,
-      cooldown_until: cooldownUntil,
+      ...(rateLimit.resetAt ? { cooldown_until: rateLimit.resetAt } : {}),
     });
   }
 
@@ -1323,14 +1351,22 @@ async function handle(req: Request): Promise<Response> {
         .eq("conversation_id", conversationId)
         .eq("user_id", userId)
         .maybeSingle();
-      let outcome = pendingRecovery?.status as
-        | "executed"
-        | "failed"
-        | "cancelled"
-        | "expired"
-        | "executing"
-        | "pending"
-        | undefined;
+      // #3355 P1: a superseded proposal never ran (cancelled for the plan);
+      // failed_unknown is a stale executing row with no receipt (failed for
+      // the plan, worded honestly below).
+      const storedStatus = pendingRecovery?.status as string | undefined;
+      let outcome = (storedStatus === "superseded"
+        ? "cancelled"
+        : storedStatus === "failed_unknown"
+        ? "failed"
+        : storedStatus) as
+          | "executed"
+          | "failed"
+          | "cancelled"
+          | "expired"
+          | "executing"
+          | "pending"
+          | undefined;
       let recoveredResult = pendingRecovery?.executed_result as unknown;
       if (outcome === "executing") {
         const { data: toolRecovery } = await userClient.from("agent_messages")
@@ -1369,9 +1405,11 @@ async function handle(req: Request): Promise<Response> {
             ),
           });
           const recoveryMessageId = crypto.randomUUID();
-          const recoveryText = outcome === "executed"
-            ? "I reconciled the completed action once."
-            : `I reconciled the ${outcome} action.`;
+          // #3355 P1 (D-32): plain words for what happened to the earlier
+          // approval — never engine vocabulary.
+          const recoveryText = reconciledApprovalLine(
+            storedStatus === "failed_unknown" ? "failed_unknown" : outcome,
+          );
           const committed = await commitTaskAssistantTurn({
             client: serviceClient,
             userId,
@@ -1760,13 +1798,19 @@ async function handle(req: Request): Promise<Response> {
         }
       }
       const probeBrand = activeBrand?.id;
-      try {
-        const { data: can } = await userClient.rpc("pg_brand_can_collect", {
-          p_brand_id: probeBrand,
-        });
-        payoutReady = can === true ||
-          (can as { can_collect?: boolean } | null)?.can_collect === true;
-      } catch {
+      // #3355 P1 (D-29): with no brand selected there is nothing to probe; the
+      // prompt says "unknown" rather than asking about an undefined brand.
+      if (probeBrand) {
+        try {
+          const { data: can } = await userClient.rpc("pg_brand_can_collect", {
+            p_brand_id: probeBrand,
+          });
+          payoutReady = can === true ||
+            (can as { can_collect?: boolean } | null)?.can_collect === true;
+        } catch {
+          payoutReady = null;
+        }
+      } else {
         payoutReady = null;
       }
     }
@@ -3893,9 +3937,13 @@ async function commitPendingTurn(args: {
   }
 
   const nowIso = new Date().toISOString();
+  // #3355 P1 (D-5): the card and the rendition read the server's owner words
+  // for this change; the presentation rides in server-owned proposal context,
+  // which agent-confirm-action strips before authorization and execution.
   const proposalArgs = verifiedProposalArgs(
     args.toolArgs,
     args.proposalContext ?? null,
+    args.toolName,
   );
   const rendition = buildGenericProposalRendition({
     toolName: args.toolName,

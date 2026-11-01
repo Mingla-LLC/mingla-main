@@ -3,6 +3,10 @@
 
 // deno-lint-ignore-file no-explicit-any
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import {
+  ariDomainRefusalMessage,
+  DOMAIN_REFUSED_CODE,
+} from "./ariRefusalCopy.ts";
 
 export type AgentRequiredRole =
   | "business_user"
@@ -220,6 +224,60 @@ async function organiserTermsRefusalFromInvoke(
   return null;
 }
 
+/**
+ * Issue #3355 P1 (D-9) — a deterministic publish/money refusal, typed.
+ *
+ * The RPC raised a known refusal code (see ariRefusalCopy.ts), so its whole
+ * transaction rolled back: nothing was saved. The refusal is terminal with
+ * the owner sentence as its message, never RPC_FAILED (which the confirm path
+ * must treat as "maybe committed" and answer 202 "verifying").
+ */
+export function ariDomainRefusal(raw: unknown): ToolError | null {
+  const message = ariDomainRefusalMessage(raw);
+  return message === null ? null : new ToolError(DOMAIN_REFUSED_CODE, message);
+}
+
+/**
+ * Re-type an executor failure that carries a refusal code. Only the
+ * transport-shaped codes are candidates; anything already typed keeps its
+ * meaning, and a real transport failure carries no refusal token, so it stays
+ * ambiguous and keeps its receipt recovery.
+ */
+export function retypeAriRefusal(err: unknown): unknown {
+  if (
+    err instanceof ToolError &&
+    ["RPC_FAILED", "EDGE_FAILED", "WRITE_FAILED"].includes(err.code)
+  ) {
+    return ariDomainRefusal(err.message) ?? err;
+  }
+  return err;
+}
+
+async function ariDomainRefusalFromInvoke(
+  error: { message?: unknown; context?: unknown },
+): Promise<ToolError | null> {
+  const direct = ariDomainRefusal(error.message);
+  if (direct) return direct;
+  const context = error.context as
+    | { clone?: () => { json?: () => Promise<unknown> } }
+    | null
+    | undefined;
+  if (!context || typeof context.clone !== "function") return null;
+  try {
+    const body = await context.clone().json?.() as
+      | { code?: unknown; detail?: unknown; error?: unknown; reason?: unknown }
+      | null
+      | undefined;
+    for (const candidate of [body?.code, body?.detail, body?.reason, body?.error]) {
+      const refusal = ariDomainRefusal(candidate);
+      if (refusal) return refusal;
+    }
+  } catch {
+    // Not JSON, or already consumed: not a refusal this helper recognises.
+  }
+  return null;
+}
+
 export async function callRpc<T = unknown>(
   client: SupabaseClient,
   fn: string,
@@ -229,6 +287,8 @@ export async function callRpc<T = unknown>(
   if (error) {
     const terms = organiserTermsRefusal(error.message);
     if (terms) throw terms;
+    const refusal = ariDomainRefusal(error.message);
+    if (refusal) throw refusal;
     throw new ToolError("RPC_FAILED", `${fn}: ${error.message}`);
   }
   return data as T;
@@ -247,6 +307,8 @@ export async function invokeFn<T = unknown>(
   if (error) {
     const terms = await organiserTermsRefusalFromInvoke(error);
     if (terms) throw terms;
+    const refusal = await ariDomainRefusalFromInvoke(error);
+    if (refusal) throw refusal;
     throw new ToolError("EDGE_FAILED", `${name}: ${error.message}`);
   }
   return data as T;

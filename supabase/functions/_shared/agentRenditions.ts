@@ -9,6 +9,7 @@ import type { AgentLoopObservation, AgentLoopResult } from "./agentLoop.ts";
 import type { AriBrandLaunchPlan } from "./agentLaunchPlan.ts";
 import { sanitizeAriPublicText } from "./agentSanitization.ts";
 import { canonicalizePublicResearchUrl } from "./agentWebResearch.ts";
+import { toolOwnerCopy } from "./ariPresentation/toolLabels.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -57,9 +58,10 @@ function asRecord(value: unknown): JsonRecord | null {
 function toolLabel(name: string): string {
   const fixed = TOOL_LABELS[name];
   if (fixed) return fixed;
-  return name.split("_").filter(Boolean).map((part) =>
-    part.charAt(0).toUpperCase() + part.slice(1)
-  ).join(" ").slice(0, 120) || "Complete the next step";
+  // #3355 P1 (D-5): owner words for a write, a neutral step for a read —
+  // never the tool name with its underscores swapped for spaces.
+  const write = toolOwnerCopy(name);
+  return write.verb !== "Review this change" ? write.verb : "Check your workspace";
 }
 
 /** Raw diagnostic slugs belong in traces and the Improvement Lab, never UI. */
@@ -157,23 +159,24 @@ function timelineRows(
   if (result.kind === "proposal") {
     rows.push({
       id: "step-approval",
-      label: "Review the protected action",
-      detail: `${toolLabel(result.toolCall.name)} is ready for approval.`,
+      label: "Review the change",
+      detail: `${toolLabel(result.toolCall.name)} is ready for your approval.`,
       state: "active",
     });
     rows.push({
       id: "step-verify",
-      label: "Verify the result",
-      detail: "Ari will read the canonical result and continue after approval.",
+      label: "Check it saved",
+      detail: "After you approve, Ari reads it back from Mingla before calling it done.",
       state: "queued",
     });
   } else if (result.kind === "stopped") {
+    // #3355 P1 (D-7): no "saved checkpoint" claim — nothing is saved here.
     rows.push({
       id: "step-resume",
-      label: "Resume from the saved checkpoint",
+      label: "Carry on from here",
       detail: result.reason === "errors"
-        ? "Resolve the recorded blocker, then retry without repeating completed work."
-        : "Continue within a fresh bounded execution window.",
+        ? "Fix what blocked this step, then ask Ari to try again."
+        : "Say 'continue' and Ari carries on from this step.",
       state: "active",
     });
   }
@@ -181,7 +184,7 @@ function timelineRows(
     rows.push({
       id: "step-response",
       label: "Answer the request",
-      detail: "Ari completed the reasoning step without calling a tool.",
+      detail: "Ari answered from what it already knew.",
       state: "done",
     });
   }
@@ -228,10 +231,12 @@ export function buildAgentRunRendition(input: {
       : stopped
       ? stoppedReason === "errors"
         ? "Ari reached a clear blocker"
-        : "The plan is saved and ready to resume"
+        // #3355 P1 (D-7): never "saved and ready to resume" — nothing was saved.
+        : "Ari stopped here"
       : hasResearch
-      ? "Research and verification complete"
-      : "Plan complete");
+      ? "Here's what Ari found"
+      // #3355 P1 (D-15): an answer is not a completed plan.
+      : "Here's Ari's answer");
   const planCompleted =
     input.plan?.steps.filter((step) => step.state === "done").length ?? 0;
   const planProgress = input.plan
@@ -255,8 +260,8 @@ export function buildAgentRunRendition(input: {
         : input.result.kind === "proposal"
         ? "Waiting for your approval"
         : stopped
-        ? "Completed work is checkpointed"
-        : "Verified complete",
+        ? "Stopped before the next step"
+        : "Answered",
     },
   ];
   if (input.plan && input.plan.missing.length > 0) {

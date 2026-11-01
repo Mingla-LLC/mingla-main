@@ -412,16 +412,27 @@ export function needsAriOnboardingSetupRead(text: string): boolean {
     /\b(?:set\s*up|setup|onboard|onboarding)\b[\s\S]{0,80}\b(?:brand|business|host|profile|my|this|the)\b|\b(?:brand|business|host)\b[\s\S]{0,80}\b(?:set\s*up|setup|onboard|onboarding)\b/i;
   const explicitLaunchIntent =
     /\blaunch\s+(?:my|this|the)\s+(?:brand|business|host|profile)\b|\b(?:my|this|the)\s+(?:brand|business|host|profile)\s+launch\b/i;
+  // #3355 P1 (D-20): "set up a trip for my brand" is offering work, not brand
+  // onboarding. Only an offering that is the object of the setup verb counts:
+  // "set up my brand … event flyer to add later" is still onboarding.
   return (setupIntent.test(text) || explicitLaunchIntent.test(text)) &&
-    !/\bwebsite\b/i.test(text);
+    !/\bwebsite\b/i.test(text) && !ARI_OFFERING_SETUP.test(text);
 }
+
+/** A setup verb whose object is an offering ("set up a trip", "plan my events"). */
+const ARI_OFFERING_SETUP =
+  /\b(?:set\s*up|setup|create|plan|build|launch|make|organi[sz]e)\s+(?:(?:a|an|my|our|the|this|that|new|first|next|some)\s+){0,3}(?:events?|trips?|experiences?|class(?:es)?|rsvps?|venues?|listings?|campaigns?|tickets?|itinerar(?:y|ies)|stays?)\b/i;
+
+/** Nouns that name an offering workflow, never brand onboarding. */
+const ARI_OFFERING_NOUN =
+  /\b(?:events?|trips?|experiences?|class(?:es)?|rsvps?|venues?|listings?|campaigns?|tickets?|itinerar(?:y|ies)|stays?)\b/i;
 
 /** Follow-up values belong to the active setup checklist, not a new task. */
 export function isAriOnboardingPlanProgressMessage(text: string): boolean {
   // An active onboarding checklist must not capture a follow-up that clearly
   // belongs to another product workflow. For example, a trip date request
   // contains “timezone” and “set”, but must continue through trip tools.
-  if (/\b(?:event|trip|experience|class|rsvp|venue|listing|campaign|ticket|itinerary)\b/i.test(text)) {
+  if (ARI_OFFERING_NOUN.test(text)) {
     return false;
   }
   return /\b(?:currency|timezone|time zone|logo|flyer|materials?|profile|business description|social links?)\b/i

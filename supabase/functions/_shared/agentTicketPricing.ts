@@ -4,6 +4,7 @@
 // #1972's shared atomic operation receipt.
 
 // deno-lint-ignore-file no-explicit-any
+import { withProposalPresentation } from "./ariPresentation/registry.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { assertCanCollect, isUuid, ToolError } from "./agentToolHelpers.ts";
 
@@ -69,14 +70,23 @@ const VERIFIED_PROPOSAL_CONTEXT_KEYS = new Set([
 export function verifiedProposalArgs(
   toolArgs: Record<string, unknown>,
   proposalContext: Record<string, unknown> | null,
+  /**
+   * #3355 P1 (D-5): when given, the server's owner presentation for this tool
+   * is attached to the proposal context (registry.ts).
+   */
+  presentationToolName?: string,
 ): Record<string, unknown> {
-  if (proposalContext === null) return { ...toolArgs };
-  const safeContext = Object.fromEntries(
-    Object.entries(proposalContext).filter(([key]) =>
-      VERIFIED_PROPOSAL_CONTEXT_KEYS.has(key)
+  const verified = proposalContext === null ? { ...toolArgs } : {
+    ...toolArgs,
+    __proposal_context: Object.fromEntries(
+      Object.entries(proposalContext).filter(([key]) =>
+        VERIFIED_PROPOSAL_CONTEXT_KEYS.has(key)
+      ),
     ),
-  );
-  return { ...toolArgs, __proposal_context: safeContext };
+  };
+  return presentationToolName
+    ? withProposalPresentation(presentationToolName, verified)
+    : verified;
 }
 
 export interface CanonicalTicketTier {

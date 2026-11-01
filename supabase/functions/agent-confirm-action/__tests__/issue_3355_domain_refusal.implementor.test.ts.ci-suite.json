@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/agent-confirm-action/__tests__/issue_3355_domain_refusal.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3355-domain-refusal",
+  "profile": "deno-2-unit"
+}

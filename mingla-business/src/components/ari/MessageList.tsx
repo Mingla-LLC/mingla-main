@@ -810,14 +810,22 @@ export const MessageList: React.FC<MessageListProps> = ({
                       ARI_CHAT_CONNECTION_COPY}
                   </Text>
                   <View style={styles.deliveryActions}>
-                    <Pressable
-                      onPress={() => onRetryTurn?.(m.client_turn_id as string)}
-                      style={styles.retryTurn}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Retry sending ${text}`}
-                    >
-                      <Text style={styles.retryTurnText}>Retry</Text>
-                    </Pressable>
+                    {/* #3355 P1 (D-1): a deterministic refusal (cap before its
+                        reset, stale choice, typed refusal) never offers a
+                        Retry that would replay the same refusal. */}
+                    {(m.content as { local_retryable?: boolean })
+                      .local_retryable === false ? null : (
+                      <Pressable
+                        onPress={() =>
+                          onRetryTurn?.(m.client_turn_id as string)
+                        }
+                        style={styles.retryTurn}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Retry sending ${text}`}
+                      >
+                        <Text style={styles.retryTurnText}>Retry</Text>
+                      </Pressable>
+                    )}
                     <Pressable
                       onPress={() => onEditTurn?.(m.client_turn_id as string)}
                       style={styles.retryTurn}

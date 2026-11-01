@@ -2191,7 +2191,8 @@ Deno.test("#3355 every committed assistant reply crosses the diagnostic sanitize
   );
   assertMatch(
     commitBoundary,
-    /const publicText = sanitizeAriUserFacingDiagnostics\(args\.text\)/,
+    // #3355 P1 (D-6): the sanitizer's output then crosses the owner copy gate.
+    /const publicText = assertOwnerCopy\(\s*sanitizeAriUserFacingDiagnostics\(args\.text\)/,
   );
   assertMatch(commitBoundary, /const content = \{\s*text: publicText,/);
   assertMatch(commitBoundary, /assistantText: publicText,/);

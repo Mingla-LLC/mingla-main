@@ -483,6 +483,10 @@ export function mapLegacyAriErrorCode(legacy: string): AriErrorCode {
     // the app's envelope check and reads as a broken connection. The exact
     // sentence reaches the thread through the stored failure reason.
     case "ORGANISER_TERMS_REQUIRED":
+    // issue #3355 P1 (D-9) — a typed publish/money refusal (ariRefusalCopy.ts).
+    // Same envelope family every installed app knows; the owner sentence
+    // reaches the thread through the stored failure reason.
+    case "DOMAIN_REFUSED":
     case "EDGE_FAILED":
     case "RPC_FAILED":
       // #1981 — Host/domain refusals arrive as EDGE_FAILED/RPC_FAILED; do not

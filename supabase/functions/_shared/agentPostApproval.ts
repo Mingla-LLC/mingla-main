@@ -3,6 +3,8 @@
 // perform bounded reads and Ari-owned state updates, then either explains the
 // verified result or returns the next protected write as a proposal.
 
+import { ARI_STOPPED_HERE_LINE } from "./ariOwnerCopy.ts";
+import { toolOwnerCopy } from "./ariPresentation/toolLabels.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { callGemini, type GeminiContentMessage } from "./agentGemini.ts";
 import { lintAriCopy, safeAriCopyFallback } from "./agentCopyLint.ts";
@@ -100,7 +102,9 @@ export async function continueAfterApprovedAction(args: {
     role: "user",
     parts: [{
       text:
-        `The user approved ${args.toolName}. The canonical Mingla readback is:\n${
+        `The user approved this change: ${
+          toolOwnerCopy(args.toolName).verb
+        }. The canonical Mingla readback is:\n${
           boundedJson(args.result)
         }\n\nContinue the existing goal now. Verify the result, complete safe reads and Ari-owned plan updates without asking for “continue”, and stop at the next protected Mingla write so it can be shown for confirmation. If the goal is complete, give a concise receipt with completed, waiting, skipped, and human-owned steps.`,
     }],
@@ -220,15 +224,16 @@ export async function continueAfterApprovedAction(args: {
       toolName: loop.toolCall.name,
       toolArgs: loop.toolCall.args,
       text:
-        "The approved step is complete and verified. I continued the plan and prepared the next protected action for your review.",
+        "That's saved. The next change is ready for you to review.",
       observations: loop.observations,
     };
   }
   const rawText = loop.kind === "text"
     ? loop.text
     : loop.reason === "budget" || loop.reason === "deadline"
-    ? "The approved step is complete and verified. I saved the remaining plan so it can resume without repeating completed work."
-    : "The approved step is complete. I could not safely continue after the recorded tool errors, so I stopped at the exact blocker.";
+    // #3355 P1 (D-7): never claim the remaining plan was saved — it was not.
+    ? `That's saved. ${ARI_STOPPED_HERE_LINE}`
+    : "That's saved. I couldn't safely do the next step, so I stopped here.";
   const usedResearch = loop.observations.some((item) =>
     [
       "search_public_web",

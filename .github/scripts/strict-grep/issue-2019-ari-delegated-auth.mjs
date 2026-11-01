@@ -161,7 +161,10 @@ function check(s, manifest) {
   if (proposal < 0 || pending < proposal) failures.push("proposal authorization ordering broken");
   const finalArgs = s.confirm.indexOf("const finalArgs");
   const finalAuth = s.confirm.indexOf("await authorizeAgentTool(tool, finalArgs");
-  const executing = s.confirm.indexOf('status: "executing"', finalAuth);
+  // [TEST-MOD-APPROVED #3355] P1 (D-14): the pending -> executing flip is the
+  // database-clock claim (claimPendingForConfirm in pendingClaim.ts). The
+  // ordering it pins is unchanged: final authorization precedes the flip.
+  const executing = s.confirm.indexOf("claimPendingForConfirm(pendingStateClient", finalAuth);
   if (!(finalArgs >= 0 && finalAuth > finalArgs && executing > finalAuth)) failures.push("confirmation ordering broken");
   const protectedSource = [s.auth, s.tools, s.domain].join("\n");
   for (const forbidden of ["assertBrandOwned", "assertEventOwned", 'rpc("biz_brand_effective_rank"', "service_role"]) {

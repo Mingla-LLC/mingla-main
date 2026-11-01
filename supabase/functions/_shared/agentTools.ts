@@ -9,6 +9,7 @@
 // I-ARI-USER-JWT-ONLY: executors NEVER use service role. The Supabase client
 // passed in is the user-scoped client built by agent-confirm-action.
 
+import { registerOwnerCopyToolNames } from "./ariOwnerCopy.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "./agentDomainTools.ts";
 import {
@@ -1668,6 +1669,10 @@ export const AGENT_TOOLS: AgentTool[] = secureAgentTools([
   ...SITE_AGENT_TOOLS,
   ...ARI_10X_TOOLS,
 ]);
+
+// #3355 P1 (D-5/D-6): the owner copy gate refuses every registered tool name,
+// generated from this registry rather than a hand-kept list.
+registerOwnerCopyToolNames(AGENT_TOOLS.map((tool) => tool.name));
 
 export function findTool(name: string): AgentTool | undefined {
   return AGENT_TOOLS.find((t) => t.name === name);

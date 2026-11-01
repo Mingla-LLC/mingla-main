@@ -6,6 +6,7 @@ import {
   type AriTurnAttemptRow,
   loadAriTurnStatus,
 } from "../_shared/agentTurnSweep.ts";
+import { isDeterministicTurnRefusal } from "../_shared/ariTurnRetry.ts";
 
 type TurnAction = "status" | "cancel" | "retry";
 interface RequestBody {
@@ -221,6 +222,17 @@ Deno.serve(async (request) => {
     !["stopped", "failed", "reconciliation_required"].includes(attempt.status)
   ) {
     return response(409, { code: "RETRY_NOT_ALLOWED" });
+  }
+  // #3355 P1 (D-2): a deterministic refusal (stale choice, plan moved on, cap,
+  // typed refusal) would be refused again by replaying the same payload. The
+  // owner acts on the refusal instead; no new attempt is created.
+  if (
+    attempt.status === "failed" && isDeterministicTurnRefusal(attempt.error_code)
+  ) {
+    return response(409, {
+      code: "RETRY_NOT_USEFUL",
+      error_code: attempt.error_code,
+    });
   }
   const nextAttemptNumber = attempt.attempt_number + 1;
   const now = new Date().toISOString();
