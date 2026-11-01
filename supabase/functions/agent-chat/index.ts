@@ -138,6 +138,7 @@ import {
   isStandalonePublicResearchRequest,
 } from "../_shared/agentWebResearch.ts";
 import {
+  buildWebsiteSetupPresentation,
   buildWebsiteSetupReply,
   detectWebsiteSetupIntent,
   websiteSetupWorkflowInitialCalls,
@@ -2684,7 +2685,18 @@ ${boundedAgentContext}
           observations: loopResult.observations,
         })
         : null;
-      const rawLoopText = launchPlan?.text ??
+      // #2830 — Website setup has its own customer-facing presentation.
+      // Generic run cards expose tool names and orchestration diagnostics that
+      // belong only in the engineering trace.
+      const websiteSetupPresentation = websiteSetupIntent && activeBrand
+        ? buildWebsiteSetupPresentation(
+          websiteSetupIntent,
+          loopResult.observations,
+          activeBrand.name,
+          activeBrand.id,
+        )
+        : null;
+      const rawLoopText = websiteSetupPresentation?.text ?? launchPlan?.text ??
         (loopResult.kind === "text"
           ? loopResult.text
           : loopResult.reason === "deadline"
@@ -2736,12 +2748,18 @@ ${boundedAgentContext}
           ? liveChoices
           : undefined,
         structuredData: {
-          rendition: buildAgentRunRendition({
-            renditionId: `run:${body.client_turn_id}`,
-            goal: semanticMessage,
-            result: loopResult,
-            ...(launchPlan ? { plan: launchPlan } : {}),
-          }),
+          ...(websiteSetupPresentation
+            ? { rendition: websiteSetupPresentation.rendition }
+            : websiteSetupBoundary
+            ? {}
+            : {
+              rendition: buildAgentRunRendition({
+                renditionId: `run:${body.client_turn_id}`,
+                goal: semanticMessage,
+                result: loopResult,
+                ...(launchPlan ? { plan: launchPlan } : {}),
+              }),
+            }),
           agent_run: {
             status: loopResult.kind,
             reason: loopResult.kind === "stopped" ? loopResult.reason : null,

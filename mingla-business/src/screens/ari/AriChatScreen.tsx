@@ -862,6 +862,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               "Fix all Website brand-context gaps. Resume the durable job, research safe public facts, ask one question at a time, confirm and checkpoint each write, and re-audit until required and recommended gaps are zero. Do not create a draft first.",
             );
           }}
+          onReviewGaps={() => {
+            handleSend(
+              "Review every remaining Website setup gap with me. Show what is verified, what is missing or uncertain, and which details need my action. Work through one gap at a time and do not create a draft first.",
+            );
+          }}
         />
       ) : websiteSplit ? (
         <View

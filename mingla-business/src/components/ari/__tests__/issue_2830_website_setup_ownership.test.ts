@@ -40,6 +40,8 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
 
   it("offers the complete ownership path and both self-service exits", () => {
     expect(pane).toContain("Fix all gaps with Ari");
+    expect(pane).toContain("Review the gaps");
+    expect(pane).toContain('testID="ari-setup-review-gaps"');
     expect(pane).toContain("Add it myself");
     expect(pane).toContain("Back to setup plan");
     expect(screen).toContain("ask one question at a time");
@@ -51,7 +53,10 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
 
   it("refreshes server truth while Ari works and labels uploads as human actions", () => {
     expect(pane).toContain("refetchInterval: 3_000");
-    expect(pane).toContain('gap.humanActionRequired ? "your upload"');
+    expect(pane).toContain('return "Needs your upload"');
+    expect(pane).toContain('return "Needs correction"');
+    expect(pane).toContain('return "Needs verification"');
+    expect(pane).toContain('return "Choose the correct detail"');
     expect(pane).toContain("Ari will not guess");
   });
 

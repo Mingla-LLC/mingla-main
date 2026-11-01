@@ -6,9 +6,12 @@ import {
 
 import type { AgentLoopObservation } from "../agentLoop.ts";
 import {
+  buildWebsiteSetupPresentation,
   buildWebsiteSetupReply,
   detectWebsiteSetupIntent,
+  WEBSITE_SETUP_FIELD_KEYS,
   websiteSetupInitialCalls,
+  websiteSetupInteractionKind,
   websiteSetupWorkflowInitialCalls,
 } from "../agentWebsiteSetup.ts";
 
@@ -138,9 +141,89 @@ Deno.test("#2830 first Website response gives the live rundown and all three pat
   assertStringIncludes(reply ?? "", "Who comes with you");
   assertStringIncludes(reply ?? "", "Brand logo");
   assertStringIncludes(reply ?? "", "Fix all gaps with Ari");
-  assertStringIncludes(reply ?? "", "one named gap");
+  assertStringIncludes(reply ?? "", "Review the gaps");
   assertStringIncludes(reply ?? "", "Add it myself");
   assertStringIncludes(reply ?? "", "not create a draft");
+});
+
+Deno.test("#2830 setup audit renders field completeness, not workspace diagnostics", () => {
+  const presentation = buildWebsiteSetupPresentation(
+    "audit",
+    [observation("get_site_plan", {
+      ...plan,
+      active: true,
+      expires_at: "2026-11-01T03:51:18Z",
+      held_by_me: true,
+      holder_name: "info",
+      revision: 6,
+      rank: 60,
+    })],
+    "North Star",
+    BRAND_ID,
+  );
+  const serialized = JSON.stringify(presentation?.rendition ?? {});
+  assertStringIncludes(serialized, "Every gap Ari found");
+  assertStringIncludes(serialized, "Fix everything with Ari");
+  assertStringIncludes(serialized, "Review the gaps");
+  assertStringIncludes(serialized, "Add it myself");
+  for (
+    const internal of [
+      "Workspace result",
+      "Get Site Plan",
+      "expires_at",
+      "held_by_me",
+      "holder_name",
+      "revision",
+      "rank",
+    ]
+  ) {
+    assertEquals(serialized.includes(internal), false, internal);
+  }
+});
+
+Deno.test("#2830 every manifest field has a deterministic user interaction", () => {
+  assertEquals(WEBSITE_SETUP_FIELD_KEYS.length, 17);
+  for (const key of WEBSITE_SETUP_FIELD_KEYS) {
+    const kind = websiteSetupInteractionKind(
+      key,
+      key === "profile_photo" || key === "cover_media"
+        ? { human_action_required: true }
+        : {},
+    );
+    assertEquals(
+      ["input", "choices", "callout"].includes(kind),
+      true,
+      `${key}: ${kind}`,
+    );
+  }
+  assertEquals(WEBSITE_SETUP_FIELD_KEYS.at(-1), "approved_plan");
+});
+
+Deno.test("#2830 design question presents every valid design as a real choice", () => {
+  const presentation = buildWebsiteSetupPresentation(
+    "fix_all",
+    [
+      observation("get_site_plan", plan),
+      observation("start_brand_completeness_job", {
+        resumed: false,
+        job: {
+          status: "queued",
+          pending_step_keys: ["design_key", "approved_plan"],
+          completed_step_keys: ["name"],
+          checkpoint: { current_step: "design_key" },
+        },
+        completeness: plan.completeness,
+      }),
+    ],
+    "North Star",
+    BRAND_ID,
+  );
+  const serialized = JSON.stringify(presentation?.rendition ?? {});
+  assertStringIncludes(serialized, "Atelier");
+  assertStringIncludes(serialized, "Voyage");
+  assertStringIncludes(serialized, "Continue with Ari");
+  assertStringIncludes(serialized, "Review remaining gaps");
+  assertStringIncludes(serialized, "Add it myself");
 });
 
 Deno.test("#2830 Fix all creates one durable job and asks one current-step question", () => {
