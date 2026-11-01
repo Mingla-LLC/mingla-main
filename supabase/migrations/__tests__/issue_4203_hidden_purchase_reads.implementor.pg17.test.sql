@@ -1,5 +1,5 @@
 -- MINGLA-INVARIANT: I-4203-HIDDEN-PURCHASE-OWNERSHIP | issue #4203 | Hidden events and their dates are readable only to their buyer/current ticket holder plus existing Host readers; they remain absent from public Explorer discovery.
--- MINGLA-INVARIANT: I-4202-RETAINED-PURCHASE-RECONNECT | issue #4202 | Re-registration with a server-verified purchase email or phone reconnects retained ended/cancelled purchase history without granting admission, joining chats or making the event public.
+-- MINGLA-INVARIANT: I-4202-RETAINED-PURCHASE-RECONNECT | issue #4202 | Re-registration with a server-verified purchase email or phone reconnects retained ended/cancelled history without admission or chat authority; a retained shared identity separately regains an already-owned event chat only while it still holds a valid/used ticket.
 -- MINGLA-INVARIANT: I-4202-EXPLORER-DELETE-FREES-PHONE | issue #4202 | Explorer deletion removes the GoTrue phone identity and verified-phone ledger while preserving email/social identities and any retained Business login.
 -- #4203 — hidden reviewer inventory stays out of Explorer discovery while its
 -- buyer/current holder can render the exact event and date behind a purchase.
@@ -83,7 +83,7 @@ INSERT INTO public.orders(
   '42030000-0000-4000-d000-000000000001',
   '42030000-0000-4000-a000-000000000001',
   '42030000-0000-4000-8000-000000000002',
-  NULL, 'paid', 'manual_import', 1000, 'USD'
+  'buyer-4203@example.test', 'paid', 'manual_import', 1000, 'USD'
 );
 
 INSERT INTO public.tickets(
@@ -152,6 +152,76 @@ INSERT INTO public.tickets(
   'issue-4202-retained-qr', 'used', 'auto'
 );
 
+-- A shared Host/Explorer identity retains this live order when only its
+-- Explorer side is deleted. Deletion removes conversation membership; the
+-- post-auth sweep must restore it because this exact auth id still owns both
+-- the order and a usable ticket.
+INSERT INTO public.events(
+  id, brand_id, created_by, title, slug, event_type, status, visibility,
+  timezone, theme
+) VALUES (
+  '42030000-0000-4000-a000-000000000003',
+  '42030000-0000-4000-9000-000000000001',
+  '42030000-0000-4000-8000-000000000001',
+  'Issue 4202 Retained Shared Event', 'issue-4202-retained-shared-event',
+  'event', 'scheduled', 'hidden', 'UTC', '{}'::jsonb
+);
+
+INSERT INTO public.event_dates(id, event_id, start_at, end_at, is_master) VALUES (
+  '42030000-0000-4000-b000-000000000003',
+  '42030000-0000-4000-a000-000000000003',
+  now() + interval '1 day', now() + interval '1 day 4 hours', true
+);
+
+INSERT INTO public.ticket_types(
+  id, event_id, name, price_cents, currency, quantity_total
+) VALUES (
+  '42030000-0000-4000-c000-000000000003',
+  '42030000-0000-4000-a000-000000000003',
+  'Retained General', 3000, 'USD', 100
+);
+
+INSERT INTO public.orders(
+  id, event_id, buyer_user_id, buyer_email, payment_status, source,
+  total_cents, currency
+) VALUES (
+  '42030000-0000-4000-d000-000000000003',
+  '42030000-0000-4000-a000-000000000003',
+  '42030000-0000-4000-8000-000000000002',
+  'buyer-4203@example.test', 'paid', 'manual_import', 3000, 'USD'
+);
+
+INSERT INTO public.tickets(
+  id, order_id, ticket_type_id, event_id, qr_code, status, approval_status
+) VALUES (
+  '42030000-0000-4000-e000-000000000003',
+  '42030000-0000-4000-d000-000000000003',
+  '42030000-0000-4000-c000-000000000003',
+  '42030000-0000-4000-a000-000000000003',
+  'issue-4202-retained-shared-qr', 'valid', 'auto'
+);
+
+INSERT INTO public.conversations(
+  id, type, event_id, linked_entity_type, is_enabled, is_broadcast_only, name
+) VALUES
+  ('42030000-0000-4000-f000-000000000001', 'group',
+   '42030000-0000-4000-a000-000000000001', 'event', true, false,
+   'Transferred-only event chat'),
+  ('42030000-0000-4000-f000-000000000002', 'group',
+   '42030000-0000-4000-a000-000000000002', 'event', true, false,
+   'History-only event chat'),
+  ('42030000-0000-4000-f000-000000000003', 'group',
+   '42030000-0000-4000-a000-000000000003', 'event', true, false,
+   'Retained shared event chat')
+ON CONFLICT (event_id) WHERE event_id IS NOT NULL DO NOTHING;
+
+-- Later transfer triggers may detach an all-transferred order. Pin this row to
+-- the hostile case the repair must still refuse: retained buyer ownership with
+-- no ticket left in that buyer's hands.
+UPDATE public.orders
+   SET buyer_user_id = '42030000-0000-4000-8000-000000000002'
+ WHERE id = '42030000-0000-4000-d000-000000000001';
+
 DO $reconnect$
 DECLARE
   v_count integer;
@@ -192,6 +262,56 @@ BEGIN
        AND holder_user_id IS NULL
   ) THEN
     RAISE EXCEPTION 'history_reconnect_changed_ticket_authority';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+      FROM public.conversations c
+      JOIN public.conversation_participants cp ON cp.conversation_id = c.id
+     WHERE c.event_id = '42030000-0000-4000-a000-000000000003'
+       AND cp.user_id = '42030000-0000-4000-8000-000000000002'
+  ) THEN
+    RAISE EXCEPTION 'retained_shared_order_chat_not_restored';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+      FROM public.conversations c
+      JOIN public.conversation_participants cp ON cp.conversation_id = c.id
+     WHERE c.event_id = '42030000-0000-4000-a000-000000000001'
+       AND cp.user_id = '42030000-0000-4000-8000-000000000002'
+  ) THEN
+    RAISE EXCEPTION 'transferred_only_buyer_rejoined_chat';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+      FROM public.conversations c
+      JOIN public.conversation_participants cp ON cp.conversation_id = c.id
+     WHERE c.event_id = '42030000-0000-4000-a000-000000000002'
+       AND cp.user_id = '42030000-0000-4000-8000-000000000002'
+  ) THEN
+    RAISE EXCEPTION 'replacement_history_reconnect_joined_old_chat';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+      FROM public.conversation_participants
+     WHERE user_id = '42030000-0000-4000-8000-000000000004'
+  ) THEN
+    RAISE EXCEPTION 'unproved_stranger_joined_chat';
+  END IF;
+
+  SELECT public.issue_4202_reconnect_retained_orders(
+    '42030000-0000-4000-8000-000000000002'
+  ) INTO v_count;
+  IF v_count <> 0 THEN
+    RAISE EXCEPTION 'idempotent_repair_reconnected_history_again:%', v_count;
+  END IF;
+  SELECT count(*) INTO v_count
+    FROM public.conversations c
+    JOIN public.conversation_participants cp ON cp.conversation_id = c.id
+   WHERE c.event_id = '42030000-0000-4000-a000-000000000003'
+     AND cp.user_id = '42030000-0000-4000-8000-000000000002';
+  IF v_count <> 1 THEN
+    RAISE EXCEPTION 'idempotent_repair_duplicated_chat_membership:%', v_count;
   END IF;
 END;
 $reconnect$;

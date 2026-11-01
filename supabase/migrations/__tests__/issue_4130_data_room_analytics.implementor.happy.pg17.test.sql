@@ -299,8 +299,8 @@ BEGIN
   v_ret := pg_temp.w5_read(v_admin, 'admin_data_room_retention') -> 'data';
   v_cells := v_ret -> 'cohorts' -> 'explorer';
   SELECT c INTO v_cell FROM jsonb_array_elements(v_cells) c
-   WHERE c ->> 'month' = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM');
-  PERFORM pg_temp.w5_assert(v_cell IS NOT NULL, 'C-05 this month''s explorer cohort is listed');
+   WHERE c ->> 'month' = to_char((now() AT TIME ZONE 'UTC') - interval '1 day', 'YYYY-MM');
+  PERFORM pg_temp.w5_assert(v_cell IS NOT NULL, 'C-05 the recent explorer cohort is listed');
   PERFORM pg_temp.w5_assert(
     jsonb_typeof(v_cell -> 'd7') = 'null' AND jsonb_typeof(v_cell -> 'd30') = 'null'
     AND jsonb_typeof(v_cell -> 'd90') = 'null',

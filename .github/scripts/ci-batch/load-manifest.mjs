@@ -99,7 +99,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // and its self-registered PostgreSQL proof entered those inventories.
 // #4202: re-sealed after the GoTrue pending-phone sentinel repair entered the
 // same inventories and extended the existing phone-release proof.
-export const BOOTSTRAP_SHA256 = "eacb19f11daea22da425fcb8998653446471c5524a82a6912c348cae7c334ac0";
+// #4202: re-sealed after retained shared identities gained the reviewed
+// already-owned event-chat repair in those same inventories and proof suite.
+export const BOOTSTRAP_SHA256 = "e7dcfe61e03c7aa9db46ab65e2b2d201bccfcd889779f0fa5bf9fcf7c400eec2";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
