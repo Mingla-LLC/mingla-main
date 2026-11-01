@@ -1,6 +1,6 @@
 -- #3281 day-limited tickets: a ticket sells, counts and admits only on its own dates.
--- MINGLA-INVARIANT: I-3281-TICKET-DAY-LIST-AT-SALE-AND-MINT | issue #3281 | A ticket type's day list is read at sale and mint only; a pass admits what ticket_event_dates says, and changing a list never touches an issued pass. | enforced by supabase/migrations/20280228003281_issue_3281_day_limited_tickets.sql
--- MINGLA-INVARIANT: I-3281-LISTED-TICKET-CAPACITY-PER-DATE | issue #3281 | Capacity on a ticket with a day list is per date; an All dates ticket keeps one shared pool. | enforced by supabase/migrations/20280228003281_issue_3281_day_limited_tickets.sql
+-- MINGLA-INVARIANT: I-3281-TICKET-DAY-LIST-AT-SALE-AND-MINT | issue #3281 | A ticket type's day list is read at sale and mint only; a pass admits what ticket_event_dates says, and changing a list never touches an issued pass.
+-- MINGLA-INVARIANT: I-3281-LISTED-TICKET-CAPACITY-PER-DATE | issue #3281 | Capacity on a ticket with a day list is per date; an All dates ticket keeps one shared pool.
 \set ON_ERROR_STOP on
 BEGIN;
 
