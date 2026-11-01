@@ -1,4 +1,5 @@
 import {
+  displayPhone,
   friendlyWebsiteSetupAnswer,
   websiteSetupProposalCopy,
 } from "../websiteSetupProposalCopy";
@@ -116,5 +117,41 @@ describe("#2830 Website setup confirmations read as plain words", () => {
     );
     expect(card).toContain("websiteSetupProposalCopy(toolName, args)");
     expect(list).toContain("friendlyWebsiteSetupAnswer(text)");
+  });
+});
+
+describe("#2830 P4 live certification — confirmation card copy", () => {
+  it("cert D7: city and country read as the country's name, not its code", () => {
+    const copy = websiteSetupProposalCopy("update_brand_context", {
+      patch: { city: "London", country_code: "GB" },
+    });
+    expect(copy?.fields).toEqual([
+      { label: "City and country", value: "London, United Kingdom" },
+    ]);
+  });
+
+  it("cert D7: UK and other characterised numbers are grouped for reading", () => {
+    expect(displayPhone("+447700900123")).toBe("+44 7700 900123");
+    expect(displayPhone("+12125550123")).toBe("+1 (212) 555-0123");
+    // Unknown shapes are still shown exactly as saved.
+    expect(displayPhone("+999123")).toBe("+999123");
+  });
+
+  it("cert D7: a 'doesn't apply' card says what it does, not 'Save your address'", () => {
+    const copy = websiteSetupProposalCopy("update_brand_context", {
+      patch: {},
+      exceptions: [{ field_key: "address", reason: "Trips leave from stations" }],
+    });
+    expect(copy?.title).toBe("Mark the address as not needed");
+    const two = websiteSetupProposalCopy("update_brand_context", {
+      exceptions: [{ field_key: "address" }, { field_key: "contact_phone" }],
+    });
+    expect(two?.title).toBe("Mark these as not needed");
+    // A real value is still a save.
+    expect(
+      websiteSetupProposalCopy("update_brand_context", {
+        patch: { address: "1 High St" },
+      })?.title,
+    ).toBe("Save your address");
   });
 });

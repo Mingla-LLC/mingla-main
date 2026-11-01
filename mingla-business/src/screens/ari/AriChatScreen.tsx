@@ -222,18 +222,6 @@ export interface AriChatScreenProps {
   embedded?: boolean;
 }
 
-/** Owner-facing labels for the Website setup parts (the plan's own wording). */
-const WEBSITE_SETUP_PART_LABELS: Readonly<Record<string, string>> = {
-  offer: "What you’ll offer",
-  brand: "Your brand details",
-  look: "Choose your design",
-  story: "Your story",
-  approve: "Approve the plan",
-  build: "Build your pages",
-  first_offering: "Add your first trip or event",
-  publish: "Check and publish",
-};
-
 export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   embedded = false,
 }) => {
@@ -603,6 +591,12 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       router.push(result.handoff_route as never);
     }
   };
+  // #2830 P4 — a card button that opens a Host page is a route, not an
+  // answer: it posts nothing in the owner's name. Coming back re-checks.
+  const handleFlowRoute = (route: string): void => {
+    flowHandoffOpenRef.current = true;
+    router.push(route as never);
+  };
   useFocusEffectSafe(
     React.useCallback(() => {
       if (!flowHandoffOpenRef.current) return;
@@ -745,19 +739,15 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     // #2830 — claimed at module scope so a remount cannot re-send it.
     const auditKey = websiteSetupAutoAuditKey(sitesBrandId, setupPart);
     if (!claimWebsiteSetupAutoAudit(auditKey)) return;
-    // Everything in this message is shown to the owner as their own words, so
-    // it names parts by their plan labels and never carries tool names or keys.
-    const partLabel = setupPart ? WEBSITE_SETUP_PART_LABELS[setupPart] : null;
-    const focus = partLabel ? ` I’m working on ${partLabel}.` : "";
+    // #2830 P4 — a structured request, never a scripted message in the
+    // owner's name: the bubble reads "Set up my Website", the server builds
+    // the instruction, and the flow engine re-presents the current step.
     // The audit key stays claimed even when the send fails. Clearing it would
     // re-arm this effect as soon as isSending flips back, re-sending on every
     // failure (a rate limit then sustains itself forever). A failed start is
     // retried by the owner from the failed message's Retry, never by a loop.
     void chat
-      .sendMessage(
-        `Start Website setup.${focus} Check the live setup plan, tell me what’s done and every field gap, then offer Fix all, one gap, or Add it myself. Ask one question at a time. Don’t create a draft until setup and brand context are complete.`,
-        [],
-      )
+      .startWebsiteSetup(setupPart ?? null)
       .then((result) => {
         if (result.kind === "error") {
           setLocalError(
@@ -772,7 +762,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     chat.isLoadingMessages,
     chat.isSending,
     chat.pendingAction,
-    chat.sendMessage,
+    chat.startWebsiteSetup,
     conversationSelectionReady,
     disclosureNeeded,
     online,
@@ -1256,6 +1246,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               onFlowAnswer={(answer, label) =>
                 void handleFlowAnswer(answer, label)
               }
+              onFlowRoute={handleFlowRoute}
               online={online !== false}
               onRetryTurn={(clientTurnId) => {
                 if (!online) {

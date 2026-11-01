@@ -77,6 +77,28 @@ export function answeredFlowQuestionIds(
   return ids;
 }
 
+/**
+ * #2830 P4 — when Ari shows the current card again at the bottom (resume,
+ * a refusal, "not there yet"), the newer row carries the SAME artefact id.
+ * Only the newest copy is the card; every older copy shows its words with
+ * "Continued below" and no controls, so one step is never answerable twice.
+ */
+export function earlierFlowCopyIds(
+  messages: ReadonlyArray<Pick<AgentMessage, "id" | "role" | "content">>,
+): Set<string> {
+  const seen = new Set<string>();
+  const earlier = new Set<string>();
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const artefact = flowArtefactOf(messages[index]);
+    if (!artefact) continue;
+    if (seen.has(artefact.artefact_id)) earlier.add(messages[index].id);
+    else seen.add(artefact.artefact_id);
+  }
+  return earlier;
+}
+
+export const ARI_FLOW_CONTINUED_COPY = "Continued below";
+
 /** The card treated as current before the server's flow state arrives. */
 export function newestOpenFlowArtefactId(
   messages: ReadonlyArray<Pick<AgentMessage, "role" | "content">>,

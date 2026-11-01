@@ -51,10 +51,12 @@ import type {
   AriFlowState,
 } from "../../services/agentChatService";
 import {
+  ARI_FLOW_CONTINUED_COPY,
   ARI_FLOW_LOCKED_COPY,
   ARI_FLOW_OFFLINE_COPY,
   answeredFlowQuestionIds,
   buildFlowFormAnswer,
+  earlierFlowCopyIds,
   flowArtefactOf,
   flowCardStatus,
   flowViewOnlyCopy,
@@ -171,6 +173,11 @@ export interface MessageListProps {
   flowState?: AriFlowState | null;
   /** #3355 P3 — a structured answer to the current flow card. */
   onFlowAnswer?: (answer: AriFlowAnswer, label: string) => void;
+  /**
+   * #2830 P4 — a flow card button that opens a Host page. It navigates and
+   * posts nothing in the owner's name (the card stays current).
+   */
+  onFlowRoute?: (route: string) => void;
   /** #3355 P3 — offline disables answers with a plain explanation. */
   online?: boolean;
   /**
@@ -239,6 +246,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   conversationId = null,
   flowState,
   onFlowAnswer,
+  onFlowRoute,
   online = true,
 }) => {
   const listRef = useRef<FlatList<ListItem>>(null);
@@ -269,6 +277,8 @@ export const MessageList: React.FC<MessageListProps> = ({
   // #3355 P3 — flow cards: answered question ids and the fallback current card.
   const answeredFlowIds = answeredFlowQuestionIds(messages);
   const fallbackFlowArtefactId = newestOpenFlowArtefactId(messages);
+  // #2830 P4 — older copies of a card Ari showed again at the bottom.
+  const earlierFlowCopies = earlierFlowCopyIds(messages);
 
   // Compose the rendered list. Two classes of rows are skipped entirely so
   // they don't leave empty separators in the FlatList:
@@ -628,7 +638,9 @@ export const MessageList: React.FC<MessageListProps> = ({
             .attachments ??
             []) as import("../../services/ariAttachmentService").AriSentAttachment[];
           const rendition =
-            m.role === "assistant" && !dismissedRenditionIds.has(m.id)
+            m.role === "assistant" &&
+            !dismissedRenditionIds.has(m.id) &&
+            !earlierFlowCopies.has(m.id)
               ? (renditionsByMessageId.get(m.id) ?? null)
               : null;
           if (!text && attachments.length === 0 && !rendition) return null;
@@ -923,6 +935,22 @@ export const MessageList: React.FC<MessageListProps> = ({
               fallbackCurrentId: fallbackFlowArtefactId,
             });
             if (status === "info") return bubble;
+            if (earlierFlowCopies.has(m.id)) {
+              // Shown again below: this copy is words only.
+              return (
+                <View>
+                  {bubble}
+                  <Text
+                    style={styles.flowLockedLabel}
+                    accessibilityRole="text"
+                    accessibilityState={{ disabled: true }}
+                    accessibilityLabel={`${flow.title}. ${ARI_FLOW_CONTINUED_COPY}.`}
+                  >
+                    {ARI_FLOW_CONTINUED_COPY}
+                  </Text>
+                </View>
+              );
+            }
             if (status === "answered" || status === "replaced") {
               const label = ARI_FLOW_LOCKED_COPY[status];
               return (
@@ -973,6 +1001,12 @@ export const MessageList: React.FC<MessageListProps> = ({
                         (candidate) => candidate.id === optionId,
                       );
                       if (!option || !flow.question_id) return;
+                      // #2830 P4 — a route button opens the page; it is not
+                      // an answer and never posts an owner message.
+                      if (option.route && onFlowRoute) {
+                        onFlowRoute(option.route);
+                        return;
+                      }
                       setResolvedChoice({ messageId: m.id, optionId });
                       onFlowAnswer?.(
                         {

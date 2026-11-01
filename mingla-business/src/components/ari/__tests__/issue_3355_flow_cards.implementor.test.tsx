@@ -25,6 +25,7 @@ import type {
   AriFlowState,
 } from "../../../services/agentChatService";
 import {
+  earlierFlowCopyIds,
   answeredFlowQuestionIds,
   flowCardStatus,
   newestOpenFlowArtefactId,
@@ -195,6 +196,7 @@ function mount(props: {
   flowState?: AriFlowState | null;
   online?: boolean;
   onFlowAnswer?: (answer: AriFlowAnswer, label: string) => void;
+  onFlowRoute?: (route: string) => void;
 }) {
   let renderer!: ReturnType<typeof TestRenderer.create>;
   TestRenderer.act(() => {
@@ -208,6 +210,7 @@ function mount(props: {
         flowState={props.flowState}
         online={props.online ?? true}
         onFlowAnswer={props.onFlowAnswer}
+        onFlowRoute={props.onFlowRoute}
       />,
     );
   });
@@ -349,5 +352,62 @@ describe("#3355 P3 wait label", () => {
     expect(ariWaitLabel({ reconciling: true, serverWorking: false }, "x")).toBe(
       ARI_RECONNECTING_LABEL,
     );
+  });
+});
+
+describe("#2830 P4 live certification — flow cards on the Host", () => {
+  function handoff(question: string): AriFlowArtefact {
+    return {
+      ...card(question, "Upload your logo"),
+      step_key: "brand",
+      kind: "handoff",
+      text: "Brand logo is an upload only you can add.",
+      options: [
+        { id: "open", label: "Upload your logo", route: "/brand/b1/edit?section=photo" },
+        { id: "check", label: "I've uploaded it, check now" },
+      ],
+    };
+  }
+
+  test("cert D10: a route button opens the page and posts no owner message", () => {
+    const sent: AriFlowAnswer[] = [];
+    const routes: string[] = [];
+    const logo = handoff(Q1);
+    const renderer = mount({
+      messages: [ari("a1", logo)],
+      flowState: state(logo.artefact_id),
+      onFlowAnswer: (answer) => sent.push(answer),
+      onFlowRoute: (route) => routes.push(route),
+    });
+    const chips = renderer.root.findAll((n) => n.type === "quick-reply-chips");
+    TestRenderer.act(() => {
+      (chips[0].props.onSelectId as (id: string) => void)("open");
+    });
+    expect(routes).toEqual(["/brand/b1/edit?section=photo"]);
+    expect(sent).toEqual([]);
+    // The card stays current (not collapsed to a chosen chip).
+    const after = renderer.root.findAll((n) => n.type === "quick-reply-chips");
+    expect(after[0].props.state).toBe("default");
+    // A non-route choice is still a bound answer.
+    TestRenderer.act(() => {
+      (after[0].props.onSelectId as (id: string) => void)("check");
+    });
+    expect(sent.map((answer) => answer.choice_id)).toEqual(["check"]);
+    renderer.unmount();
+  });
+
+  test("cert D5: a card shown again at the bottom is the only answerable copy; the older one says Continued below", () => {
+    const logo = handoff(Q1);
+    const renderer = mount({
+      messages: [ari("a1", logo), ari("a2", { ...logo, text: "Picking up Website setup where we left off." })],
+      flowState: state(logo.artefact_id),
+    });
+    const chips = renderer.root.findAll((n) => n.type === "quick-reply-chips");
+    expect(chips).toHaveLength(1);
+    expect(textsOf(renderer)).toContain("Continued below");
+    expect(earlierFlowCopyIds([ari("a1", logo), ari("a2", logo)])).toEqual(
+      new Set(["a1"]),
+    );
+    renderer.unmount();
   });
 });

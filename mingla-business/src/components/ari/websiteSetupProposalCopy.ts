@@ -10,8 +10,10 @@
  * Pure on purpose: no React Native, so every branch is provable in a unit test.
  */
 
+import { COUNTRY_DIRECTORY } from "@mingla/phone-input/countryDirectory";
 import {
   formatPhoneNational,
+  parsePhoneEntry,
   phoneDialCodeForCountry,
 } from "@mingla/phone-input/phoneNumber";
 
@@ -96,12 +98,26 @@ function words(value: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-/** "+12125550123" → "+1 (212) 555-0123"; unknown shapes are shown as saved. */
+/**
+ * "+12125550123" → "+1 (212) 555-0123", "+447700900123" → "+44 7700 900123":
+ * every number whose country has a characterised layout is grouped for
+ * reading (dial code + national grouping); unknown shapes are shown as saved.
+ */
 export function displayPhone(e164: string): string {
   if (e164.startsWith("+1") && e164.length === 12) {
     return `+1 ${formatPhoneNational("US", e164.slice(2))}`;
   }
-  return e164;
+  const parsed = parsePhoneEntry(e164, { mode: "any" });
+  if (!parsed.ok || !parsed.countryIso) return e164;
+  const dial = phoneDialCodeForCountry(parsed.countryIso);
+  if (!dial || !e164.startsWith(dial)) return e164;
+  return `${dial} ${formatPhoneNational(parsed.countryIso, e164.slice(dial.length))}`;
+}
+
+/** "GB" → "United Kingdom"; an unknown code is shown as given. */
+export function countryDisplayName(code: string): string {
+  const upper = code.toUpperCase();
+  return COUNTRY_DIRECTORY.find((entry) => entry.code === upper)?.name ?? code;
 }
 
 function brandContextFields(args: Args): WebsiteSetupProposalField[] {
@@ -126,7 +142,9 @@ function brandContextFields(args: Args): WebsiteSetupProposalField[] {
   if (city || country) {
     out.push({
       label: "City and country",
-      value: [city, country].filter(Boolean).join(", "),
+      value: [city, country ? countryDisplayName(country) : null]
+        .filter(Boolean)
+        .join(", "),
     });
   }
   for (const [key, url] of Object.entries(object(patch.social_links))) {
@@ -209,6 +227,21 @@ export function websiteSetupProposalCopy(
   switch (toolName) {
     case "update_brand_context": {
       const fields = brandContextFields(args);
+      const patchKeys = Object.keys(object(args.patch));
+      const exceptions = Array.isArray(args.exceptions)
+        ? args.exceptions.filter((entry) => text(object(entry).field_key))
+        : [];
+      // #2830 P4 — an owner "doesn't apply" is not a save of a value.
+      if (patchKeys.length === 0 && exceptions.length > 0) {
+        return {
+          verb: "Save to your brand",
+          title:
+            exceptions.length === 1
+              ? `Mark the ${titleLabel(fields[0]?.label ?? "detail")} as not needed`
+              : "Mark these as not needed",
+          fields,
+        };
+      }
       return {
         verb: "Save to your brand",
         title:

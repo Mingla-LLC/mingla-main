@@ -150,6 +150,12 @@ export interface UseAgentChatResult {
     label: string,
   ) => Promise<AgentChatResponse>;
   /**
+   * #2830 P4 — open Website setup with a structured request. The owner's
+   * bubble reads only "Set up my Website"; the server builds the instruction
+   * and, with the flow engine on, never counts it toward the daily limit.
+   */
+  startWebsiteSetup: (part: string | null) => Promise<AgentChatResponse>;
+  /**
    * #3355 P3 — the server's view of this chat's flow run: which card is the
    * current one (every other flow card is locked), who is working on it.
    * `undefined` until the first resume for this chat has answered.
@@ -180,12 +186,16 @@ export interface UseAgentChatResult {
   setWorkflowContext: (context: AriWorkflowContext) => void;
 }
 
+/** #2830 P4 — the owner's bubble when Website setup opens (server-pinned). */
+export const WEBSITE_SETUP_KICKOFF_DISPLAY = "Set up my Website";
+
 type TurnPayload = {
   message?: string;
   choice_response?: AgentChoiceSubmissionV2;
   flow_answer?: AriFlowAnswer;
   attachment_ids?: string[];
   workflow_context?: "website_setup";
+  website_setup_kickoff?: { part?: string };
 };
 
 interface LocalTurn {
@@ -1131,6 +1141,16 @@ export function useAgentChat(
     [sendTurn],
   );
 
+  const startWebsiteSetup = useCallback(
+    (part: string | null) =>
+      sendTurn(WEBSITE_SETUP_KICKOFF_DISPLAY, {
+        message: WEBSITE_SETUP_KICKOFF_DISPLAY,
+        website_setup_kickoff: part ? { part } : {},
+        workflow_context: "website_setup",
+      }),
+    [sendTurn],
+  );
+
   const retryTurn = useCallback(
     async (clientTurnId: string): Promise<AgentChatResponse | null> => {
       const turn = turnsRef.current.find(
@@ -1527,6 +1547,7 @@ export function useAgentChat(
     sendMessage,
     sendChoice,
     sendFlowAnswer,
+    startWebsiteSetup,
     flowState: currentScope && conversationId
       ? flowStates[conversationId]
       : undefined,

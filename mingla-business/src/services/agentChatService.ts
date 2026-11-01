@@ -200,6 +200,8 @@ export interface SendMessageArgs {
   ari_ui?: AriUiCapabilitiesV2;
   workflow_context?: "website_setup";
   flow_answer?: AriFlowAnswer;
+  /** #2830 P4 — opening Website setup (structured, never owner words). */
+  website_setup_kickoff?: { part?: string };
 }
 
 export interface ConfirmActionArgs {

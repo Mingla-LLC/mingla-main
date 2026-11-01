@@ -27,13 +27,16 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
     expect(agentService).toContain('workflow_context?: "website_setup"');
   });
 
+  // [TEST-MOD-APPROVED #2830] P4 live certification (D8): the audit
+  // instruction no longer travels as the owner's own bubble. The screen sends
+  // a structured kickoff ("Set up my Website"); the server builds the same
+  // instruction (pinned in supabase/functions/_shared/__tests__/
+  // issue_2830_website_flow_engine.implementor.test.ts, "cert D8").
   it("loads the plan beside Ari and starts with a real audit before any draft", () => {
     expect(screen).toContain("<AriWebsiteSetupPane");
-    expect(screen).toContain("Check the live setup plan");
-    expect(screen).toContain("every field gap");
-    expect(screen).toContain(
-      "Don’t create a draft until setup and brand context are complete",
-    );
+    expect(screen).toContain(".startWebsiteSetup(setupPart ?? null)");
+    expect(screen).not.toContain("Check the live setup plan");
+    expect(agentHook).toContain("website_setup_kickoff");
     expect(pane).toContain("/site-plan");
     expect(pane).toContain('testID="ari-website-setup"');
   });
@@ -62,12 +65,14 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
     ].map((match) => match[1]);
     // [TEST-MOD-APPROVED #3355] one fewer: the client-authored continuation
     // after a confirm is gone (P3); the rest are still checked.
-    expect(sent.length).toBeGreaterThanOrEqual(3);
+    // [TEST-MOD-APPROVED #2830] one fewer again (P4 D8): the setup kickoff is
+    // a structured request now, not a message sent as the owner.
+    expect(sent.length).toBeGreaterThanOrEqual(2);
     for (const message of sent) {
       expect(message).not.toMatch(/\b[a-z]+_[a-z_]+\b/);
       expect(message).not.toMatch(/plan part is/);
     }
-    expect(screen).toContain('brand: "Your brand details"');
+    expect(agentHook).toContain('WEBSITE_SETUP_KICKOFF_DISPLAY = "Set up my Website"');
   });
 
   it("never re-sends the automatic setup audit after it fails", () => {
