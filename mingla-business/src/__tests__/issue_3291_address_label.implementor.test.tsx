@@ -314,6 +314,8 @@ const HOST_FIELDS: ReadonlyArray<{
   // [TEST-MOD-APPROVED #3386] the venue Settings details editor is a new Host
   // mount of the picker (a host moving a venue in review, or asking Mingla to).
   { file: "src/components/venue/VenueDetailsEditor.tsx", field: "venue details editor address", savedAs: /addressText: label,/ },
+  // #3355 P5 — Brand Edit's structured address is a Host mount of the picker.
+  { file: "src/components/brand/BrandEditAddressField.tsx", field: "brand edit address", savedAs: /brandAddressPatchFromPlace\(details, label\);/ },
 ];
 
 /**
@@ -345,7 +347,7 @@ describe("Issue #3291 — every Host address field saves the tapped name", () =>
       const source = fs.readFileSync(path.resolve(ROOT, "mingla-business", file), "utf8");
       expect(addressInputBlocks(source)).toHaveLength(count);
     }
-    expect(Object.keys(mounts)).toHaveLength(7);
+    expect(Object.keys(mounts)).toHaveLength(8);
 
     // Discovery, not a hand-kept list: a NEW Host mount of the picker must be
     // added to HOST_FIELDS (and proven) or this goes red.

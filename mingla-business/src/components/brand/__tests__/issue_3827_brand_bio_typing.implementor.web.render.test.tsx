@@ -107,6 +107,11 @@ jest.mock("../../ui/EventCoverMedia", () =>
 jest.mock("../../../constants/publicUrls", () => ({
   brandPublicUrl: (slug: string) => `https://business.example.test/b/${slug}`,
 }));
+// #3355 P5 — Brand Edit's address field searches through the Supabase
+// client, which cannot be built without a project URL in this suite.
+jest.mock("../../../services/supabase", () => ({
+  supabase: { functions: { invoke: jest.fn() } },
+}));
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));

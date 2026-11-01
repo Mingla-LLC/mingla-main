@@ -15,7 +15,7 @@
 
 import React from "react";
 import { precisionFromPlaceDetails } from "@mingla/location-input";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   accent,
@@ -46,15 +46,10 @@ import {
 } from "../../utils/resolveApproxLocation";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
 import type { LocationSelectionState } from "@mingla/location-input";
-// ORCH-1186 (salvaged from ORCH-1158 Issue 3 [wizard-map-preview]) — the SAME
-// proven static-map builder the trip/experience previews use. As of ORCH-1165
-// the static map is fetched through the vendor-NEUTRAL `static-map` Supabase
-// edge proxy, so the URL carries NO map-vendor token and is a plain <Image>
-// (no map SDK, no new dependency, works native + react-native-web). FAIL-SAFE:
-// the builder returns null when coords are missing/non-finite OR the Supabase
-// functions base URL is absent, in which case we render the honest "pick an
-// address" empty state (rule 9 — never a fabricated/striped placeholder tile).
-import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
+// ORCH-1186 [wizard-map-preview] — the static-map preview (vendor-neutral
+// `static-map` proxy, honest empty state) now lives in the shared
+// AddressMapPreview so Brand Edit renders the same one (#3355).
+import { AddressMapPreview } from "../location/AddressMapPreview";
 
 import { errorForKey, type StepBodyProps } from "./types";
 import { whereStepAddressCopy } from "./whereStepCopy";
@@ -289,57 +284,16 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
             </View>
           </Pressable>
 
-          {/* ORCH-1186 (salvaged from ORCH-1158 Issue 3 [wizard-map-preview]) —
-              REAL static Mapbox map (via the `static-map` server proxy) for the
-              picked address's coords. buildStaticMapUrl(lat,lng,accent) → plain
-              <Image>. REAL-DATA-ONLY (rule 9): until an address is picked
-              (draft.locationGeo === null) OR the proxy base URL is absent at
-              runtime, we show the honest "pick an address" empty state — never a
-              fake tile. Pick an address to preview the map. */}
-          {(() => {
-            // Issue #1363 — honest precision rendering (no fabricated precision,
-            // rule 9): an APPROXIMATE (free-text) coordinate renders at a lower
-            // zoom + an "Approximate location" caption so the preview never
-            // implies a false pinpoint. Legacy exact / null renders precise.
-            const isApprox = draft.coordinatePrecision === "approximate";
-            const mapUrl = buildStaticMapUrl({
-              lat: draft.locationGeo?.lat ?? null,
-              lng: draft.locationGeo?.lng ?? null,
-              accentHex: accent.warm,
-              height: 160,
-              zoom: isApprox ? 11 : 14,
-            });
-            return mapUrl !== null ? (
-              <View style={styles.mapWrap}>
-                <Image
-                  source={{ uri: mapUrl }}
-                  style={StyleSheet.absoluteFill}
-                  resizeMode="cover"
-                  accessibilityLabel={`Map of ${draft.address ?? "the venue"}`}
-                />
-                <View style={styles.mapPin} />
-                {isApprox ? (
-                  <View style={styles.approxBadge}>
-                    <Icon
-                      name="location"
-                      size={12}
-                      color={textTokens.primary}
-                    />
-                    <Text style={styles.approxBadgeText}>
-                      Approximate location
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            ) : (
-              <View style={[styles.mapWrap, styles.mapEmpty]}>
-                    <Icon name="location" size={22} color={textTokens.quaternary} />
-                    <Text style={styles.mapEmptyText}>
-                      Pick an address to preview the map
-                    </Text>
-              </View>
-            );
-          })()}
+          {/* ORCH-1186 [wizard-map-preview] — real static map for the picked
+              coords, honest "pick an address" empty state otherwise, and
+              (#1363) an approximate point at a lower zoom with a caption.
+              #3355 — the shared AddressMapPreview, also used by Brand Edit. */}
+          <AddressMapPreview
+            lat={draft.locationGeo?.lat ?? null}
+            lng={draft.locationGeo?.lng ?? null}
+            approximate={draft.coordinatePrecision === "approximate"}
+            accessibilityLabel={`Map of ${draft.address ?? "the venue"}`}
+          />
 
           {/* Privacy info card */}
           <GlassCard
@@ -414,24 +368,6 @@ const styles = StyleSheet.create({
     color: semantic.warning,
     marginTop: spacing.xs,
   },
-  // Issue #1363 — "Approximate location" badge over an approximate-precision map.
-  approxBadge: {
-    position: "absolute",
-    top: spacing.xs,
-    left: spacing.xs,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radiusTokens.full,
-    backgroundColor: "rgba(0,0,0,0.6)",
-  },
-  approxBadgeText: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.primary,
-    fontWeight: "500",
-  },
   inputError: {
     borderColor: semantic.error,
     borderWidth: 1,
@@ -489,37 +425,6 @@ const styles = StyleSheet.create({
   },
   toggleThumbOn: {
     transform: [{ translateX: 18 }],
-  },
-
-  // ORCH-1186 — real static-map preview + honest empty state -----------
-  mapWrap: {
-    height: 160,
-    borderRadius: radiusTokens.lg,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    overflow: "hidden",
-    position: "relative",
-    marginBottom: spacing.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  mapEmpty: {
-    gap: spacing.xs,
-  },
-  mapEmptyText: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.quaternary,
-  },
-  // Themed center pin overlaid on the real static map (the static URL already
-  // draws a Mapbox pin; this is the consistent brand-accent dot the wizard used).
-  mapPin: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
-    backgroundColor: accent.warm,
-    borderWidth: 3,
-    borderColor: "#fff",
   },
 
   // Info card ----------------------------------------------------------
