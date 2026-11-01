@@ -6,14 +6,15 @@ const root = resolve(import.meta.dirname, '../..');
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 
 const migration = read('supabase/migrations/20280221004216_issue_4216_creator_rights.sql');
+const pgContract = read('supabase/migrations/__tests__/issue_4216_creator_rights.implementor.pg17.test.sql');
 const explorerAgreement = read('app-mobile/app/creator/setup/agreement.tsx');
 const explorerRates = read('app-mobile/app/creator/setup/rates.tsx');
 const hostHire = read('mingla-business/src/components/gigs/HireSheet.tsx');
 const media = read('supabase/functions/creator-media-status/index.ts');
 
-assert.match(migration, /I-4216-AGREEMENT-SERVER-AUTHORITY/);
-assert.match(migration, /I-4216-RIGHTS-AFTER-FULL-RELEASE/);
-assert.match(migration, /I-4216-LICENSE-NOT-NEGOTIABLE/);
+assert.match(pgContract, /I-4216-AGREEMENT-SERVER-AUTHORITY/);
+assert.match(pgContract, /I-4216-RIGHTS-AFTER-FULL-RELEASE/);
+assert.match(pgContract, /I-4216-LICENSE-NOT-NEGOTIABLE/);
 assert.match(migration, /'creator-v1'/);
 assert.match(migration, /5f3a9bf9a3dd9a938b25730f7c2fa5c046ea8151dba5f3c63602c7aaacf23a96/);
 assert.match(migration, /CREATE OR REPLACE FUNCTION public\.creator_agreement_sign\(p_date_of_birth date\)/);

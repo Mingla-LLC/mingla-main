@@ -1,9 +1,5 @@
 -- #4216 — versioned Creator agreement and paid-up perpetual gig rights.
 --
--- MINGLA-INVARIANT: I-4216-AGREEMENT-SERVER-AUTHORITY | issue #4216 | A Creator can accept only the one current server-owned agreement version and every acceptance freezes its URL and SHA-256 fingerprint.
--- MINGLA-INVARIANT: I-4216-RIGHTS-AFTER-FULL-RELEASE | issue #4216 | Perpetual Host and Mingla marketing rights become active only after the full fixed Creator fee is released; refunds and partial settlements never activate them.
--- MINGLA-INVARIANT: I-4216-LICENSE-NOT-NEGOTIABLE | issue #4216 | New gigs use creator_v1_perpetual and neither a client field nor a terms proposal can shorten or remove that standard licence.
-
 BEGIN;
 SET LOCAL lock_timeout='10s';
 
