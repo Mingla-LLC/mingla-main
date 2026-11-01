@@ -92,6 +92,16 @@ BEGIN
     OR (v_answer->>'accepted')::boolean IS DISTINCT FROM false THEN
     RAISE EXCEPTION '#4216 server agreement metadata was not authoritative: %',v_answer;
   END IF;
+  v_answer:=public.creator_agreement_sign(
+    'forged-client-version',DATE '1990-01-01'
+  );
+  IF v_answer->>'error'<>'agreement_version_not_current'
+    OR EXISTS(
+      SELECT 1 FROM public.creator_agreement_acceptances
+      WHERE creator_account_id=v_creator
+    ) THEN
+    RAISE EXCEPTION '#4216 old client signature overrode server authority: %',v_answer;
+  END IF;
   v_answer:=public.creator_agreement_sign(DATE '1990-01-01');
   IF (v_answer->>'ok')::boolean IS DISTINCT FROM true
     OR v_answer->>'agreement_version'<>'creator-v1' THEN

@@ -169,6 +169,33 @@ $fn$;
 REVOKE ALL ON FUNCTION public.creator_agreement_sign(date) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.creator_agreement_sign(date) TO authenticated,service_role;
 
+-- Deployed Creator clients still send the version they displayed. Retain that
+-- signature as a compatibility adapter, but never trust it as the authority:
+-- only the live server-selected version may pass through to the canonical RPC.
+CREATE OR REPLACE FUNCTION public.creator_agreement_sign(
+  p_agreement_version text,p_date_of_birth date
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+DECLARE v_current text;
+BEGIN
+  SELECT version INTO v_current FROM public.creator_agreement_versions
+  WHERE is_current AND retired_at IS NULL AND effective_at<=now();
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'creator_agreement_not_available' USING ERRCODE='55000';
+  END IF;
+  IF p_agreement_version IS DISTINCT FROM v_current THEN
+    RETURN jsonb_build_object(
+      'ok',false,'error','agreement_version_not_current',
+      'current_version',v_current
+    );
+  END IF;
+  RETURN public.creator_agreement_sign(p_date_of_birth);
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.creator_agreement_sign(text,date) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.creator_agreement_sign(text,date)
+  TO authenticated,service_role;
+
 CREATE OR REPLACE FUNCTION public.issue_3872_recompute_creator_verification(
   p_creator_account_id uuid,p_signal_conflict boolean DEFAULT false
 ) RETURNS jsonb

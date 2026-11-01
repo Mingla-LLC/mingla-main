@@ -11,6 +11,7 @@ const hostContract = read('mingla-business/src/components/creators/screens/HostG
 
 assert.match(migration, /creator_agreement_acceptance_immutable/);
 assert.match(migration, /creator_agreement_version_immutable/);
+assert.match(migration, /agreement_version_not_current/);
 assert.match(migration, /REVOKE ALL ON FUNCTION public\.issue_4216_creator_has_current_agreement\(uuid\)\s+FROM PUBLIC,anon,authenticated/);
 assert.match(migration, /ENABLE ALWAYS TRIGGER issue_4216_gig_rights_guard/);
 assert.match(migration, /current_setting\('issue4216\.host_rights_accepted',true\)<>'on'/);
