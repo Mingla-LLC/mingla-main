@@ -133,7 +133,7 @@ import {
 // shared by the Paystack callback_url and the Stripe success/cancel URLs.
 import { buyerWebSurfacePath } from "./buyerWebSurfacePath.ts";
 import { capacityEventDateIdFromError } from "./capacityEventDateId.ts";
-import { byDateDatabaseReady, cartHasByDateLines } from "./byDateDatabaseGuard.ts";
+import { expectedSessionLineQuantity } from "./checkoutSessionLines.ts";
 import { resolveSitesAttributionPepper } from "../_shared/sitesSecurity.ts";
 import {
   hashTicketLinkToken,
@@ -1155,12 +1155,6 @@ export const createTicketCheckoutCreateHandler = (
     // set, which is what keeps every ORCH-1072 write site below byte-identical.
     let anchorEventDateId: string | null = null;
     const orderedEventDateIds: string[] = [];
-    // issue #3281 [TRANSITIONAL] — refuse uneven per-date carts until the
-    // by-date migration is live, because the older database ignores byDate and
-    // would mint quantity × days. Exit: remove once 20271224003281 is applied.
-    if (cartHasByDateLines(lines) && !(await byDateDatabaseReady(supabase))) {
-      return refuse({ error: "by_date_unavailable" }, 409);
-    }
 
     // issue #3281 many-dates — all-days pass binds every upcoming occurrence
     // before validation / idempotency (ignore client day list).
@@ -2401,6 +2395,32 @@ export const createTicketCheckoutCreateHandler = (
       const requestedById = new Map(
         checkoutV2Lines!.map((line) => [line.ticketTypeId, line]),
       );
+
+      const { data: contractSessionRow, error: contractSessionError } =
+        await supabase.from("ticket_checkout_sessions")
+          .select("created_at, multi_date_pricing_mode_snapshot")
+          .eq("id", checkoutSessionId)
+          .eq("event_id", eventId)
+          .maybeSingle();
+      // issue #3281 — the session's own dates and mode, so a replay is judged
+      // by what was reserved rather than by the event's current settings.
+      const { count: sessionDayCount, error: sessionDaysError } = await supabase
+        .from("ticket_checkout_session_event_dates")
+        .select("event_date_id", { count: "exact", head: true })
+        .eq("checkout_session_id", checkoutSessionId);
+      if (
+        contractSessionError !== null ||
+        sessionDaysError !== null ||
+        typeof contractSessionRow?.created_at !== "string"
+      ) {
+        return jsonResponse({ error: "checkout_contract_unavailable" }, 409);
+      }
+      const sessionDayScope = {
+        dayCount: sessionDayCount ?? 0,
+        pricingMode: contractSessionRow.multi_date_pricing_mode_snapshot ??
+          null,
+      };
+
       const canonicalLines = sessionItems.map((item) => {
         const ticketTypeId = String(item.ticketTypeId ?? "");
         const requested = requestedById.get(ticketTypeId);
@@ -2416,14 +2436,16 @@ export const createTicketCheckoutCreateHandler = (
           ...(requested?.byDate !== undefined
             ? { byDate: requested.byDate }
             : {}),
-          requestedQuantity: requested?.quantity,
+          expectedQuantity: requested === undefined
+            ? undefined
+            : expectedSessionLineQuantity(requested, sessionDayScope),
         };
       });
       const canonicalLineSetIsExact =
         canonicalLines.length === checkoutV2Lines!.length &&
         canonicalLines.every((line) =>
           requestedById.has(line.ticketTypeId) &&
-          line.requestedQuantity === line.quantity &&
+          line.expectedQuantity === line.quantity &&
           Number.isInteger(line.quantity) && line.quantity > 0 &&
           Number.isInteger(line.unitPriceCents) && line.unitPriceCents >= 0 &&
           line.totalCents === line.unitPriceCents * line.quantity
@@ -2432,18 +2454,6 @@ export const createTicketCheckoutCreateHandler = (
         return await checkoutReviewResponse("lines");
       }
 
-      const { data: contractSessionRow, error: contractSessionError } =
-        await supabase.from("ticket_checkout_sessions")
-          .select("created_at")
-          .eq("id", checkoutSessionId)
-          .eq("event_id", eventId)
-          .maybeSingle();
-      if (
-        contractSessionError !== null ||
-        typeof contractSessionRow?.created_at !== "string"
-      ) {
-        return jsonResponse({ error: "checkout_contract_unavailable" }, 409);
-      }
 
       const tierByTicketType = new Map(
         selectedTripTierRows.map((
@@ -2517,7 +2527,7 @@ export const createTicketCheckoutCreateHandler = (
           },
           providerInput: { surface },
           lines: canonicalLines.map((
-            { requestedQuantity: _ignored, ...line },
+            { expectedQuantity: _ignored, ...line },
           ) => line),
           eventDateId: anchorEventDateId ?? eventDateId,
           eventDateIds: orderedEventDateIds,
@@ -2543,7 +2553,13 @@ export const createTicketCheckoutCreateHandler = (
           p_idempotency_key: idempotencyKey,
           p_checkout_attempt_id: checkoutAttemptId,
           p_checkout_fingerprint: checkoutV2Fingerprint,
-          p_lines: checkoutV2Lines,
+          // Session units, which the line check above matched to the request.
+          p_lines: canonicalLines.map((line) => ({
+            ticketTypeId: line.ticketTypeId,
+            quantity: line.quantity,
+            paymentPlanChoice: line.paymentPlanChoice,
+            ...(line.byDate !== undefined ? { byDate: line.byDate } : {}),
+          })),
           p_due_today_cents: computedPlan.dueTodayCents,
           p_full_price_cents: fullPriceCents,
           p_installment_schedule: installmentSchedule,
