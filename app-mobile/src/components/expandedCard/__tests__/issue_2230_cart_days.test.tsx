@@ -27,6 +27,14 @@ import {
   clearAllHeldHandoffs,
   useNativeCheckoutFlow,
 } from "../../../payments/nativeCheckoutFlow";
+import {
+  byDateForDates,
+  byDateTotal,
+  cartLineQuantities,
+  evenByDate,
+  uniformQuantity,
+  withDateQuantity,
+} from "../ticketCartByDate";
 
 const APP_ROOT = join(__dirname, "..", "..", "..", "..");
 const read = (rel: string): string => readFileSync(join(APP_ROOT, rel), "utf8");
@@ -219,5 +227,124 @@ describe("#2230 ticket sheet placement, pricing, validation, and accessibility",
     ])
       expect(CHOOSER).toContain(copy);
     expect(SHEET).toContain('"Add tickets above"');
+  });
+});
+
+describe("#3281 Explorer per-date cart", () => {
+  test("a uniform cart sends no map", () => {
+    expect(cartLineQuantities({ quantity: 2 }, { a: 5 }, null)).toEqual({
+      quantity: 2,
+    });
+  });
+
+  test("an uneven cart sends its map and derives the total", () => {
+    expect(
+      cartLineQuantities({ quantity: 9 }, { a: 2, b: 1 }, ["a", "b", "c"]),
+    ).toEqual({ quantity: 3, byDate: { a: 2, b: 1 } });
+  });
+
+  test("a deselected date leaves the map and the total", () => {
+    expect(byDateForDates({ a: 2, b: 1 }, ["a"])).toEqual({ a: 2 });
+    expect(cartLineQuantities({ quantity: 3 }, { a: 2, b: 1 }, ["a", "c"]))
+      .toEqual({ quantity: 2, byDate: { a: 2 } });
+  });
+
+  test("a date with no tickets is never sent", () => {
+    expect(byDateForDates({ a: 0, b: 1 }, ["a", "b"])).toEqual({ b: 1 });
+    expect(withDateQuantity({ a: 1, b: 1 }, "a", 0)).toEqual({ b: 1 });
+    expect(withDateQuantity(undefined, "a", 2)).toEqual({ a: 2 });
+  });
+
+  test("switching off keeps the chosen quantity on every date", () => {
+    const even = evenByDate(["a", "b"], 2);
+    expect(even).toEqual({ a: 2, b: 2 });
+    expect(byDateTotal(even)).toBe(4);
+  });
+
+  test("switching back on keeps the busiest date, not the sum", () => {
+    expect(uniformQuantity({ a: 2, b: 1 })).toBe(2);
+    expect(uniformQuantity({})).toBe(0);
+  });
+
+  test("the sheet offers the switch only when a cart can split", () => {
+    for (const needle of [
+      "issue-3281-same-tickets-switch",
+      "Same tickets for every date",
+      'multiDaySelection.pricingMode !== "all_days"',
+      "quoteEventDateIds.length >= 2",
+      "perDateActive ? quoteEventDateIds : null",
+    ]) {
+      expect(SHEET).toContain(needle);
+    }
+  });
+
+  test("the sale shortcut stays away from a per-date cart", () => {
+    expect(SHEET).toMatch(/ticket !== undefined &&\s+!perDateActive/);
+  });
+});
+
+describe("#3281 Explorer per-date checkout body", () => {
+  const paystack = (suffix: string) => ({
+    data: {
+      kind: "requires_paystack_redirect",
+      checkoutSessionId: `session-${suffix}`,
+      buyerStatusToken: `token-${suffix}`,
+      authorizationUrl: `https://checkout.example/${suffix}`,
+      returnUrl: "https://host.usemingla.com/return",
+      reference: suffix,
+      totalCents: 100,
+      currency: "NGN",
+    },
+    error: null,
+  });
+  const line = (byDate?: Record<string, number>) => ({
+    ticketTypeId: "11111111-1111-4111-8111-111111111111",
+    quantity: 3,
+    paymentPlanChoice: "full" as const,
+    ...(byDate !== undefined ? { byDate } : {}),
+  });
+  const v2 = (byDate?: Record<string, number>, eventId?: string) =>
+    input({
+      ...(eventId !== undefined ? { eventId } : {}),
+      accountId: "account-1",
+      checkoutContractVersion: 2,
+      purchaseTermsAccepted: true,
+      quoteDigest: "digest",
+      quoteListDigest: "list-digest",
+      eventId: eventId ?? "22222222-2222-4222-8222-222222222222",
+      lines: [line(byDate)],
+    });
+  const createCalls = () =>
+    mockInvoke.mock.calls.filter(
+      (call) => call[0] === "ticket-checkout-create",
+    );
+
+  it("sends the map on an uneven line", async () => {
+    mockInvoke.mockResolvedValue(paystack("a"));
+    await useNativeCheckoutFlow()(
+      v2({ "day-1": 2, "day-2": 1 }) as never,
+    );
+    expect(createCalls()[0][1].body.lines).toEqual([
+      line({ "day-1": 2, "day-2": 1 }),
+    ]);
+  });
+
+  it("keeps a uniform line's body free of byDate", async () => {
+    mockInvoke.mockResolvedValue(paystack("b"));
+    await useNativeCheckoutFlow()(v2() as never);
+    expect(JSON.stringify(createCalls()[0][1].body)).not.toContain("byDate");
+  });
+
+  it("treats two splits of one total as different carts", async () => {
+    const eventId = "33333333-3333-4333-8333-333333333333";
+    mockInvoke
+      .mockResolvedValueOnce(paystack("c"))
+      .mockResolvedValueOnce(paystack("d"));
+    await useNativeCheckoutFlow()(v2({ "day-1": 2, "day-2": 1 }, eventId) as never);
+    await useNativeCheckoutFlow()(v2({ "day-1": 1, "day-2": 2 }, eventId) as never);
+    expect(createCalls()).toHaveLength(2);
+    expect(createCalls()[0][1].body.checkoutAttemptId).not.toBe(
+      createCalls()[1][1].body.checkoutAttemptId,
+    );
   });
 });
