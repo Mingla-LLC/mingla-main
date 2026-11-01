@@ -41,6 +41,7 @@ import { publicEventKeys } from "./usePublicEvents";
 // can import it without a require-cycle. Imported here for internal use +
 // re-exported below for backward compat.
 import { brandKeys } from "./brandKeys";
+import { brandReadinessKeys } from "./brandReadinessKeys";
 import {
   BrandsAuthSessionNotAttachedError,
   createBrand,
@@ -528,6 +529,11 @@ export const useUpdateBrand = (): UseUpdateBrandResult => {
       );
       queryClient.invalidateQueries({
         queryKey: publicEventKeys.brandBySlug(serverBrand.slug),
+      });
+      // #3355 P5 — the write may have resolved readiness items (and the
+      // server trigger closed stale audit findings): Home re-reads them.
+      queryClient.invalidateQueries({
+        queryKey: brandReadinessKeys.brand(brandId),
       });
     },
   });

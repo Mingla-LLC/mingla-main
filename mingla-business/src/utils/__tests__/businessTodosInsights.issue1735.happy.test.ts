@@ -81,16 +81,20 @@ describe("issue #1735 buildBusinessTodos insights nudges (T-G11)", () => {
   it("is the LAST band — after the ORCH-1256 profile rows", () => {
     const todos = buildBusinessTodos({
       ...baseInput(),
-      profile: {
-        needsCover: true,
-        needsPhoto: false,
-        needsTagline: false,
-        needsDescription: false,
-        needsAddress: false,
-        needsEmail: false,
-        needsPhone: false,
-        needsSocials: false,
+      // #3355 P5 — profile rows now come from canonical readiness.
+      brandReadiness: {
+        status: "ready",
+        brandId: "b1",
         editRoute: "/brand/b1/edit",
+        hideBrandRows: false,
+        items: [
+          {
+            key: "cover_media",
+            state: "missing",
+            canCallerFix: true,
+            whoCanFix: "a brand admin or the owner",
+          },
+        ],
       },
       insightsNudges: [
         {

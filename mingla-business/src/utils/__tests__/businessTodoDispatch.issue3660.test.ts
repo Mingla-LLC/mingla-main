@@ -41,6 +41,7 @@ describe("businessTodoDispatch #3660", () => {
         "open_universal_creator",
         "route",
         "open_pending_invite",
+        "info",
       ].includes(k),
     );
     expect(uniqueInUnion.sort()).toEqual([...BUSINESS_TODO_ACTION_KINDS].sort());
@@ -92,6 +93,8 @@ describe("businessTodoDispatch #3660", () => {
         invitationId: "i",
         brandName: "B",
       },
+      // #3355 P5 — a row this member cannot act on; dispatching it is a no-op.
+      { kind: "info" },
     ];
     for (const action of actions) {
       expect(() =>
