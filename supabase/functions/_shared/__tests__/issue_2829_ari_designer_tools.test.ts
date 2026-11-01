@@ -107,6 +107,9 @@ Deno.test("#2829 W9b no Ari tool's review data can carry confirmed_real or show 
 Deno.test("#2829 W9b every Sites tool carries its rank", () => {
   const expected: Record<string, string> = {
     save_site_plan_answers: "brand_admin",
+    save_site_plan_design: "brand_admin",
+    record_brand_context_finding: "brand_admin",
+    update_brand_context: "brand_admin",
     create_site_draft: "brand_admin",
     confirm_site_review: "brand_admin",
     publish_site: "brand_admin",

@@ -39,6 +39,7 @@ test("ticket-first sequence reassures the buyer then continues normal onboarding
     buildSequence(1, false, "ticket_first", {
       needsLanguage: false,
       phonePreVerified: false,
+      showTicketConfirmation: true,
     }),
     [
       "welcome",
@@ -57,7 +58,11 @@ test("ticket-first sequence reassures the buyer then continues normal onboarding
   }
   assert.deepEqual(buildSequence(6, false, "ticket_first"), []);
   assert.deepEqual(
-    advance({ step: 1, subStep: "tickets_found" }, false, "ticket_first"),
+    advance({ step: 1, subStep: "tickets_found" }, false, "ticket_first", {
+      needsLanguage: false,
+      phonePreVerified: false,
+      showTicketConfirmation: true,
+    }),
     { kind: "move", next: { step: 1, subStep: "gender_identity" } },
   );
   assert.deepEqual(
@@ -67,7 +72,11 @@ test("ticket-first sequence reassures the buyer then continues normal onboarding
 
   let state: Parameters<typeof advance>[0] = { step: 1, subStep: "welcome" };
   for (let transition = 0; transition < 30; transition += 1) {
-    const result = advance(state, false, "ticket_first");
+    const result = advance(state, false, "ticket_first", {
+      needsLanguage: false,
+      phonePreVerified: false,
+      showTicketConfirmation: true,
+    });
     assert.notEqual(result.kind, "stay", `ticket-first dead-ended at ${state.step}/${state.subStep}`);
     if (result.kind === "launch") {
       assert.equal(state.step, 7);
@@ -84,8 +93,20 @@ test("ticket-first skips verified phone and keeps language only when needed", ()
     buildSequence(1, false, "ticket_first", {
       needsLanguage: true,
       phonePreVerified: true,
+      showTicketConfirmation: true,
     }),
     ["language", "welcome", "tickets_found", "gender_identity", "details"],
+  );
+});
+
+test("ticket intent alone continues onboarding without a false found screen", () => {
+  assert.deepEqual(
+    buildSequence(1, false, "ticket_first", {
+      needsLanguage: false,
+      phonePreVerified: false,
+      showTicketConfirmation: false,
+    }),
+    ["welcome", "phone", "otp", "gender_identity", "details"],
   );
 });
 

@@ -207,6 +207,20 @@ Deno.test("#2321 · an owner of a live brand is RETAINED for business_side_activ
   });
 });
 
+Deno.test("#4202 · an active Creator/Business identity is retained before its first brand", async () => {
+  const { client } = makeClient({
+    rows: {
+      profiles: { explorer_deleted_at: "2026-10-31T21:37:28Z" },
+      creator_accounts: { deleted_at: null },
+    },
+  });
+
+  assertEquals(await shouldDeleteAuthUser(client, UID), {
+    remove: false,
+    reason: "business_side_active",
+  });
+});
+
 Deno.test("#2321 · a live explorer side retains for explorer_side_active", async () => {
   const { client } = makeClient({
     rows: {

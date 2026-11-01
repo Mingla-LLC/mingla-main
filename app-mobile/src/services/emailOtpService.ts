@@ -26,9 +26,13 @@
  */
 
 import { Platform } from "react-native";
-import { supabase } from "./supabase";
+import {
+  reactivateExplorerForVerifiedSession,
+  supabase,
+} from "./supabase";
 import { mixpanelService } from "./mixpanelService";
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
+import { withExplorerReactivationIntent } from "../utils/explorerReactivation";
 // #1875's SINGLE transient/permanent decision point. Imported rather than
 // re-expressed: that issue exists because the distinction had been scattered
 // across catch branches, and an email-OTP fault must be judged by the same
@@ -128,12 +132,27 @@ export async function verifyEmailSignInCode(
     return { ok: false, error: "Enter the code we emailed you." };
   }
   try {
-    const { error } = await supabase.auth.verifyOtp({
-      email: address,
-      token,
-      type: "email",
+    const { auth, reactivation } = await withExplorerReactivationIntent(async () => {
+      const auth = await supabase.auth.verifyOtp({
+        email: address,
+        token,
+        type: "email",
+      });
+      const session = auth.data.session;
+      const reactivation = !auth.error && session
+        ? await reactivateExplorerForVerifiedSession({
+          accessToken: session.access_token,
+          userId: session.user.id,
+        })
+        : null;
+      return { auth, reactivation };
     });
-    if (error) return { ok: false, error: verifyFailureMessage(error.message) };
+    if (auth.error) {
+      return { ok: false, error: verifyFailureMessage(auth.error.message) };
+    }
+    if (!reactivation || reactivation.kind === "reactivation_failed") {
+      return { ok: false, error: "We couldn’t restart Explorer. Try again." };
+    }
     return { ok: true };
   } catch (err) {
     return {

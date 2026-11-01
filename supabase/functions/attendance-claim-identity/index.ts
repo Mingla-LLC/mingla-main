@@ -113,6 +113,16 @@ serve(async (req) => {
     );
     if (transferError) throw transferError;
 
+    // #4202 — the ordinary sweep above owns usable admission inventory and its
+    // chat side effects. Only after it settles do we reconnect retained ended,
+    // cancelled or refunded order history from the account's server-verified
+    // contacts. This separate rail cannot make an old ticket usable again.
+    const { error: retainedHistoryError } = await admin.rpc(
+      "issue_4202_reconnect_retained_orders",
+      { p_user_id: authData.user.id },
+    );
+    if (retainedHistoryError) throw retainedHistoryError;
+
     const result = data as {
       claimed?: Array<Record<string, unknown>>;
       more?: boolean;

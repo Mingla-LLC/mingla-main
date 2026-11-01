@@ -96,6 +96,7 @@ export default function CreatorContractScreen(): React.ReactElement {
         {terms ? <Text style={s.strong}>{formatMoney(terms.fee_minor, currency)} paid to you, already held by Mingla</Text> : null}
       </ProgramCard>
       {terms ? <TermsCard terms={terms} gig={w.gig} /> : null}
+      {w.rights ? <ProgramNotice text={`${w.rights.label}. You keep copyright; the standard licence is not a negotiable offer field.`} /> : null}
       {w.pending_topup ? <ProgramNotice text="The host accepted your counter and is paying the difference. You can accept once it’s paid." /> : null}
       {openCounter ? <ProgramCard>
         <Text style={s.label}>Your counter</Text>
@@ -197,6 +198,13 @@ export default function CreatorContractScreen(): React.ReactElement {
     {state === 'completed' ? <RatingCard workspace={w} busy={busy === 'rate'} error={errors.rate ?? null} onRate={(stars) => void act('rate', () => creatorGigsService.rate(contractId, stars))} /> : null}
 
     <Tracker state={state} terms={terms} acceptedAt={acceptedEvent?.at ?? null} releaseHint={(released && contractMoneyLine(w.money_state, w.money_paid_at)) || '48 hours after your posts are checked'} />
+    {w.rights ? <ProgramNotice text={w.rights.status === 'active'
+      ? 'Your full Creator fee was released. Mingla and the paying Host now have the perpetual organic and paid-marketing licence in your accepted agreement.'
+      : w.rights.status === 'not_granted'
+        ? 'The perpetual marketing licence was not granted for this gig.'
+        : w.rights.status === 'legacy'
+          ? `This older contract keeps its original ${w.rights.usage_days ?? ''}-day licence.`
+          : 'The perpetual marketing licence stays pending until your full Creator fee is released.'} /> : null}
     {terms ? <TermsCard terms={terms} gig={w.gig} /> : null}
     <TermsHistory terms={w.terms} />
 

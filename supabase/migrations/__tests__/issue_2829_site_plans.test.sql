@@ -268,9 +268,23 @@ BEGIN
     RAISE EXCEPTION 'a changed offering kept the old approval';
   END IF;
   v_rev := (v_result->'plan'->>'revision')::int;
+  -- #2830: choose the design on the setup plan before any site row exists.
+  v_result := public.brand_site_plan_save_design(v_brand,v_rev,'voyage','owner',NULL);
+  v_rev := (v_result->'plan'->>'revision')::int;
   v_result := public.brand_site_plan_save(v_brand, v_rev, jsonb_build_object('approve', true,
     'approved_plan', jsonb_build_object('pages', 'Home · Trips · About · Contact')));
   v_rev := (v_result->'plan'->>'revision')::int;
+
+  -- #2830: every recommended context field is resolved before the first
+  -- brand_sites row can be provisioned.
+  UPDATE public.brands SET
+    contact_email='hello@w9.example',contact_phone='+12125550100',
+    address='10 Orchard Street',city='Brooklyn',country_code='US',
+    social_links='{"website":"https://w9.example"}'::jsonb,
+    profile_photo_url='https://cdn.w9.example/logo.png',
+    cover_media_url='https://cdn.w9.example/cover.jpg',cover_media_type='image',
+    theme_color='#EA7825',theme_font='inter',theme_animation='none'
+  WHERE id=v_brand;
 
   -- ── build: needs a site; recorded only by the service ───────────────────
   v_failed := false;
@@ -309,8 +323,11 @@ BEGIN
   END IF;
   v_rev := (v_result->'plan'->>'revision')::int;
 
-  -- ── look: Studio's report, or a skip ────────────────────────────────────
-  IF (v_result->'status'->'parts'->2->>'done')::boolean THEN RAISE EXCEPTION 'look ticked before a save'; END IF;
+  -- ── look: pre-draft choice, then Studio's persisted mirror ───────────────
+  IF NOT (v_result->'status'->'parts'->2->>'done')::boolean
+    OR v_result->'plan'->>'design_key' <> 'voyage' THEN
+    RAISE EXCEPTION 'pre-draft design did not tick the look step';
+  END IF;
   PERFORM public.brand_site_record_look_saved(v_site, 'voyage');
   v_result := public.brand_site_plan_get(v_brand);
   IF NOT (v_result->'status'->'parts'->2->>'done')::boolean OR v_result->'site'->>'design_key' <> 'voyage' THEN

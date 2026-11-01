@@ -360,6 +360,7 @@ Deno.test("#3872 creator media playback grants are signed and expire after one h
 Deno.test("#4182 approved-master grants sign one MP4 path for fifteen minutes", async () => {
   const grant = await creatorDownloadUrl(
     "00000000-3872-4000-8000-000000000099",
+    1080,
     1920,
     {
       libraryId: "3872",
@@ -377,6 +378,76 @@ Deno.test("#4182 approved-master grants sign one MP4 path for fifteen minutes", 
   assertEquals(grant?.url.includes("play_1080p.mp4"), true);
   assertEquals(grant?.url.includes("token=HS256-"), true);
   assertEquals(grant?.url.includes("token-secret"), false);
+});
+
+Deno.test("#4182 approved-master rendition uses the source short edge", async () => {
+  const config = {
+    libraryId: "3872",
+    apiKey: "api",
+    accountApiKey: "account",
+    cdnHostname: "creator.example.test",
+    tokenKey: "token-secret",
+    webhookKey: "webhook-secret",
+    storageCapBytes: 100,
+    trafficCapBytes: 100,
+  };
+  const now = Date.parse("2026-10-26T12:00:00.000Z");
+  const portrait = await creatorDownloadUrl(
+    "00000000-3872-4000-8000-000000000099",
+    360,
+    640,
+    config,
+    now,
+  );
+  const landscape = await creatorDownloadUrl(
+    "00000000-3872-4000-8000-000000000099",
+    640,
+    360,
+    config,
+    now,
+  );
+  const portraitHd = await creatorDownloadUrl(
+    "00000000-3872-4000-8000-000000000099",
+    1080,
+    1920,
+    config,
+    now,
+  );
+  const missingWidth = await creatorDownloadUrl(
+    "00000000-3872-4000-8000-000000000099",
+    null,
+    1920,
+    config,
+    now,
+  );
+  const missingHeight = await creatorDownloadUrl(
+    "00000000-3872-4000-8000-000000000099",
+    1080,
+    null,
+    config,
+    now,
+  );
+  const missingDimensions = await creatorDownloadUrl(
+    "00000000-3872-4000-8000-000000000099",
+    null,
+    null,
+    config,
+    now,
+  );
+  const belowLowestRendition = await creatorDownloadUrl(
+    "00000000-3872-4000-8000-000000000099",
+    200,
+    400,
+    config,
+    now,
+  );
+  assertEquals(portrait?.url.includes("play_360p.mp4"), true);
+  assertEquals(landscape?.url.includes("play_360p.mp4"), true);
+  assertEquals(portraitHd?.url.includes("play_1080p.mp4"), true);
+  assertEquals(missingWidth, null);
+  assertEquals(missingHeight, null);
+  assertEquals(missingDimensions, null);
+  assertEquals(belowLowestRendition, null);
 });
 
 Deno.test("#3872 creator media webhook authenticates before write and promotes verified provider truth", async () => {

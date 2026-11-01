@@ -124,6 +124,59 @@ describe("#2829 W9a plan routes", () => {
   });
 });
 
+describe("#2830 Website brand-context manifest", () => {
+  it("keeps minimum plan completion separate from field-level readiness", () => {
+    const state = normalizeSitePlan(BRAND, answer({
+      plan: { revision: 9, design_key: "voyage" },
+      completeness: {
+        revision: 9,
+        design_key: "voyage",
+        required_gap_count: 0,
+        recommended_gap_count: 2,
+        gap_count: 2,
+        verified_count: 15,
+        exception_count: 1,
+        minimum_complete: true,
+        context_complete: false,
+        checked_at: "2026-10-30T22:00:00Z",
+        fields: [
+          {
+            key: "contact_phone",
+            label: "Contact phone",
+            group: "Contact",
+            requirement: "recommended",
+            state: "invalid",
+            value: "555-0100",
+            source_type: "owner",
+            owner_confirmed_at: "2026-10-30T21:00:00Z",
+          },
+          {
+            key: "cover_media",
+            label: "Cover media",
+            group: "Media",
+            requirement: "recommended",
+            state: "missing",
+            value: null,
+            human_action_required: true,
+          },
+        ],
+      },
+    }));
+    expect(state.plan?.designKey).toBe("voyage");
+    expect(state.completeness).toMatchObject({
+      minimumComplete: true,
+      contextComplete: false,
+      gapCount: 2,
+      requiredGapCount: 0,
+      recommendedGapCount: 2,
+    });
+    expect(state.completeness?.fields).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "contact_phone", state: "invalid", sourceType: "owner" }),
+      expect.objectContaining({ key: "cover_media", state: "missing", humanActionRequired: true }),
+    ]));
+  });
+});
+
 describe("#2829 W9a What you'll offer", () => {
   const render = (extra: Partial<SiteOfferingsViewProps>) => {
     const p: SiteOfferingsViewProps = {

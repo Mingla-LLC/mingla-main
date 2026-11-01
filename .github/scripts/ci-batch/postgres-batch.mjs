@@ -53,6 +53,28 @@ function objectCounts(port, credential, database) {
   return psql(port, credential, database, ["-At", "-v", "ON_ERROR_STOP=1", "-c", sql], { quiet: true });
 }
 
+export function waitForTemplateDrain(
+  readCount,
+  {
+    attempts = 10,
+    delayMs = 500,
+    sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms),
+  } = {},
+) {
+  let holders = "unknown";
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    holders = String(readCount()).trim();
+    if (holders === "0") return;
+    if (!/^\d+$/.test(holders)) {
+      throw new Error(`G-3: invalid template backend count: ${holders}`);
+    }
+    if (attempt < attempts) sleep(delayMs);
+  }
+  throw new Error(
+    `G-3: ${holders} backend(s) remain attached to the closed migrated template after ${attempts} drain checks`,
+  );
+}
+
 export function selectedPostgresSuites(manifest, klass, routeOptions = {}) {
   const candidates = expectedPrimarySuites(manifest, klass);
   if (!klass.startsWith(POSTGRES_CLASS_PREFIX) || !candidates.length || candidates.some((suite) => !isPostgresBatchSuite(suite))) {
@@ -134,9 +156,13 @@ export function setupPostgresBatch(manifest, klass, { port, credential, tempRoot
   psql(activePort, credential, "template1", ["-v", "ON_ERROR_STOP=1", "-c", "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='postgres' AND backend_type='pg_net 0.19.5 worker'"], { user: "supabase_admin" });
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_000);
   psql(activePort, credential, "template1", ["-v", "ON_ERROR_STOP=1", "-c", "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='postgres' AND backend_type='pg_cron launcher'"], { user: "supabase_admin" });
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_000);
-  const templateHolders = psql(activePort, credential, "template1", ["-At", "-v", "ON_ERROR_STOP=1", "-c", "SELECT count(*) FROM pg_stat_activity WHERE datname='postgres'"], { quiet: true });
-  if (templateHolders !== "0") throw new Error(`G-3: ${templateHolders} backend(s) remain attached to the closed migrated template`);
+  // pg_terminate_backend() returning true proves the signal was sent, not that
+  // the process has already disappeared from pg_stat_activity. Give the
+  // asynchronously exiting worker a short bounded drain window, while still
+  // failing closed unless the template reaches exactly zero attached backends.
+  waitForTemplateDrain(() =>
+    psql(activePort, credential, "template1", ["-At", "-v", "ON_ERROR_STOP=1", "-c", "SELECT count(*) FROM pg_stat_activity WHERE datname='postgres'"], { quiet: true })
+  );
   const databases = {};
   const additionalDatabases = {};
   try {

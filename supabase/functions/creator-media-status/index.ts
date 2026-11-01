@@ -35,6 +35,7 @@ export type MediaStatusRow = {
   aspect_warning: boolean | null;
   failure_code: string | null;
   ready_at: string | null;
+  width: number | null;
   height: number | null;
   delete_after: string | null;
 };
@@ -46,8 +47,13 @@ export type MediaStatusDeps = {
   isContractHost: (contractId: string, actorId: string) => Promise<boolean>;
   isAdmin: (actorId: string) => Promise<boolean>;
   isApprovedDelivery: (jobId: string, contractId: string) => Promise<boolean>;
+  hasActiveRights: (contractId: string) => Promise<boolean>;
   playback: (videoId: string) => Promise<unknown>;
-  download: (videoId: string, height: number | null) => Promise<unknown>;
+  download: (
+    videoId: string,
+    width: number | null,
+    height: number | null,
+  ) => Promise<unknown>;
 };
 
 const SHARED_WITH_CONTRACT = new Set(["delivery", "dispute_evidence"]);
@@ -100,9 +106,11 @@ export function createCreatorMediaStatusHandler(deps: MediaStatusDeps) {
     const approvedDelivery = contractHost && data.purpose === "delivery" &&
       data.contract_id !== null &&
       await deps.isApprovedDelivery(data.id, data.contract_id);
-    const download = approvedDelivery && data.status === "ready" &&
+    const activeRights = approvedDelivery && data.contract_id !== null &&
+      await deps.hasActiveRights(data.contract_id);
+    const download = activeRights && data.status === "ready" &&
         data.bunny_video_id
-      ? await deps.download(data.bunny_video_id, data.height)
+      ? await deps.download(data.bunny_video_id, data.width, data.height)
       : null;
     return json({
       jobId: data.id,
@@ -113,7 +121,11 @@ export function createCreatorMediaStatusHandler(deps: MediaStatusDeps) {
       readyAt: data.ready_at,
       playback,
       download,
-      availableUntil: approvedDelivery ? data.delete_after : null,
+      availableUntil: activeRights
+        ? null
+        : approvedDelivery
+        ? data.delete_after
+        : null,
     });
   };
 }
@@ -125,7 +137,7 @@ if (import.meta.main) {
     media: async (jobId) => {
       const { data, error } = await supabase.from("creator_media_jobs")
         .select(
-          "id,owner_id,purpose,status,contract_id,bunny_video_id,aspect_warning,failure_code,ready_at,height,delete_after",
+          "id,owner_id,purpose,status,contract_id,bunny_video_id,aspect_warning,failure_code,ready_at,width,height,delete_after",
         )
         .eq("id", jobId).maybeSingle();
       if (error) throw error;
@@ -154,6 +166,12 @@ if (import.meta.main) {
         .select("id").eq("media_job_id", jobId).eq("contract_id", contractId)
         .in("decision", ["approved", "auto_approved"]).maybeSingle();
       return !error && Boolean(data);
+    },
+    hasActiveRights: async (contractId) => {
+      const { data, error } = await supabase.rpc("gig_rights_status", {
+        p_contract_id: contractId,
+      });
+      return !error && data?.status === "active";
     },
     playback: creatorPlaybackUrl,
     download: creatorDownloadUrl,

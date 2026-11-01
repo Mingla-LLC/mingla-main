@@ -27,6 +27,7 @@ const mockSaveLook = jest.fn();
 const mockPush = jest.fn();
 const mockCopy = jest.fn((_value: string) => Promise.resolve());
 const mockPlanSave = jest.fn();
+const mockDesignSave = jest.fn();
 let mockDomains: Record<string, unknown> = {};
 let mockLook: Record<string, unknown> = { design: "voyage", tokens: {}, fonts: {}, revision: "r1" };
 
@@ -62,6 +63,7 @@ jest.mock("../../../../hooks/useBrandSite", () => ({
 }));
 jest.mock("../../../../sites/planApi", () => ({
   useSaveBrandSitePlan: () => ({ mutateAsync: mockPlanSave }),
+  useSaveBrandSitePlanDesign: () => ({ mutate: mockDesignSave, isPending: false }),
 }));
 jest.mock("../../../../sites/contentApi", () => {
   const actual = jest.requireActual("../../../../sites/contentApi");
@@ -205,6 +207,7 @@ beforeEach(() => {
   mockPush.mockClear();
   mockCopy.mockClear();
   mockPlanSave.mockReset();
+  mockDesignSave.mockReset();
   mockDomains = domainsOf([SUBDOMAIN]);
   mockLook = { design: "voyage", tokens: {}, fonts: {}, revision: "r1" };
 });
@@ -251,6 +254,7 @@ describe("#2830 terminal publication recovery (Publish & history)", () => {
     press(root, "publish-reconcile");
     expect(value.controller.actions.onReconcilePublication).toHaveBeenCalledTimes(1);
   });
+
 });
 
 describe("#2830 state 4: the draft is being created", () => {
@@ -459,12 +463,62 @@ describe("W9a Setup plan", () => {
     const { root, value } = render(<PlanSection part={null} planState={plan(true)} />);
     await act(async () => { (pressable(root, "plan-ari-story")!.props.onPress as () => void)(); });
     expect(mockPlanSave).toHaveBeenCalledWith({ revision: 7, patch: { active_part: "story" } });
-    expect(mockPush).toHaveBeenCalledWith("/brand/b/website/ari");
+    expect(mockPush).toHaveBeenCalledWith("/brand/b/website/ari?intent=setup&part=story");
     mockPush.mockClear();
     mockPlanSave.mockRejectedValueOnce(new BrandSitesError("REVISION_CONFLICT", "Someone else changed the plan. Here is the latest.", false));
     await act(async () => { (pressable(root, "plan-ari-build")!.props.onPress as () => void)(); });
     expect(mockPush).not.toHaveBeenCalled();
     expect(value.toast).toHaveBeenCalledWith("Someone else changed the plan. Here is the latest.", "error");
+  });
+
+  it("shows field-level gaps with both Ari-owned and self-service paths", async () => {
+    mockPlanSave.mockResolvedValueOnce({});
+    const state = plan(true, {
+      completeness: {
+        revision: 7,
+        designKey: "voyage",
+        fields: [
+          { key: "contact_phone", label: "Contact phone", group: "Contact", requirement: "recommended", state: "invalid", value: "555", sourceType: "owner", sourceRef: null, sourceUrl: null, observedAt: null, ownerConfirmedAt: null, exceptionReason: null, humanActionRequired: false },
+          { key: "cover_media", label: "Cover media", group: "Media", requirement: "recommended", state: "missing", value: null, sourceType: null, sourceRef: null, sourceUrl: null, observedAt: null, ownerConfirmedAt: null, exceptionReason: null, humanActionRequired: true },
+        ],
+        requiredGapCount: 0,
+        recommendedGapCount: 2,
+        gapCount: 2,
+        verifiedCount: 15,
+        exceptionCount: 0,
+        minimumComplete: true,
+        contextComplete: false,
+        checkedAt: "2026-10-30T22:00:00Z",
+      },
+    });
+    const { root } = render(<PlanSection part={null} planState={state} />);
+    expect(has(root, "plan-context-gaps")).toBe(true);
+    expect(has(root, "plan-gaps-ari")).toBe(true);
+    expect(has(root, "plan-gaps-self")).toBe(true);
+    press(root, "plan-see-gaps");
+    expect(textOf(root)).toContain("needs your upload");
+    press(root, "plan-gaps-self");
+    expect(mockPush).toHaveBeenCalledWith("/brand/b/edit");
+    await act(async () => { (pressable(root, "plan-gaps-ari")!.props.onPress as () => void)(); });
+    expect(mockPlanSave).toHaveBeenCalledWith({ revision: 7, patch: { active_part: "brand" } });
+    expect(mockPush).toHaveBeenCalledWith("/brand/b/website/ari?intent=setup&part=brand");
+  });
+
+  it("chooses a design in the shared plan before any site exists", () => {
+    const state = plan(true, {
+      doneCount: 2,
+      plan: { revision: 7, designKey: null, skippedParts: [] } as unknown as SitePlanState["plan"],
+      site: null,
+    });
+    const { root } = render(<PlanSection part="look" planState={state} />);
+    expect(has(root, "plan-design-part")).toBe(true);
+    expect(textOf(root)).toContain("No draft yet");
+    press(root, "plan-design-voyage");
+    press(root, "plan-design-save");
+    expect(mockDesignSave).toHaveBeenCalledWith(
+      { revision: 7, designKey: "voyage" },
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    );
   });
 });
 

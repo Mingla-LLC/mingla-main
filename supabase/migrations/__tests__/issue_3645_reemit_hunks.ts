@@ -20,7 +20,7 @@ export interface Reemit {
   sourceFn?: string;
   /** Migration holding the latest definition before #3645. */
   source: string;
-  /** #3645 migration that re-emits it. */
+  /** Migration that carries the terminal #3645-authorised re-emit. */
   target: string;
   hunks: Hunk[];
 }
@@ -28,6 +28,8 @@ export interface Reemit {
 const M2 = "supabase/migrations/20280202003645_issue_3645_paystack_plan_rpcs.sql";
 const M3 = "supabase/migrations/20280203003645_issue_3645_installment_capability_and_visibility.sql";
 const M4 = "supabase/migrations/20280204003645_issue_3645_installment_refunds_disputes_payouts.sql";
+const BY_DATE_REEMIT =
+  "supabase/migrations/20280216003282_issue_3281_by_date_quantities_paystack_reemit.sql";
 
 const PS = "public.issue_3645_finalize_is_paystack(p_stripe_payment_intent_id, p_stripe_charge_id)";
 
@@ -52,8 +54,8 @@ const PROJECTION_JOIN: Hunk = {
 export const REEMITS: Reemit[] = [
   {
     fn: "issue_1930_ticket_checkout_finalize_base",
-    source: "supabase/migrations/20271128013827_issue_3827_guest_list_comps.sql",
-    target: M2,
+    source: "supabase/migrations/20271224003281_issue_3281_by_date_quantities.sql",
+    target: BY_DATE_REEMIT,
     hunks: [
       {
         name: "B replay backfill guard",

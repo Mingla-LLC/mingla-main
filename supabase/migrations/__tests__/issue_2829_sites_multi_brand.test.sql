@@ -14,6 +14,7 @@
 -- changes after insert, and no migration writes a 'local' row.
 
 \set ON_ERROR_STOP on
+\ir issue_2830_complete_brand_setup.fixture.sql
 BEGIN;
 
 DO $test$
@@ -366,6 +367,9 @@ BEGIN
   BEGIN PERFORM public.brand_site_provision(v_brand_d, gen_random_uuid(), repeat('1', 64));
   EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM = 'sites_forbidden'; END;
   IF NOT v_failed THEN RAISE EXCEPTION 'an explicitly revoked brand provisioned a site'; END IF;
+
+  PERFORM pg_temp.issue_2830_complete_brand_setup(v_brand_a, v_owner);
+  PERFORM pg_temp.issue_2830_complete_brand_setup(v_brand_b, v_owner);
 
   v_result := public.brand_site_propose_label(v_brand_a);
   IF v_result->>'label' <> 'w1-cafe-nono' OR v_result->>'hostname' <> 'w1-cafe-nono.sites.usemingla.com' THEN

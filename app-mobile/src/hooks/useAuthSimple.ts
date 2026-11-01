@@ -6,7 +6,10 @@ import {
   statusCodes,
 } from "@react-native-google-signin/google-signin";
 import * as AppleAuthentication from "expo-apple-authentication";
-import { supabase } from "../services/supabase";
+import {
+  requestOwnExplorerProfileForAuthEvent,
+  supabase,
+} from "../services/supabase";
 import { realtimeService } from "../services/realtimeService";
 import { useAppStore } from "../store/appStore";
 import { User } from "../types";
@@ -26,12 +29,26 @@ import { performPrivateAuthCleanup, signOutWithPrivateCleanup, signOutWithoutPri
 // from fixed i18n keys, never from a caught error's message. Non-hook accessor,
 // same specifier depth as AppStateManager.tsx.
 import i18n from "../i18n";
+// #4202 [explorer-account-deletion] — only an explicit new sign-in may restart
+// a deleted Explorer side while a retained Creator/Business identity survives.
+import {
+  captureExplorerReactivationGeneration,
+  captureExplorerReactivationIntentForAuthEvent,
+  isExplorerReactivationIntentActive,
+  resolveExplorerProfileAfterAuthEvent,
+  shouldDeferDeletedExplorerSessionForAuthEvent,
+  shouldDeferDeletedExplorerSessionSince,
+} from "../utils/explorerReactivation";
 
 
 // Module-level flag — shared across ALL instances of useAuthSimple.
 // Prevents duplicate SIGNED_OUT handling when multiple hook instances are mounted.
 // Placed after imports so ESLint import/first rule is satisfied.
 let _isHandlingSignOut = false;
+
+type ExplorerAuthProfile = User & {
+  explorer_deleted_at?: string | null;
+};
 
 // Configure Google Sign-In
 const webClientId =
@@ -249,6 +266,10 @@ export const useAuthSimple = () => {
     isMountedRef.current = true;
 
     const initializeAuth = async () => {
+      // #4202 [explorer-account-deletion] — begin initialization generation capture.
+      const explorerReactivationGeneration =
+        captureExplorerReactivationGeneration();
+      // #4202 [explorer-account-deletion] — end initialization generation capture.
       try {
         logger.auth('Initializing — fetching session...');
         // RELIABILITY: Enter 401 grace period BEFORE getSession() on cold start.
@@ -444,6 +465,19 @@ export const useAuthSimple = () => {
               }
             } else if (profile) {
               if (profile.explorer_deleted_at) {
+                // #4202 [explorer-account-deletion] — begin initialization race guard.
+                if (
+                  isExplorerReactivationIntentActive() ||
+                  shouldDeferDeletedExplorerSessionSince(
+                    explorerReactivationGeneration,
+                  )
+                ) {
+                  logger.auth(
+                    'Initial deleted-profile read deferred for explicit Explorer sign-in',
+                  );
+                  return;
+                }
+                // #4202 [explorer-account-deletion] — end initialization race guard.
                 logger.auth('Explorer side deleted — signing out consumer session');
                 await signOutWithPrivateCleanup(
                   "explorer-side-deleted",
@@ -494,6 +528,17 @@ export const useAuthSimple = () => {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       logger.auth(`Auth state change: ${event}`, { hasSession: !!session, userId: session?.user?.id });
+      // #4202 [explorer-account-deletion] — begin synchronous intent capture.
+      // Capture this while the initiating auth method is still awaiting its
+      // subscribers. SIGNED_IN by itself is not explicit intent: Supabase also
+      // emits it when an existing session is re-established on app focus.
+      const explorerReactivationIntentConfirmed =
+        captureExplorerReactivationIntentForAuthEvent(event);
+      const explorerReactivationGeneration =
+        captureExplorerReactivationGeneration();
+      const deferDeletedExplorerSessionSignOut =
+        shouldDeferDeletedExplorerSessionForAuthEvent(event);
+      // #4202 [explorer-account-deletion] — end synchronous intent capture.
 
       // RELIABILITY: On TOKEN_REFRESHED, invalidate ALL React Query queries so they
       // refetch with the new valid JWT. Without this, Android cold-start with expired
@@ -538,18 +583,84 @@ export const useAuthSimple = () => {
         // The Supabase SDK's _notifyAllSubscribers() AWAITS this callback.
         // A direct `await supabase.from()` here would call getSession() which
         // awaits initializePromise — circular deadlock (see I-AUTH-CB-01 above).
-        // setTimeout(0) breaks out of the await chain: by the time the deferred
-        // function runs, _notifyAllSubscribers has already resolved this callback,
-        // initializePromise has completed, and getSession() works normally.
+        // setTimeout(0) breaks out of the callback's deadlock chain. It does NOT
+        // guarantee that every request builder on the shared client has observed
+        // the new bearer yet, so the #4202 profile gate below uses the access
+        // token captured on this auth event explicitly.
         setTimeout(async () => {
           if (!mounted) return;
           try {
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("*")
-              .eq("id", session.user.id)
-              .single();
-            if (profile && mounted) setProfile(profile);
+            // #4202 [explorer-account-deletion] — begin explicit reactivation gate.
+            const { data: profile, error: profileError } =
+              await requestOwnExplorerProfileForAuthEvent<ExplorerAuthProfile>({
+                accessToken: session.access_token,
+                userId: session.user.id,
+                reactivate: false,
+              });
+            if (profileError || !profile) {
+              console.error("Profile load in auth callback failed:", profileError);
+              return;
+            }
+
+            const resolution = await resolveExplorerProfileAfterAuthEvent(
+              explorerReactivationIntentConfirmed,
+              profile,
+              () => requestOwnExplorerProfileForAuthEvent<ExplorerAuthProfile>({
+                accessToken: session.access_token,
+                userId: session.user.id,
+                reactivate: true,
+              }),
+            );
+
+            if (resolution.kind === "deleted_session") {
+              if (
+                deferDeletedExplorerSessionSignOut ||
+                isExplorerReactivationIntentActive() ||
+                shouldDeferDeletedExplorerSessionSince(
+                  explorerReactivationGeneration,
+                )
+              ) {
+                logger.auth(
+                  "Passive auth event deferred while explicit Explorer sign-in resolves",
+                  { event },
+                );
+                return;
+              }
+              logger.auth("Deleted Explorer session cannot reactivate implicitly");
+              await signOutWithPrivateCleanup(
+                "explorer-side-deleted-stale-session",
+                session.user.id,
+              );
+              if (mounted) {
+                setAuth(null);
+                setProfile(null);
+              }
+              return;
+            }
+
+            if (resolution.kind === "reactivation_failed") {
+              reportNonFatal(
+                "auth.explorerReactivation",
+                new Error("explorer_reactivation_failed"),
+                { event, reason: "profile_update_failed" },
+              );
+              await signOutWithPrivateCleanup(
+                "explorer-reactivation-failed",
+                session.user.id,
+              );
+              if (mounted) {
+                setAuth(null);
+                setProfile(null);
+                Alert.alert(
+                  "Couldn’t restart Explorer",
+                  "Please sign in again. Your other Mingla account information is safe.",
+                );
+              }
+              return;
+            }
+
+            if (mounted) setProfile(resolution.profile);
+            // #4202 [explorer-account-deletion] — end explicit reactivation gate.
           } catch (e) {
             console.error("Profile load in auth callback failed:", e);
           }

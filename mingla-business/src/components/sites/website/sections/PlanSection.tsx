@@ -9,6 +9,7 @@ import { firstOfferingRoute } from "../../../../sites/planRoutes";
 import { OfferingsPart } from "../../plan/OfferingsPart";
 import { StoryPart } from "../../plan/StoryPart";
 import { BuildPart } from "../../plan/BuildPart";
+import { PlanDesignPart } from "../../plan/PlanDesignPart";
 import type { SitePlanState } from "../../../../sites/sitePlanState";
 import { PLAN_PARTS, type PlanPartKey } from "../../../../../../packages/site-contracts/src/sitePlan.ts";
 import { BrandSitesError } from "../../../../services/brandSitesService";
@@ -45,6 +46,7 @@ export function PlanSection({ part, planState }: { part: string | null; planStat
   const router = useRouter();
   const save = useSaveBrandSitePlan(brandId);
   const [busy, setBusy] = useState<string | null>(null);
+  const [showGaps, setShowGaps] = useState(false);
 
   if (part === "offer") return <OfferingsPart brandId={brandId} embedded />;
   if (part === "story") return <StoryPart brandId={brandId} step="questions" embedded />;
@@ -53,6 +55,9 @@ export function PlanSection({ part, planState }: { part: string | null; planStat
 
   if (!planState) {
     return <View role="status" accessibilityLabel="Loading your setup plan"><Skeleton height={32} width="40%" style={{ marginBottom: 16 }} /><Skeleton height={300} /></View>;
+  }
+  if (part === "look") {
+    return <PlanDesignPart brandId={brandId} planState={planState} />;
   }
   const parts = planState.parts.length ? planState.parts : PLAN_PARTS.map((entry) => ({ key: entry.key, done: false, skipped: false, optional: entry.optional }));
   const doneCount = planState.doneCount;
@@ -64,11 +69,20 @@ export function PlanSection({ part, planState }: { part: string | null; planStat
   // lock this member can look but not change anything.
   const paused = planState.site?.paused === true;
   const readOnly = paused || ctx.lock.heldByOther;
+  const completeness = planState.completeness;
+  const gaps = completeness?.fields.filter(
+    (field) =>
+      field.requirement !== "optional" &&
+      field.state !== "verified" &&
+      field.state !== "not_applicable",
+  ) ?? [];
 
   const withAri = (key: PlanPartKey) => {
     setBusy(`ari:${key}`);
     save.mutateAsync({ revision: planState.plan?.revision ?? 0, patch: { active_part: key } })
-      .then(() => router.push(`/brand/${brandId}/website/ari` as never))
+      .then(() => router.push(
+        `/brand/${brandId}/website/ari?intent=setup&part=${encodeURIComponent(key)}` as never,
+      ))
       .catch((error: unknown) => toast(error instanceof BrandSitesError ? error.message : "Ari couldn’t be pointed at this part. Try again.", "error"))
       .finally(() => setBusy(null));
   };
@@ -91,7 +105,8 @@ export function PlanSection({ part, planState }: { part: string | null; planStat
         router.push(`/brand/${brandId}/edit` as never);
         return;
       case "look":
-        ctx.go({ kind: "section", section: "design" });
+        if (planState.site) ctx.go({ kind: "section", section: "design" });
+        else ctx.go({ kind: "section", section: "plan", planPart: "look" });
         return;
       case "publish":
         ctx.go({ kind: "section", section: "publish" });
@@ -128,6 +143,61 @@ export function PlanSection({ part, planState }: { part: string | null; planStat
           {readOnly || (!canManage && OWNER_PARTS.has(next)) ? null : <WButton label="Continue" size="sm" onPress={() => myself(next)} testID="plan-started-continue" />}
         </Banner>
       ) : null}
+      {completeness && completeness.gapCount > 0 ? (
+        <Banner
+          tone="warn"
+          icon="alert"
+          title={`${completeness.gapCount} brand context ${completeness.gapCount === 1 ? "gap" : "gaps"} to resolve`}
+          body="A plan tick means the minimum is present. These details still need a verified value or your explicit not-applicable decision before the first draft can be built."
+          testID="plan-context-gaps"
+        >
+          <View style={styles.gapActions}>
+            <WButton
+              label={showGaps ? "Hide gaps" : "See gaps"}
+              size="sm"
+              variant="secondary"
+              onPress={() => setShowGaps((value) => !value)}
+              testID="plan-see-gaps"
+            />
+            <WButton
+              label="Continue with Ari"
+              icon="spark"
+              size="sm"
+              onPress={() => withAri("brand")}
+              loading={busy === "ari:brand"}
+              testID="plan-gaps-ari"
+            />
+            <WButton
+              label="Add it myself"
+              size="sm"
+              variant="primary"
+              onPress={() => router.push(`/brand/${brandId}/edit` as never)}
+              testID="plan-gaps-self"
+            />
+          </View>
+          {showGaps ? (
+            <View style={styles.gapList} testID="plan-gap-list">
+              {gaps.map((field) => (
+                <View key={field.key} style={styles.gapRow}>
+                  <Text style={styles.gapLabel}>{field.label}</Text>
+                  <Text style={styles.gapState}>
+                    {field.state.replace("_", " ")}
+                    {field.humanActionRequired ? " · needs your upload" : ""}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </Banner>
+      ) : completeness?.contextComplete ? (
+        <Banner
+          tone="info"
+          icon="check"
+          title="Brand context is complete"
+          body={`${completeness.verifiedCount} fields verified${completeness.exceptionCount ? ` · ${completeness.exceptionCount} explicit exceptions` : ""}. Ari will re-check this before Build your pages.`}
+          testID="plan-context-complete"
+        />
+      ) : null}
       <ListBox>
         {parts.map((entry) => {
           const isNext = entry.key === next;
@@ -141,8 +211,15 @@ export function PlanSection({ part, planState }: { part: string | null; planStat
                   <Text style={styles.title}>{partName(entry.key)}</Text>
                   {isNext ? <Chip label="Next" tone="accent" /> : null}
                   {entry.optional && !entry.done ? <Chip label="Optional" /> : null}
+                  {entry.key === "brand" && entry.done && (completeness?.gapCount ?? 0) > 0
+                    ? <Chip label={`${completeness?.gapCount ?? 0} gaps`} tone="warn" />
+                    : null}
                 </View>
-                <Text style={styles.sub}>{entry.done ? (entry.skipped ? "Skipped" : live ? "Done" : "Done · you can change it any time") : meta?.duration ?? ""}</Text>
+                <Text style={styles.sub}>{entry.done
+                  ? entry.key === "brand" && (completeness?.gapCount ?? 0) > 0
+                    ? `Minimum done · ${completeness?.gapCount ?? 0} website-ready gaps`
+                    : (entry.skipped ? "Skipped" : live ? "Done" : "Done · you can change it any time")
+                  : meta?.duration ?? ""}</Text>
               </View>
               <View style={styles.actions}>
                 {entry.done ? (
@@ -174,5 +251,10 @@ const styles = StyleSheet.create({
   title: { fontSize: 14, fontWeight: "600", color: ui.t1 },
   sub: { fontSize: 12.5, lineHeight: 17, color: ui.t3 },
   actions: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  gapActions: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 12 },
+  gapList: { marginTop: 12, gap: 8 },
+  gapRow: { flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" },
+  gapLabel: { color: ui.t1, fontSize: 13, fontWeight: "600" },
+  gapState: { color: ui.t3, fontSize: 12.5, textTransform: "capitalize" },
   help: { marginTop: 12 },
 });

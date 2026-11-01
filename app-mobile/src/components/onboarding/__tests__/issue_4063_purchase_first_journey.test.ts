@@ -9,7 +9,7 @@ const flow = readFileSync(resolve(here, "../../OnboardingFlow.tsx"), "utf8");
 const welcome = readFileSync(resolve(here, "../../signIn/WelcomeScreen.tsx"), "utf8");
 
 test("purchase-first OTP and ticket reassurance cannot complete onboarding early", () => {
-  assert.ok(flow.includes("if (onboardingMode === 'ticket_first')"));
+  assert.ok(flow.includes("showTicketConfirmation: foundItems.length > 0"));
   assert.ok(flow.includes("goToSubStep('tickets_found')"));
   assert.ok(flow.includes("onContinue={goNext}"));
   assert.ok(!flow.includes("completeTicketFirst"));

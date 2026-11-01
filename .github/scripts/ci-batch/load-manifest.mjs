@@ -83,7 +83,32 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281: re-sealed after PR7 public schedule-card migrations and structural
 // proofs entered the preserved inventories, with exact exclusions from the
 // deliberately pre-#1931 historical replay.
-export const BOOTSTRAP_SHA256 = "4155990d6c7fb4b9d4943a8ac11e663848070eae15e43bcbe7ead09282cfecd0";
+// #4202 / #4203: re-sealed after the retained-purchase and hidden-event read
+// migration plus its registered PostgreSQL proof entered the three preserved
+// full-history inventories.
+// #3281 / #3645: re-sealed after the terminal by-date + Paystack finalizer
+// re-emit entered those inventories and their filtered historical replays.
+// #3281: re-sealed after the production-order repair and its proofs entered
+// those inventories and the same filtered historical replays.
+// #4202: re-sealed after the Explorer phone-identity release migration entered
+// the three preserved full-history inventories. Its executable proof stays in
+// the already-registered #4202/#4203 PostgreSQL suite.
+// #4202: re-sealed after the Local audit-row auth detach entered the same
+// inventories with its self-registered PostgreSQL retention proof.
+// #4202: re-sealed after the retry-safe auth.users phone-release migration
+// and its self-registered PostgreSQL proof entered those inventories.
+// #4202: re-sealed after the GoTrue pending-phone sentinel repair entered the
+// same inventories and extended the existing phone-release proof.
+// #4202: re-sealed after retained shared identities gained the reviewed
+// already-owned event-chat repair in those same inventories and proof suite.
+// #2830: re-sealed after the Ari brand-completeness migration and registered
+// PostgreSQL proof entered the three preserved inventories, with the migration
+// excluded by exact filename from the pre-#1931 replay that omits its #3355
+// control-plane prerequisite.
+// #4216: re-sealed after the Creator rights migration entered the same three
+// full-history replay inventories and gained an exact-file exclusion from the
+// deliberately pre-#1931 replay that has no Creator/gig schema.
+export const BOOTSTRAP_SHA256 = "9793619c2c320ce08028e2bac794ee14619eae6ef26a5c4e8b35b66563dc3ce6";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

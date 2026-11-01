@@ -15,6 +15,44 @@ export type SitePlanPart = { key: PlanPartKey; done: boolean; skipped: boolean; 
 
 export type SitePlanStory = { who?: string; why?: string; main_action?: string };
 
+export type BrandContextFieldState =
+  | "missing"
+  | "invalid"
+  | "stale"
+  | "conflict"
+  | "verified"
+  | "not_applicable";
+
+export type BrandContextField = {
+  key: string;
+  label: string;
+  group: string;
+  requirement: "required" | "recommended" | "optional";
+  state: BrandContextFieldState;
+  value: unknown;
+  sourceType: "mingla" | "owner" | "public_research" | "imported" | null;
+  sourceRef: string | null;
+  sourceUrl: string | null;
+  observedAt: string | null;
+  ownerConfirmedAt: string | null;
+  exceptionReason: string | null;
+  humanActionRequired: boolean;
+};
+
+export type BrandContextCompleteness = {
+  revision: number;
+  designKey: string | null;
+  fields: BrandContextField[];
+  requiredGapCount: number;
+  recommendedGapCount: number;
+  gapCount: number;
+  verifiedCount: number;
+  exceptionCount: number;
+  minimumComplete: boolean;
+  contextComplete: boolean;
+  checkedAt: string | null;
+};
+
 export type SitePlanState = {
   brandId: string;
   entitled: boolean;
@@ -23,6 +61,7 @@ export type SitePlanState = {
   site: { id: string; status: string; designKey: string | null; published: boolean; paused: boolean } | null;
   plan: {
     revision: number;
+    designKey: string | null;
     offeringsSelected: string[] | null;
     venueDescriptor: string | null;
     story: SitePlanStory | null;
@@ -41,6 +80,7 @@ export type SitePlanState = {
   prefillOfferings: string[] | null;
   liveCounts: { trips: number; events: number; experiences: number };
   lock: { active: boolean; heldByMe: boolean; holderName: string | null; expiresAt: string | null };
+  completeness: BrandContextCompleteness | null;
 };
 
 type Raw = Record<string, unknown>;
@@ -58,6 +98,7 @@ export function normalizeSitePlan(brandId: string, value: unknown): SitePlanStat
   const status = obj(raw.status);
   const lock = obj(raw.lock);
   const counts = obj(raw.live_counts);
+  const completeness = raw.completeness ? obj(raw.completeness) : null;
   const parts: SitePlanPart[] = (Array.isArray(status.parts) ? status.parts : [])
     .map(obj)
     .filter((part) => isPart(part.key))
@@ -74,6 +115,7 @@ export function normalizeSitePlan(brandId: string, value: unknown): SitePlanStat
     plan: plan
       ? {
         revision: num(plan.revision),
+        designKey: str(plan.design_key),
         offeringsSelected: strings(plan.offerings_selected),
         venueDescriptor: str(plan.venue_descriptor),
         story: story
@@ -100,6 +142,44 @@ export function normalizeSitePlan(brandId: string, value: unknown): SitePlanStat
       holderName: str(lock.holder_name),
       expiresAt: str(lock.expires_at),
     },
+    completeness: completeness
+      ? {
+        revision: num(completeness.revision),
+        designKey: str(completeness.design_key),
+        fields: (Array.isArray(completeness.fields) ? completeness.fields : [])
+          .map(obj)
+          .filter((field) => typeof field.key === "string")
+          .map((field) => ({
+            key: String(field.key),
+            label: String(field.label ?? field.key),
+            group: String(field.group ?? "Brand"),
+            requirement: field.requirement === "required" || field.requirement === "optional"
+              ? field.requirement
+              : "recommended",
+            state: ["missing", "invalid", "stale", "conflict", "verified", "not_applicable"].includes(String(field.state))
+              ? field.state as BrandContextFieldState
+              : "missing",
+            value: field.value,
+            sourceType: ["mingla", "owner", "public_research", "imported"].includes(String(field.source_type))
+              ? field.source_type as BrandContextField["sourceType"]
+              : null,
+            sourceRef: str(field.source_ref),
+            sourceUrl: str(field.source_url),
+            observedAt: str(field.observed_at),
+            ownerConfirmedAt: str(field.owner_confirmed_at),
+            exceptionReason: str(field.exception_reason),
+            humanActionRequired: field.human_action_required === true,
+          })),
+        requiredGapCount: num(completeness.required_gap_count),
+        recommendedGapCount: num(completeness.recommended_gap_count),
+        gapCount: num(completeness.gap_count),
+        verifiedCount: num(completeness.verified_count),
+        exceptionCount: num(completeness.exception_count),
+        minimumComplete: completeness.minimum_complete === true,
+        contextComplete: completeness.context_complete === true,
+        checkedAt: str(completeness.checked_at),
+      }
+      : null,
   };
 }
 

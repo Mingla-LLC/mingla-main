@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3281_production_order_repair.structural.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3281-production-order-repair-structural",
+  "profile": "deno-2-unit"
+}

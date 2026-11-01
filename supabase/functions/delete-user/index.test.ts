@@ -33,3 +33,30 @@ Deno.test("#668 migration adds explorer_deleted_at + unblocks actor FKs", async 
   assert(sql.includes("marketing_campaigns_account_id_fkey"));
   assertEquals(sql.includes("ON DELETE RESTRICT"), false);
 });
+
+Deno.test("#4202 delete-user uses the live place_reviews schema for Explorer scrubbing", async () => {
+  const source = await Deno.readTextFile(DELETE_USER);
+  assert(source.includes('.from("place_reviews")'));
+  assert(source.includes("feedback_text: null"));
+  assertEquals(source.includes("audio_urls: []"), false);
+  assertEquals(source.includes("audio_durations_seconds: []"), false);
+  assertEquals(source.includes("transcription: null"), false);
+  assertEquals(source.includes("ai_summary: null"), false);
+});
+
+Deno.test("#4202 phone release falls back to the retained auth identity", async () => {
+  const source = await Deno.readTextFile(DELETE_USER);
+  assert(source.includes("profileData?.phone ?? user.phone"));
+  assert(source.includes('identity.provider === "phone"'));
+});
+
+Deno.test("#4202 Explorer deletion preserves purchases for verified-identity reclaim", async () => {
+  const source = await Deno.readTextFile(SHARED);
+  const explorerPurge = source.slice(
+    source.indexOf("export async function purgeExplorerSideData"),
+    source.indexOf("function asArray"),
+  );
+
+  assertEquals(explorerPurge.includes('.from("orders").delete()'), false);
+  assertEquals(explorerPurge.includes('.from("tickets").delete()'), false);
+});

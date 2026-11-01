@@ -893,13 +893,9 @@ export const createTicketCheckout = async (
         ticketTypeId: line.ticketTypeId,
         quantity: line.quantity,
         expectedUnitPriceCents: centsFromMajor(line.unitPrice),
-        // issue #3281 PR10 — optional per-date map; omit when absent so
-        // uniform carts stay byte-identical to today.
-        ...(line.byDate !== undefined &&
-        line.byDate !== null &&
-        Object.keys(line.byDate).length > 0
-          ? { byDate: line.byDate }
-          : {}),
+        // issue #3281 PR10 — JSON serialization omits undefined, so uniform
+        // carts keep the same wire body while per-date carts forward the map.
+        byDate: line.byDate,
         ...(isCheckoutV2
           ? { paymentPlanChoice: explicitV2PlanChoice(line.ticketTypeId) }
           : {}),

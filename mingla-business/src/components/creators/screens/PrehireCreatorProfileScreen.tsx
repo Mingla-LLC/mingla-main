@@ -264,7 +264,7 @@ export default function PrehireCreatorProfile(): React.ReactElement {
                     key={item.id}
                     compact
                     title={formatName(item.format_key)}
-                    subtitle={`${item.turnaround_days} day${item.turnaround_days === 1 ? "" : "s"} · reuse ${item.includes_usage_days} days`}
+                    subtitle={`${item.turnaround_days} day${item.turnaround_days === 1 ? "" : "s"} · perpetual marketing rights after full fee release`}
                     right={programMoney(item.price_minor, item.currency)}
                     chevron={false}
                   />

@@ -1,15 +1,32 @@
 import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useQuery } from "@tanstack/react-query";
+
+import { buyerReferralKeys } from "../../hooks/queryKeys";
 import { shareCanonicalFallback } from "../../services/contentShareAdapter";
 import { fetchBuyerReferralLink } from "../../services/referralEarningsService";
 import { mixpanelService } from "../../services/mixpanelService";
+import { useAppStore } from "../../store/appStore";
 
 export interface EarnBySharingCardProps {
   listingKind: "event" | "venue";
   listingId: string;
   title: string;
   compact?: boolean;
-  onUnavailable?: () => void;
+}
+
+function rewardLine(link: {
+  rewardKind: string;
+  shareBps: number | null;
+  perkText: string | null;
+}): string {
+  if (link.rewardKind === "cash") {
+    return `Earn ${(link.shareBps ?? 0) / 100}% when an eligible friend books.`;
+  }
+  if (link.rewardKind === "perk") {
+    return link.perkText ?? "Unlock a host perk when friends book.";
+  }
+  return "Earn a future-order voucher when an eligible friend books.";
 }
 
 export const EarnBySharingCard: React.FC<EarnBySharingCardProps> = ({
@@ -17,26 +34,28 @@ export const EarnBySharingCard: React.FC<EarnBySharingCardProps> = ({
   listingId,
   title,
   compact = false,
-  onUnavailable,
 }) => {
+  const userId = useAppStore((state) => state.user?.id ?? null);
+  const offer = useQuery({
+    queryKey: buyerReferralKeys.link(
+      userId ?? "none",
+      listingKind,
+      listingId,
+    ),
+    queryFn: () => fetchBuyerReferralLink({ listingKind, listingId }),
+    enabled: userId !== null,
+    staleTime: 60_000,
+    retry: 1,
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const share = useCallback(async () => {
-    if (busy) return;
+    const link = offer.data;
+    if (busy || !link) return;
     setBusy(true);
     setError(null);
     try {
-      const link = await fetchBuyerReferralLink({ listingKind, listingId });
-      if (!link) {
-        onUnavailable?.();
-        setError("This experience does not have an earning offer right now.");
-        return;
-      }
-      const reward = link.rewardKind === "cash"
-        ? `Earn ${(link.shareBps ?? 0) / 100}% when an eligible friend books.`
-        : link.rewardKind === "perk"
-          ? link.perkText ?? "Unlock a host perk when friends book."
-          : "Earn a future-order voucher when an eligible friend books.";
+      const reward = rewardLine(link);
       await shareCanonicalFallback({
         title,
         message: `${title}\n${reward}\n${link.url}`,
@@ -51,17 +70,17 @@ export const EarnBySharingCard: React.FC<EarnBySharingCardProps> = ({
     } finally {
       setBusy(false);
     }
-  }, [busy, compact, listingId, listingKind, onUnavailable, title]);
+  }, [busy, compact, listingKind, offer.data, title]);
+
+  if (!offer.data) return null;
+
+  const reward = rewardLine(offer.data);
 
   return (
     <View style={[styles.card, compact && styles.compact]} testID="earn-by-sharing-card">
       <Text style={styles.eyebrow}>EARN BY SHARING</Text>
       <Text style={styles.title}>Friends discover it. You earn when they book.</Text>
-      {!compact ? (
-        <Text style={styles.body}>
-          Your personal link handles attribution automatically. Any buyer discount appears before checkout.
-        </Text>
-      ) : null}
+      <Text style={styles.body}>{reward}</Text>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Share your earning link"

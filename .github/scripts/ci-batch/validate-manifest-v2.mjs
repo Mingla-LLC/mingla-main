@@ -308,7 +308,24 @@ export function phase3dContractDigest(manifest) {
 // full-history inventories (1857/1931/2117).
 // #3281: register PR9 cancel-date migration in the same inventories.
 // #3281: register PR10 byDate quantities migration in the same inventories.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "de08d914fa4e8ec33975335b3efe623b3f5c425b20358ad94bef2679da827297";
+// #4202 / #4203: register the retained-purchase and hidden-event read migration
+// plus its declared PostgreSQL proof in those same inventories.
+// #3281 / #3645: register the terminal by-date + Paystack finalizer re-emit,
+// including its exact exclusions from the filtered historical replays.
+// #3281: register the production-order repair and its proofs the same way.
+// #4202: register the Explorer phone-identity release migration in the three
+// preserved full-history inventories; the existing #4202/#4203 PostgreSQL
+// suite owns its executable proof.
+// #4202: register the Local audit-row auth detach in the same inventories;
+// its local PostgreSQL suite proves deletion plus immutable evidence retention.
+// #4202: register the GoTrue pending-phone sentinel repair in those inventories;
+// the existing phone-release suite proves its executable representation contract.
+// #4202: register retained shared-identity event-chat repair in the same three
+// inventories; the existing #4202/#4203 suite owns its executable proof.
+// #4216: re-seal after the Creator rights migration and its declared proof
+// entered the full-history inventories, plus its exact-file exclusion from
+// the deliberately pre-#1931 replay that has no Creator/gig schema.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c43d9c7e234b370865c8f4afe4ea6bfa49001fb2414ef7983dd9625871b447ca";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

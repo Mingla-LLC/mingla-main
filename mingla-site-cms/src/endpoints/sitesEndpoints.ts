@@ -64,6 +64,7 @@ import {
   isHomePage,
   tenantPagePaths,
 } from "../lib/pageTree";
+import { DESIGN_KEYS, type DesignKey } from "../contracts/generated/designs.ts";
 import { previewPagePath } from "../lib/previewPath";
 import { reportPreviewBuilt } from "../lib/previewBuiltReport";
 
@@ -292,6 +293,10 @@ async function provisionOrReconcile(req: PayloadRequest): Promise<Response> {
     const displayName = body.display_name.trim();
     const primaryHostname = body.primary_hostname;
     const rendererKey = body.renderer_key;
+    const designKey: DesignKey = typeof body.design_key === "string" &&
+        (DESIGN_KEYS as readonly string[]).includes(body.design_key)
+      ? body.design_key as DesignKey
+      : "atelier";
     let tenant = (
       await req.payload.find({
         collection: "tenants",
@@ -392,6 +397,7 @@ async function provisionOrReconcile(req: PayloadRequest): Promise<Response> {
           display_name: displayName,
           analytics_consent_mode: "optional",
           renderer_key: rendererKey,
+          design: designKey,
         },
         draft: true,
       });

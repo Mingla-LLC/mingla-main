@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/brand-site-control/issue_2830_site_plan.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-2830-brand-site-control-plan",
+  "profile": "deno-2-unit"
+}

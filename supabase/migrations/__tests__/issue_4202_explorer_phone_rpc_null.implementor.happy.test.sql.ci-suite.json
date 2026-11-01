@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4202_explorer_phone_rpc_null.implementor.happy.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4202-explorer-phone-rpc-null",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "supabase_admin",
+    "reset": "suite-owned"
+  }
+}

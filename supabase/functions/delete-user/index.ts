@@ -10,6 +10,10 @@ import {
   runBusinessSideDeletion,
   shouldDeleteAuthUser,
 } from "../_shared/accountDeletionSides.ts";
+import {
+  clearExplorerPhoneForReuse,
+  ExplorerPhoneReleaseError,
+} from "../_shared/explorerPhoneRelease.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -132,10 +136,6 @@ async function runExplorerPreDeleteBatch(
     adminClient
       .from("place_reviews")
       .update({
-        audio_urls: [],
-        audio_durations_seconds: [],
-        transcription: null,
-        ai_summary: null,
         feedback_text: null,
       })
       .eq("user_id", userId)
@@ -190,33 +190,6 @@ async function runExplorerPreDeleteBatch(
   }
 
   await Promise.allSettled(preDeleteOps);
-}
-
-async function clearPhoneForReuse(
-  adminClient: SupabaseClient,
-  userId: string,
-  userPhone: string | null,
-): Promise<Response | null> {
-  if (!userPhone) return null;
-
-  const { error: phoneClearError } = await adminClient
-    .from("profiles")
-    .update({ phone: null })
-    .eq("id", userId);
-  if (phoneClearError) {
-    console.error("[delete-user] Failed to clear profiles.phone:", phoneClearError.message);
-    return errorResponse("Failed to free phone number. Please try again.");
-  }
-
-  const { error: authPhoneClearError } = await adminClient.auth.admin.updateUserById(
-    userId,
-    { phone: "" },
-  );
-  if (authPhoneClearError) {
-    console.warn("[delete-user] Could not clear auth.users.phone:", authPhoneClearError.message);
-  }
-
-  return null;
 }
 
 /** #3660 — a structured body the Host app decides on by `code`, never by text. */
@@ -285,7 +258,11 @@ serve(async (req) => {
       .select("phone")
       .eq("id", userId)
       .maybeSingle();
-    const userPhone = profileData?.phone ?? null;
+    const authIdentityPhone = user.identities?.find((identity) =>
+      identity.provider === "phone"
+    )?.identity_data?.phone;
+    const userPhone = profileData?.phone ?? user.phone ??
+      (typeof authIdentityPhone === "string" ? authIdentityPhone : null);
 
     const recordTrialPhone = async (): Promise<void> => {
       if (!userPhone) return;
@@ -310,8 +287,17 @@ serve(async (req) => {
       await runExplorerPreDeleteBatch(adminClient, userId, userPhone);
       await purgeExplorerSideData(adminClient, userId);
 
-      const phoneError = await clearPhoneForReuse(adminClient, userId, userPhone);
-      if (phoneError) return phoneError;
+      try {
+        await clearExplorerPhoneForReuse(adminClient, userId, userPhone);
+      } catch (error) {
+        const stage = error instanceof ExplorerPhoneReleaseError
+          ? error.stage
+          : "unknown";
+        console.error(
+          `[delete-user] Failed to free Explorer phone at stage=${stage}`,
+        );
+        return errorResponse("Failed to free phone number. Please try again.");
+      }
 
       const { authDeleted, authRetained, retainedReason } = await deleteAuthUserIfReady(
         adminClient,

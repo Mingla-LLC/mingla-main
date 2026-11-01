@@ -1,14 +1,11 @@
-import React, { useState } from "react";
+import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
 import type { ClaimedEntry } from "../../services/attendanceClaimService";
-import { AddIdentitySheet } from "../purchases/AddIdentitySheet";
 
 type Props = {
   items: ClaimedEntry[];
-  hadPendingClaim: boolean;
-  onItemsChanged: (items: ClaimedEntry[]) => void;
   onContinue: () => void;
 };
 
@@ -27,33 +24,19 @@ function itemLine(item: ClaimedEntry, readyCopy: string): string {
 
 export function TicketsFoundStep({
   items,
-  hadPendingClaim,
-  onItemsChanged,
   onContinue,
 }: Props): React.ReactElement {
   const { t } = useTranslation("purchases");
-  const [addOpen, setAddOpen] = useState(false);
-  const hasItems = items.length > 0;
   const only = items.length === 1 ? items[0] : null;
   const foundTitle = only
     ? t(`found.title.${only.noun}`, { count: only.quantity })
     : t("found.title.ticket", { count: 2 });
-  const foundCta = only
-    ? t(`found.cta.${only.noun}`, { count: only.quantity })
-    : t("found.cta.many");
-
   return (
     <View style={styles.host}>
       <Text accessibilityRole="header" style={styles.title}>
-        {hasItems ? foundTitle : t("nothing.title")}
+        {foundTitle}
       </Text>
-      <Text style={styles.body}>
-        {hasItems
-          ? t("found.footer")
-          : hadPendingClaim
-            ? `${t("nothing.differentEmail")} ${t("nothing.addEmail")}`
-            : t("nothing.skip")}
-      </Text>
+      <Text style={styles.body}>{t("found.setupBody")}</Text>
 
       {items.slice(0, 4).map((item) => (
         <View key={`${item.kind}:${item.id}`} style={styles.card}>
@@ -72,38 +55,15 @@ export function TicketsFoundStep({
         </View>
       ))}
 
-      {!hasItems && hadPendingClaim ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setAddOpen(true)}
-          style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
-        >
-          <Text style={styles.secondaryText}>{t("missing.cta")}</Text>
-        </Pressable>
-      ) : null}
-
       <Pressable
         accessibilityRole="button"
         onPress={onContinue}
         style={({ pressed }) => [styles.primary, pressed && styles.pressed]}
       >
-        <Text style={styles.primaryText}>
-          {hasItems ? foundCta : t("found.cta.many")}
-        </Text>
+        <Text style={styles.primaryText}>{t("found.continueSetup")}</Text>
       </Pressable>
 
-      <Text style={styles.footer}>
-        {hasItems ? t("found.footer") : t("nothing.skip")}
-      </Text>
-
-      <AddIdentitySheet
-        onClose={() => setAddOpen(false)}
-        onVerified={(result) => {
-          setAddOpen(false);
-          onItemsChanged(result.claimed);
-        }}
-        visible={addOpen}
-      />
+      <Text style={styles.footer}>{t("found.setupFooter")}</Text>
     </View>
   );
 }
@@ -144,16 +104,6 @@ const styles = StyleSheet.create({
     marginTop: 18,
   },
   primaryText: { color: "#fff", fontSize: 16, fontWeight: "800" },
-  secondary: {
-    minHeight: 50,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#d5d7db",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 8,
-  },
-  secondaryText: { color: "#31353b", fontSize: 14, fontWeight: "700" },
   footer: {
     color: "#8b8f96",
     fontSize: 12,

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import { EventCoverMedia } from "@mingla/offering-rendering";
 
 import { usePurchases } from "../../hooks/usePurchases";
 import { postHogService } from "../../services/postHogService";
@@ -104,10 +105,18 @@ export function PurchasesCard({
         ) : next ? (
           <View style={styles.preview}>
             {next.item.coverMediaUrl ? (
-              <Image
-                source={{ uri: next.item.coverMediaUrl }}
-                style={styles.thumb}
-              />
+              <View style={styles.thumb}>
+                <EventCoverMedia
+                  accessibleLabel={`${next.item.title} cover`}
+                  autoplay={false}
+                  height="100%"
+                  mediaType={next.item.coverMediaType}
+                  mediaUrl={next.item.coverMediaUrl}
+                  playbackActive={false}
+                  radius={12}
+                  width="100%"
+                />
+              </View>
             ) : (
               <View style={[styles.thumb, styles.thumbFallback]}>
                 <Text style={styles.thumbFallbackText}>M</Text>
@@ -174,7 +183,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 8,
   },
-  thumb: { width: 56, height: 56, borderRadius: 12 },
+  thumb: { width: 56, height: 56, borderRadius: 12, overflow: "hidden" },
   thumbFallback: {
     backgroundColor: "rgba(235,120,37,.18)",
     alignItems: "center",

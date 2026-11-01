@@ -201,14 +201,46 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     lines,
     quoteStatus,
     eventDateIds,
-    sameTicketsForEveryDate,
     setLineQuantity,
-    setSameTicketsForEveryDate,
     setEventDateId,
     setEventDateIds,
   } = useCart();
   const totals = useCartQuoteTotals();
   const [waitlistTicketId, setWaitlistTicketId] = useState<string | null>(null);
+  // #3281 / #4204 — this choice belongs only to the deferred ticket-selection
+  // route. Keeping it out of the root CartProvider prevents host-only UI state
+  // from inflating every Business web boot. Cart lines remain the cross-step
+  // authority: a byDate map means uneven quantities; no map means uniform.
+  const [sameTicketsForEveryDate, setSameTicketsForEveryDate] = useState(
+    () => lines.every((line) => line.byDate === undefined),
+  );
+
+  const handleSameTicketsForEveryDate = useCallback(
+    (on: boolean): void => {
+      setSameTicketsForEveryDate(on);
+      for (const line of lines) {
+        setLineQuantity({
+          ticketTypeId: line.ticketTypeId,
+          ticketName: line.ticketName,
+          unitPrice: line.unitPrice,
+          unitPriceGbp: line.unitPriceGbp,
+          unitPriceAllIn: line.unitPriceAllIn,
+          currency: line.currency,
+          isFree: line.isFree,
+          quantity: line.quantity,
+          paymentPlanChoice: line.paymentPlanChoice,
+          ...(on
+            ? {}
+            : {
+                byDate: Object.fromEntries(
+                  eventDateIds.map((id) => [id, line.quantity]),
+                ),
+              }),
+        });
+      }
+    },
+    [eventDateIds, lines, setLineQuantity],
+  );
 
   // issue #2135 — seed the chosen occurrence into the cart (the SAME pattern the
   // experience cart uses). From here the existing chain owns it:
@@ -603,7 +635,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
             </Text>
             <Switch
               value={sameTicketsForEveryDate}
-              onValueChange={setSameTicketsForEveryDate}
+              onValueChange={handleSameTicketsForEveryDate}
               accessibilityLabel="Same tickets for every date"
             />
           </View>

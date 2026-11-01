@@ -5,7 +5,7 @@
  * Provider errors become words; a payment is only "done" after confirm.
  */
 import React, { useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Linking, StyleSheet, View } from "react-native";
 
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -167,7 +167,7 @@ function HireSheetBody({
               terms: {
                 fee_minor: feeMinor,
                 sales_share_bps: salesShareBps ?? null,
-                usage_days: usageDays ?? null,
+                rights_accepted: true,
               },
               idempotencyKey: `gig-${mode.interestId}-${feeMinor}-${attemptKey.slice(0, 8)}`,
             });
@@ -314,6 +314,14 @@ function HireSheetBody({
               }
             />
           ))}
+          <Button
+            variant="ghost"
+            size="sm"
+            label="Read the full Creator agreement"
+            onPress={() =>
+              void Linking.openURL("https://usemingla.com/creator-agreement")
+            }
+          />
         </View>
       ) : null}
     </SheetBody>

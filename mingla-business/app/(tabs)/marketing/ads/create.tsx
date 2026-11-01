@@ -1993,8 +1993,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
               ]}
             />
             <Text style={styles.choiceTitle}>
-              I confirm this creative may be used in paid ads. This does not
-              authorize reuse in Mingla house campaigns.
+              I confirm this creative may be used in paid ads. A paid Creator
+              gig also licenses the approved video to Mingla for its own
+              marketing after the full Creator fee is released.
             </Text>
           </Pressable>
           <Pressable

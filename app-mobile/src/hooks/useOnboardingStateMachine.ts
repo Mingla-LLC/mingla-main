@@ -42,6 +42,7 @@ const DEFAULT_SEQUENCE_OPTIONS: OnboardingSequenceOptions = {
   needsLanguage: false,
   phonePreVerified: false,
   skipLocation: false,
+  showTicketConfirmation: false,
 }
 
 export function useOnboardingStateMachine({

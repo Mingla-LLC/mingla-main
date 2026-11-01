@@ -1,11 +1,11 @@
 import React from "react";
 import {
-  Image,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { EventCoverMedia } from "@mingla/offering-rendering";
 
 import type { PurchaseTimelineItem } from "../../utils/purchaseTimeline";
 import {
@@ -39,11 +39,18 @@ export function PurchaseCard({ item, onPress }: PurchaseCardProps): React.ReactE
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       {item.coverMediaUrl ? (
-        <Image
-          accessibilityIgnoresInvertColors
-          source={{ uri: item.coverMediaUrl }}
-          style={styles.cover}
-        />
+        <View style={styles.cover}>
+          <EventCoverMedia
+            accessibleLabel={`${item.title} cover`}
+            autoplay={false}
+            height="100%"
+            mediaType={item.coverMediaType}
+            mediaUrl={item.coverMediaUrl}
+            playbackActive={false}
+            radius={0}
+            width="100%"
+          />
+        </View>
       ) : (
         <View style={styles.coverFallback}>
           <Text style={styles.coverFallbackText}>{purchaseKindLabel(item.kind)}</Text>
@@ -83,7 +90,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#171a20",
   },
   pressed: { opacity: 0.78, transform: [{ scale: 0.995 }] },
-  cover: { width: 108, alignSelf: "stretch", backgroundColor: "#252932" },
+  cover: {
+    width: 108,
+    alignSelf: "stretch",
+    overflow: "hidden",
+    backgroundColor: "#252932",
+  },
   coverFallback: {
     width: 108,
     alignItems: "center",

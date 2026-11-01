@@ -220,12 +220,21 @@ export async function shouldDeleteAuthUser(
 
   const explorerGone = profile?.explorer_deleted_at != null;
   const businessGone = creator?.deleted_at != null;
+  // #4202 — an active creator_accounts row is itself a retained Business
+  // identity. It may own a Creator profile, gig contracts, approved delivery
+  // media or payout evidence even when it owns no brand yet. Treating only a
+  // brand/team row as an active Business side made Explorer deletion attempt an
+  // auth.users cascade through those records; production then either lost data
+  // or failed on the first restrictive evidence FK. Keep the shared login and
+  // email exactly as the Explorer-deletion contract requires.
+  const businessIdentityActive = creator != null && !businessGone;
 
   if (explorerGone && businessGone) {
     return await retainIfBusinessRecordsExist(adminClient, userId);
   }
 
-  const hasBusiness = await userHasActiveBusinessSide(adminClient, userId);
+  const hasBusiness = businessIdentityActive ||
+    await userHasActiveBusinessSide(adminClient, userId);
   const hasExplorer = await userHasActiveExplorerSide(adminClient, userId);
 
   const businessOk = businessGone || !hasBusiness;

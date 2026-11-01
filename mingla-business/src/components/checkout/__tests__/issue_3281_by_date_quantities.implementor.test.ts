@@ -20,11 +20,14 @@ Deno.test("uniform payload omits byDate (source helper)", () => {
   assertEquals(src.includes("just filled up"), true);
 });
 
-Deno.test("cart and checkout index wire the switch", () => {
+Deno.test("the deferred checkout route owns the switch; shared cart stores only line data", () => {
   const cart = read("mingla-business/src/components/checkout/CartContext.tsx");
   const index = read("mingla-business/app/checkout/[eventId]/index.tsx");
-  assertEquals(cart.includes("sameTicketsForEveryDate"), true);
+  assertEquals(cart.includes("sameTicketsForEveryDate"), false);
+  assertEquals(cart.includes("SET_SAME_TICKETS_FOR_EVERY_DATE"), false);
   assertEquals(cart.includes("byDate"), true);
+  assertEquals(index.includes("const [sameTicketsForEveryDate"), true);
+  assertEquals(index.includes("handleSameTicketsForEveryDate"), true);
   assertEquals(index.includes("Same tickets for every date"), true);
   assertEquals(index.includes("issue-3281-same-tickets-switch"), true);
   assertEquals(index.includes("Up to"), true);

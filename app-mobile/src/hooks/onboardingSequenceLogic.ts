@@ -44,12 +44,14 @@ export interface OnboardingSequenceOptions {
   needsLanguage: boolean
   phonePreVerified: boolean
   skipLocation?: boolean
+  showTicketConfirmation?: boolean
 }
 
 const DEFAULT_SEQUENCE_OPTIONS: OnboardingSequenceOptions = {
   needsLanguage: false,
   phonePreVerified: false,
   skipLocation: false,
+  showTicketConfirmation: false,
 }
 
 /**
@@ -73,7 +75,7 @@ export function buildSequence(
         ...(options.needsLanguage ? ['language' as const] : []),
         'welcome',
         ...(options.phonePreVerified ? [] : ['phone' as const, 'otp' as const]),
-        'tickets_found',
+        ...(options.showTicketConfirmation ? ['tickets_found' as const] : []),
         'gender_identity',
         'details',
       ]

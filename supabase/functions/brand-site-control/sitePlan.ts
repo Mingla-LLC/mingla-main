@@ -5,6 +5,7 @@
  *   POST /v1/brands/<id>/site-plan                  save {revision, patch} (rank 50; active_part rank 20)
  *   POST /v1/brands/<id>/site-plan/heartbeat        keep or take a free lock (rank 50)
  *   POST /v1/brands/<id>/site-plan/take-over        (rank 50)
+ *   POST /v1/brands/<id>/site-plan/design           pre-draft design choice (rank 50)
  *   POST /v1/brands/<id>/site-start-request         "Ask an admin to start it" (rank 20 / 40)
  *   POST /v1/brands/<id>/site/compose-from-plan     "Create website draft" (rank 50)
  *
@@ -91,6 +92,7 @@ export function planFailureFromRpc(message: string, operationId: string | null =
     ["sites_not_entitled", "NOT_ENTITLED", 403],
     ["sites_revision_conflict", "REVISION_CONFLICT", 409],
     ["sites_plan_locked", "PLAN_LOCKED", 409],
+    ["sites_context_incomplete", "PLAN_NOT_READY", 409],
     ["sites_plan_not_ready", "PLAN_NOT_READY", 409],
     ["sites_plan_paused", "PLAN_PAUSED", 409],
     ["sites_invalid_state", "INVALID_STATE", 409],
@@ -104,6 +106,36 @@ export function planFailureFromRpc(message: string, operationId: string | null =
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STUDIO_PAGES = new Set<string>(["home", ...PLANNED_PAGE_ORDER, "about", "contact"]);
 
+/**
+ * #2830 — one Website setup read: the plan and its field-level context audit.
+ * Both values are derived under the caller JWT. The edge function only joins
+ * them so Business and Ari cannot drift into two definitions of readiness.
+ */
+async function withBrandCompleteness(
+  ctx: SitePlanContext,
+  brandId: string,
+  value: unknown,
+): Promise<RpcResult> {
+  const { data: completeness, error } = await ctx.userRpc(
+    "brand_context_completeness",
+    { p_brand_id: brandId },
+  );
+  if (error) return { data: null, error };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { data: null, error: { message: "sites_invalid_state" } };
+  }
+  const joined: JsonObject = { ...(value as JsonObject), completeness };
+  const plan = joined.plan;
+  if (plan && typeof plan === "object" && !Array.isArray(plan)) {
+    const audit = completeness && typeof completeness === "object" &&
+        !Array.isArray(completeness)
+      ? completeness as JsonObject
+      : {};
+    joined.plan = { ...(plan as JsonObject), design_key: audit.design_key ?? null };
+  }
+  return { data: joined, error: null };
+}
+
 /** Handles a plan route, or returns null when the path is not one. */
 export async function handleSitePlanRoute(
   path: string,
@@ -111,7 +143,7 @@ export async function handleSitePlanRoute(
   input: JsonObject,
   ctx: SitePlanContext,
 ): Promise<Response | null> {
-  const plan = path.match(/^\/v1\/brands\/([^/]+)\/site-plan(?:\/(heartbeat|take-over))?$/);
+  const plan = path.match(/^\/v1\/brands\/([^/]+)\/site-plan(?:\/(heartbeat|take-over|design))?$/);
   const start = path.match(/^\/v1\/brands\/([^/]+)\/site-start-request$/);
   const compose = path.match(/^\/v1\/brands\/([^/]+)\/site\/compose-from-plan$/);
   const brandId = (plan ?? start ?? compose)?.[1];
@@ -120,7 +152,11 @@ export async function handleSitePlanRoute(
 
   if (plan && !plan[2] && method === "GET") {
     const { data, error } = await ctx.userRpc("brand_site_plan_get", { p_brand_id: brandId });
-    return error ? planFailureFromRpc(error.message) : sitesJson({ ok: true, data });
+    if (error) return planFailureFromRpc(error.message);
+    const joined = await withBrandCompleteness(ctx, brandId, data);
+    return joined.error
+      ? planFailureFromRpc(joined.error.message)
+      : sitesJson({ ok: true, data: joined.data });
   }
   if (plan && !plan[2] && method === "POST") {
     const revision = input.revision;
@@ -138,20 +174,56 @@ export async function handleSitePlanRoute(
       // never a silent overwrite.
       if (error.message.includes("sites_revision_conflict")) {
         const latest = await ctx.userRpc("brand_site_plan_get", { p_brand_id: brandId });
+        const joined = latest.error
+          ? latest
+          : await withBrandCompleteness(ctx, brandId, latest.data);
         return sitesJson({
           ok: false,
           error: { code: "REVISION_CONFLICT", message: MESSAGES.REVISION_CONFLICT, retryable: false, operation_id: null },
-          latest: latest.error ? null : latest.data,
+          latest: joined.error ? null : joined.data,
         }, 409);
       }
       return planFailureFromRpc(error.message);
     }
-    return sitesJson({ ok: true, data });
+    const joined = await withBrandCompleteness(ctx, brandId, data);
+    return joined.error
+      ? planFailureFromRpc(joined.error.message)
+      : sitesJson({ ok: true, data: joined.data });
+  }
+  if (plan && plan[2] === "design" && method === "POST") {
+    const revision = input.revision;
+    const designKey = input.design_key;
+    const sourceType = typeof input.source_type === "string"
+      ? input.source_type
+      : "owner";
+    const sourceUrl = typeof input.source_url === "string"
+      ? input.source_url
+      : null;
+    if (!Number.isInteger(revision) ||
+      (designKey !== "atelier" && designKey !== "voyage")) {
+      return planFailure("VALIDATION_FAILED", 400);
+    }
+    const { data, error } = await ctx.userRpc("brand_site_plan_save_design", {
+      p_brand_id: brandId,
+      p_revision: revision,
+      p_design_key: designKey,
+      p_source_type: sourceType,
+      p_source_url: sourceUrl,
+    });
+    if (error) return planFailureFromRpc(error.message);
+    const joined = await withBrandCompleteness(ctx, brandId, data);
+    return joined.error
+      ? planFailureFromRpc(joined.error.message)
+      : sitesJson({ ok: true, data: joined.data });
   }
   if (plan && plan[2] && method === "POST") {
     const fn = plan[2] === "heartbeat" ? "brand_site_plan_heartbeat" : "brand_site_plan_take_over";
     const { data, error } = await ctx.userRpc(fn, { p_brand_id: brandId });
-    return error ? planFailureFromRpc(error.message) : sitesJson({ ok: true, data });
+    if (error) return planFailureFromRpc(error.message);
+    const joined = await withBrandCompleteness(ctx, brandId, data);
+    return joined.error
+      ? planFailureFromRpc(joined.error.message)
+      : sitesJson({ ok: true, data: joined.data });
   }
   if (start && method === "POST") {
     const { data, error } = await ctx.userRpc("brand_site_request_start", { p_brand_id: brandId });

@@ -16,7 +16,8 @@ const CREATOR_TAX_LINE = 'You’re responsible for reporting and paying tax on w
 const KEY_POINTS = [
   { title: 'You post what you agree to', text: 'The format, platforms and post-by date in each offer. Sponsored posts always say #ad or paid partnership.' },
   { title: 'Fixes are limited', text: 'Hosts can ask for up to two technical fixes per video, such as sound or framing.' },
-  { title: 'Hosts may reuse the video', text: 'Only for the days in your rate (30, 90 or 365), and in paid ads only if you allow it.' },
+  { title: 'You still own your video', text: 'After your full Creator fee is released, Mingla and the paying Host may use the approved video forever in organic and paid marketing, edit it and adapt it without another usage fee.' },
+  { title: 'Your account stays yours', text: 'Ads run directly from your own social account still need the separate permission required by that platform. You never share your password.' },
   { title: 'How you’re paid', text: 'The host pays Mingla before you start. Your fee is released after your posts are checked, then sent to your bank.' },
   { title: 'Posts stay up', text: 'Keep agreed posts live for at least 30 days.' },
 ];
@@ -25,12 +26,13 @@ export default function CreatorAgreementStep(): React.ReactElement {
   const router = useRouter();
   const queryClient = useQueryClient();
   const own = useQuery({ queryKey: ['creator', 'own-profile'], queryFn: () => creatorProgramService.ownProfile() });
+  const agreement = useQuery({ queryKey: ['creator', 'agreement'], queryFn: () => creatorProgramService.currentAgreement() });
   const [dob, setDob] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const version = process.env.EXPO_PUBLIC_CREATOR_AGREEMENT_VERSION?.trim() ?? '';
-  const fullTextUrl = process.env.EXPO_PUBLIC_CREATOR_AGREEMENT_URL?.trim() ?? '';
+  const version = agreement.data?.version ?? '';
+  const fullTextUrl = agreement.data?.document_url ?? '';
   const birthDate = dob ?? own.data?.date_of_birth ?? null;
   const tooYoung = birthDate !== null && !isAdult(birthDate);
 
@@ -39,7 +41,7 @@ export default function CreatorAgreementStep(): React.ReactElement {
     if (!isAdult(birthDate)) { setError('You must be 18 or older to join Mingla Creator.'); return; }
     setBusy(true); setError(null);
     try {
-      await creatorProgramService.signAgreement(version, birthDate);
+      await creatorProgramService.signAgreement(birthDate);
       await goToNextStep(router, queryClient, 'agreement');
     } catch (e) { setError(programErrorText(e)); } finally { setBusy(false); }
   };
@@ -59,7 +61,7 @@ export default function CreatorAgreementStep(): React.ReactElement {
 
     <ProgramNotice text={CREATOR_TAX_LINE} />
     <CheckRow checked={agreed} onToggle={() => setAgreed((v) => !v)} label="I’ve read and agree to the Mingla Creator agreement" />
-    {!version ? <ProgramNotice tone="warning" text="The agreement isn’t ready to sign yet. We’ll let you know when it is; everything else you’ve done is saved." /> : null}
+    {!version && !agreement.isLoading ? <ProgramNotice tone="warning" text="The agreement isn’t ready to sign yet. Everything else you’ve done is saved." /> : null}
     {error ? <ProgramNotice tone="error" text={error} /> : null}
   </ProgramScreen>;
 }

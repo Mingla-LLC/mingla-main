@@ -27,6 +27,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import QRCode from "react-native-qrcode-svg";
 import * as Sharing from "expo-sharing";
+import {
+  MapsAppChooserDialog,
+  useVenueMapsActions,
+  type MapsAppId,
+  type MapsOpenTarget,
+  type ThemePalette,
+} from "@mingla/offering-rendering";
 
 import { DoorModeModal } from "../../../src/components/purchases/DoorModeModal";
 import { SendTicketSheet } from "../../../src/components/purchases/SendTicketSheet";
@@ -65,7 +72,8 @@ import type {
   PurchaseTimelineItem,
 } from "../../../src/utils/purchaseTimeline";
 import { formatTicketTimeLine } from "../../../src/utils/zoneLabel";
-import { buildMapsUrl, parseMapPoint } from "../../../src/utils/mapsUrl";
+import { parseMapPoint } from "../../../src/utils/mapsUrl";
+import { openMapsTarget } from "../../../src/utils/openMapsTarget";
 
 const KINDS = new Set<PurchaseKind>([
   "order",
@@ -74,11 +82,49 @@ const KINDS = new Set<PurchaseKind>([
   "venue_order",
 ]);
 
+const TICKET_MAPS_PALETTE: ThemePalette = {
+  page: "#171a20",
+  accent: "#eb7825",
+  accentText: "#ffffff",
+  primaryText: "#ffffff",
+  secondaryText: "rgba(255,255,255,0.64)",
+  tertiaryText: "rgba(255,255,255,0.45)",
+  panel: "#171a20",
+  panelStrong: "#20242c",
+  panelBorder: "rgba(255,255,255,0.10)",
+  card: "rgba(255,255,255,0.05)",
+  cutoutBorder: "rgba(255,255,255,0.12)",
+  glass: "rgba(11,13,17,0.92)",
+  glassTint: "dark",
+  accentWash: "rgba(235,120,37,0.14)",
+};
+
+const openTicketMapsTarget = (
+  target: MapsOpenTarget,
+  app?: MapsAppId,
+): void => {
+  openMapsTarget(target, { app });
+};
+
 function firstParam(value: string | string[] | undefined): string | null {
   const candidate = Array.isArray(value) ? value[0] : value;
   return typeof candidate === "string" && candidate.length > 0
     ? candidate
     : null;
+}
+
+function explorerOfferingPath(
+  eventType: string | null | undefined,
+  brandSlug: string,
+  eventSlug: string,
+): string {
+  const prefix =
+    eventType === "trip"
+      ? "t"
+      : eventType === "experience"
+        ? "exp"
+        : "e";
+  return `/${prefix}/${encodeURIComponent(brandSlug)}/${encodeURIComponent(eventSlug)}`;
 }
 
 function detailRows(
@@ -215,6 +261,15 @@ export default function PurchaseDetailRoute(): React.ReactElement {
     typeof reservation.brand_lng === "number"
       ? { lat: reservation.brand_lat, lng: reservation.brand_lng }
       : null;
+  const ticketMapsTarget: MapsOpenTarget | null = order?.locationText
+    ? { label: order.locationText, geo: mapPoint }
+    : reservation?.brand_address
+      ? { label: reservation.brand_address, geo: reservationMapPoint }
+      : null;
+  const ticketMapsActions = useVenueMapsActions({
+    target: ticketMapsTarget,
+    onOpenMaps: openTicketMapsTarget,
+  });
   const reservationCanShow =
     reservation !== null &&
     ["confirmed", "requested", "waitlisted"].includes(reservation.status);
@@ -245,6 +300,8 @@ export default function PurchaseDetailRoute(): React.ReactElement {
     order?.brandId ?? rsvp?.brandId ?? reservation?.brand_id ?? null;
   const followedBrandName =
     order?.brandName ?? rsvp?.brandName ?? reservation?.brand_name ?? null;
+  const followedBrandSlug =
+    order?.brandSlug ?? rsvp?.brandSlug ?? reservation?.brand_slug ?? null;
   const brandFollow = useBrandFollow(userId, followedBrandId);
 
   useEffect(() => {
@@ -466,14 +523,41 @@ export default function PurchaseDetailRoute(): React.ReactElement {
     }
   }, [captureQuietAction, order, rsvp, t]);
 
-  const handleToggleFollow = useCallback((): void => {
-    if (!followedBrandId || brandFollow.isPending) return;
-    captureQuietAction(brandFollow.isFollowing ? "unfollow" : "follow");
-    void brandFollow.toggle().catch((error) => {
+  const handleOpenBrandPage = useCallback((): void => {
+    if (!followedBrandSlug) return;
+    captureQuietAction("brand_page");
+    router.push(`/b/${encodeURIComponent(followedBrandSlug)}` as never);
+  }, [captureQuietAction, followedBrandSlug, router]);
+
+  const handleFollowBrand = useCallback((): void => {
+    if (!followedBrandId || !followedBrandSlug || brandFollow.isPending) return;
+    if (brandFollow.isFollowing) {
+      handleOpenBrandPage();
+      return;
+    }
+    captureQuietAction("follow");
+    void brandFollow.follow().catch((error) => {
       console.warn("[#4063] purchase brand follow failed", error);
       toastManager.error(t("ticket.actionFailed"), 3000);
     });
-  }, [brandFollow, captureQuietAction, followedBrandId, t]);
+  }, [
+    brandFollow,
+    captureQuietAction,
+    followedBrandId,
+    followedBrandSlug,
+    handleOpenBrandPage,
+    t,
+  ]);
+
+  const handleOpenEventPage = useCallback((): void => {
+    const brandSlug = order?.brandSlug ?? rsvp?.brandSlug ?? null;
+    const eventSlug = order?.eventSlug ?? rsvp?.eventSlug ?? null;
+    if (!brandSlug || !eventSlug) return;
+    captureQuietAction("event_page");
+    router.push(
+      explorerOfferingPath(order?.eventType, brandSlug, eventSlug) as never,
+    );
+  }, [captureQuietAction, order, router, rsvp]);
 
   const openSendTicket = useCallback((ticket: PurchaseTicket): void => {
     postHogService.capture("ticket_send_opened", {
@@ -649,24 +733,16 @@ export default function PurchaseDetailRoute(): React.ReactElement {
             ) : order?.locationText ? (
               <View style={styles.venueBlock}>
                 <Text style={styles.venueText}>{order.locationText}</Text>
-                {mapPoint ? (
+                {ticketMapsActions.canOpenMaps ? (
                   <Pressable
-                    accessibilityRole="link"
-                    onPress={() => {
-                      void Linking.openURL(
-                        buildMapsUrl(
-                          mapPoint.lat,
-                          mapPoint.lng,
-                          order.locationText,
-                        ),
-                      );
-                    }}
+                    accessibilityRole="button"
+                    onPress={ticketMapsActions.requestOpenMaps}
                     style={({ pressed }) => [
-                      styles.venueAction,
+                      styles.venueMapsAction,
                       pressed && styles.pressed,
                     ]}
                   >
-                    <Text style={styles.venueActionText}>
+                    <Text style={styles.venueMapsActionText}>
                       {t("ticket.openInMaps")}
                     </Text>
                   </Pressable>
@@ -677,24 +753,16 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                 <Text style={styles.venueText}>
                   {reservation.brand_address}
                 </Text>
-                {reservationMapPoint ? (
+                {ticketMapsActions.canOpenMaps ? (
                   <Pressable
-                    accessibilityRole="link"
-                    onPress={() => {
-                      void Linking.openURL(
-                        buildMapsUrl(
-                          reservationMapPoint.lat,
-                          reservationMapPoint.lng,
-                          reservation.brand_address,
-                        ),
-                      );
-                    }}
+                    accessibilityRole="button"
+                    onPress={ticketMapsActions.requestOpenMaps}
                     style={({ pressed }) => [
-                      styles.venueAction,
+                      styles.venueMapsAction,
                       pressed && styles.pressed,
                     ]}
                   >
-                    <Text style={styles.venueActionText}>
+                    <Text style={styles.venueMapsActionText}>
                       {t("ticket.openInMaps")}
                     </Text>
                   </Pressable>
@@ -1085,6 +1153,14 @@ export default function PurchaseDetailRoute(): React.ReactElement {
             ) : null}
 
             <View style={styles.quietList}>
+              {(order?.brandSlug && order.eventSlug) ||
+              (rsvp?.brandSlug && rsvp.eventSlug) ? (
+                <QuietAction
+                  icon="information-circle-outline"
+                  label={t("ticket.openEventPage")}
+                  onPress={handleOpenEventPage}
+                />
+              ) : null}
               {order?.conversationId ? (
                 <QuietAction
                   icon="chatbubbles-outline"
@@ -1113,7 +1189,7 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                   }}
                 />
               ) : null}
-              {followedBrandId && followedBrandName ? (
+              {followedBrandId && followedBrandName && followedBrandSlug ? (
                 <QuietAction
                   disabled={brandFollow.isPending}
                   icon={
@@ -1129,7 +1205,7 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                       brand: followedBrandName,
                     },
                   )}
-                  onPress={handleToggleFollow}
+                  onPress={handleFollowBrand}
                 />
               ) : null}
               {reservation ? (
@@ -1149,13 +1225,13 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                   }}
                 />
               ) : null}
-              {order ? (
+              {order && followedBrandSlug ? (
                 <QuietAction
                   icon="help-circle-outline"
                   label={t("ticket.refundsHelp")}
                   onPress={() => {
                     captureQuietAction("refunds_help");
-                    void Linking.openURL("https://usemingla.com/help");
+                    handleOpenBrandPage();
                   }}
                 />
               ) : null}
@@ -1163,6 +1239,11 @@ export default function PurchaseDetailRoute(): React.ReactElement {
           </>
         )}
       </ScrollView>
+      <MapsAppChooserDialog
+        actions={ticketMapsActions}
+        palette={TICKET_MAPS_PALETTE}
+        placeLabel={ticketMapsTarget?.label}
+      />
       {item && doorTickets.length > 0 ? (
         <DoorModeModal
           initialTicketId={requestedTicketId}
@@ -1252,6 +1333,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   venueActionText: { color: "#f8a35f", fontSize: 13, fontWeight: "800" },
+  venueMapsAction: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    backgroundColor: "#eb7825",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  venueMapsActionText: { color: "#ffffff", fontSize: 12, fontWeight: "800" },
   passSection: { marginTop: 32 },
   sectionTitleRow: {
     flexDirection: "row",

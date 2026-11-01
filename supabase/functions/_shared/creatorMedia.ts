@@ -409,6 +409,7 @@ const hmacSha256 = async (key: string, message: string): Promise<string> => {
  */
 export async function creatorDownloadUrl(
   videoId: string,
+  width: number | null,
   height: number | null,
   config = creatorMediaConfig(),
   nowMs = Date.now(),
@@ -417,14 +418,24 @@ export async function creatorDownloadUrl(
     config.cdnHostname.length === 0 || config.tokenKey.length === 0 ||
     !/^[0-9a-f-]{20,}$/i.test(videoId)
   ) return null;
+  const sourceWidth = Number(width);
   const sourceHeight = Number(height);
-  const rendition = sourceHeight >= 1080
+  if (
+    !Number.isFinite(sourceWidth) || sourceWidth <= 0 ||
+    !Number.isFinite(sourceHeight) || sourceHeight <= 0
+  ) return null;
+  // Bunny's both-dimensions scaling cannot create a rendition larger than
+  // either source edge. Using height alone asks for a nonexistent rendition
+  // on portrait uploads (a 360x640 source was signed as play_480p.mp4).
+  const sourceResolution = Math.min(sourceWidth, sourceHeight);
+  if (sourceResolution < 240) return null;
+  const rendition = sourceResolution >= 1080
     ? 1080
-    : sourceHeight >= 720
+    : sourceResolution >= 720
     ? 720
-    : sourceHeight >= 480
+    : sourceResolution >= 480
     ? 480
-    : sourceHeight >= 360
+    : sourceResolution >= 360
     ? 360
     : 240;
   const path = `/${videoId}/play_${rendition}p.mp4`;

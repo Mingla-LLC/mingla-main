@@ -1,4 +1,5 @@
 export type PurchaseKind = "order" | "rsvp" | "reservation" | "venue_order";
+export type PurchaseCoverMediaType = "image" | "video" | "gif";
 
 export interface PurchaseOrderSource {
   id: string;
@@ -7,6 +8,7 @@ export interface PurchaseOrderSource {
   eventType: string | null;
   brandName: string;
   coverMediaUrl: string | null;
+  coverMediaType?: PurchaseCoverMediaType | null;
   startAt: string | null;
   endAt: string | null;
   timezone: string;
@@ -27,6 +29,7 @@ export interface PurchaseRsvpSource {
   eventTitle: string;
   brandName: string;
   coverMediaUrl: string | null;
+  coverMediaType?: PurchaseCoverMediaType | null;
   startAt: string | null;
   endAt: string | null;
   timezone: string;
@@ -41,6 +44,7 @@ export interface PurchaseReservationSource {
   id: string;
   title: string;
   coverMediaUrl: string | null;
+  coverMediaType?: PurchaseCoverMediaType | null;
   startAt: string;
   timezone: string;
   venueLine: string | null;
@@ -56,6 +60,7 @@ export interface PurchaseVenueOrderSource {
   id: string;
   title: string;
   coverMediaUrl: string | null;
+  coverMediaType?: PurchaseCoverMediaType | null;
   createdAt: string;
   timezone: string;
   venueLine: string | null;
@@ -80,6 +85,7 @@ export interface PurchaseTimelineItem {
   title: string;
   brandName: string | null;
   coverMediaUrl: string | null;
+  coverMediaType: PurchaseCoverMediaType | null;
   startsAt: string;
   endsAt: string;
   timezone: string;
@@ -194,6 +200,7 @@ function orderItems(orders: readonly PurchaseOrderSource[]): PurchaseTimelineIte
       title: order.eventTitle,
       brandName: order.brandName,
       coverMediaUrl: order.coverMediaUrl,
+      coverMediaType: order.coverMediaType ?? null,
       startsAt: start.toISOString(),
       endsAt: end.toISOString(),
       timezone: order.timezone || "UTC",
@@ -221,6 +228,7 @@ function rsvpItems(rsvps: readonly PurchaseRsvpSource[]): PurchaseTimelineItem[]
       title: rsvp.eventTitle,
       brandName: rsvp.brandName,
       coverMediaUrl: rsvp.coverMediaUrl,
+      coverMediaType: rsvp.coverMediaType ?? null,
       startsAt: start.toISOString(),
       endsAt: end.toISOString(),
       timezone: rsvp.timezone || "UTC",
@@ -249,6 +257,7 @@ function reservationItems(
       title: reservation.title,
       brandName: reservation.title,
       coverMediaUrl: reservation.coverMediaUrl,
+      coverMediaType: reservation.coverMediaType ?? null,
       startsAt: start.toISOString(),
       endsAt: fallbackEnd(start, 2).toISOString(),
       timezone: reservation.timezone || "UTC",
@@ -277,6 +286,7 @@ function venueOrderItems(
       title: order.title,
       brandName: order.title,
       coverMediaUrl: order.coverMediaUrl,
+      coverMediaType: order.coverMediaType ?? null,
       startsAt: createdAt.toISOString(),
       endsAt: createdAt.toISOString(),
       timezone: order.timezone || "UTC",

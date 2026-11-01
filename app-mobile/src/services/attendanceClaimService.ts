@@ -1,9 +1,13 @@
 import { secureDeleteItem, secureGetItem, secureSetItem } from "../lib/secureStoreSafe";
-import { supabase } from "./supabase";
+import {
+  reactivateExplorerForVerifiedSession,
+  supabase,
+} from "./supabase";
 import {
   parseAttendanceClaimUrl as parseClaimUrl,
   type AttendanceClaimCredential,
 } from "../utils/attendanceClaimDeepLink";
+import { withExplorerReactivationIntent } from "../utils/explorerReactivation";
 
 export { isAttendanceClaimUrl } from "../utils/attendanceClaimDeepLink";
 
@@ -385,11 +389,25 @@ export async function verifyPendingClaimEmailCode(input: {
     ? data as Record<string, unknown>
     : {};
   if (!error && payload.ok === true && typeof payload.tokenHash === "string") {
-    const auth = await supabase.auth.verifyOtp({
-      token_hash: payload.tokenHash,
-      type: "magiclink",
+    const tokenHash = payload.tokenHash;
+    const { auth, reactivation } = await withExplorerReactivationIntent(async () => {
+      const auth = await supabase.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: "magiclink",
+      });
+      const session = auth.data.session;
+      const reactivation = !auth.error && session
+        ? await reactivateExplorerForVerifiedSession({
+          accessToken: session.access_token,
+          userId: session.user.id,
+        })
+        : null;
+      return { auth, reactivation };
     });
-    if (!auth.error) return { ok: true };
+    if (
+      !auth.error && reactivation &&
+      reactivation.kind !== "reactivation_failed"
+    ) return { ok: true };
     return {
       ok: false,
       error: "auth_unavailable",
