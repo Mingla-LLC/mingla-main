@@ -57,6 +57,7 @@ import { validateBrandContactEmail } from "../../utils/brandContactEmail";
 import {
   BRAND_PHONE_CHOOSE_COUNTRY_LABEL,
   brandContactWithSavedPhone,
+  brandPhoneCountryAfterAddressPick,
   brandPhoneCountrySourceForEdit,
   brandPhoneForEdit,
   brandPhoneForSave,
@@ -417,6 +418,10 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
     }),
     [savedPhone, brandCountryCode],
   );
+  // #3355 — what the phone box shows right now, for the address field's
+  // late (free-text) placement to read; see brandPhoneCountryAfterAddressPick.
+  const latestPhoneTextRef = useRef<string>("");
+  latestPhoneTextRef.current = phoneEdit?.text ?? openedPhone.localText;
   const [discardDialogVisible, setDiscardDialogVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
 
@@ -900,11 +905,28 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               countryCode={draft.countryCode}
               lat={draft.lat}
               lng={draft.lng}
-              onChange={(patch) =>
+              onChange={(patch) => {
                 setDraft((current) =>
                   current === null ? current : { ...current, ...patch },
-                )
-              }
+                );
+                // #3355 — an empty phone box follows the new address's
+                // country on every pick; a typed number never moves. Reads
+                // the LATEST box (a free-text address places after a lookup,
+                // by which time the host may have typed a number).
+                if (patch.countryCode === undefined) return;
+                const phoneText = latestPhoneTextRef.current;
+                const follow = brandPhoneCountryAfterAddressPick(
+                  phoneText,
+                  patch.countryCode,
+                  PHONE_COUNTRIES,
+                );
+                if (follow === null) return;
+                setPhoneEdit({
+                  text: phoneText,
+                  countryIso: follow.iso,
+                  countrySource: follow.countrySource,
+                });
+              }}
               testID="brand-edit-address"
             />
             <Text style={styles.kindHint}>
@@ -950,6 +972,11 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               // brand's own country, then the field's default. Never a fixed
               // UK flag over a number saved for somewhere else.
               defaultCountryIso={openedPhone.countryIso}
+              // #3355 — once edited, the chip shows the edit's country, so an
+              // address pick that moves an EMPTY box's country (see the
+              // address field above) moves the chip too. Untouched, the chip
+              // keeps the country it opened on.
+              countryIso={phoneEdit?.countryIso}
               onCountryChange={(country) => {
                 setPhoneEdit({
                   text: phoneEdit?.text ?? openedPhone.localText,

@@ -414,6 +414,13 @@ export interface InputProps
   /** Fires when the user picks a different country. Phone variant only. */
   onCountryChange?: (country: PhoneCountry) => void;
   /**
+   * Phone variant only, opt-in (#3355). When set, the chip FOLLOWS this
+   * country whenever it changes (e.g. a form moving an empty phone field to a
+   * newly picked address's country). Left out, `defaultCountryIso` is read
+   * once at mount, as before.
+   */
+  countryIso?: string;
+  /**
    * Phone variant only. While set, the chip shows this text ("Choose
    * country") instead of a flag and no row in the list is marked selected:
    * the field has no country anyone chose. The caller clears it once
@@ -513,6 +520,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
     errorId,
     renderErrorMessage = true,
     defaultCountryIso,
+    countryIso,
     onCountryChange,
     countryPlaceholder,
     onFocus,
@@ -527,6 +535,10 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
   const [country, setCountry] = useState<PhoneCountry>(() =>
     findCountryByIso(defaultCountryIso),
   );
+  // #3355 — opt-in controlled chip: follow `countryIso` when the form moves it.
+  useEffect(() => {
+    if (countryIso !== undefined) setCountry(findCountryByIso(countryIso));
+  }, [countryIso]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState<string>("");
 
