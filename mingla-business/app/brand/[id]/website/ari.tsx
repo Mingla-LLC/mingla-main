@@ -19,13 +19,23 @@ import { Redirect, useLocalSearchParams } from "expo-router";
  * two-column layout Seth approved is unchanged.
  */
 export default function BrandWebsiteAriRoute(): React.ReactElement {
-  const params = useLocalSearchParams<{ id: string | string[] }>();
+  const params = useLocalSearchParams<{
+    id: string | string[];
+    intent?: string | string[];
+    part?: string | string[];
+  }>();
   const brandId = Array.isArray(params.id) ? params.id[0] : params.id;
   const safeBrandId = typeof brandId === "string" ? brandId : "";
+  const requestedIntent = Array.isArray(params.intent) ? params.intent[0] : params.intent;
+  const intent = requestedIntent === "setup" ? "setup" : "edit";
+  const requestedPart = Array.isArray(params.part) ? params.part[0] : params.part;
+  const part = typeof requestedPart === "string" && requestedPart.length > 0
+    ? `&setupPart=${encodeURIComponent(requestedPart)}`
+    : "";
   return (
     <Redirect
       href={
-        `/(tabs)/ari?brandId=${encodeURIComponent(safeBrandId)}&sitesIntent=edit` as never
+        `/(tabs)/ari?brandId=${encodeURIComponent(safeBrandId)}&sitesIntent=${intent}${part}` as never
       }
     />
   );

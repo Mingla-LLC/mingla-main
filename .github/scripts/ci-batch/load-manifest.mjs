@@ -101,7 +101,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // same inventories and extended the existing phone-release proof.
 // #4202: re-sealed after retained shared identities gained the reviewed
 // already-owned event-chat repair in those same inventories and proof suite.
-export const BOOTSTRAP_SHA256 = "e7dcfe61e03c7aa9db46ab65e2b2d201bccfcd889779f0fa5bf9fcf7c400eec2";
+// #2830: re-sealed after the Ari brand-completeness migration and registered
+// PostgreSQL proof entered the three preserved inventories, with the migration
+// excluded by exact filename from the pre-#1931 replay that omits its #3355
+// control-plane prerequisite.
+export const BOOTSTRAP_SHA256 = "3785fbd66da4dd4f9fe84e265e4c156386baa55510dfa9eed0ad9b987bc016aa";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

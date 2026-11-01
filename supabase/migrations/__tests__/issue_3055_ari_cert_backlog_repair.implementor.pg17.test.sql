@@ -61,16 +61,23 @@
 CREATE TEMP TABLE issue_3055_input (name text PRIMARY KEY, body text NOT NULL);
 INSERT INTO issue_3055_input (name, body) VALUES
   ('sites_2830', :'issue_3055_sites_src'),
-  -- This suite replays the historical 164-requirement certification lane
-  -- before #3355. The current capability ledger also includes #3355's newer
-  -- product capabilities, so project the ledger back to the pre-#3355 set for
-  -- this historical replay. The #3355 runtime tests cover its new capabilities.
+  -- This suite replays the historical 164-requirement certification lane.
+  -- The current capability ledger also includes #3355's newer product
+  -- capabilities and #2830's four post-census Website-completeness capabilities,
+  -- so project those rows out for this historical replay. Their runtime and
+  -- authorization contracts are covered by their owning issue suites.
   ('ledger', jsonb_set(
     :'issue_3055_ledger'::jsonb,
     '{capabilities}',
     (SELECT jsonb_agg(capability ORDER BY capability ->> 'id')
      FROM jsonb_array_elements((:'issue_3055_ledger'::jsonb) -> 'capabilities') AS entries(capability)
-     WHERE capability #>> '{provenance,introduced_by}' IS DISTINCT FROM 'issue_3355')
+     WHERE capability #>> '{provenance,introduced_by}' IS DISTINCT FROM 'issue_3355'
+       AND capability ->> 'id' NOT IN (
+         'ari.brand.update_context',
+         'ari.sites.start_completeness_job',
+         'ari.sites.save_plan_design',
+         'ari.sites.record_context_finding'
+       ))
   )::text);
 
 CREATE TEMP TABLE issue_3055_snap (label text PRIMARY KEY, snap jsonb NOT NULL);

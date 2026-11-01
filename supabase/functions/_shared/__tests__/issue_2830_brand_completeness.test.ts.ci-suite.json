@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_2830_brand_completeness.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-2830-brand-completeness-agent-chain",
+  "profile": "deno-2-unit"
+}

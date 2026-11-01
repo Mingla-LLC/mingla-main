@@ -9,12 +9,12 @@
   },
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
-    "verified_at": "2026-10-30T12:52:49Z",
-    "registered_tool_count": 172,
-    "capability_count": 184,
+    "verified_at": "2026-10-31T03:20:00Z",
+    "registered_tool_count": 176,
+    "capability_count": 188,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 171,
+      "registered_unverified": 175,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -7751,6 +7751,195 @@
       ],
       "confidence": "high",
       "verified_at": "2026-10-26"
+    },
+    {
+      "id": "ari.sites.start_completeness_job",
+      "domain": "sites",
+      "outcome": "Start or resume Ari's durable Website brand-completeness job",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const startBrandCompletenessJob"
+          }
+        ]
+      },
+      "ari_tool": "start_brand_completeness_job",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "7612bc5bf6e025a05a4673466d69e0eb4a828cd9",
+          "reference": "issue_2830_brand_completeness.test.ts: durable Fix all start/resume contract",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-31"
+    },
+    {
+      "id": "ari.sites.save_plan_design",
+      "domain": "sites",
+      "outcome": "Save the owner's pre-draft Website design choice against the plan revision",
+      "safety": "write",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const saveSitePlanDesign"
+          }
+        ]
+      },
+      "ari_tool": "save_site_plan_design",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "7612bc5bf6e025a05a4673466d69e0eb4a828cd9",
+          "reference": "issue_2830_brand_completeness.test.ts: revision-bound pre-draft design save",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2829,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-31"
+    },
+    {
+      "id": "ari.sites.record_context_finding",
+      "domain": "sites",
+      "outcome": "Preserve bounded evidence that a Website brand-context field is stale or conflicting without changing the public value",
+      "safety": "write",
+      "required_role": "owner_or_admin",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const recordBrandContextFinding"
+          }
+        ]
+      },
+      "ari_tool": "record_brand_context_finding",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "10cd56977a2eb4de755876926dc2c460b4ec647b",
+          "reference": "issue_2830_brand_completeness.test.ts: stale/conflict finding and bounded candidate evidence contract",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-31"
+    },
+    {
+      "id": "ari.brand.update_context",
+      "domain": "brands",
+      "outcome": "Save confirmed Website brand-context fields and explicit not-applicable exceptions with evidence",
+      "safety": "write",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const updateBrandContext"
+          }
+        ]
+      },
+      "ari_tool": "update_brand_context",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "7612bc5bf6e025a05a4673466d69e0eb4a828cd9",
+          "reference": "issue_2830_brand_completeness.test.ts: receipt-backed context update and revision conflict",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-10-31"
     },
     {
       "id": "ari.sites.create_draft",

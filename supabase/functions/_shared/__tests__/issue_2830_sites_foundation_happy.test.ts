@@ -82,6 +82,8 @@ Deno.test("#2830 Ari registry exposes exactly the approved website tools", () =>
     JSON.stringify(names) === JSON.stringify([
       "get_brand_site",
       "get_site_plan",
+      "start_brand_completeness_job",
+      "record_brand_context_finding",
       "list_site_designs",
       "get_block_catalog",
       "get_site_tokens",
@@ -90,6 +92,8 @@ Deno.test("#2830 Ari registry exposes exactly the approved website tools", () =>
       "get_site_page",
       "validate_site_draft",
       "save_site_plan_answers",
+      "save_site_plan_design",
+      "update_brand_context",
       "create_site_draft",
       "propose_site_composition",
       "propose_block_variant",
@@ -107,7 +111,7 @@ Deno.test("#2830 Ari registry exposes exactly the approved website tools", () =>
     ]),
     "Ari Website tool registry drifted",
   );
-  assert(SITE_AGENT_READ_ONLY.size === 11, "Ari read-only set drifted");
+  assert(SITE_AGENT_READ_ONLY.size === 13, "Ari read-only set drifted");
   for (const tool of SITE_AGENT_TOOLS) {
     assert(
       (tool.parameters as { additionalProperties?: unknown }).additionalProperties === false,

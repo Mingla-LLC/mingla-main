@@ -297,7 +297,7 @@ function NoSiteOverview(): React.ReactElement {
           <View style={[styles.progressFill, { width: `${Math.round((done / total) * 100)}%` }]} />
         </View>
         <View style={styles.actions}>
-          <WButton label="Continue with Ari" icon="spark" variant="primary" onPress={() => router.push(`/brand/${ctx.brandId}/website/ari` as never)} testID="nosite-ari" />
+          <WButton label="Continue with Ari" icon="spark" variant="primary" onPress={() => router.push(`/brand/${ctx.brandId}/website/ari?intent=setup` as never)} testID="nosite-ari" />
           <WButton label="See the plan" onPress={() => ctx.go({ kind: "section", section: "plan" })} testID="nosite-plan" />
         </View>
       </Card>

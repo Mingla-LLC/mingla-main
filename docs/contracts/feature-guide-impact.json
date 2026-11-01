@@ -310,6 +310,21 @@
       ]
     },
     {
+      "capability_key": "sites-brand-website",
+      "paths": [
+        "mingla-business/src/components/ari/AriWebsiteSetupPane.tsx",
+        "mingla-business/src/components/sites/plan/PlanDesignPart.tsx",
+        "mingla-business/src/components/sites/website/sections/OverviewSection.tsx",
+        "mingla-business/src/components/sites/website/sections/PlanSection.tsx",
+        "mingla-business/src/sites/planApi.ts",
+        "mingla-business/src/sites/sitePlanState.ts",
+        "supabase/functions/_shared/agentSiteTools.ts",
+        "supabase/functions/_shared/agentTenantScope.ts",
+        "supabase/functions/brand-site-control/sitePlan.ts",
+        "supabase/migrations/20280216002830_issue_2830_ari_brand_completeness.sql"
+      ]
+    },
+    {
       "capability_key": "venues-menu",
       "paths": [
         "mingla-business/src/components/venue/VenueMenuModule.tsx",
