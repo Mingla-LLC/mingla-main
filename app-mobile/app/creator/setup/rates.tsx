@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { creatorProgramService, type CreatorPackage } from '../../../src/services/creatorProgramService';
 import { payoutService, payoutCountry } from '../../../src/services/payoutService';
 import { programErrorText } from '../../../src/services/programResult';
-import { FORMAT_INFO, currencySymbol, formatMoney, moneyInputValue, parseMoneyInput, platformLabel, usageLabel, type FormatInfo } from '../../../src/utils/programFormat';
+import { FORMAT_INFO, currencySymbol, formatMoney, moneyInputValue, parseMoneyInput, platformLabel, type FormatInfo } from '../../../src/utils/programFormat';
 import { SETUP_STATUS_KEY, goToNextStep, stepTitle } from '../../../src/components/creator/setupNav';
 import { ProgramButton, ProgramCard, ProgramField, ProgramLoading, ProgramNotice, ProgramRow, ProgramScreen, ProgramSheet, programStyles as s } from '../../../src/components/programs/ProgramUi';
 import { Chip } from '../../../src/components/programs/ProgramPickers';
@@ -14,9 +14,7 @@ import { Chip } from '../../../src/components/programs/ProgramPickers';
 const CURRENCIES = ['USD', 'NGN', 'GBP', 'EUR', 'CAD'] as const;
 const RATE_PLATFORMS = ['instagram', 'tiktok', 'youtube'] as const;
 const TURNAROUND = [1, 2, 3, 5, 7, 14];
-const USAGE = [30, 90, 365] as const;
-
-type Draft = { format: FormatInfo; price: string; currency: string; platforms: string[]; turnaround: number; usage: 30 | 90 | 365; existing: CreatorPackage | null };
+type Draft = { format: FormatInfo; price: string; currency: string; platforms: string[]; turnaround: number; existing: CreatorPackage | null };
 
 export default function CreatorRatesStep(): React.ReactElement {
   const router = useRouter();
@@ -41,7 +39,6 @@ export default function CreatorRatesStep(): React.ReactElement {
       price: existing ? moneyInputValue(existing.price_minor, existing.currency) : '',
       platforms: existing?.platforms?.length ? existing.platforms : ['instagram'],
       turnaround: existing?.turnaround_days ?? 3,
-      usage: existing?.includes_usage_days ?? 90,
     });
     setError(null); setPriceError(null);
   };
@@ -56,7 +53,7 @@ export default function CreatorRatesStep(): React.ReactElement {
       await creatorProgramService.savePackage({
         formatKey: draft.format.key, platforms: draft.platforms.length ? draft.platforms : ['instagram'],
         priceMinor: minor ?? draft.existing?.price_minor ?? 1, currency: draft.currency, turnaroundDays: draft.turnaround,
-        includesUsageDays: draft.usage, active: activeFlag,
+        active: activeFlag,
       });
       await queryClient.invalidateQueries({ queryKey: ['creator'] });
       setDraft(null);
@@ -96,8 +93,7 @@ export default function CreatorRatesStep(): React.ReactElement {
           onPress={() => setDraft({ ...draft, platforms: draft.platforms.includes(p) ? draft.platforms.filter((x) => x !== p) : [...draft.platforms, p] })} />)}</View>
         <Text style={s.fieldLabel}>Turnaround after the shoot</Text>
         <View style={s.wrap}>{TURNAROUND.map((d) => <Chip key={d} label={`${d} day${d === 1 ? '' : 's'}`} selected={draft.turnaround === d} onPress={() => setDraft({ ...draft, turnaround: d })} />)}</View>
-        <Text style={s.fieldLabel}>Hosts may reuse it for</Text>
-        <View style={s.wrap}>{USAGE.map((u) => <Chip key={u} label={usageLabel(u)} selected={draft.usage === u} onPress={() => setDraft({ ...draft, usage: u })} />)}</View>
+        <ProgramNotice text="Your price includes perpetual organic and paid-marketing rights for Mingla and the paying Host once your full Creator fee is released. You keep copyright." />
         {error ? <ProgramNotice tone="error" text={error} /> : null}
       </> : null}
     </ProgramSheet>

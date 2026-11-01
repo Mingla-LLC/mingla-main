@@ -38,6 +38,7 @@ const deps = (
   actor: string,
   purpose: string,
   admin = false,
+  activeRights = true,
 ): MediaStatusDeps => ({
   actorId: () => Promise.resolve(actor),
   media: () => Promise.resolve(row(purpose)),
@@ -45,6 +46,7 @@ const deps = (
     Promise.resolve(contractId === CONTRACT && actorId === HOST),
   isAdmin: () => Promise.resolve(admin),
   isApprovedDelivery: () => Promise.resolve(purpose === "delivery"),
+  hasActiveRights: () => Promise.resolve(activeRights),
   playback: () =>
     Promise.resolve({ url: "https://video.example/play", expiresAt: "later" }),
   download: () =>
@@ -71,6 +73,17 @@ Deno.test("#3872 the contract's host can play the delivered video it must review
   const body = await res.json();
   assertEquals(body.playback.url, "https://video.example/play");
   assertEquals(body.download.url, "https://video.example/download");
+  assertEquals(body.availableUntil, null);
+});
+
+Deno.test("#4216 a Host may review but not download before the full Creator fee is released", async () => {
+  const res = await createCreatorMediaStatusHandler(
+    deps(HOST, "delivery", false, false),
+  )(request());
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.playback.url, "https://video.example/play");
+  assertEquals(body.download, null);
   assertEquals(body.availableUntil, "2027-02-23T12:00:00Z");
 });
 

@@ -207,10 +207,10 @@ describe("hire and pay", () => {
 
   it("lists the hire terms as checkboxes", () => {
     expect(hireTerms("Amara", 90)).toContain(
-      "You may reuse the video for 90 days",
+      "After the full Creator fee is released, you and Mingla may reuse, edit and advertise with the approved video worldwide, forever, without another usage fee",
     );
     expect(hireTerms("Amara", 365)).toContain(
-      "You may reuse the video for 1 year",
+      "Ads run directly from the Creator's social account still need the separate permission required by that platform",
     );
   });
 });

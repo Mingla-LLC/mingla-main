@@ -6,6 +6,7 @@ export type PublicGig = {
   deliverables: Array<{ platform: string; kind: string; count: number }>;
   city_name: string; category: string; shoot_window: { start: string; end: string };
   post_by: string; usage_days: number; sales_share_bps: number | null; slots_left: number;
+  rights_model?: 'legacy_timed' | 'creator_v1_perpetual'; agreement_version?: string | null; agreement_url?: string | null;
   /** When the video is due and the set shoot time (timestamptz), when the host gave them. */
   video_due_at?: string | null; shoot_at?: string | null;
   saved?: boolean;
@@ -67,6 +68,17 @@ export type GigWorkspace = {
   money_state?: 'on_the_way' | 'ready' | 'paid' | 'refunded' | 'partially_refunded' | null;
   /** When the payout was confirmed, if the server sends it (for "Paid to your bank on Nov 27"). */
   money_paid_at?: string | null;
+  rights?: GigRights | null;
+};
+
+export type GigRights = {
+  model: 'legacy_timed' | 'creator_v1_perpetual';
+  status: 'legacy' | 'pending' | 'active' | 'not_granted';
+  label: string;
+  usage_days?: number | null;
+  agreement_version?: string | null;
+  agreement_url?: string | null;
+  whitelisting_requires_platform_authorization?: boolean;
 };
 
 export type EarningsRow = { kind: 'gig' | 'referral' | 'local'; title: string; amount_minor: number; currency: string; state: 'on_the_way' | 'ready' | 'paid'; at: string };
@@ -86,7 +98,13 @@ export const creatorGigsService = {
     return result;
   },
   earningsSummary: () => programRead<CreatorEarningsSummary>('creator_earnings_summary'),
-  workspace: (contractId: string) => programRead<GigWorkspace | null>('gig_contract_workspace', { p_contract_id: contractId }),
+  workspace: async (contractId: string): Promise<GigWorkspace | null> => {
+    const [workspace, rights] = await Promise.all([
+      programRead<GigWorkspace | null>('gig_contract_workspace', { p_contract_id: contractId }),
+      programRead<GigRights | null>('gig_rights_status', { p_contract_id: contractId }),
+    ]);
+    return workspace ? { ...workspace, rights } : null;
+  },
   transition: async (contractId: string, expectedState: string, action: string, payload: Record<string, unknown> = {}) => {
     const result = await programWrite('gig_transition', { p_contract_id: contractId, p_expected_state: expectedState, p_action: action, p_payload: payload });
     if (action === 'accept') postHogService.capture('gig_accepted');

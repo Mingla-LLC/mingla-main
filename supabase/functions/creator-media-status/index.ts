@@ -46,6 +46,7 @@ export type MediaStatusDeps = {
   isContractHost: (contractId: string, actorId: string) => Promise<boolean>;
   isAdmin: (actorId: string) => Promise<boolean>;
   isApprovedDelivery: (jobId: string, contractId: string) => Promise<boolean>;
+  hasActiveRights: (contractId: string) => Promise<boolean>;
   playback: (videoId: string) => Promise<unknown>;
   download: (videoId: string, height: number | null) => Promise<unknown>;
 };
@@ -100,7 +101,9 @@ export function createCreatorMediaStatusHandler(deps: MediaStatusDeps) {
     const approvedDelivery = contractHost && data.purpose === "delivery" &&
       data.contract_id !== null &&
       await deps.isApprovedDelivery(data.id, data.contract_id);
-    const download = approvedDelivery && data.status === "ready" &&
+    const activeRights = approvedDelivery && data.contract_id !== null &&
+      await deps.hasActiveRights(data.contract_id);
+    const download = activeRights && data.status === "ready" &&
         data.bunny_video_id
       ? await deps.download(data.bunny_video_id, data.height)
       : null;
@@ -113,7 +116,11 @@ export function createCreatorMediaStatusHandler(deps: MediaStatusDeps) {
       readyAt: data.ready_at,
       playback,
       download,
-      availableUntil: approvedDelivery ? data.delete_after : null,
+      availableUntil: activeRights
+        ? null
+        : approvedDelivery
+        ? data.delete_after
+        : null,
     });
   };
 }
@@ -154,6 +161,12 @@ if (import.meta.main) {
         .select("id").eq("media_job_id", jobId).eq("contract_id", contractId)
         .in("decision", ["approved", "auto_approved"]).maybeSingle();
       return !error && Boolean(data);
+    },
+    hasActiveRights: async (contractId) => {
+      const { data, error } = await supabase.rpc("gig_rights_status", {
+        p_contract_id: contractId,
+      });
+      return !error && data?.status === "active";
     },
     playback: creatorPlaybackUrl,
     download: creatorDownloadUrl,
