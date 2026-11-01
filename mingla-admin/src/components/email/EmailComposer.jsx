@@ -30,6 +30,17 @@ import { Spinner } from "../ui/Spinner";
 import { useToast } from "../../context/ToastContext";
 import { EmailBlogPostPicker } from "./EmailBlogPostPicker";
 import {
+  APP_STATUS_OPTIONS,
+  AUDIENCE_PRESETS,
+  EMPTY_FILTERS,
+  audienceFor,
+  audienceSummary,
+  choosePreset,
+  exclusionReasons,
+  isRecipientChosen,
+  presetIsActive,
+} from "../../lib/emailAudience";
+import {
   EMAIL_DRAFT_KEY,
   EMAIL_DRAFT_VERSION,
   LEGACY_EMAIL_DRAFT_KEYS,
@@ -54,17 +65,6 @@ const TOKENS = [
 const SAMPLE_VALUES = Object.fromEntries(TOKENS.map((token) => [token.value, token.example]));
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const DRAFT_KEY = EMAIL_DRAFT_KEY;
-const EMPTY_FILTERS = {
-  userType: "host",
-  country: "all",
-  onboarding: "all",
-  accountStatus: "all",
-  emailStatus: "all",
-  language: "all",
-  beta: "all",
-  joinedFrom: "",
-  joinedTo: "",
-};
 
 function blockId() {
   return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
@@ -166,12 +166,6 @@ function BlogPostSnapshot({ block, preview = false }) {
   );
 }
 
-function audienceFor(mode, selectedRecipient, filters) {
-  if (mode === "person") return { mode, profileId: selectedRecipient?.profile_id || "" };
-  if (mode === "everyone") return { mode, filters: {} };
-  return { mode, filters };
-}
-
 function FilterSelect({ label, value, onChange, children }) {
   return (
     <label className="min-w-0">
@@ -247,7 +241,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
   const [selectedRecipient, setSelectedRecipient] = useState(null);
   const [recipientSearching, setRecipientSearching] = useState(false);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [metadata, setMetadata] = useState({ countries: [], languages: [] });
+  const [metadata, setMetadata] = useState({ countries: [], languages: [], cities: [], brands: [] });
   const [estimate, setEstimate] = useState(null);
   const [estimating, setEstimating] = useState(false);
   const [subject, setSubject] = useState("");
@@ -339,11 +333,18 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      callEdgeFunction({ action: "metadata" }).catch(() => ({ countries: [], languages: [] })),
+      callEdgeFunction({ action: "metadata" }).catch(() => ({ countries: [], languages: [], cities: [], brands: [] })),
       supabase.from("email_templates").select("id,name,subject,body,body_document").order("name"),
     ]).then(([meta, templateResult]) => {
       if (cancelled) return;
-      if (!meta?._noProvider) setMetadata({ countries: meta.countries || [], languages: meta.languages || [] });
+      if (!meta?._noProvider) {
+        setMetadata({
+          countries: meta.countries || [],
+          languages: meta.languages || [],
+          cities: meta.cities || [],
+          brands: meta.brands || [],
+        });
+      }
       setTemplates(templateResult.data || []);
     });
     return () => { cancelled = true; };
@@ -398,7 +399,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
   useEffect(() => {
     let cancelled = false;
     const timer = setTimeout(() => {
-      if (audienceMode === "person" && !selectedRecipient?.profile_id) {
+      if (audienceMode === "person" && !isRecipientChosen(selectedRecipient)) {
         setEstimate(null);
         setEstimating(false);
         return;
@@ -652,7 +653,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
       }
     }
     if (candidateDocument.some((block) => block.type === "image" && !block.alt.trim())) return "Add alt text to every image or GIF";
-    if (audienceMode === "person" && !selectedRecipient?.profile_id) return "Choose an eligible Mingla recipient";
+    if (audienceMode === "person" && !isRecipientChosen(selectedRecipient)) return "Choose an eligible Mingla recipient";
     if (scheduleMode === "later" && (!scheduledLocal || new Date(scheduledLocal).getTime() <= now)) return "Choose a future send time";
     if (!estimate || estimate.will_receive < 1) return "This audience has no eligible recipients";
     return null;
@@ -722,15 +723,8 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
     }
   }
 
-  const audienceLabel = audienceMode === "everyone"
-    ? "Everyone"
-    : audienceMode === "person"
-      ? (selectedRecipient?.display_name || "One person")
-      : filters.userType === "host"
-        ? `${estimate?.will_receive ?? "—"} Hosts`
-        : filters.userType === "explorer"
-          ? `${estimate?.will_receive ?? "—"} Explorer users`
-          : `${estimate?.will_receive ?? "—"} matching users`;
+  const audienceLabel = audienceSummary(audienceMode, filters, estimate, selectedRecipient);
+  const leftOut = exclusionReasons(estimate);
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(340px,0.9fr)]">
@@ -745,38 +739,34 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-[15px] font-semibold text-[var(--color-text-primary)]">Audience</h2>
-              <p className="text-xs text-[var(--color-text-tertiary)]">Hosts are the default. Explorer sends always require an explicit choice and count review.</p>
+              <p className="text-xs text-[var(--color-text-tertiary)]">Hosts are the default. Explorer and ticket-buyer sends always require an explicit choice and count review. Ticket buyers only get marketing email if they agreed to it.</p>
             </div>
             <div className="flex rounded-lg bg-[var(--gray-100)] p-1">
-              {[
-                ["hosts", "Hosts"],
-                ["person", "One person"],
-                ["segment", "Segment"],
-                ["explorers", "Explorer users"],
-                ["everyone", "Everyone"],
-              ].map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  aria-pressed={(id === "hosts" && audienceMode === "segment" && filters.userType === "host") || (id === "explorers" && audienceMode === "segment" && filters.userType === "explorer") || audienceMode === id}
-                  onClick={() => {
-                    if (id === "hosts" || id === "explorers") {
-                      setAudienceMode("segment");
-                      setFilters({ ...EMPTY_FILTERS, userType: id === "hosts" ? "host" : "explorer" });
-                    } else setAudienceMode(id);
-                  }}
-                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${((id === "hosts" && audienceMode === "segment" && filters.userType === "host") || (id === "explorers" && audienceMode === "segment" && filters.userType === "explorer") || audienceMode === id) ? "bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm" : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"}`}
-                >
-                  {label}
-                </button>
-              ))}
+              {AUDIENCE_PRESETS.map((preset) => {
+                const active = presetIsActive(preset, audienceMode, filters);
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => {
+                      const next = choosePreset(preset, filters);
+                      setAudienceMode(next.audienceMode);
+                      if (next.filters !== filters) setFilters(next.filters);
+                    }}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${active ? "bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm" : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"}`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           {audienceMode === "everyone" && (
             <div className="flex items-center gap-2 rounded-lg border border-[var(--gray-200)] bg-[var(--gray-50)] px-3 py-2.5 text-sm text-[var(--color-text-secondary)]">
               <Users className="h-4 w-4 text-[var(--color-brand-500)]" />
-              All eligible Host and Explorer accounts. Suppressed addresses are always excluded.
+              Everyone with the Host or Explorer app. Staff, test and unsubscribed addresses are always left out.
             </div>
           )}
           {audienceMode === "person" && (
@@ -796,7 +786,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
                     id="email-recipient-search"
                     value={recipientQuery}
                     onChange={(event) => setRecipientQuery(event.target.value)}
-                    placeholder="Search a Mingla member by name, username, or email"
+                    placeholder="Search a Mingla member or ticket buyer by name or email"
                     autoComplete="off"
                     className="h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]"
                   />
@@ -806,7 +796,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
                         <div className="flex items-center gap-2 px-3 py-3 text-xs text-[var(--color-text-secondary)]"><Spinner size="xs" /> Searching Mingla members…</div>
                       ) : recipientMatches.map((person) => (
                         <button
-                          key={person.profile_id}
+                          key={person.profile_id || person.email}
                           type="button"
                           onClick={() => { setSelectedRecipient(person); setRecipientQuery(person.display_name); setRecipientMatches([]); }}
                           disabled={!person.eligible}
@@ -826,7 +816,22 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                 <FilterSelect label="User type" value={filters.userType} onChange={(value) => setFilter("userType", value)}>
-                  <option value="all">All</option><option value="host">Host</option><option value="explorer">Explorer</option>
+                  <option value="all">All</option><option value="host">Host</option><option value="explorer">Explorer</option><option value="ticket_buyers">Ticket buyers</option>
+                </FilterSelect>
+                <FilterSelect label="App status" value={filters.appStatus} onChange={(value) => setFilter("appStatus", value)}>
+                  <option value="all">All</option>
+                  {APP_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </FilterSelect>
+                <FilterSelect label="Event city" value={filters.city} onChange={(value) => setFilter("city", value)}>
+                  <option value="all">All cities</option>
+                  {metadata.cities.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </FilterSelect>
+                <FilterSelect label="Bought tickets" value={filters.boughtTickets} onChange={(value) => setFilter("boughtTickets", value)}>
+                  <option value="all">All</option><option value="yes">Yes</option><option value="no">No</option>
+                </FilterSelect>
+                <FilterSelect label="Brand bought from" value={filters.brandId} onChange={(value) => setFilter("brandId", value)}>
+                  <option value="all">All brands</option>
+                  {metadata.brands.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </FilterSelect>
                 <FilterSelect label="Country" value={filters.country} onChange={(value) => setFilter("country", value)}>
                   <option value="all">All countries</option>
@@ -880,7 +885,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
 
           <div className="mt-3 flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--color-text-secondary)]" aria-live="polite">
             {estimating ? <><Spinner size="xs" /> Counting eligible recipients…</> : estimate ? (
-              <><strong className="text-[var(--color-text-primary)]">{estimate.matched.toLocaleString()}</strong> matched · <strong className="text-[var(--color-text-primary)]">{estimate.will_receive.toLocaleString()}</strong> will receive · {estimate.opted_out.toLocaleString()} unsubscribed · {estimate.no_contact.toLocaleString()} no valid email · {estimate.duplicate.toLocaleString()} duplicate</>
+              <><strong className="text-[var(--color-text-primary)]">{estimate.matched.toLocaleString()}</strong> matched · <strong className="text-[var(--color-text-primary)]">{estimate.will_receive.toLocaleString()}</strong> will receive{leftOut.map((reason) => <span key={reason.key}> · {reason.count.toLocaleString()} {reason.label}</span>)}</>
             ) : <span>Recipient count appears here.</span>}
           </div>
         </div>
@@ -1142,6 +1147,8 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
               <div><p className="text-xs text-[var(--color-text-tertiary)]">Unsubscribed</p><p className="mt-1 font-semibold text-[var(--color-text-primary)]">{estimate?.opted_out.toLocaleString()}</p></div>
               <div><p className="text-xs text-[var(--color-text-tertiary)]">No valid email</p><p className="mt-1 font-semibold text-[var(--color-text-primary)]">{estimate?.no_contact.toLocaleString()}</p></div>
               <div><p className="text-xs text-[var(--color-text-tertiary)]">Duplicate email</p><p className="mt-1 font-semibold text-[var(--color-text-primary)]">{estimate?.duplicate.toLocaleString()}</p></div>
+              <div><p className="text-xs text-[var(--color-text-tertiary)]">Didn't agree to marketing</p><p className="mt-1 font-semibold text-[var(--color-text-primary)]">{Number(estimate?.no_consent || 0).toLocaleString()}</p></div>
+              <div><p className="text-xs text-[var(--color-text-tertiary)]">Staff and test</p><p className="mt-1 font-semibold text-[var(--color-text-primary)]">{Number(estimate?.internal || 0).toLocaleString()}</p></div>
               <div className="col-span-2 sm:col-span-3"><p className="text-xs text-[var(--color-text-tertiary)]">Audience</p><p className="mt-1 font-medium text-[var(--color-text-primary)]">{audienceLabel}</p></div>
               <div className="col-span-2 sm:col-span-3"><p className="text-xs text-[var(--color-text-tertiary)]">When</p><p className="mt-1 font-medium text-[var(--color-text-primary)]">{scheduleMode === "later" ? `${new Date(scheduledLocal).toLocaleString()} (${timezone})` : "As soon as the delivery worker claims it"}</p></div>
             </div>

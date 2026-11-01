@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { EmailComposer } from "../components/email/EmailComposer";
+import { audienceFilterWords } from "../lib/emailAudience";
 
 class SessionExpiredError extends Error {
   constructor(message = SESSION_EXPIRED_MESSAGE) {
@@ -70,17 +71,8 @@ function campaignAudienceLabel(log) {
   if (log?.audience?.mode === "everyone") return "Everyone";
   if (log?.audience?.mode === "person") return log.recipient_email || log.audience.email || "One person";
   if (log?.audience?.mode === "segment") {
-    const filters = log.audience.filters || {};
-    const active = [
-      filters.userType && filters.userType !== "all" ? filters.userType : null,
-      filters.country && filters.country !== "all" ? filters.country : null,
-      filters.onboarding && filters.onboarding !== "all" ? filters.onboarding : null,
-      filters.accountStatus && filters.accountStatus !== "all" ? filters.accountStatus : null,
-      filters.emailStatus && filters.emailStatus !== "all" ? filters.emailStatus : null,
-      filters.language && filters.language !== "all" ? filters.language : null,
-      filters.beta && filters.beta !== "all" ? filters.beta : null,
-      filters.joinedFrom || filters.joinedTo ? "joined date" : null,
-    ].filter(Boolean);
+    // #4226: one wording with the composer, including the ticket-buyer filters.
+    const active = audienceFilterWords(log.audience.filters);
     return active.length ? active.join(" · ") : "All Host & Explorer users";
   }
   return log?.recipient_type === "bulk" ? segmentLabel(log.segment_filter) : (log?.recipient_email || "One person");
@@ -1033,6 +1025,8 @@ function HistorySubView() {
                       {Number(detailLog.skipped_count) > 0 && `, ${detailLog.skipped_count} unsubscribed`}
                       {Number(detailLog.no_contact_count) > 0 && `, ${detailLog.no_contact_count} no valid email`}
                       {Number(detailLog.duplicate_count) > 0 && `, ${detailLog.duplicate_count} duplicate`}
+                      {Number(detailLog.no_consent_count) > 0 && `, ${detailLog.no_consent_count} didn't agree to marketing`}
+                      {Number(detailLog.internal_excluded_count) > 0 && `, ${detailLog.internal_excluded_count} staff and test`}
                     </p>
                   </div>
                   <div>

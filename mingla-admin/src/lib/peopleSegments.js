@@ -6,6 +6,7 @@
 // This file only names them in plain English.
 
 import { PROVIDER_LABEL, READINESS, READINESS_LABEL, parseReadinessCode } from "./paymentReadiness.js";
+import { joinMoneyAmounts } from "./moneyFormat.js";
 
 /** People tabs, in order. `id` is the address value (#/people?tab=...). */
 export const PEOPLE_TABS = Object.freeze([
@@ -14,6 +15,10 @@ export const PEOPLE_TABS = Object.freeze([
   Object.freeze({ id: "both", segment: "both", label: "Both" }),
   Object.freeze({ id: "incomplete", segment: "incomplete", label: "Didn't finish sign-up" }),
   Object.freeze({ id: "internal", segment: "internal", label: "Staff and test" }),
+  // #4226: anyone with a paid ticket who has not finished Explorer onboarding
+  // (no account, or an account that never onboarded). Not a partition: an
+  // account holder here keeps their own tab too.
+  Object.freeze({ id: "ticket-buyers", segment: "ticket_buyer_no_app", label: "Ticket buyers, no app" }),
 ]);
 
 export const DEFAULT_PEOPLE_TAB = "explorers";
@@ -185,12 +190,56 @@ export function brandToolFor(value) {
   return typeof value === "string" && Object.hasOwn(BRAND_TOOL_TABS, value) ? BRAND_TOOL_TABS[value] : null;
 }
 
+// #4226 — ticket facts in plain words.
+const APP_STATUS_WORDS = Object.freeze({
+  explorer: "Explorer",
+  host: "Host",
+  both: "Host and Explorer",
+  incomplete: "Didn't finish sign-up",
+  ticket_buyer_no_app: "No app yet",
+});
+
+export function appStatusLabel(value) {
+  return (typeof value === "string" && Object.hasOwn(APP_STATUS_WORDS, value) && APP_STATUS_WORDS[value]) || "Unknown";
+}
+
+const CONSENT_WORDS = Object.freeze({
+  yes: Object.freeze({ label: "Yes", variant: "success" }),
+  no: Object.freeze({ label: "No", variant: "default" }),
+  unsubscribed: Object.freeze({ label: "Unsubscribed", variant: "warning" }),
+});
+
+/** "Emails OK": may Mingla send this person marketing email? */
+export function marketingConsent(value) {
+  return (typeof value === "string" && Object.hasOwn(CONSENT_WORDS, value) && CONSENT_WORDS[value]) || CONSENT_WORDS.no;
+}
+
+/**
+ * Money spent, one amount per currency, never summed across currencies
+ * (Constitution #10). `spent` is { "NGN": 104500, "USD": 1000 } in minor
+ * units. Free tickets only: "Free".
+ */
+export function spentLabel(spent) {
+  const entries = spent && typeof spent === "object" ? Object.entries(spent) : [];
+  const parts = entries
+    .filter(([code, cents]) => /^[A-Z]{3}$/.test(code) && Number(cents) > 0)
+    .sort(([x], [y]) => x.localeCompare(y))
+    .map(([currency, cents]) => ({ cents: Number(cents), currency }));
+  return parts.length ? joinMoneyAmounts(parts) : "Free";
+}
+
 /** Plain fields beside the server row, for the table and the CSV. */
 export function flattenPersonRow(row) {
   const brands = Array.isArray(row?.brands) ? row.brands : [];
   const readiness = bestReadiness(brands);
+  const bought = Array.isArray(row?.brands_bought) ? row.brands_bought : [];
   return {
     ...row,
+    row_key: row?.id || row?.person_key || row?.email || "",
+    app_status_label: appStatusLabel(row?.app_status),
+    spent_label: row?.spent ? spentLabel(row.spent) : "",
+    emails_ok_label: marketingConsent(row?.marketing_consent).label,
+    brands_bought_names: bought.map((b) => b?.name).filter(Boolean).join("; "),
     brand_names: brands.map((b) => b?.name).filter(Boolean).join("; "),
     main_role: brands.length ? brandRoleLabel(brands[0]?.role) : "",
     payments_label: readiness ? readiness.label : "",
