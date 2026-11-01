@@ -27,6 +27,7 @@ DECLARE
   v_ticket uuid;
   v_pair uuid := '32818000-0000-4000-8400-000000000007';
   v_mon uuid := '32818000-0000-4000-8400-000000000014';
+  v_pass record;
 BEGIN
   v_days := ARRAY[v_fri,v_sat];
   INSERT INTO auth.users(id,email) VALUES(v_owner,'day-list-owner@example.test');
@@ -58,6 +59,13 @@ BEGIN
   PERFORM public.issue_3281_sync_occurrence_keys(v_event,v_multi);
   IF (SELECT occurrence_key FROM public.event_dates WHERE id=v_sat) IS DISTINCT FROM 'sat' THEN
     RAISE EXCEPTION 'dates must take the organiser day id';
+  END IF;
+  -- A key never moves, so a list and a hold keep meaning the same date.
+  PERFORM public.issue_3281_sync_occurrence_keys(v_event,
+    (SELECT jsonb_agg(CASE WHEN e->>'id'='sat' THEN e||'{"id":"renamed"}'::jsonb ELSE e END)
+       FROM jsonb_array_elements(v_multi) e));
+  IF (SELECT occurrence_key FROM public.event_dates WHERE id=v_sat) IS DISTINCT FROM 'sat' THEN
+    RAISE EXCEPTION 'a set key must not change';
   END IF;
 
   INSERT INTO public.ticket_types(
@@ -184,6 +192,15 @@ BEGIN
   IF (v_json->>'remaining')::integer IS DISTINCT FROM 1 THEN
     RAISE EXCEPTION 'the public bundle must count per date, got %',v_json;
   END IF;
+  -- A cancelled date has no places, even with its end still ahead.
+  UPDATE public.event_dates SET cancelled_at=now() WHERE id=v_sat;
+  SELECT t INTO v_json
+    FROM jsonb_array_elements(public.pg_direct_event_checkout_bundle(v_event,NULL,NULL)::jsonb->'tickets') t
+   WHERE t->>'id'=v_pair::text;
+  IF (v_json->>'remaining')::integer IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'a cancelled date must not add places, got %',v_json;
+  END IF;
+  UPDATE public.event_dates SET cancelled_at=NULL WHERE id=v_sat;
 
   -- Scope writers: absent key keeps the list, null clears, junk is refused.
   v_scope := public.issue_3281_resolve_tier_scope(v_event,'{"id":"x"}'::jsonb,ARRAY['fri']);
@@ -308,6 +325,27 @@ BEGIN
   SELECT count(*) INTO v_count FROM public.ticket_event_dates WHERE ticket_id=v_ticket;
   IF v_count <> 1 THEN RAISE EXCEPTION 'a wider list must not touch an issued pass'; END IF;
 
+  -- A pass with no day row admits any day, so a listed ticket cannot have one.
+  SELECT order_id,event_id INTO v_pass FROM public.tickets WHERE id=v_ticket;
+  v_raised := NULL;
+  BEGIN
+    INSERT INTO public.tickets(id,event_id,order_id,ticket_type_id,status,qr_code)
+      VALUES('32818000-0000-4000-8400-000000000031',v_event,v_pass.order_id,v_friday,'valid','day-list-no-day');
+    SET CONSTRAINTS issue_3281_pass_has_day IMMEDIATE;
+  EXCEPTION WHEN OTHERS THEN v_raised := SQLERRM; END;
+  SET CONSTRAINTS issue_3281_pass_has_day DEFERRED;
+  IF v_raised IS DISTINCT FROM 'ticket_not_valid_on_chosen_days' THEN
+    RAISE EXCEPTION 'a listed pass with no day must be refused, got %',v_raised;
+  END IF;
+  INSERT INTO public.tickets(id,event_id,order_id,ticket_type_id,status,qr_code)
+    VALUES('32818000-0000-4000-8400-000000000032',v_event,v_pass.order_id,v_friday,'valid','day-list-with-day');
+  INSERT INTO public.ticket_event_dates(ticket_id,event_date_id)
+    VALUES('32818000-0000-4000-8400-000000000032',v_fri);
+  INSERT INTO public.tickets(id,event_id,order_id,ticket_type_id,status,qr_code)
+    VALUES('32818000-0000-4000-8400-000000000033',v_event,v_pass.order_id,v_all,'valid','all-dates-no-day');
+  SET CONSTRAINTS issue_3281_pass_has_day IMMEDIATE;
+  SET CONSTRAINTS issue_3281_pass_has_day DEFERRED;
+
   v_raised := NULL;
   BEGIN
     UPDATE public.ticket_types SET valid_occurrence_keys='{}' WHERE id=v_friday;
@@ -344,17 +382,15 @@ BEGIN
      IS DISTINCT FROM 'null'::jsonb THEN
     RAISE EXCEPTION 'null must clear a draft list';
   END IF;
-END;
-$test$;
-
--- A listed ticket cannot issue a pass with no day row, which would admit any day.
-DO $test$
-DECLARE
-  v_raised text;
-BEGIN
-  v_raised := pg_get_triggerdef((SELECT oid FROM pg_trigger WHERE tgname='issue_3281_pass_has_day'));
-  IF position('DEFERRABLE INITIALLY DEFERRED' IN v_raised) = 0 THEN
-    RAISE EXCEPTION 'the pass-has-day guard must run at commit, got %',v_raised;
+  UPDATE public.events SET theme=jsonb_set(theme,'{business_draft,tickets}',
+    jsonb_build_array(v_tier||'{"validDayIds":["md_fri"]}'::jsonb)) WHERE id=v_event;
+  PERFORM public.business_update_event_draft(v_event,jsonb_build_object(
+    'title','draft list','visibility','draft','timezone','UTC',
+    'theme',jsonb_build_object('business_draft',jsonb_build_object(
+      'requestedVisibility','public','tickets',jsonb_build_array(v_tier)))),2);
+  IF (SELECT theme#>'{business_draft,tickets,0,validDayIds}' FROM public.events WHERE id=v_event)
+     IS DISTINCT FROM '["md_fri"]'::jsonb THEN
+    RAISE EXCEPTION 'an autosave with no key must keep the list';
   END IF;
 END;
 $test$;
@@ -389,6 +425,9 @@ BEGIN
     jsonb_build_object('id','md_sat','date',v_d2,'startTime','14:00','endTime','23:00'),
     jsonb_build_object('id','md_sun','date',v_d3,'startTime','14:00','endTime','21:00'));
 
+  UPDATE public.events SET theme=jsonb_build_object('business_draft',jsonb_build_object(
+      'tickets',jsonb_build_array(jsonb_build_object('id','stored','validDayIds',jsonb_build_array('md_fri')))))
+   WHERE id=v_event;
   PERFORM public.business_publish_event_draft(v_event, jsonb_build_object(
     'title','Day list weekend','timezone','UTC','is_online',true,
     'is_multi_date',true,
@@ -403,6 +442,7 @@ BEGIN
           'validDayIds',jsonb_build_array('md_fri')),
         jsonb_build_object('name','Weekend','isFree',true,'price',0,'capacity',100,
           'validDayIds',jsonb_build_array('md_sat','md_sun')),
+        jsonb_build_object('id','stored','name','Stored list','isFree',true,'price',0,'capacity',20),
         jsonb_build_object('name','All dates','isFree',true,'price',0,'capacity',600))
     ))
   ), NULL);
@@ -418,6 +458,11 @@ BEGIN
   IF (SELECT valid_occurrence_keys FROM public.ticket_types WHERE event_id=v_event AND name='Friday VIP')
      IS DISTINCT FROM ARRAY['md_fri'] THEN
     RAISE EXCEPTION 'publish must store the list';
+  END IF;
+
+  IF (SELECT valid_occurrence_keys FROM public.ticket_types WHERE event_id=v_event AND name='Stored list')
+     IS DISTINCT FROM ARRAY['md_fri'] THEN
+    RAISE EXCEPTION 'publish with no key must keep the stored draft list';
   END IF;
 
   -- A live edit from a caller that predates lists leaves the list alone.

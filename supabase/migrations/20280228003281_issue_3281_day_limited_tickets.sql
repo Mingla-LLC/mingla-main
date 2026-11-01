@@ -65,14 +65,13 @@ BEGIN
       HAVING count(*) = 1
     ) w;
 
-  UPDATE public.event_dates d SET occurrence_key = NULL
-   WHERE d.event_id = p_event_id AND d.occurrence_key IS NOT NULL
-     AND NOT EXISTS (
-       SELECT 1 FROM unnest(v_ids, v_keys) AS w(id, key)
-        WHERE w.id = d.id AND w.key = d.occurrence_key);
+  -- A key never changes once set: a date's identity is what lists and holds rest on.
   UPDATE public.event_dates d SET occurrence_key = w.key
     FROM unnest(v_ids, v_keys) AS w(id, key)
-   WHERE d.id = w.id AND d.occurrence_key IS DISTINCT FROM w.key;
+   WHERE d.id = w.id AND d.occurrence_key IS NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM public.event_dates o
+        WHERE o.event_id = p_event_id AND o.occurrence_key = w.key);
 END;
 $fn$;
 
@@ -253,9 +252,33 @@ AS $fn$
      WHERE d.event_id = tt.event_id
        AND d.occurrence_key = ANY (tt.valid_occurrence_keys)
        AND d.end_at > now()
+       AND d.cancelled_at IS NULL
   ), 0) END
   FROM public.ticket_types tt
   WHERE tt.id = p_ticket_type_id;
+$fn$;
+
+-- No validDayIds key on an incoming draft ticket keeps the stored list, matched
+-- by ticket id. JSON null is the deliberate clear.
+CREATE OR REPLACE FUNCTION public.issue_3281_keep_draft_day_lists(p_new jsonb, p_old jsonb)
+RETURNS jsonb
+LANGUAGE sql
+IMMUTABLE
+SET search_path TO 'public', 'pg_temp'
+AS $fn$
+  SELECT CASE WHEN jsonb_typeof(p_new) IS DISTINCT FROM 'array' THEN p_new ELSE COALESCE((
+    SELECT jsonb_agg(
+      CASE WHEN rows.tier ? 'validDayIds' THEN rows.tier
+        ELSE rows.tier || COALESCE((
+          SELECT jsonb_build_object('validDayIds', old_tier->'validDayIds')
+            FROM jsonb_array_elements(
+              CASE WHEN jsonb_typeof(p_old) = 'array' THEN p_old ELSE '[]'::jsonb END) old_tier
+           WHERE old_tier->>'id' = rows.tier->>'id' AND old_tier ? 'validDayIds'
+           LIMIT 1
+        ), '{}'::jsonb) END
+      ORDER BY rows.ordinality)
+      FROM jsonb_array_elements(p_new) WITH ORDINALITY rows(tier, ordinality)
+  ), '[]'::jsonb) END;
 $fn$;
 
 -- NULL for an All dates ticket, otherwise the given dates it is valid on.
@@ -373,6 +396,7 @@ REVOKE ALL ON FUNCTION public.issue_3281_resolve_tier_scope(uuid, jsonb, text[])
 REVOKE ALL ON FUNCTION public.issue_3281_assert_scope_keeps_taken_days(uuid, text[], text[]) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3281_ticket_type_day_list_guard() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3281_listed_remaining(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_3281_keep_draft_day_lists(jsonb, jsonb) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3281_days_in_scope(uuid, uuid[]) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3281_assert_line_days(uuid, jsonb, uuid[], text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3281_pass_day_in_scope() FROM PUBLIC, anon, authenticated;
@@ -637,6 +661,93 @@ BEGIN
 END;
 $fn$;
 
+CREATE OR REPLACE FUNCTION public.business_update_event_draft(p_event_id uuid, p_payload jsonb, p_client_revision integer DEFAULT NULL::integer)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_event public.events%ROWTYPE;
+  v_stored_revision integer;
+  v_geo point;
+  v_keep_cover boolean;  -- applied-cover guard
+BEGIN
+  IF v_uid IS NULL THEN RAISE EXCEPTION 'not_authenticated'; END IF;
+  SELECT * INTO v_event FROM public.events WHERE id=p_event_id FOR UPDATE;
+  IF NOT FOUND OR v_event.deleted_at IS NOT NULL OR v_event.event_type <> 'event' THEN
+    RAISE EXCEPTION 'event_draft_not_found';
+  END IF;
+  IF v_event.status <> 'draft' THEN RAISE EXCEPTION 'event_draft_not_editable'; END IF;
+  IF public.biz_brand_effective_rank(v_event.brand_id,v_uid) < public.biz_role_rank('event_manager') THEN
+    RAISE EXCEPTION 'insufficient_event_permission';
+  END IF;
+  v_stored_revision := COALESCE((v_event.theme#>>'{business_draft,clientRevision}')::integer,0);
+  IF p_client_revision IS NULL OR p_client_revision < v_stored_revision THEN
+    RAISE EXCEPTION 'stale_client_revision';
+  END IF;
+  PERFORM public.business_assert_event_visibility(
+    p_payload#>'{theme,business_draft,requestedVisibility}'
+  );
+  IF NULLIF(p_payload->>'location_geo','') IS NOT NULL THEN v_geo := (p_payload->>'location_geo')::point; END IF;
+  -- Applied-cover guard — a cover the server put on this row (a draft_auto
+  -- cover-video job finishing after the host closed the sheet) must survive a
+  -- save from a client that has not seen it. With `__coverBase` (the cover the
+  -- client last received) it is a three-way merge: keep the stored cover when
+  -- the client's cover is still its base and the server's has moved since. A
+  -- client without the key falls back to: the stored cover is an applied
+  -- draft_auto job's video and no save has landed since that job applied.
+  v_keep_cover := (CASE WHEN p_payload ? '__coverBase' THEN
+      NULLIF(p_payload->>'cover_media_url','') IS NOT DISTINCT FROM NULLIF(p_payload->>'__coverBase','')
+      AND v_event.cover_media_url IS DISTINCT FROM NULLIF(p_payload->>'__coverBase','')
+    ELSE
+      v_event.cover_media_url IS NOT NULL
+      AND NULLIF(p_payload->>'cover_media_url','') IS DISTINCT FROM v_event.cover_media_url
+      AND EXISTS (SELECT 1 FROM public.event_cover_video_jobs j
+        WHERE j.event_id = p_event_id AND j.target_kind = 'event'
+          AND j.apply_mode = 'draft_auto' AND j.status = 'applied'
+          AND j.processed_url = v_event.cover_media_url
+          AND j.applied_at >= v_event.updated_at)
+    END);
+  PERFORM public.assert_cover_media_triplet(NULLIF(p_payload->>'cover_media_url',''),
+    NULLIF(p_payload->>'cover_media_type',''),NULLIF(p_payload->>'cover_media_poster_url',''));
+
+  -- issue #3281 — a client that predates day lists cannot widen a ticket.
+  IF jsonb_typeof(p_payload#>'{theme,business_draft,tickets}') = 'array' THEN
+    p_payload := jsonb_set(p_payload, '{theme,business_draft,tickets}',
+      public.issue_3281_keep_draft_day_lists(
+        p_payload#>'{theme,business_draft,tickets}', v_event.theme#>'{business_draft,tickets}'));
+  END IF;
+
+  UPDATE public.events SET
+    title=COALESCE(NULLIF(btrim(p_payload->>'title'),''),'Untitled draft'),
+    description=NULLIF(p_payload->>'description',''), location_text=NULLIF(p_payload->>'location_text',''),
+    online_url=NULLIF(p_payload->>'online_url',''), cover_media_url=CASE WHEN v_keep_cover THEN v_event.cover_media_url ELSE NULLIF(p_payload->>'cover_media_url','') END,
+    cover_media_poster_url=CASE WHEN v_keep_cover THEN v_event.cover_media_poster_url ELSE NULLIF(p_payload->>'cover_media_poster_url','') END, cover_media_type=CASE WHEN v_keep_cover THEN v_event.cover_media_type ELSE NULLIF(p_payload->>'cover_media_type','') END,
+    cover_media_provider=CASE WHEN v_keep_cover THEN v_event.cover_media_provider ELSE NULLIF(p_payload->>'cover_media_provider','') END, cover_media_source_url=CASE WHEN v_keep_cover THEN v_event.cover_media_source_url ELSE NULLIF(p_payload->>'cover_media_source_url','') END,
+    cover_media_credit=CASE WHEN v_keep_cover THEN v_event.cover_media_credit ELSE NULLIF(p_payload->>'cover_media_credit','') END, cover_media_credit_url=CASE WHEN v_keep_cover THEN v_event.cover_media_credit_url ELSE NULLIF(p_payload->>'cover_media_credit_url','') END,
+    cover_media_alt=CASE WHEN v_keep_cover THEN v_event.cover_media_alt ELSE NULLIF(p_payload->>'cover_media_alt','') END, cover_media_gallery=CASE WHEN p_payload?'cover_media_gallery' THEN COALESCE(p_payload->'cover_media_gallery','[]'::jsonb) ELSE v_event.cover_media_gallery END,
+    currency=NULLIF(p_payload->>'currency','')::character(3), is_online=COALESCE((p_payload->>'is_online')::boolean,false),
+    is_recurring=COALESCE((p_payload->>'is_recurring')::boolean,false), is_multi_date=COALESCE((p_payload->>'is_multi_date')::boolean,false),
+    recurrence_rules=p_payload->'recurrence_rules',
+    theme=jsonb_set(COALESCE(p_payload->'theme','{}'::jsonb),
+      '{business_draft,clientRevision}',to_jsonb(p_client_revision),true),
+    visibility='draft', status='draft', timezone=COALESCE(NULLIF(p_payload->>'timezone',''),'UTC'),
+    party_types=COALESCE(ARRAY(SELECT jsonb_array_elements_text(COALESCE(p_payload->'party_types','[]'::jsonb))),ARRAY[]::text[]),
+    vibe_tags=COALESCE(ARRAY(SELECT jsonb_array_elements_text(COALESCE(p_payload->'vibe_tags','[]'::jsonb))),ARRAY[]::text[]),
+    music_genres=COALESCE(ARRAY(SELECT jsonb_array_elements_text(COALESCE(p_payload->'music_genres','[]'::jsonb))),ARRAY[]::text[]),
+    city=NULLIF(p_payload->>'city',''), location_geo=v_geo,
+    pass_tax=(p_payload->>'pass_tax')::boolean, pass_mingla_fee=(p_payload->>'pass_mingla_fee')::boolean,
+    pass_service_fee=(p_payload->>'pass_service_fee')::boolean,
+    theme_color_override=NULLIF(p_payload->>'theme_color_override',''), theme_font_override=NULLIF(p_payload->>'theme_font_override',''),
+    theme_animation_override=NULLIF(p_payload->>'theme_animation_override',''), updated_at=now()
+  WHERE id=p_event_id RETURNING * INTO v_event;
+  RETURN jsonb_build_object('event',to_jsonb(v_event),'client_revision',
+    p_client_revision);
+END;
+$function$;
+
 CREATE OR REPLACE FUNCTION public.business_publish_event_draft(p_event_id uuid, p_draft_payload jsonb, p_client_revision integer DEFAULT NULL::integer)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -742,6 +853,9 @@ BEGIN
   v_theme := COALESCE(p_draft_payload->'theme', '{}'::jsonb);
   v_business_draft := COALESCE(v_theme->'business_draft', '{}'::jsonb);
   v_tickets := COALESCE(v_business_draft->'tickets', '[]'::jsonb);
+  -- issue #3281 — a client that predates day lists cannot widen a ticket.
+  v_tickets := public.issue_3281_keep_draft_day_lists(v_tickets,
+    (SELECT e.theme#>'{business_draft,tickets}' FROM public.events e WHERE e.id = p_event_id));
   -- issue #1014 delta (1): the 'GBP' fabrication is REMOVED — v_currency may
   -- now be NULL (currency-less brand, no draft override). Trigger (c) is
   -- authoritative: it stamps a resolvable brand currency or NULLs a free-only
@@ -2033,17 +2147,7 @@ BEGIN
     END IF;
     v_next_revision := v_current_revision+1;
     -- issue #3281 — no validDayIds key keeps the draft's list, as on a live edit.
-    SELECT COALESCE(jsonb_agg(
-      CASE WHEN rows.tier ? 'validDayIds' THEN rows.tier
-        ELSE rows.tier || COALESCE((
-          SELECT jsonb_build_object('validDayIds',old_tier->'validDayIds')
-            FROM jsonb_array_elements(COALESCE(v_event.theme->'business_draft'->'tickets','[]'::jsonb)) old_tier
-           WHERE old_tier->>'id'=rows.tier->>'id' AND old_tier ? 'validDayIds'
-           LIMIT 1
-        ),'{}'::jsonb) END
-      ORDER BY rows.ordinality),'[]'::jsonb)
-      INTO v_tiers
-      FROM jsonb_array_elements(v_tiers) WITH ORDINALITY rows(tier,ordinality);
+    v_tiers := public.issue_3281_keep_draft_day_lists(v_tiers, v_event.theme->'business_draft'->'tickets');
     UPDATE public.events
        SET theme=jsonb_set(
              COALESCE(theme,'{}'::jsonb),
