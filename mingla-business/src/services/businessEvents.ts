@@ -147,6 +147,8 @@ const splitTimestampInTz = (
 };
 
 interface TicketTypeRow {
+  // issue #3281 — null means All dates.
+  valid_occurrence_keys?: string[] | null;
   id: string;
   event_id: string;
   name: string;
@@ -261,7 +263,7 @@ export interface PublishedBusinessEvent {
 
 const BUSINESS_EVENT_SELECT = "*";
 const TICKET_SELECT =
-  "id,event_id,name,description,price_cents,currency,quantity_total,is_unlimited,is_free,sale_start_at,sale_end_at,min_purchase_qty,max_purchase_qty,is_hidden,is_disabled,requires_approval,allow_transfers,password_protected,available_online,available_in_person,waitlist_enabled,display_order";
+  "id,event_id,valid_occurrence_keys,name,description,price_cents,currency,quantity_total,is_unlimited,is_free,sale_start_at,sale_end_at,min_purchase_qty,max_purchase_qty,is_hidden,is_disabled,requires_approval,allow_transfers,password_protected,available_online,available_in_person,waitlist_enabled,display_order";
 
 const asRecord = (value: unknown): JsonRecord =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -342,6 +344,7 @@ const viewStatusToLiveStatus = (status: string): LiveEventStatus => {
 export const ticketRowToTicketStub = (row: TicketTypeRow): TicketStub => ({
   id: row.id,
   name: row.name,
+  validDayIds: row.valid_occurrence_keys ?? null,
   priceGbp: row.is_free ? null : row.price_cents / 100,
   currency: asIsoCurrencyCodeOrNull(row.currency) ?? undefined,
   capacity: row.quantity_total,

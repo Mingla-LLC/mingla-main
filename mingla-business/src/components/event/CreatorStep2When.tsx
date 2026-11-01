@@ -21,6 +21,7 @@
  * Per Cycle 4 spec §3.5.
  */
 
+import { deleteDateImpact, ticketsWithoutDay } from "../../utils/ticketDayScope";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Platform,
@@ -817,10 +818,12 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       }
       updateDraft({
         multiDates: existing.filter((e) => e.id !== entryId),
+        // issue #3281 — a deleted date leaves every ticket's list.
+        tickets: ticketsWithoutDay(draft.tickets, entryId),
       });
       setPendingDeleteEntryId(null);
     },
-    [draft.multiDates, updateDraft],
+    [draft.multiDates, draft.tickets, updateDraft],
   );
 
   const handleSaveOverride = useCallback(
@@ -1945,7 +1948,10 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
         description={
           (draft.multiDates?.length ?? 0) <= 2
             ? `Multi-date ${noun}s need at least 2 dates. Add another date first or switch the ${noun} to Single.`
-            : "You'll lose any overrides for this date. This can't be undone."
+            : ((pendingDeleteEntryId !== null
+                ? deleteDateImpact(draft.tickets, pendingDeleteEntryId)
+                : null) ??
+              "You'll lose any overrides for this date. This can't be undone.")
         }
         confirmLabel={(draft.multiDates?.length ?? 0) <= 2 ? "OK" : "Remove"}
         cancelLabel="Cancel"

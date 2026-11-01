@@ -348,6 +348,16 @@ const normalizeTicketFromServer = (ticket: unknown, idx: number): TicketStub => 
   const passwordProtected = asBoolean(t.passwordProtected, false);
   const passwordConfigured = asBoolean(t.passwordConfigured, passwordProtected);
   return {
+    // issue #3281 — keep null or a missing key distinct from a list.
+    ...(Array.isArray(t.validDayIds)
+      ? {
+          validDayIds: t.validDayIds.filter(
+            (id): id is string => typeof id === "string",
+          ),
+        }
+      : t.validDayIds === null
+        ? { validDayIds: null }
+        : {}),
     id:
       typeof t.id === "string" && t.id.length > 0
         ? t.id

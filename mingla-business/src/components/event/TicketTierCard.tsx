@@ -46,6 +46,8 @@ interface TicketTierCardProps {
    */
   soldCount?: number;
   eventCurrency?: string;
+  /** issue #3281 — the ticket's dates on a multi-date event, null for All dates. */
+  dayScopeLabel?: string | null;
 }
 
 const TicketTierCardInner: React.FC<TicketTierCardProps> = ({
@@ -60,11 +62,23 @@ const TicketTierCardInner: React.FC<TicketTierCardProps> = ({
   errorMessage,
   soldCount = 0,
   eventCurrency,
+  dayScopeLabel = null,
 }) => {
   const hasSales = soldCount > 0;
   // #3343 — resolved with the event currency; null when there is nothing to show.
   const subLine = formatTicketCardSubline(ticket, eventCurrency);
-  const badges = formatTicketBadges(ticket);
+  // issue #3281 — scope decides who can buy at all, so it leads. A paused ticket
+  // shows only its pause.
+  const baseBadges = formatTicketBadges(ticket);
+  const badges = dayScopeLabel !== null && ticket.visibility !== "disabled"
+    ? [
+        {
+          label: dayScopeLabel,
+          variant: dayScopeLabel === "No days" ? ("warning" as const) : ("accent" as const),
+        },
+        ...baseBadges,
+      ]
+    : baseBadges;
   const capacityLabel = formatTicketCapacity(ticket);
   const priceLabel = ticket.isFree
     ? "Free"

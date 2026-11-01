@@ -390,20 +390,38 @@
         "mingla-business/src/components/scanner/DoorGuestSearchSheet.tsx",
         "mingla-business/src/components/scanner/scanResultCopy.ts",
         "mingla-business/src/services/scanTicketService.ts",
-        "supabase/migrations/20280215003281_issue_3281_scan_duplicate_day_label.sql"
+        "supabase/migrations/20280215003281_issue_3281_scan_duplicate_day_label.sql",
+        "mingla-business/src/components/door/DoorSaleNewSheet.tsx",
+        "mingla-business/src/services/doorSalesService.ts"
       ]
     },
     {
       "capability_key": "events-ticket-types",
       "paths": [
-        "mingla-business/src/components/event/EventDetailTicketTypeRow.tsx"
+        "mingla-business/src/components/event/EventDetailTicketTypeRow.tsx",
+        "mingla-business/src/components/event/CreatorStep2When.tsx",
+        "mingla-business/src/components/event/CreatorStep5Tickets.tsx",
+        "mingla-business/src/components/event/TicketTierCard.tsx",
+        "mingla-business/src/components/event/TicketTierEditSheet.tsx",
+        "mingla-business/src/components/event/ValidDaysSheet.tsx",
+        "mingla-business/src/components/event/types.ts",
+        "mingla-business/src/hooks/useEventDateKeys.ts",
+        "mingla-business/src/services/businessEvents.ts",
+        "mingla-business/src/services/eventDateKeys.ts",
+        "mingla-business/src/services/tierEditGuardCopy.ts",
+        "mingla-business/src/store/draftEventStore.ts",
+        "mingla-business/src/utils/draftEventValidation.ts",
+        "mingla-business/src/utils/serverDraftEventMapper.ts",
+        "mingla-business/src/utils/ticketDayScope.ts"
       ]
     },
     {
       "capability_key": "events-edit-live",
       "paths": [
         "mingla-business/app/event/[id]/dates.tsx",
-        "supabase/migrations/20280216003281_issue_3281_cancel_event_date.sql"
+        "supabase/migrations/20280216003281_issue_3281_cancel_event_date.sql",
+        "mingla-business/src/components/event/ChangeSummaryModal.tsx",
+        "mingla-business/src/components/event/EditPublishedScreen.tsx"
       ]
     }
   ]

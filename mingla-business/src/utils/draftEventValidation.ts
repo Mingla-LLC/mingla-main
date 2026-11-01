@@ -574,6 +574,18 @@ const validateTickets = (d: DraftEvent): ValidationError[] => {
         message: `Set a capacity for ${label}, or mark it unlimited.`,
       });
     }
+    // issue #3281 — deleting a ticket's last date leaves `[]`, never All dates.
+    if (
+      d.whenMode === "multi_date" &&
+      Array.isArray(t.validDayIds) &&
+      t.validDayIds.length === 0
+    ) {
+      errs.push({
+        fieldKey: `tickets[${i}].validDays`,
+        step: 4,
+        message: `${label} has no days left. Edit it to pick a day or choose All dates.`,
+      });
+    }
     // Cycle 5 (v4) rules — modifier validation
     if (
       t.passwordProtected &&

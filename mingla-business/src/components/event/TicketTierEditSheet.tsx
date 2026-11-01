@@ -57,6 +57,15 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
+import type { MultiDateEntry } from "../../store/draftEventStore";
+import {
+  capacityHelper,
+  capacityLabel,
+  dayScopeHelper,
+  formatDraftDayScopeLabel,
+  priceHelper,
+} from "../../utils/ticketDayScope";
+import { ValidDaysSheet } from "./ValidDaysSheet";
 import type { NewTicketPreset } from "../../utils/ticketLinkEligibility";
 import { canShowTicketTierDiscountControls } from "../discounts/ticketTierDiscountContract";
 
@@ -417,6 +426,15 @@ export interface TicketTierEditSheetProps {
    */
   capacityFloor?: number;
   /**
+   * issue #3281 — the event's dates when a ticket can be limited to some of
+   * them. Null on every other event, where the sheet is unchanged.
+   */
+  dayScopeEntries?: readonly MultiDateEntry[] | null;
+  /** Undefined hides the price arithmetic rather than guessing the mode. */
+  dayScopePricingMode?: "per_day" | "all_days";
+  /** Sold passes per date for this ticket. Null while unknown. */
+  soldByDay?: Readonly<Record<string, number>> | null;
+  /**
    * Cycle 13a J-T6 G2: when false, the Price field is rendered uneditable
    * with a helper hint pointing the operator at a finance_manager+ ask.
    * Defaults to true so create-flow + non-rank-aware callers stay backward
@@ -494,6 +512,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   soldCount = 0,
   capacityPerNight = false,
   capacityFloor,
+  dayScopeEntries = null,
+  dayScopePricingMode,
+  soldByDay = {},
   eventStartsAtIso = null,
   eventEndsAtIso = null,
   canEditPrice = true,
@@ -561,6 +582,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
 
   // Visibility sub-sheet
   const [visSheetVisible, setVisSheetVisible] = useState<boolean>(false);
+  const [validDaysSheetVisible, setValidDaysSheetVisible] = useState<boolean>(false);
+  const [validDayIds, setValidDayIds] = useState<string[] | null>(null);
 
   // Cycle 12 — Available-at sub-sheet
   const [availableAt, setAvailableAt] = useState<TicketAvailableAt>("both");
@@ -620,6 +643,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       setSaleStartAt(initial.saleStartAt);
       setSaleEndAt(initial.saleEndAt);
       setAvailableAt(initial.availableAt);
+      setValidDayIds(initial.validDayIds ?? null);
     } else {
       setName("");
       setIsFree(newTicketPreset === "free-guest-list");
@@ -636,6 +660,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       setSaleStartAt(null);
       setSaleEndAt(null);
       setAvailableAt("both");
+      setValidDayIds(null);
     }
   }, [visible, initial, newTicketPreset]);
 
@@ -694,6 +719,10 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       parsedCapacityValue <= 0);
   // issue #3313 — the floor is the busiest night on a recurring event.
   const minimumCapacity = capacityFloor ?? soldCount;
+  // issue #3281 — on a multi-date event the list decides the capacity unit.
+  const dayScoped = dayScopeEntries !== null;
+  const dayLimited = dayScoped && validDayIds !== null;
+  const dayScopeOrphaned = dayLimited && validDayIds.length === 0;
   const capacityBelowSold =
     isPriceLocked &&
     !isUnlimited &&
@@ -713,7 +742,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     !saleEndBeforeStart &&
     !priceInvalid &&
     !capacityInvalid &&
-    !capacityBelowSold;
+    !capacityBelowSold &&
+    !dayScopeOrphaned;
 
   // issue #2590 — one list, rendered at the button. Derived from the SAME
   // predicates that gate `canSave`, never a second copy of the rules: a
@@ -754,6 +784,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   }
   if (saleEndBeforeStart) {
     block("Sales close before they open.");
+  }
+  if (dayScopeOrphaned) {
+    block("Pick at least one day, or choose All dates.");
   }
   const anyBlockerRevealed = saveBlockers.some((blocker) => blocker.revealed);
   const showPriceError = priceInvalid && touched.price;
@@ -899,6 +932,13 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     const ticket: TicketStub = {
       id: initial?.id ?? generateTicketId(),
       name: name.trim(),
+      // issue #3281 — an explicit null clears a list. A date mode that cannot
+      // scope keeps the stored list untouched, and the server ignores it.
+      ...(dayScoped
+        ? { validDayIds }
+        : initial?.validDayIds !== undefined
+          ? { validDayIds: initial.validDayIds }
+          : {}),
       isFree,
       isUnlimited,
       priceGbp: isFree
@@ -952,7 +992,30 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     initial,
     nextOrder,
     onSave,
+    dayScoped,
+    validDayIds,
   ]);
+
+  // issue #3281 — the row's answer, and the price sentence under the input.
+  const validDayLabel =
+    validDayIds === null
+      ? "All dates"
+      : (formatDraftDayScopeLabel(dayScopeEntries ?? [], validDayIds) ??
+        "No days selected");
+  const dayCount = validDayIds?.length ?? dayScopeEntries?.length ?? 0;
+  const parsedDayPrice = Number.parseFloat(priceText);
+  const dayPriceHelper =
+    priceCurrency !== null &&
+    priceCurrency !== undefined &&
+    Number.isFinite(parsedDayPrice) &&
+    parsedDayPrice > 0
+      ? priceHelper(
+          dayCount,
+          dayScopePricingMode,
+          formatCurrency(parsedDayPrice, priceCurrency),
+          formatCurrency(parsedDayPrice * dayCount, priceCurrency),
+        )
+      : null;
 
   // Visibility row label
   const visibilityLabel =
@@ -1064,6 +1127,31 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             />
           </View>
 
+          {/* issue #3281 — which dates this ticket admits. */}
+          {dayScopeEntries !== null ? (
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Valid on</Text>
+              <Pressable
+                onPress={() => setValidDaysSheetVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel={`Valid on: ${validDayLabel}`}
+                accessibilityHint="Opens the day picker"
+                testID="issue-3281-valid-on-row"
+                style={[styles.pickerRow, dayScopeOrphaned && styles.inputWrapError]}
+              >
+                <Text style={styles.pickerValue}>{validDayLabel}</Text>
+                <Icon name="chevD" size={16} color={textTokens.tertiary} />
+              </Pressable>
+              <Text style={dayScopeOrphaned ? styles.helperError : styles.helperHint}>
+                {dayScopeHelper(
+                  validDayIds,
+                  dayScopeEntries.length,
+                  soldCount > 0,
+                )}
+              </Text>
+            </View>
+          ) : null}
+
           {/* Price (when not free) — ORCH-0704 v2: locked when sales exist */}
           {!isFree ? (
             <View style={styles.field}>
@@ -1105,6 +1193,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 <Text style={styles.helperError}>
                   Enter a price greater than zero, or mark this ticket free.
                 </Text>
+              ) : dayScoped && dayPriceHelper !== null ? (
+                <Text style={styles.helperHint}>{dayPriceHelper}</Text>
               ) : isPriceLockedByRank ? (
                 <Text style={styles.helperHint}>
                   You can&apos;t change ticket prices with your current role. A
@@ -1173,7 +1263,11 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
           {!isUnlimited ? (
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>
-                {capacityPerNight ? "Capacity per night" : "Capacity"}
+                {capacityPerNight
+                  ? "Capacity per night"
+                  : dayScoped
+                    ? capacityLabel(dayLimited)
+                    : "Capacity"}
               </Text>
               <View
                 style={[
@@ -1198,7 +1292,11 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   accessibilityLabel={
                     capacityPerNight
                       ? "Ticket capacity per night"
-                      : "Ticket capacity"
+                      : dayScoped
+                        ? dayLimited
+                          ? "Ticket capacity per day"
+                          : "Total ticket capacity"
+                        : "Ticket capacity"
                   }
                 />
               </View>
@@ -1222,6 +1320,15 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
               ) : capacityPerNight ? (
                 <Text style={styles.helperHint}>
                   Each date of this event can sell this many.
+                </Text>
+              ) : dayScoped ? (
+                <Text style={styles.helperHint}>
+                  {capacityHelper(
+                    validDayIds,
+                    dayScopeEntries ?? [],
+                    Number.isFinite(parsedCapacityValue) ? parsedCapacityValue : null,
+                    dayScopePricingMode,
+                  )}
                 </Text>
               ) : null}
             </View>
@@ -1662,6 +1769,17 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             style={HIDDEN_WEB_INPUT_STYLE}
           />
         </>
+      ) : null}
+
+      {dayScopeEntries !== null ? (
+        <ValidDaysSheet
+          visible={validDaysSheetVisible}
+          entries={dayScopeEntries}
+          selected={validDayIds}
+          soldByDay={soldByDay}
+          onChange={setValidDayIds}
+          onClose={() => setValidDaysSheetVisible(false)}
+        />
       ) : null}
 
       <VisibilitySheet

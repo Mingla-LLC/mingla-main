@@ -91,6 +91,8 @@ import {
   type FieldDiff,
   type TicketDiff,
 } from "../../utils/liveEventAdapter";
+import { useEventDateKeys } from "../../hooks/useEventDateKeys";
+import { soldByTicketAndDay } from "../../utils/ticketDayScope";
 import {
   NO_BUYERS_EDIT_REASON,
   validateLiveEventFieldUpdate,
@@ -621,6 +623,17 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           : null,
       ),
     [serverOrders, liveEvent.whenMode, liveEvent.serverEventId, liveEvent.id],
+  );
+
+  // issue #3281 — sold passes per ticket and date key, null until both reads
+  // are in, so the Valid on picker never removes a day on unknown numbers.
+  const dateKeysRead = useEventDateKeys(liveEvent.serverEventId);
+  const soldCountByTierDay = useMemo(
+    () =>
+      serverOrdersRead.data != null && dateKeysRead.data !== undefined
+        ? soldByTicketAndDay(serverOrdersRead.data, dateKeysRead.data)
+        : null,
+    [serverOrdersRead.data, dateKeysRead.data],
   );
 
   // Cycle 13a J-T6 G2: ticket price editability gated on EDIT_TICKET_PRICE
@@ -1722,6 +1735,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         editMode: {
           soldCountByTier: soldCountCtx.soldCountByTier,
           capacityFloorByTier: soldCountCtx.capacityFloorByTier,
+          soldCountByTierDay,
         },
         canEditTicketPrice,
         coverMediaEventId: liveEvent.serverEventId,
@@ -1815,6 +1829,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       showToast,
       scrollToBottom,
       soldCountCtx.soldCountByTier,
+      soldCountByTierDay,
       canEditTicketPrice,
       liveEvent.serverEventId,
       liveEvent.currency,

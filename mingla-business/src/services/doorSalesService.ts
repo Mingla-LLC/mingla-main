@@ -158,6 +158,7 @@ const rpcErrorCode = (error: { code?: string; message?: string }): string => {
     "door_ticket_capacity_exceeded",
     "door_ticket_type_unavailable",
     "door_event_unavailable",
+    "ticket_not_valid_on_chosen_days",
     "door_refund_amount_invalid",
     "reason_invalid_length",
   ].find((code) => message.includes(code));
