@@ -44,7 +44,20 @@ import {
   newestAnswerableRenditionKey,
   parseAriRendition,
 } from "./renditions/ariRenditionProtocol";
-import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
+import type {
+  AgentChoiceSubmissionV2,
+  AriFlowAnswer,
+  AriFlowState,
+} from "../../services/agentChatService";
+import {
+  ARI_FLOW_LOCKED_COPY,
+  ARI_FLOW_OFFLINE_COPY,
+  answeredFlowQuestionIds,
+  flowArtefactOf,
+  flowCardStatus,
+  flowViewOnlyCopy,
+  newestOpenFlowArtefactId,
+} from "./ariFlowCards";
 import type { PendingActionView } from "../../hooks/useAgentChat";
 import type { AriFeedbackReason } from "../../services/ariFeedbackService";
 
@@ -150,6 +163,15 @@ export interface MessageListProps {
   ) => Promise<void>;
   surface?: "main" | "website";
   /**
+   * #3355 P3 — the server's flow state for this chat. Only its current card
+   * is interactive; `undefined` until the first resume answers.
+   */
+  flowState?: AriFlowState | null;
+  /** #3355 P3 — a structured answer to the current flow card. */
+  onFlowAnswer?: (answer: AriFlowAnswer, label: string) => void;
+  /** #3355 P3 — offline disables answers with a plain explanation. */
+  online?: boolean;
+  /**
    * #3355 — when the host switches conversations, pin/unseen state must reset
    * so a cached history thread does not inherit another chat's scroll mode.
    */
@@ -213,6 +235,9 @@ export const MessageList: React.FC<MessageListProps> = ({
   onFeedback,
   surface = "main",
   conversationId = null,
+  flowState,
+  onFlowAnswer,
+  online = true,
 }) => {
   const listRef = useRef<FlatList<ListItem>>(null);
 
@@ -238,6 +263,10 @@ export const MessageList: React.FC<MessageListProps> = ({
   // Re-open the choice when the message set changes so an error never strands
   // a locally-collapsed chip/card. Successful turns are superseded at the tail.
   useEffect(() => setResolvedChoice(null), [messages.length]);
+
+  // #3355 P3 — flow cards: answered question ids and the fallback current card.
+  const answeredFlowIds = answeredFlowQuestionIds(messages);
+  const fallbackFlowArtefactId = newestOpenFlowArtefactId(messages);
 
   // Compose the rendered list. Two classes of rows are skipped entirely so
   // they don't leave empty separators in the FlatList:
@@ -849,6 +878,89 @@ export const MessageList: React.FC<MessageListProps> = ({
               ) : null}
             </View>
           );
+          const flow = flowArtefactOf(m);
+          if (flow) {
+            const status = flowCardStatus({
+              artefact: flow,
+              flowState,
+              answered: answeredFlowIds,
+              fallbackCurrentId: fallbackFlowArtefactId,
+            });
+            if (status === "info") return bubble;
+            if (status === "answered" || status === "replaced") {
+              const label = ARI_FLOW_LOCKED_COPY[status];
+              return (
+                <View>
+                  {bubble}
+                  <Text
+                    style={styles.flowLockedLabel}
+                    accessibilityRole="text"
+                    accessibilityState={{ disabled: true }}
+                    accessibilityLabel={`${flow.title}. ${label}.`}
+                  >
+                    {label}
+                  </Text>
+                </View>
+              );
+            }
+            if (status === "view_only") {
+              return (
+                <View>
+                  {bubble}
+                  <Text
+                    style={styles.flowLockedLabel}
+                    accessibilityState={{ disabled: true }}
+                  >
+                    {flowViewOnlyCopy(flowState)}
+                  </Text>
+                </View>
+              );
+            }
+            const isResolvedFlow = resolvedChoice?.messageId === m.id;
+            return (
+              <View>
+                {bubble}
+                <View style={styles.choicesRow}>
+                  <QuickReplyChips
+                    options={flow.options.map((option) => ({
+                      id: option.id,
+                      label: option.label,
+                    }))}
+                    selectedId={
+                      isResolvedFlow ? resolvedChoice?.optionId : undefined
+                    }
+                    state={isResolvedFlow ? "submitted" : "default"}
+                    disabled={choicesDisabled || !online}
+                    onSelectId={(optionId) => {
+                      const option = flow.options.find(
+                        (candidate) => candidate.id === optionId,
+                      );
+                      if (!option || !flow.question_id) return;
+                      setResolvedChoice({ messageId: m.id, optionId });
+                      onFlowAnswer?.(
+                        {
+                          run_id: flow.run_id,
+                          step_key: flow.step_key,
+                          question_id: flow.question_id,
+                          choice_id: option.id,
+                          display_text: option.label,
+                        },
+                        option.label,
+                      );
+                    }}
+                  />
+                  {!online ? (
+                    <Text
+                      style={styles.flowLockedLabel}
+                      accessibilityLiveRegion="polite"
+                    >
+                      {ARI_FLOW_OFFLINE_COPY}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            );
+          }
           if (!choices) return bubble;
 
           const isResolved = resolvedChoice?.messageId === m.id;
@@ -1334,6 +1446,12 @@ const styles = StyleSheet.create({
   // ORCH-1103 REWORK 2 — chips sit under the Ari bubble, indented past the orb
   // gutter (24px orb + orbGap, matching ChatBubble's orbWrap) so they align with
   // the bubble text, with a small breath above.
+  flowLockedLabel: {
+    marginTop: spacing.xs,
+    marginLeft: 24 + ariThread.orbGap,
+    color: ariThread.tertiaryText,
+    fontSize: typography.caption.fontSize,
+  },
   choicesRow: {
     marginTop: ariThread.gapGroup,
     marginLeft: 24 + ariThread.orbGap,

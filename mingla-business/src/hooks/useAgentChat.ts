@@ -23,6 +23,8 @@ import {
   type AgentChoiceSubmissionV2,
   type AgentChatResponse,
   type AgentMessage,
+  type AriFlowAnswer,
+  type AriFlowState,
   fetchMessages,
   sendAgentMessage,
 } from "../services/agentChatService";
@@ -36,6 +38,7 @@ import {
   type AriActivityEvent,
   type AriAttemptStatus,
   fetchAriTurnStatus,
+  resumeAriFlow,
   retryAriTurn,
   stopAriTurn,
   subscribeAriTurnActivity,
@@ -120,6 +123,11 @@ export interface AriActiveTurn {
   errorCode: string | null;
   errorMessage: string | null;
   reconciling: boolean;
+  /**
+   * #3355 P3: the last status check reached the server and the turn is still
+   * running there — the connection is fine, the answer is just slow.
+   */
+  serverWorking?: boolean;
   startedAt: number;
   /** D-1: false for a completed attempt (e.g. an approved action), so no Stop is offered. */
   stoppable: boolean;
@@ -136,6 +144,20 @@ export interface UseAgentChatResult {
     submission: AgentChoiceSubmissionV2,
     label: string,
   ) => Promise<AgentChatResponse>;
+  /** #3355 P3 — a structured answer bound to the flow's current card. */
+  sendFlowAnswer: (
+    answer: AriFlowAnswer,
+    label: string,
+  ) => Promise<AgentChatResponse>;
+  /**
+   * #3355 P3 — the server's view of this chat's flow run: which card is the
+   * current one (every other flow card is locked), who is working on it.
+   * `undefined` until the first resume for this chat has answered.
+   */
+  flowState: AriFlowState | null | undefined;
+  applyFlowState: (state: AriFlowState | null | undefined) => void;
+  /** #3355 P3 — mount / reconnect / back from a handoff. Never a turn. */
+  resumeFlow: (trigger?: "resume" | "handoff_return") => Promise<void>;
   retryTurn: (clientTurnId: string) => Promise<AgentChatResponse | null>;
   retryTenantRecovery: () => Promise<AgentChatResponse | null>;
   editTurn: (clientTurnId: string) => AriEditableTurn | null;
@@ -161,6 +183,7 @@ export interface UseAgentChatResult {
 type TurnPayload = {
   message?: string;
   choice_response?: AgentChoiceSubmissionV2;
+  flow_answer?: AriFlowAnswer;
   attachment_ids?: string[];
   workflow_context?: "website_setup";
 };
@@ -332,6 +355,9 @@ export function useAgentChat(
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [flowStates, setFlowStates] = useState<
+    Record<string, AriFlowState | null>
+  >({});
   const [turns, setTurns] = useState<LocalTurn[]>([]);
   const turnsRef = useRef<LocalTurn[]>([]);
   const conversationIdRef = useRef<string | null>(initialConversationId);
@@ -559,6 +585,51 @@ export function useAgentChat(
     [qc],
   );
 
+  // #3355 P3 — the server owns which flow card is current, per chat.
+  const applyFlowStateFor = useCallback(
+    (
+      targetConversationId: string | null,
+      state: AriFlowState | null | undefined,
+    ): void => {
+      if (!targetConversationId || state === undefined) return;
+      setFlowStates((current) => ({
+        ...current,
+        [targetConversationId]: state,
+      }));
+    },
+    [],
+  );
+  const applyFlowState = useCallback(
+    (state: AriFlowState | null | undefined): void =>
+      applyFlowStateFor(conversationIdRef.current, state),
+    [applyFlowStateFor],
+  );
+
+  const resumeFlow = useCallback(
+    async (trigger: "resume" | "handoff_return" = "resume"): Promise<void> => {
+      const target = conversationIdRef.current;
+      if (!target) return;
+      try {
+        const resumed = await resumeAriFlow(target, trigger);
+        applyFlowStateFor(target, resumed.flow_state);
+        // A card the server created while this screen was away (or a reload
+        // that missed it) arrives as a saved message: re-read history once.
+        if (resumed.next || resumed.artefact) {
+          await refreshCanonicalMessages(target);
+        }
+      } catch {
+        // Resume is best effort: the history already holds every saved card,
+        // and the next turn re-reads the run on the server.
+      }
+    },
+    [applyFlowStateFor, refreshCanonicalMessages],
+  );
+
+  useEffect(() => {
+    if (!isAuthReady || !conversationId || online === false) return;
+    void resumeFlow("resume");
+  }, [conversationId, isAuthReady, online, resumeFlow]);
+
   /**
    * Canonical reconciliation. `announce` shows "Reconnecting to Ari…" (P2-7):
    * only after transport uncertainty, reconnect, foreground, or failed Stop
@@ -650,8 +721,18 @@ export function useAgentChat(
         turn.reconciling ||
         turn.attemptStatus === "reconciliation_required",
     );
+    // #3355 P3: a turn whose request is simply still in flight is not a
+    // connection problem — poll it quietly. Only real transport uncertainty
+    // announces "Reconnecting to Ari…".
     await Promise.all(
-      candidates.map((turn) => reconcileOne(turn.clientTurnId)),
+      candidates.map((turn) =>
+        reconcileOne(
+          turn.clientTurnId,
+          turn.reconciling ||
+            turn.attemptStatus === "reconciliation_required" ||
+            turn.delivery !== "sending",
+        ),
+      ),
     );
   }, [reconcileOne]);
 
@@ -758,7 +839,29 @@ export function useAgentChat(
           });
           return response;
         }
+        if (response.kind === "question_stale") {
+          // #3355 P3: nothing was written; the card that is current now is
+          // already in the thread (or arrives with this refresh).
+          patchTurn(clientTurnId, {
+            delivery: "failed",
+            accepted: false,
+            errorCode: "QUESTION_STALE",
+            errorMessage:
+              "That question was replaced by a newer one, so nothing changed.",
+            reconciling: false,
+          });
+          applyFlowStateFor(
+            response.conversation_id || turn.conversationId,
+            response.flow_state,
+          );
+          const staleTarget = response.conversation_id || turn.conversationId;
+          if (staleTarget) await refreshCanonicalMessages(staleTarget);
+          return response;
+        }
         const targetConversationId = response.conversation_id;
+        if (response.kind === "text") {
+          applyFlowStateFor(targetConversationId, response.flow_state);
+        }
         patchTurn(clientTurnId, {
           conversationId: targetConversationId,
           accepted: true,
@@ -836,6 +939,7 @@ export function useAgentChat(
       }
     },
     [
+      applyFlowStateFor,
       brandId,
       conversationId,
       patchTurn,
@@ -1018,6 +1122,12 @@ export function useAgentChat(
           ? { workflow_context: workflowContextRef.current }
           : {}),
       }),
+    [sendTurn],
+  );
+
+  const sendFlowAnswer = useCallback(
+    (answer: AriFlowAnswer, label: string) =>
+      sendTurn(label, { message: label, flow_answer: answer }),
     [sendTurn],
   );
 
@@ -1402,6 +1512,10 @@ export function useAgentChat(
       errorCode: candidate.errorCode,
       errorMessage: candidate.errorMessage,
       reconciling: candidate.reconciling,
+      serverWorking:
+        candidate.accepted &&
+        (candidate.attemptStatus === "running" ||
+          candidate.attemptStatus === "accepted"),
       startedAt: candidate.startedAt,
       stoppable: isAriTurnStoppable(candidate),
     };
@@ -1412,6 +1526,12 @@ export function useAgentChat(
     isLoadingMessages: messagesQuery.isLoading,
     sendMessage,
     sendChoice,
+    sendFlowAnswer,
+    flowState: currentScope && conversationId
+      ? flowStates[conversationId]
+      : undefined,
+    applyFlowState,
+    resumeFlow,
     retryTurn,
     retryTenantRecovery,
     editTurn,

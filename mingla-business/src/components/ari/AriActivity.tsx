@@ -44,6 +44,7 @@ import {
 import type { AriActiveTurn } from "../../hooks/useAgentChat";
 import type { AriActivityEventType } from "../../services/ariTurnService";
 import { captureAriTurnOutcome } from "../../services/ariPolishAnalytics";
+import { ariWaitLabel } from "./ariWaitLabel";
 
 type VisiblePhase =
   | "sending"
@@ -197,7 +198,8 @@ export const AriActivity: React.FC<{
       : "sending";
   // P2-7: "Reconnecting to Ari…" only while canonical reconciliation is real;
   // a pending Stop keeps the last truthful label.
-  const label = turn.reconciling ? "Reconnecting to Ari…" : PHASES[phase].label;
+  // #3355 P3: a reachable server still running the turn is "still thinking".
+  const label = ariWaitLabel(turn, PHASES[phase].label);
   const terminal =
     turn.delivery === "stopped" ||
     turn.delivery === "failed" ||

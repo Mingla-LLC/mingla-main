@@ -74,12 +74,25 @@ import {
 import { retypeAriRefusal } from "../_shared/agentToolHelpers.ts";
 import { assertOwnerCopy } from "../_shared/ariOwnerCopy.ts";
 import { withProposalPresentation } from "../_shared/ariPresentation/registry.ts";
+import {
+  type ConfirmNext,
+  flowNextAfterConfirm,
+  websiteSetupNextAfterConfirm,
+} from "./confirmNext.ts";
+import type { FlowStateView } from "../_shared/ariFlows/edge.ts";
 
 interface RequestBody {
   action: "confirm" | "cancel";
   pending_action_id: string;
   edited_args?: Record<string, unknown>;
   ari_ui?: unknown;
+  /**
+   * #3355 P3: "server" = this Host never authors a continuation message; the
+   * confirm response carries the next step instead.
+   */
+  continuation?: "server";
+  /** #3355 P3: confirmed from Website setup — return the next gap. */
+  workflow_context?: "website_setup";
 }
 
 type Response_ =
@@ -91,6 +104,9 @@ type Response_ =
     followup_text?: string;
     next_pending_action_id?: string;
     task_state_revision?: number;
+    /** #3355 P3: the next step, already persisted as an assistant row. */
+    next?: ConfirmNext | null;
+    flow_state?: FlowStateView | null;
   }
   | { kind: "cancelled"; pending_action_id: string }
   | {
@@ -1427,7 +1443,9 @@ async function handleConfirmAction(args: {
       user_id: userId,
       conversation_id: pending.conversation_id,
       related_brand_id: pending.related_brand_id,
-      source: "ari_chat",
+      // #3355 P3: the column only accepts 'ari' | 'hub_*'; 'ari_chat' was
+      // refused, so chained follow-on proposals never persisted.
+      source: "ari",
       tool_name: continuation.toolName,
       tool_args: continuation.toolArgs,
       status: "pending",
@@ -1480,12 +1498,61 @@ async function handleConfirmAction(args: {
     }
   }
 
+  // #3355 P3 (3(b).5): the server decides and persists what comes next.
+  let next: ConfirmNext | null = null;
+  let flowState: FlowStateView | null = null;
+  const conversationBrandId = conversationTask?.row.brand_id ?? null;
+  if (pending.conversation_id && conversationBrandId) {
+    try {
+      const flow = await flowNextAfterConfirm({
+        userClient,
+        service: pendingStateClient,
+        userId,
+        conversationId: pending.conversation_id,
+        brand: {
+          id: conversationBrandId,
+          name: conversationBrandName ?? "your brand",
+        },
+        confirmed: { tool_name: tool.name, result },
+        promptVersion: TENANT_CONTEXT_VERSION,
+        modelVersion: ARI_MODEL_VERSION,
+      });
+      next = flow.next;
+      flowState = flow.flow_state;
+      if (
+        !next && !nextPendingActionId && body.continuation === "server" &&
+        body.workflow_context === "website_setup"
+      ) {
+        next = await websiteSetupNextAfterConfirm({
+          userClient,
+          service: pendingStateClient,
+          userId,
+          conversationId: pending.conversation_id,
+          brand: { id: conversationBrandId, name: conversationBrandName },
+          toolName: tool.name,
+          promptVersion: TENANT_CONTEXT_VERSION,
+          modelVersion: ARI_MODEL_VERSION,
+        });
+      }
+    } catch (error) {
+      // The write is saved and verified; only the next step failed to load.
+      // The Host resumes it with flow_resume, never by sending a message.
+      console.error(JSON.stringify({
+        event: "ari_confirm_next_failed",
+        tool_name: tool.name,
+        error: error instanceof Error ? error.name : "unknown",
+      }));
+    }
+  }
+
   return jsonResponse(200, {
     kind: "executed",
     pending_action_id: pending.id,
     tool_name: tool.name,
     result,
     followup_text: followupText,
+    next,
+    flow_state: flowState,
     ...(nextPendingActionId
       ? { next_pending_action_id: nextPendingActionId }
       : {}),

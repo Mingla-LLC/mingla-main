@@ -7,11 +7,16 @@ import {
   loadAriTurnStatus,
 } from "../_shared/agentTurnSweep.ts";
 import { isDeterministicTurnRefusal } from "../_shared/ariTurnRetry.ts";
+import { resumeFlowForHost } from "./flowResume.ts";
 
-type TurnAction = "status" | "cancel" | "retry";
+type TurnAction = "status" | "cancel" | "retry" | "flow_resume";
 interface RequestBody {
   action?: TurnAction;
   client_turn_id?: string;
+  /** #3355 P3 flow_resume: the chat to resume. */
+  conversation_id?: string;
+  /** #3355 P3 flow_resume: why the Host is asking (reload or back from a handoff). */
+  trigger?: "resume" | "handoff_return";
 }
 
 const UUID_PATTERN =
@@ -65,15 +70,35 @@ Deno.serve(async (request) => {
   } catch {
     return response(400, { code: "BAD_REQUEST" });
   }
+  const admin = createClient(url, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  // #3355 P3: resume is not a turn. It never creates a user row or an attempt
+  // (so it never counts toward the daily limit); it returns the chat's current
+  // card, or — after a handoff — re-reads canonical state once.
+  if (body.action === "flow_resume") {
+    if (
+      !body.conversation_id || !UUID_PATTERN.test(body.conversation_id) ||
+      (body.trigger !== undefined && body.trigger !== "resume" &&
+        body.trigger !== "handoff_return")
+    ) {
+      return response(400, { code: "BAD_REQUEST" });
+    }
+    const resumed = await resumeFlowForHost({
+      service: admin,
+      userClient,
+      userId,
+      conversationId: body.conversation_id,
+      trigger: body.trigger ?? "resume",
+    });
+    return response(resumed.status, resumed.body);
+  }
   if (
     !body.action || !body.client_turn_id ||
     !UUID_PATTERN.test(body.client_turn_id)
   ) {
     return response(400, { code: "BAD_REQUEST" });
   }
-  const admin = createClient(url, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
   let { data: attempt, error: attemptError } = await userClient
     .from("agent_turn_attempts")
     .select(

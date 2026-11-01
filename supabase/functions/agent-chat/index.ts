@@ -169,6 +169,17 @@ import {
 } from "../_shared/agentWebResearch.ts";
 import { buildAriTripCreationCall } from "../_shared/agentTripPlanner.ts";
 import {
+  decideFlowTurn,
+  flowChoices,
+  type FlowStateView,
+  parseFlowAnswer,
+  persistFlowRow,
+  staleFlowAnswer,
+} from "../_shared/ariFlows/edge.ts";
+import { createFlowStore, flowEngineEnabled } from "../_shared/ariFlows/store.ts";
+import type { FlowArtefact } from "../_shared/ariFlows/types.ts";
+import { honestLoopStopText } from "../_shared/ariFlows/honestCopy.ts";
+import {
   buildWebsiteSetupPresentation,
   buildWebsiteSetupReply,
   detectWebsiteSetupIntent,
@@ -267,6 +278,8 @@ interface RequestBody {
   attachment_ids?: string[];
   ari_ui?: unknown;
   workflow_context?: "website_setup";
+  /** #3355 P3: a structured answer bound to the run's current question. */
+  flow_answer?: unknown;
 }
 
 type Response_ =
@@ -281,6 +294,18 @@ type Response_ =
     conversation_title: string;
     choices?: AgentChoicesV2;
     handoff_route?: string;
+    flow?: FlowArtefact;
+    flow_state?: FlowStateView | null;
+  }
+  | {
+    // #3355 P3 (I-ARI-BOUND-ANSWERS): the answered card is no longer the
+    // current one. Nothing was written; `next` is the card that is.
+    kind: "question_stale";
+    code: "QUESTION_STALE";
+    message: string;
+    conversation_id: string;
+    next: FlowArtefact | null;
+    flow_state: FlowStateView | null;
   }
   | {
     kind: "pending_action";
@@ -652,6 +677,8 @@ async function commitTextTurn(args: {
   handoffRoute?: string;
   structuredData?: Record<string, unknown>;
   resumed?: boolean;
+  flowArtefact?: FlowArtefact | null;
+  flowState?: FlowStateView | null;
 }): Promise<Response> {
   // Issue #3355: this is the final host-facing persistence boundary. Individual
   // tools and models should produce clean product copy, but no caller is
@@ -697,12 +724,15 @@ async function commitTextTurn(args: {
   );
   const content = {
     text: publicText,
-    ...((args.choices || args.handoffRoute || args.structuredData)
+    ...((args.choices || args.handoffRoute || args.structuredData ||
+        args.flowArtefact || args.flowState)
       ? {
         structured: {
           ...(args.structuredData ?? {}),
           ...(args.choices ? { choices: args.choices } : {}),
           ...(args.handoffRoute ? { handoff_route: args.handoffRoute } : {}),
+          ...(args.flowArtefact ? { flow: args.flowArtefact } : {}),
+          ...(args.flowState ? { flow_state: args.flowState } : {}),
         },
       }
       : {}),
@@ -856,6 +886,8 @@ async function commitTextTurn(args: {
       : "Plan with Ari",
     ...(args.choices ? { choices: args.choices } : {}),
     ...(args.handoffRoute ? { handoff_route: args.handoffRoute } : {}),
+    ...(args.flowArtefact ? { flow: args.flowArtefact } : {}),
+    ...(args.flowState !== undefined ? { flow_state: args.flowState } : {}),
   });
 }
 
@@ -961,6 +993,17 @@ async function handle(req: Request): Promise<Response> {
     : validateChoiceSubmission(body.choice_response);
   if (body.choice_response !== undefined && !choiceSubmission) {
     return errorResponse(400, "BAD_REQUEST", "choice_response is invalid");
+  }
+  // #3355 P3 (I-ARI-BOUND-ANSWERS): a card answer is structured and bound to
+  // one run, step and question. Its display text is the owner's words only.
+  const flowAnswer = body.flow_answer === undefined
+    ? null
+    : parseFlowAnswer(body.flow_answer);
+  if (body.flow_answer !== undefined && (!flowAnswer || choiceSubmission)) {
+    return errorResponse(400, "BAD_REQUEST", "flow_answer is invalid");
+  }
+  if (flowAnswer && typeof body.message !== "string") {
+    body.message = flowAnswer.display_text;
   }
   const attachmentIds = Array.isArray(body.attachment_ids)
     ? body.attachment_ids.filter((id): id is string =>
@@ -1220,6 +1263,39 @@ async function handle(req: Request): Promise<Response> {
     }
   }
 
+  // #3355 P3: an answer to a card that is no longer current changes nothing
+  // and is not a turn. A replay of an already-accepted answer is not stale:
+  // the idempotent path below returns what it produced.
+  if (flowAnswer) {
+    const { data: acceptedRows } = body.conversation_id
+      ? await serviceClient.from("agent_messages")
+        .select("id")
+        .eq("conversation_id", body.conversation_id)
+        .eq("client_turn_id", body.client_turn_id)
+        .eq("role", "user")
+        .limit(1)
+      : { data: [] };
+    if (!acceptedRows || acceptedRows.length === 0) {
+      const stale = !body.conversation_id || !flowEngineEnabled()
+        ? { next: null, state: null }
+        : await staleFlowAnswer({
+          store: createFlowStore(serviceClient, userId),
+          conversationId: body.conversation_id,
+          answer: flowAnswer,
+        });
+      if (stale) {
+        return jsonResponse(200, {
+          kind: "question_stale",
+          code: "QUESTION_STALE",
+          message: "That question was replaced by a newer one.",
+          conversation_id: body.conversation_id ?? "",
+          next: stale.next,
+          flow_state: stale.state,
+        });
+      }
+    }
+  }
+
   const turnContent = {
     text: requestMessage,
     ...(choiceSubmission
@@ -1231,12 +1307,33 @@ async function handle(req: Request): Promise<Response> {
           },
         },
       }
+      : flowAnswer
+      ? {
+        structured: {
+          flow_answer: {
+            run_id: flowAnswer.run_id,
+            step_key: flowAnswer.step_key,
+            question_id: flowAnswer.question_id,
+            choice_id: flowAnswer.choice_id,
+          },
+        },
+      }
       : {}),
   };
   const requestDigest = await sha256Text(JSON.stringify({
     message: requestMessage,
     choice_response: choiceSubmission,
     brand_id: body.brand_id ?? null,
+    ...(flowAnswer
+      ? {
+        flow_answer: [
+          flowAnswer.run_id,
+          flowAnswer.step_key,
+          flowAnswer.question_id,
+          flowAnswer.choice_id,
+        ],
+      }
+      : {}),
   }));
   const manifestDigest = await sha256Text(attachmentIds.join(","));
   const { data: claimedRows, error: claimError } = await serviceClient.rpc(
@@ -1641,6 +1738,94 @@ async function handle(req: Request): Promise<Response> {
         "INTERNAL",
         "Failed to record this retry.",
       );
+    }
+
+    // #3355 P3 — the flow engine's say before any other lane: deterministic
+    // readiness answers, the run's next step (one card at a time), bound card
+    // answers, and the readiness preamble before a new offering. "none"
+    // leaves every existing lane exactly as it was.
+    if (activeBrand && !choiceSubmission) {
+      const otherLaneActive = body.workflow_context === "website_setup" ||
+        (taskState.active_task !== null &&
+          !["completed", "cancelled"].includes(taskState.status));
+      const decision = await decideFlowTurn({
+        service: serviceClient,
+        userClient,
+        userId,
+        brand: { id: activeBrand.id, name: activeBrand.name },
+        conversationId,
+        message: semanticMessage,
+        flowAnswer,
+        engineEnabled: flowEngineEnabled(),
+        otherLaneActive,
+      });
+      if (decision.kind === "stale") {
+        // Raced past the pre-claim check: nothing was applied. Close the turn
+        // honestly with the card that is current now.
+        return await commitTextTurn({
+          client: serviceClient,
+          userId,
+          conversationId,
+          clientTurnId: body.client_turn_id,
+          previousState: taskState,
+          nextState: taskState,
+          expectedRevision: taskStateRevision,
+          previousSummary: conversationSummary,
+          text: decision.next
+            ? "That question was replaced by a newer one, so nothing changed. The current one is below."
+            : "That question isn't open any more, so nothing changed.",
+          classification: "flow_engine_stale",
+          startedAt: turnStartedAt,
+          flowState: decision.state,
+        });
+      }
+      if (decision.kind === "reply") {
+        const choices = decision.artefact
+          ? flowChoices(decision.artefact)
+          : undefined;
+        return await commitTextTurn({
+          client: serviceClient,
+          userId,
+          conversationId,
+          clientTurnId: body.client_turn_id,
+          previousState: taskState,
+          nextState: taskState,
+          expectedRevision: taskStateRevision,
+          previousSummary: conversationSummary,
+          text: decision.text,
+          classification: decision.classification,
+          startedAt: turnStartedAt,
+          ...(choices ? { choices } : {}),
+          ...(decision.handoff_route
+            ? { handoffRoute: decision.handoff_route }
+            : {}),
+          flowArtefact: decision.artefact,
+          flowState: decision.state,
+        });
+      }
+      if (decision.kind === "delegate") {
+        // The gates passed: the offering lane now takes the owner's original
+        // request. What the owner just chose is said first, as Ari's own row.
+        if (decision.ack) {
+          await persistFlowRow({
+            service: serviceClient,
+            userId,
+            conversationId,
+            text: assertOwnerCopy(decision.ack, {
+              fallback: "Okay.",
+              surface: "flow_ack",
+              mode: "prose",
+            }),
+            artefact: null,
+            state: decision.state,
+            promptVersion: TENANT_CONTEXT_VERSION,
+            modelVersion: ARI_MODEL_VERSION,
+          });
+        }
+        if (decision.semantic_message.trim()) {
+          semanticMessage = decision.semantic_message;
+        }
+      }
     }
 
     // Load last N messages
@@ -3194,11 +3379,9 @@ ${boundedAgentContext}
           ? "I couldn't prepare the ticket change for approval, so nothing was saved. I need to verify the matching event and create its review card before you can approve the change."
           : loopResult.kind === "text"
           ? loopResult.text
-          : loopResult.reason === "deadline"
-          ? "I reached this task's time limit. I kept the completed steps and can resume from here."
-          : loopResult.reason === "budget"
-          ? "I reached this task's safe step limit. I kept the completed steps and can resume from here."
-          : "I couldn't safely continue after the tool errors. I kept the evidence and have stated the blocker below.");
+          // #3355 P3: honest stop words — the loop only reads, so nothing
+          // changed; a verified refusal is named, nothing else is implied.
+          : honestLoopStopText(loopResult.reason, loopResult.observations));
       const usedResearch = loopResult.observations.some((observation) =>
         [
           "search_public_web",

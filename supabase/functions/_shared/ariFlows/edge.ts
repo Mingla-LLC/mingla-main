@@ -1,0 +1,469 @@
+/**
+ * Issue #3355 P3 — glue between the flow runner and the Ari edge functions
+ * (agent-chat, agent-confirm-action, agent-turn-control). Kept here so each
+ * function only calls one helper and tests can drive it with fake clients.
+ */
+
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import type { AgentChoicesV2 } from "../agentChoices.ts";
+import {
+  type BrandReadiness,
+  readBrandReadiness,
+} from "../agentReadinessTools.ts";
+import type { ReadinessAction } from "../readinessCatalog.ts";
+import {
+  classifyOfferingIntent,
+  classifyReadinessQuestion,
+  findFlowDefinition,
+  intentWantsPaid,
+} from "./index.ts";
+import { buildReadinessAnswer } from "./readinessAnswer.ts";
+import {
+  runFlowStep,
+  type RunnerOutcome,
+  type RunnerTrigger,
+} from "./runner.ts";
+import {
+  createFlowStore,
+  FlowConflict,
+  FlowEngineUnavailable,
+  type FlowStore,
+} from "./store.ts";
+import type {
+  FlowAnswer,
+  FlowArtefact,
+  FlowProbeDeps,
+  FlowRun,
+} from "./types.ts";
+import { LIVE_FLOW_STATUSES } from "./types.ts";
+
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Validate the Host's structured answer (`flow_answer`). */
+export function parseFlowAnswer(value: unknown): FlowAnswer | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (
+    typeof raw.run_id !== "string" || !UUID.test(raw.run_id) ||
+    typeof raw.question_id !== "string" || !UUID.test(raw.question_id) ||
+    typeof raw.step_key !== "string" ||
+    !/^[a-z][a-z_]{1,40}$/.test(raw.step_key) ||
+    typeof raw.choice_id !== "string" ||
+    !/^[a-z][a-z_]*(?::[a-z][a-z_.]*)?$/.test(raw.choice_id) ||
+    raw.choice_id.length > 80 ||
+    typeof raw.display_text !== "string" ||
+    raw.display_text.trim().length === 0 || raw.display_text.length > 200
+  ) return null;
+  return {
+    run_id: raw.run_id,
+    question_id: raw.question_id,
+    step_key: raw.step_key,
+    choice_id: raw.choice_id,
+    display_text: raw.display_text.trim(),
+  };
+}
+
+/** What every response tells the Host about the chat's run. */
+export interface FlowStateView {
+  run_id: string;
+  status: FlowRun["status"];
+  current_artefact_id: string | null;
+  current_step_key: string | null;
+  lease_owner_name: string | null;
+  /** Who started the run (shown to teammates who can only follow along). */
+  owner_name: string;
+  view_only: boolean;
+}
+
+export function flowStateOf(run: FlowRun | null): FlowStateView | null {
+  if (!run) return null;
+  const live = LIVE_FLOW_STATUSES.has(run.status);
+  return {
+    run_id: run.id,
+    status: run.status,
+    current_artefact_id: live
+      ? run.current_artefact?.artefact_id ?? null
+      : null,
+    current_step_key: run.current_step_key,
+    lease_owner_name: run.lease_held && !run.lease_held_by_me
+      ? run.lease_owner_name
+      : null,
+    owner_name: run.started_by_name,
+    view_only: !run.started_by_me,
+  };
+}
+
+/**
+ * The card's choices in the existing v2 choices shape. Each option still
+ * travels to the server as a structured `flow_answer`, never as text.
+ */
+export function flowChoices(
+  artefact: FlowArtefact,
+): AgentChoicesV2 | undefined {
+  if (!artefact.question_id || artefact.options.length === 0) return undefined;
+  return {
+    schema_version: 2,
+    question_id: artefact.question_id,
+    kind: "next_step",
+    prompt: artefact.title,
+    required_slot_keys: [],
+    options: artefact.options.slice(0, 4).map((option) => ({
+      id: option.id,
+      label: option.label,
+      payload: option.route
+        ? { type: "handoff" as const, route: option.route }
+        : {
+          type: "slot_patch" as const,
+          slot_updates: { flow_choice: option.id },
+        },
+    })),
+  };
+}
+
+/** Assistant row content for a flow artefact. */
+export function flowMessageContent(
+  text: string,
+  artefact: FlowArtefact | null,
+  state: FlowStateView | null,
+): Record<string, unknown> {
+  const choices = artefact ? flowChoices(artefact) : undefined;
+  return {
+    text,
+    ...(artefact || state
+      ? {
+        structured: {
+          ...(artefact ? { flow: artefact } : {}),
+          ...(choices ? { choices } : {}),
+          ...(state ? { flow_state: state } : {}),
+        },
+      }
+      : {}),
+  };
+}
+
+/** Canonical reads the runner makes for one brand, memoised per request. */
+export function buildFlowProbeDeps(
+  userClient: SupabaseClient,
+  brandId: string,
+): FlowProbeDeps {
+  const cache = new Map<string, Promise<BrandReadiness>>();
+  return {
+    readiness(action: ReadinessAction | null) {
+      const key = action ?? "all";
+      let pending = cache.get(key);
+      if (!pending) {
+        pending = readBrandReadiness(userClient, brandId, action);
+        cache.set(key, pending);
+      }
+      return pending;
+    },
+    async subjectExists(table: string, id: string) {
+      if (!["events"].includes(table)) return false;
+      const { data, error } = await userClient.from(table)
+        .select("id")
+        .eq("id", id)
+        .eq("brand_id", brandId)
+        .maybeSingle();
+      return !error && !!data;
+    },
+    async setAside(itemKey: string) {
+      cache.clear();
+      const { error } = await userClient.rpc("brand_readiness_defer", {
+        p_brand_id: brandId,
+        p_item_key: itemKey,
+        p_reason: "Not now (from Ari)",
+      });
+      return error ? "session_only" : "brand";
+    },
+  };
+}
+
+export type FlowTurnDecision =
+  | { kind: "none" }
+  | {
+    kind: "reply";
+    text: string;
+    artefact: FlowArtefact | null;
+    state: FlowStateView | null;
+    handoff_route?: string;
+    classification: string;
+  }
+  | {
+    kind: "delegate";
+    semantic_message: string;
+    ack?: string;
+    state: FlowStateView | null;
+  }
+  | { kind: "stale"; next: FlowArtefact | null; state: FlowStateView | null };
+
+function decisionFromOutcome(outcome: RunnerOutcome): FlowTurnDecision {
+  const state = flowStateOf(outcome.run);
+  switch (outcome.kind) {
+    case "artefact":
+    case "completed":
+      return {
+        kind: "reply",
+        text: outcome.text,
+        artefact: outcome.artefact,
+        state,
+        ...(outcome.kind === "artefact" && outcome.open_route
+          ? { handoff_route: outcome.open_route }
+          : {}),
+        classification: "flow_engine",
+      };
+    case "notice":
+      return {
+        kind: "reply",
+        text: outcome.text,
+        artefact: null,
+        state,
+        ...(outcome.open_route ? { handoff_route: outcome.open_route } : {}),
+        classification: "flow_engine",
+      };
+    case "busy":
+      return {
+        kind: "reply",
+        text: outcome.text,
+        artefact: null,
+        state,
+        classification: "flow_engine_busy",
+      };
+    case "cancelled":
+      return {
+        kind: "reply",
+        text: outcome.text,
+        artefact: null,
+        state,
+        classification: "flow_engine",
+      };
+    case "delegate":
+      return {
+        kind: "delegate",
+        semantic_message: outcome.semantic_message,
+        ...(outcome.ack ? { ack: outcome.ack } : {}),
+        state,
+      };
+    case "stale":
+      return { kind: "stale", next: outcome.artefact, state };
+    case "unchanged":
+    case "pass":
+      return { kind: "none" };
+  }
+}
+
+export interface FlowTurnArgs {
+  service: SupabaseClient;
+  userClient: SupabaseClient;
+  userId: string;
+  brand: { id: string; name: string } | null;
+  conversationId: string;
+  message: string;
+  flowAnswer: FlowAnswer | null;
+  engineEnabled: boolean;
+  /** An event plan or Website setup already owns this chat. */
+  otherLaneActive: boolean;
+  /** Test seam. */
+  store?: FlowStore;
+}
+
+/**
+ * The engine's say at the start of an agent-chat turn. "none" leaves every
+ * existing lane exactly as it was (engine off, migration not applied, or not
+ * the engine's turn).
+ */
+export async function decideFlowTurn(
+  args: FlowTurnArgs,
+): Promise<FlowTurnDecision> {
+  if (!args.brand) return { kind: "none" };
+
+  // Deterministic readiness answers: the canonical checklist, no model.
+  if (!args.flowAnswer) {
+    const action = classifyReadinessQuestion(args.message);
+    if (action) {
+      try {
+        const readiness = await readBrandReadiness(
+          args.userClient,
+          args.brand.id,
+          action === "all" ? null : action,
+        );
+        const answer = buildReadinessAnswer({
+          readiness,
+          action,
+          brandName: args.brand.name,
+        });
+        return {
+          kind: "reply",
+          text: answer.text,
+          artefact: null,
+          state: null,
+          classification: "readiness_answer",
+        };
+      } catch (_error) {
+        // READINESS_UNAVAILABLE during the deploy window: the normal lanes answer.
+      }
+    }
+  }
+
+  if (!args.engineEnabled) {
+    return args.flowAnswer
+      ? { kind: "stale", next: null, state: null }
+      : { kind: "none" };
+  }
+  const store = args.store ?? createFlowStore(args.service, args.userId);
+  const deps = {
+    store,
+    probes: buildFlowProbeDeps(args.userClient, args.brand.id),
+  };
+  try {
+    let run = await store.getForConversation(args.conversationId);
+    const live = run && LIVE_FLOW_STATUSES.has(run.status) ? run : null;
+    if (args.flowAnswer) {
+      if (!live) return { kind: "stale", next: null, state: flowStateOf(run) };
+      return decisionFromOutcome(
+        await runFlowStep(deps, {
+          run: live,
+          trigger: "answer",
+          answer: args.flowAnswer,
+          ownerText: args.flowAnswer.display_text,
+          brandName: args.brand.name,
+        }),
+      );
+    }
+    if (live) {
+      return decisionFromOutcome(
+        await runFlowStep(deps, {
+          run: live,
+          trigger: "turn",
+          ownerText: args.message,
+          brandName: args.brand.name,
+        }),
+      );
+    }
+    if (args.otherLaneActive) return { kind: "none" };
+    const flowKey = classifyOfferingIntent(args.message);
+    if (!flowKey) return { kind: "none" };
+    const def = findFlowDefinition(flowKey);
+    if (!def) return { kind: "none" };
+    const started = await store.start({
+      brandId: args.brand.id,
+      flowKey: def.key,
+      flowVersion: def.version,
+      concurrency: def.concurrency,
+      conversationId: args.conversationId,
+      answers: {
+        intent_text: { value: args.message.slice(0, 600), source: "owner" },
+        paid: { value: intentWantsPaid(args.message), source: "owner" },
+      },
+    });
+    run = started.run;
+    return decisionFromOutcome(
+      await runFlowStep(deps, {
+        run,
+        trigger: "turn",
+        brandName: args.brand.name,
+      }),
+    );
+  } catch (error) {
+    if (
+      error instanceof FlowEngineUnavailable || error instanceof FlowConflict
+    ) {
+      return args.flowAnswer
+        ? { kind: "stale", next: null, state: null }
+        : { kind: "none" };
+    }
+    throw error;
+  }
+}
+
+/** Pre-claim check: a structured answer to a card that is no longer current. */
+export async function staleFlowAnswer(args: {
+  store: FlowStore;
+  conversationId: string;
+  answer: FlowAnswer;
+}): Promise<{ next: FlowArtefact | null; state: FlowStateView | null } | null> {
+  try {
+    const run = await args.store.getForConversation(args.conversationId);
+    if (
+      run && LIVE_FLOW_STATUSES.has(run.status) &&
+      run.id === args.answer.run_id &&
+      run.current_question_id === args.answer.question_id &&
+      run.current_step_key === args.answer.step_key
+    ) return null;
+    return {
+      next: run && LIVE_FLOW_STATUSES.has(run.status)
+        ? run.current_artefact
+        : null,
+      state: flowStateOf(run),
+    };
+  } catch (error) {
+    if (error instanceof FlowEngineUnavailable) {
+      return { next: null, state: null };
+    }
+    throw error;
+  }
+}
+
+/**
+ * After a confirmed write (agent-confirm-action) or on resume
+ * (agent-turn-control flow_resume): run the chat's live run once.
+ */
+export async function runFlowForConversation(args: {
+  service: SupabaseClient;
+  userClient: SupabaseClient;
+  userId: string;
+  brand: { id: string; name: string };
+  conversationId: string;
+  trigger: Exclude<RunnerTrigger, "answer" | "turn">;
+  confirmed?: { tool_name: string; result: unknown };
+  store?: FlowStore;
+}): Promise<{ outcome: RunnerOutcome | null; run: FlowRun | null }> {
+  const store = args.store ?? createFlowStore(args.service, args.userId);
+  try {
+    const run = await store.getForConversation(args.conversationId);
+    if (!run || !LIVE_FLOW_STATUSES.has(run.status)) {
+      return { outcome: null, run };
+    }
+    const outcome = await runFlowStep({
+      store,
+      probes: buildFlowProbeDeps(args.userClient, args.brand.id),
+    }, {
+      run,
+      trigger: args.trigger,
+      ...(args.confirmed ? { confirmed: args.confirmed } : {}),
+      brandName: args.brand.name,
+    });
+    return { outcome, run: outcome.run };
+  } catch (error) {
+    if (
+      error instanceof FlowEngineUnavailable || error instanceof FlowConflict
+    ) {
+      return { outcome: null, run: null };
+    }
+    throw error;
+  }
+}
+
+/** Insert one engine-authored assistant row (never a user turn). */
+export async function persistFlowRow(args: {
+  service: SupabaseClient;
+  userId: string;
+  conversationId: string;
+  text: string;
+  artefact: FlowArtefact | null;
+  state: FlowStateView | null;
+  promptVersion: string;
+  modelVersion: string;
+}): Promise<string | null> {
+  const id = crypto.randomUUID();
+  const { error } = await args.service.from("agent_messages").insert({
+    id,
+    conversation_id: args.conversationId,
+    user_id: args.userId,
+    role: "assistant",
+    content: flowMessageContent(args.text, args.artefact, args.state),
+    prompt_version: args.promptVersion,
+    model_version: args.modelVersion,
+  });
+  return error ? null : id;
+}

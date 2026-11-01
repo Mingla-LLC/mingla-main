@@ -30,6 +30,9 @@ export interface BrandReadinessItem {
   state: string;
   severity: "blocking" | "skippable" | "done";
   blocks_action: boolean;
+  /** #3355 P3: the actions this item gates or is recommended for (relevance). */
+  blocking_for: string[];
+  recommended_for: string[];
   value_preview: string | null;
   deferrable: boolean;
   deferral: {
@@ -85,6 +88,12 @@ function str(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
 function num(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
@@ -111,6 +120,8 @@ export function compactBrandReadiness(raw: unknown): BrandReadiness | null {
       state: str(item.state) ?? "missing",
       severity,
       blocks_action: item.blocks_action === true,
+      blocking_for: stringList(item.blocking_for),
+      recommended_for: stringList(item.recommended_for),
       value_preview: str(item.value_preview),
       deferrable: item.deferrable === true,
       deferral: deferral

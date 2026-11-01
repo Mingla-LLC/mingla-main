@@ -25,6 +25,7 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as expoRouter from "expo-router";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Menu, Settings } from "lucide-react-native";
@@ -62,7 +63,10 @@ import {
 } from "../../components/ari/renditions/ariRenditionProtocol";
 import { Toast } from "../../components/ui/Toast";
 import { useShareNetworkState } from "../../components/ui/useShareNetworkState";
-import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
+import type {
+  AgentChoiceSubmissionV2,
+  AriFlowAnswer,
+} from "../../services/agentChatService";
 import { BrandSwitcherSheet } from "../../components/brand/BrandSwitcherSheet";
 import {
   ARI_PROPOSAL_EXPIRED_COPY,
@@ -116,6 +120,19 @@ import { MIN_VISIBLE_CLEARANCE } from "../../wrappers/keyboardClearance";
 // (tabs)/_layout.tsx — leave 80pt clearance when the keyboard is closed
 // so the input bar doesn't tuck behind the nav.
 const BOTTOM_NAV_CLEARANCE_PX = 80;
+
+/**
+ * #3355 P3 — expo-router's focus effect when the router provides it (tests
+ * and embedded hosts that stub the router simply skip handoff-return checks;
+ * the owner's next message re-checks on the server anyway).
+ */
+const useFocusEffectSafe: (effect: () => void | (() => void)) => void =
+  typeof (expoRouter as { useFocusEffect?: unknown }).useFocusEffect ===
+  "function"
+    ? (expoRouter as unknown as {
+        useFocusEffect: (effect: () => void | (() => void)) => void;
+      }).useFocusEffect
+    : () => undefined;
 
 /**
  * ORCH-1103 REWORK 3 — true when a confirm error means the pending action was
@@ -562,6 +579,38 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     }
   };
 
+  // #3355 P3 — a flow card answer travels as a structured, bound answer.
+  // When the card opens a Host page (a handoff), coming back to this screen
+  // asks the server to re-check (flow_resume), never sends a message.
+  const flowHandoffOpenRef = React.useRef(false);
+  const handleFlowAnswer = async (
+    answer: AriFlowAnswer,
+    label: string,
+  ): Promise<void> => {
+    if (!online) {
+      setLocalError("You're offline — I'll pick up here when you're back.");
+      return;
+    }
+    const result = await chat.sendFlowAnswer(answer, label);
+    if (result.kind === "error") {
+      setLocalError(ariChatErrorCopy(result.code));
+    } else if (result.kind === "question_stale") {
+      setLocalError(
+        "That question was replaced by a newer one, so nothing changed.",
+      );
+    } else if (result.kind === "text" && result.handoff_route) {
+      flowHandoffOpenRef.current = true;
+      router.push(result.handoff_route as never);
+    }
+  };
+  useFocusEffectSafe(
+    React.useCallback(() => {
+      if (!flowHandoffOpenRef.current) return;
+      flowHandoffOpenRef.current = false;
+      void chat.resumeFlow("handoff_return");
+    }, [chat.resumeFlow]),
+  );
+
   const handleConfirm = async (
     editedArgs?: Record<string, unknown>,
     // ORCH-1103 Q7 — when the create commit is fired ONLY to obtain a brandId
@@ -582,6 +631,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         result = await confirm.confirm(
           chat.pendingAction.pending_action_id,
           editedArgs,
+          websiteSetup ? "website_setup" : undefined,
         );
       } catch {
         const message = ariChatErrorCopy("EDGE_ERROR");
@@ -595,6 +645,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         const message = ARI_PROPOSAL_EXPIRED_COPY;
         setLocalError(message);
         chat.clearPendingAction();
+        // #3355 P3: the server knows the current step; ask it, don't guess.
+        void chat.resumeFlow("resume");
         return { ok: false, error: message, terminal: "expired" };
       }
       if (result.kind === "error") {
@@ -629,16 +681,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         if (typeof r?.brand?.id === "string") brandId = r.brand.id;
       }
       if (!keepPending) chat.clearPendingAction();
-      if (websiteSetup && !keepPending && result.kind === "executed") {
-        const continued = await chat.sendMessage(
-          "Continue Website setup: resume Fix all Website gaps, re-check the live setup plan after my confirmed change, and ask me the next question. Don’t create a draft yet.",
-          [],
-        );
-        if (continued.kind === "error") {
-          setLocalError(
-            "The change was saved, but Ari couldn’t refresh the next Website gap. Ask Ari to continue Website setup.",
-          );
-        }
+      // #3355 P3 (I-ARI-NO-CLIENT-AUTHORED-CONTINUATION): the confirm response
+      // carries the next step, already saved by the server as Ari's message.
+      // This screen never sends a message on the owner's behalf.
+      if (result.kind === "executed") {
+        chat.applyFlowState(result.flow_state);
       }
       return { ok: true, brandId };
     } finally {
@@ -1205,6 +1252,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               onSendChoice={(submission, label) =>
                 void handleChoice(submission, label)
               }
+              flowState={chat.flowState}
+              onFlowAnswer={(answer, label) =>
+                void handleFlowAnswer(answer, label)
+              }
+              online={online !== false}
               onRetryTurn={(clientTurnId) => {
                 if (!online) {
                   setLocalError(

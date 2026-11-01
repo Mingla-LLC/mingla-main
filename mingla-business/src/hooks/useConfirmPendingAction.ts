@@ -31,6 +31,8 @@ export interface UseConfirmPendingActionResult {
   confirm: (
     pending_action_id: string,
     edited_args?: Record<string, unknown>,
+    /** #3355 P3: Website setup asks the server for the next gap after a save. */
+    workflow_context?: "website_setup",
   ) => Promise<AgentConfirmResponse>;
   cancel: (pending_action_id: string) => Promise<AgentConfirmResponse>;
   isExecuting: boolean;
@@ -44,7 +46,11 @@ export function useConfirmPendingAction(
   const intentRef = useRef<ReturnType<typeof createAriClientIntent> | null>(null);
 
   const confirmMutation = useMutation({
-    mutationFn: (args: { pending_action_id: string; edited_args?: Record<string, unknown> }) =>
+    mutationFn: (args: {
+      pending_action_id: string;
+      edited_args?: Record<string, unknown>;
+      workflow_context?: "website_setup";
+    }) =>
       confirmAgentAction({ ...args, ari_ui: currentAriUiCapabilities() }),
     onSuccess: (response) => {
       qc.invalidateQueries({ queryKey: agentQueryKeys.messages(conversationId) });
@@ -102,7 +108,11 @@ export function useConfirmPendingAction(
   });
 
   const confirm = useCallback(
-    async (pending_action_id: string, edited_args?: Record<string, unknown>) => {
+    async (
+      pending_action_id: string,
+      edited_args?: Record<string, unknown>,
+      workflow_context?: "website_setup",
+    ) => {
       const intent = createAriClientIntent({
         intent: "confirm",
         conversationId,
@@ -124,7 +134,11 @@ export function useConfirmPendingAction(
         };
       }
       intentRef.current = reduceAriClientIntent(current, { type: "dispatch_started" });
-      const response = await confirmMutation.mutateAsync({ pending_action_id, edited_args });
+      const response = await confirmMutation.mutateAsync({
+        pending_action_id,
+        edited_args,
+        ...(workflow_context ? { workflow_context } : {}),
+      });
       if (intentRef.current?.stableId === pending_action_id) {
         intentRef.current = {
           ...intentRef.current,

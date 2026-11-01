@@ -38,15 +38,18 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
     expect(pane).toContain('testID="ari-website-setup"');
   });
 
+  // [TEST-MOD-APPROVED #3355] P3 (3(b).5, I-ARI-NO-CLIENT-AUTHORED-CONTINUATION):
+  // the chain still continues after each confirmed Website write, but the
+  // server now owns it — the confirm response carries the next gap, already
+  // saved as Ari's message — instead of the Host typing "Continue Website
+  // setup: …" as the owner. The server side is pinned by
+  // supabase/functions/_shared/__tests__/issue_3355_flow_engine.implementor.test.ts.
   it("continues the durable gap chain after each confirmed Website write", () => {
     expect(screen).toContain('result.kind === "executed"');
-    expect(screen).toContain(
+    expect(screen).not.toContain(
       "Continue Website setup: resume Fix all Website gaps",
     );
-    expect(screen).toContain(
-      "re-check the live setup plan after my confirmed change",
-    );
-    expect(screen).toContain("ask me the next question");
+    expect(agentService).toContain('continuation: "server"');
   });
 
   it("never shows tool names or part keys in messages sent as the owner", () => {
@@ -57,7 +60,9 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
         /(?:sendMessage|handleSend)\(\s*([`"][\s\S]*?[`"])\s*[,)]/g,
       ),
     ].map((match) => match[1]);
-    expect(sent.length).toBeGreaterThanOrEqual(4);
+    // [TEST-MOD-APPROVED #3355] one fewer: the client-authored continuation
+    // after a confirm is gone (P3); the rest are still checked.
+    expect(sent.length).toBeGreaterThanOrEqual(3);
     for (const message of sent) {
       expect(message).not.toMatch(/\b[a-z]+_[a-z_]+\b/);
       expect(message).not.toMatch(/plan part is/);

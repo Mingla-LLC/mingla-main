@@ -37,6 +37,57 @@ export interface AgentChoicesV2 {
   options: { id: string; label: string; payload: AgentChoicePayload }[];
 }
 
+/**
+ * #3355 P3 — one card from Ari's server flow engine (readiness preamble,
+ * handoff, summary). Interactive only while it is the run's current card.
+ */
+export interface AriFlowArtefact {
+  schema_version: 1;
+  artefact_id: string;
+  run_id: string;
+  step_key: string;
+  question_id: string | null;
+  kind: "question" | "handoff" | "summary" | "busy" | "notice";
+  title: string;
+  text: string;
+  options: { id: string; label: string; route?: string }[];
+  handoff?: {
+    item_key: string;
+    item_label: string;
+    route: string | null;
+    route_label: string;
+    can_caller_fix: boolean;
+    who_can_fix: string;
+  };
+}
+
+/** #3355 P3 — what the server says about the chat's flow run. */
+export interface AriFlowState {
+  run_id: string;
+  status: string;
+  current_artefact_id: string | null;
+  current_step_key: string | null;
+  lease_owner_name: string | null;
+  owner_name: string;
+  view_only: boolean;
+}
+
+/** #3355 P3 (I-ARI-BOUND-ANSWERS) — a structured card answer. */
+export interface AriFlowAnswer {
+  run_id: string;
+  step_key: string;
+  question_id: string;
+  choice_id: string;
+  display_text: string;
+}
+
+/** #3355 P3 — the next step the server already persisted. */
+export interface AriFlowNext {
+  message_id: string;
+  text: string;
+  artefact?: AriFlowArtefact;
+}
+
 export interface AgentChoiceSubmissionV2 {
   question_id: string;
   option_ids: string[];
@@ -55,6 +106,17 @@ export type AgentChatResponse =
       conversation_title: string;
       choices?: AgentChoicesV2;
       handoff_route?: string;
+      flow?: AriFlowArtefact;
+      flow_state?: AriFlowState | null;
+    }
+  | {
+      // #3355 P3: the answered card was no longer current; nothing changed.
+      kind: "question_stale";
+      code: "QUESTION_STALE";
+      message: string;
+      conversation_id: string;
+      next: AriFlowArtefact | null;
+      flow_state: AriFlowState | null;
     }
   | {
       kind: "pending_action";
@@ -83,6 +145,9 @@ export type AgentConfirmResponse =
       tool_name: string;
       result: unknown;
       followup_text?: string;
+      /** #3355 P3: the next step, already saved as an Ari message. */
+      next?: AriFlowNext | null;
+      flow_state?: AriFlowState | null;
     }
   | { kind: "cancelled"; pending_action_id: string }
   | {
@@ -117,11 +182,14 @@ export interface SendMessageArgs {
   attachment_ids?: string[];
   ari_ui?: AriUiCapabilitiesV2;
   workflow_context?: "website_setup";
+  flow_answer?: AriFlowAnswer;
 }
 
 export interface ConfirmActionArgs {
   pending_action_id: string;
   edited_args?: Record<string, unknown>;
+  /** #3355 P3: the server returns the next Website setup gap with the receipt. */
+  workflow_context?: "website_setup";
   ari_ui?: AriUiCapabilitiesV2;
 }
 
@@ -392,7 +460,9 @@ export async function confirmAgentAction(
 ): Promise<AgentConfirmResponse> {
   const { data, error } = await supabase.functions.invoke<unknown>(
     "agent-confirm-action",
-    { body: { action: "confirm", ...args } },
+    // #3355 P3: this Host never authors a continuation message; the server
+    // returns (and saves) the next step instead.
+    { body: { action: "confirm", continuation: "server", ...args } },
   );
   if (error) {
     const typed = await extractError(
