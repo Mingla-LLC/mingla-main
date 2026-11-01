@@ -243,4 +243,33 @@ BEGIN
 END
 $test$;
 
+SET LOCAL session_replication_role=replica;
+INSERT INTO public.gigs(
+  id,brand_id,listing_kind,listing_id,title_public,brief_public,
+  format_key,deliverables,city_id,category,shoot_window_start,
+  shoot_window_end,post_by,currency,status,created_by
+) VALUES(
+  '42160000-0000-4000-8000-00000000000a',
+  '42160000-0000-4000-8000-000000000003','event',gen_random_uuid(),
+  'Restored legacy video',
+  'Restore a historical gig without inventing Creator agreement evidence.',
+  'behind_the_scenes','[{"platform":"instagram","kind":"reel","count":1}]',
+  '42160000-0000-4000-8000-000000000004','nightlife',
+  current_date+2,current_date+3,current_date+7,'USD','open',
+  '42160000-0000-4000-8000-000000000001'
+);
+SET LOCAL session_replication_role=origin;
+DO $restore_test$
+BEGIN
+  IF NOT EXISTS(
+    SELECT 1 FROM public.gigs
+    WHERE id='42160000-0000-4000-8000-00000000000a'
+      AND rights_model='legacy_timed' AND agreement_version IS NULL
+      AND agreement_document_url IS NULL AND agreement_document_sha256 IS NULL
+  ) THEN
+    RAISE EXCEPTION '#4216 trigger-bypass restore invented agreement evidence';
+  END IF;
+END
+$restore_test$;
+
 ROLLBACK;

@@ -271,7 +271,15 @@ CREATE OR REPLACE FUNCTION public.issue_4216_gig_rights_guard()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
 DECLARE v_agreement public.creator_agreement_versions;
 BEGIN
-  IF TG_OP='INSERT' AND NEW.rights_model='creator_v1_perpetual' THEN
+  IF TG_OP='INSERT' AND current_setting('session_replication_role')='replica' THEN
+    -- A restore or historical fixture that deliberately bypasses ordinary
+    -- triggers cannot manufacture acceptance evidence. Preserve it as legacy
+    -- instead of leaving a half-populated Creator-v1 snapshot.
+    NEW.rights_model:='legacy_timed';
+    NEW.agreement_version:=NULL;
+    NEW.agreement_document_url:=NULL;
+    NEW.agreement_document_sha256:=NULL;
+  ELSIF TG_OP='INSERT' AND NEW.rights_model='creator_v1_perpetual' THEN
     SELECT * INTO v_agreement FROM public.creator_agreement_versions
     WHERE is_current AND retired_at IS NULL AND effective_at<=now();
     IF NOT FOUND THEN RAISE EXCEPTION 'creator_agreement_not_available' USING ERRCODE='55000'; END IF;
@@ -294,6 +302,7 @@ $fn$;
 CREATE TRIGGER issue_4216_gig_rights_guard
 BEFORE INSERT OR UPDATE ON public.gigs
 FOR EACH ROW EXECUTE FUNCTION public.issue_4216_gig_rights_guard();
+ALTER TABLE public.gigs ENABLE ALWAYS TRIGGER issue_4216_gig_rights_guard;
 
 CREATE OR REPLACE FUNCTION public.issue_4216_interest_agreement_guard()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
