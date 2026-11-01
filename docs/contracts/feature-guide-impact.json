@@ -10,7 +10,8 @@
         "supabase/migrations/20280216004204_issue_4202_explorer_phone_identity_release.sql",
         "supabase/migrations/20280217004202_issue_4202_local_acceptance_auth_detach.sql",
         "supabase/migrations/20280218004202_issue_4202_explorer_phone_rpc_null.sql",
-        "supabase/migrations/20280219004202_issue_4202_explorer_phone_gotrue_sentinels.sql"
+        "supabase/migrations/20280219004202_issue_4202_explorer_phone_gotrue_sentinels.sql",
+        "supabase/migrations/20280220004202_issue_4202_retained_order_chat_reconnect.sql"
       ]
     },
     {
@@ -40,7 +41,8 @@
         "app-mobile/src/components/OnboardingFlow.tsx",
         "app-mobile/src/components/onboarding/TicketsFoundStep.tsx",
         "supabase/functions/claim-link/index.ts",
-        "supabase/functions/attendance-claim-identity/index.ts"
+        "supabase/functions/attendance-claim-identity/index.ts",
+        "supabase/migrations/20280220004202_issue_4202_retained_order_chat_reconnect.sql"
       ]
     },
     {
@@ -138,7 +140,8 @@
         "app-mobile/src/utils/chatComposerGeometry.ts",
         "app-mobile/src/utils/eventDateDisplay.ts",
         "supabase/functions/notify-message/index.ts",
-        "supabase/functions/notify-message/messageKeys.ts"
+        "supabase/functions/notify-message/messageKeys.ts",
+        "supabase/migrations/20280220004202_issue_4202_retained_order_chat_reconnect.sql"
       ]
     },
     {
